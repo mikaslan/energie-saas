@@ -20,6 +20,7 @@ export function immutableKey(
 ): string {
   for (const part of [workspaceId, domain, filename]) {
     if (!SAFE.test(part)) throw new Error(`unsicherer Key-Bestandteil: ${part}`);
+    if (part === "." || part === "..") throw new Error(`unsicherer Key-Bestandteil: ${part}`);
   }
   return `immutable/${workspaceId}/${domain}/${filename}`;
 }
@@ -53,6 +54,11 @@ export class S3Storage implements ObjectStorage {
   async putImmutable(key: string, body: Buffer, contentType: string) {
     if (!key.startsWith("immutable/"))
       throw new Error("putImmutable verlangt immutable/-Key");
+    // Pre-check: Fail fast if object already exists (app-level WORM enforcement)
+    // Note: TOCTOU window exists between HeadObject and PutObject; IfNoneMatch on the
+    // PutObject closes this race on S3-compatible providers that support conditional writes.
+    // Providers that ignore IfNoneMatch fall back to pre-check semantics (residual race until
+    // true Object-Lock lands in M2/M3).
     const exists = await this.client
       .send(new HeadObjectCommand({ Bucket: this.cfg.bucket, Key: key }))
       .then(() => true)
@@ -76,6 +82,9 @@ export class S3Storage implements ObjectStorage {
         Body: body,
         ContentType: contentType,
         ChecksumSHA256: Buffer.from(sha256, "hex").toString("base64"),
+        // Conditional write: fail (412 Precondition Failed) if key already exists
+        // This closes the TOCTOU race on S3-compatible providers that support it
+        IfNoneMatch: "*",
       })
     );
     return { key, sha256 };

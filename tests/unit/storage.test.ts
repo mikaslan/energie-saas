@@ -13,6 +13,12 @@ describe("storage", () => {
     );
     expect(() => immutableKey("../x", "offers", "a.pdf")).toThrow();
   });
+  it("immutableKey lehnt . und .. ab", () => {
+    expect(() => immutableKey("..", "offers", "a.pdf")).toThrow();
+    expect(() => immutableKey(".", "offers", "a.pdf")).toThrow();
+    expect(() => immutableKey("ws1", "..", "a.pdf")).toThrow();
+    expect(() => immutableKey("ws1", ".", "a.pdf")).toThrow();
+  });
   it("putImmutable verweigert Überschreiben (Client gemockt)", async () => {
     const calls: string[] = [];
     const fakeClient = {
@@ -30,5 +36,35 @@ describe("storage", () => {
         "application/pdf"
       )
     ).rejects.toThrow(/existiert bereits/);
+  });
+  it("putImmutable nutzt IfNoneMatch zur TOCTOU-Abwehr", async () => {
+    const commands: unknown[] = [];
+    const fakeClient = {
+      send: async (cmd: unknown) => {
+        commands.push(cmd);
+        // Simulate 404 Not Found for HeadObject
+        const c = cmd as { constructor: { name: string } };
+        if (c.constructor.name === "HeadObjectCommand") {
+          const error = new Error("Not Found") as { $metadata?: { httpStatusCode?: number }; name?: string };
+          error.$metadata = { httpStatusCode: 404 };
+          error.name = "NotFound";
+          throw error;
+        }
+        return {};
+      },
+    };
+    const storage = new S3Storage({ bucket: "b" }, fakeClient as never);
+    await storage.putImmutable(
+      "immutable/ws1/offers/new.pdf",
+      Buffer.from("data"),
+      "application/pdf"
+    );
+    // Verify PutObjectCommand includes IfNoneMatch
+    const putCmd = commands.find((c: unknown) => {
+      const cmd = c as { constructor?: { name?: string }; input?: { IfNoneMatch?: string } };
+      return cmd.constructor?.name === "PutObjectCommand";
+    }) as { input?: { IfNoneMatch?: string } };
+    expect(putCmd).toBeDefined();
+    expect(putCmd?.input?.IfNoneMatch).toBe("*");
   });
 });

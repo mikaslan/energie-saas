@@ -24,3 +24,4 @@ Das System muss GBD-konformes Vollarchivieren (Write-Once-Read-Many / WORM) für
 - Env-Vars: `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`
 - Signierte URLs gelten für 5 min (Read) / 10 min (Upload) – Konfigurierbar
 - Provider-Wechsel setzt nur Env-Vars neu; Code ändert sich nicht (S3-API-Kompatibilität)
+- Provider muss `If-None-Match`-conditional writes unterstützen (PutObject-Header zur TOCTOU-Abwehr) und Object-Lock für echte Unveränderlichkeit ab M2/M3
