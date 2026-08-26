@@ -22,3 +22,33 @@ describe("state machine", () => {
     }
   });
 });
+
+// Codex-Review (Minor): assertTransition hing am Methoden-Receiver — als
+// Callback oder destrukturiert scheiterte es mit TypeError statt mit
+// IllegalTransitionError.
+describe("state machine ist receiver-fest und unveränderlich", () => {
+  it("destrukturierte Methoden funktionieren", () => {
+    const { canTransition, assertTransition } = phase;
+    expect(canTransition("request", "offer")).toBe(true);
+    expect(() => assertTransition("request", "installation")).toThrow(IllegalTransitionError);
+  });
+
+  it("als Callback übergeben funktioniert ebenfalls", () => {
+    const paare: [string, string][] = [["request", "offer"]];
+    expect(() => paare.forEach(([from, to]) => phase.assertTransition(from as never, to as never))).not.toThrow();
+    const kaputt: [string, string][] = [["installation", "request"]];
+    expect(() => kaputt.forEach(([from, to]) => phase.assertTransition(from as never, to as never))).toThrow(
+      IllegalTransitionError,
+    );
+  });
+
+  it("die übergebene Matrix ist nach dem Erzeugen nicht mehr manipulierbar", () => {
+    const matrix: Record<string, string[]> = { a: [], b: [] };
+    const sm = createStateMachine(matrix as Record<"a" | "b", readonly ("a" | "b")[]>);
+    expect(sm.canTransition("a", "b")).toBe(false);
+    // Nachträgliche Mutation der ursprünglichen Matrix darf die Maschine
+    // NICHT erreichen (defensive Kopie).
+    matrix.a.push("b");
+    expect(sm.canTransition("a", "b")).toBe(false);
+  });
+});

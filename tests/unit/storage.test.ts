@@ -19,6 +19,37 @@ describe("storage", () => {
     expect(() => immutableKey("ws1", "..", "a.pdf")).toThrow();
     expect(() => immutableKey("ws1", ".", "a.pdf")).toThrow();
   });
+  // ═══════════════════════════════════════════════════════════════════
+  // Codex-Review #10: put() und getSignedUploadUrl() akzeptierten
+  // immutable/-Keys und umgingen putImmutable() damit vollständig — die
+  // WORM-Zusage war reine Konvention.
+  // ═══════════════════════════════════════════════════════════════════
+  it("put() lehnt immutable/-Keys ab (WORM lässt sich nicht überschreiben)", async () => {
+    const calls: unknown[] = [];
+    const storage = new S3Storage({ bucket: "b" }, { send: async (c: unknown) => { calls.push(c); return {}; } } as never);
+    await expect(
+      storage.put("immutable/ws1/offers/a.pdf", Buffer.from("x"), "application/pdf")
+    ).rejects.toThrow(/put\(\).*WORM|WORM.*put\(\)/);
+    // Und zwar OHNE das Objekt vorher anzufassen.
+    expect(calls).toHaveLength(0);
+  });
+
+  it("getSignedUploadUrl() lehnt immutable/-Keys ab (keine Upload-URL an putImmutable vorbei)", async () => {
+    const calls: unknown[] = [];
+    const storage = new S3Storage({ bucket: "b" }, { send: async (c: unknown) => { calls.push(c); return {}; } } as never);
+    await expect(
+      storage.getSignedUploadUrl("immutable/ws1/offers/a.pdf", "application/pdf")
+    ).rejects.toThrow(/WORM/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("mutable APIs bleiben für normale Keys erlaubt", async () => {
+    const storage = new S3Storage({ bucket: "b" }, { send: async () => ({}) } as never);
+    await expect(storage.put("uploads/ws1/a.pdf", Buffer.from("x"), "application/pdf")).resolves.toEqual({
+      key: "uploads/ws1/a.pdf",
+    });
+  });
+
   it("putImmutable verweigert Überschreiben (Client gemockt)", async () => {
     const calls: string[] = [];
     const fakeClient = {
