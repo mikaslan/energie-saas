@@ -1,4 +1,14 @@
+// Haupt-Barrel: NUR Domänen-Tabellen.
+//
+// Das Auth-Schema (lib/db/schema/auth.ts) ist hier BEWUSST NICHT enthalten
+// (Codex-Review #19 + #25a): auth_user repliziert sämtliche Plattform-E-Mails
+// ohne RLS. Solange die Auth-Tabellen aus diesem Barrel exportiert wurden, war
+// ein vergessenes WHERE in irgendeinem Domänenmodul genau der Cross-Tenant-
+// Leseweg, den die user_identity-RLS verhindern soll.
+//
+// Wer Auth-Tabellen braucht (nur lib/auth.ts), importiert "./schema/auth"
+// direkt; dependency-cruiser erzwingt das. drizzle.config.ts kennt beide Pfade,
+// damit Migrationen weiterhin ALLE Tabellen sehen.
 export * from "./core";
 export * from "./events";
-export * from "./auth";
 export * from "./site";

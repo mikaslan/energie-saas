@@ -13,7 +13,8 @@
     "check": "npm run lint && npm run typecheck && npm run depcruise && npm run test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
-    "db:migrate:test": "cross-env-shell \"POSTGRES_URL=$POSTGRES_URL_TEST\" \"tsx scripts/migrate.mts\""
+    "db:migrate:test": "cross-env-shell \"POSTGRES_URL=$POSTGRES_URL_TEST\" \"tsx scripts/migrate.mts\"",
+    "auth:generate": "auth generate --config lib/auth.ts --output lib/db/schema/auth.ts --y"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1118.0",
@@ -29,13 +30,13 @@
     "resend": "^6.24.0"
   },
   "devDependencies": {
-    "@better-auth/cli": "^1.4.22",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.11",
+    "auth": "^1.7.1",
     "cross-env": "^10.1.0",
     "dependency-cruiser": "^18.2.0",
     "drizzle-kit": "^0.31.10",

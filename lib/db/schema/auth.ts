@@ -1,5 +1,14 @@
 import { relations } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  bigint,
+  timestamp,
+  boolean,
+  integer,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 export const auth_user = pgTable("auth_user", {
   id: text("id").primaryKey(),
@@ -37,6 +46,7 @@ export const auth_account = pgTable(
   "auth_account",
   {
     id: text("id").primaryKey(),
+    issuer: text("issuer").notNull(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     userId: text("user_id")
@@ -54,7 +64,13 @@ export const auth_account = pgTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index("auth_account_userId_idx").on(table.userId)],
+  (table) => [
+    uniqueIndex("auth_account_issuer_accountId_uidx").on(
+      table.issuer,
+      table.accountId,
+    ),
+    index("auth_account_userId_idx").on(table.userId),
+  ],
 );
 
 export const auth_verification = pgTable(
@@ -72,6 +88,13 @@ export const auth_verification = pgTable(
   },
   (table) => [index("auth_verification_identifier_idx").on(table.identifier)],
 );
+
+export const auth_rate_limit = pgTable("auth_rate_limit", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+});
 
 export const auth_userRelations = relations(auth_user, ({ many }) => ({
   auth_sessions: many(auth_session),

@@ -85,6 +85,13 @@
       "when": 1787763424277,
       "tag": "0011_user_identity_auth_link",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787768253956,
+      "tag": "0012_illegal_firelord",
+      "breakpoints": true
     }
   ]
 }
