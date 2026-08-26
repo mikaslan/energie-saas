@@ -23,6 +23,14 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       sql`insert into membership (workspace_id, user_id, role) values (${wsId}, ${userId}, 'viewer')`,
     );
   },
+  domain_events: async (tx, wsId) => {
+    await tx.execute(sql`insert into domain_events (workspace_id, aggregate_type, aggregate_id, event_type, actor)
+      values (${wsId}::uuid, 'workspace', ${wsId}::uuid, 'fixture', 'system')`);
+  },
+  audit_log: async (tx, wsId) => {
+    await tx.execute(sql`insert into audit_log (workspace_id, actor, action, resource, allowed)
+      values (${wsId}::uuid, 'system', 'fixture', 'none', true)`);
+  },
 };
 
 // Globale Tabellen ohne workspace_id — jede Ausnahme ist hier begründet:

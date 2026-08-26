@@ -22,6 +22,20 @@
       "when": 1787750501262,
       "tag": "0002_rls_user_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787752116194,
+      "tag": "0003_dry_puff_adder",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787752122747,
+      "tag": "0004_append_only",
+      "breakpoints": true
     }
   ]
 }
