@@ -20,6 +20,14 @@ jobs:
       # app_test, analog zur embedded-postgres-Testrolle in
       # tests/setup/embedded-postgres.ts (dort "app_test").
       POSTGRES_URL_TEST: postgres://app_ci:ci@localhost:5432/app_test
+      # Getrennte Superuser-Verbindung auf DIESELBE Datenbank. Wird
+      # ausschließlich von tests/setup/superuser-db.ts für Aussagen benutzt,
+      # die unter RLS strukturell nicht prüfbar sind (Zeilen, die außerhalb
+      # jedes Mandantenkontexts geschrieben wurden — z. B. der Auth-Hook beim
+      # Erst-Login). NIE als POSTGRES_URL/POSTGRES_URL_TEST verwenden: ein
+      # Superuser umgeht RLS bedingungslos und würde alle RLS-Tests
+      # wirkungslos machen.
+      POSTGRES_URL_TEST_SUPERUSER: postgres://postgres:test@localhost:5432/app_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

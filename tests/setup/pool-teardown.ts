@@ -4,7 +4,10 @@
 // importierte `testPool` ist also exakt die Instanz, die die Tests nutzen.
 import { afterAll } from "vitest";
 import { testPool } from "./test-db";
+import { closeSuperuserPool } from "./superuser-db";
 
 afterAll(async () => {
   await testPool.end();
+  // Nur wirksam, wenn die Datei den Superuser-Pool überhaupt angefasst hat.
+  await closeSuperuserPool();
 });

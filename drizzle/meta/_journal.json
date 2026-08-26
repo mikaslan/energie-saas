@@ -71,6 +71,20 @@
       "when": 1787763075338,
       "tag": "0009_membership_role_check",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787763407381,
+      "tag": "0010_striped_purifiers",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787763424277,
+      "tag": "0011_user_identity_auth_link",
+      "breakpoints": true
     }
   ]
 }

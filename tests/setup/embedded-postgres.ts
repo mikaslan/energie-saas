@@ -44,6 +44,15 @@ async function findFreePort(): Promise<number> {
 
 export interface EmbeddedTestDatabase {
   url: string;
+  // Superuser-Verbindung auf dieselbe Datenbank. NUR für Testaussagen, die
+  // sich unter RLS strukturell nicht treffen lassen — z. B. „existiert die
+  // user_identity-Zeile, die der Auth-Hook außerhalb jedes Workspace-Kontexts
+  // angelegt hat?". Die SELECT-Policy von user_identity verlangt eine
+  // Membership; die gibt es beim Erst-Login per Definition nicht. Diese URL
+  // wird NIE als POSTGRES_URL/POSTGRES_URL_TEST exportiert (das würde alle
+  // RLS-Tests wirkungslos machen), sondern separat als
+  // POSTGRES_URL_TEST_SUPERUSER.
+  superuserUrl: string;
   stop: () => Promise<void>;
 }
 
@@ -104,6 +113,7 @@ export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {
 
   return {
     url: `postgres://${APP_ROLE}:${APP_PASSWORD}@127.0.0.1:${port}/${DATABASE_NAME}`,
+    superuserUrl: `postgres://${SUPERUSER}:${SUPERUSER_PASSWORD}@127.0.0.1:${port}/${DATABASE_NAME}`,
     stop: () => pg.stop(),
   };
 }
