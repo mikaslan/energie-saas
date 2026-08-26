@@ -27,18 +27,30 @@ interface CountRow {
   [key: string]: unknown; // drizzle tx.execute<T>() verlangt T extends Record<string, unknown>
 }
 
+// allTables = ALLE public-Tabellen (inkl. exemptierter); tables = nur die
+// nicht-exemptierten, gegen die die vier Haupt-Invarianten laufen. Der Guard-
+// Test unten läuft über die Differenz (allTables minus tables).
+let allTables: TenantTable[] = [];
 let tables: TenantTable[] = [];
 const wsA = randomUUID();
 const wsB = randomUUID();
+
+function isExempt(name: string): boolean {
+  return TENANT_EXEMPT.has(name) || TENANT_EXEMPT_PREFIXES.some((p) => name.startsWith(p));
+}
 
 beforeAll(async () => {
   const res = await testPool.query<TenantTable>(`
     select c.relname as name, c.relrowsecurity, c.relforcerowsecurity
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'public' and c.relkind = 'r'`);
-  tables = res.rows.filter(
-    (t) => !TENANT_EXEMPT.has(t.name) && !TENANT_EXEMPT_PREFIXES.some((p) => t.name.startsWith(p)),
-  );
+    where n.nspname = 'public' and c.relkind in ('r', 'p')`);
+  // relkind in ('r', 'p'): 'r' = gewöhnliche Tabelle, 'p' = partitionierte
+  // Elterntabelle (trägt RLS-Policy und NOT-NULL-Constraint). Ohne 'p' bliebe
+  // eine künftige partitionierte Mandantentabelle für die Suite unsichtbar —
+  // solange noch keine einzige Partition angelegt ist, existiert in pg_class
+  // ausschließlich die 'p'-Zeile, keine 'r'-Zeile.
+  allTables = res.rows;
+  tables = allTables.filter((t) => !isExempt(t.name));
   for (const ws of [wsA, wsB]) {
     await withTenantOn(testPool, ws, (tx) =>
       tx.execute(sql`insert into workspace (id, name) values (${ws}::uuid, 'inv-test')`));
@@ -73,6 +85,25 @@ describe("Tenant-Invarianten über ALLE Tabellen", () => {
   it("jede Mandantentabelle hat eine Fixture-Factory registriert", () => {
     for (const t of tables) {
       expect(tenantFixtures[t.name], `${t.name}: Fixture fehlt in tenant-fixtures.ts`).toBeDefined();
+    }
+  });
+
+  it("keine exemptierte Tabelle versteckt eine echte Mandantentabelle (TENANT_EXEMPT/-Prefixe dürfen kein workspace_id verstecken)", async () => {
+    // Guard: TENANT_EXEMPT und TENANT_EXEMPT_PREFIXES machen eine Tabelle für
+    // die vier Haupt-Invarianten oben unsichtbar — das ist beabsichtigt für
+    // global-eigene Tabellen (user_identity) und für Fremdverwaltete, deren
+    // Namen erst später feststehen (better-auth, pg-boss). Es darf aber NIE
+    // dazu führen, dass eine echte Mandantentabelle (mit workspace_id) sich
+    // hinter einem Exempt-Namen/-Prefix verstecken kann. Jede exemptierte
+    // Tabelle wird deshalb auf genau diese eine Eigenschaft geprüft, statt
+    // vollständig unsichtbar zu sein.
+    const exempted = allTables.filter((t) => isExempt(t.name));
+    for (const t of exempted) {
+      const col = await testPool.query<NullableRow>(
+        `select is_nullable from information_schema.columns where table_name = $1 and column_name = 'workspace_id'`,
+        [t.name]);
+      const label = TENANT_EXEMPT.has(t.name) ? "TENANT_EXEMPT" : "Exempt-Prefix";
+      expect(col.rows, `Tenant-Tabelle versteckt sich unter ${label}: ${t.name}`).toHaveLength(0);
     }
   });
 
