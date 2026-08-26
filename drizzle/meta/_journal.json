@@ -50,6 +50,20 @@
       "when": 1787754059833,
       "tag": "0006_white_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787755467184,
+      "tag": "0007_good_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787755490348,
+      "tag": "0008_site_rls",
+      "breakpoints": true
     }
   ]
 }

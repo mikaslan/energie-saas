@@ -31,6 +31,9 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     await tx.execute(sql`insert into audit_log (workspace_id, actor, action, resource, allowed)
       values (${wsId}::uuid, 'system', 'fixture', 'none', true)`);
   },
+  site: async (tx, wsId) => {
+    await tx.execute(sql`insert into site (workspace_id, city) values (${wsId}::uuid, 'fixture')`);
+  },
 };
 
 // Globale Tabellen ohne workspace_id — jede Ausnahme ist hier begründet:
