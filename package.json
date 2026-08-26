@@ -15,6 +15,8 @@
     "db:migrate:test": "cross-env-shell \"POSTGRES_URL=$POSTGRES_URL_TEST\" \"tsx scripts/migrate.mts\""
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1118.0",
+    "@aws-sdk/s3-request-presigner": "^3.1118.0",
     "@better-auth/drizzle-adapter": "^1.7.1",
     "better-auth": "^1.7.1",
     "drizzle-orm": "^0.45.2",
