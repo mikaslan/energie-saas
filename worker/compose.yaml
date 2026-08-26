@@ -1,0 +1,13 @@
+# worker/compose.yaml — läuft auf dem Hetzner-Host
+services:
+  worker:
+    build: { context: .., dockerfile: worker/Dockerfile }
+    restart: always
+    environment:
+      - POSTGRES_URL=${POSTGRES_URL}
+    ports: ["127.0.0.1:8080:8080"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
