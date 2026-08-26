@@ -33,6 +33,17 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - name: Schema-Drift — jede Schemaänderung braucht eine Migration
+        # Codex-Review #27: "npm run check" migriert nur VORHANDENES SQL und
+        # generiert nichts. Eine neue Drizzle-Tabelle ohne zugehörige Migration
+        # existiert in der Test-DB also gar nicht — sie ist für die
+        # Tenant-Invarianten (RLS, workspace_id, Fixture-Pflicht) unsichtbar und
+        # könnte grün durchmergen. Deshalb: generieren und danach einen
+        # unveränderten Baum erzwingen.
+        run: |
+          npm run db:generate
+          git diff --exit-code drizzle/ lib/db/schema/ \
+            || { echo "::error::Schema geändert, aber keine Migration committet — 'npm run db:generate' ausführen und das Ergebnis mitcommitten."; exit 1; }
       - name: Nicht-superuser Test-Rolle + Datenbank bootstrappen
         # postgresql-client (psql) ist auf den GitHub-hosted ubuntu-latest
         # Runnern vorinstalliert. Läuft VOR "npm run check", damit

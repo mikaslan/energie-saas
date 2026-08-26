@@ -51,6 +51,31 @@ module.exports = {
       to: { path: "^lib/db/client\\.ts$" },
     },
     {
+      name: "app-kennt-lib-db-nicht",
+      comment:
+        "app/ (Routen, Server Actions) greift NIE direkt auf lib/db zu — weder " +
+        "getDb noch withTenant noch ein Schema. Der legale Weg ist die " +
+        "öffentliche API eines Moduls (modules/*/index.ts), die ihrerseits " +
+        "TenantTx + ServiceCtx bekommt. Ohne diese Regel könnte eine Route den " +
+        "Mandantenkontext selbst wählen und can()/Audit/Outbox umgehen " +
+        "(Codex-Review #25a). Ausnahme gibt es KEINE; Auth läuft über lib/auth.",
+      severity: "error",
+      from: { path: "^app/" },
+      to: { path: "^lib/db/" },
+    },
+    {
+      name: "auth-schema-ist-privat",
+      comment:
+        "modules/ und app/ dürfen das Auth-Schema nicht importieren. auth_user " +
+        "repliziert sämtliche Plattform-E-Mails OHNE RLS — ein vergessenes " +
+        "WHERE dort liest genau die Cross-Tenant-Identitäten, die die " +
+        "user_identity-RLS schützt (Codex-Review #19). Deshalb ist " +
+        "lib/db/schema/auth.ts auch aus dem Haupt-Barrel entfernt.",
+      severity: "error",
+      from: { path: "^(modules|app)/" },
+      to: { path: "^lib/db/schema/auth\\.ts$" },
+    },
+    {
       name: "auth-client-nur-fuer-auth",
       comment:
         "lib/db/auth-client.ts ist die Verbindung OHNE Mandantenkontext für " +

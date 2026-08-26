@@ -30,12 +30,17 @@ function lastMagicLinkToken(): string {
 // Entwickler-Setup zu verlangen (siehe Task-Brief). POSTGRES_URL_TEST steht
 // bereits aus dem globalSetup (embedded-postgres) zur Verfügung.
 //
-// WICHTIG: `??=` — eine von außen gesetzte POSTGRES_URL wird NICHT
-// überschrieben, aber hier auch nicht stillschweigend übernommen: der Guard in
-// tests/setup/global-setup.ts stellt sicher, dass POSTGRES_URL_TEST eine
-// Test-Datenbank ist und nicht mit POSTGRES_URL identisch sein darf.
+// BETTER_AUTH_SECRET per ??=: ein von außen gesetztes Secret ist harmlos.
 process.env.BETTER_AUTH_SECRET ??= "test-secret-mindestens-32-zeichen-lang!!";
-process.env.POSTGRES_URL ??= process.env.POSTGRES_URL_TEST;
+
+// Codex-Review #8: hier stand `process.env.POSTGRES_URL ??= POSTGRES_URL_TEST`.
+// Das ist genau der gefährliche Fall — eine ambient gesetzte Dev-/Prod-
+// POSTGRES_URL wäre erhalten geblieben, und better-auth hätte im Test gegen
+// DIESE Datenbank geschrieben (Nutzer anlegen, Verification-Zeilen, Hook-Insert
+// in user_identity). Deshalb wird der Auth-Client hier HART auf die Test-DB
+// gezwungen, nicht per ??=. lib/db/auth-client.ts liest POSTGRES_URL_AUTH mit
+// Vorrang vor POSTGRES_URL.
+process.env.POSTGRES_URL_AUTH = process.env.POSTGRES_URL_TEST;
 // Das magicLink-Plugin baut aus baseURL die Callback-URL; ohne diesen Wert
 // wirft es "Invalid URL". In Produktion liefert Vercel die URL automatisch.
 process.env.BETTER_AUTH_URL ??= "http://localhost:3000";

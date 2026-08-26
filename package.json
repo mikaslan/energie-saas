@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "depcruise": "depcruise modules lib app --config .dependency-cruiser.cjs",
+    "depcruise": "depcruise modules lib app worker --config .dependency-cruiser.cjs",
     "check": "npm run lint && npm run typecheck && npm run depcruise && npm run test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
