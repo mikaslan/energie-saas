@@ -80,6 +80,12 @@ describe("domain_events", () => {
       withTenantOn(testPool, ws, (tx) => tx.execute(sql`delete from domain_events`)),
     );
   });
+
+  it("TRUNCATE auf domain_events schlägt fehl (append-only) — row-level Trigger feuert bei TRUNCATE nicht, deshalb eigener statement-level Trigger", async () => {
+    await expectAppendOnlyRejection(
+      withTenantOn(testPool, ws, (tx) => tx.execute(sql`truncate domain_events`)),
+    );
+  });
 });
 
 describe("audit_log", () => {
@@ -105,6 +111,12 @@ describe("audit_log", () => {
     );
     await expectAppendOnlyRejection(
       withTenantOn(testPool, ws, (tx) => tx.execute(sql`delete from audit_log`)),
+    );
+  });
+
+  it("TRUNCATE auf audit_log schlägt fehl (append-only)", async () => {
+    await expectAppendOnlyRejection(
+      withTenantOn(testPool, ws, (tx) => tx.execute(sql`truncate audit_log`)),
     );
   });
 });
