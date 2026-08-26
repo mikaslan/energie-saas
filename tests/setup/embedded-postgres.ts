@@ -47,14 +47,28 @@ export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {
     onError: (messageOrError) => logLines.push(String(messageOrError)),
   });
 
+  let started = false;
+
   try {
     await pg.initialise();
     await pg.start();
+    started = true;
     await pg.createDatabase(DATABASE_NAME);
   } catch (err) {
     // Test-Output bleibt im Erfolgsfall leise; bei einem Fehlschlag brauchen
     // wir die gepufferten initdb/postgres-Logs zur Diagnose.
     console.error("[embedded-postgres] Start fehlgeschlagen:\n" + logLines.join(""));
+    if (started) {
+      // start() lief bereits erfolgreich (z. B. createDatabase() ist danach
+      // gescheitert) — ohne dieses Aufräumen blieben ein laufender
+      // Postgres-Prozess und sein Datenverzeichnis verwaist zurück, weil
+      // global-setup.ts sein `stopEmbedded` erst NACH dem Rückgabewert
+      // dieser Funktion zuweist. Best-effort, damit ein Stop-Fehler den
+      // eigentlichen Fehler nicht verdeckt.
+      await pg.stop().catch((stopErr: unknown) => {
+        console.error("[embedded-postgres] Aufräumen nach Fehlschlag ebenfalls fehlgeschlagen:", stopErr);
+      });
+    }
     throw err;
   }
 
