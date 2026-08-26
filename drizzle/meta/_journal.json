@@ -43,6 +43,13 @@
       "when": 1787752653105,
       "tag": "0005_append_only_truncate",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787754059833,
+      "tag": "0006_white_shockwave",
+      "breakpoints": true
     }
   ]
 }

@@ -15,13 +15,17 @@
     "db:migrate:test": "cross-env-shell \"POSTGRES_URL=$POSTGRES_URL_TEST\" \"tsx scripts/migrate.mts\""
   },
   "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.7.1",
+    "better-auth": "^1.7.1",
     "drizzle-orm": "^0.45.2",
     "next": "16.3.3",
     "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "resend": "^6.24.0"
   },
   "devDependencies": {
+    "@better-auth/cli": "^1.4.22",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
