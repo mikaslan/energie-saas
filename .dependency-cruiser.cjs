@@ -38,6 +38,28 @@ module.exports = {
       from: { path: "^app/" },
       to: { path: "^modules/[^/]+/(?!index\\.ts$).+" },
     },
+    {
+      name: "db-client-nur-ueber-tenant",
+      comment:
+        "lib/db/client.ts (roher App-Pool/Db, OHNE app.workspace_id) darf NUR " +
+        "von lib/db/tenant.ts importiert werden. Jeder andere Import wäre ein " +
+        "Umgehungspfad an withTenant/withAuthorizedTenant, RLS-Kontext, " +
+        "Outbox und Audit vorbei (Codex-Review, MUSS vor Merge). Auth hat aus " +
+        "demselben Grund einen EIGENEN Client: lib/db/auth-client.ts.",
+      severity: "error",
+      from: { pathNot: "^lib/db/tenant\\.ts$" },
+      to: { path: "^lib/db/client\\.ts$" },
+    },
+    {
+      name: "auth-client-nur-fuer-auth",
+      comment:
+        "lib/db/auth-client.ts ist die Verbindung OHNE Mandantenkontext für " +
+        "better-auth. Domänencode (modules/, app/, übriges lib/) hat dort " +
+        "nichts zu suchen — der legale Weg ist withTenant/withAuthorizedTenant.",
+      severity: "error",
+      from: { pathNot: "^lib/auth\\.ts$" },
+      to: { path: "^lib/db/auth-client\\.ts$" },
+    },
   ],
   options: {
     doNotFollow: { path: "node_modules" },

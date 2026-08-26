@@ -1,7 +1,13 @@
 import { site } from "@/lib/db/schema";
 import type { TenantTx } from "@/lib/db/tenant";
-import { can, type PermissionCtx, type Action } from "@/lib/permissions";
+import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { emitEvent } from "@/lib/events";
+
+// Kanonischer Ort für beide ist lib/permissions.ts (der autorisierte Kontext
+// wird dort definiert und von lib/db/tenant.ts#withAuthorizedTenant gebaut) —
+// hier nur Re-Export, damit die Modul-Public-API stabil bleibt.
+export { PermissionDeniedError };
+export type { ServiceCtx };
 
 // ═══════════════════════════════════════════════════════════════════════
 // Referenz-Service-Muster (gilt für alle M1+-Module):
@@ -24,18 +30,6 @@ import { emitEvent } from "@/lib/events";
 // Transaktion wie der Insert, damit ein Rollback automatisch auch das
 // Event zurücknimmt (Outbox-Garantie, siehe lib/events.ts).
 // ═══════════════════════════════════════════════════════════════════════
-
-export class PermissionDeniedError extends Error {
-  constructor(
-    public readonly action: Action,
-    public readonly resource: string,
-  ) {
-    super(`permission denied: ${action} on ${resource}`);
-    this.name = "PermissionDeniedError";
-  }
-}
-
-export type ServiceCtx = PermissionCtx & { workspaceId: string; actor: string };
 
 export type CreateSiteInput = {
   label?: string;

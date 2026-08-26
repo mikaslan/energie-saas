@@ -18,7 +18,14 @@ function requireUrl(): string {
   return url;
 }
 
-export function getPool(): Pool {
+// BEWUSST NICHT exportiert (Codex-Review, MUSS vor Merge): ein öffentlicher
+// getPool() ist ein direkter Umgehungspfad an withTenant, den Services, der
+// Outbox und dem Audit vorbei — mit einem rohen Pool lässt sich ohne
+// app.workspace_id und ohne Autorisierung auf JEDE Mandantentabelle zugreifen.
+// Der einzige Consumer war lib/db/tenant.ts, das getDb() nutzt. Wer künftig
+// wirklich einen Pool braucht, muss diese Datei anfassen — und damit die
+// Entscheidung sichtbar machen.
+function getPool(): Pool {
   if (!poolInstance) {
     poolInstance = new Pool({ connectionString: requireUrl(), max: 5 });
   }

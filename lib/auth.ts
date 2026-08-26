@@ -2,15 +2,15 @@ import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { magicLink, emailOTP } from "better-auth/plugins";
-import { getDb } from "./db/client";
-import { userIdentity } from "./db/schema";
+import { getAuthDb } from "./db/auth-client";
+import { userIdentity } from "./db/schema/core";
 import { sendAuthMail } from "./mail";
 
 // Doku-Check (context7, better-auth@1.7.x): der Drizzle-Adapter lebt seit
 // 1.7 in einem eigenen Paket @better-auth/drizzle-adapter (nicht mehr unter
 // better-auth/adapters/drizzle wie im Task-Brief-Snippet) — Doku gewinnt.
 export const auth = betterAuth({
-  database: drizzleAdapter(getDb(), { provider: "pg" }),
+  database: drizzleAdapter(getAuthDb(), { provider: "pg" }),
   emailAndPassword: { enabled: false },
   // Alle better-auth-Tabellen tragen das Präfix "auth_" (modelName pro
   // Kernmodell, lt. context7-Doku "Customize core table and column names" /
@@ -40,7 +40,7 @@ export const auth = betterAuth({
         // uneingeschränkt (with check (true)), der Hook läuft außerhalb einer
         // withTenant-Transaktion (kein app.workspace_id nötig).
         after: async (user) => {
-          await getDb()
+          await getAuthDb()
             .insert(userIdentity)
             .values({ id: randomUUID(), email: user.email })
             .onConflictDoNothing();

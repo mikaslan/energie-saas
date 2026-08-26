@@ -1,4 +1,4 @@
-import type { Role } from "./db/schema";
+import type { Role } from "./db/schema/core";
 
 export type Capability =
   | "see_purchase_prices" | "edit_prices" | "discounts" | "invoicing"
@@ -15,6 +15,33 @@ export type PermissionCtx = {
   featureFlags: Record<string, boolean>;
 };
 
+// Der autorisierte Mandantenkontext: PermissionCtx + Workspace + Actor. Wird
+// AUSSCHLIESSLICH aus DB-Werten gebaut (lib/db/tenant.ts#withAuthorizedTenant),
+// nie vom Aufrufer frei konstruiert — sonst ließe sich die Opfer-Workspace-UUID
+// mit einer fremden Adminrolle kombinieren (Codex-Review #2). Kanonischer Ort
+// ist diese Datei; modules/sites re-exportiert den Typ nur.
+export type ServiceCtx = PermissionCtx & { workspaceId: string; actor: string };
+
+// Ablehnungen ohne konkrete Action (fehlende Membership) laufen unter dieser
+// Pseudo-Action — sie ist bewusst KEIN Eintrag in ACTION_REQUIREMENTS.
+export const WORKSPACE_ACCESS = "workspace.access" as const;
+export type DeniedAction = Action | typeof WORKSPACE_ACCESS;
+
+export class PermissionDeniedError extends Error {
+  constructor(
+    public readonly action: DeniedAction,
+    public readonly resource: string,
+    public readonly reason?: string,
+  ) {
+    super(
+      reason
+        ? `permission denied: ${action} on ${resource} (${reason})`
+        : `permission denied: ${action} on ${resource}`,
+    );
+    this.name = "PermissionDeniedError";
+  }
+}
+
 // Schicht 1: Workspace-Feature · Schicht 2: Mindestrolle · Schicht 3: Einzelrecht
 export const ACTION_REQUIREMENTS: Record<Action, { minRole: Role; capability?: Capability; feature?: string }> = {
   "project.read":        { minRole: "viewer" },
@@ -30,10 +57,28 @@ export const ACTION_REQUIREMENTS: Record<Action, { minRole: Role; capability?: C
 
 const RANK: Record<Role, number> = { viewer: 0, editor: 1, admin: 2 };
 
+// Laufzeit-Wahrheit über die erlaubten Rollen. membership.role ist in der DB
+// `text` mit CHECK-Constraint (drizzle/0009_membership_role_check.sql); der
+// TypeScript-Typ Role ist nur eine Behauptung über jsonb-/text-Werte, die aus
+// der DB kommen. Deshalb wird hier ZUSÄTZLICH zur Laufzeit validiert.
+const VALID_ROLES: ReadonlySet<string> = new Set<Role>(["viewer", "editor", "admin"]);
+
+export function isRole(value: unknown): value is Role {
+  return typeof value === "string" && VALID_ROLES.has(value);
+}
+
+// Fail-closed (Codex-Review #22): jede Unklarheit endet in `false`.
+//  - unbekannte Rolle ("owner", "", null) → sofort false. Ohne diese explizite
+//    Validierung wäre RANK["owner"] === undefined, und `undefined < 1` ist
+//    false — der Rollen-Check hätte die Aktion also DURCHGELASSEN.
+//  - Capabilities/Feature-Flags kommen aus jsonb und sind zur Laufzeit
+//    beliebig ("false", 0, {}). Nur exakt `true` zählt.
 export function can(ctx: PermissionCtx, action: Action): boolean {
   const req = ACTION_REQUIREMENTS[action];
-  if (req.feature && !ctx.featureFlags[req.feature]) return false;
+  if (!req) return false; // unbekannte Action (Laufzeit-String)
+  if (!isRole(ctx.role)) return false;
+  if (req.feature && ctx.featureFlags?.[req.feature] !== true) return false;
   if (RANK[ctx.role] < RANK[req.minRole]) return false;
-  if (req.capability && ctx.role !== "admin" && !ctx.capabilities[req.capability]) return false;
+  if (req.capability && ctx.role !== "admin" && ctx.capabilities?.[req.capability] !== true) return false;
   return true;
 }
