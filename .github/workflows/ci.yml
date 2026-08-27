@@ -29,8 +29,8 @@ jobs:
       # wirkungslos machen.
       POSTGRES_URL_TEST_SUPERUSER: postgres://postgres:test@localhost:5432/app_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - name: Schema-Drift — jede Schemaänderung braucht eine Migration
