@@ -14,7 +14,7 @@
 // lokalen Start). Die Aufgabenskizze nutzte Top-Level-await; hier stattdessen
 // in eine async main()-Funktion verpackt.
 import { PgBoss } from "pg-boss";
-import { createHealthProbe, createHealthServer } from "./health";
+import { createHealthProbe, createHealthServer, startHeartbeat } from "./health";
 
 const STARTED = new Date().toISOString();
 
@@ -46,6 +46,19 @@ async function shutdown(signal: string) {
 }
 
 async function main() {
+  // Beide Blöcke sind Gerüste hinter Env-Flags (Tooling-Mission): ohne gesetzte
+  // Env-Vars passiert nichts. Werte kommen mit der Einkaufsliste
+  // (docs/tooling/einkaufsliste.md — Sentry EU-Region, healthchecks.io).
+  if (process.env.SENTRY_DSN) {
+    const Sentry = await import("@sentry/node");
+    Sentry.init({ dsn: process.env.SENTRY_DSN });
+    console.log("[worker] Sentry aktiv");
+  }
+  if (process.env.HEALTHCHECKS_PING_URL) {
+    startHeartbeat(health, process.env.HEALTHCHECKS_PING_URL);
+    console.log("[worker] Dead-Man-Heartbeat aktiv");
+  }
+
   await boss.start();
   await boss.createQueue("health.echo");
   await boss.work("health.echo", async (jobs) => {

@@ -103,6 +103,40 @@ export function createHealthProbe(
   };
 }
 
+/**
+ * Dead-Man-Switch-Heartbeat (healthchecks.io-Muster, siehe
+ * docs/tooling/entscheidungen.md §15): Der Worker pingt die URL nur nach einer
+ * ERFOLGREICHEN Probe. Bei Fehler wird bewusst NICHT gepingt — das Ausbleiben
+ * des Pings ist das Alarmsignal; ein Fehler-Ping würde den Alarm gerade
+ * unterdrücken. Fetch-Fehler (Monitoring-Dienst nicht erreichbar) dürfen den
+ * Worker nie beeinträchtigen.
+ */
+export function startHeartbeat(
+  probe: HealthProbe,
+  pingUrl: string,
+  intervalMs = 60_000,
+  fetchFn: typeof fetch = fetch,
+): () => void {
+  const tick = async () => {
+    try {
+      await probe.probe();
+    } catch (err) {
+      console.error("[heartbeat] Probe fehlgeschlagen, Ping unterdrückt:", err);
+      return;
+    }
+    try {
+      await fetchFn(pingUrl, { method: "POST" });
+    } catch (err) {
+      console.error("[heartbeat] Ping nicht zustellbar:", err);
+    }
+  };
+  const timer = setInterval(() => void tick(), intervalMs);
+  // Der Timer darf einen Shutdown/Testlauf nicht am Leben halten.
+  timer.unref?.();
+  void tick();
+  return () => clearInterval(timer);
+}
+
 export function createHealthServer(probe: HealthProbe, startedAt: string): Server {
   return createServer((req, res) => {
     if (req.url !== "/health") {

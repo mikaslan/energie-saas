@@ -86,3 +86,15 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
 - Der lokale Worker-Start (`npx tsx worker/index.ts` gegen die
   embedded-postgres-Test-Instanz, `curl localhost:8080/health`) wurde
   verifiziert — siehe Task-11-Report für den genauen Log-Auszug.
+
+## Heartbeat & Backup (Gerüste aus der Tooling-Mission, 2026-08-27)
+
+- **Dead-Man-Switch:** Ist `HEALTHCHECKS_PING_URL` gesetzt, pingt der Worker
+  die URL nach jeder erfolgreichen DB-Probe (60-s-Takt, `startHeartbeat` in
+  `worker/health.ts`). Kein Ping bei kaputter Probe — das Ausbleiben löst den
+  Alarm bei healthchecks.io aus (Check dort: Period 1 min, Grace 5 min).
+- **Sentry:** Ist `SENTRY_DSN` gesetzt, initialisiert der Worker `@sentry/node`
+  (App-seitig: `instrumentation.ts` / `instrumentation-client.ts`).
+- **Backup:** `worker/backup/backup.sh` (pg_dump → zstd → age → S3-Upload) per
+  Host-Cron, siehe Kopfkommentar; Schutzziele und Restore-Test in
+  docs/konzepte/backup-dr.md. Host-Pakete: postgresql-client, zstd, age, awscli.
