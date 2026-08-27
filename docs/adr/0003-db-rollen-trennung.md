@@ -1,6 +1,7 @@
 # ADR 0003: Datenbank-Rollentrennung — Known-Limitation für M0
 
 Datum: 2026-08-26 · Status: akzeptiert (als Known-Limitation für M0)
+· Überarbeitet: 2026-08-27 (Grant-Skizze ausführbar gemacht, Codex-Re-Review)
 
 ## Kontext
 
@@ -41,52 +42,161 @@ aufgesetzt wird — dort werden Rollen und Grants ohnehin einmalig eingerichtet.
 **Bindende Frist: die Trennung ist VOR dem ersten Pilotkunden beim Neon-Setup
 umzusetzen.** Sie ist kein „nice to have" der späteren Milestones.
 
+### Zwei Dinge, die man beim Lesen der Grants nicht verwechseln darf
+
+Die vorige Fassung dieser Skizze war in sich widersprüchlich, weil beides
+durcheinanderging. Deshalb vorweg:
+
+1. **GRANTs und RLS sind orthogonal.** Ein `GRANT SELECT` sagt nur, ob die Rolle die
+   Tabelle überhaupt anfassen darf. Ob sie danach Zeilen SIEHT, entscheiden allein die
+   Policies. Ein Grant überwindet keine Policy, und eine Policy ersetzt keinen Grant —
+   man braucht beides. Konkret: `app_auth` bekäme mit einem `GRANT SELECT ON
+   user_identity` trotzdem **null Zeilen** zurück, weil `user_identity_select` eine
+   Membership verlangt und `FORCE ROW LEVEL SECURITY` das auch gegen den Eigentümer
+   durchsetzt. Genau deshalb läuft die Identity-Kopplung über eine SECURITY-DEFINER-
+   Funktion (siehe unten), nicht über einen Grant.
+2. **`app_runtime` bleibt unter FORCE RLS — das ist gewollt.** Die Rollentrennung
+   ersetzt die Mandantenisolation nicht, sie ergänzt sie um eine zweite, strukturelle
+   Schranke: `app_runtime` darf kein DDL mehr, kann die Policies also nicht mehr
+   abschalten.
+
 ### Zielbild der Rollen
 
 | Rolle | Login | Zweck | Rechte |
 | --- | --- | --- | --- |
-| `app_owner` | **NOLOGIN** | Eigentümerin aller Objekte, Ziel von `SET ROLE` im Migrationslauf | DDL auf `public`; niemals von einem laufenden Dienst genutzt |
-| `app_migrator` | ja | führt `scripts/migrate.mts` aus | `GRANT app_owner TO app_migrator`, im Migrationsjob `SET ROLE app_owner`; sonst keine Rechte |
-| `app_runtime` | ja | Next.js-Portal (Domänen-Zugriff über `withTenant`/`withAuthorizedTenant`) | `SELECT/INSERT/UPDATE/DELETE` auf Domänentabellen; **kein** DDL, **kein** TRUNCATE, **kein** Zugriff auf `auth_*` |
-| `app_auth` | ja | ausschließlich better-auth (`lib/db/auth-client.ts`, `POSTGRES_URL_AUTH`) | DML auf `auth_*` + `INSERT`/gezieltes `UPDATE` auf `user_identity`; **kein** Zugriff auf Domänentabellen |
-| `app_worker` | ja | pg-boss-Worker | DML im Schema `pgboss`, lesender/schreibender Domänenzugriff nur so weit wie Jobs es brauchen; **kein** DDL |
+| `app_owner` | **NOLOGIN** | Eigentümerin von Schema **und** Tabellen; Ziel von `SET ROLE` im Migrationslauf | DDL in `public`; wird von keinem laufenden Dienst direkt benutzt |
+| `app_migrator` | ja | führt `scripts/migrate.mts` aus | ausschließlich `SET ROLE app_owner` (Mitgliedschaft ohne Vererbung); sonst keine Rechte |
+| `app_runtime` | ja | Next.js-Portal (`withTenant`/`withAuthorizedTenant`) | tabellen-spezifisches DML auf den Domänentabellen; **kein** DDL, **kein** TRUNCATE, **kein** Zugriff auf `auth_*`; unterliegt weiterhin FORCE RLS |
+| `app_auth` | ja | ausschließlich better-auth (`lib/db/auth-client.ts`, `POSTGRES_URL_AUTH`) | DML auf `auth_*` + `EXECUTE` auf `reconcile_user_identity`; **kein** Zugriff auf Domänentabellen |
+| `app_worker` | ja | pg-boss-Worker | Eigentümer des Schemas `pgboss`; Domänenrechte nur explizit pro Job-Klasse; **kein** DDL in `public` |
 
-### Grants (Skizze für das Neon-Setup)
+### Block 1 — Rollen (einmalig, als Rolle mit `CREATEROLE`)
 
 ```sql
-create role app_owner nologin;
+create role app_owner    nologin nosuperuser nobypassrls;
 create role app_migrator login password :'migrator_pw' nosuperuser nobypassrls;
 create role app_runtime  login password :'runtime_pw'  nosuperuser nobypassrls;
 create role app_auth     login password :'auth_pw'     nosuperuser nobypassrls;
 create role app_worker   login password :'worker_pw'   nosuperuser nobypassrls;
 
-grant app_owner to app_migrator;               -- Migrationsjob macht SET ROLE app_owner
-
--- Niemand außer dem Owner legt Objekte an:
-revoke create on schema public from public;
-grant  usage  on schema public to app_runtime, app_auth, app_worker;
-
--- Domänen-Runtime: DML, aber kein TRUNCATE und kein DDL.
-grant select, insert, update, delete on workspace, membership, user_identity,
-      site, domain_events, audit_log to app_runtime;
-revoke truncate on all tables in schema public from app_runtime;
-
--- Auth-Rolle sieht NUR die Auth-Tabellen (+ die Identity-Kopplung).
-grant select, insert, update, delete on auth_user, auth_session, auth_account,
-      auth_verification, auth_rate_limit to app_auth;
-grant insert, update, select on user_identity to app_auth;
-
--- Worker: eigenes Schema, Domänenzugriff nach Bedarf.
-grant usage on schema pgboss to app_worker;
-grant select, insert, update, delete on all tables in schema pgboss to app_worker;
-
--- Default-Privilegien, damit künftige Migrationen die Grants nicht vergessen:
-alter default privileges for role app_owner in schema public
-  grant select, insert, update, delete on tables to app_runtime;
+-- inherit false: app_migrator trägt die Owner-Rechte NICHT ständig mit sich
+-- herum, sondern muss sie mit SET ROLE bewusst annehmen (PostgreSQL 16+).
+grant app_owner to app_migrator with inherit false, set true;
 ```
 
-Zusätzlich: `alter default privileges … revoke truncate …` bzw. ein expliziter
-`revoke truncate` nach jeder Migration, damit append-only nicht allein am Trigger hängt.
+### Block 2 — Ownership und Sichtbarkeit (einmalig)
+
+```sql
+alter schema public owner to app_owner;
+
+-- Niemand außer app_owner legt in public etwas an.
+revoke all on schema public from public;
+grant  usage on schema public to app_runtime, app_auth, app_worker;
+
+-- Migrationen legen bei Bedarf neue Schemata an (u. a. "drizzle" für die
+-- Migrationsbuchhaltung).
+grant create on database :"dbname" to app_owner;
+
+-- pg-boss legt seine Tabellen selbst an und soll dafür kein Recht in public
+-- brauchen: es bekommt ein eigenes Schema, das ihm gehört.
+create schema if not exists pgboss authorization app_worker;
+```
+
+### Block 3 — Migrationslauf als `app_owner`, ohne Codeänderung
+
+`scripts/migrate.mts` bleibt unverändert. Die Rollenannahme steckt in der
+Verbindungszeichenkette des Migrationsjobs:
+
+```
+POSTGRES_URL_MIGRATE=postgres://app_migrator:…@host/db?options=-c%20role%3Dapp_owner
+```
+
+Der `options`-Parameter wird im Startup-Paket mitgeschickt und setzt `role` für die
+gesamte Sitzung; alle in der Migration erzeugten Objekte gehören danach `app_owner`.
+Das Safety-Gate in `scripts/migrate.mts` prüft `current_user` — nach `SET ROLE` ist das
+`app_owner`, und die Rolle ist `nosuperuser`/`nobypassrls`, das Gate greift also
+unverändert.
+
+### Block 4 — Grant-Skript, **nach jeder Migration** auszuführen
+
+Bewusst **keine** `alter default privileges`-Blankets. Ein Blanket-Default auf alle
+künftigen `public`-Tabellen hätte `app_runtime` automatisch DML auf jede neue Tabelle
+gegeben — auch auf `auth_*` und auf jede künftige Tabelle, deren Rechtelage noch niemand
+entschieden hat. Stattdessen: eine explizite Liste, die zusammen mit dem Schema wächst.
+Das ist der Preis dafür, dass ein Vergessen als Laufzeitfehler sichtbar wird, statt als
+stilles Zuviel-Recht.
+
+Ausführen als `app_owner` (dieselbe Verbindung wie Block 3), unmittelbar nach
+`npm run db:migrate`:
+
+```sql
+-- ── app_runtime: Domänen-DML ─────────────────────────────────────────────
+-- TRUNCATE steht bewusst NICHT in der Liste und wird deshalb auch nie
+-- gegrantet; ein nachträgliches "revoke truncate" ist damit überflüssig.
+grant select, insert, update, delete on
+  workspace, membership, user_identity, site, domain_events, audit_log
+  to app_runtime;
+
+-- ── app_auth: NUR die better-auth-Tabellen ───────────────────────────────
+grant select, insert, update, delete on
+  auth_user, auth_session, auth_account, auth_verification, auth_rate_limit
+  to app_auth;
+
+-- ── Identity-Kopplung: der einzige Berührungspunkt zwischen Auth und Domäne
+-- app_auth bekommt bewusst KEIN Recht auf user_identity. Ein Grant würde dort
+-- ohnehin nichts nützen (FORCE RLS + membership-basierte SELECT-Policy). Der
+-- Pfad ist die SECURITY-DEFINER-Funktion aus drizzle/0014: sie läuft als
+-- app_owner und arbeitet durch die beiden eng gefassten Reconcile-Policies.
+revoke execute on function reconcile_user_identity(text, text) from public;
+grant  execute on function reconcile_user_identity(text, text) to app_auth;
+
+-- Härtung der Reconcile-Policies: in M0 stehen sie auf PUBLIC, weil es nur
+-- eine Rolle gibt. Ab hier gilt das Fenster ausschließlich innerhalb der
+-- Funktion (dort ist current_user = app_owner).
+alter policy user_identity_reconcile_select on user_identity to app_owner;
+alter policy user_identity_reconcile_update on user_identity to app_owner;
+
+-- ── app_worker ───────────────────────────────────────────────────────────
+-- Im Schema pgboss braucht es keine Grants: app_worker ist dort Eigentümer.
+-- Domänenzugriff bekommt der Worker NUR pro Job-Klasse und explizit, z. B.
+-- wenn M2 pdf.render einführt:
+--   grant select on site to app_worker;
+-- Kein Blanket, keine Vorratsrechte.
+```
+
+Es gibt in `public` derzeit **keine Sequenzen** (alle Schlüssel sind `uuid`), deshalb
+fehlt hier ein `grant … on sequences`. Käme eine hinzu, MUSS sie in diesem Skript
+auftauchen — sonst schlägt der erste Insert zur Laufzeit fehl.
+
+### Gegenprobe: die Skizze ist ausgeführt worden
+
+Die vier Blöcke sind **nicht** angelesen, sondern am 2026-08-27 einmal vollständig
+gegen die embedded-Postgres-Instanz (PG 18) durchgespielt worden. Reproduzierbar:
+
+```bash
+npx tsx scripts/adr-0003-probe.mts
+```
+
+Das Skript legt die Rollen an, überträgt die Ownership, migriert als `app_migrator` mit
+`options=-c role=app_owner`, führt Block 4 aus und prüft danach die Rechtelage. Es ist
+bewusst **nicht** Teil von `npm run check` (es braucht eine eigene Instanz und dauert
+länger als ein Unit-Test); es ist die Belegkette für dieses Dokument. Ergebnis, alle
+Punkte grün:
+
+| Nachweis | Ergebnis |
+| --- | --- |
+| alle `public`-Tabellen gehören nach dem Migrationslauf `app_owner` | ja (0 fremde Owner) |
+| `app_runtime` darf Domänen-DML (unter RLS) | ja |
+| `app_runtime` sieht `auth_user` | nein — *permission denied for table auth_user* |
+| `app_runtime` darf `TRUNCATE site` | nein — *permission denied for table site* |
+| `app_runtime` darf DDL in `public` | nein — *permission denied for schema public* |
+| `app_runtime` darf `reconcile_user_identity` ausführen | nein — *permission denied for function* |
+| `app_runtime` kann das Reconcile-Fenster von Hand öffnen | nein (Policies stehen auf `app_owner`) |
+| `app_auth` darf `auth_user` lesen | ja |
+| `app_auth` sieht `user_identity` | nein — *permission denied for table user_identity* |
+| `app_auth` darf `reconcile_user_identity` ausführen, idempotent | ja, Kopplung genau einmal in der DB |
+| `app_worker` darf im Schema `pgboss` anlegen | ja |
+| `app_worker` sieht `auth_user` | nein — *permission denied for table auth_user* |
 
 ### Env-Variablen
 
@@ -94,25 +204,33 @@ Zusätzlich: `alter default privileges … revoke truncate …` bzw. ein explizi
 - `POSTGRES_URL_AUTH` — `app_auth` (bereits in `lib/db/auth-client.ts` vorbereitet und
   ausgewertet; solange nicht gesetzt, fällt Auth auf `POSTGRES_URL` zurück — genau das ist
   die hier dokumentierte Limitation)
-- `POSTGRES_URL_MIGRATE` — `app_migrator`, nur im Deploy-/Migrationsschritt
-- Worker: eigene Variable für `app_worker`
+- `POSTGRES_URL_MIGRATE` — `app_migrator` **inklusive** `?options=-c%20role%3Dapp_owner`,
+  nur im Deploy-/Migrationsschritt
+- `POSTGRES_URL_WORKER` — `app_worker`, nur im Worker-Prozess
 
 ## Konsequenzen
 
 - **M0 bleibt mergefähig**, die Restlücke ist benannt statt unsichtbar.
 - Das Safety-Gate in `scripts/migrate.mts` (kein Superuser, kein `BYPASSRLS`) bleibt
-  unverändert bestehen und gilt auch für `app_migrator`.
+  unverändert bestehen und gilt nach `SET ROLE` für `app_owner`.
 - `lib/db/auth-client.ts` liest bereits `POSTGRES_URL_AUTH ?? POSTGRES_URL`; das Umstellen
   auf `app_auth` ist danach eine reine Konfigurationsänderung ohne Codeänderung.
+- Das Grant-Skript aus Block 4 ist Teil des Deploy-Ablaufs, nicht des Repositories-
+  Automatismus: **jede** Migration, die eine Tabelle hinzufügt, muss es erweitern.
+  Fehlt der Eintrag, schlägt der erste Zugriff mit *permission denied* fehl — laut und
+  früh, nicht still und zu weit.
 - Die Testumgebung bildet weiterhin den heutigen Zustand ab: `tests/setup/embedded-postgres.ts`
   legt eine Nicht-Superuser-Rolle `app_test` an, die Eigentümerin ihrer Tabellen ist. Nach
   der Umstellung sollte sie um die gleiche Rollenteilung erweitert werden, sonst testet CI
-  eine andere Rechtelage als Produktion.
+  eine andere Rechtelage als Produktion. `scripts/adr-0003-probe.mts` ist der Vorgriff
+  darauf und kann dafür als Grundlage dienen.
 - Solange die Trennung aussteht, gilt: **jeder** Code, der auf `lib/db/client.ts` oder
   `lib/db/auth-client.ts` zugreift, ist sicherheitsrelevant. Die dependency-cruiser-Regeln
   `db-client-nur-ueber-tenant` und `auth-client-nur-fuer-auth` halten diesen Kreis klein.
-- Offener Folgepunkt, der von derselben Entscheidung abhängt: das idempotente Nachtragen
-  von `user_identity.auth_user_id` für bereits eingeladene Identitäten (siehe
-  `drizzle/0011_user_identity_auth_link.sql` und `lib/auth.ts`). Eine eigene `app_auth`-Rolle
-  ist der saubere Ort, um diesen Bootstrap-Pfad zu erlauben, ohne die Identity-RLS für alle
-  aufzuweichen.
+- Der früher hier offene Folgepunkt — das idempotente Nachtragen von
+  `user_identity.auth_user_id` — ist mit `drizzle/0014_identity_reconcile.sql`
+  **geschlossen**. Die Rollentrennung ist dort nicht mehr Voraussetzung, sondern die
+  Härtung: sie verengt das Reconcile-Fenster von „jede Verbindung" auf „innerhalb der
+  Funktion". Bis dahin ist das Fenster eine E-Mail breit, nur außerhalb jedes
+  Mandantenkontexts offen und durch den Trigger `user_identity_link_auth_only` gegen
+  Re-Pointing gesichert.
