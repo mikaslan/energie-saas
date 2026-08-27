@@ -209,12 +209,43 @@ describe("reconcile_user_identity (F11)", () => {
     const ersterAuthUser = `auth-${randomUUID()}`;
     await reconcile(email, ersterAuthUser);
 
-    await expectRejection(reconcile(email, `auth-${randomUUID()}`), /bereits an auth_user .* gekoppelt/);
+    await expectRejection(reconcile(email, `auth-${randomUUID()}`), /identity already linked/);
 
     // Kein stilles Umbiegen: die ursprüngliche Kopplung steht unverändert.
     const rows = await identitiesOf(email);
     expect(rows).toHaveLength(1);
     expect(rows[0].auth_user_id).toBe(ersterAuthUser);
+  });
+
+  it("die Konflikt-Meldung verrät die bestehende Kopplung NICHT (drizzle/0016)", async () => {
+    // Die Policies halten dicht, die Fehlermeldung tat es nicht: sie enthielt
+    // die bestehende auth_user_id. Damit war der Fehlerkanal ein Leseweg auf
+    // eine Tabelle, die der Aufrufer nie sehen darf.
+    const email = `Leak-${randomUUID()}@example.test`;
+    const geheimerAuthUser = `auth-geheim-${randomUUID()}`;
+    await reconcile(email, geheimerAuthUser);
+
+    let caught: unknown;
+    try {
+      await reconcile(email, `auth-${randomUUID()}`);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught, "Konflikt wurde nicht abgelehnt").toBeInstanceOf(Error);
+
+    // Die GESAMTE Fehlerkette prüfen, nicht nur .message: Drizzle wrappt, und
+    // ein Leck könnte auch in detail/hint/where stecken.
+    const komplett = JSON.stringify(caught, Object.getOwnPropertyNames(Object(caught)));
+    const ausCause = String((caught as { cause?: unknown }).cause);
+    for (const text of [komplett, ausCause]) {
+      expect(text, "Fehlermeldung verrät die bestehende auth_user_id").not.toContain(
+        geheimerAuthUser,
+      );
+      expect(text, "Fehlermeldung verrät die E-Mail der Zielidentität").not.toContain(
+        email.toLowerCase(),
+      );
+    }
+    expect(ausCause).toMatch(/identity already linked/);
   });
 
   it("verweigert den Dienst INNERHALB eines Mandantenkontexts", async () => {

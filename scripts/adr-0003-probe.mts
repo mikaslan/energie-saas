@@ -57,8 +57,12 @@ try {
 
   // ── Block 3: Migrationslauf als app_owner (per Connection-Option) ─────
   const migrateUrl = `postgres://app_migrator:mig@${host}/${DB}?options=-c%20role%3Dapp_owner`;
+  // BEIDE Variablen hart SETZEN, nicht erben: scripts/migrate.mts liest
+  // `POSTGRES_URL_MIGRATE ?? POSTGRES_URL`. Ein ambient gesetztes
+  // POSTGRES_URL_MIGRATE (Dev-/Prod-Ziel) haette sonst Vorrang und diese Probe
+  // wuerde dagegen migrieren.
   execSync("npx tsx scripts/migrate.mts", {
-    env: { ...process.env, POSTGRES_URL: migrateUrl },
+    env: { ...process.env, POSTGRES_URL: migrateUrl, POSTGRES_URL_MIGRATE: migrateUrl },
     stdio: "inherit",
   });
   const ownerCheck = await su.query<{ n: number }>(

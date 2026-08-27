@@ -69,7 +69,50 @@ durcheinanderging. Deshalb vorweg:
 | `app_runtime` | ja | Next.js-Portal (`withTenant`/`withAuthorizedTenant`) | tabellen-spezifisches DML auf den Domänentabellen; **kein** DDL, **kein** TRUNCATE, **kein** Zugriff auf `auth_*`; unterliegt weiterhin FORCE RLS |
 | `app_auth` | ja | ausschließlich better-auth (`lib/db/auth-client.ts`, `POSTGRES_URL_AUTH`) | DML auf `auth_*` + `EXECUTE` auf `reconcile_user_identity`; **kein** Zugriff auf Domänentabellen |
 | `app_worker` | ja | pg-boss-Worker (`POSTGRES_URL_WORKER`) | Eigentümer des Schemas `pgboss`; Domänenrechte nur explizit pro Job-Klasse; **kein** DDL in `public` |
-| `identity_reconciler` | **NOLOGIN** | Eigentümerin der SECURITY-DEFINER-Funktion `reconcile_user_identity`; von `drizzle/0015` angelegt, nicht hier | `SELECT/INSERT/UPDATE` auf `user_identity`, `SELECT` auf `membership`; besitzt **keine** Tabelle, ist von **niemandem** annehmbar |
+| `identity_reconciler` | **NOLOGIN** | Eigentümerin der SECURITY-DEFINER-Funktion `reconcile_user_identity`; von `drizzle/0015` angelegt, nicht hier | `SELECT/INSERT/UPDATE` auf `user_identity`, `SELECT` auf `membership`; besitzt **keine** Tabelle; laufende Dienste können sie nicht annehmen (siehe Einschränkung unten) |
+
+### Wer `identity_reconciler` annehmen kann — und wer nicht
+
+Eine frühere Fassung dieses Dokuments behauptete, die Rolle sei „von niemandem
+annehmbar". Das ist **falsch** und wird hier richtiggestellt.
+
+Die Mitgliedschaften der laufenden Dienste stehen auf `inherit false, set false`
+(`drizzle/0015`): `app_runtime`, `app_auth` und `app_worker` können weder die Policies
+der Rolle erben noch per `SET ROLE` in sie hineinwechseln — das ist nachgemessen
+(*permission denied to set role*) und der Kern der Härtung.
+
+**Wer die Rolle anlegt, behält aber `ADMIN OPTION`** und kann sich damit jederzeit wieder
+`SET TRUE` erteilen und die Rolle annehmen. Das ist keine Lücke, sondern die normale
+PostgreSQL-Semantik, und es ist auch nötig: genau über diesen Weg ändert eine spätere
+Migration die Funktion (Vorlage: `drizzle/0016`). Praktisch heißt das:
+
+- **Heute (M0, eine gemeinsame Rolle):** die App-Rolle ist zugleich die Migrationsrolle
+  und damit Erstellerin von `identity_reconciler`. Sie kann sich die Rolle
+  zurückverschaffen. Das Reconcile-Fenster ist gegen einen *versehentlichen* oder
+  *eingeschleusten* SQL-Aufruf geschützt, nicht gegen jemanden, der die Verbindung
+  vollständig kontrolliert — der ist ohnehin Tabelleneigentümer und darf DDL.
+- **Nach der Rollentrennung:** Erstellerin ist `app_owner` (NOLOGIN, nur im
+  Migrationsjob per `SET ROLE` erreichbar). Die Dienste, die dauerhaft am Netz hängen,
+  sind es nicht.
+
+Damit ist die Aussage tragfähig, die dieses ADR wirklich stützt: **die Definer-Rolle ist
+für keinen laufenden Dienst annehmbar**, sobald die Trennung steht — und bis dahin fällt
+sie mit allem anderen unter die hier dokumentierte Limitation.
+
+### Restrisiko F11 in M0: `EXECUTE` liegt bei der gemeinsamen App-Rolle
+
+`drizzle/0015` entzieht `EXECUTE` auf `reconcile_user_identity` dem PUBLIC und vergibt es
+gezielt an die migrierende Rolle. In M0 ist das dieselbe Rolle, mit der die Anwendung
+arbeitet — die Funktion ist damit von der App-Verbindung **direkt aufrufbar**, auch
+außerhalb des Auth-Hooks. Ein Aufrufer kann so für eine bereits bekannte E-Mail einen
+Kopplungsversuch unternehmen; die Funktion verrät ihm dabei nichts über den bestehenden
+Zustand (`drizzle/0016`: generische Fehlermeldung), aber sie ist erreichbar.
+
+**Das ist kein eigener offener Punkt, sondern ein Aspekt genau dieser
+Rollentrennungs-Limitation** und wird mit ihr geschlossen: Block 4 unten hängt `EXECUTE`
+von der Migrationsrolle auf `app_auth` um und entzieht es `app_owner` — ab dann ist die
+Funktion ausschließlich über die Auth-Verbindung erreichbar, nicht über die
+Portal-Verbindung. Es gilt dieselbe bindende Frist: **vor dem ersten Pilotkunden.**
 
 ### Block 1 — Rollen (einmalig, als Rolle mit `CREATEROLE`)
 
