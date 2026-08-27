@@ -49,15 +49,18 @@
     "drizzle-zod": "^0.8.3",
     "maplibre-gl": "^6.6.0",
     "next": "16.3.3",
+    "node-zugferd": "^0.1.1-beta.1",
     "papaparse": "^5.7.0",
     "pg": "^8.23.0",
     "pg-boss": "^12.28.0",
+    "playwright": "^1.62.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.86.0",
     "react-pdf": "^10.5.0",
     "recharts": "^3.10.1",
     "resend": "^6.24.0",
+    "signature_pad": "^5.1.4",
     "zod": "^4.4.3"
   },
   "overrides": {
