@@ -3,28 +3,25 @@
 -- sichert die Unveränderlichkeit dieser Kopplung ab.
 --
 -- ═══════════════════════════════════════════════════════════════════════
--- BEFUND (empirisch verifiziert, siehe final-fix-report.md F11):
+-- ÜBERHOLT — KORRIGIERT DURCH drizzle/0014_identity_reconcile.sql.
 --
--- user_identity trägt RLS mit FORCE und hat NUR eine SELECT-Policy
--- (membership-basiert) und eine INSERT-Policy (drizzle/0002). PostgreSQL
--- verlangt für JEDES `insert ... on conflict ...` — auch für DO NOTHING —
--- dass die kollidierende Zeile unter den SELECT-Policies sichtbar ist
--- (WCO_RLS_CONFLICT_CHECK). Beim Erst-Login existiert aber noch keine
--- Membership und kein app.workspace_id, also ist NICHTS sichtbar. Ergebnis:
+-- Hier stand: „PostgreSQL verlangt für JEDES `insert … on conflict …` — auch
+-- für DO NOTHING — dass die kollidierende Zeile unter den SELECT-Policies
+-- sichtbar ist". Das ist in dieser Allgemeinheit FALSCH. Die SELECT-Prüfung
+-- greift bei `do nothing` nur mit SPEZIFIZIERTEM Arbiter
+-- (`on conflict (lower(email)) do nothing`); targetloses `on conflict do
+-- nothing` — was Drizzles `.onConflictDoNothing()` ohne `target` erzeugt —
+-- prüft sie nicht.
 --
---   insert into user_identity (...) on conflict (lower(email)) do nothing
---   -> ERROR: new row violates row-level security policy for table "user_identity"
+-- Der echte Defekt war ein anderer: weder ein Plain-Insert noch ein
+-- `do nothing` kann eine BESTEHENDE Identität koppeln, und das dafür nötige
+-- `do update` scheiterte an der schlicht nicht vorhandenen UPDATE-Policy
+-- (RLS mit FORCE verbietet ohne Policy jedes UPDATE, auch dem Owner).
 --
--- Das galt bereits für den ALTEN Hook (.onConflictDoNothing()) — der wäre bei
--- jedem Erst-Login gescheitert. Der Hook nutzt deshalb jetzt einen schlichten
--- INSERT (der funktioniert, siehe lib/auth.ts).
---
--- Das idempotente Nachtragen von auth_user_id auf eine BEREITS existierende
--- Identität (eingeladen, aber noch nie eingeloggt — ein M1-Fall) ist damit
--- offen und im Report als BLOCKED ausgewiesen: es braucht eine bewusste
--- Entscheidung über eine eng gefasste Bootstrap-Policy bzw. eine eigene
--- Auth-DB-Rolle (docs/adr/0003-db-rollen-trennung.md), keine improvisierte
--- Aufweichung der Identity-RLS.
+-- Geschlossen in drizzle/0014: zwei eng gefasste, transaktionslokal
+-- geöffnete Policies plus die SECURITY-DEFINER-Funktion
+-- reconcile_user_identity(text, text). Der Hook in lib/auth.ts ruft nur noch
+-- diese Funktion.
 -- ═══════════════════════════════════════════════════════════════════════
 --
 -- Der Trigger unten ist die STRUKTURELLE Absicherung für genau diese offene

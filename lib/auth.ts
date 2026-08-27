@@ -1,9 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { magicLink, emailOTP } from "better-auth/plugins";
+import { sql } from "drizzle-orm";
 import { getAuthDb } from "./db/auth-client";
-import { userIdentity } from "./db/schema/core";
 import { sendAuthMail } from "./mail";
 
 // Doku-Check (context7, better-auth@1.7.x): der Drizzle-Adapter lebt seit
@@ -71,46 +70,36 @@ export const auth = betterAuth({
     user: {
       create: {
         // ═══════════════════════════════════════════════════════════════
-        // Erst-Login: Domänen-Identität anlegen und an den better-auth-User
-        // koppeln (Codex-Review #17a).
+        // Erst-Login: Domänen-Identität anlegen ODER eine bereits vorhandene
+        // (z. B. aus einer M1-Einladung) an den better-auth-User koppeln
+        // (Codex-Review #17a, F11).
         //
-        // Ruling (Migration 0002 / Task-3-Ledger): user_identity hat eine
-        // membership-basierte SELECT-Policy — bei Erst-Login existiert noch
-        // keine Membership, RETURNING unterliegt derselben SELECT-Policy
-        // (chicken-egg). Deshalb: client-generierte UUID statt
-        // defaultRandom(), kein .returning(), kein Folge-SELECT.
+        // Der gesamte Vorgang steckt in der SECURITY-DEFINER-Funktion
+        // reconcile_user_identity (drizzle/0014_identity_reconcile.sql). Hier
+        // steht bewusst kein SQL mehr: die Kopplung braucht Schreibrechte, die
+        // unter der user_identity-RLS nur über ein sehr eng gefasstes,
+        // transaktionslokales Fenster erreichbar sind — dieses Fenster gehört
+        // in die DB, nicht in den Anwendungscode.
         //
-        // OFFEN / BLOCKED (siehe drizzle/0011 und final-fix-report.md F11):
-        // Hier stand ursprünglich `.onConflictDoNothing()`, und der Brief
-        // verlangte ein `onConflict (lower(email)) DO UPDATE`, um
-        // auth_user_id auf eine bereits eingeladene Identität nachzutragen.
-        // BEIDES ist unter der aktuellen RLS unmöglich: PostgreSQL verlangt
-        // für JEDES `on conflict` (auch DO NOTHING) Sichtbarkeit der
-        // kollidierenden Zeile unter den SELECT-Policies
-        // (WCO_RLS_CONFLICT_CHECK) — beim Erst-Login gibt es weder Membership
-        // noch app.workspace_id. Empirisch verifiziert, als Test festgehalten
-        // in tests/db/identity-and-site-keys.test.ts.
+        // Warum nicht einfach `on conflict … do update` von hier aus: die
+        // UPDATE-Policy, die das braucht, wäre dann für den gesamten
+        // Verbindungspfad offen. Die Funktion öffnet sie dagegen nur für die
+        // eine E-Mail, die sie gerade reconciled.
         //
-        // Konsequenz für M0: schlichter INSERT. Der Normalfall (neue Mail =
-        // neue Identität) funktioniert damit vollständig. Der Fall „Identität
-        // existiert bereits" (Invite vor erstem Login) ist ein M1-Feature —
-        // dort MUSS zusammen mit dem Onboarding-Bootstrap (erste Membership)
-        // entschieden werden, wie der privilegierte Reconcile-Pfad aussieht:
-        // eng gefasste Bootstrap-Policy oder eigene Auth-DB-Rolle
-        // (docs/adr/0003-db-rollen-trennung.md). Kein improvisiertes
-        // Aufweichen der Identity-RLS an dieser Stelle.
+        // Idempotent: zweiter Aufruf mit derselben Kombination ist ein No-op.
+        // Eine bereits an einen ANDEREN auth_user gekoppelte Identität wirft —
+        // Fehler werden hier bewusst NICHT geschluckt, ein stiller Fehlschlag
+        // hinterließe einen auth_user ohne Identität.
         //
-        // Fehler werden bewusst NICHT geschluckt: ein stiller Fehlschlag
-        // hinterließe einen auth_user ohne Identität. Lieber ein sichtbar
-        // fehlgeschlagener Signup.
+        // lower(): better-auth normalisiert E-Mails, der Unique-Index liegt auf
+        // lower(email) (Codex-Review #18). Die Funktion normalisiert ebenfalls;
+        // hier steht es zusätzlich, damit der kanonische Wert schon im Aufruf
+        // sichtbar ist.
         // ═══════════════════════════════════════════════════════════════
         after: async (user) => {
-          await getAuthDb()
-            .insert(userIdentity)
-            // lower(): better-auth normalisiert E-Mails, der Unique-Index
-            // liegt auf lower(email) (Codex-Review #18) — hier wird der
-            // kanonische Wert auch tatsächlich GESPEICHERT.
-            .values({ id: randomUUID(), email: user.email.toLowerCase(), authUserId: user.id });
+          await getAuthDb().execute(
+            sql`select reconcile_user_identity(${user.email.toLowerCase()}, ${user.id})`,
+          );
         },
       },
     },

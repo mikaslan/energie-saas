@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { testPool } from "../setup/test-db";
+import { testPool, testDb } from "../setup/test-db";
 import { withTenantOn } from "@/lib/db/tenant";
 import { superuserPool } from "../setup/superuser-db";
 
@@ -87,12 +87,14 @@ describe("user_identity.auth_user_id: einmalige Kopplung (Codex #17a)", () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  // Dokumentierter BEFUND (siehe drizzle/0011 und final-fix-report.md, F11):
-  // user_identity hat KEINE UPDATE- und KEINE DELETE-Policy. RLS mit FORCE
-  // verbietet damit beides vollständig — auch für den Tabellen-Owner. Diese
-  // Tests halten genau das fest, damit eine spätere Aufweichung auffällt.
+  // user_identity hat AUSSERHALB des Reconcile-Fensters weiterhin keine
+  // wirksame UPDATE-Policy und gar keine DELETE-Policy. RLS mit FORCE
+  // verbietet beides vollständig — auch für den Tabellen-Owner. Seit
+  // drizzle/0014 existiert eine UPDATE-Policy, deren Prädikat aber an
+  // `app.identity_reconcile_email` hängt; ohne gesetzten Parameter ist sie
+  // fail-closed (nullif(…, '') -> NULL). Diese Tests halten genau das fest.
   // ═══════════════════════════════════════════════════════════════════
-  it("UPDATE ist ohne Policy vollständig wirkungslos (auch für den Owner)", async () => {
+  it("UPDATE ist ohne offenes Reconcile-Fenster wirkungslos (auch für den Owner)", async () => {
     const id = randomUUID();
     await withTenantOn(testPool, ws, (tx) =>
       tx.execute(sql`insert into user_identity (id, email) values (${id}::uuid, ${`${randomUUID()}@t.test`})`),
@@ -123,23 +125,160 @@ describe("user_identity.auth_user_id: einmalige Kopplung (Codex #17a)", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("BEFUND: on-conflict ist auf user_identity RLS-seitig unmöglich (kein Backfill-Pfad)", async () => {
-    // PostgreSQL verlangt für jedes `insert ... on conflict ...` — auch DO
-    // NOTHING — dass die kollidierende Zeile unter den SELECT-Policies
-    // sichtbar ist (WCO_RLS_CONFLICT_CHECK). Beim Erst-Login gibt es weder
-    // Membership noch app.workspace_id. Dieser Test hält den Befund fest:
-    // fällt er künftig um (z. B. weil eine Bootstrap-Policy eingeführt wird),
-    // MUSS der Hook in lib/auth.ts auf idempotentes Upsert umgestellt und
-    // der BLOCKED-Punkt F11 geschlossen werden.
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// F11: idempotenter, eng privilegierter Identity-Reconcile
+// (drizzle/0014_identity_reconcile.sql, aufgerufen aus lib/auth.ts).
+//
+// Hier stand vorher ein eingefrorener ROTER Test, der festhielt, dass ein
+// Backfill unter der user_identity-RLS unmöglich sei. Er ist ersetzt: der
+// Pfad existiert jetzt und wird hier grün nachgewiesen.
+//
+// Aufgerufen wird über testDb (kein Mandantenkontext) — genau so läuft der
+// Auth-Hook. Nachgewiesen wird über die Superuser-Verbindung, weil die
+// SELECT-Policy von user_identity eine Membership verlangt, die es beim
+// Erst-Login per Definition nicht gibt.
+// ═══════════════════════════════════════════════════════════════════════
+interface IdentityRow {
+  id: string;
+  email: string;
+  auth_user_id: string | null;
+  [key: string]: unknown;
+}
+
+async function identitiesOf(email: string): Promise<IdentityRow[]> {
+  const { rows } = await superuserPool().query<IdentityRow>(
+    "select id, email, auth_user_id from user_identity where lower(email) = $1",
+    [email.toLowerCase()],
+  );
+  return rows;
+}
+
+function reconcile(email: string, authUserId: string): Promise<unknown> {
+  return testDb.execute(sql`select reconcile_user_identity(${email}, ${authUserId})`);
+}
+
+describe("reconcile_user_identity (F11)", () => {
+  it("koppelt eine BEREITS EXISTIERENDE Identität, statt sie zu duplizieren", async () => {
+    // Ausgangslage wie nach einer M1-Einladung: Identität da, noch nie eingeloggt.
+    const email = `Invited-${randomUUID()}@Example.TEST`;
+    const id = randomUUID();
+    await withTenantOn(testPool, ws, (tx) =>
+      tx.execute(sql`insert into user_identity (id, email) values (${id}::uuid, ${email.toLowerCase()})`),
+    );
+
+    const authUserId = `auth-${randomUUID()}`;
+    await reconcile(email, authUserId);
+
+    const rows = await identitiesOf(email);
+    expect(rows, "es hätte GENAU EINE Identität bleiben müssen").toHaveLength(1);
+    expect(rows[0].id, "die bestehende Identität wurde ersetzt statt gekoppelt").toBe(id);
+    expect(rows[0].auth_user_id).toBe(authUserId);
+  });
+
+  it("legt eine neue Identität an, wenn die E-Mail unbekannt ist (Erst-Login)", async () => {
+    const email = `Fresh-${randomUUID()}@Example.TEST`;
+    const authUserId = `auth-${randomUUID()}`;
+    await reconcile(email, authUserId);
+
+    const rows = await identitiesOf(email);
+    expect(rows).toHaveLength(1);
+    // Kanonisch kleingeschrieben GESPEICHERT, nicht nur eindeutig (Codex #18).
+    expect(rows[0].email).toBe(email.toLowerCase());
+    expect(rows[0].auth_user_id).toBe(authUserId);
+  });
+
+  it("ist idempotent — der zweite Aufruf ändert nichts", async () => {
+    const email = `Idem-${randomUUID()}@example.test`;
+    const authUserId = `auth-${randomUUID()}`;
+
+    await reconcile(email, authUserId);
+    const [ersterLauf] = await identitiesOf(email);
+
+    await reconcile(email, authUserId);
+    const nachher = await identitiesOf(email);
+
+    expect(nachher, "der zweite Aufruf hat eine zweite Zeile erzeugt").toHaveLength(1);
+    expect(nachher[0].id, "der zweite Aufruf hat die id verändert").toBe(ersterLauf.id);
+    expect(nachher[0].auth_user_id).toBe(authUserId);
+  });
+
+  it("wirft, wenn die Identität bereits an einen ANDEREN auth_user gekoppelt ist", async () => {
+    const email = `Konflikt-${randomUUID()}@example.test`;
+    const ersterAuthUser = `auth-${randomUUID()}`;
+    await reconcile(email, ersterAuthUser);
+
+    await expectRejection(reconcile(email, `auth-${randomUUID()}`), /bereits an auth_user .* gekoppelt/);
+
+    // Kein stilles Umbiegen: die ursprüngliche Kopplung steht unverändert.
+    const rows = await identitiesOf(email);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].auth_user_id).toBe(ersterAuthUser);
+  });
+
+  it("verweigert den Dienst INNERHALB eines Mandantenkontexts", async () => {
+    // Das Reconcile-Fenster darf aus einer laufenden Mandantentransaktion
+    // heraus grundsätzlich nicht aufgehen — der Auth-Hook läuft ohne
+    // app.workspace_id, jeder normale Request-Pfad mit.
     await expectRejection(
       withTenantOn(testPool, ws, (tx) =>
-        tx.execute(
-          sql`insert into user_identity (id, email) values (${randomUUID()}::uuid, ${`oc-${randomUUID()}@t.test`})
-              on conflict (lower(email)) do nothing`,
-        ),
+        tx.execute(sql`select reconcile_user_identity(${`ctx-${randomUUID()}@t.test`}, ${`auth-${randomUUID()}`})`),
       ),
-      /row-level security/,
+      /nur ausserhalb eines Mandantenkontexts/,
     );
+  });
+
+  it("schließt das Fenster wieder: nach dem Reconcile bleibt die Zeile unsichtbar und unveränderlich", async () => {
+    const email = `Fenster-${randomUUID()}@example.test`;
+    await reconcile(email, `auth-${randomUUID()}`);
+
+    // (a) Weiterhin unsichtbar ohne Membership — die Reconcile-SELECT-Policy
+    //     ist ohne gesetzten Parameter fail-closed.
+    const sichtbar = await testPool.query<CountRow>(
+      "select count(*)::int as n from user_identity where lower(email) = $1",
+      [email.toLowerCase()],
+    );
+    expect(sichtbar.rows[0].n, "LECK — Identität ohne Membership sichtbar").toBe(0);
+
+    // (b) Ein handgeschriebenes UPDATE außerhalb der Funktion bleibt wirkungslos.
+    const res = await testPool.query(
+      "update user_identity set auth_user_id = $2 where lower(email) = $1",
+      [email.toLowerCase(), `auth-${randomUUID()}`],
+    );
+    expect(res.rowCount, "UPDATE außerhalb des Reconcile-Fensters hat gegriffen").toBe(0);
+  });
+
+  it("die Kopplung ist auch im offenen Fenster nicht umbiegbar (Trigger aus 0011 greift)", async () => {
+    // Der Trigger user_identity_link_auth_only war bislang unerreichbar, weil
+    // RLS jedes UPDATE verbot. Mit der neuen UPDATE-Policy ist er erstmals
+    // scharf — hier wird das nachgewiesen: Fenster von Hand öffnen und
+    // versuchen, eine bestehende Kopplung umzubiegen.
+    const email = `Trigger-${randomUUID()}@example.test`;
+    const authUserId = `auth-${randomUUID()}`;
+    await reconcile(email, authUserId);
+
+    const client = await testPool.connect();
+    try {
+      await client.query("begin");
+      await client.query("select set_config('app.identity_reconcile_email', $1, true)", [
+        email.toLowerCase(),
+      ]);
+      let caught: unknown;
+      try {
+        await client.query("update user_identity set auth_user_id = $2 where lower(email) = $1", [
+          email.toLowerCase(),
+          `auth-${randomUUID()}`,
+        ]);
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught, "Re-Pointing wurde NICHT abgelehnt").toBeInstanceOf(Error);
+      expect(String((caught as Error).message)).toMatch(/bereits gesetzt und unveraenderlich/);
+    } finally {
+      await client.query("rollback").catch(() => {});
+      client.release();
+    }
   });
 });
 
