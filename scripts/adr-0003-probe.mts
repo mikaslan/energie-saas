@@ -38,7 +38,7 @@ async function darfNicht(pool: Pool, label: string, sql: string, params: unknown
 try {
   // ── Block 1 der ADR-Skizze: Rollen ───────────────────────────────────
   await su.query(`
-    create role app_owner    nologin nosuperuser nobypassrls;
+    create role app_owner    nologin nosuperuser nobypassrls createrole;
     create role app_migrator login password 'mig' nosuperuser nobypassrls;
     create role app_runtime  login password 'run' nosuperuser nobypassrls;
     create role app_auth     login password 'aut' nosuperuser nobypassrls;
@@ -75,19 +75,21 @@ try {
     max: 2,
   });
   await ownerPool.query(`
-    grant select, insert, update, delete on
-      workspace, membership, user_identity, site, domain_events, audit_log
-      to app_runtime;
+    grant select, insert, update, delete on workspace, membership, site to app_runtime;
+    grant select, insert on user_identity to app_runtime;
+    grant select, insert on domain_events, audit_log to app_runtime;
 
     grant select, insert, update, delete on
       auth_user, auth_session, auth_account, auth_verification, auth_rate_limit
       to app_auth;
 
+    grant identity_reconciler to app_owner with inherit false, set true;
+    set role identity_reconciler;
     revoke execute on function reconcile_user_identity(text, text) from public;
+    revoke execute on function reconcile_user_identity(text, text) from app_owner;
     grant  execute on function reconcile_user_identity(text, text) to app_auth;
-
-    alter policy user_identity_reconcile_select on user_identity to app_owner;
-    alter policy user_identity_reconcile_update on user_identity to app_owner;`);
+    reset role;
+    grant identity_reconciler to app_owner with inherit false, set false;`);
   ok("Block 4: Grant-Skript läuft als app_owner durch", true);
 
   // ── Nachweise ────────────────────────────────────────────────────────
@@ -98,6 +100,12 @@ try {
   await darf(runtime, "app_runtime darf Domänen-DML (unter RLS)", `select count(*) from site`);
   await darfNicht(runtime, "app_runtime sieht auth_user NICHT", `select count(*) from auth_user`);
   await darfNicht(runtime, "app_runtime darf kein TRUNCATE", `truncate site`);
+  await darfNicht(runtime, "app_runtime darf user_identity nicht aendern",
+    `update user_identity set auth_user_id = 'x'`);
+  await darfNicht(runtime, "domain_events ist append-only (kein UPDATE-Recht)",
+    `update domain_events set actor = 'x'`);
+  await darfNicht(runtime, "audit_log ist append-only (kein DELETE-Recht)",
+    `delete from audit_log`);
   await darfNicht(runtime, "app_runtime darf kein DDL in public", `create table verboten (x int)`);
   await darfNicht(runtime, "app_runtime darf reconcile NICHT ausführen",
     `select reconcile_user_identity('x@t.test', 'auth-x')`);
@@ -125,6 +133,13 @@ try {
     await c.query("rollback").catch(() => {});
     c.release();
   }
+
+  await darfNicht(ownerPool, "app_owner kommt nach dem Grant-Skript nicht mehr in die Definer-Rolle",
+    `set role identity_reconciler`);
+  await darfNicht(ownerPool, "app_owner darf reconcile nicht mehr ausfuehren",
+    `select reconcile_user_identity('owner@t.test', 'auth-owner')`);
+  await darfNicht(runtime, "app_runtime kommt nicht in die Definer-Rolle", `set role identity_reconciler`);
+  await darfNicht(authRole, "app_auth kommt nicht in die Definer-Rolle", `set role identity_reconciler`);
 
   await darf(worker, "app_worker darf im pgboss-Schema anlegen", `create table pgboss.probe (x int)`);
   await darfNicht(worker, "app_worker sieht auth_user NICHT", `select count(*) from auth_user`);

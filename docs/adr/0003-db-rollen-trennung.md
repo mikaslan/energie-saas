@@ -68,12 +68,16 @@ durcheinanderging. Deshalb vorweg:
 | `app_migrator` | ja | führt `scripts/migrate.mts` aus | ausschließlich `SET ROLE app_owner` (Mitgliedschaft ohne Vererbung); sonst keine Rechte |
 | `app_runtime` | ja | Next.js-Portal (`withTenant`/`withAuthorizedTenant`) | tabellen-spezifisches DML auf den Domänentabellen; **kein** DDL, **kein** TRUNCATE, **kein** Zugriff auf `auth_*`; unterliegt weiterhin FORCE RLS |
 | `app_auth` | ja | ausschließlich better-auth (`lib/db/auth-client.ts`, `POSTGRES_URL_AUTH`) | DML auf `auth_*` + `EXECUTE` auf `reconcile_user_identity`; **kein** Zugriff auf Domänentabellen |
-| `app_worker` | ja | pg-boss-Worker | Eigentümer des Schemas `pgboss`; Domänenrechte nur explizit pro Job-Klasse; **kein** DDL in `public` |
+| `app_worker` | ja | pg-boss-Worker (`POSTGRES_URL_WORKER`) | Eigentümer des Schemas `pgboss`; Domänenrechte nur explizit pro Job-Klasse; **kein** DDL in `public` |
+| `identity_reconciler` | **NOLOGIN** | Eigentümerin der SECURITY-DEFINER-Funktion `reconcile_user_identity`; von `drizzle/0015` angelegt, nicht hier | `SELECT/INSERT/UPDATE` auf `user_identity`, `SELECT` auf `membership`; besitzt **keine** Tabelle, ist von **niemandem** annehmbar |
 
 ### Block 1 — Rollen (einmalig, als Rolle mit `CREATEROLE`)
 
 ```sql
-create role app_owner    nologin nosuperuser nobypassrls;
+-- createrole: drizzle/0015 legt die Definer-Rolle identity_reconciler an.
+-- Unbedenklich für die RLS-Zusage — seit PG 16 kann eine CREATEROLE-Rolle
+-- weder SUPERUSER noch BYPASSRLS verleihen, wenn sie es nicht selbst hat.
+create role app_owner    nologin nosuperuser nobypassrls createrole;
 create role app_migrator login password :'migrator_pw' nosuperuser nobypassrls;
 create role app_runtime  login password :'runtime_pw'  nosuperuser nobypassrls;
 create role app_auth     login password :'auth_pw'     nosuperuser nobypassrls;
@@ -104,8 +108,9 @@ create schema if not exists pgboss authorization app_worker;
 
 ### Block 3 — Migrationslauf als `app_owner`, ohne Codeänderung
 
-`scripts/migrate.mts` bleibt unverändert. Die Rollenannahme steckt in der
-Verbindungszeichenkette des Migrationsjobs:
+`scripts/migrate.mts` liest `POSTGRES_URL_MIGRATE ?? POSTGRES_URL` — die Variable unten
+ist also die, die der Code tatsächlich auswertet, keine Erzählung. Die Rollenannahme
+steckt in der Verbindungszeichenkette des Migrationsjobs:
 
 ```
 POSTGRES_URL_MIGRATE=postgres://app_migrator:…@host/db?options=-c%20role%3Dapp_owner
@@ -130,12 +135,19 @@ Ausführen als `app_owner` (dieselbe Verbindung wie Block 3), unmittelbar nach
 `npm run db:migrate`:
 
 ```sql
--- ── app_runtime: Domänen-DML ─────────────────────────────────────────────
+-- ── app_runtime: tabellenweise, nicht pauschal ───────────────────────────
 -- TRUNCATE steht bewusst NICHT in der Liste und wird deshalb auch nie
 -- gegrantet; ein nachträgliches "revoke truncate" ist damit überflüssig.
-grant select, insert, update, delete on
-  workspace, membership, user_identity, site, domain_events, audit_log
-  to app_runtime;
+grant select, insert, update, delete on workspace, membership, site to app_runtime;
+
+-- user_identity ist append-only, und die Kopplung auth_user_id trägt
+-- ausschließlich die Definer-Rolle nach. Kein UPDATE, kein DELETE.
+grant select, insert on user_identity to app_runtime;
+
+-- domain_events und audit_log sind append-only (Trigger aus drizzle/0004 und
+-- 0005). Das GRANT bildet das ab, statt sich allein auf den Trigger zu
+-- verlassen: kein UPDATE, kein DELETE.
+grant select, insert on domain_events, audit_log to app_runtime;
 
 -- ── app_auth: NUR die better-auth-Tabellen ───────────────────────────────
 grant select, insert, update, delete on
@@ -145,16 +157,21 @@ grant select, insert, update, delete on
 -- ── Identity-Kopplung: der einzige Berührungspunkt zwischen Auth und Domäne
 -- app_auth bekommt bewusst KEIN Recht auf user_identity. Ein Grant würde dort
 -- ohnehin nichts nützen (FORCE RLS + membership-basierte SELECT-Policy). Der
--- Pfad ist die SECURITY-DEFINER-Funktion aus drizzle/0014: sie läuft als
--- app_owner und arbeitet durch die beiden eng gefassten Reconcile-Policies.
+-- Pfad ist die SECURITY-DEFINER-Funktion aus drizzle/0014+0015.
+--
+-- Die Funktion gehört identity_reconciler, nicht app_owner — deshalb muss
+-- app_owner die Rolle für diesen einen Schritt annehmen. Danach wird das
+-- SET-Recht wieder abgegeben: NIEMAND ausser der Funktion selbst darf in die
+-- Definer-Rolle schlüpfen.
+grant identity_reconciler to app_owner with inherit false, set true;
+set role identity_reconciler;
 revoke execute on function reconcile_user_identity(text, text) from public;
+-- drizzle/0015 hat EXECUTE an die migrierende Rolle vergeben (in M0 = die
+-- App-Rolle). Nach der Trennung ist das app_owner, und der darf es nicht.
+revoke execute on function reconcile_user_identity(text, text) from app_owner;
 grant  execute on function reconcile_user_identity(text, text) to app_auth;
-
--- Härtung der Reconcile-Policies: in M0 stehen sie auf PUBLIC, weil es nur
--- eine Rolle gibt. Ab hier gilt das Fenster ausschließlich innerhalb der
--- Funktion (dort ist current_user = app_owner).
-alter policy user_identity_reconcile_select on user_identity to app_owner;
-alter policy user_identity_reconcile_update on user_identity to app_owner;
+reset role;
+grant identity_reconciler to app_owner with inherit false, set false;
 
 -- ── app_worker ───────────────────────────────────────────────────────────
 -- Im Schema pgboss braucht es keine Grants: app_worker ist dort Eigentümer.
@@ -180,8 +197,8 @@ npx tsx scripts/adr-0003-probe.mts
 Das Skript legt die Rollen an, überträgt die Ownership, migriert als `app_migrator` mit
 `options=-c role=app_owner`, führt Block 4 aus und prüft danach die Rechtelage. Es ist
 bewusst **nicht** Teil von `npm run check` (es braucht eine eigene Instanz und dauert
-länger als ein Unit-Test); es ist die Belegkette für dieses Dokument. Ergebnis, alle
-Punkte grün:
+länger als ein Unit-Test); es ist die Belegkette für dieses Dokument. Ergebnis am
+2026-08-27: **24 von 24 Nachweisen grün**.
 
 | Nachweis | Ergebnis |
 | --- | --- |
@@ -189,24 +206,47 @@ Punkte grün:
 | `app_runtime` darf Domänen-DML (unter RLS) | ja |
 | `app_runtime` sieht `auth_user` | nein — *permission denied for table auth_user* |
 | `app_runtime` darf `TRUNCATE site` | nein — *permission denied for table site* |
+| `app_runtime` darf `user_identity` ändern | nein — *permission denied for table user_identity* |
+| `app_runtime` darf `domain_events` updaten (append-only) | nein — *permission denied* |
+| `app_runtime` darf aus `audit_log` löschen (append-only) | nein — *permission denied* |
 | `app_runtime` darf DDL in `public` | nein — *permission denied for schema public* |
 | `app_runtime` darf `reconcile_user_identity` ausführen | nein — *permission denied for function* |
-| `app_runtime` kann das Reconcile-Fenster von Hand öffnen | nein (Policies stehen auf `app_owner`) |
+| `app_runtime` kann das Reconcile-Fenster von Hand öffnen | nein |
+| `app_runtime` / `app_auth` / `app_owner` können `SET ROLE identity_reconciler` | nein — *permission denied to set role* |
+| `app_owner` darf `reconcile_user_identity` nach Block 4 noch ausführen | nein — *permission denied for function* |
 | `app_auth` darf `auth_user` lesen | ja |
 | `app_auth` sieht `user_identity` | nein — *permission denied for table user_identity* |
 | `app_auth` darf `reconcile_user_identity` ausführen, idempotent | ja, Kopplung genau einmal in der DB |
 | `app_worker` darf im Schema `pgboss` anlegen | ja |
 | `app_worker` sieht `auth_user` | nein — *permission denied for table auth_user* |
 
+Die Probe hat dabei einen echten Portabilitätsfehler in `drizzle/0015` aufgedeckt, der
+gegen die Test-DB unsichtbar geblieben wäre: dort hat `PUBLIC` noch `USAGE` auf `public`,
+in einer nach Block 2 gehärteten Datenbank nicht mehr — die Definer-Rolle konnte die
+eigene Funktion im `search_path` nicht auflösen. Der `grant usage` steht deshalb jetzt im
+Migrations-DO-Block selbst.
+
 ### Env-Variablen
 
-- `POSTGRES_URL` — `app_runtime` (Portal)
-- `POSTGRES_URL_AUTH` — `app_auth` (bereits in `lib/db/auth-client.ts` vorbereitet und
-  ausgewertet; solange nicht gesetzt, fällt Auth auf `POSTGRES_URL` zurück — genau das ist
-  die hier dokumentierte Limitation)
-- `POSTGRES_URL_MIGRATE` — `app_migrator` **inklusive** `?options=-c%20role%3Dapp_owner`,
-  nur im Deploy-/Migrationsschritt
-- `POSTGRES_URL_WORKER` — `app_worker`, nur im Worker-Prozess
+Alle vier werden vom Code tatsächlich ausgewertet — die Namen hier sind kein Vorschlag:
+
+| Variable | Rolle | Wer liest sie |
+| --- | --- | --- |
+| `POSTGRES_URL` | `app_runtime` (Portal) | `lib/db/client.ts` |
+| `POSTGRES_URL_AUTH` | `app_auth` | `lib/db/auth-client.ts` (`POSTGRES_URL_AUTH ?? POSTGRES_URL`) |
+| `POSTGRES_URL_MIGRATE` | `app_migrator`, **inklusive** `?options=-c%20role%3Dapp_owner` | `scripts/migrate.mts` (`POSTGRES_URL_MIGRATE ?? POSTGRES_URL`) |
+| `POSTGRES_URL_WORKER` | `app_worker` | `worker/index.ts` (`POSTGRES_URL_WORKER ?? POSTGRES_URL`), einmal aufgelöst für pg-boss **und** Health-Probe |
+
+Jede Variable fällt auf `POSTGRES_URL` zurück, solange sie nicht gesetzt ist. Genau
+dieser Fallback IST die hier dokumentierte M0-Limitation: ohne die Rollentrennung
+arbeiten alle vier Pfade auf derselben Rolle. Der Code ist bereits so geschnitten, dass
+die Umstellung eine reine Konfigurationsänderung ist.
+
+Hinweis für Tests: `tests/setup/global-setup.ts` setzt `POSTGRES_URL` **und**
+`POSTGRES_URL_MIGRATE` hart auf die Test-DB. Eine von außen gesetzte
+`POSTGRES_URL_MIGRATE` hätte sonst Vorrang und würde die Testmigration gegen ein
+Dev-/Prod-Ziel fahren — dieselbe Lücke, die Codex-Review #8 für `POSTGRES_URL`
+geschlossen hat.
 
 ## Konsequenzen
 
@@ -228,9 +268,10 @@ Punkte grün:
   `lib/db/auth-client.ts` zugreift, ist sicherheitsrelevant. Die dependency-cruiser-Regeln
   `db-client-nur-ueber-tenant` und `auth-client-nur-fuer-auth` halten diesen Kreis klein.
 - Der früher hier offene Folgepunkt — das idempotente Nachtragen von
-  `user_identity.auth_user_id` — ist mit `drizzle/0014_identity_reconcile.sql`
-  **geschlossen**. Die Rollentrennung ist dort nicht mehr Voraussetzung, sondern die
-  Härtung: sie verengt das Reconcile-Fenster von „jede Verbindung" auf „innerhalb der
-  Funktion". Bis dahin ist das Fenster eine E-Mail breit, nur außerhalb jedes
-  Mandantenkontexts offen und durch den Trigger `user_identity_link_auth_only` gegen
-  Re-Pointing gesichert.
+  `user_identity.auth_user_id` — ist mit `drizzle/0014` + `drizzle/0015`
+  **geschlossen**, und zwar unabhängig von dieser Rollentrennung: das Reconcile-Fenster
+  hängt an der eigenen Definer-Rolle `identity_reconciler`, nicht an `PUBLIC`. Was diese
+  ADR beisteuert, ist nur noch der letzte Schritt — `EXECUTE` von der migrierenden Rolle
+  auf `app_auth` umzuhängen (Block 4). `identity_reconciler` wird in Block 1 **nicht**
+  angelegt: sie gehört zum Schema, nicht zum Deployment, und kommt deshalb aus der
+  Migration.

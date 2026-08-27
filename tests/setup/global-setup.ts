@@ -91,7 +91,15 @@ export default async function globalSetup() {
     }
     assertTestDatenbank(url);
 
-    execSync("npx tsx scripts/migrate.mts", { env: { ...process.env, POSTGRES_URL: url }, stdio: "inherit" });
+    // BEIDE Variablen setzen, nicht nur POSTGRES_URL: scripts/migrate.mts liest
+    // seit der F24-Angleichung `POSTGRES_URL_MIGRATE ?? POSTGRES_URL`. Eine von
+    // außen gesetzte POSTGRES_URL_MIGRATE (Dev-/Prod-Ziel) hätte sonst Vorrang
+    // und würde die Testmigration gegen die falsche Datenbank fahren — genau
+    // die Lücke, die Codex-Review #8 für POSTGRES_URL geschlossen hat.
+    execSync("npx tsx scripts/migrate.mts", {
+      env: { ...process.env, POSTGRES_URL: url, POSTGRES_URL_MIGRATE: url },
+      stdio: "inherit",
+    });
   } catch (err) {
     // Wenn die Migration fehlschlägt, nachdem embedded-postgres schon gestartet
     // wurde, darf weder der Prozess noch das Datenverzeichnis zurückbleiben.

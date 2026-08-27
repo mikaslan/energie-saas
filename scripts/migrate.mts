@@ -2,8 +2,14 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 
-const url = process.env.POSTGRES_URL;
-if (!url) throw new Error("POSTGRES_URL ist nicht gesetzt");
+// POSTGRES_URL_MIGRATE hat Vorrang: nach der Rollentrennung (ADR 0003) läuft
+// der Migrationsjob als app_migrator und nimmt per Verbindungsoption
+// `?options=-c%20role%3Dapp_owner` die Eigentümerrolle an, während die App
+// weiterhin mit der Runtime-Rolle in POSTGRES_URL arbeitet. Solange die
+// Trennung aussteht, ist der Fallback auf POSTGRES_URL genau der heutige
+// Zustand — die dokumentierte M0-Limitation, kein Versehen.
+const url = process.env.POSTGRES_URL_MIGRATE ?? process.env.POSTGRES_URL;
+if (!url) throw new Error("Weder POSTGRES_URL_MIGRATE noch POSTGRES_URL ist gesetzt");
 const pool = new Pool({ connectionString: url, max: 1 });
 
 // Hard-Gate: Migrationen (und damit die App-Rolle, die dieselbe Verbindung

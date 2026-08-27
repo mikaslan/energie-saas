@@ -18,14 +18,23 @@ import { createHealthProbe, createHealthServer } from "./health";
 
 const STARTED = new Date().toISOString();
 
-const boss = new PgBoss(process.env.POSTGRES_URL!);
+// POSTGRES_URL_WORKER hat Vorrang: nach der Rollentrennung (ADR 0003) läuft der
+// Worker als app_worker mit eigenem pgboss-Schema und ohne Domänenrechte auf
+// Vorrat. Solange die Trennung aussteht, ist der Fallback auf POSTGRES_URL der
+// heutige Zustand — die dort dokumentierte M0-Limitation. Der Wert wird EINMAL
+// aufgelöst, damit pg-boss und die Health-Probe garantiert dieselbe Datenbank
+// messen; sonst könnte /health eine andere DB grün melden, als der Worker nutzt.
+const WORKER_URL = process.env.POSTGRES_URL_WORKER ?? process.env.POSTGRES_URL;
+if (!WORKER_URL) throw new Error("Weder POSTGRES_URL_WORKER noch POSTGRES_URL ist gesetzt");
+
+const boss = new PgBoss(WORKER_URL);
 boss.on("error", (err) => console.error("[pg-boss]", err));
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
 // diese Probe braucht Timeouts, die tatsächlich abbrechen. Beides steckt in
 // worker/health.ts (dort auch die vollständige Begründung); hier bleibt nur
 // die Verdrahtung, damit der Probe-Pfad ohne den pg-boss-Start testbar ist.
-const health = createHealthProbe(process.env.POSTGRES_URL!);
+const health = createHealthProbe(WORKER_URL);
 const server = createHealthServer(health, STARTED);
 
 async function shutdown(signal: string) {
