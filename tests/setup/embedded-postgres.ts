@@ -85,9 +85,19 @@ export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {
       connectionString: `postgres://${SUPERUSER}:${SUPERUSER_PASSWORD}@127.0.0.1:${port}/${DATABASE_NAME}`,
     });
     try {
+      // createrole: drizzle/0015 legt die Definer-Rolle identity_reconciler an.
+      // Unbedenklich für die RLS-Zusage — seit PG 16 kann eine CREATEROLE-Rolle
+      // weder SUPERUSER noch BYPASSRLS verleihen, wenn sie es nicht selbst hat
+      // (nachgemessen: beides scheitert mit "permission denied to create role").
+      // Das Gate in scripts/migrate.mts bleibt damit wirksam.
       await bootstrapPool.query(
-        `create role ${APP_ROLE} login password '${APP_PASSWORD}' nosuperuser nobypassrls`,
+        `create role ${APP_ROLE} login password '${APP_PASSWORD}' nosuperuser nobypassrls createrole`,
       );
+      // Eigentümerin von "public" statt nur berechtigt: ALTER FUNCTION … OWNER TO
+      // verlangt, dass der neue Owner kurzzeitig CREATE auf dem Schema bekommt —
+      // weitergeben kann das nur, wer das Recht besitzt statt es geliehen zu haben.
+      // Bildet zugleich ADR 0003 Block 2 ab (dort: app_owner besitzt public).
+      await bootstrapPool.query(`alter schema public owner to ${APP_ROLE}`);
       await bootstrapPool.query(`grant all privileges on schema public to ${APP_ROLE}`);
       await bootstrapPool.query(`grant all privileges on database ${DATABASE_NAME} to ${APP_ROLE}`);
     } finally {

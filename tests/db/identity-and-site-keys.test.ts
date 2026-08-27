@@ -249,36 +249,141 @@ describe("reconcile_user_identity (F11)", () => {
     expect(res.rowCount, "UPDATE außerhalb des Reconcile-Fensters hat gegriffen").toBe(0);
   });
 
-  it("die Kopplung ist auch im offenen Fenster nicht umbiegbar (Trigger aus 0011 greift)", async () => {
-    // Der Trigger user_identity_link_auth_only war bislang unerreichbar, weil
-    // RLS jedes UPDATE verbot. Mit der neuen UPDATE-Policy ist er erstmals
-    // scharf — hier wird das nachgewiesen: Fenster von Hand öffnen und
-    // versuchen, eine bestehende Kopplung umzubiegen.
-    const email = `Trigger-${randomUUID()}@example.test`;
-    const authUserId = `auth-${randomUUID()}`;
-    await reconcile(email, authUserId);
+  // ═══════════════════════════════════════════════════════════════════
+  // ANGRIFFSTEST (Codex-Finalcheck): in drizzle/0014 galten die
+  // Fenster-Policies noch `TO PUBLIC` und vertrauten allein den GUCs — ein
+  // beliebiger SQL-Caller konnte den Mandanten-Parameter leeren, die
+  // E-Mail-GUC selbst setzen und darüber fremde Identitäten lesen bzw.
+  // ungekoppelte claimen. Seit drizzle/0015 hängen sie an der Definer-Rolle
+  // `identity_reconciler`. Dieser Test fährt genau den alten Angriff.
+  // ═══════════════════════════════════════════════════════════════════
+  it("ANGRIFF: ein SQL-Caller kann das Fenster nicht selbst öffnen", async () => {
+    const email = `Opfer-${randomUUID()}@example.test`;
+    const echterAuthUser = `auth-${randomUUID()}`;
+    await reconcile(email, echterAuthUser);
+
+    // Zweite, ungekoppelte Identität — das lohnendere Ziel: wer sie claimt,
+    // übernimmt eine noch nicht eingelöste Einladung.
+    const offenId = randomUUID();
+    const offenEmail = `Offen-${randomUUID()}@example.test`;
+    await withTenantOn(testPool, ws, (tx) =>
+      tx.execute(
+        sql`insert into user_identity (id, email) values (${offenId}::uuid, ${offenEmail.toLowerCase()})`,
+      ),
+    );
 
     const client = await testPool.connect();
     try {
       await client.query("begin");
+      // Der Angreifer setzt exakt das, was die Policies aus 0014 geprüft haben.
+      await client.query("select set_config('app.workspace_id', '', true)");
       await client.query("select set_config('app.identity_reconcile_email', $1, true)", [
         email.toLowerCase(),
       ]);
-      let caught: unknown;
-      try {
-        await client.query("update user_identity set auth_user_id = $2 where lower(email) = $1", [
-          email.toLowerCase(),
-          `auth-${randomUUID()}`,
-        ]);
-      } catch (error) {
-        caught = error;
-      }
-      expect(caught, "Re-Pointing wurde NICHT abgelehnt").toBeInstanceOf(Error);
-      expect(String((caught as Error).message)).toMatch(/bereits gesetzt und unveraenderlich/);
+      const gelesen = await client.query<CountRow>(
+        "select count(*)::int as n from user_identity where lower(email) = $1",
+        [email.toLowerCase()],
+      );
+      expect(gelesen.rows[0].n, "LECK — fremde Identität lesbar").toBe(0);
+
+      // Und der Claim auf die noch ungekoppelte Identität.
+      await client.query("select set_config('app.identity_reconcile_email', $1, true)", [
+        offenEmail.toLowerCase(),
+      ]);
+      const geclaimt = await client.query(
+        "update user_identity set auth_user_id = $2 where lower(email) = $1",
+        [offenEmail.toLowerCase(), `auth-angreifer-${randomUUID()}`],
+      );
+      expect(geclaimt.rowCount, "LECK — ungekoppelte Identität claimbar").toBe(0);
     } finally {
       await client.query("rollback").catch(() => {});
       client.release();
     }
+
+    // Gegenprobe über den Superuser: nichts hat sich verändert.
+    const nachher = await superuserPool().query<IdentityRow>(
+      "select auth_user_id from user_identity where id = $1",
+      [offenId],
+    );
+    expect(nachher.rows[0].auth_user_id, "Identität wurde doch geclaimt").toBeNull();
+  });
+
+  it("ANGRIFF: die App-Rolle kann nicht in die Definer-Rolle wechseln", async () => {
+    // SET ROLE wäre der zweite Weg ins Fenster. Die Mitgliedschaft aus
+    // drizzle/0015 steht deshalb auf `set false`.
+    const client = await testPool.connect();
+    try {
+      let caught: unknown;
+      try {
+        await client.query("set role identity_reconciler");
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught, "SET ROLE in die Definer-Rolle war möglich").toBeInstanceOf(Error);
+      expect(String((caught as Error).message)).toMatch(/permission denied to set role/);
+    } finally {
+      client.release();
+    }
+  });
+
+  it("die Definer-Rolle ist weder Owner noch privilegiert", async () => {
+    const { rows } = await testPool.query<{
+      rolsuper: boolean;
+      rolbypassrls: boolean;
+      rolcanlogin: boolean;
+    }>(
+      `select rolsuper, rolbypassrls, rolcanlogin from pg_roles where rolname = 'identity_reconciler'`,
+    );
+    expect(rows, "Rolle identity_reconciler fehlt").toHaveLength(1);
+    expect(rows[0].rolsuper, "Definer-Rolle ist Superuser").toBe(false);
+    expect(rows[0].rolbypassrls, "Definer-Rolle umgeht RLS").toBe(false);
+    expect(rows[0].rolcanlogin, "Definer-Rolle kann sich anmelden").toBe(false);
+
+    // Sie besitzt keine einzige Tabelle — FORCE RLS gilt für sie also normal.
+    const besitz = await testPool.query<CountRow>(
+      `select count(*)::int as n from pg_class c join pg_roles r on r.oid = c.relowner
+        where r.rolname = 'identity_reconciler' and c.relkind in ('r','p','m')`,
+    );
+    expect(besitz.rows[0].n, "Definer-Rolle besitzt Tabellen").toBe(0);
+
+    // Aber sie besitzt die Funktion — sonst greift SECURITY DEFINER ins Leere.
+    const fn = await testPool.query<{ rolname: string }>(
+      `select r.rolname from pg_proc p join pg_roles r on r.oid = p.proowner
+        where p.proname = 'reconcile_user_identity'`,
+    );
+    expect(fn.rows[0].rolname).toBe("identity_reconciler");
+  });
+
+  it("EXECUTE auf die Reconcile-Funktion ist nicht öffentlich", async () => {
+    const { rows } = await testPool.query<{ oeffentlich: boolean }>(
+      `select has_function_privilege('public', 'reconcile_user_identity(text, text)', 'execute')
+              as oeffentlich`,
+    );
+    expect(rows[0].oeffentlich, "EXECUTE liegt bei PUBLIC").toBe(false);
+  });
+
+  it("die Kopplung ist auch OHNE RLS nicht umbiegbar (Trigger aus 0011 greift)", async () => {
+    // Der Trigger user_identity_link_auth_only ist die Absicherung, die
+    // unabhängig von RLS wirkt. Genau deshalb wird er hier über die
+    // Superuser-Verbindung geprüft: sie umgeht RLS vollständig, der Trigger
+    // muss trotzdem greifen. Über eine normale Verbindung ließe sich das gar
+    // nicht mehr messen — dort verhindert seit drizzle/0015 schon die Policy
+    // jedes UPDATE (siehe Angriffstest oben).
+    const email = `Trigger-${randomUUID()}@example.test`;
+    const authUserId = `auth-${randomUUID()}`;
+    await reconcile(email, authUserId);
+
+    let caught: unknown;
+    try {
+      await superuserPool().query(
+        "update user_identity set auth_user_id = $2 where lower(email) = $1",
+        [email.toLowerCase(), `auth-${randomUUID()}`],
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught, "Re-Pointing wurde NICHT abgelehnt").toBeInstanceOf(Error);
+    expect(String((caught as Error).message)).toMatch(/bereits gesetzt und unveraenderlich/);
   });
 });
 

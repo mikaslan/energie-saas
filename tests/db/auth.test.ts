@@ -126,6 +126,59 @@ describe("auth-Schema", () => {
     expect(identity.rows[0].auth_user_id).toBe(authUser.rows[0].id);
   }, 30_000);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // SELBSTHEILUNG (Codex-Finalcheck, Restrisiko zu F11).
+  //
+  // `user.create.after` läuft NACH dem Auth-Commit. Schlägt der Reconcile dort
+  // fehl, bleibt ein auth_user ohne Identität zurück — und der create-Hook
+  // feuert nie wieder. Der Session-Hook ist der produktive Retry: er läuft bei
+  // JEDEM Login.
+  //
+  // Der Fehlschlag wird hier nachgestellt, indem die Identity-Zeile über die
+  // Superuser-Verbindung gelöscht wird (unter RLS ist DELETE auf user_identity
+  // vollständig verboten — deshalb der Bootstrap-Weg).
+  // ═══════════════════════════════════════════════════════════════════════
+  it("Selbstheilung: eine fehlende Identität wird beim nächsten Login nachgezogen", async () => {
+    const { auth } = await import("@/lib/auth");
+    const email = `heal-${randomUUID()}@example.test`;
+
+    async function login(): Promise<void> {
+      await auth.api.signInMagicLink({ body: { email }, headers: new Headers() });
+      await auth.api.magicLinkVerify({
+        query: { token: lastMagicLinkToken() },
+        headers: new Headers(),
+        asResponse: true,
+      });
+    }
+
+    await login();
+    const ersteRunde = await superuserPool().query<{ auth_user_id: string | null }>(
+      "select auth_user_id from user_identity where lower(email) = $1",
+      [email],
+    );
+    expect(ersteRunde.rows, "Erst-Login hat keine Identität angelegt").toHaveLength(1);
+    const authUserId = ersteRunde.rows[0].auth_user_id;
+    expect(authUserId).toBeTruthy();
+
+    // Fehlgeschlagener create-Hook nachgestellt.
+    await superuserPool().query("delete from user_identity where lower(email) = $1", [email]);
+    const geloescht = await superuserPool().query(
+      "select 1 from user_identity where lower(email) = $1",
+      [email],
+    );
+    expect(geloescht.rows, "Vorbedingung: Identität musste weg sein").toHaveLength(0);
+
+    // Zweiter Login — derselbe auth_user, neue Session.
+    await login();
+
+    const geheilt = await superuserPool().query<{ auth_user_id: string | null }>(
+      "select auth_user_id from user_identity where lower(email) = $1",
+      [email],
+    );
+    expect(geheilt.rows, "Session-Hook hat die Identität NICHT nachgezogen").toHaveLength(1);
+    expect(geheilt.rows[0].auth_user_id, "nachgezogen, aber nicht gekoppelt").toBe(authUserId);
+  }, 30_000);
+
   it("Magic-Link-Token liegt NICHT im Klartext in auth_verification (Codex #15)", async () => {
     const { auth } = await import("@/lib/auth");
     const email = `token-${randomUUID()}@example.test`;

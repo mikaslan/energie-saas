@@ -1,9 +1,33 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { magicLink, emailOTP } from "better-auth/plugins";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getAuthDb } from "./db/auth-client";
+import { auth_user } from "./db/schema/auth";
 import { sendAuthMail } from "./mail";
+
+// ═══════════════════════════════════════════════════════════════════════
+// Der einzige Berührungspunkt zwischen Auth und Domäne: die Kopplung
+// user_identity.auth_user_id (Codex-Review #17a, F11).
+//
+// Der gesamte Vorgang steckt in der SECURITY-DEFINER-Funktion
+// reconcile_user_identity (drizzle/0014 + drizzle/0015). Hier steht bewusst
+// kein SQL auf user_identity: die Kopplung braucht Schreibrechte, die unter
+// der Identity-RLS nur der Definer-Rolle `identity_reconciler` offenstehen —
+// dieses Fenster gehört in die DB, nicht in den Anwendungscode.
+//
+// Idempotent: ein zweiter Aufruf mit derselben Kombination ist ein No-op.
+// Eine bereits an einen ANDEREN auth_user gekoppelte Identität wirft.
+//
+// lower(): better-auth normalisiert E-Mails, der Unique-Index liegt auf
+// lower(email) (Codex-Review #18). Die Funktion normalisiert ebenfalls; hier
+// steht es zusätzlich, damit der kanonische Wert schon im Aufruf sichtbar ist.
+// ═══════════════════════════════════════════════════════════════════════
+async function reconcileIdentity(email: string, authUserId: string): Promise<void> {
+  await getAuthDb().execute(
+    sql`select reconcile_user_identity(${email.toLowerCase()}, ${authUserId})`,
+  );
+}
 
 // Doku-Check (context7, better-auth@1.7.x): der Drizzle-Adapter lebt seit
 // 1.7 in einem eigenen Paket @better-auth/drizzle-adapter (nicht mehr unter
@@ -69,37 +93,46 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // ═══════════════════════════════════════════════════════════════
-        // Erst-Login: Domänen-Identität anlegen ODER eine bereits vorhandene
-        // (z. B. aus einer M1-Einladung) an den better-auth-User koppeln
-        // (Codex-Review #17a, F11).
-        //
-        // Der gesamte Vorgang steckt in der SECURITY-DEFINER-Funktion
-        // reconcile_user_identity (drizzle/0014_identity_reconcile.sql). Hier
-        // steht bewusst kein SQL mehr: die Kopplung braucht Schreibrechte, die
-        // unter der user_identity-RLS nur über ein sehr eng gefasstes,
-        // transaktionslokales Fenster erreichbar sind — dieses Fenster gehört
-        // in die DB, nicht in den Anwendungscode.
-        //
-        // Warum nicht einfach `on conflict … do update` von hier aus: die
-        // UPDATE-Policy, die das braucht, wäre dann für den gesamten
-        // Verbindungspfad offen. Die Funktion öffnet sie dagegen nur für die
-        // eine E-Mail, die sie gerade reconciled.
-        //
-        // Idempotent: zweiter Aufruf mit derselben Kombination ist ein No-op.
-        // Eine bereits an einen ANDEREN auth_user gekoppelte Identität wirft —
-        // Fehler werden hier bewusst NICHT geschluckt, ein stiller Fehlschlag
-        // hinterließe einen auth_user ohne Identität.
-        //
-        // lower(): better-auth normalisiert E-Mails, der Unique-Index liegt auf
-        // lower(email) (Codex-Review #18). Die Funktion normalisiert ebenfalls;
-        // hier steht es zusätzlich, damit der kanonische Wert schon im Aufruf
-        // sichtbar ist.
-        // ═══════════════════════════════════════════════════════════════
+        // Erst-Login: Identität anlegen ODER eine bereits vorhandene (z. B. aus
+        // einer M1-Einladung) koppeln. Fehler werden bewusst NICHT geschluckt —
+        // ein stiller Fehlschlag hinterließe einen auth_user ohne Identität.
         after: async (user) => {
-          await getAuthDb().execute(
-            sql`select reconcile_user_identity(${user.email.toLowerCase()}, ${user.id})`,
-          );
+          await reconcileIdentity(user.email, user.id);
+        },
+      },
+    },
+    session: {
+      create: {
+        // ═══════════════════════════════════════════════════════════════
+        // SELBSTHEILUNG bei jedem Login (Codex-Restrisiko zu F11).
+        //
+        // `user.create.after` läuft NACH dem Auth-Commit (better-auth
+        // with-hooks.mjs). Schlägt der Reconcile dort fehl, bleibt ein
+        // auth_user ohne Identität zurück — und der create-Hook feuert nie
+        // wieder, weil der Nutzer ab dann existiert. Ohne einen zweiten
+        // Aufhänger wäre dieser Zustand dauerhaft.
+        //
+        // Der Session-Hook ist dieser Aufhänger: er läuft bei JEDEM Login.
+        // Der Reconcile ist idempotent, der Normalfall kostet also nur einen
+        // Funktionsaufruf, der nichts ändert.
+        //
+        // Die E-Mail steht nicht in der Session (Session trägt nur userId,
+        // siehe @better-auth/core init-options.d.mts) — deshalb der Lookup auf
+        // auth_user. Er läuft über den Auth-Client, der ausschließlich das
+        // auth_*-Schema kennt.
+        //
+        // Fehlt der Nutzer (Race gegen eine parallele Löschung), passiert
+        // nichts: eine Session ohne Nutzer ist kein Fall, den dieser Hook
+        // reparieren kann.
+        // ═══════════════════════════════════════════════════════════════
+        after: async (session) => {
+          const [user] = await getAuthDb()
+            .select({ email: auth_user.email })
+            .from(auth_user)
+            .where(eq(auth_user.id, session.userId))
+            .limit(1);
+          if (!user) return;
+          await reconcileIdentity(user.email, session.userId);
         },
       },
     },
