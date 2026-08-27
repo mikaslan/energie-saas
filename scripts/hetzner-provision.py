@@ -13,6 +13,8 @@ NICHTS doppelt, sondern meldet nur den bestehenden Zustand. Kein Löschpfad:
 dieses Skript legt ausschließlich an.
 """
 
+from __future__ import annotations
+
 import json
 import sys
 import time
