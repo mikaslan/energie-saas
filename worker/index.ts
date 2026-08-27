@@ -14,72 +14,25 @@
 // lokalen Start). Die Aufgabenskizze nutzte Top-Level-await; hier stattdessen
 // in eine async main()-Funktion verpackt.
 import { PgBoss } from "pg-boss";
-import { createServer } from "node:http";
-import { Pool } from "pg";
+import { createHealthProbe, createHealthServer } from "./health";
 
 const STARTED = new Date().toISOString();
 
 const boss = new PgBoss(process.env.POSTGRES_URL!);
 boss.on("error", (err) => console.error("[pg-boss]", err));
 
-// ═══════════════════════════════════════════════════════════════════════
-// Codex-Review #26: /health lieferte nach einem erfolgreichen Start DAUERHAFT
-// HTTP 200 — auch wenn die Datenbank längst weg war. pg-boss-Fehler wurden nur
-// geloggt. Ein Worker, der keinen einzigen Job mehr verarbeiten kann, blieb so
-// health-grün: kein Neustart durch den Orchestrator, kein Alarm.
-//
-// Readiness braucht deshalb eine AKTUELLE Probe, nicht nur "hat mal gestartet".
-// Eigener kleiner Pool statt des pg-boss-internen: der ist nicht öffentlich
-// zugesichert, und eine unabhängige Verbindung misst genau das, was der Worker
-// zum Arbeiten braucht.
-// ═══════════════════════════════════════════════════════════════════════
-const probePool = new Pool({ connectionString: process.env.POSTGRES_URL, max: 1 });
-probePool.on("error", (err) => console.error("[health-probe]", err));
-
-const PROBE_TIMEOUT_MS = 2_000;
-
-async function probeDatabase(): Promise<void> {
-  const client = await probePool.connect();
-  try {
-    // statement_timeout deckt eine hängende Query ab; das Promise.race deckt
-    // zusätzlich ein Hängen VOR der Query ab (z. B. TCP ohne Antwort).
-    await client.query(`set local statement_timeout = ${PROBE_TIMEOUT_MS}`);
-    await client.query("select 1");
-  } finally {
-    client.release();
-  }
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Health-Probe nach ${ms} ms abgebrochen`)), ms).unref(),
-    ),
-  ]);
-}
-
-const server = createServer((req, res) => {
-  if (req.url !== "/health") {
-    res.writeHead(404).end();
-    return;
-  }
-  res.setHeader("content-type", "application/json");
-  withTimeout(probeDatabase(), PROBE_TIMEOUT_MS).then(
-    () => res.end(JSON.stringify({ ok: true, startedAt: STARTED })),
-    (err: unknown) => {
-      console.error("[worker] Health-Probe fehlgeschlagen:", err);
-      res.writeHead(503);
-      res.end(JSON.stringify({ ok: false, startedAt: STARTED, error: String(err) }));
-    },
-  );
-});
+// Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
+// diese Probe braucht Timeouts, die tatsächlich abbrechen. Beides steckt in
+// worker/health.ts (dort auch die vollständige Begründung); hier bleibt nur
+// die Verdrahtung, damit der Probe-Pfad ohne den pg-boss-Start testbar ist.
+const health = createHealthProbe(process.env.POSTGRES_URL!);
+const server = createHealthServer(health, STARTED);
 
 async function shutdown(signal: string) {
   console.log(`[worker] ${signal} empfangen, fahre herunter …`);
   server.close();
   await boss.stop({ graceful: true, timeout: 10_000 });
-  await probePool.end().catch((err: unknown) => console.error("[worker] probePool.end:", err));
+  await health.close().catch((err: unknown) => console.error("[worker] health.close:", err));
   process.exit(0);
 }
 
