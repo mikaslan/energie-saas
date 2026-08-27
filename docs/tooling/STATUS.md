@@ -23,6 +23,18 @@ hplib (M6-Sidecar), Tesseract (P2), Ghostscript/Mustang/KoSIT (M3-Worker/CI-Baus
 → `docs/tooling/einkaufsliste.md` (20 Positionen, P1 = #1–13).
 Dev-Phase ≈ 14 € netto/M + Anthropic-Nutzung; ab Pilot zusätzlich ≈ 60–75 €/M.
 
+## Codex-Review (gesichtet, alle 6 Punkte übernommen)
+
+Review der Code-Gerüste via Codex CLI (gpt-5.6-sol xhigh, 27.08.): 6 Befunde,
+alle stichhaltig, alle gefixt (Commit nach f589da1): (1) compose.yaml reichte
+SENTRY_DSN/HEALTHCHECKS_PING_URL nicht in den Container, (2) backup.sh mappte
+S3_*- nicht auf AWS_*-Variablen der CLI, (3) Heartbeat startete vor
+pg-boss-Registrierung (attestiert jetzt „arbeitsfähig"), (4) Ticks konnten
+überlappen + stop() stoppte laufende Ticks nicht (jetzt rekursives Scheduling,
+stopped-Guard, 10-s-Fetch-Timeout), (5) Nicht-2xx-Pings galten als Zustellung
+(jetzt geloggt), (6) behandelte fatale Worker-Fehler erreichten Sentry nicht
+(jetzt captureException + flush). Tests decken #3–#5 ab (104 grün).
+
 ## Offene Koordination (wichtig)
 
 1. **CI-Push blockiert:** gh-Token hat keinen `workflow`-Scope → `m0-fundament`

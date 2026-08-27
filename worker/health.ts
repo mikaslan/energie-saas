@@ -110,6 +110,13 @@ export function createHealthProbe(
  * des Pings ist das Alarmsignal; ein Fehler-Ping würde den Alarm gerade
  * unterdrücken. Fetch-Fehler (Monitoring-Dienst nicht erreichbar) dürfen den
  * Worker nie beeinträchtigen.
+ *
+ * Vertragsdetails (Codex-Review #4/#5): Ticks werden REKURSIV geplant — der
+ * nächste startet erst, wenn der vorherige komplett fertig ist (kein Überlappen
+ * bei hängendem Monitoring-Dienst); der Fetch trägt einen 10-s-Timeout; nach
+ * stop() pingt auch ein gerade laufender Tick nicht mehr; ein Nicht-2xx vom
+ * Ping-Endpunkt ist KEINE Zustellung (healthchecks.io: 404/409/429/5xx) und
+ * wird geloggt.
  */
 export function startHeartbeat(
   probe: HealthProbe,
@@ -117,6 +124,9 @@ export function startHeartbeat(
   intervalMs = 60_000,
   fetchFn: typeof fetch = fetch,
 ): () => void {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
   const tick = async () => {
     try {
       await probe.probe();
@@ -124,17 +134,31 @@ export function startHeartbeat(
       console.error("[heartbeat] Probe fehlgeschlagen, Ping unterdrückt:", err);
       return;
     }
+    if (stopped) return;
     try {
-      await fetchFn(pingUrl, { method: "POST" });
+      const res = await fetchFn(pingUrl, {
+        method: "POST",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) console.error(`[heartbeat] Ping abgelehnt: HTTP ${res.status}`);
     } catch (err) {
       console.error("[heartbeat] Ping nicht zustellbar:", err);
     }
   };
-  const timer = setInterval(() => void tick(), intervalMs);
-  // Der Timer darf einen Shutdown/Testlauf nicht am Leben halten.
-  timer.unref?.();
-  void tick();
-  return () => clearInterval(timer);
+
+  const run = async () => {
+    await tick();
+    if (stopped) return;
+    timer = setTimeout(() => void run(), intervalMs);
+    // Der Timer darf einen Shutdown/Testlauf nicht am Leben halten.
+    timer.unref?.();
+  };
+  void run();
+
+  return () => {
+    stopped = true;
+    if (timer !== undefined) clearTimeout(timer);
+  };
 }
 
 export function createHealthServer(probe: HealthProbe, startedAt: string): Server {

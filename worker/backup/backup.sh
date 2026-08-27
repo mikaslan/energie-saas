@@ -17,6 +17,16 @@ set -euo pipefail
 : "${S3_BUCKET_BACKUP:?S3_BUCKET_BACKUP fehlt}"
 : "${AGE_PUBLIC_KEY:?AGE_PUBLIC_KEY fehlt (age-keygen; PRIVATEN Schlüssel nur im Passwort-Manager!)}"
 
+: "${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID fehlt}"
+: "${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY fehlt}"
+
+# Die AWS CLI liest NUR AWS_*-Variablen (Codex-Review #2) — die repo-eigenen
+# S3_*-Namen hier explizit mappen, damit der Cron-Host ohne ~/.aws auskommt.
+export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY"
+export AWS_REGION="${S3_REGION:-nbg1}"
+export AWS_EC2_METADATA_DISABLED=true
+
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

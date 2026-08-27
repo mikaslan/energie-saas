@@ -27,8 +27,16 @@ const STARTED = new Date().toISOString();
 const WORKER_URL = process.env.POSTGRES_URL_WORKER ?? process.env.POSTGRES_URL;
 if (!WORKER_URL) throw new Error("Weder POSTGRES_URL_WORKER noch POSTGRES_URL ist gesetzt");
 
+// Wird in main() gesetzt, wenn SENTRY_DSN vorhanden ist. Handler unten dürfen
+// nicht auf Sentrys Unhandled-Hooks vertrauen: sie BEHANDELN die Fehler ja
+// (Codex-Review #6) — also hier explizit erfassen.
+let sentry: typeof import("@sentry/node") | undefined;
+
 const boss = new PgBoss(WORKER_URL);
-boss.on("error", (err) => console.error("[pg-boss]", err));
+boss.on("error", (err) => {
+  console.error("[pg-boss]", err);
+  sentry?.captureException(err);
+});
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
 // diese Probe braucht Timeouts, die tatsächlich abbrechen. Beides steckt in
@@ -46,17 +54,12 @@ async function shutdown(signal: string) {
 }
 
 async function main() {
-  // Beide Blöcke sind Gerüste hinter Env-Flags (Tooling-Mission): ohne gesetzte
-  // Env-Vars passiert nichts. Werte kommen mit der Einkaufsliste
-  // (docs/tooling/einkaufsliste.md — Sentry EU-Region, healthchecks.io).
+  // Gerüst hinter Env-Flag (Tooling-Mission): ohne SENTRY_DSN inaktiv. Werte
+  // kommen mit der Einkaufsliste (docs/tooling/einkaufsliste.md, EU-Region!).
   if (process.env.SENTRY_DSN) {
-    const Sentry = await import("@sentry/node");
-    Sentry.init({ dsn: process.env.SENTRY_DSN });
+    sentry = await import("@sentry/node");
+    sentry.init({ dsn: process.env.SENTRY_DSN });
     console.log("[worker] Sentry aktiv");
-  }
-  if (process.env.HEALTHCHECKS_PING_URL) {
-    startHeartbeat(health, process.env.HEALTHCHECKS_PING_URL);
-    console.log("[worker] Dead-Man-Heartbeat aktiv");
   }
 
   await boss.start();
@@ -67,13 +70,24 @@ async function main() {
   // M2 registriert hier pdf.render (Playwright/Chrome), M4 simulation.run (pvlib-Sidecar).
   // Job-Namenskonvention: "<modul>.<aufgabe>".
 
+  // Dead-Man-Heartbeat ERST nach vollständiger Worker-Registrierung (Codex-
+  // Review #3): ein Ping attestiert "arbeitsfähig", nicht bloß "DB erreichbar".
+  if (process.env.HEALTHCHECKS_PING_URL) {
+    startHeartbeat(health, process.env.HEALTHCHECKS_PING_URL);
+    console.log("[worker] Dead-Man-Heartbeat aktiv");
+  }
+
   server.listen(8080, () => console.log("worker health on :8080"));
 
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error("[worker] Startfehler:", err);
+  // Behandelte fatale Fehler erreichen Sentrys Unhandled-Hooks nicht —
+  // explizit erfassen und flushen, bevor der Prozess stirbt (Codex-Review #6).
+  sentry?.captureException(err);
+  await sentry?.flush(2_000).catch(() => {});
   process.exit(1);
 });
