@@ -1,0 +1,49 @@
+-- ═══════════════════════════════════════════════════════════════════════
+-- POLICY-VERTRAG für alle Mandantentabellen (Codex-Review #6).
+--
+-- Diese Migration ändert bewusst NICHTS am Schema. Sie hält den Vertrag dort
+-- fest, wo die nächste Person ihn liest: direkt neben den RLS-Migrationen.
+-- Durchgesetzt wird er von tests/db/tenant-invariants.test.ts, dupliziert in
+-- modules/README.md.
+--
+-- ── Warum das nötig ist ────────────────────────────────────────────────
+-- PostgreSQL verknüpft mehrere PERMISSIVE Policies auf derselben Tabelle mit
+-- ODER. Eine zweite permissive Policy neben `tenant_isolation` ÖFFNET die
+-- Mandantengrenze also, statt sie zu verengen. Der in der Architektur
+-- geplante `external_only`-Filter (externe Monteure sehen nur zugewiesene
+-- Projekte) wäre als permissive Policy nicht nur wirkungslos — er könnte
+-- sogar Cross-Tenant-Zeilen freigeben.
+--
+-- ── Die drei Regeln ────────────────────────────────────────────────────
+-- 1. Pro Mandantentabelle existiert GENAU EINE permissive Policy. Sie heißt
+--    `tenant_isolation` und gilt `FOR ALL`.
+--
+-- 2. Ihr Prädikat ist in `using` UND `with check` identisch und lautet exakt:
+--
+--       workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid
+--
+--    (bei `workspace` selbst: `id` statt `workspace_id`). Das nullif() ist
+--    nicht kosmetisch — siehe drizzle/0001_rls_core.sql: auf einer
+--    wiederverwendeten Pool-Verbindung fällt der Parameter nach einer
+--    withTenant-Transaktion auf '' zurück, und ''::uuid würde WERFEN statt
+--    fail-closed NULL zu liefern.
+--
+-- 3. JEDER zusätzliche Filter MUSS `as restrictive` sein:
+--
+--       create policy external_only on project
+--         as restrictive
+--         for select
+--         using ( ... );
+--
+--    Restrictive Policies werden mit UND verknüpft und können die Grenze
+--    deshalb ausschließlich verengen.
+--
+-- ── Was die Suite prüft ────────────────────────────────────────────────
+-- * genau eine permissive Policy je Tenant-Tabelle, Name und FOR ALL,
+-- * `with check` ist weder NULL noch `true` (ein korrektes `using` mit
+--   `with check (true)` erlaubt sonst Cross-Tenant-Inserts und
+--   Workspace-Transfers — genau der Befund aus Codex-Review #3),
+-- * `using` und `with check` stimmen EXAKT mit dem kanonischen Prädikat
+--   überein (kein Substring-Match, das ein zusätzliches OR durchgehen ließe).
+-- ═══════════════════════════════════════════════════════════════════════
+select 1 where false;

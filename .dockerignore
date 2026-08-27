@@ -1,0 +1,12 @@
+# Docker-Build-Kontext für worker/Dockerfile (context: .. = Repo-Root, siehe
+# worker/compose.yaml). Ohne diese Ausschlüsse würde `COPY . .` das lokal
+# installierte node_modules (Host-Architektur, z.B. macOS-native Bindings von
+# esbuild/embedded-postgres) über die im Image per `npm ci` sauber für Linux
+# installierten Pakete kopieren und den Container-Build brechen.
+node_modules
+.next
+.git
+.superpowers/pgdata
+*.tsbuildinfo
+.env
+.env.local

@@ -1,0 +1,66 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # NIE der Superuser hier: scripts/migrate.mts bricht mit einem
+      # Superuser/BYPASSRLS-Verbindungsstring hart ab (RLS-Safety-Gate), und
+      # selbst ohne dieses Gate wären die RLS-Tests wirkungslos, weil ein
+      # Superuser Row Level Security IMMER umgeht — auch mit FORCE ROW LEVEL
+      # SECURITY (das schützt nur den Tabellen-Owner, sofern dieser kein
+      # Superuser ist). app_ci ist nosuperuser/nobypassrls und Owner von
+      # app_test, analog zur embedded-postgres-Testrolle in
+      # tests/setup/embedded-postgres.ts (dort "app_test").
+      POSTGRES_URL_TEST: postgres://app_ci:ci@localhost:5432/app_test
+      # Getrennte Superuser-Verbindung auf DIESELBE Datenbank. Wird
+      # ausschließlich von tests/setup/superuser-db.ts für Aussagen benutzt,
+      # die unter RLS strukturell nicht prüfbar sind (Zeilen, die außerhalb
+      # jedes Mandantenkontexts geschrieben wurden — z. B. der Auth-Hook beim
+      # Erst-Login). NIE als POSTGRES_URL/POSTGRES_URL_TEST verwenden: ein
+      # Superuser umgeht RLS bedingungslos und würde alle RLS-Tests
+      # wirkungslos machen.
+      POSTGRES_URL_TEST_SUPERUSER: postgres://postgres:test@localhost:5432/app_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Schema-Drift — jede Schemaänderung braucht eine Migration
+        # Codex-Review #27: "npm run check" migriert nur VORHANDENES SQL und
+        # generiert nichts. Eine neue Drizzle-Tabelle ohne zugehörige Migration
+        # existiert in der Test-DB also gar nicht — sie ist für die
+        # Tenant-Invarianten (RLS, workspace_id, Fixture-Pflicht) unsichtbar und
+        # könnte grün durchmergen. Deshalb: generieren und danach einen
+        # unveränderten Baum erzwingen.
+        run: |
+          npm run db:generate
+          git diff --exit-code drizzle/ lib/db/schema/ \
+            || { echo "::error::Schema geändert, aber keine Migration committet — 'npm run db:generate' ausführen und das Ergebnis mitcommitten."; exit 1; }
+      - name: Nicht-superuser Test-Rolle + Datenbank bootstrappen
+        # postgresql-client (psql) ist auf den GitHub-hosted ubuntu-latest
+        # Runnern vorinstalliert. Läuft VOR "npm run check", damit
+        # POSTGRES_URL_TEST oben schon auf eine existierende, RLS-taugliche
+        # Rolle zeigt, wenn globalSetup (tests/setup/global-setup.ts) sie
+        # unverändert übernimmt und scripts/migrate.mts dagegen migriert.
+        run: |
+          # createrole + Ownership von "public": drizzle/0015 legt die
+          # Definer-Rolle identity_reconciler an und übergibt ihr die
+          # SECURITY-DEFINER-Funktion. Beides spiegelt ADR 0003 Block 1/2 und
+          # ist für die RLS-Zusage unbedenklich: seit PG 16 kann eine
+          # CREATEROLE-Rolle weder SUPERUSER noch BYPASSRLS verleihen, wenn sie
+          # es nicht selbst hat — das Gate in scripts/migrate.mts bleibt scharf.
+          psql "postgres://postgres:test@localhost:5432/postgres" \
+            -c "create role app_ci login password 'ci' nosuperuser nobypassrls createrole;" \
+            -c "create database app_test owner app_ci;"
+          psql "postgres://postgres:test@localhost:5432/app_test" \
+            -c "alter schema public owner to app_ci;" \
+            -c "grant all privileges on schema public to app_ci;"
+      - run: npm run check

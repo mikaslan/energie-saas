@@ -1,0 +1,51 @@
+{
+  "name": "energie-saas",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "depcruise": "depcruise modules lib app worker --config .dependency-cruiser.cjs",
+    "check": "npm run lint && npm run typecheck && npm run depcruise && npm run test",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.mts",
+    "db:migrate:test": "cross-env-shell \"POSTGRES_URL=$POSTGRES_URL_TEST\" \"POSTGRES_URL_MIGRATE=$POSTGRES_URL_TEST\" \"tsx scripts/migrate.mts\"",
+    "auth:generate": "auth generate --config lib/auth.ts --output lib/db/schema/auth.ts --y"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1118.0",
+    "@aws-sdk/s3-request-presigner": "^3.1118.0",
+    "@better-auth/drizzle-adapter": "^1.7.1",
+    "better-auth": "^1.7.1",
+    "drizzle-orm": "^0.45.2",
+    "next": "16.3.3",
+    "pg": "^8.23.0",
+    "pg-boss": "^12.28.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "resend": "^6.24.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.11",
+    "auth": "^1.7.1",
+    "cross-env": "^10.1.0",
+    "dependency-cruiser": "^18.2.0",
+    "drizzle-kit": "^0.31.10",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.3",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.12",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
+  }
+}
