@@ -40,7 +40,7 @@ def read_token() -> str:
 TOKEN = read_token()
 
 
-def api(path: str, payload: dict | None = None) -> dict:
+def api(path: str, payload: dict | None = None, unavailable_ok: bool = False) -> dict | None:
     req = urllib.request.Request(
         f"{API}{path}",
         data=json.dumps(payload).encode() if payload is not None else None,
@@ -51,7 +51,10 @@ def api(path: str, payload: dict | None = None) -> dict:
         with urllib.request.urlopen(req, timeout=30) as res:
             return json.load(res)
     except urllib.error.HTTPError as err:
-        sys.exit(f"FEHLER: HTTP {err.code} bei {path}: {err.read().decode()[:400]}")
+        body = err.read().decode()[:400]
+        if unavailable_ok and err.code == 412 and "resource_unavailable" in body:
+            return None
+        sys.exit(f"FEHLER: HTTP {err.code} bei {path}: {body}")
 
 
 def find(collection: str, name: str) -> dict | None:
@@ -87,21 +90,33 @@ def main() -> None:
         })["firewall"]
         print(f"Firewall 'worker-fw' angelegt (ID {fw['id']}) — eingehend nur 22/tcp")
 
-    # 3. Server
+    # 3. Server. Die CX-Reihe ist seit Ende 08/2026 EU-weit ausverkauft (API:
+    # HTTP 412 resource_unavailable in allen sechs Rechenzentren) — CAX21 ist
+    # der beschlossene Fallback: gleiche 4 vCPU/8 GB, ARM64, 10,49 €/M netto;
+    # Playwright-Chromium und pvlib/numpy liefern offizielle arm64-Artefakte.
+    # CX33 bleibt erster Kandidat, falls Hetzner Nachschub bekommt.
+    candidates = [("cx33", "8,49 €/M netto"), ("cax21", "10,49 €/M netto")]
     srv = find("servers", "energie-saas-worker")
     if srv:
         print(f"Server vorhanden (ID {srv['id']}, Status {srv['status']}) — nichts bestellt")
     else:
-        srv = api("/servers", {
-            "name": "energie-saas-worker",
-            "server_type": "cx33",
-            "image": "ubuntu-24.04",
-            "location": "nbg1",
-            "ssh_keys": [key["id"]],
-            "firewalls": [{"firewall": fw["id"]}],
-            "public_net": {"enable_ipv4": True, "enable_ipv6": True},
-        })["server"]
-        print(f"SERVER BESTELLT: CX33 (ID {srv['id']}) — 8,49 €/M netto + IPv4 0,50 €/M")
+        for server_type, preis in candidates:
+            created = api("/servers", {
+                "name": "energie-saas-worker",
+                "server_type": server_type,
+                "image": "ubuntu-24.04",
+                "location": "nbg1",
+                "ssh_keys": [key["id"]],
+                "firewalls": [{"firewall": fw["id"]}],
+                "public_net": {"enable_ipv4": True, "enable_ipv6": True},
+            }, unavailable_ok=True)
+            if created is not None:
+                srv = created["server"]
+                print(f"SERVER BESTELLT: {server_type.upper()} (ID {srv['id']}) — {preis} + IPv4 0,50 €/M")
+                break
+            print(f"{server_type.upper()} in nbg1 ausverkauft — nächster Kandidat …")
+        else:
+            sys.exit("FEHLER: kein Kandidat verfügbar (cx33, cax21) — später erneut versuchen")
 
     # Auf running warten, damit die IP sicher steht
     for _ in range(60):
