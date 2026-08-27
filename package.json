@@ -17,21 +17,43 @@
     "auth:generate": "auth generate --config lib/auth.ts --output lib/db/schema/auth.ts --y"
   },
   "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "^3.0.0",
+    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^3.1.0",
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^2.1.0",
+    "@atlaskit/pragmatic-drag-and-drop-react-accessibility": "^3.1.5",
     "@aws-sdk/client-s3": "^3.1118.0",
     "@aws-sdk/s3-request-presigner": "^3.1118.0",
     "@better-auth/drizzle-adapter": "^1.7.1",
+    "@hookform/resolvers": "^5.9.1",
+    "@tanstack/react-table": "^9.2.3",
+    "@tanstack/react-virtual": "^3.14.10",
+    "@uppy/aws-s3": "^6.0.0",
+    "@uppy/core": "^6.0.0",
+    "@uppy/dashboard": "^6.0.0",
+    "@uppy/react": "^6.0.0",
+    "@uppy/status-bar": "^6.0.0",
     "better-auth": "^1.7.1",
     "drizzle-orm": "^0.45.2",
+    "drizzle-zod": "^0.8.3",
     "next": "16.3.3",
+    "papaparse": "^5.7.0",
     "pg": "^8.23.0",
     "pg-boss": "^12.28.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "resend": "^6.24.0"
+    "react-hook-form": "^7.86.0",
+    "resend": "^6.24.0",
+    "zod": "^4.4.3"
+  },
+  "overrides": {
+    "@typeschema/zod": {
+      "zod": "$zod"
+    }
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/papaparse": "^5.5.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
