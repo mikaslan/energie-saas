@@ -1,7 +1,7 @@
 # Tooling-Mission — Abschlussbericht (Phase E)
 
 Stand: 2026-08-27 · Branch `tooling` (Worktree `~/Downloads/Projects/energie-saas/tooling-wt`)
-· `npm run check` grün (15 Testdateien, 101 Tests).
+· `npm run check` grün — lokal wie in der CI (110 Tests auf dem main-Rebase).
 
 ## Was installiert wurde (Commits auf `tooling`)
 
@@ -35,20 +35,24 @@ stopped-Guard, 10-s-Fetch-Timeout), (5) Nicht-2xx-Pings galten als Zustellung
 (jetzt geloggt), (6) behandelte fatale Worker-Fehler erreichten Sentry nicht
 (jetzt captureException + flush). Tests decken #3–#5 ab (104 grün).
 
-## Offene Koordination (wichtig)
+## GitHub + CI: ERLEDIGT (Nachtrag 27.08. mittags)
 
-1. **CI-Push blockiert:** gh-Token hat keinen `workflow`-Scope → `m0-fundament`
-   und `tooling` können nicht gepusht werden (Einkaufsliste #1, 2 Minuten).
-   `main` ist bereits auf https://github.com/mikaslan/energie-saas (privat).
-2. **Parallele M0-Session:** `m0-fundament` wird gerade von der Session
-   `build-reonic-clone-saas` finalisiert (m0-wt gehört exklusiv ihr). Abgesprochen:
-   Nach deren Merge nach `main` wird **`tooling` auf `main` rebased**, bevor
-   weitere Pakete draufkommen (Konfliktpotenzial: package.json, ci.yml,
-   worker/index.ts — dort trifft mein Env-Flag-Block auf deren
-   POSTGRES_URL_WORKER-Block; beides behalten).
-3. **K3-Gegenprobe entfiel:** OpenRouter-Guthaben leer (PLAN.md Betriebsnotiz).
-   Die ADR-0002-Fakten wurden stattdessen durch einen unabhängigen
-   Faktencheck-Agenten gegen Primärquellen verifiziert.
+- Mikail hat den `workflow`-Scope erteilt → `main` (mit M0-Merge),
+  `m0-fundament` und `tooling` sind gepusht.
+- **CI verifiziert grün:** Run 33063751779 (main, 1m19s) und Run 33063929631
+  (tooling, 1m30s — voller Check inkl. aller neuen Pakete und Heartbeat-Tests
+  gegen den Postgres-17-Service). Keine Umgebungslücken; einzige Annotation
+  (Node-20-Deprecation der v4-Actions) durch Bump auf checkout@v7/setup-node@v7
+  behoben (Commit 556b3a2).
+- Falle dokumentiert: Ein Multi-Ref-Push (`git push origin main m0-fundament
+  tooling`) löste nur für main einen Workflow-Run aus; Einzel-Pushes triggern
+  zuverlässig.
+- **M0 ist in `main` gemergt** (120f46c); `tooling` wurde auf main rebased
+  (Konflikt worker/index.ts gelöst: WORKER_URL-Vorrang + Sentry-Handle
+  koexistieren) und ist mergefertig — Merge-Zeitpunkt ist Mikails Entscheidung.
+- **K3-Gegenprobe entfiel:** OpenRouter-Guthaben leer (PLAN.md Betriebsnotiz).
+  Die ADR-0002-Fakten wurden stattdessen durch einen unabhängigen
+  Faktencheck-Agenten gegen Primärquellen verifiziert.
 
 ## Nach Erhalt der Zugangsdaten (Reihenfolge)
 
