@@ -37,6 +37,7 @@ export function withTenantOn<T>(p: Pool, workspaceId: string, fn: (tx: TenantTx)
 }
 
 interface MembershipCtxRow {
+  user_identity_id: unknown;
   role: unknown;
   capabilities: unknown;
   feature_flags: unknown;
@@ -51,6 +52,25 @@ function asFlagRecord(value: unknown): Record<string, boolean> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, boolean>)
     : {};
+}
+
+function buildServiceCtx(workspaceId: string, row: MembershipCtxRow): ServiceCtx {
+  if (typeof row.user_identity_id !== "string") {
+    throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "unbekannte Identität in membership");
+  }
+  // Rolle wird auch hier validiert, nicht nur per DB-CHECK
+  // (drizzle/0009_membership_role_check.sql): der CHECK schützt neue Zeilen,
+  // dieser Test schützt gegen Altbestand/Direktimporte.
+  if (!isRole(row.role)) {
+    throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "unbekannte Rolle in membership");
+  }
+  return {
+    workspaceId,
+    actor: row.user_identity_id,
+    role: row.role,
+    capabilities: asFlagRecord(row.capabilities),
+    featureFlags: asFlagRecord(row.feature_flags),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -70,7 +90,8 @@ function asFlagRecord(value: unknown): Record<string, boolean> {
 // PermissionDeniedError — fail-closed.
 //
 // Ab M1 ist das die Tür für jede Server-Action/Route: die Session liefert die
-// user_identity.id, der Request den Workspace, alles andere kommt aus der DB.
+// auth_user.id, der Request den Workspace, und withSessionTenant löst daraus
+// user_identity.id, Rolle, Capabilities und Feature-Flags IN der TenantTx auf.
 // ═══════════════════════════════════════════════════════════════════════
 async function runAuthorized<T>(
   d: Db,
@@ -80,7 +101,7 @@ async function runAuthorized<T>(
 ): Promise<T> {
   return run(d, workspaceId, async (tx) => {
     const res = await tx.execute<MembershipCtxRow>(sql`
-      select m.role, m.capabilities, w.feature_flags
+      select m.user_id as user_identity_id, m.role, m.capabilities, w.feature_flags
       from membership m
       join workspace w on w.id = m.workspace_id
       where m.user_id = ${userIdentityId}::uuid
@@ -90,20 +111,30 @@ async function runAuthorized<T>(
     if (!row) {
       throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "not a member");
     }
-    // Rolle wird auch hier validiert, nicht nur per DB-CHECK
-    // (drizzle/0009_membership_role_check.sql): der CHECK schützt neue Zeilen,
-    // dieser Test schützt gegen Altbestand/Direktimporte.
-    if (!isRole(row.role)) {
-      throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "unbekannte Rolle in membership");
+    return fn(tx, buildServiceCtx(workspaceId, row));
+  });
+}
+
+async function runSessionTenant<T>(
+  d: Db,
+  authUserId: string,
+  workspaceId: string,
+  fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
+): Promise<T> {
+  return run(d, workspaceId, async (tx) => {
+    const res = await tx.execute<MembershipCtxRow>(sql`
+      select ui.id as user_identity_id, m.role, m.capabilities, w.feature_flags
+      from membership m
+      join user_identity ui on ui.id = m.user_id
+      join workspace w on w.id = m.workspace_id
+      where ui.auth_user_id = ${authUserId}
+        and m.workspace_id = ${workspaceId}::uuid
+    `);
+    const row = res.rows[0];
+    if (!row) {
+      throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "not a member");
     }
-    const ctx: ServiceCtx = {
-      workspaceId,
-      actor: userIdentityId,
-      role: row.role,
-      capabilities: asFlagRecord(row.capabilities),
-      featureFlags: asFlagRecord(row.feature_flags),
-    };
-    return fn(tx, ctx);
+    return fn(tx, buildServiceCtx(workspaceId, row));
   });
 }
 
@@ -123,4 +154,22 @@ export function withAuthorizedTenantOn<T>(
   fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
 ): Promise<T> {
   return runAuthorized(drizzle(p, { schema }), userIdentityId, workspaceId, fn);
+}
+
+export function withSessionTenant<T>(
+  authUserId: string,
+  workspaceId: string,
+  fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
+): Promise<T> {
+  return runSessionTenant(getDb(), authUserId, workspaceId, fn);
+}
+
+// Testvariante analog withTenantOn (eigener Pool statt App-Client).
+export function withSessionTenantOn<T>(
+  p: Pool,
+  authUserId: string,
+  workspaceId: string,
+  fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
+): Promise<T> {
+  return runSessionTenant(drizzle(p, { schema }), authUserId, workspaceId, fn);
 }

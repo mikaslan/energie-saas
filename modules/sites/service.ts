@@ -21,11 +21,10 @@ export type { ServiceCtx };
 // abgebrochenen tx zusammen zurückgerollt und wäre spurlos verschwunden.
 //
 // Stattdessen wirft der Service einen typisierten PermissionDeniedError
-// (mit action + resource als Feldern). Die AUFRUFGRENZE — ab M1 der
-// Server-Action-Wrapper, der die Transaktion geöffnet hat bzw. den Abort
-// sieht — fängt diesen Fehler und schreibt den Denial-Audit in einer
-// EIGENEN, NEUEN Transaktion NACH dem Abort (siehe tests/db/site.test.ts
-// für das vollständige Boundary-Pattern).
+// (mit action + resource als Feldern und dem bereits aufgelösten Actor aus
+// dem ctx). Die AUFRUFGRENZE — ab M1 lib/action.ts, das die Transaktion
+// geöffnet hat bzw. den Abort sieht — fängt diesen Fehler und schreibt den
+// Denial-Audit in einer EIGENEN, NEUEN Transaktion NACH dem Abort.
 //
 // Der Erfolgspfad bleibt unverändert in-tx: emitEvent läuft in DERSELBEN
 // Transaktion wie der Insert, damit ein Rollback automatisch auch das
@@ -47,7 +46,7 @@ export type CreateSiteInput = {
 export async function createSite(tx: TenantTx, ctx: ServiceCtx, input: CreateSiteInput): Promise<{ id: string }> {
   if (!can(ctx, "project.write")) {
     // KEIN writeAudit hier — siehe Boundary-Kommentar oben.
-    throw new PermissionDeniedError("project.write", "site");
+    throw new PermissionDeniedError("project.write", "site", undefined, ctx.actor);
   }
 
   // Reihenfolge (Codex-Review, Minor): workspaceId kommt ZULETZT. TypeScript

@@ -25,10 +25,10 @@ import type { TenantTx } from "./db/tenant";
 // sondern dass JEDE Transaktion, die abbricht, alles innerhalb von ihr
 // mitreißt).
 //
-// Dieses Boundary-Pattern selbst landet erst mit Task 9 (Autorisierungs-
-// Guard an der Aufrufgrenze) — writeAudit hier bleibt bewusst ein simpler,
-// transaktionsloser Baustein ohne eigene Entscheidung darüber, WANN/WESSEN
-// Transaktion er nutzt. Diese Entscheidung liegt beim Aufrufer.
+// Dieses Boundary-Pattern wird in lib/action.ts vollzogen — writeAudit hier
+// bleibt bewusst ein simpler, transaktionsloser Baustein ohne eigene
+// Entscheidung darüber, WANN/WESSEN Transaktion er nutzt. Diese Entscheidung
+// liegt beim Aufrufer.
 // ═══════════════════════════════════════════════════════════════════════
 
 // Auch ABGELEHNTE Zugriffe (allowed: false) landen hier (Architektur §4) —

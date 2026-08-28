@@ -32,6 +32,7 @@ export class PermissionDeniedError extends Error {
     public readonly action: DeniedAction,
     public readonly resource: string,
     public readonly reason?: string,
+    public readonly actor?: string,
   ) {
     super(
       reason

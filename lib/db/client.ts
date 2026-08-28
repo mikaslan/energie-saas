@@ -38,3 +38,12 @@ export function getDb(): AppDb {
   }
   return dbInstance;
 }
+
+// Für Tests und geordnetes Herunterfahren: schließt den App-Pool, ohne einen
+// rohen Pool als Umgehungspfad an withTenant zu exportieren.
+export async function closeDb(): Promise<void> {
+  const pool = poolInstance;
+  poolInstance = undefined;
+  dbInstance = undefined;
+  await pool?.end();
+}
