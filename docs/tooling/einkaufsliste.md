@@ -11,8 +11,8 @@ Stadia 20 $ + Resend Pro 20 $ + Neon Launch ~5–20 $).
 
 | # | Tool/Dienst | Wofür (Modul) | Kosten | Wo kaufen/registrieren (URL) | Was Mikail liefert (exakte Env-Var-Namen) | Prio |
 |---|---|---|---|---|---|---|
-| 1 | GitHub `workflow`-Scope | CI scharf schalten (alle M) | 0 € | Terminal + Browser | — (danach pushen, s. u.) | P1 sofort |
-| 2 | Hetzner Cloud CX33 | Worker-Host: PDF, pvlib, pg-boss (M2–M4) | 8,49 €/M netto + IPv4 ~0,50 € | https://console.hetzner.com | — (SSH-Zugang für Deploy) | P1 sofort |
+| 1 | GitHub `workflow`-Scope | CI scharf schalten (alle M) | 0 € | Terminal + Browser | — (danach pushen, s. u.) | ✅ 27.08. |
+| 2 | Hetzner Cloud CX33 | Worker-Host: PDF, pvlib, pg-boss (M2–M4) | 8,49 €/M netto + IPv4 ~0,50 € | https://console.hetzner.com | — (SSH-Zugang für Deploy) | ✅ 28.08. — IP 2.28.70.140, Docker drauf |
 | 3 | Hetzner Object Storage | GoBD-WORM-Archiv + Backups (M2/M3) | 4,99 €/M netto (1 TB) | https://console.hetzner.com | `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_BUCKET_BACKUP` | P1 sofort |
 | 4 | Sentry (Developer, **EU-Region**) | Fehler-Monitoring App+Worker | 0 € (später Team 26 $/M) | https://sentry.io/signup/ | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` (+ `SENTRY_AUTH_TOKEN` für Source-Maps) | P1 sofort |
 | 5 | healthchecks.io (Free) | Dead-Man-Alarm des Workers | 0 € | https://healthchecks.io/accounts/signup/ | `HEALTHCHECKS_PING_URL` | P1 sofort |
@@ -40,11 +40,10 @@ Stadia 20 $ + Resend Pro 20 $ + Neon Launch ~5–20 $).
 3. Nach dem M0-Merge (andere Session) auch: `git push origin main m0-fundament` (aus dem jeweiligen Worktree).
 4. CI prüfen: `gh run watch` bzw. `gh run list --branch tooling`.
 
-### 2. Hetzner CX33 (Worker)
-1. In console.hetzner.com: Server → CX33, Ubuntu 24.04 LTS, Standort Nürnberg oder Falkenstein.
-2. SSH-Key hinterlegen (kein Passwort-Login).
-3. Hetzner-Firewall: eingehend nur 22/tcp.
-4. Zugangsdaten (IP) notieren — Deploy-Setup übernehme ich danach.
+### 2. Hetzner CX33 (Worker) — ✅ ERLEDIGT 28.08.
+Per API bestellt (`scripts/hetzner-provision.py`): CX33 `energie-saas-worker`
+(ID 163858990), Ubuntu 24.04.4, nbg1, IP `2.28.70.140`, Firewall nur 22/tcp,
+Docker + Compose installiert. Details in STATUS.md.
 
 ### 3. Hetzner Object Storage (⚠️ Object Lock geht NUR bei Bucket-Anlage)
 1. In console.hetzner.com → Object Storage: S3-Credentials erzeugen.

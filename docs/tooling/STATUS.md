@@ -54,6 +54,24 @@ stopped-Guard, 10-s-Fetch-Timeout), (5) Nicht-2xx-Pings galten als Zustellung
   Die ADR-0002-Fakten wurden stattdessen durch einen unabhängigen
   Faktencheck-Agenten gegen Primärquellen verifiziert.
 
+## Hetzner-Server: GEKAUFT & GRUNDINSTALLIERT (Nachtrag 28.08.)
+
+- Mikail hat den `HCLOUD_TOKEN` übergeben (liegt in `.env.local`, gitignored).
+  Da der Permission-Modus der Session schreibende Hetzner-API-Calls blockte,
+  lief die Bestellung über `scripts/hetzner-provision.py` — idempotent, von
+  Mikail per `!` ausgeführt.
+- **Server: CX33 `energie-saas-worker`** (ID 163858990), Ubuntu 24.04.4, nbg1,
+  IPv4 `2.28.70.140`, 8,49 €/M netto + IPv4 0,50 €/M. Zugang:
+  `ssh -i ~/.ssh/energie-saas-worker root@2.28.70.140`; Hetzner-Firewall
+  `worker-fw`: eingehend nur 22/tcp.
+- **Episode 27.08.:** die komplette CX-Reihe war EU-weit ausverkauft (HTTP 412
+  `resource_unavailable` in allen sechs Rechenzentren). Das Skript hat seither
+  einen CAX21-Fallback (ARM64, 4 vCPU/8 GB, 10,49 €/M); am 28.08. war CX33
+  wieder lieferbar, der Erstkandidat griff.
+- **Docker installiert** (Ubuntu-Repos, kein curl|sh): docker.io 29.1.3 +
+  docker-compose-v2 2.40.3, Dienst aktiv. Das eigentliche `compose up` wartet
+  auf `POSTGRES_URL(_WORKER)`/Sentry/Heartbeat-Env — Punkt 6 unten.
+
 ## Nach Erhalt der Zugangsdaten (Reihenfolge)
 
 1. **`.env.local` füllen** — Vorlage `.env.example` ist aktuell (neue Blöcke am Ende).
@@ -92,10 +110,10 @@ stopped-Guard, 10-s-Fetch-Timeout), (5) Nicht-2xx-Pings galten als Zustellung
    - CI: `gh run list --branch tooling` nach dem ersten Push (Workflow bootstrapt
      die non-superuser-Rolle selbst; zusätzliche Env-Vars braucht er laut
      ci.yml-Review nicht).
-6. **Hetzner-Worker-Deploy** (nach Serverkauf): Docker + Compose installieren,
-   Repo auslesen, `docker compose -f worker/compose.yaml up --build -d`;
-   Backup-Cron nach `worker/backup/backup.sh`-Kopfkommentar einrichten
-   (Host-Pakete: postgresql-client, zstd, age, awscli).
+6. **Hetzner-Worker-Deploy** (Server gekauft, Docker installiert ✓ 28.08.):
+   Repo auf den Server bringen, `docker compose -f worker/compose.yaml up
+   --build -d`; Backup-Cron nach `worker/backup/backup.sh`-Kopfkommentar
+   einrichten (Host-Pakete: postgresql-client, zstd, age, awscli).
 
 ## Offene Spikes vor Modul-Start (aus der Recherche, je ≤1 Tag)
 
