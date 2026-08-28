@@ -14,7 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
     "db:migrate:test": "cross-env-shell \"POSTGRES_URL=$POSTGRES_URL_TEST\" \"POSTGRES_URL_MIGRATE=$POSTGRES_URL_TEST\" \"tsx scripts/migrate.mts\"",
-    "auth:generate": "auth generate --config lib/auth.ts --output lib/db/schema/auth.ts --y"
+    "auth:generate": "cross-env-shell \"BETTER_AUTH_SECRET=ci-build-platzhalter-kein-echtes-secret\" \"NEXT_PHASE=phase-production-build\" \"POSTGRES_URL=postgres://auth-generate:auth-generate@127.0.0.1:1/auth_generate_test\" \"auth generate --config lib/auth.ts --output lib/db/schema/auth.ts --y\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.121.0",

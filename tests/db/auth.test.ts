@@ -84,7 +84,8 @@ describe("auth-Schema", () => {
   });
 
   it("auth-Instanz bootet", async () => {
-    const { auth } = await import("@/lib/auth");
+    const { getAuth } = await import("@/lib/auth");
+    const auth = getAuth();
     expect(auth.handler).toBeDefined();
   });
 
@@ -97,7 +98,8 @@ describe("auth-Schema", () => {
   // diesem Zeitpunkt per Definition noch keine Membership).
   // ═══════════════════════════════════════════════════════════════════════
   it("Erst-Login legt user_identity an und koppelt sie an den better-auth-User", async () => {
-    const { auth } = await import("@/lib/auth");
+    const { getAuth } = await import("@/lib/auth");
+    const auth = getAuth();
     // Gemischte Schreibweise: der Hook MUSS kanonisch kleinschreiben (#18).
     const email = `Hook-${randomUUID()}@Example.TEST`;
 
@@ -139,7 +141,8 @@ describe("auth-Schema", () => {
   // vollständig verboten — deshalb der Bootstrap-Weg).
   // ═══════════════════════════════════════════════════════════════════════
   it("Selbstheilung: eine fehlende Identität wird beim nächsten Login nachgezogen", async () => {
-    const { auth } = await import("@/lib/auth");
+    const { getAuth } = await import("@/lib/auth");
+    const auth = getAuth();
     const email = `heal-${randomUUID()}@example.test`;
 
     async function login(): Promise<void> {
@@ -180,7 +183,8 @@ describe("auth-Schema", () => {
   }, 30_000);
 
   it("Magic-Link-Token liegt NICHT im Klartext in auth_verification (Codex #15)", async () => {
-    const { auth } = await import("@/lib/auth");
+    const { getAuth } = await import("@/lib/auth");
+    const auth = getAuth();
     const email = `token-${randomUUID()}@example.test`;
 
     await auth.api.signInMagicLink({ body: { email }, headers: new Headers() });
@@ -199,7 +203,8 @@ describe("auth-Schema", () => {
   }, 30_000);
 
   it("OTP liegt NICHT im Klartext in auth_verification (Codex #15, storeOTP: encrypted)", async () => {
-    const { auth } = await import("@/lib/auth");
+    const { getAuth } = await import("@/lib/auth");
+    const auth = getAuth();
     const email = `otp-${randomUUID()}@example.test`;
 
     await auth.api.sendVerificationOTP({ body: { email, type: "sign-in" }, headers: new Headers() });

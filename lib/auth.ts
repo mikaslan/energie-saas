@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { getAuthDb } from "./db/auth-client";
 import { auth_user } from "./db/schema/auth";
 import { sendAuthMail } from "./mail";
+import { requireAuthSecret } from "./env";
 
 // ═══════════════════════════════════════════════════════════════════════
 // Der einzige Berührungspunkt zwischen Auth und Domäne: die Kopplung
@@ -36,105 +37,135 @@ async function reconcileIdentity(email: string, authUserId: string): Promise<voi
 // Jede Option unten wurde gegen die INSTALLIERTEN Typen von better-auth@1.7.1
 // verifiziert, nicht aus der Erinnerung gesetzt (Fundstellen als Kommentar an
 // der jeweiligen Option).
-export const auth = betterAuth({
-  database: drizzleAdapter(getAuthDb(), {
-    provider: "pg",
-    // Codex-Review #16: der Drizzle-Adapter defaultet auf `transaction: false`
-    // und führt mehrstufige Verification-Operationen dann nur sequenziell aus.
-    // Ein Abbruch zwischen dem Löschen der neuesten und älterer OTP-Zeilen
-    // konnte so einen alten Code wiederbeleben.
-    // Beleg: node_modules/@better-auth/drizzle-adapter/dist/index.d.mts:43
-    //   `transaction?: boolean | undefined;` (@default false)
-    transaction: true,
-  }),
-  emailAndPassword: { enabled: false },
-  // Alle better-auth-Tabellen tragen das Präfix "auth_" (modelName pro
-  // Kernmodell, lt. context7-Doku "Customize core table and column names" /
-  // "Configure account options" — kein globales "prefix"-Feld dokumentiert).
-  // Die Namen stehen als EXAKTE Allowlist in tests/setup/tenant-fixtures.ts
-  // (kein Prefix-Match mehr, siehe Codex-Review #4).
-  user: { modelName: "auth_user" },
-  session: { modelName: "auth_session" },
-  account: { modelName: "auth_account" },
-  verification: { modelName: "auth_verification" },
-  // Codex-Review #21: better-auth aktiviert Rate-Limiting in Produktion
-  // standardmäßig mit In-Memory-Storage. Auf Vercel hat damit jede
-  // Serverless-Instanz bzw. jeder Cold Start einen eigenen Zähler —
-  // Mail-Flooding und OTP-Versuche lassen sich über Instanzwechsel
-  // vervielfachen. `storage: "database"` zählt zentral in der DB.
-  // Beleg: node_modules/@better-auth/core/dist/types/init-options.d.mts:217
-  //   `storage?: ("memory" | "database" | "secondary-storage") | undefined;`
-  //   sowie `BetterAuthRateLimitOptions` = … & Omit<BetterAuthDBOptions<
-  //   "rateLimit", …>, "additionalFields"> → modelName ist zulässig.
-  rateLimit: { storage: "database", modelName: "auth_rate_limit" },
-  plugins: [
-    magicLink({
-      // Codex-Review #15: Magic-Link-Token wurden im Klartext in
-      // auth_verification gespeichert — ein Lesefehler dort lieferte sofort
-      // verwendbare Login-Credentials. Token sind hochentrop, ein Hash ist
-      // hier die richtige Wahl (im Gegensatz zum 6-stelligen OTP unten).
-      // Beleg: node_modules/better-auth/dist/plugins/magic-link/index.d.mts:69
-      //   `storeToken?: ("plain" | "hashed" | { type: "custom-hasher"; … })`
-      storeToken: "hashed",
-      sendMagicLink: async ({ email, url }) => sendAuthMail(email, "Dein Login-Link", url),
+function createAuth() {
+  // Fail-Fast (Ist-Bericht 2026-08-28, Blocker 3): ohne gesetztes Secret faellt
+  // better-auth auf ein bekanntes Default zurueck und Session-Tokens werden
+  // faelschbar. Die Pruefung steht hier und nicht im Modul-Scope, weil
+  // `next build` das Modul importiert, ohne dass ein Deploy stattfindet —
+  // siehe lib/env.ts.
+  requireAuthSecret();
+
+  return betterAuth({
+    database: drizzleAdapter(getAuthDb(), {
+      provider: "pg",
+      // Codex-Review #16: der Drizzle-Adapter defaultet auf `transaction: false`
+      // und führt mehrstufige Verification-Operationen dann nur sequenziell aus.
+      // Ein Abbruch zwischen dem Löschen der neuesten und älterer OTP-Zeilen
+      // konnte so einen alten Code wiederbeleben.
+      // Beleg: node_modules/@better-auth/drizzle-adapter/dist/index.d.mts:43
+      //   `transaction?: boolean | undefined;` (@default false)
+      transaction: true,
     }),
-    emailOTP({
-      // Codex-Review #15: ein sechsstelliger OTP hat nur ~20 Bit Entropie —
-      // ein nackter SHA-256-Hash davon ist offline in Sekunden brute-forcebar.
-      // Deshalb "encrypted" (symmetrisch mit dem BETTER_AUTH_SECRET) statt
-      // "hashed": der Angreifer braucht zusätzlich den Schlüssel.
-      // Beleg: node_modules/better-auth/dist/plugins/email-otp/types.d.mts:59
-      //   `storeOTP?: ("hashed" | "plain" | "encrypted" | {…})`
-      // Verifiziert in dist/plugins/email-otp/otp-token.mjs:7 (symmetricEncrypt).
-      storeOTP: "encrypted",
-      sendVerificationOTP: async ({ email, otp }) => sendAuthMail(email, "Dein Login-Code", `Code: ${otp}`),
-    }),
-  ],
-  databaseHooks: {
-    user: {
-      create: {
-        // Erst-Login: Identität anlegen ODER eine bereits vorhandene (z. B. aus
-        // einer M1-Einladung) koppeln. Fehler werden bewusst NICHT geschluckt —
-        // ein stiller Fehlschlag hinterließe einen auth_user ohne Identität.
-        after: async (user) => {
-          await reconcileIdentity(user.email, user.id);
+    emailAndPassword: { enabled: false },
+    // Alle better-auth-Tabellen tragen das Präfix "auth_" (modelName pro
+    // Kernmodell, lt. context7-Doku "Customize core table and column names" /
+    // "Configure account options" — kein globales "prefix"-Feld dokumentiert).
+    // Die Namen stehen als EXAKTE Allowlist in tests/setup/tenant-fixtures.ts
+    // (kein Prefix-Match mehr, siehe Codex-Review #4).
+    user: { modelName: "auth_user" },
+    session: { modelName: "auth_session" },
+    account: { modelName: "auth_account" },
+    verification: { modelName: "auth_verification" },
+    // Codex-Review #21: better-auth aktiviert Rate-Limiting in Produktion
+    // standardmäßig mit In-Memory-Storage. Auf Vercel hat damit jede
+    // Serverless-Instanz bzw. jeder Cold Start einen eigenen Zähler —
+    // Mail-Flooding und OTP-Versuche lassen sich über Instanzwechsel
+    // vervielfachen. `storage: "database"` zählt zentral in der DB.
+    // Beleg: node_modules/@better-auth/core/dist/types/init-options.d.mts:217
+    //   `storage?: ("memory" | "database" | "secondary-storage") | undefined;`
+    //   sowie `BetterAuthRateLimitOptions` = … & Omit<BetterAuthDBOptions<
+    //   "rateLimit", …>, "additionalFields"> → modelName ist zulässig.
+    rateLimit: { storage: "database", modelName: "auth_rate_limit" },
+    plugins: [
+      magicLink({
+        // Codex-Review #15: Magic-Link-Token wurden im Klartext in
+        // auth_verification gespeichert — ein Lesefehler dort lieferte sofort
+        // verwendbare Login-Credentials. Token sind hochentrop, ein Hash ist
+        // hier die richtige Wahl (im Gegensatz zum 6-stelligen OTP unten).
+        // Beleg: node_modules/better-auth/dist/plugins/magic-link/index.d.mts:69
+        //   `storeToken?: ("plain" | "hashed" | { type: "custom-hasher"; … })`
+        storeToken: "hashed",
+        sendMagicLink: async ({ email, url }) => sendAuthMail(email, "Dein Login-Link", url),
+      }),
+      emailOTP({
+        // Codex-Review #15: ein sechsstelliger OTP hat nur ~20 Bit Entropie —
+        // ein nackter SHA-256-Hash davon ist offline in Sekunden brute-forcebar.
+        // Deshalb "encrypted" (symmetrisch mit dem BETTER_AUTH_SECRET) statt
+        // "hashed": der Angreifer braucht zusätzlich den Schlüssel.
+        // Beleg: node_modules/better-auth/dist/plugins/email-otp/types.d.mts:59
+        //   `storeOTP?: ("hashed" | "plain" | "encrypted" | {…})`
+        // Verifiziert in dist/plugins/email-otp/otp-token.mjs:7 (symmetricEncrypt).
+        storeOTP: "encrypted",
+        sendVerificationOTP: async ({ email, otp }) => sendAuthMail(email, "Dein Login-Code", `Code: ${otp}`),
+      }),
+    ],
+    databaseHooks: {
+      user: {
+        create: {
+          // Erst-Login: Identität anlegen ODER eine bereits vorhandene (z. B. aus
+          // einer M1-Einladung) koppeln. Fehler werden bewusst NICHT geschluckt —
+          // ein stiller Fehlschlag hinterließe einen auth_user ohne Identität.
+          after: async (user) => {
+            await reconcileIdentity(user.email, user.id);
+          },
+        },
+      },
+      session: {
+        create: {
+          // ═══════════════════════════════════════════════════════════════
+          // SELBSTHEILUNG bei jedem Login (Codex-Restrisiko zu F11).
+          //
+          // `user.create.after` läuft NACH dem Auth-Commit (better-auth
+          // with-hooks.mjs). Schlägt der Reconcile dort fehl, bleibt ein
+          // auth_user ohne Identität zurück — und der create-Hook feuert nie
+          // wieder, weil der Nutzer ab dann existiert. Ohne einen zweiten
+          // Aufhänger wäre dieser Zustand dauerhaft.
+          //
+          // Der Session-Hook ist dieser Aufhänger: er läuft bei JEDEM Login.
+          // Der Reconcile ist idempotent, der Normalfall kostet also nur einen
+          // Funktionsaufruf, der nichts ändert.
+          //
+          // Die E-Mail steht nicht in der Session (Session trägt nur userId,
+          // siehe @better-auth/core init-options.d.mts) — deshalb der Lookup auf
+          // auth_user. Er läuft über den Auth-Client, der ausschließlich das
+          // auth_*-Schema kennt.
+          //
+          // Fehlt der Nutzer (Race gegen eine parallele Löschung), passiert
+          // nichts: eine Session ohne Nutzer ist kein Fall, den dieser Hook
+          // reparieren kann.
+          // ═══════════════════════════════════════════════════════════════
+          after: async (session) => {
+            const [user] = await getAuthDb()
+              .select({ email: auth_user.email })
+              .from(auth_user)
+              .where(eq(auth_user.id, session.userId))
+              .limit(1);
+            if (!user) return;
+            await reconcileIdentity(user.email, session.userId);
+          },
         },
       },
     },
-    session: {
-      create: {
-        // ═══════════════════════════════════════════════════════════════
-        // SELBSTHEILUNG bei jedem Login (Codex-Restrisiko zu F11).
-        //
-        // `user.create.after` läuft NACH dem Auth-Commit (better-auth
-        // with-hooks.mjs). Schlägt der Reconcile dort fehl, bleibt ein
-        // auth_user ohne Identität zurück — und der create-Hook feuert nie
-        // wieder, weil der Nutzer ab dann existiert. Ohne einen zweiten
-        // Aufhänger wäre dieser Zustand dauerhaft.
-        //
-        // Der Session-Hook ist dieser Aufhänger: er läuft bei JEDEM Login.
-        // Der Reconcile ist idempotent, der Normalfall kostet also nur einen
-        // Funktionsaufruf, der nichts ändert.
-        //
-        // Die E-Mail steht nicht in der Session (Session trägt nur userId,
-        // siehe @better-auth/core init-options.d.mts) — deshalb der Lookup auf
-        // auth_user. Er läuft über den Auth-Client, der ausschließlich das
-        // auth_*-Schema kennt.
-        //
-        // Fehlt der Nutzer (Race gegen eine parallele Löschung), passiert
-        // nichts: eine Session ohne Nutzer ist kein Fall, den dieser Hook
-        // reparieren kann.
-        // ═══════════════════════════════════════════════════════════════
-        after: async (session) => {
-          const [user] = await getAuthDb()
-            .select({ email: auth_user.email })
-            .from(auth_user)
-            .where(eq(auth_user.id, session.userId))
-            .limit(1);
-          if (!user) return;
-          await reconcileIdentity(user.email, session.userId);
-        },
-      },
-    },
-  },
-});
+  });
+}
+
+let authInstance: ReturnType<typeof createAuth> | undefined;
+
+export function getAuth(): ReturnType<typeof createAuth> {
+  authInstance ??= createAuth();
+  return authInstance;
+}
+
+export function resetAuthForTests(): void {
+  authInstance = undefined;
+}
+
+// getAuth() ist die API für Anwendungscode; auth existiert nur für die
+// better-auth-CLI und bleibt absichtlich lazy, damit ein Import allein nichts konstruiert.
+export const auth = new Proxy({} as ReturnType<typeof createAuth>, {
+  get: (_t, prop, receiver) => Reflect.get(getAuth() as object, prop, receiver),
+  has: (_t, prop) => Reflect.has(getAuth() as object, prop),
+  ownKeys: () => Reflect.ownKeys(getAuth() as object),
+  getOwnPropertyDescriptor: (_t, prop) =>
+    Reflect.getOwnPropertyDescriptor(getAuth() as object, prop),
+}) as ReturnType<typeof createAuth>;

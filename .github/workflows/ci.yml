@@ -64,3 +64,19 @@ jobs:
             -c "alter schema public owner to app_ci;" \
             -c "grant all privileges on schema public to app_ci;"
       - run: npm run check
+      - name: Produktionsbuild
+        # Ohne dieses Gate blieb ein kaputter `next build` seit M0 unbemerkt, waehrend
+        # lint/typecheck/depcruise/test durchgehend gruen meldeten: `npm run check`
+        # fuehrt keinen Build aus, und der Fehler entstand erst beim "Collecting page
+        # data", also beim Import der Route-Module durch Next.
+        #
+        # Die Env-Werte hier sind bewusst Wegwerf-Platzhalter. Der Build darf sie nicht
+        # brauchen — er darf beim Import keine DB-Verbindung und keine Auth-Instanz
+        # konstruieren. Sie stehen nur da, damit ein kuenftiger Fail-Fast-Guard (der
+        # ein fehlendes Secret in Produktion korrekt verweigert) den CI-Build nicht
+        # faelschlich rot macht. Wird der Build ohne sie gruen, koennen sie weg.
+        env:
+          # Kanonische Platzhalter-Kennung und Laufzeit-Blockade: lib/env.ts.
+          BETTER_AUTH_SECRET: ci-build-platzhalter-kein-echtes-secret
+          BETTER_AUTH_URL: http://localhost:3000
+        run: npm run build
