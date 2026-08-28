@@ -33,7 +33,10 @@ def read_token() -> str:
         sys.exit(f"FEHLER: {env_file} fehlt (HCLOUD_TOKEN=... erwartet)")
     for line in env_file.read_text().splitlines():
         if line.startswith("HCLOUD_TOKEN="):
-            return line.split("=", 1)[1].strip()
+            token = line.split("=", 1)[1].strip().strip("\"'")
+            if not token:
+                sys.exit(f"FEHLER: HCLOUD_TOKEN in {env_file} ist leer")
+            return token
     sys.exit(f"FEHLER: kein HCLOUD_TOKEN in {env_file}")
 
 

@@ -1,0 +1,41 @@
+Ist-Bericht energie-saas - Stand 28.08.2026, Branch tooling
+
+URTEIL: Das Fundament steht. Die Anwendung darueber existiert nicht, und der
+Produktionsbuild ist kaputt, ohne dass ein Gate es merkt.
+
+WAS STEHT: Typecheck, Lint, depcruise und 110 Tests gegen echtes Postgres gruen. Kein
+Fail-Open in der Mandantentrennung: RLS mit ENABLE und FORCE ueberall, exakter Policy-
+Vergleich im Test, append-only inkl. TRUNCATE, can() fail-closed, Schema-Drift-Gate.
+
+BLOCKER
+1. npm run build schlaegt fehl (lib/auth.ts:40 ruft getAuthDb auf Modulebene).
+2. Die CI fuehrt npm run build nie aus, deshalb blieb Punkt 1 seit M0 unbemerkt.
+3. BETTER_AUTH_SECRET leer, better-auth laeuft mit Default-Secret: Session-Tokens
+   waeren faelschbar. Deploy-Sperre.
+4. Die M1-Roadmap fordert KPI-Kacheln als Matviews, die eigene Testsuite verbietet sie.
+
+GROESSTE SCHULDEN
+- Keine Aufrufgrenze: withAuthorizedTenant hat keinen produktiven Aufrufer, der
+  Denial-Audit existiert nur als Testsimulation. Erster M1-Baustein.
+- Die tenant-sicheren Schluesselregeln stehen nur in der Doku, nicht im Test, und sind
+  bereits gebrochen. M1 bringt ca. 20 neue Tabellen. Halber Tag, muss vorher passieren.
+- Keine Oberflaeche, kein Design-System: app/ ist unveraenderter Next.js-Scaffold. M1
+  ist ein UI- und kein Datenmodell-Meilenstein: 36-57 Personentage, 7-11 Wochen solo.
+- Keine lokale Dev-Datenbank (.env.local: 19 Schluessel, zwei mit Wert).
+
+TOOLING-BRANCH: mergen ja, aber erst das Arbeitsverzeichnis aufloesen - die
+uncommittete einkaufsliste.md wuerde zurueckdrehen, dass der Server gekauft ist, git
+pull --ff-only bricht ab. NAECHSTER SCHRITT danach: Server-Action-Wrapper gegen das
+vorhandene sites-Modul (Sollverhalten liegt fertig in tests/db/site.test.ts), und
+parallel die Design-Mission starten.
+
+DEINE ENTSCHEIDUNGEN: Moat terminieren oder Pilot-Gate verschieben (null Wochen
+Datenpflege gelaufen) - Positionierung Wallbox oder PV - Neon-DB, Resend-Domaene,
+S3-Bucket (Object Lock nur bei Erstellung, unumkehrbar), Geoapify/Stadia - OpenRouter
+aufladen (Rest 0,02 $) - Markencheck, AGB/AVV, Restore-Test blockieren den Piloten.
+
+WERKZEUG: codex ist wieder da. Ursache war kein fehlender Install, sondern ein
+fehlender Symlink - das Paket lag unter ~/.local/opt/node/bin, im PATH steht nur
+~/.local/bin. Symlink gesetzt wie bei node und npm, verifiziert: codex-cli 0.150.1.
+Das Pflicht-Gate aus der CLAUDE.md greift damit wieder. Offen bleibt die zweite
+Gegenstimme: OpenRouter hat noch 0,02 $, Kimi laeuft daher nicht. Vollstaendig: docs/ist-bericht/00-IST-BERICHT.md
