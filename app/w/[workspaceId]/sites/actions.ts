@@ -24,7 +24,6 @@ const createSiteForm = z.object({
   country: optionalText,
   lat: optionalNumber,
   lng: optionalNumber,
-  pinConfirmed: z.preprocess((value) => value === "on" || value === "true", z.boolean()),
 });
 
 export async function createSiteAction(workspaceId: string, formData: FormData): Promise<{ id: string }> {
@@ -40,7 +39,6 @@ export async function createSiteAction(workspaceId: string, formData: FormData):
     country: formData.get("country"),
     lat: formData.get("lat"),
     lng: formData.get("lng"),
-    pinConfirmed: formData.get("pinConfirmed"),
   });
   const { workspaceId: validWorkspaceId, ...input } = parsed;
 

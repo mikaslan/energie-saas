@@ -1,4 +1,4 @@
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import {
   calculatorSnapshot,
@@ -12,6 +12,10 @@ import {
   type RechnerProjectRequirementsV1,
 } from "@/lib/db/schema";
 import type { TenantTx } from "@/lib/db/types";
+import {
+  ADDRESS_FINGERPRINT_VERSION,
+  addressFingerprint,
+} from "@/lib/address-fingerprint";
 import { emitEvent } from "@/lib/events";
 import { writeAudit } from "@/lib/audit";
 import { validateRechnerIntake } from "@/lib/integrations/rechner/contract";
@@ -31,7 +35,6 @@ import {
 
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_RECEIPTS = 120;
-const ADDRESS_FINGERPRINT_VERSION = 1;
 
 type ContactCandidate = {
   id: string;
@@ -108,26 +111,18 @@ export function normalizeRechnerPhone(value: string): string | null {
   return compact;
 }
 
-function canonicalAddressPart(value: string): string {
-  return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
-}
-
 function selectedAddressFingerprint(payload: RechnerIntakeV1): Buffer | null {
   if (payload.site.addressMode !== "selected") return null;
   const { street, houseNumber, postalCode, city, countryCode } = payload.site;
   if (!street || !houseNumber || !postalCode || !city) throw new RechnerInvalidRequestError();
 
-  // Der Versionspraefix ist Teil des Hash-Preimage. Eine spaetere Aenderung
-  // der Normalisierung kann dadurch parallel und ohne falsche Treffer laufen.
-  const preimage = [
-    `rechner-site-address:v${ADDRESS_FINGERPRINT_VERSION}`,
-    canonicalAddressPart(countryCode),
-    canonicalAddressPart(postalCode),
-    canonicalAddressPart(city),
-    canonicalAddressPart(street),
-    canonicalAddressPart(houseNumber),
-  ].join("\0");
-  return createHash("sha256").update(preimage, "utf8").digest();
+  return addressFingerprint({
+    countryCode,
+    postalCode,
+    city,
+    street,
+    houseNumber,
+  });
 }
 
 function requestHash(meta: RechnerIntakeMeta): Buffer {

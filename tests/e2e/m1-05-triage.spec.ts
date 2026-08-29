@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import { M1_06_E2E_ADDRESS, M1_06_E2E_REGION } from "./m1-06-fixture";
 
 type E2EState = {
   baseURL: string;
@@ -27,6 +28,19 @@ function trackBrowserErrors(page: Page): string[] {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route("https://tiles.openfreemap.org/styles/liberty*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "cache-control": "no-store" },
+      body: JSON.stringify({
+        version: 8,
+        name: "M1-06 local empty map style",
+        sources: {},
+        layers: [],
+      }),
+    });
+  });
   trackBrowserErrors(page);
 });
 
@@ -159,7 +173,7 @@ async function pointerDragToColumn(page: Page, card: Locator, targetColumn: Loca
 
 test.describe.configure({ mode: "serial" });
 
-test("Editor: echter OTP-Golden-Flow persistiert Pin und sichtbaren Statuswechsel", async ({ page }) => {
+test("Editor: regionaler Rechner-Lead wird hausgenau korrigiert und getrennt bestätigt", async ({ page }) => {
   const data = state();
   const boardPath = `/w/${data.workspaceId}/anfragen`;
 
@@ -178,28 +192,110 @@ test("Editor: echter OTP-Golden-Flow persistiert Pin und sichtbaren Statuswechse
     boardColumn(page, "Qualifiziert").getByText("Keine Anfragen in diesem Status", { exact: true }),
   ).toBeVisible();
   await expect(allCards).toContainText(data.mainContactName);
-  await expect(allCards).toContainText("69234 Dielheim");
+  await expect(allCards).toContainText(M1_06_E2E_REGION.formattedAddress);
+  await expect(allCards).toContainText("Adresse nachfassen");
+  await expect(allCards).toContainText("Pin offen");
   await expect(page.getByText(data.foreignContactName)).toHaveCount(0);
   await expectNoSeriousOrCriticalAxeViolations(page);
 
   await allCards.getByRole("link", { name: "Projekt öffnen" }).click();
   await expect(page.getByRole("heading", { name: data.mainContactName, level: 1 })).toBeVisible();
   await expect(page.getByText(/Rechner-Anfrage · Erstellt am/u)).toBeVisible();
-  await expect(page.getByText("Hausgenau", { exact: true })).toBeVisible();
-  await expect(page.getByText("Mühlstraße 8, 69234 Dielheim", { exact: true })).toBeVisible();
+  await expect(page.getByText("Regionale Schätzung", { exact: true })).toBeVisible();
+  await expect(page.getByText("Regional", { exact: true })).toBeVisible();
+  await expect(page.getByText(M1_06_E2E_REGION.formattedAddress, { exact: true })).toBeVisible();
+  await expect(page.getByText("Adresse muss nachbearbeitet werden", { exact: true })).toBeVisible();
   await expect(page.getByText("Planungs-Pin ist noch nicht bestätigt", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Planungs-Pin bestätigen" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Hausadresse nachtragen", level: 3 })).toBeVisible();
   await expectNoSeriousOrCriticalAxeViolations(page);
+
+  const searchInput = page.getByRole("combobox", { name: "Hausadresse suchen" });
+  await searchInput.fill(M1_06_E2E_ADDRESS.query);
+  const candidateResponsePromise = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith("/address-candidates")
+    && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Adresse suchen" }).click();
+  const candidateResponse = await candidateResponsePromise;
+  if (candidateResponse.status() !== 200) {
+    const failure = await candidateResponse.json().catch(() => null) as {
+      error?: { code?: unknown };
+    } | null;
+    const safeCode = typeof failure?.error?.code === "string"
+      ? failure.error.code
+      : "unknown";
+    throw new Error(
+      `Adresskandidatensuche scheiterte mit HTTP ${candidateResponse.status()} (${safeCode}).`,
+    );
+  }
+  await expect(page.getByRole("status")).toContainText("1 hausgenaue Adresse gefunden.");
+  await expect(searchInput).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("option", { name: /Musterweg 12/u })).toBeVisible();
+
+  await searchInput.focus();
+  await page.keyboard.press("Enter");
+  const selectedAddress = page.getByRole("status").filter({
+    hasText: "Hausadresse ausgewählt",
+  });
+  await expect(selectedAddress).toBeVisible();
+  await expect(selectedAddress).toBeFocused();
+  await expect(selectedAddress).toContainText(M1_06_E2E_ADDRESS.formattedAddress);
+  await expect(selectedAddress).toContainText("Straße und Hausnummer");
+  await expect(selectedAddress).toContainText("PLZ und Ort");
+  await expect(page.getByTestId("address-pin-map")).toBeVisible();
+
+  const pinCoordinates = selectedAddress.locator("div").filter({
+    has: page.getByText("Aktueller Planungs-Pin", { exact: true }),
+  }).last();
+  const initialPinText = await pinCoordinates.textContent();
+  const eastNudge = page.getByRole("button", {
+    name: "Pin einen Meter nach Osten verschieben",
+  });
+  const northNudge = page.getByRole("button", {
+    name: "Pin einen Meter nach Norden verschieben",
+  });
+  expect((await eastNudge.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect((await eastNudge.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await eastNudge.click();
+  await expect.poll(() => pinCoordinates.textContent()).not.toBe(initialPinText);
+  const pointerAdjustedPinText = await pinCoordinates.textContent();
+  await northNudge.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => pinCoordinates.textContent()).not.toBe(pointerAdjustedPinText);
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  await page.getByRole("button", { name: "Adresse übernehmen" }).click();
+  await expect(page.getByText(M1_06_E2E_ADDRESS.formattedAddress, { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Hausadresse nachtragen", level: 3 })).toHaveCount(0);
+  await expect(page.getByText("Adresse muss nachbearbeitet werden", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Planungs-Pin ist noch nicht bestätigt", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Planungs-Pin bestätigen" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText(M1_06_E2E_ADDRESS.formattedAddress, { exact: true })).toBeVisible();
+  await expect(page.getByText("Hausgenau", { exact: true })).toBeVisible();
+  await expect(page.getByText("Gegenüber dem Hauspunkt angepasst", { exact: true })).toBeVisible();
+  await expect(page.getByText("Adresse muss nachbearbeitet werden", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Planungs-Pin ist noch nicht bestätigt", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Planungs-Pin bestätigen" }).click();
   await expect(page.getByText("Der Planungs-Pin ist bestätigt.", { exact: true })).toBeVisible();
   await expect(page.getByText("Planungs-Pin ist noch nicht bestätigt", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Planungs-Pin bestätigen/u })).toHaveCount(0);
 
+  await page.reload();
+  await expect(page.getByText(M1_06_E2E_ADDRESS.formattedAddress, { exact: true })).toBeVisible();
+  await expect(page.getByText("Planungs-Pin ist noch nicht bestätigt", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Der Planungs-Pin ist bestätigt.", { exact: true })).toBeVisible();
+
   await page.getByRole("link", { name: "Zurück zu den Anfragen" }).click();
   await page.waitForURL((url) => url.pathname === boardPath);
   const cardAfterPin = page.locator("article[data-project-id]");
   await expect(cardAfterPin).toHaveCount(1);
+  await expect(cardAfterPin).not.toContainText("Adresse nachfassen");
   await expect(cardAfterPin).not.toContainText("Pin offen");
+  await expect(cardAfterPin).toContainText("Produkte offen");
 
   const keyboardSelect = cardAfterPin.getByLabel(`Zielspalte für „${data.mainContactName}“`);
   const keyboardButton = cardAfterPin.getByRole("button", {
@@ -392,6 +488,10 @@ test("Viewer: darf denselben Lead lesen, aber weder Pin noch Karte verändern", 
   await page.getByRole("link", { name: "Projekt öffnen" }).click();
   await expect(page.getByRole("heading", { name: data.mainContactName, level: 1 })).toBeVisible();
   await expect(page.getByText("Nur Lesezugriff").first()).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Hausadresse suchen" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Adresse übernehmen" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Pin einen Meter nach/u })).toHaveCount(0);
+  await expect(page.getByTestId("address-pin-map")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Planungs-Pin bestätigen/u })).toHaveCount(0);
   await expectNoSeriousOrCriticalAxeViolations(page);
 });

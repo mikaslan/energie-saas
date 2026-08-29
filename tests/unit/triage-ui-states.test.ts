@@ -26,7 +26,7 @@ describe("M1-05 UI-Zustände", () => {
   it("zeigt einen generischen Boardfehler ohne interne Fehlermeldung", () => {
     const html = renderToStaticMarkup(createElement(RequestsError, {
       error: new Error("vertraulicher interner Fehler"),
-      reset: () => undefined,
+      retry: () => undefined,
     }));
 
     expect(html).toContain('role="alert"');
@@ -41,7 +41,7 @@ describe("M1-05 UI-Zustände", () => {
     });
     const html = renderToStaticMarkup(createElement(ProjectDetailError, {
       error,
-      reset: () => undefined,
+      retry: () => undefined,
     }));
 
     expect(html).toContain("Unerwarteter Fehler");

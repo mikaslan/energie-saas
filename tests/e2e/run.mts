@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool, type PoolClient } from "pg";
@@ -26,16 +27,21 @@ import type {
   RechnerIntakeReceiptV1,
   RechnerIntakeV1,
 } from "../../lib/integrations/rechner/types.js";
+import {
+  M1_06_E2E_ADDRESS,
+  M1_06_E2E_REGION,
+} from "./m1-06-fixture.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NEXT_ENV_PATH = resolve(REPO_ROOT, "next-env.d.ts");
 const NEXT_SERVER_PATH = resolve(REPO_ROOT, "tests/e2e/next-server.mts");
 const READY_ENDPOINT = "/__m1_05_e2e_ready";
-const LOOPBACK_HOST = "127.0.0.1";
+const LOOPBACK_HOST = "localhost";
 const PRIVATE_LOG_MODE = 0o600;
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const START_TIMEOUT_MS = 90_000;
 const CHILD_STOP_TIMEOUT_MS = 5_000;
+const GEOAPIFY_STUB_API_KEY = "local-m1-06-contract-key";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 const AMBIENT_DATABASE_VARIABLES = [
@@ -107,16 +113,178 @@ type FileSnapshot =
   | { existed: false }
   | { existed: true; content: Buffer; mode: number };
 
+type GeoapifyStub = {
+  server: Server;
+  origin: string;
+  autocompleteRequests: number;
+  detailsRequests: number;
+  violations: string[];
+};
+
 let embedded: EmbeddedTestDatabase | undefined;
 let privateDirectory: string | undefined;
 let serverLogFd: number | undefined;
 let interruptedBy: NodeJS.Signals | undefined;
 let cleanupPromise: Promise<unknown[]> | undefined;
 let nextEnvSnapshot: FileSnapshot | undefined;
+let geoapifyStub: GeoapifyStub | undefined;
 const runningChildren = new Set<ChildProcess>();
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, milliseconds));
+}
+
+function exactSearchParameters(
+  url: URL,
+  expected: Readonly<Record<string, string>>,
+): boolean {
+  const expectedNames = Object.keys(expected);
+  const actualNames = [...url.searchParams.keys()];
+  return actualNames.length === expectedNames.length
+    && expectedNames.every((name) => {
+      const values = url.searchParams.getAll(name);
+      return values.length === 1 && values[0] === expected[name];
+    });
+}
+
+function respondWithJson(response: ServerResponse, status: number, body: unknown): void {
+  response.writeHead(status, {
+    "cache-control": "no-store",
+    "content-type": "application/json; charset=utf-8",
+    "x-content-type-options": "nosniff",
+  });
+  response.end(JSON.stringify(body));
+}
+
+function closeLocalServer(server: Server): Promise<void> {
+  return new Promise((resolveClose) => {
+    if (!server.listening) {
+      resolveClose();
+      return;
+    }
+    server.close(() => resolveClose());
+    server.closeIdleConnections();
+  });
+}
+
+async function startGeoapifyContractStub(): Promise<GeoapifyStub> {
+  const stub = {
+    server: undefined as unknown as Server,
+    origin: "",
+    autocompleteRequests: 0,
+    detailsRequests: 0,
+    violations: [] as string[],
+  } satisfies GeoapifyStub;
+
+  const server = createServer((request, response) => {
+    let url: URL;
+    try {
+      url = new URL(request.url ?? "/", `http://${LOOPBACK_HOST}`);
+    } catch {
+      stub.violations.push("invalid_url");
+      respondWithJson(response, 400, { error: "invalid_request" });
+      return;
+    }
+
+    const validTransport = request.method === "GET"
+      && request.headers.accept === "application/json";
+    if (url.pathname === "/v1/geocode/autocomplete") {
+      const validContract = validTransport && exactSearchParameters(url, {
+        text: M1_06_E2E_ADDRESS.query,
+        lang: "de",
+        format: "json",
+        limit: "5",
+        filter: "countrycode:de",
+        apiKey: GEOAPIFY_STUB_API_KEY,
+      });
+      if (!validContract) {
+        stub.violations.push("autocomplete_contract");
+        respondWithJson(response, 400, { error: "invalid_request" });
+        return;
+      }
+
+      stub.autocompleteRequests += 1;
+      respondWithJson(response, 200, {
+        results: [{
+          place_id: M1_06_E2E_ADDRESS.placeId,
+          street: M1_06_E2E_ADDRESS.street,
+          housenumber: M1_06_E2E_ADDRESS.houseNumber,
+          postcode: M1_06_E2E_ADDRESS.postalCode,
+          city: M1_06_E2E_ADDRESS.city,
+          country_code: "de",
+          lat: M1_06_E2E_ADDRESS.latitude,
+          lon: M1_06_E2E_ADDRESS.longitude,
+          result_type: "building",
+        }],
+      });
+      return;
+    }
+
+    if (url.pathname === "/v2/place-details") {
+      const validContract = validTransport && exactSearchParameters(url, {
+        id: M1_06_E2E_ADDRESS.placeId,
+        features: "details",
+        lang: "de",
+        apiKey: GEOAPIFY_STUB_API_KEY,
+      });
+      if (!validContract) {
+        stub.violations.push("details_contract");
+        respondWithJson(response, 400, { error: "invalid_request" });
+        return;
+      }
+
+      stub.detailsRequests += 1;
+      respondWithJson(response, 200, {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          properties: {
+            place_id: M1_06_E2E_ADDRESS.placeId,
+            feature_type: "details",
+            street: M1_06_E2E_ADDRESS.street,
+            housenumber: M1_06_E2E_ADDRESS.houseNumber,
+            postcode: M1_06_E2E_ADDRESS.postalCode,
+            city: M1_06_E2E_ADDRESS.city,
+            country_code: "de",
+            lat: M1_06_E2E_ADDRESS.latitude,
+            lon: M1_06_E2E_ADDRESS.longitude,
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [M1_06_E2E_ADDRESS.longitude, M1_06_E2E_ADDRESS.latitude],
+          },
+        }],
+      });
+      return;
+    }
+
+    stub.violations.push("unexpected_route");
+    respondWithJson(response, 404, { error: "not_found" });
+  });
+  stub.server = server;
+
+  await new Promise<void>((resolveListen, rejectListen) => {
+    const onError = (error: Error): void => rejectListen(error);
+    server.once("error", onError);
+    server.listen(0, LOOPBACK_HOST, () => {
+      server.removeListener("error", onError);
+      resolveListen();
+    });
+  });
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await closeLocalServer(server);
+    throw new Error("Der lokale Geoapify-Vertragsserver erhielt keinen TCP-Port.");
+  }
+  stub.origin = `http://${LOOPBACK_HOST}:${address.port}`;
+  return stub;
+}
+
+function geoapifyContractWasExercised(stub: GeoapifyStub): boolean {
+  return stub.violations.length === 0
+    && stub.autocompleteRequests === 1
+    && stub.detailsRequests === 1;
 }
 
 function signalExitCode(signal: NodeJS.Signals): number {
@@ -201,6 +369,8 @@ function cleanEnvironment(): NodeJS.ProcessEnv {
     "BETTER_AUTH_URL",
     "RECHNER_INTAKE_KEYS_JSON",
     "RESEND_API_KEY",
+    "GEOAPIFY_API_KEY",
+    "GEOAPIFY_BASE_URL",
     "M1_05_E2E_STATE",
     "M1_05_E2E_OUTPUT_DIR",
     "M1_05_E2E_BASE_URL",
@@ -234,6 +404,7 @@ function nextEnvironment(
   databaseUrl: string,
   authSecret: string,
   credentials: IntakeCredential[],
+  geocodingStub: GeoapifyStub,
   readyFile: string,
   readyToken: string,
 ): NodeJS.ProcessEnv {
@@ -255,6 +426,8 @@ function nextEnvironment(
     RESEND_API_KEY: "",
     SENTRY_DSN: "",
     NEXT_PUBLIC_SENTRY_DSN: "",
+    GEOAPIFY_API_KEY: GEOAPIFY_STUB_API_KEY,
+    GEOAPIFY_BASE_URL: geocodingStub.origin,
     M1_05_E2E_READY_FILE: readyFile,
     M1_05_E2E_READY_TOKEN: readyToken,
   };
@@ -522,7 +695,11 @@ async function waitForNext(
   throw new Error("Der isolierte Next-Prozess wurde nicht rechtzeitig bereit.");
 }
 
-function intakePayload(contactName: string, contactSuffix: string): RechnerIntakeV1 {
+function intakePayload(
+  contactName: string,
+  contactSuffix: string,
+  regionalEstimate = false,
+): RechnerIntakeV1 {
   const fixturePath = resolve(REPO_ROOT, "contracts/examples/rechner-intake.v1.json");
   const payload = JSON.parse(readFileSync(fixturePath, "utf8")) as RechnerIntakeV1;
   const now = new Date().toISOString();
@@ -532,6 +709,21 @@ function intakePayload(contactName: string, contactSuffix: string): RechnerIntak
   payload.customer.displayName = contactName;
   payload.customer.email = `lead-${contactSuffix}@example.test`;
   payload.customer.phoneRaw = `+49 6222 ${String(Math.floor(Math.random() * 9_000_000) + 1_000_000)}`;
+  if (regionalEstimate) {
+    payload.site = {
+      addressMode: "regional_estimate",
+      formattedAddress: M1_06_E2E_REGION.formattedAddress,
+      street: null,
+      houseNumber: null,
+      postalCode: null,
+      city: null,
+      countryCode: "DE",
+      latitude: M1_06_E2E_REGION.latitude,
+      longitude: M1_06_E2E_REGION.longitude,
+      geocodeSource: "regional_default",
+      precision: "region",
+    };
+  }
   return payload;
 }
 
@@ -670,6 +862,16 @@ async function cleanup(): Promise<unknown[]> {
     }
     runningChildren.clear();
 
+    const providerStub = geoapifyStub;
+    geoapifyStub = undefined;
+    if (providerStub) {
+      try {
+        await closeLocalServer(providerStub.server);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
     const snapshot = nextEnvSnapshot;
     nextEnvSnapshot = undefined;
     if (snapshot) {
@@ -722,8 +924,8 @@ function safeMessage(error: unknown): string {
 
 async function main(): Promise<number> {
   nextEnvSnapshot = snapshotFile(NEXT_ENV_PATH);
-  console.log("[e2e] Isolierte M1-05-Testumgebung wird vorbereitet …");
-  privateDirectory = mkdtempSync(join(tmpdir(), "energie-saas-m1-05-e2e-"));
+  console.log("[e2e] Isolierte M1-06-Testumgebung wird vorbereitet …");
+  privateDirectory = mkdtempSync(join(tmpdir(), "energie-saas-m1-06-e2e-"));
   chmodSync(privateDirectory, PRIVATE_DIRECTORY_MODE);
   const migrationLogPath = join(privateDirectory, "migration.log");
   const serverLogPath = join(privateDirectory, "next.log");
@@ -735,6 +937,10 @@ async function main(): Promise<number> {
   embedded = await startEmbeddedPostgres();
   throwIfInterrupted();
   await runMigration(embedded.url, migrationLogPath);
+  throwIfInterrupted();
+
+  const providerStub = await startGeoapifyContractStub();
+  geoapifyStub = providerStub;
   throwIfInterrupted();
 
   const seedData = createSeedData();
@@ -762,6 +968,7 @@ async function main(): Promise<number> {
         embedded.url,
         authSecret,
         [mainCredential, foreignCredential],
+        providerStub,
         readyFile,
         readyToken,
       ),
@@ -775,7 +982,7 @@ async function main(): Promise<number> {
     server,
     embedded.url,
     mainCredential,
-    intakePayload(seedData.mainContactName, `main-${randomUUID()}`),
+    intakePayload(seedData.mainContactName, `main-${randomUUID()}`, true),
   );
   const foreignLead = await submitSignedLead(
     server,
@@ -797,8 +1004,14 @@ async function main(): Promise<number> {
     foreignContactName: seedData.foreignContactName,
   });
 
-  console.log("[e2e] Chromium prüft Golden Flow, Viewer-Grenze, Fremdmandant und Axe …");
-  return runPlaywright(statePath, playwrightOutputPath, server.baseURL);
+  console.log("[e2e] Chromium prüft M1-06-Golden-Flow, Viewer-Grenze, Fremdmandant und Axe …");
+  const playwrightExitCode = await runPlaywright(statePath, playwrightOutputPath, server.baseURL);
+  if (!geoapifyContractWasExercised(providerStub)) {
+    console.error("[e2e] Der lokale Geoapify-Vertrag wurde nicht exakt einmal vollständig durchlaufen.");
+    return 1;
+  }
+  console.log("[e2e] Lokaler Geoapify-Vertrag: 1 Suche, 1 Detailauflösung, 0 Abweichungen.");
+  return playwrightExitCode;
 }
 
 // Listener bis zum abgeschlossenen finally behalten: ein zweites Terminalsignal

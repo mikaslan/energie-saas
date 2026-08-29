@@ -5,6 +5,7 @@ import {
   doublePrecision,
   foreignKey,
   index,
+  integer,
   pgTable,
   smallint,
   text,
@@ -45,9 +46,14 @@ export const site = pgTable("site", {
   lng: doublePrecision("lng"),
   geocodeSource: text("geocode_source"),
   geocodePrecision: text("geocode_precision"),
+  geocodePlaceId: text("geocode_place_id"),
   addressFollowUpRequired: boolean("address_follow_up_required").notNull().default(false),
+  addressRevision: integer("address_revision").notNull().default(1),
   pinConfirmed: boolean("pin_confirmed").notNull().default(false), // Blaupause F1.3: Pin zählt fürs Planen
+  pinConfirmedAddressRevision: integer("pin_confirmed_address_revision"),
+  pinAdjusted: boolean("pin_adjusted").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("site_ws_idx").on(t.workspaceId),
   uniqueIndex("site_ws_id_uq").on(t.workspaceId, t.id),
@@ -66,9 +72,51 @@ export const site = pgTable("site", {
     "site_geocode_precision_ck",
     sql`${t.geocodePrecision} is null or ${t.geocodePrecision} in ('house', 'street', 'locality', 'region')`,
   ),
+  check("site_address_revision_ck", sql`${t.addressRevision} > 0`),
+  check(
+    "site_pin_adjusted_ck",
+    sql`(
+      ${t.pinAdjusted} = false
+      or (
+        ${t.addressMode} = 'selected'
+        and ${t.geocodeSource} = 'geoapify'
+        and ${t.geocodePrecision} = 'house'
+        and ${t.geocodePlaceId} is not null
+      )
+    ) is true`,
+  ),
+  check(
+    "site_pin_confirmation_revision_ck",
+    sql`(
+      (${t.pinConfirmed} = false and ${t.pinConfirmedAddressRevision} is null)
+      or (
+        ${t.pinConfirmed} = true
+        and ${t.pinConfirmedAddressRevision} is not null
+        and ${t.pinConfirmedAddressRevision} = ${t.addressRevision}
+        and ${t.addressMode} = 'selected'
+        and ${t.addressFollowUpRequired} = false
+        and ${t.formattedAddress} is not null
+        and length(btrim(${t.formattedAddress})) between 1 and 200
+        and ${t.street} is not null
+        and length(btrim(${t.street})) between 1 and 200
+        and ${t.houseNumber} is not null
+        and length(btrim(${t.houseNumber})) between 1 and 30
+        and ${t.postalCode} is not null
+        and ${t.postalCode} ~ '^[0-9]{5}$'
+        and ${t.city} is not null
+        and length(btrim(${t.city})) between 1 and 200
+        and ${t.country} = 'DE'
+        and ${t.lat} is not null
+        and ${t.lat} between -90 and 90
+        and ${t.lng} is not null
+        and ${t.lng} between -180 and 180
+        and ${t.geocodePrecision} = 'house'
+      )
+    ) is true`,
+  ),
   check(
     "site_intake_address_shape_ck",
-    sql`${t.addressMode} = 'legacy' or (
+    sql`(${t.addressMode} = 'legacy' and ${t.geocodePlaceId} is null) or (
       ${t.contactId} is not null
       and ${t.formattedAddress} is not null
       and length(btrim(${t.formattedAddress})) between 1 and 200
@@ -93,8 +141,15 @@ export const site = pgTable("site", {
           and ${t.postalCode} ~ '^[0-9]{5}$'
           and ${t.city} is not null
           and length(btrim(${t.city})) between 1 and 200
-          and ${t.geocodeSource} = 'photon'
-          and ${t.geocodePrecision} = 'house')
+          and ${t.geocodePrecision} = 'house'
+          and (
+            (${t.geocodeSource} = 'photon' and ${t.geocodePlaceId} is null)
+            or (
+              ${t.geocodeSource} = 'geoapify'
+              and ${t.geocodePlaceId} is not null
+              and length(btrim(${t.geocodePlaceId})) between 1 and 300
+            )
+          ))
         or
         (${t.addressMode} = 'regional_estimate'
           and ${t.addressFingerprint} is null
@@ -105,8 +160,9 @@ export const site = pgTable("site", {
           and ${t.postalCode} is null
           and ${t.city} is null
           and ${t.geocodeSource} = 'regional_default'
+          and ${t.geocodePlaceId} is null
           and ${t.geocodePrecision} = 'region')
       )
-    )`,
+    ) is true`,
   ),
 ]);

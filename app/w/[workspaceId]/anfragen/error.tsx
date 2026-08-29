@@ -1,6 +1,6 @@
 "use client";
 
-export default function RequestsError({ reset }: { error: Error; reset: () => void }) {
+export default function RequestsError({ retry }: { error: Error; retry: () => void }) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl items-center px-6 py-16">
       <section className="w-full rounded-lg border border-rose-200 bg-white p-8 shadow-sm" role="alert">
@@ -11,7 +11,7 @@ export default function RequestsError({ reset }: { error: Error; reset: () => vo
         </p>
         <button
           type="button"
-          onClick={reset}
+          onClick={retry}
           className="mt-6 min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           Erneut versuchen

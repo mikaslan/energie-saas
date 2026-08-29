@@ -9,6 +9,10 @@ import { createSite, PermissionDeniedError } from "@/modules/sites";
 const ws = randomUUID();
 const editorCtx = { workspaceId: ws, actor: "test-user", role: "editor" as const, capabilities: {}, featureFlags: {} };
 const viewerCtx = { ...editorCtx, role: "viewer" as const };
+const externalCtx = {
+  ...editorCtx,
+  capabilities: { external_only: true },
+};
 
 beforeAll(async () => {
   await withTenantOn(testPool, ws, (tx) => tx.execute(sql`insert into workspace (id, name) values (${ws}::uuid, 'site')`));
@@ -17,10 +21,72 @@ beforeAll(async () => {
 describe("sites-Service (Referenzmuster)", () => {
   it("legt Site an und emittiert site.created", async () => {
     const { id } = await withTenantOn(testPool, ws, (tx) =>
-      createSite(tx, editorCtx, { city: "Heidelberg", lat: 49.4, lng: 8.7, pinConfirmed: true }));
+      createSite(tx, editorCtx, { city: "Heidelberg", lat: 49.4, lng: 8.7 }));
     const ev = await withTenantOn(testPool, ws, (tx) =>
       tx.execute(sql`select 1 from domain_events where aggregate_id = ${id}::uuid and event_type = 'site.created'`));
     expect(ev.rows).toHaveLength(1);
+  });
+
+  it("ignoriert einen eingeschleusten pinConfirmed-Wert und legt Legacy-Sites immer unbestätigt an", async () => {
+    const crafted = {
+      city: "Heidelberg",
+      lat: 49.4,
+      lng: 8.7,
+      pinConfirmed: true,
+    } as Parameters<typeof createSite>[2] & { pinConfirmed: boolean };
+
+    const { id } = await withTenantOn(testPool, ws, (tx) =>
+      createSite(tx, editorCtx, crafted));
+    const row = await withTenantOn(testPool, ws, (tx) =>
+      tx.execute<{ pin_confirmed: boolean; [k: string]: unknown }>(sql`
+        select pin_confirmed from site where id = ${id}::uuid
+      `));
+
+    expect(row.rows).toEqual([{ pin_confirmed: false }]);
+  });
+
+  it("external_only bleibt bis zu einer verifizierten Zuweisung fail-closed", async () => {
+    const before = await withTenantOn(testPool, ws, (tx) => tx.execute<{
+      sites: number;
+      events: number;
+      audits: number;
+      [key: string]: unknown;
+    }>(sql`
+      select
+        (select count(*)::int from site) as sites,
+        (select count(*)::int from domain_events
+          where event_type = 'site.created'
+            and payload->>'siteId' is not null) as events,
+        (select count(*)::int from audit_log
+          where action = 'project.write'
+            and resource = 'site'
+            and allowed = true) as audits
+    `));
+
+    await expect(withTenantOn(testPool, ws, (tx) =>
+      createSite(tx, externalCtx, { city: "Nicht zugewiesen" })))
+      .rejects.toMatchObject({
+        name: "PermissionDeniedError",
+        reason: "external_only_without_assignment",
+      });
+
+    const after = await withTenantOn(testPool, ws, (tx) => tx.execute<{
+      sites: number;
+      events: number;
+      audits: number;
+      [key: string]: unknown;
+    }>(sql`
+      select
+        (select count(*)::int from site) as sites,
+        (select count(*)::int from domain_events
+          where event_type = 'site.created'
+            and payload->>'siteId' is not null) as events,
+        (select count(*)::int from audit_log
+          where action = 'project.write'
+            and resource = 'site'
+            and allowed = true) as audits
+    `));
+    expect(after.rows[0]).toEqual(before.rows[0]);
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -38,7 +104,6 @@ describe("sites-Service (Referenzmuster)", () => {
       city: "Heidelberg",
       lat: 49.4093,
       lng: 8.6939,
-      pinConfirmed: true,
     };
     const { id } = await withTenantOn(testPool, ws, (tx) => createSite(tx, editorCtx, adresse));
 

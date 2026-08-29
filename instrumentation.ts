@@ -33,6 +33,55 @@ type ScrubbableEvent = {
   };
 };
 
+type ScrubbableBreadcrumb = {
+  category?: string;
+  type?: string;
+  message?: string;
+  data?: Record<string, unknown>;
+};
+
+const SENSITIVE_GEOCODING_PATHS = new Set([
+  "/v1/geocode/autocomplete",
+  "/v2/place-details",
+]);
+
+export function isSensitiveGeocodingUrl(value: string): boolean {
+  if ([...SENSITIVE_GEOCODING_PATHS].some((path) => value.includes(path))) {
+    return true;
+  }
+  try {
+    const url = new URL(value, "http://instrumentation.invalid");
+    return SENSITIVE_GEOCODING_PATHS.has(url.pathname.replace(/\/$/, ""));
+  } catch {
+    // Wenn Sentry oder eine Laufzeit eine nicht standardkonforme URL liefert,
+    // gilt fuer die beiden Providerpfade weiterhin fail-closed.
+    return false;
+  }
+}
+
+export function scrubSensitiveBreadcrumb<T extends ScrubbableBreadcrumb>(
+  breadcrumb: T,
+): T | null {
+  if (breadcrumb.category !== "http" && breadcrumb.type !== "http") {
+    return breadcrumb;
+  }
+
+  const candidates = [breadcrumb.data?.url, breadcrumb.message];
+  if (
+    candidates.some(
+      (candidate) =>
+        typeof candidate === "string" && isSensitiveGeocodingUrl(candidate),
+    )
+  ) {
+    // Den gesamten Breadcrumb verwerfen: Sentry legt Queryparameter separat in
+    // data["http.query"] ab. Dort stehen bei Geoapify Adresse bzw. Place-ID und
+    // der API-Key; partielles Redigieren waere daher zu fehleranfaellig.
+    return null;
+  }
+
+  return breadcrumb;
+}
+
 function withoutRechnerQuery(value: string): string | undefined {
   try {
     const url = new URL(value, "http://instrumentation.invalid");
@@ -86,6 +135,20 @@ export async function register() {
     // Nur Fehler, kein Performance-Tracing — hält den Free-Plan (5k Events) frei.
     tracesSampleRate: 0,
     sendDefaultPii: false,
+    integrations(defaultIntegrations) {
+      return defaultIntegrations.map((integration) =>
+        integration.name === "Http"
+          ? Sentry.httpIntegration({
+              disableIncomingRequestSpans: true,
+              ignoreOutgoingRequests: (url) =>
+                isSensitiveGeocodingUrl(url),
+            })
+          : integration,
+      );
+    },
+    beforeBreadcrumb(breadcrumb) {
+      return scrubSensitiveBreadcrumb(breadcrumb);
+    },
     beforeSend(event) {
       return scrubSensitiveRequestData(event);
     },

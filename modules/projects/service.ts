@@ -1,7 +1,15 @@
 import { sql } from "drizzle-orm";
+import {
+  ADDRESS_FINGERPRINT_VERSION,
+  addressFingerprint,
+} from "@/lib/address-fingerprint";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { writeAudit } from "@/lib/audit";
+import {
+  AddressCandidateSchema,
+  type AddressCandidate,
+} from "@/lib/integrations/geocoding/contract";
 import {
   can,
   PermissionDeniedError,
@@ -30,6 +38,9 @@ export type ProjectTriageDetail = {
     precision: string | null;
     addressFollowUpRequired: boolean;
     pinConfirmed: boolean;
+    pinAdjusted: boolean;
+    addressRevision: number;
+    geocodeSource: string | null;
     latitude: number | null;
     longitude: number | null;
   };
@@ -66,6 +77,7 @@ export type ProjectTriageDetail = {
   permissions: {
     canMoveCard: boolean;
     canConfirmPin: boolean;
+    canCorrectAddress: boolean;
   };
 };
 
@@ -86,6 +98,9 @@ type DetailRow = {
   geocode_precision: string | null;
   address_follow_up_required: boolean;
   pin_confirmed: boolean;
+  pin_adjusted: boolean;
+  address_revision: number;
+  geocode_source: string | null;
   lat: number | null;
   lng: number | null;
   source_key: string;
@@ -107,6 +122,7 @@ type DetailRow = {
   amortization_years: number | string | null;
   dedupe_review_required: boolean;
   catalog_resolution_status: string;
+  referencing_projects: number;
   [key: string]: unknown;
 };
 
@@ -117,6 +133,8 @@ type PinRow = {
   geocode_precision: string | null;
   address_follow_up_required: boolean;
   pin_confirmed: boolean;
+  pin_confirmed_address_revision: number | null;
+  address_revision: number;
   street: string | null;
   house_number: string | null;
   postal_code: string | null;
@@ -125,6 +143,76 @@ type PinRow = {
   lng: number | null;
   [key: string]: unknown;
 };
+
+type AddressCorrectionRow = {
+  project_id: string;
+  site_id: string;
+  contact_id: string;
+  address_mode: string;
+  address_follow_up_required: boolean;
+  pin_confirmed: boolean;
+  address_revision: number;
+  [key: string]: unknown;
+};
+
+export type ProjectAddressCorrectionContext = {
+  projectId: string;
+  siteId: string;
+  addressRevision: number;
+  editable: boolean;
+};
+
+export type CorrectProjectSiteAddressInput = {
+  projectId: string;
+  expectedAddressRevision: number;
+  resolvedAddress: AddressCandidate;
+  pin: {
+    latitude: number;
+    longitude: number;
+  };
+};
+
+export class SiteAddressNotEditableError extends Error {
+  constructor() {
+    super("site address cannot be corrected from the current state");
+    this.name = "SiteAddressNotEditableError";
+  }
+}
+
+export class SiteAddressConflictError extends Error {
+  constructor() {
+    super("site address revision is stale");
+    this.name = "SiteAddressConflictError";
+  }
+}
+
+export class SiteAddressCollisionError extends Error {
+  constructor() {
+    super("another site already uses this contact address");
+    this.name = "SiteAddressCollisionError";
+  }
+}
+
+export class SiteAddressSharedError extends Error {
+  constructor() {
+    super("site is referenced by more than one project");
+    this.name = "SiteAddressSharedError";
+  }
+}
+
+export class SitePinOutOfRangeError extends Error {
+  constructor() {
+    super("site pin is outside the permitted address radius");
+    this.name = "SitePinOutOfRangeError";
+  }
+}
+
+export class SiteAddressInvalidError extends Error {
+  constructor() {
+    super("resolved site address is invalid");
+    this.name = "SiteAddressInvalidError";
+  }
+}
 
 export class SitePinNotConfirmableError extends Error {
   constructor() {
@@ -177,8 +265,9 @@ export async function getProjectTriageDetail(
            c.display_name as contact_name, c.email_primary as email,
            c.phone_raw as phone,
            s.id as site_id, s.formatted_address, s.address_mode,
-           s.geocode_precision, s.address_follow_up_required,
-           s.pin_confirmed, s.lat, s.lng,
+           s.geocode_source, s.geocode_precision,
+           s.address_follow_up_required, s.pin_confirmed,
+           s.pin_adjusted, s.address_revision, s.lat, s.lng,
            r.submitted_at, r.calculator_engine,
            r.producer_git_revision as producer_revision,
            pr.requirements->>'branch' as requirements_branch,
@@ -204,7 +293,11 @@ export async function getProjectTriageDetail(
              as amortization_years,
            coalesce(p.dedupe_review_required, false)
              or coalesce(c.dedupe_review_required, false) as dedupe_review_required,
-           p.catalog_resolution_status
+           p.catalog_resolution_status,
+           (select count(*)::int
+              from project reference
+             where reference.workspace_id = p.workspace_id
+               and reference.site_id = p.site_id) as referencing_projects
     from project p
     join contact c
       on c.workspace_id = p.workspace_id and c.id = p.contact_id
@@ -256,6 +349,9 @@ export async function getProjectTriageDetail(
       precision: row.geocode_precision,
       addressFollowUpRequired: row.address_follow_up_required,
       pinConfirmed: row.pin_confirmed,
+      pinAdjusted: row.pin_adjusted,
+      addressRevision: row.address_revision,
+      geocodeSource: row.geocode_source,
       latitude: row.lat,
       longitude: row.lng,
     },
@@ -296,21 +392,240 @@ export async function getProjectTriageDetail(
         && row.geocode_precision === "house"
         && !row.address_follow_up_required
         && !row.pin_confirmed,
+      canCorrectAddress: canWrite
+        && row.address_mode === "regional_estimate"
+        && row.address_follow_up_required
+        && !row.pin_confirmed
+        && row.referencing_projects === 1,
     },
   };
+}
+
+function validRevision(value: number): boolean {
+  return Number.isInteger(value) && value > 0;
+}
+
+function validCoordinate(value: number, minimum: number, maximum: number): boolean {
+  return Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+
+const EARTH_RADIUS_METERS = 6_371_008.8;
+const MAXIMUM_PIN_DISTANCE_METERS = 150;
+const PIN_ADJUSTED_THRESHOLD_METERS = 0.5;
+
+function radians(value: number): number {
+  return value * (Math.PI / 180);
+}
+
+function distanceMeters(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+): number {
+  const fromLatitude = radians(from.latitude);
+  const toLatitude = radians(to.latitude);
+  const latitudeDelta = toLatitude - fromLatitude;
+  const longitudeDelta = radians(to.longitude - from.longitude);
+  const haversine = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(fromLatitude) * Math.cos(toLatitude)
+    * Math.sin(longitudeDelta / 2) ** 2;
+
+  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.min(1, Math.sqrt(haversine)));
+}
+
+function isAddressFingerprintViolation(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { code?: unknown; constraint?: unknown };
+  return candidate.code === "23505"
+    && candidate.constraint === "site_ws_contact_address_fingerprint_uq";
+}
+
+function editableAddressState(row: AddressCorrectionRow): boolean {
+  return row.address_mode === "regional_estimate"
+    && row.address_follow_up_required
+    && !row.pin_confirmed;
+}
+
+export async function getProjectAddressCorrectionContext(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+): Promise<ProjectAddressCorrectionContext | null> {
+  requireProjectAccess(ctx, "project.write", "site_address");
+
+  const result = await tx.execute<AddressCorrectionRow & {
+    referencing_projects: number;
+  }>(sql`
+    select p.id as project_id, p.site_id, p.contact_id,
+           s.address_mode, s.address_follow_up_required,
+           s.pin_confirmed, s.address_revision,
+           (select count(*)::int
+              from project reference
+             where reference.workspace_id = p.workspace_id
+               and reference.site_id = p.site_id) as referencing_projects
+    from project p
+    join site s
+      on s.workspace_id = p.workspace_id and s.id = p.site_id
+    where p.workspace_id = ${ctx.workspaceId}::uuid
+      and p.id = ${projectId}::uuid
+    limit 1
+  `);
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    projectId: row.project_id,
+    siteId: row.site_id,
+    addressRevision: row.address_revision,
+    editable: editableAddressState(row) && row.referencing_projects === 1,
+  };
+}
+
+export async function correctProjectSiteAddress(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CorrectProjectSiteAddressInput,
+): Promise<{ siteId: string; addressRevision: number }> {
+  requireProjectAccess(ctx, "project.write", "site_address");
+  if (!validRevision(input.expectedAddressRevision)) {
+    throw new SiteAddressConflictError();
+  }
+
+  const parsedAddress = AddressCandidateSchema.safeParse(input.resolvedAddress);
+  if (!parsedAddress.success) throw new SiteAddressInvalidError();
+  if (
+    !validCoordinate(input.pin.latitude, -90, 90)
+    || !validCoordinate(input.pin.longitude, -180, 180)
+  ) {
+    throw new SitePinOutOfRangeError();
+  }
+  const resolvedAddress = parsedAddress.data;
+  const pinDistance = distanceMeters(resolvedAddress, input.pin);
+  // One micrometre of tolerance keeps the mathematically inclusive boundary
+  // stable across floating-point implementations without widening the rule.
+  if (pinDistance > MAXIMUM_PIN_DISTANCE_METERS + 0.000_001) {
+    throw new SitePinOutOfRangeError();
+  }
+
+  // Locking the contact serializes fingerprint decisions across different
+  // regional Sites of the same customer. FOR UPDATE on the Site also blocks
+  // a concurrent FK reference until the shared-site check has completed.
+  const locked = await tx.execute<AddressCorrectionRow>(sql`
+    select p.id as project_id, p.site_id, p.contact_id,
+           s.address_mode, s.address_follow_up_required,
+           s.pin_confirmed, s.address_revision
+    from project p
+    join site s
+      on s.workspace_id = p.workspace_id and s.id = p.site_id
+    join contact c
+      on c.workspace_id = p.workspace_id and c.id = p.contact_id
+    where p.workspace_id = ${ctx.workspaceId}::uuid
+      and p.id = ${input.projectId}::uuid
+    for update of p, s, c
+  `);
+  const row = locked.rows[0];
+  if (!row) throw new SiteAddressNotEditableError();
+  if (row.address_revision !== input.expectedAddressRevision) {
+    throw new SiteAddressConflictError();
+  }
+  if (!editableAddressState(row)) throw new SiteAddressNotEditableError();
+
+  const references = await tx.execute<{ total: number; [key: string]: unknown }>(sql`
+    select count(*)::int as total
+    from project
+    where workspace_id = ${ctx.workspaceId}::uuid
+      and site_id = ${row.site_id}::uuid
+  `);
+  if (references.rows[0]?.total !== 1) throw new SiteAddressSharedError();
+
+  const fingerprint = addressFingerprint({
+    countryCode: resolvedAddress.countryCode,
+    postalCode: resolvedAddress.postalCode,
+    city: resolvedAddress.city,
+    street: resolvedAddress.street,
+    houseNumber: resolvedAddress.houseNumber,
+  });
+  const collision = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id
+    from site
+    where workspace_id = ${ctx.workspaceId}::uuid
+      and contact_id = ${row.contact_id}::uuid
+      and id <> ${row.site_id}::uuid
+      and address_mode = 'selected'
+      and address_fingerprint_version = ${ADDRESS_FINGERPRINT_VERSION}
+      and address_fingerprint = ${fingerprint}
+    limit 1
+  `);
+  if (collision.rows.length > 0) throw new SiteAddressCollisionError();
+
+  const nextRevision = row.address_revision + 1;
+  try {
+    await tx.execute(sql`
+      update site
+      set formatted_address = ${resolvedAddress.formattedAddress},
+          address_fingerprint = ${fingerprint},
+          address_fingerprint_version = ${ADDRESS_FINGERPRINT_VERSION},
+          address_mode = 'selected',
+          street = ${resolvedAddress.street},
+          house_number = ${resolvedAddress.houseNumber},
+          postal_code = ${resolvedAddress.postalCode},
+          city = ${resolvedAddress.city},
+          country = ${resolvedAddress.countryCode},
+          lat = ${input.pin.latitude},
+          lng = ${input.pin.longitude},
+          geocode_source = ${resolvedAddress.provider},
+          geocode_place_id = ${resolvedAddress.placeId},
+          geocode_precision = ${resolvedAddress.precision},
+          address_follow_up_required = false,
+          pin_confirmed = false,
+          pin_confirmed_address_revision = null,
+          pin_adjusted = ${pinDistance > PIN_ADJUSTED_THRESHOLD_METERS},
+          address_revision = ${nextRevision},
+          updated_at = now()
+      where workspace_id = ${ctx.workspaceId}::uuid
+        and id = ${row.site_id}::uuid
+    `);
+  } catch (error) {
+    if (isAddressFingerprintViolation(error)) throw new SiteAddressCollisionError();
+    throw error;
+  }
+
+  const technicalDetails = {
+    siteId: row.site_id,
+    projectId: row.project_id,
+    addressRevision: nextRevision,
+  };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "site",
+    aggregateId: row.site_id,
+    eventType: "site.address_corrected",
+    actor: ctx.actor,
+    payload: technicalDetails,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "project.write",
+    resource: "site_address",
+    allowed: true,
+    details: technicalDetails,
+  });
+
+  return { siteId: row.site_id, addressRevision: nextRevision };
 }
 
 export async function confirmProjectSitePin(
   tx: TenantTx,
   ctx: ServiceCtx,
-  input: { projectId: string },
+  input: { projectId: string; expectedAddressRevision: number },
 ): Promise<{ siteId: string; confirmed: true; changed: boolean }> {
   requireProjectAccess(ctx, "project.write", "site_pin");
 
   const result = await tx.execute<PinRow>(sql`
     select p.id as project_id, s.id as site_id, s.address_mode,
            s.geocode_precision, s.address_follow_up_required,
-           s.pin_confirmed, s.street, s.house_number, s.postal_code,
+           s.pin_confirmed, s.pin_confirmed_address_revision,
+           s.address_revision, s.street, s.house_number, s.postal_code,
            s.city, s.lat, s.lng
     from project p
     join site s
@@ -321,7 +636,14 @@ export async function confirmProjectSitePin(
   `);
   const row = result.rows[0];
   if (!row) throw new SitePinNotConfirmableError();
-  if (row.pin_confirmed) {
+  if (!validRevision(input.expectedAddressRevision)
+    || row.address_revision !== input.expectedAddressRevision) {
+    throw new SiteAddressConflictError();
+  }
+  if (
+    row.pin_confirmed
+    && row.pin_confirmed_address_revision === row.address_revision
+  ) {
     return { siteId: row.site_id, confirmed: true, changed: false };
   }
   if (
@@ -340,7 +662,9 @@ export async function confirmProjectSitePin(
 
   await tx.execute(sql`
     update site
-    set pin_confirmed = true
+    set pin_confirmed = true,
+        pin_confirmed_address_revision = ${row.address_revision},
+        updated_at = now()
     where workspace_id = ${ctx.workspaceId}::uuid
       and id = ${row.site_id}::uuid
   `);
@@ -350,7 +674,11 @@ export async function confirmProjectSitePin(
     aggregateId: row.site_id,
     eventType: "site.pin_confirmed",
     actor: ctx.actor,
-    payload: { siteId: row.site_id, projectId: row.project_id },
+    payload: {
+      siteId: row.site_id,
+      projectId: row.project_id,
+      addressRevision: row.address_revision,
+    },
   });
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId,
@@ -358,7 +686,11 @@ export async function confirmProjectSitePin(
     action: "project.write",
     resource: "site_pin",
     allowed: true,
-    details: { siteId: row.site_id, projectId: row.project_id },
+    details: {
+      siteId: row.site_id,
+      projectId: row.project_id,
+      addressRevision: row.address_revision,
+    },
   });
 
   return { siteId: row.site_id, confirmed: true, changed: true };

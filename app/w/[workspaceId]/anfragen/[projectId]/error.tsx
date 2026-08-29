@@ -1,10 +1,10 @@
 "use client";
 
 export default function ProjectDetailError({
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
   return (
     <main className="mx-auto flex min-h-[70vh] w-full max-w-3xl items-center px-6 py-12">
@@ -19,7 +19,7 @@ export default function ProjectDetailError({
         </p>
         <button
           type="button"
-          onClick={reset}
+          onClick={retry}
           className="mt-6 min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
         >
           Erneut versuchen

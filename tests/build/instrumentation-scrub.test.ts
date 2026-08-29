@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { scrubSensitiveRequestData } from "@/instrumentation";
+import {
+  isSensitiveGeocodingUrl,
+  scrubSensitiveBreadcrumb,
+  scrubSensitiveRequestData,
+} from "@/instrumentation";
 
 describe("Sentry Request-Scrubbing", () => {
   it("entfernt Rechner-PII, Signaturheader und Querystrings", () => {
@@ -35,5 +39,46 @@ describe("Sentry Request-Scrubbing", () => {
       router_kind: "App Router",
     });
     expect(JSON.stringify(event)).not.toContain("geheim");
+  });
+
+  it("verwirft Geoapify-Autocomplete-Breadcrumbs mitsamt Query und API-Key", () => {
+    const breadcrumb = scrubSensitiveBreadcrumb({
+      category: "http",
+      type: "http",
+      data: {
+        url: "https://api.geoapify.com/v1/geocode/autocomplete",
+        "http.query": "?text=Geheime+Adresse&apiKey=geheim",
+      },
+    });
+
+    expect(breadcrumb).toBeNull();
+  });
+
+  it("verwirft Place-Details auch bei lokalem Provider-Override", () => {
+    expect(
+      scrubSensitiveBreadcrumb({
+        category: "http",
+        data: {
+          url: "http://127.0.0.1:43123/v2/place-details",
+          "http.query": "?id=geheime-place-id&apiKey=geheim",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("laesst unbeteiligte HTTP-Breadcrumbs unveraendert", () => {
+    const breadcrumb = {
+      category: "http",
+      type: "http",
+      data: { url: "https://example.test/health", "http.query": "?ok=1" },
+    };
+
+    expect(scrubSensitiveBreadcrumb(breadcrumb)).toBe(breadcrumb);
+  });
+
+  it("erkennt Providerpfade auch in nicht standardkonformen URL-Strings", () => {
+    expect(
+      isSensitiveGeocodingUrl("not a url :: /v1/geocode/autocomplete :: secret"),
+    ).toBe(true);
   });
 });

@@ -40,7 +40,6 @@ export type CreateSiteInput = {
   country?: string;
   lat?: number;
   lng?: number;
-  pinConfirmed?: boolean;
 };
 
 export async function createSite(tx: TenantTx, ctx: ServiceCtx, input: CreateSiteInput): Promise<{ id: string }> {
@@ -48,14 +47,31 @@ export async function createSite(tx: TenantTx, ctx: ServiceCtx, input: CreateSit
     // KEIN writeAudit hier — siehe Boundary-Kommentar oben.
     throw new PermissionDeniedError("project.write", "site", undefined, ctx.actor);
   }
+  if (ctx.capabilities.external_only === true) {
+    throw new PermissionDeniedError(
+      "project.write",
+      "site",
+      "external_only_without_assignment",
+      ctx.actor,
+    );
+  }
 
-  // Reihenfolge (Codex-Review, Minor): workspaceId kommt ZULETZT. TypeScript
-  // entfernt zur Laufzeit keine zusätzlichen JSON-Felder — bei
-  // `{ workspaceId, ...input }` hätte ein aus dem Request durchgereichtes
-  // input.workspaceId den verifizierten Wert überschrieben. RLS hätte das im
-  // korrekten Tenant-Kontext zwar abgefangen, aber als vermeidbarer
-  // Fehlerpfad statt als sauberer Insert.
-  const [row] = await tx.insert(site).values({ ...input, workspaceId: ctx.workspaceId }).returning({ id: site.id });
+  // Explizites Mapping ist zugleich Mass-Assignment-Schutz: strukturell
+  // eingeschleuste Felder (insbesondere pinConfirmed/workspaceId) werden
+  // nicht persistiert. Legacy-Sites beginnen immer unbestätigt; die einzige
+  // Bestätigungsgrenze ist die projektgebundene revisionsgeprüfte Fachaktion.
+  const [row] = await tx.insert(site).values({
+    workspaceId: ctx.workspaceId,
+    label: input.label,
+    street: input.street,
+    houseNumber: input.houseNumber,
+    postalCode: input.postalCode,
+    city: input.city,
+    country: input.country,
+    lat: input.lat,
+    lng: input.lng,
+    pinConfirmed: false,
+  }).returning({ id: site.id });
 
   // ═══════════════════════════════════════════════════════════════════
   // Codex-Review #12 (DSGVO): payload trug vorher `input` — also Straße,

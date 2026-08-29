@@ -11,8 +11,16 @@ describe("M1-05 Modulgrenzen", () => {
       "moveProjectCard",
     ]);
     expect(Object.keys(projects).sort()).toEqual([
+      "SiteAddressCollisionError",
+      "SiteAddressConflictError",
+      "SiteAddressInvalidError",
+      "SiteAddressNotEditableError",
+      "SiteAddressSharedError",
       "SitePinNotConfirmableError",
+      "SitePinOutOfRangeError",
       "confirmProjectSitePin",
+      "correctProjectSiteAddress",
+      "getProjectAddressCorrectionContext",
       "getProjectTriageDetail",
     ]);
   });

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
@@ -16,6 +17,10 @@ import {
 } from "./board-client";
 
 const workspaceIdSchema = z.uuid();
+
+export const metadata: Metadata = {
+  title: "Anfragen | WMEE Vertrieb",
+};
 
 const dateFormatter = new Intl.DateTimeFormat("de-DE", {
   day: "2-digit",

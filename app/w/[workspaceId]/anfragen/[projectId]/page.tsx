@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
@@ -8,7 +9,12 @@ import {
   getProjectTriageDetail,
   type ProjectTriageDetail,
 } from "@/modules/projects";
+import { AddressEditor } from "./address-editor";
 import { PinForm } from "./pin-form";
+
+export const metadata: Metadata = {
+  title: "Projektakte | Energie-SaaS",
+};
 
 const routeParamsSchema = z.object({
   workspaceId: z.uuid(),
@@ -341,12 +347,31 @@ export default async function ProjectTriagePage({
                 <DetailItem term="Planungs-Pin">
                   {detail.site.pinConfirmed ? "Bestätigt" : "Nicht bestätigt"}
                 </DetailItem>
+                <DetailItem term="Adressrevision" numeric>
+                  {detail.site.addressRevision}
+                </DetailItem>
+                <DetailItem term="Pinlage">
+                  {detail.site.addressMode !== "selected"
+                    ? "Noch nicht hausgenau bewertet"
+                    : detail.site.pinAdjusted
+                      ? "Gegenüber dem Hauspunkt angepasst"
+                      : "Am ermittelten Hauspunkt"}
+                </DetailItem>
                 <DetailItem term="Adressprüfung">
                   {detail.site.addressFollowUpRequired
                     ? "Nachbearbeitung erforderlich"
                     : "Keine Nachbearbeitung markiert"}
                 </DetailItem>
               </dl>
+              {detail.permissions.canCorrectAddress ? (
+                <div className="mt-5 border-t border-slate-200 pt-5">
+                  <AddressEditor
+                    workspaceId={workspaceId}
+                    projectId={projectId}
+                    addressRevision={detail.site.addressRevision}
+                  />
+                </div>
+              ) : null}
             </Section>
 
             <Section title="Bedarf">
@@ -443,7 +468,11 @@ export default async function ProjectTriagePage({
 
             <Section title="Standortfreigabe">
               {detail.permissions.canConfirmPin ? (
-                <PinForm workspaceId={workspaceId} projectId={projectId} />
+                <PinForm
+                  workspaceId={workspaceId}
+                  projectId={projectId}
+                  addressRevision={detail.site.addressRevision}
+                />
               ) : !detail.permissions.canMoveCard ? (
                 <div
                   role="status"

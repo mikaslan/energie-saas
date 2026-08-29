@@ -67,6 +67,7 @@
     "react-pdf": "^10.5.0",
     "recharts": "^3.10.1",
     "resend": "^6.24.0",
+    "server-only": "0.0.1",
     "signature_pad": "^5.1.4",
     "zod": "^4.4.3"
   },

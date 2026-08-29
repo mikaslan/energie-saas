@@ -10,7 +10,7 @@ if (!baseURL) {
 const parsedBaseURL = new URL(baseURL);
 if (
   parsedBaseURL.protocol !== "http:"
-  || parsedBaseURL.hostname !== "127.0.0.1"
+  || parsedBaseURL.hostname !== "localhost"
   || parsedBaseURL.pathname !== "/"
   || parsedBaseURL.search !== ""
   || parsedBaseURL.hash !== ""

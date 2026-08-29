@@ -11,7 +11,7 @@ import {
 import { createServer, type RequestListener, type Server } from "node:http";
 import { isAbsolute, resolve } from "node:path";
 
-const HOST = "127.0.0.1";
+const HOST = "localhost";
 const READY_ENDPOINT = "/__m1_05_e2e_ready";
 const PRIVATE_FILE_MODE = 0o600;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u;

@@ -424,7 +424,11 @@ describe("M1-05 Projektakte und bewusste Pin-Bestätigung", () => {
     );
     expect(detail?.calculatorEstimate.integrity).toBe("client_reported_unverified");
     expect(detail?.calculatorEstimate.priceSource).toBe("market_estimate");
-    expect(detail?.permissions).toEqual({ canMoveCard: false, canConfirmPin: false });
+    expect(detail?.permissions).toEqual({
+      canMoveCard: false,
+      canConfirmPin: false,
+      canCorrectAddress: false,
+    });
     expect(JSON.stringify(detail)).not.toContain("snapshot\"");
   });
 
@@ -434,9 +438,9 @@ describe("M1-05 Projektakte und bewusste Pin-Bestätigung", () => {
     const ctx = editorCtx(workspaceId);
 
     const first = await withTenantOn(testPool, workspaceId, (tx) =>
-      confirmProjectSitePin(tx, ctx, { projectId }));
+      confirmProjectSitePin(tx, ctx, { projectId, expectedAddressRevision: 1 }));
     const replay = await withTenantOn(testPool, workspaceId, (tx) =>
-      confirmProjectSitePin(tx, ctx, { projectId }));
+      confirmProjectSitePin(tx, ctx, { projectId, expectedAddressRevision: 1 }));
     expect(first).toMatchObject({ confirmed: true, changed: true });
     expect(replay).toMatchObject({ confirmed: true, changed: false });
 
@@ -479,10 +483,16 @@ describe("M1-05 Projektakte und bewusste Pin-Bestätigung", () => {
     const { projectId } = await submit(workspaceId, regional);
 
     await expect(withTenantOn(testPool, workspaceId, (tx) =>
-      confirmProjectSitePin(tx, editorCtx(workspaceId), { projectId })))
+      confirmProjectSitePin(tx, editorCtx(workspaceId), {
+        projectId,
+        expectedAddressRevision: 1,
+      })))
       .rejects.toBeInstanceOf(SitePinNotConfirmableError);
     await expect(withTenantOn(testPool, workspaceId, (tx) =>
-      confirmProjectSitePin(tx, viewerCtx(workspaceId), { projectId })))
+      confirmProjectSitePin(tx, viewerCtx(workspaceId), {
+        projectId,
+        expectedAddressRevision: 1,
+      })))
       .rejects.toBeInstanceOf(PermissionDeniedError);
 
     const state = await withTenantOn(testPool, workspaceId, (tx) => tx.execute<{
