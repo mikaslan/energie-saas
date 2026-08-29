@@ -64,6 +64,20 @@ module.exports = {
       to: { path: "^lib/db/" },
     },
     {
+      name: "tenant-entrypoints-nur-an-der-aufrufgrenze",
+      comment:
+        "withTenant/withAuthorizedTenant/withSessionTenant sind privilegierte " +
+        "Transaktionsgrenzen. Fachmodule bekommen nur TenantTx aus lib/db/types.ts; " +
+        "innerhalb von lib darf ausschließlich lib/action.ts die Einstiege aufrufen. " +
+        "Worker-Systempfade bleiben separat sichtbar und werden pro Job-Klasse geprüft (ADR 0004).",
+      severity: "error",
+      from: {
+        path: "^(modules|lib)/",
+        pathNot: "^(lib/action\\.ts|lib/db/tenant\\.ts)$",
+      },
+      to: { path: "^lib/db/tenant\\.ts$" },
+    },
+    {
       name: "auth-schema-ist-privat",
       comment:
         "modules/ und app/ dürfen das Auth-Schema nicht importieren. auth_user " +

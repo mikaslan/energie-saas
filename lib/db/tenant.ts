@@ -3,16 +3,31 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { getDb } from "./client";
 import * as schema from "./schema";
+import type { TenantTx } from "./types";
 import { PermissionDeniedError, WORKSPACE_ACCESS, isRole, type ServiceCtx } from "../permissions";
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
-export type TenantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export type { ServiceCtx };
 
 async function run<T>(d: Db, workspaceId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
   return d.transaction(async (tx) => {
-    await tx.execute(sql`select set_config('app.workspace_id', ${workspaceId}, true)`);
+    // Membership-DML wird in Migration 0018 bewusst nur unter READ COMMITTED
+    // zugelassen: Ein REPEATABLE-READ-Snapshot könnte nach einer wartenden
+    // Workspace-Sperre eine inzwischen gelöschte Actor-Membership weiter sehen.
+    // Diese Anweisung MUSS deshalb vor der ersten Abfrage stehen und macht den
+    // Vertrag unabhängig von einem sessionweit veränderten Pool-Default.
+    await tx.execute(sql`set local transaction isolation level read committed`);
+
+    // Beide Kontextwerte werden bei JEDEM verwalteten Transaktionsstart
+    // explizit gesetzt. app.actor_id = '' neutralisiert auch einen sessionweit
+    // vergifteten Wert auf einer wiederverwendeten Pool-Verbindung;
+    // app_actor_id() bildet den Leerwert auf NULL ab (Migration 0018).
+    await tx.execute(sql`
+      select
+        set_config('app.actor_id', '', true),
+        set_config('app.workspace_id', ${workspaceId}, true)
+    `);
     return fn(tx);
   });
 }
@@ -23,8 +38,8 @@ async function run<T>(d: Db, workspaceId: string, fn: (tx: TenantTx) => Promise<
 //
 // ACHTUNG (Codex-Review #2): withTenant ALLEIN autorisiert nichts — es
 // behandelt jede übergebene UUID als gültigen Mandanten. Für alles, was im
-// Namen eines EINGELOGGTEN NUTZERS läuft, ist withAuthorizedTenant die
-// richtige Tür; withTenant bleibt für System-/Worker-Pfade ohne Nutzerbezug
+// Namen eines EINGELOGGTEN NUTZERS läuft, ist withSessionTenant die richtige
+// Tür; withTenant bleibt für System-/Worker-Pfade ohne Nutzerbezug
 // (Jobs, Migrations-Fixups) und für Tests.
 export function withTenant<T>(workspaceId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
   return run(getDb(), workspaceId, fn);
@@ -73,6 +88,18 @@ function buildServiceCtx(workspaceId: string, row: MembershipCtxRow): ServiceCtx
   };
 }
 
+async function runWithVerifiedActor<T>(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
+): Promise<T> {
+  // Erst NACH Membership-Lookup + Laufzeitvalidierung setzen. Die Session-Tür
+  // löst die Identität aus auth_user_id auf; die Adapter-Tür vertraut ihrer
+  // userIdentityId bewusst (ADR 0004). SET LOCAL endet mit Commit/Rollback.
+  await tx.execute(sql`select set_config('app.actor_id', ${ctx.actor}, true)`);
+  return fn(tx, ctx);
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Codex-Review #2 (Important): Tenant-Kontext war nicht an eine Membership
 // gebunden. withTenant(uuid, …) akzeptiert JEDE UUID, und ServiceCtx (Rolle,
@@ -111,7 +138,8 @@ async function runAuthorized<T>(
     if (!row) {
       throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "not a member");
     }
-    return fn(tx, buildServiceCtx(workspaceId, row));
+    const ctx = buildServiceCtx(workspaceId, row);
+    return runWithVerifiedActor(tx, ctx, fn);
   });
 }
 
@@ -134,7 +162,8 @@ async function runSessionTenant<T>(
     if (!row) {
       throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "not a member");
     }
-    return fn(tx, buildServiceCtx(workspaceId, row));
+    const ctx = buildServiceCtx(workspaceId, row);
+    return runWithVerifiedActor(tx, ctx, fn);
   });
 }
 
@@ -143,6 +172,9 @@ export function withAuthorizedTenant<T>(
   workspaceId: string,
   fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
 ): Promise<T> {
+  // Privilegierter Adapterpfad: Die userIdentityId ist bereits vom Aufrufer
+  // gewählt. Browser-/Sessionpfade MÜSSEN withSessionTenant verwenden, das
+  // die Identität aus auth_user_id auflöst (ADR 0004).
   return runAuthorized(getDb(), userIdentityId, workspaceId, fn);
 }
 

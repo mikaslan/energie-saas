@@ -1,5 +1,5 @@
 import { site } from "@/lib/db/schema";
-import type { TenantTx } from "@/lib/db/tenant";
+import type { TenantTx } from "@/lib/db/types";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { emitEvent } from "@/lib/events";
 import { writeAudit } from "@/lib/audit";

@@ -1,5 +1,5 @@
 import { auditLog } from "./db/schema";
-import type { TenantTx } from "./db/tenant";
+import type { TenantTx } from "./db/types";
 
 // ═══════════════════════════════════════════════════════════════════════
 // WICHTIG — Transaktionsgrenzen-Vertrag für writeAudit (Controller-Ruling):

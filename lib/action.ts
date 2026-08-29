@@ -1,6 +1,7 @@
 import { writeAudit } from "./audit";
-import { withSessionTenant, withTenant, type TenantTx, type ServiceCtx } from "./db/tenant";
-import { PermissionDeniedError, WORKSPACE_ACCESS, type DeniedAction } from "./permissions";
+import { withSessionTenant, withTenant } from "./db/tenant";
+import type { TenantTx } from "./db/types";
+import { PermissionDeniedError, WORKSPACE_ACCESS, type DeniedAction, type ServiceCtx } from "./permissions";
 import { getSessionUser } from "./session";
 
 export class NotAuthenticatedError extends Error {

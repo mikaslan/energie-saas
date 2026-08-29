@@ -46,6 +46,48 @@ Vertrag, den `tests/db/tenant-invariants.test.ts` erzwingt:
 - `with check` darf nie fehlen und nie `true` sein — sonst bleiben Cross-Tenant-Inserts und
   Workspace-Transfers möglich, obwohl `using` korrekt aussieht.
 
+## Actor-Kontext und Membership-DML
+
+Nutzeraktionen laufen über `authorizedAction` und `withSessionTenant`. Die
+Tenant-Transaktion setzt immer `app.workspace_id`, leert zuerst `app.actor_id` und setzt
+den Actor erst nach erfolgreichem Membership-Lookup auf die verifizierte
+`user_identity.id`. `withAuthorizedTenant` ist ein privilegierter Adapterpfad mit einer
+vom Aufrufer vertrauenswürdig gelieferten und DB-seitig membership-validierten Identität;
+`withTenant` bleibt ausschließlich für
+actorlose System-/Recovery-Arbeit und Tests. Keiner dieser beiden Pfade gehört in einen
+Browser-Handler. Fachmodule importieren deshalb nur `TenantTx` aus `lib/db/types.ts`;
+dependency-cruiser lässt die Tenant-Einstiegsfunktionen innerhalb von `lib/`
+ausschließlich an `lib/action.ts` zu.
+
+Als erste SQL-Anweisung setzt jeder verwaltete Tenant-Start die Isolation explizit auf
+`READ COMMITTED`. Membership-DML unter einer anderen Isolation ist DB-seitig mit
+SQLSTATE `25001` gesperrt; ein veränderter Pool-Default kann den Parallelitätsvertrag
+damit nicht stillschweigend abschalten.
+
+`membership` besitzt gemäß ADR 0004 zwei unabhängige Datenbankschranken:
+
+- Drei befehlsspezifische `AS RESTRICTIVE`-Policies blockieren Self-INSERT, Self-UPDATE
+  und Self-DELETE, ohne den SELECT der eigenen Membership auszublenden.
+- `membership_dml_guard` hält `id`, `workspace_id`, `user_id` und `created_at`
+  unveränderlich. Bei gesetztem Actor darf nur ein Admin desselben Ziel-Workspace eine
+  fremde Membership anlegen, ändern oder löschen.
+- `membership_dml_serialize` sperrt im `BEFORE STATEMENT`-Zeitpunkt die kanonische
+  Workspace-Zeile, also bevor eine Ziel-Membership gesperrt wird. Das serialisiert
+  konkurrierende Admin-Aktionen ohne gegenseitigen Row-/Workspace-Deadlock. Die globale
+  Reihenfolge **Workspace vor Membership** gilt deshalb auch für jeden späteren Service:
+  kein `SELECT … FOR UPDATE`/`FOR SHARE` auf Membership vor dem eigentlichen DML. Beide
+  Triggerfunktionen sind ausdrücklich `VOLATILE`, damit die Rollenprüfung nach einem
+  Workspace-Wait unter `READ COMMITTED` den frischen Snapshot verwendet.
+
+Der actorlose NULL-Pfad ist eine explizite Vertrauensgrenze, kein anonymer Nutzer. Ein
+Custom-GUC ist keine DB-Authentifizierung und kann von einem beliebigen SQL-Caller
+gesetzt werden; deshalb sind ausschließlich parametrisierte Queries zulässig und das
+Pilot-/Produktions-Gate aus M1-02 plus ADR 0003 bindend.
+
+Ein künftiger Membership-Service prüft dieselben Rechte **vor** dem SQL und wirft einen
+`PermissionDeniedError`, damit `authorizedAction` die Ablehnung auditieren kann. RLS und
+Trigger bleiben Defense in depth und ersetzen diesen Service-Vertrag nicht.
+
 ## Durchsetzung
 
 `tests/db/tenant-invariants.test.ts` erzwingt die Tenant-Schlüsselregeln über die

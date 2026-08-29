@@ -1,5 +1,5 @@
 import { domainEvents } from "./db/schema";
-import type { TenantTx } from "./db/tenant";
+import type { TenantTx } from "./db/types";
 
 // Outbox: MUSS innerhalb derselben TenantTx aufgerufen werden wie die
 // fachliche Änderung, die das Event auslöst — ab M1 ruft jede
