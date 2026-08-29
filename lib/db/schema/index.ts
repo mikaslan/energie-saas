@@ -10,5 +10,8 @@
 // direkt; dependency-cruiser erzwingt das. drizzle.config.ts kennt beide Pfade,
 // damit Migrationen weiterhin ALLE Tabellen sehen.
 export * from "./core";
+export * from "./crm";
 export * from "./events";
+export * from "./intake";
+export * from "./project";
 export * from "./site";

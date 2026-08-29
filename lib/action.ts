@@ -3,12 +3,23 @@ import { withSessionTenant, withTenant } from "./db/tenant";
 import type { TenantTx } from "./db/types";
 import { PermissionDeniedError, WORKSPACE_ACCESS, type DeniedAction, type ServiceCtx } from "./permissions";
 import { getSessionUser } from "./session";
+import type { VerifiedRechnerIdentity } from "./integrations/rechner/signature";
 
 export class NotAuthenticatedError extends Error {
   constructor() {
     super("not authenticated");
     this.name = "NotAuthenticatedError";
   }
+}
+
+export function verifiedRechnerIntakeAction<T>(
+  identity: VerifiedRechnerIdentity,
+  fn: (tx: TenantTx, identity: VerifiedRechnerIdentity) => Promise<T>,
+): Promise<T> {
+  // Eine Integration ist weder Nutzer noch Workspace-Mitglied und bekommt
+  // daher keinen kuenstlichen ServiceCtx. Das opaque Brand des erfolgreichen
+  // HMAC-Verifiers bleibt bis in den Fachservice erhalten.
+  return withTenant(identity.workspaceId, (tx) => fn(tx, identity));
 }
 
 async function captureUnverifiedWorkspaceAccess(input: {

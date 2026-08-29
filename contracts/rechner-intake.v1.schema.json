@@ -1,0 +1,644 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wmee:contract:rechner-intake.v1",
+  "title": "WMEE Rechner Intake v1",
+  "description": "Kanonischer, personenbezogener Übergabevertrag vom WMEE-Rechner V3 an Energie-SaaS. Preise bleiben Rechner-Schätzwerte und sind keine Angebotspositionen.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "submissionId",
+    "submittedAt",
+    "producer",
+    "acquisition",
+    "customer",
+    "privacy",
+    "site",
+    "calculation"
+  ],
+  "properties": {
+    "contractVersion": { "const": "rechner-intake.v1" },
+    "submissionId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "submittedAt": { "$ref": "#/$defs/contractDateTime" },
+    "producer": { "$ref": "#/$defs/producer" },
+    "acquisition": { "$ref": "#/$defs/acquisition" },
+    "customer": { "$ref": "#/$defs/customer" },
+    "privacy": { "$ref": "#/$defs/privacy" },
+    "site": { "$ref": "#/$defs/site" },
+    "calculation": { "$ref": "#/$defs/calculation" }
+  },
+  "$defs": {
+    "nullableShortText": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S" },
+        { "type": "null" }
+      ]
+    },
+    "contractDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9](?:\\.[0-9]{1,3})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "application",
+        "gitRevision",
+        "environment",
+        "deploymentId",
+        "calculatorEngine"
+      ],
+      "properties": {
+        "application": { "const": "wmee-rechner-v3" },
+        "gitRevision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "environment": {
+          "enum": ["production", "preview", "development"]
+        },
+        "deploymentId": {
+          "oneOf": [
+            { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S" },
+            { "type": "null" }
+          ]
+        },
+        "calculatorEngine": { "const": "wmee-solar.v1" }
+      }
+    },
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channel", "source", "pagePath", "referrerOrigin", "utm"],
+      "properties": {
+        "channel": { "const": "website_calculator" },
+        "source": { "const": "solarrechner" },
+        "pagePath": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "pattern": "^/[^?#]*$"
+            },
+            { "type": "null" }
+          ]
+        },
+        "referrerOrigin": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri",
+              "maxLength": 500,
+              "pattern": "^https://[^/?#]+(?::[0-9]{1,5})?$"
+            },
+            { "type": "null" }
+          ]
+        },
+        "utm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "medium", "campaign", "term", "content"],
+          "properties": {
+            "source": { "$ref": "#/$defs/nullableShortText" },
+            "medium": { "$ref": "#/$defs/nullableShortText" },
+            "campaign": { "$ref": "#/$defs/nullableShortText" },
+            "term": { "$ref": "#/$defs/nullableShortText" },
+            "content": { "$ref": "#/$defs/nullableShortText" }
+          }
+        }
+      }
+    },
+    "customer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "email", "phoneRaw"],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "phoneRaw": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "\\S" }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purpose", "legalBasis", "noticeVersion", "noticeUrl", "marketingConsent"],
+      "properties": {
+        "purpose": { "const": "offer_request" },
+        "legalBasis": { "const": "art_6_1_b_precontractual" },
+        "noticeVersion": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "\\S" },
+        "noticeUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 500,
+          "pattern": "^https://"
+        },
+        "marketingConsent": { "const": "not_collected" }
+      }
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "addressMode",
+        "formattedAddress",
+        "street",
+        "houseNumber",
+        "postalCode",
+        "city",
+        "countryCode",
+        "latitude",
+        "longitude",
+        "geocodeSource",
+        "precision"
+      ],
+      "properties": {
+        "addressMode": { "enum": ["selected", "regional_estimate"] },
+        "formattedAddress": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S" },
+        "street": { "$ref": "#/$defs/nullableShortText" },
+        "houseNumber": {
+          "oneOf": [
+            { "type": "string", "minLength": 1, "maxLength": 30, "pattern": "\\S" },
+            { "type": "null" }
+          ]
+        },
+        "postalCode": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9]{5}$" },
+            { "type": "null" }
+          ]
+        },
+        "city": { "$ref": "#/$defs/nullableShortText" },
+        "countryCode": { "const": "DE" },
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "geocodeSource": { "enum": ["photon", "regional_default"] },
+        "precision": { "enum": ["house", "street", "locality", "region"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "addressMode": { "const": "selected" } },
+            "required": ["addressMode"]
+          },
+          "then": {
+            "properties": {
+              "street": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "houseNumber": { "type": "string", "minLength": 1, "maxLength": 30 },
+              "postalCode": { "type": "string", "pattern": "^[0-9]{5}$" },
+              "city": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "geocodeSource": { "const": "photon" },
+              "precision": { "const": "house" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "addressMode": { "const": "regional_estimate" } },
+            "required": ["addressMode"]
+          },
+          "then": {
+            "properties": {
+              "street": { "type": "null" },
+              "houseNumber": { "type": "null" },
+              "postalCode": { "type": "null" },
+              "city": { "type": "null" },
+              "geocodeSource": { "const": "regional_default" },
+              "precision": { "const": "region" }
+            }
+          }
+        }
+      ]
+    },
+    "roof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "areaM2", "azimuthDeg", "tiltDeg", "type", "shading"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "areaM2": { "type": "number", "minimum": 0, "maximum": 2000 },
+        "azimuthDeg": { "type": "number", "minimum": -180, "maximum": 180 },
+        "tiltDeg": { "type": "number", "minimum": 0, "maximum": 90 },
+        "type": { "enum": ["pitched", "flat"] },
+        "shading": {
+          "oneOf": [
+            { "enum": ["none", "light", "medium", "strong"] },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "consumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "householdKwhPerYear",
+        "origin",
+        "enteredAnnualCostCents",
+        "electricityPriceCentsPerKwh",
+        "annualPriceIncreasePercent",
+        "evKmPerYear",
+        "evChargingPattern",
+        "heatPumpKwhPerYear",
+        "coolingKwhPerYear",
+        "heatingAcKwhPerYear",
+        "hotWaterKwhPerYear",
+        "buildingType",
+        "buildingYear",
+        "heatedAreaM2"
+      ],
+      "properties": {
+        "householdKwhPerYear": { "type": "number", "minimum": 0, "maximum": 100000 },
+        "origin": { "enum": ["kwh", "euro", "people", "unknown"] },
+        "enteredAnnualCostCents": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0, "maximum": 100000000 },
+            { "type": "null" }
+          ]
+        },
+        "electricityPriceCentsPerKwh": { "type": "number", "minimum": 1, "maximum": 200 },
+        "annualPriceIncreasePercent": { "type": "number", "minimum": -10, "maximum": 25 },
+        "evKmPerYear": { "type": "number", "minimum": 0, "maximum": 200000 },
+        "evChargingPattern": {
+          "oneOf": [
+            { "enum": ["evening", "daytime", "away"] },
+            { "type": "null" }
+          ]
+        },
+        "heatPumpKwhPerYear": { "type": "number", "minimum": 0, "maximum": 100000 },
+        "coolingKwhPerYear": { "type": "number", "minimum": 0, "maximum": 100000 },
+        "heatingAcKwhPerYear": { "type": "number", "minimum": 0, "maximum": 100000 },
+        "hotWaterKwhPerYear": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 20000 },
+            { "type": "null" }
+          ]
+        },
+        "buildingType": {
+          "oneOf": [
+            { "enum": ["single_family", "two_family", "multi_family", "commercial"] },
+            { "type": "null" }
+          ]
+        },
+        "buildingYear": {
+          "oneOf": [
+            { "type": "integer", "minimum": 1800, "maximum": 2200 },
+            { "type": "null" }
+          ]
+        },
+        "heatedAreaM2": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 1000 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "requestedProducts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetStorageKwh", "wallbox", "bidirectionalCharging", "backupPower"],
+      "properties": {
+        "targetStorageKwh": { "type": "number", "minimum": 0, "maximum": 40 },
+        "wallbox": { "type": "boolean" },
+        "bidirectionalCharging": { "type": "boolean" },
+        "backupPower": { "type": "boolean" }
+      }
+    },
+    "existingInstallation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peakPowerKwp", "commissioningYear", "storageKwh"],
+      "properties": {
+        "peakPowerKwp": { "type": "number", "minimum": 0, "maximum": 1000 },
+        "commissioningYear": { "type": "integer", "minimum": 2000, "maximum": 2200 },
+        "storageKwh": { "type": "number", "minimum": 0, "maximum": 40 }
+      }
+    },
+    "assumptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "systemLossPercent",
+        "storageRoundtripEfficiency",
+        "storageDepthOfDischarge",
+        "moduleDegradationPerYear",
+        "horizonYears",
+        "plannedCommissioningDate"
+      ],
+      "properties": {
+        "systemLossPercent": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 100 },
+            { "type": "null" }
+          ]
+        },
+        "storageRoundtripEfficiency": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "type": "null" }
+          ]
+        },
+        "storageDepthOfDischarge": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "type": "null" }
+          ]
+        },
+        "moduleDegradationPerYear": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 0.2 },
+            { "type": "null" }
+          ]
+        },
+        "horizonYears": {
+          "oneOf": [
+            { "type": "integer", "minimum": 1, "maximum": 40 },
+            { "type": "null" }
+          ]
+        },
+        "plannedCommissioningDate": {
+          "oneOf": [
+            { "type": "string", "format": "date" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "roofs",
+        "consumption",
+        "requestedProducts",
+        "existingInstallation",
+        "assumptions",
+        "answeredFieldIds"
+      ],
+      "properties": {
+        "roofs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/roof" }
+        },
+        "consumption": { "$ref": "#/$defs/consumption" },
+        "requestedProducts": { "$ref": "#/$defs/requestedProducts" },
+        "existingInstallation": {
+          "oneOf": [
+            { "$ref": "#/$defs/existingInstallation" },
+            { "type": "null" }
+          ]
+        },
+        "assumptions": { "$ref": "#/$defs/assumptions" },
+        "answeredFieldIds": {
+          "type": "array",
+          "maxItems": 60,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["yield", "roof", "consumption", "electricityPrice", "annualPriceIncrease", "investment"],
+      "properties": {
+        "yield": { "enum": ["pvgis_hourly", "pvgis_annual", "estimate"] },
+        "roof": { "enum": ["lod2", "user_drawn", "osm", "default"] },
+        "consumption": {
+          "enum": ["metered_kwh", "derived_from_cost", "estimated_people", "default"]
+        },
+        "electricityPrice": { "enum": ["customer", "default"] },
+        "annualPriceIncrease": { "enum": ["customer", "default"] },
+        "investment": { "const": "market_estimate" }
+      }
+    },
+    "energySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generationKwh",
+        "consumptionKwh",
+        "directConsumptionKwh",
+        "fromStorageKwh",
+        "selfConsumptionKwh",
+        "feedInKwh",
+        "compensatedFeedInKwh",
+        "uncompensatedFeedInKwh",
+        "gridImportKwh",
+        "storageLossKwh",
+        "selfConsumptionRate",
+        "autonomyRate",
+        "storageFullCycles",
+        "fromVehicleKwh"
+      ],
+      "properties": {
+        "generationKwh": { "type": "number", "minimum": 0 },
+        "consumptionKwh": { "type": "number", "minimum": 0 },
+        "directConsumptionKwh": { "type": "number", "minimum": 0 },
+        "fromStorageKwh": { "type": "number", "minimum": 0 },
+        "selfConsumptionKwh": { "type": "number", "minimum": 0 },
+        "feedInKwh": { "type": "number", "minimum": 0 },
+        "compensatedFeedInKwh": { "type": "number", "minimum": 0 },
+        "uncompensatedFeedInKwh": { "type": "number", "minimum": 0 },
+        "gridImportKwh": { "type": "number", "minimum": 0 },
+        "storageLossKwh": { "type": "number", "minimum": 0 },
+        "selfConsumptionRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "autonomyRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "storageFullCycles": { "type": "number", "minimum": 0 },
+        "fromVehicleKwh": { "type": "number", "minimum": 0 }
+      }
+    },
+    "nullableYears": {
+      "oneOf": [
+        { "type": "number", "minimum": 0, "maximum": 100 },
+        { "type": "null" }
+      ]
+    },
+    "amortizationRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lower", "median", "upper"],
+      "properties": {
+        "lower": { "$ref": "#/$defs/nullableYears" },
+        "median": { "$ref": "#/$defs/nullableYears" },
+        "upper": { "$ref": "#/$defs/nullableYears" }
+      }
+    },
+    "integerRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lower", "median", "upper"],
+      "properties": {
+        "lower": { "type": "integer" },
+        "median": { "type": "integer" },
+        "upper": { "type": "integer" }
+      }
+    },
+    "newInstallationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "systemPeakPowerKwp", "storageCapacityKwh", "energy", "economics", "uncertainty"],
+      "properties": {
+        "mode": { "const": "new_installation" },
+        "systemPeakPowerKwp": { "type": "number", "minimum": 0, "maximum": 1000 },
+        "storageCapacityKwh": { "type": "number", "minimum": 0, "maximum": 40 },
+        "energy": { "$ref": "#/$defs/energySummary" },
+        "economics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "investmentCents",
+            "investmentLowCents",
+            "investmentHighCents",
+            "savingsYear1Cents",
+            "horizonResultCents",
+            "amortizationYears",
+            "feedInTariffCentsPerKwh",
+            "lcoeCentsPerKwh",
+            "co2SavingsKgPerYear",
+            "priceSource"
+          ],
+          "properties": {
+            "investmentCents": { "type": "integer", "minimum": 0 },
+            "investmentLowCents": { "type": "integer", "minimum": 0 },
+            "investmentHighCents": { "type": "integer", "minimum": 0 },
+            "savingsYear1Cents": { "type": "integer" },
+            "horizonResultCents": { "type": "integer" },
+            "amortizationYears": { "$ref": "#/$defs/nullableYears" },
+            "feedInTariffCentsPerKwh": { "type": "number", "minimum": 0, "maximum": 200 },
+            "lcoeCentsPerKwh": { "type": "number", "minimum": 0 },
+            "co2SavingsKgPerYear": { "type": "number", "minimum": 0 },
+            "priceSource": { "const": "market_estimate" }
+          }
+        },
+        "uncertainty": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["amortizationYears", "horizonResultCents", "largestDriver"],
+          "properties": {
+            "amortizationYears": { "$ref": "#/$defs/amortizationRange" },
+            "horizonResultCents": { "$ref": "#/$defs/integerRange" },
+            "largestDriver": {
+              "oneOf": [
+                { "enum": ["yield", "roof_area", "consumption", "electricity_price", "annual_price_increase", "investment"] },
+                { "type": "null" }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "retrofitResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "before",
+        "after",
+        "incrementalSelfConsumptionKwh",
+        "autonomyGainPercentagePoints",
+        "storageInvestmentEstimateCents",
+        "benefitDuringEegCentsPerYear",
+        "benefitAfterEegCentsPerYear",
+        "amortizationYears",
+        "eegEndYear",
+        "eegRemainingYears"
+      ],
+      "properties": {
+        "before": { "$ref": "#/$defs/energySummary" },
+        "after": { "$ref": "#/$defs/energySummary" },
+        "incrementalSelfConsumptionKwh": { "type": "number" },
+        "autonomyGainPercentagePoints": { "type": "number" },
+        "storageInvestmentEstimateCents": { "type": "integer", "minimum": 0 },
+        "benefitDuringEegCentsPerYear": { "type": "integer" },
+        "benefitAfterEegCentsPerYear": { "type": "integer" },
+        "amortizationYears": { "$ref": "#/$defs/nullableYears" },
+        "eegEndYear": { "type": "integer", "minimum": 2000, "maximum": 2300 },
+        "eegRemainingYears": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "existingInstallationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "existingPeakPowerKwp", "existingStorageKwh", "requestedAdditionalStorageKwh", "retrofit"],
+      "properties": {
+        "mode": { "const": "existing_installation" },
+        "existingPeakPowerKwp": { "type": "number", "minimum": 0, "maximum": 1000 },
+        "existingStorageKwh": { "type": "number", "minimum": 0, "maximum": 40 },
+        "requestedAdditionalStorageKwh": { "type": "number", "minimum": 0, "maximum": 40 },
+        "retrofit": {
+          "oneOf": [
+            { "$ref": "#/$defs/retrofitResult" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "calculation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "calculatedAt",
+        "branch",
+        "questionnaireVariant",
+        "resultIntegrity",
+        "inputs",
+        "provenance",
+        "result"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "wmee-solar-snapshot.v1" },
+        "calculatedAt": { "$ref": "#/$defs/contractDateTime" },
+        "branch": { "enum": ["new_installation", "existing_installation"] },
+        "questionnaireVariant": { "enum": ["short", "standard", "pro"] },
+        "resultIntegrity": { "const": "client_reported_unverified" },
+        "inputs": { "$ref": "#/$defs/inputs" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "result": {
+          "oneOf": [
+            { "$ref": "#/$defs/newInstallationResult" },
+            { "$ref": "#/$defs/existingInstallationResult" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "branch": { "const": "new_installation" } },
+            "required": ["branch"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "inputs": {
+                "type": "object",
+                "properties": { "existingInstallation": { "type": "null" } }
+              },
+              "result": { "$ref": "#/$defs/newInstallationResult" }
+            }
+          },
+          "else": {
+            "type": "object",
+            "properties": {
+              "inputs": {
+                "type": "object",
+                "properties": {
+                  "existingInstallation": { "$ref": "#/$defs/existingInstallation" }
+                }
+              },
+              "result": { "$ref": "#/$defs/existingInstallationResult" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,192 @@
+openapi: 3.1.0
+info:
+  title: WMEE Rechner Intake
+  version: 1.0.0
+  description: >-
+    Signierte Server-zu-Server-Grenze vom Rechner V3 zum Energie-SaaS.
+    Der Payload-Vertrag liegt ausschließlich in rechner-intake.v1.schema.json;
+    dieses Transportdokument referenziert ihn und dupliziert ihn nicht.
+paths:
+  /api/inbound/rechner/v1:
+    post:
+      operationId: receiveRechnerIntakeV1
+      summary: Rechner-Anfrage tenantgebunden und idempotent übernehmen
+      security:
+        - RechnerHmac: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/KeyId'
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/ContentSha256'
+        - $ref: '#/components/parameters/Signature'
+      requestBody:
+        required: true
+        description: >-
+          Unkomprimierte rohe JSON-Bytes, maximal 262144 Bytes. Der Header
+          Content-Encoding ist vollständig verboten, einschließlich identity,
+          damit signierte und verarbeitete Bytes identisch bleiben.
+        x-max-body-bytes: 262144
+        x-content-encoding-policy: forbidden-including-identity
+        content:
+          application/json:
+            schema:
+              $ref: ./rechner-intake.v1.schema.json
+      responses:
+        '201':
+          description: Neue Anfrage vollständig und atomar verarbeitet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+        '200':
+          description: Bit-identische Wiederholung; keine zweite Fachzeile erzeugt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+        '400':
+          $ref: '#/components/responses/ClientError'
+        '401':
+          $ref: '#/components/responses/ClientError'
+        '409':
+          $ref: '#/components/responses/ClientError'
+        '413':
+          $ref: '#/components/responses/ClientError'
+        '415':
+          $ref: '#/components/responses/ClientError'
+        '422':
+          $ref: '#/components/responses/ClientError'
+        '429':
+          description: Authentifiziertes Aufnahmelimit erreicht.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '503':
+          $ref: '#/components/responses/ServerError'
+components:
+  securitySchemes:
+    RechnerHmac:
+      type: apiKey
+      in: header
+      name: X-Rechner-Signature
+      description: >-
+        Zusätzliche Pflichtheader sind X-Rechner-Key-Id, X-Rechner-Timestamp,
+        X-Rechner-Content-SHA256 und Idempotency-Key. Signiert werden exakt
+        v1, POST, der kanonische Pfad, Key-ID, Zeitstempel, Idempotency-Key
+        und Body-SHA256, jeweils durch LF getrennt.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+        pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    KeyId:
+      name: X-Rechner-Key-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-z0-9][a-z0-9._-]{0,63}$'
+    Timestamp:
+      name: X-Rechner-Timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]{10}$'
+      description: Unix-Sekunden; maximal 300 Sekunden Abweichung.
+    ContentSha256:
+      name: X-Rechner-Content-SHA256
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
+    Signature:
+      name: X-Rechner-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^v1=[A-Za-z0-9_-]{43}$'
+  schemas:
+    Receipt:
+      type: object
+      additionalProperties: false
+      required:
+        - contractVersion
+        - receiptId
+        - submissionId
+        - status
+        - duplicate
+      properties:
+        contractVersion:
+          const: rechner-intake-receipt.v1
+        receiptId:
+          type: string
+          format: uuid
+        submissionId:
+          type: string
+          format: uuid
+        status:
+          const: processed
+        duplicate:
+          type: boolean
+    Error:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, error]
+      properties:
+        contractVersion:
+          const: rechner-intake-error.v1
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, requestId, retryable]
+          properties:
+            code:
+              enum:
+                - invalid_request
+                - authentication_failed
+                - idempotency_conflict
+                - payload_too_large
+                - unsupported_media_type
+                - schema_invalid
+                - rate_limited
+                - temporarily_unavailable
+                - internal_error
+            requestId:
+              type: string
+              format: uuid
+            retryable:
+              type: boolean
+            paths:
+              type: array
+              maxItems: 20
+              items:
+                type: string
+                maxLength: 200
+  responses:
+    ClientError:
+      description: Nicht automatisch wiederholbarer Requestfehler.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServerError:
+      description: Wiederholbarer Serverfehler; Fachtransaktion ist zurückgerollt.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

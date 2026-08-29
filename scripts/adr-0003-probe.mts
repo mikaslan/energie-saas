@@ -4,6 +4,16 @@
 // greift anschließend mit echten Runtime-/System-/Auth-/Worker-Verbindungen an.
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { PgBoss } from "pg-boss";
 import { startEmbeddedPostgres } from "../tests/setup/embedded-postgres";
@@ -55,6 +65,33 @@ function quoteIdentifier(value: string): string {
 
 function quoteSqlLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
+}
+
+function migrationPrefixThrough(maxIndex: number): string {
+  const source = resolve("drizzle");
+  const target = mkdtempSync(join(tmpdir(), "energie-saas-migrations-"));
+  mkdirSync(join(target, "meta"), { recursive: true });
+  const journal = JSON.parse(
+    readFileSync(join(source, "meta", "_journal.json"), "utf8"),
+  ) as {
+    version: string;
+    dialect: string;
+    entries: Array<{ idx: number; tag: string; [key: string]: unknown }>;
+  };
+  const entries = journal.entries.filter((entry) => entry.idx <= maxIndex);
+  if (entries.length !== maxIndex + 1 || entries.at(-1)?.idx !== maxIndex) {
+    rmSync(target, { recursive: true, force: true });
+    throw new Error(`Migrationspräfix 0..${maxIndex} ist nicht lückenlos.`);
+  }
+  for (const entry of entries) {
+    cpSync(join(source, `${entry.tag}.sql`), join(target, `${entry.tag}.sql`));
+  }
+  writeFileSync(
+    join(target, "meta", "_journal.json"),
+    `${JSON.stringify({ ...journal, entries }, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  return target;
 }
 
 function loseNextCommitAcknowledgement(
@@ -332,6 +369,7 @@ async function proveLegacyUpgrade(): Promise<void> {
   `);
   await superuser.query(`create database ${upgradeDb} owner app_legacy`);
 
+  const legacyMigrationFolder = migrationPrefixThrough(18);
   const upgradeSuperuser = new Pool({ connectionString: upgradeSuperuserUrl.toString(), max: 2 });
   try {
     await upgradeSuperuser.query(`
@@ -345,6 +383,7 @@ async function proveLegacyUpgrade(): Promise<void> {
         ...process.env,
         NODE_ENV: "test",
         DB_ROLE_MODE: "test-legacy-single",
+        TEST_MIGRATIONS_FOLDER: legacyMigrationFolder,
         POSTGRES_URL_MIGRATE: legacyUrl,
         POSTGRES_TEST_TARGET_CONFIRM:
           `${host}/${upgradeDb}:ALLOW-DESTRUCTIVE-TESTS`,
@@ -352,57 +391,6 @@ async function proveLegacyUpgrade(): Promise<void> {
       stdio: "inherit",
     });
 
-    // Aus dem fresh migrierten Testzustand exakt den Vorzustand 0018 bilden:
-    // 0019-Policies entfernen, Statement-Guard auf 0018 zurücksetzen und nur
-    // den letzten Journal-Eintrag löschen. So muss der strikte Lauf 0019 beim
-    // Ownership-Cutover wirklich noch anwenden, statt nur Grants zu prüfen.
-    await upgradeSuperuser.query(`
-      drop policy membership_principal_insert on public.membership;
-      drop policy membership_principal_update on public.membership;
-      drop policy membership_principal_delete on public.membership;
-
-      create or replace function public.guard_membership_statement()
-      returns trigger
-      language plpgsql
-      volatile
-      security invoker
-      set search_path = pg_catalog
-      as $fn$
-declare
-  v_workspace pg_catalog.uuid := nullif(
-    pg_catalog.current_setting('app.workspace_id', true),
-    ''
-  )::pg_catalog.uuid;
-begin
-  if pg_catalog.current_setting('transaction_isolation') <> 'read committed' then
-    raise exception using
-      errcode = '25001',
-      message = 'membership DML requires READ COMMITTED isolation';
-  end if;
-
-  if v_workspace is null then
-    raise exception using
-      errcode = '42501',
-      message = 'membership DML requires a workspace context';
-  end if;
-
-  perform 1
-     from public.workspace as w
-    where w.id = v_workspace
-      for update;
-
-  if not found then
-    raise exception using
-      errcode = '42501',
-      message = 'membership DML requires an existing workspace context';
-  end if;
-
-  return null;
-end
-$fn$;
-
-      delete from drizzle.__drizzle_migrations where created_at = 1787965786722;
-    `);
     const journalBefore = await upgradeSuperuser.query<{ n: number }>(
       "select count(*)::int as n from drizzle.__drizzle_migrations where created_at=1787965786722",
     );
@@ -1275,6 +1263,29 @@ $fn$;
       rogueGrant.rows[0]?.allowed === false,
     );
 
+    const postCutoverMigrationAuthority = await upgradeSuperuser.query<{
+      owner: string;
+      owner_references: boolean;
+      migrator_can_set_owner: boolean;
+    }>(`
+      select owner.rolname as owner,
+             pg_catalog.has_table_privilege('app_owner', relation.oid, 'REFERENCES')
+               as owner_references,
+             pg_catalog.pg_has_role('app_migrator', 'app_owner', 'SET')
+               as migrator_can_set_owner
+      from pg_catalog.pg_class relation
+      join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+      join pg_catalog.pg_roles owner on owner.oid = relation.relowner
+      where namespace.nspname = 'public' and relation.relname = 'site'
+    `);
+    ok(
+      "Cutover hinterlaesst Site unter migrationsfaehiger app_owner-Autoritaet",
+      postCutoverMigrationAuthority.rows[0]?.owner === "app_owner" &&
+        postCutoverMigrationAuthority.rows[0]?.owner_references === true &&
+        postCutoverMigrationAuthority.rows[0]?.migrator_can_set_owner === true,
+      JSON.stringify(postCutoverMigrationAuthority.rows[0]),
+    );
+
     execFileSync("npx", ["tsx", "scripts/migrate.mts"], {
       cwd: process.cwd(),
       env: {
@@ -1321,13 +1332,14 @@ $fn$;
       where w.id=$1::uuid and m.user_id=$2::uuid
     `, [workspaceId, userId]);
     ok(
-      "Legacy 0018 → Ownership-Cutover → 0019 erhält Bestandsdaten und Journal",
+      "Legacy 0018 → Ownership-Cutover → aktuelle Historie erhält Bestandsdaten und Journal",
       preserved.rows[0]?.workspace_name === "legacy-bestand" &&
         preserved.rows[0]?.role === "admin" &&
         preserved.rows[0]?.migration_count === 1,
     );
   } finally {
     await upgradeSuperuser.end();
+    rmSync(legacyMigrationFolder, { recursive: true, force: true });
   }
 }
 
@@ -1483,7 +1495,7 @@ try {
     },
     stdio: "inherit",
   });
-  ok("Fresh 0→0019 läuft als app_migrator → app_owner samt ACL-Manifest", true);
+  ok("Fresh 0→aktuelle Historie läuft als app_migrator → app_owner samt ACL-Manifest", true);
 
   const migrationToTamper = await superuser.query<{ id: number; hash: string }>(`
     select id, hash

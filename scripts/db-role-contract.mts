@@ -186,6 +186,13 @@ const APPLY_ROLE_CONTRACT_SQL = `
   revoke all privileges on all sequences in schema public
     from public, app_runtime, app_system, app_auth, app_worker, identity_reconciler;
 
+  -- Nach einem ALTER OWNER erbt der neue Owner nicht zwingend die zuvor vom
+  -- Legacy-Owner widerrufenen Tabellen-ACLs. DDL ist zwar owner-inhaerent,
+  -- ein spaeterer FK braucht aber explizit REFERENCES. Der Migrations-Owner
+  -- erhaelt deshalb seine vollstaendigen Eigenrechte deterministisch zurueck.
+  grant all privileges on all tables in schema public to app_owner;
+  grant all privileges on all sequences in schema public to app_owner;
+
   revoke all on schema public from public, app_runtime, app_system, app_auth, app_worker;
   grant usage on schema public to app_runtime, app_system, app_auth, identity_reconciler;
 
@@ -603,6 +610,51 @@ async function executeContractStatements(
 export async function applyRoleContract(client: PoolClient): Promise<void> {
   await applyDatabaseAclContract(client);
   await executeContractStatements(client, APPLY_ROLE_CONTRACT_SQL, "Rollen-ACL-Manifest");
+
+  // Der beaufsichtigte Legacy-Cutover uebernimmt bewusst einen echten
+  // 0018-Zustand und wendet die spaeteren Migrationen erst NACH dem
+  // Ownership-Wechsel an. Das Basismanifest muss dort ohne Zukunftstabellen
+  // funktionieren; sobald eine der atomar gemeinsam eingefuehrten M1-04-
+  // Relationen existiert, muessen dagegen alle existieren und erhalten exakt
+  // die eng begrenzten Runtime-Rechte.
+  const rechnerRelations = [
+    "calculator_snapshot",
+    "contact",
+    "inbound_receipt",
+    "project",
+    "project_requirement",
+  ] as const;
+  const existing = await client.query<{ relname: string }>(`
+    select c.relname
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and c.relname = any($1::text[])
+    order by c.relname
+  `, [rechnerRelations]);
+  if (existing.rows.length === 0) return;
+  if (
+    existing.rows.length !== rechnerRelations.length
+    || existing.rows.some((row, index) => row.relname !== rechnerRelations[index])
+  ) {
+    throw new Error("Rollen-ACL-Manifest: M1-04-Relationen sind nur teilweise vorhanden.");
+  }
+  await client.query(`
+    grant select on
+      public.contact,
+      public.project,
+      public.inbound_receipt,
+      public.calculator_snapshot,
+      public.project_requirement
+    to app_runtime;
+    grant insert, update on public.contact, public.project to app_runtime;
+    grant insert on
+      public.inbound_receipt,
+      public.calculator_snapshot,
+      public.project_requirement
+    to app_runtime
+  `);
 }
 
 export async function applyDefaultPrivilegeContract(client: PoolClient): Promise<void> {
@@ -970,8 +1022,13 @@ export async function verifyRoleContract(
       "r:auth_session",
       "r:auth_user",
       "r:auth_verification",
+      "r:calculator_snapshot",
+      "r:contact",
       "r:domain_events",
+      "r:inbound_receipt",
       "r:membership",
+      "r:project",
+      "r:project_requirement",
       "r:site",
       "r:user_identity",
       "r:workspace",
@@ -1147,8 +1204,13 @@ export async function verifyRoleContract(
       "auth_session:false:false",
       "auth_user:false:false",
       "auth_verification:false:false",
+      "calculator_snapshot:true:true",
+      "contact:true:true",
       "domain_events:true:true",
+      "inbound_receipt:true:true",
       "membership:true:true",
+      "project:true:true",
+      "project_requirement:true:true",
       "site:true:true",
       "user_identity:true:true",
       "workspace:true:true",
@@ -1191,7 +1253,10 @@ export async function verifyRoleContract(
     }),
     [
       "audit_log:tenant_isolation:23ff85358d0c0e94974353f538c267f99f5a3e7219bf9e1cd8769f69744ae417",
+      "calculator_snapshot:tenant_isolation:8c816e39dfc3d5d774d0de6f02961882e9ae6679904da2b9007d5ff86becbb72",
+      "contact:tenant_isolation:e339a6411d39679d749a45535df17ea42132453c4725e42f0d5b310379489e46",
       "domain_events:tenant_isolation:f1715696222caf43a2adc220b67b8aebdce61f5ef9659884af1c7263ccab8284",
+      "inbound_receipt:tenant_isolation:866b6644bba9899118c16bc502e420f0409e632a3cd6b709b3321f6c10c28c1c",
       "membership:membership_actor_delete:2b0f67a6a2931b84b4610114759e61a867d45e093a85ef8094cbdc2d81b14027",
       "membership:membership_actor_insert:f4f58cb0a649e8bf11dec66a6047da1ad5774ac03fe5acb808297937b3d5dbf6",
       "membership:membership_actor_update:9b7d643976dff08ea22d7a8db439ac1a36450de1a57c256c73035a5c37119902",
@@ -1199,6 +1264,8 @@ export async function verifyRoleContract(
       "membership:membership_principal_insert:cdccab00a484775580d8b083aed280eb2cf90753f6697acae098e9cba54318fc",
       "membership:membership_principal_update:b2374f555501c25048e318fdaa54b7ef1d9b29a66694ef064e6e9ded271c75ca",
       "membership:tenant_isolation:1a5443560d407a656bdeaff6593819d601078d1ebdc58d4d1f8e02e829a587f3",
+      "project:tenant_isolation:c5f62af4cbba473885ce886d0eef10a80ab1f5dca746c0cb4b6204dd1050717b",
+      "project_requirement:tenant_isolation:4c2d81a0ad4ae0aa71972c72dc7f7cd57028a0ba50e01420106b350f724de0cb",
       "site:tenant_isolation:26181215437698e628cbd47ab08562d51de16bb0172d907c36c75a679a555d3c",
       "user_identity:user_identity_insert:ed42cd7d7ab49b586488c84e375edbd0c5679444866111bc9547a6a309424131",
       "user_identity:user_identity_reconcile_select:fa1b9f29b8bb9a694dc41a78d8ad73dc829d2715ff8e8c91c6357f9475b240bd",
@@ -1290,9 +1357,21 @@ export async function verifyRoleContract(
     [
       "app_runtime:audit_log:INSERT:app_owner:false",
       "app_runtime:audit_log:SELECT:app_owner:false",
+      "app_runtime:calculator_snapshot:INSERT:app_owner:false",
+      "app_runtime:calculator_snapshot:SELECT:app_owner:false",
+      "app_runtime:contact:INSERT:app_owner:false",
+      "app_runtime:contact:SELECT:app_owner:false",
+      "app_runtime:contact:UPDATE:app_owner:false",
       "app_runtime:domain_events:INSERT:app_owner:false",
       "app_runtime:domain_events:SELECT:app_owner:false",
+      "app_runtime:inbound_receipt:INSERT:app_owner:false",
+      "app_runtime:inbound_receipt:SELECT:app_owner:false",
       "app_runtime:membership:SELECT:app_owner:false",
+      "app_runtime:project:INSERT:app_owner:false",
+      "app_runtime:project:SELECT:app_owner:false",
+      "app_runtime:project:UPDATE:app_owner:false",
+      "app_runtime:project_requirement:INSERT:app_owner:false",
+      "app_runtime:project_requirement:SELECT:app_owner:false",
       "app_runtime:site:DELETE:app_owner:false",
       "app_runtime:site:INSERT:app_owner:false",
       "app_runtime:site:SELECT:app_owner:false",

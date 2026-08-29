@@ -2,6 +2,105 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { TenantTx } from "@/lib/db/types";
 
+async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
+  contactId: string;
+  siteId: string;
+  projectId: string;
+}> {
+  const contactId = randomUUID();
+  const siteId = randomUUID();
+  const projectId = randomUUID();
+  await tx.execute(sql`
+    insert into contact (
+      id, workspace_id, display_name, email_primary, email_normalized
+    ) values (
+      ${contactId}::uuid, ${wsId}::uuid, 'Fixture Contact',
+      ${`${contactId}@test.local`}, ${`${contactId}@test.local`}
+    )
+  `);
+  await tx.execute(sql`
+    insert into site (id, workspace_id, contact_id, label)
+    values (${siteId}::uuid, ${wsId}::uuid, ${contactId}::uuid, 'Fixture Site')
+  `);
+  await tx.execute(sql`
+    insert into project (
+      id, workspace_id, contact_id, site_id, name, source_key
+    ) values (
+      ${projectId}::uuid, ${wsId}::uuid, ${contactId}::uuid, ${siteId}::uuid,
+      'Fixture Project', 'fixture'
+    )
+  `);
+  return { contactId, siteId, projectId };
+}
+
+async function fixtureReceipt(tx: TenantTx, wsId: string): Promise<{
+  receiptId: string;
+  projectId: string;
+}> {
+  const { contactId, siteId, projectId } = await fixtureProjectGraph(tx, wsId);
+  const receiptId = randomUUID();
+  await tx.execute(sql`
+    insert into inbound_receipt (
+      id, workspace_id, source_key, submission_id, contract_version,
+      body_sha256, auth_key_id, signed_at, submitted_at, received_at,
+      producer_application, producer_git_revision, producer_environment,
+      calculator_engine, acquisition, privacy_purpose, privacy_legal_basis,
+      privacy_notice_version, privacy_notice_url, contact_resolution,
+      contact_id, site_id, project_id
+    ) values (
+      ${receiptId}::uuid, ${wsId}::uuid, 'wmee-rechner-v3', ${randomUUID()}::uuid,
+      'rechner-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
+      now(), now(), now(), 'wmee-rechner-v3', ${"0".repeat(40)}, 'development',
+      'wmee-solar.v1', '{}'::jsonb, 'offer_request',
+      'art_6_1_b_precontractual', 'fixture', 'https://example.test/privacy',
+      'created', ${contactId}::uuid, ${siteId}::uuid, ${projectId}::uuid
+    )
+  `);
+  return { receiptId, projectId };
+}
+
+async function fixtureSnapshot(tx: TenantTx, wsId: string): Promise<{
+  snapshotId: string;
+  projectId: string;
+}> {
+  const { receiptId, projectId } = await fixtureReceipt(tx, wsId);
+  const snapshotId = randomUUID();
+  const snapshot = {
+    schemaVersion: "wmee-solar-snapshot.v1",
+    calculatedAt: "2026-08-29T00:00:00.000Z",
+    branch: "new_installation",
+    questionnaireVariant: "short",
+    resultIntegrity: "client_reported_unverified",
+    inputs: {},
+    provenance: { investment: "market_estimate" },
+    result: { mode: "new_installation" },
+  };
+  await tx.execute(sql`
+    insert into calculator_snapshot (
+      id, workspace_id, receipt_id, project_id, schema_version,
+      calculator_engine, result_integrity, investment_source, calculated_at,
+      snapshot
+    ) values (
+      ${snapshotId}::uuid, ${wsId}::uuid, ${receiptId}::uuid, ${projectId}::uuid,
+      'wmee-solar-snapshot.v1', 'wmee-solar.v1', 'client_reported_unverified',
+      'market_estimate', now(), ${JSON.stringify(snapshot)}::jsonb
+    )
+  `);
+  return { snapshotId, projectId };
+}
+
+const fixtureRequirements = {
+  schemaVersion: "project-requirements.rechner.v1",
+  source: "wmee-rechner-v3",
+  branch: "new_installation",
+  requestedProducts: {
+    targetStorageKwh: 8,
+    wallbox: false,
+    bidirectionalCharging: false,
+    backupPower: false,
+  },
+};
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -31,8 +130,38 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     await tx.execute(sql`insert into audit_log (workspace_id, actor, action, resource, allowed)
       values (${wsId}::uuid, 'system', 'fixture', 'none', true)`);
   },
+  contact: async (tx, wsId) => {
+    const id = randomUUID();
+    await tx.execute(sql`
+      insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
+      values (${id}::uuid, ${wsId}::uuid, 'Fixture Contact',
+        ${`${id}@test.local`}, ${`${id}@test.local`})
+    `);
+  },
   site: async (tx, wsId) => {
     await tx.execute(sql`insert into site (workspace_id, city) values (${wsId}::uuid, 'fixture')`);
+  },
+  project: async (tx, wsId) => {
+    await fixtureProjectGraph(tx, wsId);
+  },
+  inbound_receipt: async (tx, wsId) => {
+    await fixtureReceipt(tx, wsId);
+  },
+  calculator_snapshot: async (tx, wsId) => {
+    await fixtureSnapshot(tx, wsId);
+  },
+  project_requirement: async (tx, wsId) => {
+    const { snapshotId, projectId } = await fixtureSnapshot(tx, wsId);
+    await tx.execute(sql`
+      insert into project_requirement (
+        workspace_id, project_id, revision, schema_version,
+        source_snapshot_id, requirements
+      ) values (
+        ${wsId}::uuid, ${projectId}::uuid, 1,
+        'project-requirements.rechner.v1', ${snapshotId}::uuid,
+        ${JSON.stringify(fixtureRequirements)}::jsonb
+      )
+    `);
   },
 };
 
@@ -51,6 +180,68 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
 export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>> = {
   workspace: async (tx) => {
     await tx.execute(sql`insert into workspace (id, name) values (${randomUUID()}::uuid, 'cross-write')`);
+  },
+  project: async (tx) => {
+    await tx.execute(sql`
+      insert into project (workspace_id, contact_id, site_id, name, source_key)
+      values (${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        'Cross Write', 'fixture')
+    `);
+  },
+  inbound_receipt: async (tx) => {
+    await tx.execute(sql`
+      insert into inbound_receipt (
+        workspace_id, source_key, submission_id, contract_version, body_sha256,
+        auth_key_id, signed_at, submitted_at, producer_application,
+        producer_git_revision, producer_environment, calculator_engine,
+        acquisition, privacy_purpose, privacy_legal_basis,
+        privacy_notice_version, privacy_notice_url, contact_resolution,
+        contact_id, site_id, project_id
+      ) values (
+        ${randomUUID()}::uuid, 'wmee-rechner-v3', ${randomUUID()}::uuid,
+        'rechner-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
+        now(), now(), 'wmee-rechner-v3', ${"0".repeat(40)}, 'development',
+        'wmee-solar.v1', '{}'::jsonb, 'offer_request',
+        'art_6_1_b_precontractual', 'fixture', 'https://example.test/privacy',
+        'created', ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid
+      )
+    `);
+  },
+  calculator_snapshot: async (tx) => {
+    const snapshot = {
+      schemaVersion: "wmee-solar-snapshot.v1",
+      calculatedAt: "2026-08-29T00:00:00.000Z",
+      branch: "new_installation",
+      questionnaireVariant: "short",
+      resultIntegrity: "client_reported_unverified",
+      inputs: {},
+      provenance: { investment: "market_estimate" },
+      result: { mode: "new_installation" },
+    };
+    await tx.execute(sql`
+      insert into calculator_snapshot (
+        workspace_id, receipt_id, project_id, schema_version,
+        calculator_engine, result_integrity, investment_source, calculated_at,
+        snapshot
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        'wmee-solar-snapshot.v1', 'wmee-solar.v1',
+        'client_reported_unverified', 'market_estimate', now(),
+        ${JSON.stringify(snapshot)}::jsonb
+      )
+    `);
+  },
+  project_requirement: async (tx) => {
+    await tx.execute(sql`
+      insert into project_requirement (
+        workspace_id, project_id, revision, schema_version,
+        source_snapshot_id, requirements
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, 1,
+        'project-requirements.rechner.v1', ${randomUUID()}::uuid,
+        ${JSON.stringify(fixtureRequirements)}::jsonb
+      )
+    `);
   },
 };
 

@@ -18,8 +18,8 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 5–7 % | Fundament weit fortgeschritten, fachliche Verticals noch überwiegend offen |
-| Technisches Fundament M0/M1 | ca. 75–85 % | Auth-, Tenant-, DB- und Worker-Grenzen lokal weitgehend real, externe Gates offen |
+| Gesamtmission einschließlich F1–F16 | ca. 6–8 % | Fundament weit fortgeschritten, erster echter Rechner-/Lead-Vertical lokal verifiziert; fachliche Breite bleibt überwiegend offen |
+| Technisches Fundament M0/M1 | ca. 80–90 % | Auth-, Tenant-, DB-, Worker- und Intake-Grenzen lokal weitgehend real, externe Gates offen |
 | Nutzerseitige F1–F16-Funktionsparität | ca. 0–2 % | Noch kein vollständiger CRM-/Angebots-Golden-Path |
 
 Diese Werte steigen nicht durch Seiten, Mocks oder Dokumentation allein, sondern nur
@@ -32,8 +32,9 @@ durch unabhängig verifizierte Endzustände.
 | M1-00 Autorisierungsgrenze | VERIFIED (lokal) | Commit `8c2cf60` |
 | M1-01 Tenant-Schlüsselregeln | VERIFIED (lokal) | Commit `aa47671` |
 | M1-02 Actor-/Membership-DML | VERIFIED (lokal) | Commit `992796b` |
-| M1-03 getrennte DB-Principals | REVIEWED/VERIFIED (lokal) | 210 Tests, 73 Rollen- plus 5 PG18-Proben und Build grün; echte Provider-, Staging- und Restore-Gates bleiben NO-GO |
-| Rechner V3 | DISCOVERED | read-only Baseline `rechner/v3@7be46ad`; versionierter Intake-Vertrag noch offen |
+| M1-03 getrennte DB-Principals | REVIEWED/VERIFIED (lokal) | 74 Rollen- plus 5 PG18-Proben grün; echte Provider-, Staging- und Restore-Gates bleiben NO-GO |
+| M1-04 Rechner-V3-Intake | REVIEWED/VERIFIED (lokal) | Kanonisches Schema/OpenAPI, HMAC, atomarer Contact→Site→Project-Snapshot, Replay/Races, RLS/ACL sowie Fresh-/Legacy-Migration geprüft; Build und 256 Tests grün |
+| Rechner V3 | CONTRACTED (Clone) / BLOCKED (Provider) | read-only Baseline `rechner/v3@7be46ad`; Provider-Wiring erst nach veröffentlichtem korrektem Datenschutzhinweis und Secret-Provisioning |
 
 ## F1–F16-Matrix auf Capability-Ebene
 
@@ -53,7 +54,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | F9 Zeiterfassung | SPECIFIED | Timer/Eintrag → Audit → Export |
 | F10 Kundenportal | SPECIFIED | geschützter Projektlink → Angebot/Status/Dateien |
 | F11 Mobile/PWA | SPECIFIED | schmale Offline-Outbox für Fotos/Checklisten/Zeit |
-| F12 Lead-Funnel | SPECIFIED | Rechner V3 als versionierter Intake-Adapter |
+| F12 Lead-Funnel | SPECIFIED | Provideradapter erst nach Privacy-Freigabe anbinden; weitere Funnels capabilityweise bauen |
 | F13 Services | SPECIFIED | Filing-Objekt und Statusmaschine, externe Human-Gates ehrlich markieren |
 | F14 KI | SPECIFIED | rechtegebundene Tools erst nach realen Domain-Commands |
 | F15 Gewerbe | SPECIFIED | getrenntes Commercial-Datenmodell |
@@ -73,11 +74,11 @@ Abnahmen als prüfbare Lieferartefakte erhalten.
 
 ## Nächste Reihenfolge
 
-1. M1-03 ohne offene lokale High-Befunde abschließen; externe Provider-/DR-Gates
-   ausdrücklich BLOCKED lassen, bis echte autorisierte Evidenz vorliegt.
-2. Rechner V3 read-only auffinden und seinen sich ändernden Vertrag hinter einem
-   versionierten Adapter stabilisieren.
-3. Golden Path real bauen:
+1. Externe Provider-/DR-Gates ausdrücklich BLOCKED lassen, bis echte autorisierte
+   Evidenz vorliegt.
+2. Rechner-V3-Provider erst nach Privacy-Freigabe und echtem Secret-Provisioning
+   an den lokal verifizierten M1-04-Vertrag anschließen.
+3. Golden Path ab dem bereits erzeugten Project real weiterbauen:
    `Rechner → Lead → Kontakt → Standort/Adresse → Kalkulation → Katalog/Speicher →`
    `Angebot → Variante → PDF → Signatur → Installation → Rechnung → Kundenportal`.
 4. Danach F1–F16 capabilityweise bis VERIFIED schließen.

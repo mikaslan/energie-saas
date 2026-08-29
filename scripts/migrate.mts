@@ -1,4 +1,6 @@
 import { Pool } from "pg";
+import { tmpdir } from "node:os";
+import { resolve, sep } from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import {
@@ -44,6 +46,20 @@ function roleMode(url: URL): DbRoleMode {
   return value;
 }
 
+function migrationsFolder(mode: DbRoleMode): string {
+  const configured = process.env.TEST_MIGRATIONS_FOLDER;
+  if (!configured) return "./drizzle";
+  if (mode !== TEST_DB_ROLE_MODE || process.env.NODE_ENV !== "test") {
+    throw new Error("TEST_MIGRATIONS_FOLDER ist nur im expliziten Test-Rollenmodus erlaubt.");
+  }
+  const folder = resolve(configured);
+  const temporaryRoot = resolve(tmpdir());
+  if (folder !== temporaryRoot && !folder.startsWith(`${temporaryRoot}${sep}`)) {
+    throw new Error("TEST_MIGRATIONS_FOLDER muss unter dem Betriebssystem-Tempverzeichnis liegen.");
+  }
+  return folder;
+}
+
 function assertDirectStrictUrl(url: URL): void {
   if (decodeURIComponent(url.username) !== "app_migrator") {
     throw new Error("POSTGRES_URL_MIGRATE muss im Strict-Modus als app_migrator verbinden.");
@@ -64,6 +80,7 @@ const url = requireMigrationUrl();
 assertNoAmbientPostgresOverrides("POSTGRES_URL_MIGRATE");
 const parsedUrl = parsePostgresConnectionUrl("POSTGRES_URL_MIGRATE", url);
 const mode = roleMode(parsedUrl);
+const migrationFolder = migrationsFolder(mode);
 if (mode === STRICT_DB_ROLE_MODE) assertDirectStrictUrl(parsedUrl);
 const provisioningTopology =
   mode === STRICT_DB_ROLE_MODE
@@ -126,7 +143,7 @@ try {
     }
   }
 
-  await migrate(drizzle(client), { migrationsFolder: "./drizzle" });
+  await migrate(drizzle(client), { migrationsFolder: migrationFolder });
 
   if (mode === STRICT_DB_ROLE_MODE) {
     await client.query("begin");

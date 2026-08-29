@@ -1,0 +1,165 @@
+{
+  "contractVersion": "rechner-intake.v1",
+  "submissionId": "8d10a44f-b2f8-4f55-8dd7-8a5309800d4e",
+  "submittedAt": "2026-08-29T08:30:00.000Z",
+  "producer": {
+    "application": "wmee-rechner-v3",
+    "gitRevision": "7be46ad6b10f783bd17c1d06f74f0efd9ce63e3f",
+    "environment": "preview",
+    "deploymentId": "rechner-v3-contract-fixture",
+    "calculatorEngine": "wmee-solar.v1"
+  },
+  "acquisition": {
+    "channel": "website_calculator",
+    "source": "solarrechner",
+    "pagePath": "/solarrechner",
+    "referrerOrigin": "https://www.wmee.de",
+    "utm": {
+      "source": null,
+      "medium": null,
+      "campaign": null,
+      "term": null,
+      "content": null
+    }
+  },
+  "customer": {
+    "displayName": "Erika Muster",
+    "email": "erika.muster@example.com",
+    "phoneRaw": "+49 6222 123456"
+  },
+  "privacy": {
+    "purpose": "offer_request",
+    "legalBasis": "art_6_1_b_precontractual",
+    "noticeVersion": "rechner-2026-08-29",
+    "noticeUrl": "https://www.wmee.de/datenschutz",
+    "marketingConsent": "not_collected"
+  },
+  "site": {
+    "addressMode": "selected",
+    "formattedAddress": "Mühlstraße 8, 69234 Dielheim",
+    "street": "Mühlstraße",
+    "houseNumber": "8",
+    "postalCode": "69234",
+    "city": "Dielheim",
+    "countryCode": "DE",
+    "latitude": 49.28463,
+    "longitude": 8.73821,
+    "geocodeSource": "photon",
+    "precision": "house"
+  },
+  "calculation": {
+    "schemaVersion": "wmee-solar-snapshot.v1",
+    "calculatedAt": "2026-08-29T08:29:30.000Z",
+    "branch": "new_installation",
+    "questionnaireVariant": "standard",
+    "resultIntegrity": "client_reported_unverified",
+    "inputs": {
+      "roofs": [
+        {
+          "id": "dach-1",
+          "areaM2": 52,
+          "azimuthDeg": 5,
+          "tiltDeg": 35,
+          "type": "pitched",
+          "shading": "light"
+        }
+      ],
+      "consumption": {
+        "householdKwhPerYear": 4200,
+        "origin": "kwh",
+        "enteredAnnualCostCents": null,
+        "electricityPriceCentsPerKwh": 36,
+        "annualPriceIncreasePercent": 3,
+        "evKmPerYear": 12000,
+        "evChargingPattern": "evening",
+        "heatPumpKwhPerYear": 0,
+        "coolingKwhPerYear": 0,
+        "heatingAcKwhPerYear": 0,
+        "hotWaterKwhPerYear": null,
+        "buildingType": "single_family",
+        "buildingYear": 1998,
+        "heatedAreaM2": 145
+      },
+      "requestedProducts": {
+        "targetStorageKwh": 8,
+        "wallbox": true,
+        "bidirectionalCharging": false,
+        "backupPower": false
+      },
+      "existingInstallation": null,
+      "assumptions": {
+        "systemLossPercent": null,
+        "storageRoundtripEfficiency": null,
+        "storageDepthOfDischarge": null,
+        "moduleDegradationPerYear": null,
+        "horizonYears": 20,
+        "plannedCommissioningDate": null
+      },
+      "answeredFieldIds": [
+        "adresse",
+        "dachflaeche",
+        "ausrichtung",
+        "neigung",
+        "haushalt",
+        "arbeitspreis",
+        "eauto",
+        "speicher",
+        "wallbox"
+      ]
+    },
+    "provenance": {
+      "yield": "pvgis_hourly",
+      "roof": "user_drawn",
+      "consumption": "metered_kwh",
+      "electricityPrice": "customer",
+      "annualPriceIncrease": "default",
+      "investment": "market_estimate"
+    },
+    "result": {
+      "mode": "new_installation",
+      "systemPeakPowerKwp": 10.4,
+      "storageCapacityKwh": 8,
+      "energy": {
+        "generationKwh": 10480,
+        "consumptionKwh": 6600,
+        "directConsumptionKwh": 2850,
+        "fromStorageKwh": 1810,
+        "selfConsumptionKwh": 4660,
+        "feedInKwh": 5600,
+        "compensatedFeedInKwh": 5510,
+        "uncompensatedFeedInKwh": 90,
+        "gridImportKwh": 1940,
+        "storageLossKwh": 220,
+        "selfConsumptionRate": 0.4447,
+        "autonomyRate": 0.7061,
+        "storageFullCycles": 226.3,
+        "fromVehicleKwh": 0
+      },
+      "economics": {
+        "investmentCents": 2185000,
+        "investmentLowCents": 1923000,
+        "investmentHighCents": 2447000,
+        "savingsYear1Cents": 183400,
+        "horizonResultCents": 1869000,
+        "amortizationYears": 10.8,
+        "feedInTariffCentsPerKwh": 7.86,
+        "lcoeCentsPerKwh": 12.4,
+        "co2SavingsKgPerYear": 4192,
+        "priceSource": "market_estimate"
+      },
+      "uncertainty": {
+        "amortizationYears": {
+          "lower": 9.9,
+          "median": 10.8,
+          "upper": 12.1
+        },
+        "horizonResultCents": {
+          "lower": 1320000,
+          "median": 1869000,
+          "upper": 2470000
+        },
+        "largestDriver": "consumption"
+      }
+    }
+  }
+}

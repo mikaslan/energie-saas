@@ -48,6 +48,8 @@
     "@uppy/react": "^6.0.0",
     "@uppy/status-bar": "^6.0.0",
     "@vis.gl/react-maplibre": "^8.1.2",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^2.1.1",
     "better-auth": "^1.7.1",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
@@ -91,6 +93,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "^2.8.3"
   }
 }
