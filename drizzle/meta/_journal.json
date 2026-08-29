@@ -211,6 +211,13 @@
       "when": 1788024000000,
       "tag": "0029_m1_07_technical_delivery_retry",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788027000000,
+      "tag": "0030_m1_08_catalog",
+      "breakpoints": true
     }
   ]
 }

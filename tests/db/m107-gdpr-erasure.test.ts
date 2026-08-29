@@ -5,6 +5,13 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { PgBoss } from "pg-boss";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  CATALOG_CANONICALIZATION_VERSION,
+  CATALOG_COMPONENT_CONTRACT_VERSION,
+  PROJECT_CATALOG_RESOLUTION_CONTRACT_VERSION,
+  sealCatalogComponentRevision,
+  sealProjectCatalogResolution,
+} from "../../lib/integrations/catalog/contract";
 import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
 import {
   startEmbeddedPostgres,
@@ -78,6 +85,11 @@ type SubjectFixture = {
   oldAt: Date;
   sites: SiteFixture[];
   projects: ProjectFixture[];
+};
+
+type CatalogErasureFixture = {
+  componentId: string;
+  resolutionId: string;
 };
 
 function serviceUrl(
@@ -497,6 +509,216 @@ async function createSubject(
   return fixture;
 }
 
+async function createCatalogResolutionForErasure(
+  admin: Pool,
+  fixture: SubjectFixture,
+): Promise<CatalogErasureFixture> {
+  const project = fixture.projects[0];
+  if (!project?.revisionId) throw new Error("Katalog-Erasure-Fixture verlangt eine Berechnung.");
+
+  const componentId = randomUUID();
+  const componentRevisionId = randomUUID();
+  const resolutionId = randomUUID();
+  const lineId = randomUUID();
+  const confirmedAt = fixture.oldAt.toISOString();
+  const componentSnapshot = sealCatalogComponentRevision({
+    schemaVersion: CATALOG_COMPONENT_CONTRACT_VERSION,
+    canonicalizationVersion: CATALOG_CANONICALIZATION_VERSION,
+    identity: {
+      workspaceId: fixture.workspaceId,
+      componentId,
+      revision: 1,
+      internalSku: "ERASURE-BAT-001",
+      componentType: "battery",
+    },
+    presentation: {
+      displayName: "Synthetischer Erasure-Testspeicher",
+      manufacturer: "WMEE Testwerk",
+      model: "Fixture 8",
+      unit: "piece",
+      keyPoints: ["Ausschliesslich synthetische Testdaten"],
+      image: null,
+      datasheet: null,
+    },
+    technicalData: {
+      schemaVersion: "battery.v1",
+      nominalCapacityWh: 8_500,
+      usableCapacityWh: 8_000,
+      maxContinuousPowerWatts: 4_000,
+      roundTripEfficiencyBasisPoints: 9_400,
+      backupCapability: "known_supported",
+    },
+    commercial: {
+      currency: "EUR",
+      basis: "net",
+      purchasePriceNetCents: 250_000,
+      salesPriceNetCents: 390_000,
+      purchaseProvenance: {
+        sourceKind: "supplier_price_list",
+        reference: "synthetic-erasure-purchase-fixture",
+        observedOn: "2026-08-29",
+        rightsBasis: "supplier_authorized",
+        sourceDocumentSha256: null,
+      },
+      salesProvenance: {
+        sourceKind: "workspace_pricing",
+        reference: "synthetic-erasure-sales-fixture",
+        observedOn: "2026-08-29",
+        rightsBasis: "workspace_owned",
+        sourceDocumentSha256: null,
+      },
+    },
+    technicalProvenance: {
+      sourceKind: "manufacturer_datasheet",
+      reference: "synthetic-erasure-technical-fixture",
+      observedOn: "2026-08-29",
+      rightsBasis: "manufacturer_published",
+      sourceDocumentSha256: null,
+    },
+  });
+  const resolutionSnapshot = sealProjectCatalogResolution({
+    schemaVersion: PROJECT_CATALOG_RESOLUTION_CONTRACT_VERSION,
+    canonicalizationVersion: CATALOG_CANONICALIZATION_VERSION,
+    revision: 1,
+    bindings: {
+      workspaceId: fixture.workspaceId,
+      projectId: project.id,
+      siteId: project.siteId,
+      requirementId: project.requirementId,
+      requirementRevision: 1,
+      calculationRevisionId: project.revisionId,
+      calculationRevision: 1,
+      calculationInputSha256: "40".repeat(32),
+      calculationResultSha256: "50".repeat(32),
+      calculationQuality: "server_reproduced_estimate",
+      calculationValidationStatus: "not_f4_reference_validated",
+    },
+    lines: [{
+      lineId,
+      position: 1,
+      quantity: 1,
+      coversRequirementKeys: ["storage_capacity"],
+      catalogComponentId: componentId,
+      catalogComponentRevision: 1,
+      componentSnapshotSha256: componentSnapshot.snapshotSha256,
+      componentSnapshot,
+    }],
+    requested: {
+      branch: "new_installation",
+      pvPeakPowerWatts: 0,
+      storageCapacityWh: 8_000,
+      wallbox: false,
+      backupPower: false,
+      bidirectionalCharging: false,
+    },
+    acknowledgements: [],
+    confirmedBy: fixture.actorId,
+    confirmedAt,
+  });
+
+  const client = await admin.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_catalog.set_config('app.workspace_id', $1, true)", [
+      fixture.workspaceId,
+    ]);
+    await client.query(
+      `insert into public.catalog_component (
+         id, workspace_id, internal_sku, component_type, created_by,
+         created_at, updated_at
+       ) values ($1, $2, 'ERASURE-BAT-001', 'battery', $3, $4, $4)`,
+      [componentId, fixture.workspaceId, fixture.actorId, fixture.oldAt],
+    );
+    await client.query(
+      `insert into public.catalog_component_revision (
+         id, workspace_id, component_id, revision, component_type,
+         schema_version, canonicalization_version, revision_snapshot,
+         snapshot_sha256, created_by, created_at
+       ) values (
+         $1, $2, $3, 1, 'battery', $4, $5, $6::jsonb,
+         decode($7, 'hex'), $8, $9
+       )`,
+      [
+        componentRevisionId,
+        fixture.workspaceId,
+        componentId,
+        CATALOG_COMPONENT_CONTRACT_VERSION,
+        CATALOG_CANONICALIZATION_VERSION,
+        JSON.stringify(componentSnapshot),
+        componentSnapshot.snapshotSha256,
+        fixture.actorId,
+        fixture.oldAt,
+      ],
+    );
+    await client.query(
+      `update public.catalog_component
+          set status = 'active', updated_at = $1
+        where workspace_id = $2 and id = $3`,
+      [fixture.oldAt, fixture.workspaceId, componentId],
+    );
+    await client.query(
+      `insert into public.project_catalog_resolution (
+         id, workspace_id, project_id, site_id, revision,
+         requirement_id, requirement_revision, calculation_revision_id,
+         calculation_revision, calculation_input_sha256,
+         calculation_result_sha256, calculation_quality,
+         calculation_validation_status, schema_version,
+         canonicalization_version, resolution_snapshot, resolution_sha256,
+         confirmed_by, confirmed_at, created_at
+       ) values (
+         $1, $2, $3, $4, 1, $5, 1, $6, 1,
+         decode(repeat('40', 32), 'hex'), decode(repeat('50', 32), 'hex'),
+         'server_reproduced_estimate', 'not_f4_reference_validated',
+         $7, $8, $9::jsonb, decode($10, 'hex'), $11, $12, $12
+       )`,
+      [
+        resolutionId,
+        fixture.workspaceId,
+        project.id,
+        project.siteId,
+        project.requirementId,
+        project.revisionId,
+        PROJECT_CATALOG_RESOLUTION_CONTRACT_VERSION,
+        CATALOG_CANONICALIZATION_VERSION,
+        JSON.stringify(resolutionSnapshot),
+        resolutionSnapshot.resolutionSha256,
+        fixture.actorId,
+        fixture.oldAt,
+      ],
+    );
+    await client.query(
+      `insert into public.project_catalog_resolution_line (
+         id, workspace_id, resolution_id, project_id, position, quantity,
+         catalog_component_id, catalog_component_revision,
+         component_snapshot_sha256, created_at
+       ) values ($1, $2, $3, $4, 1, 1, $5, 1, decode($6, 'hex'), $7)`,
+      [
+        lineId,
+        fixture.workspaceId,
+        resolutionId,
+        project.id,
+        componentId,
+        componentSnapshot.snapshotSha256,
+        fixture.oldAt,
+      ],
+    );
+    await client.query("set constraints all immediate");
+    await client.query(
+      `update public.project set updated_at = $1
+        where workspace_id = $2 and id = $3`,
+      [fixture.oldAt, fixture.workspaceId, project.id],
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  return { componentId, resolutionId };
+}
+
 async function restoreSubject(admin: Pool, fixture: SubjectFixture): Promise<void> {
   await admin.query(
     `update public.contact
@@ -608,6 +830,7 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
   let ownerPool: Pool;
   let workerPool: Pool;
   let eligible: SubjectFixture;
+  let eligibleCatalog: CatalogErasureFixture;
   let recent: SubjectFixture;
   let held: SubjectFixture;
   let won: SubjectFixture;
@@ -639,6 +862,7 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
     });
 
     eligible = await createSubject(admin, { ageMonths: 25, sharedAndExclusive: true });
+    eligibleCatalog = await createCatalogResolutionForErasure(admin, eligible);
     recent = await createSubject(admin, { ageMonths: 23 });
     held = await createSubject(admin, { ageMonths: 25 });
     won = await createSubject(admin, { ageMonths: 25, outcome: "won" });
@@ -947,6 +1171,10 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
       projects: number;
       sites: number;
       memberships: number;
+      catalog_resolutions: number;
+      catalog_resolution_lines: number;
+      catalog_components: number;
+      catalog_component_revisions: number;
     }>(`
       select
         (select count(*)::int from public.site_energy_profile
@@ -964,12 +1192,22 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
         (select count(*)::int from public.site
           where workspace_id = $1 and id = any($2::uuid[])) as sites,
         (select count(*)::int from public.membership
-          where workspace_id = $1 and user_id = $4) as memberships
+          where workspace_id = $1 and user_id = $4) as memberships,
+        (select count(*)::int from public.project_catalog_resolution
+          where workspace_id = $1 and id = $5) as catalog_resolutions,
+        (select count(*)::int from public.project_catalog_resolution_line
+          where workspace_id = $1 and resolution_id = $5) as catalog_resolution_lines,
+        (select count(*)::int from public.catalog_component
+          where workspace_id = $1 and id = $6) as catalog_components,
+        (select count(*)::int from public.catalog_component_revision
+          where workspace_id = $1 and component_id = $6) as catalog_component_revisions
     `, [
       eligible.workspaceId,
       eligible.sites.map((site) => site.id),
       eligible.projects.map((project) => project.id),
       eligible.actorId,
+      eligibleCatalog.resolutionId,
+      eligibleCatalog.componentId,
     ]);
     expect(remaining.rows[0]).toEqual({
       profiles: 0,
@@ -980,6 +1218,10 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
       projects: 3,
       sites: 2,
       memberships: 1,
+      catalog_resolutions: 0,
+      catalog_resolution_lines: 0,
+      catalog_components: 1,
+      catalog_component_revisions: 1,
     });
 
     const retainedPii = await admin.query<{ document: string }>(`

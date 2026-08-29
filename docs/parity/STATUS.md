@@ -18,9 +18,9 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 11–13 % | Fundament sowie Rechner→Lead→Adresse→Energieprofil→Planungsschätzung lokal verifiziert; fachliche Breite bleibt überwiegend offen |
-| Technisches Fundament M0/M1 | ca. 90–93 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 5–7 % | Login, Intake-Triage, Projektakte, Adresse, Energieprofil und reproduzierbare Planungsschätzung sind real; Katalog, Angebot, Ausführung und Abrechnung bleiben offen |
+| Gesamtmission einschließlich F1–F16 | ca. 14–16 % | Fundament sowie Rechner→Lead→Adresse→Planung→eigener Katalog→revisionsgebundene Produktauflösung lokal verifiziert; Angebot und operative Breite bleiben überwiegend offen |
+| Technisches Fundament M0/M1 | ca. 94–96 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 8–10 % | Login, Intake-Triage, Projektakte, Adresse, Energieprofil, Planungsschätzung, eigener Katalog und Produktzuordnung sind real; Angebot, Ausführung und Abrechnung bleiben offen |
 
 Diese Werte steigen nicht durch Seiten, Mocks oder Dokumentation allein, sondern nur
 durch unabhängig verifizierte Endzustände.
@@ -37,6 +37,7 @@ durch unabhängig verifizierte Endzustände.
 | M1-05 Rechner-Lead-Triage | REVIEWED/VERIFIED (lokal) | Echter OTP-Login, signierter Intake, Anfrageboard, Projektakte, strenge Pin-Bestätigung, Formular- und Pointer-Move mit Reload, Editor/Viewer/Tenant-Grenzen; Desktop/Mobile/Tablet, Axe, 307 Repo-Tests und 5 Browser-E2E grün |
 | M1-06 Planungsstandort/Adresskorrektur | REVIEWED/VERIFIED (lokal) | Regionaler Lead → geschützte Geoapify-Vertragsgrenze → hausgenaue Adresse → Pin-Korrektur → revisionsgebundenes Speichern und getrennte Bestätigung; Reload-/Board-Konsistenz, Editor/Viewer/Tenant-Grenzen und 5 Browser-E2E grün; Live-Provider bleibt Pilot-Gate |
 | M1-07 Energieprofil/Planungsschätzung | REVIEWED/VERIFIED (lokal) | Revisionsgebundenes Site-Profil, getrenntes Save/Confirm, atomare Reservation, PVGIS-Vertrag, gepinnter Clean-Room-Kern, immutable Snapshots/Resultate, Quota/Cooldown, technische Retries, DSGVO-Erasuregraph und geschützte UI; 620 Repo-Tests, 6 Browser-E2E, Build, 75+5 Rollenproben sowie adversariales Re-Audit grün. Live-PVGIS und F4-Referenzvalidierung bleiben Pilot-/F4-Gates |
+| M1-08 Produktkatalog/Projektauflösung | REVIEWED/VERIFIED (lokal) | Leerer eigener Katalog für sieben Produkttypen, unveränderliche Revisionen, EK/VK-Provenienz, Lifecycle, Current/Stale-Ableitung und revisionsgebundene Produkt-/Preissnapshots; 661 Repo-Tests, 7 Browser-E2E, Build, 75+5 Rollenproben, Nebenläufigkeits- und EK-Redaktionsreview grün. Echte Produkte/Preise, Asset-Storage und Angebot/BOM bleiben getrennte Folgegates |
 | Rechner V3 | CONTRACTED (Clone) / BLOCKED (Provider) | read-only Baseline `rechner/v3@2b00f6b`; Provider-Wiring erst nach veröffentlichtem korrektem Datenschutzhinweis und Secret-Provisioning |
 
 ## F1–F16-Matrix auf Capability-Ebene
@@ -47,7 +48,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | Bereich | Höchster belastbarer Stand | Nächster echte Slice |
 |---|---|---|
 | F1 CRM & Leads | PARTIAL VERIFIED | Rechner-V3-Intake → Kontakt → Standort/Adresskorrektur → Anfrage → Kanban/Projektakte → Energieprofil ist lokal real; als Nächstes Zuweisung und weitere CRM-Capabilities |
-| F2 Angebote | SPECIFIED | Anfrage → Variante → BOM/Preise → PDF → Signatur |
+| F2 Angebote | PARTIAL CONTRACTED | Revisionsgebundene Produkt-/Preissnapshots sind lokal real; als Nächstes Variante → BOM/Steuer/Rabatt → PDF → Signatur |
 | F3 PV-Planung | PARTIAL VERIFIED | Hausbezogene, serverseitig reproduzierbare Planungsschätzung lokal real; rechtmäßige Dachdatenadapter und tiefere Planungswerkzeuge folgen capabilityweise |
 | F4 Simulation | SPECIFIED | deterministischer Rechenkern mit fachlichem Güte- und Haftungsgate |
 | F5 Wärmepumpe | SPECIFIED | Schätzverfahren klar von zertifizierter Normrechnung trennen |
@@ -61,7 +62,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | F13 Services | SPECIFIED | Filing-Objekt und Statusmaschine, externe Human-Gates ehrlich markieren |
 | F14 KI | SPECIFIED | rechtegebundene Tools erst nach realen Domain-Commands |
 | F15 Gewerbe | SPECIFIED | getrenntes Commercial-Datenmodell |
-| F16 Katalog/Vorlagen | SPECIFIED | M1-08: Produkte, Vault/Speicher, Preise und Snapshot-Propagation |
+| F16 Katalog/Vorlagen | PARTIAL VERIFIED | M1-08a: eigener Katalog, sieben Produkttypen, Preise/Provenienz, Lifecycle und Projektauflösung lokal real; CSV, Assets, Vorlagen und Lieferantenfeeds folgen getrennt |
 
 ## Lieferform
 
@@ -81,7 +82,7 @@ Abnahmen als prüfbare Lieferartefakte erhalten.
    Evidenz vorliegt.
 2. Rechner-V3-Provider erst nach Privacy-Freigabe und echtem Secret-Provisioning
    an den lokal verifizierten M1-04-Vertrag anschließen.
-3. Golden Path ab dem verifizierten Planungsstandort real weiterbauen:
-   `Rechner → Lead → Kontakt → Standort/Adresskorrektur → Energieprofil/Kalkulation → Katalog/Speicher →`
+3. Golden Path ab dem verifizierten Produktstand real weiterbauen:
+   `Rechner → Lead → Kontakt → Standort/Adresskorrektur → Energieprofil/Kalkulation → Katalog/Speicher → Produktauflösung →`
    `Angebot → Variante → PDF → Signatur → Installation → Rechnung → Kundenportal`.
 4. Danach F1–F16 capabilityweise bis VERIFIED schließen.

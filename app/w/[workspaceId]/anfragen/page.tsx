@@ -134,6 +134,12 @@ export default async function RequestsPage({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href={`/w/${validWorkspaceId}/katalog`}
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            >
+              Produktkatalog
+            </Link>
             {!board.permissions.canMoveCards ? (
               <span className="rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">
                 Nur Lesezugriff

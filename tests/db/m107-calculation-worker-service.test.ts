@@ -103,6 +103,12 @@ type CalculationSuccess = {
   replayed: boolean;
 };
 
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+};
+
 type JobRow = {
   state: string;
   attempt_count: number;
@@ -150,6 +156,37 @@ type Footprint = {
 
 function asDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolvePromise!: Deferred<T>["resolve"];
+  let rejectPromise!: Deferred<T>["reject"];
+  const promise = new Promise<T>((resolveDeferred, rejectDeferred) => {
+    resolvePromise = resolveDeferred;
+    rejectPromise = rejectDeferred;
+  });
+  return { promise, resolve: resolvePromise, reject: rejectPromise };
+}
+
+async function waitForNamedSessionBlockedBy(
+  applicationName: string,
+  blockerPid: number,
+): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const waiting = await testPool.query<{ waiting: boolean }>(`
+      select exists (
+        select 1
+          from pg_catalog.pg_stat_activity
+         where application_name = $1
+           and state = 'active'
+           and wait_event_type = 'Lock'
+           and $2::integer = any(pg_catalog.pg_blocking_pids(pid))
+      ) as waiting
+    `, [applicationName, blockerPid]);
+    if (waiting.rows[0]?.waiting === true) return;
+  }
+  throw new Error("Finalisierung erreichte den vom Project-Besitzer gehaltenen Lock nicht.");
 }
 
 function sha256Bytes(value: unknown): Buffer {
@@ -874,6 +911,98 @@ describe.sequential("M1-07 calculation worker DB service contract", () => {
     expect(state.events).toHaveLength(1);
     expect(state.audits).toHaveLength(1);
   });
+
+  it("waits on Project before Job so a Project -> Profile -> Job owner cannot deadlock finalization", async () => {
+    const fixture = await createFixture();
+    const leaseToken = randomUUID();
+    await claim(fixture, leaseToken);
+    await persistInput(fixture, leaseToken, 1);
+
+    const ownerReady = deferred<number>();
+    const ownerMayTakeJob = deferred<void>();
+    const projectOwner = withTenantOn(testPool, fixture.workspaceId, async (tx) => {
+      await tx.execute(sql`set local lock_timeout = '500ms'`);
+      await tx.execute(sql`set local statement_timeout = '1500ms'`);
+      const backend = await tx.execute<{ pid: number; [key: string]: unknown }>(sql`
+        select pg_catalog.pg_backend_pid() as pid
+      `);
+      await tx.execute(sql`
+        select id
+          from project
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and id = ${fixture.projectId}::uuid
+         for update
+      `);
+      await tx.execute(sql`
+        select id
+          from site_energy_profile
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and id = ${fixture.profileId}::uuid
+         for update
+      `);
+      const ownerPid = backend.rows[0]?.pid;
+      if (ownerPid === undefined) throw new Error("Project-Besitzer hat keine Backend-PID.");
+      ownerReady.resolve(ownerPid);
+
+      await ownerMayTakeJob.promise;
+      const lockedJob = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+        select id
+          from project_calculation_job
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and id = ${fixture.jobId}::uuid
+         for update
+      `);
+      expect(lockedJob.rows).toEqual([{ id: fixture.jobId }]);
+      return fixture.jobId;
+    });
+    void projectOwner.catch((error: unknown) => ownerReady.reject(error));
+
+    const ownerPid = await ownerReady.promise;
+    const applicationName = `m107-finalize-${randomUUID().slice(0, 8)}`;
+    const finalizer = withTenantOn(testPool, fixture.workspaceId, async (tx) => {
+      await tx.execute(sql`select set_config('application_name', ${applicationName}, true)`);
+      await tx.execute(sql`set local lock_timeout = '3s'`);
+      await tx.execute(sql`set local statement_timeout = '4s'`);
+      return finalizeProjectCalculationSuccess(tx, {
+        workspaceId: fixture.workspaceId,
+        jobId: fixture.jobId,
+        leaseToken,
+        attemptCount: 1,
+        result: fixture.result,
+      });
+    });
+
+    try {
+      await waitForNamedSessionBlockedBy(applicationName, ownerPid);
+      ownerMayTakeJob.resolve();
+
+      // If finalization had already taken Job (the former Job -> Project order),
+      // this Project -> Profile -> Job transaction would hit its 500 ms lock
+      // timeout or PostgreSQL would detect a deadlock. It must commit first.
+      await expect(projectOwner).resolves.toBe(fixture.jobId);
+      const finalized = await finalizer;
+      expect(finalized).toMatchObject({ revision: 1, replayed: false });
+
+      await expect(finalizeSuccess(fixture, {
+        leaseToken,
+        attemptCount: 1,
+        result: fixture.result,
+      })).resolves.toEqual({ ...finalized, replayed: true });
+      const state = await footprint(fixture);
+      expect(state.job).toMatchObject({
+        state: "succeeded",
+        attempt_count: 1,
+        lease_token: null,
+        result_revision_id: finalized.revisionId,
+      });
+      expect(state.revisions).toHaveLength(1);
+      expect(state.events).toHaveLength(1);
+      expect(state.audits).toHaveLength(1);
+    } finally {
+      ownerMayTakeJob.resolve();
+      await Promise.allSettled([projectOwner, finalizer]);
+    }
+  }, 10_000);
 
   it("rejects a generically valid result whose capacity contradicts its reserved request", async () => {
     const fixture = await createFixture();

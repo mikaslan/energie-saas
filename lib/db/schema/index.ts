@@ -11,6 +11,7 @@
 // damit Migrationen weiterhin ALLE Tabellen sehen.
 export * from "./core";
 export * from "./boards";
+export * from "./catalog";
 export * from "./crm";
 export * from "./events";
 export * from "./energy";

@@ -743,8 +743,13 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       public.project_calculation_job,
       public.project_calculation_revision
     to app_worker;
-    grant update on public.project_calculation_job to app_worker;
-    grant insert on public.project_calculation_revision to app_worker;
+    revoke update on public.project_calculation_job from app_worker;
+    grant update (
+      state, attempt_count, next_attempt_at, lease_token, lease_expires_at,
+      input_sha256, input_snapshot, provider_snapshot,
+      error_code, error_retryable, started_at, finished_at
+    ) on public.project_calculation_job to app_worker;
+    revoke insert on public.project_calculation_revision from app_worker;
     grant insert on public.domain_events, public.audit_log to app_worker;
 
     revoke execute on function public.guard_site_energy_profile_mutation()
@@ -790,6 +795,61 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         to app_erasure;
       grant execute on function public.replay_erasure_tombstone(uuid)
         to app_erasure
+    `);
+  }
+
+  const catalogRelations = [
+    "catalog_component",
+    "catalog_component_revision",
+    "project_catalog_resolution",
+    "project_catalog_resolution_line",
+  ] as const;
+  const catalogExisting = await client.query<{ relname: string }>(`
+    select c.relname
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and c.relname = any($1::text[])
+    order by c.relname
+  `, [catalogRelations]);
+  if (catalogExisting.rows.length > 0) {
+    if (
+      catalogExisting.rows.length !== catalogRelations.length
+      || catalogExisting.rows.some((row, index) => row.relname !== catalogRelations[index])
+    ) {
+      throw new Error("Rollen-ACL-Manifest: M1-08-Katalogrelationen sind nur teilweise vorhanden.");
+    }
+    await client.query(`
+      grant select, insert, update on public.catalog_component to app_runtime;
+      grant select, insert on
+        public.catalog_component_revision,
+        public.project_catalog_resolution,
+        public.project_catalog_resolution_line
+      to app_runtime;
+
+      revoke execute on function public.guard_catalog_component_mutation()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.guard_catalog_component_revision()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.apply_catalog_component_revision()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.mark_catalog_component_projects_stale()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.validate_project_catalog_resolution_snapshot()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.mark_project_catalog_resolution_stale()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.lock_project_calculation_finalization(uuid, uuid)
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.finalize_project_calculation_success(
+        uuid, uuid, uuid, integer, uuid, jsonb
+      ) from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      grant execute on function public.lock_project_calculation_finalization(uuid, uuid)
+        to app_worker;
+      grant execute on function public.finalize_project_calculation_success(
+        uuid, uuid, uuid, integer, uuid, jsonb
+      ) to app_worker
     `);
   }
 
@@ -1191,6 +1251,8 @@ export async function verifyRoleContract(
       "r:auth_user",
       "r:auth_verification",
       "r:calculator_snapshot",
+      "r:catalog_component",
+      "r:catalog_component_revision",
       "r:contact",
       "r:contact_legal_hold",
       "r:domain_events",
@@ -1203,6 +1265,8 @@ export async function verifyRoleContract(
       "r:project",
       "r:project_calculation_job",
       "r:project_calculation_revision",
+      "r:project_catalog_resolution",
+      "r:project_catalog_resolution_line",
       "r:project_requirement",
       "r:site",
       "r:site_energy_profile",
@@ -1336,19 +1400,27 @@ export async function verifyRoleContract(
   equalRows(
     functionOwners.rows.map((row) => `${row.proname}:${row.owner}`),
     [
+      "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       "erase_inactive_lead:app_owner",
+      "finalize_project_calculation_success:app_owner",
       "forbid_mutation:app_owner",
+      "guard_catalog_component_mutation:app_owner",
+      "guard_catalog_component_revision:app_owner",
       "guard_erasure_tombstone_worm:app_owner",
       "guard_membership_dml:app_owner",
       "guard_membership_statement:app_owner",
       "guard_project_calculation_job_mutation:app_owner",
       "guard_project_calculation_revision:app_owner",
       "guard_site_energy_profile_mutation:app_owner",
+      "lock_project_calculation_finalization:app_owner",
+      "mark_catalog_component_projects_stale:app_owner",
+      "mark_project_catalog_resolution_stale:app_owner",
       "provision_default_request_board:app_owner",
       "reconcile_user_identity:identity_reconciler",
       "replay_erasure_tombstone:app_owner",
       "user_identity_link_auth_only:app_owner",
+      "validate_project_catalog_resolution_snapshot:app_owner",
     ],
     "Funktions-Ownership",
   );
@@ -1404,12 +1476,22 @@ export async function verifyRoleContract(
       sha256(row.prosrc),
     ].join(":")),
     [
+      "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
         "acca23aaae3a91eda3aa424256de1527e1bb61d02fdd4b0d2c0803ecd6a37542",
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:ed7350da6af25aeb1f82ee42df96ed597a10464fef147ff17594121d4bb0ef60",
+      "finalize_project_calculation_success(uuid, uuid, uuid, integer, uuid, jsonb):" +
+        "TABLE(outcome text, revision_id uuid, revision_number integer):" +
+        "app_owner:plpgsql:f:v:true:false:true:u:search_path=pg_catalog:" +
+        "d76a793111515819e26d367daa2ecdf5b894447244e2ae002a51ace05b04cdb9",
       "forbid_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:-:" +
         "df89b0c65f44ffae87695685fca411fb8ad998cff6768bb8a176024d331910f3",
+      "guard_catalog_component_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:62abb0e08cabd1d8a53dd4cbb1df078e3018cc45c84264846c21f61f7b91f5b7",
+      "guard_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:febb6a39265ceb1661f5dc21709f4a2912df799c6b4dd06db27b540253b8c88d",
       "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:8724ed32499eb1240d37ff600c29430d1ff5c5789b72db9b07d76a4446d67ef8",
       "guard_membership_dml():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -1422,6 +1504,12 @@ export async function verifyRoleContract(
         "search_path=pg_catalog:9ae6f5da4bca2d394e687c50c7be25cc0ebaab763ebaefd9f11cf4d20644a07a",
       "guard_site_energy_profile_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:02cefc1ea9fab360ae6dbe31a77095f20a2fd75025ba1e6b41508c32a00d8eab",
+      "lock_project_calculation_finalization(uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:true:u:" +
+        "search_path=pg_catalog:8946ebb3b0a89e846a67582608458897717ba76d26292b48e7d78077402a820c",
+      "mark_catalog_component_projects_stale():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:692ce6d2faf94fefeb5e6c4b574c350da93d9032d092ab5a6faf984b95e4ab68",
+      "mark_project_catalog_resolution_stale():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
+        "search_path=pg_catalog:7c6bd9b9f83040ae9d697aaa6b81012a7a9101d388f9ef1e107564410de1edd0",
       "provision_default_request_board():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:8e375b2395604e242f864516e8b068fa01cbd46cceff11b3729eca10c2c010f2",
       "reconcile_user_identity(text, text):uuid:identity_reconciler:plpgsql:f:v:true:false:false:u:" +
@@ -1430,6 +1518,8 @@ export async function verifyRoleContract(
         "search_path=pg_catalog:2f95087557c3c9c2fcd866e34aa210f969fb442c44c5b5a9ed4ca40106814ed9",
       "user_identity_link_auth_only():trigger:app_owner:plpgsql:f:v:false:false:false:u:-:" +
         "642035f502409bec26defa74b308e8825d613a5592ae23d228aaabd76115ccfb",
+      "validate_project_catalog_resolution_snapshot():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:4d87e511af3484732de1bdb9717d1a818e3b6632880fc3bd35192b955e444ebb",
     ],
     "Live-Funktions-Sicherheitsvertrag",
   );
@@ -1458,6 +1548,8 @@ export async function verifyRoleContract(
       "auth_user:false:false",
       "auth_verification:false:false",
       "calculator_snapshot:true:true",
+      "catalog_component:true:true",
+      "catalog_component_revision:true:true",
       "contact:true:true",
       "contact_legal_hold:true:true",
       "domain_events:true:true",
@@ -1470,6 +1562,8 @@ export async function verifyRoleContract(
       "project:true:true",
       "project_calculation_job:true:true",
       "project_calculation_revision:true:true",
+      "project_catalog_resolution:true:true",
+      "project_catalog_resolution_line:true:true",
       "project_requirement:true:true",
       "site:true:true",
       "site_energy_profile:true:true",
@@ -1515,6 +1609,8 @@ export async function verifyRoleContract(
     [
       "audit_log:tenant_isolation:23ff85358d0c0e94974353f538c267f99f5a3e7219bf9e1cd8769f69744ae417",
       "calculator_snapshot:tenant_isolation:8c816e39dfc3d5d774d0de6f02961882e9ae6679904da2b9007d5ff86becbb72",
+      "catalog_component:tenant_isolation:0f52f117c39d494bf05b96f6f8a38b776282a706c0765c9b1a88011be6fc7d9d",
+      "catalog_component_revision:tenant_isolation:e2a00cf04ea7089b3abdfd9fc87f71b7d0b3460a0be58bdadbe0f23a61fd3758",
       "contact:tenant_isolation:e339a6411d39679d749a45535df17ea42132453c4725e42f0d5b310379489e46",
       "contact_legal_hold:tenant_isolation:752e8f298e0a4cc77a31ee680540edf91831654263d7f0dd39bafc42b6d54477",
       "domain_events:tenant_isolation:f1715696222caf43a2adc220b67b8aebdce61f5ef9659884af1c7263ccab8284",
@@ -1532,6 +1628,8 @@ export async function verifyRoleContract(
       "project:tenant_isolation:c5f62af4cbba473885ce886d0eef10a80ab1f5dca746c0cb4b6204dd1050717b",
       "project_calculation_job:tenant_isolation:46c9a1a09bfdfc88ddf839242f17c560ea614e34d1961a341580c40b4cdabf84",
       "project_calculation_revision:tenant_isolation:84bebd69ee64a8388f406f44da215b86328497c5235e70628a8df0e8c1b56a9d",
+      "project_catalog_resolution:tenant_isolation:28a50950efb5f725b0db20a0d82671d5a03a0ec9aa20e93775bd3e88c625a46f",
+      "project_catalog_resolution_line:tenant_isolation:e86df4a2dda17e6eea6b929c96636cd1543396e661cdea87df4731ac043e05e2",
       "project_requirement:tenant_isolation:4c2d81a0ad4ae0aa71972c72dc7f7cd57028a0ba50e01420106b350f724de0cb",
       "site:tenant_isolation:26181215437698e628cbd47ab08562d51de16bb0172d907c36c75a679a555d3c",
       "site_energy_profile:tenant_isolation:dedfd647c982a06a434aa37f05bbba136aa817eaf84b76a2c360c709e229e609",
@@ -1584,11 +1682,17 @@ export async function verifyRoleContract(
       row.proname,
       row.args,
       row.when_expression,
-      row.tgconstraint,
+      row.tgconstraint === "0" ? "0" : "constraint",
     ].join(":")),
     [
       "audit_log:audit_log_append_only:27:O:public:forbid_mutation::-:0",
       "audit_log:audit_log_no_truncate:34:O:public:forbid_mutation::-:0",
+      "catalog_component:catalog_component_mutation_guard:27:O:public:guard_catalog_component_mutation::-:0",
+      "catalog_component:catalog_component_no_truncate:34:O:public:forbid_mutation::-:0",
+      "catalog_component:catalog_component_projects_stale:17:O:public:mark_catalog_component_projects_stale::-:0",
+      "catalog_component_revision:catalog_component_revision_apply:5:O:public:apply_catalog_component_revision::-:0",
+      "catalog_component_revision:catalog_component_revision_immutable:31:O:public:guard_catalog_component_revision::-:0",
+      "catalog_component_revision:catalog_component_revision_no_truncate:34:O:public:forbid_mutation::-:0",
       "domain_events:domain_events_append_only:27:O:public:forbid_mutation::-:0",
       "domain_events:domain_events_no_truncate:34:O:public:forbid_mutation::-:0",
       "erasure_operation_locator:erasure_operation_locator_append_only:27:O:" +
@@ -1605,6 +1709,14 @@ export async function verifyRoleContract(
       "project_calculation_job:project_calculation_job_no_truncate:34:O:public:forbid_mutation::-:0",
       "project_calculation_revision:project_calculation_revision_immutable:31:O:public:guard_project_calculation_revision::-:0",
       "project_calculation_revision:project_calculation_revision_no_truncate:34:O:public:forbid_mutation::-:0",
+      "project_calculation_revision:project_calculation_revision_catalog_stale:5:O:public:mark_project_catalog_resolution_stale::-:0",
+      "project_catalog_resolution:project_catalog_resolution_complete:5:O:public:validate_project_catalog_resolution_snapshot::-:constraint",
+      "project_catalog_resolution:project_catalog_resolution_immutable:19:O:public:forbid_mutation::-:0",
+      "project_catalog_resolution:project_catalog_resolution_no_truncate:34:O:public:forbid_mutation::-:0",
+      "project_catalog_resolution_line:project_catalog_resolution_line_complete:5:O:public:validate_project_catalog_resolution_snapshot::-:constraint",
+      "project_catalog_resolution_line:project_catalog_resolution_line_immutable:19:O:public:forbid_mutation::-:0",
+      "project_catalog_resolution_line:project_catalog_resolution_line_no_truncate:34:O:public:forbid_mutation::-:0",
+      "project_requirement:project_requirement_catalog_stale:5:O:public:mark_project_catalog_resolution_stale::-:0",
       "site_energy_profile:site_energy_profile_mutation_guard:27:O:public:guard_site_energy_profile_mutation::-:0",
       "site_energy_profile:site_energy_profile_no_truncate:34:O:public:forbid_mutation::-:0",
       "user_identity:user_identity_link_auth_only:19:O:public:user_identity_link_auth_only::-:0",
@@ -1642,6 +1754,11 @@ export async function verifyRoleContract(
       "app_runtime:audit_log:SELECT:app_owner:false",
       "app_runtime:calculator_snapshot:INSERT:app_owner:false",
       "app_runtime:calculator_snapshot:SELECT:app_owner:false",
+      "app_runtime:catalog_component:INSERT:app_owner:false",
+      "app_runtime:catalog_component:SELECT:app_owner:false",
+      "app_runtime:catalog_component:UPDATE:app_owner:false",
+      "app_runtime:catalog_component_revision:INSERT:app_owner:false",
+      "app_runtime:catalog_component_revision:SELECT:app_owner:false",
       "app_runtime:contact:INSERT:app_owner:false",
       "app_runtime:contact:SELECT:app_owner:false",
       "app_runtime:contact:UPDATE:app_owner:false",
@@ -1658,6 +1775,10 @@ export async function verifyRoleContract(
       "app_runtime:project_calculation_job:INSERT:app_owner:false",
       "app_runtime:project_calculation_job:SELECT:app_owner:false",
       "app_runtime:project_calculation_revision:SELECT:app_owner:false",
+      "app_runtime:project_catalog_resolution:INSERT:app_owner:false",
+      "app_runtime:project_catalog_resolution:SELECT:app_owner:false",
+      "app_runtime:project_catalog_resolution_line:INSERT:app_owner:false",
+      "app_runtime:project_catalog_resolution_line:SELECT:app_owner:false",
       "app_runtime:project_requirement:INSERT:app_owner:false",
       "app_runtime:project_requirement:SELECT:app_owner:false",
       "app_runtime:site:DELETE:app_owner:false",
@@ -1688,8 +1809,6 @@ export async function verifyRoleContract(
       "app_worker:membership:SELECT:app_owner:false",
       "app_worker:project:SELECT:app_owner:false",
       "app_worker:project_calculation_job:SELECT:app_owner:false",
-      "app_worker:project_calculation_job:UPDATE:app_owner:false",
-      "app_worker:project_calculation_revision:INSERT:app_owner:false",
       "app_worker:project_calculation_revision:SELECT:app_owner:false",
       "app_worker:project_requirement:SELECT:app_owner:false",
       "app_worker:site:SELECT:app_owner:false",
@@ -1730,7 +1849,20 @@ export async function verifyRoleContract(
     columnGrants.rows.map((row) =>
       `${row.grantee}:${row.object_name}:${row.privilege_type}:${row.grantor}:${row.is_grantable}`,
     ),
-    [],
+    [
+      "app_worker:project_calculation_job.attempt_count:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.error_code:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.error_retryable:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.finished_at:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.input_sha256:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.input_snapshot:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.lease_expires_at:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.lease_token:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.next_attempt_at:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.provider_snapshot:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.started_at:UPDATE:app_owner:false",
+      "app_worker:project_calculation_job.state:UPDATE:app_owner:false",
+    ],
     "Spalten-Grants",
   );
 
@@ -1785,6 +1917,8 @@ export async function verifyRoleContract(
       "app_erasure:replay_erasure_tombstone(uuid):EXECUTE:app_owner:false",
       "app_runtime:app_actor_id():EXECUTE:app_owner:false",
       "app_system:app_actor_id():EXECUTE:app_owner:false",
+      "app_worker:finalize_project_calculation_success(uuid, uuid, uuid, integer, uuid, jsonb):EXECUTE:app_owner:false",
+      "app_worker:lock_project_calculation_finalization(uuid, uuid):EXECUTE:app_owner:false",
     ],
     "Funktions-Grants",
   );

@@ -579,7 +579,9 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
         [data.editorIdentityId, data.editorEmail],
       );
       await client.query(
-        "insert into membership (workspace_id, user_id, role) values ($1::uuid, $2::uuid, 'editor')",
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor',
+           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true}'::jsonb)`,
         [data.workspaceId, data.editorIdentityId],
       );
       await client.query(

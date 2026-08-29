@@ -7,7 +7,7 @@ export type Capability =
 export type Action =
   | "project.read" | "project.write" | "phase.convert"
   | "price.read_purchase" | "price.edit" | "discount.apply"
-  | "invoice.issue" | "catalog.manage" | "settings.manage";
+  | "invoice.issue" | "catalog.read" | "catalog.manage" | "settings.manage";
 
 export type PermissionCtx = {
   role: Role;
@@ -52,6 +52,7 @@ export const ACTION_REQUIREMENTS: Record<Action, { minRole: Role; capability?: C
   "price.edit":          { minRole: "editor", capability: "edit_prices" },
   "discount.apply":      { minRole: "editor", capability: "discounts" },
   "invoice.issue":       { minRole: "editor", capability: "invoicing", feature: "invoicing" },
+  "catalog.read":        { minRole: "viewer" },
   "catalog.manage":      { minRole: "editor", capability: "manage_catalog" },
   "settings.manage":     { minRole: "admin" },
 };

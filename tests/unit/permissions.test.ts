@@ -40,7 +40,7 @@ describe("Rechte-Matrix: Action × Rolle × Capability", () => {
 //
 // Diese Tabelle ist deshalb HANDGESCHRIEBEN und wird NICHT aus
 // ACTION_REQUIREMENTS abgeleitet. Sie ist die zweite, unabhängige Quelle der
-// Wahrheit: 9 Actions × 3 Rollen, jeweils ohne und mit Capability, plus die
+// Wahrheit: 10 Actions × 3 Rollen, jeweils ohne und mit Capability, plus die
 // Feature-Flag-Spalte. Wer ACTION_REQUIREMENTS ändert, MUSS diese Tabelle
 // bewusst mitändern — genau das ist der Sinn.
 //
@@ -81,6 +81,9 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
     capability: "invoicing",
     expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
   },
+  "catalog.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
   "catalog.manage": {
     capability: "manage_catalog",
     expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
@@ -99,12 +102,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 9 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 10 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(9);
+    expect(Object.keys(MATRIX)).toHaveLength(10);
   });
 
-  it("9 Actions × 3 Rollen × Capability an/aus", () => {
+  it("10 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];

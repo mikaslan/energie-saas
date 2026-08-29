@@ -12,6 +12,16 @@ import {
 import { calculatePlanningEstimate } from "../../lib/integrations/calculation/engine";
 import { buildPlanningCalculationInput } from "../../lib/integrations/calculation/prepare";
 import {
+  CATALOG_COMPONENT_CREATE_COMMAND_VERSION,
+  type CatalogComponentCreateCommandV1,
+  type CatalogComponentType,
+} from "../../lib/integrations/catalog/contract";
+import type { ServiceCtx } from "../../lib/permissions";
+import {
+  activateCatalogComponent,
+  createCatalogComponent,
+} from "../../modules/catalog";
+import {
   claimProjectCalculationJob,
   finalizeProjectCalculationFailure,
   finalizeProjectCalculationSuccess,
@@ -100,6 +110,174 @@ async function withEnergyFixtureDatabase<T>(
   } finally {
     await pool.end();
   }
+}
+
+const M1_08_CATALOG_FIXTURES = {
+  module: "E2E PV-Modul 400 W",
+  inverter: "E2E Wechselrichter 10 kW",
+  battery: "E2E Speicher 8 kWh",
+  wallbox: "E2E Wallbox 11 kW",
+} as const;
+
+const M1_08_UI_PRODUCT = {
+  sku: "E2E-OTHER-5",
+  displayName: "E2E Zusatzkomponente",
+  purchaseReference: "E2E-EK-CANARY-5",
+  salesReference: "E2E-VK-5",
+} as const;
+
+type M1_08_CatalogType = keyof typeof M1_08_CATALOG_FIXTURES;
+
+function catalogFixtureCommand(
+  componentType: M1_08_CatalogType,
+  index: number,
+): CatalogComponentCreateCommandV1 {
+  const technicalData = componentType === "module"
+    ? { schemaVersion: "module.v1" as const, nominalPowerWatts: 400 }
+    : componentType === "inverter"
+      ? {
+          schemaVersion: "inverter.v1" as const,
+          nominalAcPowerWatts: 10_000,
+          phaseCount: 3 as const,
+          mpptTrackerCount: 3,
+        }
+      : componentType === "battery"
+        ? {
+            schemaVersion: "battery.v1" as const,
+            nominalCapacityWh: 8_500,
+            usableCapacityWh: 8_000,
+            maxContinuousPowerWatts: 4_000,
+            roundTripEfficiencyBasisPoints: 9_400,
+            backupCapability: "known_supported" as const,
+          }
+        : {
+            schemaVersion: "wallbox.v1" as const,
+            maxChargingPowerWatts: 11_000,
+            phaseCount: 3 as const,
+            connector: "type2_cable" as const,
+            bidirectionalCapability: "known_supported" as const,
+          };
+  const technicalProvenance = {
+    sourceKind: "workspace_manual" as const,
+    reference: `E2E-TECH-${index}`,
+    observedOn: "2026-08-29",
+    rightsBasis: "workspace_owned" as const,
+    sourceDocumentSha256: null,
+  };
+
+  return {
+    schemaVersion: CATALOG_COMPONENT_CREATE_COMMAND_VERSION,
+    internalSku: `E2E-${componentType.toUpperCase()}-${index}`,
+    componentType: componentType as CatalogComponentType,
+    presentation: {
+      displayName: M1_08_CATALOG_FIXTURES[componentType],
+      manufacturer: "E2E Testwerk",
+      model: `Synthetisches Fixture ${index}`,
+      unit: "piece",
+      keyPoints: ["Ausschließlich synthetische Testdaten"],
+      image: null,
+      datasheet: null,
+    },
+    technicalData,
+    commercial: {
+      currency: "EUR",
+      basis: "net",
+      purchasePriceNetCents: 100_000 + index,
+      salesPriceNetCents: 150_000 + index,
+      purchaseProvenance: {
+        sourceKind: "supplier_price_list",
+        reference: `E2E-EK-CANARY-${index}`,
+        observedOn: "2026-08-29",
+        rightsBasis: "supplier_authorized",
+        sourceDocumentSha256: null,
+      },
+      salesProvenance: {
+        sourceKind: "workspace_pricing",
+        reference: `E2E-VK-${index}`,
+        observedOn: "2026-08-29",
+        rightsBasis: "workspace_owned",
+        sourceDocumentSha256: null,
+      },
+    },
+    technicalProvenance,
+  };
+}
+
+async function seedActiveCatalogFixtures(): Promise<void> {
+  const data = state();
+  await withEnergyFixtureDatabase(async (tx) => {
+    const member = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+      select identity.id
+        from membership
+        join user_identity identity on identity.id = membership.user_id
+       where membership.workspace_id = ${data.workspaceId}::uuid
+         and lower(identity.email) = lower(${data.editorEmail})
+       limit 1
+    `);
+    const actor = member.rows[0]?.id;
+    if (!actor) throw new Error("M1-08-E2E-Editoridentität fehlt.");
+    const ctx: ServiceCtx = {
+      workspaceId: data.workspaceId,
+      actor,
+      role: "editor",
+      capabilities: {
+        manage_catalog: true,
+        edit_prices: true,
+        see_purchase_prices: true,
+      },
+      featureFlags: {},
+    };
+
+    for (const [index, componentType] of (
+      ["module", "inverter", "battery", "wallbox"] as const
+    ).entries()) {
+      const created = await createCatalogComponent(
+        tx,
+        ctx,
+        catalogFixtureCommand(componentType, index + 1),
+      );
+      await activateCatalogComponent(tx, ctx, {
+        componentId: created.componentId,
+        expectedRevision: created.revision,
+        expectedStatus: "draft",
+      });
+    }
+  });
+}
+
+async function expectNoHorizontalOverflow(page: Page, expectedWidth: number): Promise<void> {
+  await expect.poll(() => page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }))).toEqual({ clientWidth: expectedWidth, scrollWidth: expectedWidth });
+}
+
+async function expectNoFullSha256InVisibleText(page: Page): Promise<void> {
+  expect(await page.locator("body").innerText()).not.toMatch(/\b[0-9a-f]{64}\b/iu);
+}
+
+async function fillCatalogPricingForm(
+  page: Page,
+  input: {
+    purchasePriceEuro: string;
+    salesPriceEuro: string;
+    purchaseReference: string;
+    salesReference: string;
+  },
+): Promise<Locator> {
+  const pricingSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Preisrevision erfassen", level: 2 }),
+  });
+  await pricingSection.getByLabel("Preisstand").selectOption("complete");
+  await pricingSection.getByLabel("Einkaufspreis").fill(input.purchasePriceEuro);
+  await pricingSection.getByLabel("Verkaufspreis").fill(input.salesPriceEuro);
+  const purchaseSource = pricingSection.getByRole("group", { name: "Einkaufsquelle" });
+  await purchaseSource.getByLabel("Referenz").fill(input.purchaseReference);
+  await purchaseSource.getByLabel("Beobachtet am").fill("2026-08-29");
+  const salesSource = pricingSection.getByRole("group", { name: "Verkaufsquelle" });
+  await salesSource.getByLabel("Referenz").fill(input.salesReference);
+  await salesSource.getByLabel("Beobachtet am").fill("2026-08-29");
+  return pricingSection;
 }
 
 async function latestCalculationJobId(): Promise<string> {
@@ -676,6 +854,243 @@ test("M1-07: Editor bindet das Energieprofil und prüft alle Rechenzustände", a
   await expectNoSeriousOrCriticalAxeViolations(page);
 });
 
+test("M1-08: Editor prüft Katalog und bestätigt die revisionsgebundene Produktauswahl", async ({ page }) => {
+  const data = state();
+  const catalogPath = `/w/${data.workspaceId}/katalog`;
+  const productsPath = `/w/${data.workspaceId}/anfragen/${data.mainProjectId}/produkte`;
+  await seedActiveCatalogFixtures();
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(catalogPath);
+  await loginWithRealOtp(page, data.editorEmail, catalogPath);
+
+  await expect(page.getByRole("heading", { name: "Produktkatalog", level: 1 })).toBeVisible();
+  const catalogList = page.locator('[data-catalog-list-state="loaded"]');
+  await expect(catalogList).toBeVisible();
+  await expect(catalogList.locator(":scope > ul > li")).toHaveCount(4);
+  for (const displayName of Object.values(M1_08_CATALOG_FIXTURES)) {
+    await expect(catalogList.getByText(displayName, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("Neuen Produktentwurf anlegen", { exact: true })).toBeVisible();
+  await expect(page.getByText("EK netto", { exact: true })).toHaveCount(4);
+  await expectNoHorizontalOverflow(page, 1440);
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  const createDetails = page.locator("details").filter({
+    has: page.getByText("Neuen Produktentwurf anlegen", { exact: true }),
+  });
+  await createDetails.getByText("Neuen Produktentwurf anlegen", { exact: true }).click();
+  const createForm = createDetails.locator("form");
+  await createForm.getByLabel("Interne SKU").fill(M1_08_UI_PRODUCT.sku);
+  await createForm.getByLabel("Produkttyp").selectOption("other");
+  await createForm.getByLabel("Anzeigename").fill(M1_08_UI_PRODUCT.displayName);
+  await createForm.getByLabel("Hersteller", { exact: true }).fill("E2E Testwerk");
+  await createForm.getByLabel("Modell").fill("UI Fixture 5");
+  await createForm.getByLabel("Einheit").selectOption("set");
+  await createForm.getByLabel("Kernaussagen, höchstens sechs Zeilen")
+    .fill("Ausschließlich synthetische UI-Testdaten");
+  await createForm.getByLabel("Attribute, je Zeile Name=Wert")
+    .fill("Kategorie=E2E\nLieferumfang=Synthetisch");
+  await createForm.getByLabel("Quellenart").selectOption("workspace_manual");
+  await createForm.getByLabel("Quellenreferenz").fill("E2E-TECH-UI-5");
+  await createForm.getByLabel("Beobachtet am").fill("2026-08-29");
+  await createForm.getByLabel("Rechtebasis").selectOption("workspace_owned");
+  await createForm.getByRole("button", { name: "Produktentwurf anlegen" }).click();
+  await expect(createForm.getByRole("status")).toContainText(
+    "Revision 1 wurde gespeichert. Der Produktstatus ist jetzt Entwurf.",
+  );
+  await createForm.getByRole("link", { name: "Produkt öffnen" }).click();
+
+  await expect(page.locator('[data-catalog-component-state="draft_incomplete"]')).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: M1_08_UI_PRODUCT.displayName,
+    level: 1,
+  })).toBeVisible();
+  const initialPricing = await fillCatalogPricingForm(page, {
+    purchasePriceEuro: "123.45",
+    salesPriceEuro: "234.56",
+    purchaseReference: M1_08_UI_PRODUCT.purchaseReference,
+    salesReference: M1_08_UI_PRODUCT.salesReference,
+  });
+  await initialPricing.getByRole("button", { name: "Neue Preisrevision speichern" }).click();
+  await expect(initialPricing.getByRole("status")).toContainText(
+    "Preisrevision 2 wurde als Entwurf gespeichert.",
+  );
+
+  await page.reload();
+  await expect(page.locator('[data-catalog-component-state="draft_priced"]')).toBeVisible();
+  const initialLifecycle = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Lifecycle", level: 2 }),
+  });
+  await initialLifecycle.getByRole("button", { name: "Aktivieren" }).click();
+  await expect(page.locator('[data-catalog-component-state="active"]')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('[data-catalog-component-state="active"]')).toBeVisible();
+  await expect(page.getByText(M1_08_UI_PRODUCT.purchaseReference, { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "Zurück zum Katalog" }).click();
+  await expect(catalogList.locator(":scope > ul > li")).toHaveCount(5);
+  await expect(catalogList.getByText(M1_08_UI_PRODUCT.displayName, { exact: true })).toBeVisible();
+
+  const batteryCard = catalogList.locator(":scope > ul > li").filter({
+    has: page.getByText(M1_08_CATALOG_FIXTURES.battery, { exact: true }),
+  });
+  const batteryLink = batteryCard.getByRole("link", { name: "Produkt öffnen" });
+  const batteryHref = await batteryLink.getAttribute("href");
+  if (!batteryHref) throw new Error("M1-08-E2E-Batteriedetail-Link fehlt.");
+  await batteryLink.click();
+  await expect(page.locator('[data-catalog-component-state="active"]')).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: M1_08_CATALOG_FIXTURES.battery,
+    level: 1,
+  })).toBeVisible();
+  const priceSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Preisstand", level: 2 }),
+  });
+  await expect(priceSection.getByText("EK netto", { exact: true })).toBeVisible();
+  await expect(priceSection).toContainText("E2E-EK-CANARY-3");
+  await expect(page.getByText("Snapshot-Hash", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: "Darstellung und Technik revidieren",
+    level: 2,
+  })).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: "Preisrevision erfassen",
+    level: 2,
+  })).toBeVisible();
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  await page.goto(productsPath);
+  await expect(page.locator('[data-catalog-resolution-state="pending"]')).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: "Produkte revisionssicher zuordnen",
+    level: 1,
+  })).toBeVisible();
+  await expect(page.getByText("10.400 W · 10,4 kWp", { exact: true })).toBeVisible();
+  const blockerList = page.getByRole("list", { name: "Auswahlblocker" });
+  await expect(blockerList).toContainText("Wähle mindestens ein Produkt aus.");
+  await expect(blockerList).toContainText("Für die Neuanlage fehlt mindestens ein PV-Modul.");
+  await expect(page.getByRole("button", { name: "Projektauflösung bestätigen" })).toBeDisabled();
+
+  await page.setViewportSize({ width: 375, height: 900 });
+  await expectNoHorizontalOverflow(page, 375);
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  async function selectProduct(displayName: string, quantity?: string): Promise<void> {
+    const checkbox = page.getByRole("checkbox", { name: new RegExp(escapeRegExp(displayName), "u") });
+    const card = checkbox.locator("..").locator("..");
+    await checkbox.check();
+    if (quantity !== undefined) await card.getByLabel("Menge").fill(quantity);
+  }
+
+  await selectProduct(M1_08_CATALOG_FIXTURES.module, "26");
+  await selectProduct(M1_08_CATALOG_FIXTURES.inverter);
+  await selectProduct(M1_08_CATALOG_FIXTURES.battery);
+  await selectProduct(M1_08_CATALOG_FIXTURES.wallbox);
+
+  await expect(page.getByRole("list", { name: "Auswahlblocker" })).toHaveCount(0);
+  await expect(page.getByText(
+    "Die Mindestkategorien sind vollständig ausgewählt.",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByText("10.400 / 10.400 W", { exact: true })).toBeVisible();
+  await expect(page.getByText("8.000 / 8.000 Wh", { exact: true })).toBeVisible();
+  const acknowledgements = page.getByRole("group", {
+    name: "Abweichungen bewusst bestätigen",
+  });
+  await expect(acknowledgements).toBeVisible();
+  await expect(acknowledgements.getByRole("checkbox")).toHaveCount(1);
+  const compatibilityAcknowledgement = acknowledgements.getByRole("checkbox", {
+    name: /Kompatibilität der gewählten Komponenten untereinander/u,
+  });
+  await compatibilityAcknowledgement.check();
+  await expect(page.getByRole("button", { name: "Projektauflösung bestätigen" })).toBeEnabled();
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expectNoHorizontalOverflow(page, 1440);
+  await expectNoSeriousOrCriticalAxeViolations(page);
+  await page.getByRole("button", { name: "Projektauflösung bestätigen" }).click();
+  await expect(page.getByText(
+    "Projektauflösung Revision 1 wurde revisionssicher bestätigt.",
+    { exact: true },
+  )).toBeVisible();
+
+  await page.reload();
+  await expect(page.locator('[data-catalog-resolution-state="current"]')).toBeVisible();
+  await expect(page.getByText(
+    "Projektauflösung Revision 1 ist aktuell.",
+    { exact: true },
+  )).toBeVisible();
+  const savedSnapshot = page.getByRole("region", {
+    name: "Gespeicherte Produktpositionen",
+  });
+  await expect(savedSnapshot.getByRole("row")).toHaveCount(5);
+  await expect(savedSnapshot).toContainText(M1_08_CATALOG_FIXTURES.module);
+  await expect(savedSnapshot).toContainText(M1_08_CATALOG_FIXTURES.wallbox);
+  await expect(page.getByText("Resolution-Hash", { exact: true })).toBeVisible();
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  const savedBatteryRow = savedSnapshot.getByRole("row").filter({
+    hasText: M1_08_CATALOG_FIXTURES.battery,
+  });
+  await expect(savedBatteryRow.getByRole("cell").nth(2)).toHaveText("1");
+  const originalBatterySnapshotCells = await savedBatteryRow.getByRole("cell").allInnerTexts();
+
+  await page.goto(batteryHref);
+  await expect(page.locator('[data-catalog-component-state="active"]')).toBeVisible();
+  const revisedPricing = await fillCatalogPricingForm(page, {
+    purchasePriceEuro: "1100.03",
+    salesPriceEuro: "1600.03",
+    purchaseReference: "E2E-EK-CANARY-3-REV2",
+    salesReference: "E2E-VK-3-REV2",
+  });
+  await revisedPricing.getByRole("button", { name: "Neue Preisrevision speichern" }).click();
+  await expect(revisedPricing.getByRole("status")).toContainText(
+    "Preisrevision 2 wurde als Entwurf gespeichert.",
+  );
+
+  await page.reload();
+  await expect(page.locator('[data-catalog-component-state="draft_priced"]')).toBeVisible();
+  await expect(page.getByText("E2E-EK-CANARY-3-REV2", { exact: true })).toBeVisible();
+  const revisedLifecycle = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Lifecycle", level: 2 }),
+  });
+  await revisedLifecycle.getByRole("button", { name: "Aktivieren" }).click();
+  await expect(page.locator('[data-catalog-component-state="active"]')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('[data-catalog-component-state="active"]')).toBeVisible();
+
+  await page.goto(productsPath);
+  await expect(page.locator('[data-catalog-resolution-state="stale"]')).toBeVisible();
+  await expect(page.getByText(
+    "Die letzte Auflösung ist historisch und nicht mehr aktuell.",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByText(
+    "Mindestens ein Produkt wurde revidiert oder archiviert.",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: "Gespeicherter Snapshot · Revision 1",
+    level: 2,
+  })).toBeVisible();
+  const staleSavedSnapshot = page.getByRole("region", {
+    name: "Gespeicherte Produktpositionen",
+  });
+  const staleBatteryRow = staleSavedSnapshot.getByRole("row").filter({
+    hasText: M1_08_CATALOG_FIXTURES.battery,
+  });
+  expect(await staleBatteryRow.getByRole("cell").allInnerTexts())
+    .toEqual(originalBatterySnapshotCells);
+  await expect(staleBatteryRow.getByRole("cell").nth(2)).toHaveText("1");
+  const currentBatteryChoice = page.getByRole("checkbox", {
+    name: new RegExp(escapeRegExp(M1_08_CATALOG_FIXTURES.battery), "u"),
+  });
+  await expect(currentBatteryChoice.locator("..")).toContainText("Rev. 2");
+  await expect(page.getByText("Resolution-Hash", { exact: true })).toBeVisible();
+  await expectNoSeriousOrCriticalAxeViolations(page);
+});
+
 test.describe("mobiler Chromium-Kontext", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -803,7 +1218,7 @@ test("Konflikt, 404 und echter Fremdprojekt-Link bleiben fail-closed", async ({ 
 
     await page.goto(`/w/${data.foreignWorkspaceId}/anfragen/${data.foreignProjectId}`);
     await expect(page.getByRole("heading", {
-      name: "Diese Projektakte ist für dich nicht freigegeben.",
+      name: "Diese Daten sind für dich nicht freigegeben.",
       level: 1,
     })).toBeVisible();
     await expect(page.getByText(data.foreignContactName)).toHaveCount(0);
@@ -812,7 +1227,7 @@ test("Konflikt, 404 und echter Fremdprojekt-Link bleiben fail-closed", async ({ 
       `/w/${data.foreignWorkspaceId}/anfragen/${data.foreignProjectId}/energieprofil`,
     );
     await expect(page.getByRole("heading", {
-      name: "Diese Projektakte ist für dich nicht freigegeben.",
+      name: "Diese Daten sind für dich nicht freigegeben.",
       level: 1,
     })).toBeVisible();
     await expect(page.getByText(data.foreignContactName)).toHaveCount(0);
@@ -823,7 +1238,7 @@ test("Konflikt, 404 und echter Fremdprojekt-Link bleiben fail-closed", async ({ 
   expect(staleErrors, "zweite Browserseite ohne Console-/Page-Errors").toEqual([]);
 });
 
-test("Viewer: darf denselben Lead lesen, aber weder Pin noch Karte verändern", async ({ page }) => {
+test("Viewer: Lead, Katalog und Produktsnapshot bleiben strikt lesend und EK-redigiert", async ({ page }) => {
   const data = state();
   const boardPath = `/w/${data.workspaceId}/anfragen`;
 
@@ -864,5 +1279,77 @@ test("Viewer: darf denselben Lead lesen, aber weder Pin noch Karte verändern", 
   await expect(page.getByRole("heading", { name: "Nur Lesezugriff", level: 2 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Profil speichern" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Eingaben bestätigen" })).toHaveCount(0);
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  const catalogPath = `/w/${data.workspaceId}/katalog`;
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.goto(catalogPath);
+  await expect(page.getByRole("heading", { name: "Produktkatalog", level: 1 })).toBeVisible();
+  await expect(page.getByText("Nur Lesezugriff", { exact: true }).first()).toBeVisible();
+  const catalogList = page.locator('[data-catalog-list-state="read_only"]');
+  await expect(catalogList.locator(":scope > ul > li")).toHaveCount(5);
+  await expect(catalogList.getByText(M1_08_UI_PRODUCT.displayName, { exact: true })).toBeVisible();
+  await expect(page.getByText("Neuen Produktentwurf anlegen", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("EK netto", { exact: true })).toHaveCount(0);
+  expect(await page.content()).not.toContain("E2E-EK-CANARY-");
+  await expectNoFullSha256InVisibleText(page);
+  await expectNoHorizontalOverflow(page, 375);
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  const batteryCard = catalogList.locator(":scope > ul > li").filter({
+    has: page.getByText(M1_08_CATALOG_FIXTURES.battery, { exact: true }),
+  });
+  await batteryCard.getByRole("link", { name: "Produkt öffnen" }).click();
+  await expect(page.locator('[data-catalog-component-state="read_only"]')).toBeVisible();
+  await expect(page.getByText("Für deine Rolle ausgeblendet", { exact: true })).toBeVisible();
+  await expect(page.getByText("Snapshot-Hash", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", {
+    name: "Darstellung und Technik revidieren",
+    level: 2,
+  })).toHaveCount(0);
+  await expect(page.getByRole("heading", {
+    name: "Preisrevision erfassen",
+    level: 2,
+  })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Produkt archivieren" })).toHaveCount(0);
+  const viewerPriceSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Preisstand", level: 2 }),
+  });
+  await expect(viewerPriceSection).not.toContainText("1.100,03");
+  expect(await page.content()).not.toContain("E2E-EK-CANARY-");
+  await expectNoFullSha256InVisibleText(page);
+  await expectNoHorizontalOverflow(page, 375);
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  await page.goto(`/w/${data.workspaceId}/anfragen/${data.mainProjectId}/produkte`);
+  await expect(page.locator('[data-catalog-resolution-state="read_only"]')).toBeVisible();
+  await expect(page.getByText(
+    "Die letzte Auflösung ist historisch und nicht mehr aktuell.",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByText(
+    "Mindestens ein Produkt wurde revidiert oder archiviert.",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByText(
+    "Projektauflösung Revision 1 ist aktuell.",
+    { exact: true },
+  )).toHaveCount(0);
+  await expect(page.getByRole("region", {
+    name: "Gespeicherte Produktpositionen",
+  }).getByRole("row")).toHaveCount(5);
+  await expect(page.getByRole("group", {
+    name: "Aktive Produkte auswählen",
+  })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Projektauflösung bestätigen" })).toHaveCount(0);
+  await expect(page.getByText("EK-Summe netto", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Resolution-Hash", { exact: true })).toHaveCount(0);
+  expect(await page.content()).not.toContain("E2E-EK-CANARY-");
+  await expectNoFullSha256InVisibleText(page);
+  await expectNoHorizontalOverflow(page, 375);
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expectNoHorizontalOverflow(page, 1440);
   await expectNoSeriousOrCriticalAxeViolations(page);
 });

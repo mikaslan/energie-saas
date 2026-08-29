@@ -841,6 +841,11 @@ it("installiert Fresh-Schema, Tenantgraph, Queuewaechter und immutable Erfolgsre
       },
       {
         table_name: "project_calculation_revision",
+        trigger_name: "project_calculation_revision_catalog_stale",
+        public_execute: false,
+      },
+      {
+        table_name: "project_calculation_revision",
         trigger_name: "project_calculation_revision_immutable",
         public_execute: false,
       },

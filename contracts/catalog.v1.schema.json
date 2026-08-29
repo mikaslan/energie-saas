@@ -1,0 +1,4225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/catalog.v1.schema.json",
+  "title": "WMEE catalog and project resolution v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/componentRevision"
+    },
+    {
+      "$ref": "#/$defs/projectResolution"
+    },
+    {
+      "$ref": "#/$defs/componentCreateCommand"
+    },
+    {
+      "$ref": "#/$defs/componentDetailsCommand"
+    },
+    {
+      "$ref": "#/$defs/componentPricingCommand"
+    },
+    {
+      "$ref": "#/$defs/resolveProjectCommand"
+    },
+    {
+      "$ref": "#/$defs/componentView"
+    },
+    {
+      "$ref": "#/$defs/projectResolutionView"
+    }
+  ],
+  "$defs": {
+    "componentRevision": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "canonicalizationVersion": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "identity": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "presentation": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "technicalData": {
+          "$ref": "#/$defs/__schema9"
+        },
+        "commercial": {
+          "$ref": "#/$defs/__schema18"
+        },
+        "technicalProvenance": {
+          "$ref": "#/$defs/__schema20"
+        },
+        "snapshotSha256": {
+          "$ref": "#/$defs/__schema8"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "canonicalizationVersion",
+        "identity",
+        "presentation",
+        "technicalData",
+        "commercial",
+        "technicalProvenance",
+        "snapshotSha256"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "const": "catalog-component-revision.v1"
+        },
+        "__schema1": {
+          "type": "string",
+          "const": "catalog-jcs.v1"
+        },
+        "__schema2": {
+          "type": "object",
+          "properties": {
+            "workspaceId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "componentId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "internalSku": {
+              "type": "string"
+            },
+            "componentType": {
+              "type": "string",
+              "enum": [
+                "module",
+                "inverter",
+                "battery",
+                "wallbox",
+                "heat_pump",
+                "mounting",
+                "other"
+              ]
+            }
+          },
+          "required": [
+            "workspaceId",
+            "componentId",
+            "revision",
+            "internalSku",
+            "componentType"
+          ],
+          "additionalProperties": false
+        },
+        "__schema3": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema4": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/__schema5"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/__schema5"
+            },
+            "model": {
+              "$ref": "#/$defs/__schema5"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "piece",
+                "set",
+                "meter"
+              ]
+            },
+            "keyPoints": {
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema6"
+              }
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema7"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "datasheet": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema7"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "__schema5": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "__schema6": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "__schema7": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "image",
+                "datasheet"
+              ]
+            },
+            "objectKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 360
+            },
+            "sha256": {
+              "$ref": "#/$defs/__schema8"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ]
+            },
+            "originalFilename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            }
+          },
+          "required": [
+            "role",
+            "objectKey",
+            "sha256",
+            "mediaType",
+            "originalFilename"
+          ],
+          "additionalProperties": false
+        },
+        "__schema8": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema9": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "module.v1"
+                },
+                "nominalPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalPowerWatts"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "inverter.v1"
+                },
+                "nominalAcPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "mpptTrackerCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalAcPowerWatts",
+                "phaseCount",
+                "mpptTrackerCount"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/__schema10"
+                },
+                "nominalCapacityWh": {
+                  "$ref": "#/$defs/__schema11"
+                },
+                "usableCapacityWh": {
+                  "$ref": "#/$defs/__schema12"
+                },
+                "maxContinuousPowerWatts": {
+                  "$ref": "#/$defs/__schema13"
+                },
+                "roundTripEfficiencyBasisPoints": {
+                  "$ref": "#/$defs/__schema14"
+                },
+                "backupCapability": {
+                  "$ref": "#/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalCapacityWh",
+                "usableCapacityWh",
+                "maxContinuousPowerWatts",
+                "roundTripEfficiencyBasisPoints",
+                "backupCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "wallbox.v1"
+                },
+                "maxChargingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "connector": {
+                  "type": "string",
+                  "enum": [
+                    "type2_socket",
+                    "type2_cable",
+                    "other"
+                  ]
+                },
+                "bidirectionalCapability": {
+                  "$ref": "#/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "maxChargingPowerWatts",
+                "phaseCount",
+                "connector",
+                "bidirectionalCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "heat_pump.v1"
+                },
+                "nominalHeatingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "scopHundredths": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalHeatingPowerWatts",
+                "scopHundredths"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "mounting.v1"
+                },
+                "systemName": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "roofTypes": {
+                  "minItems": 1,
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema16"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "systemName",
+                "roofTypes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "other.v1"
+                },
+                "attributes": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema17"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "attributes"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "__schema10": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema11": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema12": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema13": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema14": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema15": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema16": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema17": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "__schema18": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "type": "string",
+                  "const": "EUR"
+                },
+                "basis": {
+                  "type": "string",
+                  "const": "net"
+                },
+                "purchasePriceNetCents": {
+                  "$ref": "#/$defs/__schema19"
+                },
+                "salesPriceNetCents": {
+                  "$ref": "#/$defs/__schema19"
+                },
+                "purchaseProvenance": {
+                  "$ref": "#/$defs/__schema20"
+                },
+                "salesProvenance": {
+                  "$ref": "#/$defs/__schema20"
+                }
+              },
+              "required": [
+                "currency",
+                "basis",
+                "purchasePriceNetCents",
+                "salesPriceNetCents",
+                "purchaseProvenance",
+                "salesProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema19": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema20": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema8"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "projectResolution": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "project-catalog-resolution.v1"
+        },
+        "canonicalizationVersion": {
+          "type": "string",
+          "const": "catalog-jcs.v1"
+        },
+        "revision": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "bindings": {
+          "type": "object",
+          "properties": {
+            "workspaceId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "projectId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "siteId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "requirementId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "requirementRevision": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "calculationRevisionId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "calculationRevision": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "calculationInputSha256": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "calculationResultSha256": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "calculationQuality": {
+              "type": "string",
+              "const": "server_reproduced_estimate"
+            },
+            "calculationValidationStatus": {
+              "type": "string",
+              "const": "not_f4_reference_validated"
+            }
+          },
+          "required": [
+            "workspaceId",
+            "projectId",
+            "siteId",
+            "requirementId",
+            "requirementRevision",
+            "calculationRevisionId",
+            "calculationRevision",
+            "calculationInputSha256",
+            "calculationResultSha256",
+            "calculationQuality",
+            "calculationValidationStatus"
+          ],
+          "additionalProperties": false
+        },
+        "lines": {
+          "minItems": 1,
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          }
+        },
+        "requested": {
+          "$ref": "#/$defs/__schema24"
+        },
+        "acknowledgements": {
+          "maxItems": 5,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema25"
+          }
+        },
+        "confirmedBy": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "confirmedAt": {
+          "type": "string",
+          "allOf": [
+            {
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "pattern": "Z$"
+            }
+          ]
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "matched",
+                "manual_override"
+              ]
+            },
+            "requested": {
+              "$ref": "#/$defs/__schema24"
+            },
+            "selected": {
+              "type": "object",
+              "properties": {
+                "moduleCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "inverterCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "batteryCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "wallboxCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "pvModulePowerWatts": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "storageUsableCapacityWh": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "moduleCount",
+                "inverterCount",
+                "batteryCount",
+                "wallboxCount",
+                "pvModulePowerWatts",
+                "storageUsableCapacityWh"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "status",
+            "requested",
+            "selected"
+          ],
+          "additionalProperties": false
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "string",
+              "const": "EUR"
+            },
+            "basis": {
+              "type": "string",
+              "const": "net"
+            },
+            "purchasePriceNetCents": {
+              "$ref": "#/$defs/__schema22"
+            },
+            "salesPriceNetCents": {
+              "$ref": "#/$defs/__schema22"
+            }
+          },
+          "required": [
+            "currency",
+            "basis",
+            "purchasePriceNetCents",
+            "salesPriceNetCents"
+          ],
+          "additionalProperties": false
+        },
+        "warnings": {
+          "minItems": 1,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema26"
+          }
+        },
+        "resolutionSha256": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "canonicalizationVersion",
+        "revision",
+        "bindings",
+        "lines",
+        "requested",
+        "acknowledgements",
+        "confirmedBy",
+        "confirmedAt",
+        "coverage",
+        "totals",
+        "warnings",
+        "resolutionSha256"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "__schema1": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema2": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema3": {
+          "type": "object",
+          "properties": {
+            "lineId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "position": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "coversRequirementKeys": {
+              "maxItems": 5,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema4"
+              }
+            },
+            "catalogComponentId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "catalogComponentRevision": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "componentSnapshotSha256": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "componentSnapshot": {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "canonicalizationVersion": {
+                  "$ref": "#/$defs/__schema6"
+                },
+                "identity": {
+                  "$ref": "#/$defs/__schema7"
+                },
+                "presentation": {
+                  "$ref": "#/$defs/__schema8"
+                },
+                "technicalData": {
+                  "$ref": "#/$defs/__schema12"
+                },
+                "commercial": {
+                  "$ref": "#/$defs/__schema21"
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/__schema23"
+                },
+                "snapshotSha256": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "canonicalizationVersion",
+                "identity",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance",
+                "snapshotSha256"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "lineId",
+            "position",
+            "quantity",
+            "coversRequirementKeys",
+            "catalogComponentId",
+            "catalogComponentRevision",
+            "componentSnapshotSha256",
+            "componentSnapshot"
+          ],
+          "additionalProperties": false
+        },
+        "__schema4": {
+          "type": "string",
+          "enum": [
+            "pv_generation",
+            "storage_capacity",
+            "wallbox",
+            "backup_power",
+            "bidirectional_charging"
+          ]
+        },
+        "__schema5": {
+          "type": "string",
+          "const": "catalog-component-revision.v1"
+        },
+        "__schema6": {
+          "type": "string",
+          "const": "catalog-jcs.v1"
+        },
+        "__schema7": {
+          "type": "object",
+          "properties": {
+            "workspaceId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "componentId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "revision": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "internalSku": {
+              "type": "string"
+            },
+            "componentType": {
+              "type": "string",
+              "enum": [
+                "module",
+                "inverter",
+                "battery",
+                "wallbox",
+                "heat_pump",
+                "mounting",
+                "other"
+              ]
+            }
+          },
+          "required": [
+            "workspaceId",
+            "componentId",
+            "revision",
+            "internalSku",
+            "componentType"
+          ],
+          "additionalProperties": false
+        },
+        "__schema8": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "model": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "piece",
+                "set",
+                "meter"
+              ]
+            },
+            "keyPoints": {
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema10"
+              }
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema11"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "datasheet": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema11"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "__schema9": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "__schema10": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "__schema11": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "image",
+                "datasheet"
+              ]
+            },
+            "objectKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 360
+            },
+            "sha256": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ]
+            },
+            "originalFilename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            }
+          },
+          "required": [
+            "role",
+            "objectKey",
+            "sha256",
+            "mediaType",
+            "originalFilename"
+          ],
+          "additionalProperties": false
+        },
+        "__schema12": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "module.v1"
+                },
+                "nominalPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalPowerWatts"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "inverter.v1"
+                },
+                "nominalAcPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "mpptTrackerCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalAcPowerWatts",
+                "phaseCount",
+                "mpptTrackerCount"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/__schema13"
+                },
+                "nominalCapacityWh": {
+                  "$ref": "#/$defs/__schema14"
+                },
+                "usableCapacityWh": {
+                  "$ref": "#/$defs/__schema15"
+                },
+                "maxContinuousPowerWatts": {
+                  "$ref": "#/$defs/__schema16"
+                },
+                "roundTripEfficiencyBasisPoints": {
+                  "$ref": "#/$defs/__schema17"
+                },
+                "backupCapability": {
+                  "$ref": "#/$defs/__schema18"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalCapacityWh",
+                "usableCapacityWh",
+                "maxContinuousPowerWatts",
+                "roundTripEfficiencyBasisPoints",
+                "backupCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "wallbox.v1"
+                },
+                "maxChargingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "connector": {
+                  "type": "string",
+                  "enum": [
+                    "type2_socket",
+                    "type2_cable",
+                    "other"
+                  ]
+                },
+                "bidirectionalCapability": {
+                  "$ref": "#/$defs/__schema18"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "maxChargingPowerWatts",
+                "phaseCount",
+                "connector",
+                "bidirectionalCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "heat_pump.v1"
+                },
+                "nominalHeatingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "scopHundredths": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalHeatingPowerWatts",
+                "scopHundredths"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "mounting.v1"
+                },
+                "systemName": {
+                  "$ref": "#/$defs/__schema9"
+                },
+                "roofTypes": {
+                  "minItems": 1,
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema19"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "systemName",
+                "roofTypes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "other.v1"
+                },
+                "attributes": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema20"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "attributes"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "__schema13": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema14": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema15": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema16": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema17": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema18": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema19": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema20": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "__schema21": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "type": "string",
+                  "const": "EUR"
+                },
+                "basis": {
+                  "type": "string",
+                  "const": "net"
+                },
+                "purchasePriceNetCents": {
+                  "$ref": "#/$defs/__schema22"
+                },
+                "salesPriceNetCents": {
+                  "$ref": "#/$defs/__schema22"
+                },
+                "purchaseProvenance": {
+                  "$ref": "#/$defs/__schema23"
+                },
+                "salesProvenance": {
+                  "$ref": "#/$defs/__schema23"
+                }
+              },
+              "required": [
+                "currency",
+                "basis",
+                "purchasePriceNetCents",
+                "salesPriceNetCents",
+                "purchaseProvenance",
+                "salesProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema22": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema23": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema2"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema24": {
+          "type": "object",
+          "properties": {
+            "branch": {
+              "type": "string",
+              "enum": [
+                "new_installation",
+                "existing_installation"
+              ]
+            },
+            "pvPeakPowerWatts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "storageCapacityWh": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "wallbox": {
+              "type": "boolean"
+            },
+            "backupPower": {
+              "type": "boolean"
+            },
+            "bidirectionalCharging": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "branch",
+            "pvPeakPowerWatts",
+            "storageCapacityWh",
+            "wallbox",
+            "backupPower",
+            "bidirectionalCharging"
+          ],
+          "additionalProperties": false
+        },
+        "__schema25": {
+          "type": "string",
+          "enum": [
+            "pv_capacity_differs",
+            "storage_capacity_differs",
+            "backup_compatibility_unverified",
+            "bidirectional_compatibility_unverified",
+            "cross_component_compatibility_unverified"
+          ]
+        },
+        "__schema26": {
+          "type": "string",
+          "enum": [
+            "calculation_not_sku_specific",
+            "pv_capacity_differs",
+            "storage_capacity_differs",
+            "backup_compatibility_unverified",
+            "bidirectional_compatibility_unverified",
+            "cross_component_compatibility_unverified"
+          ]
+        }
+      }
+    },
+    "componentCreateCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "catalog-component-create-command.v1"
+        },
+        "internalSku": {
+          "type": "string"
+        },
+        "componentType": {
+          "type": "string",
+          "enum": [
+            "module",
+            "inverter",
+            "battery",
+            "wallbox",
+            "heat_pump",
+            "mounting",
+            "other"
+          ]
+        },
+        "presentation": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "model": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "piece",
+                "set",
+                "meter"
+              ]
+            },
+            "keyPoints": {
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema1"
+              }
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema2"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "datasheet": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema2"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "technicalData": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "module.v1"
+                },
+                "nominalPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalPowerWatts"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "inverter.v1"
+                },
+                "nominalAcPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "mpptTrackerCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalAcPowerWatts",
+                "phaseCount",
+                "mpptTrackerCount"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/__schema4"
+                },
+                "nominalCapacityWh": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "usableCapacityWh": {
+                  "$ref": "#/$defs/__schema6"
+                },
+                "maxContinuousPowerWatts": {
+                  "$ref": "#/$defs/__schema7"
+                },
+                "roundTripEfficiencyBasisPoints": {
+                  "$ref": "#/$defs/__schema8"
+                },
+                "backupCapability": {
+                  "$ref": "#/$defs/__schema9"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalCapacityWh",
+                "usableCapacityWh",
+                "maxContinuousPowerWatts",
+                "roundTripEfficiencyBasisPoints",
+                "backupCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "wallbox.v1"
+                },
+                "maxChargingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "connector": {
+                  "type": "string",
+                  "enum": [
+                    "type2_socket",
+                    "type2_cable",
+                    "other"
+                  ]
+                },
+                "bidirectionalCapability": {
+                  "$ref": "#/$defs/__schema9"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "maxChargingPowerWatts",
+                "phaseCount",
+                "connector",
+                "bidirectionalCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "heat_pump.v1"
+                },
+                "nominalHeatingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "scopHundredths": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalHeatingPowerWatts",
+                "scopHundredths"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "mounting.v1"
+                },
+                "systemName": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "roofTypes": {
+                  "minItems": 1,
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema10"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "systemName",
+                "roofTypes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "other.v1"
+                },
+                "attributes": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema11"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "attributes"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "commercial": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "type": "string",
+                  "const": "EUR"
+                },
+                "basis": {
+                  "type": "string",
+                  "const": "net"
+                },
+                "purchasePriceNetCents": {
+                  "$ref": "#/$defs/__schema12"
+                },
+                "salesPriceNetCents": {
+                  "$ref": "#/$defs/__schema12"
+                },
+                "purchaseProvenance": {
+                  "$ref": "#/$defs/__schema13"
+                },
+                "salesProvenance": {
+                  "$ref": "#/$defs/__schema13"
+                }
+              },
+              "required": [
+                "currency",
+                "basis",
+                "purchasePriceNetCents",
+                "salesPriceNetCents",
+                "purchaseProvenance",
+                "salesProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "technicalProvenance": {
+          "$ref": "#/$defs/__schema13"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "internalSku",
+        "componentType",
+        "presentation",
+        "technicalData",
+        "commercial",
+        "technicalProvenance"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "__schema1": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "__schema2": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "image",
+                "datasheet"
+              ]
+            },
+            "objectKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 360
+            },
+            "sha256": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ]
+            },
+            "originalFilename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            }
+          },
+          "required": [
+            "role",
+            "objectKey",
+            "sha256",
+            "mediaType",
+            "originalFilename"
+          ],
+          "additionalProperties": false
+        },
+        "__schema3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema4": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema5": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema6": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema7": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema8": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema9": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema10": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema11": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "__schema12": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema13": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema3"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "componentDetailsCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "catalog-component-details-command.v1"
+        },
+        "componentId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "presentation": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "model": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "piece",
+                "set",
+                "meter"
+              ]
+            },
+            "keyPoints": {
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema1"
+              }
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema2"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "datasheet": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema2"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "technicalData": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "module.v1"
+                },
+                "nominalPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalPowerWatts"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "inverter.v1"
+                },
+                "nominalAcPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "mpptTrackerCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalAcPowerWatts",
+                "phaseCount",
+                "mpptTrackerCount"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/__schema4"
+                },
+                "nominalCapacityWh": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "usableCapacityWh": {
+                  "$ref": "#/$defs/__schema6"
+                },
+                "maxContinuousPowerWatts": {
+                  "$ref": "#/$defs/__schema7"
+                },
+                "roundTripEfficiencyBasisPoints": {
+                  "$ref": "#/$defs/__schema8"
+                },
+                "backupCapability": {
+                  "$ref": "#/$defs/__schema9"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalCapacityWh",
+                "usableCapacityWh",
+                "maxContinuousPowerWatts",
+                "roundTripEfficiencyBasisPoints",
+                "backupCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "wallbox.v1"
+                },
+                "maxChargingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "connector": {
+                  "type": "string",
+                  "enum": [
+                    "type2_socket",
+                    "type2_cable",
+                    "other"
+                  ]
+                },
+                "bidirectionalCapability": {
+                  "$ref": "#/$defs/__schema9"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "maxChargingPowerWatts",
+                "phaseCount",
+                "connector",
+                "bidirectionalCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "heat_pump.v1"
+                },
+                "nominalHeatingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "scopHundredths": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalHeatingPowerWatts",
+                "scopHundredths"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "mounting.v1"
+                },
+                "systemName": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "roofTypes": {
+                  "minItems": 1,
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema10"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "systemName",
+                "roofTypes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "other.v1"
+                },
+                "attributes": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema11"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "attributes"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "technicalProvenance": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema3"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "componentId",
+        "expectedRevision",
+        "presentation",
+        "technicalData",
+        "technicalProvenance"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "__schema1": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "__schema2": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "image",
+                "datasheet"
+              ]
+            },
+            "objectKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 360
+            },
+            "sha256": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ]
+            },
+            "originalFilename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            }
+          },
+          "required": [
+            "role",
+            "objectKey",
+            "sha256",
+            "mediaType",
+            "originalFilename"
+          ],
+          "additionalProperties": false
+        },
+        "__schema3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema4": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema5": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema6": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema7": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema8": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema9": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema10": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema11": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "componentPricingCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "catalog-component-pricing-command.v1"
+        },
+        "componentId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "commercial": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "type": "string",
+                  "const": "EUR"
+                },
+                "basis": {
+                  "type": "string",
+                  "const": "net"
+                },
+                "purchasePriceNetCents": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "salesPriceNetCents": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "purchaseProvenance": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "salesProvenance": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              "required": [
+                "currency",
+                "basis",
+                "purchasePriceNetCents",
+                "salesPriceNetCents",
+                "purchaseProvenance",
+                "salesProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "componentId",
+        "expectedRevision",
+        "commercial"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema1": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "resolveProjectCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "resolve-project-catalog-command.v1"
+        },
+        "projectId": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "expectedResolutionRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expectedRequirementRevision": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "expectedCalculationRevision": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "selections": {
+          "minItems": 1,
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        "acknowledgements": {
+          "maxItems": 5,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "projectId",
+        "expectedResolutionRevision",
+        "expectedRequirementRevision",
+        "expectedCalculationRevision",
+        "selections",
+        "acknowledgements"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema1": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "__schema2": {
+          "type": "object",
+          "properties": {
+            "componentId": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "expectedComponentRevision": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            }
+          },
+          "required": [
+            "componentId",
+            "expectedComponentRevision",
+            "quantity"
+          ],
+          "additionalProperties": false
+        },
+        "__schema3": {
+          "type": "string",
+          "enum": [
+            "pv_capacity_differs",
+            "storage_capacity_differs",
+            "backup_compatibility_unverified",
+            "bidirectional_compatibility_unverified",
+            "cross_component_compatibility_unverified"
+          ]
+        }
+      }
+    },
+    "componentView": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "catalog-component-view.v1"
+        },
+        "identity": {
+          "type": "object",
+          "properties": {
+            "workspaceId": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "componentId": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "internalSku": {
+              "type": "string"
+            },
+            "componentType": {
+              "type": "string",
+              "enum": [
+                "module",
+                "inverter",
+                "battery",
+                "wallbox",
+                "heat_pump",
+                "mounting",
+                "other"
+              ]
+            }
+          },
+          "required": [
+            "workspaceId",
+            "componentId",
+            "revision",
+            "internalSku",
+            "componentType"
+          ],
+          "additionalProperties": false
+        },
+        "presentation": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "model": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "piece",
+                "set",
+                "meter"
+              ]
+            },
+            "keyPoints": {
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema2"
+              }
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema3"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "datasheet": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema3"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "technicalData": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "module.v1"
+                },
+                "nominalPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalPowerWatts"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "inverter.v1"
+                },
+                "nominalAcPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "mpptTrackerCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalAcPowerWatts",
+                "phaseCount",
+                "mpptTrackerCount"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "nominalCapacityWh": {
+                  "$ref": "#/$defs/__schema6"
+                },
+                "usableCapacityWh": {
+                  "$ref": "#/$defs/__schema7"
+                },
+                "maxContinuousPowerWatts": {
+                  "$ref": "#/$defs/__schema8"
+                },
+                "roundTripEfficiencyBasisPoints": {
+                  "$ref": "#/$defs/__schema9"
+                },
+                "backupCapability": {
+                  "$ref": "#/$defs/__schema10"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalCapacityWh",
+                "usableCapacityWh",
+                "maxContinuousPowerWatts",
+                "roundTripEfficiencyBasisPoints",
+                "backupCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "wallbox.v1"
+                },
+                "maxChargingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "phaseCount": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                },
+                "connector": {
+                  "type": "string",
+                  "enum": [
+                    "type2_socket",
+                    "type2_cable",
+                    "other"
+                  ]
+                },
+                "bidirectionalCapability": {
+                  "$ref": "#/$defs/__schema10"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "maxChargingPowerWatts",
+                "phaseCount",
+                "connector",
+                "bidirectionalCapability"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "heat_pump.v1"
+                },
+                "nominalHeatingPowerWatts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000000
+                },
+                "scopHundredths": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2000
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "nominalHeatingPowerWatts",
+                "scopHundredths"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "mounting.v1"
+                },
+                "systemName": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "roofTypes": {
+                  "minItems": 1,
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema11"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "systemName",
+                "roofTypes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "other.v1"
+                },
+                "attributes": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema12"
+                  }
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "attributes"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "commercial": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "$ref": "#/$defs/__schema13"
+                },
+                "basis": {
+                  "$ref": "#/$defs/__schema14"
+                },
+                "salesPriceNetCents": {
+                  "$ref": "#/$defs/__schema15"
+                },
+                "salesProvenance": {
+                  "$ref": "#/$defs/__schema16"
+                },
+                "purchasePriceNetCents": {
+                  "$ref": "#/$defs/__schema17"
+                },
+                "purchaseProvenance": {
+                  "$ref": "#/$defs/__schema18"
+                }
+              },
+              "required": [
+                "currency",
+                "basis",
+                "salesPriceNetCents",
+                "salesProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "technicalProvenance": {
+          "$ref": "#/$defs/__schema16"
+        },
+        "sourceSnapshotSha256": {
+          "$ref": "#/$defs/__schema4"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "identity",
+        "presentation",
+        "technicalData",
+        "commercial",
+        "technicalProvenance"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema1": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "__schema2": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "__schema3": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "image",
+                "datasheet"
+              ]
+            },
+            "objectKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 360
+            },
+            "sha256": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ]
+            },
+            "originalFilename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            }
+          },
+          "required": [
+            "role",
+            "objectKey",
+            "sha256",
+            "mediaType",
+            "originalFilename"
+          ],
+          "additionalProperties": false
+        },
+        "__schema4": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema5": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema6": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema7": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema8": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema9": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema10": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema11": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema12": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "__schema13": {
+          "type": "string",
+          "const": "EUR"
+        },
+        "__schema14": {
+          "type": "string",
+          "const": "net"
+        },
+        "__schema15": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema16": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema4"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema17": {
+          "$ref": "#/$defs/__schema15"
+        },
+        "__schema18": {
+          "$ref": "#/$defs/__schema16"
+        }
+      }
+    },
+    "projectResolutionView": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "project-catalog-resolution-view.v1"
+        },
+        "revision": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "bindings": {
+          "type": "object",
+          "properties": {
+            "workspaceId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "projectId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "siteId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "requirementId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "requirementRevision": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "calculationRevisionId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "calculationRevision": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "calculationInputSha256": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "calculationResultSha256": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "calculationQuality": {
+              "type": "string",
+              "const": "server_reproduced_estimate"
+            },
+            "calculationValidationStatus": {
+              "type": "string",
+              "const": "not_f4_reference_validated"
+            }
+          },
+          "required": [
+            "workspaceId",
+            "projectId",
+            "siteId",
+            "requirementId",
+            "requirementRevision",
+            "calculationRevisionId",
+            "calculationRevision",
+            "calculationInputSha256",
+            "calculationResultSha256",
+            "calculationQuality",
+            "calculationValidationStatus"
+          ],
+          "additionalProperties": false
+        },
+        "lines": {
+          "minItems": 1,
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          }
+        },
+        "requested": {
+          "$ref": "#/$defs/__schema22"
+        },
+        "acknowledgements": {
+          "maxItems": 5,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema23"
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "matched",
+                "manual_override"
+              ]
+            },
+            "requested": {
+              "$ref": "#/$defs/__schema22"
+            },
+            "selected": {
+              "type": "object",
+              "properties": {
+                "moduleCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "inverterCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "batteryCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "wallboxCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "pvModulePowerWatts": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "storageUsableCapacityWh": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "moduleCount",
+                "inverterCount",
+                "batteryCount",
+                "wallboxCount",
+                "pvModulePowerWatts",
+                "storageUsableCapacityWh"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "status",
+            "requested",
+            "selected"
+          ],
+          "additionalProperties": false
+        },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "string",
+              "const": "EUR"
+            },
+            "basis": {
+              "type": "string",
+              "const": "net"
+            },
+            "salesPriceNetCents": {
+              "$ref": "#/$defs/__schema18"
+            },
+            "purchasePriceNetCents": {
+              "$ref": "#/$defs/__schema18"
+            }
+          },
+          "required": [
+            "currency",
+            "basis",
+            "salesPriceNetCents"
+          ],
+          "additionalProperties": false
+        },
+        "warnings": {
+          "minItems": 1,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema24"
+          }
+        },
+        "confirmedBy": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "confirmedAt": {
+          "type": "string",
+          "allOf": [
+            {
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "pattern": "Z$"
+            }
+          ]
+        },
+        "sourceResolutionSha256": {
+          "$ref": "#/$defs/__schema2"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "revision",
+        "bindings",
+        "lines",
+        "requested",
+        "acknowledgements",
+        "coverage",
+        "totals",
+        "warnings",
+        "confirmedBy",
+        "confirmedAt"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "__schema1": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema2": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema3": {
+          "type": "object",
+          "properties": {
+            "lineId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "position": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "coversRequirementKeys": {
+              "maxItems": 5,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema4"
+              }
+            },
+            "catalogComponentId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "catalogComponentRevision": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "componentSnapshotSha256": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "componentSnapshot": {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "type": "string",
+                  "const": "catalog-component-view.v1"
+                },
+                "identity": {
+                  "type": "object",
+                  "properties": {
+                    "workspaceId": {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    "componentId": {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    "revision": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "internalSku": {
+                      "type": "string"
+                    },
+                    "componentType": {
+                      "type": "string",
+                      "enum": [
+                        "module",
+                        "inverter",
+                        "battery",
+                        "wallbox",
+                        "heat_pump",
+                        "mounting",
+                        "other"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "workspaceId",
+                    "componentId",
+                    "revision",
+                    "internalSku",
+                    "componentType"
+                  ],
+                  "additionalProperties": false
+                },
+                "presentation": {
+                  "type": "object",
+                  "properties": {
+                    "displayName": {
+                      "$ref": "#/$defs/__schema5"
+                    },
+                    "manufacturer": {
+                      "$ref": "#/$defs/__schema5"
+                    },
+                    "model": {
+                      "$ref": "#/$defs/__schema5"
+                    },
+                    "unit": {
+                      "type": "string",
+                      "enum": [
+                        "piece",
+                        "set",
+                        "meter"
+                      ]
+                    },
+                    "keyPoints": {
+                      "maxItems": 6,
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema6"
+                      }
+                    },
+                    "image": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema7"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "datasheet": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema7"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "displayName",
+                    "manufacturer",
+                    "model",
+                    "unit",
+                    "keyPoints",
+                    "image",
+                    "datasheet"
+                  ],
+                  "additionalProperties": false
+                },
+                "technicalData": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "module.v1"
+                        },
+                        "nominalPowerWatts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "nominalPowerWatts"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "inverter.v1"
+                        },
+                        "nominalAcPowerWatts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000000
+                        },
+                        "phaseCount": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "const": 1
+                            },
+                            {
+                              "type": "number",
+                              "const": 3
+                            }
+                          ]
+                        },
+                        "mpptTrackerCount": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "nominalAcPowerWatts",
+                        "phaseCount",
+                        "mpptTrackerCount"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/__schema8"
+                        },
+                        "nominalCapacityWh": {
+                          "$ref": "#/$defs/__schema9"
+                        },
+                        "usableCapacityWh": {
+                          "$ref": "#/$defs/__schema10"
+                        },
+                        "maxContinuousPowerWatts": {
+                          "$ref": "#/$defs/__schema11"
+                        },
+                        "roundTripEfficiencyBasisPoints": {
+                          "$ref": "#/$defs/__schema12"
+                        },
+                        "backupCapability": {
+                          "$ref": "#/$defs/__schema13"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "nominalCapacityWh",
+                        "usableCapacityWh",
+                        "maxContinuousPowerWatts",
+                        "roundTripEfficiencyBasisPoints",
+                        "backupCapability"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "wallbox.v1"
+                        },
+                        "maxChargingPowerWatts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000000
+                        },
+                        "phaseCount": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "const": 1
+                            },
+                            {
+                              "type": "number",
+                              "const": 3
+                            }
+                          ]
+                        },
+                        "connector": {
+                          "type": "string",
+                          "enum": [
+                            "type2_socket",
+                            "type2_cable",
+                            "other"
+                          ]
+                        },
+                        "bidirectionalCapability": {
+                          "$ref": "#/$defs/__schema13"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "maxChargingPowerWatts",
+                        "phaseCount",
+                        "connector",
+                        "bidirectionalCapability"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "heat_pump.v1"
+                        },
+                        "nominalHeatingPowerWatts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000000
+                        },
+                        "scopHundredths": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 2000
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "nominalHeatingPowerWatts",
+                        "scopHundredths"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "mounting.v1"
+                        },
+                        "systemName": {
+                          "$ref": "#/$defs/__schema5"
+                        },
+                        "roofTypes": {
+                          "minItems": 1,
+                          "maxItems": 4,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema14"
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "systemName",
+                        "roofTypes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "other.v1"
+                        },
+                        "attributes": {
+                          "maxItems": 20,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema15"
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "attributes"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "commercial": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "currency": {
+                          "$ref": "#/$defs/__schema16"
+                        },
+                        "basis": {
+                          "$ref": "#/$defs/__schema17"
+                        },
+                        "salesPriceNetCents": {
+                          "$ref": "#/$defs/__schema18"
+                        },
+                        "salesProvenance": {
+                          "$ref": "#/$defs/__schema19"
+                        },
+                        "purchasePriceNetCents": {
+                          "$ref": "#/$defs/__schema20"
+                        },
+                        "purchaseProvenance": {
+                          "$ref": "#/$defs/__schema21"
+                        }
+                      },
+                      "required": [
+                        "currency",
+                        "basis",
+                        "salesPriceNetCents",
+                        "salesProvenance"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/__schema19"
+                },
+                "sourceSnapshotSha256": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "identity",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "lineId",
+            "position",
+            "quantity",
+            "coversRequirementKeys",
+            "catalogComponentId",
+            "catalogComponentRevision",
+            "componentSnapshot"
+          ],
+          "additionalProperties": false
+        },
+        "__schema4": {
+          "type": "string",
+          "enum": [
+            "pv_generation",
+            "storage_capacity",
+            "wallbox",
+            "backup_power",
+            "bidirectional_charging"
+          ]
+        },
+        "__schema5": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "__schema6": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "__schema7": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "image",
+                "datasheet"
+              ]
+            },
+            "objectKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 360
+            },
+            "sha256": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ]
+            },
+            "originalFilename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            }
+          },
+          "required": [
+            "role",
+            "objectKey",
+            "sha256",
+            "mediaType",
+            "originalFilename"
+          ],
+          "additionalProperties": false
+        },
+        "__schema8": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema9": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema10": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema11": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema12": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema13": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema14": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema15": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "__schema16": {
+          "type": "string",
+          "const": "EUR"
+        },
+        "__schema17": {
+          "type": "string",
+          "const": "net"
+        },
+        "__schema18": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema19": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema2"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema20": {
+          "$ref": "#/$defs/__schema18"
+        },
+        "__schema21": {
+          "$ref": "#/$defs/__schema19"
+        },
+        "__schema22": {
+          "type": "object",
+          "properties": {
+            "branch": {
+              "type": "string",
+              "enum": [
+                "new_installation",
+                "existing_installation"
+              ]
+            },
+            "pvPeakPowerWatts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "storageCapacityWh": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "wallbox": {
+              "type": "boolean"
+            },
+            "backupPower": {
+              "type": "boolean"
+            },
+            "bidirectionalCharging": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "branch",
+            "pvPeakPowerWatts",
+            "storageCapacityWh",
+            "wallbox",
+            "backupPower",
+            "bidirectionalCharging"
+          ],
+          "additionalProperties": false
+        },
+        "__schema23": {
+          "type": "string",
+          "enum": [
+            "pv_capacity_differs",
+            "storage_capacity_differs",
+            "backup_compatibility_unverified",
+            "bidirectional_compatibility_unverified",
+            "cross_component_compatibility_unverified"
+          ]
+        },
+        "__schema24": {
+          "type": "string",
+          "enum": [
+            "calculation_not_sku_specific",
+            "pv_capacity_differs",
+            "storage_capacity_differs",
+            "backup_compatibility_unverified",
+            "bidirectional_compatibility_unverified",
+            "cross_component_compatibility_unverified"
+          ]
+        }
+      }
+    }
+  },
+  "x-semantic-invariants": [
+    "internalSku is NFKC-normalized uppercase and contains only A-Z, digits, dot, underscore, and hyphen",
+    "componentType equals the technicalData schema family and never changes for a component identity",
+    "battery usableCapacityWh does not exceed nominalCapacityWh",
+    "asset objectKey equals catalog/{workspaceId}/{componentId}/{sha256}.{role extension}",
+    "snapshotSha256 uses catalog-jcs.v1 over the strict component revision without snapshotSha256",
+    "project lines copy hash-valid component revisions from the bound workspace and bind their identity, revision, and hash",
+    "browser commands contain untrusted identifiers, expected revisions, quantities, and acknowledgements but never workspace, actor, timestamps, snapshots, or prices",
+    "catalog and project views structurally omit purchase prices, purchase provenance, and hashes of purchase-bearing source snapshots unless the server grants price.read_purchase",
+    "new installations with positive PV require at least one module and inverter; requested storage and wallbox capabilities require their product classes",
+    "coverage, exact capacity, feature, and cross-component compatibility acknowledgements, warnings, and safe integer EUR/net totals are derived from copied revisions",
+    "calculation quality remains server_reproduced_estimate and not_f4_reference_validated",
+    "resolutionSha256 uses catalog-jcs.v1 over the strict resolution without resolutionSha256"
+  ]
+}

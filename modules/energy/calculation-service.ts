@@ -555,6 +555,23 @@ async function lockFinalizationJob(
   return result.rows[0] ?? null;
 }
 
+async function lockFinalizationProject(
+  tx: TenantTx,
+  workspaceId: string,
+  jobId: string,
+): Promise<string | null> {
+  const result = await tx.execute<{
+    project_id: string | null;
+    [key: string]: unknown;
+  }>(sql`
+    select public.lock_project_calculation_finalization(
+      ${workspaceId}::uuid,
+      ${jobId}::uuid
+    ) as project_id
+  `);
+  return result.rows[0]?.project_id ?? null;
+}
+
 function assertClaim(
   row: FinalizationJobRow | null,
   leaseToken: string,
@@ -712,7 +729,18 @@ export async function finalizeProjectCalculationSuccess(
   const validatedResult = validatePlanningCalculationResult(value.result);
   if (!validatedResult.ok) invalidInput();
 
+  // Confirmation and catalog invalidation already use Project -> Job. Take
+  // the Project lock through the narrowly granted definer function before
+  // touching the worker-owned Job row, otherwise success finalization can
+  // deadlock as Job -> Project inside the calculation-revision trigger.
+  const lockedProjectId = await lockFinalizationProject(
+    tx,
+    value.workspaceId,
+    value.jobId,
+  );
+  if (lockedProjectId === null) stale();
   const job = await lockFinalizationJob(tx, value.workspaceId, value.jobId);
+  if (job !== null && job.project_id !== lockedProjectId) stale();
   if (job?.state === "succeeded" && job.result_revision_id !== null) {
     const existing = await tx.execute<{
       id: string;
@@ -758,64 +786,39 @@ export async function finalizeProjectCalculationSuccess(
     || validatedResult.value.model.sourceRevision !== job.source_revision
   ) invalidInput();
   const trustedResult = pairedResult.value;
-  const nextRevision = await tx.execute<{
-    revision: number;
+  const revisionId = randomUUID();
+  const finalized = await tx.execute<{
+    outcome: "created" | "replayed" | "stale" | "conflict";
+    revision_id: string | null;
+    revision_number: number | null;
     [key: string]: unknown;
   }>(sql`
-    select coalesce(max(revision), 0)::int + 1 as revision
-      from project_calculation_revision
-     where workspace_id = ${job.workspace_id}::uuid
-       and project_id = ${job.project_id}::uuid
+    select outcome, revision_id, revision_number
+      from public.finalize_project_calculation_success(
+        ${job.workspace_id}::uuid,
+        ${job.id}::uuid,
+        ${value.leaseToken}::uuid,
+        ${value.attemptCount},
+        ${revisionId}::uuid,
+        ${JSON.stringify(trustedResult)}::jsonb
+      )
   `);
-  const revision = nextRevision.rows[0]?.revision;
-  if (!revision) invalidInput();
-  const revisionId = randomUUID();
-  await tx.execute(sql`
-    insert into project_calculation_revision (
-      id, workspace_id, project_id, site_id, revision, job_id,
-      address_revision, pin_confirmed_address_revision, profile_id,
-      profile_revision, confirmed_profile_revision,
-      confirmed_address_revision, requirement_id, requirement_revision,
-      source_snapshot_id, contract_version, model_id, model_version,
-      source_revision, defaults_version, quality, validation_status,
-      input_sha256, result_sha256, input_snapshot, provider_snapshot,
-      result, created_by, created_at
-    ) values (
-      ${revisionId}::uuid, ${job.workspace_id}::uuid, ${job.project_id}::uuid,
-      ${job.site_id}::uuid, ${revision}, ${job.id}::uuid,
-      ${job.address_revision}, ${job.pin_confirmed_address_revision},
-      ${job.profile_id}::uuid, ${job.profile_revision},
-      ${job.confirmed_profile_revision}, ${job.confirmed_address_revision},
-      ${job.requirement_id}::uuid, ${job.requirement_revision},
-      ${job.source_snapshot_id}::uuid, ${job.contract_version}, ${job.model_id},
-      ${job.model_version}, ${job.source_revision}, ${job.defaults_version},
-      ${trustedResult.quality}, ${trustedResult.validationStatus},
-      decode(${job.input_sha256}, 'hex'),
-      decode(${trustedResult.resultSha256}, 'hex'),
-      ${JSON.stringify(request.value)}::jsonb,
-      ${JSON.stringify(job.provider_snapshot)}::jsonb,
-      ${JSON.stringify(trustedResult)}::jsonb,
-      ${job.created_by}::uuid, ${new Date(job.db_now)}
-    )
-  `);
-  const completed = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
-    update project_calculation_job
-       set state = 'succeeded',
-           lease_token = null,
-           lease_expires_at = null,
-           finished_at = pg_catalog.clock_timestamp(),
-           result_revision_id = ${revisionId}::uuid,
-           error_code = null,
-           error_retryable = null
-     where workspace_id = ${job.workspace_id}::uuid
-       and id = ${job.id}::uuid
-       and state = 'running'
-       and lease_token = ${value.leaseToken}::uuid
-       and attempt_count = ${value.attemptCount}
-       and lease_expires_at > pg_catalog.clock_timestamp()
-     returning id
-  `);
-  if (completed.rows.length !== 1) stale();
+  const finalizedRow = finalized.rows[0];
+  if (!finalizedRow || finalizedRow.outcome === "stale") stale();
+  if (finalizedRow.outcome === "conflict") retryConflict();
+  if (
+    finalizedRow.revision_id === null
+    || finalizedRow.revision_number === null
+  ) invalidInput();
+  if (finalizedRow.outcome === "replayed") {
+    return {
+      revisionId: finalizedRow.revision_id,
+      revision: finalizedRow.revision_number,
+      replayed: true,
+    };
+  }
+  const committedRevisionId = finalizedRow.revision_id;
+  const revision = finalizedRow.revision_number;
 
   const trace = {
     projectId: job.project_id,
@@ -827,7 +830,7 @@ export async function finalizeProjectCalculationSuccess(
     requirementRevision: job.requirement_revision,
     jobId: job.id,
     attemptCount: job.attempt_count,
-    revisionId,
+    revisionId: committedRevisionId,
     revision,
     status: "succeeded",
     quality: trustedResult.quality,
@@ -849,5 +852,5 @@ export async function finalizeProjectCalculationSuccess(
     allowed: true,
     details: trace,
   });
-  return { revisionId, revision, replayed: false };
+  return { revisionId: committedRevisionId, revision, replayed: false };
 }

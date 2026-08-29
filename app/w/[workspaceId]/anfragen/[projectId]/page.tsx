@@ -18,6 +18,7 @@ import { AddressEditor } from "./address-editor";
 import { EnergyCalculationSection } from "./energy-calculation-section";
 import { EnergyProfileSection } from "./energy-profile-section";
 import { PinForm } from "./pin-form";
+import { ProductResolutionSection } from "./product-resolution-section";
 
 export const metadata: Metadata = {
   title: "Projektakte | Energie-SaaS",
@@ -241,13 +242,21 @@ export default async function ProjectTriagePage({
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <nav aria-label="Brotkrumen" className="mb-6 flex items-start justify-between gap-4">
-          <Link
-            href={`/w/${workspaceId}/anfragen`}
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
-          >
-            <span aria-hidden="true" className="mr-2">←</span>
-            Zurück zu den Anfragen
-          </Link>
+          <div className="flex flex-wrap gap-x-5">
+            <Link
+              href={`/w/${workspaceId}/anfragen`}
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            >
+              <span aria-hidden="true" className="mr-2">←</span>
+              Zurück zu den Anfragen
+            </Link>
+            <Link
+              href={`/w/${workspaceId}/katalog`}
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-slate-700 outline-none hover:text-slate-950 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            >
+              Produktkatalog
+            </Link>
+          </div>
           <SignOutButton />
         </nav>
 
@@ -358,6 +367,13 @@ export default async function ProjectTriagePage({
             />
 
             <EnergyCalculationSection context={energyContext} />
+
+            <ProductResolutionSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              pending={detail.blockers.catalogResolutionPending}
+              energyContext={energyContext}
+            />
 
             <Section title="Importierte Rechner-Schätzung (ungeprüft)">
               <div

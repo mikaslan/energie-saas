@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
+import {
+  CATALOG_CANONICALIZATION_VERSION,
+  CATALOG_COMPONENT_CONTRACT_VERSION,
+  PROJECT_CATALOG_RESOLUTION_CONTRACT_VERSION,
+  sealCatalogComponentRevision,
+  sealProjectCatalogResolution,
+} from "@/lib/integrations/catalog/contract";
 import type { TenantTx } from "@/lib/db/types";
 
 async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
@@ -245,6 +252,194 @@ async function fixtureCalculationJob(tx: TenantTx, wsId: string): Promise<{
   return { ...graph, jobId };
 }
 
+async function fixtureCatalogGraph(tx: TenantTx, wsId: string): Promise<void> {
+  await tenantFixtures.project_calculation_revision(tx, wsId);
+  const calculation = await tx.execute<{
+    actor_id: string;
+    project_id: string;
+    site_id: string;
+    requirement_id: string;
+    requirement_revision: number;
+    calculation_revision_id: string;
+    calculation_revision: number;
+    input_sha256: string;
+    result_sha256: string;
+    [key: string]: unknown;
+  }>(sql`
+    select revision.created_by as actor_id,
+           revision.project_id,
+           revision.site_id,
+           revision.requirement_id,
+           revision.requirement_revision,
+           revision.id as calculation_revision_id,
+           revision.revision as calculation_revision,
+           encode(revision.input_sha256, 'hex') as input_sha256,
+           encode(revision.result_sha256, 'hex') as result_sha256
+      from project_calculation_revision revision
+     where revision.workspace_id = ${wsId}::uuid
+     order by revision.created_at desc, revision.id desc
+     limit 1
+  `);
+  const row = calculation.rows[0];
+  if (!row) throw new Error("Catalog-Fixture braucht eine Calculation-Revision.");
+
+  const componentId = randomUUID();
+  const internalSku = `FIX-${componentId.slice(0, 8).toUpperCase()}`;
+  const snapshot = sealCatalogComponentRevision({
+    schemaVersion: CATALOG_COMPONENT_CONTRACT_VERSION,
+    canonicalizationVersion: CATALOG_CANONICALIZATION_VERSION,
+    identity: {
+      workspaceId: wsId,
+      componentId,
+      revision: 1,
+      internalSku,
+      componentType: "battery",
+    },
+    presentation: {
+      displayName: "Synthetischer Fixture-Speicher",
+      manufacturer: "WMEE Fixture",
+      model: internalSku,
+      unit: "piece",
+      keyPoints: ["Keine realen Produktdaten"],
+      image: null,
+      datasheet: null,
+    },
+    technicalData: {
+      schemaVersion: "battery.v1",
+      nominalCapacityWh: 8_500,
+      usableCapacityWh: 8_000,
+      maxContinuousPowerWatts: 4_000,
+      roundTripEfficiencyBasisPoints: 9_400,
+      backupCapability: "known_supported",
+    },
+    commercial: {
+      currency: "EUR",
+      basis: "net",
+      purchasePriceNetCents: 250_000,
+      salesPriceNetCents: 390_000,
+      purchaseProvenance: {
+        sourceKind: "supplier_price_list",
+        reference: "synthetic-purchase-fixture",
+        observedOn: "2026-08-29",
+        rightsBasis: "supplier_authorized",
+        sourceDocumentSha256: null,
+      },
+      salesProvenance: {
+        sourceKind: "workspace_pricing",
+        reference: "synthetic-sales-fixture",
+        observedOn: "2026-08-29",
+        rightsBasis: "workspace_owned",
+        sourceDocumentSha256: null,
+      },
+    },
+    technicalProvenance: {
+      sourceKind: "manufacturer_datasheet",
+      reference: "synthetic-technical-fixture",
+      observedOn: "2026-08-29",
+      rightsBasis: "manufacturer_published",
+      sourceDocumentSha256: null,
+    },
+  });
+  await tx.execute(sql`
+    insert into catalog_component (
+      id, workspace_id, internal_sku, component_type, status,
+      current_revision, created_by
+    ) values (
+      ${componentId}::uuid, ${wsId}::uuid, ${internalSku}, 'battery',
+      'draft', 0, ${row.actor_id}::uuid
+    )
+  `);
+  await tx.execute(sql`
+    insert into catalog_component_revision (
+      workspace_id, component_id, revision, component_type, schema_version,
+      canonicalization_version, revision_snapshot, snapshot_sha256, created_by
+    ) values (
+      ${wsId}::uuid, ${componentId}::uuid, 1, 'battery',
+      ${snapshot.schemaVersion}, ${snapshot.canonicalizationVersion},
+      ${JSON.stringify(snapshot)}::jsonb, decode(${snapshot.snapshotSha256}, 'hex'),
+      ${row.actor_id}::uuid
+    )
+  `);
+  await tx.execute(sql`
+    update catalog_component set status = 'active', updated_at = now()
+     where workspace_id = ${wsId}::uuid and id = ${componentId}::uuid
+  `);
+
+  const lineId = randomUUID();
+  const resolution = sealProjectCatalogResolution({
+    schemaVersion: PROJECT_CATALOG_RESOLUTION_CONTRACT_VERSION,
+    canonicalizationVersion: CATALOG_CANONICALIZATION_VERSION,
+    revision: 1,
+    bindings: {
+      workspaceId: wsId,
+      projectId: row.project_id,
+      siteId: row.site_id,
+      requirementId: row.requirement_id,
+      requirementRevision: row.requirement_revision,
+      calculationRevisionId: row.calculation_revision_id,
+      calculationRevision: row.calculation_revision,
+      calculationInputSha256: row.input_sha256,
+      calculationResultSha256: row.result_sha256,
+      calculationQuality: "server_reproduced_estimate",
+      calculationValidationStatus: "not_f4_reference_validated",
+    },
+    lines: [{
+      lineId,
+      position: 1,
+      quantity: 1,
+      coversRequirementKeys: ["storage_capacity"],
+      catalogComponentId: componentId,
+      catalogComponentRevision: 1,
+      componentSnapshotSha256: snapshot.snapshotSha256,
+      componentSnapshot: snapshot,
+    }],
+    requested: {
+      branch: "new_installation",
+      pvPeakPowerWatts: 0,
+      storageCapacityWh: 8_000,
+      wallbox: false,
+      backupPower: false,
+      bidirectionalCharging: false,
+    },
+    acknowledgements: [],
+    confirmedBy: row.actor_id,
+    confirmedAt: "2026-08-29T18:00:00.000Z",
+  });
+  const resolutionId = randomUUID();
+  await tx.execute(sql`
+    insert into project_catalog_resolution (
+      id, workspace_id, project_id, site_id, revision,
+      requirement_id, requirement_revision,
+      calculation_revision_id, calculation_revision,
+      calculation_input_sha256, calculation_result_sha256,
+      calculation_quality, calculation_validation_status,
+      schema_version, canonicalization_version, resolution_snapshot,
+      resolution_sha256, confirmed_by, confirmed_at
+    ) values (
+      ${resolutionId}::uuid, ${wsId}::uuid, ${row.project_id}::uuid,
+      ${row.site_id}::uuid, 1, ${row.requirement_id}::uuid,
+      ${row.requirement_revision}, ${row.calculation_revision_id}::uuid,
+      ${row.calculation_revision}, decode(${row.input_sha256}, 'hex'),
+      decode(${row.result_sha256}, 'hex'), 'server_reproduced_estimate',
+      'not_f4_reference_validated', ${resolution.schemaVersion},
+      ${resolution.canonicalizationVersion}, ${JSON.stringify(resolution)}::jsonb,
+      decode(${resolution.resolutionSha256}, 'hex'), ${row.actor_id}::uuid,
+      ${resolution.confirmedAt}::timestamptz
+    )
+  `);
+  await tx.execute(sql`
+    insert into project_catalog_resolution_line (
+      id, workspace_id, resolution_id, project_id, position, quantity,
+      catalog_component_id, catalog_component_revision,
+      component_snapshot_sha256
+    ) values (
+      ${lineId}::uuid, ${wsId}::uuid, ${resolutionId}::uuid,
+      ${row.project_id}::uuid, 1, 1, ${componentId}::uuid, 1,
+      decode(${snapshot.snapshotSha256}, 'hex')
+    )
+  `);
+}
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -434,6 +629,10 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  catalog_component: fixtureCatalogGraph,
+  catalog_component_revision: fixtureCatalogGraph,
+  project_catalog_resolution: fixtureCatalogGraph,
+  project_catalog_resolution_line: fixtureCatalogGraph,
 };
 
 // ═══════════════════════════════════════════════════════════════════════
