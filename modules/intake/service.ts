@@ -4,6 +4,8 @@ import {
   calculatorSnapshot,
   contact,
   inboundReceipt,
+  kanbanBoard,
+  kanbanColumn,
   project,
   projectRequirement,
   site,
@@ -53,6 +55,36 @@ type ExistingReceipt = {
   submissionId: string;
   bodySha256: Buffer;
 };
+
+async function resolveDefaultRequestLane(
+  tx: TenantTx,
+  workspaceId: string,
+): Promise<{ boardId: string; columnId: string }> {
+  const rows = await tx
+    .select({ boardId: kanbanBoard.id, columnId: kanbanColumn.id })
+    .from(kanbanBoard)
+    .innerJoin(
+      kanbanColumn,
+      and(
+        eq(kanbanColumn.workspaceId, kanbanBoard.workspaceId),
+        eq(kanbanColumn.boardId, kanbanBoard.id),
+      ),
+    )
+    .where(and(
+      eq(kanbanBoard.workspaceId, workspaceId),
+      eq(kanbanBoard.scope, "residential"),
+      eq(kanbanBoard.isDefault, true),
+      isNull(kanbanBoard.archivedAt),
+      eq(kanbanColumn.isIntake, true),
+      eq(kanbanColumn.columnType, "lead"),
+      isNull(kanbanColumn.archivedAt),
+    ))
+    .limit(2);
+  if (rows.length !== 1) {
+    throw new Error("default residential intake lane is missing or ambiguous");
+  }
+  return rows[0];
+}
 
 function normalizedRequiredText(value: string, minLength: number, maxLength: number): string {
   const normalized = value.normalize("NFKC").trim();
@@ -557,6 +589,8 @@ export async function processRechnerIntake(
     return replayOrConflict(replay, hash);
   }
 
+  const requestLane = await resolveDefaultRequestLane(tx, ctx.workspaceId);
+
   await persistContact(
     tx,
     ctx,
@@ -583,6 +617,8 @@ export async function processRechnerIntake(
     workspaceId: ctx.workspaceId,
     contactId: contactDecision.contactId,
     siteId: selectedSite.siteId,
+    kanbanBoardId: requestLane.boardId,
+    kanbanColumnId: requestLane.columnId,
     name: "Rechner-Anfrage",
     phase: "request",
     outcome: "open",

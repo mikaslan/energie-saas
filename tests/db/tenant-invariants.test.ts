@@ -315,7 +315,11 @@ describe("Tenant-Invarianten über ALLE Tabellen", () => {
       const inB = await withTenantOn(testPool, wsB, (tx) =>
         tx.execute<CountRow>(sql.raw(`select count(*)::int as n from ${t.name}`)));
       expect(inA.rows[0].n, `${t.name}: Fixture hat nichts angelegt`).toBeGreaterThan(0);
-      const bBaseline = t.name === "workspace" ? 1 : 0; // B sieht nur die eigene workspace-Zeile
+      const bBaseline = t.name === "workspace" || t.name === "kanban_board"
+        ? 1
+        : t.name === "kanban_column"
+          ? 3
+          : 0;
       expect(inB.rows[0].n, `${t.name}: LECK — B sieht Daten von A`).toBe(bBaseline);
     }
   });

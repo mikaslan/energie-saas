@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { testPool } from "../setup/test-db";
 import { superuserPool } from "../setup/superuser-db";
-import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
+import { authorizedAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { closeDb } from "@/lib/db/client";
 import { withTenantOn } from "@/lib/db/tenant";
 import { getSessionUser } from "@/lib/session";
@@ -158,5 +158,39 @@ describe("authorizedAction", () => {
       "select count(*)::int as n from audit_log",
     );
     expect(nachher.rows[0].n).toBe(vorher.rows[0].n);
+  });
+});
+
+describe("authorizedQuery", () => {
+  it("bindet auch Reads an Session, Membership und den verifizierten Actor", async () => {
+    vi.mocked(getSessionUser).mockResolvedValue({ authUserId: authViewer });
+
+    const result = await authorizedQuery(ws, "project.read", "project", async (tx, ctx) => {
+      const rows = await tx.execute<{ workspace_name: string; [key: string]: unknown }>(sql`
+        select name as workspace_name from workspace
+      `);
+      return {
+        actor: ctx.actor,
+        role: ctx.role,
+        workspaceName: rows.rows[0].workspace_name,
+      };
+    });
+
+    expect(result).toEqual({
+      actor: viewerIdentityId,
+      role: "viewer",
+      workspaceName: "action",
+    });
+  });
+
+  it("öffnet ohne Session keine Tenant-Transaktion", async () => {
+    vi.mocked(getSessionUser).mockResolvedValue(null);
+    let called = false;
+
+    await expect(authorizedQuery(ws, "project.read", "project", async () => {
+      called = true;
+      return null;
+    })).rejects.toBeInstanceOf(NotAuthenticatedError);
+    expect(called).toBe(false);
   });
 });

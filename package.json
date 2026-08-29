@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "tsx scripts/run-tests.mts",
+    "test:e2e": "tsx tests/e2e/run.mts",
     "depcruise": "depcruise modules lib app worker scripts --config .dependency-cruiser.cjs",
     "check": "npm run lint && npm run typecheck && npm run depcruise && npm run test && npm run db:roles:verify",
     "db:generate": "drizzle-kit generate",
@@ -75,6 +76,7 @@
     }
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/papaparse": "^5.5.2",

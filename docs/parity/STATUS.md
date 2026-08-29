@@ -18,9 +18,9 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 6–8 % | Fundament weit fortgeschritten, erster echter Rechner-/Lead-Vertical lokal verifiziert; fachliche Breite bleibt überwiegend offen |
-| Technisches Fundament M0/M1 | ca. 80–90 % | Auth-, Tenant-, DB-, Worker- und Intake-Grenzen lokal weitgehend real, externe Gates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 0–2 % | Noch kein vollständiger CRM-/Angebots-Golden-Path |
+| Gesamtmission einschließlich F1–F16 | ca. 8–10 % | Fundament weit fortgeschritten und erster echter Rechner-/Lead-Vertical lokal verifiziert; fachliche Breite bleibt überwiegend offen |
+| Technisches Fundament M0/M1 | ca. 85–90 % | Auth-, Tenant-, DB-, Worker-, Intake- und erste geschützte Webgrenzen lokal real; externe Gates offen |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 2–4 % | Login, Intake-Triage und Projektakte sind real; Angebot, Planung, Ausführung und Abrechnung bleiben offen |
 
 Diese Werte steigen nicht durch Seiten, Mocks oder Dokumentation allein, sondern nur
 durch unabhängig verifizierte Endzustände.
@@ -34,6 +34,7 @@ durch unabhängig verifizierte Endzustände.
 | M1-02 Actor-/Membership-DML | VERIFIED (lokal) | Commit `992796b` |
 | M1-03 getrennte DB-Principals | REVIEWED/VERIFIED (lokal) | 74 Rollen- plus 5 PG18-Proben grün; echte Provider-, Staging- und Restore-Gates bleiben NO-GO |
 | M1-04 Rechner-V3-Intake | REVIEWED/VERIFIED (lokal) | Kanonisches Schema/OpenAPI, HMAC, atomarer Contact→Site→Project-Snapshot, Replay/Races, RLS/ACL sowie Fresh-/Legacy-Migration geprüft; Build und 256 Tests grün |
+| M1-05 Rechner-Lead-Triage | REVIEWED/VERIFIED (lokal) | Echter OTP-Login, signierter Intake, Anfrageboard, Projektakte, strenge Pin-Bestätigung, Formular- und Pointer-Move mit Reload, Editor/Viewer/Tenant-Grenzen; Desktop/Mobile/Tablet, Axe, 307 Repo-Tests und 5 Browser-E2E grün |
 | Rechner V3 | CONTRACTED (Clone) / BLOCKED (Provider) | read-only Baseline `rechner/v3@7be46ad`; Provider-Wiring erst nach veröffentlichtem korrektem Datenschutzhinweis und Secret-Provisioning |
 
 ## F1–F16-Matrix auf Capability-Ebene
@@ -43,7 +44,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 
 | Bereich | Höchster belastbarer Stand | Nächster echte Slice |
 |---|---|---|
-| F1 CRM & Leads | SPECIFIED | Rechner-V3-Intake → Kontakt → Standort → Anfrage → Kanban |
+| F1 CRM & Leads | PARTIAL VERIFIED | Rechner-V3-Intake → Kontakt → Standort → Anfrage → Kanban/Projektakte ist lokal real; als Nächstes Adresskorrektur, Zuweisung und weitere CRM-Capabilities |
 | F2 Angebote | SPECIFIED | Anfrage → Variante → BOM/Preise → PDF → Signatur |
 | F3 PV-Planung | SPECIFIED | Quick-Modus, danach rechtmäßige Adress-/Dachdatenadapter |
 | F4 Simulation | SPECIFIED | deterministischer Rechenkern mit fachlichem Güte- und Haftungsgate |
@@ -78,7 +79,7 @@ Abnahmen als prüfbare Lieferartefakte erhalten.
    Evidenz vorliegt.
 2. Rechner-V3-Provider erst nach Privacy-Freigabe und echtem Secret-Provisioning
    an den lokal verifizierten M1-04-Vertrag anschließen.
-3. Golden Path ab dem bereits erzeugten Project real weiterbauen:
-   `Rechner → Lead → Kontakt → Standort/Adresse → Kalkulation → Katalog/Speicher →`
+3. Golden Path ab der verifizierten Lead-Triage real weiterbauen:
+   `Rechner → Lead → Kontakt → Standort/Adresskorrektur → Kalkulation → Katalog/Speicher →`
    `Angebot → Variante → PDF → Signatur → Installation → Rechnung → Kundenportal`.
 4. Danach F1–F16 capabilityweise bis VERIFIED schließen.

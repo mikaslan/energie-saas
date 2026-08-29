@@ -24,11 +24,22 @@ async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
   `);
   await tx.execute(sql`
     insert into project (
-      id, workspace_id, contact_id, site_id, name, source_key
-    ) values (
-      ${projectId}::uuid, ${wsId}::uuid, ${contactId}::uuid, ${siteId}::uuid,
-      'Fixture Project', 'fixture'
+      id, workspace_id, contact_id, site_id, kanban_board_id,
+      kanban_column_id, name, source_key
     )
+    select ${projectId}::uuid, ${wsId}::uuid, ${contactId}::uuid,
+           ${siteId}::uuid, board.id, intake_column.id,
+           'Fixture Project', 'fixture'
+    from kanban_board board
+    join kanban_column intake_column
+      on intake_column.workspace_id = board.workspace_id
+      and intake_column.board_id = board.id
+      and intake_column.is_intake = true
+      and intake_column.archived_at is null
+    where board.workspace_id = ${wsId}::uuid
+      and board.scope = 'residential'
+      and board.is_default = true
+      and board.archived_at is null
   `);
   return { contactId, siteId, projectId };
 }
@@ -107,6 +118,12 @@ const fixtureRequirements = {
 // Tenant-Isolations-Invariante über alle künftigen Module (M1–M8) trägt.
 export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Promise<void>> = {
   workspace: async () => {}, // Zeile wird vom Suite-Setup selbst angelegt
+  // Der Workspace-Provisioning-Trigger legt diese Zeilen bereits an. Die
+  // Lesebaseline wird in tenant-invariants.test.ts explizit berücksichtigt;
+  // Cross-Writes brauchen unten eigene Overrides, damit sie weiterhin an RLS
+  // statt an einem No-op geprüft werden.
+  kanban_board: async () => {},
+  kanban_column: async () => {},
   membership: async (tx, wsId) => {
     // KEIN select von user_identity: dessen SELECT-Policy (Migration 0002)
     // verlangt eine bereits existierende Membership im aktuellen Workspace —
@@ -183,9 +200,29 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
   },
   project: async (tx) => {
     await tx.execute(sql`
-      insert into project (workspace_id, contact_id, site_id, name, source_key)
-      values (${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
-        'Cross Write', 'fixture')
+      insert into project (
+        workspace_id, contact_id, site_id, kanban_board_id,
+        kanban_column_id, name, source_key
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, 'Cross Write', 'fixture'
+      )
+    `);
+  },
+  kanban_board: async (tx) => {
+    await tx.execute(sql`
+      insert into kanban_board (workspace_id, name, scope, is_default)
+      values (${randomUUID()}::uuid, 'Cross Write', 'residential', false)
+    `);
+  },
+  kanban_column: async (tx) => {
+    await tx.execute(sql`
+      insert into kanban_column (
+        workspace_id, board_id, name, column_type, position, color, is_intake
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        'Cross Write', 'lead', 99, 'neutral', false
+      )
     `);
   },
   inbound_receipt: async (tx) => {

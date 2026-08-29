@@ -42,7 +42,7 @@ async function captureUnverifiedWorkspaceAccess(input: {
   }
 }
 
-export async function authorizedAction<T>(
+async function authorizedCall<T>(
   workspaceId: string,
   action: DeniedAction,
   resource: string,
@@ -101,4 +101,26 @@ export async function authorizedAction<T>(
 
     throw error;
   }
+}
+
+export function authorizedAction<T>(
+  workspaceId: string,
+  action: DeniedAction,
+  resource: string,
+  fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
+): Promise<T> {
+  return authorizedCall(workspaceId, action, resource, fn);
+}
+
+// Server-Component-/DAL-Grenze für autorisierte Reads. Sie teilt absichtlich
+// exakt dieselbe Session→Identity→Membership-Auflösung und denselben
+// Denial-Audit-Vertrag mit Server Actions: ein Render-Gate allein ist keine
+// Sicherheitsgrenze, und die Workspace-UUID aus der Route bleibt untrusted.
+export function authorizedQuery<T>(
+  workspaceId: string,
+  action: DeniedAction,
+  resource: string,
+  fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
+): Promise<T> {
+  return authorizedCall(workspaceId, action, resource, fn);
 }

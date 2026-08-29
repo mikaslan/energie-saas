@@ -11,6 +11,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { contact } from "./crm";
+import { kanbanBoard, kanbanColumn } from "./boards";
 import { workspace } from "./core";
 import { site } from "./site";
 
@@ -24,6 +25,8 @@ export const project = pgTable(
     workspaceId: uuid("workspace_id").notNull(),
     contactId: uuid("contact_id").notNull(),
     siteId: uuid("site_id").notNull(),
+    kanbanBoardId: uuid("kanban_board_id").notNull(),
+    kanbanColumnId: uuid("kanban_column_id").notNull(),
     name: text("name").notNull(),
     phase: text("phase").$type<(typeof projectPhases)[number]>().notNull().default("request"),
     outcome: text("outcome").$type<(typeof projectOutcomes)[number]>().notNull().default("open"),
@@ -36,6 +39,12 @@ export const project = pgTable(
   (t) => [
     index("project_ws_contact_idx").on(t.workspaceId, t.contactId),
     index("project_ws_site_idx").on(t.workspaceId, t.siteId),
+    index("project_ws_kanban_created_idx").on(
+      t.workspaceId,
+      t.kanbanColumnId,
+      t.createdAt,
+      t.id,
+    ),
     unique("project_ws_id_uq").on(t.workspaceId, t.id),
     unique("project_ws_id_contact_site_uq").on(
       t.workspaceId,
@@ -57,6 +66,20 @@ export const project = pgTable(
       columns: [t.workspaceId, t.contactId, t.siteId],
       foreignColumns: [site.workspaceId, site.contactId, site.id],
       name: "project_site_contact_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.kanbanBoardId],
+      foreignColumns: [kanbanBoard.workspaceId, kanbanBoard.id],
+      name: "project_kanban_board_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.kanbanBoardId, t.kanbanColumnId],
+      foreignColumns: [
+        kanbanColumn.workspaceId,
+        kanbanColumn.boardId,
+        kanbanColumn.id,
+      ],
+      name: "project_kanban_column_fk",
     }),
     check("project_name_ck", sql`length(btrim(${t.name})) between 1 and 200`),
     check("project_phase_ck", sql`${t.phase} in ('request', 'offer', 'installation')`),

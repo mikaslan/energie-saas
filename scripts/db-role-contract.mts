@@ -633,27 +633,56 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       and c.relname = any($1::text[])
     order by c.relname
   `, [rechnerRelations]);
-  if (existing.rows.length === 0) return;
+  if (existing.rows.length > 0) {
+    if (
+      existing.rows.length !== rechnerRelations.length
+      || existing.rows.some((row, index) => row.relname !== rechnerRelations[index])
+    ) {
+      throw new Error("Rollen-ACL-Manifest: M1-04-Relationen sind nur teilweise vorhanden.");
+    }
+    await client.query(`
+      grant select on
+        public.contact,
+        public.project,
+        public.inbound_receipt,
+        public.calculator_snapshot,
+        public.project_requirement
+      to app_runtime;
+      grant insert, update on public.contact, public.project to app_runtime;
+      grant insert on
+        public.inbound_receipt,
+        public.calculator_snapshot,
+        public.project_requirement
+      to app_runtime
+    `);
+  }
+
+  // M1-05 bleibt genauso prefix-tauglich wie M1-04: der beaufsichtigte
+  // Legacy-Cutover wendet das Rollenmanifest auch gegen historische Schemas
+  // an. Erst wenn beide Kanban-Relationen atomar vorhanden sind, erhalten sie
+  // ihre reine Read-ACL. Die Provisioning-Funktion bleibt für alle
+  // Runtime-Dienste ohne EXECUTE; der Workspace-Trigger ruft sie intern auf.
+  const triageRelations = ["kanban_board", "kanban_column"] as const;
+  const triageExisting = await client.query<{ relname: string }>(`
+    select c.relname
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and c.relname = any($1::text[])
+    order by c.relname
+  `, [triageRelations]);
+  if (triageExisting.rows.length === 0) return;
   if (
-    existing.rows.length !== rechnerRelations.length
-    || existing.rows.some((row, index) => row.relname !== rechnerRelations[index])
+    triageExisting.rows.length !== triageRelations.length
+    || triageExisting.rows.some((row, index) => row.relname !== triageRelations[index])
   ) {
-    throw new Error("Rollen-ACL-Manifest: M1-04-Relationen sind nur teilweise vorhanden.");
+    throw new Error("Rollen-ACL-Manifest: M1-05-Relationen sind nur teilweise vorhanden.");
   }
   await client.query(`
-    grant select on
-      public.contact,
-      public.project,
-      public.inbound_receipt,
-      public.calculator_snapshot,
-      public.project_requirement
-    to app_runtime;
-    grant insert, update on public.contact, public.project to app_runtime;
-    grant insert on
-      public.inbound_receipt,
-      public.calculator_snapshot,
-      public.project_requirement
-    to app_runtime
+    grant select on public.kanban_board, public.kanban_column to app_runtime;
+    revoke execute on function public.provision_default_request_board()
+      from public, app_runtime, app_system, app_auth, app_worker
   `);
 }
 
@@ -1026,6 +1055,8 @@ export async function verifyRoleContract(
       "r:contact",
       "r:domain_events",
       "r:inbound_receipt",
+      "r:kanban_board",
+      "r:kanban_column",
       "r:membership",
       "r:project",
       "r:project_requirement",
@@ -1108,6 +1139,7 @@ export async function verifyRoleContract(
       "forbid_mutation:app_owner",
       "guard_membership_dml:app_owner",
       "guard_membership_statement:app_owner",
+      "provision_default_request_board:app_owner",
       "reconcile_user_identity:identity_reconciler",
       "user_identity_link_auth_only:app_owner",
     ],
@@ -1173,6 +1205,8 @@ export async function verifyRoleContract(
         "search_path=pg_catalog:89cb000d7bca739fe2bd23b737ffc5153b494f9f7eb80790dbeef4e6ab95a057",
       "guard_membership_statement():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:b5d5db39513acce303c62d10a27f8b3bdc0b7ec12b183ae127e59b181dac89b7",
+      "provision_default_request_board():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
+        "search_path=pg_catalog:8e375b2395604e242f864516e8b068fa01cbd46cceff11b3729eca10c2c010f2",
       "reconcile_user_identity(text, text):uuid:identity_reconciler:plpgsql:f:v:true:false:false:u:" +
         "search_path=public, pg_temp:ae576295ddea09162013c29d5828512764cecbe3c39bbcaa0cdd5d45307f2ac3",
       "user_identity_link_auth_only():trigger:app_owner:plpgsql:f:v:false:false:false:u:-:" +
@@ -1208,6 +1242,8 @@ export async function verifyRoleContract(
       "contact:true:true",
       "domain_events:true:true",
       "inbound_receipt:true:true",
+      "kanban_board:true:true",
+      "kanban_column:true:true",
       "membership:true:true",
       "project:true:true",
       "project_requirement:true:true",
@@ -1257,6 +1293,8 @@ export async function verifyRoleContract(
       "contact:tenant_isolation:e339a6411d39679d749a45535df17ea42132453c4725e42f0d5b310379489e46",
       "domain_events:tenant_isolation:f1715696222caf43a2adc220b67b8aebdce61f5ef9659884af1c7263ccab8284",
       "inbound_receipt:tenant_isolation:866b6644bba9899118c16bc502e420f0409e632a3cd6b709b3321f6c10c28c1c",
+      "kanban_board:tenant_isolation:3fcf596a70932422900934bc4bb607edff72abb165949dcca9afcf372c67768b",
+      "kanban_column:tenant_isolation:d11d4b31d67527780056ac587d49089fbd9e39568a0d2c15e55317d1d26ba507",
       "membership:membership_actor_delete:2b0f67a6a2931b84b4610114759e61a867d45e093a85ef8094cbdc2d81b14027",
       "membership:membership_actor_insert:f4f58cb0a649e8bf11dec66a6047da1ad5774ac03fe5acb808297937b3d5dbf6",
       "membership:membership_actor_update:9b7d643976dff08ea22d7a8db439ac1a36450de1a57c256c73035a5c37119902",
@@ -1326,6 +1364,7 @@ export async function verifyRoleContract(
       "membership:membership_dml_guard:31:O:public:guard_membership_dml::-:0",
       "membership:membership_dml_serialize:30:O:public:guard_membership_statement::-:0",
       "user_identity:user_identity_link_auth_only:19:O:public:user_identity_link_auth_only::-:0",
+      "workspace:workspace_default_request_board:5:O:public:provision_default_request_board::-:0",
     ],
     "Live-Triggervertrag",
   );
@@ -1366,6 +1405,8 @@ export async function verifyRoleContract(
       "app_runtime:domain_events:SELECT:app_owner:false",
       "app_runtime:inbound_receipt:INSERT:app_owner:false",
       "app_runtime:inbound_receipt:SELECT:app_owner:false",
+      "app_runtime:kanban_board:SELECT:app_owner:false",
+      "app_runtime:kanban_column:SELECT:app_owner:false",
       "app_runtime:membership:SELECT:app_owner:false",
       "app_runtime:project:INSERT:app_owner:false",
       "app_runtime:project:SELECT:app_owner:false",
@@ -1519,6 +1560,10 @@ export async function verifyRoleContract(
     runtime_reconcile: boolean;
     system_reconcile: boolean;
     worker_reconcile: boolean;
+    runtime_provision: boolean;
+    system_provision: boolean;
+    auth_provision: boolean;
+    worker_provision: boolean;
   }>(`
     select
       pg_catalog.has_function_privilege('app_runtime', 'public.app_actor_id()', 'EXECUTE') as runtime_actor,
@@ -1526,12 +1571,18 @@ export async function verifyRoleContract(
       pg_catalog.has_function_privilege('app_auth', 'public.reconcile_user_identity(text,text)', 'EXECUTE') as auth_reconcile,
       pg_catalog.has_function_privilege('app_runtime', 'public.reconcile_user_identity(text,text)', 'EXECUTE') as runtime_reconcile,
       pg_catalog.has_function_privilege('app_system', 'public.reconcile_user_identity(text,text)', 'EXECUTE') as system_reconcile,
-      pg_catalog.has_function_privilege('app_worker', 'public.reconcile_user_identity(text,text)', 'EXECUTE') as worker_reconcile
+      pg_catalog.has_function_privilege('app_worker', 'public.reconcile_user_identity(text,text)', 'EXECUTE') as worker_reconcile,
+      pg_catalog.has_function_privilege('app_runtime', 'public.provision_default_request_board()', 'EXECUTE') as runtime_provision,
+      pg_catalog.has_function_privilege('app_system', 'public.provision_default_request_board()', 'EXECUTE') as system_provision,
+      pg_catalog.has_function_privilege('app_auth', 'public.provision_default_request_board()', 'EXECUTE') as auth_provision,
+      pg_catalog.has_function_privilege('app_worker', 'public.provision_default_request_board()', 'EXECUTE') as worker_provision
   `);
   const acl = functionAcl.rows[0];
   if (
     !acl?.runtime_actor || !acl.system_actor || !acl.auth_reconcile ||
     acl.runtime_reconcile || acl.system_reconcile || acl.worker_reconcile
+    || acl.runtime_provision || acl.system_provision
+    || acl.auth_provision || acl.worker_provision
   ) {
     throw new Error(`Funktions-ACL weicht vom Rollenvertrag ab: ${JSON.stringify(acl)}`);
   }
