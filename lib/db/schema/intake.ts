@@ -213,6 +213,12 @@ export const projectRequirement = pgTable(
   },
   (t) => [
     uniqueIndex("project_requirement_ws_id_uq").on(t.workspaceId, t.id),
+    unique("project_requirement_ws_id_project_revision_uq").on(
+      t.workspaceId,
+      t.id,
+      t.projectId,
+      t.revision,
+    ),
     uniqueIndex("project_requirement_ws_project_revision_uq").on(
       t.workspaceId,
       t.projectId,

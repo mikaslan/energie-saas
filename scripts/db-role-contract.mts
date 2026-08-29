@@ -13,6 +13,7 @@ const APP_ROLES = [
   "app_system",
   "app_auth",
   "app_worker",
+  "app_erasure",
   "app_membership_writer",
   "identity_reconciler",
 ] as const;
@@ -105,6 +106,7 @@ export function expectedDbRoleMembershipSignatures(
     `app_membership_writer>app_owner@${provisioningAdmin}:false/false/false`,
     `app_membership_writer>app_system@${provisioningAdmin}:false/false/false`,
     `app_owner>app_migrator@${provisioningAdmin}:false/false/true`,
+    `app_worker>app_migrator@${provisioningAdmin}:false/false/true`,
     `identity_reconciler>app_owner@${identityOwnerGrantor}:true/false/false`,
   ];
   if (!topology) return signatures.sort();
@@ -139,42 +141,56 @@ export function expectedDbRoleMembershipSignatures(
 const APPLY_DEFAULT_PRIVILEGE_CONTRACT_SQL = `
   alter default privileges for role app_owner
     revoke all on tables from public, app_migrator, app_runtime, app_system,
-      app_auth, app_worker, app_membership_writer, identity_reconciler;
+      app_auth, app_worker, app_erasure, app_membership_writer, identity_reconciler;
   alter default privileges for role app_owner in schema public
     revoke all on tables from public, app_migrator, app_runtime, app_system,
-      app_auth, app_worker, app_membership_writer, identity_reconciler;
+      app_auth, app_worker, app_erasure, app_membership_writer, identity_reconciler;
   alter default privileges for role app_owner
     revoke all on sequences from public, app_migrator, app_runtime, app_system,
-      app_auth, app_worker, app_membership_writer, identity_reconciler;
+      app_auth, app_worker, app_erasure, app_membership_writer, identity_reconciler;
   alter default privileges for role app_owner in schema public
     revoke all on sequences from public, app_migrator, app_runtime, app_system,
-      app_auth, app_worker, app_membership_writer, identity_reconciler;
+      app_auth, app_worker, app_erasure, app_membership_writer, identity_reconciler;
   alter default privileges for role app_owner
     revoke all on functions from public, app_migrator, app_runtime, app_system,
-      app_auth, app_worker, app_membership_writer, identity_reconciler;
+      app_auth, app_worker, app_erasure, app_membership_writer, identity_reconciler;
   alter default privileges for role app_owner in schema public
     revoke all on functions from public, app_migrator, app_runtime, app_system,
-      app_auth, app_worker, app_membership_writer, identity_reconciler;
+      app_auth, app_worker, app_erasure, app_membership_writer, identity_reconciler;
   alter default privileges for role app_owner
     revoke all on types from public, app_migrator, app_runtime, app_system,
-      app_auth, app_worker, app_membership_writer, identity_reconciler;
+      app_auth, app_worker, app_erasure, app_membership_writer, identity_reconciler;
   alter default privileges for role app_owner in schema public
     revoke all on types from public, app_migrator, app_runtime, app_system,
-      app_auth, app_worker, app_membership_writer, identity_reconciler;
+      app_auth, app_worker, app_erasure, app_membership_writer, identity_reconciler;
 
   grant identity_reconciler to app_owner
     with inherit false, set true granted by current_user;
   set role identity_reconciler;
   alter default privileges
     revoke all on functions from public, app_owner, app_migrator, app_runtime,
-      app_system, app_auth, app_worker, app_membership_writer;
+      app_system, app_auth, app_worker, app_erasure, app_membership_writer;
   alter default privileges in schema public
     revoke all on functions from public, app_owner, app_migrator, app_runtime,
-      app_system, app_auth, app_worker, app_membership_writer;
+      app_system, app_auth, app_worker, app_erasure, app_membership_writer;
   set role app_owner;
   grant identity_reconciler to app_owner
     with inherit false, set false granted by current_user;
   revoke identity_reconciler from app_owner granted by app_owner;
+
+  -- app_migrator ist der einzige Principal, der fuer Schemaaenderungen
+  -- zwischen den beiden NOLOGIN-/Dienst-Ownern wechseln darf. Die gepinnte
+  -- Kante ist NOINHERIT, ohne ADMIN und ausschliesslich SET-only.
+  set role app_worker;
+  alter default privileges
+    revoke execute on functions from public, app_owner, app_migrator,
+      app_runtime, app_system, app_auth, app_erasure, app_membership_writer,
+      identity_reconciler;
+  alter default privileges in schema pgboss
+    revoke execute on functions from public, app_owner, app_migrator,
+      app_runtime, app_system, app_auth, app_erasure, app_membership_writer,
+      identity_reconciler;
+  set role app_owner;
 `;
 
 // Allowlist statt Default-Grants: Eine neue Tabelle beginnt ohne Runtime-Recht
@@ -182,9 +198,11 @@ const APPLY_DEFAULT_PRIVILEGE_CONTRACT_SQL = `
 // Das Manifest läuft nach JEDER strikten Migration innerhalb einer Transaktion.
 const APPLY_ROLE_CONTRACT_SQL = `
   revoke all privileges on all tables in schema public
-    from public, app_runtime, app_system, app_auth, app_worker, identity_reconciler;
+    from public, app_runtime, app_system, app_auth, app_worker, app_erasure,
+      identity_reconciler;
   revoke all privileges on all sequences in schema public
-    from public, app_runtime, app_system, app_auth, app_worker, identity_reconciler;
+    from public, app_runtime, app_system, app_auth, app_worker, app_erasure,
+      identity_reconciler;
 
   -- Nach einem ALTER OWNER erbt der neue Owner nicht zwingend die zuvor vom
   -- Legacy-Owner widerrufenen Tabellen-ACLs. DDL ist zwar owner-inhaerent,
@@ -193,7 +211,8 @@ const APPLY_ROLE_CONTRACT_SQL = `
   grant all privileges on all tables in schema public to app_owner;
   grant all privileges on all sequences in schema public to app_owner;
 
-  revoke all on schema public from public, app_runtime, app_system, app_auth, app_worker;
+  revoke all on schema public from public, app_runtime, app_system, app_auth,
+    app_worker, app_erasure;
   grant usage on schema public to app_runtime, app_system, app_auth, identity_reconciler;
 
   grant select on
@@ -224,22 +243,22 @@ const APPLY_ROLE_CONTRACT_SQL = `
   to app_auth;
 
   revoke execute on function public.forbid_mutation()
-    from public, app_runtime, app_system, app_auth, app_worker;
+    from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
   revoke execute on function public.user_identity_link_auth_only()
-    from public, app_runtime, app_system, app_auth, app_worker;
+    from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
   revoke execute on function public.app_actor_id()
-    from public, app_runtime, app_system, app_auth, app_worker;
+    from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
   revoke execute on function public.guard_membership_statement()
-    from public, app_runtime, app_system, app_auth, app_worker;
+    from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
   revoke execute on function public.guard_membership_dml()
-    from public, app_runtime, app_system, app_auth, app_worker;
+    from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
   grant execute on function public.app_actor_id() to app_runtime, app_system;
 
   grant identity_reconciler to app_owner
     with inherit false, set true granted by current_user;
   set role identity_reconciler;
   revoke execute on function public.reconcile_user_identity(text, text)
-    from public, app_owner, app_runtime, app_system, app_worker;
+    from public, app_owner, app_runtime, app_system, app_worker, app_erasure;
   grant execute on function public.reconcile_user_identity(text, text) to app_auth;
   alter default privileges in schema public revoke execute on functions from public;
   set role app_owner;
@@ -682,7 +701,120 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
   await client.query(`
     grant select on public.kanban_board, public.kanban_column to app_runtime;
     revoke execute on function public.provision_default_request_board()
-      from public, app_runtime, app_system, app_auth, app_worker
+      from public, app_runtime, app_system, app_auth, app_worker, app_erasure
+  `);
+
+  const energyRelations = [
+    "project_calculation_job",
+    "project_calculation_revision",
+    "site_energy_profile",
+  ] as const;
+  const energyExisting = await client.query<{ relname: string }>(`
+    select c.relname
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and c.relname = any($1::text[])
+    order by c.relname
+  `, [energyRelations]);
+  if (energyExisting.rows.length === 0) return;
+  if (
+    energyExisting.rows.length !== energyRelations.length
+    || energyExisting.rows.some((row, index) => row.relname !== energyRelations[index])
+  ) {
+    throw new Error("Rollen-ACL-Manifest: M1-07-Relationen sind nur teilweise vorhanden.");
+  }
+  await client.query(`
+    grant usage on schema public to app_worker;
+
+    grant select, insert, update on public.site_energy_profile to app_runtime;
+    grant select, insert on public.project_calculation_job to app_runtime;
+    grant select on public.project_calculation_revision to app_runtime;
+
+    grant select on
+      public.workspace,
+      public.membership,
+      public.site,
+      public.project,
+      public.calculator_snapshot,
+      public.project_requirement,
+      public.site_energy_profile,
+      public.project_calculation_job,
+      public.project_calculation_revision
+    to app_worker;
+    grant update on public.project_calculation_job to app_worker;
+    grant insert on public.project_calculation_revision to app_worker;
+    grant insert on public.domain_events, public.audit_log to app_worker;
+
+    revoke execute on function public.guard_site_energy_profile_mutation()
+      from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+    revoke execute on function public.guard_project_calculation_job_mutation()
+      from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+    revoke execute on function public.guard_project_calculation_revision()
+      from public, app_runtime, app_system, app_auth, app_worker, app_erasure
+  `);
+
+  const erasureRelations = [
+    "contact_legal_hold",
+    "erasure_operation_locator",
+    "erasure_tombstone",
+  ] as const;
+  const erasureExisting = await client.query<{ relname: string }>(`
+    select c.relname
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and c.relname = any($1::text[])
+    order by c.relname
+  `, [erasureRelations]);
+  if (erasureExisting.rows.length > 0) {
+    if (
+      erasureExisting.rows.length !== erasureRelations.length
+      || erasureExisting.rows.some((row, index) => row.relname !== erasureRelations[index])
+    ) {
+      throw new Error("Rollen-ACL-Manifest: M1-07-Erasure-Relationen sind nur teilweise vorhanden.");
+    }
+    await client.query(`
+      revoke all privileges on public.contact_legal_hold,
+        public.erasure_operation_locator, public.erasure_tombstone from app_erasure;
+      revoke execute on function public.guard_erasure_tombstone_worm()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.erase_inactive_lead(uuid, uuid, uuid)
+        from public, app_runtime, app_system, app_auth, app_worker;
+      revoke execute on function public.replay_erasure_tombstone(uuid)
+        from public, app_runtime, app_system, app_auth, app_worker;
+      grant usage on schema public to app_erasure;
+      grant execute on function public.erase_inactive_lead(uuid, uuid, uuid)
+        to app_erasure;
+      grant execute on function public.replay_erasure_tombstone(uuid)
+        to app_erasure
+    `);
+  }
+
+  // pg-boss bleibt vollstaendig worker-owned. Nur der SET-only-Migrator darf
+  // fuer das nach jeder Migration wiederholte ACL-Manifest kurz in diesen
+  // Owner wechseln; app_owner und app_worker erhalten keine gegenseitige
+  // Membership.
+  await client.query(`
+    set role app_worker;
+    revoke all on schema pgboss
+      from public, app_owner, app_migrator, app_runtime, app_system, app_auth,
+        app_erasure, app_membership_writer, identity_reconciler;
+    revoke all privileges on all tables in schema pgboss
+      from public, app_owner, app_migrator, app_runtime, app_system, app_auth,
+        app_erasure, app_membership_writer, identity_reconciler;
+    revoke all privileges on all sequences in schema pgboss
+      from public, app_owner, app_migrator, app_runtime, app_system, app_auth,
+        app_erasure, app_membership_writer, identity_reconciler;
+    revoke execute on all functions in schema pgboss
+      from public, app_owner, app_migrator, app_runtime, app_system, app_auth,
+        app_erasure, app_membership_writer, identity_reconciler;
+    grant usage on schema pgboss to app_runtime;
+    grant execute on function pgboss.enqueue_project_calculation(uuid, uuid)
+      to app_runtime;
+    set role app_owner
   `);
 }
 
@@ -710,11 +842,17 @@ export async function verifyDefaultPrivilegeContract(client: PoolClient): Promis
         ('app_owner'::text, 'S'::text),
         ('app_owner'::text, 'f'::text),
         ('app_owner'::text, 'T'::text),
-        ('identity_reconciler'::text, 'f'::text)
+        ('identity_reconciler'::text, 'f'::text),
+        ('app_worker'::text, 'f'::text)
     ),
     schema_contract(owner_name, schema_name, object_type) as (
-      select owner_name, 'public'::text, object_type
-      from global_contract
+      values
+        ('app_owner'::text, 'public'::text, 'r'::text),
+        ('app_owner'::text, 'public'::text, 'S'::text),
+        ('app_owner'::text, 'public'::text, 'f'::text),
+        ('app_owner'::text, 'public'::text, 'T'::text),
+        ('identity_reconciler'::text, 'public'::text, 'f'::text),
+        ('app_worker'::text, 'pgboss'::text, 'f'::text)
     ),
     effective_defaults as (
       select owner.oid as owner_oid,
@@ -1003,6 +1141,7 @@ export async function verifyRoleContract(
     "app_system",
     "app_auth",
     "app_worker",
+    "app_erasure",
     "identity_reconciler",
   ]]);
   equalRows(
@@ -1053,14 +1192,20 @@ export async function verifyRoleContract(
       "r:auth_verification",
       "r:calculator_snapshot",
       "r:contact",
+      "r:contact_legal_hold",
       "r:domain_events",
+      "r:erasure_operation_locator",
+      "r:erasure_tombstone",
       "r:inbound_receipt",
       "r:kanban_board",
       "r:kanban_column",
       "r:membership",
       "r:project",
+      "r:project_calculation_job",
+      "r:project_calculation_revision",
       "r:project_requirement",
       "r:site",
+      "r:site_energy_profile",
       "r:user_identity",
       "r:workspace",
     ],
@@ -1124,6 +1269,62 @@ export async function verifyRoleContract(
     throw new Error(`Falsche pg-boss-Objektowner: ${JSON.stringify(wrongPgbossOwners.rows)}`);
   }
 
+  const dispatchFunctionSecurity = await client.query<{
+    args: string;
+    result_type: string;
+    owner: string;
+    language: string;
+    prokind: string;
+    provolatile: string;
+    prosecdef: boolean;
+    proleakproof: boolean;
+    proisstrict: boolean;
+    proparallel: string;
+    proconfig: string[] | null;
+    prosrc: string;
+  }>(`
+    select pg_catalog.oidvectortypes(routine.proargtypes) as args,
+           pg_catalog.pg_get_function_result(routine.oid) as result_type,
+           owner.rolname as owner,
+           language.lanname as language,
+           routine.prokind,
+           routine.provolatile,
+           routine.prosecdef,
+           routine.proleakproof,
+           routine.proisstrict,
+           routine.proparallel,
+           routine.proconfig,
+           routine.prosrc
+    from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+    join pg_catalog.pg_roles owner on owner.oid = routine.proowner
+    join pg_catalog.pg_language language on language.oid = routine.prolang
+    where namespace.nspname = 'pgboss'
+      and routine.proname = 'enqueue_project_calculation'
+    order by routine.oid
+  `);
+  equalRows(
+    dispatchFunctionSecurity.rows.map((row) => [
+      `enqueue_project_calculation(${row.args})`,
+      row.result_type,
+      row.owner,
+      row.language,
+      row.prokind,
+      row.provolatile,
+      String(row.prosecdef),
+      String(row.proleakproof),
+      String(row.proisstrict),
+      row.proparallel,
+      row.proconfig?.join("|") ?? "-",
+      sha256(row.prosrc),
+    ].join(":")),
+    [
+      "enqueue_project_calculation(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
+        "search_path=pg_catalog:b4b87f16145bfbe691c2a5ad7db08a212e8254b3545660e0d6b063bb1d5a26f4",
+    ],
+    "Calculation-Dispatch-Sicherheitsvertrag",
+  );
+
   const functionOwners = await client.query<{ proname: string; owner: string }>(`
     select p.proname, r.rolname as owner
     from pg_catalog.pg_proc p
@@ -1136,11 +1337,17 @@ export async function verifyRoleContract(
     functionOwners.rows.map((row) => `${row.proname}:${row.owner}`),
     [
       "app_actor_id:app_owner",
+      "erase_inactive_lead:app_owner",
       "forbid_mutation:app_owner",
+      "guard_erasure_tombstone_worm:app_owner",
       "guard_membership_dml:app_owner",
       "guard_membership_statement:app_owner",
+      "guard_project_calculation_job_mutation:app_owner",
+      "guard_project_calculation_revision:app_owner",
+      "guard_site_energy_profile_mutation:app_owner",
       "provision_default_request_board:app_owner",
       "reconcile_user_identity:identity_reconciler",
+      "replay_erasure_tombstone:app_owner",
       "user_identity_link_auth_only:app_owner",
     ],
     "Funktions-Ownership",
@@ -1199,16 +1406,28 @@ export async function verifyRoleContract(
     [
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
         "acca23aaae3a91eda3aa424256de1527e1bb61d02fdd4b0d2c0803ecd6a37542",
+      "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
+        "search_path=pg_catalog:ed7350da6af25aeb1f82ee42df96ed597a10464fef147ff17594121d4bb0ef60",
       "forbid_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:-:" +
         "df89b0c65f44ffae87695685fca411fb8ad998cff6768bb8a176024d331910f3",
+      "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:8724ed32499eb1240d37ff600c29430d1ff5c5789b72db9b07d76a4446d67ef8",
       "guard_membership_dml():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:89cb000d7bca739fe2bd23b737ffc5153b494f9f7eb80790dbeef4e6ab95a057",
       "guard_membership_statement():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:b5d5db39513acce303c62d10a27f8b3bdc0b7ec12b183ae127e59b181dac89b7",
+      "guard_project_calculation_job_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:1e9df9a26cc63fd4c3964eee765b561ef7c54811709cbda7b6f2920631649c4e",
+      "guard_project_calculation_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:9ae6f5da4bca2d394e687c50c7be25cc0ebaab763ebaefd9f11cf4d20644a07a",
+      "guard_site_energy_profile_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:02cefc1ea9fab360ae6dbe31a77095f20a2fd75025ba1e6b41508c32a00d8eab",
       "provision_default_request_board():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:8e375b2395604e242f864516e8b068fa01cbd46cceff11b3729eca10c2c010f2",
       "reconcile_user_identity(text, text):uuid:identity_reconciler:plpgsql:f:v:true:false:false:u:" +
         "search_path=public, pg_temp:ae576295ddea09162013c29d5828512764cecbe3c39bbcaa0cdd5d45307f2ac3",
+      "replay_erasure_tombstone(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
+        "search_path=pg_catalog:2f95087557c3c9c2fcd866e34aa210f969fb442c44c5b5a9ed4ca40106814ed9",
       "user_identity_link_auth_only():trigger:app_owner:plpgsql:f:v:false:false:false:u:-:" +
         "642035f502409bec26defa74b308e8825d613a5592ae23d228aaabd76115ccfb",
     ],
@@ -1240,14 +1459,20 @@ export async function verifyRoleContract(
       "auth_verification:false:false",
       "calculator_snapshot:true:true",
       "contact:true:true",
+      "contact_legal_hold:true:true",
       "domain_events:true:true",
+      "erasure_operation_locator:false:false",
+      "erasure_tombstone:true:true",
       "inbound_receipt:true:true",
       "kanban_board:true:true",
       "kanban_column:true:true",
       "membership:true:true",
       "project:true:true",
+      "project_calculation_job:true:true",
+      "project_calculation_revision:true:true",
       "project_requirement:true:true",
       "site:true:true",
+      "site_energy_profile:true:true",
       "user_identity:true:true",
       "workspace:true:true",
     ],
@@ -1291,7 +1516,9 @@ export async function verifyRoleContract(
       "audit_log:tenant_isolation:23ff85358d0c0e94974353f538c267f99f5a3e7219bf9e1cd8769f69744ae417",
       "calculator_snapshot:tenant_isolation:8c816e39dfc3d5d774d0de6f02961882e9ae6679904da2b9007d5ff86becbb72",
       "contact:tenant_isolation:e339a6411d39679d749a45535df17ea42132453c4725e42f0d5b310379489e46",
+      "contact_legal_hold:tenant_isolation:752e8f298e0a4cc77a31ee680540edf91831654263d7f0dd39bafc42b6d54477",
       "domain_events:tenant_isolation:f1715696222caf43a2adc220b67b8aebdce61f5ef9659884af1c7263ccab8284",
+      "erasure_tombstone:tenant_isolation:70b18b744913ed4f29de03a9d1f20ddbbcee7e89796d40bd650fc3c838e4b0df",
       "inbound_receipt:tenant_isolation:866b6644bba9899118c16bc502e420f0409e632a3cd6b709b3321f6c10c28c1c",
       "kanban_board:tenant_isolation:3fcf596a70932422900934bc4bb607edff72abb165949dcca9afcf372c67768b",
       "kanban_column:tenant_isolation:d11d4b31d67527780056ac587d49089fbd9e39568a0d2c15e55317d1d26ba507",
@@ -1303,8 +1530,11 @@ export async function verifyRoleContract(
       "membership:membership_principal_update:b2374f555501c25048e318fdaa54b7ef1d9b29a66694ef064e6e9ded271c75ca",
       "membership:tenant_isolation:1a5443560d407a656bdeaff6593819d601078d1ebdc58d4d1f8e02e829a587f3",
       "project:tenant_isolation:c5f62af4cbba473885ce886d0eef10a80ab1f5dca746c0cb4b6204dd1050717b",
+      "project_calculation_job:tenant_isolation:46c9a1a09bfdfc88ddf839242f17c560ea614e34d1961a341580c40b4cdabf84",
+      "project_calculation_revision:tenant_isolation:84bebd69ee64a8388f406f44da215b86328497c5235e70628a8df0e8c1b56a9d",
       "project_requirement:tenant_isolation:4c2d81a0ad4ae0aa71972c72dc7f7cd57028a0ba50e01420106b350f724de0cb",
       "site:tenant_isolation:26181215437698e628cbd47ab08562d51de16bb0172d907c36c75a679a555d3c",
+      "site_energy_profile:tenant_isolation:dedfd647c982a06a434aa37f05bbba136aa817eaf84b76a2c360c709e229e609",
       "user_identity:user_identity_insert:ed42cd7d7ab49b586488c84e375edbd0c5679444866111bc9547a6a309424131",
       "user_identity:user_identity_reconcile_select:fa1b9f29b8bb9a694dc41a78d8ad73dc829d2715ff8e8c91c6357f9475b240bd",
       "user_identity:user_identity_reconcile_update:3763319bbd0208f0554077338d247e797d6122f9c56182072e2f3735b65eecd0",
@@ -1361,8 +1591,22 @@ export async function verifyRoleContract(
       "audit_log:audit_log_no_truncate:34:O:public:forbid_mutation::-:0",
       "domain_events:domain_events_append_only:27:O:public:forbid_mutation::-:0",
       "domain_events:domain_events_no_truncate:34:O:public:forbid_mutation::-:0",
+      "erasure_operation_locator:erasure_operation_locator_append_only:27:O:" +
+        "public:guard_erasure_tombstone_worm::-:0",
+      "erasure_operation_locator:erasure_operation_locator_no_truncate:34:O:" +
+        "public:guard_erasure_tombstone_worm::-:0",
+      "erasure_tombstone:erasure_tombstone_append_only:31:O:" +
+        "public:guard_erasure_tombstone_worm::-:0",
+      "erasure_tombstone:erasure_tombstone_no_truncate:34:O:" +
+        "public:guard_erasure_tombstone_worm::-:0",
       "membership:membership_dml_guard:31:O:public:guard_membership_dml::-:0",
       "membership:membership_dml_serialize:30:O:public:guard_membership_statement::-:0",
+      "project_calculation_job:project_calculation_job_mutation_guard:27:O:public:guard_project_calculation_job_mutation::-:0",
+      "project_calculation_job:project_calculation_job_no_truncate:34:O:public:forbid_mutation::-:0",
+      "project_calculation_revision:project_calculation_revision_immutable:31:O:public:guard_project_calculation_revision::-:0",
+      "project_calculation_revision:project_calculation_revision_no_truncate:34:O:public:forbid_mutation::-:0",
+      "site_energy_profile:site_energy_profile_mutation_guard:27:O:public:guard_site_energy_profile_mutation::-:0",
+      "site_energy_profile:site_energy_profile_no_truncate:34:O:public:forbid_mutation::-:0",
       "user_identity:user_identity_link_auth_only:19:O:public:user_identity_link_auth_only::-:0",
       "workspace:workspace_default_request_board:5:O:public:provision_default_request_board::-:0",
     ],
@@ -1411,12 +1655,18 @@ export async function verifyRoleContract(
       "app_runtime:project:INSERT:app_owner:false",
       "app_runtime:project:SELECT:app_owner:false",
       "app_runtime:project:UPDATE:app_owner:false",
+      "app_runtime:project_calculation_job:INSERT:app_owner:false",
+      "app_runtime:project_calculation_job:SELECT:app_owner:false",
+      "app_runtime:project_calculation_revision:SELECT:app_owner:false",
       "app_runtime:project_requirement:INSERT:app_owner:false",
       "app_runtime:project_requirement:SELECT:app_owner:false",
       "app_runtime:site:DELETE:app_owner:false",
       "app_runtime:site:INSERT:app_owner:false",
       "app_runtime:site:SELECT:app_owner:false",
       "app_runtime:site:UPDATE:app_owner:false",
+      "app_runtime:site_energy_profile:INSERT:app_owner:false",
+      "app_runtime:site_energy_profile:SELECT:app_owner:false",
+      "app_runtime:site_energy_profile:UPDATE:app_owner:false",
       "app_runtime:user_identity:SELECT:app_owner:false",
       "app_runtime:workspace:SELECT:app_owner:false",
       "app_system:audit_log:INSERT:app_owner:false",
@@ -1432,6 +1682,19 @@ export async function verifyRoleContract(
       "app_system:workspace:INSERT:app_owner:false",
       "app_system:workspace:SELECT:app_owner:false",
       "app_system:workspace:UPDATE:app_owner:false",
+      "app_worker:audit_log:INSERT:app_owner:false",
+      "app_worker:calculator_snapshot:SELECT:app_owner:false",
+      "app_worker:domain_events:INSERT:app_owner:false",
+      "app_worker:membership:SELECT:app_owner:false",
+      "app_worker:project:SELECT:app_owner:false",
+      "app_worker:project_calculation_job:SELECT:app_owner:false",
+      "app_worker:project_calculation_job:UPDATE:app_owner:false",
+      "app_worker:project_calculation_revision:INSERT:app_owner:false",
+      "app_worker:project_calculation_revision:SELECT:app_owner:false",
+      "app_worker:project_requirement:SELECT:app_owner:false",
+      "app_worker:site:SELECT:app_owner:false",
+      "app_worker:site_energy_profile:SELECT:app_owner:false",
+      "app_worker:workspace:SELECT:app_owner:false",
       ...["auth_account", "auth_rate_limit", "auth_session", "auth_user", "auth_verification"].flatMap(
         (table) => ["DELETE", "INSERT", "SELECT", "UPDATE"].map(
           (privilege) => `app_auth:${table}:${privilege}:app_owner:false`,
@@ -1518,10 +1781,62 @@ export async function verifyRoleContract(
     ),
     [
       "app_auth:reconcile_user_identity(text, text):EXECUTE:identity_reconciler:false",
+      "app_erasure:erase_inactive_lead(uuid, uuid, uuid):EXECUTE:app_owner:false",
+      "app_erasure:replay_erasure_tombstone(uuid):EXECUTE:app_owner:false",
       "app_runtime:app_actor_id():EXECUTE:app_owner:false",
       "app_system:app_actor_id():EXECUTE:app_owner:false",
     ],
     "Funktions-Grants",
+  );
+
+  const rawPgBossFunctionAcl = await client.query<AclRow>(`
+    select coalesce(grantee.rolname, 'PUBLIC') as grantee,
+           grantor.rolname as grantor,
+           p.proname || '(' || pg_catalog.oidvectortypes(p.proargtypes) || ')' as object_name,
+           acl.privilege_type,
+           acl.is_grantable
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))
+    ) acl
+    join pg_catalog.pg_roles grantor on grantor.oid = acl.grantor
+    left join pg_catalog.pg_roles grantee on grantee.oid = acl.grantee
+    where n.nspname = 'pgboss'
+      and acl.grantee <> p.proowner
+    order by grantee, object_name, acl.privilege_type, grantor.rolname
+  `);
+  equalRows(
+    rawPgBossFunctionAcl.rows.map((row) =>
+      `${row.grantee}:${row.object_name}:${row.privilege_type}:${row.grantor}:${row.is_grantable}`,
+    ),
+    [
+      "app_runtime:enqueue_project_calculation(uuid, uuid):EXECUTE:app_worker:false",
+    ],
+    "pg-boss-Funktions-Grants",
+  );
+
+  const runtimePgBossRelations = await client.query<{ relation_name: string }>(`
+    select relation.relname as relation_name
+    from pg_catalog.pg_class relation
+    join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'pgboss'
+      and relation.relkind in ('r', 'p', 'S', 'v', 'm', 'f')
+      and (
+        pg_catalog.has_table_privilege('app_runtime', relation.oid, 'SELECT')
+        or pg_catalog.has_table_privilege('app_runtime', relation.oid, 'INSERT')
+        or pg_catalog.has_table_privilege('app_runtime', relation.oid, 'UPDATE')
+        or pg_catalog.has_table_privilege('app_runtime', relation.oid, 'DELETE')
+        or pg_catalog.has_table_privilege('app_runtime', relation.oid, 'TRUNCATE')
+        or pg_catalog.has_table_privilege('app_runtime', relation.oid, 'REFERENCES')
+        or pg_catalog.has_table_privilege('app_runtime', relation.oid, 'TRIGGER')
+      )
+    order by relation.relname
+  `);
+  equalRows(
+    runtimePgBossRelations.rows.map((row) => row.relation_name),
+    [],
+    "Runtime-pg-boss-Relationsrechte",
   );
 
   const rawSchemaAcl = await client.query<AclRow>(`
@@ -1546,8 +1861,11 @@ export async function verifyRoleContract(
     ),
     [
       "app_auth:public:USAGE:app_owner:false",
+      "app_erasure:public:USAGE:app_owner:false",
+      "app_runtime:pgboss:USAGE:app_worker:false",
       "app_runtime:public:USAGE:app_owner:false",
       "app_system:public:USAGE:app_owner:false",
+      "app_worker:public:USAGE:app_owner:false",
       "identity_reconciler:public:USAGE:app_owner:false",
     ],
     "Schema-Grants",
@@ -1564,6 +1882,9 @@ export async function verifyRoleContract(
     system_provision: boolean;
     auth_provision: boolean;
     worker_provision: boolean;
+    runtime_enqueue: boolean;
+    system_enqueue: boolean;
+    auth_enqueue: boolean;
   }>(`
     select
       pg_catalog.has_function_privilege('app_runtime', 'public.app_actor_id()', 'EXECUTE') as runtime_actor,
@@ -1575,7 +1896,31 @@ export async function verifyRoleContract(
       pg_catalog.has_function_privilege('app_runtime', 'public.provision_default_request_board()', 'EXECUTE') as runtime_provision,
       pg_catalog.has_function_privilege('app_system', 'public.provision_default_request_board()', 'EXECUTE') as system_provision,
       pg_catalog.has_function_privilege('app_auth', 'public.provision_default_request_board()', 'EXECUTE') as auth_provision,
-      pg_catalog.has_function_privilege('app_worker', 'public.provision_default_request_board()', 'EXECUTE') as worker_provision
+      pg_catalog.has_function_privilege('app_worker', 'public.provision_default_request_board()', 'EXECUTE') as worker_provision,
+      (
+        select pg_catalog.has_function_privilege('app_runtime', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_project_calculation'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as runtime_enqueue,
+      (
+        select pg_catalog.has_function_privilege('app_system', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_project_calculation'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as system_enqueue,
+      (
+        select pg_catalog.has_function_privilege('app_auth', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_project_calculation'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as auth_enqueue
   `);
   const acl = functionAcl.rows[0];
   if (
@@ -1583,6 +1928,7 @@ export async function verifyRoleContract(
     acl.runtime_reconcile || acl.system_reconcile || acl.worker_reconcile
     || acl.runtime_provision || acl.system_provision
     || acl.auth_provision || acl.worker_provision
+    || !acl.runtime_enqueue || acl.system_enqueue || acl.auth_enqueue
   ) {
     throw new Error(`Funktions-ACL weicht vom Rollenvertrag ab: ${JSON.stringify(acl)}`);
   }
@@ -1593,18 +1939,23 @@ export async function verifyRoleContract(
     auth_create: boolean;
     worker_public_usage: boolean;
     worker_pgboss_create: boolean;
+    runtime_pgboss_usage: boolean;
+    runtime_pgboss_create: boolean;
   }>(`
     select
       pg_catalog.has_schema_privilege('app_runtime', 'public', 'CREATE') as runtime_create,
       pg_catalog.has_schema_privilege('app_system', 'public', 'CREATE') as system_create,
       pg_catalog.has_schema_privilege('app_auth', 'public', 'CREATE') as auth_create,
       pg_catalog.has_schema_privilege('app_worker', 'public', 'USAGE') as worker_public_usage,
-      pg_catalog.has_schema_privilege('app_worker', 'pgboss', 'CREATE') as worker_pgboss_create
+      pg_catalog.has_schema_privilege('app_worker', 'pgboss', 'CREATE') as worker_pgboss_create,
+      pg_catalog.has_schema_privilege('app_runtime', 'pgboss', 'USAGE') as runtime_pgboss_usage,
+      pg_catalog.has_schema_privilege('app_runtime', 'pgboss', 'CREATE') as runtime_pgboss_create
   `);
   const schemas = schemaAcl.rows[0];
   if (
     schemas?.runtime_create || schemas?.system_create || schemas?.auth_create ||
-    schemas?.worker_public_usage || !schemas?.worker_pgboss_create
+    !schemas?.worker_public_usage || !schemas?.worker_pgboss_create ||
+    !schemas?.runtime_pgboss_usage || schemas?.runtime_pgboss_create
   ) {
     throw new Error(`Schema-ACL weicht vom Rollenvertrag ab: ${JSON.stringify(schemas)}`);
   }

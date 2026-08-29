@@ -92,7 +92,9 @@ type E2EState = Pick<
   | "foreignContactName"
 > & {
   baseURL: string;
+  databaseUrl: string;
   foreignProjectId: string;
+  mainProjectId: string;
   serverLogPath: string;
 };
 
@@ -978,7 +980,7 @@ async function main(): Promise<number> {
   const server = await waitForNext(nextChild, readyFile, readyToken);
   throwIfInterrupted();
 
-  await submitSignedLead(
+  const mainLead = await submitSignedLead(
     server,
     embedded.url,
     mainCredential,
@@ -994,7 +996,9 @@ async function main(): Promise<number> {
 
   writeState(statePath, {
     baseURL: server.baseURL,
+    databaseUrl: embedded.url,
     foreignProjectId: foreignLead.projectId,
+    mainProjectId: mainLead.projectId,
     serverLogPath,
     workspaceId: seedData.workspaceId,
     foreignWorkspaceId: seedData.foreignWorkspaceId,

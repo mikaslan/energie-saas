@@ -1,0 +1,247 @@
+{
+  "contractVersion": "planning-calculation.v1",
+  "canonicalizationVersion": "planning-jcs.v1",
+  "model": {
+    "id": "wmee-solar",
+    "version": "1.0.0",
+    "sourceRevision": "2095ec8462aa32f7b7c9e075997b420620bde5de"
+  },
+  "inputSha256": "30a4762d66a4fc105e0192e1b7b3251b4953e12a49c9e60a5a097eec457b55d9",
+  "quality": "server_reproduced_estimate",
+  "validationStatus": "not_f4_reference_validated",
+  "temporalResolution": "hourly_8760",
+  "roundingVersion": "wmee-energy-rounding.v1",
+  "warnings": [
+    {
+      "code": "not_f4_reference_validated",
+      "severity": "warning"
+    },
+    {
+      "code": "provider_estimate",
+      "severity": "info"
+    },
+    {
+      "code": "unknown_profile_field",
+      "severity": "warning"
+    },
+    {
+      "code": "existing_installation_limited",
+      "severity": "info"
+    }
+  ],
+  "branch": "existing_installation",
+  "calculation": {
+    "existingSystemPeakPowerKwp": 7.4,
+    "existingStorageCapacityKwh": 0,
+    "addedStorageCapacityKwh": 8,
+    "baseline": {
+      "annual": {
+        "generationKwh": 8400,
+        "consumptionKwh": 7200,
+        "directConsumptionKwh": 3600,
+        "fromStorageKwh": 0,
+        "selfConsumptionKwh": 3600,
+        "feedInKwh": 4800,
+        "gridImportKwh": 3600,
+        "storageLossKwh": 0,
+        "selfConsumptionRate": 0.42857142857142855,
+        "autonomyRate": 0.5,
+        "storageFullCycles": 0,
+        "fromVehicleKwh": 0
+      },
+      "monthly": [
+        {
+          "month": 1,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 2,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 3,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 4,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 5,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 6,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 7,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 8,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 9,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 10,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 11,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        },
+        {
+          "month": 12,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 300,
+          "gridImportKwh": 300,
+          "feedInKwh": 400
+        }
+      ]
+    },
+    "planned": {
+      "annual": {
+        "generationKwh": 8400,
+        "consumptionKwh": 7200,
+        "directConsumptionKwh": 3600,
+        "fromStorageKwh": 2400,
+        "selfConsumptionKwh": 6000,
+        "feedInKwh": 2191.304348,
+        "gridImportKwh": 1200,
+        "storageLossKwh": 208.695652,
+        "selfConsumptionRate": 0.7142857142857143,
+        "autonomyRate": 0.8333333333333334,
+        "storageFullCycles": 333.333333,
+        "fromVehicleKwh": 0
+      },
+      "monthly": [
+        {
+          "month": 1,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 2,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 3,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 4,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 5,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 6,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 7,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 8,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 9,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 10,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 11,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        },
+        {
+          "month": 12,
+          "generationKwh": 700,
+          "selfConsumptionKwh": 500,
+          "gridImportKwh": 100,
+          "feedInKwh": 182.60869566666668
+        }
+      ]
+    },
+    "delta": {
+      "additionalSelfConsumptionKwh": 2400,
+      "autonomyRatePercentagePoints": 33.333333333333336
+    }
+  },
+  "resultSha256": "aa0fde967785384a5ab1e815fc8389edc24cda8f21c7443b83a969952aaff960"
+}

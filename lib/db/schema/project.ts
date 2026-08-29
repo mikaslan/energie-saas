@@ -46,6 +46,7 @@ export const project = pgTable(
       t.id,
     ),
     unique("project_ws_id_uq").on(t.workspaceId, t.id),
+    unique("project_ws_id_site_uq").on(t.workspaceId, t.id, t.siteId),
     unique("project_ws_id_contact_site_uq").on(
       t.workspaceId,
       t.id,

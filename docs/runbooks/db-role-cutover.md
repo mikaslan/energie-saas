@@ -9,7 +9,7 @@ Der Cutover macht aus der bisherigen Ein-Rollen-Datenbank diese Kette:
 
 ```text
 Admin (nur Provisionierung)
-  ├─ app_migrator ─SET ROLE→ app_owner ─→ Migration + ACL-Manifest
+  ├─ app_migrator ─SET ROLE→ app_owner/app_worker ─→ getrennte Owner-Migrationen + ACL-Manifest
   ├─ app_runtime  ─→ Portal, Membership SELECT-only
   ├─ app_auth     ─→ Auth-Tabellen + Reconcile
   ├─ app_worker   ─→ Schema pgboss
@@ -115,7 +115,7 @@ einem vermuteten Providernamen. Für ein Legacy-Upgrade kommt
 acht automatische ADMIN/NOINHERIT/NOSET-Kanten. Retained Legacy erwartet dagegen nur
 die sieben tatsächlich neu entstandenen Autokanten; für `identity_reconciler` bleiben
 die historische Kante zur Altrolle und die fachliche Kante zu `app_owner` jeweils
-unter dem attestierten Bootstrap-Grantor erhalten. Die vier Fachkanten und separaten
+unter dem attestierten Bootstrap-Grantor erhalten. Die fünf Fachkanten und separaten
 Self-`SET`-Kanten ausschließlich für `app_owner` und `app_worker` bleiben exakt. Eine
 zusätzliche oder anders grantete Kante stoppt Migration und Cutover.
 
@@ -143,12 +143,16 @@ create role app_auth login password '<secret>' noinherit nosuperuser nobypassrls
   nocreatedb nocreaterole noreplication;
 create role app_worker login password '<secret>' noinherit nosuperuser nobypassrls
   nocreatedb nocreaterole noreplication;
+create role app_erasure nologin noinherit nosuperuser nobypassrls
+  nocreatedb nocreaterole noreplication;
 create role app_membership_writer nologin noinherit nosuperuser nobypassrls
   nocreatedb nocreaterole noreplication;
 create role identity_reconciler nologin noinherit nosuperuser nobypassrls
   nocreatedb nocreaterole noreplication;
 
 grant app_owner to app_migrator
+  with admin false, inherit false, set true granted by current_user;
+grant app_worker to app_migrator
   with admin false, inherit false, set true granted by current_user;
 grant app_membership_writer to app_system
   with admin false, inherit false, set false granted by current_user;
@@ -168,7 +172,7 @@ grant app_worker to <EXAKTER_PROVISIONING_ADMIN>
   with admin false, inherit false, set true granted by current_user;
 ```
 
-Der Fresh-Vertrag erwartet acht automatische Bootstrap-Kanten. Beim Legacy-Upgrade
+Der Fresh-Vertrag erwartet neun automatische Bootstrap-Kanten. Beim Legacy-Upgrade
 existiert `identity_reconciler` bereits aus 0015 und wird nicht erneut angelegt; daher
 darf dort keine künstliche neue Bootstrap-Kante zum Provisioning-Admin erzeugt werden.
 Erlaubt bleibt ausschließlich die historisch attestierte Kante zum gehärteten

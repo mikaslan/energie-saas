@@ -1,0 +1,134 @@
+{
+  "contractVersion": "planning-calculation.v1",
+  "canonicalizationVersion": "planning-jcs.v1",
+  "model": {
+    "id": "wmee-solar",
+    "version": "1.0.0",
+    "sourceRevision": "2095ec8462aa32f7b7c9e075997b420620bde5de"
+  },
+  "inputSha256": "17b55f4a01690356663587f3ccb606783dce5c808932498b2dc52a2f197d0bfb",
+  "quality": "server_reproduced_estimate",
+  "validationStatus": "not_f4_reference_validated",
+  "temporalResolution": "hourly_8760",
+  "roundingVersion": "wmee-energy-rounding.v1",
+  "warnings": [
+    {
+      "code": "not_f4_reference_validated",
+      "severity": "warning"
+    },
+    {
+      "code": "provider_estimate",
+      "severity": "info"
+    },
+    {
+      "code": "unknown_profile_field",
+      "severity": "warning"
+    }
+  ],
+  "branch": "new_installation",
+  "calculation": {
+    "systemPeakPowerKwp": 10.4,
+    "plannedStorageCapacityKwh": 8,
+    "annual": {
+      "generationKwh": 12000,
+      "consumptionKwh": 7200,
+      "directConsumptionKwh": 3600,
+      "fromStorageKwh": 2400,
+      "selfConsumptionKwh": 6000,
+      "feedInKwh": 5791.304348,
+      "gridImportKwh": 1200,
+      "storageLossKwh": 208.695652,
+      "selfConsumptionRate": 0.5,
+      "autonomyRate": 0.8333333333333334,
+      "storageFullCycles": 333.333333,
+      "fromVehicleKwh": 0
+    },
+    "monthly": [
+      {
+        "month": 1,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 2,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 3,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 4,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 5,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 6,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 7,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 8,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 9,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 10,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 11,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      },
+      {
+        "month": 12,
+        "generationKwh": 1000,
+        "selfConsumptionKwh": 500,
+        "gridImportKwh": 100,
+        "feedInKwh": 482.6086956666666
+      }
+    ]
+  },
+  "resultSha256": "01280199a86e98ae5571b618fca4c6cdf5babe5fe09f059ffaadbce43045587a"
+}

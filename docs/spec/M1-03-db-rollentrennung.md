@@ -28,11 +28,12 @@ Objekt-ACLs laufen.
 | Rolle | Login | Vertrag |
 |---|---:|---|
 | `app_owner` | nein | Eigentümer von `public`, `drizzle` und App-Objekten; nur Ziel des Migrators |
-| `app_migrator` | ja | ausschließlich `SET ROLE app_owner`; keine Fachrechte ohne Rollenwechsel |
+| `app_migrator` | ja | ausschließlich `SET ROLE app_owner/app_worker`; `NOINHERIT`, kein `ADMIN`, keine Fachrechte ohne Rollenwechsel |
 | `app_runtime` | ja | Portal: Membership nur lesen; Site-DML; Event/Audit append-only |
 | `app_system` | ja | isolierter Bootstrap-/Recovery-Principal; einziger direkter Membership-Schreiber |
 | `app_auth` | ja | nur fünf `auth_*`-Tabellen und Reconcile-Funktion |
-| `app_worker` | ja | nur Eigentümer des vorab angelegten Schemas `pgboss` |
+| `app_worker` | ja | Eigentümer von `pgboss`; enge M1-07-Fachreads/-writes in `public` |
+| `app_erasure` | nein | nur EXECUTE auf zwei geschlossene M1-07-Erasure-Routinen; keinerlei Relation-ACL |
 | `app_membership_writer` | nein | objektlose Markerrolle für Membership-Policy/Trigger |
 | `identity_reconciler` | nein | enger SECURITY-DEFINER-Owner der Reconcile-Funktion |
 
@@ -49,7 +50,7 @@ grantor-genaue automatische ADMIN-Kante vom neuen Role-Objekt zum erzeugenden
 Provisioning-Admin. Diese Kante erlaubt allein noch kein `SET ROLE`. Der optionale,
 all-or-none gesetzte Providervertrag
 `DB_ROLE_PROVISIONING_ADMIN` + `DB_ROLE_BOOTSTRAP_GRANTOR` bildet deshalb exakt die
-acht automatischen Kanten, die vier fachlichen Kanten und nur die zwei nötigen
+neun automatischen Kanten, die fünf fachlichen Kanten und nur die zwei nötigen
 Self-`SET`-Kanten für `app_owner`/`app_worker` ab. Beim Legacy-Upgrade benennt
 `DB_ROLE_RETAINED_LEGACY_ROLE` zusätzlich exakt die gehärtete Altrolle, deren vom
 Bootstrap-Grantor erzeugte, nicht entziehbare `identity_reconciler`-Kante mit
@@ -96,8 +97,9 @@ derselben Transaktion:
   Materialized Views, Foreign Tables und Sequenzen,
 - reale Katalog-ACLs aller Tabellen, Spalten, Sequenzen, Funktionen und Schemas samt
   Grantor und Grant Option — einschließlich PUBLIC und fremder Legacy-Grantors,
-- Live-Sicherheitsattribute und SHA-256-Bodyvertrag aller sechs Funktionen, die einzige
-  SECURITY-DEFINER-Allowlist, RLS/FORCE, sämtliche Policy-Ausdrücke und Schutztrigger,
+- Live-Sicherheitsattribute und SHA-256-Bodyvertrag aller Public-App-Funktionen sowie
+  des einzigen Runtime-erreichbaren pg-boss-Dispatchers; SECURITY-DEFINER-Allowlist,
+  RLS/FORCE, sämtliche Policy-Ausdrücke und Schutztrigger,
 - exakte Tabellen-Grants für Runtime, System, Auth und den minimalen Reconciler,
 - fehlendes `CREATE` in `public` sowie exklusives Worker-`CREATE` in `pgboss`,
 - ausschließlich `PUBLIC CONNECT` auf der Datenbank; `TEMPORARY` ist entzogen, damit

@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { isDeepStrictEqual } from "node:util";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { getDb } from "./client";
@@ -139,7 +140,42 @@ async function runAuthorized<T>(
       throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "not a member");
     }
     const ctx = buildServiceCtx(workspaceId, row);
-    return runWithVerifiedActor(tx, ctx, fn);
+    const value = await runWithVerifiedActor(tx, ctx, fn);
+
+    // Der Callback darf Membership-DML ausfuehren. Ein FOR-SHARE-Lock schon
+    // vor dem Callback wuerde dann bei zwei Admins zum Lock-Upgrade-Deadlock.
+    // Deshalb stabilisieren wir die Commit-Grenze danach: Membership-DML
+    // nimmt denselben Workspace FOR UPDATE. Gewinnt der Widerruf zuerst,
+    // sehen wir unter READ COMMITTED den neuen Zustand und rollen alle
+    // Fachmutationen zurueck; gewinnen wir diesen Lock, kann bis zu unserem
+    // Commit kein Widerruf mehr dazwischenlaufen.
+    const current = await tx.execute<MembershipCtxRow>(sql`
+      select m.user_id as user_identity_id, m.role, m.capabilities, w.feature_flags
+      from public.workspace w
+      join public.membership m on m.workspace_id = w.id
+      where w.id = ${workspaceId}::uuid
+        and m.user_id = ${userIdentityId}::uuid
+      for share of w
+    `);
+    const currentRow = current.rows[0];
+    if (!currentRow) {
+      throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "membership changed");
+    }
+    const currentCtx = buildServiceCtx(workspaceId, currentRow);
+    if (
+      currentCtx.actor !== ctx.actor
+      || currentCtx.role !== ctx.role
+      || !isDeepStrictEqual(currentCtx.capabilities, ctx.capabilities)
+      || !isDeepStrictEqual(currentCtx.featureFlags, ctx.featureFlags)
+    ) {
+      throw new PermissionDeniedError(
+        WORKSPACE_ACCESS,
+        "workspace",
+        "membership changed",
+        ctx.actor,
+      );
+    }
+    return value;
   });
 }
 
@@ -163,7 +199,35 @@ async function runSessionTenant<T>(
       throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "not a member");
     }
     const ctx = buildServiceCtx(workspaceId, row);
-    return runWithVerifiedActor(tx, ctx, fn);
+    const value = await runWithVerifiedActor(tx, ctx, fn);
+    const current = await tx.execute<MembershipCtxRow>(sql`
+      select ui.id as user_identity_id, m.role, m.capabilities, w.feature_flags
+      from public.workspace w
+      join public.membership m on m.workspace_id = w.id
+      join public.user_identity ui on ui.id = m.user_id
+      where w.id = ${workspaceId}::uuid
+        and ui.auth_user_id = ${authUserId}
+      for share of w
+    `);
+    const currentRow = current.rows[0];
+    if (!currentRow) {
+      throw new PermissionDeniedError(WORKSPACE_ACCESS, "workspace", "membership changed");
+    }
+    const currentCtx = buildServiceCtx(workspaceId, currentRow);
+    if (
+      currentCtx.actor !== ctx.actor
+      || currentCtx.role !== ctx.role
+      || !isDeepStrictEqual(currentCtx.capabilities, ctx.capabilities)
+      || !isDeepStrictEqual(currentCtx.featureFlags, ctx.featureFlags)
+    ) {
+      throw new PermissionDeniedError(
+        WORKSPACE_ACCESS,
+        "workspace",
+        "membership changed",
+        ctx.actor,
+      );
+    }
+    return value;
   });
 }
 

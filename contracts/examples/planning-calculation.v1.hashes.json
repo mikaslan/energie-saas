@@ -1,0 +1,17 @@
+{
+  "contractVersion": "planning-calculation.v1",
+  "canonicalizationVersion": "planning-jcs.v1",
+  "schemaSha256": "858dce4cc80af6591deb8a80f8fc7143cd8a74defa3430c906b705eabbf29b39",
+  "semanticSha256": {
+    "newInput": "17b55f4a01690356663587f3ccb606783dce5c808932498b2dc52a2f197d0bfb",
+    "existingInput": "30a4762d66a4fc105e0192e1b7b3251b4953e12a49c9e60a5a097eec457b55d9",
+    "newResult": "01280199a86e98ae5571b618fca4c6cdf5babe5fe09f059ffaadbce43045587a",
+    "existingResult": "aa0fde967785384a5ab1e815fc8389edc24cda8f21c7443b83a969952aaff960"
+  },
+  "fileSha256": {
+    "planning-calculation.v1.new.request.json": "bf6045579ffc48a9560a68805c82dc933436b18304c66280da975557015fffc2",
+    "planning-calculation.v1.existing.request.json": "c9f2bfcad6e22c8e1b58b636e15f41a971843acf9ae7502ee2c647103dd27408",
+    "planning-calculation.v1.new.result.json": "1542de9423d62660f07521683d0d05845082a8d9dda16ad281adf2bfafc49f63",
+    "planning-calculation.v1.existing.result.json": "ea60e8d6bf7377f310dfd0f0d4eccb73ff2a03cbc3b3a23c5f291a029442582e"
+  }
+}

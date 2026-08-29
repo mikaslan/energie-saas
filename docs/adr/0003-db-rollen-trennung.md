@@ -22,11 +22,12 @@ actorlosen Systempfad verwenden können.
 | Rolle | Login | Rechte |
 |---|---:|---|
 | `app_owner` | nein | Owner von `public`, `drizzle` und App-Objekten; keine laufende Verbindung |
-| `app_migrator` | ja | nur `SET ROLE app_owner`, `INHERIT FALSE` |
+| `app_migrator` | ja | nur `SET ROLE app_owner/app_worker`, `INHERIT FALSE`, kein `ADMIN` |
 | `app_runtime` | ja | Tenant-Lesen, Site-DML, Event-/Audit-INSERT; Membership SELECT-only |
 | `app_system` | ja | isolierter Bootstrap/Recovery; Membership-DML und dafür nötiges Workspace-Lock |
 | `app_auth` | ja | fünf `auth_*`-Tabellen und Reconcile-EXECUTE |
-| `app_worker` | ja | Owner des Schemas `pgboss`, keine Rechte in `public` |
+| `app_worker` | ja | Owner von `pgboss`; enge M1-07-Reads/Statuswrites sowie Event-/Audit-INSERT in `public` |
+| `app_erasure` | nein | ausschließlich EXECUTE auf den zwei M1-07-Erasure-Definer-Routinen; keine Tabellenrechte |
 | `app_membership_writer` | nein | objektlose Markerrolle für Membership-DML |
 | `identity_reconciler` | nein | Owner der engen Reconcile-Definer-Funktion |
 
@@ -37,6 +38,7 @@ Die Mitgliedschaftsmatrix ist exakt:
 
 ```text
 app_owner               → app_migrator  ADMIN false · INHERIT false · SET true
+app_worker              → app_migrator  ADMIN false · INHERIT false · SET true
 app_membership_writer   → app_system    ADMIN false · INHERIT false · SET false
 app_membership_writer   → app_owner     ADMIN false · INHERIT false · SET false
 identity_reconciler     → app_owner     ADMIN true  · INHERIT false · SET false
@@ -77,6 +79,9 @@ Session; er darf Runtime-DML nicht zurückbringen.
   `reconcile_user_identity(text,text)`; darunter nur `membership: SELECT` sowie
   `user_identity: SELECT/INSERT/UPDATE`, die die Funktion selbst benötigt.
 - `app_worker`: `pgboss` und dessen Objekte.
+- `app_erasure`: kein Objekt-Owner und keine Relation-ACL; nur `USAGE` auf
+  `public` sowie `EXECUTE` auf `erase_inactive_lead(uuid,uuid,uuid)` und
+  `replay_erasure_tombstone(uuid)`.
 
 `scripts/db-role-contract.mts` ist das ausführbare Allowlist-Manifest. Es entzieht nach
 jeder strikten Migration alle Dienstrechte auf `public`, grantet nur den beschriebenen
@@ -98,11 +103,14 @@ SECURITY-DEFINER-Zugriff außerhalb der Objekt-Allowlist liegen. Ein providersei
 Staging-Schema muss vor Pilot bewusst klassifiziert werden und bleibt bis dahin rot.
 Zusätzlich attestiert der Zielkatalog live RLS/FORCE, alle Policy-Ausdrücke und
 Schutztrigger sowie Sprache, Volatilität, Parallelität, `search_path`, Definer-Flag und
-SHA-256 des Katalogbodys jeder App-Funktion. Nur `reconcile_user_identity(text,text)`
-steht auf der SECURITY-DEFINER-Allowlist.
+SHA-256 des Katalogbodys jeder App-Funktion. In `public` ist ausschließlich
+`reconcile_user_identity(text,text)` SECURITY DEFINER; in `pgboss` kommt nur der
+worker-owned, payload-minimierte Einstieg
+`enqueue_project_calculation(uuid,uuid)` hinzu. Beide Bodies und ACLs sind statisch
+gepinnt.
 
-Globale und `public`-spezifische Default-ACLs von `app_owner` und
-`identity_reconciler` werden bereits **vor** Drizzle entzogen und katalogbasiert
+Globale und schemaspezifische Default-ACLs von `app_owner`,
+`identity_reconciler` und `app_worker` werden bereits **vor** Drizzle entzogen und katalogbasiert
 verifiziert. Damit kann eine neue Relation/Funktion auch bei späterem Default-ACL-Drift
 nicht vorübergehend Runtime-, PUBLIC- oder Fremdrollenrechte erben. Nach der Migration
 wird derselbe Vertrag erneut angewandt.
@@ -131,7 +139,9 @@ sessionweiten Rollenwechsel zuverlässig.
 
 Noch vor Advisory Lock und Drizzle prüft der Migrator beide Principals vollständig:
 `app_migrator` muss LOGIN und sonst unprivilegiert sein, `app_owner` NOLOGIN und
-unprivilegiert; die vier erlaubten fachlichen Membership-Kanten sind exakt. Jede Bridge- oder
+unprivilegiert; die fünf erlaubten fachlichen Membership-Kanten sind exakt. Die zweite
+SET-only-Kante ist die enge Ownernaht für worker-owned pg-boss-Migrationen; zwischen
+`app_owner` und `app_worker` existiert keine Kante. Jede andere Bridge- oder
 `neon_superuser`-Mitgliedschaft endet vor Journal-/Schemaänderung. Datenbankowner
 `app_owner` und die Schemaowner `public → app_owner`, `pgboss → app_worker` sowie
 `drizzle → app_owner` (falls bereits vorhanden) sind ebenfalls Pre-Drizzle-Gates.

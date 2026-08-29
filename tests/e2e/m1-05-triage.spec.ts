@@ -1,13 +1,32 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
+import { sql } from "drizzle-orm";
+import { Pool } from "pg";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import { withTenantOn } from "../../lib/db/tenant";
+import type { TenantTx } from "../../lib/db/types";
+import {
+  type PlanningCalculationRequestV1,
+} from "../../lib/integrations/calculation/contract";
+import { calculatePlanningEstimate } from "../../lib/integrations/calculation/engine";
+import { buildPlanningCalculationInput } from "../../lib/integrations/calculation/prepare";
+import {
+  claimProjectCalculationJob,
+  finalizeProjectCalculationFailure,
+  finalizeProjectCalculationSuccess,
+  persistProjectCalculationInput,
+  type ProjectCalculationClaim,
+} from "../../modules/energy";
 import { M1_06_E2E_ADDRESS, M1_06_E2E_REGION } from "./m1-06-fixture";
 
 type E2EState = {
   baseURL: string;
+  databaseUrl: string;
   serverLogPath: string;
   workspaceId: string;
   foreignWorkspaceId: string;
+  mainProjectId: string;
   foreignProjectId: string;
   editorEmail: string;
   viewerEmail: string;
@@ -54,9 +73,11 @@ function state(): E2EState {
   const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<E2EState>;
   const required: Array<keyof E2EState> = [
     "baseURL",
+    "databaseUrl",
     "serverLogPath",
     "workspaceId",
     "foreignWorkspaceId",
+    "mainProjectId",
     "foreignProjectId",
     "editorEmail",
     "viewerEmail",
@@ -67,6 +88,192 @@ function state(): E2EState {
     throw new Error("Der private M1-05-E2E-State ist unvollständig.");
   }
   return parsed as E2EState;
+}
+
+async function withEnergyFixtureDatabase<T>(
+  callback: (tx: TenantTx) => Promise<T>,
+): Promise<T> {
+  const data = state();
+  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  try {
+    return await withTenantOn(pool, data.workspaceId, callback);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function latestCalculationJobId(): Promise<string> {
+  const data = state();
+  return withEnergyFixtureDatabase(async (tx) => {
+    const result = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+      select id
+        from project_calculation_job
+       where workspace_id = ${data.workspaceId}::uuid
+         and project_id = ${data.mainProjectId}::uuid
+       order by created_at desc, id desc
+       limit 1
+    `);
+    const jobId = result.rows[0]?.id;
+    if (!jobId) throw new Error("M1-07-E2E-Rechenauftrag fehlt.");
+    return jobId;
+  });
+}
+
+async function claimCalculation(jobId: string): Promise<ProjectCalculationClaim> {
+  const data = state();
+  const leaseToken = randomUUID();
+  const claim = await withEnergyFixtureDatabase((tx) =>
+    claimProjectCalculationJob(tx, {
+      workspaceId: data.workspaceId,
+      jobId,
+      leaseToken,
+    }));
+  if (claim === null) throw new Error("M1-07-E2E-Rechenauftrag war nicht claimbar.");
+  return claim;
+}
+
+async function setCalculationRetryWait(claim: ProjectCalculationClaim): Promise<void> {
+  const data = state();
+  await withEnergyFixtureDatabase((tx) => finalizeProjectCalculationFailure(tx, {
+    workspaceId: data.workspaceId,
+    jobId: claim.jobId,
+    leaseToken: claim.leaseToken,
+    attemptCount: claim.attemptCount,
+    errorCode: "provider_unavailable",
+    retryable: true,
+    retryAfterMs: 0,
+  }));
+}
+
+async function makeCalculationRetryDue(jobId: string): Promise<void> {
+  const data = state();
+  await withEnergyFixtureDatabase(async (tx) => {
+    const updated = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+      update project_calculation_job
+         set next_attempt_at = pg_catalog.clock_timestamp()
+       where workspace_id = ${data.workspaceId}::uuid
+         and project_id = ${data.mainProjectId}::uuid
+         and id = ${jobId}::uuid
+         and state = 'retry_wait'
+       returning id
+    `);
+    if (updated.rows.length !== 1) {
+      throw new Error("M1-07-E2E-Retry konnte nicht fällig gestellt werden.");
+    }
+  });
+}
+
+async function setCalculationFailed(claim: ProjectCalculationClaim): Promise<void> {
+  const data = state();
+  await withEnergyFixtureDatabase((tx) => finalizeProjectCalculationFailure(tx, {
+    workspaceId: data.workspaceId,
+    jobId: claim.jobId,
+    leaseToken: claim.leaseToken,
+    attemptCount: claim.attemptCount,
+    errorCode: "provider_invalid",
+    retryable: false,
+  }));
+}
+
+async function addCurrentRequirementRevision(): Promise<void> {
+  const data = state();
+  const requirementId = randomUUID();
+  await withEnergyFixtureDatabase(async (tx) => {
+    const inserted = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+      insert into project_requirement (
+        id, workspace_id, project_id, revision, schema_version,
+        source_snapshot_id, requirements
+      )
+      select ${requirementId}::uuid, workspace_id, project_id, revision + 1,
+             schema_version, source_snapshot_id, requirements
+        from project_requirement
+       where workspace_id = ${data.workspaceId}::uuid
+         and project_id = ${data.mainProjectId}::uuid
+       order by revision desc
+       limit 1
+      returning id
+    `);
+    if (inserted.rows.length !== 1) {
+      throw new Error("M1-07-E2E-Bedarfsrevision konnte nicht angelegt werden.");
+    }
+  });
+}
+
+function providerSnapshotsForClaim(
+  claim: ProjectCalculationClaim,
+): PlanningCalculationRequestV1["yieldSnapshots"] {
+  const fixture = JSON.parse(readFileSync(
+    "contracts/examples/planning-calculation.v1.new.request.json",
+    "utf8",
+  )) as PlanningCalculationRequestV1;
+  const template = fixture.yieldSnapshots[0];
+  const profile = claim.preparation?.profile as {
+    roofs?: Array<{
+      id?: unknown;
+      tiltDeg?: unknown;
+      azimuthDeg?: unknown;
+    }>;
+  } | undefined;
+  const request = claim.providerRequest as {
+    latitude?: unknown;
+    longitude?: unknown;
+  } | null;
+  if (
+    template === undefined
+    || profile?.roofs === undefined
+    || profile.roofs.length === 0
+    || typeof request?.latitude !== "number"
+    || typeof request.longitude !== "number"
+  ) {
+    throw new Error("M1-07-E2E-Providerfixture kann nicht gebunden werden.");
+  }
+  const latitude = Math.round(request.latitude * 1_000) / 1_000;
+  const longitude = Math.round(request.longitude * 1_000) / 1_000;
+  return profile.roofs.map((roof) => {
+    if (
+      typeof roof.id !== "string"
+      || typeof roof.tiltDeg !== "number"
+      || typeof roof.azimuthDeg !== "number"
+    ) {
+      throw new Error("M1-07-E2E-Dachfixture ist ungültig.");
+    }
+    return {
+      ...structuredClone(template),
+      roofId: roof.id,
+      request: {
+        ...structuredClone(template.request),
+        latitude,
+        longitude,
+        tiltDeg: roof.tiltDeg,
+        azimuthDeg: roof.azimuthDeg,
+      },
+    };
+  });
+}
+
+async function completeCalculation(jobId: string): Promise<void> {
+  const data = state();
+  const claim = await claimCalculation(jobId);
+  const prepared = buildPlanningCalculationInput({
+    claim,
+    providerSnapshot: providerSnapshotsForClaim(claim),
+  });
+  const stored = await withEnergyFixtureDatabase((tx) =>
+    persistProjectCalculationInput(tx, {
+      workspaceId: data.workspaceId,
+      jobId,
+      leaseToken: claim.leaseToken,
+      attemptCount: claim.attemptCount,
+      ...prepared,
+    }));
+  const result = calculatePlanningEstimate(stored.inputSnapshot);
+  await withEnergyFixtureDatabase((tx) => finalizeProjectCalculationSuccess(tx, {
+    workspaceId: data.workspaceId,
+    jobId,
+    leaseToken: claim.leaseToken,
+    attemptCount: claim.attemptCount,
+    result,
+  }));
 }
 
 function escapeRegExp(value: string): string {
@@ -332,6 +539,143 @@ test("Editor: regionaler Rechner-Lead wird hausgenau korrigiert und getrennt bes
   await expectNoSeriousOrCriticalAxeViolations(page);
 });
 
+test("M1-07: Editor bindet das Energieprofil und prüft alle Rechenzustände", async ({ page }) => {
+  const data = state();
+  const boardPath = `/w/${data.workspaceId}/anfragen`;
+
+  await page.goto(boardPath);
+  await loginWithRealOtp(page, data.editorEmail, boardPath);
+  const card = page.locator("article[data-project-id]");
+  await expect(card).toHaveCount(1);
+  await card.getByRole("link", { name: "Projekt öffnen" }).click();
+
+  await expect(page.getByRole("heading", { name: "Energieprofil", level: 2 })).toBeVisible();
+  await expect(page.locator('[data-energy-profile-state="no_profile"]')).toBeVisible();
+  await expect(page.locator('[data-energy-calculation-state="blocked"]')).toBeVisible();
+  await expect(page.locator('[data-energy-calculation-state="blocked"]'))
+    .toContainText("Speichere zuerst ein aktuelles Energieprofil");
+  await expect(page.getByRole("heading", {
+    name: "Importierte Rechner-Schätzung (ungeprüft)",
+    level: 2,
+  })).toBeVisible();
+  await page.getByRole("link", { name: "Energieprofil anlegen" }).click();
+
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await expect(page.getByText("Importierte Rechner-Eingaben – ungeprüft", { exact: true })).toBeVisible();
+  await expectNoSeriousOrCriticalAxeViolations(page);
+  await page.getByLabel("Haushaltsverbrauch (kWh/Jahr)").fill("4300");
+  await page.getByLabel("Verschattung").selectOption("none");
+  await page.getByLabel("Für den aktuellen Standort geprüft?").selectOption("true");
+  const saveButton = page.getByRole("button", { name: "Profil speichern" });
+  expect((await saveButton.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await saveButton.click();
+
+  const savedStatus = page.getByText(/Profilrevision 1 wurde gespeichert/u);
+  await expect(savedStatus).toBeVisible();
+  await expect(savedStatus).toBeFocused();
+  const confirmButton = page.getByRole("button", { name: "Eingaben bestätigen" });
+  await expect(confirmButton).toBeVisible();
+  expect((await confirmButton.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await confirmButton.click();
+  await expect(page.getByText(/Profilrevision 1 ist für Adressrevision .* bestätigt/u))
+    .toBeVisible();
+
+  await page.getByRole("link", { name: "Zurück zur Projektakte" }).click();
+  const calculation = page.locator('section:has([data-energy-calculation-state="queued"])');
+  await expect(calculation).toBeVisible();
+  await expect(calculation).toContainText("Eingereiht");
+  const refreshButton = calculation.getByRole("button", { name: "Status aktualisieren" });
+  await expect(refreshButton).toBeVisible();
+  expect((await refreshButton.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await expect(calculation).not.toContainText("Investitionsrahmen");
+  await expect(calculation).not.toContainText("Amortisation");
+
+  await page.reload();
+  await expect(page.locator('[data-energy-calculation-state="queued"]')).toBeVisible();
+
+  const firstJobId = await latestCalculationJobId();
+  const firstClaim = await claimCalculation(firstJobId);
+  await page.getByRole("button", { name: "Status aktualisieren" }).click();
+  await expect(page.locator('[data-energy-calculation-state="running"]')).toBeVisible();
+  await expect(page.locator('[data-energy-calculation-state="running"]'))
+    .toContainText("Wird serverseitig berechnet");
+
+  await setCalculationRetryWait(firstClaim);
+  await page.getByRole("button", { name: "Status aktualisieren" }).click();
+  await expect(page.locator('[data-energy-calculation-state="retry_wait"]')).toBeVisible();
+  await expect(page.locator('[data-energy-calculation-state="retry_wait"]'))
+    .toContainText("begrenzten technischen Wiederholungsversuch");
+
+  await makeCalculationRetryDue(firstJobId);
+  const retryClaim = await claimCalculation(firstJobId);
+  await page.getByRole("button", { name: "Status aktualisieren" }).click();
+  await expect(page.locator('[data-energy-calculation-state="running"]')).toBeVisible();
+
+  await setCalculationFailed(retryClaim);
+  await page.getByRole("button", { name: "Status aktualisieren" }).click();
+  const failedCalculation = page.locator('[data-energy-calculation-state="failed"]');
+  await expect(failedCalculation).toBeVisible();
+  await expect(failedCalculation).toContainText("Planungsrechnung fehlgeschlagen");
+  await expect(failedCalculation).not.toContainText("Erneut berechnen");
+
+  await addCurrentRequirementRevision();
+  await page.reload();
+  const staleCalculation = page.locator('[data-energy-calculation-state="stale"]');
+  await expect(staleCalculation).toBeVisible();
+  await expect(staleCalculation).toContainText("Ergebnis veraltet");
+  await expect(page.getByText(/aktuelle Planung ist nicht mehr daran gebunden/u)).toBeVisible();
+  await page.getByRole("button", { name: "Eingaben bestätigen" }).click();
+  const rateLimitFeedback = page.getByRole("alert").filter({
+    hasText: "Zu viele neue Berechnungen",
+  });
+  await expect(rateLimitFeedback).toBeVisible();
+  await expect(rateLimitFeedback).toBeFocused();
+  const rateLimitText = await rateLimitFeedback.textContent();
+  const retryAfter = /Bitte in (\d+) Sekunden erneut versuchen\./u.exec(
+    rateLimitText ?? "",
+  );
+  if (!retryAfter) throw new Error("M1-07-E2E-Quota-Wartezeit fehlt.");
+  await page.waitForTimeout(Number(retryAfter[1]) * 1_000 + 250);
+  await page.getByRole("button", { name: "Eingaben bestätigen" }).click();
+  await expect(page.locator('[data-energy-calculation-state="queued"]')).toBeVisible();
+
+  const reboundJobId = await latestCalculationJobId();
+  expect(reboundJobId).not.toBe(firstJobId);
+  await completeCalculation(reboundJobId);
+  await page.reload();
+  const currentCalculation = page.locator('[data-energy-calculation-state="current"]');
+  await expect(currentCalculation).toBeVisible();
+  await expect(currentCalculation).toContainText("Ergebnis aktuell");
+  await expect(currentCalculation).toContainText("Serverseitig neu berechnete Schätzung");
+  await expect(currentCalculation).toContainText("Nicht F4-referenzvalidiert und nicht angebotsreif");
+  await expect(currentCalculation).not.toContainText("Investitionsrahmen");
+  await expect(currentCalculation).not.toContainText("Amortisation");
+  await expect(currentCalculation).not.toContainText("hourlyPowerWPerKwp");
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.reload();
+  await expect(page.locator('[data-energy-calculation-state="current"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
+
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect.poll(() => page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }))).toEqual({ client: 320, scroll: 320 });
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addStyleTag({ content: ":root { font-size: 200% !important; }" });
+  await expect(page.locator('[data-energy-calculation-state="current"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }))).toEqual({ client: 1280, scroll: 1280 });
+  await expectNoSeriousOrCriticalAxeViolations(page);
+});
+
 test.describe("mobiler Chromium-Kontext", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -463,6 +807,15 @@ test("Konflikt, 404 und echter Fremdprojekt-Link bleiben fail-closed", async ({ 
       level: 1,
     })).toBeVisible();
     await expect(page.getByText(data.foreignContactName)).toHaveCount(0);
+
+    await page.goto(
+      `/w/${data.foreignWorkspaceId}/anfragen/${data.foreignProjectId}/energieprofil`,
+    );
+    await expect(page.getByRole("heading", {
+      name: "Diese Projektakte ist für dich nicht freigegeben.",
+      level: 1,
+    })).toBeVisible();
+    await expect(page.getByText(data.foreignContactName)).toHaveCount(0);
     await expectNoSeriousOrCriticalAxeViolations(page);
   } finally {
     await stalePage.close();
@@ -493,5 +846,23 @@ test("Viewer: darf denselben Lead lesen, aber weder Pin noch Karte verändern", 
   await expect(page.getByRole("button", { name: /Pin einen Meter nach/u })).toHaveCount(0);
   await expect(page.getByTestId("address-pin-map")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Planungs-Pin bestätigen/u })).toHaveCount(0);
+  const energyProfile = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Energieprofil", level: 2 }),
+  });
+  await expect(energyProfile.locator('[data-energy-profile-state="read_only"]')).toBeVisible();
+  await expect(energyProfile.locator("form")).toHaveCount(0);
+  await expect(energyProfile.getByRole("link", {
+    name: "Energieprofil prüfen und bearbeiten",
+  })).toHaveCount(0);
+  await expect(page.locator('[data-energy-calculation-state="current"]')).toBeVisible();
+  await expectNoSeriousOrCriticalAxeViolations(page);
+
+  await page.goto(
+    `/w/${data.workspaceId}/anfragen/${data.mainProjectId}/energieprofil`,
+  );
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Nur Lesezugriff", level: 2 })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Profil speichern" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Eingaben bestätigen" })).toHaveCount(0);
   await expectNoSeriousOrCriticalAxeViolations(page);
 });

@@ -284,18 +284,21 @@ async function proveLegacyUpgrade(): Promise<void> {
     -- Standard-PG18-Abbild eines Nichtsuperuser-CREATEROLE-Bootstraps: der
     -- echte Bootstrap-Grantor trägt ADMIN, aber weder INHERIT noch SET.
     grant app_owner, app_migrator, app_runtime, app_system, app_auth, app_worker,
-          app_membership_writer, identity_reconciler
+          app_erasure, app_membership_writer, identity_reconciler
       to provider_admin_sim with admin true, inherit false, set false;
 
     -- Die bisherigen lokalen Superuser-Fachkanten werden grantor-genau durch
     -- die Provisioning-Admin-Kanten ersetzt.
     revoke app_owner from app_migrator granted by current_user cascade;
+    revoke app_worker from app_migrator granted by current_user cascade;
     revoke app_membership_writer from app_system granted by current_user cascade;
     revoke app_membership_writer from app_owner granted by current_user cascade;
     revoke identity_reconciler from app_owner granted by current_user cascade;
 
     set role provider_admin_sim;
     grant app_owner to app_migrator
+      with admin false, inherit false, set true granted by current_user;
+    grant app_worker to app_migrator
       with admin false, inherit false, set true granted by current_user;
     grant app_membership_writer to app_system
       with admin false, inherit false, set false granted by current_user;
@@ -1229,6 +1232,7 @@ async function proveLegacyUpgrade(): Promise<void> {
         "app_system",
         "app_auth",
         "app_worker",
+        "app_erasure",
         "app_membership_writer",
         "identity_reconciler",
       ]]);
@@ -1286,6 +1290,33 @@ async function proveLegacyUpgrade(): Promise<void> {
       JSON.stringify(postCutoverMigrationAuthority.rows[0]),
     );
 
+    const dispatchBootstrapBoss = new PgBoss({
+      connectionString: upgradeWorkerUrl,
+      schema: "pgboss",
+      createSchema: false,
+      max: 2,
+    });
+    dispatchBootstrapBoss.on("error", () => undefined);
+    try {
+      await dispatchBootstrapBoss.start();
+      await dispatchBootstrapBoss.createQueue("calculation.execute", {
+        policy: "exclusive",
+        retryLimit: 0,
+        expireInSeconds: 900,
+      });
+    } finally {
+      await dispatchBootstrapBoss.stop({ graceful: false }).catch(() => undefined);
+    }
+    execFileSync("npx", ["tsx", "scripts/pgboss-bootstrap.mts"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DB_ROLE_MODE: "strict",
+        POSTGRES_URL_WORKER: upgradeWorkerUrl,
+      },
+      stdio: "inherit",
+    });
+
     execFileSync("npx", ["tsx", "scripts/migrate.mts"], {
       cwd: process.cwd(),
       env: {
@@ -1295,6 +1326,15 @@ async function proveLegacyUpgrade(): Promise<void> {
         DB_ROLE_BOOTSTRAP_GRANTOR: providerTopology.bootstrapGrantorRole,
         DB_ROLE_RETAINED_LEGACY_ROLE: providerTopology.retainedLegacyRole,
         POSTGRES_URL_MIGRATE: upgradeMigratorUrl,
+      },
+      stdio: "inherit",
+    });
+    execFileSync("npx", ["tsx", "scripts/pgboss-bootstrap.mts"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DB_ROLE_MODE: "strict",
+        POSTGRES_URL_WORKER: upgradeWorkerUrl,
       },
       stdio: "inherit",
     });
@@ -1382,12 +1422,15 @@ try {
       nocreatedb nocreaterole noreplication;
     create role app_worker login password 'wrk' noinherit nosuperuser nobypassrls
       nocreatedb nocreaterole noreplication;
+    create role app_erasure nologin noinherit nosuperuser nobypassrls
+      nocreatedb nocreaterole noreplication;
     alter role app_membership_writer nologin noinherit nosuperuser nobypassrls
       nocreatedb nocreaterole noreplication;
     create role identity_reconciler nologin noinherit nosuperuser nobypassrls
       nocreatedb nocreaterole noreplication;
 
     grant app_owner to app_migrator with admin false, inherit false, set true;
+    grant app_worker to app_migrator with admin false, inherit false, set true;
     grant app_membership_writer to app_system with admin false, inherit false, set false;
     grant app_membership_writer to app_owner with admin false, inherit false, set false;
     grant identity_reconciler to app_owner with admin true, inherit false, set false;
@@ -1402,6 +1445,37 @@ try {
     create schema pgboss authorization app_worker;
   `);
   ok("Rollen und Schema-Owner sind vor der Migration provisioniert", true);
+
+  // pg-boss besitzt eine getrennte Owner-Domaene. Dessen eigenes v38-Schema
+  // wird deshalb vor der App-Historie durch app_worker initialisiert; erst
+  // danach darf 0025 die enge, worker-owned Dispatchfunktion anlegen.
+  const bootstrapBoss = new PgBoss({
+    connectionString: urls.worker,
+    schema: "pgboss",
+    createSchema: false,
+    max: 2,
+  });
+  bootstrapBoss.on("error", () => undefined);
+  try {
+    await bootstrapBoss.start();
+    await bootstrapBoss.createQueue("calculation.execute", {
+      policy: "exclusive",
+      retryLimit: 0,
+      expireInSeconds: 900,
+    });
+  } finally {
+    await bootstrapBoss.stop({ graceful: false }).catch(() => undefined);
+  }
+  execFileSync("npx", ["tsx", "scripts/pgboss-bootstrap.mts"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      DB_ROLE_MODE: "strict",
+      POSTGRES_URL_WORKER: urls.worker,
+    },
+    stdio: "inherit",
+  });
+  ok("pg-boss ist vor der App-Migration worker-owned initialisiert", true);
 
   const wrongMigrator = spawnSync("npx", ["tsx", "scripts/migrate.mts"], {
     cwd: process.cwd(),
@@ -1492,6 +1566,15 @@ try {
       ...process.env,
       DB_ROLE_MODE: "strict",
       POSTGRES_URL_MIGRATE: urls.migrator,
+    },
+    stdio: "inherit",
+  });
+  execFileSync("npx", ["tsx", "scripts/pgboss-bootstrap.mts"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      DB_ROLE_MODE: "strict",
+      POSTGRES_URL_WORKER: urls.worker,
     },
     stdio: "inherit",
   });

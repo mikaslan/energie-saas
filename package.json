@@ -14,6 +14,7 @@
     "check": "npm run lint && npm run typecheck && npm run depcruise && npm run test && npm run db:roles:verify",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
+    "db:pgboss:bootstrap": "tsx scripts/pgboss-bootstrap.mts",
     "db:migrate:test": "cross-env-shell \"NODE_ENV=test\" \"DB_ROLE_MODE=test-legacy-single\" \"POSTGRES_URL_MIGRATE=$POSTGRES_URL_TEST\" \"tsx scripts/migrate.mts\"",
     "db:roles:verify": "tsx scripts/adr-0003-probe.mts && tsx scripts/pg18-createrole-regression.mts",
     "auth:generate": "cross-env-shell \"DB_ROLE_MODE=strict\" \"BETTER_AUTH_SECRET=ci-build-platzhalter-kein-echtes-secret\" \"NEXT_PHASE=phase-production-build\" \"POSTGRES_URL_AUTH=postgres://app_auth:auth-generate@127.0.0.1:1/auth_generate_test\" \"auth generate --config lib/auth.ts --output lib/db/schema/auth.ts --y\""

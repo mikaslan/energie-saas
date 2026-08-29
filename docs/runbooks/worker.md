@@ -44,6 +44,11 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    Kein Anpassungsbedarf an der Skizze.
 3. **`createQueue()` vor `send()`** ist weiterhin Pflicht (Skizze korrekt) —
    `createQueue(name, options?)` legt Policy/Retry/Dead-Letter-Konfiguration an.
+   M1-07 initialisiert `calculation.execute` vor 0025 historisch mit
+   `policy: exclusive`, `retryLimit: 0`, `expireInSeconds: 900`. Migration
+   0029 hebt ausschließlich technische Vor-Claim-Zustellungen auf
+   `retryLimit: 10`, eine Sekunde Startverzug, Backoff und maximal 60 Sekunden.
+   Der normale Worker pinnt danach genau diesen aktuellen Vertrag.
 4. **`fetch(name, options?)`** liefert ein Array (`Job<T>[]`); `complete(name,
    id | id[], data?, options?)` akzeptiert sowohl eine einzelne ID als auch ein
    Array. Die Skizze nutzt `complete(name, [job.id])` — passt unverändert.
@@ -90,6 +95,32 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    `node_modules`, `.next`, `.git`, `.superpowers/pgdata`, `*.tsbuildinfo` und
    `.env*` aus.
 
+## Fresh-Install- und Upgrade-Reihenfolge für M1-07
+
+Die Reihenfolge ist bindend, weil die unveränderlichen Migrationen 0025/0026
+noch den historischen Retry-0-Startvertrag prüfen und erst 0029 auf den
+aktuellen technischen Retry-10-Vertrag hebt:
+
+1. Rollen und das Schema `pgboss` mit Owner `app_worker` provisionieren.
+2. Mit ausschließlich `POSTGRES_URL_WORKER` und den erwarteten
+   Neon-Tenant-/Timeline-IDs `npm run db:pgboss:bootstrap` ausführen. Der
+   Befehl initialisiert pg-boss v38 und eine leere Queue im Retry-0-Vertrag.
+3. Mit `POSTGRES_URL_MIGRATE` `npm run db:migrate` bis einschließlich 0029
+   ausführen. 0029 aktualisiert Queue und bestehende wartende Zustellungen auf
+   Retry 10.
+4. Erst danach den normalen Worker starten; dessen `createQueue()` attestiert
+   beziehungsweise erhält den aktuellen Retry-10-Vertrag.
+
+Der Bootstrap ist idempotent und liest als `app_worker` keinen
+Drizzle-Journalinhalt. Er erkennt den Migrationsstand an der worker-owned
+Dispatchfunktion: Ein partieller 0025-/0026-Stand bleibt auf Retry 0, ein
+wirksamer 0029-Stand bleibt auf Retry 10. Eine versehentlich vor 0025 durch den
+neuen Worker erzeugte Retry-10-Queue wird nur dann auf den historischen
+Startvertrag repariert, wenn sie noch keinen Job enthält. Alle anderen
+Queue-/Funktionsabweichungen enden fail-closed mit
+`calculation_queue_bootstrap_drift`; der Befehl gibt weder URL noch Passwort
+aus.
+
 ## Verifikationsstand
 
 - Dockerfile-Lint, expandierte Compose-Konfiguration und ein echter lokaler
@@ -99,6 +130,26 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
 - Der lokale Worker-Start (`npx tsx worker/index.ts` gegen die
   embedded-postgres-Test-Instanz, `curl localhost:8080/health`) wurde
   verifiziert — siehe Task-11-Report für den genauen Log-Auszug.
+
+## Calculation-Reservation-Rate-Limit v1
+
+- Die App reserviert unter
+  `project-calculation-reservation-rate-limit.v1` höchstens 30 neue Jobs je
+  Actor und 300 je Workspace in einer rollenden Stunde; zwischen zwei neuen
+  Reservations desselben Actors liegen mindestens 10 Sekunden.
+- Aktive und terminale Jobs zählen gleichermaßen. Operatoren dürfen
+  `failed_final`-Zeilen deshalb nicht löschen oder umetikettieren, um Kapazität
+  freizugeben. Das Fenster läuft automatisch anhand der DB-Zeit aus.
+- `rate_limited` ist kein Worker-/Providerfehler und erzeugt keinen halben
+  Domainzustand. Die UI zeigt die aufgerundeten `retryAfterSeconds` an und kann
+  danach denselben Confirm erneut senden.
+- Ein exakter Replay ist immer erlaubt und repariert weiterhin eine fehlende
+  Zustellung eines `queued` Jobs. Steigt die Rate von Replays ohne neue Jobs,
+  sind daher Dispatcher-/Client-Wiederholungen zu prüfen; die Quota darf nicht
+  als Ersatz für die idempotente Reparatur verschärft werden.
+- Änderungen an Schwellen oder Zählsemantik werden als neue Policy-Version mit
+  Actor-/Workspace-Race-Tests ausgerollt. Es gibt keinen undokumentierten
+  Laufzeit-Override in Environment-Variablen.
 
 ## Heartbeat & Backup
 

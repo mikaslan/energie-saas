@@ -169,6 +169,48 @@
       "when": 1787998574637,
       "tag": "0023_loving_justin_hammer",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788007641674,
+      "tag": "0024_m1_07_energy_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788012000000,
+      "tag": "0025_m1_07_calculation_dispatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788015000000,
+      "tag": "0026_m1_07_calculation_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788018000000,
+      "tag": "0027_m1_07_gdpr_erasure",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788021000000,
+      "tag": "0028_m1_07_preparation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788024000000,
+      "tag": "0029_m1_07_technical_delivery_retry",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,14 @@ import {
   getProjectTriageDetail,
   type ProjectTriageDetail,
 } from "@/modules/projects";
+import {
+  getProjectEnergyContext,
+  type ProjectEnergyContext,
+} from "@/modules/energy";
+import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
+import { EnergyCalculationSection } from "./energy-calculation-section";
+import { EnergyProfileSection } from "./energy-profile-section";
 import { PinForm } from "./pin-form";
 
 export const metadata: Metadata = {
@@ -48,6 +55,11 @@ type LoadResult =
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
+type EnergyLoadResult =
+  | { kind: "loaded"; context: ProjectEnergyContext | null }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
 async function loadProjectDetail(
   workspaceId: string,
   projectId: string,
@@ -60,6 +72,29 @@ async function loadProjectDetail(
       (tx, ctx) => getProjectTriageDetail(tx, ctx, projectId),
     );
     return { kind: "loaded", detail };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) {
+      return { kind: "unauthenticated" };
+    }
+    if (error instanceof PermissionDeniedError) {
+      return { kind: "denied" };
+    }
+    throw error;
+  }
+}
+
+async function loadProjectEnergy(
+  workspaceId: string,
+  projectId: string,
+): Promise<EnergyLoadResult> {
+  try {
+    const context = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "energy_profile",
+      (tx, ctx) => getProjectEnergyContext(tx, ctx, projectId),
+    );
+    return { kind: "loaded", context };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
       return { kind: "unauthenticated" };
@@ -154,87 +189,6 @@ function priceSourceLabel(value: string | null): string {
     : value ?? "Nicht übermittelt";
 }
 
-function YesNo({ value }: { value: boolean }) {
-  return (
-    <span
-      className={
-        value
-          ? "inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800"
-          : "inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
-      }
-    >
-      {value ? "Ja" : "Nein"}
-    </span>
-  );
-}
-
-function DetailItem({
-  term,
-  children,
-  numeric = false,
-}: {
-  term: string;
-  children: React.ReactNode;
-  numeric?: boolean;
-}) {
-  return (
-    <div className="grid gap-1 border-b border-slate-100 py-3 last:border-b-0 sm:grid-cols-[minmax(9rem,0.8fr)_minmax(0,1.2fr)] sm:gap-5">
-      <dt className="text-sm text-slate-500">{term}</dt>
-      <dd
-        className={`min-w-0 text-sm font-medium text-slate-900 ${
-          numeric ? "tabular-nums" : ""
-        }`}
-      >
-        {children}
-      </dd>
-    </div>
-  );
-}
-
-function Section({
-  title,
-  intro,
-  children,
-}: {
-  title: string;
-  intro?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-        {intro ? <p className="mt-1 text-sm leading-6 text-slate-600">{intro}</p> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function DeniedState() {
-  return (
-    <main className="mx-auto flex min-h-[70vh] w-full max-w-3xl items-center px-6 py-12">
-      <section className="w-full rounded-lg border border-amber-200 bg-amber-50 p-6 sm:p-8">
-        <p className="text-sm font-semibold text-amber-800">Zugriff eingeschränkt</p>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-          Diese Projektakte ist für dich nicht freigegeben.
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700">
-          Dir fehlt die Berechtigung für diesen Workspace. Es wurden keine
-          Projektdaten geladen. Wende dich bei Bedarf an eine
-          Workspace-Administration.
-        </p>
-        <Link
-          href="/"
-          className="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
-        >
-          Zur Startseite
-        </Link>
-      </section>
-    </main>
-  );
-}
-
 export default async function ProjectTriagePage({
   params,
 }: PageProps<"/w/[workspaceId]/anfragen/[projectId]">) {
@@ -252,6 +206,15 @@ export default async function ProjectTriagePage({
   if (result.detail === null) notFound();
 
   const detail = result.detail;
+  // Die Projektakte und das Energie-Readmodel werden bewusst nacheinander
+  // autorisiert. So entsteht weder ein paralleler Session-Race noch ein
+  // Energie-Read vor der bestehenden Projektgrenze.
+  const energyResult = await loadProjectEnergy(workspaceId, projectId);
+  if (energyResult.kind === "unauthenticated") {
+    redirect(`/login?next=${encodeURIComponent(detailPath)}`);
+  }
+  if (energyResult.kind === "denied") return <DeniedState />;
+  const energyContext = energyResult.context;
   const activeBlockers = [
     detail.blockers.dedupeReviewRequired
       ? "Mögliche Dublette muss geprüft werden"
@@ -388,7 +351,15 @@ export default async function ProjectTriagePage({
               </dl>
             </Section>
 
-            <Section title="Rechner-Schätzung">
+            <EnergyProfileSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              context={energyContext}
+            />
+
+            <EnergyCalculationSection context={energyContext} />
+
+            <Section title="Importierte Rechner-Schätzung (ungeprüft)">
               <div
                 role="note"
                 className="mb-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3"

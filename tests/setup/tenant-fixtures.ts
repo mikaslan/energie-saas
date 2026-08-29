@@ -112,6 +112,139 @@ const fixtureRequirements = {
   },
 };
 
+const fixtureEnergyProfile = {
+  schemaVersion: "site-energy-profile.v1",
+  inputMode: "consumption",
+  building: {
+    type: { status: "unknown", value: null, source: "not_collected" },
+    year: { status: "unknown", value: null, source: "not_collected" },
+    heatedAreaM2: { status: "unknown", value: null, source: "not_collected" },
+  },
+  roofs: [{
+    id: "fixture-roof",
+    areaM2: 42,
+    azimuthDeg: 0,
+    tiltDeg: 35,
+    type: "pitched",
+    shading: { status: "unknown", value: null, source: "not_collected" },
+    source: "user_drawn",
+  }],
+  consumption: {
+    householdKwhPerYear: { status: "known", value: 4_200, source: "customer_metered" },
+    electricityPriceCentsPerKwh: { status: "known", value: 36, source: "customer_input" },
+    annualPriceIncreasePercent: { status: "unknown", value: null, source: "not_collected" },
+    loadProfile: { status: "unknown", value: null, source: "not_collected" },
+    evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
+    evChargingPattern: { status: "unknown", value: null, source: "not_collected" },
+    heatPumpKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
+    coolingKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
+    heatingAcKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
+    hotWaterKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
+  },
+  existingAssets: {
+    pv: { status: "known_absent", source: "rechner_branch" },
+    storage: { status: "unknown", source: "not_collected" },
+    wallbox: { status: "unknown", source: "not_collected" },
+    ev: { status: "unknown", source: "not_collected" },
+  },
+  provenance: {
+    source: "rechner_snapshot",
+    sourceSchemaVersion: "wmee-solar-snapshot.v1",
+    sourceEngine: "wmee-solar.v1",
+    roof: "user_drawn",
+    consumption: "metered_kwh",
+    electricityPrice: "customer",
+    annualPriceIncrease: "default",
+  },
+};
+
+async function fixtureEnergyGraph(tx: TenantTx, wsId: string): Promise<{
+  actorId: string;
+  siteId: string;
+  projectId: string;
+  snapshotId: string;
+  requirementId: string;
+  profileId: string;
+}> {
+  const actorId = randomUUID();
+  await tx.execute(sql`
+    insert into user_identity (id, email)
+    values (${actorId}::uuid, ${`${actorId}@energy-fixture.test`})
+  `);
+  await tx.execute(sql`
+    insert into membership (workspace_id, user_id, role)
+    values (${wsId}::uuid, ${actorId}::uuid, 'editor')
+  `);
+
+  const { snapshotId, projectId } = await fixtureSnapshot(tx, wsId);
+  const projectRow = await tx.execute<{ site_id: string; [key: string]: unknown }>(sql`
+    select site_id from project
+    where workspace_id = ${wsId}::uuid and id = ${projectId}::uuid
+  `);
+  const siteId = projectRow.rows[0].site_id;
+  const requirementId = randomUUID();
+  const profileId = randomUUID();
+
+  await tx.execute(sql`
+    insert into project_requirement (
+      id, workspace_id, project_id, revision, schema_version,
+      source_snapshot_id, requirements
+    ) values (
+      ${requirementId}::uuid, ${wsId}::uuid, ${projectId}::uuid, 1,
+      'project-requirements.rechner.v1', ${snapshotId}::uuid,
+      ${JSON.stringify(fixtureRequirements)}::jsonb
+    )
+  `);
+  await tx.execute(sql`
+    insert into site_energy_profile (
+      id, workspace_id, site_id, revision, schema_version, input_mode,
+      source_kind, source_snapshot_id, source_project_id, address_revision,
+      profile, profile_sha256, confirmed_profile_revision,
+      confirmed_address_revision, confirmed_by, confirmed_at
+    ) values (
+      ${profileId}::uuid, ${wsId}::uuid, ${siteId}::uuid, 1,
+      'site-energy-profile.v1', 'consumption', 'rechner_snapshot',
+      ${snapshotId}::uuid, ${projectId}::uuid, 1,
+      ${JSON.stringify(fixtureEnergyProfile)}::jsonb,
+      decode(repeat('11', 32), 'hex'), 1, 1, ${actorId}::uuid, now()
+    )
+  `);
+
+  return { actorId, siteId, projectId, snapshotId, requirementId, profileId };
+}
+
+async function fixtureCalculationJob(tx: TenantTx, wsId: string): Promise<{
+  actorId: string;
+  siteId: string;
+  projectId: string;
+  snapshotId: string;
+  requirementId: string;
+  profileId: string;
+  jobId: string;
+}> {
+  const graph = await fixtureEnergyGraph(tx, wsId);
+  const jobId = randomUUID();
+  await tx.execute(sql`
+    insert into project_calculation_job (
+      id, workspace_id, project_id, site_id, address_revision,
+      pin_confirmed_address_revision, profile_id, profile_revision,
+      confirmed_profile_revision, confirmed_address_revision,
+      requirement_id, requirement_revision, source_snapshot_id,
+      reservation_key, provider_recipe_version, contract_version,
+      model_id, model_version, source_revision, defaults_version,
+      state, attempt_count, next_attempt_at, created_by
+    ) values (
+      ${jobId}::uuid, ${wsId}::uuid, ${graph.projectId}::uuid,
+      ${graph.siteId}::uuid, 1, 1, ${graph.profileId}::uuid, 1, 1, 1,
+      ${graph.requirementId}::uuid, 1, ${graph.snapshotId}::uuid,
+      decode(repeat('22', 32), 'hex'), 'pvgis-5.3-sarah3-2020.v1',
+      'planning-calculation.v1', 'wmee-solar', '1.0.0', ${"a".repeat(40)},
+      'wmee-planning-defaults.v1', 'queued', 0, now(), ${graph.actorId}::uuid
+    )
+  `);
+  return { ...graph, jobId };
+}
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -155,6 +288,57 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         ${`${id}@test.local`}, ${`${id}@test.local`})
     `);
   },
+  contact_legal_hold: async (tx, wsId) => {
+    const contactId = randomUUID();
+    await tx.execute(sql`
+      insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
+      values (${contactId}::uuid, ${wsId}::uuid, 'Legal Hold Fixture',
+        ${`${contactId}@test.local`}, ${`${contactId}@test.local`})
+    `);
+    await tx.execute(sql`
+      insert into contact_legal_hold (workspace_id, contact_id, reason)
+      values (${wsId}::uuid, ${contactId}::uuid, 'fixture')
+    `);
+  },
+  erasure_tombstone: async (tx, wsId) => {
+    const contactId = randomUUID();
+    const operationId = randomUUID();
+    await tx.execute(sql`
+      insert into contact (
+        id, workspace_id, display_name, deleted_at
+      ) values (
+        ${contactId}::uuid, ${wsId}::uuid,
+        ${`geloescht-${contactId}`}, now()
+      )
+    `);
+    await tx.execute(sql`
+      insert into erasure_operation_locator (operation_id, scope_id)
+      values (${operationId}::uuid, ${wsId}::uuid)
+    `);
+    await tx.execute(sql`
+      insert into erasure_tombstone (
+        operation_id, workspace_id, contact_id, reason, graph_sha256,
+        tombstone_sha256, graph_ids, eligible_at, erased_at
+      ) values (
+        ${operationId}::uuid, ${wsId}::uuid, ${contactId}::uuid,
+        'inactive_lead_24_months', decode(repeat('55', 32), 'hex'),
+        decode(repeat('66', 32), 'hex'),
+        ${JSON.stringify({
+          contactId,
+          legalHoldIds: [],
+          siteIds: [],
+          projectIds: [],
+          profileIds: [],
+          jobIds: [],
+          revisionIds: [],
+          requirementIds: [],
+          snapshotIds: [],
+          receiptIds: [],
+        })}::jsonb,
+        now() - interval '1 day', now()
+      )
+    `);
+  },
   site: async (tx, wsId) => {
     await tx.execute(sql`insert into site (workspace_id, city) values (${wsId}::uuid, 'fixture')`);
   },
@@ -177,6 +361,76 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         ${wsId}::uuid, ${projectId}::uuid, 1,
         'project-requirements.rechner.v1', ${snapshotId}::uuid,
         ${JSON.stringify(fixtureRequirements)}::jsonb
+      )
+    `);
+  },
+  site_energy_profile: async (tx, wsId) => {
+    await fixtureEnergyGraph(tx, wsId);
+  },
+  project_calculation_job: async (tx, wsId) => {
+    await fixtureCalculationJob(tx, wsId);
+  },
+  project_calculation_revision: async (tx, wsId) => {
+    const graph = await fixtureCalculationJob(tx, wsId);
+    const leaseToken = randomUUID();
+    const inputSnapshot = {
+      contractVersion: "planning-calculation.v1",
+      canonicalizationVersion: "planning-jcs.v1",
+      bindings: {
+        workspaceId: wsId,
+        projectId: graph.projectId,
+        siteId: graph.siteId,
+      },
+    };
+    const providerSnapshot = {
+      provider: "pvgis",
+      apiVersion: "5_3",
+      recipeVersion: "pvgis-5.3-sarah3-2020.v1",
+    };
+    await tx.execute(sql`
+      update project_calculation_job
+      set state = 'running', attempt_count = 1, started_at = now(),
+          lease_token = ${leaseToken}::uuid,
+          lease_expires_at = now() + interval '5 minutes',
+          input_sha256 = decode(repeat('33', 32), 'hex'),
+          input_snapshot = ${JSON.stringify(inputSnapshot)}::jsonb,
+          provider_snapshot = ${JSON.stringify(providerSnapshot)}::jsonb
+      where workspace_id = ${wsId}::uuid and id = ${graph.jobId}::uuid
+    `);
+    const resultId = randomUUID();
+    const result = {
+      contractVersion: "planning-calculation.v1",
+      model: {
+        id: "wmee-solar",
+        version: "1.0.0",
+        sourceRevision: "a".repeat(40),
+      },
+      inputSha256: "33".repeat(32),
+      resultSha256: "44".repeat(32),
+      quality: "server_reproduced_estimate",
+      validationStatus: "not_f4_reference_validated",
+    };
+    await tx.execute(sql`
+      insert into project_calculation_revision (
+        id, workspace_id, project_id, site_id, revision, job_id,
+        address_revision, pin_confirmed_address_revision, profile_id,
+        profile_revision, confirmed_profile_revision,
+        confirmed_address_revision, requirement_id, requirement_revision,
+        source_snapshot_id, contract_version, model_id, model_version,
+        source_revision, defaults_version, quality, validation_status,
+        input_sha256, result_sha256, input_snapshot, provider_snapshot,
+        result, created_by
+      ) values (
+        ${resultId}::uuid, ${wsId}::uuid, ${graph.projectId}::uuid,
+        ${graph.siteId}::uuid, 1, ${graph.jobId}::uuid, 1, 1,
+        ${graph.profileId}::uuid, 1, 1, 1, ${graph.requirementId}::uuid, 1,
+        ${graph.snapshotId}::uuid, 'planning-calculation.v1', 'wmee-solar',
+        '1.0.0', ${"a".repeat(40)}, 'wmee-planning-defaults.v1',
+        'server_reproduced_estimate', 'not_f4_reference_validated',
+        decode(repeat('33', 32), 'hex'), decode(repeat('44', 32), 'hex'),
+        ${JSON.stringify(inputSnapshot)}::jsonb,
+        ${JSON.stringify(providerSnapshot)}::jsonb,
+        ${JSON.stringify(result)}::jsonb, ${graph.actorId}::uuid
       )
     `);
   },
@@ -293,6 +547,11 @@ export const TENANT_EXEMPT = new Set<string>([
   // Suite also nie auf — der Eintrag ist harmlose, dokumentierende
   // Absicherung falls sich das je ändert.
   "__drizzle_migrations",
+  // Globale, zweispaltige und WORM-geschützte ID-Route für
+  // replay_erasure_tombstone(uuid). Sie enthält keine Fachdaten und bewusst
+  // keine workspace_id-Spalte: Erst der Definer-Lookup setzt den Tenant-
+  // Kontext, bevor der neunspaltige FORCE-RLS-Tombstone gelesen wird.
+  "erasure_operation_locator",
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -323,7 +582,12 @@ export const TENANT_EXEMPT_AUTH = new Set<string>([
 // Regel 1 (UNIQUE (workspace_id, id)): existiert, damit ein
 // zusammengesetzter FK auf die Tabelle zeigen kann. Append-only-Protokolle
 // sind Blätter im Referenzgraph — auf sie zeigt nie ein FK.
-export const COMPOSITE_KEY_EXEMPT = new Set<string>(["domain_events", "audit_log"]);
+export const COMPOSITE_KEY_EXEMPT = new Set<string>([
+  "domain_events",
+  "audit_log",
+  // WORM-Blatt mit eigener operation_id-Identität; kein FK darf darauf zeigen.
+  "erasure_tombstone",
+]);
 
 // Regel 3 (FK workspace_id -> workspace.id): koppelt die Löschbarkeit des
 // Workspace an die der Zeile. Bei append-only-Protokollen (drizzle/0004,

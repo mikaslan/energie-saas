@@ -33,6 +33,9 @@ describe("Provider-Membership-Signaturen", () => {
     expect(fresh).toContain(
       "identity_reconciler>app_owner@provider_admin:true/false/false",
     );
+    expect(fresh).toContain(
+      "app_worker>app_migrator@provider_admin:false/false/true",
+    );
     expect(retained).not.toContain(
       "identity_reconciler>provider_admin@provider_bootstrap:true/false/false",
     );
@@ -45,8 +48,8 @@ describe("Provider-Membership-Signaturen", () => {
     expect(retained).toContain(
       "identity_reconciler>app_legacy@provider_bootstrap:true/false/false",
     );
-    expect(fresh).toHaveLength(14);
-    expect(retained).toHaveLength(14);
+    expect(fresh).toHaveLength(16);
+    expect(retained).toHaveLength(16);
   });
 });
 
@@ -72,6 +75,8 @@ describe.sequential("App-Rollen-/Type-/Datenbank-ACL-Katalogvertrag auf PostgreS
       create role app_auth login noinherit nosuperuser nobypassrls
         nocreatedb nocreaterole noreplication connection limit -1;
       create role app_worker login noinherit nosuperuser nobypassrls
+        nocreatedb nocreaterole noreplication connection limit -1;
+      create role app_erasure nologin noinherit nosuperuser nobypassrls
         nocreatedb nocreaterole noreplication connection limit -1;
       create role identity_reconciler nologin noinherit nosuperuser nobypassrls
         nocreatedb nocreaterole noreplication connection limit -1;

@@ -13,15 +13,26 @@
 // not supported with the 'cjs' output format", verifiziert beim ersten
 // lokalen Start). Die Aufgabenskizze nutzte Top-Level-await; hier stattdessen
 // in eine async main()-Funktion verpackt.
+import { randomUUID } from "node:crypto";
 import { PgBoss } from "pg-boss";
+import { calculatePlanningEstimate } from
+  "../lib/integrations/calculation/engine";
+import { buildPlanningCalculationInput } from
+  "../lib/integrations/calculation/prepare";
+import { fetchPvgisYieldSnapshots } from
+  "../lib/integrations/calculation/pvgis";
 import { requireServiceDatabaseUrl } from "../lib/db/role-env";
+import { createCalculationExecuteHandler } from "./calculation";
+import { createCalculationDatabaseGateway } from "./calculation-database";
 import { createHealthProbe, createHealthServer, startHeartbeat } from "./health";
 import {
   createFatalWorkerErrorReporter,
   createVerifiedPgBossDatabase,
 } from "./pgboss-database";
+import { createWorkerStartupGate } from "./startup-gate";
 
 const STARTED = new Date().toISOString();
+const CALCULATION_QUEUE = "calculation.execute";
 
 // Einziger Worker-Principal: kein stiller Rückfall auf die Runtime-Rolle. Der
 // Wert wird EINMAL aufgelöst, damit pg-boss und Health-Probe garantiert dieselbe
@@ -36,6 +47,7 @@ let stopHeartbeat: (() => void) | undefined;
 let shutdownPromise: Promise<void> | undefined;
 let fatalShutdown = false;
 let bossFailure: Error | undefined;
+const startupGate = createWorkerStartupGate();
 
 const reportFatalWorkerError = createFatalWorkerErrorReporter((source, error) => {
   bossFailure = error;
@@ -50,6 +62,11 @@ const reportFatalWorkerError = createFatalWorkerErrorReporter((source, error) =>
 const bossDatabase = createVerifiedPgBossDatabase(WORKER_URL, 5, (error) => {
   reportFatalWorkerError("pg-boss-pool", error);
 });
+const calculationGateway = createCalculationDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("calculation-pool", error),
+  2,
+);
 const boss = new PgBoss({
   db: bossDatabase,
   schema: "pgboss",
@@ -61,6 +78,17 @@ boss.on("error", (err) => {
   // obwohl keine Kundenjobs mehr bearbeitet werden. Docker startet ihn mit
   // `restart: always` nach dem geordneten Fehler-Shutdown neu.
   reportFatalWorkerError("pg-boss", err);
+});
+const calculationHandler = createCalculationExecuteHandler({
+  database: calculationGateway.database,
+  provider: { fetch: fetchPvgisYieldSnapshots },
+  buildInput: buildPlanningCalculationInput,
+  engine: {
+    async calculate(input) {
+      return calculatePlanningEstimate(input);
+    },
+  },
+  createLeaseToken: randomUUID,
 });
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
@@ -80,6 +108,9 @@ function closeHealthServer(): Promise<void> {
 }
 
 function shutdown(signal: string, fatal = false): Promise<void> {
+  // Synchron vor jedem await sichtbar: main() darf ab jetzt keinen weiteren
+  // Queue-/Heartbeat-/Server-Startschritt mehr registrieren.
+  startupGate.requestShutdown();
   fatalShutdown ||= fatal;
   shutdownPromise ??= (async () => {
     console.log(`[worker] ${signal} empfangen, fahre herunter …`);
@@ -94,8 +125,13 @@ function shutdown(signal: string, fatal = false): Promise<void> {
         await boss.stop({ graceful: true, timeout: 15_000 });
       } finally {
         // Bei einem benutzerdefinierten IDatabase-Adapter verwaltet pg-boss
-        // dessen Lifecycle bewusst nicht selbst.
-        await bossDatabase.close();
+        // dessen Lifecycle bewusst nicht selbst. Der Fachpool schliesst erst
+        // nach dem Drain, damit ein laufender Calculation-Handler seine letzte
+        // CAS-Transaktion noch abschliessen kann.
+        await Promise.all([
+          bossDatabase.close(),
+          calculationGateway.close(),
+        ]);
       }
     };
     const results = await Promise.allSettled([
@@ -117,10 +153,12 @@ function shutdown(signal: string, fatal = false): Promise<void> {
 }
 
 async function main() {
+  startupGate.assertOpen();
   // Gerüst hinter Env-Flag (Tooling-Mission): ohne SENTRY_DSN inaktiv. Werte
   // kommen mit der Einkaufsliste (docs/tooling/einkaufsliste.md, EU-Region!).
   if (process.env.SENTRY_DSN) {
     sentry = await import("@sentry/node");
+    startupGate.assertOpen();
     sentry.init({ dsn: process.env.SENTRY_DSN });
     console.log("[worker] Sentry aktiv");
   }
@@ -129,11 +167,28 @@ async function main() {
   // app_worker-Principal (und bei Neon Tenant/Timeline) live bestätigen.
   // Danach prüft derselbe Pool jede neu aufgebaute Probe-Verbindung erneut.
   await health.probe();
+  startupGate.assertOpen();
+  await calculationGateway.probe();
+  startupGate.assertOpen();
   await boss.start();
+  startupGate.assertOpen();
+  await boss.createQueue(CALCULATION_QUEUE, {
+    policy: "exclusive",
+    retryLimit: 10,
+    retryDelay: 1,
+    retryBackoff: true,
+    retryDelayMax: 60,
+    expireInSeconds: 900,
+  });
+  startupGate.assertOpen();
   await boss.createQueue("health.echo");
+  startupGate.assertOpen();
   await boss.work("health.echo", async (jobs) => {
     for (const job of jobs) console.log("[health.echo]", job.id, job.data);
   });
+  startupGate.assertOpen();
+  await boss.work(CALCULATION_QUEUE, calculationHandler);
+  startupGate.assertOpen();
   // M2 registriert hier pdf.render (Playwright/Chrome), M4 simulation.run (pvlib-Sidecar).
   // Job-Namenskonvention: "<modul>.<aufgabe>".
 
@@ -144,6 +199,7 @@ async function main() {
     console.log("[worker] Dead-Man-Heartbeat aktiv");
   }
 
+  startupGate.assertOpen();
   server.listen(8080, () => console.log("worker health on :8080"));
 }
 
@@ -154,6 +210,10 @@ process.once("SIGTERM", () => void shutdown("SIGTERM"));
 process.once("SIGINT", () => void shutdown("SIGINT"));
 
 main().catch(async (err) => {
+  if (startupGate.shutdownRequested) {
+    await shutdown("Startabbruch");
+    return;
+  }
   console.error("[worker] Startfehler:", err);
   bossFailure = err instanceof Error ? err : new Error(String(err));
   sentry?.captureException(err);

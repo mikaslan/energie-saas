@@ -39,6 +39,7 @@ const CUTOVER_LOCK_KEY_2 = 3;
 
 const APP_OWNER = "app_owner";
 const APP_WORKER = "app_worker";
+const APP_ERASURE = "app_erasure";
 const MEMBERSHIP_WRITER = "app_membership_writer";
 const IDENTITY_RECONCILER = "identity_reconciler";
 
@@ -49,6 +50,7 @@ const PROTECTED_ROLES = new Set([
   "app_system",
   "app_auth",
   APP_WORKER,
+  APP_ERASURE,
   MEMBERSHIP_WRITER,
   IDENTITY_RECONCILER,
 ]);
@@ -3907,6 +3909,7 @@ function targetMembershipSignatures(options: LegacyRoleCutoverOptions): string[]
     `app_membership_writer>app_owner@${options.expectedAdminRole}:false/false/false`,
     `app_membership_writer>app_system@${options.expectedAdminRole}:false/false/false`,
     `app_owner>app_migrator@${options.expectedAdminRole}:false/false/true`,
+    `app_worker>app_migrator@${options.expectedAdminRole}:false/false/true`,
     `identity_reconciler>app_owner@${options.expectedAdminRole}:true/false/false`,
   ].sort();
 }
