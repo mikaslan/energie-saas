@@ -92,6 +92,17 @@ export const TENANT_EXEMPT_AUTH = new Set<string>([
   "auth_rate_limit",
 ]);
 
+// Regel 1 (UNIQUE (workspace_id, id)): existiert, damit ein
+// zusammengesetzter FK auf die Tabelle zeigen kann. Append-only-Protokolle
+// sind Blätter im Referenzgraph — auf sie zeigt nie ein FK.
+export const COMPOSITE_KEY_EXEMPT = new Set<string>(["domain_events", "audit_log"]);
+
+// Regel 3 (FK workspace_id -> workspace.id): koppelt die Löschbarkeit des
+// Workspace an die der Zeile. Bei append-only-Protokollen (drizzle/0004,
+// drizzle/0005 sperren DELETE und TRUNCATE) entstünde ein Workspace, der
+// nicht mehr löschbar ist, ohne legalen Ausweg.
+export const WORKSPACE_FK_EXEMPT = new Set<string>(["domain_events", "audit_log"]);
+
 // ═══════════════════════════════════════════════════════════════════════
 // Materialisierte Views (Codex-Review #5).
 //

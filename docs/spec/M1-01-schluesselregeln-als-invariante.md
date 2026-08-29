@@ -1,6 +1,6 @@
 # M1-01 — Die Schlüsselregeln werden zur Test-Invariante
 
-> Status: Spec · erstellt 2026-08-28 · Vorbedingung für die M1-Datenmodellierung
+> Status: VERIFIED · erstellt 2026-08-28 · verifiziert 2026-08-29
 > Anlass: Ist-Bericht vom 2026-08-28. Zwei Prüfungen melden unabhängig, dass der
 > Schlüsselregel-Vertrag aus `modules/README.md:16-31` nicht nur ungetestet, sondern
 > bereits gebrochen ist.
@@ -81,20 +81,25 @@ Tenant-Tabellen), niemals über eine handgepflegte Tabellenliste — sonst veral
 Prüfung genau so still wie die Regel selbst.
 
 **Regel 1 — `UNIQUE (workspace_id, id)`.** Über `pg_constraint` / `pg_index`: für jede
-Tabelle außer `COMPOSITE_KEY_EXEMPT` muss ein Unique-Constraint oder ein Unique-Index
-existieren, dessen Spaltenmenge exakt `{workspace_id, id}` ist. Die Reihenfolge ist
-gleichgültig, die Menge nicht.
+Tabelle außer `COMPOSITE_KEY_EXEMPT` muss ein gültiger, unmittelbarer und
+einsatzbereiter Unique-Constraint oder Unique-Index existieren, dessen Spaltenmenge
+exakt `{workspace_id, id}` ist. Die Reihenfolge ist gleichgültig, die Menge nicht. Ein
+abgebrochener Concurrent-Index (`indisvalid = false`, `indisready = false` oder
+`indislive = false`), ein deferrable Unique-Ziel (`indimmediate = false`) oder ein
+Expression-/Partial-Index erfüllt die Regel nicht.
 
-**Regel 2 — kein einspaltiger FK auf eine Tenant-Entität.** Die schärfste und wichtigste
-Prüfung. Über `pg_constraint` mit `contype = 'f'`: für jeden FK, dessen **Zieltabelle**
-eine Tenant-Tabelle ist, muss die Spaltenmenge der Quelle `workspace_id` enthalten.
+**Regel 2 — kein einspaltiger oder positionsfalscher FK auf eine Tenant-Entität.** Die
+schärfste und wichtigste Prüfung. Über `pg_constraint` mit `contype = 'f'`: für jeden
+FK, dessen **Zieltabelle** eine Tenant-Tabelle ist, muss die Quelle `workspace_id`
+enthalten und diese Spalte muss an derselben Position auf `workspace_id` der Zieltabelle
+zeigen. Der FK muss außerdem validiert sein; `NOT VALID` erfüllt die Invariante nicht.
 Ausnahme: FKs, deren Ziel `workspace` selbst ist (das ist Regel 3 und per Definition
-einspaltig). Diese Prüfung braucht keine Ausnahmeliste — ein einspaltiger FK auf eine
-Tenant-Entität ist immer ein Fehler.
+einspaltig). Diese Prüfung braucht keine Ausnahmeliste — ein einspaltiger,
+positionsfalscher oder unvalidierter FK auf eine Tenant-Entität ist immer ein Fehler.
 
 **Regel 3 — FK `workspace_id → workspace.id`.** Für jede Tabelle außer
-`WORKSPACE_FK_EXEMPT`: es existiert ein FK, dessen Quellspalte `workspace_id` und dessen
-Ziel `workspace(id)` ist.
+`WORKSPACE_FK_EXEMPT`: es existiert ein validierter FK, dessen Quellspalte
+`workspace_id` und dessen Ziel `workspace(id)` ist.
 
 Jede Fehlermeldung nennt die betroffene Tabelle **und** sagt, was zu tun ist — entweder
 die Constraint nachziehen oder mit Begründung in die Ausnahmeliste eintragen. Eine
@@ -126,6 +131,40 @@ ist der interessante Teil und darf nicht nur im Testcode stehen.
   durchgeführt und wieder zurückgenommen, nicht committet — er gehört als Notiz in die
   Abschlussmeldung.
 - `membership` trägt die UNIQUE, `domain_events` und `audit_log` nicht.
+
+## Verifikationsnachweis — 2026-08-29
+
+- Fokuslauf: 18/18 Tenant-Invarianten grün; Gesamtlauf: 19 Testdateien und 138/138
+  Tests grün. ESLint, Next-Typgenerierung, TypeScript und dependency-cruiser ebenfalls
+  grün; der Next.js-Produktionsbuild ist erfolgreich.
+- `npm run db:generate` meldet nach der Änderung keinen Schema-Drift. Migration,
+  Journal und Snapshot enthalten semantisch nur `membership_ws_id_uq`.
+- Vier temporäre Gegenproben wurden jeweils rot und danach vollständig entfernt:
+  ein einspaltiger FK auf `site`, ein positionsvertauschter zusammengesetzter FK, ein
+  nach fehlgeschlagenem Concurrent-Aufbau ungültiger Unique-Index und ein korrekt
+  zusammengesetzter, aber `NOT VALID` angelegter FK.
+- Der unabhängige Datenbankreview hat sowohl eine frische Migration als auch das Upgrade
+  0016 → 0017 mit vorhandenen Membership-Zeilen geprüft. Daten blieben erhalten; der
+  Index war unique/valid/ready. Ein provozierter Migrationsfehler ließ den Journalstand
+  atomar unverändert und war anschließend sauber wiederholbar.
+- Zwei unabhängige Reviews fanden keine P0/P1-Probleme. Das verbleibende operative
+  P2-Risiko des blockierenden Indexaufbaus ist im folgenden Deployment-Gate gebunden.
+
+## Rollout- und Rollback-Gate
+
+Die von Drizzle erzeugte Migration baut `membership_ws_id_uq` als normalen Unique-Index
+und damit innerhalb der transaktionalen Migrationsausführung. Das ist für den lokalen
+Checkpoint korrekt und atomar, kann auf einer aktiven oder großen `membership`-Tabelle
+aber Schreibzugriffe blockieren. **Vor einem Produktions-Deploy** ist deshalb entweder
+eine nachgewiesen kleine Tabelle beziehungsweise ein Wartungsfenster erforderlich oder
+ein separat getesteter, nichttransaktionaler `CREATE UNIQUE INDEX CONCURRENTLY`-Pfad mit
+Lock-/Statement-Timeout. Dieser operative Nachweis ist ein Deployment-Gate; dieser
+Checkpoint autorisiert kein Deployment.
+
+Bei einem reinen App-Rollback bleibt der additive Index bestehen. Er verändert keine
+fachlichen Daten und wird von späteren zusammengesetzten Foreign Keys als Referenzziel
+benötigt. Ein Drop ist nur vorwärtsgerichtet in einer eigenen Migration zulässig,
+nachdem nachgewiesen wurde, dass kein FK mehr davon abhängt.
 
 ## Bewusst nicht in diesem Schritt
 

@@ -11,7 +11,7 @@ Foreign-Key-Prüfungen in PostgreSQL verwenden RLS **nicht** als Sichtbarkeitsfi
 einfacher `site_id`-FK aus Workspace A kann deshalb problemlos auf eine Site aus Workspace B
 zeigen — die Mandantengrenze wäre über die Referenz umgangen (Codex-Review #7).
 
-Daraus folgen zwei bindende Regeln für jede Tenant-Entität:
+Daraus folgen drei bindende Regeln für jede Tenant-Entität:
 
 1. **Jede Tenant-Tabelle trägt zusätzlich zum Primary Key ein `UNIQUE (workspace_id, id)`.**
    Referenz: `site_ws_id_uq` in `lib/db/schema/site.ts`.
@@ -27,8 +27,8 @@ Daraus folgen zwei bindende Regeln für jede Tenant-Entität:
      foreign key (site_id) references site (id);
    ```
 
-Zusätzlich hat jede Tenant-Tabelle einen FK `workspace_id → workspace.id`, damit keine Zeile
-in einem gar nicht existierenden Workspace landen kann.
+3. **Jede Tenant-Tabelle hat einen validierten FK `workspace_id → workspace.id`**, damit
+   keine Zeile in einem gar nicht existierenden Workspace landen kann.
 
 ## RLS-Policies: genau EINE permissive Policy pro Tenant-Tabelle
 
@@ -47,6 +47,30 @@ Vertrag, den `tests/db/tenant-invariants.test.ts` erzwingt:
   Workspace-Transfers möglich, obwohl `using` korrekt aussieht.
 
 ## Durchsetzung
+
+`tests/db/tenant-invariants.test.ts` erzwingt die Tenant-Schlüsselregeln über die
+Schema-Kataloge, nicht über handgepflegte Tabellenlisten:
+
+- Jede referenzierbare Tenant-Tabelle unterhalb von `workspace` braucht ein
+  gültiges, unmittelbares und einsatzbereites `UNIQUE (workspace_id, id)` als Ziel
+  für zusammengesetzte Foreign Keys.
+- Jeder FK auf eine Tenant-Entität muss validiert sein, `workspace_id` in der
+  Quellspaltenmenge tragen und an derselben Position auf `workspace_id` der Zieltabelle
+  zeigen; ein einspaltiger, positionsfalscher oder `NOT VALID`-FK auf `site`,
+  `membership` oder künftige Tenant-Entitäten ist ein Testfehler.
+- Jede Tenant-Tabelle unterhalb von `workspace` braucht einen validierten FK
+  `workspace_id → workspace.id`, damit keine Zeile in einem nicht existierenden
+  Workspace landen kann.
+
+Ausnahmen sind Teil der Regel, aber teuer: Sie brauchen einen expliziten Eintrag in
+`COMPOSITE_KEY_EXEMPT` oder `WORKSPACE_FK_EXEMPT` mit Begründung an der Stelle der
+Entscheidung. `domain_events` und `audit_log` sind die heutigen Ausnahmen, weil sie
+append-only Protokolle und damit Blätter im Referenzgraph sind — auf sie zeigt
+definitionsgemäß kein FK. Ein `workspace_id → workspace.id`-FK wäre dort sogar schädlich:
+Die Trigger aus `drizzle/0004` und `drizzle/0005` sperren DELETE und TRUNCATE, sodass das
+Löschen eines Workspace an nicht löschbaren Protokollzeilen hängen würde. Das passt auch
+zum DSGVO-Löschkonzept: Die fachliche Zeile wird gelöscht, das Protokoll bleibt mit IDs
+stehen.
 
 `npm run depcruise` (Teil von `npm run check`) erzwingt drei Regeln
 (`.dependency-cruiser.cjs`):

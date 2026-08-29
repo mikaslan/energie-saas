@@ -10,6 +10,8 @@ import {
   isExempt,
   TENANT_EXEMPT,
   TENANT_EXEMPT_AUTH,
+  COMPOSITE_KEY_EXEMPT,
+  WORKSPACE_FK_EXEMPT,
   MATVIEW_ALLOWLIST,
 } from "../setup/tenant-fixtures";
 
@@ -38,6 +40,21 @@ interface PolicyRow {
 interface CountRow {
   n: number;
   [key: string]: unknown;
+}
+
+interface UniqueIndexRow {
+  table_name: string;
+  index_name: string;
+  columns: string[];
+}
+
+interface ForeignKeyRow {
+  constraint_name: string;
+  source_table: string;
+  target_table: string;
+  source_columns: string[];
+  target_columns: string[];
+  validated: boolean;
 }
 
 // allRelations = ALLE public-Relationen (inkl. exemptierter und Matviews);
@@ -75,6 +92,66 @@ async function policiesOf(table: string): Promise<PolicyRow[]> {
   return rows;
 }
 
+async function uniqueIndexes(): Promise<UniqueIndexRow[]> {
+  const { rows } = await testPool.query<UniqueIndexRow>(`
+    select
+      tbl.relname as table_name,
+      idx.relname as index_name,
+      array_agg(pg_get_indexdef(ix.indexrelid, key_cols.n, true) order by key_cols.n) as columns
+    from pg_index ix
+      join pg_class tbl on tbl.oid = ix.indrelid
+      join pg_namespace ns on ns.oid = tbl.relnamespace
+      join pg_class idx on idx.oid = ix.indexrelid
+      join lateral generate_series(1, ix.indnkeyatts) as key_cols(n) on true
+    where ns.nspname = 'public'
+      and ix.indisunique
+      and ix.indisvalid
+      and ix.indisready
+      and ix.indislive
+      and ix.indimmediate
+      and ix.indpred is null
+      and ix.indexprs is null
+    group by tbl.relname, idx.relname`);
+  return rows;
+}
+
+async function foreignKeys(): Promise<ForeignKeyRow[]> {
+  const { rows } = await testPool.query<ForeignKeyRow>(`
+    select
+      con.conname as constraint_name,
+      src.relname as source_table,
+      target.relname as target_table,
+      array_agg(src_att.attname::text order by src_cols.ordinality) as source_columns,
+      array_agg(target_att.attname::text order by src_cols.ordinality) as target_columns,
+      con.convalidated as validated
+    from pg_constraint con
+      join pg_class src on src.oid = con.conrelid
+      join pg_namespace src_ns on src_ns.oid = src.relnamespace
+      join pg_class target on target.oid = con.confrelid
+      join pg_namespace target_ns on target_ns.oid = target.relnamespace
+      join lateral unnest(con.conkey) with ordinality as src_cols(attnum, ordinality) on true
+      join lateral unnest(con.confkey) with ordinality as target_cols(attnum, ordinality)
+        on target_cols.ordinality = src_cols.ordinality
+      join pg_attribute src_att on src_att.attrelid = src.oid and src_att.attnum = src_cols.attnum
+      join pg_attribute target_att on target_att.attrelid = target.oid and target_att.attnum = target_cols.attnum
+    where con.contype = 'f'
+      and src_ns.nspname = 'public'
+      and target_ns.nspname = 'public'
+    group by con.conname, src.relname, target.relname, con.convalidated`);
+  return rows;
+}
+
+function sameColumnSet(actual: string[], expected: string[]): boolean {
+  return actual.length === expected.length && expected.every((col) => actual.includes(col));
+}
+
+function tenantEntitiesBelowWorkspace(): Relation[] {
+  // workspace ist die Tenant-Wurzel und trägt den Tenant-Key in id. Die
+  // Schlüsselregeln mit workspace_id gelten für die referenzierbaren
+  // Tenant-Entitäten darunter, abgeleitet aus derselben generischen tables-Liste.
+  return tables.filter((t) => t.name !== "workspace");
+}
+
 beforeAll(async () => {
   const res = await testPool.query<Relation>(`
     select c.relname as name, c.relkind
@@ -91,6 +168,100 @@ beforeAll(async () => {
     await withTenantOn(testPool, ws, (tx) =>
       tx.execute(sql`insert into workspace (id, name) values (${ws}::uuid, 'inv-test')`));
   }
+});
+
+describe("Schlüsselregeln für Tenant-Entitäten", () => {
+  it("jede referenzierbare Tenant-Tabelle hat UNIQUE (workspace_id, id)", async () => {
+    const keysByTable = new Map<string, string[][]>();
+    for (const idx of await uniqueIndexes()) {
+      keysByTable.set(idx.table_name, [...(keysByTable.get(idx.table_name) ?? []), idx.columns]);
+    }
+
+    const ohneCompositeKey = tenantEntitiesBelowWorkspace()
+      .filter((t) => !COMPOSITE_KEY_EXEMPT.has(t.name))
+      .filter((t) => !(keysByTable.get(t.name) ?? []).some((cols) => sameColumnSet(cols, ["workspace_id", "id"])))
+      .map((t) => t.name);
+
+    expect(
+      ohneCompositeKey,
+      `Tenant-Tabelle(n) ohne UNIQUE (workspace_id, id): ${ohneCompositeKey.join(", ")} — ` +
+        `Constraint/uniqueIndex nachziehen oder mit Begründung in COMPOSITE_KEY_EXEMPT eintragen.`,
+    ).toEqual([]);
+  });
+
+  it("kein FK auf eine Tenant-Entität ist unvalidiert, einspaltig oder ohne positionsgleichen workspace_id-Bezug", async () => {
+    const tenantTargets = new Set(tables.map((t) => t.name));
+    const verletzungen = (await foreignKeys())
+      .filter((fk) => tenantTargets.has(fk.target_table) && fk.target_table !== "workspace")
+      .filter((fk) => {
+        const workspacePosition = fk.source_columns.indexOf("workspace_id");
+        return (
+          !fk.validated ||
+          fk.source_columns.length === 1 ||
+          workspacePosition === -1 ||
+          fk.target_columns[workspacePosition] !== "workspace_id"
+        );
+      })
+      .map(
+        (fk) =>
+          `${fk.source_table}.${fk.constraint_name} (${fk.source_columns.join(", ")}) -> ` +
+          `${fk.target_table} (${fk.target_columns.join(", ")})${fk.validated ? "" : " [NOT VALID]"}`,
+      );
+
+    expect(
+      verletzungen,
+      `Unvalidierte oder tenantfalsche FK(s) auf Tenant-Entität: ${verletzungen.join(", ")} — ` +
+        `FK als FOREIGN KEY (workspace_id, <id>) auf (workspace_id, id) nachziehen; ` +
+        `für Regel 2 gibt es keine Ausnahmeliste.`,
+    ).toEqual([]);
+  });
+
+  it("jede Tenant-Tabelle unterhalb von workspace hat FK workspace_id -> workspace.id", async () => {
+    const fksByTable = new Map<string, ForeignKeyRow[]>();
+    for (const fk of await foreignKeys()) {
+      fksByTable.set(fk.source_table, [...(fksByTable.get(fk.source_table) ?? []), fk]);
+    }
+
+    const ohneWorkspaceFk = tenantEntitiesBelowWorkspace()
+      .filter((t) => !WORKSPACE_FK_EXEMPT.has(t.name))
+      .filter(
+        (t) =>
+          !(fksByTable.get(t.name) ?? []).some(
+            (fk) =>
+              fk.validated &&
+              fk.target_table === "workspace" &&
+              sameColumnSet(fk.source_columns, ["workspace_id"]) &&
+              sameColumnSet(fk.target_columns, ["id"]),
+          ),
+      )
+      .map((t) => t.name);
+
+    expect(
+      ohneWorkspaceFk,
+      `Tenant-Tabelle(n) ohne FK workspace_id -> workspace.id: ${ohneWorkspaceFk.join(", ")} — ` +
+        `Constraint nachziehen oder mit Begründung in WORKSPACE_FK_EXEMPT eintragen.`,
+    ).toEqual([]);
+  });
+
+  it("COMPOSITE_KEY_EXEMPT enthält keine Karteileichen", () => {
+    const geprueft = new Set(tenantEntitiesBelowWorkspace().map((r) => r.name));
+    const fehlend = [...COMPOSITE_KEY_EXEMPT].filter((n) => !geprueft.has(n));
+    expect(
+      fehlend,
+      `COMPOSITE_KEY_EXEMPT allowlistet nicht geprüfte Tenant-Tabelle(n): ${fehlend.join(", ")} — ` +
+        `Eintrag entfernen oder die Tabelle wieder anlegen.`,
+    ).toEqual([]);
+  });
+
+  it("WORKSPACE_FK_EXEMPT enthält keine Karteileichen", () => {
+    const geprueft = new Set(tenantEntitiesBelowWorkspace().map((r) => r.name));
+    const fehlend = [...WORKSPACE_FK_EXEMPT].filter((n) => !geprueft.has(n));
+    expect(
+      fehlend,
+      `WORKSPACE_FK_EXEMPT allowlistet nicht geprüfte Tenant-Tabelle(n): ${fehlend.join(", ")} — ` +
+        `Eintrag entfernen oder die Tabelle wieder anlegen.`,
+    ).toEqual([]);
+  });
 });
 
 describe("Tenant-Invarianten über ALLE Tabellen", () => {

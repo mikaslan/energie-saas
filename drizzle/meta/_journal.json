@@ -120,6 +120,13 @@
       "when": 1787825115176,
       "tag": "0016_reconcile_generic_error",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787929834847,
+      "tag": "0017_rare_magma",
+      "breakpoints": true
     }
   ]
 }

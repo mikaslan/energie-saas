@@ -41,5 +41,11 @@ export const membership = pgTable(
     capabilities: jsonb("capabilities").$type<Record<string, boolean>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("membership_ws_user_uq").on(t.workspaceId, t.userId)],
+  (t) => [
+    uniqueIndex("membership_ws_user_uq").on(t.workspaceId, t.userId),
+    // Normale Tenant-Entität: M1 referenziert Memberships für Zuweisungen
+    // und Sichtbarkeit. Dafür braucht auch membership das tenantgebundene
+    // FK-Ziel, nicht nur den fachlichen workspace/user-Schlüssel.
+    uniqueIndex("membership_ws_id_uq").on(t.workspaceId, t.id),
+  ],
 );
