@@ -63,9 +63,11 @@ Verworfene Alternativen:
 
 - Alle mutable Uploads verwenden `put()`, immutable Uploads (PDFs, Belege)
   nutzen `putImmutable()`; SHA256-Hash ist Pflichtfeld in der DB.
-- Zwei Buckets: `S3_BUCKET` (Archiv, Object Lock) und `S3_BUCKET_BACKUP`
+- Zwei Buckets: `S3_BUCKET` (Archiv, Object Lock) und `S3_BACKUP_BUCKET`
   (DB-Dumps, Versioning + Lock-Retention 30 Tage Governance).
-- Env-Vars: `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
-  `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_BUCKET_BACKUP`.
+- Archiv/App: `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
+  `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`. Backup-Host: vollständig eigener minimaler
+  Schlüsselsatz `S3_BACKUP_ENDPOINT`, `S3_BACKUP_REGION`, `S3_BACKUP_ACCESS_KEY_ID`,
+  `S3_BACKUP_SECRET_ACCESS_KEY`, `S3_BACKUP_BUCKET`; kein Credential-Fallback.
 - Signierte URLs 5 min (Read) / 10 min (Upload) — konfigurierbar.
 - Provider-Wechsel = Env-Wechsel; Code bleibt S3-kompatibel.

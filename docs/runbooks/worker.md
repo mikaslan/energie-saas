@@ -1,13 +1,20 @@
 <!-- docs/runbooks/worker.md -->
 # Runbook Worker-Host
 
-- Deploy: auf dem Hetzner-Host `docker compose -f worker/compose.yaml up -d --build`
+- Deploy: auf dem Hetzner-Host mit ausschließlich `POSTGRES_URL_WORKER` sowie den
+  nicht geheimen erwarteten Neon-Tenant-/Timeline-IDs im Compose-Environment:
+  `docker compose -f worker/compose.yaml up -d --build`. Die URL verwendet den
+  direkten Neon-Endpoint, nicht `-pooler`.
 - Health: `curl -s localhost:8080/health` → `{"ok":true,"startedAt":"..."}`
 - Degradation: Worker-Ausfall verzögert Jobs (PDF/Simulation), blockiert NIE das Portal.
 - Logs: `docker compose -f worker/compose.yaml logs -f worker`
 - Neustart: `docker compose -f worker/compose.yaml restart worker`
-- Alarm: Uptime-Check auf /health (z. B. UptimeRobot) → einrichten, sobald der Host produktiv ist.
+- Alarm: `/health` bleibt ausschließlich auf `127.0.0.1` für Compose/Hostchecks.
+  Externes Monitoring läuft über den Dead-Man-Ping; kein unauthentifizierter
+  Reverse-Proxy auf den Health-Port.
 - Hetzner-Provisionierung selbst ist ein Deploy-Schritt bei M2-Bedarf, kein M0-Blocker.
+- Container: Multi-Stage-Build bündelt den Worker nach `dist/worker.cjs`; das finale
+  Image enthält nur Production-Dependencies und läuft als Non-Root-User `node`.
 
 ## Doku-Abweichungen von der Aufgabenskizze (context7, Stand 2026-08-26)
 
@@ -43,31 +50,38 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
 5. **`stop(options?)`**: `{ graceful?: boolean; close?: boolean; timeout?:
    number }`, Default `graceful: true, close: true, timeout: 30000`. Im
    Roundtrip-Test genügt `{ graceful: false }` (Skizze); der Worker selbst
-   nutzt beim Signal-Shutdown `{ graceful: true, timeout: 10_000 }` für ein
-   sauberes Draining laufender Jobs statt eines abrupten Stopps.
-6. **Schema/Extensions:** pg-boss v12 legt sein eigenes Schema (`pgboss`,
-   konfigurierbar) selbst an (`createSchema: true` per Default) und benötigt
-   dafür laut aktueller Doku (`docs/install.md`) **nur** das
-   Datenbank-Privileg `CREATE ON DATABASE …` — **keine** `CREATE EXTENSION
-   pgcrypto` o.ä. mehr (das war eine ältere Anforderung). Die
-   embedded-postgres-Testrolle `app_test` (siehe
-   `tests/setup/embedded-postgres.ts`) bekommt bereits beim Bootstrap
-   `grant all privileges on database energie_saas_test to app_test`, was das
-   nötige `CREATE`-Recht einschließt. Ergebnis: **kein Fix nötig** — der
-   Roundtrip-Test lief unter der nicht-superuser `app_test`-Rolle beim ersten
-   Versuch durch (nach Behebung des Import-Bugs oben), pg-boss legte sein
-   `pgboss`-Schema anstandslos an. Kein Extension-Workaround erforderlich.
+   nutzt beim Signal-Shutdown `{ graceful: true, timeout: 15_000 }` für ein
+   sauberes Draining laufender Jobs. Compose gewährt dafür 60 Sekunden: neben den
+   15 Sekunden pg-boss-Drain bleiben damit Zeit für den begrenzten failWip-DB-Pfad,
+   Health-Server-Close und Sentry-Flush, ohne Docker-SIGKILL mitten im Jobzustand.
+6. **Schema/Extensions:** pg-boss v12 könnte sein Schema selbst anlegen
+   (`createSchema: true` per Default), das würde `app_worker` aber unnötig
+   `CREATE ON DATABASE` geben. Seit M1-03 legt der Admin das Schema `pgboss`
+   einmalig mit Owner `app_worker` an; der Worker startet fest mit
+   `schema: "pgboss", createSchema: false`. Er darf innerhalb dieses Schemas
+   seine pg-boss-Tabellen/Migrationen verwalten, besitzt aber weder USAGE noch
+   CREATE in `public` und keine Fach-/Auth-Grants. Die strikte Rollenprobe führt
+   unter genau dieser Rolle einen echten Queue-Roundtrip aus. Eine Extension
+   braucht pg-boss v12 weiterhin nicht.
    `TENANT_EXEMPT_PREFIXES` enthält weiterhin `"pgboss_"` als reiner
    Doku-Eintrag ohne Wirkung: die Tenant-Invarianten-Suite scannt laut
    `tests/db/tenant-invariants.test.ts` ausschließlich `n.nspname = 'public'`
    — pg-boss' eigenes Schema `pgboss` liegt außerhalb dieses Scans, unabhängig
    von Tabellennamen-Präfixen.
-7. **Node-Version:** pg-boss v12 verlangt laut Doku Node **>= 22.12** (für
+7. **Verifizierter Hauptpool:** pg-boss erhält über seinen offiziell unterstützten
+   `db: IDatabase`-Konstruktorpfad einen eigenen `pg.Pool`, dessen `verify`-Callback
+   jede neue Verbindung vor dem ersten Checkout als exakten `app_worker`-Principal
+   und – bei Neon – als exakten Tenant/Timeline-Branch attestiert. Die separate
+   Health-Probe benutzt denselben Vertrag. Auch Fehler eines idle Pool-Clients werden
+   synchron abgefangen und zusammen mit pg-boss-Fehlern genau einmal in den zentralen
+   fatalen Shutdown geroutet; die Readiness wird rot, WIP wird geordnet beendet und
+   Compose startet den Prozess nach Exitcode 1 neu.
+8. **Node-Version:** pg-boss v12 verlangt laut Doku Node **>= 22.12** (für
    `require(esm)`). `worker/Dockerfile` nutzt `node:22-slim` — dieser Tag
    trackt den jeweils aktuellen 22.x-Patch und erfüllt die Anforderung; beim
    ersten echten Build auf dem Hetzner-Host lohnt ein kurzer
    `node -v`-Check im Container.
-8. **`.dockerignore` ergänzt** (nicht in der Aufgabenskizze aufgeführt, aber
+9. **`.dockerignore` ergänzt** (nicht in der Aufgabenskizze aufgeführt, aber
    notwendig): `worker/compose.yaml` baut mit `context: ..` (Repo-Root). Ohne
    `.dockerignore` würde `COPY . .` im Dockerfile das lokal für diese Maschine
    (macOS/arm64) gebaute `node_modules` über das im Image per `npm ci` für
@@ -78,16 +92,15 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
 
 ## Verifikationsstand
 
-- Docker/Compose konnte auf dieser Maschine **nicht** ausgeführt werden (kein
-  Docker installiert) — `Dockerfile`/`compose.yaml` wurden nur statisch
-  geprüft (YAML-Parse via `js-yaml`, Pfad-/Kontext-Abgleich, keine
-  Tab-Einrückung). Ein echter `docker compose -f worker/compose.yaml up
-  --build` steht auf dem Hetzner-Host aus.
+- Dockerfile-Lint, expandierte Compose-Konfiguration und ein echter lokaler
+  Multi-Stage-Imagebuild sind am 2026-08-29 grün. CI baut dasselbe Image ebenfalls
+  wirklich. Der erste Host-Deploy samt tag-/digest-basiertem Rollback bleibt ein
+  eigenes Pilot-Gate; lokal wurde weder gepusht noch deployed.
 - Der lokale Worker-Start (`npx tsx worker/index.ts` gegen die
   embedded-postgres-Test-Instanz, `curl localhost:8080/health`) wurde
   verifiziert — siehe Task-11-Report für den genauen Log-Auszug.
 
-## Heartbeat & Backup (Gerüste aus der Tooling-Mission, 2026-08-27)
+## Heartbeat & Backup
 
 - **Dead-Man-Switch:** Ist `HEALTHCHECKS_PING_URL` gesetzt, pingt der Worker
   die URL nach jeder erfolgreichen DB-Probe (60-s-Takt, `startHeartbeat` in
@@ -95,6 +108,17 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
   Alarm bei healthchecks.io aus (Check dort: Period 1 min, Grace 5 min).
 - **Sentry:** Ist `SENTRY_DSN` gesetzt, initialisiert der Worker `@sentry/node`
   (App-seitig: `instrumentation.ts` / `instrumentation-client.ts`).
-- **Backup:** `worker/backup/backup.sh` (pg_dump → zstd → age → S3-Upload) per
-  Host-Cron, siehe Kopfkommentar; Schutzziele und Restore-Test in
-  docs/konzepte/backup-dr.md. Host-Pakete: postgresql-client, zstd, age, awscli.
+- **Backup:** `worker/backup/backup.sh` (pg_dump → zstd → age → S3-Upload) läuft
+  als Host-Cron ausschließlich mit getrennten `POSTGRES_BACKUP_*`-Werten,
+  0400/0600-Passfile und eigenem `S3_BACKUP_*`-Bucket-Key, niemals mit
+  Runtime-/Worker-/Archiv-Credentials.
+  FORCE RLS verlangt dafür vor Pilot einen eigens freigegebenen Backup- oder
+  providerseitigen Exportpfad samt Restore-Test; Details in
+  `docs/konzepte/backup-dr.md`. Der aktuelle `--no-owner --no-privileges`-Dump ist
+  ohne separaten Rollen-/Owner-/ACL-Restorevertrag noch **kein** vollständiges
+  M1-03-Wiederherstellungsartefakt. Lock, Payload-Timeout/Prozessbaum-Shutdown,
+  eigener Fehleralarm, exakter PG18-/Branch-Readback sowie versionierte
+  Object-Lock-/Checksum-/Retention-Readbacks sind lokal implementiert und adversarial
+  getestet. Der reale Provider-/IAM-Nachweis und ein echter Restore-Drill bleiben
+  Pilot-NO-GO. Host-Pakete: PostgreSQL-18-Client (`psql`, `pg_dump`), zstd, age,
+  AWS CLI v2, curl, openssl und GNU coreutils (`date`, `timeout`, `sha256sum`).

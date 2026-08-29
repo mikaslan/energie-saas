@@ -1,4 +1,12 @@
 import { execSync } from "node:child_process";
+import {
+  assertDestructiveTestDatabase,
+  assertNoAmbientPostgresOverrides,
+  parsePostgresConnectionUrl,
+  postgresConnectionTarget,
+  postgresConnectionTargetKey,
+  postgresTestTargetConfirmation,
+} from "../../lib/db/postgres-url";
 import { startEmbeddedPostgres } from "./embedded-postgres";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -18,54 +26,48 @@ import { startEmbeddedPostgres } from "./embedded-postgres";
 // einem eigenen, zufälligen Port); der Guard läuft trotzdem über beide Fälle,
 // damit er nicht nur auf dem selten benutzten Pfad getestet wird.
 // ═══════════════════════════════════════════════════════════════════════
-interface Ziel {
-  host: string;
-  port: string;
-  database: string;
-}
+const SERVICE_URL_ENV_NAMES = [
+  "POSTGRES_URL",
+  "POSTGRES_URL_AUTH",
+  "POSTGRES_URL_WORKER",
+  "POSTGRES_URL_MIGRATE",
+  "POSTGRES_URL_SYSTEM",
+] as const;
 
-function ziel(rawUrl: string): Ziel {
-  const u = new URL(rawUrl);
-  return {
-    host: u.hostname.toLowerCase(),
-    // Postgres-Default, damit "…:5432/db" und "…/db" als gleich gelten.
-    port: u.port || "5432",
-    database: decodeURIComponent(u.pathname.replace(/^\//, "")).toLowerCase(),
-  };
-}
+export function assertTestDatenbank(rawUrl: string): string {
+  const testUrl = parsePostgresConnectionUrl("POSTGRES_URL_TEST", rawUrl);
+  const z = postgresConnectionTarget(testUrl);
+  const testTargetKey = postgresConnectionTargetKey(testUrl);
+  assertDestructiveTestDatabase("POSTGRES_URL_TEST", testUrl);
 
-function assertTestDatenbank(url: string): void {
-  let z: Ziel;
-  try {
-    z = ziel(url);
-  } catch {
-    throw new Error("POSTGRES_URL_TEST ist keine gültige URL.");
-  }
-
-  if (!z.database.includes("test")) {
-    throw new Error(
-      `POSTGRES_URL_TEST zeigt auf die Datenbank "${z.database}" — der Name MUSS "test" ` +
-        `enthalten. Schutz davor, versehentlich gegen eine Dev-/Prod-Datenbank zu migrieren ` +
-        `und zu schreiben (das Superuser-Gate in scripts/migrate.mts fängt das NICHT ab: ` +
-        `eine normale Produktionsrolle ist weder Superuser noch BYPASSRLS).`,
-    );
-  }
-
-  const prod = process.env.POSTGRES_URL;
-  if (prod) {
-    let p: Ziel | undefined;
-    try {
-      p = ziel(prod);
-    } catch {
-      p = undefined; // unlesbares POSTGRES_URL ist hier kein Grund abzubrechen
-    }
-    if (p && p.host === z.host && p.port === z.port && p.database === z.database) {
+  for (const envName of SERVICE_URL_ENV_NAMES) {
+    const rawServiceUrl = process.env[envName];
+    if (!rawServiceUrl) continue;
+    const serviceUrl = parsePostgresConnectionUrl(envName, rawServiceUrl);
+    if (postgresConnectionTargetKey(serviceUrl) === testTargetKey) {
       throw new Error(
-        `POSTGRES_URL_TEST und POSTGRES_URL zeigen auf dasselbe Ziel ` +
+        `POSTGRES_URL_TEST und ${envName} zeigen auf dasselbe Ziel ` +
           `(${z.host}:${z.port}/${z.database}). Tests laufen NIE gegen die Dev-/Prod-DB.`,
       );
     }
   }
+
+  const rawSuperuserUrl = process.env.POSTGRES_URL_TEST_SUPERUSER;
+  if (rawSuperuserUrl) {
+    const superuserUrl = parsePostgresConnectionUrl(
+      "POSTGRES_URL_TEST_SUPERUSER",
+      rawSuperuserUrl,
+    );
+    if (postgresConnectionTargetKey(superuserUrl) !== testTargetKey) {
+      throw new Error(
+        "POSTGRES_URL_TEST_SUPERUSER muss exakt Host, Port und Datenbank von " +
+          "POSTGRES_URL_TEST verwenden.",
+      );
+    }
+    process.env.POSTGRES_TEST_SUPERUSER_VALIDATED_TARGET = testTargetKey;
+  }
+
+  return testTargetKey;
 }
 
 export default async function globalSetup() {
@@ -75,6 +77,10 @@ export default async function globalSetup() {
   let stopEmbedded: (() => Promise<void>) | undefined;
 
   try {
+    assertNoAmbientPostgresOverrides("Testsuite");
+    // Ein Marker aus einem früheren/verschachtelten Lauf darf nie genügen.
+    delete process.env.POSTGRES_TEST_SUPERUSER_VALIDATED_TARGET;
+
     if (!process.env.POSTGRES_URL_TEST) {
       const embedded = await startEmbeddedPostgres();
       process.env.POSTGRES_URL_TEST = embedded.url;
@@ -82,6 +88,9 @@ export default async function globalSetup() {
       // nicht prüfbar sind (siehe tests/setup/superuser-db.ts). Wird NIE als
       // POSTGRES_URL_TEST verwendet — sonst wären alle RLS-Tests wirkungslos.
       process.env.POSTGRES_URL_TEST_SUPERUSER = embedded.superuserUrl;
+      process.env.POSTGRES_TEST_TARGET_CONFIRM = postgresTestTargetConfirmation(
+        parsePostgresConnectionUrl("POSTGRES_URL_TEST", embedded.url),
+      );
       stopEmbedded = embedded.stop;
     }
 
@@ -91,13 +100,24 @@ export default async function globalSetup() {
     }
     assertTestDatenbank(url);
 
-    // BEIDE Variablen setzen, nicht nur POSTGRES_URL: scripts/migrate.mts liest
-    // seit der F24-Angleichung `POSTGRES_URL_MIGRATE ?? POSTGRES_URL`. Eine von
-    // außen gesetzte POSTGRES_URL_MIGRATE (Dev-/Prod-Ziel) hätte sonst Vorrang
-    // und würde die Testmigration gegen die falsche Datenbank fahren — genau
-    // die Lücke, die Codex-Review #8 für POSTGRES_URL geschlossen hat.
+    // Die eigentlichen Vitest-Module laufen absichtlich weiter über die
+    // historische Ein-Rollen-Testverbindung. Die Ausnahme ist sichtbar,
+    // test-only und zusätzlich an den Datenbanknamen gebunden; ohne diesen
+    // Wert würden die neuen Runtime-/Auth-URL-Gates korrekt Strict-Rollen
+    // verlangen und die Kompatibilitätssuite könnte nicht booten.
+    process.env.DB_ROLE_MODE = "test-legacy-single";
+
+    // Ausschließlich die explizite Migrationsvariable setzen. Der Migrator hat
+    // seit M1-03 keinen Runtime-Fallback mehr; ein ambient gesetztes Dev-/Prod-
+    // POSTGRES_URL kann den Testlauf damit nicht umlenken. Der test-only Modus
+    // ist zusätzlich oben an Umgebung und Datenbankname gebunden.
     execSync("npx tsx scripts/migrate.mts", {
-      env: { ...process.env, POSTGRES_URL: url, POSTGRES_URL_MIGRATE: url },
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        DB_ROLE_MODE: "test-legacy-single",
+        POSTGRES_URL_MIGRATE: url,
+      },
       stdio: "inherit",
     });
   } catch (err) {

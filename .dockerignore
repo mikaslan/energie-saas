@@ -8,5 +8,4 @@ node_modules
 .git
 .superpowers/pgdata
 *.tsbuildinfo
-.env
-.env.local
+.env*

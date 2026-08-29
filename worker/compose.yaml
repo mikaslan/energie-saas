@@ -3,8 +3,15 @@ services:
   worker:
     build: { context: .., dockerfile: worker/Dockerfile }
     restart: always
+    # 15 s pg-boss-Drain + bis zu 17 s failWip-DB-Timeout + Sentry/Socket-Close.
+    # 60 s verhindert SIGKILL mitten in der expliziten Jobfreigabe.
+    stop_grace_period: 60s
     environment:
-      - POSTGRES_URL=${POSTGRES_URL}
+      - NODE_ENV=production
+      - DB_ROLE_MODE=strict
+      - POSTGRES_URL_WORKER=${POSTGRES_URL_WORKER:?POSTGRES_URL_WORKER fehlt}
+      - POSTGRES_EXPECTED_NEON_TENANT_ID=${POSTGRES_EXPECTED_NEON_TENANT_ID:?POSTGRES_EXPECTED_NEON_TENANT_ID fehlt}
+      - POSTGRES_EXPECTED_NEON_TIMELINE_ID=${POSTGRES_EXPECTED_NEON_TIMELINE_ID:?POSTGRES_EXPECTED_NEON_TIMELINE_ID fehlt}
       # Monitoring-Gerüste (Tooling-Mission): leer = inaktiv, siehe .env.example
       - SENTRY_DSN=${SENTRY_DSN:-}
       - HEALTHCHECKS_PING_URL=${HEALTHCHECKS_PING_URL:-}

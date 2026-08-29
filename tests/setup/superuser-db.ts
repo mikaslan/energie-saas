@@ -1,4 +1,10 @@
 import { Pool } from "pg";
+import {
+  assertDestructiveTestDatabase,
+  parsePostgresConnectionUrl,
+  postgresConnectionTarget,
+  postgresConnectionTargetKey,
+} from "../../lib/db/postgres-url";
 
 // ═══════════════════════════════════════════════════════════════════════
 // Superuser-Verbindung — NUR für Testaussagen, die sich unter RLS strukturell
@@ -21,15 +27,33 @@ import { Pool } from "pg";
 let poolInstance: Pool | undefined;
 
 export function superuserPool(): Pool {
-  const url = process.env.POSTGRES_URL_TEST_SUPERUSER;
-  if (!url) {
+  const rawUrl = process.env.POSTGRES_URL_TEST_SUPERUSER;
+  const rawTestUrl = process.env.POSTGRES_URL_TEST;
+  if (!rawUrl || !rawTestUrl) {
     throw new Error(
-      "POSTGRES_URL_TEST_SUPERUSER ist nicht gesetzt. Die embedded-Test-DB setzt sie " +
+      "POSTGRES_URL_TEST_SUPERUSER oder POSTGRES_URL_TEST ist nicht gesetzt. " +
+        "Die embedded-Test-DB setzt beide " +
         "automatisch; für eine externe Test-DB muss sie explizit gesetzt werden " +
         "(siehe .github/workflows/ci.yml).",
     );
   }
-  poolInstance ??= new Pool({ connectionString: url, max: 2 });
+
+  const testUrl = parsePostgresConnectionUrl("POSTGRES_URL_TEST", rawTestUrl);
+  const superuserUrl = parsePostgresConnectionUrl("POSTGRES_URL_TEST_SUPERUSER", rawUrl);
+  const target = postgresConnectionTarget(testUrl);
+  const targetKey = postgresConnectionTargetKey(testUrl);
+  assertDestructiveTestDatabase("POSTGRES_URL_TEST", testUrl);
+  if (
+    !target.database.includes("test") ||
+    postgresConnectionTargetKey(superuserUrl) !== targetKey ||
+    process.env.POSTGRES_TEST_SUPERUSER_VALIDATED_TARGET !== targetKey
+  ) {
+    throw new Error(
+      "Die Superuser-Testverbindung wurde nicht für exakt dieselbe Testdatenbank validiert.",
+    );
+  }
+
+  poolInstance ??= new Pool({ connectionString: rawUrl, max: 2 });
   return poolInstance;
 }
 

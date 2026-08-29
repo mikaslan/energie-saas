@@ -243,11 +243,11 @@ Korrektur zwingend als neue 0019; dieselbe Journalnummer würde nicht erneut aus
 
 ## Pilot-/Produktions-Gate
 
-M1-02 ist lokal ein Backstop gegen vergessene Handler-/Serviceprüfungen. Es ist keine
-Garantie gegen beliebiges SQL: Custom-GUCs lassen sich vom SQL-Caller auf NULL oder eine
-fremde Actor-ID setzen, und die heutige Ein-Rollen-App ist noch Tabellenowner. ADR 0003
-allein schließt das nicht vollständig, solange `app_runtime` direktes Membership-DML
-und frei setzbare Actor-GUCs besitzt.
+M1-02 ist lokal ein Backstop gegen vergessene Handler-/Serviceprüfungen. M1-03 hat die
+damals offene Membership-Lücke inzwischen lokal geschlossen: Runtime ist Nicht-Owner,
+hat nur SELECT auf `membership`, und Principal-Policies/Trigger verlangen zusätzlich
+die nicht fälschbare Markerrolle des isolierten `app_system`. Das ist weiterhin keine
+allgemeine Garantie gegen beliebiges SQL auf allen anderen Tenant-Tabellen.
 
 Vor dem ersten Pilotkunden ist daher zusätzlich nachzuweisen:
 
@@ -256,12 +256,13 @@ Vor dem ersten Pilotkunden ist daher zusätzlich nachzuweisen:
 - `withTenant`/`withAuthorizedTenant` sind strukturell aus Browser-/Produktmodulen
   ausgeschlossen;
 - Runtime-, System-/Bootstrap- und Migrationsrechte sind getrennt; direkter actorloser
-  Membership-DML der Runtime ist entweder entzogen oder an einen engen, getesteten
-  Systemprincipal gebunden;
+  Membership-DML der Runtime ist entzogen und an den getesteten `app_system`-Principal
+  plus NOLOGIN-Markerrolle gebunden;
 - Runtime-Grant-, Actor-Spoofing-, TRUNCATE- und Cross-Tenant-Gegenproben sind grün.
-- Die spätere `app_runtime`-Rolle besitzt genau die für `workspace … FOR UPDATE`
-  benötigten Rechte; eine reale Runtime-Grant-Probe führt den Statement-Trigger aus und
-  beweist zugleich, dass keine darüber hinausgehenden DDL-/Systemrechte bestehen.
+- `app_system` besitzt genau das für `workspace … FOR UPDATE` nötige SELECT/UPDATE;
+  Runtime scheitert bereits an der Tabellen-ACL. Eine Grant-Drift-Negativprobe erteilt
+  Runtime temporär UPDATE und beweist, dass dann der Principal-Trigger mit `42501`
+  übernimmt, ohne DDL-/Systemrechte zu öffnen.
 - Jeder spätere Membership-Service hält dieselbe globale Lock-Reihenfolge ein:
   **Workspace vor Membership**. Er darf vor dem eigentlichen DML keine Membership-Zeile
   per `FOR UPDATE`/`FOR SHARE` sperren; Paralleltests sichern dies ab. Für normale

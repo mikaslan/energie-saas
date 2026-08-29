@@ -53,8 +53,10 @@ Tenant-Transaktion setzt immer `app.workspace_id`, leert zuerst `app.actor_id` u
 den Actor erst nach erfolgreichem Membership-Lookup auf die verifizierte
 `user_identity.id`. `withAuthorizedTenant` ist ein privilegierter Adapterpfad mit einer
 vom Aufrufer vertrauenswürdig gelieferten und DB-seitig membership-validierten Identität;
-`withTenant` bleibt ausschließlich für
-actorlose System-/Recovery-Arbeit und Tests. Keiner dieser beiden Pfade gehört in einen
+`withTenant` bleibt innerhalb der Web-App nur für enge interne Runtime-Arbeit (heute
+insbesondere das Ablehnungs-Audit) und Tests. Echter actorloser Membership-Bootstrap/
+Recovery läuft seit M1-03 ausschließlich mit dem getrennten `app_system`-Principal,
+dessen Secret die Web-App nicht besitzt. Keiner dieser Pfade gehört in einen
 Browser-Handler. Fachmodule importieren deshalb nur `TenantTx` aus `lib/db/types.ts`;
 dependency-cruiser lässt die Tenant-Einstiegsfunktionen innerhalb von `lib/`
 ausschließlich an `lib/action.ts` zu.
@@ -64,7 +66,12 @@ Als erste SQL-Anweisung setzt jeder verwaltete Tenant-Start die Isolation expliz
 SQLSTATE `25001` gesperrt; ein veränderter Pool-Default kann den Parallelitätsvertrag
 damit nicht stillschweigend abschalten.
 
-`membership` besitzt gemäß ADR 0004 zwei unabhängige Datenbankschranken:
+`membership` besitzt gemäß ADR 0003/0004 drei unabhängige Datenbankschranken:
+
+- `app_runtime` hat auf Tabellenebene nur SELECT. Drei weitere restriktive Principal-
+  Policies und der Statement-Trigger verlangen außerdem die nicht fälschbare
+  NOLOGIN-Markerrolle `app_membership_writer`. Nur der isolierte `app_system` ist
+  Mitglied; ein versehentliches Runtime-DML-Re-Grant bleibt damit wirkungslos.
 
 - Drei befehlsspezifische `AS RESTRICTIVE`-Policies blockieren Self-INSERT, Self-UPDATE
   und Self-DELETE, ohne den SELECT der eigenen Membership auszublenden.
@@ -81,12 +88,15 @@ damit nicht stillschweigend abschalten.
 
 Der actorlose NULL-Pfad ist eine explizite Vertrauensgrenze, kein anonymer Nutzer. Ein
 Custom-GUC ist keine DB-Authentifizierung und kann von einem beliebigen SQL-Caller
-gesetzt werden; deshalb sind ausschließlich parametrisierte Queries zulässig und das
-Pilot-/Produktions-Gate aus M1-02 plus ADR 0003 bindend.
+gesetzt werden. Für Membership ist der GUC deshalb nicht mehr der Türsteher; die echte
+DB-Rolle ist es. Parametrisierte Queries und das Pilot-/Produktions-Gate aus M1-03
+bleiben für alle übrigen Tenant-Tabellen bindend.
 
-Ein künftiger Membership-Service prüft dieselben Rechte **vor** dem SQL und wirft einen
-`PermissionDeniedError`, damit `authorizedAction` die Ablehnung auditieren kann. RLS und
-Trigger bleiben Defense in depth und ersetzen diesen Service-Vertrag nicht.
+Ein künftiger Online-Membership-Service braucht vorab eine eigene Command-Spec und leitet
+den Actor atomar aus einer live DB-geprüften Better-Auth-Session oder einem isolierten
+Command-Service ab. Er grantet Runtime niemals direktes Membership-DML zurück. Erst dann
+erzeugt er vor dem SQL verständliche `PermissionDeniedError`; ACL, RLS und Trigger
+bleiben Defense in depth.
 
 ## Durchsetzung
 

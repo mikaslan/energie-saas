@@ -134,6 +134,13 @@
       "when": 1787963136235,
       "tag": "0018_m1_02_actor_context",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787965786722,
+      "tag": "0019_membership_principal_gate",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,7 @@ Stadia 20 $ + Resend Pro 20 $ + Neon Launch ~5–20 $).
 |---|---|---|---|---|---|---|
 | 1 | GitHub `workflow`-Scope | CI scharf schalten (alle M) | 0 € | Terminal + Browser | — (danach pushen, s. u.) | ✅ 27.08. |
 | 2 | Hetzner Cloud CX33 | Worker-Host: PDF, pvlib, pg-boss (M2–M4) | 8,49 €/M netto + IPv4 ~0,50 € | https://console.hetzner.com | — (SSH-Zugang für Deploy) | ✅ 28.08. — IP 2.28.70.140, Docker drauf |
-| 3 | Hetzner Object Storage | GoBD-WORM-Archiv + Backups (M2/M3) | 4,99 €/M netto (1 TB) | https://console.hetzner.com | `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_BUCKET_BACKUP` | P1 sofort |
+| 3 | Hetzner Object Storage | GoBD-WORM-Archiv + Backups (M2/M3) | 4,99 €/M netto (1 TB) | https://console.hetzner.com | getrennter Archiv-Satz `S3_*` und Backup-Satz `S3_BACKUP_*` gemäß `.env.example` | P1 sofort |
 | 4 | Sentry (Developer, **EU-Region**) | Fehler-Monitoring App+Worker | 0 € (später Team 26 $/M) | https://sentry.io/signup/ | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` (+ `SENTRY_AUTH_TOKEN` für Source-Maps) | P1 sofort |
 | 5 | healthchecks.io (Free) | Dead-Man-Alarm des Workers | 0 € | https://healthchecks.io/accounts/signup/ | `HEALTHCHECKS_PING_URL` | P1 sofort |
 | 6 | Anthropic Console | Bill Reading (Haiku 4.5), Angebotstexte (Sonnet 5) ab M2/M4 | nutzungsbasiert ~1–10 €/M, Prepaid | https://platform.claude.com/ | `ANTHROPIC_API_KEY` | P1 sofort |
@@ -46,9 +46,14 @@ Per API bestellt (`scripts/hetzner-provision.py`): CX33 `energie-saas-worker`
 Docker + Compose installiert. Details in STATUS.md.
 
 ### 3. Hetzner Object Storage (⚠️ Object Lock geht NUR bei Bucket-Anlage)
-1. In console.hetzner.com → Object Storage: S3-Credentials erzeugen.
+1. In console.hetzner.com → Object Storage: zwei getrennte S3-Credentials erzeugen:
+   Archiv/App und minimaler Backup-Key ohne Governance-Bypass.
 2. AVV/DSGVO im Kundenkonto abschließen (Hetzner Docs → Data Privacy).
-3. **Buckets lege ich per Skript an** (Object-Lock-Flag ist Pflicht bei Anlage!) — nur Credentials in `.env.local` eintragen: `S3_ENDPOINT=https://nbg1.your-objectstorage.com`, `S3_REGION=nbg1`, Keys, `S3_BUCKET=energie-saas-archiv`, `S3_BUCKET_BACKUP=energie-saas-backup`.
+3. **Buckets lege ich per Skript an** (Object-Lock-Flag ist Pflicht bei Anlage!).
+   Archivwerte gehören in den App-Secret-Store (`S3_ENDPOINT`, `S3_REGION`, Keys,
+   `S3_BUCKET=energie-saas-archiv`); `S3_BACKUP_ENDPOINT`, `S3_BACKUP_REGION`,
+   Backup-Key und `S3_BACKUP_BUCKET=energie-saas-backup` ausschließlich auf den
+   Backup-Host — niemals gemeinsam in `.env.local` des Web-Prozesses.
 4. Danach sage ich dir das Ergebnis des If-None-Match-Tests (ADR 0002 Test-Gate).
 
 ### 4. Sentry (⚠️ EU-Region ist bei Org-Anlage endgültig)

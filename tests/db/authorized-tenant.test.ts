@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { Pool } from "pg";
 import { testPool } from "../setup/test-db";
 import { withTenantOn, withAuthorizedTenantOn } from "@/lib/db/tenant";
 import { PermissionDeniedError, can } from "@/lib/permissions";
@@ -107,6 +108,46 @@ describe("withAuthorizedTenant bindet den Kontext an die Membership", () => {
       tx.execute<{ n: number; [k: string]: unknown }>(sql`select count(*)::int as n from workspace`),
     );
     expect(rows.rows[0].n).toBe(1);
+  });
+
+  it("ignoriert gleichnamige pg_temp-Tabellen bei der Autorisierungsauflösung", async () => {
+    const isolatedPool = new Pool({
+      connectionString: process.env.POSTGRES_URL_TEST,
+      max: 1,
+    });
+    try {
+      const client = await isolatedPool.connect();
+      try {
+        await client.query(`
+          create temporary table membership (
+            user_id uuid,
+            workspace_id uuid,
+            role text,
+            capabilities jsonb
+          );
+          create temporary table workspace (
+            id uuid,
+            feature_flags jsonb
+          );
+        `);
+        await client.query(
+          "insert into membership values ($1::uuid, $2::uuid, 'admin', '{}')",
+          [userB, wsB],
+        );
+        await client.query(
+          `insert into workspace values ($1::uuid, '{"invoicing": true}')`,
+          [wsB],
+        );
+      } finally {
+        client.release();
+      }
+
+      const ctx = await withAuthorizedTenantOn(isolatedPool, userB, wsB, async (_tx, c) => c);
+      expect(ctx.role).toBe("viewer");
+      expect(ctx.featureFlags).toEqual({ invoicing: false });
+    } finally {
+      await isolatedPool.end();
+    }
   });
 });
 

@@ -14,43 +14,106 @@
 // lokalen Start). Die Aufgabenskizze nutzte Top-Level-await; hier stattdessen
 // in eine async main()-Funktion verpackt.
 import { PgBoss } from "pg-boss";
+import { requireServiceDatabaseUrl } from "../lib/db/role-env";
 import { createHealthProbe, createHealthServer, startHeartbeat } from "./health";
+import {
+  createFatalWorkerErrorReporter,
+  createVerifiedPgBossDatabase,
+} from "./pgboss-database";
 
 const STARTED = new Date().toISOString();
 
-// POSTGRES_URL_WORKER hat Vorrang: nach der Rollentrennung (ADR 0003) läuft der
-// Worker als app_worker mit eigenem pgboss-Schema und ohne Domänenrechte auf
-// Vorrat. Solange die Trennung aussteht, ist der Fallback auf POSTGRES_URL der
-// heutige Zustand — die dort dokumentierte M0-Limitation. Der Wert wird EINMAL
-// aufgelöst, damit pg-boss und die Health-Probe garantiert dieselbe Datenbank
-// messen; sonst könnte /health eine andere DB grün melden, als der Worker nutzt.
-const WORKER_URL = process.env.POSTGRES_URL_WORKER ?? process.env.POSTGRES_URL;
-if (!WORKER_URL) throw new Error("Weder POSTGRES_URL_WORKER noch POSTGRES_URL ist gesetzt");
+// Einziger Worker-Principal: kein stiller Rückfall auf die Runtime-Rolle. Der
+// Wert wird EINMAL aufgelöst, damit pg-boss und Health-Probe garantiert dieselbe
+// Datenbank messen. app_worker besitzt nur das vorab angelegte Schema pgboss.
+const WORKER_URL = requireServiceDatabaseUrl("POSTGRES_URL_WORKER", "app_worker");
 
 // Wird in main() gesetzt, wenn SENTRY_DSN vorhanden ist. Handler unten dürfen
 // nicht auf Sentrys Unhandled-Hooks vertrauen: sie BEHANDELN die Fehler ja
 // (Codex-Review #6) — also hier explizit erfassen.
 let sentry: typeof import("@sentry/node") | undefined;
+let stopHeartbeat: (() => void) | undefined;
+let shutdownPromise: Promise<void> | undefined;
+let fatalShutdown = false;
+let bossFailure: Error | undefined;
 
-const boss = new PgBoss(WORKER_URL);
+const reportFatalWorkerError = createFatalWorkerErrorReporter((source, error) => {
+  bossFailure = error;
+  console.error(`[${source}]`, error);
+  sentry?.captureException(error);
+  void shutdown(`${source}-Fehler`, true);
+});
+
+// Der Pool-Listener hängt bereits, bevor PgBoss den Adapter erhält und seine
+// erste Query ausführen kann. Pool- und PgBoss-Fehler teilen denselben
+// einmaligen Fatalpfad.
+const bossDatabase = createVerifiedPgBossDatabase(WORKER_URL, 5, (error) => {
+  reportFatalWorkerError("pg-boss-pool", error);
+});
+const boss = new PgBoss({
+  db: bossDatabase,
+  schema: "pgboss",
+  createSchema: false,
+});
 boss.on("error", (err) => {
-  console.error("[pg-boss]", err);
-  sentry?.captureException(err);
+  // Ein laufender Prozess mit dauerhaft fehlerhaftem Poller ist schlimmer als
+  // ein sichtbarer Restart: Er würde sonst weiter Health/Dead-Man grün melden,
+  // obwohl keine Kundenjobs mehr bearbeitet werden. Docker startet ihn mit
+  // `restart: always` nach dem geordneten Fehler-Shutdown neu.
+  reportFatalWorkerError("pg-boss", err);
 });
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
 // diese Probe braucht Timeouts, die tatsächlich abbrechen. Beides steckt in
 // worker/health.ts (dort auch die vollständige Begründung); hier bleibt nur
 // die Verdrahtung, damit der Probe-Pfad ohne den pg-boss-Start testbar ist.
-const health = createHealthProbe(WORKER_URL);
+const health = createHealthProbe(WORKER_URL, undefined, () => {
+  if (bossFailure) throw new Error("pg-boss ist nicht mehr betriebsfähig.", { cause: bossFailure });
+});
 const server = createHealthServer(health, STARTED);
 
-async function shutdown(signal: string) {
-  console.log(`[worker] ${signal} empfangen, fahre herunter …`);
-  server.close();
-  await boss.stop({ graceful: true, timeout: 10_000 });
-  await health.close().catch((err: unknown) => console.error("[worker] health.close:", err));
-  process.exit(0);
+function closeHealthServer(): Promise<void> {
+  if (!server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
+function shutdown(signal: string, fatal = false): Promise<void> {
+  fatalShutdown ||= fatal;
+  shutdownPromise ??= (async () => {
+    console.log(`[worker] ${signal} empfangen, fahre herunter …`);
+    stopHeartbeat?.();
+    stopHeartbeat = undefined;
+
+    // Keine neuen Health-Requests mehr annehmen; bestehende Requests dürfen
+    // parallel zum pg-boss-Drain innerhalb ihres 2-s-Probe-Budgets enden.
+    const serverClosed = closeHealthServer();
+    const stopBoss = async () => {
+      try {
+        await boss.stop({ graceful: true, timeout: 15_000 });
+      } finally {
+        // Bei einem benutzerdefinierten IDatabase-Adapter verwaltet pg-boss
+        // dessen Lifecycle bewusst nicht selbst.
+        await bossDatabase.close();
+      }
+    };
+    const results = await Promise.allSettled([
+      stopBoss(),
+      serverClosed,
+      health.close(),
+    ]);
+    const failures = results.filter((result) => result.status === "rejected");
+    for (const failure of failures) {
+      if (failure.status === "rejected") console.error("[worker] Shutdownfehler:", failure.reason);
+    }
+
+    await sentry?.flush(2_000).catch((error: unknown) => {
+      console.error("[worker] Sentry-Flush fehlgeschlagen:", error);
+    });
+    process.exitCode = failures.length === 0 && !fatalShutdown ? 0 : 1;
+  })();
+  return shutdownPromise;
 }
 
 async function main() {
@@ -62,6 +125,10 @@ async function main() {
     console.log("[worker] Sentry aktiv");
   }
 
+  // Fail-closed noch vor pg-boss: Die unabhängige Probe muss den echten
+  // app_worker-Principal (und bei Neon Tenant/Timeline) live bestätigen.
+  // Danach prüft derselbe Pool jede neu aufgebaute Probe-Verbindung erneut.
+  await health.probe();
   await boss.start();
   await boss.createQueue("health.echo");
   await boss.work("health.echo", async (jobs) => {
@@ -73,21 +140,22 @@ async function main() {
   // Dead-Man-Heartbeat ERST nach vollständiger Worker-Registrierung (Codex-
   // Review #3): ein Ping attestiert "arbeitsfähig", nicht bloß "DB erreichbar".
   if (process.env.HEALTHCHECKS_PING_URL) {
-    startHeartbeat(health, process.env.HEALTHCHECKS_PING_URL);
+    stopHeartbeat = startHeartbeat(health, process.env.HEALTHCHECKS_PING_URL);
     console.log("[worker] Dead-Man-Heartbeat aktiv");
   }
 
   server.listen(8080, () => console.log("worker health on :8080"));
-
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
+
+// Bereits vor dem ersten await in main() registriert: Auch ein Signal während
+// Live-Verifikation, pg-boss-Start oder Queue-Registrierung läuft durch
+// denselben idempotenten Cleanup-Pfad.
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
 
 main().catch(async (err) => {
   console.error("[worker] Startfehler:", err);
-  // Behandelte fatale Fehler erreichen Sentrys Unhandled-Hooks nicht —
-  // explizit erfassen und flushen, bevor der Prozess stirbt (Codex-Review #6).
+  bossFailure = err instanceof Error ? err : new Error(String(err));
   sentry?.captureException(err);
-  await sentry?.flush(2_000).catch(() => {});
-  process.exit(1);
+  await shutdown("Startfehler", true);
 });

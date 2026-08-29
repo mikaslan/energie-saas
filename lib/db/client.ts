@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
+import { requireServiceDatabaseUrl, servicePoolConfig } from "./role-env";
 
 export type AppDb = ReturnType<typeof drizzle<typeof schema>>;
 
@@ -13,9 +14,7 @@ let poolInstance: Pool | undefined;
 let dbInstance: AppDb | undefined;
 
 function requireUrl(): string {
-  const url = process.env.POSTGRES_URL;
-  if (!url) throw new Error("POSTGRES_URL ist nicht gesetzt");
-  return url;
+  return requireServiceDatabaseUrl("POSTGRES_URL", "app_runtime");
 }
 
 // BEWUSST NICHT exportiert (Codex-Review, MUSS vor Merge): ein öffentlicher
@@ -27,7 +26,7 @@ function requireUrl(): string {
 // Entscheidung sichtbar machen.
 function getPool(): Pool {
   if (!poolInstance) {
-    poolInstance = new Pool({ connectionString: requireUrl(), max: 5 });
+    poolInstance = new Pool(servicePoolConfig(requireUrl(), "app_runtime"));
   }
   return poolInstance;
 }

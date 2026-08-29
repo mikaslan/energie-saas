@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Energie SaaS immutable PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 UTC
+AccuracySec=1min
+Persistent=yes
+Unit=energie-saas-backup.service
+
+[Install]
+WantedBy=timers.target

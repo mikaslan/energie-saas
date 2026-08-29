@@ -19,12 +19,14 @@
 //         DB sammeln sich so mit jedem /health-Request Waiter an, bis Recovery
 //         oder Shutdown blockieren.
 //
-// Die Timeouts stehen deshalb jetzt als VERBINDUNGS-Optionen des Pools, nicht
-// als SQL im Probe-Pfad — sie greifen damit unabhängig davon, an welcher Stelle
-// es hängt, und sie brechen tatsächlich ab.
+// Die TCP-/Clientfrist steht am Pool. Die serverseitigen Fristen setzt dessen
+// verifizierter Initializer einmal SESSION-weit mit set_config(..., false),
+// bevor pg-pool den Client erstmals ausgibt. Damit gibt es weder wirkungsloses
+// SET LOCAL noch providerabhängige Startup-Parameter.
 // ═══════════════════════════════════════════════════════════════════════
 import { Pool, type PoolConfig } from "pg";
 import { createServer, type Server } from "node:http";
+import { servicePoolConfig } from "../lib/db/role-env";
 
 export const PROBE_TIMEOUT_MS = 2_000;
 
@@ -37,9 +39,9 @@ export const PROBE_TIMEOUT_MS = 2_000;
  *  - `connectionTimeoutMillis`: TCP/Startup antwortet nicht. pg-pool zerstört
  *    danach den Socket (`client.connection.stream.destroy()`) UND entfernt den
  *    Waiter aus der Warteschlange — genau das, was Promise.race nicht konnte.
- *  - `statement_timeout`: serverseitig, wird als Startup-Parameter der
- *    Verbindung mitgeschickt (kein `SET LOCAL` im Probe-Pfad). Der Server
- *    canceled die Query selbst.
+ *  - `statement_timeout`: serverseitig, wird vom Pool-Verify SESSION-weit
+ *    gesetzt (kein `SET LOCAL` und kein Startup-Parameter). Der Server canceled
+ *    die Query selbst.
  *  - `query_timeout`: clientseitig, falls der Server gar nicht mehr antwortet
  *    und deshalb auch kein statement_timeout mehr feuern kann.
  *  - `idle_in_transaction_session_timeout`: die Probe öffnet keine Transaktion;
@@ -51,12 +53,13 @@ export function healthPoolConfig(
   timeoutMs: number = PROBE_TIMEOUT_MS,
 ): PoolConfig {
   return {
-    connectionString,
-    max: 1,
-    connectionTimeoutMillis: timeoutMs,
-    statement_timeout: timeoutMs,
-    query_timeout: timeoutMs,
-    idle_in_transaction_session_timeout: timeoutMs,
+    ...servicePoolConfig(connectionString, "app_worker", 1, {
+      connectionMs: timeoutMs,
+      lockMs: timeoutMs,
+      statementMs: timeoutMs,
+      queryMs: timeoutMs,
+      idleInTransactionMs: timeoutMs,
+    }),
     idleTimeoutMillis: 10_000,
     // Der Pool darf den Prozess nicht künstlich am Leben halten; Server und
     // pg-boss tun das. Wichtig, damit ein Testlauf sauber endet.
@@ -79,15 +82,55 @@ export interface HealthProbe {
 export function createHealthProbe(
   connectionString: string,
   timeoutMs: number = PROBE_TIMEOUT_MS,
+  assertOperational: () => void = () => undefined,
 ): HealthProbe {
   const pool = new Pool(healthPoolConfig(connectionString, timeoutMs));
   pool.on("error", (err: unknown) => console.error("[health-probe]", err));
+  const strictRoleContract = (process.env.DB_ROLE_MODE ?? "strict") === "strict";
 
   return {
     async probe(): Promise<void> {
+      assertOperational();
       const client = await pool.connect();
       try {
-        await client.query("select 1");
+        if (strictRoleContract) {
+          // Eine reine `select 1`-Probe bleibt grün, wenn pg-boss seine
+          // Schema-/Tabellenrechte verloren hat. Ownerdrift macht die echte
+          // Poll-/Jobverarbeitung unbrauchbar und muss deshalb readiness-rot
+          // werden, auch wenn der Server selbst noch antwortet.
+          const ownership = await client.query<{ intact: boolean }>(`
+            select coalesce((
+                     select owner.rolname = current_user
+                     from pg_catalog.pg_namespace namespace
+                     join pg_catalog.pg_roles owner on owner.oid = namespace.nspowner
+                     where namespace.nspname = 'pgboss'
+                   ), false)
+                   and pg_catalog.to_regclass('pgboss.version') is not null
+                   and pg_catalog.to_regclass('pgboss.queue') is not null
+                   and pg_catalog.to_regclass('pgboss.job') is not null
+                   and not exists (
+                     select 1
+                     from pg_catalog.pg_class relation
+                     join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+                     where namespace.nspname = 'pgboss'
+                       and relation.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
+                       and relation.relowner <> pg_catalog.to_regrole(current_user)
+                   )
+                   and not exists (
+                     select 1
+                     from pg_catalog.pg_proc routine
+                     join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+                     where namespace.nspname = 'pgboss'
+                       and routine.proowner <> pg_catalog.to_regrole(current_user)
+                   ) as intact
+          `);
+          if (ownership.rows[0]?.intact !== true) {
+            throw new Error("pg-boss-Ownership-/Zugriffsvertrag ist nicht intakt.");
+          }
+        } else {
+          await client.query("select 1");
+        }
+        assertOperational();
       } catch (err) {
         // Eine abgebrochene oder getimeoutete Verbindung ist in unbekanntem
         // Zustand (query_timeout bricht mitten im Protokoll ab). release(true)
@@ -173,7 +216,10 @@ export function createHealthServer(probe: HealthProbe, startedAt: string): Serve
       (err: unknown) => {
         console.error("[worker] Health-Probe fehlgeschlagen:", err);
         res.writeHead(503);
-        res.end(JSON.stringify({ ok: false, startedAt, error: String(err) }));
+        // Der Endpoint ist zwar nur an Loopback gebunden, kann später aber
+        // hinter einem Reverse Proxy landen. Rollen-, Host- und Querydetails
+        // gehören ausschließlich ins lokale Log, nicht in den HTTP-Body.
+        res.end(JSON.stringify({ ok: false, startedAt, error: "worker_unavailable" }));
       },
     );
   });

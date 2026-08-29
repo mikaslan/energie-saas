@@ -1,0 +1,43 @@
+[Unit]
+Description=Energie SaaS immutable PostgreSQL backup
+Documentation=file:/opt/energie-saas/docs/konzepte/backup-dr.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=energie-backup
+Group=energie-backup
+WorkingDirectory=/opt/energie-saas
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=/run/secrets/energie-saas-backup.env
+UnsetEnvironment=BASH_ENV ENV SHELLOPTS BASHOPTS PS4
+ExecStartPre=/usr/bin/test -x /opt/energie-saas/worker/backup/backup.sh
+ExecStartPre=/usr/bin/test -r /run/secrets/energie-saas-backup.env
+ExecStart=/bin/bash --noprofile --norc /opt/energie-saas/worker/backup/backup.sh
+UMask=0077
+TimeoutStartSec=25h
+KillMode=control-group
+KillSignal=SIGTERM
+FinalKillSignal=SIGKILL
+SendSIGKILL=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/run/secrets/energie-saas-backup.env
+ReadWritePaths=/run/lock /var/lock
+StandardOutput=journal
+StandardError=journal

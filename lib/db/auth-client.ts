@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as authSchema from "./schema/auth";
+import { requireServiceDatabaseUrl, servicePoolConfig } from "./role-env";
 
 // ═══════════════════════════════════════════════════════════════════════
 // Eigener DB-Client für better-auth (Codex-Review #19 + MUSS-Punkt „getPool
@@ -15,10 +16,9 @@ import * as authSchema from "./schema/auth";
 //    WHERE in Auth-Code kann damit keine Domänentabelle treffen, und der
 //    Drizzle-Adapter löst seine Modelle (`auth_user`, `auth_session`, …)
 //    gegen genau dieses Schema auf.
-// 3. Rolle: POSTGRES_URL_AUTH ist die vorbereitete Naht für die in
-//    docs/adr/0003-db-rollen-trennung.md beschriebene eigene Auth-DB-Rolle.
-//    Solange sie nicht gesetzt ist, läuft Auth auf POSTGRES_URL — das ist die
-//    dort dokumentierte Known-Limitation von M0, kein Versehen.
+// 3. Rolle: POSTGRES_URL_AUTH ist die einzige erlaubte Verbindung. Ein
+//    Fallback auf POSTGRES_URL würde die M1-03-Rollentrennung lautlos wieder
+//    aufheben und ist deshalb fail-closed entfernt.
 //
 // Lazy wie lib/db/client.ts: Tests importieren transitiv von hier und laufen
 // ohne POSTGRES_URL. Ein Import-Zeit-Throw würde jeden solchen Import killen.
@@ -29,14 +29,12 @@ let poolInstance: Pool | undefined;
 let dbInstance: AuthDb | undefined;
 
 function requireUrl(): string {
-  const url = process.env.POSTGRES_URL_AUTH ?? process.env.POSTGRES_URL;
-  if (!url) throw new Error("POSTGRES_URL_AUTH/POSTGRES_URL ist nicht gesetzt");
-  return url;
+  return requireServiceDatabaseUrl("POSTGRES_URL_AUTH", "app_auth");
 }
 
 export function getAuthDb(): AuthDb {
   if (!dbInstance) {
-    poolInstance ??= new Pool({ connectionString: requireUrl(), max: 5 });
+    poolInstance ??= new Pool(servicePoolConfig(requireUrl(), "app_auth"));
     dbInstance = drizzle(poolInstance, { schema: authSchema });
   }
   return dbInstance;

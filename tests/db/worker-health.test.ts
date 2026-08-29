@@ -96,6 +96,11 @@ describe("Worker-Health-Probe", () => {
     await withProbeServer(`postgres://niemand:x@127.0.0.1:${totPort}/nichts`, async (port, probe) => {
       const res = await health(port);
       expect(res.status).toBe(503);
+      expect(JSON.parse(res.body)).toMatchObject({
+        ok: false,
+        error: "worker_unavailable",
+      });
+      expect(res.body).not.toContain("ECONNREFUSED");
       expect(JSON.parse(res.body).ok).toBe(false);
       expect(probe.stats().waiting, "Waiter in der Warteschlange stehen geblieben").toBe(0);
     });
@@ -145,7 +150,7 @@ describe("Worker-Health-Probe", () => {
   }, 20_000);
 });
 
-describe("Timeouts sind Verbindungsoptionen, kein SET LOCAL", () => {
+describe("Timeouts sind verifizierte Sessionwerte, kein SET LOCAL", () => {
   it("statement_timeout hängt an der Verbindung selbst", async () => {
     const pool = new Pool(healthPoolConfig(process.env.POSTGRES_URL_TEST!, PROBE_MS));
     try {

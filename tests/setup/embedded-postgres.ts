@@ -93,6 +93,17 @@ export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {
       await bootstrapPool.query(
         `create role ${APP_ROLE} login password '${APP_PASSWORD}' nosuperuser nobypassrls createrole`,
       );
+      // M1-03: Die Ein-Rollen-Kompatibilitätssuite darf Membership-DML weiter
+      // vollständig ausüben, muss aber durch dieselbe nicht fälschbare
+      // Principal-Policy wie Produktion laufen. app_membership_writer ist
+      // NOLOGIN; nur diese explizite Testrolle wird Mitglied. Die strikte
+      // Rollenprobe beweist separat, dass app_runtime gerade NICHT Mitglied ist.
+      await bootstrapPool.query(
+        `create role app_membership_writer nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication`,
+      );
+      await bootstrapPool.query(
+        `grant app_membership_writer to ${APP_ROLE} with admin false, inherit false, set false`,
+      );
       // Eigentümerin von "public" statt nur berechtigt: ALTER FUNCTION … OWNER TO
       // verlangt, dass der neue Owner kurzzeitig CREATE auf dem Schema bekommt —
       // weitergeben kann das nur, wer das Recht besitzt statt es geliehen zu haben.

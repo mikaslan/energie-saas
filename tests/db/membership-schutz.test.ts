@@ -628,6 +628,36 @@ describe("Datenbankvertrag für Actor-Policies und Trigger", () => {
     }
   });
 
+  it("bindet jedes Membership-DML zusätzlich an den nicht fälschbaren DB-Principal", async () => {
+    const result = await testPool.query<PolicyRow>(`
+      select policyname, permissive, cmd, qual, with_check
+      from pg_policies
+      where schemaname = 'public'
+        and tablename = 'membership'
+        and policyname like 'membership_principal_%'
+      order by policyname
+    `);
+    expect(result.rows.map((row) => [row.policyname, row.permissive, row.cmd])).toEqual([
+      ["membership_principal_delete", "RESTRICTIVE", "DELETE"],
+      ["membership_principal_insert", "RESTRICTIVE", "INSERT"],
+      ["membership_principal_update", "RESTRICTIVE", "UPDATE"],
+    ]);
+    for (const row of result.rows) {
+      const expression = `${row.qual ?? ""} ${row.with_check ?? ""}`;
+      expect(expression).toContain("pg_has_role");
+      expect(expression).toContain("app_membership_writer");
+    }
+
+    const statementGuard = await testPool.query<{ definition: string }>(`
+      select pg_get_functiondef(p.oid) as definition
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'guard_membership_statement'
+    `);
+    expect(statementGuard.rows[0]?.definition).toContain("app_membership_writer");
+    expect(statementGuard.rows[0]?.definition).toContain("pg_has_role");
+  });
+
   it("Funktionen sind SECURITY INVOKER mit festem search_path; Trigger sind aktiv", async () => {
     const functions = await testPool.query<{
       proname: string;

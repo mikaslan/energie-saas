@@ -129,8 +129,8 @@ async function runAuthorized<T>(
   return run(d, workspaceId, async (tx) => {
     const res = await tx.execute<MembershipCtxRow>(sql`
       select m.user_id as user_identity_id, m.role, m.capabilities, w.feature_flags
-      from membership m
-      join workspace w on w.id = m.workspace_id
+      from public.membership m
+      join public.workspace w on w.id = m.workspace_id
       where m.user_id = ${userIdentityId}::uuid
         and m.workspace_id = ${workspaceId}::uuid
     `);
@@ -152,9 +152,9 @@ async function runSessionTenant<T>(
   return run(d, workspaceId, async (tx) => {
     const res = await tx.execute<MembershipCtxRow>(sql`
       select ui.id as user_identity_id, m.role, m.capabilities, w.feature_flags
-      from membership m
-      join user_identity ui on ui.id = m.user_id
-      join workspace w on w.id = m.workspace_id
+      from public.membership m
+      join public.user_identity ui on ui.id = m.user_id
+      join public.workspace w on w.id = m.workspace_id
       where ui.auth_user_id = ${authUserId}
         and m.workspace_id = ${workspaceId}::uuid
     `);

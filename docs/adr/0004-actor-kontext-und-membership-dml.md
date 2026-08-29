@@ -59,13 +59,12 @@ Voraussetzung: Unter `REPEATABLE READ` könnte die spätere Rollenprüfung trotz
 alten Actor-Snapshot sehen. App-Einstieg und DB-Trigger erzwingen diesen Vertrag beide.
 
 Custom-GUCs authentifizieren keinen SQL-Caller. Wer beliebiges SQL ausführen kann, kann
-den Actor verändern oder den NULL-Systempfad wählen. Bis zur Rollentrennung aus ADR 0003
-ist die gemeinsame Runtime zudem DDL-Eigentümerin. ADR 0003 allein genügt aber ebenfalls
-nicht, solange `app_runtime` direktes Membership-DML und frei setzbare GUCs besitzt.
-Daher bleibt bindend: actorloser Membership-DML nur aus kontrolliertem Code,
-ausschließlich parametrisierte Queries und vor dem ersten Pilotkunden eine strukturelle
-Trennung von Runtime-, System-/Bootstrap- und Migrationsrechten mit eigenen
-Actor-Spoofing-/Grant-Gegenproben.
+den Actor verändern oder NULL setzen. M1-03 schließt deshalb die damals dokumentierte
+Lücke strukturell: `app_runtime` besitzt kein Membership-DML; Principal-Policies und der
+Statement-Trigger verlangen zusätzlich die echte Markerrollen-Mitgliedschaft, die nur
+`app_system` trägt. Actor-Spoof/NULL ist damit für Membership wirkungslos, auch wenn ein
+einzelner DML-Grant versehentlich zurückkehrt. Für andere direkt zugängliche Tenant-
+Tabellen bleiben parametrisierte Queries und die strukturellen Importgrenzen bindend.
 
 ## Datenmigration und Betrieb
 
@@ -86,8 +85,8 @@ Backstop.
 - Die globale Lock-Reihenfolge für Membership-Code lautet Workspace vor Membership.
   Ein Service darf daher keine Membership-Zeile vor dem DML sperren; sonst könnte er die
   durch den Statement-Trigger beseitigte Lock-Inversion wieder einführen.
-- System-Bootstrap und Recovery bleiben möglich, sind aber eine explizite privilegierte
-  Grenze.
+- System-Bootstrap und Recovery bleiben über `app_system` möglich, sind aber eine
+  explizite, vom Web-/Worker-Environment isolierte privilegierte Grenze.
 - Spätere actorbasierte Assignment-Policies verwenden dieselbe Funktion und müssen
   weiterhin `AS RESTRICTIVE` sein.
 

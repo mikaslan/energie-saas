@@ -57,13 +57,17 @@ Drei durchgehende Muster (E2s Formulierung, übernommen): Snapshot statt Referen
   (1) Nutzeraktionen laufen über `authorizedAction` → `withSessionTenant`, das
   als erste SQL-Anweisung `READ COMMITTED`, danach `SET LOCAL app.workspace_id` und erst
   nach erfolgreicher Membership-Auflösung die verifizierte `user_identity.id` als
-  `SET LOCAL app.actor_id` setzt; `withTenant` ist
-  ausschließlich der privilegierte actorlose System-/Recovery-Pfad. (2) RLS-Policies
+  `SET LOCAL app.actor_id` setzt. Actorloser Membership-Bootstrap/Recovery läuft
+  ausschließlich über den isolierten DB-Principal `app_system`, nicht über das
+  Runtime-Secret. (2) RLS-Policies
   auf jeder Tabelle. Ein vergessener `where` wird damit Datenpanne-unmöglich statt
   -wahrscheinlich. Schema-/DB-per-Tenant verworfen.
 - **Auth passwortlos** (Magic Link + OTP via better-auth, Passkeys gratis), eine Identität in n Workspaces. OIDC-SSO später. Kundenportal/Funnel: signierte Token-Links mit TTL, strikt getrennt vom Mitarbeiter-Auth.
 - **Rechte in 3 Schichten**: Workspace-Feature-Flags → Rolle `viewer|editor|admin` → ~8 Einzelrechte als JSONB am Membership (`see_purchase_prices`, `edit_prices`, `discounts`, `invoicing`, `convert_phase`, `manage_catalog`, `manage_settings`, `external_only`). **Alle Prüfungen durch eine zentrale `can(user, action, resource)`-Funktion** — Verfeinerung Richtung Reonics 4 Schichten/20 Rechten kostet später Daten, nicht Code. `external_only` → eigene RLS-Policy (nur zugewiesene Projekte).
-- **Membership-DML hat zwei DB-Schranken (ADR 0004):** befehlsspezifische
+- **Membership-DML hat drei DB-Schranken (ADR 0003/0004):** Runtime besitzt nur SELECT;
+  restriktive Principal-Policies plus Statement-Trigger verlangen zusätzlich die
+  nicht fälschbare NOLOGIN-Markerrolle `app_membership_writer`. Danach verbieten
+  befehlsspezifische
   actorbasierte `AS RESTRICTIVE`-Policies verbieten Self-INSERT/-UPDATE/-DELETE; ein
   `SECURITY INVOKER`-Statement-Trigger sperrt den Workspace vor Zielzeilen, ein Row-
   Trigger lässt fremde Mutationen nur durch einen Admin desselben Workspace zu und hält
@@ -74,8 +78,9 @@ Drei durchgehende Muster (E2s Formulierung, übernommen): Snapshot statt Referen
 - **Trust Boundary:** Custom-GUCs transportieren Kontext, authentifizieren aber keinen
   beliebigen SQL-Caller. Browserpfade dürfen deshalb weder `withTenant` noch
   `withAuthorizedTenant` verwenden; ausschließlich parametrisierte Queries sind
-  zulässig. Vor Pilot/Produktion müssen ADR 0003 und das Actor-Trust-Gate aus M1-02
-  gemeinsam erfüllt sein — der lokale M0-Backstop ist keine SQL-Injection-Garantie.
+  zulässig. M1-03 schließt Membership-Schreiben durch Runtime auch bei GUC-Spoof und
+  einem einzelnen Grant-Drift, behauptet aber keine SQL-Injection-Garantie für alle
+  anderen Tenant-Tabellen. Das verbleibende Pilot-Gate steht in M1-03.
 - **EK/Marge nie im Client-Payload für Nicht-Berechtigte** — serverseitige Serialisierungs-Filterung, kein CSS-Verstecken.
 
 ## 6. Mobile-Strategie

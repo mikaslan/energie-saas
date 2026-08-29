@@ -20,6 +20,7 @@ jobs:
       # app_test, analog zur embedded-postgres-Testrolle in
       # tests/setup/embedded-postgres.ts (dort "app_test").
       POSTGRES_URL_TEST: postgres://app_ci:ci@localhost:5432/app_test
+      POSTGRES_TEST_TARGET_CONFIRM: localhost:5432/app_test:ALLOW-DESTRUCTIVE-TESTS
       # Getrennte Superuser-Verbindung auf DIESELBE Datenbank. Wird
       # ausschließlich von tests/setup/superuser-db.ts für Aussagen benutzt,
       # die unter RLS strukturell nicht prüfbar sind (Zeilen, die außerhalb
@@ -59,6 +60,8 @@ jobs:
           # es nicht selbst hat — das Gate in scripts/migrate.mts bleibt scharf.
           psql "postgres://postgres:test@localhost:5432/postgres" \
             -c "create role app_ci login password 'ci' nosuperuser nobypassrls createrole;" \
+            -c "create role app_membership_writer nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;" \
+            -c "grant app_membership_writer to app_ci with admin false, inherit false, set false;" \
             -c "create database app_test owner app_ci;"
           psql "postgres://postgres:test@localhost:5432/app_test" \
             -c "alter schema public owner to app_ci;" \
@@ -80,3 +83,11 @@ jobs:
           BETTER_AUTH_SECRET: ci-build-platzhalter-kein-echtes-secret
           BETTER_AUTH_URL: http://localhost:3000
         run: npm run build
+      - name: Worker-Compose validieren
+        env:
+          POSTGRES_URL_WORKER: postgres://app_worker:ci@db.invalid:5432/ci?sslmode=verify-full
+          POSTGRES_EXPECTED_NEON_TENANT_ID: ci-neon-tenant-placeholder
+          POSTGRES_EXPECTED_NEON_TIMELINE_ID: ci-neon-timeline-placeholder
+        run: docker compose -f worker/compose.yaml config --quiet
+      - name: Worker-Image tatsächlich bauen
+        run: docker build -f worker/Dockerfile -t energie-saas-worker:ci .

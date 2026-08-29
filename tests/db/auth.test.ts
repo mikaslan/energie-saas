@@ -38,8 +38,9 @@ process.env.BETTER_AUTH_SECRET ??= "test-secret-mindestens-32-zeichen-lang!!";
 // POSTGRES_URL wäre erhalten geblieben, und better-auth hätte im Test gegen
 // DIESE Datenbank geschrieben (Nutzer anlegen, Verification-Zeilen, Hook-Insert
 // in user_identity). Deshalb wird der Auth-Client hier HART auf die Test-DB
-// gezwungen, nicht per ??=. lib/db/auth-client.ts liest POSTGRES_URL_AUTH mit
-// Vorrang vor POSTGRES_URL.
+// gezwungen, nicht per ??=. lib/db/auth-client.ts akzeptiert seit M1-03 nur
+// noch POSTGRES_URL_AUTH; globalSetup markiert diese gemeinsame Testrolle
+// sichtbar als test-legacy-single.
 process.env.POSTGRES_URL_AUTH = process.env.POSTGRES_URL_TEST;
 // Das magicLink-Plugin baut aus baseURL die Callback-URL; ohne diesen Wert
 // wirft es "Invalid URL". In Produktion liefert Vercel die URL automatisch.
