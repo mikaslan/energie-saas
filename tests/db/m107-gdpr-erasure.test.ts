@@ -23,6 +23,7 @@ import {
 } from "../../lib/integrations/catalog/contract";
 import { canonicalizeOfferJson } from "../../lib/integrations/offers/contract";
 import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
+import { OFFER_PDF_QUEUE_OPTIONS } from "../../scripts/pgboss-bootstrap.mjs";
 import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
@@ -206,6 +207,7 @@ async function installPgBoss(workerUrl: string): Promise<void> {
       retryLimit: 0,
       expireInSeconds: 900,
     });
+    await boss.createQueue("pdf.render", OFFER_PDF_QUEUE_OPTIONS);
   } finally {
     await boss.stop({ graceful: false }).catch(() => undefined);
   }

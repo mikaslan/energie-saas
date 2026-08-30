@@ -929,6 +929,66 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // M2-02 speichert ausschliesslich erasure-faehige interne PDF-Entwuerfe.
+  // Runtime darf anfordern und geschuetzt lesen, aber weder Jobzustand noch
+  // Artefaktspalten fortschreiben. Der Worker erhaelt genau die Spalten des
+  // Lease-/CAS-Automaten; DELETE und TRUNCATE bleiben fuer beide verboten.
+  const offerPdfExisting = await client.query<{ relname: string }>(`
+    select c.relname
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and c.relname = 'offer_pdf_draft'
+    order by c.relname
+  `);
+  if (offerPdfExisting.rows.length > 0) {
+    if (
+      offerPdfExisting.rows.length !== 1
+      || offerPdfExisting.rows[0]?.relname !== "offer_pdf_draft"
+    ) {
+      throw new Error("Rollen-ACL-Manifest: M2-02-PDF-Relation driftet.");
+    }
+    await client.query(`
+      grant select on public.offer_pdf_draft to app_runtime;
+      revoke insert, update, delete, truncate on public.offer_pdf_draft from app_runtime;
+      revoke insert (
+        id, workspace_id, project_id, offer_id, variant_id,
+        variant_revision_id, variant_revision, variant_snapshot_sha256,
+        input_version, canonicalization_version, template_version,
+        renderer_recipe_version, reservation_key, input_snapshot, input_sha256,
+        state, attempt_count, next_attempt_at, lease_token, lease_expires_at,
+        error_code, error_retryable, artifact_mime_type, artifact_sha256,
+        artifact_size_bytes, artifact_bytes, created_by, created_at, updated_at,
+        started_at, finished_at
+      ) on public.offer_pdf_draft from app_runtime;
+      grant insert (
+        id, workspace_id, project_id, offer_id, variant_id,
+        variant_revision_id, variant_revision, variant_snapshot_sha256,
+        input_version, canonicalization_version, template_version,
+        renderer_recipe_version, created_by
+      ) on public.offer_pdf_draft to app_runtime;
+      grant execute on function public.canonicalize_offer_json_v1(jsonb)
+        to app_runtime, app_worker;
+
+      grant select on public.offer_pdf_draft to app_worker;
+      revoke update, insert, delete, truncate on public.offer_pdf_draft from app_worker;
+      grant update (
+        state, attempt_count, next_attempt_at, lease_token, lease_expires_at,
+        error_code, error_retryable, artifact_mime_type, artifact_sha256,
+        artifact_size_bytes, artifact_bytes, updated_at, started_at, finished_at
+      ) on public.offer_pdf_draft to app_worker;
+
+      revoke execute on function public.guard_offer_pdf_draft_mutation()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.derive_offer_pdf_draft_input()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function
+        public.build_inactive_lead_erasure_graph_m201(uuid, uuid)
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure
+    `);
+  }
+
   // pg-boss bleibt vollstaendig worker-owned. Nur der SET-only-Migrator darf
   // fuer das nach jeder Migration wiederholte ACL-Manifest kurz in diesen
   // Owner wechseln; app_owner und app_worker erhalten keine gegenseitige
@@ -952,6 +1012,24 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       to app_runtime;
     set role app_owner
   `);
+  const offerPdfDispatch = await client.query<{ present: boolean }>(`
+    select pg_catalog.count(*) = 1 as present
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'pgboss'
+       and routine.proname = 'enqueue_offer_pdf_draft'
+       and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+  `);
+  if (offerPdfDispatch.rows[0]?.present) {
+    await client.query(`
+      set role app_worker;
+      grant usage on schema pgboss to app_runtime;
+      grant execute on function pgboss.enqueue_offer_pdf_draft(uuid, uuid)
+        to app_runtime;
+      set role app_owner
+    `);
+  }
 }
 
 export async function applyDefaultPrivilegeContract(client: PoolClient): Promise<void> {
@@ -1230,6 +1308,16 @@ export async function verifyRoleContract(
   await verifyAppRoleCatalogContract(client);
   await verifyDatabaseAclContract(client);
 
+  // Der Vollvertrag wird auch gegen beaufsichtigte historische Prefixe
+  // ausgefuehrt. M2-02 ist deshalb genau dann Teil des erwarteten Inventars,
+  // wenn seine atomare Wurzelrelation bereits existiert. Einzelne verwaiste
+  // Funktionen/Trigger/ACLs bleiben trotzdem rot, weil die jeweiligen
+  // Kataloginventare weiter exakt verglichen werden.
+  const offerPdfPresence = await client.query<{ present: boolean }>(`
+    select pg_catalog.to_regclass('public.offer_pdf_draft') is not null as present
+  `);
+  const hasOfferPdfDraft = offerPdfPresence.rows[0]?.present === true;
+
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
            member.rolname as member_role,
@@ -1342,6 +1430,7 @@ export async function verifyRoleContract(
       "r:offer_bom_line",
       "r:offer_mutation_rate_window",
       "r:offer_number_series",
+      ...(hasOfferPdfDraft ? ["r:offer_pdf_draft"] : []),
       "r:offer_variant",
       "r:offer_variant_revision",
       "r:offer_variant_section",
@@ -1417,6 +1506,7 @@ export async function verifyRoleContract(
   }
 
   const dispatchFunctionSecurity = await client.query<{
+    proname: string;
     args: string;
     result_type: string;
     owner: string;
@@ -1430,7 +1520,8 @@ export async function verifyRoleContract(
     proconfig: string[] | null;
     prosrc: string;
   }>(`
-    select pg_catalog.oidvectortypes(routine.proargtypes) as args,
+    select routine.proname,
+           pg_catalog.oidvectortypes(routine.proargtypes) as args,
            pg_catalog.pg_get_function_result(routine.oid) as result_type,
            owner.rolname as owner,
            language.lanname as language,
@@ -1447,12 +1538,15 @@ export async function verifyRoleContract(
     join pg_catalog.pg_roles owner on owner.oid = routine.proowner
     join pg_catalog.pg_language language on language.oid = routine.prolang
     where namespace.nspname = 'pgboss'
-      and routine.proname = 'enqueue_project_calculation'
-    order by routine.oid
+      and routine.proname in (
+        'enqueue_offer_pdf_draft',
+        'enqueue_project_calculation'
+      )
+    order by routine.proname, routine.oid
   `);
   equalRows(
     dispatchFunctionSecurity.rows.map((row) => [
-      `enqueue_project_calculation(${row.args})`,
+      `${row.proname}(${row.args})`,
       row.result_type,
       row.owner,
       row.language,
@@ -1468,8 +1562,12 @@ export async function verifyRoleContract(
     [
       "enqueue_project_calculation(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:b4b87f16145bfbe691c2a5ad7db08a212e8254b3545660e0d6b063bb1d5a26f4",
+      ...(hasOfferPdfDraft ? [
+        "enqueue_offer_pdf_draft(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:6c060aa6439626044be7e9e95ed71e4588c71f4d465fd7c2f658e4b556a9107c",
+      ] : []),
     ],
-    "Calculation-Dispatch-Sicherheitsvertrag",
+    "Worker-Dispatch-Sicherheitsvertrag",
   );
 
   const functionOwners = await client.query<{ proname: string; owner: string }>(`
@@ -1486,7 +1584,11 @@ export async function verifyRoleContract(
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       "build_inactive_lead_erasure_graph:app_owner",
+      ...(hasOfferPdfDraft ? [
+        "build_inactive_lead_erasure_graph_m201:app_owner",
+      ] : []),
       "canonicalize_offer_json_v1:app_owner",
+      ...(hasOfferPdfDraft ? ["derive_offer_pdf_draft_input:app_owner"] : []),
       "erase_inactive_lead:app_owner",
       "finalize_project_calculation_success:app_owner",
       "forbid_mutation:app_owner",
@@ -1496,6 +1598,7 @@ export async function verifyRoleContract(
       "guard_membership_dml:app_owner",
       "guard_membership_statement:app_owner",
       "guard_offer_erasure_mutation:app_owner",
+      ...(hasOfferPdfDraft ? ["guard_offer_pdf_draft_mutation:app_owner"] : []),
       "guard_project_calculation_job_mutation:app_owner",
       "guard_project_calculation_revision:app_owner",
       "guard_site_energy_profile_mutation:app_owner",
@@ -1568,11 +1671,23 @@ export async function verifyRoleContract(
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
         "acca23aaae3a91eda3aa424256de1527e1bb61d02fdd4b0d2c0803ecd6a37542",
       "build_inactive_lead_erasure_graph(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
-        "search_path=pg_catalog:ff33afd9579e2d1f43758b9558e7b55f7381942737c3f133c78b8764aa90569c",
+        `search_path=pg_catalog:${hasOfferPdfDraft
+          ? "b62712671bda4ce750868b044794475938b9d24dd08c1a38b6db1674a4fd0e4d"
+          : "ff33afd9579e2d1f43758b9558e7b55f7381942737c3f133c78b8764aa90569c"}`,
+      ...(hasOfferPdfDraft ? [
+        "build_inactive_lead_erasure_graph_m201(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:ff33afd9579e2d1f43758b9558e7b55f7381942737c3f133c78b8764aa90569c",
+      ] : []),
       "canonicalize_offer_json_v1(jsonb):text:app_owner:plpgsql:f:i:false:false:true:s:" +
         "search_path=pg_catalog:0b5cdc7c4aa05552def26bc36f3f64bfc73e18689b646b473db607ad858ca85c",
+      ...(hasOfferPdfDraft ? [
+        "derive_offer_pdf_draft_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
+      ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
-        "search_path=pg_catalog:bba97fd4f1224ab42768aa952f54e4a933229225f8ab251e16173adf75084fdd",
+        `search_path=pg_catalog:${hasOfferPdfDraft
+          ? "ba6c9475ce7520ef61c443c9fc0d04dd19af30edb8fb2664fd7889abcc66508a"
+          : "bba97fd4f1224ab42768aa952f54e4a933229225f8ab251e16173adf75084fdd"}`,
       "finalize_project_calculation_success(uuid, uuid, uuid, integer, uuid, jsonb):" +
         "TABLE(outcome text, revision_id uuid, revision_number integer):" +
         "app_owner:plpgsql:f:v:true:false:true:u:search_path=pg_catalog:" +
@@ -1584,13 +1699,19 @@ export async function verifyRoleContract(
       "guard_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:febb6a39265ceb1661f5dc21709f4a2912df799c6b4dd06db27b540253b8c88d",
       "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        "search_path=pg_catalog:c65365ec209f2fc279842f5a6a8b21edbae5b327a65b2e969749abb01c68e6be",
+        `search_path=pg_catalog:${hasOfferPdfDraft
+          ? "5e8baef20cca95e206f8a2fa05a5ad8ed7f09576856e515d0b5be9c8fe4a4e26"
+          : "c65365ec209f2fc279842f5a6a8b21edbae5b327a65b2e969749abb01c68e6be"}`,
       "guard_membership_dml():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:89cb000d7bca739fe2bd23b737ffc5153b494f9f7eb80790dbeef4e6ab95a057",
       "guard_membership_statement():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:b5d5db39513acce303c62d10a27f8b3bdc0b7ec12b183ae127e59b181dac89b7",
       "guard_offer_erasure_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:db38dd23221bc75af85f494d9374e9eda3b7a2ce0d87f28dabd8e7c71be4c08f",
+      ...(hasOfferPdfDraft ? [
+        "guard_offer_pdf_draft_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:cbb5173ec8e5c27bf927610795c7c9a2e2b5f2cd4824136e0a20d5288f79a19a",
+      ] : []),
       "guard_project_calculation_job_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:1e9df9a26cc63fd4c3964eee765b561ef7c54811709cbda7b6f2920631649c4e",
       "guard_project_calculation_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -1658,6 +1779,7 @@ export async function verifyRoleContract(
       "offer_bom_line:true:true",
       "offer_mutation_rate_window:true:true",
       "offer_number_series:true:true",
+      ...(hasOfferPdfDraft ? ["offer_pdf_draft:true:true"] : []),
       "offer_variant:true:true",
       "offer_variant_revision:true:true",
       "offer_variant_section:true:true",
@@ -1731,6 +1853,9 @@ export async function verifyRoleContract(
       "offer_bom_line:tenant_isolation:60c1c3bbe7810cc51e809426bac328b9fc397b6fcf46e7f55ddb7c9a93b04196",
       "offer_mutation_rate_window:tenant_isolation:4a43a52466e80120f71fb6bc563459046f25148d4c45591d5f5dd581806fb985",
       "offer_number_series:tenant_isolation:3d3d44b85306e0c44c255e5f295a9d4c63c3f4302d8d43503717281c2084f885",
+      ...(hasOfferPdfDraft ? [
+        "offer_pdf_draft:tenant_isolation:8c45b9d1d607576979fa2581d9c7098d74b8bf317c5c23631e522b3b424fc2c8",
+      ] : []),
       "offer_variant:tenant_isolation:7680e41d5dec01e43a1499356bfd50ff62271af486afe8ee80cf13d3f7f0cb41",
       "offer_variant_revision:tenant_isolation:d0bf5b1f1871b07a4364b679486f63ad33dbae0259d94a22e090cfe7b1b6c148",
       "offer_variant_section:tenant_isolation:6cd95ab344fdff675ca080283bf4c0043d3121d14dcc19ce944e7c572becd84f",
@@ -1826,6 +1951,13 @@ export async function verifyRoleContract(
       "offer_number_series:offer_number_series_mutation_guard:27:O:public:" +
         "guard_offer_erasure_mutation::-:0",
       "offer_number_series:offer_number_series_no_truncate:34:O:public:forbid_mutation::-:0",
+      ...(hasOfferPdfDraft ? [
+        "offer_pdf_draft:offer_pdf_draft_input_derive:7:O:public:" +
+          "derive_offer_pdf_draft_input::-:0",
+        "offer_pdf_draft:offer_pdf_draft_mutation_guard:27:O:public:" +
+          "guard_offer_pdf_draft_mutation::-:0",
+        "offer_pdf_draft:offer_pdf_draft_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
       "offer_variant:offer_variant_current_complete:21:O:public:" +
         "validate_offer_variant_snapshot_mirrors::-:constraint",
       "offer_variant:offer_variant_mutation_guard:27:O:public:guard_offer_erasure_mutation::-:0",
@@ -1909,6 +2041,9 @@ export async function verifyRoleContract(
       "app_runtime:offer_mutation_rate_window:SELECT:app_owner:false",
       "app_runtime:offer_number_series:INSERT:app_owner:false",
       "app_runtime:offer_number_series:SELECT:app_owner:false",
+      ...(hasOfferPdfDraft ? [
+        "app_runtime:offer_pdf_draft:SELECT:app_owner:false",
+      ] : []),
       "app_runtime:offer_variant:INSERT:app_owner:false",
       "app_runtime:offer_variant:SELECT:app_owner:false",
       "app_runtime:offer_variant_revision:INSERT:app_owner:false",
@@ -1953,6 +2088,9 @@ export async function verifyRoleContract(
       "app_worker:calculator_snapshot:SELECT:app_owner:false",
       "app_worker:domain_events:INSERT:app_owner:false",
       "app_worker:membership:SELECT:app_owner:false",
+      ...(hasOfferPdfDraft ? [
+        "app_worker:offer_pdf_draft:SELECT:app_owner:false",
+      ] : []),
       "app_worker:project:SELECT:app_owner:false",
       "app_worker:project_calculation_job:SELECT:app_owner:false",
       "app_worker:project_calculation_revision:SELECT:app_owner:false",
@@ -1996,6 +2134,21 @@ export async function verifyRoleContract(
       `${row.grantee}:${row.object_name}:${row.privilege_type}:${row.grantor}:${row.is_grantable}`,
     ),
     [
+      ...(hasOfferPdfDraft ? [
+        "app_runtime:offer_pdf_draft.canonicalization_version:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.created_by:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.id:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.input_version:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.offer_id:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.project_id:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.renderer_recipe_version:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.template_version:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.variant_id:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.variant_revision:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.variant_revision_id:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.variant_snapshot_sha256:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.workspace_id:INSERT:app_owner:false",
+      ] : []),
       "app_runtime:offer.updated_at:UPDATE:app_owner:false",
       "app_runtime:offer_mutation_rate_window.attempts:UPDATE:app_owner:false",
       "app_runtime:offer_mutation_rate_window.updated_at:UPDATE:app_owner:false",
@@ -2017,6 +2170,22 @@ export async function verifyRoleContract(
       "app_worker:project_calculation_job.provider_snapshot:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.started_at:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.state:UPDATE:app_owner:false",
+      ...(hasOfferPdfDraft ? [
+        "app_worker:offer_pdf_draft.artifact_bytes:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.artifact_mime_type:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.artifact_sha256:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.artifact_size_bytes:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.attempt_count:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.error_code:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.error_retryable:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.finished_at:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.lease_expires_at:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.lease_token:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.next_attempt_at:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.started_at:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.state:UPDATE:app_owner:false",
+        "app_worker:offer_pdf_draft.updated_at:UPDATE:app_owner:false",
+      ] : []),
     ],
     "Spalten-Grants",
   );
@@ -2071,7 +2240,13 @@ export async function verifyRoleContract(
       "app_erasure:erase_inactive_lead(uuid, uuid, uuid):EXECUTE:app_owner:false",
       "app_erasure:replay_erasure_tombstone(uuid):EXECUTE:app_owner:false",
       "app_runtime:app_actor_id():EXECUTE:app_owner:false",
+      ...(hasOfferPdfDraft ? [
+        "app_runtime:canonicalize_offer_json_v1(jsonb):EXECUTE:app_owner:false",
+      ] : []),
       "app_system:app_actor_id():EXECUTE:app_owner:false",
+      ...(hasOfferPdfDraft ? [
+        "app_worker:canonicalize_offer_json_v1(jsonb):EXECUTE:app_owner:false",
+      ] : []),
       "app_worker:finalize_project_calculation_success(uuid, uuid, uuid, integer, uuid, jsonb):EXECUTE:app_owner:false",
       "app_worker:lock_project_calculation_finalization(uuid, uuid):EXECUTE:app_owner:false",
     ],
@@ -2101,6 +2276,9 @@ export async function verifyRoleContract(
     ),
     [
       "app_runtime:enqueue_project_calculation(uuid, uuid):EXECUTE:app_worker:false",
+      ...(hasOfferPdfDraft ? [
+        "app_runtime:enqueue_offer_pdf_draft(uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
     ],
     "pg-boss-Funktions-Grants",
   );
@@ -2174,6 +2352,9 @@ export async function verifyRoleContract(
     runtime_enqueue: boolean;
     system_enqueue: boolean;
     auth_enqueue: boolean;
+    runtime_pdf_enqueue: boolean | null;
+    system_pdf_enqueue: boolean | null;
+    auth_pdf_enqueue: boolean | null;
   }>(`
     select
       pg_catalog.has_function_privilege('app_runtime', 'public.app_actor_id()', 'EXECUTE') as runtime_actor,
@@ -2209,7 +2390,31 @@ export async function verifyRoleContract(
         where namespace.nspname = 'pgboss'
           and routine.proname = 'enqueue_project_calculation'
           and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
-      ) as auth_enqueue
+      ) as auth_enqueue,
+      (
+        select pg_catalog.has_function_privilege('app_runtime', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_offer_pdf_draft'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as runtime_pdf_enqueue,
+      (
+        select pg_catalog.has_function_privilege('app_system', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_offer_pdf_draft'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as system_pdf_enqueue,
+      (
+        select pg_catalog.has_function_privilege('app_auth', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_offer_pdf_draft'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as auth_pdf_enqueue
   `);
   const acl = functionAcl.rows[0];
   if (
@@ -2218,6 +2423,13 @@ export async function verifyRoleContract(
     || acl.runtime_provision || acl.system_provision
     || acl.auth_provision || acl.worker_provision
     || !acl.runtime_enqueue || acl.system_enqueue || acl.auth_enqueue
+    || (hasOfferPdfDraft && (
+      !acl.runtime_pdf_enqueue || acl.system_pdf_enqueue || acl.auth_pdf_enqueue
+    ))
+    || (!hasOfferPdfDraft && (
+      acl.runtime_pdf_enqueue !== null || acl.system_pdf_enqueue !== null
+      || acl.auth_pdf_enqueue !== null
+    ))
   ) {
     throw new Error(`Funktions-ACL weicht vom Rollenvertrag ab: ${JSON.stringify(acl)}`);
   }

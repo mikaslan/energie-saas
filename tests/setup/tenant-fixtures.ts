@@ -8,6 +8,7 @@ import {
   sealProjectCatalogResolution,
 } from "@/lib/integrations/catalog/contract";
 import { canonicalizeOfferJson } from "@/lib/integrations/offers/contract";
+import { hashOfferPdfDraftInput } from "@/lib/integrations/offers/pdf-contract";
 import type { TenantTx } from "@/lib/db/types";
 
 async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
@@ -520,8 +521,20 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
   const lineId = randomUUID();
   const lineDomainId = randomUUID();
   const createdAt = "2026-08-29T12:00:00.000Z";
-  const contactContext = { displayName: "Offer Tenant Fixture" };
-  const installationSiteContext = { formattedAddress: "Testweg 1, 10115 Berlin" };
+  const contactContext = {
+    displayName: "Offer Tenant Fixture",
+    emailPrimary: null,
+    phoneE164: null,
+  };
+  const installationSiteContext = {
+    addressRevision: 1,
+    formattedAddress: "Testweg 1, 10115 Berlin",
+    street: "Testweg",
+    houseNumber: "1",
+    postalCode: "10115",
+    city: "Berlin",
+    country: "DE",
+  };
   const bindings = {
     projectId: source.project_id,
     contactId: source.contact_id,
@@ -557,13 +570,38 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
       description: null,
       unit: "piece",
     },
-    source: { kind: "custom" },
-    salesPricing: { originalUnitNetCents: 100, effectiveUnitNetCents: 100 },
-    purchasePricing: { originalUnitNetCents: 50, effectiveUnitNetCents: 50 },
+    source: {
+      kind: "custom",
+      enteredBy: source.actor_id,
+      enteredAt: createdAt,
+    },
+    salesPricing: {
+      originalUnitNetCents: 100,
+      effectiveUnitNetCents: 100,
+      provenance: {
+        kind: "custom",
+        enteredBy: source.actor_id,
+        enteredAt: createdAt,
+      },
+    },
+    purchasePricing: {
+      originalUnitNetCents: 50,
+      effectiveUnitNetCents: 50,
+      provenance: {
+        kind: "custom",
+        enteredBy: source.actor_id,
+        enteredAt: createdAt,
+      },
+    },
     lineDiscountBps: 0,
     taxTreatment: "standard_19",
     taxRateBps: 1_900,
-    taxDecision: { treatment: "standard_19", taxRateBps: 1_900 },
+    taxDecision: {
+      treatment: "standard_19",
+      rateBps: 1_900,
+      selectedBy: source.actor_id,
+      selectedAt: createdAt,
+    },
     computed: {
       lineBaseNetCents: 100,
       lineDiscountedNetCents: 100,
@@ -591,6 +629,16 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     revision: 1,
     sourceBindings: bindings,
     priceAudienceDecision: audienceDecision,
+    taxDecision: {
+      treatment: "standard_19",
+      rateBps: 1_900,
+      selectedBy: source.actor_id,
+      selectedAt: createdAt,
+    },
+    currency: "EUR",
+    priceBasis: "net",
+    globalDiscountBps: 0,
+    customDealNetCents: null,
     contactContext,
     installationSiteContext,
     variantName: "Basis",
@@ -712,6 +760,111 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
       ${wsId}::uuid, 'actor', ${source.actor_id}::uuid,
       timestamptz '2026-08-30 12:00:00+00', 1,
       ${createdAt}::timestamptz, ${createdAt}::timestamptz
+    )
+  `);
+}
+
+async function fixtureOfferPdfDraft(tx: TenantTx, wsId: string): Promise<void> {
+  const existing = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id from offer_pdf_draft
+     where workspace_id = ${wsId}::uuid
+     limit 1
+  `);
+  if (existing.rows[0]) return;
+  await fixtureOfferGraph(tx, wsId);
+  const source = await tx.execute<{
+    offer_id: string;
+    offer_number: string;
+    project_id: string;
+    variant_id: string;
+    revision_id: string;
+    revision: number;
+    revision_snapshot: unknown;
+    snapshot_sha256: string;
+    created_by: string;
+    [key: string]: unknown;
+  }>(sql`
+    select revision.offer_id, offer_record.offer_number,
+           revision.project_id, revision.variant_id,
+           revision.id as revision_id, revision.revision,
+           revision.revision_snapshot,
+           encode(revision.snapshot_sha256, 'hex') as snapshot_sha256,
+           revision.created_by
+      from offer_variant_revision revision
+      join offer offer_record
+        on offer_record.workspace_id = revision.workspace_id
+       and offer_record.id = revision.offer_id
+     where revision.workspace_id = ${wsId}::uuid
+     order by revision.created_at desc, revision.id desc
+     limit 1
+  `);
+  const row = source.rows[0];
+  if (!row) throw new Error("PDF-Tenant-Fixture braucht eine Offer-Revision.");
+  const input = {
+    schemaVersion: "offer-pdf-draft-input.v1" as const,
+    canonicalizationVersion: "offer-jcs.v1" as const,
+    templateVersion: "offer-pdf-draft-template.v1" as const,
+    rendererRecipeVersion:
+      "offer-pdf-draft-renderer-recipe.v1-linux-amd64-pw1.62.1-c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac" as const,
+    offerNumber: row.offer_number,
+    preparedAt: "2026-08-29T12:00:00.000Z",
+    recipient: { displayName: "Offer Tenant Fixture" },
+    installationSite: { formattedAddress: "Testweg 1, 10115 Berlin" },
+    variant: {
+      name: "Basis",
+      revision: row.revision,
+    },
+    commercialTerms: { globalDiscountBps: 0, customDealNetCents: null },
+    sections: [{
+      position: 1,
+      title: "Tenant Fixture",
+      discountBps: 0,
+      lines: [{
+        position: 1,
+        title: "Freie Tenant-Fixture-Position",
+        description: null,
+        quantityMilli: 1_000,
+        unit: "piece" as const,
+        positionType: "required" as const,
+        isHidden: false,
+        salesUnitNetCents: 100,
+        lineDiscountBps: 0,
+        taxRateBps: 1_900 as const,
+        finalNetCents: 100,
+        taxCents: 19,
+        grossCents: 119,
+      }],
+    }],
+    totals: {
+      basisNetCents: 100,
+      basisTaxCents: 19,
+      basisGrossCents: 119,
+      optionalNetCents: 0,
+      optionalTaxCents: 0,
+      optionalGrossCents: 0,
+    },
+  };
+  const inputSha256 = hashOfferPdfDraftInput(input);
+  const reservation = createHash("sha256")
+    .update(`offer-pdf-tenant-fixture:${row.revision_id}`, "utf8")
+    .digest("hex");
+  await tx.execute(sql`
+    insert into offer_pdf_draft (
+      workspace_id, project_id, offer_id, variant_id,
+      variant_revision_id, variant_revision, variant_snapshot_sha256,
+      input_version, canonicalization_version, template_version,
+      renderer_recipe_version, reservation_key, input_snapshot, input_sha256,
+      state, attempt_count, next_attempt_at, created_by, created_at, updated_at
+    ) values (
+      ${wsId}::uuid, ${row.project_id}::uuid, ${row.offer_id}::uuid,
+      ${row.variant_id}::uuid, ${row.revision_id}::uuid, ${row.revision},
+      decode(${row.snapshot_sha256}, 'hex'), 'offer-pdf-draft-input.v1',
+      'offer-jcs.v1', 'offer-pdf-draft-template.v1',
+      'offer-pdf-draft-renderer-recipe.v1-linux-amd64-pw1.62.1-c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac',
+      decode(${reservation}, 'hex'),
+      ${JSON.stringify(input)}::jsonb, decode(${inputSha256}, 'hex'),
+      'queued', 0, ${input.preparedAt}::timestamptz, ${row.created_by}::uuid,
+      ${input.preparedAt}::timestamptz, ${input.preparedAt}::timestamptz
     )
   `);
 }
@@ -918,6 +1071,7 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   offer_bom_line: fixtureOfferGraph,
   offer_mutation_rate_window: fixtureOfferGraph,
   offer_number_series: fixtureOfferGraph,
+  offer_pdf_draft: fixtureOfferPdfDraft,
   offer_variant: fixtureOfferGraph,
   offer_variant_revision: fixtureOfferGraph,
   offer_variant_section: fixtureOfferGraph,
@@ -1047,6 +1201,12 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
     await tx.execute(sql`
       insert into offer_number_series (workspace_id, series_year)
       values (${randomUUID()}::uuid, 2026)
+    `);
+  },
+  offer_pdf_draft: async (tx) => {
+    await tx.execute(sql`
+      insert into offer_pdf_draft (workspace_id)
+      values (${randomUUID()}::uuid)
     `);
   },
   offer_variant: async (tx) => {

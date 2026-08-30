@@ -1,8 +1,21 @@
 # worker/compose.yaml — läuft auf dem Hetzner-Host
 services:
   worker:
+    platform: linux/amd64
     build: { context: .., dockerfile: worker/Dockerfile }
     restart: always
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+      # Playwright v1.62.1: Docker-Defaultprofil plus clone/setns/unshare und
+      # chroot im neuen User-Namespace. Zielhost muss User-Namespaces und
+      # Seccomp erlauben; vor jedem Rollout dort `renderer-smoke` ausfuehren.
+      - seccomp=./chromium-seccomp.json
+    pids_limit: 256
+    shm_size: "1gb"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=768m,mode=1777
     # 15 s pg-boss-Drain + bis zu 17 s failWip-DB-Timeout + Sentry/Socket-Close.
     # 60 s verhindert SIGKILL mitten in der expliziten Jobfreigabe.
     stop_grace_period: 60s
@@ -21,3 +34,26 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # Expliziter, DB- und secretfreier Build-/Sandbox-Smoke. Wird niemals durch
+  # `docker compose up` gestartet, sondern nur via `--profile renderer-smoke`.
+  renderer-smoke:
+    platform: linux/amd64
+    profiles: ["renderer-smoke"]
+    build: { context: .., dockerfile: worker/Dockerfile }
+    restart: "no"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./chromium-seccomp.json
+    pids_limit: 256
+    shm_size: "1gb"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=768m,mode=1777
+    network_mode: none
+    environment:
+      - NODE_ENV=production
+      - OFFER_PDF_VERIFY_CONTAINER_HARDENING=1
+      - WORKER_ISOLATION_SENTINEL=synthetic-container-isolation-probe
+    command: ["node", "dist/verify-offer-pdf-renderer.mjs"]

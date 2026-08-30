@@ -612,7 +612,7 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
     ]);
   });
 
-  it("oeffnet fuer Runtime exakt Schema-USAGE und diese eine Routine, aber keine pg-boss-Relation", async () => {
+  it("oeffnet fuer Runtime exakt Schema-USAGE und versionierte Dispatchroutinen, aber keine pg-boss-Relation", async () => {
     const schemaAcl = await admin.query<{
       grantee: string;
       grantor: string;
@@ -664,13 +664,22 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
          and acl.grantee <> routine.proowner
        order by grantee, signature, privilege_type
     `);
-    expect(routineAcl.rows).toEqual([{
-      grantee: "app_runtime",
-      grantor: "app_worker",
-      signature: "enqueue_project_calculation(uuid, uuid)",
-      privilege_type: "EXECUTE",
-      is_grantable: false,
-    }]);
+    expect(routineAcl.rows).toEqual([
+      {
+        grantee: "app_runtime",
+        grantor: "app_worker",
+        signature: "enqueue_offer_pdf_draft(uuid, uuid)",
+        privilege_type: "EXECUTE",
+        is_grantable: false,
+      },
+      {
+        grantee: "app_runtime",
+        grantor: "app_worker",
+        signature: "enqueue_project_calculation(uuid, uuid)",
+        privilege_type: "EXECUTE",
+        is_grantable: false,
+      },
+    ]);
 
     const runtimeRelationAcl = await admin.query<{ relation_name: string }>(`
       select relation.relname as relation_name

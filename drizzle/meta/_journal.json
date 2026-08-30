@@ -232,6 +232,13 @@
       "when": 1788044595099,
       "tag": "0032_m2_01_offer_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788087672381,
+      "tag": "0033_supreme_jocasta",
+      "breakpoints": true
     }
   ]
 }

@@ -26,6 +26,13 @@ import { createCalculationExecuteHandler } from "./calculation";
 import { createCalculationDatabaseGateway } from "./calculation-database";
 import { createHealthProbe, createHealthServer, startHeartbeat } from "./health";
 import {
+  createOfferPdfRenderHandler,
+  startOfferPdfRecoverySweep,
+  type OfferPdfRecoveryController,
+} from "./offer-pdf";
+import { createOfferPdfDatabaseGateway } from "./offer-pdf-database";
+import { createPlaywrightOfferPdfRenderer } from "./offer-pdf-renderer";
+import {
   createFatalWorkerErrorReporter,
   createVerifiedPgBossDatabase,
 } from "./pgboss-database";
@@ -33,6 +40,7 @@ import { createWorkerStartupGate } from "./startup-gate";
 
 const STARTED = new Date().toISOString();
 const CALCULATION_QUEUE = "calculation.execute";
+const OFFER_PDF_QUEUE = "pdf.render";
 
 // Einziger Worker-Principal: kein stiller Rückfall auf die Runtime-Rolle. Der
 // Wert wird EINMAL aufgelöst, damit pg-boss und Health-Probe garantiert dieselbe
@@ -44,6 +52,7 @@ const WORKER_URL = requireServiceDatabaseUrl("POSTGRES_URL_WORKER", "app_worker"
 // (Codex-Review #6) — also hier explizit erfassen.
 let sentry: typeof import("@sentry/node") | undefined;
 let stopHeartbeat: (() => void) | undefined;
+let offerPdfRecovery: OfferPdfRecoveryController | undefined;
 let shutdownPromise: Promise<void> | undefined;
 let fatalShutdown = false;
 let bossFailure: Error | undefined;
@@ -65,6 +74,11 @@ const bossDatabase = createVerifiedPgBossDatabase(WORKER_URL, 5, (error) => {
 const calculationGateway = createCalculationDatabaseGateway(
   WORKER_URL,
   (error) => reportFatalWorkerError("calculation-pool", error),
+  2,
+);
+const offerPdfGateway = createOfferPdfDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("offer-pdf-pool", error),
   2,
 );
 const boss = new PgBoss({
@@ -89,6 +103,14 @@ const calculationHandler = createCalculationExecuteHandler({
     },
   },
   createLeaseToken: randomUUID,
+});
+const offerPdfHandler = createOfferPdfRenderHandler({
+  database: offerPdfGateway.database,
+  renderer: createPlaywrightOfferPdfRenderer(),
+  createLeaseToken: randomUUID,
+  onIntegrityIncident: (error) => {
+    reportFatalWorkerError("offer-pdf-integrity", error);
+  },
 });
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
@@ -116,12 +138,18 @@ function shutdown(signal: string, fatal = false): Promise<void> {
     console.log(`[worker] ${signal} empfangen, fahre herunter …`);
     stopHeartbeat?.();
     stopHeartbeat = undefined;
+    const recoveryStopped = offerPdfRecovery?.stop() ?? Promise.resolve();
+    offerPdfRecovery = undefined;
 
     // Keine neuen Health-Requests mehr annehmen; bestehende Requests dürfen
     // parallel zum pg-boss-Drain innerhalb ihres 2-s-Probe-Budgets enden.
     const serverClosed = closeHealthServer();
     const stopBoss = async () => {
       try {
+        // Der tenantweise Recovery-Sweep darf nach Beginn des Drains keine
+        // weiteren Dispatches erzeugen. stop() wartet auf genau den laufenden,
+        // begrenzten Sweep; es gibt wegen rekursivem Timeout nie einen zweiten.
+        await recoveryStopped;
         await boss.stop({ graceful: true, timeout: 15_000 });
       } finally {
         // Bei einem benutzerdefinierten IDatabase-Adapter verwaltet pg-boss
@@ -131,6 +159,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
         await Promise.all([
           bossDatabase.close(),
           calculationGateway.close(),
+          offerPdfGateway.close(),
         ]);
       }
     };
@@ -170,6 +199,8 @@ async function main() {
   startupGate.assertOpen();
   await calculationGateway.probe();
   startupGate.assertOpen();
+  await offerPdfGateway.probe();
+  startupGate.assertOpen();
   await boss.start();
   startupGate.assertOpen();
   await boss.createQueue(CALCULATION_QUEUE, {
@@ -189,7 +220,29 @@ async function main() {
   startupGate.assertOpen();
   await boss.work(CALCULATION_QUEUE, calculationHandler);
   startupGate.assertOpen();
-  // M2 registriert hier pdf.render (Playwright/Chrome), M4 simulation.run (pvlib-Sidecar).
+  await boss.createQueue(OFFER_PDF_QUEUE, {
+    policy: "exclusive",
+    retryLimit: 10,
+    retryDelay: 1,
+    retryBackoff: true,
+    retryDelayMax: 60,
+    expireInSeconds: 180,
+  });
+  startupGate.assertOpen();
+  await boss.work(
+    OFFER_PDF_QUEUE,
+    { batchSize: 1, localConcurrency: 2 },
+    offerPdfHandler,
+  );
+  startupGate.assertOpen();
+  offerPdfRecovery = startOfferPdfRecoverySweep({
+    database: offerPdfGateway,
+    onFatal: (error) => {
+      reportFatalWorkerError("offer-pdf-recovery", error);
+    },
+  });
+  startupGate.assertOpen();
+  // M4 registriert hier simulation.run (pvlib-Sidecar).
   // Job-Namenskonvention: "<modul>.<aufgabe>".
 
   // Dead-Man-Heartbeat ERST nach vollständiger Worker-Registrierung (Codex-

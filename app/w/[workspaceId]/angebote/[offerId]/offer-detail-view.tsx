@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
+import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import offerThemeStyles from "../offer-theme.module.css";
 import { formatOfferCents, formatOfferCentsTotal, formatOfferRetryDate } from "./offer-format";
 
@@ -30,6 +31,20 @@ export interface OfferVariantTabView {
   revision: number;
   active: boolean;
   href: string;
+}
+
+export interface OfferPdfDraftSurfaceView {
+  jobId: string;
+  variantId: string;
+  variantRevision: number;
+  state: "queued" | "running" | "retry_wait" | "succeeded" | "failed_final";
+  attemptCount: number;
+  nextAttemptAt: string;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  errorCode: string | null;
+  canDownload: boolean;
 }
 
 interface OfferProductView {
@@ -141,6 +156,7 @@ export interface OfferDetailSurfaceView {
     canEditPrice: boolean;
     canApplyDiscount: boolean;
     canEditPurchasePrice: boolean;
+    canGeneratePdf: boolean;
   };
   basisInput?: {
     expectedRequirementRevision: number;
@@ -149,6 +165,7 @@ export interface OfferDetailSurfaceView {
   };
   actionState?: OfferDetailActionState;
   blockers?: readonly { code: string; label: string }[];
+  pdfDrafts?: readonly OfferPdfDraftSurfaceView[];
 }
 
 export type OfferComponentCategory =
@@ -587,19 +604,37 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
   }
 
   const snapshot = view.activeVariant.snapshot;
+  const pdfDraftPanel = (
+    <OfferPdfDraftPanel
+      workspaceId={view.workspaceId}
+      offerId={view.offer.id}
+      variantId={snapshot.variantId}
+      variantRevision={snapshot.revision}
+      canGenerate={view.permissions?.canGeneratePdf === true}
+      drafts={view.pdfDrafts ?? []}
+    />
+  );
 
   if (canEdit && view.permissions?.canEdit && view.recoveryScope) {
     return (
-      <OfferVariantEditor
-        key={`${snapshot.variantId}:${snapshot.revision}`}
-        view={{
-          ...view,
-          recoveryScope: view.recoveryScope,
-          offer: view.offer,
-          activeVariant: view.activeVariant,
-          permissions: { ...view.permissions, canEdit: true },
-        }}
-      />
+      <>
+        <OfferVariantEditor
+          key={`${snapshot.variantId}:${snapshot.revision}`}
+          view={{
+            ...view,
+            recoveryScope: view.recoveryScope,
+            offer: view.offer,
+            activeVariant: view.activeVariant,
+            permissions: { ...view.permissions, canEdit: true },
+          }}
+        />
+        <div
+          data-wmee-scope="offer"
+          className={`${offerThemeStyles.offerTheme} bg-slate-50 px-4 pb-8 sm:px-6`}
+        >
+          <div className="mx-auto w-full max-w-[1480px]">{pdfDraftPanel}</div>
+        </div>
+      </>
     );
   }
 
@@ -655,6 +690,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
 
         <div className="grid gap-5">
           <DetailStatus view={view} />
+          {pdfDraftPanel}
           <SalesForecast value={view.offer.forecastValueNetCents} />
           <VariantNavigation variants={view.variants ?? []} />
         </div>

@@ -5,7 +5,12 @@ import { z } from "zod";
 import { DeniedState } from "../../anfragen/[projectId]/_ui";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { can, isExternalOnly, PermissionDeniedError } from "@/lib/permissions";
-import { getOfferDetail, type OfferDetailViewModel } from "@/modules/offers";
+import {
+  getOfferDetail,
+  listOfferPdfDrafts,
+  type OfferDetailViewModel,
+  type OfferPdfDraftStatusResult,
+} from "@/modules/offers";
 import { requireAuthSecret } from "@/lib/env";
 import {
   OfferDetailView,
@@ -168,8 +173,10 @@ function projectOfferDetailView(
     canEditPrice: boolean;
     canApplyDiscount: boolean;
     canEditPurchasePrice: boolean;
+    canGeneratePdf: boolean;
   },
   recoveryScope: string,
+  pdfDrafts: readonly OfferPdfDraftStatusResult[],
 ): OfferDetailSurfaceView {
   const activeVariantSchema = z.object({
     schemaVersion: z.literal("offer-variant-view.v1"),
@@ -222,11 +229,27 @@ function projectOfferDetailView(
       canEditPrice: editorCapabilities.canEditPrice,
       canApplyDiscount: editorCapabilities.canApplyDiscount,
       canEditPurchasePrice: editorCapabilities.canEditPurchasePrice,
+      canGeneratePdf: editorCapabilities.canGeneratePdf,
     },
     basisInput: view.permissions.canCreateBasis && view.newBasisInput ? {
       ...view.newBasisInput,
     } : undefined,
     actionState: { status: view.actionState.status },
+    pdfDrafts: pdfDrafts.filter((draft) => (
+      draft.variantId === snapshot.variantId
+    )).map((draft) => ({
+      jobId: draft.jobId,
+      variantId: draft.variantId,
+      variantRevision: draft.variantRevision,
+      state: draft.state,
+      attemptCount: draft.attemptCount,
+      nextAttemptAt: draft.nextAttemptAt,
+      createdAt: draft.createdAt,
+      startedAt: draft.startedAt,
+      finishedAt: draft.finishedAt,
+      errorCode: draft.errorCode,
+      canDownload: draft.canDownload,
+    })),
   };
 }
 
@@ -248,11 +271,13 @@ export default async function OfferDetailPage(
   const { workspaceId, offerId } = parsedParams.data;
   let result: {
     view: Awaited<ReturnType<typeof getOfferDetail>>;
+    pdfDrafts: OfferPdfDraftStatusResult[];
     recoveryScope: string;
     editorCapabilities: {
       canEditPrice: boolean;
       canApplyDiscount: boolean;
       canEditPurchasePrice: boolean;
+      canGeneratePdf: boolean;
     };
   };
   try {
@@ -260,20 +285,29 @@ export default async function OfferDetailPage(
       workspaceId,
       "project.read",
       "offer_detail",
-      async (tx, ctx) => ({
-        view: await getOfferDetail(tx, ctx, {
+      async (tx, ctx) => {
+        const view = await getOfferDetail(tx, ctx, {
           offerId,
           variantId: selectedVariantId,
-        }),
-        recoveryScope: offerRecoveryScope(workspaceId, ctx.actor),
-        editorCapabilities: {
-          canEditPrice: !isExternalOnly(ctx) && can(ctx, "price.edit"),
-          canApplyDiscount: !isExternalOnly(ctx) && can(ctx, "discount.apply"),
-          canEditPurchasePrice: !isExternalOnly(ctx)
+        });
+        const externalOnly = isExternalOnly(ctx);
+        return {
+          view,
+          pdfDrafts: view === null ? [] : await listOfferPdfDrafts(tx, ctx, {
+            workspaceId,
+            offerId,
+          }),
+          recoveryScope: offerRecoveryScope(workspaceId, ctx.actor),
+          editorCapabilities: {
+            canEditPrice: !externalOnly && can(ctx, "price.edit"),
+            canApplyDiscount: !externalOnly && can(ctx, "discount.apply"),
+            canEditPurchasePrice: !externalOnly
             && can(ctx, "price.edit")
             && can(ctx, "price.read_purchase"),
-        },
-      }),
+            canGeneratePdf: !externalOnly && can(ctx, "project.write"),
+          },
+        };
+      },
     );
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
@@ -300,6 +334,7 @@ export default async function OfferDetailPage(
         result.view,
         result.editorCapabilities,
         result.recoveryScope,
+        result.pdfDrafts,
       )}
     />
   );

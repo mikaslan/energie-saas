@@ -51,7 +51,9 @@ stehen im Katalog.
   Alle Mutationen durch Service-Funktionen; Server Actions nur dünne Wrapper.
 - **Ein Hetzner-Worker** (Docker Compose): pg-boss-Queue, Chrome-PDF, pvlib-Python-Sidecar
   (FastAPI, PVGIS-Cache), E-Rechnungs-Serialisierung. Degradation: Worker-Ausfall verzögert
-  Jobs, blockiert nie das Portal.
+  Jobs, blockiert nie das Portal. Für den in M2-02 implementierten internen PDF-Draft ist
+  das Produktionsrezept exakt an `linux/amd64`, Playwright 1.62.1 und den vollständigen
+  OCI-Child-Digest gebunden; der produktive Deploy bleibt ein separates Gate.
 - **Nicht nachrüstbare Tag-1-Investitionen** (je Stunden bis Tage): `workspace_id` überall +
   **RLS + `withTenant` doppelt** · `domain_events`-Outbox (in derselben Transaktion) getrennt
   vom `audit_log` (beide append-only) · **Site-Entität** (Gebäude) zwischen Contact und
@@ -80,8 +82,12 @@ stehen im Katalog.
   **Parallel ab Woche 1:** Redaktion Förder-Regelwerk + VNB-Verzeichnis (Top-50).
 - **M1 Stammdaten-Kern + CRM:** Komponenten-DB (Zod-typisierte JSONB, CSV-Import), Kontakte,
   Kanban, Outcomes, Aufgaben/Notizen/Termine, Suche/Tags, Activity Feed, erste KPIs.
-- **M2 Angebot + E-Signatur:** Varianten mit Snapshot-BOM, Rabatt-Stack (pure Functions,
-  höchste Testdichte), PDF-Engine, Signatur → WORM + Phasenwechsel. **Dazu (K3-Punkt
+- **M2 Angebot + E-Signatur:** M2-01 liefert lokal verifizierte Varianten mit
+  Snapshot-BOM und Rabatt-/Steuer-Stack. M2-02 liefert als lokal technisch
+  verifizierten Slice einen internen, nicht verbindlichen PDF-Draft aus exakt einer
+  unveränderlichen Revision: asynchron, offline/sandboxed gerendert, tenantgeschützt
+  gestaged und privat herunterladbar. Ausstellung, Versand und Signatur → WORM +
+  Phasenwechsel bleiben eigene Folge-Slices. **Dazu (K3-Punkt
   übernommen): Nachtrags-/Änderungs-Workflow nach Signatur (Fork-UX, Preisdifferenz)
   konzipieren, bevor der Pilot startet** — noch kein volles Order-Modell.
 - **M3 Rechnung/GoBD:** volle Fakturierung inkl. 4 Teilrechnungstypen, erzwungener
@@ -139,6 +145,25 @@ stehen im Katalog.
   (PDF via PyMuPDF, XRechnung/ZUGFeRD gegen KoSIT im CI), generische Tenant-Isolations-
   Suite bei jeder Migration, Rechte-Matrix-Test, ~6 Playwright-E2E-Flows.
 - Abnahme je Meilenstein gegen die F-Nummern des Modulkatalogs.
+
+## Aktueller Ausführungsstand M2
+
+- Ehrlicher Gesamtstand der F1–F16-Mission: nach der lokalen technischen
+  M2-02-Abnahme rund **19 %**. Das technische lokale Fundament ist weit, die
+  nutzerseitige Produktbreite bleibt niedrig.
+- M2-01 und M2-02 sind lokal `REVIEWED/VERIFIED`; das technische M2-02-Gate ist
+  `GO`. Sein menschliches Portal-/PDF-Visual-Gate bleibt davon unabhängig
+  `INCONCLUSIVE`.
+- M2-02 kennt ehrlich nur `queued`, `running`, `retry_wait`, `succeeded` und
+  terminal `failed_final`. Viewer dürfen Status und erfolgreiche interne Drafts
+  lesen/downloaden; Editor/Admin dürfen mit `project.write` anfordern/replayen;
+  External erhält keinen Zugriff und `app_worker` nur minimale tenantgebundene
+  Claim-/Finalize-/Recovery-Rechte.
+- M2-02 führt bewusst kein Rollout-Flag ein. Bestehende Feature-Flags ersetzen nie
+  Membership, Rolle oder Einzelrecht.
+- Nicht als geliefert zählen: `issued`, Versand/E-Mail, Annahme/Signatur,
+  öffentlicher Link/Kundenportal, Rechnung, Object Lock/WORM oder produktiver
+  Worker-Deploy. Diese Grenzen werden erst in eigenen, belegten Slices geöffnet.
 
 ## Betriebsnotizen (sofort, außerhalb des Builds)
 

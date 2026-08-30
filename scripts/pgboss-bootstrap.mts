@@ -7,12 +7,22 @@ import { requireServiceDatabaseUrl } from "../lib/db/role-env.js";
 import { createVerifiedPgBossDatabase } from "../worker/pgboss-database.js";
 
 const QUEUE_NAME = "calculation.execute";
+const OFFER_PDF_QUEUE_NAME = "pdf.render";
 const BOOTSTRAP_LOCK = [1701734769, 7] as const;
 
 export const LEGACY_CALCULATION_QUEUE_OPTIONS = Object.freeze({
   policy: "exclusive" as const,
   retryLimit: 0,
   expireInSeconds: 900,
+});
+
+export const OFFER_PDF_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
 });
 
 type QueueContractRow = {
@@ -199,6 +209,30 @@ export async function bootstrapCalculationQueue(
       if (classifyCalculationQueueBootstrap(after) !== "keep_legacy") {
         throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
       }
+    }
+    // M2-02 besitzt keine historische Zwischenmigration: Die Queue kann von
+    // Anfang an mit dem aktuellen technischen Retry-Vertrag angelegt werden.
+    // Fachliche Versuche bleiben davon getrennt und werden in
+    // offer_pdf_draft per Lease/CAS auf drei begrenzt.
+    await boss.createQueue(OFFER_PDF_QUEUE_NAME, OFFER_PDF_QUEUE_OPTIONS);
+    const pdfQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${OFFER_PDF_QUEUE_NAME}'
+    `);
+    const pdf = pdfQueue.rows[0] as Record<string, unknown> | undefined;
+    if (
+      pdf === undefined
+      || pdf.policy !== "exclusive"
+      || Number(pdf.retry_limit) !== 10
+      || Number(pdf.retry_delay) !== 1
+      || pdf.retry_backoff !== true
+      || Number(pdf.retry_delay_max) !== 60
+      || Number(pdf.expire_seconds) !== 180
+      || pdf.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
     }
     if (asynchronousFailure) {
       throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");

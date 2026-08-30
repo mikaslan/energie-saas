@@ -4,15 +4,28 @@ import { describe, expect, it } from "vitest";
 describe("Worker-Containervertrag", () => {
   it("läuft als Non-Root aus einem reproduzierbaren Build-Artefakt", async () => {
     const dockerfile = await readFile("worker/Dockerfile", "utf8");
-    expect(dockerfile).toMatch(/FROM node:22-slim AS build/);
+    expect(dockerfile).toContain(
+      "FROM node:22-slim@sha256:4d676821dff059fd00d277ee4261ef34ea712317fed0737c03941481b5760c96 AS build",
+    );
     expect(dockerfile).toContain("npm ci");
     expect(dockerfile).toContain("npx --no-install esbuild");
-    expect(dockerfile).toMatch(/FROM node:22-slim AS runtime/);
+    expect(dockerfile).toContain(
+      "FROM mcr.microsoft.com/playwright:v1.62.1-noble@sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac AS runtime",
+    );
+    expect(dockerfile).toContain("PLAYWRIGHT_BROWSERS_PATH=/ms-playwright");
+    expect(dockerfile).toContain("LD_PRELOAD=/usr/local/lib/worker-nodump.so");
+    expect(dockerfile).toContain("worker/process-isolation.c");
+    expect(dockerfile).toContain("gcc=4:12.2.0-3");
+    expect(dockerfile).toContain("libc6-dev=2.36-9+deb12u14");
+    expect(dockerfile).toContain("-Wall -Wextra -Werror");
+    expect(dockerfile).toContain("-Wl,-z,relro,-z,now");
+    expect(dockerfile).toContain("/usr/local/lib/worker-nodump.so");
     expect(dockerfile).toContain("npm ci --omit=dev");
-    expect(dockerfile).toContain("USER node");
+    expect(dockerfile).toContain("USER pwuser");
     expect(dockerfile).toContain('CMD ["node", "dist/worker.cjs"]');
     expect(dockerfile).not.toMatch(/npm i(?:nstall)?\s+tsx/);
     expect(dockerfile).not.toContain("COPY . .\nCMD");
+    expect(dockerfile).not.toContain("--no-sandbox");
   });
 
   it("erhält nur Worker-Konfiguration und schließt alle Env-Dateien aus", async () => {
@@ -25,6 +38,15 @@ describe("Worker-Containervertrag", () => {
     expect(compose).toContain("POSTGRES_EXPECTED_NEON_TENANT_ID=");
     expect(compose).toContain("POSTGRES_EXPECTED_NEON_TIMELINE_ID=");
     expect(compose).toContain("stop_grace_period: 60s");
+    expect(compose).toContain("read_only: true");
+    expect(compose).toContain('cap_drop: ["ALL"]');
+    expect(compose).toContain("no-new-privileges:true");
+    expect(compose).toContain("seccomp=./chromium-seccomp.json");
+    expect(compose).toContain("network_mode: none");
+    expect(compose.match(/platform: linux\/amd64/gu)).toHaveLength(2);
+    expect(compose).toContain("WORKER_ISOLATION_SENTINEL=synthetic-container-isolation-probe");
+    expect(compose).not.toContain("SYS_ADMIN");
+    expect(compose).not.toMatch(/seccomp\s*[:=]\s*unconfined/iu);
     expect(compose).not.toMatch(/POSTGRES_URL=\$\{POSTGRES_URL\}/);
     expect(compose).not.toContain("POSTGRES_URL_SYSTEM");
     expect(dockerignore.split(/\r?\n/)).toContain(".env*");

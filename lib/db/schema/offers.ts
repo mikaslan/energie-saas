@@ -22,6 +22,7 @@ import type {
   OfferSourceBindingsV1,
   OfferVariantSnapshotV1,
 } from "@/lib/integrations/offers/contract";
+import type { OfferPdfDraftInputV1 } from "@/lib/integrations/offers/pdf-contract";
 import { catalogComponentRevision, projectCatalogResolution } from "./catalog";
 import { membership, workspace } from "./core";
 import { projectCalculationRevision } from "./energy";
@@ -286,6 +287,15 @@ export const offerVariantRevision = pgTable(
       t.variantId,
       t.revision,
     ),
+    unique("offer_variant_revision_ws_pdf_source_uq").on(
+      t.workspaceId,
+      t.id,
+      t.offerId,
+      t.variantId,
+      t.projectId,
+      t.revision,
+      t.snapshotSha256,
+    ),
     foreignKey({
       columns: [t.workspaceId],
       foreignColumns: [workspace.id],
@@ -333,6 +343,173 @@ export const offerVariantRevision = pgTable(
       and ${t.revisionSnapshot}->>'snapshotSha256' = encode(${t.snapshotSha256}, 'hex')
       and jsonb_typeof(${t.revisionSnapshot}->'sections') = 'array'
       and jsonb_array_length(${t.revisionSnapshot}->'sections') between 1 and 25`),
+  ],
+);
+
+export type OfferPdfDraftState =
+  | "queued"
+  | "running"
+  | "retry_wait"
+  | "succeeded"
+  | "failed_final";
+
+/**
+ * Erasure-faehiges Staging fuer interne PDF-Entwuerfe. Diese Relation ist
+ * absichtlich kein WORM-Archiv: Erst ein spaeterer Issuance-Slice darf exakt
+ * gehashte Bytes in einen empirisch geprueften Object-Lock-Bucket promoten.
+ */
+export const offerPdfDraft = pgTable(
+  "offer_pdf_draft",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    projectId: uuid("project_id").notNull(),
+    offerId: uuid("offer_id").notNull(),
+    variantId: uuid("variant_id").notNull(),
+    variantRevisionId: uuid("variant_revision_id").notNull(),
+    variantRevision: integer("variant_revision").notNull(),
+    variantSnapshotSha256: bytea("variant_snapshot_sha256").notNull(),
+    inputVersion: text("input_version").notNull(),
+    canonicalizationVersion: text("canonicalization_version").notNull(),
+    templateVersion: text("template_version").notNull(),
+    rendererRecipeVersion: text("renderer_recipe_version").notNull(),
+    reservationKey: bytea("reservation_key").notNull(),
+    inputSnapshot: jsonb("input_snapshot").$type<OfferPdfDraftInputV1>().notNull(),
+    inputSha256: bytea("input_sha256").notNull(),
+    state: text("state").$type<OfferPdfDraftState>().notNull().default("queued"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    errorCode: text("error_code"),
+    errorRetryable: boolean("error_retryable"),
+    artifactMimeType: text("artifact_mime_type"),
+    artifactSha256: bytea("artifact_sha256"),
+    artifactSizeBytes: integer("artifact_size_bytes"),
+    artifactBytes: bytea("artifact_bytes"),
+    createdBy: uuid("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    unique("offer_pdf_draft_ws_id_uq").on(t.workspaceId, t.id),
+    unique("offer_pdf_draft_ws_reservation_uq").on(t.workspaceId, t.reservationKey),
+    unique("offer_pdf_draft_ws_recipe_uq").on(
+      t.workspaceId,
+      t.variantId,
+      t.variantRevision,
+      t.templateVersion,
+      t.rendererRecipeVersion,
+    ),
+    index("offer_pdf_draft_ws_offer_idx").on(
+      t.workspaceId,
+      t.offerId,
+      t.createdAt,
+      t.id,
+    ),
+    index("offer_pdf_draft_due_idx").on(
+      t.workspaceId,
+      t.state,
+      t.nextAttemptAt,
+      t.createdAt,
+      t.id,
+    ),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "offer_pdf_draft_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [
+        t.workspaceId,
+        t.variantRevisionId,
+        t.offerId,
+        t.variantId,
+        t.projectId,
+        t.variantRevision,
+        t.variantSnapshotSha256,
+      ],
+      foreignColumns: [
+        offerVariantRevision.workspaceId,
+        offerVariantRevision.id,
+        offerVariantRevision.offerId,
+        offerVariantRevision.variantId,
+        offerVariantRevision.projectId,
+        offerVariantRevision.revision,
+        offerVariantRevision.snapshotSha256,
+      ],
+      name: "offer_pdf_draft_variant_revision_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.workspaceId, t.createdBy],
+      foreignColumns: [membership.workspaceId, membership.userId],
+      name: "offer_pdf_draft_created_by_fk",
+    }),
+    check("offer_pdf_draft_binding_ck", sql`${t.variantRevision} > 0
+      and octet_length(${t.variantSnapshotSha256}) = 32
+      and octet_length(${t.reservationKey}) = 32
+      and octet_length(${t.inputSha256}) = 32`),
+    check("offer_pdf_draft_versions_ck", sql`${t.inputVersion} = 'offer-pdf-draft-input.v1'
+      and ${t.canonicalizationVersion} = 'offer-jcs.v1'
+      and ${t.templateVersion} = 'offer-pdf-draft-template.v1'
+      and ${t.rendererRecipeVersion} = 'offer-pdf-draft-renderer-recipe.v1-linux-amd64-pw1.62.1-c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac'`),
+    check("offer_pdf_draft_input_ck", sql`jsonb_typeof(${t.inputSnapshot}) = 'object'
+      and ${t.inputSnapshot}->>'schemaVersion' = ${t.inputVersion}
+      and ${t.inputSnapshot}->>'canonicalizationVersion' = ${t.canonicalizationVersion}
+      and ${t.inputSnapshot}->>'templateVersion' = ${t.templateVersion}
+      and ${t.inputSnapshot}->>'rendererRecipeVersion' = ${t.rendererRecipeVersion}`),
+    check("offer_pdf_draft_input_hash_ck", sql`${t.inputSha256} = sha256(convert_to(
+      public.canonicalize_offer_json_v1(${t.inputSnapshot}), 'UTF8'
+    ))`),
+    check("offer_pdf_draft_state_ck", sql`${t.state} in (
+      'queued', 'running', 'retry_wait', 'succeeded', 'failed_final'
+    )`),
+    check("offer_pdf_draft_attempt_ck", sql`${t.attemptCount} between 0 and 3`),
+    check("offer_pdf_draft_error_ck", sql`(
+      ${t.errorCode} is null and ${t.errorRetryable} is null
+    ) or (
+      ${t.errorCode} ~ '^[a-z][a-z0-9_]{0,79}$' and ${t.errorRetryable} is not null
+    )`),
+    check("offer_pdf_draft_artifact_ck", sql`(
+      ${t.artifactMimeType} is null
+      and ${t.artifactSha256} is null
+      and ${t.artifactSizeBytes} is null
+      and ${t.artifactBytes} is null
+    ) or (
+      ${t.artifactMimeType} = 'application/pdf'
+      and octet_length(${t.artifactSha256}) = 32
+      and ${t.artifactSizeBytes} between 100 and 8388608
+      and octet_length(${t.artifactBytes}) = ${t.artifactSizeBytes}
+      and ${t.artifactSha256} = pg_catalog.sha256(${t.artifactBytes})
+    )`),
+    check("offer_pdf_draft_shape_ck", sql`case ${t.state}
+      when 'queued' then
+        ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+        and ${t.finishedAt} is null and ${t.errorCode} is null
+        and ${t.errorRetryable} is null and ${t.artifactBytes} is null
+      when 'running' then
+        ${t.leaseToken} is not null and ${t.leaseExpiresAt} is not null
+        and ${t.startedAt} is not null and ${t.finishedAt} is null
+        and ${t.errorCode} is null and ${t.errorRetryable} is null
+        and ${t.artifactBytes} is null
+      when 'retry_wait' then
+        ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+        and ${t.startedAt} is not null and ${t.finishedAt} is null
+        and ${t.errorCode} is not null and ${t.errorRetryable} = true
+        and ${t.artifactBytes} is null
+      when 'succeeded' then
+        ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+        and ${t.startedAt} is not null and ${t.finishedAt} is not null
+        and ${t.errorCode} is null and ${t.errorRetryable} is null
+        and ${t.artifactBytes} is not null
+      when 'failed_final' then
+        ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+        and ${t.startedAt} is not null and ${t.finishedAt} is not null
+        and ${t.errorCode} is not null and ${t.errorRetryable} = false
+        and ${t.artifactBytes} is null
+      else false end`),
   ],
 );
 

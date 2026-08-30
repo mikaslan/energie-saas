@@ -1,23 +1,27 @@
 # Rollen- und Berechtigungsmatrix
 
-Stand: 2026-08-30 · M2-01 implementierter Vertrag
+Stand: 2026-08-30 · M2-01 und M2-02 lokal verifiziert
 
 Die Laufzeitwahrheit bleibt `lib/permissions.ts`; diese Matrix dokumentiert die
 beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
 
-| Fähigkeit | Viewer | Editor | Admin | External | Einzelrecht / Bedingung |
-|---|---:|---:|---:|---:|---|
-| Offer-Liste/-Detail lesen | ja | ja | ja | nein | `project.read`, gleicher Workspace; External bis Assignment fail-closed |
-| B2C-Request in Offer konvertieren | nein | nur mit Rechten | ja | nein | `project.write` + `phase.convert` + `price.edit`, B2C-/Steuerbestätigung und alle Readiness-Gates |
-| Variante duplizieren/benennen | nein | ja | ja | nein | `project.write`, `expectedRevision` |
-| Neue Basis aus aktueller Resolution | nein | nur mit Recht | ja | nein | `project.write` + `price.edit`, explizite Steuerwahl; 0 % frisch bestätigt |
-| Sektion, Menge, Typ, Sichtbarkeit, Reihenfolge | nein | ja | ja | nein | `project.write`, `expectedRevision` |
-| VK einer Zeile ändern | nein | nur mit Recht | ja | nein | zusätzlich `price.edit`; Admin impliziert Capability |
-| Steuerbehandlung wählen oder ändern | nein | nur mit Recht | ja | nein | zusätzlich `price.edit`; jede Revision protokolliert Actor/DB-Zeit, 0 % commandgebunden frisch bestätigt |
-| Rabatt oder Custom Deal Value ändern | nein | nur mit Recht | ja | nein | zusätzlich `discount.apply`; Admin impliziert Capability |
-| EK, Einkaufsquelle, Marge, private Vollhashes lesen | nein | nur mit Recht | ja | nein | zusätzlich `price.read_purchase`; strukturelle DTO-Trennung |
-| EK einer freien Zeile ändern | nein | nur mit beiden Rechten | ja | nein | `price.edit` + `price.read_purchase`; Admin impliziert beide |
-| PDF, Versand, Signatur, Won | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | spätere Slices; keine Fake-Controls |
+| Fähigkeit | Viewer | Editor | Admin | External | `app_worker` | Einzelrecht / Bedingung |
+|---|---:|---:|---:|---:|---:|---|
+| Offer-Liste/-Detail lesen | ja | ja | ja | nein | nein | `project.read`, gleicher Workspace; External bis Assignment fail-closed |
+| B2C-Request in Offer konvertieren | nein | nur mit Rechten | ja | nein | nein | `project.write` + `phase.convert` + `price.edit`, B2C-/Steuerbestätigung und alle Readiness-Gates |
+| Variante duplizieren/benennen | nein | ja | ja | nein | nein | `project.write`, `expectedRevision` |
+| Neue Basis aus aktueller Resolution | nein | nur mit Recht | ja | nein | nein | `project.write` + `price.edit`, explizite Steuerwahl; 0 % frisch bestätigt |
+| Sektion, Menge, Typ, Sichtbarkeit, Reihenfolge | nein | ja | ja | nein | nein | `project.write`, `expectedRevision` |
+| VK einer Zeile ändern | nein | nur mit Recht | ja | nein | nein | zusätzlich `price.edit`; Admin impliziert Capability |
+| Steuerbehandlung wählen oder ändern | nein | nur mit Recht | ja | nein | nein | zusätzlich `price.edit`; jede Revision protokolliert Actor/DB-Zeit, 0 % commandgebunden frisch bestätigt |
+| Rabatt oder Custom Deal Value ändern | nein | nur mit Recht | ja | nein | nein | zusätzlich `discount.apply`; Admin impliziert Capability |
+| EK, Einkaufsquelle, Marge, private Vollhashes lesen | nein | nur mit Recht | ja | nein | nein | zusätzlich `price.read_purchase`; strukturelle DTO-Trennung |
+| EK einer freien Zeile ändern | nein | nur mit beiden Rechten | ja | nein | nein | `price.edit` + `price.read_purchase`; Admin impliziert beide |
+| PDF-Jobstatus lesen | ja | ja | ja | nein | nur fachlicher Job | `project.read`, gleicher Workspace; DTO ohne Input, Bytes, Preise und Vollhashes |
+| Erfolgreichen PDF-Entwurf herunterladen | ja | ja | ja | nein | nein | `project.read`, erneute Tenant-/Offer-/Job- sowie MIME-/Längen-/Hashprüfung; privat/no-store |
+| PDF-Entwurf anfordern oder Dispatch replayen | nein | nur mit Recht | ja | nein | nein | `project.write`, aktuelle Variantenrevision; kein M2-02-Rollout-Flag |
+| PDF-Job claimen, retryen, recovern und finalisieren | nein | nein | nein | nein | ja, minimal | nur ID-Payload und exakt erlaubte `offer_pdf_draft`-/Queue-Operationen unter Tenantkontext; keine Membership-, Auth-, Katalog- oder sonstigen App-Rechte |
+| PDF ausstellen/versenden, Annahme/Signatur, öffentlicher Link, Rechnung/Won | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | spätere Slices; keine Fake-Controls und kein Object-Lock-Claim |
 
 ## Denial-Vertrag
 
@@ -32,4 +36,11 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
   Einkaufsprovenienz, Kundensnapshots oder private Vollhashes.
 - Admin impliziert gemäß bestehender Runtime Capabilities. Ein deaktiviertes
   Workspace-Feature bleibt trotzdem auch für Admin bindend.
+- M2-02 führt bewusst kein eigenes Rollout-Flag ein. Vorhandene Feature-Flags
+  können fehlende Membership, Rolle, `project.read` oder `project.write` nicht
+  ersetzen; sobald eine spätere Action ein Flag deklariert, bleibt es über den
+  zentralen `can()`-Pfad auch für Admin bindend.
+- `app_worker` ist kein Benutzer und erhält keine Portalrolle. Seine Rechte
+  reichen nur für tenantgebundenes Claim/Finalize/Recovery des ID-only-
+  `pdf.render`-Pfads und die dazu zwingend nötige Kanonizitätsprüfung.
 - `external_only` wird erst mit einem echten Assignmentmodell freigeschaltet.

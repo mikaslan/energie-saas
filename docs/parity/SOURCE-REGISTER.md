@@ -7,13 +7,15 @@ in `CONTRIBUTING.md` noch eine Capability-Abnahme. Reonic-Quellen dürfen nur
 beobachtbare Funktionssemantik belegen. UI, Texte, Assets, Code und Daten werden
 nicht übernommen.
 
-## Aktive Quellen für M2-01
+## Aktive Quellen für M2-01 und M2-02
 
 | ID | Quelle | Klasse | Belegt | Confidence / Grenze |
 |---|---|---|---|---|
 | `SRC-CONSTITUTION-01` | `CONTRIBUTING.md` | DOCUMENTED | Clean-Room, erlaubte Quellen, verbotene Zugänge | hoch; bindend |
-| `SRC-BLUEPRINT-F2` | `docs/blaupause/01-modulkatalog.md`, F2.1–F2.4 | INFERRED / sekundär synthetisiert | Arbeits-Hypothesen zu Offer, Varianten, BOM, Rabattstack | mittel; keine Primärevidenz, Claims müssen an öffentliche Doku/Vault gebunden bleiben |
+| `SRC-BLUEPRINT-F2` | `docs/blaupause/01-modulkatalog.md`, F2.1–F2.4 und F2.7 | INFERRED / sekundär synthetisiert | Arbeits-Hypothesen zu Offer, Varianten, BOM, Rabattstack und PDF als Capability | mittel; keine Primärevidenz und keine Layoutvorlage, Claims müssen an öffentliche Doku/Vault gebunden bleiben |
 | `SRC-M108-01` | `docs/spec/M1-08-produktkatalog-projektaufloesung.md` und ADR 0008 | DOCUMENTED | immutable Katalog-/Preissnapshots, EK-Grenze, Current/Stale | hoch; lokal verifiziert |
+| `SRC-M202-SPEC` | `docs/spec/M2-02-angebots-pdf-entwurf.md` | DOCUMENTED | interner nicht verbindlicher PDF-Draft, exakte Revisionsbindung, minimierter Input, Zustands-/Rollen-/Download-/Testvertrag und harte Nicht-Ziele | hoch für den eigenen WMEE-Vertrag; lokal technisch verifiziert |
+| `SRC-ADR-0010` | `docs/adr/0010-pdf-entwurf-worker-und-staging.md` | DECIDED WMEE | isolierter offline/sandboxed Chromium-Worker, gepinntes `linux/amd64`-/Playwright-/OCI-Rezept, tenantgeschütztes Postgres-Staging und spätere separate Object-Lock-Promotion | hoch für die eigene Architekturentscheidung; kein produktiver Deploy-/WORM-Beleg |
 | `SRC-REONIC-CREATE` | [Create an offer](https://docs.reonic.com/docs/en/offers-overview-create-an-offer) | DOCUMENTED | Offer aus Request oder direkt, Workspace-Nummer, Standardvariante | hoch für öffentlich beschriebene Semantik; kein Login |
 | `SRC-REONIC-BASIC` | [Offer basic information](https://docs.reonic.com/docs/en/offers-overview-basic-informations) | DOCUMENTED | BOM-Felder, Menge, Preis, Rabatt, VAT, Sektionen | hoch für öffentlich beschriebene Semantik |
 | `SRC-REONIC-VARIANTS` | [Variants](https://docs.reonic.com/docs/en/offers-plan-additional-optional-variants) | DOCUMENTED | unabhängige Varianten und Duplizieren | hoch; private Implementierung unbekannt |
@@ -21,7 +23,7 @@ nicht übernommen.
 | `SRC-REONIC-OPTIONAL` | [Optional components](https://docs.reonic.com/docs/en/offers-plan-additional-optional-optional-components) | DOCUMENTED | separat auswählbare optionale Komponenten | hoch; Auswahl selbst ist späterer Signatur-Slice |
 | `SRC-REONIC-SECTION-DISCOUNT` | [Discounts per section](https://docs.reonic.com/docs/en/offers-finalise-cat-discounts-per-section) | DOCUMENTED | Sektionsrabatte | hoch; Rundung nicht öffentlich belegt |
 | `SRC-REONIC-GLOBAL-DISCOUNT` | [Global discounts](https://docs.reonic.com/docs/en/offers-finalise-cat-global-discounts) | DOCUMENTED | globale Rabatte | hoch; Rundung nicht öffentlich belegt |
-| `SRC-REONIC-FINALISE` | [Finalise overview](https://docs.reonic.com/docs/en/offers-finalise-cat-finalise-overview) | DOCUMENTED | Finalisierung als eigener Schritt | hoch; wird in M2-01 nicht implementiert |
+| `SRC-REONIC-FINALISE` | [Finalise overview](https://docs.reonic.com/docs/en/offers-finalise-cat-finalise-overview) | DOCUMENTED | Finalisierung als eigener Schritt | hoch für die öffentliche Capability; M2-02 übernimmt daraus weder Layout noch Issuance-/Signatursemantik |
 | `SRC-REONIC-LIFECYCLE` | [Offer characteristics](https://docs.reonic.com/docs/en/offers-overview-overview-offer-characteristics) | DOCUMENTED | Offer-Lebenszyklus und gesperrter signierter Stand | hoch; Signatur bleibt später |
 | `SRC-VAULT-REQ` | eigene WMEE-Strategie-, Rechner- und Feedbacknotizen im Manifest unten | DOCUMENTED | Rechner→Lead→unverbindlicher Angebotsentwurf, menschliche Prüfung, drei Ergebnisrichtungen, Klima-/PV-Ziele | mittel bis hoch; eigene Anforderungen, keine Reonic-Live-Evidenz |
 | `SRC-VAULT-INTERVIEW` | Jamie-Meeting und sechs direkt verlinkte Transkripte im Manifest | OBSERVED stakeholder statement | Nutzerwünsche, Reonic-Anwenderaussagen, Text-/Claim-Probleme | mittel; Aussagen nicht als unabhängige Produktbeobachtung ausgeben |
@@ -29,6 +31,7 @@ nicht übernommen.
 | `SRC-VAULT-SESSIONS` | vier historische Session-Markdowns im Manifest | DOCUMENTED / secondary archive | frühere Agent-/Nutzerentscheidungen und Quellenhinweise | niedrig bis mittel; keine Produktbeobachtung, `fc23821a` ist überlappender Frühstand und keine zweite Bestätigung |
 | `SRC-NEXT-16-LOCAL` | installierte offizielle Next-16.3.3-Dokumentation in `node_modules/next/dist/docs` | DOCUMENTED | Server-/Client-Grenze, Actions, Forms, Cache, Revalidation, Errors | hoch; exakt installierte Version |
 | `SRC-CLAUDE-M201-UI` | lokaler Claude-Code-2.1.251-Leselauf, Modellalias `opus`, Effort `max` | INFERRED / design input | unabhängige UI-/A11y-Gegenprobe für M2-01 | mittel; keine Produktwahrheit, keine Schreibrechte, ausgewählte Punkte bewusst übernommen |
+| `SRC-CLAUDE-M202-DESIGN` | lokaler Claude-Code-Opus-Lesereview | INFERRED / design input | unabhängige Gegenprobe für Informationshierarchie, klare Draft-Kennzeichnung und lesbaren A4-Aufbau in M2-02 | mittel; keine Produkt- oder Reonic-Wahrheit, keine Schreibrechte |
 
 Öffentliche Reonic-Seiten wurden am 2026-08-29 ohne Account gelesen. Die
 Vault-Auswertung war read-only. Keine Quelle liefert einen autoritativen
@@ -54,6 +57,15 @@ nicht als private Reonic-Produktwahrheit ausgegeben.
 | `DEC-M201-10` | Offer kopiert nur Name, primäre E-Mail/E.164-Telefon und sieben bestätigte Anlagenadressfelder; übrige PII und Rechnerpayloads bleiben außen vor | DECIDED WMEE | Spec M2-01, Domain Model |
 | `DEC-M201-11` | höchstens 12 Varianten, 500 Zeilen und DB-gebundene 15-Minuten-Mutationsquoten 120/Actor sowie 1200/Workspace | DECIDED WMEE | Spec M2-01, ADR 0009 |
 | `DEC-M201-12` | vollständige scoped Tokens sowie maskierte Screenshot-Baselines bei 375/390/768/1024/1440/1920; Visual bleibt bis Mikails Freigabe INCONCLUSIVE | DECIDED WMEE / visuelle Baseline ausstehend | Spec M2-01, Goal §13 |
+| `DEC-M202-01` | M2-02 erzeugt ausschließlich einen auf jeder Seite als intern, nicht versendet und nicht verbindlich markierten A4-Draft; kein Offer-/Vertragsstatus ändert sich | DECIDED WMEE | Spec M2-02, ADR 0010 |
+| `DEC-M202-02` | jeder PDF-Job bindet genau eine immutable Variantenrevision; Datenbank/App-Service leiten einen minimierten kundensicheren Input und kanonischen SHA ab, Client und Queue liefern nur IDs/Revisionserwartung | DECIDED WMEE | Spec M2-02, ADR 0010 |
+| `DEC-M202-03` | Zustände sind `queued`, `running`, `retry_wait`, `succeeded`, `failed_final`; Replay repariert denselben fachlichen Dispatch und Lease/CAS schützt Finalisierung und Recovery | DECIDED WMEE | Spec M2-02 |
+| `DEC-M202-04` | Produktion bindet das Renderer-Rezept an `linux/amd64`, Playwright 1.62.1 und vollständigen OCI-Child-Digest; offline/sandboxed Chromium erhält keine Worker-Secrets und jeder Plattform-/Rezeptwechsel erzeugt einen neuen Job | DECIDED WMEE | Spec M2-02, ADR 0010 |
+| `DEC-M202-05` | erfolgreiche Draft-Bytes bis 8 MiB werden mit MIME, Länge und SHA-256 immutable in Tenant-Postgres gestaged und über einen reautorisierten privaten Download ausgeliefert; kein Object-Lock-/WORM-Claim | DECIDED WMEE | Spec M2-02, ADR 0010 |
+| `DEC-M202-06` | Viewer darf Status lesen und erfolgreiche Drafts herunterladen; Editor/Admin darf mit `project.write` anfordern/replayen; External nie; `app_worker` nur least-privilege claimen/finalisieren | DECIDED WMEE | Spec M2-02, Rollenmatrix |
+| `DEC-M202-07` | M2-02 besitzt bewusst kein eigenes Rollout-Flag; vorhandene Flags können fehlende Membership, Rolle oder Einzelrechte nicht ersetzen | DECIDED WMEE | Spec M2-02, Rollenmatrix |
+| `DEC-M202-08` | Hidden-Zeilen bleiben im rein internen Draft arithmetisch transparent und werden ausdrücklich als intern ausgeblendet markiert; ein späteres Kundendokument braucht erst einen geschlossenen Aggregationsvertrag | DECIDED WMEE | Spec M2-02 |
+| `DEC-M202-09` | Technische Portal-/PDF-Prüfungen schließen das menschliche Visual-Gate nicht; `M202-VISUAL-01` bleibt bis zur Baseline-Freigabe `INCONCLUSIVE` | DECIDED WMEE / visuelle Baseline ausstehend | Spec M2-02 |
 
 ## Vollständig gelesenes Vault-Manifest
 

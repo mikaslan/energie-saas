@@ -1,6 +1,6 @@
 # Domain Model
 
-Stand: 2026-08-30 · M2-01 implementierter Vertrag
+Stand: 2026-08-30 · M2-01 und M2-02 lokal verifiziert
 
 ## Bestehender Spine und neue kommerzielle Grenze
 
@@ -16,7 +16,10 @@ Workspace
  │                         └─ OfferVariant (n)
  │                              └─ OfferVariantRevision (n, append-only)
  │                                   ├─ OfferVariantSection (n)
- │                                   └─ OfferBOMLine (n)
+ │                                   ├─ OfferBOMLine (n)
+ │                                   └─ OfferPdfDraft (n; exakt revisionsgebunden)
+ │                                        ├─ versiegelter kundensicherer Renderinput
+ │                                        └─ optionales erfolgreiches PDF-Artefakt
  ├─ CatalogComponent
  │    └─ CatalogComponentRevision (n, append-only)
  ├─ OfferNumberSeries (per year)
@@ -35,6 +38,7 @@ Workspace
 | `OfferVariantRevision` | append-only N pro Variant | kanonischer vollständiger kommerzieller Snapshot und Totals |
 | `OfferVariantSection` | stabile `section_domain_id`, neue Row-ID je Revision | Mirror von Position, Titel und Sektionsrabatt innerhalb genau einer Revision |
 | `OfferBOMLine` | stabile `line_domain_id`, neue Row-ID je Revision | Mirror von Herkunft, Menge, effektivem Preis samt Override-Provenienz, Typ, `is_hidden`, Steuer und Rabatt |
+| `OfferPdfDraft` | stabiler fachlicher Job, unique je Workspace + Variante + Revision + Template + Renderer-Rezept | exakte Offer-/Project-/Variantenrevisions-/Snapshotbindung; DB-abgeleiteter minimierter Input samt SHA-256; Zustandsmaschine `queued`/`running`/`retry_wait`/`succeeded`/`failed_final`; bei Erfolg unveränderliche PDF-Bytes, MIME, Bytezahl und Artefakt-SHA bis 8 MiB. Kein ausgestelltes oder signiertes Dokument |
 | `OfferMutationRateWindow` | Workspace + optional Actor + DB-Zeitfenster | atomare 15-Minuten-Zähler für 120 Actor-/1200 Workspace-Versuche; keine Fachdaten |
 
 ## Kritische Invarianten
@@ -56,8 +60,27 @@ Workspace
   Consent-, Acquisition- und Rechnerfelder werden nicht kopiert.
 - Ein Offer hat höchstens zwölf Varianten und jede Variantenrevision höchstens
   500 Zeilen; Revisionen werden nie still beschnitten.
+- Ein PDF-Job wird immer an genau eine bereits versiegelte Variantenrevision
+  gebunden. Weder Client noch Queue dürfen Renderinhalt oder Hash vorgeben; die
+  Datenbank leitet den minimierten Input und dessen kanonischen SHA aus der
+  gebundenen Revision ab.
+- Quellbindung, Input, Vorbereitungszeit und Rezept eines PDF-Jobs sind
+  immutable. Erfolgreiche Artefaktbytes werden atomar mit MIME, Länge und
+  SHA-256 gesetzt und danach nicht überschrieben; terminale Jobs werden nicht
+  reaktiviert.
+- Das Renderer-Rezept bindet die Produktionsplattform `linux/amd64`,
+  Playwright 1.62.1 und den vollständigen OCI-Child-Digest. Ein anderer
+  Architektur-, Browser- oder Image-Stand ist eine neue Rezeptidentität und
+  damit ein neuer fachlicher Job, keine Mutation eines vorhandenen Drafts.
+- PDF-Bytes sind tenantgeschütztes, löschbares Draft-Staging in Postgres, kein
+  WORM-/Object-Lock-Archiv. Eine aktive Worker-Lease blockiert die Erasure;
+  danach löscht der bestehende Offer-Erasuregraph Job und Bytes kaskadierend.
+- Eine ausdrückliche Nutzeranforderung bzw. ein autorisierter Replay zählt als
+  Offer-Aktivität. Autonome Worker-, Retry- und Recovery-Zeiten verlängern die
+  fachliche Inaktivitätsfrist nicht.
 - Privilegierte Contact-Erasure löscht den Draft-Offer-Aggregat und kopierte
   PII; Offer-/Variant-/Revision-Zeiten gehören zur Inaktivitätsuhr,
   Nummernserie und verbrauchte Nummer bleiben, Project/Site/Contact werden nach
   dem bestehenden Vertrag pseudonymisiert erhalten.
-- Issued-/signed-Artefakte existieren in diesem Modell noch nicht.
+- `issued`, Versand, Annahme, Signatur, öffentlicher Link, Rechnung und
+  Object-Lock-Artefakte existieren in diesem Modell noch nicht.

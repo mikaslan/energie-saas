@@ -14,7 +14,20 @@
   Reverse-Proxy auf den Health-Port.
 - Hetzner-Provisionierung selbst ist ein Deploy-Schritt bei M2-Bedarf, kein M0-Blocker.
 - Container: Multi-Stage-Build bündelt den Worker nach `dist/worker.cjs`; das finale
-  Image enthält nur Production-Dependencies und läuft als Non-Root-User `node`.
+  Image basiert auf dem per OCI-Digest gepinnten, zur installierten
+  Playwright-Version passenden Noble-Image und läuft als Non-Root-User
+  `pwuser`. Das Dateisystem ist read-only, alle Linux-Capabilities sind
+  entfernt, `no-new-privileges` und das eingecheckte Seccomp-Profil bleiben
+  bindend. Eine root-owned Preload-Bibliothek setzt ausschließlich den
+  Node-Elternprozess vor Anwendungscode non-dumpable; Chromium erhält ein
+  eigenes secretfreies Environment ohne diesen Preload. Ein Lade-/`prctl`-
+  Fehler beendet den Worker vor der Initialisierung mit Exitcode 127.
+- Renderer-Rezept und Compose sind auf `linux/amd64`, Playwright 1.62.1 und
+  den OCI-Child-Digest
+  `sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac`
+  gepinnt. Der produktive Host muss `uname -m = x86_64` liefern; ARM oder ein
+  neuer Image-Digest brauchen vor Nutzung eine neue Recipe-Version und neue
+  Determinismusevidenz.
 
 ## Doku-Abweichungen von der Aufgabenskizze (context7, Stand 2026-08-26)
 
@@ -48,7 +61,10 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    `policy: exclusive`, `retryLimit: 0`, `expireInSeconds: 900`. Migration
    0029 hebt ausschließlich technische Vor-Claim-Zustellungen auf
    `retryLimit: 10`, eine Sekunde Startverzug, Backoff und maximal 60 Sekunden.
-   Der normale Worker pinnt danach genau diesen aktuellen Vertrag.
+   M2-02 initialisiert `pdf.render` direkt mit Retry 10, maximal 60 Sekunden
+   technischem Backoff und 180 Sekunden Ablauf; drei fachliche Versuche werden
+   davon getrennt in `offer_pdf_draft` per Lease/CAS erzwungen. Der normale
+   Worker pinnt danach beide aktuellen Verträge.
 4. **`fetch(name, options?)`** liefert ein Array (`Job<T>[]`); `complete(name,
    id | id[], data?, options?)` akzeptiert sowohl eine einzelne ID als auch ein
    Array. Die Skizze nutzt `complete(name, [job.id])` — passt unverändert.
@@ -82,10 +98,10 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    fatalen Shutdown geroutet; die Readiness wird rot, WIP wird geordnet beendet und
    Compose startet den Prozess nach Exitcode 1 neu.
 8. **Node-Version:** pg-boss v12 verlangt laut Doku Node **>= 22.12** (für
-   `require(esm)`). `worker/Dockerfile` nutzt `node:22-slim` — dieser Tag
-   trackt den jeweils aktuellen 22.x-Patch und erfüllt die Anforderung; beim
-   ersten echten Build auf dem Hetzner-Host lohnt ein kurzer
-   `node -v`-Check im Container.
+   `require(esm)`). Der Build nutzt `node:22-slim`; das per Digest gepinnte
+   Playwright-Runtime-Image wurde im echten Container-Smoke mit dem
+   installierten Paket verifiziert. Der Zielhost-Smoke prüft diese Kombination
+   vor jedem Rollout erneut.
 9. **`.dockerignore` ergänzt** (nicht in der Aufgabenskizze aufgeführt, aber
    notwendig): `worker/compose.yaml` baut mit `context: ..` (Repo-Root). Ohne
    `.dockerignore` würde `COPY . .` im Dockerfile das lokal für diese Maschine
@@ -95,7 +111,34 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    `node_modules`, `.next`, `.git`, `.superpowers/pgdata`, `*.tsbuildinfo` und
    `.env*` aus.
 
-## Fresh-Install- und Upgrade-Reihenfolge für M1-07
+## PDF-Recovery und bekannte Aufbewahrungsgrenze
+
+- Der Worker startet den PDF-Recovery-Sweep sofort und danach alle 60 Sekunden.
+  Ein Lauf ist auf 25 Workspaces mit jeweils 25 Jobs begrenzt und überlappt
+  nicht mit seinem Vorgänger. Kandidaten werden ausschließlich aus dem
+  strikt ID-only gehaltenen `pdf.render`-Verlauf ermittelt; jede Fachabfrage
+  und jede Statusänderung läuft anschließend mit dem jeweiligen
+  Workspace-Kontext unter `FORCE RLS`.
+- Ein fälliges `retry_wait` wird atomar wieder auf `queued` gesetzt und neu
+  zugestellt. Ein abgelaufenes `running` bleibt fachlich unverändert und erhält
+  nur eine neue N+1-Zustellung; Claim, Lease und CAS verhindern doppelte
+  Verarbeitung. Recovery- und Worker-Retries verlängern die fachliche
+  Lead-/Offer-Aktivität nicht.
+- Jeder autorisierte, exakte Benutzer-Replay stellt dagegen **jeden**
+  nichtterminalen Zustand (`queued`, `running`, `retry_wait`) idempotent erneut
+  zu und bucht den Replay als Offer-Aktivität. Damit bleibt eine manuelle
+  Reparatur möglich, auch wenn die ursprüngliche Queue-Zustellung fehlt.
+- Die autonome Workspace-Ermittlung ist bewusst an die vorhandene pg-boss-
+  Historie gebunden. pg-boss v12 hält Queuezeilen mit dem aktuellen
+  Standardvertrag nur begrenzt vor (`retention_seconds = 14 Tage`,
+  `deletion_seconds = 7 Tage`). Nach einem Worker-/Queue-Ausfall über diese
+  Historie hinaus oder nach einem Restore ohne alte Dispatchzeilen kann der
+  Sweep einen allein im Fachzustand verbliebenen Job nicht selbst entdecken;
+  der Benutzer-Replay repariert ihn weiterhin. Ein Betriebs-SLO, das auch nach
+  Verlust der gesamten Queuehistorie autonome Reparatur verlangt, benötigt
+  vor Freigabe eine eigene dauerhafte, migrationsgebundene Recovery-Registry.
+
+## Fresh-Install- und Upgrade-Reihenfolge für M1-07/M2-02
 
 Die Reihenfolge ist bindend, weil die unveränderlichen Migrationen 0025/0026
 noch den historischen Retry-0-Startvertrag prüfen und erst 0029 auf den
@@ -104,12 +147,20 @@ aktuellen technischen Retry-10-Vertrag hebt:
 1. Rollen und das Schema `pgboss` mit Owner `app_worker` provisionieren.
 2. Mit ausschließlich `POSTGRES_URL_WORKER` und den erwarteten
    Neon-Tenant-/Timeline-IDs `npm run db:pgboss:bootstrap` ausführen. Der
-   Befehl initialisiert pg-boss v38 und eine leere Queue im Retry-0-Vertrag.
-3. Mit `POSTGRES_URL_MIGRATE` `npm run db:migrate` bis einschließlich 0029
-   ausführen. 0029 aktualisiert Queue und bestehende wartende Zustellungen auf
-   Retry 10.
-4. Erst danach den normalen Worker starten; dessen `createQueue()` attestiert
-   beziehungsweise erhält den aktuellen Retry-10-Vertrag.
+   Befehl initialisiert pg-boss v38, `calculation.execute` im historischen
+   Retry-0-Vertrag und `pdf.render` bereits im aktuellen M2-02-Vertrag.
+3. Mit `POSTGRES_URL_MIGRATE` `npm run db:migrate` bis einschließlich 0033
+   ausführen. 0029 aktualisiert Calculation-Queue und wartende Zustellungen auf
+   Retry 10; 0033 attestiert `pdf.render` und installiert ausschließlich die
+   minimale PDF-Dispatchroutine.
+4. Auf dem tatsächlichen Zielhost vor dem Rollout ausführen:
+   `test "$(uname -m)" = x86_64` und danach
+   `docker compose -f worker/compose.yaml --profile renderer-smoke run --rm renderer-smoke`.
+   Ein Fehler bei Seccomp, unprivilegierten User-Namespaces, Sandbox,
+   Netzwerkblockade (einschließlich print-only CSS), Same-UID-`/proc`-Zugriff
+   auf Eltern-Environment/offenen FD oder Determinismus ist ein Deploy-NO-GO.
+5. Erst danach den normalen Worker starten; dessen `createQueue()` erhält die
+   aktuellen Verträge.
 
 Der Bootstrap ist idempotent und liest als `app_worker` keinen
 Drizzle-Journalinhalt. Er erkennt den Migrationsstand an der worker-owned
@@ -124,9 +175,23 @@ aus.
 ## Verifikationsstand
 
 - Dockerfile-Lint, expandierte Compose-Konfiguration und ein echter lokaler
-  Multi-Stage-Imagebuild sind am 2026-08-29 grün. CI baut dasselbe Image ebenfalls
-  wirklich. Der erste Host-Deploy samt tag-/digest-basiertem Rollback bleibt ein
-  eigenes Pilot-Gate; lokal wurde weder gepusht noch deployed.
+  Multi-Stage-Imagebuild sind grün. Der gehärtete `renderer-smoke` lief am
+  2026-08-30 als `pwuser` mit read-only, Null-Capabilities,
+  `NoNewPrivs=1`, aktivem Seccomp und `network_mode: none` erfolgreich; ohne
+  Seccomp-Profil scheiterte Chromium erwartungsgemäß fail-closed. Der erste
+  Zielhost-Deploy samt tag-/digest-basiertem Rollback bleibt ein eigenes
+  Pilot-Gate; lokal wurde weder gepusht noch deployed.
+- Zwei lokale macOS/arm64-Diagnoserender derselben 500-Positionen-Eingabe waren
+  bytegleich; sie sind keine Produktionsrezept-Evidenz. Bindend ist
+  ausschließlich der zweifache `linux/amd64`-Container-Smoke mit exakt
+  gepinntem OCI-Child. Er belegt zusätzlich blockierte Same-UID-Leseversuche
+  auf Eltern-Environment und offenen Eltern-FD. Der aktuelle Byte-/Hashwert
+  wird nach jedem bewussten Recipe-Bump in `docs/parity/TEST-EVIDENCE.md`
+  aktualisiert; plattformübergreifende Bytegleichheit wird nicht behauptet.
+- Das Seccomp-Profil basiert auf dem offiziellen Playwright-v1.62.1-Profil und
+  ergänzt genau die im Smoke erforderliche `chroot`-Freigabe innerhalb des
+  Chromium-User-Namespace. `SYS_ADMIN`, `seccomp=unconfined` und
+  `--no-sandbox` bleiben verboten.
 - Der lokale Worker-Start (`npx tsx worker/index.ts` gegen die
   embedded-postgres-Test-Instanz, `curl localhost:8080/health`) wurde
   verifiziert — siehe Task-11-Report für den genauen Log-Auszug.

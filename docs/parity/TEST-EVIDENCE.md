@@ -10,6 +10,7 @@ Dieses Dokument trennt ausgeführte Evidenz strikt von geplanten Tests.
 |---|---|---|
 | M1-08 Katalog/Projektauflösung | 69 Vitest-Dateien, 661/661 Tests, Build, 75 Rollenproben, 5 PG18-Proben, 7/7 Chromium-E2E; Commit `71dded3` | REVIEWED/VERIFIED lokal |
 | M2-01 Angebotsvarianten/Snapshot-BOM | `npm run check`: 87/87 Testdateien, 856 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollenproben, 5/5 PG18-Proben; Chromium 16/16 (15 funktionale/A11y-Fälle plus 1 Visual-Capture-Fall mit 26/26 Kandidaten); Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff- und `db:generate`-Prüfung grün | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; Visual-Candidate-Capture grün, menschliches Visual-Gate `INCONCLUSIVE` |
+| M2-02 interner Angebots-PDF-Entwurf | 96/96 Vitest-Dateien, 949 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 16/16 aktiv plus 1 opt-in Visual-Fall übersprungen; Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff, `db:generate`, Compose, Worker-Bundle und gepinnter `linux/amd64`-Container-Smoke grün | REVIEWED/VERIFIED lokal; technisches Gate **GO**; unabhängiges Review ohne offene P0–P2; `M202-VISUAL-01` `INCONCLUSIVE`; Deploy `NOT RUN` |
 
 Die Detailabnahme liegt in der Vault-Datei `Reonic Clone Final/08-Abnahme-M1-08.md`.
 
@@ -44,3 +45,55 @@ unabhängige Abschlussreview sind abgeschlossen. M2-01 ist technisch
 `REVIEWED/VERIFIED (lokal)` und Gate 2 ist **GO**. `M201-VISUAL-01` bleibt davon
 ausdrücklich getrennt bis zu Mikails Screenshot-Baseline-Freigabe
 `INCONCLUSIVE`.
+
+## M2-02
+
+Status: **REVIEWED/VERIFIED lokal; technisches Gate GO**. Der finale
+Gesamtnachweis umfasst 96/96 Vitest-Dateien mit 949 bestandenen Tests und einem
+ausdrücklich opt-in übersprungenen Test, 88/88 Rollen- plus 5/5
+PostgreSQL-18-Proben sowie 16/16 aktive Chromium-E2E. Der siebzehnte
+Browserfall ist ausschließlich die opt-in Visual-Candidate-Erzeugung und blieb
+im normalen Lauf übersprungen. Production-Build, ESLint, TypeScript,
+Dependency-Cruiser, Diff-Prüfung, `db:generate`, expandierter Compose-Vertrag
+und das 380,3-kB-Worker-Bundle sind grün. Der unabhängige Abschlussreview lief
+mit 145/145 gezielten Tests und meldet keine offenen P0–P2.
+
+| Test-ID | Ebene | Finaler Beleg | Aktuell |
+|---|---|---|---|
+| `M202-CONTRACT-01` | Contract/Golden | geschlossenes Inputschema, JCS-Kanonisierung, Golden-SHA, Unknown-Field-Reject, 1/500 Zeilen und Reject 501; Renderer-Rezept exakt gepinnt | GREEN im finalen Gesamtlauf |
+| `M202-PRIVACY-01` | Contract/Integration | Input/HTML/DTO/Event/Audit ohne E-Mail, Telefon, EK, Marge, interne IDs, Rohpayload oder Vollhash; DB leitet PII, Preise, Totals, Reservation und Zeit aus der gebundenen Revision ab | GREEN einschließlich adversarialer Runtime-Injection-Gegenproben |
+| `M202-TEMPLATE-01` | Unit/Golden | escapendes A4-HTML, sichtbare Draft-Kennzeichnung, Positionsarten, Steuer/Summen, Hidden-Markierung und keine Remote-Assets | GREEN |
+| `M202-RENDER-01` | Chromium/Container | zwei bytegleiche Render derselben 500-Zeilen-Eingabe im gepinnten `linux/amd64`-/Playwright-1.62.1-Container; 1.629.886 Bytes, SHA-256 `414e25a0b3f8a9742580d2f3c47e0aa9e884b25e6b20ee497d5affe493eb7e84` | GREEN; `pinnedRuntimeVerified=true` |
+| `M202-SSRF-01` | Adversarial/Container | normales und ausschließlich bei `page.pdf()` ausgelöstes Print-Netzwerk fail-closed; Container `network_mode:none`, Chromium-Sandbox, Seccomp, read-only, Null-Capabilities, `NoNewPrivs=1` | GREEN |
+| `M202-DB-01` | Migration/RLS/ACL | Fresh-, idempotenter und Legacy-Upgrade-Pfad, FORCE RLS, FKs, DB-abgeleiteter Input, minimale Runtime-/Worker-Spaltenrechte, immutable Input/Artefakt und echter Erasure-Tombstone-Replay | GREEN; `db:generate` ohne Drift; Rollenvertrag 88/88 plus PG18 5/5 |
+| `M202-DB-02` | Concurrency/Recovery | Doppelrequest, Reservation-Poisoning, N+1-Dispatch, Claim/Lease/CAS, Retry/Maxversuche, abgelaufenes `running`, `retry_wait`, stale Finalize, Nondeterminismus-Fatalpfad und aktive-Lease-Erasureblockade | GREEN; 60-s-Sweep begrenzt und shutdown-fähig |
+| `M202-SVC-01` | Integration | aktuelle immutable Revision→DB-versiegelter Job→Event/Audit; User-Replay aller nichtterminalen Zustände repariert Dispatch und aktualisiert Offer-Aktivität; Worker-Recovery verlängert Retention nicht | GREEN |
+| `M202-RBAC-01` | Integration/Security | Viewer read/download, Editor/Admin mit `project.write` request/replay, External und Cross-Tenant fail-closed; vorhandene Flags eskalieren keine Rechte | GREEN |
+| `M202-WORKER-01` | Unit/Integration | strikter ID-only-Payload, tenantgebundener Reload, Fehlerklassifikation, keine Rohfehler-/PII-Logs, minimaler `app_worker`; Renderer-Nondeterminismus führt sanitisiert fatal und mutiert kein Erfolgsartefakt | GREEN |
+| `M202-ROUTE-01` | Next/Route | Promise-Params, Reauth, Tenant-/Offer-/Job-Bindung, MIME-/Längen-/Hashprüfung, sicherer Dateiname, `private, no-store`, `nosniff` | GREEN |
+| `M202-E2E-01` | Browser | echte Anmeldung→Offer→PDF-Anforderung→`queued`→synthetischer DB/Worker-Abschluss→Reload→privater Download exakt der gehashten Bytes | GREEN im finalen 16/16-Aktivlauf |
+| `M202-A11Y-01` | Browser/A11y | Keyboard-/Statuspfad, Axe A/AA, Theme-Scope/Kontrast, bestehender 200/400-%-Reflow und Reduced Motion ohne Regression | GREEN im finalen 16/16-Aktivlauf |
+| `M202-VISUAL-01` | Human Visual | eigene Portal-/A4-Richtung technisch renderbar; keine menschlich freigegebene maskierte Portal- und gerasterte PDF-Baseline | `INCONCLUSIVE` |
+
+Der final neu gebaute Container verwendet das Playwright-Child
+`sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac`
+und meldete zusätzlich `containerHardeningVerified=true`,
+`sameUidProcessIsolationVerified=true` sowie blockierte Leseversuche auf
+Eltern-Environment und offenen Eltern-FD. Die lokale macOS/arm64-Diagnose war
+ebenfalls deterministisch (1.849.499 Bytes, SHA-256
+`88c18aa341b4798c70fa9a2c295ae96b5e8df2a721b20e101a82ab9804227275`),
+meldete aber erwartungsgemäß alle Produktions-/Containerpins als `false` und
+ist **keine** Produktionsrezept-Evidenz.
+
+`npm audit --omit=dev --audit-level=high` endete grün ohne High/Critical. Die
+sechs weiterhin gemeldeten Moderate-Funde stammen aus bestehendem
+Drizzle-/esbuild-Tooling beziehungsweise `node-zugferd`/`fast-xml-parser`; ein
+erzwungener Breaking-Change-Fix wurde nicht als Teil von M2-02 ausgeführt.
+
+Nicht als geliefert behauptet werden produktiver Deploy, Zielhost-Rollback,
+Object Lock/WORM, `issued`, Versand, Annahme, Signatur, öffentlicher Link,
+Rechnung oder Kundenportal. Die autonome Recovery-Discovery ist an die
+vorhandene pg-boss-Historie gebunden; nach vollständigem Historienverlust über
+die dokumentierte Aufbewahrungsgrenze hinaus bleibt der autorisierte
+Benutzer-Replay die Reparatur. Ein darüber hinausgehendes autonomes SLO braucht
+eine dauerhafte Registry.

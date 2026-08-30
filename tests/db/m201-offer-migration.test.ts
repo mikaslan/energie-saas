@@ -40,9 +40,10 @@ function historyHashThrough(index: number): string {
 describe("M2-01 offer migration", () => {
   it("ist additive 0032 und pinnt 0000 bis zur Metadatenbaseline bytegenau", () => {
     const entries = journal().entries;
-    expect(entries.map((entry) => entry.idx)).toEqual(
+    expect(entries.slice(0, 33).map((entry) => entry.idx)).toEqual(
       Array.from({ length: 33 }, (_, index) => index),
     );
+    expect(entries.length).toBeGreaterThanOrEqual(33);
     expect(entries[32]?.tag).toBe("0032_m2_01_offer_schema");
     expect(historyHashThrough(31)).toBe(PRE_M2_HISTORY_SHA256);
     const migration = readFileSync(resolve("drizzle/0032_m2_01_offer_schema.sql"), "utf8");

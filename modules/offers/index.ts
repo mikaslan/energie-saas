@@ -18,3 +18,21 @@ export type {
   OfferListViewModel,
   OfferMutationResult,
 } from "./service";
+export {
+  OfferPdfDraftConflictError,
+  OfferPdfDraftDispatchError,
+  OfferPdfDraftIntegrityError,
+  OfferPdfDraftNotFoundError,
+  OfferPdfDraftPersistenceError,
+  OfferPdfDraftValidationError,
+  getOfferPdfDraftStatus,
+  listOfferPdfDrafts,
+  readOfferPdfDraftArtifact,
+  requestOfferPdfDraft,
+} from "./pdf-service";
+export type {
+  OfferPdfDraftArtifactResult,
+  OfferPdfDraftRequestResult,
+  OfferPdfDraftState,
+  OfferPdfDraftStatusResult,
+} from "./pdf-service";

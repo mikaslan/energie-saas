@@ -61,8 +61,12 @@ Verworfene Alternativen:
 
 ## Konsequenzen
 
-- Alle mutable Uploads verwenden `put()`, immutable Uploads (PDFs, Belege)
-  nutzen `putImmutable()`; SHA256-Hash ist Pflichtfeld in der DB.
+- Alle allgemeinen mutable Uploads verwenden `put()`. Ausgestellte,
+  versendete oder signierte PDFs und Belege nutzen `putImmutable()`;
+  SHA256-Hash ist Pflichtfeld in der DB. Interne, erasure-faehige
+  Angebotsentwuerfe aus M2-02 werden gemaess ADR 0010 bewusst nur
+  groessenbegrenzt in Postgres gestaged und fallen noch nicht unter diesen
+  Archivvertrag.
 - Zwei Buckets: `S3_BUCKET` (Archiv, Object Lock) und `S3_BACKUP_BUCKET`
   (DB-Dumps, Versioning + Lock-Retention 30 Tage Governance).
 - Archiv/App: `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`,
