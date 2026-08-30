@@ -246,6 +246,13 @@
       "when": 1788096898221,
       "tag": "0034_m2_03a_offer_release_candidate",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788113312568,
+      "tag": "0035_m2_03b1_offer_issuance",
+      "breakpoints": true
     }
   ]
 }

@@ -3,8 +3,20 @@ import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { sql } from "drizzle-orm";
 import { Pool } from "pg";
-import { expect, test, type Download, type Locator, type Page, type Route } from "playwright/test";
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Download,
+  type Locator,
+  type Page,
+  type Route,
+} from "playwright/test";
 
+import {
+  claimOfferIssuance,
+  finalizeOfferIssuanceSuccess,
+} from "../../worker/offer-issuance-database";
 import {
   claimOfferPdfDraftJob,
   finalizeOfferPdfDraftSuccess,
@@ -41,6 +53,7 @@ const SYNTHETIC_RECIPIENT_REVISION_TWO = {
   },
 } as const;
 const RELEASE_PANEL_SELECTOR = "#offer-release-candidate";
+const ISSUANCE_PANEL_SELECTOR = "#offer-issuance";
 
 type SerializedM203aState = {
   databaseUrl: string;
@@ -53,6 +66,13 @@ type SerializedM203aState = {
   m201WallboxId: string;
   m201WorkspaceId: string;
   serverLogPath: string;
+  viewerEmail: string;
+  workspaceId: string;
+};
+
+type M203b1RuntimeState = M201RuntimeState & {
+  viewerEmail: string;
+  viewerWorkspaceId: string;
 };
 
 type QueuedPdfDraft = {
@@ -129,6 +149,36 @@ type ApprovedReleaseCandidateEvidence = {
   expectedArtifactVersion: string;
 };
 
+type QueuedOfferIssuance = {
+  candidateArtifactSha256: string;
+  candidateId: string;
+  inputCandidateArtifactSha256: string;
+  issuanceId: string;
+  state: "queued";
+};
+
+type OfferIssuanceLifecycleEvidence = {
+  approvalActorIds: string[];
+  approvalCount: number;
+  candidateApprovedBy: string;
+  derivedState:
+    | "ready_for_approval"
+    | "approval_pending"
+    | "approved_for_archive_not_issued"
+    | "withdrawn_before_archive";
+  distinctApprovalCount: number;
+  publicationStatus: "not_issued";
+  renderState: "ready_for_approval";
+  withdrawalCommandVersion: string | null;
+  withdrawalReasonCode: string | null;
+  withdrawalSchemaVersion: string | null;
+};
+
+type TemporarySecondApproverMembership = {
+  membershipId: string;
+  userId: string;
+};
+
 type ReflowEvidence = {
   clientWidth: number;
   scrollWidth: number;
@@ -137,7 +187,7 @@ type ReflowEvidence = {
   offenders: string[];
 };
 
-function runtimeState(): M201RuntimeState {
+function runtimeState(): M203b1RuntimeState {
   const statePath = process.env.M1_05_E2E_STATE;
   if (!statePath) {
     throw new Error("M1_05_E2E_STATE fehlt; bitte über npm run test:e2e starten.");
@@ -154,6 +204,8 @@ function runtimeState(): M201RuntimeState {
     "m201WallboxId",
     "m201WorkspaceId",
     "serverLogPath",
+    "viewerEmail",
+    "workspaceId",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
     throw new Error("Der private M2-03a-E2E-State ist unvollständig.");
@@ -169,6 +221,8 @@ function runtimeState(): M201RuntimeState {
     m201ProjectId: complete.m201ProjectId,
     m201WallboxId: complete.m201WallboxId,
     serverLogPath: complete.serverLogPath,
+    viewerEmail: complete.viewerEmail,
+    viewerWorkspaceId: complete.workspaceId,
     workspaceId: complete.m201WorkspaceId,
   };
 }
@@ -197,7 +251,11 @@ async function otpFromPrivateDevMailLog(
   throw new Error("Der echte M2-03a-Dev-Mail-OTP wurde nicht rechtzeitig protokolliert.");
 }
 
-async function loginWithRealOtp(page: Page, expectedTarget: string): Promise<void> {
+async function loginWithRealOtp(
+  page: Page,
+  expectedTarget: string,
+  email = runtimeState().editorEmail,
+): Promise<void> {
   const state = runtimeState();
   const loginSurface = page.getByLabel("E-Mail-Adresse");
   const sessionExpiredSurface = page.locator('[data-offer-detail-state="unauthenticated"]');
@@ -212,7 +270,7 @@ async function loginWithRealOtp(page: Page, expectedTarget: string): Promise<voi
   expect(new URL(page.url()).searchParams.get("next")).toBe(expectedTarget);
 
   const logOffset = statSync(state.serverLogPath).size;
-  await page.getByLabel("E-Mail-Adresse").fill(state.editorEmail);
+  await page.getByLabel("E-Mail-Adresse").fill(email);
   const sendResponsePromise = page.waitForResponse((response) => (
     new URL(response.url()).pathname === "/api/auth/email-otp/send-verification-otp"
     && response.request().method() === "POST"
@@ -220,7 +278,7 @@ async function loginWithRealOtp(page: Page, expectedTarget: string): Promise<voi
   await page.getByRole("button", { name: "Code anfordern" }).click();
   expect((await sendResponsePromise).status()).toBe(200);
 
-  const otp = await otpFromPrivateDevMailLog(state.serverLogPath, state.editorEmail, logOffset);
+  const otp = await otpFromPrivateDevMailLog(state.serverLogPath, email, logOffset);
   const otpInput = page.getByLabel("Sechsstelliger Code");
   await otpInput.fill(otp);
   const signInResponsePromise = page.waitForResponse((response) => (
@@ -329,6 +387,100 @@ async function setEditorRole(state: M201RuntimeState, role: "admin" | "editor"):
     client.release();
     await pool.end();
   }
+}
+
+async function createTemporarySecondApproverMembership(
+  state: M203b1RuntimeState,
+): Promise<TemporarySecondApproverMembership> {
+  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const client = await pool.connect();
+  const membershipId = randomUUID();
+  try {
+    await client.query("begin");
+    await client.query(
+      "select set_config('app.actor_id', '', true), set_config('app.workspace_id', $1, true)",
+      [state.viewerWorkspaceId],
+    );
+    const identity = await client.query<{ id: string }>(
+      `select id::text
+         from user_identity
+        where lower(email) = lower($1)
+        limit 1`,
+      [state.viewerEmail],
+    );
+    const userId = identity.rows[0]?.id;
+    if (!userId) throw new Error("Die echte M2-03b1-Zweitfreigabeidentität fehlt.");
+
+    await client.query(
+      "select set_config('app.workspace_id', $1, true)",
+      [state.workspaceId],
+    );
+    const existing = await client.query(
+      `select id
+         from membership
+        where workspace_id = $1::uuid
+          and user_id = $2::uuid
+        limit 1`,
+      [state.workspaceId, userId],
+    );
+    if (existing.rowCount !== 0) {
+      throw new Error("Die M2-03b1-Zweitfreigabe-Membership war unerwartet bereits vorhanden.");
+    }
+    await client.query(
+      `insert into membership (id, workspace_id, user_id, role, capabilities)
+       values ($1::uuid, $2::uuid, $3::uuid, 'viewer', '{}'::jsonb)`,
+      [membershipId, state.workspaceId, userId],
+    );
+    await client.query("commit");
+    return { membershipId, userId };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+async function setTemporarySecondApproverRole(
+  state: M203b1RuntimeState,
+  membership: TemporarySecondApproverMembership,
+  role: "viewer" | "admin",
+): Promise<void> {
+  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(
+      "select set_config('app.actor_id', '', true), set_config('app.workspace_id', $1, true)",
+      [state.workspaceId],
+    );
+    const result = await client.query(
+      `update membership
+          set role = $4, capabilities = '{}'::jsonb
+        where id = $1::uuid
+          and workspace_id = $2::uuid
+          and user_id = $3::uuid`,
+      [membership.membershipId, state.workspaceId, membership.userId, role],
+    );
+    if (result.rowCount !== 1) {
+      throw new Error(`Die temporäre M2-03b1-Rolle ${role} wurde nicht eindeutig gesetzt.`);
+    }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+async function removeTemporarySecondApproverElevation(
+  state: M203b1RuntimeState,
+  membership: TemporarySecondApproverMembership,
+): Promise<void> {
+  await setTemporarySecondApproverRole(state, membership, "viewer");
 }
 
 function syntheticPdfArtifact(label: string): SyntheticPdfArtifact {
@@ -593,6 +745,121 @@ async function readApprovedReleaseCandidateEvidence(
   });
 }
 
+async function readQueuedOfferIssuance(
+  state: M201RuntimeState,
+  offerId: string,
+  candidateId: string,
+): Promise<QueuedOfferIssuance> {
+  return withM201Database(state, async (tx) => {
+    const result = await tx.execute<QueuedOfferIssuance & { [key: string]: unknown }>(sql`
+      select id::text as "issuanceId",
+             candidate_id::text as "candidateId",
+             state,
+             encode(candidate_artifact_sha256, 'hex') as "candidateArtifactSha256",
+             input_snapshot->'source'->>'candidateArtifactSha256'
+               as "inputCandidateArtifactSha256"
+        from offer_issuance
+       where workspace_id = ${state.workspaceId}::uuid
+         and offer_id = ${offerId}::uuid
+         and candidate_id = ${candidateId}::uuid
+       order by created_at desc, id desc
+       limit 1
+    `);
+    const row = result.rows[0];
+    if (!row || row.state !== "queued") {
+      throw new Error("Die sichtbare M2-03b1-Ausstellungsfassung ist nicht queued persistiert.");
+    }
+    return row;
+  });
+}
+
+async function completeOfferIssuance(
+  state: M201RuntimeState,
+  queued: QueuedOfferIssuance,
+): Promise<{ artifact: SyntheticPdfArtifact; artifactVersion: string }> {
+  const leaseToken = randomUUID();
+  const claim = await withM201Database(state, (tx) => claimOfferIssuance(tx, {
+    workspaceId: state.workspaceId,
+    issuanceId: queued.issuanceId,
+    leaseToken,
+  }));
+  if (claim === null) throw new Error("Die M2-03b1-Ausstellungsfassung war nicht claimbar.");
+  expect(claim.input.issuanceId).toBe(queued.issuanceId);
+  expect(claim.input.source.candidateId).toBe(queued.candidateId);
+  expect(claim.input.source.candidateArtifactSha256).toBe(queued.candidateArtifactSha256);
+
+  const artifact = syntheticPdfArtifact("M2-03b1 final issuance");
+  const result = await withM201Database(state, (tx) => finalizeOfferIssuanceSuccess(tx, {
+    workspaceId: state.workspaceId,
+    issuanceId: claim.issuanceId,
+    leaseToken: claim.leaseToken,
+    attemptCount: claim.attemptCount,
+    artifact,
+  }));
+  expect(result).toMatchObject({
+    state: "ready_for_approval",
+    attemptCount: 1,
+    replayed: false,
+  });
+  expect(result.artifactVersion).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
+  );
+  return { artifact, artifactVersion: result.artifactVersion };
+}
+
+async function readOfferIssuanceLifecycleEvidence(
+  state: M201RuntimeState,
+  issuanceId: string,
+): Promise<OfferIssuanceLifecycleEvidence> {
+  return withM201Database(state, async (tx) => {
+    const result = await tx.execute<OfferIssuanceLifecycleEvidence & { [key: string]: unknown }>(sql`
+      select issuance.state as "renderState",
+             issuance.candidate_approved_by::text as "candidateApprovedBy",
+             approvals.approval_count as "approvalCount",
+             approvals.distinct_approval_count as "distinctApprovalCount",
+             approvals.approval_actor_ids as "approvalActorIds",
+             case
+               when withdrawal.id is not null then 'withdrawn_before_archive'
+               when approvals.approval_count = 2 then 'approved_for_archive_not_issued'
+               when approvals.approval_count = 1 then 'approval_pending'
+               else issuance.state
+             end as "derivedState",
+             'not_issued'::text as "publicationStatus",
+             withdrawal.reason_code as "withdrawalReasonCode",
+             withdrawal.withdrawal_command_version as "withdrawalCommandVersion",
+             withdrawal.withdrawal_command->>'schemaVersion' as "withdrawalSchemaVersion"
+        from offer_issuance as issuance
+        cross join lateral (
+          select count(*)::integer as approval_count,
+                 count(distinct approval.approved_by)::integer as distinct_approval_count,
+                 coalesce(
+                   array_agg(approval.approved_by::text order by approval.approved_at, approval.id),
+                   array[]::text[]
+                 ) as approval_actor_ids
+            from offer_issuance_approval as approval
+           where approval.workspace_id = issuance.workspace_id
+             and approval.issuance_id = issuance.id
+        ) as approvals
+        left join lateral (
+          select withdrawal_record.id,
+                 withdrawal_record.reason_code,
+                 withdrawal_record.withdrawal_command_version,
+                 withdrawal_record.withdrawal_command
+            from offer_issuance_withdrawal as withdrawal_record
+           where withdrawal_record.workspace_id = issuance.workspace_id
+             and withdrawal_record.issuance_id = issuance.id
+           limit 1
+        ) as withdrawal on true
+       where issuance.workspace_id = ${state.workspaceId}::uuid
+         and issuance.id = ${issuanceId}::uuid
+       limit 1
+    `);
+    const row = result.rows[0];
+    if (!row) throw new Error("Die M2-03b1-Lebenszyklus-Evidenz fehlt.");
+    return row;
+  });
+}
+
 async function bytesFromDownload(download: Download): Promise<Buffer> {
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];
@@ -618,19 +885,21 @@ async function reflowEvidence(page: Page): Promise<ReflowEvidence> {
   return page.evaluate(() => {
     const root = document.documentElement;
     const viewportRight = root.clientWidth;
-    const offenders = Array.from(document.body.querySelectorAll<HTMLElement>("*"))
+    const offenders = [document.body, ...document.body.querySelectorAll<HTMLElement>("*")]
       .filter((element) => {
         const style = window.getComputedStyle(element);
         if (style.display === "none" || style.visibility === "hidden") return false;
         const rect = element.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) return false;
-        return rect.right > viewportRight + 1 || rect.left < -1;
+        return rect.right > viewportRight + 0.25 || rect.left < -0.25;
       })
       .slice(0, 12)
       .map((element) => {
+        const rect = element.getBoundingClientRect();
         const id = element.id ? `#${element.id}` : "";
         const name = element.getAttribute("name");
-        return `${element.tagName.toLowerCase()}${id}${name ? `[name=${name}]` : ""}`;
+        return `${element.tagName.toLowerCase()}${id}${name ? `[name=${name}]` : ""}`
+          + `[left=${rect.left.toFixed(2)},right=${rect.right.toFixed(2)},width=${rect.width.toFixed(2)}]`;
       });
     return {
       clientWidth: root.clientWidth,
@@ -649,8 +918,14 @@ async function expectNoHorizontalOverflow(
 ): Promise<void> {
   await expect.poll(async () => {
     const evidence = await reflowEvidence(page);
-    return evidence.scrollWidth - evidence.clientWidth;
-  }, { message: `${label}: kein horizontaler Dokumentüberlauf` }).toBeLessThanOrEqual(0);
+    return {
+      overflow: evidence.scrollWidth - evidence.clientWidth,
+      offenders: evidence.offenders,
+    };
+  }, { message: `${label}: kein horizontaler Dokumentüberlauf` }).toEqual({
+    overflow: 0,
+    offenders: [],
+  });
   const evidence = await reflowEvidence(page);
   expect(evidence.clientWidth, `${label}: tatsächliche CSS-Viewportbreite`).toBe(expectedCssWidth);
   expect(evidence.innerWidth, `${label}: tatsächliche Layoutbreite`).toBe(expectedCssWidth);
@@ -661,6 +936,7 @@ async function expectBrowserZoomReflow(
   page: Page,
   zoom: 2 | 4,
   label: string,
+  surfaceSelector: string,
 ): Promise<void> {
   const physicalWidth = 1280;
   const cssWidth = physicalWidth / zoom;
@@ -678,20 +954,25 @@ async function expectBrowserZoomReflow(
       message: `${label}: emulierter Browser-Zoomfaktor`,
     }).toBe(zoom);
     await expectNoHorizontalOverflow(page, cssWidth, label);
-    await expect(page.locator(RELEASE_PANEL_SELECTOR)).toBeVisible();
+    await expect(page.locator(surfaceSelector)).toBeVisible();
   } finally {
     await session.send("Emulation.clearDeviceMetricsOverride");
     await session.detach();
   }
 }
 
-test.beforeEach(async ({ page }) => {
+function trackBrowserErrors(page: Page): string[] {
   const errors: string[] = [];
   browserErrors.set(page, errors);
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(`console: ${message.text()}`);
   });
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+  return errors;
+}
+
+test.beforeEach(async ({ page }) => {
+  trackBrowserErrors(page);
 });
 
 test.afterEach(async ({ page }) => {
@@ -699,14 +980,17 @@ test.afterEach(async ({ page }) => {
 });
 
 test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
-  test("durchläuft Profil, Empfänger, Rendern und kandidatenlokale Abschlussprüfung vollständig zugänglich", async ({ page }) => {
-    test.setTimeout(180_000);
+  test("durchläuft Profil, Empfänger, Rendern und kandidatenlokale Abschlussprüfung vollständig zugänglich", async ({ browser, page }) => {
+    test.setTimeout(300_000);
     const state = runtimeState();
     const seededOffer = await readM201Offer(state);
     const releaseVariant = await readLatestReleaseVariant(state, seededOffer.offerId);
     const offer = { offerId: seededOffer.offerId, variantId: releaseVariant.variantId };
     const offerPath = `/w/${state.workspaceId}/angebote/${offer.offerId}?variante=${offer.variantId}`;
     const settingsPath = `/w/${state.workspaceId}/einstellungen/angebotsprofile`;
+    let secondApproverContext: BrowserContext | null = null;
+    let secondApproverErrors: string[] | null = null;
+    let secondApproverMembership: TemporarySecondApproverMembership | null = null;
 
     await setEditorRole(state, "admin");
     try {
@@ -1256,8 +1540,18 @@ test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
         await expectNoHorizontalOverflow(page, 1280, "echtes 200-%-Textzoom");
         await textZoom.evaluate((element) => element.parentNode?.removeChild(element));
 
-        await expectBrowserZoomReflow(page, 2, "200-%-Browserzoom-Reflow bei 640 CSS px");
-        await expectBrowserZoomReflow(page, 4, "400-%-Browserzoom-Reflow bei 320 CSS px");
+        await expectBrowserZoomReflow(
+          page,
+          2,
+          "200-%-Browserzoom-Reflow bei 640 CSS px",
+          RELEASE_PANEL_SELECTOR,
+        );
+        await expectBrowserZoomReflow(
+          page,
+          4,
+          "400-%-Browserzoom-Reflow bei 320 CSS px",
+          RELEASE_PANEL_SELECTOR,
+        );
         await page.setViewportSize({ width: 320, height: 900 });
         await expectNoHorizontalOverflow(page, 320, "mobiler 320-CSS-px-Viewport");
         await expectNoWcagAaAxeViolations(page, panelSelector, "interaktiver 320-CSS-px-Zustand");
@@ -1351,6 +1645,435 @@ test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
         });
       });
 
+      await test.step("neue Ausstellungsbytes mit zwei echten Identitäten freigeben und strukturiert zurückziehen", async () => {
+        await page.reload();
+        const issuancePanel = page.locator(ISSUANCE_PANEL_SELECTOR);
+        await expect(issuancePanel).toBeVisible();
+        const issuanceSkipLink = page.getByRole("link", {
+          name: "Zur Ausstellungsfassung springen",
+          exact: true,
+        });
+        await issuanceSkipLink.focus();
+        await expect(issuanceSkipLink).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(issuancePanel).toBeFocused();
+        await expect(issuancePanel.getByRole("heading", { name: "Ausstellungsfassung" }))
+          .toBeVisible();
+        await expect(issuancePanel.getByText(
+          "Der Freigabekandidat wird niemals ausgestellt. Aus demselben versiegelten Datenstand entsteht eine neue finale PDF-Datei. Erst zwei bytegebundene Freigaben und ein späterer echter Archivnachweis dürfen daraus ein ausgestelltes Dokument machen.",
+          { exact: true },
+        )).toBeVisible();
+        await expect(issuancePanel.getByText(
+          "Archivierung nicht verfügbar: Live-Object-Lock und Retention-Policy sind noch nicht verifiziert.",
+          { exact: true },
+        )).toBeVisible();
+
+        const requestButton = issuancePanel.getByRole("button", {
+          name: "Ausstellungsfassung erstellen für den ausgewählten Freigabekandidaten",
+        });
+        await expectBrowserZoomReflow(
+          page,
+          4,
+          "M2-03b1-Auswahl vor Anforderung bei 400-%-Browserzoom und 320 CSS px",
+          ISSUANCE_PANEL_SELECTOR,
+        );
+        await submitWithPendingFocusEvidence(page, requestButton, {
+          pendingClassName: "bg-slate-700",
+        });
+        await expect(issuancePanel.getByText(
+          "Die finale Ausstellungsfassung wurde zur Erstellung angenommen.",
+          { exact: true },
+        )).toBeVisible();
+        await expect(issuancePanel.locator("#offer-issuance-request-feedback")).toBeFocused();
+
+        const queued = await readQueuedOfferIssuance(
+          state,
+          offer.offerId,
+          readyCandidate.candidateId,
+        );
+        expect(queued.candidateArtifactSha256).toBe(readyArtifact.sha256);
+        expect(queued.inputCandidateArtifactSha256).toBe(readyArtifact.sha256);
+        const completedIssuance = await completeOfferIssuance(state, queued);
+        expect(completedIssuance.artifact.sha256).not.toBe(readyArtifact.sha256);
+        expect(completedIssuance.artifact.bytes.equals(readyArtifact.bytes)).toBe(false);
+        const afterRender = await readOfferIssuanceLifecycleEvidence(
+          state,
+          queued.issuanceId,
+        );
+        expect(afterRender).toMatchObject({
+          approvalActorIds: [],
+          approvalCount: 0,
+          candidateApprovedBy: state.editorIdentityId,
+          derivedState: "ready_for_approval",
+          distinctApprovalCount: 0,
+          publicationStatus: "not_issued",
+          renderState: "ready_for_approval",
+          withdrawalReasonCode: null,
+        });
+
+        await issuancePanel.getByRole("link", {
+          name: "Ausstellungsfassungen: Status aktualisieren",
+          exact: true,
+        }).click();
+        await expect(issuancePanel.getByRole("heading", {
+          name: /Ausstellungsfassung wartet auf Freigabe \(0 von 2\)$/u,
+        })).toBeVisible();
+        await expectNoWcagAaAxeViolations(
+          page,
+          ISSUANCE_PANEL_SELECTOR,
+          "Ausstellungsfassung vor der ersten Bytefreigabe",
+        );
+
+        const readyIssuanceCard = issuancePanel.locator("article").filter({
+          hasText: "Ausstellungsfassung wartet auf Freigabe (0 von 2)",
+        });
+        await expect(readyIssuanceCard).toHaveCount(1);
+        await expect(readyIssuanceCard.getByText(
+          /Referenz AF-[A-F0-9]{16} · Variante .+, Revision \d+/u,
+        )).toBeVisible();
+        await expect(readyIssuanceCard.getByText(
+          /Freigabekandidat FK-[A-F0-9]{16}/u,
+        )).toBeVisible();
+
+        await test.step("befüllte Ausstellungsfassung bei 200 und 400 Prozent ohne horizontalen Verlust reflowt", async () => {
+          await expect(readyIssuanceCard.getByRole("link", {
+            name: /^Finale PDF intern prüfen · Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+          })).toBeVisible();
+          await expect(readyIssuanceCard.getByRole("button", {
+            name: /^Erste Bytefreigabe speichern für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+          })).toBeVisible();
+
+          await expectBrowserZoomReflow(
+            page,
+            2,
+            "M2-03b1-Ausstellungsfassung bei 200-%-Browserzoom und 640 CSS px",
+            ISSUANCE_PANEL_SELECTOR,
+          );
+          await expectBrowserZoomReflow(
+            page,
+            4,
+            "M2-03b1-Ausstellungsfassung bei 400-%-Browserzoom und 320 CSS px",
+            ISSUANCE_PANEL_SELECTOR,
+          );
+          await page.setViewportSize({ width: 1280, height: 1000 });
+        });
+
+        secondApproverMembership = await createTemporarySecondApproverMembership(state);
+        expect(secondApproverMembership.userId).not.toBe(state.editorIdentityId);
+        secondApproverContext = await browser.newContext({
+          baseURL: new URL(page.url()).origin,
+          locale: "de-DE",
+          timezoneId: "Europe/Berlin",
+          viewport: { width: 1280, height: 1000 },
+        });
+        const secondPage = await secondApproverContext.newPage();
+        secondApproverErrors = trackBrowserErrors(secondPage);
+        await secondPage.goto(offerPath);
+        await loginWithRealOtp(secondPage, offerPath, state.viewerEmail);
+        const secondIssuancePanel = secondPage.locator(ISSUANCE_PANEL_SELECTOR);
+        await expect(secondIssuancePanel.getByText("Nur Lesezugriff", { exact: true }))
+          .toBeVisible();
+        await expect(secondIssuancePanel.getByRole("heading", {
+          name: /Ausstellungsfassung wartet auf Freigabe \(0 von 2\)$/u,
+        })).toBeVisible();
+        await expect(secondIssuancePanel.getByRole("link", {
+          name: /^Finale PDF intern prüfen · Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        })).toHaveCount(0);
+        await expect(secondIssuancePanel.locator("form")).toHaveCount(0);
+
+        const issuanceDownloadLink = issuancePanel.getByRole("link", {
+          name: /^Finale PDF intern prüfen · Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        });
+        const issuanceDownloadPath = await issuanceDownloadLink.getAttribute("href");
+        if (!issuanceDownloadPath) {
+          throw new Error("Der private M2-03b1-Download hat kein Ziel.");
+        }
+        const [issuanceDownloadResponse, issuanceDownload] = await Promise.all([
+          page.waitForResponse((response) => (
+            response.request().method() === "GET"
+            && new URL(response.url()).pathname === issuanceDownloadPath
+          )),
+          page.waitForEvent("download"),
+          issuanceDownloadLink.click(),
+        ]);
+        const issuanceBytes = await bytesFromDownload(issuanceDownload);
+        expect(issuanceDownloadResponse.status()).toBe(200);
+        expect(issuanceDownloadResponse.headers()["cache-control"])
+          .toBe("private, no-store, max-age=0");
+        expect(issuanceDownloadResponse.headers().pragma).toBe("no-cache");
+        expect(issuanceDownloadResponse.headers()["x-content-type-options"]).toBe("nosniff");
+        expect(issuanceDownloadResponse.headers()["referrer-policy"]).toBe("no-referrer");
+        expect(issuanceDownloadResponse.headers()["x-frame-options"]).toBe("DENY");
+        expect(issuanceDownloadResponse.headers()["content-security-policy"])
+          .toBe("sandbox; default-src 'none'");
+        expect(issuanceDownloadResponse.headers()["content-type"]).toContain("application/pdf");
+        expect(issuanceDownloadResponse.headers()["content-length"])
+          .toBe(String(completedIssuance.artifact.sizeBytes));
+        expect(issuanceDownloadResponse.headers()["content-disposition"])
+          .toContain("-NICHT-AUSGESTELLT-Ausstellungsfassung.pdf");
+        expect(issuanceBytes.equals(completedIssuance.artifact.bytes)).toBe(true);
+        expect(issuanceBytes.equals(readyArtifact.bytes)).toBe(false);
+        expect(createHash("sha256").update(issuanceBytes).digest("hex"))
+          .toBe(completedIssuance.artifact.sha256);
+
+        const firstApprovalForm = issuancePanel.locator("form").filter({
+          has: page.getByRole("button", {
+            name: /^Erste Bytefreigabe speichern für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+          }),
+        });
+        const firstApprovalCheckboxes = firstApprovalForm.getByRole("checkbox");
+        const firstApprovalCheckboxCount = await firstApprovalCheckboxes.count();
+        expect(firstApprovalCheckboxCount).toBeGreaterThanOrEqual(4);
+        expect(firstApprovalCheckboxCount).toBeLessThanOrEqual(5);
+        for (let index = 0; index < firstApprovalCheckboxCount; index += 1) {
+          await firstApprovalCheckboxes.nth(index).check();
+        }
+        await firstApprovalCheckboxes.first().evaluate((element) => {
+          if (!(element instanceof HTMLInputElement)) throw new Error("Erster Prüfpunkt ist keine Checkbox.");
+          element.value = "false";
+        });
+        await firstApprovalForm.getByRole("button", {
+          name: /^Erste Bytefreigabe speichern für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        }).click();
+        const invalidApprovalFeedback = issuancePanel.locator(
+          `#issuance-approval-feedback-${queued.issuanceId}`,
+        );
+        await expect(invalidApprovalFeedback).toBeFocused();
+        await expect(invalidApprovalFeedback).toContainText("Die Eingabe wurde nicht akzeptiert.");
+        await expect(invalidApprovalFeedback).toContainText(
+          "Alle Prüfpunkte wurden nach dem Antwortlauf zurückgesetzt.",
+        );
+        for (let index = 0; index < firstApprovalCheckboxCount; index += 1) {
+          await expect(firstApprovalCheckboxes.nth(index)).not.toBeChecked();
+        }
+        await expect(firstApprovalCheckboxes.first()).toHaveAttribute("aria-invalid", "true");
+        const invalidApprovalLink = invalidApprovalFeedback.getByRole("link", {
+          name: "Empfänger, Standort und Leistungsumfang",
+          exact: true,
+        });
+        await expect(invalidApprovalLink).toHaveAttribute(
+          "href",
+          `#issuance-recipient-scope-${queued.issuanceId}`,
+        );
+        await invalidApprovalLink.click();
+        await expect(firstApprovalCheckboxes.first()).toBeFocused();
+        await firstApprovalCheckboxes.first().evaluate((element) => {
+          if (!(element instanceof HTMLInputElement)) throw new Error("Erster Prüfpunkt ist keine Checkbox.");
+          element.value = "true";
+        });
+        await firstApprovalCheckboxes.first().focus();
+        for (let index = 0; index < firstApprovalCheckboxCount; index += 1) {
+          const checkbox = firstApprovalCheckboxes.nth(index);
+          await expect(checkbox).toBeFocused();
+          await expect(checkbox).toHaveAccessibleName(/\S/u);
+          await page.keyboard.press("Space");
+          await expect(checkbox).toBeChecked();
+          await page.keyboard.press("Tab");
+        }
+        const firstApprovalButton = firstApprovalForm.getByRole("button", {
+          name: /^Erste Bytefreigabe speichern für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        });
+        await expect(firstApprovalButton).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(issuancePanel.getByText(
+          "Die erste Bytefreigabe wurde gespeichert. Eine andere berechtigte Person muss zweitfreigeben.",
+          { exact: true },
+        )).toBeVisible();
+        await expect(issuancePanel.locator(
+          `#issuance-approval-feedback-${queued.issuanceId}`,
+        )).toBeFocused();
+        await expect(issuancePanel.getByRole("heading", {
+          name: /Ausstellungsfassung wartet auf Zweitfreigabe \(1 von 2\)$/u,
+        })).toBeVisible();
+        await expect(issuancePanel.getByText(
+          "Deine Bytefreigabe zählt bereits als 1 von 2. Die zweite Freigabe muss eine andere berechtigte Person übernehmen.",
+          { exact: true },
+        )).toBeVisible();
+        await expect(issuancePanel.getByRole("button", {
+          name: /^Zweite Bytefreigabe speichern für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        })).toHaveCount(0);
+
+        const afterFirstApproval = await readOfferIssuanceLifecycleEvidence(
+          state,
+          queued.issuanceId,
+        );
+        expect(afterFirstApproval).toMatchObject({
+          approvalCount: 1,
+          candidateApprovedBy: state.editorIdentityId,
+          derivedState: "approval_pending",
+          distinctApprovalCount: 1,
+          publicationStatus: "not_issued",
+          renderState: "ready_for_approval",
+          withdrawalReasonCode: null,
+        });
+        expect(afterFirstApproval.approvalActorIds).toEqual([state.editorIdentityId]);
+
+        await setTemporarySecondApproverRole(state, secondApproverMembership, "admin");
+        await secondIssuancePanel.getByRole("link", {
+          name: "Ausstellungsfassungen: Status aktualisieren",
+          exact: true,
+        }).click();
+        await expect(secondIssuancePanel.getByRole("heading", {
+          name: /Ausstellungsfassung wartet auf Zweitfreigabe \(1 von 2\)$/u,
+        })).toBeVisible();
+        await expect(secondIssuancePanel.getByText("Nur Lesezugriff", { exact: true }))
+          .toHaveCount(0);
+        const secondApprovalForm = secondIssuancePanel.locator("form").filter({
+          has: secondPage.getByRole("button", {
+            name: /^Zweite Bytefreigabe speichern für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+          }),
+        });
+        const secondApprovalCheckboxes = secondApprovalForm.getByRole("checkbox");
+        const secondApprovalCheckboxCount = await secondApprovalCheckboxes.count();
+        expect(secondApprovalCheckboxCount).toBe(firstApprovalCheckboxCount);
+        await secondApprovalCheckboxes.first().focus();
+        for (let index = 0; index < secondApprovalCheckboxCount; index += 1) {
+          const checkbox = secondApprovalCheckboxes.nth(index);
+          await expect(checkbox).toBeFocused();
+          await secondPage.keyboard.press("Space");
+          await expect(checkbox).toBeChecked();
+          await secondPage.keyboard.press("Tab");
+        }
+        const secondApprovalButton = secondApprovalForm.getByRole("button", {
+          name: /^Zweite Bytefreigabe speichern für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        });
+        await expect(secondApprovalButton).toBeFocused();
+        await secondPage.keyboard.press("Enter");
+        await expect(secondIssuancePanel.getByText(
+          "Die zweite Bytefreigabe wurde gespeichert. Das Dokument ist noch nicht ausgestellt.",
+          { exact: true },
+        )).toBeVisible();
+        await expect(secondIssuancePanel.locator(
+          `#issuance-approval-feedback-${queued.issuanceId}`,
+        )).toBeFocused();
+        await expect(secondIssuancePanel.getByRole("heading", {
+          name: /Für Archivierung freigegeben · noch nicht ausgestellt \(2 von 2\)$/u,
+        })).toBeVisible();
+        await expect(secondIssuancePanel.getByText("Nicht ausgestellt · nicht versendet", { exact: true }))
+          .toBeVisible();
+        await expectNoWcagAaAxeViolations(
+          secondPage,
+          ISSUANCE_PANEL_SELECTOR,
+          "Ausstellungsfassung nach zwei Bytefreigaben",
+        );
+        expect(secondApproverErrors, "M2-03b1 Browser-Konsole der Zweitfreigabe").toEqual([]);
+
+        const afterSecondApproval = await readOfferIssuanceLifecycleEvidence(
+          state,
+          queued.issuanceId,
+        );
+        expect(afterSecondApproval).toMatchObject({
+          approvalCount: 2,
+          candidateApprovedBy: state.editorIdentityId,
+          derivedState: "approved_for_archive_not_issued",
+          distinctApprovalCount: 2,
+          publicationStatus: "not_issued",
+          renderState: "ready_for_approval",
+          withdrawalReasonCode: null,
+        });
+        expect(new Set(afterSecondApproval.approvalActorIds)).toEqual(new Set([
+          state.editorIdentityId,
+          secondApproverMembership.userId,
+        ]));
+
+        await setTemporarySecondApproverRole(state, secondApproverMembership, "viewer");
+        await secondIssuancePanel.getByRole("link", {
+          name: "Ausstellungsfassungen: Status aktualisieren",
+          exact: true,
+        }).click();
+        await expect(secondIssuancePanel.getByText("Nur Lesezugriff", { exact: true }))
+          .toBeVisible();
+        await expect(secondIssuancePanel.locator("form")).toHaveCount(0);
+        await expect(secondIssuancePanel.getByRole("link", {
+          name: /^Finale PDF intern prüfen · Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        })).toBeVisible();
+        const viewerDownload = await secondPage.request.get(issuanceDownloadPath);
+        expect(viewerDownload.status()).toBe(200);
+        expect(viewerDownload.headers()["cache-control"])
+          .toBe("private, no-store, max-age=0");
+        const viewerIssuanceBytes = Buffer.from(await viewerDownload.body());
+        expect(viewerIssuanceBytes.equals(completedIssuance.artifact.bytes)).toBe(true);
+        expect(createHash("sha256").update(viewerIssuanceBytes).digest("hex"))
+          .toBe(completedIssuance.artifact.sha256);
+
+        await issuancePanel.getByRole("link", {
+          name: "Ausstellungsfassungen: Status aktualisieren",
+          exact: true,
+        }).click();
+        await expect(issuancePanel.getByRole("heading", {
+          name: /Für Archivierung freigegeben · noch nicht ausgestellt \(2 von 2\)$/u,
+        })).toBeVisible();
+        const approvedSurfaceText = await issuancePanel.innerText();
+        expect(approvedSurfaceText).toContain("Nicht ausgestellt");
+        expect(approvedSurfaceText).not.toMatch(/(?:^|\n)\s*Ausgestellt(?:\s|$)/u);
+        expect(approvedSurfaceText).not.toContain("Archiviert und ausgestellt");
+
+        const withdrawalDetails = issuancePanel.locator("details").filter({
+          hasText: "Ausstellungsfassung zurücknehmen",
+        });
+        const withdrawalSummary = withdrawalDetails.locator("summary");
+        await withdrawalSummary.focus();
+        await expect(withdrawalSummary).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(withdrawalDetails).toHaveAttribute("open", "");
+        const withdrawalReason = issuancePanel.getByLabel(
+          /^Rücknahmegrund für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        );
+        await withdrawalReason.focus();
+        await withdrawalReason.selectOption("content_error");
+        const withdrawalConfirmation = issuancePanel.getByRole("checkbox", {
+          name: /^Ich bestätige die endgültige Rücknahme von AF-[A-F0-9]{16}\./u,
+        });
+        await withdrawalConfirmation.check();
+        const withdrawalButton = issuancePanel.getByRole("button", {
+          name: /^Rücknahme endgültig speichern für Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        });
+        await withdrawalButton.focus();
+        await page.keyboard.press("Enter");
+        await expect(issuancePanel.getByText(
+          "Die Ausstellungsfassung wurde vor der Archivierung zurückgezogen.",
+          { exact: true },
+        )).toBeVisible();
+        await expect(issuancePanel.locator(
+          `#issuance-withdrawal-feedback-${queued.issuanceId}`,
+        )).toBeFocused();
+        await expect(issuancePanel.getByRole("heading", {
+          name: /Vor Archivierung zurückgezogen · nicht ausgestellt$/u,
+        })).toBeVisible();
+        await expect(issuancePanel.getByText("Inhaltlicher Fehler", { exact: false }))
+          .toBeVisible();
+        await expect(issuancePanel.getByRole("link", {
+          name: /^Finale PDF intern prüfen · Ausstellungsfassung AF-[A-F0-9]{16}$/u,
+        })).toHaveCount(0);
+        await expect(issuancePanel.getByRole("button", {
+          name: /Ausstellungsfassung .* ausgewählten Freigabekandidaten|Erstellung erneut anstoßen/u,
+        })).toHaveCount(0);
+        await expect(issuancePanel.getByRole("link", {
+          name: "Freigabekandidaten öffnen",
+          exact: true,
+        })).toBeVisible();
+
+        const withdrawnDownload = await page.request.get(issuanceDownloadPath);
+        expect(withdrawnDownload.status()).toBe(404);
+        expect(withdrawnDownload.headers()["cache-control"])
+          .toBe("private, no-store, max-age=0");
+        expect(await withdrawnDownload.text()).toBe("");
+        const afterWithdrawal = await readOfferIssuanceLifecycleEvidence(
+          state,
+          queued.issuanceId,
+        );
+        expect(afterWithdrawal).toMatchObject({
+          approvalCount: 2,
+          derivedState: "withdrawn_before_archive",
+          distinctApprovalCount: 2,
+          publicationStatus: "not_issued",
+          renderState: "ready_for_approval",
+          withdrawalCommandVersion: "offer-issuance-withdrawal-command.v1",
+          withdrawalReasonCode: "content_error",
+          withdrawalSchemaVersion: "offer-issuance-withdrawal-command.v1",
+        });
+      });
+
       await test.step("fehlendes Prepare-Recht hält Empfänger-PII aus HTML/RSC-Payload fern", async () => {
         await setEditorRole(state, "editor");
         await page.reload();
@@ -1379,7 +2102,19 @@ test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
         }
       });
     } finally {
-      await setEditorRole(state, "editor");
+      try {
+        await (secondApproverContext as BrowserContext | null)?.close();
+      } finally {
+        try {
+          const membershipToDemote = secondApproverMembership as
+            TemporarySecondApproverMembership | null;
+          if (membershipToDemote) {
+            await removeTemporarySecondApproverElevation(state, membershipToDemote);
+          }
+        } finally {
+          await setEditorRole(state, "editor");
+        }
+      }
     }
   });
 });

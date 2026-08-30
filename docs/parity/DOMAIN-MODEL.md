@@ -1,6 +1,6 @@
 # Domain Model
 
-Stand: 2026-08-30 · M2-01, M2-02 und M2-03a lokal verifiziert
+Stand: 2026-08-30 · M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Bestehender Spine und neue kommerzielle Grenze
 
@@ -27,7 +27,12 @@ Workspace
  │                         └─ OfferReleaseCandidate (n; exakt quellengebunden)
  │                              ├─ versiegelter Candidate-Input
  │                              ├─ optionales PDF-Artefakt
- │                              └─ optionale OfferReleaseCandidateApproval
+ │                              ├─ optionale OfferReleaseCandidateApproval
+ │                              └─ OfferIssuance (n; exakt Candidate-gebunden)
+ │                                   ├─ versiegelter Issuance-Input
+ │                                   ├─ optionales finales PDF-Artefakt
+ │                                   ├─ OfferIssuanceApproval (0..2)
+ │                                   └─ optionale OfferIssuanceWithdrawal
  ├─ CatalogComponent
  │    └─ CatalogComponentRevision (n, append-only)
  ├─ OfferNumberSeries (per year)
@@ -53,6 +58,9 @@ Workspace
 | `OfferRecipientRevision` | append-only N pro Offer | bestätigter Empfänger, optionale Firma, E-Mail und strukturierte Rechnungsadresse; vollständig vom Anlagenstandort getrennt und gehasht |
 | `OfferReleaseCandidate` | stabiler fachlicher Job, unique je Workspace + Reservation-Key | bindet Offer/Project, exakte Variantenrevision, erfolgreichen M2-02-Quelldraft, aktive Profilrevision/-aktivierung, aktuelle Empfängerrevision, Gültigkeitsdatum sowie Input-/Template-/Renderer-Versionen; Zustände `queued`/`running`/`retry_wait`/`ready_for_approval`/`failed_final`; Artefakt bis 8 MiB, Publication-State ausschließlich `not_issued` |
 | `OfferReleaseCandidateApproval` | höchstens eine append-only Attestation pro Candidate | bindet tatsächlichen Artifact-SHA und -Länge, Input-, Varianten-, Profil-, Empfänger-, Template- und Rendererstand plus feste menschliche Bestätigungen; erzeugt nur den abgeleiteten Lesestatus `approved_not_issued` |
+| `OfferIssuance` | stabiler fachlicher Job, unique je Workspace + vollständigem Reservation-Key | bindet den freigegebenen Candidate, dessen Approval und echte Bytes sowie alle Quell-/Rezeptstände; besitzt einen eigenen versiegelten Input und eine neue finale PDF-Bytefolge. Renderzustände bis `ready_for_approval`; Freigabestatus wird aus Approvals/Withdrawal abgeleitet, maximal `approved_for_archive_not_issued` |
+| `OfferIssuanceApproval` | höchstens eine append-only Attestation je Issuance + Actor, maximal zwei wirksame Actors | bindet erneut tatsächliche Issuance-Bytes, Input und alle Quellen samt festen Bestätigungen. Zwei verschiedene aktive Personen sind nötig; mindestens eine ist vom Candidate-Freigeber verschieden |
+| `OfferIssuanceWithdrawal` | höchstens eine append-only Attestation pro Issuance | strukturierter sicherer Ursachencode vor Archivierung; leitet terminal `withdrawn_before_archive` ab, mutiert keine Approval und erlaubt keine Reaktivierung |
 | `OfferMutationRateWindow` | Workspace + optional Actor + DB-Zeitfenster | atomare 15-Minuten-Zähler für 120 Actor-/1200 Workspace-Versuche; keine Fachdaten |
 
 ## Kritische Invarianten
@@ -117,11 +125,27 @@ Workspace
 - Profilstände bleiben Workspace-Historie; Offer-lokale Empfängerrevisionen,
   Candidates, Approvals und Bytes gehören zum Offer-Erasuregraphen. Eine aktive
   Candidate-Lease blockiert die Löschung bis zu ihrem sicheren Ende.
+- Eine Ausstellungsfassung ist eine neue Bytefolge aus dem exakt versiegelten
+  Candidate-Stand; Candidate-PDF-Bytes werden nie umetikettiert oder promotet.
+  Issuance-Input, Candidate-/Approval-/Quellbindungen, Template und
+  Rendererrezept müssen vollständig hashgleich bleiben.
+- Der Freigabestand ist aus append-only Attestations abgeleitet: 0/2
+  `ready_for_approval`, 1/2 `approval_pending`, 2/2
+  `approved_for_archive_not_issued`. Zwei verschiedene aktive Actors geben
+  dieselben rehashten Bytes frei; mindestens einer unterscheidet sich vom
+  Candidate-Approver.
+- Withdrawal ist append-only und terminal. Ein exakter Request replayt den
+  zurückgezogenen Stand; nur neuer Candidate plus neue Quellbindung darf eine
+  neue Issuance erzeugen.
+- Erfolgreiche Issuance-Bytes sind append-only, tenantgeschützt, höchstens
+  8 MiB und bis zur echten Archivierung Teil des Offer-Erasuregraphen. Sie sind
+  kein WORM-/Object-Lock-Artefakt.
 - Privilegierte Contact-Erasure löscht den Draft-Offer-Aggregat und kopierte
   PII; Offer-/Variant-/Revision-Zeiten gehören zur Inaktivitätsuhr,
   Nummernserie und verbrauchte Nummer bleiben, Project/Site/Contact werden nach
   dem bestehenden Vertrag pseudonymisiert erhalten.
-- `issued`, Versand, Annahme, Signatur, öffentlicher Link, Rechnung und
-  Object-Lock-Artefakte existieren in diesem Modell noch nicht. Der technisch
-  verifizierte Freigabekandidat darf nicht als Reonic-1:1-Parität oder
-  rechtswirksames Angebot ausgegeben werden.
+- Finale Ausstellungsbytes existieren lokal und intern; nicht vorhanden sind
+  weiterhin Object-Lock-Objekt, Archivevidence, `issued`, Versand, Annahme,
+  Signatur, öffentlicher Link und Rechnung. Weder Candidate noch
+  `approved_for_archive_not_issued` dürfen als Reonic-1:1-Parität oder
+  rechtswirksam ausgestelltes Angebot ausgegeben werden.

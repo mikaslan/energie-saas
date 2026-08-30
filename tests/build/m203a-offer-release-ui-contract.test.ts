@@ -62,6 +62,7 @@ describe("M2-03a Offer-Release-Portalvertrag", () => {
     ]);
     expect(view).toContain("OfferReleaseCandidatePanel");
     expect(view).toContain("showReleaseSkipLink={offerReleasePanel !== null}");
+    expect(view).toContain("showIssuanceSkipLink={offerIssuancePanel !== null}");
     expect(view).toContain("afterEditor={<div");
     expect(editor).toContain('href="#offer-release-candidate"');
     expect(editor).toContain("{afterEditor}");

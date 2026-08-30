@@ -12,8 +12,11 @@ Dieses Dokument trennt ausgeführte Evidenz strikt von geplanten Tests.
 | M2-01 Angebotsvarianten/Snapshot-BOM | `npm run check`: 87/87 Testdateien, 856 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollenproben, 5/5 PG18-Proben; Chromium 16/16 (15 funktionale/A11y-Fälle plus 1 Visual-Capture-Fall mit 26/26 Kandidaten); Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff- und `db:generate`-Prüfung grün | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; Visual-Candidate-Capture grün, menschliches Visual-Gate `INCONCLUSIVE` |
 | M2-02 interner Angebots-PDF-Entwurf | 96/96 Vitest-Dateien, 949 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 16/16 aktiv plus 1 opt-in Visual-Fall übersprungen; Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff, `db:generate`, Compose, Worker-Bundle und gepinnter `linux/amd64`-Container-Smoke grün | REVIEWED/VERIFIED lokal; technisches Gate **GO**; unabhängiges Review ohne offene P0–P2; `M202-VISUAL-01` `INCONCLUSIVE`; Deploy `NOT RUN` |
 | M2-03a Angebotsprofil/Freigabekandidat | 111/111 Vitest-Dateien, 1.078 bestanden, 1 übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 17 bestanden, 1 opt-in übersprungen; Production-Build, ESLint, TypeScript und Dependency-Cruiser (237 Module/764 Abhängigkeiten) grün; gepinnter `linux/amd64`-Container-Smoke mit Pflichtstatus auf 11/11 PDF-Seiten | REVIEWED/VERIFIED lokal; technisches Gate **GO**; Security-, Regression-, Navigation- und lokaler Claude-Code-Opus-Max-Review ohne offene P0–P2; Human Visual `INCONCLUSIVE`; Deploy/Issuance/WORM/Versand/Signatur `NOT RUN` |
+| M2-03b1 Angebots-Ausstellungsfassung | 126/126 Vitest-Dateien, 1.184 bestanden, 1 übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 17 bestanden, 1 opt-in übersprungen; Production-Build, ESLint, TypeScript und Dependency-Cruiser (248 Module/836 Abhängigkeiten) grün; deterministischer gepinnter Container-Render mit 11/11 A4-Seiten | REVIEWED/VERIFIED lokal; technisches Gate **GO**; Code-, Security- und Claude-Code-Opus-5-Max-Review ohne offene P0–P2; Human Visual `INCONCLUSIVE`; Deploy/Object Lock/Archivevidence/`issued`/Versand/Signatur `NOT RUN` |
 
-Die Detailabnahme liegt in der Vault-Datei `Reonic Clone Final/08-Abnahme-M1-08.md`.
+Die M1-08-Detailabnahme liegt in `Reonic Clone Final/08-Abnahme-M1-08.md`;
+der aktuelle M2-03b1-Abschluss in
+`Reonic Clone Final/16-Abnahme-M2-03b1.md`.
 
 ## M2-01
 
@@ -143,3 +146,45 @@ WMEE-Firmen-/Rechtstexte, produktiver Deploy, Object Lock/WORM, Issuance,
 Versand/Delivery, Annahme und Signatur. Der Container-Smoke prüft den
 technischen Tagged-PDF-Pfad, ersetzt aber keine formale Prüfung der
 PDF/UA-Konformität oder der Rechtsinhalte.
+
+## M2-03b1
+
+Status: **REVIEWED/VERIFIED lokal; technisches Gate GO**. `npm run check`
+belegt 126/126 Vitest-Dateien mit 1.184 bestandenen und einem bewusst
+übersprungenen Test, 88/88 Rollen- plus 5/5 PostgreSQL-18-Proben. Der volle
+Chromium-Lauf endete mit 17 bestandenen, einem opt-in übersprungenen und keinem
+fehlgeschlagenen Fall. Production-Build, ESLint, TypeScript und
+Dependency-Cruiser (248 Module/836 Abhängigkeiten) sind grün.
+
+| Test-ID | Ebene | Finaler Beleg | Aktuell |
+|---|---|---|---|
+| `M203B1-CONTRACT-01` | Contract/Golden | strikte Request-/Approval-/Withdrawal-/Inputschemas, JCS/SHA, Unknown-/Duplicate-Reject und exakte Quell-/Rezeptbindung | GREEN im finalen Gesamtlauf |
+| `M203B1-TEMPLATE-01` | Unit/Golden | eigene finale Bytequelle, vollständige Kunden-IA, Escaping, keine Remote-Assets sowie keine Candidate-/Draft-/„nicht ausgestellt“-Marker im PDF | GREEN |
+| `M203B1-RENDER-01` | Chromium/Container | zwei deterministische byte-/hashgleiche Render; 11/11 A4-Seiten, 97.560 Bytes, SHA-256 `cb989e765c0c31b8fa82b25e2151b66eabecdc33f2047c2672297a620ed27abe`; Tagged PDF/Outline; Candidate-Bytes nicht promotet; Netzwerk/Print fail-closed; Hardening grün | GREEN im gepinnten Containerrezept |
+| `M203B1-DB-01` | Migration/RLS/ACL | Fresh-/Upgrade-Pfad, Tenant-FKs, FORCE RLS, Append-only-Guards, genaue Runtime-/Worker-Rechte und Erasuregraph | GREEN; Rollen 88/88 plus PG18 5/5 |
+| `M203B1-DB-02` | Concurrency/Recovery | Request/Replay/Reservation, Lease/CAS/Retry/Finalize, zwei Approval-Actors, Withdrawal- und Erasure-Races | GREEN im finalen Gesamtlauf |
+| `M203B1-SVC-01` | Integration | freigegebener Candidate bis neue finale Bytes, 0/2→1/2→2/2, terminale Rücknahme und Source-/Drift-Fail-Closed | GREEN im finalen Gesamtlauf |
+| `M203B1-APPROVAL-01` | Integration | Rehash der gespeicherten Bytes, zwei verschiedene aktive Actors, mindestens einer verschieden vom Candidate-Approver, Race/Replay sicher | GREEN; maximal `approved_for_archive_not_issued` |
+| `M203B1-PRIVACY-01` | Adversarial | keine PII, Preise, Rechtstexte, Bytes, Vollhashes oder Secrets in DTO, Event, Audit und Log; versiegelter Input als Allowlist | GREEN im finalen Gesamtlauf |
+| `M203B1-RBAC-01` | Integration/Security | Prepare-/Approve-/Withdraw-Rechte, gestufte private Bytes, Admin ohne Vier-Augen-Bypass, External/Cross-Tenant ohne Oracle | GREEN; Security-Abschlussreview GO |
+| `M203B1-WORKER-01` | Unit/Integration | ID-only Payload, tenantgebundener Reload, Retry/Recovery, deterministischer Finalize, keine Storage-Credentials | GREEN im finalen Gesamtlauf |
+| `M203B1-ROUTE-01` | Next/Route | Reauth, Tenant-/Offer-/Issuance-Bindung, gestufte Rechte, MIME-/Längen-/Hashprüfung, sicherer Dateiname und private Header | GREEN im finalen Gesamtlauf |
+| `M203B1-E2E-01` | Browser | echte zweite Identität; Request→Render-Finalisierung→0/2→1/2→2/2→privater Download sowie Withdrawal und Rollendowngrade | GREEN im 17+1-Chromium-Lauf; Worker-Finalisierung testseitig synthetisch |
+| `M203B1-A11Y-01` | Browser/A11y | Skip-Link, Keyboard-/Fokusführung, Label-in-Name, Zod-Feldpfade, Resetankündigung, Axe und 400-%-/320-CSS-px-Reflow | GREEN; finaler Opus-5-Max-Delta-Review GO |
+| `M203B1-VISUAL-01` | Human Visual | menschlich freigegebene Portal- und gerasterte PDF-Baseline | `INCONCLUSIVE` |
+
+Der Browserlauf prüft den kompletten geschützten UI-/Action-/Downloadpfad mit
+zwei echten Identitäten und exakt kontrollierten Bytes; Claim und Finalize
+werden im E2E synthetisch in der DB ausgeführt. Die echte Rendererevidenz
+stammt getrennt aus dem gepinnten Container und wird nicht mit dem E2E
+vermischt.
+
+Unabhängiger Code- und Security-Abschlussreview sowie der finale lokale
+Read-only-Designreview mit Claude Opus 5 und Effort `max` sind **GO**; es gibt
+keine offenen P0–P2. Das ist technische und Design-/A11y-Gegenevidenz, keine
+menschliche Visual-, Rechts-, Brand- oder private Reonic-Paritätsfreigabe.
+
+Nicht ausgeführt oder geliefert sind Deploy, Object Lock/WORM, Retention,
+Archivevidence, `issued`, Versand, öffentlicher Link, Annahme und Signatur.
+Diese Punkte gehören zum weiterhin `BLOCKED` geführten M2-03b2 beziehungsweise
+zu späteren Slices.

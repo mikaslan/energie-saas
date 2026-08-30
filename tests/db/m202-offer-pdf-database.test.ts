@@ -17,6 +17,7 @@ import { withTenantOn } from "@/lib/db/tenant";
 import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
 import {
   LEGACY_CALCULATION_QUEUE_OPTIONS,
+  OFFER_ISSUANCE_QUEUE_OPTIONS,
   OFFER_PDF_QUEUE_OPTIONS,
   OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
 } from "../../scripts/pgboss-bootstrap.mjs";
@@ -386,6 +387,10 @@ async function bootstrapStrictRolesAndPgBoss(
       "offer.release-candidate.render",
       OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
     );
+    await boss.createQueue(
+      "offer-issuance.render.v1",
+      OFFER_ISSUANCE_QUEUE_OPTIONS,
+    );
   } finally {
     await boss.stop({ graceful: false }).catch(() => undefined);
   }
@@ -472,8 +477,8 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
       readFileSync(resolve("drizzle/meta/_journal.json"), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
     expect(journal.entries.at(-1)).toMatchObject({
-      idx: 34,
-      tag: "0034_m2_03a_offer_release_candidate",
+      idx: 35,
+      tag: "0035_m2_03b1_offer_issuance",
     });
 
     const relation = await testPool.query<{

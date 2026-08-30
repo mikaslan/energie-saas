@@ -4,8 +4,8 @@ Stand: 2026-08-30 · Workflow:
 `DISCOVERED → SPECIFIED → CONTRACTED → RED → IMPLEMENTED → REVIEWED → VERIFIED`
 
 Die vollständige F1–F16-Übersicht steht in `STATUS.md`. Dieses Dokument führt
-die feingranularen M2-01-, M2-02- und M2-03a-Capabilities. Alle drei Slices sind
-lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind **GO**. Die formalen
+die feingranularen M2-01-, M2-02-, M2-03a- und M2-03b1-Capabilities. Alle vier
+Slices sind lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind **GO**. Die formalen
 Visual-Gates bleiben davon getrennt `INCONCLUSIVE`. Eine private
 Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 
@@ -139,14 +139,65 @@ Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 | `M203A-07` / F2.7 | Interner Nutzer bedient Profil-, Empfänger-, Prepare-, Status-, Approval- und Downloadpfad | reauthentifizierte Actions/Route; ehrliche Zustände; Fokus-/Fehlerführung; Reflow/Keyboard | kein stiller Formularverlust; privater `no-store`-Download; vor Approval nur Approver, danach `project.read` | UI nie Sicherheitsgrenze; External und fremde Tenants fail-closed | `M203A-ROUTE-01`, `M203A-E2E-01`, `M203A-A11Y-01` | REVIEWED/VERIFIED (lokal); Chromium 17 bestanden/1 opt-in übersprungen |
 | `M203A-08` / F2.7 | System bewahrt Privacy, Append-only-Integrität und Löschbarkeit | Tenant-FKs/RLS, exakte Rollen-ACL, Erasure-Tombstone, keine aktive Lease | Candidate, Approval und Bytes kaskadieren im Offer-Erasuregraph; historische Quellen werden nie mutiert | Runtime/Worker nur engste Funktionen/Spalten; keine WORM-Behauptung | `M203A-DB-01/02`, `M203A-PRIVACY-01`, `M203A-RBAC-01` | REVIEWED/VERIFIED (lokal); Object Lock/Retention bleibt M2-03b |
 
+## Gemeinsamer Liefervertrag M2-03b1
+
+- Aus dem exakt freigegebenen Candidate-Input werden neue finale PDF-Bytes
+  gerendert; Candidate-Bytes werden niemals kopiert, umetikettiert oder
+  promotet.
+- Reservation und versiegelter `offer-issuance-input.v1` binden Candidate,
+  Candidate-Approval, Input-/Artifact-Hash, Variante, Profil, Empfänger sowie
+  Template-, Canonicalization- und Rendererrezept.
+- Queue-Payload und Dispatch transportieren nur Workspace- und Issuance-ID.
+  Der Worker lädt den versiegelten Input unter Tenantkontext und rendert
+  offline/sandboxed; höchstens 8 MiB bleiben bis zur Archivierung
+  tenantgeschützt und löschbar in Postgres.
+- Der Renderpfad endet bei `ready_for_approval`; zwei verschiedene aktive
+  interne Personen geben exakt dieselben Bytes frei, mindestens eine davon
+  verschieden vom Candidate-Approver. Maximalstatus ist
+  `approved_for_archive_not_issued`.
+- Eine append-only Rücknahme ist vor Archivierung terminal. Exakter Replay
+  belebt die Issuance nicht wieder; eine Korrektur braucht neuen Candidate und
+  neue Issuance.
+- Der private Download reautorisiert Tenantgraph, Rolle, MIME, Länge und Hash.
+  Vor 2/2 lesen nur Approver, danach interne Nutzer mit `project.read`; nach
+  Withdrawal ist kein Artefaktdownload mehr erlaubt.
+- Nicht enthalten sind Storageadapter, Archivevidence, Object Lock,
+  `issued`, Versand, Link, Annahme oder Signatur. M2-03b2 bleibt `BLOCKED`.
+- Abschlussnachweis: 126/126 Vitest-Dateien, 1.184 bestanden/1 übersprungen;
+  Rollen 88/88 plus PG18 5/5; Chromium 17 bestanden/1 opt-in übersprungen;
+  Build/Lint/Typecheck/Dependency-Cruiser grün. Der doppelte Container-Render
+  ist bytegleich (11 A4-Seiten, 97.560 Bytes, SHA-256
+  `cb989e765c0c31b8fa82b25e2151b66eabecdc33f2047c2672297a620ed27abe`).
+  Code, Security und Claude-Code-Opus-5-Max: GO ohne offene P0–P2; Human Visual
+  bleibt `INCONCLUSIVE`.
+
+## Feingranulare M2-03b1-Capabilities
+
+| ID / F-Nr. | Job, Trigger und Happy Path | Inputs / Validierungen | Zustand und Nebenwirkung | Recht / Daten / Event | Tests | Status / Parität / Blocker |
+|---|---|---|---|---|---|---|
+| `M203B1-01` / F2.7 | Bearbeiter fordert aus einem freigegebenen Candidate die Ausstellungsfassung an; exakter Replay repariert nur Dispatch | Client liefert IDs; Service sperrt und prüft Candidate, Approval, Bytes, Input und aktuelle Quellbindungen; Reservation ist vollständig gebunden | `missing → queued`; gleicher Vertrag bleibt gleiche Issuance-ID, Korrektur braucht neuen Candidate | `offer.issue.prepare`; sichere ID-/Status-Events, keine Inhalte | `M203B1-CONTRACT-01`, `M203B1-SVC-01`, `M203B1-DB-02` | REVIEWED/VERIFIED (lokal) |
+| `M203B1-02` / F2.7 | System versiegelt den eigenen Issuance-Input | strikte Allowlist/JCS/SHA; exakte Candidate-/Approval-/Source-/Rezeptbindung; keine Candidate-Bytes, Actor-IDs, EK, Marge oder Secrets | Input, SHA und Bindungen append-only; `artifactIntent=offer_issuance_final` | autorisierter Service unter Tenant/RLS | `M203B1-CONTRACT-01`, `M203B1-PRIVACY-01`, `M203B1-DB-01` | REVIEWED/VERIFIED (lokal) |
+| `M203B1-03` / F2.7 | `app_worker` claimt, rendert, retryt/recovert und finalisiert neue Bytes | ID-only, DB-Reload, offline/sandboxed, gepinntes Rezept, deterministischer Doppelrender, ≤8 MiB | `queued/retry_wait → running → ready_for_approval` oder `failed_final`; Lease/CAS; Artefakt append-only | minimaler Worker; kein Storage-Secret und kein Approval-Recht | `M203B1-RENDER-01`, `M203B1-WORKER-01`, `M203B1-DB-02` | REVIEWED/VERIFIED (lokal); Deploy NOT RUN |
+| `M203B1-04` / F2.7/F16.2 | System erzeugt eine finale kundenlesbare PDF-Informationsarchitektur | escaped, A4/mehrseitig, Tagged PDF/Outline, keine Remote-Assets und keine Candidate-/Draft-/„nicht ausgestellt“-Marker in den Bytes | neue unveränderliche PDF-Datei; UI bleibt bis Archivgate klar „nicht ausgestellt“ | eigener WMEE-Vertrag, keine private Reonic- oder Rechtswahrheit | `M203B1-TEMPLATE-01`, `M203B1-RENDER-01`, `M203B1-VISUAL-01` | technisch VERIFIED; Human Visual `INCONCLUSIVE` |
+| `M203B1-05` / F2.7 | Zwei verschiedene interne Personen geben exakt dieselben Bytes frei | Rehash, vier feste Attestations, bedingte 0-%-Bestätigung, aktuelle Quellen; mindestens eine Person ≠ Candidate-Approver | 0/2 → `approval_pending` 1/2 → `approved_for_archive_not_issued` 2/2; kein Offerstatus | `offer.issue.approve`; append-only Approval je Actor | `M203B1-APPROVAL-01`, `M203B1-SVC-01`, `M203B1-RBAC-01` | REVIEWED/VERIFIED (lokal); noch nicht ausgestellt |
+| `M203B1-06` / F2.7 | Approver zieht einen noch nicht archivierten Stand mit festem Ursachencode zurück | erlaubter Code, exakte Issuance, keine Freitext-PII; Race/Replay sicher | append-only, terminal `withdrawn_before_archive`; keine Reaktivierung oder Approval-Mutation | `offer.issue.withdraw`; sichere Ursache in Event/Audit | `M203B1-DB-02`, `M203B1-SVC-01`, `M203B1-E2E-01` | REVIEWED/VERIFIED (lokal) |
+| `M203B1-07` / F2.7 | Interner Nutzer bedient Request, Status, Approval, Withdrawal und privaten Download | jede Action/Route reautorisiert; gestufte Leserechte, Feldfehler/Fokus, Keyboard/Reflow/Axe | ehrliche 0/2-, 1/2-, 2/2-, Reset- und Rücknahmezustände; `private, no-store` | `project.read` plus Issue-Capabilities; External/cross-tenant fail-closed | `M203B1-ROUTE-01`, `M203B1-E2E-01`, `M203B1-A11Y-01` | REVIEWED/VERIFIED (lokal); 17+1 Chromium |
+| `M203B1-08` / F2.7 | System schützt Tenantgrenze, Append-only-Integrität und Erasuregraph | zusammengesetzte FKs, FORCE RLS, genaue ACL, Drift-/Byte-Guards, aktive Lease | erfolgreiche Bytes/Approvals/Withdrawal unveränderlich; vor Archivierung Offer-löschbar | Runtime/Worker Least Privilege; keinerlei Archivclaim | `M203B1-DB-01/02`, `M203B1-PRIVACY-01`, `M203B1-RBAC-01` | REVIEWED/VERIFIED (lokal); M2-03b2 BLOCKED |
+
 ## API-Operationen
 
-M2-01/M2-02/M2-03a besitzen keine öffentliche REST-API. Die implementierten internen Commands heißen
+M2-01/M2-02/M2-03a/M2-03b1 besitzen keine öffentliche REST-API. Die implementierten internen Commands heißen
 `createOfferFromRequest`, `duplicateOfferVariant`, `reviseOfferVariant` und
 `createVariantFromCurrentResolution`; M2-02 ergänzt `requestOfferPdfDraft`,
 Status-/Listenreads und den reautorisierten privaten Download-Route-Handler.
 M2-03a ergänzt Profil-Revision/-Aktivierung, Empfängerrevision,
 `requestOfferReleaseCandidate`, `approveOfferReleaseCandidate`, Statusreads und
-den privaten Candidate-Download-Route-Handler.
+den privaten Candidate-Download-Route-Handler. M2-03b1 ergänzt
+`requestOfferIssuance`, `approveOfferIssuance`, `withdrawOfferIssuance`,
+`listOfferIssuances`, `getOfferIssuanceStatus`, `readOfferIssuanceArtifact`,
+drei reautorisierte Server Actions und den privaten Issuance-Download-Handler.
 Jede Server-Action ist ein direkt erreichbarer POST-Endpunkt und muss den
 vollständigen Servicevertrag erneut erzwingen.
+
+M2-03b2 mit Object Lock, Retention, Archivevidence und `issued` bleibt
+ausdrücklich `BLOCKED`.

@@ -77,3 +77,28 @@ export type {
   OfferReleaseStatusResult,
   OfferReleaseStatusState,
 } from "./release-service";
+export {
+  OFFER_ISSUANCE_CONFLICT_CODES,
+  OfferIssuanceConflictError,
+  OfferIssuanceDispatchError,
+  OfferIssuanceIntegrityError,
+  OfferIssuanceNotFoundError,
+  OfferIssuancePersistenceError,
+  OfferIssuanceValidationError,
+  approveOfferIssuance,
+  enqueueOfferIssuanceDispatch,
+  getOfferIssuanceStatus,
+  listOfferIssuances,
+  readOfferIssuanceArtifact,
+  requestOfferIssuance,
+  withdrawOfferIssuance,
+} from "./issuance-service";
+export type {
+  OfferIssuanceApprovalResult,
+  OfferIssuanceArtifactResult,
+  OfferIssuanceRenderState,
+  OfferIssuanceRequestResult,
+  OfferIssuanceStatusResult,
+  OfferIssuanceStatusState,
+  OfferIssuanceWithdrawalResult,
+} from "./issuance-service";

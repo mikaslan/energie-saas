@@ -1,6 +1,6 @@
 # Workflow- und Statusmaschinen
 
-Stand: 2026-08-30 · M2-01, M2-02 und M2-03a lokal verifiziert
+Stand: 2026-08-30 · M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Project-Phase
 
@@ -23,8 +23,9 @@ draft -- M2-01 --> draft
 ```
 
 `issued`, `sent`, `signed`, `expired`, `withdrawn` oder `accepted` werden weder
-gespeichert noch in der UI vorgetäuscht. Ein M2-02-PDF-Draft verändert den
-Offer-Status nicht; Ausstellung und Signatur benötigen eigene Folgeverträge.
+gespeichert noch in der UI vorgetäuscht. M2-02-Draft, M2-03a-Candidate und
+M2-03b1-Ausstellungsfassung verändern den Offer-Status nicht; Archivierung,
+Ausstellung und Signatur benötigen eigene Folgeverträge.
 
 ## Variant und Revision
 
@@ -166,6 +167,55 @@ Bytes laden, danach interne Nutzer mit `project.read`; jeder Download wird
 erneut autorisiert und verifiziert. Es entstehen weder Ausstellungsbytes noch
 Object-Lock, Versand, Annahme oder Signatur.
 
+## Angebots-Ausstellungsfassung
+
+```text
+missing -- authorized request --> queued
+queued -- worker claim --> running
+running -- valid deterministic final PDF commit --> ready_for_approval (0/2)
+running -- retryable failure --> retry_wait -- due recovery --> queued
+running -- final/integrity failure --> failed_final
+running -- expired lease --> running@attempt N+1
+running -- expired lease at max attempts --> failed_final
+ready_for_approval -- first valid byte approval --> approval_pending (1/2)
+approval_pending -- second distinct valid byte approval
+  --> approved_for_archive_not_issued (2/2)
+```
+
+Der Reservation-Key bindet Candidate, dessen append-only Approval und echte
+Bytes, Candidate-/Issuance-Input, Variante, Profil, Empfänger sowie Template-
+und Rendererrezept. Derselbe exakte Request liefert dieselbe Issuance und
+repariert nur nötigenfalls den Dispatch. Eine neue Issuance verlangt einen
+neuen Candidate; Candidate-Bytes werden niemals promotet.
+
+Alle Approvalzustände sind aus append-only Attestations abgeleitet. Zwei
+verschiedene aktive interne Actors müssen exakt dieselben erneut gehashten
+Bytes freigeben; mindestens einer muss vom Candidate-Freigeber verschieden
+sein. `approved_for_archive_not_issued` bleibt ausdrücklich intern und nicht
+ausgestellt; der Offer bleibt `draft`.
+
+```text
+queued|running|retry_wait|failed_final|ready_for_approval|
+approval_pending|approved_for_archive_not_issued
+  -- authorized structured withdrawal --> withdrawn_before_archive
+withdrawn_before_archive -- exact request/approval replay --> unchanged terminal
+```
+
+Withdrawal ist aus jedem bereits angelegten, noch nicht archivierten Zustand
+zulässig, append-only und terminal. Es mutiert keine Approval; laufende oder
+spät eintreffende Worker dürfen danach weder finalisieren noch freigeben, und
+Replay belebt keinen Stand wieder. Eine Korrektur erfordert neuen Candidate und
+neue Issuance. Private Downloads prüfen Rolle, Tenantgraph, MIME, Länge und
+Hash; vor 2/2 dürfen nur Approver lesen, danach interne Nutzer mit
+`project.read`. Nach Withdrawal ist jeder Artefaktdownload gesperrt.
+
+### M2-03b2 `BLOCKED`
+
+Eine spätere Archiv-Saga darf erst nach realem Object-Lock-COMPLIANCE-,
+Retention-, Version- und Hash-Readback spezifiziert und als implementiert
+geführt werden. Bis dahin existieren keine Archivevidence, kein `issued` und
+keine implementierte Zustandsmaschine von 2/2 zur Ausstellung.
+
 ## Command-Ergebnisse
 
 ```text
@@ -188,7 +238,8 @@ erschöpften Offer-Mutationsquote und erhält den Draft bis zum angezeigten
 Retry-Zeitpunkt. Variantenwechsel, Breadcrumb/Back, Reload/Tab-Schließen,
 Logout/Login-Redirect, Duplizieren und neue Basis sind im `dirty`-Zustand nur
 nach Save oder bewusstem Discard zulässig. Kein Fehlerzustand darf einen
-Teilstand hinterlassen. Die M2-03a-Formulare erhalten fachliche Eingaben nach
-erwarteten Serverfehlern, führen den Fokus zur Fehlerzusammenfassung und nach
-Erfolg zum nächsten Schritt; zurückgesetzte Attestations-Checkboxen werden
-explizit angekündigt.
+Teilstand hinterlassen. Die M2-03a- und M2-03b1-Formulare erhalten fachliche
+Eingaben nach erwarteten Serverfehlern, führen den Fokus zur
+Fehlerzusammenfassung und nach Erfolg zum nächsten Schritt; zurückgesetzte
+Attestations-Checkboxen werden explizit angekündigt. M2-03b1 ordnet
+strukturierte Zod-Pfade zusätzlich stabil den betroffenen Feldern zu.

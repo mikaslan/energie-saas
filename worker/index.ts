@@ -44,6 +44,17 @@ import {
   createPlaywrightOfferReleaseCandidateRenderer,
 } from "./offer-release-candidate-renderer";
 import {
+  createOfferIssuanceRenderHandler,
+  startOfferIssuanceRecoverySweep,
+  type OfferIssuanceRecoveryController,
+} from "./offer-issuance";
+import {
+  createOfferIssuanceDatabaseGateway,
+} from "./offer-issuance-database";
+import {
+  createPlaywrightOfferIssuanceRenderer,
+} from "./offer-issuance-renderer";
+import {
   createFatalWorkerErrorReporter,
   createVerifiedPgBossDatabase,
 } from "./pgboss-database";
@@ -53,6 +64,7 @@ const STARTED = new Date().toISOString();
 const CALCULATION_QUEUE = "calculation.execute";
 const OFFER_PDF_QUEUE = "pdf.render";
 const OFFER_RELEASE_CANDIDATE_QUEUE = "offer.release-candidate.render";
+const OFFER_ISSUANCE_QUEUE = "offer-issuance.render.v1";
 
 // Einziger Worker-Principal: kein stiller Rückfall auf die Runtime-Rolle. Der
 // Wert wird EINMAL aufgelöst, damit pg-boss und Health-Probe garantiert dieselbe
@@ -68,6 +80,7 @@ let offerPdfRecovery: OfferPdfRecoveryController | undefined;
 let offerReleaseCandidateRecovery:
   | OfferReleaseCandidateRecoveryController
   | undefined;
+let offerIssuanceRecovery: OfferIssuanceRecoveryController | undefined;
 let shutdownPromise: Promise<void> | undefined;
 let fatalShutdown = false;
 let bossFailure: Error | undefined;
@@ -99,6 +112,11 @@ const offerPdfGateway = createOfferPdfDatabaseGateway(
 const offerReleaseCandidateGateway = createOfferReleaseCandidateDatabaseGateway(
   WORKER_URL,
   (error) => reportFatalWorkerError("offer-release-candidate-pool", error),
+  2,
+);
+const offerIssuanceGateway = createOfferIssuanceDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("offer-issuance-pool", error),
   2,
 );
 const boss = new PgBoss({
@@ -140,6 +158,14 @@ const offerReleaseCandidateHandler = createOfferReleaseCandidateRenderHandler({
     reportFatalWorkerError("offer-release-candidate-integrity", error);
   },
 });
+const offerIssuanceHandler = createOfferIssuanceRenderHandler({
+  database: offerIssuanceGateway.database,
+  renderer: createPlaywrightOfferIssuanceRenderer(),
+  createLeaseToken: randomUUID,
+  onIntegrityIncident: (error) => {
+    reportFatalWorkerError("offer-issuance-integrity", error);
+  },
+});
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
 // diese Probe braucht Timeouts, die tatsächlich abbrechen. Beides steckt in
@@ -171,6 +197,9 @@ function shutdown(signal: string, fatal = false): Promise<void> {
     const releaseRecoveryStopped = offerReleaseCandidateRecovery?.stop()
       ?? Promise.resolve();
     offerReleaseCandidateRecovery = undefined;
+    const issuanceRecoveryStopped = offerIssuanceRecovery?.stop()
+      ?? Promise.resolve();
+    offerIssuanceRecovery = undefined;
 
     // Keine neuen Health-Requests mehr annehmen; bestehende Requests dürfen
     // parallel zum pg-boss-Drain innerhalb ihres 2-s-Probe-Budgets enden.
@@ -182,6 +211,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
         // begrenzten Sweep; es gibt wegen rekursivem Timeout nie einen zweiten.
         await recoveryStopped;
         await releaseRecoveryStopped;
+        await issuanceRecoveryStopped;
         await boss.stop({ graceful: true, timeout: 15_000 });
       } finally {
         // Bei einem benutzerdefinierten IDatabase-Adapter verwaltet pg-boss
@@ -193,6 +223,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
           calculationGateway.close(),
           offerPdfGateway.close(),
           offerReleaseCandidateGateway.close(),
+          offerIssuanceGateway.close(),
         ]);
       }
     };
@@ -235,6 +266,8 @@ async function main() {
   await offerPdfGateway.probe();
   startupGate.assertOpen();
   await offerReleaseCandidateGateway.probe();
+  startupGate.assertOpen();
+  await offerIssuanceGateway.probe();
   startupGate.assertOpen();
   await boss.start();
   startupGate.assertOpen();
@@ -296,6 +329,28 @@ async function main() {
     database: offerReleaseCandidateGateway,
     onFatal: (error) => {
       reportFatalWorkerError("offer-release-candidate-recovery", error);
+    },
+  });
+  startupGate.assertOpen();
+  await boss.createQueue(OFFER_ISSUANCE_QUEUE, {
+    policy: "exclusive",
+    retryLimit: 10,
+    retryDelay: 1,
+    retryBackoff: true,
+    retryDelayMax: 60,
+    expireInSeconds: 180,
+  });
+  startupGate.assertOpen();
+  await boss.work(
+    OFFER_ISSUANCE_QUEUE,
+    { batchSize: 1, localConcurrency: 2 },
+    offerIssuanceHandler,
+  );
+  startupGate.assertOpen();
+  offerIssuanceRecovery = startOfferIssuanceRecoverySweep({
+    database: offerIssuanceGateway,
+    onFatal: (error) => {
+      reportFatalWorkerError("offer-issuance-recovery", error);
     },
   });
   startupGate.assertOpen();

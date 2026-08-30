@@ -8,6 +8,7 @@ import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { can, isExternalOnly, PermissionDeniedError } from "@/lib/permissions";
 import {
   getOfferDetail,
+  listOfferIssuances,
   listOfferPdfDrafts,
   listOfferReleaseCandidates,
   OfferReleaseProfileNotFoundError,
@@ -15,6 +16,7 @@ import {
   readCurrentOfferReleaseProfile,
   type CurrentOfferReleaseProfileResult,
   type OfferDetailViewModel,
+  type OfferIssuanceStatusResult,
   type OfferPdfDraftStatusResult,
   type OfferRecipientRevisionResult,
   type OfferReleaseStatusResult,
@@ -58,6 +60,23 @@ function offerRecoveryScope(workspaceId: string, actor: string): string {
   return createHmac("sha256", key)
     .update(`${workspaceId}:${actor}`, "utf8")
     .digest("hex");
+}
+
+function offerSurfaceReference(
+  workspaceId: string,
+  kind: "release_candidate" | "issuance",
+  id: string,
+): string {
+  // Roh-UUIDs sind interne Bindeschlüssel und eignen sich nicht als sichtbare
+  // Referenzen. Die domänengetrennte HMAC bleibt stabil, nicht umkehrbar und
+  // kollidiert weder zwischen Workspaces noch zwischen den beiden Objekttypen.
+  const key = requireAuthSecret() || "offer-surface-reference-test-only";
+  const digest = createHmac("sha256", key)
+    .update(`offer-surface-reference:v1:${workspaceId}:${kind}:${id}`, "utf8")
+    .digest("hex")
+    .slice(0, 16)
+    .toUpperCase();
+  return `${kind === "issuance" ? "AF" : "FK"}-${digest}`;
 }
 
 // Jede Object-Grenze nutzt strip() bewusst als Positivliste: Nur Felder, die
@@ -190,6 +209,9 @@ function projectOfferDetailView(
     canGeneratePdf: boolean;
     canPrepareRelease: boolean;
     canApproveRelease: boolean;
+    canPrepareIssuance: boolean;
+    canApproveIssuance: boolean;
+    canWithdrawIssuance: boolean;
   },
   recoveryScope: string,
   pdfDrafts: readonly OfferPdfDraftStatusResult[],
@@ -197,6 +219,7 @@ function projectOfferDetailView(
     profile: CurrentOfferReleaseProfileResult | null;
     recipient: OfferRecipientRevisionResult | null;
     candidates: readonly OfferReleaseStatusResult[];
+    issuances: readonly OfferIssuanceStatusResult[];
     validityWindow: ReleaseValidityWindow | null;
     showPanel: boolean;
   },
@@ -226,6 +249,67 @@ function projectOfferDetailView(
   if (releaseContext.showPanel && releaseContext.validityWindow === null) {
     throw new Error("Der serverseitige Gültigkeitszeitraum fehlt");
   }
+
+  const variantById = new Map(view.variants.map((variant) => [variant.id, variant]));
+  const releaseCandidateById = new Map(releaseContext.candidates.map((candidate) => (
+    [candidate.candidateId, candidate] as const
+  )));
+  const approvedIssuanceCandidates = releaseContext.candidates.flatMap((candidate) => {
+    if (candidate.state !== "approved_not_issued" || candidate.approval === null) return [];
+    const variant = variantById.get(candidate.variantId);
+    if (!variant) {
+      throw new Error("Freigabekandidat enthält eine unbekannte Variantenbindung");
+    }
+    return [{
+      candidateId: candidate.candidateId,
+      candidateReference: offerSurfaceReference(
+        view.workspaceId,
+        "release_candidate",
+        candidate.candidateId,
+      ),
+      variantName: variant.name,
+      variantRevision: candidate.variantRevision,
+      approvedAt: candidate.approval.approvedAt,
+    }];
+  });
+  const issuanceSurfaces = releaseContext.issuances.map((issuance) => {
+    const candidate = releaseCandidateById.get(issuance.candidateId);
+    const variant = candidate ? variantById.get(candidate.variantId) : undefined;
+    if (!candidate || !variant) {
+      throw new Error("Ausstellungsfassung enthält eine unbekannte Freigabekandidatenbindung");
+    }
+    return {
+      issuanceId: issuance.issuanceId,
+      issuanceReference: offerSurfaceReference(
+        view.workspaceId,
+        "issuance",
+        issuance.issuanceId,
+      ),
+      candidateId: issuance.candidateId,
+      candidateReference: offerSurfaceReference(
+        view.workspaceId,
+        "release_candidate",
+        issuance.candidateId,
+      ),
+      variantName: variant.name,
+      variantRevision: candidate.variantRevision,
+      state: issuance.state,
+      renderState: issuance.renderState,
+      approvalCount: issuance.approvalCount,
+      publicationStatus: issuance.publicationStatus,
+      requiresZeroTaxReview: issuance.requiresZeroTaxReview,
+      attemptCount: issuance.attemptCount,
+      nextAttemptAt: issuance.nextAttemptAt,
+      createdAt: issuance.createdAt,
+      viewerHasApproved: issuance.viewerHasApproved,
+      canCurrentActorApprove: issuance.canCurrentActorApprove,
+      withdrawal: issuance.withdrawal === null ? null : {
+        reasonCode: issuance.withdrawal.reasonCode,
+        withdrawnAt: issuance.withdrawal.withdrawnAt,
+      },
+      canDownload: issuance.canDownload,
+    };
+  });
 
   return {
     state: view.state,
@@ -258,6 +342,9 @@ function projectOfferDetailView(
       canGeneratePdf: editorCapabilities.canGeneratePdf,
       canPrepareRelease: editorCapabilities.canPrepareRelease,
       canApproveRelease: editorCapabilities.canApproveRelease,
+      canPrepareIssuance: editorCapabilities.canPrepareIssuance,
+      canApproveIssuance: editorCapabilities.canApproveIssuance,
+      canWithdrawIssuance: editorCapabilities.canWithdrawIssuance,
     },
     basisInput: view.permissions.canCreateBasis && view.newBasisInput ? {
       ...view.newBasisInput,
@@ -325,6 +412,10 @@ function projectOfferDetailView(
           : { approvalArtifactVersion: candidate.approvalArtifactVersion }),
       })),
     },
+    offerIssuance: !releaseContext.showPanel ? undefined : {
+      approvedCandidates: approvedIssuanceCandidates,
+      issuances: issuanceSurfaces,
+    },
   };
 }
 
@@ -350,6 +441,7 @@ export default async function OfferDetailPage(
     releaseProfile: CurrentOfferReleaseProfileResult | null;
     releaseRecipient: OfferRecipientRevisionResult | null;
     releaseCandidates: OfferReleaseStatusResult[];
+    offerIssuances: OfferIssuanceStatusResult[];
     releaseValidityWindow: ReleaseValidityWindow | null;
     showReleasePanel: boolean;
     recoveryScope: string;
@@ -360,6 +452,9 @@ export default async function OfferDetailPage(
       canGeneratePdf: boolean;
       canPrepareRelease: boolean;
       canApproveRelease: boolean;
+      canPrepareIssuance: boolean;
+      canApproveIssuance: boolean;
+      canWithdrawIssuance: boolean;
     };
   };
   try {
@@ -376,6 +471,7 @@ export default async function OfferDetailPage(
         let releaseProfile: CurrentOfferReleaseProfileResult | null = null;
         let releaseRecipient: OfferRecipientRevisionResult | null = null;
         let releaseCandidates: OfferReleaseStatusResult[] = [];
+        let offerIssuances: OfferIssuanceStatusResult[] = [];
         let releaseValidityWindow: ReleaseValidityWindow | null = null;
         if (view !== null && !externalOnly) {
           // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
@@ -402,6 +498,11 @@ export default async function OfferDetailPage(
             ctx,
             { workspaceId, offerId },
           );
+          const issuanceResult = await listOfferIssuances(
+            tx,
+            ctx,
+            { workspaceId, offerId },
+          );
           const validityResult = await tx.execute<{
             min_valid_through: string;
             suggested_valid_through: string;
@@ -416,6 +517,7 @@ export default async function OfferDetailPage(
           releaseProfile = profileResult;
           releaseRecipient = recipientResult;
           releaseCandidates = candidateResult;
+          offerIssuances = issuanceResult;
           releaseValidityWindow = releaseValidityWindowSchema.parse({
             min: validityResult.rows[0]?.min_valid_through,
             suggested: validityResult.rows[0]?.suggested_valid_through,
@@ -432,6 +534,7 @@ export default async function OfferDetailPage(
           releaseProfile,
           releaseRecipient,
           releaseCandidates,
+          offerIssuances,
           releaseValidityWindow,
           showReleasePanel: !externalOnly,
           editorCapabilities: {
@@ -443,6 +546,9 @@ export default async function OfferDetailPage(
             canGeneratePdf: !externalOnly && can(ctx, "project.write"),
             canPrepareRelease: !externalOnly && can(ctx, "offer.release.prepare"),
             canApproveRelease: !externalOnly && can(ctx, "offer.release.approve"),
+            canPrepareIssuance: !externalOnly && can(ctx, "offer.issue.prepare"),
+            canApproveIssuance: !externalOnly && can(ctx, "offer.issue.approve"),
+            canWithdrawIssuance: !externalOnly && can(ctx, "offer.issue.withdraw"),
           },
         };
       },
@@ -477,6 +583,7 @@ export default async function OfferDetailPage(
           profile: result.releaseProfile,
           recipient: result.releaseRecipient,
           candidates: result.releaseCandidates,
+          issuances: result.offerIssuances,
           validityWindow: result.releaseValidityWindow,
           showPanel: result.showReleasePanel,
         },

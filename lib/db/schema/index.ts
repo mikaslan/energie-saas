@@ -19,5 +19,6 @@ export * from "./erasure";
 export * from "./intake";
 export * from "./offers";
 export * from "./offer-release";
+export * from "./offer-issuance";
 export * from "./project";
 export * from "./site";

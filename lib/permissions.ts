@@ -9,6 +9,7 @@ export type Action =
   | "project.read" | "project.write" | "phase.convert"
   | "price.read_purchase" | "price.edit" | "discount.apply"
   | "invoice.issue" | "offer.release.prepare" | "offer.release.approve"
+  | "offer.issue.prepare" | "offer.issue.approve" | "offer.issue.withdraw"
   | "catalog.read" | "catalog.manage" | "settings.manage";
 
 export type PermissionCtx = {
@@ -61,6 +62,9 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "invoice.issue":       { minRole: "editor", capability: "invoicing", feature: "invoicing" },
   "offer.release.prepare": { minRole: "editor", capability: "prepare_offer_documents", internalOnly: true },
   "offer.release.approve": { minRole: "editor", capability: "approve_offer_documents", internalOnly: true },
+  "offer.issue.prepare": { minRole: "editor", capability: "prepare_offer_documents", internalOnly: true },
+  "offer.issue.approve": { minRole: "editor", capability: "approve_offer_documents", internalOnly: true },
+  "offer.issue.withdraw": { minRole: "editor", capability: "approve_offer_documents", internalOnly: true },
   "catalog.read":        { minRole: "viewer" },
   "catalog.manage":      { minRole: "editor", capability: "manage_catalog" },
   "settings.manage":     { minRole: "admin" },

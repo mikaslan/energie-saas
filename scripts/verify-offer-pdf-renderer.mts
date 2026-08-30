@@ -10,6 +10,13 @@ import type {
   OfferReleaseCandidateInputV1,
 } from "../lib/integrations/offers/release-contract";
 import {
+  buildOfferIssuanceInput,
+  type OfferIssuanceInputV1,
+} from "../lib/integrations/offers/issuance-contract";
+import {
+  renderOfferIssuanceHtml,
+} from "../lib/integrations/offers/issuance-template";
+import {
   renderOfferReleaseCandidateHtml,
 } from "../lib/integrations/offers/release-template";
 import {
@@ -20,11 +27,17 @@ import {
 import {
   createPlaywrightOfferReleaseCandidateRenderer,
 } from "../worker/offer-release-candidate-renderer";
+import {
+  createPlaywrightOfferIssuanceRenderer,
+} from "../worker/offer-issuance-renderer";
 
 const EXPECTED_PLAYWRIGHT_VERSION = "1.62.1";
 const CANDIDATE_STATUS =
   "Freigabekandidat · nicht ausgestellt · nicht versendet";
-type SmokeContract = "M202-RENDER-01" | "M203A-RENDER-01";
+type SmokeContract =
+  | "M202-RENDER-01"
+  | "M203A-RENDER-01"
+  | "M203B1-RENDER-01";
 let activeContract: SmokeContract = "M202-RENDER-01";
 
 function m202Fixture(): OfferPdfDraftInputV1 {
@@ -200,6 +213,42 @@ function m203aFixture(): OfferReleaseCandidateInputV1 {
       },
     },
   };
+}
+
+function m203b1Fixture(
+  candidateInput: OfferReleaseCandidateInputV1,
+  candidateArtifactSha256: string,
+  candidateArtifactSizeBytes: number,
+): OfferIssuanceInputV1 {
+  return buildOfferIssuanceInput({
+    issuanceId: "77777777-7777-4777-8777-777777777777",
+    preparedAt: "2026-08-30T11:31:00.000Z",
+    sourceBinding: {
+      workspaceId: "11111111-1111-4111-8111-111111111111",
+      projectId: "22222222-2222-4222-8222-222222222222",
+      offerId: "33333333-3333-4333-8333-333333333333",
+      candidateId: "44444444-4444-4444-8444-444444444444",
+      candidateApprovalId: "55555555-5555-4555-8555-555555555555",
+      candidateApprovedAt: "2026-08-30T11:30:00.000Z",
+      candidateArtifactVersion: "66666666-6666-4666-8666-666666666666",
+      candidateArtifactSha256,
+      candidateArtifactSizeBytes,
+      variantId: "88888888-8888-4888-8888-888888888888",
+      variantRevisionId: "99999999-9999-4999-8999-999999999999",
+      variantRevision: candidateInput.variant.revision,
+      variantSnapshotSha256: "2".repeat(64),
+      profileActivationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      profileId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      profileRevisionId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      profileRevision: candidateInput.profile.revision,
+      profileSnapshotSha256: "3".repeat(64),
+      recipientId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      recipientRevisionId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      recipientRevision: 1,
+      recipientSnapshotSha256: "4".repeat(64),
+    },
+    candidateInput,
+  });
 }
 
 function invariant(condition: unknown, message: string): asserts condition {
@@ -580,7 +629,154 @@ async function main(): Promise<void> {
     sha256: candidateFirst.sha256,
   };
 
-  process.stdout.write(`${JSON.stringify(m202Evidence)}\n${JSON.stringify(m203aEvidence)}\n`);
+  activeContract = "M203B1-RENDER-01";
+  const issuanceInput = m203b1Fixture(
+    candidateInput,
+    candidateFirst.sha256,
+    candidateFirst.sizeBytes,
+  );
+  const issuanceHtml = renderOfferIssuanceHtml(issuanceInput);
+  const provisionalMarkers = [
+    "Freigabekandidat",
+    "nicht ausgestellt",
+    "nicht versendet",
+  ];
+  invariant(
+    provisionalMarkers.every((marker) => !issuanceHtml.includes(marker)),
+    "final issuance HTML contains a provisional marker",
+  );
+
+  const issuanceRenderer = createPlaywrightOfferIssuanceRenderer({
+    allowUnpinnedRuntimeForVerification: !pinnedRuntimeVerified,
+  });
+  const issuanceFirst = await issuanceRenderer.render(issuanceInput);
+  const issuanceSecond = await issuanceRenderer.render(structuredClone(issuanceInput));
+  invariant(
+    issuanceFirst.bytes.equals(issuanceSecond.bytes),
+    "two issuance renders differ byte-for-byte",
+  );
+  invariant(
+    issuanceFirst.sha256 === issuanceSecond.sha256,
+    "two issuance render hashes differ",
+  );
+  invariant(
+    issuanceFirst.sizeBytes === issuanceSecond.sizeBytes,
+    "two issuance render sizes differ",
+  );
+  invariant(
+    !issuanceFirst.bytes.equals(candidateFirst.bytes),
+    "candidate bytes were promoted as issuance bytes",
+  );
+  invariant(
+    issuanceFirst.sha256 !== candidateFirst.sha256,
+    "candidate hash was promoted as issuance hash",
+  );
+  invariant(
+    issuanceFirst.sizeBytes === issuanceFirst.bytes.length,
+    "reported issuance render size differs",
+  );
+  invariant(
+    issuanceFirst.sizeBytes <= MAX_OFFER_PDF_BYTES,
+    "issuance render exceeds hard size limit",
+  );
+  invariant(
+    issuanceFirst.bytes.subarray(0, 5).toString("latin1") === "%PDF-",
+    "issuance PDF header missing",
+  );
+  const issuancePdfText = issuanceFirst.bytes.toString("latin1");
+  invariant(/%%EOF[\t\r\n ]*$/u.test(issuancePdfText), "issuance strict PDF EOF missing");
+  invariant(issuancePdfText.includes("/StructTreeRoot"), "issuance tagged structure missing");
+  invariant(issuancePdfText.includes("/MarkInfo"), "issuance tagged mark information missing");
+  invariant(issuancePdfText.includes("/Outlines"), "issuance PDF outline missing");
+  const issuancePageCount = countPdfPages(issuancePdfText);
+  invariant(
+    issuancePageCount >= 6,
+    "synthetic legal documents did not create a multi-page issuance PDF",
+  );
+  const issuanceA4MediaBoxes = verifyA4MediaBoxes(issuancePdfText);
+  const issuancePageTexts = await extractPdfPageTexts(issuanceFirst.bytes);
+  invariant(
+    issuancePageTexts.length === issuancePageCount,
+    "issuance text extractor and structural page count differ",
+  );
+  invariant(
+    issuancePageTexts.every((pageText) => provisionalMarkers.every((marker) =>
+      !pageText.includes(normalizeExtractedPdfText(marker)))),
+    "final issuance PDF contains a provisional marker",
+  );
+  invariant(
+    issuanceFirst.sha256
+      === createHash("sha256").update(issuanceFirst.bytes).digest("hex"),
+    "reported issuance render hash differs",
+  );
+
+  const invalidIssuanceInput = Object.assign({}, issuanceInput, {
+    archiveBucket: "forbidden",
+  });
+  await expectRenderFailure(
+    () => issuanceRenderer.render(invalidIssuanceInput),
+    "invalid_input",
+  );
+  const issuanceNetworkProbe = createPlaywrightOfferIssuanceRenderer({
+    allowUnpinnedRuntimeForVerification: !pinnedRuntimeVerified,
+    htmlRenderer: () => [
+      "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>",
+      "<img src=\"https://issuance.invalid/renderer-network-probe.png\" alt=\"\">",
+      "</body></html>",
+    ].join(""),
+  });
+  await expectRenderFailure(
+    () => issuanceNetworkProbe.render(issuanceInput),
+    "network_attempted",
+  );
+  const issuancePrintNetworkProbe = createPlaywrightOfferIssuanceRenderer({
+    allowUnpinnedRuntimeForVerification: !pinnedRuntimeVerified,
+    htmlRenderer: () => [
+      "<!doctype html><html><head><meta charset=\"utf-8\"><style>",
+      "@media print { body { background-image: url(\"https://issuance-print.invalid/probe.png\"); } }",
+      "</style></head><body>issuance print network probe</body></html>",
+    ].join(""),
+  });
+  await expectRenderFailure(
+    () => issuancePrintNetworkProbe.render(issuanceInput),
+    "network_attempted",
+  );
+
+  const m203b1Evidence = {
+    ok: true,
+    contract: "M203B1-RENDER-01",
+    playwrightVersion: EXPECTED_PLAYWRIGHT_VERSION,
+    deterministicRenders: 2,
+    byteEqualityVerified: true,
+    hashEqualityVerified: true,
+    sizeEqualityVerified: true,
+    taggedPdfVerified: true,
+    outlineVerified: true,
+    a4Verified: true,
+    multiPageLegalDocumentsVerified: true,
+    provisionalMarkersAbsent: true,
+    candidateBytesNotPromoted: true,
+    networkFailClosed: true,
+    printNetworkFailClosed: true,
+    invalidInputFailClosed: true,
+    syntheticFixture: true,
+    containerHardeningVerified,
+    sameUidProcessIsolationVerified,
+    pinnedRuntimeVerified,
+    runtime: `${process.platform}/${process.arch}`,
+    fixtureLines: 1,
+    legalTextCharacters,
+    pageCount: issuancePageCount,
+    a4MediaBoxes: issuanceA4MediaBoxes,
+    sizeBytes: issuanceFirst.sizeBytes,
+    sha256: issuanceFirst.sha256,
+  };
+
+  process.stdout.write([
+    JSON.stringify(m202Evidence),
+    JSON.stringify(m203aEvidence),
+    JSON.stringify(m203b1Evidence),
+  ].join("\n") + "\n");
 }
 
 main().catch((error: unknown) => {

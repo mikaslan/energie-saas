@@ -2,6 +2,11 @@ import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import {
+  OfferIssuancePanel,
+  type OfferIssuanceCandidateSurfaceView,
+  type OfferIssuanceSurfaceView,
+} from "./offer-issuance-panel";
+import {
   OfferReleaseCandidatePanel,
   type OfferRecipientPresenceSurfaceView,
   type OfferRecipientSurfaceView,
@@ -167,6 +172,9 @@ export interface OfferDetailSurfaceView {
     canGeneratePdf: boolean;
     canPrepareRelease: boolean;
     canApproveRelease: boolean;
+    canPrepareIssuance: boolean;
+    canApproveIssuance: boolean;
+    canWithdrawIssuance: boolean;
   };
   basisInput?: {
     expectedRequirementRevision: number;
@@ -183,6 +191,10 @@ export interface OfferDetailSurfaceView {
     sourcePdfDraftId: string | null;
     validityWindow: OfferReleaseValidityWindowSurfaceView;
     candidates: readonly OfferReleaseCandidateSurfaceView[];
+  };
+  offerIssuance?: {
+    approvedCandidates: readonly OfferIssuanceCandidateSurfaceView[];
+    issuances: readonly OfferIssuanceSurfaceView[];
   };
 }
 
@@ -651,6 +663,17 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
       candidates={view.offerRelease.candidates}
     />
   ) : null;
+  const offerIssuancePanel = view.offerIssuance ? (
+    <OfferIssuancePanel
+      workspaceId={view.workspaceId}
+      offerId={view.offer.id}
+      canPrepare={view.permissions?.canPrepareIssuance === true}
+      canApprove={view.permissions?.canApproveIssuance === true}
+      canWithdraw={view.permissions?.canWithdrawIssuance === true}
+      approvedCandidates={view.offerIssuance.approvedCandidates}
+      issuances={view.offerIssuance.issuances}
+    />
+  ) : null;
 
   if (canEdit && view.permissions?.canEdit && view.recoveryScope) {
     return (
@@ -664,6 +687,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           permissions: { ...view.permissions, canEdit: true },
         }}
         showReleaseSkipLink={offerReleasePanel !== null}
+        showIssuanceSkipLink={offerIssuancePanel !== null}
         afterEditor={<div
           key="offer-release-workflow"
           data-wmee-scope="offer"
@@ -672,6 +696,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           <div className="mx-auto grid w-full max-w-[1480px] gap-5">
             {pdfDraftPanel}
             {offerReleasePanel}
+            {offerIssuancePanel}
           </div>
         </div>}
       />
@@ -687,6 +712,11 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
       <a href="#offer-readonly-main" className="sr-only rounded bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-emerald-700">
         Zum Angebotsinhalt springen
       </a>
+      {offerIssuancePanel ? (
+        <a href="#offer-issuance" className="sr-only rounded bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-16 focus:z-50 focus:ring-2 focus:ring-emerald-700">
+          Zur Ausstellungsfassung springen
+        </a>
+      ) : null}
       <div id="offer-readonly-main" className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <nav aria-label="Brotkrumen" className="mb-5">
           <Link
@@ -770,6 +800,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           </div>
         </fieldset>
         {offerReleasePanel ? <div className="mt-6">{offerReleasePanel}</div> : null}
+        {offerIssuancePanel ? <div className="mt-6">{offerIssuancePanel}</div> : null}
       </div>
     </main>
   );

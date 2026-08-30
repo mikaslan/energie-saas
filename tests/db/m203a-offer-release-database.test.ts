@@ -21,6 +21,7 @@ import { withTenantOn } from "@/lib/db/tenant";
 import { canonicalizeOfferJson } from "@/lib/integrations/offers/contract";
 import {
   LEGACY_CALCULATION_QUEUE_OPTIONS,
+  OFFER_ISSUANCE_QUEUE_OPTIONS,
   OFFER_PDF_QUEUE_OPTIONS,
   OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
 } from "../../scripts/pgboss-bootstrap.mjs";
@@ -298,6 +299,10 @@ async function bootstrapStrictRolesAndPgBoss(
     await boss.createQueue(
       "offer.release-candidate.render",
       OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
+    );
+    await boss.createQueue(
+      "offer-issuance.render.v1",
+      OFFER_ISSUANCE_QUEUE_OPTIONS,
     );
   } finally {
     await boss.stop({ graceful: false }).catch(() => undefined);
@@ -2231,7 +2236,7 @@ describe.sequential("M2-03a Offer-Release-Datenbankvertrag", () => {
         [workspaceId],
       )).rejects.toThrow(/append-only|immutable/u);
       await expect(migrator.query(
-        "truncate table public.offer_release_candidate_approval",
+        "truncate table public.offer_release_candidate_approval cascade",
       )).rejects.toThrow(/TRUNCATE|append-only/u);
 
       const foreignRead = await tenantQuery<{ id: string }>(

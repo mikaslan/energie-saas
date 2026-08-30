@@ -1,6 +1,6 @@
 # Rollen- und Berechtigungsmatrix
 
-Stand: 2026-08-30 · M2-01, M2-02 und M2-03a lokal verifiziert
+Stand: 2026-08-30 · M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 Die Laufzeitwahrheit bleibt `lib/permissions.ts`; diese Matrix dokumentiert die
 beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
@@ -30,7 +30,14 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
 | Tatsächliche Candidate-Bytes intern freigeben | nein | nur mit Recht | ja | nein | nein | `offer.release.approve` / `approve_offer_documents`; vier feste Attestations, bedingte 0-%-Bestätigung; Ergebnis nur `approved_not_issued` |
 | Freigegebene Candidate-Bytes laden | ja | ja | ja | nein | nein | internes `project.read`; private `no-store`-Antwort, kein öffentlicher Link |
 | Candidate claimen, retryen, recovern und finalisieren | nein | nein | nein | nein | ja, minimal | ID-only-Queue-Payload; exakt erlaubte Candidate-Reads/-State-Spalten unter Tenantkontext, keine Profil-/Approval-Mutation |
-| PDF ausstellen/versenden, Annahme/Signatur, öffentlicher Link, Rechnung/Won | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | spätere Slices; keine Fake-Controls und kein Object-Lock-Claim |
+| Issuance-Status lesen | ja | ja | ja | nein | nur fachlicher Job | internes `project.read`; DTO ohne Inhalte, Bytes oder Vollhashes |
+| Ausstellungsfassung anfordern oder Dispatch replayen | nein | nur mit Recht | ja | nein | nein | `offer.issue.prepare` / `prepare_offer_documents`; freigegebener Candidate und exakte aktuelle Bindungen |
+| Ausstellungsbytes vor 2/2 laden | nein | nur mit Recht | ja | nein | nein | `offer.issue.approve` / `approve_offer_documents`; erneute Tenant-/Offer-/Issuance-/MIME-/Längen-/Hashprüfung; nur solange nicht zurückgezogen |
+| Tatsächliche Ausstellungsbytes freigeben | nein | nur mit Recht | ja | nein | nein | `offer.issue.approve` / `approve_offer_documents`; zwei verschiedene Actors, mindestens einer ≠ Candidate-Approver; kein Admin-Bypass |
+| Ausstellungsfassung vor Archivierung zurückziehen | nein | nur mit Recht | ja | nein | nein | `offer.issue.withdraw` / `approve_offer_documents`; strukturierter Ursachencode, append-only und terminal |
+| Ausstellungsbytes nach 2/2 laden | ja | ja | ja | nein | nein | internes `project.read`; privat/no-store und weiterhin nicht ausgestellt; nach Withdrawal kein Download |
+| Issuance claimen, retryen, recovern und finalisieren | nein | nein | nein | nein | ja, minimal | ID-only-Queue-Payload; exakt erlaubte Issuance-Reads/-State-Spalten, kein Approval-/Withdrawal-/Storagerecht |
+| Archivevidence/`issued`, Versand, Annahme/Signatur, öffentlicher Link, Rechnung/Won | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | spätere Slices; keine Fake-Controls und kein Object-Lock-Claim |
 
 ## Denial-Vertrag
 
@@ -51,10 +58,15 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
   zentralen `can()`-Pfad auch für Admin bindend.
 - `app_worker` ist kein Benutzer und erhält keine Portalrolle. Seine Rechte
   reichen nur für tenantgebundenes Claim/Finalize/Recovery des
-  ID-only-`pdf.render`- beziehungsweise Candidate-Renderpfads und die zwingend
-  nötige Kanonizitätsprüfung. Er darf weder Profile aktivieren noch Empfänger
-  ändern oder Candidate-Approvals schreiben.
+  ID-only-`pdf.render`-, Candidate- beziehungsweise Issuance-Renderpfads und
+  die zwingend nötige Kanonizitätsprüfung. Er darf weder Profile aktivieren,
+  Empfänger ändern, menschliche Approvals/Withdrawals schreiben noch Archive
+  oder Storage bedienen.
 - `approved_not_issued` ist ausschließlich ein abgeleiteter interner
   Freigabestand. Er erteilt kein Recht auf Ausstellung, Versand, WORM-Promotion
   oder Signatur und verändert den Offer-Vertragsstatus nicht.
+- Admin umgeht in M2-03b1 weder Zwei-Personen-, Candidate-Approver-, Byte-,
+  Drift-, Tenant- noch Withdrawal-Regel. Auch
+  `approved_for_archive_not_issued` erteilt kein Recht auf Object Lock,
+  Archivevidence, `issued`, Versand oder Signatur.
 - `external_only` wird erst mit einem echten Assignmentmodell freigeschaltet.

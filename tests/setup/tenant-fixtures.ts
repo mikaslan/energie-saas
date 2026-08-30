@@ -1151,6 +1151,132 @@ async function fixtureOfferReleaseGraph(tx: TenantTx, wsId: string): Promise<voi
   }
 }
 
+/**
+ * Erzeugt den vollständigen lokalen M2-03b1-Graphen über die schmalen
+ * Produktfunktionen. Eine Freigabe genügt für die Approval-Tabelle; der
+ * anschließende strukturierte Rückzug belegt zusätzlich den terminalen
+ * Withdrawal-Pfad, ohne einen archivierten oder ausgestellten Zustand zu
+ * erfinden.
+ */
+async function fixtureOfferIssuanceGraph(tx: TenantTx, wsId: string): Promise<void> {
+  const existing = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id
+      from offer_issuance_withdrawal
+     where workspace_id = ${wsId}::uuid
+     limit 1
+  `);
+  if (existing.rows[0]) return;
+
+  await fixtureOfferReleaseGraph(tx, wsId);
+  const sourceResult = await tx.execute<{
+    actor_id: string;
+    candidate_id: string;
+    offer_id: string;
+    [key: string]: unknown;
+  }>(sql`
+    select approval.approved_by as actor_id,
+           candidate.id as candidate_id,
+           candidate.offer_id
+      from offer_release_candidate as candidate
+      join offer_release_candidate_approval as approval
+        on approval.workspace_id = candidate.workspace_id
+       and approval.candidate_id = candidate.id
+     where candidate.workspace_id = ${wsId}::uuid
+       and candidate.state = 'ready_for_approval'
+       and candidate.publication_status = 'not_issued'
+     order by approval.approved_at desc, approval.id desc
+     limit 1
+  `);
+  const source = sourceResult.rows[0];
+  if (!source) throw new Error("Issuance-Tenant-Fixture braucht einen freigegebenen Candidate.");
+
+  await tx.execute(sql`
+    select set_config('app.actor_id', ${source.actor_id}, true)
+  `);
+  const preparedRows = await tx.execute<{
+    result: { issuanceId?: unknown; status?: unknown };
+    [key: string]: unknown;
+  }>(sql`
+    select public.prepare_offer_issuance(
+      ${wsId}::uuid,
+      ${source.offer_id}::uuid,
+      ${source.candidate_id}::uuid
+    ) as result
+  `);
+  const prepared = preparedRows.rows[0]?.result;
+  if (prepared?.status !== "prepared" || typeof prepared.issuanceId !== "string") {
+    throw new Error("Issuance-Tenant-Fixture konnte keine Reservation erzeugen.");
+  }
+  const issuanceId = prepared.issuanceId;
+  const leaseToken = randomUUID();
+  const claimedRows = await tx.execute<{
+    result: { status?: unknown };
+    [key: string]: unknown;
+  }>(sql`
+    select public.claim_offer_issuance_render(
+      ${wsId}::uuid,
+      ${issuanceId}::uuid,
+      ${leaseToken}::uuid,
+      120
+    ) as result
+  `);
+  if (claimedRows.rows[0]?.result.status !== "claimed") {
+    throw new Error("Issuance-Tenant-Fixture konnte die Reservation nicht claimen.");
+  }
+
+  const finalArtifact = Buffer.from(
+    `%PDF-1.7\n${"synthetic-tenant-issuance-final".repeat(8)}\n%%EOF`,
+    "utf8",
+  );
+  const finalizedRows = await tx.execute<{
+    result: { status?: unknown };
+    [key: string]: unknown;
+  }>(sql`
+    select public.finalize_offer_issuance_render_success(
+      ${wsId}::uuid,
+      ${issuanceId}::uuid,
+      ${leaseToken}::uuid,
+      1,
+      ${finalArtifact}
+    ) as result
+  `);
+  if (finalizedRows.rows[0]?.result.status !== "ready_for_approval") {
+    throw new Error("Issuance-Tenant-Fixture konnte kein finales PDF versiegeln.");
+  }
+
+  const approvedRows = await tx.execute<{
+    result: { status?: unknown };
+    [key: string]: unknown;
+  }>(sql`
+    select public.approve_offer_issuance(
+      ${wsId}::uuid,
+      ${issuanceId}::uuid,
+      true,
+      true,
+      true,
+      true,
+      null
+    ) as result
+  `);
+  if (approvedRows.rows[0]?.result.status !== "approved") {
+    throw new Error("Issuance-Tenant-Fixture konnte keine Freigabe erzeugen.");
+  }
+
+  const withdrawnRows = await tx.execute<{
+    result: { status?: unknown };
+    [key: string]: unknown;
+  }>(sql`
+    select public.withdraw_offer_issuance(
+      ${wsId}::uuid,
+      ${issuanceId}::uuid,
+      'other'
+    ) as result
+  `);
+  if (withdrawnRows.rows[0]?.result.status !== "withdrawn") {
+    throw new Error("Issuance-Tenant-Fixture konnte den Rückzug nicht erzeugen.");
+  }
+}
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -1354,6 +1480,9 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   offer_mutation_rate_window: fixtureOfferGraph,
   offer_number_series: fixtureOfferGraph,
   offer_pdf_draft: fixtureOfferPdfDraft,
+  offer_issuance: fixtureOfferIssuanceGraph,
+  offer_issuance_approval: fixtureOfferIssuanceGraph,
+  offer_issuance_withdrawal: fixtureOfferIssuanceGraph,
   offer_recipient: fixtureOfferReleaseGraph,
   offer_recipient_revision: fixtureOfferReleaseGraph,
   offer_release_candidate: fixtureOfferReleaseGraph,
@@ -1495,6 +1624,40 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
   offer_pdf_draft: async (tx) => {
     await tx.execute(sql`
       insert into offer_pdf_draft (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  offer_issuance: async (tx) => {
+    // Der Binding-Trigger läuft vor dem RLS-WITH-CHECK. Für diese Probe wird
+    // ausschließlich dieser frühere Guard transaktional ausgeblendet, damit
+    // ein grünes Ergebnis tatsächlich von FORCE RLS stammt. Der erwartete
+    // Insert-Fehler rollt das ALTER TABLE zusammen mit der Testtransaktion zurück.
+    await tx.execute(sql`
+      alter table offer_issuance
+      disable trigger offer_issuance_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into offer_issuance (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  offer_issuance_approval: async (tx) => {
+    await tx.execute(sql`
+      alter table offer_issuance_approval
+      disable trigger offer_issuance_approval_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into offer_issuance_approval (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  offer_issuance_withdrawal: async (tx) => {
+    await tx.execute(sql`
+      alter table offer_issuance_withdrawal
+      disable trigger offer_issuance_withdrawal_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into offer_issuance_withdrawal (workspace_id)
       values (${randomUUID()}::uuid)
     `);
   },

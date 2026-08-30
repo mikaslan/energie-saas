@@ -9,6 +9,7 @@ import { createVerifiedPgBossDatabase } from "../worker/pgboss-database.js";
 const QUEUE_NAME = "calculation.execute";
 const OFFER_PDF_QUEUE_NAME = "pdf.render";
 const OFFER_RELEASE_CANDIDATE_QUEUE_NAME = "offer.release-candidate.render";
+const OFFER_ISSUANCE_QUEUE_NAME = "offer-issuance.render.v1";
 const BOOTSTRAP_LOCK = [1701734769, 7] as const;
 
 export const LEGACY_CALCULATION_QUEUE_OPTIONS = Object.freeze({
@@ -27,6 +28,15 @@ export const OFFER_PDF_QUEUE_OPTIONS = Object.freeze({
 });
 
 export const OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
+});
+
+export const OFFER_ISSUANCE_QUEUE_OPTIONS = Object.freeze({
   policy: "exclusive" as const,
   retryLimit: 10,
   retryDelay: 1,
@@ -267,6 +277,29 @@ export async function bootstrapCalculationQueue(
       || Number(release.retry_delay_max) !== 60
       || Number(release.expire_seconds) !== 180
       || release.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    // M2-03b1 renders a new final issuance document from the validated
+    // candidate input. It deliberately has its own queue: candidate bytes are
+    // never promoted and this stage still performs no archive/storage write.
+    await boss.createQueue(OFFER_ISSUANCE_QUEUE_NAME, OFFER_ISSUANCE_QUEUE_OPTIONS);
+    const issuanceQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${OFFER_ISSUANCE_QUEUE_NAME}'
+    `);
+    const issuance = issuanceQueue.rows[0] as Record<string, unknown> | undefined;
+    if (
+      issuance === undefined
+      || issuance.policy !== "exclusive"
+      || Number(issuance.retry_limit) !== 10
+      || Number(issuance.retry_delay) !== 1
+      || issuance.retry_backoff !== true
+      || Number(issuance.retry_delay_max) !== 60
+      || Number(issuance.expire_seconds) !== 180
+      || issuance.notify !== false
     ) {
       throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
     }
