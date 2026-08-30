@@ -78,6 +78,12 @@ export const inboundReceipt = pgTable(
     ),
     uniqueIndex("inbound_receipt_ws_project_uq").on(t.workspaceId, t.projectId),
     unique("inbound_receipt_ws_id_project_uq").on(t.workspaceId, t.id, t.projectId),
+    unique("inbound_receipt_ws_exact_source_uq").on(
+      t.workspaceId,
+      t.id,
+      t.projectId,
+      t.bodySha256,
+    ),
     foreignKey({
       columns: [t.workspaceId],
       foreignColumns: [workspace.id],

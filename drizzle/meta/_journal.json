@@ -218,6 +218,20 @@
       "when": 1788027000000,
       "tag": "0030_m1_08_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788030000000,
+      "tag": "0031_schema_metadata_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788044595099,
+      "tag": "0032_m2_01_offer_schema",
+      "breakpoints": true
     }
   ]
 }

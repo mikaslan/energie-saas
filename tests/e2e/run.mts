@@ -31,6 +31,7 @@ import {
   M1_06_E2E_ADDRESS,
   M1_06_E2E_REGION,
 } from "./m1-06-fixture.js";
+import { seedM201ReadyProject } from "./m2-01-fixture.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NEXT_ENV_PATH = resolve(REPO_ROOT, "next-env.d.ts");
@@ -72,6 +73,9 @@ type SeedData = {
   viewerIdentityId: string;
   editorEmail: string;
   viewerEmail: string;
+  m201WorkspaceId: string;
+  m201EditorIdentityId: string;
+  m201EditorEmail: string;
   mainContactName: string;
   foreignContactName: string;
 };
@@ -95,6 +99,14 @@ type E2EState = Pick<
   databaseUrl: string;
   foreignProjectId: string;
   mainProjectId: string;
+  m201BatteryId: string;
+  m201EditorEmail: string;
+  m201EditorIdentityId: string;
+  m201InverterId: string;
+  m201ModuleId: string;
+  m201ProjectId: string;
+  m201WallboxId: string;
+  m201WorkspaceId: string;
   serverLogPath: string;
 };
 
@@ -600,6 +612,24 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
         [data.foreignWorkspaceId, "M1-05 fremder E2E Workspace"],
       );
     });
+
+    await withWorkspaceSeed(client, data.m201WorkspaceId, async () => {
+      await client.query(
+        "insert into workspace (id, name) values ($1::uuid, $2)",
+        [data.m201WorkspaceId, "M2-01 isolierter E2E Workspace"],
+      );
+      await client.query(
+        "insert into user_identity (id, email) values ($1::uuid, $2)",
+        [data.m201EditorIdentityId, data.m201EditorEmail],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor',
+           '{"manage_catalog":true,"edit_prices":true,"convert_phase":true,
+              "discounts":true,"see_purchase_prices":true}'::jsonb)`,
+        [data.m201WorkspaceId, data.m201EditorIdentityId],
+      );
+    });
   } finally {
     client.release();
     await pool.end();
@@ -846,6 +876,9 @@ function createSeedData(): SeedData {
     viewerIdentityId: randomUUID(),
     editorEmail: `m1-05-editor-${runSuffix}@example.test`,
     viewerEmail: `m1-05-viewer-${runSuffix}@example.test`,
+    m201WorkspaceId: randomUUID(),
+    m201EditorIdentityId: randomUUID(),
+    m201EditorEmail: `m2-01-editor-${runSuffix}@example.test`,
     mainContactName: "Erika E2E Muster",
     foreignContactName: "Fremdmandant E2E Geheim",
   };
@@ -949,6 +982,10 @@ async function main(): Promise<number> {
 
   const seedData = createSeedData();
   await seedInvitations(embedded.url, seedData);
+  const m201Seed = await seedM201ReadyProject(embedded.url, {
+    workspaceId: seedData.m201WorkspaceId,
+    editorIdentityId: seedData.m201EditorIdentityId,
+  });
   throwIfInterrupted();
 
   const mainCredential: IntakeCredential = {
@@ -1001,6 +1038,14 @@ async function main(): Promise<number> {
     databaseUrl: embedded.url,
     foreignProjectId: foreignLead.projectId,
     mainProjectId: mainLead.projectId,
+    m201BatteryId: m201Seed.products.battery,
+    m201EditorEmail: seedData.m201EditorEmail,
+    m201EditorIdentityId: seedData.m201EditorIdentityId,
+    m201InverterId: m201Seed.products.inverter,
+    m201ModuleId: m201Seed.products.module,
+    m201ProjectId: m201Seed.projectId,
+    m201WallboxId: m201Seed.products.wallbox,
+    m201WorkspaceId: seedData.m201WorkspaceId,
     serverLogPath,
     workspaceId: seedData.workspaceId,
     foreignWorkspaceId: seedData.foreignWorkspaceId,
@@ -1010,7 +1055,7 @@ async function main(): Promise<number> {
     foreignContactName: seedData.foreignContactName,
   });
 
-  console.log("[e2e] Chromium prüft M1-06-Golden-Flow, Viewer-Grenze, Fremdmandant und Axe …");
+  console.log("[e2e] Chromium prüft M1-06 bis M2-01, Viewer-Grenze, Fremdmandant und Axe …");
   const playwrightExitCode = await runPlaywright(statePath, playwrightOutputPath, server.baseURL);
   if (!geoapifyContractWasExercised(providerStub)) {
     console.error("[e2e] Der lokale Geoapify-Vertrag wurde nicht exakt einmal vollständig durchlaufen.");

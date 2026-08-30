@@ -853,6 +853,82 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // M2-01 fuehrt den Offer-Graphen und dessen separat committende
+  // Mutationszaehler atomar ein. Runtime darf den Graphen lesen und neue
+  // Snapshot-Staende anlegen; UPDATE bleibt auf die drei tatsaechlich vom
+  // Service mutierten Zaehler-/Pointerspalten und offer.updated_at begrenzt.
+  // Identitaets-, Scope- und Zeitfensterspalten bleiben ohne UPDATE-Recht. Die drei
+  // Snapshot-Mirror sind append-only. DELETE/TRUNCATE gehoeren fuer keine
+  // Offer-Relation zum Runtime-Vertrag.
+  const offerRelations = [
+    "offer",
+    "offer_bom_line",
+    "offer_mutation_rate_window",
+    "offer_number_series",
+    "offer_variant",
+    "offer_variant_revision",
+    "offer_variant_section",
+  ] as const;
+  const offerExisting = await client.query<{ relname: string }>(`
+    select c.relname
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and c.relname = any($1::text[])
+    order by c.relname
+  `, [offerRelations]);
+  if (offerExisting.rows.length > 0) {
+    if (
+      offerExisting.rows.length !== offerRelations.length
+      || offerExisting.rows.some((row, index) => row.relname !== offerRelations[index])
+    ) {
+      throw new Error("Rollen-ACL-Manifest: M2-01-Offerrelationen sind nur teilweise vorhanden.");
+    }
+    await client.query(`
+      grant select, insert on
+        public.offer,
+        public.offer_bom_line,
+        public.offer_mutation_rate_window,
+        public.offer_number_series,
+        public.offer_variant,
+        public.offer_variant_revision,
+        public.offer_variant_section
+      to app_runtime;
+      revoke update on
+        public.offer,
+        public.offer_mutation_rate_window,
+        public.offer_number_series,
+        public.offer_variant
+      from app_runtime;
+      grant update (updated_at) on public.offer to app_runtime;
+      grant update (attempts, updated_at)
+        on public.offer_mutation_rate_window to app_runtime;
+      grant update (last_sequence, updated_at)
+        on public.offer_number_series to app_runtime;
+      grant update (current_revision, name, description, updated_at)
+        on public.offer_variant to app_runtime;
+      revoke delete, truncate on
+        public.offer,
+        public.offer_bom_line,
+        public.offer_mutation_rate_window,
+        public.offer_number_series,
+        public.offer_variant,
+        public.offer_variant_revision,
+        public.offer_variant_section
+      from app_runtime;
+
+      revoke execute on function public.validate_offer_variant_snapshot_mirrors()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.canonicalize_offer_json_v1(jsonb)
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.guard_offer_erasure_mutation()
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      revoke execute on function public.build_inactive_lead_erasure_graph(uuid, uuid)
+        from public, app_runtime, app_system, app_auth, app_worker, app_erasure
+    `);
+  }
+
   // pg-boss bleibt vollstaendig worker-owned. Nur der SET-only-Migrator darf
   // fuer das nach jeder Migration wiederholte ACL-Manifest kurz in diesen
   // Owner wechseln; app_owner und app_worker erhalten keine gegenseitige
@@ -1262,6 +1338,13 @@ export async function verifyRoleContract(
       "r:kanban_board",
       "r:kanban_column",
       "r:membership",
+      "r:offer",
+      "r:offer_bom_line",
+      "r:offer_mutation_rate_window",
+      "r:offer_number_series",
+      "r:offer_variant",
+      "r:offer_variant_revision",
+      "r:offer_variant_section",
       "r:project",
       "r:project_calculation_job",
       "r:project_calculation_revision",
@@ -1402,6 +1485,8 @@ export async function verifyRoleContract(
     [
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
+      "build_inactive_lead_erasure_graph:app_owner",
+      "canonicalize_offer_json_v1:app_owner",
       "erase_inactive_lead:app_owner",
       "finalize_project_calculation_success:app_owner",
       "forbid_mutation:app_owner",
@@ -1410,6 +1495,7 @@ export async function verifyRoleContract(
       "guard_erasure_tombstone_worm:app_owner",
       "guard_membership_dml:app_owner",
       "guard_membership_statement:app_owner",
+      "guard_offer_erasure_mutation:app_owner",
       "guard_project_calculation_job_mutation:app_owner",
       "guard_project_calculation_revision:app_owner",
       "guard_site_energy_profile_mutation:app_owner",
@@ -1420,6 +1506,7 @@ export async function verifyRoleContract(
       "reconcile_user_identity:identity_reconciler",
       "replay_erasure_tombstone:app_owner",
       "user_identity_link_auth_only:app_owner",
+      "validate_offer_variant_snapshot_mirrors:app_owner",
       "validate_project_catalog_resolution_snapshot:app_owner",
     ],
     "Funktions-Ownership",
@@ -1480,8 +1567,12 @@ export async function verifyRoleContract(
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
         "acca23aaae3a91eda3aa424256de1527e1bb61d02fdd4b0d2c0803ecd6a37542",
+      "build_inactive_lead_erasure_graph(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
+        "search_path=pg_catalog:ff33afd9579e2d1f43758b9558e7b55f7381942737c3f133c78b8764aa90569c",
+      "canonicalize_offer_json_v1(jsonb):text:app_owner:plpgsql:f:i:false:false:true:s:" +
+        "search_path=pg_catalog:0b5cdc7c4aa05552def26bc36f3f64bfc73e18689b646b473db607ad858ca85c",
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
-        "search_path=pg_catalog:ed7350da6af25aeb1f82ee42df96ed597a10464fef147ff17594121d4bb0ef60",
+        "search_path=pg_catalog:bba97fd4f1224ab42768aa952f54e4a933229225f8ab251e16173adf75084fdd",
       "finalize_project_calculation_success(uuid, uuid, uuid, integer, uuid, jsonb):" +
         "TABLE(outcome text, revision_id uuid, revision_number integer):" +
         "app_owner:plpgsql:f:v:true:false:true:u:search_path=pg_catalog:" +
@@ -1493,11 +1584,13 @@ export async function verifyRoleContract(
       "guard_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:febb6a39265ceb1661f5dc21709f4a2912df799c6b4dd06db27b540253b8c88d",
       "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        "search_path=pg_catalog:8724ed32499eb1240d37ff600c29430d1ff5c5789b72db9b07d76a4446d67ef8",
+        "search_path=pg_catalog:c65365ec209f2fc279842f5a6a8b21edbae5b327a65b2e969749abb01c68e6be",
       "guard_membership_dml():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:89cb000d7bca739fe2bd23b737ffc5153b494f9f7eb80790dbeef4e6ab95a057",
       "guard_membership_statement():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:b5d5db39513acce303c62d10a27f8b3bdc0b7ec12b183ae127e59b181dac89b7",
+      "guard_offer_erasure_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+        "search_path=pg_catalog:db38dd23221bc75af85f494d9374e9eda3b7a2ce0d87f28dabd8e7c71be4c08f",
       "guard_project_calculation_job_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:1e9df9a26cc63fd4c3964eee765b561ef7c54811709cbda7b6f2920631649c4e",
       "guard_project_calculation_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -1511,13 +1604,15 @@ export async function verifyRoleContract(
       "mark_project_catalog_resolution_stale():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:7c6bd9b9f83040ae9d697aaa6b81012a7a9101d388f9ef1e107564410de1edd0",
       "provision_default_request_board():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
-        "search_path=pg_catalog:8e375b2395604e242f864516e8b068fa01cbd46cceff11b3729eca10c2c010f2",
+        "search_path=pg_catalog:c226d08f9a70eb36bd1eb7ef25e1afcc4fadae383cebef03bcc08b55de663138",
       "reconcile_user_identity(text, text):uuid:identity_reconciler:plpgsql:f:v:true:false:false:u:" +
         "search_path=public, pg_temp:ae576295ddea09162013c29d5828512764cecbe3c39bbcaa0cdd5d45307f2ac3",
       "replay_erasure_tombstone(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:2f95087557c3c9c2fcd866e34aa210f969fb442c44c5b5a9ed4ca40106814ed9",
       "user_identity_link_auth_only():trigger:app_owner:plpgsql:f:v:false:false:false:u:-:" +
         "642035f502409bec26defa74b308e8825d613a5592ae23d228aaabd76115ccfb",
+      "validate_offer_variant_snapshot_mirrors():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
+        "search_path=pg_catalog:82345894ee28f1e69e539f84cbd17038a13df57943dc1e9af6f05c755c53c9d6",
       "validate_project_catalog_resolution_snapshot():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:4d87e511af3484732de1bdb9717d1a818e3b6632880fc3bd35192b955e444ebb",
     ],
@@ -1559,6 +1654,13 @@ export async function verifyRoleContract(
       "kanban_board:true:true",
       "kanban_column:true:true",
       "membership:true:true",
+      "offer:true:true",
+      "offer_bom_line:true:true",
+      "offer_mutation_rate_window:true:true",
+      "offer_number_series:true:true",
+      "offer_variant:true:true",
+      "offer_variant_revision:true:true",
+      "offer_variant_section:true:true",
       "project:true:true",
       "project_calculation_job:true:true",
       "project_calculation_revision:true:true",
@@ -1625,6 +1727,13 @@ export async function verifyRoleContract(
       "membership:membership_principal_insert:cdccab00a484775580d8b083aed280eb2cf90753f6697acae098e9cba54318fc",
       "membership:membership_principal_update:b2374f555501c25048e318fdaa54b7ef1d9b29a66694ef064e6e9ded271c75ca",
       "membership:tenant_isolation:1a5443560d407a656bdeaff6593819d601078d1ebdc58d4d1f8e02e829a587f3",
+      "offer:tenant_isolation:82084d0508f20b6dc4e9caadc271b9c75cb472ea40cc76a9e09e6abc6834622e",
+      "offer_bom_line:tenant_isolation:60c1c3bbe7810cc51e809426bac328b9fc397b6fcf46e7f55ddb7c9a93b04196",
+      "offer_mutation_rate_window:tenant_isolation:4a43a52466e80120f71fb6bc563459046f25148d4c45591d5f5dd581806fb985",
+      "offer_number_series:tenant_isolation:3d3d44b85306e0c44c255e5f295a9d4c63c3f4302d8d43503717281c2084f885",
+      "offer_variant:tenant_isolation:7680e41d5dec01e43a1499356bfd50ff62271af486afe8ee80cf13d3f7f0cb41",
+      "offer_variant_revision:tenant_isolation:d0bf5b1f1871b07a4364b679486f63ad33dbae0259d94a22e090cfe7b1b6c148",
+      "offer_variant_section:tenant_isolation:6cd95ab344fdff675ca080283bf4c0043d3121d14dcc19ce944e7c572becd84f",
       "project:tenant_isolation:c5f62af4cbba473885ce886d0eef10a80ab1f5dca746c0cb4b6204dd1050717b",
       "project_calculation_job:tenant_isolation:46c9a1a09bfdfc88ddf839242f17c560ea614e34d1961a341580c40b4cdabf84",
       "project_calculation_revision:tenant_isolation:84bebd69ee64a8388f406f44da215b86328497c5235e70628a8df0e8c1b56a9d",
@@ -1705,6 +1814,29 @@ export async function verifyRoleContract(
         "public:guard_erasure_tombstone_worm::-:0",
       "membership:membership_dml_guard:31:O:public:guard_membership_dml::-:0",
       "membership:membership_dml_serialize:30:O:public:guard_membership_statement::-:0",
+      "offer_bom_line:offer_bom_line_complete:5:O:public:" +
+        "validate_offer_variant_snapshot_mirrors::-:constraint",
+      "offer_bom_line:offer_bom_line_immutable:27:O:public:guard_offer_erasure_mutation::-:0",
+      "offer_bom_line:offer_bom_line_no_truncate:34:O:public:forbid_mutation::-:0",
+      "offer:offer_immutable:27:O:public:guard_offer_erasure_mutation::-:0",
+      "offer_mutation_rate_window:offer_mutation_rate_window_update_guard:19:O:" +
+        "public:guard_offer_erasure_mutation::-:0",
+      "offer_mutation_rate_window:offer_mutation_rate_window_no_truncate:34:O:" +
+        "public:forbid_mutation::-:0",
+      "offer_number_series:offer_number_series_mutation_guard:27:O:public:" +
+        "guard_offer_erasure_mutation::-:0",
+      "offer_number_series:offer_number_series_no_truncate:34:O:public:forbid_mutation::-:0",
+      "offer_variant:offer_variant_current_complete:21:O:public:" +
+        "validate_offer_variant_snapshot_mirrors::-:constraint",
+      "offer_variant:offer_variant_mutation_guard:27:O:public:guard_offer_erasure_mutation::-:0",
+      "offer_variant_revision:offer_variant_revision_complete:5:O:public:" +
+        "validate_offer_variant_snapshot_mirrors::-:constraint",
+      "offer_variant_revision:offer_variant_revision_immutable:27:O:public:guard_offer_erasure_mutation::-:0",
+      "offer_variant_revision:offer_variant_revision_no_truncate:34:O:public:forbid_mutation::-:0",
+      "offer_variant_section:offer_variant_section_complete:5:O:public:" +
+        "validate_offer_variant_snapshot_mirrors::-:constraint",
+      "offer_variant_section:offer_variant_section_immutable:27:O:public:guard_offer_erasure_mutation::-:0",
+      "offer_variant_section:offer_variant_section_no_truncate:34:O:public:forbid_mutation::-:0",
       "project_calculation_job:project_calculation_job_mutation_guard:27:O:public:guard_project_calculation_job_mutation::-:0",
       "project_calculation_job:project_calculation_job_no_truncate:34:O:public:forbid_mutation::-:0",
       "project_calculation_revision:project_calculation_revision_immutable:31:O:public:guard_project_calculation_revision::-:0",
@@ -1769,6 +1901,20 @@ export async function verifyRoleContract(
       "app_runtime:kanban_board:SELECT:app_owner:false",
       "app_runtime:kanban_column:SELECT:app_owner:false",
       "app_runtime:membership:SELECT:app_owner:false",
+      "app_runtime:offer:INSERT:app_owner:false",
+      "app_runtime:offer:SELECT:app_owner:false",
+      "app_runtime:offer_bom_line:INSERT:app_owner:false",
+      "app_runtime:offer_bom_line:SELECT:app_owner:false",
+      "app_runtime:offer_mutation_rate_window:INSERT:app_owner:false",
+      "app_runtime:offer_mutation_rate_window:SELECT:app_owner:false",
+      "app_runtime:offer_number_series:INSERT:app_owner:false",
+      "app_runtime:offer_number_series:SELECT:app_owner:false",
+      "app_runtime:offer_variant:INSERT:app_owner:false",
+      "app_runtime:offer_variant:SELECT:app_owner:false",
+      "app_runtime:offer_variant_revision:INSERT:app_owner:false",
+      "app_runtime:offer_variant_revision:SELECT:app_owner:false",
+      "app_runtime:offer_variant_section:INSERT:app_owner:false",
+      "app_runtime:offer_variant_section:SELECT:app_owner:false",
       "app_runtime:project:INSERT:app_owner:false",
       "app_runtime:project:SELECT:app_owner:false",
       "app_runtime:project:UPDATE:app_owner:false",
@@ -1850,6 +1996,15 @@ export async function verifyRoleContract(
       `${row.grantee}:${row.object_name}:${row.privilege_type}:${row.grantor}:${row.is_grantable}`,
     ),
     [
+      "app_runtime:offer.updated_at:UPDATE:app_owner:false",
+      "app_runtime:offer_mutation_rate_window.attempts:UPDATE:app_owner:false",
+      "app_runtime:offer_mutation_rate_window.updated_at:UPDATE:app_owner:false",
+      "app_runtime:offer_number_series.last_sequence:UPDATE:app_owner:false",
+      "app_runtime:offer_number_series.updated_at:UPDATE:app_owner:false",
+      "app_runtime:offer_variant.current_revision:UPDATE:app_owner:false",
+      "app_runtime:offer_variant.description:UPDATE:app_owner:false",
+      "app_runtime:offer_variant.name:UPDATE:app_owner:false",
+      "app_runtime:offer_variant.updated_at:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.attempt_count:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.error_code:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.error_retryable:UPDATE:app_owner:false",

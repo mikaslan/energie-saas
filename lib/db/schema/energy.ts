@@ -392,6 +392,15 @@ export const projectCalculationRevision = pgTable(
       t.siteId,
       t.revision,
     ),
+    unique("project_calculation_revision_ws_exact_source_uq").on(
+      t.workspaceId,
+      t.id,
+      t.projectId,
+      t.siteId,
+      t.revision,
+      t.inputSha256,
+      t.resultSha256,
+    ),
     uniqueIndex("project_calculation_revision_ws_project_revision_uq").on(
       t.workspaceId,
       t.projectId,

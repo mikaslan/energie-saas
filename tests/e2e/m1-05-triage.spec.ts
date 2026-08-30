@@ -614,7 +614,9 @@ test("Editor: regionaler Rechner-Lead wird hausgenau korrigiert und getrennt bes
       `Adresskandidatensuche scheiterte mit HTTP ${candidateResponse.status()} (${safeCode}).`,
     );
   }
-  await expect(page.getByRole("status")).toContainText("1 hausgenaue Adresse gefunden.");
+  await expect(page.getByRole("status").filter({
+    hasText: "1 hausgenaue Adresse gefunden.",
+  })).toBeVisible();
   await expect(searchInput).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("option", { name: /Musterweg 12/u })).toBeVisible();
 

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import {
   CATALOG_CANONICALIZATION_VERSION,
@@ -7,6 +7,7 @@ import {
   sealCatalogComponentRevision,
   sealProjectCatalogResolution,
 } from "@/lib/integrations/catalog/contract";
+import { canonicalizeOfferJson } from "@/lib/integrations/offers/contract";
 import type { TenantTx } from "@/lib/db/types";
 
 async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
@@ -440,6 +441,281 @@ async function fixtureCatalogGraph(tx: TenantTx, wsId: string): Promise<void> {
   `);
 }
 
+type FixtureOfferSource = {
+  workspace_id: string;
+  actor_id: string;
+  contact_id: string;
+  site_id: string;
+  project_id: string;
+  inbound_receipt_id: string;
+  inbound_payload_sha256: string;
+  requirement_id: string;
+  requirement_revision: number;
+  calculation_revision_id: string;
+  calculation_revision: number;
+  calculation_input_sha256: string;
+  calculation_result_sha256: string;
+  resolution_id: string;
+  resolution_revision: number;
+  resolution_sha256: string;
+  [key: string]: unknown;
+};
+
+/**
+ * Legt genau einen vollständigen, von den deferred DB-Guards akzeptierten
+ * Offer-Graphen an. Alle sieben M2-01-Tenanttabellen teilen sich diese
+ * Factory: Der erste Aufruf erzeugt den Graphen, spätere Aufrufe finden ihn
+ * bereits vor. So prüft die generische Tenant-Suite echte Rows statt die
+ * neuen Tabellen zu exemptieren.
+ */
+async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
+  const existing = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id from offer where workspace_id = ${wsId}::uuid limit 1
+  `);
+  if (existing.rows[0]) return;
+
+  const resolution = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id from project_catalog_resolution
+     where workspace_id = ${wsId}::uuid
+     limit 1
+  `);
+  if (!resolution.rows[0]) await fixtureCatalogGraph(tx, wsId);
+
+  const sourceResult = await tx.execute<FixtureOfferSource>(sql`
+    select resolution.workspace_id,
+           resolution.confirmed_by as actor_id,
+           project.contact_id,
+           project.site_id,
+           project.id as project_id,
+           receipt.id as inbound_receipt_id,
+           encode(receipt.body_sha256, 'hex') as inbound_payload_sha256,
+           resolution.requirement_id,
+           resolution.requirement_revision,
+           resolution.calculation_revision_id,
+           resolution.calculation_revision,
+           encode(resolution.calculation_input_sha256, 'hex') as calculation_input_sha256,
+           encode(resolution.calculation_result_sha256, 'hex') as calculation_result_sha256,
+           resolution.id as resolution_id,
+           resolution.revision as resolution_revision,
+           encode(resolution.resolution_sha256, 'hex') as resolution_sha256
+      from project_catalog_resolution as resolution
+      join project
+        on project.workspace_id = resolution.workspace_id
+       and project.id = resolution.project_id
+      join inbound_receipt as receipt
+        on receipt.workspace_id = project.workspace_id
+       and receipt.project_id = project.id
+     where resolution.workspace_id = ${wsId}::uuid
+     order by resolution.revision desc
+     limit 1
+  `);
+  const source = sourceResult.rows[0];
+  if (!source) throw new Error("Offer-Tenant-Fixture braucht einen Source-Graphen.");
+
+  const offerId = randomUUID();
+  const variantId = randomUUID();
+  const revisionId = randomUUID();
+  const sectionId = randomUUID();
+  const sectionDomainId = randomUUID();
+  const lineId = randomUUID();
+  const lineDomainId = randomUUID();
+  const createdAt = "2026-08-29T12:00:00.000Z";
+  const contactContext = { displayName: "Offer Tenant Fixture" };
+  const installationSiteContext = { formattedAddress: "Testweg 1, 10115 Berlin" };
+  const bindings = {
+    projectId: source.project_id,
+    contactId: source.contact_id,
+    siteId: source.site_id,
+    inboundReceiptId: source.inbound_receipt_id,
+    inboundPayloadSha256: source.inbound_payload_sha256,
+    requirementId: source.requirement_id,
+    requirementRevision: source.requirement_revision,
+    calculationRevisionId: source.calculation_revision_id,
+    calculationRevision: source.calculation_revision,
+    calculationInputSha256: source.calculation_input_sha256,
+    calculationResultSha256: source.calculation_result_sha256,
+    resolutionId: source.resolution_id,
+    resolutionRevision: source.resolution_revision,
+    resolutionSha256: source.resolution_sha256,
+  };
+  const audienceDecision = {
+    audience: "b2c",
+    confirmationCode: "b2c_operator_confirmed",
+    confirmedBy: source.actor_id,
+    confirmedAt: createdAt,
+  };
+  const lineSnapshot = {
+    lineDomainId,
+    position: 1,
+    componentCategory: "other",
+    positionType: "required",
+    isHidden: false,
+    quantityMilli: 1_000,
+    product: {
+      kind: "custom",
+      displayName: "Freie Tenant-Fixture-Position",
+      description: null,
+      unit: "piece",
+    },
+    source: { kind: "custom" },
+    salesPricing: { originalUnitNetCents: 100, effectiveUnitNetCents: 100 },
+    purchasePricing: { originalUnitNetCents: 50, effectiveUnitNetCents: 50 },
+    lineDiscountBps: 0,
+    taxTreatment: "standard_19",
+    taxRateBps: 1_900,
+    taxDecision: { treatment: "standard_19", taxRateBps: 1_900 },
+    computed: {
+      lineBaseNetCents: 100,
+      lineDiscountedNetCents: 100,
+      sectionDiscountedNetCents: 100,
+      finalSalesNetCents: 100,
+      salesTaxCents: 19,
+      salesGrossCents: 119,
+      purchaseNetCents: 50,
+    },
+  };
+  const sectionSnapshot = {
+    sectionDomainId,
+    position: 1,
+    category: "other",
+    title: "Tenant Fixture",
+    discountBps: 0,
+    lines: [lineSnapshot],
+  };
+  const snapshotBody = {
+    schemaVersion: "offer-variant-snapshot.v1",
+    canonicalizationVersion: "offer-jcs.v1",
+    workspaceId: wsId,
+    offerId,
+    variantId,
+    revision: 1,
+    sourceBindings: bindings,
+    priceAudienceDecision: audienceDecision,
+    contactContext,
+    installationSiteContext,
+    variantName: "Basis",
+    description: "Vollständige Tenant-Fixture",
+    createdBy: source.actor_id,
+    createdAt,
+    totals: {
+      basisNetCents: 100,
+      basisTaxCents: 19,
+      basisGrossCents: 119,
+      optionalNetCents: 0,
+      optionalTaxCents: 0,
+      optionalGrossCents: 0,
+    },
+    sections: [sectionSnapshot],
+  };
+  const snapshotSha256 = createHash("sha256")
+    .update(canonicalizeOfferJson(snapshotBody), "utf8")
+    .digest("hex");
+  const snapshot = { ...snapshotBody, snapshotSha256 };
+
+  await tx.execute(sql`
+    insert into offer (
+      id, workspace_id, project_id, contact_id, site_id,
+      offer_number, number_year, number_sequence,
+      price_audience_decision, contact_context, installation_site_context,
+      source_bindings, inbound_receipt_id, inbound_payload_sha256,
+      requirement_id, requirement_revision,
+      calculation_revision_id, calculation_revision,
+      calculation_input_sha256, calculation_result_sha256,
+      resolution_id, resolution_revision, resolution_sha256,
+      create_digest, created_by, created_at, updated_at
+    ) values (
+      ${offerId}::uuid, ${wsId}::uuid, ${source.project_id}::uuid,
+      ${source.contact_id}::uuid, ${source.site_id}::uuid,
+      'ANG-2026-000001', 2026, 1, ${JSON.stringify(audienceDecision)}::jsonb,
+      ${JSON.stringify(contactContext)}::jsonb,
+      ${JSON.stringify(installationSiteContext)}::jsonb,
+      ${JSON.stringify(bindings)}::jsonb, ${source.inbound_receipt_id}::uuid,
+      decode(${source.inbound_payload_sha256}, 'hex'),
+      ${source.requirement_id}::uuid, ${source.requirement_revision},
+      ${source.calculation_revision_id}::uuid, ${source.calculation_revision},
+      decode(${source.calculation_input_sha256}, 'hex'),
+      decode(${source.calculation_result_sha256}, 'hex'),
+      ${source.resolution_id}::uuid, ${source.resolution_revision},
+      decode(${source.resolution_sha256}, 'hex'), decode(repeat('aa', 32), 'hex'),
+      ${source.actor_id}::uuid, ${createdAt}::timestamptz, ${createdAt}::timestamptz
+    )
+  `);
+  await tx.execute(sql`
+    insert into offer_variant (
+      id, workspace_id, offer_id, ordinal, current_revision,
+      name, description, created_by
+    ) values (
+      ${variantId}::uuid, ${wsId}::uuid, ${offerId}::uuid,
+      1, 1, 'Basis', 'Vollständige Tenant-Fixture', ${source.actor_id}::uuid
+    )
+  `);
+  await tx.execute(sql`
+    insert into offer_variant_revision (
+      id, workspace_id, offer_id, variant_id, project_id, revision,
+      schema_version, canonicalization_version, revision_snapshot,
+      snapshot_sha256, resolution_id, resolution_revision, resolution_sha256,
+      basis_net_cents, basis_tax_cents, basis_gross_cents,
+      optional_net_cents, optional_tax_cents, optional_gross_cents,
+      created_by, created_at
+    ) values (
+      ${revisionId}::uuid, ${wsId}::uuid, ${offerId}::uuid, ${variantId}::uuid,
+      ${source.project_id}::uuid, 1, 'offer-variant-snapshot.v1', 'offer-jcs.v1',
+      ${JSON.stringify(snapshot)}::jsonb, decode(${snapshotSha256}, 'hex'),
+      ${source.resolution_id}::uuid, ${source.resolution_revision},
+      decode(${source.resolution_sha256}, 'hex'), 100, 19, 119, 0, 0, 0,
+      ${source.actor_id}::uuid, ${createdAt}::timestamptz
+    )
+  `);
+  await tx.execute(sql`
+    insert into offer_variant_section (
+      id, workspace_id, offer_id, variant_id, project_id,
+      revision_id, revision, section_domain_id, position,
+      category, title, discount_bps, section_snapshot
+    ) values (
+      ${sectionId}::uuid, ${wsId}::uuid, ${offerId}::uuid, ${variantId}::uuid,
+      ${source.project_id}::uuid, ${revisionId}::uuid, 1,
+      ${sectionDomainId}::uuid, 1, 'other', 'Tenant Fixture', 0,
+      ${JSON.stringify(sectionSnapshot)}::jsonb
+    )
+  `);
+  await tx.execute(sql`
+    insert into offer_bom_line (
+      id, workspace_id, offer_id, variant_id, project_id,
+      revision_id, revision, section_id, section_domain_id, line_domain_id,
+      position, component_category, position_type, is_hidden,
+      quantity_milli, unit, source_kind,
+      original_sales_unit_net_cents, effective_sales_unit_net_cents,
+      original_purchase_unit_net_cents, effective_purchase_unit_net_cents,
+      line_discount_bps, tax_treatment, tax_rate_bps,
+      line_base_net_cents, line_discounted_net_cents,
+      section_discounted_net_cents, final_sales_net_cents,
+      sales_tax_cents, sales_gross_cents, purchase_net_cents, line_snapshot
+    ) values (
+      ${lineId}::uuid, ${wsId}::uuid, ${offerId}::uuid, ${variantId}::uuid,
+      ${source.project_id}::uuid, ${revisionId}::uuid, 1, ${sectionId}::uuid,
+      ${sectionDomainId}::uuid, ${lineDomainId}::uuid, 1, 'other', 'required',
+      false, 1000, 'piece', 'custom', 100, 100, 50, 50, 0,
+      'standard_19', 1900, 100, 100, 100, 100, 19, 119, 50,
+      ${JSON.stringify(lineSnapshot)}::jsonb
+    )
+  `);
+  await tx.execute(sql`
+    insert into offer_number_series (
+      workspace_id, series_year, last_sequence, created_at, updated_at
+    ) values (${wsId}::uuid, 2026, 1, ${createdAt}::timestamptz, ${createdAt}::timestamptz)
+  `);
+  await tx.execute(sql`
+    insert into offer_mutation_rate_window (
+      workspace_id, scope, actor_id, window_start, attempts,
+      created_at, updated_at
+    ) values (
+      ${wsId}::uuid, 'actor', ${source.actor_id}::uuid,
+      timestamptz '2026-08-30 12:00:00+00', 1,
+      ${createdAt}::timestamptz, ${createdAt}::timestamptz
+    )
+  `);
+}
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -529,6 +805,11 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
           requirementIds: [],
           snapshotIds: [],
           receiptIds: [],
+          offerIds: [],
+          offerVariantIds: [],
+          offerVariantRevisionIds: [],
+          offerVariantSectionIds: [],
+          offerBomLineIds: [],
         })}::jsonb,
         now() - interval '1 day', now()
       )
@@ -633,6 +914,13 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   catalog_component_revision: fixtureCatalogGraph,
   project_catalog_resolution: fixtureCatalogGraph,
   project_catalog_resolution_line: fixtureCatalogGraph,
+  offer: fixtureOfferGraph,
+  offer_bom_line: fixtureOfferGraph,
+  offer_mutation_rate_window: fixtureOfferGraph,
+  offer_number_series: fixtureOfferGraph,
+  offer_variant: fixtureOfferGraph,
+  offer_variant_revision: fixtureOfferGraph,
+  offer_variant_section: fixtureOfferGraph,
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -731,6 +1019,56 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
         'project-requirements.rechner.v1', ${randomUUID()}::uuid,
         ${JSON.stringify(fixtureRequirements)}::jsonb
       )
+    `);
+  },
+  offer: async (tx) => {
+    await tx.execute(sql`
+      insert into offer (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  offer_bom_line: async (tx) => {
+    await tx.execute(sql`
+      insert into offer_bom_line (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  offer_mutation_rate_window: async (tx) => {
+    await tx.execute(sql`
+      insert into offer_mutation_rate_window (
+        workspace_id, scope, actor_id, window_start, attempts
+      ) values (
+        ${randomUUID()}::uuid, 'actor', ${randomUUID()}::uuid,
+        timestamptz '2026-08-30 12:00:00+00', 1
+      )
+    `);
+  },
+  offer_number_series: async (tx) => {
+    await tx.execute(sql`
+      insert into offer_number_series (workspace_id, series_year)
+      values (${randomUUID()}::uuid, 2026)
+    `);
+  },
+  offer_variant: async (tx) => {
+    await tx.execute(sql`
+      insert into offer_variant (
+        workspace_id, offer_id, ordinal, current_revision, name, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, 1, 1,
+        'Cross Write', ${randomUUID()}::uuid
+      )
+    `);
+  },
+  offer_variant_revision: async (tx) => {
+    await tx.execute(sql`
+      insert into offer_variant_revision (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  offer_variant_section: async (tx) => {
+    await tx.execute(sql`
+      insert into offer_variant_section (workspace_id)
+      values (${randomUUID()}::uuid)
     `);
   },
 };

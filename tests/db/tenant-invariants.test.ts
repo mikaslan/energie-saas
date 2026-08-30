@@ -318,7 +318,7 @@ describe("Tenant-Invarianten über ALLE Tabellen", () => {
       const bBaseline = t.name === "workspace" || t.name === "kanban_board"
         ? 1
         : t.name === "kanban_column"
-          ? 3
+          ? 4
           : 0;
       expect(inB.rows[0].n, `${t.name}: LECK — B sieht Daten von A`).toBe(bBaseline);
     }

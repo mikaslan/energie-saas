@@ -1895,6 +1895,200 @@ try {
     "select public.reconcile_user_identity('runtime@test.invalid', 'runtime-auth')",
   );
 
+  const offerPrivileges = await runtime.query<{
+    relation_name: string;
+    can_select: boolean;
+    can_insert: boolean;
+    can_update: boolean;
+    can_delete: boolean;
+    can_truncate: boolean;
+    can_references: boolean;
+    can_trigger: boolean;
+  }>(`
+    select relation_name,
+           pg_catalog.has_table_privilege(
+             current_user, 'public.' || relation_name, 'SELECT'
+           ) as can_select,
+           pg_catalog.has_table_privilege(
+             current_user, 'public.' || relation_name, 'INSERT'
+           ) as can_insert,
+           pg_catalog.has_table_privilege(
+             current_user, 'public.' || relation_name, 'UPDATE'
+           ) as can_update,
+           pg_catalog.has_table_privilege(
+             current_user, 'public.' || relation_name, 'DELETE'
+           ) as can_delete,
+           pg_catalog.has_table_privilege(
+             current_user, 'public.' || relation_name, 'TRUNCATE'
+           ) as can_truncate,
+           pg_catalog.has_table_privilege(
+             current_user, 'public.' || relation_name, 'REFERENCES'
+           ) as can_references,
+           pg_catalog.has_table_privilege(
+             current_user, 'public.' || relation_name, 'TRIGGER'
+           ) as can_trigger
+      from pg_catalog.unnest(array[
+        'offer',
+        'offer_bom_line',
+        'offer_mutation_rate_window',
+        'offer_number_series',
+        'offer_variant',
+        'offer_variant_revision',
+        'offer_variant_section'
+      ]::text[]) as relation_name
+     order by relation_name
+  `);
+  ok(
+    "Runtime besitzt exakt die schmale M2-01-Offer-Tabellen-ACL",
+    offerPrivileges.rows.length === 7
+      && offerPrivileges.rows.every((row) =>
+        row.can_select
+        && row.can_insert
+        && !row.can_update
+        && !row.can_delete
+        && !row.can_truncate
+        && !row.can_references
+        && !row.can_trigger),
+    JSON.stringify(offerPrivileges.rows),
+  );
+  const offerUpdateColumns = await runtime.query<{
+    relation_name: string;
+    column_name: string;
+  }>(`
+    select class.relname as relation_name, attribute.attname as column_name
+      from pg_catalog.pg_attribute as attribute
+      join pg_catalog.pg_class as class on class.oid = attribute.attrelid
+      join pg_catalog.pg_namespace as namespace on namespace.oid = class.relnamespace
+     where namespace.nspname = 'public'
+       and class.relname = any(array[
+         'offer', 'offer_bom_line', 'offer_mutation_rate_window',
+         'offer_number_series', 'offer_variant', 'offer_variant_revision',
+         'offer_variant_section'
+       ]::text[])
+       and attribute.attnum > 0
+       and not attribute.attisdropped
+       and pg_catalog.has_column_privilege(
+         current_user, class.oid, attribute.attnum, 'UPDATE'
+       )
+     order by class.relname, attribute.attname
+  `);
+  ok(
+    "Runtime besitzt exakt die erforderlichen M2-01-Offer-Spaltenupdates",
+    JSON.stringify(offerUpdateColumns.rows) === JSON.stringify([
+      { relation_name: "offer", column_name: "updated_at" },
+      { relation_name: "offer_mutation_rate_window", column_name: "attempts" },
+      { relation_name: "offer_mutation_rate_window", column_name: "updated_at" },
+      { relation_name: "offer_number_series", column_name: "last_sequence" },
+      { relation_name: "offer_number_series", column_name: "updated_at" },
+      { relation_name: "offer_variant", column_name: "current_revision" },
+      { relation_name: "offer_variant", column_name: "description" },
+      { relation_name: "offer_variant", column_name: "name" },
+      { relation_name: "offer_variant", column_name: "updated_at" },
+    ]),
+    JSON.stringify(offerUpdateColumns.rows),
+  );
+  await allowed(
+    runtime,
+    "Runtime kann alle Offer-Relationen unter RLS lesen",
+    `select
+       (select count(*) from public.offer),
+       (select count(*) from public.offer_bom_line),
+       (select count(*) from public.offer_mutation_rate_window),
+       (select count(*) from public.offer_number_series),
+       (select count(*) from public.offer_variant),
+       (select count(*) from public.offer_variant_revision),
+       (select count(*) from public.offer_variant_section)`,
+  );
+  await allowed(
+    runtime,
+    "Runtime besitzt auf allen sieben Offer-Relationen echtes INSERT-Recht",
+    `with
+       offer_probe as (
+         insert into public.offer(id) select pg_catalog.gen_random_uuid() where false returning id
+       ),
+       line_probe as (
+         insert into public.offer_bom_line(id) select pg_catalog.gen_random_uuid() where false returning id
+       ),
+       rate_probe as (
+         insert into public.offer_mutation_rate_window(id) select pg_catalog.gen_random_uuid() where false returning id
+       ),
+       series_probe as (
+         insert into public.offer_number_series(id) select pg_catalog.gen_random_uuid() where false returning id
+       ),
+       variant_probe as (
+         insert into public.offer_variant(id) select pg_catalog.gen_random_uuid() where false returning id
+       ),
+       revision_probe as (
+         insert into public.offer_variant_revision(id) select pg_catalog.gen_random_uuid() where false returning id
+       ),
+       section_probe as (
+         insert into public.offer_variant_section(id) select pg_catalog.gen_random_uuid() where false returning id
+       )
+     select 1`,
+  );
+  await allowed(
+    runtime,
+    "Runtime besitzt UPDATE nur auf den vier schmalen Offer-Kopfspaltenmengen",
+    `with
+       offer_probe as (
+         update public.offer set updated_at = updated_at where false returning id
+       ),
+       rate_probe as (
+         update public.offer_mutation_rate_window
+            set updated_at = updated_at where false returning id
+       ),
+       series_probe as (
+         update public.offer_number_series set updated_at = updated_at where false returning id
+       ),
+       variant_probe as (
+         update public.offer_variant set updated_at = updated_at where false returning id
+       )
+     select 1`,
+  );
+  await denied(
+    runtime,
+    "Runtime darf die Angebotsnummer nicht UPDATE",
+    "update public.offer set offer_number = offer_number where false",
+  );
+  await denied(
+    runtime,
+    "Runtime darf die Variantenordinalzahl nicht UPDATE",
+    "update public.offer_variant set ordinal = ordinal where false",
+  );
+  await denied(
+    runtime,
+    "Runtime darf das Nummernserienjahr nicht UPDATE",
+    "update public.offer_number_series set series_year = series_year where false",
+  );
+  await denied(
+    runtime,
+    "Runtime darf den Rate-Limit-Scope nicht UPDATE",
+    "update public.offer_mutation_rate_window set scope = scope where false",
+  );
+  await denied(
+    runtime,
+    "Runtime darf append-only Offer-Revisionen nicht UPDATE",
+    "update public.offer_variant_revision set created_at = created_at where false",
+  );
+  await denied(
+    runtime,
+    "Runtime darf Offer-Daten nicht DELETE",
+    "delete from public.offer where false",
+  );
+  await denied(
+    runtime,
+    "Runtime darf keine der sieben Offer-Relationen TRUNCATE",
+    `truncate public.offer, public.offer_bom_line,
+       public.offer_mutation_rate_window, public.offer_number_series,
+       public.offer_variant, public.offer_variant_revision,
+       public.offer_variant_section`,
+  );
+  await denied(
+    runtime,
+    "Runtime darf den Offer-Mirror-Trigger nicht direkt ausführen",
+    "select public.validate_offer_variant_snapshot_mirrors()",
+  );
+
   const workspaceId = randomUUID();
   const userId = randomUUID();
   await inTenant(system, workspaceId, [

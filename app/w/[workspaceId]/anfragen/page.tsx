@@ -172,7 +172,7 @@ export default async function RequestsPage({
           cards={cards}
           canMove={board.permissions.canMoveCards}
         >
-          <div className="grid gap-4 md:grid-cols-3 md:items-start">
+          <div className="grid gap-4 md:grid-cols-2 md:items-start xl:grid-cols-4">
             {board.columns.map((column) => (
               <RequestBoardColumnClient key={column.id} columnId={column.id}>
                 <header className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-lg border-b border-slate-200 bg-slate-50/95 px-4 py-3 backdrop-blur">

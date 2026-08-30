@@ -4,7 +4,15 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { SignOutButton } from "@/app/_components/sign-out-button";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
-import { PermissionDeniedError } from "@/lib/permissions";
+import {
+  can,
+  isExternalOnly,
+  PermissionDeniedError,
+} from "@/lib/permissions";
+import {
+  getProjectCatalogResolutionContext,
+  type ProjectCatalogResolutionContext,
+} from "@/modules/catalog";
 import {
   getProjectTriageDetail,
   type ProjectTriageDetail,
@@ -13,10 +21,16 @@ import {
   getProjectEnergyContext,
   type ProjectEnergyContext,
 } from "@/modules/energy";
+import { listOffers } from "@/modules/offers";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
 import { EnergyCalculationSection } from "./energy-calculation-section";
 import { EnergyProfileSection } from "./energy-profile-section";
+import { OfferCreateEntry } from "./offer-create-entry";
+import {
+  buildOfferCreateView,
+  type OfferCreateServerGate,
+} from "./offer-create-view";
 import { PinForm } from "./pin-form";
 import { ProductResolutionSection } from "./product-resolution-section";
 
@@ -58,6 +72,11 @@ type LoadResult =
 
 type EnergyLoadResult =
   | { kind: "loaded"; context: ProjectEnergyContext | null }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+type OfferCreationLoadResult =
+  | { kind: "loaded"; gate: OfferCreateServerGate }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
@@ -103,6 +122,63 @@ async function loadProjectEnergy(
     if (error instanceof PermissionDeniedError) {
       return { kind: "denied" };
     }
+    throw error;
+  }
+}
+
+function projectCatalogGate(
+  context: ProjectCatalogResolutionContext | null,
+): OfferCreateServerGate["catalog"] {
+  if (context === null) return null;
+  return {
+    state: context.state,
+    blocker: context.blocker,
+    expectedRequirementRevision: context.currentRequirementRevision,
+    expectedCalculationRevision: context.currentCalculationRevision,
+    expectedResolutionRevision: context.latestResolution?.revision ?? null,
+  };
+}
+
+async function loadOfferCreationGate(
+  workspaceId: string,
+  projectId: string,
+): Promise<OfferCreationLoadResult> {
+  try {
+    const gate = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "offer_creation_gate",
+      async (tx, ctx): Promise<OfferCreateServerGate> => {
+        const canCreate = !isExternalOnly(ctx)
+          && can(ctx, "project.write")
+          && can(ctx, "phase.convert")
+          && can(ctx, "price.edit");
+        if (!canCreate) {
+          return { canCreate: false, configurationBlockers: [], catalog: null };
+        }
+
+        // TenantTx besitzt einen Client. Die Reads bleiben bewusst sequenziell.
+        // An die Client-Island gehen nur Status und optimistic Revisionsnummern,
+        // nie Preise, Katalogsnapshots oder private Hashes.
+        const catalogContext = await getProjectCatalogResolutionContext(
+          tx,
+          ctx,
+          projectId,
+        );
+        const offerList = await listOffers(tx, ctx);
+        return {
+          canCreate: offerList.permissions.canCreate,
+          configurationBlockers: offerList.state === "blocked"
+            ? offerList.blockers.map(({ code, label }) => ({ code, label }))
+            : [],
+          catalog: projectCatalogGate(catalogContext),
+        };
+      },
+    );
+    return { kind: "loaded", gate };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
     throw error;
   }
 }
@@ -190,6 +266,10 @@ function priceSourceLabel(value: string | null): string {
     : value ?? "Nicht übermittelt";
 }
 
+function redirectToProjectLogin(detailPath: string): never {
+  redirect(`/login?next=${encodeURIComponent(detailPath)}`);
+}
+
 export default async function ProjectTriagePage({
   params,
 }: PageProps<"/w/[workspaceId]/anfragen/[projectId]">) {
@@ -201,7 +281,7 @@ export default async function ProjectTriagePage({
   const result = await loadProjectDetail(workspaceId, projectId);
 
   if (result.kind === "unauthenticated") {
-    redirect(`/login?next=${encodeURIComponent(detailPath)}`);
+    redirectToProjectLogin(detailPath);
   }
   if (result.kind === "denied") return <DeniedState />;
   if (result.detail === null) notFound();
@@ -212,10 +292,32 @@ export default async function ProjectTriagePage({
   // Energie-Read vor der bestehenden Projektgrenze.
   const energyResult = await loadProjectEnergy(workspaceId, projectId);
   if (energyResult.kind === "unauthenticated") {
-    redirect(`/login?next=${encodeURIComponent(detailPath)}`);
+    redirectToProjectLogin(detailPath);
   }
   if (energyResult.kind === "denied") return <DeniedState />;
   const energyContext = energyResult.context;
+  const offerCreationResult = await loadOfferCreationGate(workspaceId, projectId);
+  if (offerCreationResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+  if (offerCreationResult.kind === "denied") {
+    return <DeniedState title="Die Angebotsbereitschaft ist für dich nicht freigegeben." />;
+  }
+  const offerCreateView = buildOfferCreateView({
+    workspaceId,
+    projectId,
+    detailPath,
+    detail: {
+      phase: detail.project.phase,
+      outcome: detail.project.outcome,
+      sourceLabel: detail.source.label,
+      submittedAt: detail.source.submittedAt,
+      customerDisplayName: detail.contact.displayName,
+      installationSiteLabel: detail.site.formattedAddress,
+      blockers: detail.blockers,
+    },
+    gate: offerCreationResult.gate,
+  });
   const activeBlockers = [
     detail.blockers.dedupeReviewRequired
       ? "Mögliche Dublette muss geprüft werden"
@@ -282,6 +384,10 @@ export default async function ProjectTriagePage({
           </div>
         </header>
 
+        <div className="mb-6">
+          <OfferCreateEntry view={offerCreateView} />
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] lg:items-start">
           <div className="grid min-w-0 gap-6">
             <Section title="Identität und Kontakt">
@@ -301,10 +407,11 @@ export default async function ProjectTriagePage({
               </dl>
             </Section>
 
-            <Section
-              title="Adresse und Qualität"
-              intro="Die Qualitätsangaben bestimmen, ob der Standort als Planungs-Pin bestätigt werden darf."
-            >
+            <div id="standort-und-pin" className="scroll-mt-6">
+              <Section
+                title="Adresse und Qualität"
+                intro="Die Qualitätsangaben bestimmen, ob der Standort als Planungs-Pin bestätigt werden darf."
+              >
               <dl>
                 <DetailItem term="Adresse">
                   {detail.site.formattedAddress ?? "Nicht übermittelt"}
@@ -344,21 +451,24 @@ export default async function ProjectTriagePage({
                   />
                 </div>
               ) : null}
-            </Section>
+              </Section>
+            </div>
 
-            <Section title="Bedarf">
-              <dl>
-                <DetailItem term="Vorhaben">{branchLabel(detail.requirements.branch)}</DetailItem>
-                <DetailItem term="Gewünschter Speicher" numeric>
-                  {formatNumber(detail.requirements.targetStorageKwh, "kWh")}
-                </DetailItem>
-                <DetailItem term="Wallbox"><YesNo value={detail.requirements.wallbox} /></DetailItem>
-                <DetailItem term="Bidirektionales Laden">
-                  <YesNo value={detail.requirements.bidirectionalCharging} />
-                </DetailItem>
-                <DetailItem term="Ersatzstrom"><YesNo value={detail.requirements.backupPower} /></DetailItem>
-              </dl>
-            </Section>
+            <div id="bedarf" className="scroll-mt-6">
+              <Section title="Bedarf">
+                <dl>
+                  <DetailItem term="Vorhaben">{branchLabel(detail.requirements.branch)}</DetailItem>
+                  <DetailItem term="Gewünschter Speicher" numeric>
+                    {formatNumber(detail.requirements.targetStorageKwh, "kWh")}
+                  </DetailItem>
+                  <DetailItem term="Wallbox"><YesNo value={detail.requirements.wallbox} /></DetailItem>
+                  <DetailItem term="Bidirektionales Laden">
+                    <YesNo value={detail.requirements.bidirectionalCharging} />
+                  </DetailItem>
+                  <DetailItem term="Ersatzstrom"><YesNo value={detail.requirements.backupPower} /></DetailItem>
+                </dl>
+              </Section>
+            </div>
 
             <EnergyProfileSection
               workspaceId={workspaceId}

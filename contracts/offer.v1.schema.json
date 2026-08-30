@@ -1,0 +1,2705 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/offer.v1.schema.json",
+  "title": "WMEE offer commands and privacy contexts v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/createCommand"
+    },
+    {
+      "$ref": "#/$defs/reviseCommand"
+    },
+    {
+      "$ref": "#/$defs/duplicateCommand"
+    },
+    {
+      "$ref": "#/$defs/fromResolutionCommand"
+    },
+    {
+      "$ref": "#/$defs/contactContext"
+    },
+    {
+      "$ref": "#/$defs/installationSiteContext"
+    },
+    {
+      "$ref": "#/$defs/createDigestMaterial"
+    },
+    {
+      "$ref": "#/$defs/variantSnapshot"
+    }
+  ],
+  "$defs": {
+    "createCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "projectId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "expectedRequirementRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "expectedCalculationRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "expectedResolutionRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "forecastValueNetCents": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "priceAudience": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "priceAudienceConfirmation": {
+              "$ref": "#/$defs/__schema5"
+            },
+            "taxTreatment": {
+              "type": "string",
+              "const": "standard_19"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "projectId",
+            "expectedRequirementRevision",
+            "expectedCalculationRevision",
+            "expectedResolutionRevision",
+            "priceAudience",
+            "priceAudienceConfirmation",
+            "taxTreatment"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "projectId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "expectedRequirementRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "expectedCalculationRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "expectedResolutionRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "forecastValueNetCents": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "priceAudience": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "priceAudienceConfirmation": {
+              "$ref": "#/$defs/__schema5"
+            },
+            "taxTreatment": {
+              "type": "string",
+              "const": "zero_operator_confirmed"
+            },
+            "zeroConfirmation": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "const": "zero_tax_draft_operator_confirmed"
+                },
+                "confirmed": {
+                  "type": "boolean",
+                  "const": true
+                }
+              },
+              "required": [
+                "code",
+                "confirmed"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "projectId",
+            "expectedRequirementRevision",
+            "expectedCalculationRevision",
+            "expectedResolutionRevision",
+            "priceAudience",
+            "priceAudienceConfirmation",
+            "taxTreatment",
+            "zeroConfirmation"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "const": "offer-create-command.v1"
+        },
+        "__schema1": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema2": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "__schema3": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9000000000000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema4": {
+          "type": "string",
+          "const": "b2c"
+        },
+        "__schema5": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "const": "b2c_operator_confirmed"
+            },
+            "confirmed": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "code",
+            "confirmed"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "reviseCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "offer-variant-revise-command.v1"
+        },
+        "offerId": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "variantId": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "operations": {
+          "minItems": 1,
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "offerId",
+        "variantId",
+        "expectedRevision",
+        "operations"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema1": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_variant_name"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "operation",
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_variant_description"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "operation",
+                "description"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_global_discount"
+                },
+                "discountBps": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "operation",
+                "discountBps"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_custom_deal"
+                },
+                "customDealNetCents": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema3"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "operation",
+                "customDealNetCents"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_section_discount"
+                },
+                "sectionDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "discountBps": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "operation",
+                "sectionDomainId",
+                "discountBps"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "move_section"
+                },
+                "sectionDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "position": {
+                  "$ref": "#/$defs/__schema4"
+                }
+              },
+              "required": [
+                "operation",
+                "sectionDomainId",
+                "position"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "move_line"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "sectionDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "position": {
+                  "$ref": "#/$defs/__schema5"
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "sectionDomainId",
+                "position"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_line_quantity"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "quantityMilli": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000000
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "quantityMilli"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_custom_line_details"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "unit": {
+                  "$ref": "#/$defs/__schema6"
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "displayName",
+                "description",
+                "unit"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_line_position_type"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "positionType": {
+                  "type": "string",
+                  "enum": [
+                    "required",
+                    "additional",
+                    "optional"
+                  ]
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "positionType"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_line_visibility"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "isHidden": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "isHidden"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_line_sales_price"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "salesUnitNetCents": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "reasonCode": {
+                  "$ref": "#/$defs/__schema7"
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "salesUnitNetCents",
+                "reasonCode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_line_purchase_price"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "purchaseUnitNetCents": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "reasonCode": {
+                  "$ref": "#/$defs/__schema7"
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "purchaseUnitNetCents",
+                "reasonCode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "set_line_discount"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "discountBps": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "discountBps"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "remove_custom_line"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "add_custom_section"
+                },
+                "sectionDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "position": {
+                  "$ref": "#/$defs/__schema4"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "module",
+                    "inverter",
+                    "battery",
+                    "wallbox",
+                    "heat_pump",
+                    "mounting",
+                    "other"
+                  ]
+                }
+              },
+              "required": [
+                "operation",
+                "sectionDomainId",
+                "position",
+                "title",
+                "category"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "const": "remove_custom_section"
+                },
+                "sectionDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "required": [
+                "operation",
+                "sectionDomainId"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "$ref": "#/$defs/__schema8"
+                },
+                "lineDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "sectionDomainId": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "position": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "displayName": {
+                  "$ref": "#/$defs/__schema9"
+                },
+                "description": {
+                  "$ref": "#/$defs/__schema10"
+                },
+                "unit": {
+                  "$ref": "#/$defs/__schema6"
+                },
+                "quantityMilli": {
+                  "$ref": "#/$defs/__schema11"
+                },
+                "salesUnitNetCents": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "purchaseUnitNetCents": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "positionType": {
+                  "$ref": "#/$defs/__schema12"
+                },
+                "isHidden": {
+                  "$ref": "#/$defs/__schema13"
+                },
+                "taxTreatment": {
+                  "$ref": "#/$defs/__schema14"
+                },
+                "zeroConfirmation": {
+                  "$ref": "#/$defs/__schema15"
+                }
+              },
+              "required": [
+                "operation",
+                "lineDomainId",
+                "sectionDomainId",
+                "position",
+                "displayName",
+                "description",
+                "unit",
+                "quantityMilli",
+                "salesUnitNetCents",
+                "purchaseUnitNetCents",
+                "positionType",
+                "isHidden",
+                "taxTreatment"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "operation": {
+                      "type": "string",
+                      "const": "set_line_tax"
+                    },
+                    "lineDomainId": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "taxTreatment": {
+                      "type": "string",
+                      "const": "standard_19"
+                    }
+                  },
+                  "required": [
+                    "operation",
+                    "lineDomainId",
+                    "taxTreatment"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "operation": {
+                      "type": "string",
+                      "const": "set_line_tax"
+                    },
+                    "lineDomainId": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "taxTreatment": {
+                      "type": "string",
+                      "const": "zero_operator_confirmed"
+                    },
+                    "zeroConfirmation": {
+                      "$ref": "#/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "operation",
+                    "lineDomainId",
+                    "taxTreatment",
+                    "zeroConfirmation"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          ]
+        },
+        "__schema2": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "__schema3": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema4": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 25
+        },
+        "__schema5": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "__schema6": {
+          "type": "string",
+          "enum": [
+            "piece",
+            "set",
+            "meter"
+          ]
+        },
+        "__schema7": {
+          "type": "string",
+          "enum": [
+            "customer_specific_pricing",
+            "negotiated",
+            "correction",
+            "other"
+          ]
+        },
+        "__schema8": {
+          "type": "string",
+          "const": "add_custom_line"
+        },
+        "__schema9": {
+          "type": "string"
+        },
+        "__schema10": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema11": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema12": {
+          "type": "string",
+          "enum": [
+            "required",
+            "additional",
+            "optional"
+          ]
+        },
+        "__schema13": {
+          "type": "boolean"
+        },
+        "__schema14": {
+          "type": "string",
+          "enum": [
+            "standard_19",
+            "zero_operator_confirmed"
+          ]
+        },
+        "__schema15": {
+          "$ref": "#/$defs/__schema16"
+        },
+        "__schema16": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "const": "zero_tax_draft_operator_confirmed"
+            },
+            "confirmed": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "code",
+            "confirmed"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "duplicateCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "offer-variant-duplicate-command.v1"
+        },
+        "offerId": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "sourceVariantId": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "expectedSourceRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "offerId",
+        "sourceVariantId",
+        "expectedSourceRevision",
+        "name"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      }
+    },
+    "fromResolutionCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "offerId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "expectedRequirementRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "expectedCalculationRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "expectedResolutionRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "name": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "taxTreatment": {
+              "type": "string",
+              "const": "standard_19"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "offerId",
+            "expectedRequirementRevision",
+            "expectedCalculationRevision",
+            "expectedResolutionRevision",
+            "name",
+            "taxTreatment"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/__schema0"
+            },
+            "offerId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "expectedRequirementRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "expectedCalculationRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "expectedResolutionRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "name": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "taxTreatment": {
+              "type": "string",
+              "const": "zero_operator_confirmed"
+            },
+            "zeroConfirmation": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "const": "zero_tax_draft_operator_confirmed"
+                },
+                "confirmed": {
+                  "type": "boolean",
+                  "const": true
+                }
+              },
+              "required": [
+                "code",
+                "confirmed"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "offerId",
+            "expectedRequirementRevision",
+            "expectedCalculationRevision",
+            "expectedResolutionRevision",
+            "name",
+            "taxTreatment",
+            "zeroConfirmation"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "const": "offer-variant-from-resolution-command.v1"
+        },
+        "__schema1": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema2": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "__schema3": {
+          "type": "string"
+        }
+      }
+    },
+    "contactContext": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "emailPrimary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "phoneE164": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "displayName",
+        "emailPrimary",
+        "phoneE164"
+      ],
+      "additionalProperties": false
+    },
+    "installationSiteContext": {
+      "type": "object",
+      "properties": {
+        "addressRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "formattedAddress": {
+          "type": "string"
+        },
+        "street": {
+          "type": "string"
+        },
+        "houseNumber": {
+          "type": "string"
+        },
+        "postalCode": {
+          "type": "string"
+        },
+        "city": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "addressRevision",
+        "formattedAddress",
+        "street",
+        "houseNumber",
+        "postalCode",
+        "city",
+        "country"
+      ],
+      "additionalProperties": false
+    },
+    "createDigestMaterial": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "offer-create-digest-material.v1"
+        },
+        "command": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "projectId": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "expectedRequirementRevision": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "expectedCalculationRevision": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "expectedResolutionRevision": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "forecastValueNetCents": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "priceAudience": {
+                  "$ref": "#/$defs/__schema4"
+                },
+                "priceAudienceConfirmation": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "taxTreatment": {
+                  "type": "string",
+                  "const": "standard_19"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "projectId",
+                "expectedRequirementRevision",
+                "expectedCalculationRevision",
+                "expectedResolutionRevision",
+                "priceAudience",
+                "priceAudienceConfirmation",
+                "taxTreatment"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "projectId": {
+                  "$ref": "#/$defs/__schema1"
+                },
+                "expectedRequirementRevision": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "expectedCalculationRevision": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "expectedResolutionRevision": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "forecastValueNetCents": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "priceAudience": {
+                  "$ref": "#/$defs/__schema4"
+                },
+                "priceAudienceConfirmation": {
+                  "$ref": "#/$defs/__schema5"
+                },
+                "taxTreatment": {
+                  "type": "string",
+                  "const": "zero_operator_confirmed"
+                },
+                "zeroConfirmation": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "const": "zero_tax_draft_operator_confirmed"
+                    },
+                    "confirmed": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "confirmed"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "projectId",
+                "expectedRequirementRevision",
+                "expectedCalculationRevision",
+                "expectedResolutionRevision",
+                "priceAudience",
+                "priceAudienceConfirmation",
+                "taxTreatment",
+                "zeroConfirmation"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "sourceBindings": {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "contactId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "siteId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "inboundReceiptId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "inboundPayloadSha256": {
+              "$ref": "#/$defs/__schema6"
+            },
+            "requirementId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "requirementRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "calculationRevisionId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "calculationRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "calculationInputSha256": {
+              "$ref": "#/$defs/__schema6"
+            },
+            "calculationResultSha256": {
+              "$ref": "#/$defs/__schema6"
+            },
+            "resolutionId": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "resolutionRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "resolutionSha256": {
+              "$ref": "#/$defs/__schema6"
+            }
+          },
+          "required": [
+            "projectId",
+            "contactId",
+            "siteId",
+            "inboundReceiptId",
+            "inboundPayloadSha256",
+            "requirementId",
+            "requirementRevision",
+            "calculationRevisionId",
+            "calculationRevision",
+            "calculationInputSha256",
+            "calculationResultSha256",
+            "resolutionId",
+            "resolutionRevision",
+            "resolutionSha256"
+          ],
+          "additionalProperties": false
+        },
+        "contactContext": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "type": "string"
+            },
+            "emailPrimary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "phoneE164": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "displayName",
+            "emailPrimary",
+            "phoneE164"
+          ],
+          "additionalProperties": false
+        },
+        "installationSiteContext": {
+          "type": "object",
+          "properties": {
+            "addressRevision": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "formattedAddress": {
+              "type": "string"
+            },
+            "street": {
+              "type": "string"
+            },
+            "houseNumber": {
+              "type": "string"
+            },
+            "postalCode": {
+              "type": "string"
+            },
+            "city": {
+              "type": "string"
+            },
+            "country": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "addressRevision",
+            "formattedAddress",
+            "street",
+            "houseNumber",
+            "postalCode",
+            "city",
+            "country"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "command",
+        "sourceBindings",
+        "contactContext",
+        "installationSiteContext"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "const": "offer-create-command.v1"
+        },
+        "__schema1": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema2": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "__schema3": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9000000000000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema4": {
+          "type": "string",
+          "const": "b2c"
+        },
+        "__schema5": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "const": "b2c_operator_confirmed"
+            },
+            "confirmed": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "code",
+            "confirmed"
+          ],
+          "additionalProperties": false
+        },
+        "__schema6": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "variantSnapshot": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "canonicalizationVersion": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "offerId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "variantId": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "revision": {
+          "$ref": "#/$defs/__schema3"
+        },
+        "variantName": {
+          "$ref": "#/$defs/__schema4"
+        },
+        "description": {
+          "$ref": "#/$defs/__schema5"
+        },
+        "contactContext": {
+          "$ref": "#/$defs/__schema6"
+        },
+        "installationSiteContext": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "sourceBindings": {
+          "$ref": "#/$defs/__schema8"
+        },
+        "priceAudienceDecision": {
+          "$ref": "#/$defs/__schema10"
+        },
+        "taxDecision": {
+          "$ref": "#/$defs/__schema12"
+        },
+        "currency": {
+          "$ref": "#/$defs/__schema13"
+        },
+        "priceBasis": {
+          "$ref": "#/$defs/__schema14"
+        },
+        "globalDiscountBps": {
+          "$ref": "#/$defs/__schema15"
+        },
+        "customDealNetCents": {
+          "$ref": "#/$defs/__schema16"
+        },
+        "sections": {
+          "$ref": "#/$defs/__schema18"
+        },
+        "totals": {
+          "$ref": "#/$defs/__schema46"
+        },
+        "createdBy": {
+          "$ref": "#/$defs/__schema2"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/__schema11"
+        },
+        "snapshotSha256": {
+          "$ref": "#/$defs/__schema9"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "canonicalizationVersion",
+        "workspaceId",
+        "offerId",
+        "variantId",
+        "revision",
+        "variantName",
+        "description",
+        "contactContext",
+        "installationSiteContext",
+        "sourceBindings",
+        "priceAudienceDecision",
+        "taxDecision",
+        "currency",
+        "priceBasis",
+        "globalDiscountBps",
+        "customDealNetCents",
+        "sections",
+        "totals",
+        "createdBy",
+        "createdAt",
+        "snapshotSha256"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "const": "offer-variant-snapshot.v1"
+        },
+        "__schema1": {
+          "type": "string",
+          "const": "offer-jcs.v1"
+        },
+        "__schema2": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema3": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "__schema4": {
+          "type": "string"
+        },
+        "__schema5": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema6": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "type": "string"
+            },
+            "emailPrimary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "phoneE164": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "displayName",
+            "emailPrimary",
+            "phoneE164"
+          ],
+          "additionalProperties": false
+        },
+        "__schema7": {
+          "type": "object",
+          "properties": {
+            "addressRevision": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "formattedAddress": {
+              "type": "string"
+            },
+            "street": {
+              "type": "string"
+            },
+            "houseNumber": {
+              "type": "string"
+            },
+            "postalCode": {
+              "type": "string"
+            },
+            "city": {
+              "type": "string"
+            },
+            "country": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "addressRevision",
+            "formattedAddress",
+            "street",
+            "houseNumber",
+            "postalCode",
+            "city",
+            "country"
+          ],
+          "additionalProperties": false
+        },
+        "__schema8": {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "contactId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "siteId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "inboundReceiptId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "inboundPayloadSha256": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "requirementId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "requirementRevision": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "calculationRevisionId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "calculationRevision": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "calculationInputSha256": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "calculationResultSha256": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "resolutionId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "resolutionRevision": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "resolutionSha256": {
+              "$ref": "#/$defs/__schema9"
+            }
+          },
+          "required": [
+            "projectId",
+            "contactId",
+            "siteId",
+            "inboundReceiptId",
+            "inboundPayloadSha256",
+            "requirementId",
+            "requirementRevision",
+            "calculationRevisionId",
+            "calculationRevision",
+            "calculationInputSha256",
+            "calculationResultSha256",
+            "resolutionId",
+            "resolutionRevision",
+            "resolutionSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema9": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema10": {
+          "type": "object",
+          "properties": {
+            "audience": {
+              "type": "string",
+              "const": "b2c"
+            },
+            "confirmationCode": {
+              "type": "string",
+              "const": "b2c_operator_confirmed"
+            },
+            "confirmedBy": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "confirmedAt": {
+              "$ref": "#/$defs/__schema11"
+            }
+          },
+          "required": [
+            "audience",
+            "confirmationCode",
+            "confirmedBy",
+            "confirmedAt"
+          ],
+          "additionalProperties": false
+        },
+        "__schema11": {
+          "type": "string",
+          "allOf": [
+            {
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "pattern": "Z$"
+            }
+          ]
+        },
+        "__schema12": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "treatment": {
+                  "type": "string",
+                  "const": "standard_19"
+                },
+                "rateBps": {
+                  "type": "number",
+                  "const": 1900
+                },
+                "selectedBy": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "selectedAt": {
+                  "$ref": "#/$defs/__schema11"
+                }
+              },
+              "required": [
+                "treatment",
+                "rateBps",
+                "selectedBy",
+                "selectedAt"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "treatment": {
+                  "type": "string",
+                  "const": "zero_operator_confirmed"
+                },
+                "rateBps": {
+                  "type": "number",
+                  "const": 0
+                },
+                "selectedBy": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "selectedAt": {
+                  "$ref": "#/$defs/__schema11"
+                },
+                "confirmationCode": {
+                  "type": "string",
+                  "const": "zero_tax_draft_operator_confirmed"
+                },
+                "confirmedBy": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "confirmedAt": {
+                  "$ref": "#/$defs/__schema11"
+                }
+              },
+              "required": [
+                "treatment",
+                "rateBps",
+                "selectedBy",
+                "selectedAt",
+                "confirmationCode",
+                "confirmedBy",
+                "confirmedAt"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "__schema13": {
+          "type": "string",
+          "const": "EUR"
+        },
+        "__schema14": {
+          "type": "string",
+          "const": "net"
+        },
+        "__schema15": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "__schema16": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/__schema17"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema17": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema18": {
+          "minItems": 1,
+          "maxItems": 25,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema19"
+          }
+        },
+        "__schema19": {
+          "type": "object",
+          "properties": {
+            "sectionDomainId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "position": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 25
+            },
+            "category": {
+              "$ref": "#/$defs/__schema20"
+            },
+            "title": {
+              "type": "string"
+            },
+            "discountBps": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "lines": {
+              "minItems": 1,
+              "maxItems": 500,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema21"
+              }
+            }
+          },
+          "required": [
+            "sectionDomainId",
+            "position",
+            "category",
+            "title",
+            "discountBps",
+            "lines"
+          ],
+          "additionalProperties": false
+        },
+        "__schema20": {
+          "type": "string",
+          "enum": [
+            "module",
+            "inverter",
+            "battery",
+            "wallbox",
+            "heat_pump",
+            "mounting",
+            "other"
+          ]
+        },
+        "__schema21": {
+          "type": "object",
+          "properties": {
+            "lineDomainId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "position": {
+              "$ref": "#/$defs/__schema22"
+            },
+            "componentCategory": {
+              "$ref": "#/$defs/__schema20"
+            },
+            "positionType": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "isHidden": {
+              "$ref": "#/$defs/__schema24"
+            },
+            "quantityMilli": {
+              "$ref": "#/$defs/__schema25"
+            },
+            "product": {
+              "$ref": "#/$defs/__schema26"
+            },
+            "source": {
+              "$ref": "#/$defs/__schema39"
+            },
+            "salesPricing": {
+              "$ref": "#/$defs/__schema40"
+            },
+            "purchasePricing": {
+              "$ref": "#/$defs/__schema40"
+            },
+            "lineDiscountBps": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "taxTreatment": {
+              "$ref": "#/$defs/__schema43"
+            },
+            "taxRateBps": {
+              "$ref": "#/$defs/__schema44"
+            },
+            "taxDecision": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "computed": {
+              "$ref": "#/$defs/__schema45"
+            }
+          },
+          "required": [
+            "lineDomainId",
+            "position",
+            "componentCategory",
+            "positionType",
+            "isHidden",
+            "quantityMilli",
+            "product",
+            "source",
+            "salesPricing",
+            "purchasePricing",
+            "lineDiscountBps",
+            "taxTreatment",
+            "taxRateBps",
+            "taxDecision",
+            "computed"
+          ],
+          "additionalProperties": false
+        },
+        "__schema22": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "__schema23": {
+          "type": "string",
+          "enum": [
+            "required",
+            "additional",
+            "optional"
+          ]
+        },
+        "__schema24": {
+          "type": "boolean"
+        },
+        "__schema25": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema26": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "catalog"
+                },
+                "internalSku": {
+                  "type": "string",
+                  "pattern": "^[A-Z0-9][A-Z0-9._-]{0,63}$"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "manufacturer": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "unit": {
+                  "$ref": "#/$defs/__schema27"
+                },
+                "technicalData": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "module.v1"
+                        },
+                        "nominalPowerWatts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "nominalPowerWatts"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "inverter.v1"
+                        },
+                        "nominalAcPowerWatts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000000
+                        },
+                        "phaseCount": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "const": 1
+                            },
+                            {
+                              "type": "number",
+                              "const": 3
+                            }
+                          ]
+                        },
+                        "mpptTrackerCount": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "nominalAcPowerWatts",
+                        "phaseCount",
+                        "mpptTrackerCount"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/__schema28"
+                        },
+                        "nominalCapacityWh": {
+                          "$ref": "#/$defs/__schema29"
+                        },
+                        "usableCapacityWh": {
+                          "$ref": "#/$defs/__schema30"
+                        },
+                        "maxContinuousPowerWatts": {
+                          "$ref": "#/$defs/__schema31"
+                        },
+                        "roundTripEfficiencyBasisPoints": {
+                          "$ref": "#/$defs/__schema32"
+                        },
+                        "backupCapability": {
+                          "$ref": "#/$defs/__schema33"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "nominalCapacityWh",
+                        "usableCapacityWh",
+                        "maxContinuousPowerWatts",
+                        "roundTripEfficiencyBasisPoints",
+                        "backupCapability"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "wallbox.v1"
+                        },
+                        "maxChargingPowerWatts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000000
+                        },
+                        "phaseCount": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "const": 1
+                            },
+                            {
+                              "type": "number",
+                              "const": 3
+                            }
+                          ]
+                        },
+                        "connector": {
+                          "type": "string",
+                          "enum": [
+                            "type2_socket",
+                            "type2_cable",
+                            "other"
+                          ]
+                        },
+                        "bidirectionalCapability": {
+                          "$ref": "#/$defs/__schema33"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "maxChargingPowerWatts",
+                        "phaseCount",
+                        "connector",
+                        "bidirectionalCapability"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "heat_pump.v1"
+                        },
+                        "nominalHeatingPowerWatts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000000
+                        },
+                        "scopHundredths": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 2000
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "nominalHeatingPowerWatts",
+                        "scopHundredths"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "mounting.v1"
+                        },
+                        "systemName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "roofTypes": {
+                          "minItems": 1,
+                          "maxItems": 4,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema34"
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "systemName",
+                        "roofTypes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "string",
+                          "const": "other.v1"
+                        },
+                        "attributes": {
+                          "maxItems": 20,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema35"
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "attributes"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "image": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema36"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "datasheet": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema36"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/__schema38"
+                }
+              },
+              "required": [
+                "kind",
+                "internalSku",
+                "displayName",
+                "manufacturer",
+                "model",
+                "unit",
+                "technicalData",
+                "image",
+                "datasheet",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "custom"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "unit": {
+                  "$ref": "#/$defs/__schema27"
+                }
+              },
+              "required": [
+                "kind",
+                "displayName",
+                "description",
+                "unit"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "__schema27": {
+          "type": "string",
+          "enum": [
+            "piece",
+            "set",
+            "meter"
+          ]
+        },
+        "__schema28": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema29": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema30": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema31": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema32": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema33": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema34": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema35": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "__schema36": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "image",
+                "datasheet"
+              ]
+            },
+            "objectKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 360
+            },
+            "sha256": {
+              "$ref": "#/$defs/__schema37"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ]
+            },
+            "originalFilename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            }
+          },
+          "required": [
+            "role",
+            "objectKey",
+            "sha256",
+            "mediaType",
+            "originalFilename"
+          ],
+          "additionalProperties": false
+        },
+        "__schema37": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema38": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema37"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema39": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "catalog"
+                },
+                "catalogComponentId": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "catalogComponentRevision": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "componentSnapshotSha256": {
+                  "$ref": "#/$defs/__schema9"
+                },
+                "resolutionLineId": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "resolutionId": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "resolutionRevision": {
+                  "$ref": "#/$defs/__schema3"
+                },
+                "resolutionSha256": {
+                  "$ref": "#/$defs/__schema9"
+                },
+                "catalogSalesUnitNetCents": {
+                  "$ref": "#/$defs/__schema17"
+                },
+                "catalogPurchaseUnitNetCents": {
+                  "$ref": "#/$defs/__schema17"
+                }
+              },
+              "required": [
+                "kind",
+                "catalogComponentId",
+                "catalogComponentRevision",
+                "componentSnapshotSha256",
+                "resolutionLineId",
+                "resolutionId",
+                "resolutionRevision",
+                "resolutionSha256",
+                "catalogSalesUnitNetCents",
+                "catalogPurchaseUnitNetCents"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "custom"
+                },
+                "enteredBy": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "enteredAt": {
+                  "$ref": "#/$defs/__schema11"
+                }
+              },
+              "required": [
+                "kind",
+                "enteredBy",
+                "enteredAt"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "__schema40": {
+          "type": "object",
+          "properties": {
+            "originalUnitNetCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "effectiveUnitNetCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "provenance": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/__schema41"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "manual_override"
+                    },
+                    "reasonCode": {
+                      "type": "string",
+                      "enum": [
+                        "customer_specific_pricing",
+                        "negotiated",
+                        "correction",
+                        "other"
+                      ]
+                    },
+                    "overriddenBy": {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    "overriddenAt": {
+                      "$ref": "#/$defs/__schema11"
+                    },
+                    "originalProvenance": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/$defs/__schema41"
+                        },
+                        {
+                          "$ref": "#/$defs/__schema42"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "reasonCode",
+                    "overriddenBy",
+                    "overriddenAt",
+                    "originalProvenance"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema42"
+                }
+              ]
+            }
+          },
+          "required": [
+            "originalUnitNetCents",
+            "effectiveUnitNetCents",
+            "provenance"
+          ],
+          "additionalProperties": false
+        },
+        "__schema41": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "catalog_seed"
+            },
+            "catalogProvenance": {
+              "$ref": "#/$defs/__schema38"
+            }
+          },
+          "required": [
+            "kind",
+            "catalogProvenance"
+          ],
+          "additionalProperties": false
+        },
+        "__schema42": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "custom"
+            },
+            "enteredBy": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "enteredAt": {
+              "$ref": "#/$defs/__schema11"
+            }
+          },
+          "required": [
+            "kind",
+            "enteredBy",
+            "enteredAt"
+          ],
+          "additionalProperties": false
+        },
+        "__schema43": {
+          "type": "string",
+          "enum": [
+            "standard_19",
+            "zero_operator_confirmed"
+          ]
+        },
+        "__schema44": {
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 0
+            },
+            {
+              "type": "number",
+              "const": 1900
+            }
+          ]
+        },
+        "__schema45": {
+          "type": "object",
+          "properties": {
+            "lineBaseNetCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "lineDiscountedNetCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "sectionDiscountedNetCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "finalSalesNetCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "salesTaxCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "salesGrossCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "purchaseNetCents": {
+              "$ref": "#/$defs/__schema17"
+            }
+          },
+          "required": [
+            "lineBaseNetCents",
+            "lineDiscountedNetCents",
+            "sectionDiscountedNetCents",
+            "finalSalesNetCents",
+            "salesTaxCents",
+            "salesGrossCents",
+            "purchaseNetCents"
+          ],
+          "additionalProperties": false
+        },
+        "__schema46": {
+          "type": "object",
+          "properties": {
+            "basisNetCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "basisTaxCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "basisGrossCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "optionalNetCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "optionalTaxCents": {
+              "$ref": "#/$defs/__schema17"
+            },
+            "optionalGrossCents": {
+              "$ref": "#/$defs/__schema17"
+            }
+          },
+          "required": [
+            "basisNetCents",
+            "basisTaxCents",
+            "basisGrossCents",
+            "optionalNetCents",
+            "optionalTaxCents",
+            "optionalGrossCents"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "x-semantic-invariants": [
+    "browser commands never contain workspace, actor, timestamps, snapshots, totals, provenance, or integrity hashes",
+    "create is limited to operator-confirmed B2C and an explicit tax treatment",
+    "zero_operator_confirmed always carries a fresh command-bound structured confirmation",
+    "contact and installation-site contexts are NFC-normalized strict allowlists loaded by the server",
+    "revision commands contain at most 500 compact operations and never client-computed totals",
+    "offer-jcs.v1 canonicalizes all strings and object keys to NFC before JCS ordering",
+    "UUID values are canonicalized to lowercase and an omitted forecast is canonicalized to null before hashing",
+    "variant snapshots contain one to 25 sections and one to 500 total immutable BOM lines",
+    "section positions are unique in 1..25 and line positions are unique per section in 1..500",
+    "catalog and custom lines use disjoint product and source shapes with matching original pricing provenance",
+    "catalog prices, technical families, units, asset roles, and asset object keys remain bound to their exact source",
+    "every line carries a matching tax decision; a zero-tax choice always contains its structured confirmation",
+    "all monetary values are recalculated from line inputs with BigInt half-up and largest-remainder allocation before sealing",
+    "allowlisted public views structurally omit purchase pricing, margin, private object keys, and all private full hashes"
+  ]
+}

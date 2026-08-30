@@ -83,6 +83,7 @@ const provenanceSchema = z.strictObject({
   ]),
   sourceDocumentSha256: sha256Schema.nullable(),
 });
+export const catalogProvenanceV1Schema = provenanceSchema;
 export type CatalogProvenanceV1 = z.infer<typeof provenanceSchema>;
 
 const catalogAssetSchema = z.strictObject({
@@ -97,6 +98,7 @@ const catalogAssetSchema = z.strictObject({
   ]),
   originalFilename: z.string().trim().min(1).max(180),
 });
+export const catalogAssetV1Schema = catalogAssetSchema;
 export type CatalogAssetV1 = z.infer<typeof catalogAssetSchema>;
 
 const capabilitySchema = z.enum([

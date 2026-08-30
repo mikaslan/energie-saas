@@ -200,6 +200,13 @@ export const projectCatalogResolution = pgTable(
   },
   (t) => [
     uniqueIndex("project_catalog_resolution_ws_id_uq").on(t.workspaceId, t.id),
+    unique("project_catalog_resolution_ws_exact_source_uq").on(
+      t.workspaceId,
+      t.id,
+      t.projectId,
+      t.revision,
+      t.resolutionSha256,
+    ),
     unique("project_catalog_resolution_ws_id_project_uq").on(
       t.workspaceId,
       t.id,

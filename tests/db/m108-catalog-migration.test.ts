@@ -95,7 +95,7 @@ async function tenantQuery<Row extends Record<string, unknown> = Record<string, 
 
 it("deklariert M1-08 als additive 0030 und pinnt 0000 bis 0029 bytegenau", () => {
   const journal = migrationJournal();
-  expect(journal.entries.map((entry) => entry.idx)).toEqual(
+  expect(journal.entries.slice(0, M1_08_MIGRATION_INDEX + 1).map((entry) => entry.idx)).toEqual(
     Array.from({ length: M1_08_MIGRATION_INDEX + 1 }, (_, index) => index),
   );
   expect(prefixHistorySha256(M1_07_LAST_MIGRATION_INDEX)).toBe(M1_07_HISTORY_SHA256);
@@ -209,7 +209,7 @@ it("installiert das Fresh-Schema mit Cascades, RLS und idempotenter Historie", a
       "select count(*)::int as n from drizzle.__drizzle_migrations",
     );
     expect(afterRerun.rows).toEqual(beforeRerun.rows);
-    expect(afterRerun.rows[0]?.n).toBe(M1_08_MIGRATION_INDEX + 1);
+    expect(afterRerun.rows[0]?.n).toBe(migrationJournal().entries.length);
   } finally {
     await pool.end().catch(() => undefined);
     await embedded.stop().catch(() => undefined);

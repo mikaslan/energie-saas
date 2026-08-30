@@ -1,5 +1,14 @@
-import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { PgBoss } from "pg-boss";
@@ -12,6 +21,7 @@ import {
   sealCatalogComponentRevision,
   sealProjectCatalogResolution,
 } from "../../lib/integrations/catalog/contract";
+import { canonicalizeOfferJson } from "../../lib/integrations/offers/contract";
 import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
 import {
   startEmbeddedPostgres,
@@ -23,6 +33,13 @@ const MIGRATOR_PASSWORD = "m107_erasure_migrator";
 const RUNTIME_PASSWORD = "m107_erasure_runtime";
 const WORKER_PASSWORD = "m107_erasure_worker";
 const TOMBSTONE_REASON = "inactive_lead_24_months";
+const PRE_M2_INDEX = 31;
+
+type MigrationJournal = {
+  version: string;
+  dialect: string;
+  entries: Array<{ idx: number; tag: string; [key: string]: unknown }>;
+};
 
 const snapshotPayload = {
   schemaVersion: "wmee-solar-snapshot.v1",
@@ -92,6 +109,14 @@ type CatalogErasureFixture = {
   resolutionId: string;
 };
 
+type OfferErasureFixture = {
+  offerId: string;
+  variantId: string;
+  revisionId: string;
+  sectionId: string;
+  lineId: string;
+};
+
 function serviceUrl(
   embedded: EmbeddedTestDatabase,
   role: string,
@@ -101,6 +126,29 @@ function serviceUrl(
   url.username = role;
   url.password = password;
   return url.toString();
+}
+
+function migrationPrefixThrough(maxIndex: number): string {
+  const source = resolve("drizzle");
+  const target = mkdtempSync(join(tmpdir(), "energie-saas-erasure-upgrade-"));
+  mkdirSync(join(target, "meta"), { recursive: true });
+  const journal = JSON.parse(
+    readFileSync(join(source, "meta", "_journal.json"), "utf8"),
+  ) as MigrationJournal;
+  const entries = journal.entries.filter((entry) => entry.idx <= maxIndex);
+  if (entries.length !== maxIndex + 1 || entries.at(-1)?.idx !== maxIndex) {
+    rmSync(target, { recursive: true, force: true });
+    throw new Error(`Migrationspraefix 0..${maxIndex} ist nicht lueckenlos.`);
+  }
+  for (const entry of entries) {
+    cpSync(join(source, `${entry.tag}.sql`), join(target, `${entry.tag}.sql`));
+  }
+  writeFileSync(
+    join(target, "meta", "_journal.json"),
+    `${JSON.stringify({ ...journal, entries }, null, 2)}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  return target;
 }
 
 function monthsAgo(months: number): Date {
@@ -719,6 +767,291 @@ async function createCatalogResolutionForErasure(
   return { componentId, resolutionId };
 }
 
+async function createOfferForErasure(
+  admin: Pool,
+  fixture: SubjectFixture,
+  catalog: CatalogErasureFixture,
+  options: { revisionCreatedAt?: Date } = {},
+): Promise<OfferErasureFixture> {
+  const project = fixture.projects[0];
+  if (!project?.revisionId) throw new Error("Offer-Erasure-Fixture verlangt eine Berechnung.");
+
+  const offerId = randomUUID();
+  const variantId = randomUUID();
+  const revisionId = randomUUID();
+  const sectionId = randomUUID();
+  const sectionDomainId = randomUUID();
+  const lineId = randomUUID();
+  const lineDomainId = randomUUID();
+  const offerCreatedAt = fixture.oldAt.toISOString();
+  const revisionCreatedAt = (options.revisionCreatedAt ?? fixture.oldAt).toISOString();
+  const resolution = await admin.query<{
+    resolution_sha256: string;
+  }>(
+    `select encode(resolution_sha256, 'hex') as resolution_sha256
+       from public.project_catalog_resolution
+      where workspace_id = $1 and id = $2`,
+    [fixture.workspaceId, catalog.resolutionId],
+  );
+  const resolutionSha256 = resolution.rows[0]?.resolution_sha256;
+  if (!resolutionSha256) throw new Error("Offer-Erasure-Aufloesung fehlt.");
+
+  const sourceBindings = {
+    projectId: project.id,
+    contactId: fixture.contactId,
+    siteId: project.siteId,
+    inboundReceiptId: project.receiptId,
+    inboundPayloadSha256: "10".repeat(32),
+    requirementId: project.requirementId,
+    requirementRevision: 1,
+    calculationRevisionId: project.revisionId,
+    calculationRevision: 1,
+    calculationInputSha256: "40".repeat(32),
+    calculationResultSha256: "50".repeat(32),
+    resolutionId: catalog.resolutionId,
+    resolutionRevision: 1,
+    resolutionSha256,
+  };
+  const priceAudienceDecision = {
+    audience: "b2c",
+    confirmationCode: "b2c_operator_confirmed",
+    confirmedBy: fixture.actorId,
+    confirmedAt: offerCreatedAt,
+  };
+  const contactContext = {
+    displayName: fixture.marker,
+    emailPrimary: fixture.email,
+    phoneE164: "+491701234567",
+  };
+  const installationSiteContext = {
+    addressRevision: 1,
+    formattedAddress: `${fixture.marker} Adresse`,
+    street: "PII-Strasse",
+    houseNumber: "7",
+    postalCode: "10115",
+    city: "PII-Stadt",
+    country: "DE",
+  };
+  const lineSnapshot = {
+    lineDomainId,
+    position: 1,
+    componentCategory: "other",
+    positionType: "required",
+    isHidden: false,
+    quantityMilli: 1_000,
+    product: {
+      kind: "custom",
+      displayName: `${fixture.marker} freie Position`,
+      description: fixture.email,
+      unit: "piece",
+    },
+    source: { kind: "custom" },
+    salesPricing: { originalUnitNetCents: 100, effectiveUnitNetCents: 100 },
+    purchasePricing: { originalUnitNetCents: 50, effectiveUnitNetCents: 50 },
+    lineDiscountBps: 0,
+    taxTreatment: "standard_19",
+    taxRateBps: 1_900,
+    computed: {
+      lineBaseNetCents: 100,
+      lineDiscountedNetCents: 100,
+      sectionDiscountedNetCents: 100,
+      finalSalesNetCents: 100,
+      salesTaxCents: 19,
+      salesGrossCents: 119,
+      purchaseNetCents: 50,
+    },
+  };
+  const sectionSnapshot = {
+    sectionDomainId,
+    position: 1,
+    category: "other",
+    title: `${fixture.marker} Sektion`,
+    discountBps: 0,
+    lines: [lineSnapshot],
+  };
+  const revisionSnapshotBody = {
+    schemaVersion: "offer-variant-snapshot.v1",
+    canonicalizationVersion: "offer-jcs.v1",
+    workspaceId: fixture.workspaceId,
+    offerId,
+    variantId,
+    revision: 1,
+    sourceBindings,
+    priceAudienceDecision,
+    contactContext,
+    installationSiteContext,
+    variantName: "Basis",
+    description: `${fixture.marker} Variante`,
+    createdBy: fixture.actorId,
+    createdAt: revisionCreatedAt,
+    totals: {
+      basisNetCents: 100,
+      basisTaxCents: 19,
+      basisGrossCents: 119,
+      optionalNetCents: 0,
+      optionalTaxCents: 0,
+      optionalGrossCents: 0,
+    },
+    sections: [sectionSnapshot],
+  };
+  const snapshotSha256 = createHash("sha256")
+    .update(canonicalizeOfferJson(revisionSnapshotBody), "utf8")
+    .digest("hex");
+  const revisionSnapshot = { ...revisionSnapshotBody, snapshotSha256 };
+
+  const client = await admin.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_catalog.set_config('app.workspace_id', $1, true)", [
+      fixture.workspaceId,
+    ]);
+    await client.query(
+      `insert into public.offer_number_series (
+         workspace_id, series_year, last_sequence, created_at, updated_at
+       ) values ($1, 2024, 1, $2, $2)`,
+      [fixture.workspaceId, fixture.oldAt],
+    );
+    await client.query(
+      `insert into public.offer (
+         id, workspace_id, project_id, contact_id, site_id,
+         offer_number, number_year, number_sequence,
+         price_audience_decision, contact_context, installation_site_context,
+         source_bindings, inbound_receipt_id, inbound_payload_sha256,
+         requirement_id, requirement_revision, calculation_revision_id,
+         calculation_revision, calculation_input_sha256,
+         calculation_result_sha256, resolution_id, resolution_revision,
+         resolution_sha256, create_digest, created_by, created_at, updated_at
+       ) values (
+         $1, $2, $3, $4, $5, 'ANG-2024-000001', 2024, 1,
+         $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10,
+         decode(repeat('10', 32), 'hex'), $11, 1, $12, 1,
+         decode(repeat('40', 32), 'hex'), decode(repeat('50', 32), 'hex'),
+         $13, 1, decode($14, 'hex'), decode(repeat('aa', 32), 'hex'),
+         $15, $16::timestamptz, $16::timestamptz
+       )`,
+      [
+        offerId,
+        fixture.workspaceId,
+        project.id,
+        fixture.contactId,
+        project.siteId,
+        JSON.stringify(priceAudienceDecision),
+        JSON.stringify(contactContext),
+        JSON.stringify(installationSiteContext),
+        JSON.stringify(sourceBindings),
+        project.receiptId,
+        project.requirementId,
+        project.revisionId,
+        catalog.resolutionId,
+        resolutionSha256,
+        fixture.actorId,
+        offerCreatedAt,
+      ],
+    );
+    await client.query(
+      `insert into public.offer_variant (
+         id, workspace_id, offer_id, ordinal, current_revision, name,
+         description, created_by, created_at, updated_at
+       ) values ($1, $2, $3, 1, 1, 'Basis', $4, $5, $6::timestamptz, $6::timestamptz)`,
+      [
+        variantId,
+        fixture.workspaceId,
+        offerId,
+        `${fixture.marker} Variante`,
+        fixture.actorId,
+        fixture.oldAt.toISOString(),
+      ],
+    );
+    await client.query(
+      `insert into public.offer_variant_revision (
+         id, workspace_id, offer_id, variant_id, project_id, revision,
+         schema_version, canonicalization_version, revision_snapshot,
+         snapshot_sha256, resolution_id, resolution_revision,
+         resolution_sha256, basis_net_cents, basis_tax_cents,
+         basis_gross_cents, optional_net_cents, optional_tax_cents,
+         optional_gross_cents, created_by, created_at
+       ) values (
+         $1, $2, $3, $4, $5, 1, 'offer-variant-snapshot.v1',
+         'offer-jcs.v1', $6::jsonb, decode($7, 'hex'), $8, 1,
+         decode($9, 'hex'), 100, 19, 119, 0, 0, 0, $10, $11::timestamptz
+       )`,
+      [
+        revisionId,
+        fixture.workspaceId,
+        offerId,
+        variantId,
+        project.id,
+        JSON.stringify(revisionSnapshot),
+        snapshotSha256,
+        catalog.resolutionId,
+        resolutionSha256,
+        fixture.actorId,
+        revisionCreatedAt,
+      ],
+    );
+    await client.query(
+      `insert into public.offer_variant_section (
+         id, workspace_id, offer_id, variant_id, project_id, revision_id,
+         revision, section_domain_id, position, category, title,
+         discount_bps, section_snapshot, created_at
+       ) values ($1, $2, $3, $4, $5, $6, 1, $7, 1, 'other', $8, 0,
+                 $9::jsonb, $10::timestamptz)`,
+      [
+        sectionId,
+        fixture.workspaceId,
+        offerId,
+        variantId,
+        project.id,
+        revisionId,
+        sectionDomainId,
+        `${fixture.marker} Sektion`,
+        JSON.stringify(sectionSnapshot),
+        revisionCreatedAt,
+      ],
+    );
+    await client.query(
+      `insert into public.offer_bom_line (
+         id, workspace_id, offer_id, variant_id, project_id, revision_id,
+         revision, section_id, section_domain_id, line_domain_id, position,
+         component_category, position_type, is_hidden, quantity_milli, unit,
+         source_kind, original_sales_unit_net_cents,
+         effective_sales_unit_net_cents, original_purchase_unit_net_cents,
+         effective_purchase_unit_net_cents, line_discount_bps, tax_treatment,
+         tax_rate_bps, line_base_net_cents, line_discounted_net_cents,
+         section_discounted_net_cents, final_sales_net_cents, sales_tax_cents,
+         sales_gross_cents, purchase_net_cents, line_snapshot, created_at
+       ) values (
+         $1, $2, $3, $4, $5, $6, 1, $7, $8, $9, 1, 'other', 'required',
+         false, 1000, 'piece', 'custom', 100, 100, 50, 50, 0,
+         'standard_19', 1900, 100, 100, 100, 100, 19, 119, 50,
+         $10::jsonb, $11::timestamptz
+       )`,
+      [
+        lineId,
+        fixture.workspaceId,
+        offerId,
+        variantId,
+        project.id,
+        revisionId,
+        sectionId,
+        sectionDomainId,
+        lineDomainId,
+        JSON.stringify(lineSnapshot),
+        revisionCreatedAt,
+      ],
+    );
+    await client.query("set constraints all immediate");
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  return { offerId, variantId, revisionId, sectionId, lineId };
+}
+
 async function restoreSubject(admin: Pool, fixture: SubjectFixture): Promise<void> {
   await admin.query(
     `update public.contact
@@ -824,19 +1157,25 @@ async function mutateTombstoneAsOwner(
   }
 }
 
-describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
+describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY-01]", () => {
   let embedded: EmbeddedTestDatabase;
   let admin: Pool;
   let ownerPool: Pool;
   let workerPool: Pool;
+  let migrationPrefixDir: string;
   let eligible: SubjectFixture;
   let eligibleCatalog: CatalogErasureFixture;
+  let eligibleOffer: OfferErasureFixture;
+  let freshOfferSubject: SubjectFixture;
+  let freshOffer: OfferErasureFixture;
+  let legacyReplay: SubjectFixture;
   let recent: SubjectFixture;
   let held: SubjectFixture;
   let won: SubjectFixture;
   let running: SubjectFixture;
   let locked: SubjectFixture;
   let operationId: string;
+  let legacyOperationId: string;
   let initialErasureCompleted = false;
 
   beforeAll(async () => {
@@ -849,7 +1188,18 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
       options: "-c role=app_owner",
       max: 1,
     });
+    migrationPrefixDir = migrationPrefixThrough(PRE_M2_INDEX);
+    await migrate(drizzle(ownerPool), { migrationsFolder: migrationPrefixDir });
+    legacyReplay = await createSubject(admin, { ageMonths: 25 });
+    legacyOperationId = randomUUID();
+    await callAsErasure(admin, "erase_inactive_lead", [
+      legacyReplay.workspaceId,
+      legacyReplay.contactId,
+      legacyOperationId,
+    ]);
+
     await migrate(drizzle(ownerPool), { migrationsFolder: resolve("drizzle") });
+    await restoreSubject(admin, legacyReplay);
     const owner = await ownerPool.connect();
     try {
       await applyRoleContract(owner);
@@ -863,6 +1213,12 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
 
     eligible = await createSubject(admin, { ageMonths: 25, sharedAndExclusive: true });
     eligibleCatalog = await createCatalogResolutionForErasure(admin, eligible);
+    eligibleOffer = await createOfferForErasure(admin, eligible, eligibleCatalog);
+    freshOfferSubject = await createSubject(admin, { ageMonths: 25 });
+    const freshCatalog = await createCatalogResolutionForErasure(admin, freshOfferSubject);
+    freshOffer = await createOfferForErasure(admin, freshOfferSubject, freshCatalog, {
+      revisionCreatedAt: new Date(),
+    });
     recent = await createSubject(admin, { ageMonths: 23 });
     held = await createSubject(admin, { ageMonths: 25 });
     won = await createSubject(admin, { ageMonths: 25, outcome: "won" });
@@ -875,6 +1231,7 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
     await ownerPool?.end().catch(() => undefined);
     await admin?.end().catch(() => undefined);
     await embedded?.stop().catch(() => undefined);
+    if (migrationPrefixDir) rmSync(migrationPrefixDir, { recursive: true, force: true });
   });
 
   it("pinnt den NOLOGIN-Principal, zwei geschlossene Definer-Routinen und keinerlei Tabellenrecht", async () => {
@@ -928,6 +1285,62 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
         owner: "app_owner",
         security_definer: true,
         config: ["search_path=pg_catalog"],
+      },
+    ]);
+    const m201Helpers = await admin.query<{
+      signature: string;
+      owner: string;
+      security_definer: boolean;
+      config: string[] | null;
+      public_execute: boolean;
+      erasure_execute: boolean;
+    }>(`
+      select routine.proname || '(' || pg_catalog.oidvectortypes(routine.proargtypes) || ')'
+               as signature,
+             owner.rolname as owner,
+             routine.prosecdef as security_definer,
+             routine.proconfig as config,
+             pg_catalog.has_function_privilege(
+               'public', routine.oid, 'execute'
+             ) as public_execute,
+             pg_catalog.has_function_privilege(
+               'app_erasure', routine.oid, 'execute'
+             ) as erasure_execute
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        join pg_catalog.pg_roles owner on owner.oid = routine.proowner
+       where namespace.nspname = 'public'
+         and routine.proname in (
+           'build_inactive_lead_erasure_graph',
+           'guard_erasure_tombstone_worm',
+           'guard_offer_erasure_mutation'
+         )
+       order by signature
+    `);
+    expect.soft(m201Helpers.rows).toEqual([
+      {
+        signature: "build_inactive_lead_erasure_graph(uuid, uuid)",
+        owner: "app_owner",
+        security_definer: false,
+        config: ["search_path=pg_catalog"],
+        public_execute: false,
+        erasure_execute: false,
+      },
+      {
+        signature: "guard_erasure_tombstone_worm()",
+        owner: "app_owner",
+        security_definer: false,
+        config: ["search_path=pg_catalog"],
+        public_execute: false,
+        erasure_execute: false,
+      },
+      {
+        signature: "guard_offer_erasure_mutation()",
+        owner: "app_owner",
+        security_definer: false,
+        config: ["search_path=pg_catalog"],
+        public_execute: false,
+        erasure_execute: false,
       },
     ]);
     const routineAcl = await admin.query<{
@@ -1056,6 +1469,75 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
     expect(await tombstoneCount(admin, recent)).toBe(0);
   });
 
+  it("wertet eine frische Offer-Revision als Aktivitaet und sperrt Runtime-Loeschungen", async () => {
+    await expectErasureRejection(
+      callAsErasure(admin, "erase_inactive_lead", [
+        freshOfferSubject.workspaceId,
+        freshOfferSubject.contactId,
+        randomUUID(),
+      ]),
+      /erasure_not_eligible/,
+    );
+    expect(await tombstoneCount(admin, freshOfferSubject)).toBe(0);
+
+    await expect(
+      mutateTombstoneAsOwner(
+        ownerPool,
+        freshOfferSubject.workspaceId,
+        "delete from public.offer where workspace_id = $1 and id = $2",
+        [freshOfferSubject.workspaceId, freshOffer.offerId],
+      ),
+    ).rejects.toThrow(/DELETE ist nur im Erasurevertrag erlaubt/);
+    await expect(
+      mutateTombstoneAsOwner(
+        ownerPool,
+        freshOfferSubject.workspaceId,
+        "delete from public.offer_variant_revision where workspace_id = $1 and id = $2",
+        [freshOfferSubject.workspaceId, freshOffer.revisionId],
+      ),
+    ).rejects.toThrow(/DELETE ist nur im Erasurevertrag erlaubt/);
+  });
+
+  it("wartet hinter einer Offer-Mutation in globaler Project-vor-Offer-Reihenfolge", async () => {
+    const mutation = await ownerPool.connect();
+    try {
+      await mutation.query("begin");
+      await mutation.query("select pg_catalog.set_config('app.workspace_id', $1, true)", [
+        freshOfferSubject.workspaceId,
+      ]);
+      await mutation.query(
+        `select 1 from public.project
+          where workspace_id = $1 and id = $2 for update`,
+        [freshOfferSubject.workspaceId, freshOfferSubject.projects[0]!.id],
+      );
+      await mutation.query(
+        `select 1 from public.offer
+          where workspace_id = $1 and id = $2 for update`,
+        [freshOfferSubject.workspaceId, freshOffer.offerId],
+      );
+      await expectErasureRejection(
+        callAsErasure(
+          admin,
+          "erase_inactive_lead",
+          [freshOfferSubject.workspaceId, freshOfferSubject.contactId, randomUUID()],
+          "250ms",
+        ),
+        /lock timeout|could not obtain lock/i,
+        "55P03",
+      );
+      expect(await tombstoneCount(admin, freshOfferSubject)).toBe(0);
+      const retained = await admin.query<{ count: number }>(
+        `select count(*)::int as count from public.offer
+          where workspace_id = $1 and id = $2`,
+        [freshOfferSubject.workspaceId, freshOffer.offerId],
+      );
+      expect(retained.rows[0]!.count).toBe(1);
+    } finally {
+      await mutation.query("rollback").catch(() => undefined);
+      mutation.release();
+    }
+  });
+
   it("schließt einen aktiven Legal Hold und einen Lead mit Vertrag vollständig aus", async () => {
     await admin.query(
       `insert into public.contact_legal_hold (
@@ -1175,6 +1657,12 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
       catalog_resolution_lines: number;
       catalog_components: number;
       catalog_component_revisions: number;
+      offers: number;
+      offer_variants: number;
+      offer_revisions: number;
+      offer_sections: number;
+      offer_lines: number;
+      offer_number_series: number;
     }>(`
       select
         (select count(*)::int from public.site_energy_profile
@@ -1200,7 +1688,19 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
         (select count(*)::int from public.catalog_component
           where workspace_id = $1 and id = $6) as catalog_components,
         (select count(*)::int from public.catalog_component_revision
-          where workspace_id = $1 and component_id = $6) as catalog_component_revisions
+          where workspace_id = $1 and component_id = $6) as catalog_component_revisions,
+        (select count(*)::int from public.offer
+          where workspace_id = $1 and id = $7) as offers,
+        (select count(*)::int from public.offer_variant
+          where workspace_id = $1 and id = $8) as offer_variants,
+        (select count(*)::int from public.offer_variant_revision
+          where workspace_id = $1 and id = $9) as offer_revisions,
+        (select count(*)::int from public.offer_variant_section
+          where workspace_id = $1 and id = $10) as offer_sections,
+        (select count(*)::int from public.offer_bom_line
+          where workspace_id = $1 and id = $11) as offer_lines,
+        (select count(*)::int from public.offer_number_series
+          where workspace_id = $1 and series_year = 2024) as offer_number_series
     `, [
       eligible.workspaceId,
       eligible.sites.map((site) => site.id),
@@ -1208,6 +1708,11 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
       eligible.actorId,
       eligibleCatalog.resolutionId,
       eligibleCatalog.componentId,
+      eligibleOffer.offerId,
+      eligibleOffer.variantId,
+      eligibleOffer.revisionId,
+      eligibleOffer.sectionId,
+      eligibleOffer.lineId,
     ]);
     expect(remaining.rows[0]).toEqual({
       profiles: 0,
@@ -1222,6 +1727,12 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
       catalog_resolution_lines: 0,
       catalog_components: 1,
       catalog_component_revisions: 1,
+      offers: 0,
+      offer_variants: 0,
+      offer_revisions: 0,
+      offer_sections: 0,
+      offer_lines: 0,
+      offer_number_series: 1,
     });
 
     const retainedPii = await admin.query<{ document: string }>(`
@@ -1253,16 +1764,46 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
       contact_id: string;
       reason: string;
       graph_sha256_length: number;
+      graph_sha256_hex: string;
       tombstone_sha256_length: number;
       graph_ids: unknown;
       eligible_at: Date;
       erased_at: Date;
       document: string;
+      graph_hash_valid: boolean;
+      tombstone_hash_valid: boolean;
+      event_graph_sha256: string;
+      audit_graph_sha256: string;
     }>(`
       select operation_id, workspace_id, contact_id, reason,
              pg_catalog.octet_length(graph_sha256) as graph_sha256_length,
+             pg_catalog.encode(graph_sha256, 'hex') as graph_sha256_hex,
              pg_catalog.octet_length(tombstone_sha256) as tombstone_sha256_length,
-             graph_ids, eligible_at, erased_at, pg_catalog.to_jsonb(tombstone)::text as document
+             graph_ids, eligible_at, erased_at,
+             graph_sha256 = pg_catalog.sha256(
+               pg_catalog.convert_to(graph_ids::text, 'UTF8')
+             ) as graph_hash_valid,
+             tombstone_sha256 = pg_catalog.sha256(pg_catalog.convert_to(
+               pg_catalog.concat_ws(
+                 '|', operation_id::text, workspace_id::text, contact_id::text,
+                 reason, pg_catalog.encode(graph_sha256, 'hex'),
+                 pg_catalog.encode(pg_catalog.timestamptz_send(eligible_at), 'hex'),
+                 pg_catalog.encode(pg_catalog.timestamptz_send(erased_at), 'hex')
+               ), 'UTF8'
+             )) as tombstone_hash_valid,
+             (select event.payload->>'graphSha256'
+                from public.domain_events as event
+               where event.workspace_id = tombstone.workspace_id
+                 and event.event_type = 'contact.erased'
+                 and event.payload->>'operationId' = tombstone.operation_id::text
+               limit 1) as event_graph_sha256,
+             (select audit.details->>'graphSha256'
+                from public.audit_log as audit
+               where audit.workspace_id = tombstone.workspace_id
+                 and audit.action = 'contact.erase_inactive_lead'
+                 and audit.details->>'operationId' = tombstone.operation_id::text
+               limit 1) as audit_graph_sha256,
+             pg_catalog.to_jsonb(tombstone)::text as document
         from public.erasure_tombstone tombstone where operation_id = $1
     `, [operationId]);
     expect(tombstone.rows[0]).toMatchObject({
@@ -1272,10 +1813,33 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
       reason: TOMBSTONE_REASON,
       graph_sha256_length: 32,
       tombstone_sha256_length: 32,
+      graph_hash_valid: true,
+      tombstone_hash_valid: true,
     });
+    expect(tombstone.rows[0]!.event_graph_sha256).toBe(
+      tombstone.rows[0]!.graph_sha256_hex,
+    );
+    expect(tombstone.rows[0]!.audit_graph_sha256).toBe(
+      tombstone.rows[0]!.graph_sha256_hex,
+    );
     expect(tombstone.rows[0]!.eligible_at).toBeInstanceOf(Date);
     expect(tombstone.rows[0]!.erased_at).toBeInstanceOf(Date);
     expect(tombstone.rows[0]!.graph_ids).toBeTypeOf("object");
+    expect(tombstone.rows[0]!.graph_ids).toMatchObject({
+      offerIds: [eligibleOffer.offerId],
+      offerVariantIds: [eligibleOffer.variantId],
+      offerVariantRevisionIds: [eligibleOffer.revisionId],
+      offerVariantSectionIds: [eligibleOffer.sectionId],
+      offerBomLineIds: [eligibleOffer.lineId],
+    });
+    for (const [key, value] of Object.entries(
+      tombstone.rows[0]!.graph_ids as Record<string, unknown>,
+    )) {
+      if (key === "contactId") continue;
+      expect(value, `${key} muss deterministisch UUID-sortiert sein`).toEqual(
+        [...(value as string[])].sort(),
+      );
+    }
     expect(tombstone.rows[0]!.document).not.toContain(eligible.marker);
     expect(tombstone.rows[0]!.document).not.toContain(eligible.email);
     await expect(
@@ -1301,6 +1865,44 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
         "truncate public.erasure_tombstone",
       ),
     ).rejects.toThrow(/append-only|WORM/i);
+    await expect(
+      mutateTombstoneAsOwner(
+        ownerPool,
+        eligible.workspaceId,
+        `insert into public.erasure_tombstone (
+           operation_id, workspace_id, contact_id, reason, graph_sha256,
+           tombstone_sha256, graph_ids, eligible_at, erased_at
+         )
+         select $2, workspace_id, contact_id, reason, graph_sha256,
+                tombstone_sha256,
+                jsonb_set(graph_ids, '{projectIds}', (
+                  select jsonb_agg(value order by value desc)
+                    from jsonb_array_elements(graph_ids->'projectIds') as item(value)
+                )),
+                eligible_at, erased_at
+           from public.erasure_tombstone where operation_id = $1`,
+        [operationId, randomUUID()],
+      ),
+    ).rejects.toThrow(/kanonisch sortierten ID-only-Graphen/);
+    await expect(
+      mutateTombstoneAsOwner(
+        ownerPool,
+        eligible.workspaceId,
+        `insert into public.erasure_tombstone (
+           operation_id, workspace_id, contact_id, reason, graph_sha256,
+           tombstone_sha256, graph_ids, eligible_at, erased_at
+         )
+         select $2, workspace_id, contact_id, reason, graph_sha256,
+                tombstone_sha256,
+                graph_ids - array[
+                  'offerIds', 'offerVariantIds', 'offerVariantRevisionIds',
+                  'offerVariantSectionIds', 'offerBomLineIds'
+                ]::text[],
+                eligible_at, erased_at
+           from public.erasure_tombstone where operation_id = $1`,
+        [operationId, randomUUID()],
+      ),
+    ).rejects.toThrow(/keinen kanonischen ID-only-Graphen/);
   });
 
   it("löscht nach simuliertem Restore denselben Graph erneut und bleibt bei Replay einfach", async () => {
@@ -1328,5 +1930,60 @@ describe.sequential("M1-07 DSGVO-Erasure- und Restorevertrag", () => {
           where workspace_id = $1 and project_id = any($3::uuid[])) as jobs
     `, [eligible.workspaceId, eligible.contactId, eligible.projects.map((project) => project.id)]);
     expect(restored.rows[0]).toEqual({ deleted: true, snapshots: 0, jobs: 0 });
+  });
+
+  it("replayt einen vor M2-01 erzeugten Tombstone ohne Hash- oder Graphmigration idempotent", async () => {
+    const stored = await admin.query<{
+      graph_ids: Record<string, unknown>;
+      graph_hash_valid: boolean;
+    }>(
+      `select graph_ids,
+              graph_sha256 = sha256(convert_to(graph_ids::text, 'UTF8'))
+                as graph_hash_valid
+         from public.erasure_tombstone
+        where operation_id = $1`,
+      [legacyOperationId],
+    );
+    expect(stored.rows[0]!.graph_hash_valid).toBe(true);
+    expect(Object.keys(stored.rows[0]!.graph_ids).sort()).toEqual([
+      "contactId",
+      "jobIds",
+      "legalHoldIds",
+      "profileIds",
+      "projectIds",
+      "receiptIds",
+      "requirementIds",
+      "revisionIds",
+      "siteIds",
+      "snapshotIds",
+    ]);
+
+    await expect(
+      callAsErasure(admin, "replay_erasure_tombstone", [legacyOperationId]),
+    ).resolves.toBe(legacyOperationId);
+    await expect(
+      callAsErasure(admin, "replay_erasure_tombstone", [legacyOperationId]),
+    ).resolves.toBe(legacyOperationId);
+
+    const erased = await admin.query<{
+      deleted: boolean;
+      jobs: number;
+      tombstones: number;
+    }>(
+      `select
+         (select deleted_at is not null from public.contact
+           where workspace_id = $1 and id = $2) as deleted,
+         (select count(*)::int from public.project_calculation_job
+           where workspace_id = $1 and project_id = any($3::uuid[])) as jobs,
+         (select count(*)::int from public.erasure_tombstone
+           where operation_id = $4) as tombstones`,
+      [
+        legacyReplay.workspaceId,
+        legacyReplay.contactId,
+        legacyReplay.projects.map((project) => project.id),
+        legacyOperationId,
+      ],
+    );
+    expect(erased.rows[0]).toEqual({ deleted: true, jobs: 0, tombstones: 1 });
   });
 });

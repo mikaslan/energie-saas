@@ -60,14 +60,33 @@ interface MembershipCtxRow {
   [key: string]: unknown;
 }
 
-function asFlagRecord(value: unknown): Record<string, boolean> {
-  // jsonb liefert zur Laufzeit beliebige Strukturen. Es wird hier NICHT
-  // normalisiert oder gefiltert — can() vergleicht mit === true und ist damit
-  // fail-closed (siehe lib/permissions.ts). Ein Filter hier würde nur eine
-  // zweite, abweichende Wahrheit erzeugen.
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, boolean>)
-    : {};
+function asFlagRecord(
+  value: unknown,
+  field: "capabilities" | "feature_flags",
+  actor: string,
+): Record<string, boolean> {
+  // These records contain security decisions, including the negative
+  // external_only flag. Normalising malformed JSON to {} would turn an
+  // invalid external membership into an internal admin. Reject non-objects
+  // and non-boolean values at the identity boundary instead.
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new PermissionDeniedError(
+      WORKSPACE_ACCESS,
+      "workspace",
+      `malformed ${field}`,
+      actor,
+    );
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.some(([, flag]) => typeof flag !== "boolean")) {
+    throw new PermissionDeniedError(
+      WORKSPACE_ACCESS,
+      "workspace",
+      `malformed ${field}`,
+      actor,
+    );
+  }
+  return Object.fromEntries(entries) as Record<string, boolean>;
 }
 
 function buildServiceCtx(workspaceId: string, row: MembershipCtxRow): ServiceCtx {
@@ -84,8 +103,8 @@ function buildServiceCtx(workspaceId: string, row: MembershipCtxRow): ServiceCtx
     workspaceId,
     actor: row.user_identity_id,
     role: row.role,
-    capabilities: asFlagRecord(row.capabilities),
-    featureFlags: asFlagRecord(row.feature_flags),
+    capabilities: asFlagRecord(row.capabilities, "capabilities", row.user_identity_id),
+    featureFlags: asFlagRecord(row.feature_flags, "feature_flags", row.user_identity_id),
   };
 }
 

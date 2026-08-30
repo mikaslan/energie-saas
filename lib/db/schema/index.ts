@@ -17,5 +17,6 @@ export * from "./events";
 export * from "./energy";
 export * from "./erasure";
 export * from "./intake";
+export * from "./offers";
 export * from "./project";
 export * from "./site";

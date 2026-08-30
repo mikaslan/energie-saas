@@ -186,6 +186,15 @@ describe("M1-05 Default-Request-Kanban", () => {
         position: 3,
         is_intake: false,
       },
+      {
+        board_name: "Anfragen",
+        scope: "residential",
+        is_default: true,
+        column_name: "Angebote",
+        column_type: "offer",
+        position: 4,
+        is_intake: false,
+      },
     ]);
   });
 
@@ -209,6 +218,7 @@ describe("M1-05 Default-Request-Kanban", () => {
       "Eingang",
       "In Prüfung",
       "Qualifiziert",
+      "Angebote",
     ]);
     expect(board.columns[0].cards).toHaveLength(1);
     expect(board.columns.slice(1).flatMap((column) => column.cards)).toHaveLength(0);

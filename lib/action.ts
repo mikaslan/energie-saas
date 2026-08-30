@@ -1,7 +1,13 @@
 import { writeAudit } from "./audit";
 import { withSessionTenant, withTenant } from "./db/tenant";
 import type { TenantTx } from "./db/types";
-import { PermissionDeniedError, WORKSPACE_ACCESS, type DeniedAction, type ServiceCtx } from "./permissions";
+import {
+  PermissionDeniedError,
+  WORKSPACE_ACCESS,
+  type Action,
+  type DeniedAction,
+  type ServiceCtx,
+} from "./permissions";
 import { getSessionUser } from "./session";
 import type { VerifiedRechnerIdentity } from "./integrations/rechner/signature";
 
@@ -110,6 +116,81 @@ export function authorizedAction<T>(
   fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
 ): Promise<T> {
   return authorizedCall(workspaceId, action, resource, fn);
+}
+
+/**
+ * Offer mutations use a committed, content-free admission transaction before
+ * the normal domain transaction. This is intentionally a separate boundary:
+ * validation, replay, conflict, fine-grained denial, or a domain rollback can
+ * never erase the attempt that was already admitted.
+ */
+export async function authorizedOfferMutationAction<T>(
+  workspaceId: string,
+  requiredActions: Action | readonly [Action, ...Action[]],
+  resource: string,
+  fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
+): Promise<T> {
+  const actions = typeof requiredActions === "string"
+    ? [requiredActions]
+    : [...requiredActions];
+  const primaryAction = actions[0];
+  if (!primaryAction) throw new TypeError("offer mutation requires an action");
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) throw new NotAuthenticatedError();
+
+  // Keep the offer-only, server-marked admission module behind the offer
+  // mutation boundary. General actions and their Client Component facades
+  // import this module as well; eagerly pulling in `server-only` there would
+  // make unrelated UI/build imports fail before an offer mutation is called.
+  const {
+    OfferRateLimitError,
+    reserveOfferMutationAttempt,
+  } = await import("./integrations/offers/admission");
+
+  let admission;
+  try {
+    admission = await withSessionTenant(
+      sessionUser.authUserId,
+      workspaceId,
+      (tx, ctx) => reserveOfferMutationAttempt(tx, ctx, actions),
+    );
+  } catch (error) {
+    if (error instanceof PermissionDeniedError && error.action === WORKSPACE_ACCESS) {
+      await captureUnverifiedWorkspaceAccess({
+        authUserId: sessionUser.authUserId,
+        workspaceId,
+        action: primaryAction,
+        resource,
+      });
+    }
+    throw error;
+  }
+
+  if (admission.status === "rate_limited") {
+    throw new OfferRateLimitError(admission.retryAfter);
+  }
+  if (admission.status === "denied") {
+    const error = new PermissionDeniedError(
+      admission.action,
+      resource,
+      admission.reason,
+      admission.actor,
+    );
+    await withTenant(workspaceId, (tx) =>
+      writeAudit(tx, {
+        workspaceId,
+        actor: admission.actor,
+        action: admission.action,
+        resource,
+        allowed: false,
+        details: { reason: admission.reason },
+      }),
+    );
+    throw error;
+  }
+
+  // Re-resolve the session identity and membership in the domain transaction.
+  return authorizedCall(workspaceId, primaryAction, resource, fn);
 }
 
 // Server-Component-/DAL-Grenze für autorisierte Reads. Sie teilt absichtlich

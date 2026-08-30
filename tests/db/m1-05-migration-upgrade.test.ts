@@ -173,7 +173,7 @@ it("migriert einen befüllten M1-04-Bestand verlustfrei in das Anfrage-Board", a
       `, [newWorkspaceId]);
       expect(provisioned.rows[0]).toEqual({
         boards: 1,
-        columns: 3,
+        columns: 4,
         intake_columns: 1,
       });
       await insertClient.query("rollback");

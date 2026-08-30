@@ -84,3 +84,18 @@ export function can(ctx: PermissionCtx, action: Action): boolean {
   if (req.capability && ctx.role !== "admin" && ctx.capabilities?.[req.capability] !== true) return false;
   return true;
 }
+
+// `external_only` is a negative security flag: malformed legacy/imported JSON
+// must never turn it off. Absence or the literal boolean false means internal;
+// every other present value is treated as external until an assignment model
+// can authorize a narrower scope.
+export function isExternalOnly(ctx: Pick<PermissionCtx, "capabilities">): boolean {
+  const capabilities: unknown = ctx.capabilities;
+  if (
+    capabilities === null
+    || typeof capabilities !== "object"
+    || Array.isArray(capabilities)
+  ) return true;
+  return Object.prototype.hasOwnProperty.call(capabilities, "external_only")
+    && (capabilities as Record<string, unknown>).external_only !== false;
+}

@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-08-29 · kanonische Abnahmequelle:
+Stand: 2026-08-30 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -18,12 +18,13 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 14–16 % | Fundament sowie Rechner→Lead→Adresse→Planung→eigener Katalog→revisionsgebundene Produktauflösung lokal verifiziert; Angebot und operative Breite bleiben überwiegend offen |
+| Gesamtmission einschließlich F1–F16 | ca. 16–18 % | Fundament sowie Rechner→Lead→Adresse→Planung→eigener Katalog→Produktauflösung→Angebotsentwurf sind lokal technisch verifiziert; PDF, Signatur und operative Breite bleiben offen |
 | Technisches Fundament M0/M1 | ca. 94–96 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 8–10 % | Login, Intake-Triage, Projektakte, Adresse, Energieprofil, Planungsschätzung, eigener Katalog und Produktzuordnung sind real; Angebot, Ausführung und Abrechnung bleiben offen |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 10–12 % | Login, Intake-Triage, Projektakte, Adresse, Energieprofil, Planungsschätzung, eigener Katalog, Produktzuordnung und Angebotsentwurf mit Varianten/BOM sind real und lokal technisch verifiziert; Ausführung und Abrechnung bleiben offen |
 
 Diese Werte steigen nicht durch Seiten, Mocks oder Dokumentation allein, sondern nur
-durch unabhängig verifizierte Endzustände.
+durch belastbare vertikale Endzustände. Die Schätzung ist insbesondere **keine**
+Behauptung einer Reonic-1:1-Parität.
 
 ## Verifizierte und laufende Grundlagen
 
@@ -38,6 +39,7 @@ durch unabhängig verifizierte Endzustände.
 | M1-06 Planungsstandort/Adresskorrektur | REVIEWED/VERIFIED (lokal) | Regionaler Lead → geschützte Geoapify-Vertragsgrenze → hausgenaue Adresse → Pin-Korrektur → revisionsgebundenes Speichern und getrennte Bestätigung; Reload-/Board-Konsistenz, Editor/Viewer/Tenant-Grenzen und 5 Browser-E2E grün; Live-Provider bleibt Pilot-Gate |
 | M1-07 Energieprofil/Planungsschätzung | REVIEWED/VERIFIED (lokal) | Revisionsgebundenes Site-Profil, getrenntes Save/Confirm, atomare Reservation, PVGIS-Vertrag, gepinnter Clean-Room-Kern, immutable Snapshots/Resultate, Quota/Cooldown, technische Retries, DSGVO-Erasuregraph und geschützte UI; 620 Repo-Tests, 6 Browser-E2E, Build, 75+5 Rollenproben sowie adversariales Re-Audit grün. Live-PVGIS und F4-Referenzvalidierung bleiben Pilot-/F4-Gates |
 | M1-08 Produktkatalog/Projektauflösung | REVIEWED/VERIFIED (lokal) | Leerer eigener Katalog für sieben Produkttypen, unveränderliche Revisionen, EK/VK-Provenienz, Lifecycle, Current/Stale-Ableitung und revisionsgebundene Produkt-/Preissnapshots; 661 Repo-Tests, 7 Browser-E2E, Build, 75+5 Rollenproben, Nebenläufigkeits- und EK-Redaktionsreview grün. Echte Produkte/Preise, Asset-Storage und Angebot/BOM bleiben getrennte Folgegates |
+| M2-01 Angebotsvarianten/Snapshot-BOM | REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE 2 GO | Anfrage→Offer, Nummer, Basis-/Duplikat-/neue-Basis-Varianten, immutable Snapshot-BOM, serverseitige Geldlogik, RBAC/Privacy/Races und der geschützte Editor sind technisch abgenommen: 87/87 Testdateien, 856 bestandene Tests plus 1 ausdrücklich opt-in übersprungener Test, 88/88 Rollen- und 5/5 PG18-Proben, Chromium 16/16 (15 funktional/A11y plus 1 Visual-Capture mit 26/26 Kandidaten) und keine offenen Produkt-P0–P2. Das Candidate-Capture ist grün; `M201-VISUAL-01` bleibt ohne Mikails Screenshot-Baseline-Freigabe ausdrücklich INCONCLUSIVE |
 | Rechner V3 | CONTRACTED (Clone) / BLOCKED (Provider) | read-only Baseline `rechner/v3@2b00f6b`; Provider-Wiring erst nach veröffentlichtem korrektem Datenschutzhinweis und Secret-Provisioning |
 
 ## F1–F16-Matrix auf Capability-Ebene
@@ -48,7 +50,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | Bereich | Höchster belastbarer Stand | Nächster echte Slice |
 |---|---|---|
 | F1 CRM & Leads | PARTIAL VERIFIED | Rechner-V3-Intake → Kontakt → Standort/Adresskorrektur → Anfrage → Kanban/Projektakte → Energieprofil ist lokal real; als Nächstes Zuweisung und weitere CRM-Capabilities |
-| F2 Angebote | PARTIAL CONTRACTED | Revisionsgebundene Produkt-/Preissnapshots sind lokal real; als Nächstes Variante → BOM/Steuer/Rabatt → PDF → Signatur |
+| F2 Angebote | PARTIAL VERIFIED | M1-08 liefert verifizierte Produkt-/Preissnapshots; M2-01 liefert daraus technisch verifizierte Draft-Offers, Varianten, Snapshot-BOM sowie Preis-/Rabatt-/Steuerentwurf. Die menschliche Screenshot-Baseline bleibt separat `INCONCLUSIVE`; PDF und Signatur folgen in eigenen Slices |
 | F3 PV-Planung | PARTIAL VERIFIED | Hausbezogene, serverseitig reproduzierbare Planungsschätzung lokal real; rechtmäßige Dachdatenadapter und tiefere Planungswerkzeuge folgen capabilityweise |
 | F4 Simulation | SPECIFIED | deterministischer Rechenkern mit fachlichem Güte- und Haftungsgate |
 | F5 Wärmepumpe | SPECIFIED | Schätzverfahren klar von zertifizierter Normrechnung trennen |
@@ -82,7 +84,10 @@ Abnahmen als prüfbare Lieferartefakte erhalten.
    Evidenz vorliegt.
 2. Rechner-V3-Provider erst nach Privacy-Freigabe und echtem Secret-Provisioning
    an den lokal verifizierten M1-04-Vertrag anschließen.
-3. Golden Path ab dem verifizierten Produktstand real weiterbauen:
+3. Die formale visuelle M2-01-Baseline separat durch Mikail freigeben oder
+   weiter ehrlich als `M201-VISUAL-01: INCONCLUSIVE` führen; das technische
+   Gate-2-GO davon nicht rückwirkend umdeuten.
+4. Golden Path ab dem verifizierten Angebotsstand real weiterbauen:
    `Rechner → Lead → Kontakt → Standort/Adresskorrektur → Energieprofil/Kalkulation → Katalog/Speicher → Produktauflösung →`
    `Angebot → Variante → PDF → Signatur → Installation → Rechnung → Kundenportal`.
-4. Danach F1–F16 capabilityweise bis VERIFIED schließen.
+5. Danach F1–F16 capabilityweise bis VERIFIED schließen.
