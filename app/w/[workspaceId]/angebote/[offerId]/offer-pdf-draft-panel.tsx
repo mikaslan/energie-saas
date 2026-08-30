@@ -8,6 +8,7 @@ import {
   GENERATE_OFFER_PDF_DRAFT_INITIAL_STATE,
   type GenerateOfferPdfDraftActionState,
 } from "../pdf-action-state";
+import { OfferDirtyNavigationLink } from "./dirty-navigation-guard";
 import type { OfferPdfDraftSurfaceView } from "./offer-detail-view";
 
 const dateFormatter = new Intl.DateTimeFormat("de-DE", {
@@ -68,9 +69,13 @@ function GenerateButton() {
   return (
     <button
       type="submit"
-      disabled={pending}
+      aria-disabled={pending || undefined}
+      aria-busy={pending || undefined}
       aria-describedby="offer-pdf-source-warning"
-      className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
+      onClick={(event) => {
+        if (pending) event.preventDefault();
+      }}
+      className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait bg-slate-700" : "bg-slate-950 hover:bg-slate-800"}`}
     >
       {pending ? "Auftrag wird geprüft …" : "Internen PDF-Entwurf erzeugen"}
     </button>
@@ -102,6 +107,8 @@ export function OfferPdfDraftPanel({
 
   return (
     <aside
+      id="offer-pdf-draft"
+      tabIndex={-1}
       aria-labelledby="offer-pdf-draft-title"
       className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm"
     >
@@ -118,12 +125,14 @@ export function OfferPdfDraftPanel({
             zuerst speichern; sie gehören nicht zu diesem Dokument.
           </p>
         </div>
-        <a
+        <OfferDirtyNavigationLink
           href={refreshHref}
+          label="PDF-Status aktualisieren"
+          kind="refresh"
           className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-blue-700 underline decoration-2 underline-offset-4 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
         >
           Status aktualisieren
-        </a>
+        </OfferDirtyNavigationLink>
       </div>
 
       {canGenerate ? (

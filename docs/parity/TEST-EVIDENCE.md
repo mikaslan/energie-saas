@@ -11,6 +11,7 @@ Dieses Dokument trennt ausgeführte Evidenz strikt von geplanten Tests.
 | M1-08 Katalog/Projektauflösung | 69 Vitest-Dateien, 661/661 Tests, Build, 75 Rollenproben, 5 PG18-Proben, 7/7 Chromium-E2E; Commit `71dded3` | REVIEWED/VERIFIED lokal |
 | M2-01 Angebotsvarianten/Snapshot-BOM | `npm run check`: 87/87 Testdateien, 856 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollenproben, 5/5 PG18-Proben; Chromium 16/16 (15 funktionale/A11y-Fälle plus 1 Visual-Capture-Fall mit 26/26 Kandidaten); Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff- und `db:generate`-Prüfung grün | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; Visual-Candidate-Capture grün, menschliches Visual-Gate `INCONCLUSIVE` |
 | M2-02 interner Angebots-PDF-Entwurf | 96/96 Vitest-Dateien, 949 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 16/16 aktiv plus 1 opt-in Visual-Fall übersprungen; Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff, `db:generate`, Compose, Worker-Bundle und gepinnter `linux/amd64`-Container-Smoke grün | REVIEWED/VERIFIED lokal; technisches Gate **GO**; unabhängiges Review ohne offene P0–P2; `M202-VISUAL-01` `INCONCLUSIVE`; Deploy `NOT RUN` |
+| M2-03a Angebotsprofil/Freigabekandidat | 111/111 Vitest-Dateien, 1.078 bestanden, 1 übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 17 bestanden, 1 opt-in übersprungen; Production-Build, ESLint, TypeScript und Dependency-Cruiser (237 Module/764 Abhängigkeiten) grün; gepinnter `linux/amd64`-Container-Smoke mit Pflichtstatus auf 11/11 PDF-Seiten | REVIEWED/VERIFIED lokal; technisches Gate **GO**; Security-, Regression-, Navigation- und lokaler Claude-Code-Opus-Max-Review ohne offene P0–P2; Human Visual `INCONCLUSIVE`; Deploy/Issuance/WORM/Versand/Signatur `NOT RUN` |
 
 Die Detailabnahme liegt in der Vault-Datei `Reonic Clone Final/08-Abnahme-M1-08.md`.
 
@@ -97,3 +98,48 @@ vorhandene pg-boss-Historie gebunden; nach vollständigem Historienverlust über
 die dokumentierte Aufbewahrungsgrenze hinaus bleibt der autorisierte
 Benutzer-Replay die Reparatur. Ein darüber hinausgehendes autonomes SLO braucht
 eine dauerhafte Registry.
+
+## M2-03a
+
+Status: **REVIEWED/VERIFIED lokal; technisches Gate GO**. Der finale
+Gesamtnachweis umfasst 111/111 Vitest-Dateien mit 1.078 bestandenen und einem
+übersprungenen Test, 88/88 Rollen- plus 5/5 PostgreSQL-18-Proben sowie den
+vollen Chromium-Lauf mit 17 bestandenen, einem opt-in übersprungenen und keinem
+fehlgeschlagenen Fall. Typecheck, ESLint, Production-Build und
+Dependency-Cruiser (237 Module/764 Abhängigkeiten) sind grün.
+
+| Test-ID | Ebene | Finaler Beleg | Aktuell |
+|---|---|---|---|
+| `M203A-CONTRACT-01` | Contract/Golden | strikte Profil-, Empfänger-, Candidate-Input- und Dispatchschemas; Normalisierung, Canonical SHA, Unknown-/Duplicate-Field-Reject | GREEN im finalen Gesamtlauf |
+| `M203A-HIDDEN-01` | Contract/Service | jede Hidden-Zeile blockiert Candidate-Prepare, ohne Summen oder Historie umzuschreiben | GREEN im finalen Gesamtlauf |
+| `M203A-DB-01` | Migration/RLS/ACL | Fresh-/Upgrade-Pfad, Tenant-FKs, FORCE RLS, je eine Policy, Append-only-Guards, genaue Runtime-/Worker-Rechte und Erasuregraph | GREEN; Rollenvertrag 88/88 plus PG18 5/5 |
+| `M203A-DB-02` | Concurrency/Recovery | Profilrevision/-aktivierung, Empfängerrevision, Reservation/Replay, Claim/Lease/CAS, Retry/Finalize, Approval- und Erasure-Races | GREEN im finalen Gesamtlauf |
+| `M203A-SVC-01` | Integration | exakte Variant-/Draft-/Profil-/Recipient-Bindung, Readiness, Event/Audit und stale-/missing-/denied-Pfade | GREEN im finalen Gesamtlauf |
+| `M203A-APPROVAL-01` | Integration | erneuter Hash der tatsächlichen PDF-Bytes, vier feste Attestations plus bedingte 0-%-Bestätigung, Race/Replay/stale/cross-tenant | GREEN; append-only Approval und nur abgeleitetes `approved_not_issued` |
+| `M203A-PRIVACY-01` | Adversarial | keine Adressen, Rechtstexte, Preise, Bytes oder Vollhashes in Status-DTO, Event, Audit oder Log; Candidate-Input nur Allowlist | GREEN im finalen Gesamtlauf |
+| `M203A-WORKER-01` | Unit/Integration | ID-only Payload, tenantgebundener DB-Reload, Fehlerklassifikation, Retry/Recovery, deterministischer Hash, kein Secret-/PII-Logging | GREEN im finalen Gesamtlauf |
+| `M203A-TEMPLATE-01` | Unit/Container | escaping, Empfänger/Billing getrennt von Site, Positionen/Summen/Rechtstexte sowie Pflichtstatus auf jeder Seite | GREEN; echter gepinnter Container meldet Status 11/11 Seiten und A4 11/11 |
+| `M203A-RBAC-01` | Integration/Security | interne Profilreads, Admin-Profilmutation, Prepare-/Approve-Capabilities, private Bytes, External/Cross-Tenant ohne Oracle | GREEN; Security-Abschlussreview GO ohne offene P0–P2 |
+| `M203A-ROUTE-01` | Next/Route | Promise-Params, Reauth, Tenant-/Offer-/Candidate-Bindung, MIME-/Längen-/Hashprüfung, sicherer Dateiname und private Header | GREEN im finalen Gesamtlauf |
+| `M203A-E2E-01` | Browser | Admin-Profilrevision/-aktivierung → Empfänger → Prepare → Status → Approval → Reload → Download exakt der erwarteten Bytes; Rev. 1 → externe Rev. 2 → Refresh bindet sichtbare Felder, Hidden-CAS, Candidate, Snapshot und Hash atomar an Rev. 2; Reader-HTML/RSC enthält weder Rev.-1- noch Rev.-2-PII | GREEN im vollen Chromium-Lauf; Claim/Finalize werden testseitig synthetisch in der DB ausgeführt |
+| `M203A-A11Y-01` | Browser/A11y | Landmark/Skip-Link, Fokus nach Actions, Fehlerzuordnung, korrigierbares `aria-invalid`, Formularerhalt, Keyboard und Reflow | GREEN; unabhängiger Navigation-Review und finaler lokaler Claude-Code-Opus-Max-Lesereview GO ohne P0–P2 |
+| `M203A-RENDER-01` | Chromium/Container | zwei deterministische Render im gepinnten `linux/amd64`-Rezept; PDF-Struktur, A4 und Pflichtstatus auf jeder Seite | GREEN; 103.871 Bytes, SHA-256 `c3ea9de557e66eb2975cc19fc858f6e5b0c3127f058046ec750158b2bc76ac1b`, Status 11/11 Seiten |
+| `M203A-VISUAL-01` | Human Visual | freigegebene Portal- und gerasterte PDF-Baseline durch einen Menschen | `INCONCLUSIVE` |
+
+Der Browserlauf beweist den kompletten geschützten UI-/Action-/Downloadpfad
+gegen exakt geprüfte Bytes, verwendet für Claim und Finalize aber bewusst eine
+synthetische DB-/Worker-Finalisierung. Er ist deshalb kein Beleg für den echten
+Chromium-Worker. Diese Lücke schließt separat `M203A-RENDER-01` im gepinnten
+`linux/amd64`-Container; die beiden Evidenzen werden nicht miteinander
+vermischt.
+
+Security-, Regression- und unabhängiger Navigation-Review sind **GO**. Der
+abschließende lokale Claude-Code-Lesereview lief mit Modellalias `opus` und
+Effort `max` und fand nach der A11y-Nacharbeit keine offenen P0–P2. Das ist
+Design-/A11y-Gegenevidenz, keine Reonic-Produktwahrheit.
+
+Nicht ausgeführt oder freigegeben sind menschliche Visual-Abnahme, echte
+WMEE-Firmen-/Rechtstexte, produktiver Deploy, Object Lock/WORM, Issuance,
+Versand/Delivery, Annahme und Signatur. Der Container-Smoke prüft den
+technischen Tagged-PDF-Pfad, ersetzt aber keine formale Prüfung der
+PDF/UA-Konformität oder der Rechtsinhalte.

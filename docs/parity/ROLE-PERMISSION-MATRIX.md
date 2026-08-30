@@ -1,6 +1,6 @@
 # Rollen- und Berechtigungsmatrix
 
-Stand: 2026-08-30 · M2-01 und M2-02 lokal verifiziert
+Stand: 2026-08-30 · M2-01, M2-02 und M2-03a lokal verifiziert
 
 Die Laufzeitwahrheit bleibt `lib/permissions.ts`; diese Matrix dokumentiert die
 beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
@@ -21,6 +21,15 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
 | Erfolgreichen PDF-Entwurf herunterladen | ja | ja | ja | nein | nein | `project.read`, erneute Tenant-/Offer-/Job- sowie MIME-/Längen-/Hashprüfung; privat/no-store |
 | PDF-Entwurf anfordern oder Dispatch replayen | nein | nur mit Recht | ja | nein | nein | `project.write`, aktuelle Variantenrevision; kein M2-02-Rollout-Flag |
 | PDF-Job claimen, retryen, recovern und finalisieren | nein | nein | nein | nein | ja, minimal | nur ID-Payload und exakt erlaubte `offer_pdf_draft`-/Queue-Operationen unter Tenantkontext; keine Membership-, Auth-, Katalog- oder sonstigen App-Rechte |
+| Aktuelle Angebotsprofilstände lesen | ja | ja | ja | nein | nein | internes `project.read`; nur gleicher Workspace, keine Mutation |
+| Dokumentprofilrevision erstellen und exakten Hash aktivieren | nein | nein | ja | nein | nein | `settings.manage`; getrennte Actions, keine Defaulttexte oder Rechtswirkung |
+| Empfänger-/Rechnungsrevision speichern | nein | nur mit Recht | ja | nein | nein | `offer.release.prepare` / `prepare_offer_documents`; strukturierte Billing-Adresse, kein Site-Fallback |
+| Freigabekandidatenstatus lesen | ja | ja | ja | nein | nur fachlicher Job | internes `project.read`; DTO ohne Adressen, Rechtstexte, Preise, Bytes oder Vollhashes |
+| Freigabekandidat vorbereiten oder Dispatch replayen | nein | nur mit Recht | ja | nein | nein | `offer.release.prepare` / `prepare_offer_documents`; exakte aktuelle Quellen und Readiness |
+| Unfreigegebene Candidate-Bytes laden | nein | nur mit Recht | ja | nein | nein | `offer.release.approve` / `approve_offer_documents`; erneute Tenant-/Offer-/Candidate-/MIME-/Längen-/Hashprüfung |
+| Tatsächliche Candidate-Bytes intern freigeben | nein | nur mit Recht | ja | nein | nein | `offer.release.approve` / `approve_offer_documents`; vier feste Attestations, bedingte 0-%-Bestätigung; Ergebnis nur `approved_not_issued` |
+| Freigegebene Candidate-Bytes laden | ja | ja | ja | nein | nein | internes `project.read`; private `no-store`-Antwort, kein öffentlicher Link |
+| Candidate claimen, retryen, recovern und finalisieren | nein | nein | nein | nein | ja, minimal | ID-only-Queue-Payload; exakt erlaubte Candidate-Reads/-State-Spalten unter Tenantkontext, keine Profil-/Approval-Mutation |
 | PDF ausstellen/versenden, Annahme/Signatur, öffentlicher Link, Rechnung/Won | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | nicht vorhanden | spätere Slices; keine Fake-Controls und kein Object-Lock-Claim |
 
 ## Denial-Vertrag
@@ -41,6 +50,11 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
   ersetzen; sobald eine spätere Action ein Flag deklariert, bleibt es über den
   zentralen `can()`-Pfad auch für Admin bindend.
 - `app_worker` ist kein Benutzer und erhält keine Portalrolle. Seine Rechte
-  reichen nur für tenantgebundenes Claim/Finalize/Recovery des ID-only-
-  `pdf.render`-Pfads und die dazu zwingend nötige Kanonizitätsprüfung.
+  reichen nur für tenantgebundenes Claim/Finalize/Recovery des
+  ID-only-`pdf.render`- beziehungsweise Candidate-Renderpfads und die zwingend
+  nötige Kanonizitätsprüfung. Er darf weder Profile aktivieren noch Empfänger
+  ändern oder Candidate-Approvals schreiben.
+- `approved_not_issued` ist ausschließlich ein abgeleiteter interner
+  Freigabestand. Er erteilt kein Recht auf Ausstellung, Versand, WORM-Promotion
+  oder Signatur und verändert den Offer-Vertragsstatus nicht.
 - `external_only` wird erst mit einem echten Assignmentmodell freigeschaltet.

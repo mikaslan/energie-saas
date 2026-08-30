@@ -29,6 +29,42 @@ const LOGIN_APP_ROLES = new Set([
 const LOCAL_SUPERUSER_PROVISIONING_ROLE = "postgres";
 const SAFE_ROLE_NAME = /^[A-Za-z_][A-Za-z0-9_$-]{0,62}$/;
 
+const OFFER_RELEASE_RELATIONS = [
+  "offer_recipient",
+  "offer_recipient_revision",
+  "offer_release_candidate",
+  "offer_release_candidate_approval",
+  "offer_release_profile",
+  "offer_release_profile_activation",
+  "offer_release_profile_revision",
+] as const;
+
+const OFFER_RELEASE_RUNTIME_SELECT_RELATIONS = [
+  "offer_recipient",
+  "offer_recipient_revision",
+  "offer_release_profile",
+  "offer_release_profile_activation",
+  "offer_release_profile_revision",
+] as const;
+
+const OFFER_RELEASE_WORKER_UPDATE_COLUMNS = [
+  "artifact_bytes",
+  "artifact_mime_type",
+  "artifact_sha256",
+  "artifact_size_bytes",
+  "artifact_version",
+  "attempt_count",
+  "error_code",
+  "error_retryable",
+  "finished_at",
+  "lease_expires_at",
+  "lease_token",
+  "next_attempt_at",
+  "started_at",
+  "state",
+  "updated_at",
+] as const;
+
 export interface DbRoleProvisioningTopology {
   /** SQL-Admin, der die Zielrollen angelegt und die Fachkanten erteilt hat. */
   provisioningAdminRole: string;
@@ -626,6 +662,34 @@ async function executeContractStatements(
   }
 }
 
+async function hasAtomicPublicRelationSet(
+  client: PoolClient,
+  relations: readonly string[],
+  label: string,
+): Promise<boolean> {
+  const existing = await client.query<{ relname: string }>(`
+    select relation.relname
+      from pg_catalog.pg_class as relation
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = relation.relnamespace
+     where namespace.nspname = 'public'
+       and relation.relkind in ('r', 'p')
+       and relation.relname = any($1::text[])
+     order by relation.relname
+  `, [relations]);
+  if (existing.rows.length === 0) return false;
+
+  const expected = [...relations].sort();
+  const actual = existing.rows.map((row) => row.relname);
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `${label} sind nur teilweise vorhanden. Erwartet: ${expected.join(", ")}; ` +
+        `gefunden: ${actual.join(", ")}`,
+    );
+  }
+  return true;
+}
+
 export async function applyRoleContract(client: PoolClient): Promise<void> {
   await applyDatabaseAclContract(client);
   await executeContractStatements(client, APPLY_ROLE_CONTRACT_SQL, "Rollen-ACL-Manifest");
@@ -989,6 +1053,96 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // M2-03a ist eine atomare Siebener-Einheit. Runtime liest versiegelte
+  // Revisionen tenantlokal; Candidate/Approval bleiben hinter schmalen
+  // SECURITY-DEFINER-Grenzen. Der Worker sieht genau den Candidate mit dem
+  // versiegelten, minimierten Renderinput einschließlich der dafür nötigen
+  // Empfänger-/Rechnungsdaten, aber keine breiteren Quellen oder Runtime-Logs.
+  // Er darf genau den 15-spaltigen Lease-/Artefakt-Automaten fortschreiben.
+  const hasOfferRelease = await hasAtomicPublicRelationSet(
+    client,
+    OFFER_RELEASE_RELATIONS,
+    "Rollen-ACL-Manifest: M2-03a-Release-Relationen",
+  );
+  if (hasOfferRelease) {
+    await client.query(`
+      revoke all privileges on
+        public.offer_recipient,
+        public.offer_recipient_revision,
+        public.offer_release_candidate,
+        public.offer_release_candidate_approval,
+        public.offer_release_profile,
+        public.offer_release_profile_activation,
+        public.offer_release_profile_revision
+      from public, app_migrator, app_runtime, app_system, app_auth, app_worker,
+        app_erasure, app_membership_writer, identity_reconciler;
+
+      grant select on
+        public.offer_recipient,
+        public.offer_recipient_revision,
+        public.offer_release_profile,
+        public.offer_release_profile_activation,
+        public.offer_release_profile_revision
+      to app_runtime;
+
+      grant select on public.offer_release_candidate to app_worker;
+      grant update (
+        state, attempt_count, next_attempt_at, lease_token, lease_expires_at,
+        error_code, error_retryable, artifact_mime_type, artifact_sha256,
+        artifact_size_bytes, artifact_bytes, artifact_version, updated_at,
+        started_at, finished_at
+      ) on public.offer_release_candidate to app_worker;
+
+      revoke execute on function
+        public._m203a_approved_candidate_result(uuid, uuid, boolean),
+        public._m203a_guard_offer_release_append_only(),
+        public._m203a_guard_offer_release_profile_head(),
+        public._m203a_guard_offer_recipient_head(),
+        public._m203a_guard_offer_release_candidate(),
+        public._m203a_normalize_offer_release_text(text, integer, boolean),
+        public._m203a_normalize_offer_release_address(jsonb),
+        public._m203a_normalize_offer_release_sender(jsonb),
+        public._m203a_normalize_offer_release_legal_document(jsonb),
+        public._m203a_normalize_offer_release_legal_documents(jsonb),
+        public._m203a_offer_release_instant(timestamptz),
+        public._m203a_prepared_candidate_result(uuid, uuid, boolean),
+        public._m203a_erasure_delete_allowed(uuid, uuid, text),
+        public._m203a_authorize_offer_release(uuid, text),
+        public.build_inactive_lead_erasure_graph_m202(uuid, uuid),
+        public.revise_offer_release_profile(uuid, integer, text, jsonb, jsonb),
+        public.activate_offer_release_profile(uuid, uuid, uuid, integer),
+        public.revise_offer_recipient(
+          uuid, uuid, integer, text, text, text, jsonb, boolean
+        ),
+        public.prepare_offer_release_candidate(
+          uuid, uuid, uuid, integer, uuid, uuid, uuid, integer, uuid, integer, date
+        ),
+        public.approve_offer_release_candidate(
+          uuid, uuid, uuid, uuid, boolean, boolean, boolean, boolean, boolean
+        ),
+        public.read_offer_release_candidate_status(uuid, uuid, uuid),
+        public.read_offer_release_candidate_artifact(uuid, uuid, uuid)
+      from public, app_migrator, app_runtime, app_system, app_auth, app_worker,
+        app_erasure, app_membership_writer, identity_reconciler;
+
+      grant execute on function
+        public.revise_offer_release_profile(uuid, integer, text, jsonb, jsonb),
+        public.activate_offer_release_profile(uuid, uuid, uuid, integer),
+        public.revise_offer_recipient(
+          uuid, uuid, integer, text, text, text, jsonb, boolean
+        ),
+        public.prepare_offer_release_candidate(
+          uuid, uuid, uuid, integer, uuid, uuid, uuid, integer, uuid, integer, date
+        ),
+        public.approve_offer_release_candidate(
+          uuid, uuid, uuid, uuid, boolean, boolean, boolean, boolean, boolean
+        ),
+        public.read_offer_release_candidate_status(uuid, uuid, uuid),
+        public.read_offer_release_candidate_artifact(uuid, uuid, uuid)
+      to app_runtime
+    `);
+  }
+
   // pg-boss bleibt vollstaendig worker-owned. Nur der SET-only-Migrator darf
   // fuer das nach jeder Migration wiederholte ACL-Manifest kurz in diesen
   // Owner wechseln; app_owner und app_worker erhalten keine gegenseitige
@@ -1010,6 +1164,10 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     grant usage on schema pgboss to app_runtime;
     grant execute on function pgboss.enqueue_project_calculation(uuid, uuid)
       to app_runtime;
+    ${hasOfferRelease ? `
+      grant execute on function pgboss.enqueue_offer_release_candidate(uuid, uuid)
+        to app_runtime;
+    ` : ""}
     set role app_owner
   `);
   const offerPdfDispatch = await client.query<{ present: boolean }>(`
@@ -1317,6 +1475,11 @@ export async function verifyRoleContract(
     select pg_catalog.to_regclass('public.offer_pdf_draft') is not null as present
   `);
   const hasOfferPdfDraft = offerPdfPresence.rows[0]?.present === true;
+  const hasOfferRelease = await hasAtomicPublicRelationSet(
+    client,
+    OFFER_RELEASE_RELATIONS,
+    "Rollenvertrag: M2-03a-Release-Relationen",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -1431,6 +1594,15 @@ export async function verifyRoleContract(
       "r:offer_mutation_rate_window",
       "r:offer_number_series",
       ...(hasOfferPdfDraft ? ["r:offer_pdf_draft"] : []),
+      ...(hasOfferRelease ? [
+        "r:offer_recipient",
+        "r:offer_recipient_revision",
+        "r:offer_release_candidate",
+        "r:offer_release_candidate_approval",
+        "r:offer_release_profile",
+        "r:offer_release_profile_activation",
+        "r:offer_release_profile_revision",
+      ] : []),
       "r:offer_variant",
       "r:offer_variant_revision",
       "r:offer_variant_section",
@@ -1540,6 +1712,7 @@ export async function verifyRoleContract(
     where namespace.nspname = 'pgboss'
       and routine.proname in (
         'enqueue_offer_pdf_draft',
+        'enqueue_offer_release_candidate',
         'enqueue_project_calculation'
       )
     order by routine.proname, routine.oid
@@ -1566,6 +1739,10 @@ export async function verifyRoleContract(
         "enqueue_offer_pdf_draft(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:6c060aa6439626044be7e9e95ed71e4588c71f4d465fd7c2f658e4b556a9107c",
       ] : []),
+      ...(hasOfferRelease ? [
+        "enqueue_offer_release_candidate(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:6119fc9e70a9515038b3951cbe6f1375396c6f8407ad182c262e617accb3664a",
+      ] : []),
     ],
     "Worker-Dispatch-Sicherheitsvertrag",
   );
@@ -1581,11 +1758,32 @@ export async function verifyRoleContract(
   equalRows(
     functionOwners.rows.map((row) => `${row.proname}:${row.owner}`),
     [
+      ...(hasOfferRelease ? [
+        "_m203a_approved_candidate_result:app_owner",
+        "_m203a_authorize_offer_release:app_owner",
+        "_m203a_erasure_delete_allowed:app_owner",
+        "_m203a_guard_offer_recipient_head:app_owner",
+        "_m203a_guard_offer_release_append_only:app_owner",
+        "_m203a_guard_offer_release_candidate:app_owner",
+        "_m203a_guard_offer_release_profile_head:app_owner",
+        "_m203a_normalize_offer_release_address:app_owner",
+        "_m203a_normalize_offer_release_legal_document:app_owner",
+        "_m203a_normalize_offer_release_legal_documents:app_owner",
+        "_m203a_normalize_offer_release_sender:app_owner",
+        "_m203a_normalize_offer_release_text:app_owner",
+        "_m203a_offer_release_instant:app_owner",
+        "_m203a_prepared_candidate_result:app_owner",
+        "activate_offer_release_profile:app_owner",
+        "approve_offer_release_candidate:app_owner",
+      ] : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       "build_inactive_lead_erasure_graph:app_owner",
       ...(hasOfferPdfDraft ? [
         "build_inactive_lead_erasure_graph_m201:app_owner",
+      ] : []),
+      ...(hasOfferRelease ? [
+        "build_inactive_lead_erasure_graph_m202:app_owner",
       ] : []),
       "canonicalize_offer_json_v1:app_owner",
       ...(hasOfferPdfDraft ? ["derive_offer_pdf_draft_input:app_owner"] : []),
@@ -1608,6 +1806,13 @@ export async function verifyRoleContract(
       "provision_default_request_board:app_owner",
       "reconcile_user_identity:identity_reconciler",
       "replay_erasure_tombstone:app_owner",
+      ...(hasOfferRelease ? [
+        "prepare_offer_release_candidate:app_owner",
+        "read_offer_release_candidate_artifact:app_owner",
+        "read_offer_release_candidate_status:app_owner",
+        "revise_offer_recipient:app_owner",
+        "revise_offer_release_profile:app_owner",
+      ] : []),
       "user_identity_link_auth_only:app_owner",
       "validate_offer_variant_snapshot_mirrors:app_owner",
       "validate_project_catalog_resolution_snapshot:app_owner",
@@ -1670,13 +1875,104 @@ export async function verifyRoleContract(
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
         "acca23aaae3a91eda3aa424256de1527e1bb61d02fdd4b0d2c0803ecd6a37542",
+      ...(hasOfferRelease ? [
+        "_m203a_approved_candidate_result(uuid, uuid, boolean):jsonb:app_owner:sql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "f4bea67f3efa0353de3559f38fc9d023c32d4bde8d6aa0a5c3428750cda4b176",
+        "_m203a_authorize_offer_release(uuid, text):uuid:app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "a4900f40f7dae6f717003686c291aa1f9c9a126b9d7b5cd7ff8580cad0b74944",
+        "_m203a_erasure_delete_allowed(uuid, uuid, text):boolean:app_owner:plpgsql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "793c778e1ba0c033c18dcf92249c8f406ea5742b600dd47c2536d19aa0f24959",
+        "_m203a_guard_offer_recipient_head():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "9694954740571073b7fac54ce8e5195ca8a7eded48db74036e4a49ffc5b49063",
+        "_m203a_guard_offer_release_append_only():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "1cadb165afa9c9a70f0f4da06c4af3a40b8190901a977919bcc75eef4f1a821a",
+        "_m203a_guard_offer_release_candidate():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "f1c459a275bb3fbcd5fb965a1c2076dfaa2ee88a730ee5e90518f3c8408ea4d2",
+        "_m203a_guard_offer_release_profile_head():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "624e49972ca7ca7a90a778290450bbed30249f45922e8fa02229981f916e3c04",
+        "_m203a_normalize_offer_release_address(jsonb):jsonb:app_owner:plpgsql:f:i:" +
+          "false:false:true:u:search_path=pg_catalog:" +
+          "7f95f2fe3ab5130d2f2238b6c9b771fb2bf1c206c96f1fec09404e267cf9f999",
+        "_m203a_normalize_offer_release_legal_document(jsonb):jsonb:app_owner:plpgsql:" +
+          "f:i:false:false:true:u:search_path=pg_catalog:" +
+          "aea6a9c220780105e124434a811719268c92afe7349991760e1e8959ccc75fbd",
+        "_m203a_normalize_offer_release_legal_documents(jsonb):jsonb:app_owner:plpgsql:" +
+          "f:i:false:false:true:u:search_path=pg_catalog:" +
+          "507fee6990daf5601106e9f75337e2c59cc51640dc737034c772cc38014714a7",
+        "_m203a_normalize_offer_release_sender(jsonb):jsonb:app_owner:plpgsql:f:i:" +
+          "false:false:true:u:search_path=pg_catalog:" +
+          "9420445688ad876df9f0aa1f2a8ad794b3ca9c382ad3dc3ae19efeb4bf0d34c3",
+        "_m203a_normalize_offer_release_text(text, integer, boolean):text:app_owner:" +
+          "plpgsql:f:i:false:false:true:u:search_path=pg_catalog:" +
+          "683e3621f57fe3f7e2dc9951c0123b1513595af89874190ad5353ef639beb3d1",
+        "_m203a_offer_release_instant(timestamp with time zone):text:app_owner:sql:f:i:" +
+          "false:false:true:u:search_path=pg_catalog:" +
+          "c9db756038f406cd8c23b61d77d75b9ae7694b777c213fdcb885753406d56623",
+        "_m203a_prepared_candidate_result(uuid, uuid, boolean):jsonb:app_owner:sql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "aa87cffa051c7b928b0baa11facb82b3d185032f3a75207e65dffc5d5fc754d0",
+        "activate_offer_release_profile(uuid, uuid, uuid, integer):jsonb:app_owner:" +
+          "plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "1dc4a602b99a74e4bb713e754b6074325fa92e8bf701fb62b1ecdcde3533cdf5",
+        "approve_offer_release_candidate(uuid, uuid, uuid, uuid, boolean, boolean, " +
+          "boolean, boolean, boolean):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:" +
+          "11177945444d81590685e3fdc8a985b95953ca0e95660e6da3a5b2a257980ebe",
+        "prepare_offer_release_candidate(uuid, uuid, uuid, integer, uuid, uuid, uuid, " +
+          "integer, uuid, integer, date):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:" +
+          "69de2193b95106e22764766e2d97f74b8ec18d00de8e4f9ae4dd0519456df3aa",
+        "read_offer_release_candidate_artifact(uuid, uuid, uuid):TABLE(" +
+          "workspace_id uuid, id uuid, offer_id uuid, variant_id uuid, " +
+          "variant_revision integer, profile_revision integer, recipient_revision integer, " +
+          "publication_status text, has_zero_tax_treatment boolean, state text, " +
+          "attempt_count integer, next_attempt_at timestamp with time zone, " +
+          "created_at timestamp with time zone, started_at timestamp with time zone, " +
+          "finished_at timestamp with time zone, error_code text, approval_id uuid, " +
+          "approval_version text, approval_command_version text, " +
+          "approved_at timestamp with time zone, approval_artifact_version uuid, " +
+          "offer_number text, artifact_mime_type text, artifact_sha256_hex text, " +
+          "artifact_size_bytes integer, artifact_bytes bytea):app_owner:plpgsql:f:s:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "bfd978794c0641a6c49a91275a025c77144d13bf55aeb6978632ef1fdcfafb4b",
+        "read_offer_release_candidate_status(uuid, uuid, uuid):TABLE(" +
+          "workspace_id uuid, id uuid, offer_id uuid, variant_id uuid, " +
+          "variant_revision integer, profile_revision integer, recipient_revision integer, " +
+          "publication_status text, has_zero_tax_treatment boolean, state text, " +
+          "attempt_count integer, next_attempt_at timestamp with time zone, " +
+          "created_at timestamp with time zone, started_at timestamp with time zone, " +
+          "finished_at timestamp with time zone, error_code text, approval_id uuid, " +
+          "approval_version text, approval_command_version text, " +
+          "approved_at timestamp with time zone, approval_artifact_version uuid):" +
+          "app_owner:plpgsql:f:s:true:false:false:u:search_path=pg_catalog:" +
+          "bdb5d098f2da904f2c2ecff79c816879d18aef3ae8e044386e1b6299ffb2d656",
+        "revise_offer_recipient(uuid, uuid, integer, text, text, text, jsonb, boolean):" +
+          "jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "f61b6439229ce5a74fd7ceab69970d5a1e34598cd3936af9c5e8da78911f1edc",
+        "revise_offer_release_profile(uuid, integer, text, jsonb, jsonb):jsonb:" +
+          "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "b5edeae4163abe3c471798ea0ec3abe9841057c3805d980f9cf5d364d566767e",
+      ] : []),
       "build_inactive_lead_erasure_graph(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
-        `search_path=pg_catalog:${hasOfferPdfDraft
-          ? "b62712671bda4ce750868b044794475938b9d24dd08c1a38b6db1674a4fd0e4d"
-          : "ff33afd9579e2d1f43758b9558e7b55f7381942737c3f133c78b8764aa90569c"}`,
+        `search_path=pg_catalog:${hasOfferRelease
+          ? "bec8a092582ab63adf104b6b809e5e852706d205536f56e8fb2efa5c8a0d95b0"
+          : hasOfferPdfDraft
+            ? "b62712671bda4ce750868b044794475938b9d24dd08c1a38b6db1674a4fd0e4d"
+            : "ff33afd9579e2d1f43758b9558e7b55f7381942737c3f133c78b8764aa90569c"}`,
       ...(hasOfferPdfDraft ? [
         "build_inactive_lead_erasure_graph_m201(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:ff33afd9579e2d1f43758b9558e7b55f7381942737c3f133c78b8764aa90569c",
+      ] : []),
+      ...(hasOfferRelease ? [
+        "build_inactive_lead_erasure_graph_m202(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:b62712671bda4ce750868b044794475938b9d24dd08c1a38b6db1674a4fd0e4d",
       ] : []),
       "canonicalize_offer_json_v1(jsonb):text:app_owner:plpgsql:f:i:false:false:true:s:" +
         "search_path=pg_catalog:0b5cdc7c4aa05552def26bc36f3f64bfc73e18689b646b473db607ad858ca85c",
@@ -1685,9 +1981,11 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
-        `search_path=pg_catalog:${hasOfferPdfDraft
-          ? "ba6c9475ce7520ef61c443c9fc0d04dd19af30edb8fb2664fd7889abcc66508a"
-          : "bba97fd4f1224ab42768aa952f54e4a933229225f8ab251e16173adf75084fdd"}`,
+        `search_path=pg_catalog:${hasOfferRelease
+          ? "c6ad889699c6126642497275b5871cfc56f9b0968b76e341bb2980c984caaaf3"
+          : hasOfferPdfDraft
+            ? "ba6c9475ce7520ef61c443c9fc0d04dd19af30edb8fb2664fd7889abcc66508a"
+            : "bba97fd4f1224ab42768aa952f54e4a933229225f8ab251e16173adf75084fdd"}`,
       "finalize_project_calculation_success(uuid, uuid, uuid, integer, uuid, jsonb):" +
         "TABLE(outcome text, revision_id uuid, revision_number integer):" +
         "app_owner:plpgsql:f:v:true:false:true:u:search_path=pg_catalog:" +
@@ -1699,9 +1997,11 @@ export async function verifyRoleContract(
       "guard_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:febb6a39265ceb1661f5dc21709f4a2912df799c6b4dd06db27b540253b8c88d",
       "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        `search_path=pg_catalog:${hasOfferPdfDraft
-          ? "5e8baef20cca95e206f8a2fa05a5ad8ed7f09576856e515d0b5be9c8fe4a4e26"
-          : "c65365ec209f2fc279842f5a6a8b21edbae5b327a65b2e969749abb01c68e6be"}`,
+        `search_path=pg_catalog:${hasOfferRelease
+          ? "b15662968b267b85e27785cc35690eb6f3979309a2fcceeae623878f844343f8"
+          : hasOfferPdfDraft
+            ? "5e8baef20cca95e206f8a2fa05a5ad8ed7f09576856e515d0b5be9c8fe4a4e26"
+            : "c65365ec209f2fc279842f5a6a8b21edbae5b327a65b2e969749abb01c68e6be"}`,
       "guard_membership_dml():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:89cb000d7bca739fe2bd23b737ffc5153b494f9f7eb80790dbeef4e6ab95a057",
       "guard_membership_statement():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -1780,6 +2080,9 @@ export async function verifyRoleContract(
       "offer_mutation_rate_window:true:true",
       "offer_number_series:true:true",
       ...(hasOfferPdfDraft ? ["offer_pdf_draft:true:true"] : []),
+      ...(hasOfferRelease ? OFFER_RELEASE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       "offer_variant:true:true",
       "offer_variant_revision:true:true",
       "offer_variant_section:true:true",
@@ -1855,6 +2158,15 @@ export async function verifyRoleContract(
       "offer_number_series:tenant_isolation:3d3d44b85306e0c44c255e5f295a9d4c63c3f4302d8d43503717281c2084f885",
       ...(hasOfferPdfDraft ? [
         "offer_pdf_draft:tenant_isolation:8c45b9d1d607576979fa2581d9c7098d74b8bf317c5c23631e522b3b424fc2c8",
+      ] : []),
+      ...(hasOfferRelease ? [
+        "offer_recipient:tenant_isolation:24ea357d85e375d6a0c1c25db1ca3d7b7f1fcdeff991aebe9095957fb33c508b",
+        "offer_recipient_revision:tenant_isolation:384dd30f8cf7b5f61e32e804b8c8739c6dff45c64c4228d5b6e5bb39af5fcd5c",
+        "offer_release_candidate:tenant_isolation:bc6806da26ac2665f3603df940eaad561bb6b459417c5b79090bea30e16fc7a1",
+        "offer_release_candidate_approval:tenant_isolation:4486efcbcbcb504e625be7aba84ece6135b19728074be97cc9efda2ea77b2656",
+        "offer_release_profile:tenant_isolation:e34c664faf840151476a26e0300a038026e6712fa049235622ae905bd925668c",
+        "offer_release_profile_activation:tenant_isolation:76263ffd06dc1f508e3a5ec4e3e804cf6a4345692ddf2e6086308001cfd59294",
+        "offer_release_profile_revision:tenant_isolation:750a1227a4e4a43cc508d9a35337d2e6d22d43152cfb69066a6bb4f019afacea",
       ] : []),
       "offer_variant:tenant_isolation:7680e41d5dec01e43a1499356bfd50ff62271af486afe8ee80cf13d3f7f0cb41",
       "offer_variant_revision:tenant_isolation:d0bf5b1f1871b07a4364b679486f63ad33dbae0259d94a22e090cfe7b1b6c148",
@@ -1958,6 +2270,35 @@ export async function verifyRoleContract(
           "guard_offer_pdf_draft_mutation::-:0",
         "offer_pdf_draft:offer_pdf_draft_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
+      ...(hasOfferRelease ? [
+        "offer_recipient:offer_recipient_mutation_guard:27:O:public:" +
+          "_m203a_guard_offer_recipient_head::-:0",
+        "offer_recipient:offer_recipient_no_truncate:34:O:public:forbid_mutation::-:0",
+        "offer_recipient_revision:offer_recipient_revision_immutable:27:O:public:" +
+          "_m203a_guard_offer_release_append_only::-:0",
+        "offer_recipient_revision:offer_recipient_revision_no_truncate:34:O:public:" +
+          "forbid_mutation::-:0",
+        "offer_release_candidate:offer_release_candidate_mutation_guard:27:O:public:" +
+          "_m203a_guard_offer_release_candidate::-:0",
+        "offer_release_candidate:offer_release_candidate_no_truncate:34:O:public:" +
+          "forbid_mutation::-:0",
+        "offer_release_candidate_approval:offer_release_candidate_approval_immutable:27:O:" +
+          "public:_m203a_guard_offer_release_append_only::-:0",
+        "offer_release_candidate_approval:offer_release_candidate_approval_no_truncate:34:O:" +
+          "public:forbid_mutation::-:0",
+        "offer_release_profile:offer_release_profile_mutation_guard:27:O:public:" +
+          "_m203a_guard_offer_release_profile_head::-:0",
+        "offer_release_profile:offer_release_profile_no_truncate:34:O:public:" +
+          "forbid_mutation::-:0",
+        "offer_release_profile_activation:offer_release_profile_activation_immutable:27:O:" +
+          "public:_m203a_guard_offer_release_append_only::-:0",
+        "offer_release_profile_activation:offer_release_profile_activation_no_truncate:34:O:" +
+          "public:forbid_mutation::-:0",
+        "offer_release_profile_revision:offer_release_profile_revision_immutable:27:O:" +
+          "public:_m203a_guard_offer_release_append_only::-:0",
+        "offer_release_profile_revision:offer_release_profile_revision_no_truncate:34:O:" +
+          "public:forbid_mutation::-:0",
+      ] : []),
       "offer_variant:offer_variant_current_complete:21:O:public:" +
         "validate_offer_variant_snapshot_mirrors::-:constraint",
       "offer_variant:offer_variant_mutation_guard:27:O:public:guard_offer_erasure_mutation::-:0",
@@ -2044,6 +2385,9 @@ export async function verifyRoleContract(
       ...(hasOfferPdfDraft ? [
         "app_runtime:offer_pdf_draft:SELECT:app_owner:false",
       ] : []),
+      ...(hasOfferRelease ? OFFER_RELEASE_RUNTIME_SELECT_RELATIONS.map(
+        (relation) => `app_runtime:${relation}:SELECT:app_owner:false`,
+      ) : []),
       "app_runtime:offer_variant:INSERT:app_owner:false",
       "app_runtime:offer_variant:SELECT:app_owner:false",
       "app_runtime:offer_variant_revision:INSERT:app_owner:false",
@@ -2090,6 +2434,9 @@ export async function verifyRoleContract(
       "app_worker:membership:SELECT:app_owner:false",
       ...(hasOfferPdfDraft ? [
         "app_worker:offer_pdf_draft:SELECT:app_owner:false",
+      ] : []),
+      ...(hasOfferRelease ? [
+        "app_worker:offer_release_candidate:SELECT:app_owner:false",
       ] : []),
       "app_worker:project:SELECT:app_owner:false",
       "app_worker:project_calculation_job:SELECT:app_owner:false",
@@ -2186,6 +2533,10 @@ export async function verifyRoleContract(
         "app_worker:offer_pdf_draft.state:UPDATE:app_owner:false",
         "app_worker:offer_pdf_draft.updated_at:UPDATE:app_owner:false",
       ] : []),
+      ...(hasOfferRelease ? OFFER_RELEASE_WORKER_UPDATE_COLUMNS.map(
+        (column) =>
+          `app_worker:offer_release_candidate.${column}:UPDATE:app_owner:false`,
+      ) : []),
     ],
     "Spalten-Grants",
   );
@@ -2243,6 +2594,15 @@ export async function verifyRoleContract(
       ...(hasOfferPdfDraft ? [
         "app_runtime:canonicalize_offer_json_v1(jsonb):EXECUTE:app_owner:false",
       ] : []),
+      ...(hasOfferRelease ? [
+        "app_runtime:activate_offer_release_profile(uuid, uuid, uuid, integer):EXECUTE:app_owner:false",
+        "app_runtime:approve_offer_release_candidate(uuid, uuid, uuid, uuid, boolean, boolean, boolean, boolean, boolean):EXECUTE:app_owner:false",
+        "app_runtime:prepare_offer_release_candidate(uuid, uuid, uuid, integer, uuid, uuid, uuid, integer, uuid, integer, date):EXECUTE:app_owner:false",
+        "app_runtime:read_offer_release_candidate_artifact(uuid, uuid, uuid):EXECUTE:app_owner:false",
+        "app_runtime:read_offer_release_candidate_status(uuid, uuid, uuid):EXECUTE:app_owner:false",
+        "app_runtime:revise_offer_recipient(uuid, uuid, integer, text, text, text, jsonb, boolean):EXECUTE:app_owner:false",
+        "app_runtime:revise_offer_release_profile(uuid, integer, text, jsonb, jsonb):EXECUTE:app_owner:false",
+      ] : []),
       "app_system:app_actor_id():EXECUTE:app_owner:false",
       ...(hasOfferPdfDraft ? [
         "app_worker:canonicalize_offer_json_v1(jsonb):EXECUTE:app_owner:false",
@@ -2278,6 +2638,9 @@ export async function verifyRoleContract(
       "app_runtime:enqueue_project_calculation(uuid, uuid):EXECUTE:app_worker:false",
       ...(hasOfferPdfDraft ? [
         "app_runtime:enqueue_offer_pdf_draft(uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
+      ...(hasOfferRelease ? [
+        "app_runtime:enqueue_offer_release_candidate(uuid, uuid):EXECUTE:app_worker:false",
       ] : []),
     ],
     "pg-boss-Funktions-Grants",
@@ -2432,6 +2795,96 @@ export async function verifyRoleContract(
     ))
   ) {
     throw new Error(`Funktions-ACL weicht vom Rollenvertrag ab: ${JSON.stringify(acl)}`);
+  }
+
+  if (hasOfferRelease) {
+    const releaseFunctionAcl = await client.query<{
+      principal: string;
+      routine_signature: string;
+      may_execute: boolean | null;
+    }>(`
+      with principals(principal) as (
+        values
+          ('public'::text),
+          ('app_owner'::text),
+          ('app_migrator'::text),
+          ('app_runtime'::text),
+          ('app_system'::text),
+          ('app_auth'::text),
+          ('app_worker'::text),
+          ('app_erasure'::text),
+          ('app_membership_writer'::text),
+          ('identity_reconciler'::text)
+      ),
+      routines(schema_name, routine_name, routine_arguments, routine_signature) as (
+        values
+          ('public'::text, 'activate_offer_release_profile'::text,
+            'uuid, uuid, uuid, integer'::text,
+            'activate_offer_release_profile(uuid,uuid,uuid,integer)'::text),
+          ('public'::text, 'approve_offer_release_candidate'::text,
+            'uuid, uuid, uuid, uuid, boolean, boolean, boolean, boolean, boolean'::text,
+            'approve_offer_release_candidate(uuid,uuid,uuid,uuid,boolean,boolean,boolean,boolean,boolean)'::text),
+          ('public'::text, 'prepare_offer_release_candidate'::text,
+            'uuid, uuid, uuid, integer, uuid, uuid, uuid, integer, uuid, integer, date'::text,
+            'prepare_offer_release_candidate(uuid,uuid,uuid,integer,uuid,uuid,uuid,integer,uuid,integer,date)'::text),
+          ('public'::text, 'read_offer_release_candidate_artifact'::text,
+            'uuid, uuid, uuid'::text,
+            'read_offer_release_candidate_artifact(uuid,uuid,uuid)'::text),
+          ('public'::text, 'read_offer_release_candidate_status'::text,
+            'uuid, uuid, uuid'::text,
+            'read_offer_release_candidate_status(uuid,uuid,uuid)'::text),
+          ('public'::text, 'revise_offer_recipient'::text,
+            'uuid, uuid, integer, text, text, text, jsonb, boolean'::text,
+            'revise_offer_recipient(uuid,uuid,integer,text,text,text,jsonb,boolean)'::text),
+          ('public'::text, 'revise_offer_release_profile'::text,
+            'uuid, integer, text, jsonb, jsonb'::text,
+            'revise_offer_release_profile(uuid,integer,text,jsonb,jsonb)'::text),
+          ('pgboss'::text, 'enqueue_offer_release_candidate'::text,
+            'uuid, uuid'::text,
+            'enqueue_offer_release_candidate(uuid,uuid)'::text)
+      )
+      select principal.principal,
+             routine.schema_name || '.' || routine.routine_signature as routine_signature,
+             pg_catalog.has_function_privilege(
+               principal.principal,
+               function_record.oid,
+               'EXECUTE'
+             ) as may_execute
+        from principals as principal
+        cross join routines as routine
+        left join pg_catalog.pg_namespace as function_schema
+          on function_schema.nspname = routine.schema_name
+        left join pg_catalog.pg_proc as function_record
+          on function_record.pronamespace = function_schema.oid
+         and function_record.proname = routine.routine_name
+         and pg_catalog.oidvectortypes(function_record.proargtypes) =
+             routine.routine_arguments
+       order by principal.principal, routine.schema_name, routine.routine_signature
+    `);
+    const principals = ["public", ...APP_ROLES] as const;
+    const routines = [
+      "public.activate_offer_release_profile(uuid,uuid,uuid,integer)",
+      "public.approve_offer_release_candidate(uuid,uuid,uuid,uuid,boolean,boolean,boolean,boolean,boolean)",
+      "public.prepare_offer_release_candidate(uuid,uuid,uuid,integer,uuid,uuid,uuid,integer,uuid,integer,date)",
+      "public.read_offer_release_candidate_artifact(uuid,uuid,uuid)",
+      "public.read_offer_release_candidate_status(uuid,uuid,uuid)",
+      "public.revise_offer_recipient(uuid,uuid,integer,text,text,text,jsonb,boolean)",
+      "public.revise_offer_release_profile(uuid,integer,text,jsonb,jsonb)",
+      "pgboss.enqueue_offer_release_candidate(uuid,uuid)",
+    ] as const;
+    equalRows(
+      releaseFunctionAcl.rows.map((row) =>
+        `${row.principal}:${row.routine_signature}:${row.may_execute === null ? "NULL" : String(row.may_execute)}`,
+      ),
+      principals.flatMap((principal) => routines.map((routine) => {
+        const isOwner = routine.startsWith("public.")
+          ? principal === "app_owner"
+          : principal === "app_worker";
+        const mayExecute = principal === "app_runtime" || isOwner;
+        return `${principal}:${routine}:${String(mayExecute)}`;
+      })),
+      "M2-03a effektive Funktions-ACLs",
+    );
   }
 
   const schemaAcl = await client.query<{

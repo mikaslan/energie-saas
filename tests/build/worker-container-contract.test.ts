@@ -28,6 +28,45 @@ describe("Worker-Containervertrag", () => {
     expect(dockerfile).not.toContain("--no-sandbox");
   });
 
+  it("bündelt M2-02 und den synthetischen M2-03a-Renderer in denselben Smoke", async () => {
+    const [dockerfile, compose, verifier] = await Promise.all([
+      readFile("worker/Dockerfile", "utf8"),
+      readFile("worker/compose.yaml", "utf8"),
+      readFile("scripts/verify-offer-pdf-renderer.mts", "utf8"),
+    ]);
+
+    expect(dockerfile).toContain("scripts/verify-offer-pdf-renderer.mts");
+    expect(dockerfile).toContain("--outfile=dist/verify-offer-pdf-renderer.mjs");
+    expect(compose).toContain(
+      'command: ["node", "dist/verify-offer-pdf-renderer.mjs"]',
+    );
+    expect(verifier).toContain("createPlaywrightOfferPdfRenderer");
+    expect(verifier).toContain("createPlaywrightOfferReleaseCandidateRenderer");
+    expect(verifier).toContain("renderOfferReleaseCandidateHtml");
+    expect(verifier).toContain('contract: "M202-RENDER-01"');
+    expect(verifier).toContain('contract: "M203A-RENDER-01"');
+    expect(verifier).toContain("candidateFirst.bytes.equals(candidateSecond.bytes)");
+    expect(verifier).toContain("byteEqualityVerified: true");
+    expect(verifier).toContain("hashEqualityVerified: true");
+    expect(verifier).toContain("sizeEqualityVerified: true");
+    expect(verifier).toContain("taggedPdfVerified: true");
+    expect(verifier).toContain("outlineVerified: true");
+    expect(verifier).toContain("a4Verified: true");
+    expect(verifier).toContain("multiPageLegalDocumentsVerified: true");
+    expect(verifier).toContain('from "pdfjs-dist/legacy/build/pdf.mjs"');
+    expect(verifier).toContain("await extractPdfPageTexts(candidateFirst.bytes)");
+    expect(verifier).toContain("statusVerifiedPages === candidatePageCount");
+    expect(verifier).toContain(
+      "documentStatusTextOnEveryPageVerified: statusVerifiedPages === candidatePageCount",
+    );
+    expect(verifier).toContain("statusVerifiedPages,");
+    expect(verifier).toContain("networkFailClosed: true");
+    expect(verifier).toContain("printNetworkFailClosed: true");
+    expect(verifier).toContain("syntheticFixture: true");
+    expect(verifier).toContain("nicht ausgestellt · nicht versendet");
+    expect(verifier).not.toMatch(/\bWMEE\b/u);
+  });
+
   it("erhält nur Worker-Konfiguration und schließt alle Env-Dateien aus", async () => {
     const [compose, dockerignore] = await Promise.all([
       readFile("worker/compose.yaml", "utf8"),

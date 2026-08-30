@@ -2,12 +2,14 @@ import type { Role } from "./db/schema/core";
 
 export type Capability =
   | "see_purchase_prices" | "edit_prices" | "discounts" | "invoicing"
-  | "convert_phase" | "manage_catalog" | "manage_settings" | "external_only";
+  | "convert_phase" | "manage_catalog" | "manage_settings"
+  | "prepare_offer_documents" | "approve_offer_documents" | "external_only";
 
 export type Action =
   | "project.read" | "project.write" | "phase.convert"
   | "price.read_purchase" | "price.edit" | "discount.apply"
-  | "invoice.issue" | "catalog.read" | "catalog.manage" | "settings.manage";
+  | "invoice.issue" | "offer.release.prepare" | "offer.release.approve"
+  | "catalog.read" | "catalog.manage" | "settings.manage";
 
 export type PermissionCtx = {
   role: Role;
@@ -44,7 +46,12 @@ export class PermissionDeniedError extends Error {
 }
 
 // Schicht 1: Workspace-Feature · Schicht 2: Mindestrolle · Schicht 3: Einzelrecht
-export const ACTION_REQUIREMENTS: Record<Action, { minRole: Role; capability?: Capability; feature?: string }> = {
+export const ACTION_REQUIREMENTS: Record<Action, {
+  minRole: Role;
+  capability?: Capability;
+  feature?: string;
+  internalOnly?: true;
+}> = {
   "project.read":        { minRole: "viewer" },
   "project.write":       { minRole: "editor" },
   "phase.convert":       { minRole: "editor", capability: "convert_phase" },
@@ -52,6 +59,8 @@ export const ACTION_REQUIREMENTS: Record<Action, { minRole: Role; capability?: C
   "price.edit":          { minRole: "editor", capability: "edit_prices" },
   "discount.apply":      { minRole: "editor", capability: "discounts" },
   "invoice.issue":       { minRole: "editor", capability: "invoicing", feature: "invoicing" },
+  "offer.release.prepare": { minRole: "editor", capability: "prepare_offer_documents", internalOnly: true },
+  "offer.release.approve": { minRole: "editor", capability: "approve_offer_documents", internalOnly: true },
   "catalog.read":        { minRole: "viewer" },
   "catalog.manage":      { minRole: "editor", capability: "manage_catalog" },
   "settings.manage":     { minRole: "admin" },
@@ -80,6 +89,7 @@ export function can(ctx: PermissionCtx, action: Action): boolean {
   if (!req) return false; // unbekannte Action (Laufzeit-String)
   if (!isRole(ctx.role)) return false;
   if (req.feature && ctx.featureFlags?.[req.feature] !== true) return false;
+  if (req.internalOnly && isExternalOnly(ctx)) return false;
   if (RANK[ctx.role] < RANK[req.minRole]) return false;
   if (req.capability && ctx.role !== "admin" && ctx.capabilities?.[req.capability] !== true) return false;
   return true;

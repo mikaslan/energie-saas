@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { sql } from "drizzle-orm";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { z } from "zod";
@@ -8,8 +9,15 @@ import { can, isExternalOnly, PermissionDeniedError } from "@/lib/permissions";
 import {
   getOfferDetail,
   listOfferPdfDrafts,
+  listOfferReleaseCandidates,
+  OfferReleaseProfileNotFoundError,
+  readCurrentOfferRecipient,
+  readCurrentOfferReleaseProfile,
+  type CurrentOfferReleaseProfileResult,
   type OfferDetailViewModel,
   type OfferPdfDraftStatusResult,
+  type OfferRecipientRevisionResult,
+  type OfferReleaseStatusResult,
 } from "@/modules/offers";
 import { requireAuthSecret } from "@/lib/env";
 import {
@@ -35,6 +43,12 @@ const basisPointsSchema = z.int().safe().min(0).max(10_000);
 const positiveRevisionSchema = z.int().safe().min(1);
 const snapshotUuidSchema = z.uuid().transform((value) => value.toLowerCase());
 const snapshotTextSchema = z.string().trim().min(1).max(1_000);
+const releaseValidityWindowSchema = z.object({
+  min: z.iso.date(),
+  suggested: z.iso.date(),
+  max: z.iso.date(),
+}).strict();
+type ReleaseValidityWindow = z.infer<typeof releaseValidityWindowSchema>;
 
 function offerRecoveryScope(workspaceId: string, actor: string): string {
   // Runtime ist der Auth-Schlüssel fail-closed gesetzt. Der feste Test-Fallback
@@ -174,9 +188,18 @@ function projectOfferDetailView(
     canApplyDiscount: boolean;
     canEditPurchasePrice: boolean;
     canGeneratePdf: boolean;
+    canPrepareRelease: boolean;
+    canApproveRelease: boolean;
   },
   recoveryScope: string,
   pdfDrafts: readonly OfferPdfDraftStatusResult[],
+  releaseContext: {
+    profile: CurrentOfferReleaseProfileResult | null;
+    recipient: OfferRecipientRevisionResult | null;
+    candidates: readonly OfferReleaseStatusResult[];
+    validityWindow: ReleaseValidityWindow | null;
+    showPanel: boolean;
+  },
 ): OfferDetailSurfaceView {
   const activeVariantSchema = z.object({
     schemaVersion: z.literal("offer-variant-view.v1"),
@@ -199,6 +222,9 @@ function projectOfferDetailView(
     || snapshot.revision !== activeTab.revision
   ) {
     throw new Error("Angebotsansicht enthält widersprüchliche Variantenbindungen");
+  }
+  if (releaseContext.showPanel && releaseContext.validityWindow === null) {
+    throw new Error("Der serverseitige Gültigkeitszeitraum fehlt");
   }
 
   return {
@@ -230,6 +256,8 @@ function projectOfferDetailView(
       canApplyDiscount: editorCapabilities.canApplyDiscount,
       canEditPurchasePrice: editorCapabilities.canEditPurchasePrice,
       canGeneratePdf: editorCapabilities.canGeneratePdf,
+      canPrepareRelease: editorCapabilities.canPrepareRelease,
+      canApproveRelease: editorCapabilities.canApproveRelease,
     },
     basisInput: view.permissions.canCreateBasis && view.newBasisInput ? {
       ...view.newBasisInput,
@@ -250,6 +278,53 @@ function projectOfferDetailView(
       errorCode: draft.errorCode,
       canDownload: draft.canDownload,
     })),
+    offerRelease: !releaseContext.showPanel ? undefined : {
+      profile: releaseContext.profile?.active === null
+        || releaseContext.profile?.active === undefined
+        ? null
+        : {
+          profileId: releaseContext.profile.profileId,
+          profileRevisionId: releaseContext.profile.active.profileRevisionId,
+          revision: releaseContext.profile.active.profileRevision,
+          profileName: releaseContext.profile.active.snapshot.profileName,
+        },
+      recipientPresence: releaseContext.recipient === null ? null : {
+        revision: releaseContext.recipient.revision,
+      },
+      recipient: !editorCapabilities.canPrepareRelease
+        || releaseContext.recipient === null ? null : {
+        recipientRevisionId: releaseContext.recipient.recipientRevisionId,
+        revision: releaseContext.recipient.revision,
+        displayName: releaseContext.recipient.snapshot.displayName,
+        company: releaseContext.recipient.snapshot.company,
+        email: releaseContext.recipient.snapshot.email,
+        billingAddress: releaseContext.recipient.snapshot.billingAddress,
+      },
+      sourcePdfDraftId: pdfDrafts.find((draft) => (
+        draft.variantId === snapshot.variantId
+        && draft.variantRevision === snapshot.revision
+        && draft.state === "succeeded"
+      ))?.jobId ?? null,
+      validityWindow: releaseContext.validityWindow!,
+      candidates: releaseContext.candidates.map((candidate) => ({
+        candidateId: candidate.candidateId,
+        variantId: candidate.variantId,
+        variantRevision: candidate.variantRevision,
+        state: candidate.state,
+        publicationStatus: candidate.publicationStatus,
+        requiresZeroTaxReview: candidate.requiresZeroTaxReview,
+        attemptCount: candidate.attemptCount,
+        nextAttemptAt: candidate.nextAttemptAt,
+        createdAt: candidate.createdAt,
+        finishedAt: candidate.finishedAt,
+        errorCode: candidate.errorCode,
+        approvedAt: candidate.approval?.approvedAt ?? null,
+        canDownload: candidate.canDownload,
+        ...(candidate.approvalArtifactVersion === undefined
+          ? {}
+          : { approvalArtifactVersion: candidate.approvalArtifactVersion }),
+      })),
+    },
   };
 }
 
@@ -272,12 +347,19 @@ export default async function OfferDetailPage(
   let result: {
     view: Awaited<ReturnType<typeof getOfferDetail>>;
     pdfDrafts: OfferPdfDraftStatusResult[];
+    releaseProfile: CurrentOfferReleaseProfileResult | null;
+    releaseRecipient: OfferRecipientRevisionResult | null;
+    releaseCandidates: OfferReleaseStatusResult[];
+    releaseValidityWindow: ReleaseValidityWindow | null;
+    showReleasePanel: boolean;
     recoveryScope: string;
     editorCapabilities: {
       canEditPrice: boolean;
       canApplyDiscount: boolean;
       canEditPurchasePrice: boolean;
       canGeneratePdf: boolean;
+      canPrepareRelease: boolean;
+      canApproveRelease: boolean;
     };
   };
   try {
@@ -291,6 +373,55 @@ export default async function OfferDetailPage(
           variantId: selectedVariantId,
         });
         const externalOnly = isExternalOnly(ctx);
+        let releaseProfile: CurrentOfferReleaseProfileResult | null = null;
+        let releaseRecipient: OfferRecipientRevisionResult | null = null;
+        let releaseCandidates: OfferReleaseStatusResult[] = [];
+        let releaseValidityWindow: ReleaseValidityWindow | null = null;
+        if (view !== null && !externalOnly) {
+          // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
+          // durch. Dessen Queries muessen sequenziell bleiben; pg@9 weist
+          // ueberlappende client.query()-Aufrufe nicht mehr nur als Warnung ab.
+          const profileResult = await readCurrentOfferReleaseProfile(
+            tx,
+            ctx,
+            { workspaceId },
+          ).catch((error) => {
+            if (error instanceof OfferReleaseProfileNotFoundError) return null;
+            throw error;
+          });
+          const recipientResult = await readCurrentOfferRecipient(
+            tx,
+            ctx,
+            { workspaceId, offerId },
+          ).catch((error) => {
+            if (error instanceof OfferReleaseProfileNotFoundError) return null;
+            throw error;
+          });
+          const candidateResult = await listOfferReleaseCandidates(
+            tx,
+            ctx,
+            { workspaceId, offerId },
+          );
+          const validityResult = await tx.execute<{
+            min_valid_through: string;
+            suggested_valid_through: string;
+            max_valid_through: string;
+            [key: string]: unknown;
+          }>(sql`
+            select
+              to_char((statement_timestamp() at time zone 'Europe/Berlin')::date + 1, 'YYYY-MM-DD') as min_valid_through,
+              to_char((statement_timestamp() at time zone 'Europe/Berlin')::date + 14, 'YYYY-MM-DD') as suggested_valid_through,
+              to_char((statement_timestamp() at time zone 'Europe/Berlin')::date + 60, 'YYYY-MM-DD') as max_valid_through
+          `);
+          releaseProfile = profileResult;
+          releaseRecipient = recipientResult;
+          releaseCandidates = candidateResult;
+          releaseValidityWindow = releaseValidityWindowSchema.parse({
+            min: validityResult.rows[0]?.min_valid_through,
+            suggested: validityResult.rows[0]?.suggested_valid_through,
+            max: validityResult.rows[0]?.max_valid_through,
+          });
+        }
         return {
           view,
           pdfDrafts: view === null ? [] : await listOfferPdfDrafts(tx, ctx, {
@@ -298,6 +429,11 @@ export default async function OfferDetailPage(
             offerId,
           }),
           recoveryScope: offerRecoveryScope(workspaceId, ctx.actor),
+          releaseProfile,
+          releaseRecipient,
+          releaseCandidates,
+          releaseValidityWindow,
+          showReleasePanel: !externalOnly,
           editorCapabilities: {
             canEditPrice: !externalOnly && can(ctx, "price.edit"),
             canApplyDiscount: !externalOnly && can(ctx, "discount.apply"),
@@ -305,6 +441,8 @@ export default async function OfferDetailPage(
             && can(ctx, "price.edit")
             && can(ctx, "price.read_purchase"),
             canGeneratePdf: !externalOnly && can(ctx, "project.write"),
+            canPrepareRelease: !externalOnly && can(ctx, "offer.release.prepare"),
+            canApproveRelease: !externalOnly && can(ctx, "offer.release.approve"),
           },
         };
       },
@@ -335,6 +473,13 @@ export default async function OfferDetailPage(
         result.editorCapabilities,
         result.recoveryScope,
         result.pdfDrafts,
+        {
+          profile: result.releaseProfile,
+          recipient: result.releaseRecipient,
+          candidates: result.releaseCandidates,
+          validityWindow: result.releaseValidityWindow,
+          showPanel: result.showReleasePanel,
+        },
       )}
     />
   );

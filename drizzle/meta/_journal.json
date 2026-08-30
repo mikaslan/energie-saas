@@ -239,6 +239,13 @@
       "when": 1788087672381,
       "tag": "0033_supreme_jocasta",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788096898221,
+      "tag": "0034_m2_03a_offer_release_candidate",
+      "breakpoints": true
     }
   ]
 }

@@ -7,7 +7,7 @@ in `CONTRIBUTING.md` noch eine Capability-Abnahme. Reonic-Quellen dürfen nur
 beobachtbare Funktionssemantik belegen. UI, Texte, Assets, Code und Daten werden
 nicht übernommen.
 
-## Aktive Quellen für M2-01 und M2-02
+## Aktive Quellen für M2-01, M2-02 und M2-03a
 
 | ID | Quelle | Klasse | Belegt | Confidence / Grenze |
 |---|---|---|---|---|
@@ -16,6 +16,8 @@ nicht übernommen.
 | `SRC-M108-01` | `docs/spec/M1-08-produktkatalog-projektaufloesung.md` und ADR 0008 | DOCUMENTED | immutable Katalog-/Preissnapshots, EK-Grenze, Current/Stale | hoch; lokal verifiziert |
 | `SRC-M202-SPEC` | `docs/spec/M2-02-angebots-pdf-entwurf.md` | DOCUMENTED | interner nicht verbindlicher PDF-Draft, exakte Revisionsbindung, minimierter Input, Zustands-/Rollen-/Download-/Testvertrag und harte Nicht-Ziele | hoch für den eigenen WMEE-Vertrag; lokal technisch verifiziert |
 | `SRC-ADR-0010` | `docs/adr/0010-pdf-entwurf-worker-und-staging.md` | DECIDED WMEE | isolierter offline/sandboxed Chromium-Worker, gepinntes `linux/amd64`-/Playwright-/OCI-Rezept, tenantgeschütztes Postgres-Staging und spätere separate Object-Lock-Promotion | hoch für die eigene Architekturentscheidung; kein produktiver Deploy-/WORM-Beleg |
+| `SRC-M203A-SPEC` | `docs/spec/M2-03a-angebots-freigabekandidat.md` | DOCUMENTED | versioniertes Dokumentprofil, Empfänger-/Rechnungsrevision, Candidate-Readiness, versiegelter Input, Workerzustände, Byte-Approval, Download-/Erasure- und Testvertrag | hoch für den eigenen WMEE-Vertrag; lokal technisch verifiziert, keine Rechts- oder Issuance-Freigabe |
+| `SRC-ADR-0011` | `docs/adr/0011-angebots-freigabekandidat.md` | DECIDED WMEE | eigener nicht ausgestellter Candidate-Render, append-only Profile/Recipients/Approvals und zwingend separater M2-03b-Ausstellungsrender | hoch für die eigene Architekturentscheidung; Object Lock, Retention, Ausstellung und Versand nicht ausgeführt |
 | `SRC-REONIC-CREATE` | [Create an offer](https://docs.reonic.com/docs/en/offers-overview-create-an-offer) | DOCUMENTED | Offer aus Request oder direkt, Workspace-Nummer, Standardvariante | hoch für öffentlich beschriebene Semantik; kein Login |
 | `SRC-REONIC-BASIC` | [Offer basic information](https://docs.reonic.com/docs/en/offers-overview-basic-informations) | DOCUMENTED | BOM-Felder, Menge, Preis, Rabatt, VAT, Sektionen | hoch für öffentlich beschriebene Semantik |
 | `SRC-REONIC-VARIANTS` | [Variants](https://docs.reonic.com/docs/en/offers-plan-additional-optional-variants) | DOCUMENTED | unabhängige Varianten und Duplizieren | hoch; private Implementierung unbekannt |
@@ -32,6 +34,7 @@ nicht übernommen.
 | `SRC-NEXT-16-LOCAL` | installierte offizielle Next-16.3.3-Dokumentation in `node_modules/next/dist/docs` | DOCUMENTED | Server-/Client-Grenze, Actions, Forms, Cache, Revalidation, Errors | hoch; exakt installierte Version |
 | `SRC-CLAUDE-M201-UI` | lokaler Claude-Code-2.1.251-Leselauf, Modellalias `opus`, Effort `max` | INFERRED / design input | unabhängige UI-/A11y-Gegenprobe für M2-01 | mittel; keine Produktwahrheit, keine Schreibrechte, ausgewählte Punkte bewusst übernommen |
 | `SRC-CLAUDE-M202-DESIGN` | lokaler Claude-Code-Opus-Lesereview | INFERRED / design input | unabhängige Gegenprobe für Informationshierarchie, klare Draft-Kennzeichnung und lesbaren A4-Aufbau in M2-02 | mittel; keine Produkt- oder Reonic-Wahrheit, keine Schreibrechte |
+| `SRC-CLAUDE-M203A-DESIGN` | finaler lokaler Claude-Code-Lesereview, Modellalias `opus`, Effort `max` | INFERRED / design input | unabhängige Gegenprobe des Profil-/Candidate-Flows, der Landmark-/Fokusführung, Validierungszustände und Statuskommunikation nach A11y-Nacharbeit | mittel; final GO ohne offene P0–P2, aber keine Produkt-, Rechts-, Brand- oder Reonic-Wahrheit und keine Schreibrechte |
 
 Öffentliche Reonic-Seiten wurden am 2026-08-29 ohne Account gelesen. Die
 Vault-Auswertung war read-only. Keine Quelle liefert einen autoritativen
@@ -66,6 +69,14 @@ nicht als private Reonic-Produktwahrheit ausgegeben.
 | `DEC-M202-07` | M2-02 besitzt bewusst kein eigenes Rollout-Flag; vorhandene Flags können fehlende Membership, Rolle oder Einzelrechte nicht ersetzen | DECIDED WMEE | Spec M2-02, Rollenmatrix |
 | `DEC-M202-08` | Hidden-Zeilen bleiben im rein internen Draft arithmetisch transparent und werden ausdrücklich als intern ausgeblendet markiert; ein späteres Kundendokument braucht erst einen geschlossenen Aggregationsvertrag | DECIDED WMEE | Spec M2-02 |
 | `DEC-M202-09` | Technische Portal-/PDF-Prüfungen schließen das menschliche Visual-Gate nicht; `M202-VISUAL-01` bleibt bis zur Baseline-Freigabe `INCONCLUSIVE` | DECIDED WMEE / visuelle Baseline ausstehend | Spec M2-02 |
+| `DEC-M203A-01` | genau ein stabiler Workspace-Dokumentprofil-Head mit append-only Revisionen und getrennten Aktivierungen; keine erfundenen Firmen-/Rechtstextdefaults | DECIDED WMEE | Spec M2-03a, ADR 0011 |
+| `DEC-M203A-02` | Empfänger-/Rechnungsdaten bilden einen bestätigten append-only Offer-Stand und werden nie still aus dem Anlagenstandort abgeleitet | DECIDED WMEE | Spec M2-03a, ADR 0011 |
+| `DEC-M203A-03` | Candidate-Prepare bindet exakt aktuelle Variante, validen M2-02-Draft, aktive Profilrevision, aktuelle Empfängerrevision und 1–60 Tage Gültigkeit; Hidden-Zeilen blockieren | DECIDED WMEE | Spec M2-03a, ADR 0011 |
+| `DEC-M203A-04` | eigenes minimiertes `offer-release-candidate-input.v1`; Queue/Worker transportieren nur IDs und laden alle Inhalte unter Tenantkontext neu | DECIDED WMEE | Spec M2-03a, ADR 0011 |
+| `DEC-M203A-05` | echte Candidate-Bytes werden separat über feste menschliche Attestations rehashgebunden; Ergebnis ist ausschließlich `approved_not_issued` | DECIDED WMEE | Spec M2-03a, ADR 0011 |
+| `DEC-M203A-06` | Selbstfreigabe ist im nicht ausgestellten Slice technisch zulässig; eine verpflichtende Vier-Augen-Regel bleibt Entscheidung des Issuance-Slices | DECIDED WMEE / Issuance-Gate offen | Spec M2-03a, ADR 0011 |
+| `DEC-M203A-07` | unfreigegebene Bytes sind nur für Approver sichtbar, freigegebene Bytes für interne Nutzer mit `project.read`; External bleibt fail-closed | DECIDED WMEE | Spec M2-03a, Rollenmatrix |
+| `DEC-M203A-08` | M2-03b darf Candidate-Bytes mit sichtbarem `nicht ausgestellt` nie umetikettieren; Ausstellung braucht neue Bytes, erneute Freigabe und vollständigen Object-Lock-Readback | DECIDED WMEE / M2-03b offen | Spec M2-03a, ADR 0011 |
 
 ## Vollständig gelesenes Vault-Manifest
 

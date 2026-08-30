@@ -47,6 +47,7 @@ import {
   DirtyNavigationDialog,
   DirtyNavigationGuard,
   GuardedSignOutButton,
+  OfferDirtyNavigationProvider,
 } from "./dirty-navigation-guard";
 import type {
   OfferDetailSurfaceView,
@@ -468,7 +469,15 @@ function pricingProvenanceLabel(provenance: { kind: string; reasonCode?: string 
   return "Nicht verfügbar";
 }
 
-export function OfferVariantEditor({ view }: { view: EditableOfferView }) {
+export function OfferVariantEditor({
+  view,
+  afterEditor,
+  showReleaseSkipLink = false,
+}: {
+  view: EditableOfferView;
+  afterEditor?: ReactNode;
+  showReleaseSkipLink?: boolean;
+}) {
   const router = useRouter();
   const snapshot = view.activeVariant.snapshot;
   const incomingSource = useMemo(() => sourceFromSnapshot(snapshot), [snapshot]);
@@ -852,6 +861,11 @@ export function OfferVariantEditor({ view }: { view: EditableOfferView }) {
           <a href="#offer-editor-main" className="sr-only rounded bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-emerald-700">
             Zum Angebotseditor springen
           </a>
+          {showReleaseSkipLink ? (
+            <a href="#offer-release-candidate" className="sr-only rounded bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-16 focus:z-50 focus:ring-2 focus:ring-emerald-700">
+              Zur Angebotsfreigabe springen
+            </a>
+          ) : null}
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <nav aria-label="Brotkrumen">
               <GuardedLink
@@ -1138,6 +1152,28 @@ export function OfferVariantEditor({ view }: { view: EditableOfferView }) {
           <p role="status" aria-live="polite" className="sr-only">{reorderAnnouncement}</p>
         </div>
 
+        {afterEditor ? (
+          <OfferDirtyNavigationProvider
+            key="offer-editor-after-content"
+            dirty={dirty}
+            pending={navigationPending}
+            requestNavigation={({ kind, href, label }) => {
+              requestIntent({
+                label,
+                execute: () => {
+                  if (kind === "refresh") {
+                    router.refresh();
+                    return;
+                  }
+                  router.push(href);
+                },
+              });
+            }}
+          >
+            {afterEditor}
+          </OfferDirtyNavigationProvider>
+        ) : null}
+
         <DirtyNavigationDialog
           open={pendingIntent !== null}
           destinationLabel={pendingIntent?.label ?? "andere Aktion"}
@@ -1147,6 +1183,7 @@ export function OfferVariantEditor({ view }: { view: EditableOfferView }) {
             const intent = pendingIntent;
             if (!intent) return;
             setDraft(savedDraft);
+            setFeedback({ status: "idle" });
             setPendingIntent(null);
             window.setTimeout(() => { void intent.execute(); }, 0);
           }}

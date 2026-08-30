@@ -63,8 +63,11 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    `retryLimit: 10`, eine Sekunde Startverzug, Backoff und maximal 60 Sekunden.
    M2-02 initialisiert `pdf.render` direkt mit Retry 10, maximal 60 Sekunden
    technischem Backoff und 180 Sekunden Ablauf; drei fachliche Versuche werden
-   davon getrennt in `offer_pdf_draft` per Lease/CAS erzwungen. Der normale
-   Worker pinnt danach beide aktuellen Verträge.
+   davon getrennt in `offer_pdf_draft` per Lease/CAS erzwungen. M2-03a nutzt
+   mit `offer.release-candidate.render` denselben technischen Queuevertrag,
+   aber einen getrennten, ebenfalls auf drei Fachversuche begrenzten
+   Lease-/CAS-Zustand in `offer_release_candidate`. Der normale Worker pinnt
+   danach alle drei aktuellen Verträge.
 4. **`fetch(name, options?)`** liefert ein Array (`Job<T>[]`); `complete(name,
    id | id[], data?, options?)` akzeptiert sowohl eine einzelne ID als auch ein
    Array. Die Skizze nutzt `complete(name, [job.id])` — passt unverändert.
@@ -111,7 +114,7 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    `node_modules`, `.next`, `.git`, `.superpowers/pgdata`, `*.tsbuildinfo` und
    `.env*` aus.
 
-## PDF-Recovery und bekannte Aufbewahrungsgrenze
+## PDF- und Freigabekandidaten-Recovery
 
 - Der Worker startet den PDF-Recovery-Sweep sofort und danach alle 60 Sekunden.
   Ein Lauf ist auf 25 Workspaces mit jeweils 25 Jobs begrenzt und überlappt
@@ -137,8 +140,14 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
   der Benutzer-Replay repariert ihn weiterhin. Ein Betriebs-SLO, das auch nach
   Verlust der gesamten Queuehistorie autonome Reparatur verlangt, benötigt
   vor Freigabe eine eigene dauerhafte, migrationsgebundene Recovery-Registry.
+- Der M2-03a-Sweep folgt demselben begrenzten und nicht überlappenden Muster,
+  liest aber ausschließlich strikt validierte ID-only-Dispatches der Queue
+  `offer.release-candidate.render` und mutiert nur deren eigene Candidate-
+  Zustände. Ein Kandidat bleibt bei Erfolg `ready_for_approval`; die separate
+  menschliche Freigabe erzeugt lediglich `approved_not_issued` und führt weder
+  Ausstellung noch Versand aus.
 
-## Fresh-Install- und Upgrade-Reihenfolge für M1-07/M2-02
+## Fresh-Install- und Upgrade-Reihenfolge für M1-07/M2-02/M2-03a
 
 Die Reihenfolge ist bindend, weil die unveränderlichen Migrationen 0025/0026
 noch den historischen Retry-0-Startvertrag prüfen und erst 0029 auf den
@@ -148,11 +157,13 @@ aktuellen technischen Retry-10-Vertrag hebt:
 2. Mit ausschließlich `POSTGRES_URL_WORKER` und den erwarteten
    Neon-Tenant-/Timeline-IDs `npm run db:pgboss:bootstrap` ausführen. Der
    Befehl initialisiert pg-boss v38, `calculation.execute` im historischen
-   Retry-0-Vertrag und `pdf.render` bereits im aktuellen M2-02-Vertrag.
-3. Mit `POSTGRES_URL_MIGRATE` `npm run db:migrate` bis einschließlich 0033
+   Retry-0-Vertrag sowie `pdf.render` und `offer.release-candidate.render`
+   bereits in ihren aktuellen Verträgen.
+3. Mit `POSTGRES_URL_MIGRATE` `npm run db:migrate` bis einschließlich 0034
    ausführen. 0029 aktualisiert Calculation-Queue und wartende Zustellungen auf
    Retry 10; 0033 attestiert `pdf.render` und installiert ausschließlich die
-   minimale PDF-Dispatchroutine.
+   minimale PDF-Dispatchroutine. 0034 attestiert die getrennte M2-03a-Queue und
+   installiert nur deren ID-only-Dispatchroutine.
 4. Auf dem tatsächlichen Zielhost vor dem Rollout ausführen:
    `test "$(uname -m)" = x86_64` und danach
    `docker compose -f worker/compose.yaml --profile renderer-smoke run --rm renderer-smoke`.

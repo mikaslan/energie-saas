@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  createContext,
   useEffect,
   useId,
+  useContext,
   useRef,
   useState,
   type KeyboardEvent,
@@ -111,25 +113,32 @@ export function DirtyNavigationDialog({
           <button
             ref={stayButtonRef}
             type="button"
-            disabled={pending}
-            onClick={onStay}
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait"
+            aria-disabled={pending || undefined}
+            onClick={() => {
+              if (!pending) onStay();
+            }}
+            className={`min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait" : ""}`}
           >
             Bleiben
           </button>
           <button
             type="button"
-            disabled={pending}
-            onClick={onDiscard}
-            className="min-h-11 rounded-md border border-rose-300 bg-rose-50 px-3 text-sm font-semibold text-rose-800 outline-none hover:bg-rose-100 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2 disabled:cursor-wait"
+            aria-disabled={pending || undefined}
+            onClick={() => {
+              if (!pending) onDiscard();
+            }}
+            className={`min-h-11 rounded-md border border-rose-300 bg-rose-50 px-3 text-sm font-semibold text-rose-800 outline-none hover:bg-rose-100 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait" : ""}`}
           >
             Verwerfen
           </button>
           <button
             type="button"
-            disabled={pending}
-            onClick={onSaveAndContinue}
-            className="min-h-11 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait"
+            aria-disabled={pending || undefined}
+            aria-busy={pending || undefined}
+            onClick={() => {
+              if (!pending) onSaveAndContinue();
+            }}
+            className={`min-h-11 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait" : ""}`}
           >
             {pending ? "Speichert …" : "Speichern und fortfahren"}
           </button>
@@ -143,6 +152,20 @@ type Destination =
   | { kind: "link"; href: string; label: string }
   | { kind: "history"; label: string }
   | { kind: "logout"; label: string };
+
+type OfferDirtyNavigationDestination = {
+  kind: "link" | "refresh";
+  href: string;
+  label: string;
+};
+
+type DirtyNavigationContextValue = {
+  dirty: boolean;
+  pending: boolean;
+  requestNavigation: (destination: OfferDirtyNavigationDestination) => void;
+};
+
+const DirtyNavigationContext = createContext<DirtyNavigationContextValue | null>(null);
 
 interface DirtyNavigationGuardProps {
   dirty: boolean;
@@ -287,29 +310,55 @@ export function DirtyNavigationGuard({
   );
 }
 
-export function GuardedOfferLink({
+export function OfferDirtyNavigationProvider({
+  dirty,
+  pending,
+  requestNavigation,
+  children,
+}: {
+  dirty: boolean;
+  pending: boolean;
+  requestNavigation: (destination: OfferDirtyNavigationDestination) => void;
+  children: ReactNode;
+}) {
+  return (
+    <DirtyNavigationContext.Provider value={{ dirty, pending, requestNavigation }}>
+      {children}
+    </DirtyNavigationContext.Provider>
+  );
+}
+
+export function OfferDirtyNavigationLink({
   href,
   label,
-  dirty,
-  onBlockedNavigation,
+  kind = "link",
   children,
   className,
 }: {
   href: string;
   label: string;
-  dirty: boolean;
-  onBlockedNavigation: (destination: { href: string; label: string }) => void;
+  kind?: "link" | "refresh";
   children: ReactNode;
   className?: string;
 }) {
-  function onNavigate(event: { preventDefault: () => void }) {
-    if (!dirty) return;
-    event.preventDefault();
-    onBlockedNavigation({ href, label });
-  }
+  const guard = useContext(DirtyNavigationContext);
 
   return (
-    <Link href={href} onNavigate={onNavigate} className={className}>
+    <Link
+      href={href}
+      aria-disabled={guard?.pending || undefined}
+      onNavigate={(event) => {
+        if (guard?.pending) {
+          event.preventDefault();
+          return;
+        }
+        if (guard && (guard.dirty || kind === "refresh")) {
+          event.preventDefault();
+          guard.requestNavigation({ kind, href, label });
+        }
+      }}
+      className={className}
+    >
       {children}
     </Link>
   );

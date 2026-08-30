@@ -16,6 +16,10 @@ describe("Rechte-Matrix: Action × Rolle × Capability", () => {
     expect(can(ctx("editor", { invoicing: true }), "invoice.issue")).toBe(true);
     expect(can(ctx("editor"), "price.read_purchase")).toBe(false);
     expect(can(ctx("editor", { see_purchase_prices: true }), "price.read_purchase")).toBe(true);
+    expect(can(ctx("editor"), "offer.release.prepare")).toBe(false);
+    expect(can(ctx("editor", { prepare_offer_documents: true }), "offer.release.prepare")).toBe(true);
+    expect(can(ctx("editor"), "offer.release.approve")).toBe(false);
+    expect(can(ctx("editor", { approve_offer_documents: true }), "offer.release.approve")).toBe(true);
   });
   it("admin impliziert alle Capabilities", () => {
     for (const a of Object.keys(ACTION_REQUIREMENTS) as Action[]) expect(can(ctx("admin"), a), a).toBe(true);
@@ -40,7 +44,7 @@ describe("Rechte-Matrix: Action × Rolle × Capability", () => {
 //
 // Diese Tabelle ist deshalb HANDGESCHRIEBEN und wird NICHT aus
 // ACTION_REQUIREMENTS abgeleitet. Sie ist die zweite, unabhängige Quelle der
-// Wahrheit: 10 Actions × 3 Rollen, jeweils ohne und mit Capability, plus die
+// Wahrheit: 12 Actions × 3 Rollen, jeweils ohne und mit Capability, plus die
 // Feature-Flag-Spalte. Wer ACTION_REQUIREMENTS ändert, MUSS diese Tabelle
 // bewusst mitändern — genau das ist der Sinn.
 //
@@ -81,6 +85,14 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
     capability: "invoicing",
     expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
   },
+  "offer.release.prepare": {
+    capability: "prepare_offer_documents",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
+  "offer.release.approve": {
+    capability: "approve_offer_documents",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
   "catalog.read": {
     expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
   },
@@ -102,12 +114,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 10 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 12 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(10);
+    expect(Object.keys(MATRIX)).toHaveLength(12);
   });
 
-  it("10 Actions × 3 Rollen × Capability an/aus", () => {
+  it("12 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];
@@ -123,6 +135,57 @@ describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
       for (const role of ROLES) {
         expect(can(ctx(role, { [feature]: true }, { [feature]: false }), action), `${action} / ${role}`).toBe(false);
       }
+    }
+  });
+});
+
+describe("M2-03a Angebotsfreigabe bleibt eine interne Berechtigungsgrenze", () => {
+  const releaseActions = [
+    { action: "offer.release.prepare", capability: "prepare_offer_documents" },
+    { action: "offer.release.approve", capability: "approve_offer_documents" },
+  ] as const satisfies ReadonlyArray<{ action: Action; capability: string }>;
+
+  it("verweigert Viewer auch mit positiver Capability", () => {
+    for (const { action, capability } of releaseActions) {
+      expect(can(ctx("viewer", { [capability]: true }), action), action).toBe(false);
+    }
+  });
+
+  it("verlangt beim Editor exakt die positive Capability", () => {
+    for (const { action, capability } of releaseActions) {
+      expect(can(ctx("editor"), action), `${action} ohne Capability`).toBe(false);
+      expect(can(ctx("editor", { [capability]: false }), action), `${action} mit false`).toBe(false);
+      expect(can(ctx("editor", { [capability]: true }), action), `${action} mit true`).toBe(true);
+    }
+  });
+
+  it("lässt Admins die positive Capability wie im bestehenden Modell implizieren", () => {
+    for (const { action } of releaseActions) {
+      expect(can(ctx("admin"), action), action).toBe(true);
+    }
+  });
+
+  it("sperrt external_only für Editor und Admin fail-closed", () => {
+    for (const { action, capability } of releaseActions) {
+      expect(can(ctx("editor", { [capability]: true, external_only: true }), action), `${action} / editor`).toBe(false);
+      expect(can(ctx("admin", { external_only: true }), action), `${action} / admin`).toBe(false);
+
+      const malformed = {
+        role: "admin",
+        capabilities: { external_only: "false" },
+        featureFlags: {},
+      } as unknown as PermissionCtx;
+      expect(can(malformed, action), `${action} / malformed external_only`).toBe(false);
+
+      expect(can(ctx("editor", { [capability]: true, external_only: false }), action), `${action} / literal false`).toBe(true);
+    }
+  });
+
+  it("verwendet kein Feature-Flag als Ersatz oder zusätzliche Freigabe", () => {
+    for (const { action, capability } of releaseActions) {
+      expect(can(ctx("editor", {}, { [capability]: true }), action), `${action} / Flag statt Capability`).toBe(false);
+      expect(can(ctx("editor", { [capability]: true }, { [capability]: false }), action), `${action} / Capability trotz Flag false`).toBe(true);
+      expect(ACTION_REQUIREMENTS[action]).not.toHaveProperty("feature");
     }
   });
 });

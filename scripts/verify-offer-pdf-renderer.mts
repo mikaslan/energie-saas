@@ -3,16 +3,31 @@ import { spawnSync } from "node:child_process";
 import { closeSync, openSync, unlinkSync, writeSync } from "node:fs";
 import { readFile, stat, unlink, writeFile } from "node:fs/promises";
 
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+
 import type { OfferPdfDraftInputV1 } from "../lib/integrations/offers/pdf-contract";
+import type {
+  OfferReleaseCandidateInputV1,
+} from "../lib/integrations/offers/release-contract";
+import {
+  renderOfferReleaseCandidateHtml,
+} from "../lib/integrations/offers/release-template";
 import {
   MAX_OFFER_PDF_BYTES,
   OfferPdfRenderError,
   createPlaywrightOfferPdfRenderer,
 } from "../worker/offer-pdf-renderer";
+import {
+  createPlaywrightOfferReleaseCandidateRenderer,
+} from "../worker/offer-release-candidate-renderer";
 
 const EXPECTED_PLAYWRIGHT_VERSION = "1.62.1";
+const CANDIDATE_STATUS =
+  "Freigabekandidat · nicht ausgestellt · nicht versendet";
+type SmokeContract = "M202-RENDER-01" | "M203A-RENDER-01";
+let activeContract: SmokeContract = "M202-RENDER-01";
 
-function fixture(): OfferPdfDraftInputV1 {
+function m202Fixture(): OfferPdfDraftInputV1 {
   const basisLines: OfferPdfDraftInputV1["sections"][number]["lines"] = Array.from(
     { length: 499 },
     (_unused, index) => ({
@@ -79,8 +94,178 @@ function fixture(): OfferPdfDraftInputV1 {
   };
 }
 
+function syntheticLegalText(label: string): string {
+  return Array.from({ length: 48 }, (_unused, index) =>
+    `${label} – synthetischer Prüfabsatz ${String(index + 1).padStart(2, "0")}. `
+    + "Dieser ausschließlich künstliche Inhalt prüft Zeilenumbrüche, Seitenwechsel "
+    + "und wiederholte Statuskennzeichnung ohne reale Firmen-, Kunden- oder Rechtsdaten.")
+    .join("\n\n");
+}
+
+function m203aFixture(): OfferReleaseCandidateInputV1 {
+  return {
+    schemaVersion: "offer-release-candidate-input.v1",
+    canonicalizationVersion: "offer-jcs.v1",
+    templateVersion: "offer-release-candidate-template.v1",
+    rendererRecipeVersion: "offer-release-candidate-renderer-recipe.v1-linux-amd64-pw1.62.1-c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac",
+    documentStatus: "not_issued",
+    preparedAt: "2026-08-30T11:22:33.000Z",
+    documentDate: "2026-08-30",
+    validThrough: "2026-09-29",
+    offerNumber: "ANG-2026-900001",
+    profile: {
+      name: "Synthetisches Container-Prüfprofil",
+      revision: 1,
+    },
+    sender: {
+      legalName: "Synthetische Energie Testgesellschaft mbH",
+      tradingName: "Synthetik Solar",
+      representedBy: "Synthetische Testvertretung",
+      address: {
+        street: "Testweg",
+        houseNumber: "1",
+        postalCode: "10115",
+        city: "Berlin",
+        country: "DE",
+      },
+      contactEmail: "container-pruefung@example.invalid",
+      contactPhone: "+490000000000",
+      website: "https://container-pruefung.example.invalid",
+      registerCourt: "Synthetisches Testregister",
+      registerNumber: "SYNTHETISCH-0001",
+      vatId: "DE000000000",
+    },
+    recipient: {
+      displayName: "Synthetischer Prüffall",
+      company: null,
+      billingAddress: {
+        street: "Prüfstraße",
+        houseNumber: "2",
+        postalCode: "10117",
+        city: "Berlin",
+        country: "DE",
+        formattedAddress: "Prüfstraße 2, 10117 Berlin",
+      },
+    },
+    installationSite: {
+      formattedAddress: "Testallee 3, 10119 Berlin",
+    },
+    variant: {
+      name: "Synthetische PV-Variante",
+      revision: 1,
+    },
+    commercialTerms: {
+      globalDiscountBps: 0,
+      customDealNetCents: null,
+    },
+    sections: [{
+      position: 1,
+      title: "Synthetische Leistungen",
+      discountBps: 0,
+      lines: [{
+        position: 1,
+        title: "Synthetische Prüfposition",
+        description: "Ausschließlich künstliche Renderdaten.",
+        quantityMilli: 1_000,
+        unit: "set",
+        positionType: "required",
+        salesUnitNetCents: 100_000,
+        lineDiscountBps: 0,
+        taxRateBps: 1_900,
+        finalNetCents: 100_000,
+        taxCents: 19_000,
+        grossCents: 119_000,
+      }],
+    }],
+    totals: {
+      basisNetCents: 100_000,
+      basisTaxCents: 19_000,
+      basisGrossCents: 119_000,
+      optionalNetCents: 0,
+      optionalTaxCents: 0,
+      optionalGrossCents: 0,
+    },
+    legalDocuments: {
+      terms: {
+        title: "Synthetische Testbedingungen",
+        plainText: syntheticLegalText("Testbedingungen"),
+      },
+      withdrawalInformation: {
+        title: "Synthetische Widerrufsinformation",
+        plainText: syntheticLegalText("Widerrufsinformation"),
+      },
+      privacyNotice: {
+        title: "Synthetische Datenschutzhinweise",
+        plainText: syntheticLegalText("Datenschutzhinweis"),
+      },
+    },
+  };
+}
+
 function invariant(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function countPdfPages(pdfText: string): number {
+  return pdfText.match(/\/Type\s*\/Page\b/gu)?.length ?? 0;
+}
+
+function verifyA4MediaBoxes(pdfText: string): number {
+  const coordinate = "([+-]?[0-9]+(?:\\.[0-9]+)?)";
+  const mediaBoxPattern = new RegExp(
+    `/MediaBox\\s*\\[\\s*${coordinate}\\s+${coordinate}\\s+${coordinate}\\s+${coordinate}\\s*\\]`,
+    "gu",
+  );
+  const mediaBoxes = [...pdfText.matchAll(mediaBoxPattern)];
+  invariant(mediaBoxes.length > 0, "candidate PDF has no MediaBox");
+  for (const mediaBox of mediaBoxes) {
+    const left = Number(mediaBox[1]);
+    const bottom = Number(mediaBox[2]);
+    const right = Number(mediaBox[3]);
+    const top = Number(mediaBox[4]);
+    const width = Math.abs(right - left);
+    const height = Math.abs(top - bottom);
+    invariant(
+      Math.abs(width - 595.28) <= 2 && Math.abs(height - 841.89) <= 2,
+      `candidate PDF MediaBox is not A4: ${width}x${height}`,
+    );
+  }
+  return mediaBoxes.length;
+}
+
+function normalizeExtractedPdfText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/\s*·\s*/gu, " · ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+async function extractPdfPageTexts(pdfBytes: Buffer): Promise<string[]> {
+  const loadingTask = getDocument({
+    data: new Uint8Array(pdfBytes),
+    isEvalSupported: false,
+    useSystemFonts: false,
+    verbosity: 0,
+  });
+  try {
+    const document = await loadingTask.promise;
+    const pageTexts: string[] = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      try {
+        const content = await page.getTextContent();
+        pageTexts.push(normalizeExtractedPdfText(content.items
+          .map((item) => "str" in item && typeof item.str === "string" ? item.str : "")
+          .join(" ")));
+      } finally {
+        page.cleanup();
+      }
+    }
+    return pageTexts;
+  } finally {
+    await loadingTask.destroy();
+  }
 }
 
 async function verifyContainerHardening(): Promise<boolean> {
@@ -193,7 +378,7 @@ async function main(): Promise<void> {
     `Playwright package must be ${EXPECTED_PLAYWRIGHT_VERSION}`,
   );
 
-  const input = fixture();
+  const input = m202Fixture();
   const renderer = createPlaywrightOfferPdfRenderer({
     allowUnpinnedRuntimeForVerification: !pinnedRuntimeVerified,
   });
@@ -244,7 +429,7 @@ async function main(): Promise<void> {
   });
   await expectRenderFailure(() => printNetworkProbe.render(input), "network_attempted");
 
-  process.stdout.write(`${JSON.stringify({
+  const m202Evidence = {
     ok: true,
     contract: "M202-RENDER-01",
     playwrightVersion: EXPECTED_PLAYWRIGHT_VERSION,
@@ -259,11 +444,147 @@ async function main(): Promise<void> {
     fixtureLines: 500,
     sizeBytes: first.sizeBytes,
     sha256: first.sha256,
-  })}\n`);
+  };
+
+  activeContract = "M203A-RENDER-01";
+  const candidateInput = m203aFixture();
+  const candidateHtml = renderOfferReleaseCandidateHtml(candidateInput);
+  const visibleStatusOccurrences = candidateHtml.split(CANDIDATE_STATUS).length - 1;
+  invariant(
+    visibleStatusOccurrences >= 3,
+    "candidate status is not repeated in visible document regions",
+  );
+  invariant(
+    candidateHtml.includes(`role="status">${CANDIDATE_STATUS}</p>`),
+    "candidate status has no visible semantic status region",
+  );
+
+  const candidateRenderer = createPlaywrightOfferReleaseCandidateRenderer({
+    allowUnpinnedRuntimeForVerification: !pinnedRuntimeVerified,
+  });
+  const candidateFirst = await candidateRenderer.render(candidateInput);
+  const candidateSecond = await candidateRenderer.render(structuredClone(candidateInput));
+  invariant(
+    candidateFirst.bytes.equals(candidateSecond.bytes),
+    "two candidate renders differ byte-for-byte",
+  );
+  invariant(
+    candidateFirst.sha256 === candidateSecond.sha256,
+    "two candidate render hashes differ",
+  );
+  invariant(
+    candidateFirst.sizeBytes === candidateSecond.sizeBytes,
+    "two candidate render sizes differ",
+  );
+  invariant(
+    candidateFirst.sizeBytes === candidateFirst.bytes.length,
+    "reported candidate render size differs",
+  );
+  invariant(
+    candidateFirst.sizeBytes <= MAX_OFFER_PDF_BYTES,
+    "candidate render exceeds hard size limit",
+  );
+  invariant(
+    candidateFirst.bytes.subarray(0, 5).toString("latin1") === "%PDF-",
+    "candidate PDF header missing",
+  );
+  const candidatePdfText = candidateFirst.bytes.toString("latin1");
+  invariant(/%%EOF[\t\r\n ]*$/u.test(candidatePdfText), "candidate strict PDF EOF missing");
+  invariant(candidatePdfText.includes("/StructTreeRoot"), "candidate tagged structure missing");
+  invariant(candidatePdfText.includes("/MarkInfo"), "candidate tagged mark information missing");
+  invariant(candidatePdfText.includes("/Outlines"), "candidate PDF outline missing");
+  const candidatePageCount = countPdfPages(candidatePdfText);
+  invariant(
+    candidatePageCount >= 6,
+    "synthetic legal documents did not create a multi-page candidate PDF",
+  );
+  const candidateA4MediaBoxes = verifyA4MediaBoxes(candidatePdfText);
+  const candidatePageTexts = await extractPdfPageTexts(candidateFirst.bytes);
+  invariant(
+    candidatePageTexts.length === candidatePageCount,
+    "PDF text extractor and structural page count differ",
+  );
+  const normalizedCandidateStatus = normalizeExtractedPdfText(CANDIDATE_STATUS);
+  const statusVerifiedPages = candidatePageTexts.filter((pageText) =>
+    pageText.includes(normalizedCandidateStatus)).length;
+  invariant(
+    statusVerifiedPages === candidatePageCount,
+    `candidate status is missing from ${candidatePageCount - statusVerifiedPages} rendered PDF page(s)`,
+  );
+  invariant(
+    candidateFirst.sha256
+      === createHash("sha256").update(candidateFirst.bytes).digest("hex"),
+    "reported candidate render hash differs",
+  );
+
+  await expectRenderFailure(
+    () => candidateRenderer.render({ ...candidateInput, offerNumber: "invalid" }),
+    "invalid_input",
+  );
+
+  const candidateNetworkProbe = createPlaywrightOfferReleaseCandidateRenderer({
+    allowUnpinnedRuntimeForVerification: !pinnedRuntimeVerified,
+    htmlRenderer: () => [
+      "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>",
+      "<img src=\"https://candidate.invalid/renderer-network-probe.png\" alt=\"\">",
+      "</body></html>",
+    ].join(""),
+  });
+  await expectRenderFailure(
+    () => candidateNetworkProbe.render(candidateInput),
+    "network_attempted",
+  );
+  const candidatePrintNetworkProbe = createPlaywrightOfferReleaseCandidateRenderer({
+    allowUnpinnedRuntimeForVerification: !pinnedRuntimeVerified,
+    htmlRenderer: () => [
+      "<!doctype html><html><head><meta charset=\"utf-8\"><style>",
+      "@media print { body { background-image: url(\"https://candidate-print.invalid/probe.png\"); } }",
+      "</style></head><body>candidate print network probe</body></html>",
+    ].join(""),
+  });
+  await expectRenderFailure(
+    () => candidatePrintNetworkProbe.render(candidateInput),
+    "network_attempted",
+  );
+
+  const legalTextCharacters = Object.values(candidateInput.legalDocuments)
+    .reduce((sum, document) => sum + document.plainText.length, 0);
+  const m203aEvidence = {
+    ok: true,
+    contract: "M203A-RENDER-01",
+    playwrightVersion: EXPECTED_PLAYWRIGHT_VERSION,
+    deterministicRenders: 2,
+    byteEqualityVerified: true,
+    hashEqualityVerified: true,
+    sizeEqualityVerified: true,
+    taggedPdfVerified: true,
+    outlineVerified: true,
+    a4Verified: true,
+    multiPageLegalDocumentsVerified: true,
+    documentStatusTextOnEveryPageVerified: statusVerifiedPages === candidatePageCount,
+    statusVerifiedPages,
+    documentStatusText: "nicht ausgestellt · nicht versendet",
+    networkFailClosed: true,
+    printNetworkFailClosed: true,
+    invalidInputFailClosed: true,
+    syntheticFixture: true,
+    containerHardeningVerified,
+    sameUidProcessIsolationVerified,
+    pinnedRuntimeVerified,
+    runtime: `${process.platform}/${process.arch}`,
+    fixtureLines: 1,
+    legalTextCharacters,
+    pageCount: candidatePageCount,
+    a4MediaBoxes: candidateA4MediaBoxes,
+    sizeBytes: candidateFirst.sizeBytes,
+    sha256: candidateFirst.sha256,
+  };
+
+  process.stdout.write(`${JSON.stringify(m202Evidence)}\n${JSON.stringify(m203aEvidence)}\n`);
 }
 
 main().catch((error: unknown) => {
   const code = error instanceof OfferPdfRenderError ? error.code : "verification_failed";
-  process.stderr.write(`M202-RENDER-01 failed: ${code}\n`);
+  process.stderr.write(`${activeContract} failed: ${code}\n`);
   process.exitCode = 1;
 });

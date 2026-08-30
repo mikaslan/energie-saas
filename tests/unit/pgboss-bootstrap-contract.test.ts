@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CalculationQueueBootstrapError,
+  OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
   classifyCalculationQueueBootstrap,
   type CalculationQueueBootstrapSnapshot,
 } from "../../scripts/pgboss-bootstrap.mjs";
@@ -39,6 +40,18 @@ function snapshot(
 }
 
 describe("M1-07 pg-boss Fresh-Install-Bootstrap", () => {
+  it("pinnt den getrennten M2-03a-Queue-Vertrag", () => {
+    expect(OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS).toEqual({
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    expect(Object.isFrozen(OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS)).toBe(true);
+  });
+
   it("legt vor 0025 ausschließlich den unveränderlichen Legacy-Vertrag an", () => {
     expect(classifyCalculationQueueBootstrap(snapshot())).toBe("create_legacy");
     expect(classifyCalculationQueueBootstrap(snapshot({ queue: legacyQueue })))

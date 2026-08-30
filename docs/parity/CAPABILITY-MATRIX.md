@@ -4,8 +4,8 @@ Stand: 2026-08-30 · Workflow:
 `DISCOVERED → SPECIFIED → CONTRACTED → RED → IMPLEMENTED → REVIEWED → VERIFIED`
 
 Die vollständige F1–F16-Übersicht steht in `STATUS.md`. Dieses Dokument führt
-die feingranularen M2-01- und M2-02-Capabilities. Beide Slices sind lokal
-`REVIEWED/VERIFIED`; ihre technischen Gates sind **GO**. Die formalen
+die feingranularen M2-01-, M2-02- und M2-03a-Capabilities. Alle drei Slices sind
+lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind **GO**. Die formalen
 Visual-Gates bleiben davon getrennt `INCONCLUSIVE`. Eine private
 Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 
@@ -94,11 +94,59 @@ Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 | `M202-05` / F2.7 | Viewer/Editor/Admin laden ein erfolgreiches Artefakt privat herunter | Reauth, `project.read`, Tenant-/Offer-/Job-Besitz, Erfolg, Hash/Länge/MIME und sicherer Dateiname | private `no-store`-Antwort; kein Byteinhalt in Liste, Event, Audit oder Log | Viewer/Editor/Admin intern; External und fremde Tenants fail-closed | `M202-ROUTE-01`, `M202-RBAC-01`, `M202-E2E-01` | REVIEWED/VERIFIED (lokal) |
 | `M202-06` / F2.7 | Nutzer sieht ehrliche Portalzustände des asynchronen Jobs | autorisiertes Status-DTO ohne Dokumentinput/Bytes | getrennte Anzeigen für Warteschlange, Rendern, Retry, Erfolg und endgültigen Fehler; Portal bleibt bei Worker-Ausfall verfügbar | `project.read`; Anforderung getrennt über `project.write` | `M202-E2E-01`, `M202-A11Y-01`, `M202-VISUAL-01` | REVIEWED/VERIFIED (lokal); menschliches Visual-Gate INCONCLUSIVE |
 
+## Gemeinsamer Liefervertrag M2-03a
+
+- Ein Workspace besitzt genau einen stabilen Dokumentprofil-Head mit
+  append-only Revisionen und separater Aktivierung des exakten Profilhashes.
+  Es gibt keine erfundenen Firmen- oder Rechtstext-Defaults.
+- Empfängername, Kontakt und strukturierte Rechnungsadresse werden als
+  Offer-lokale append-only Revision gespeichert; der Anlagenstandort bleibt
+  davon getrennt.
+- Ein Kandidat bindet exakt Variantenrevision, erfolgreichen M2-02-Quelldraft,
+  aktive Profilrevision, aktuelle Empfängerrevision und Gültigkeitsdatum.
+  Hidden-Zeilen, veraltete Quellen oder ungültige Hashes blockieren fail-closed.
+- Der versiegelte `offer-release-candidate-input.v1` enthält nur den nötigen
+  Kunden-/Dokumentstand. Queue und Worker erhalten ausschließlich Workspace-
+  und Candidate-ID und laden unter Tenantkontext neu.
+- Zustände: `queued`, `running`, `retry_wait`, `ready_for_approval` und
+  `failed_final`. Die einmalige append-only Freigabe rehashiert die echten
+  Bytes und erzeugt nur den abgeleiteten Zustand `approved_not_issued`.
+- Vor Freigabe dürfen nur Approver die privaten Bytes laden; danach dürfen
+  interne Nutzer mit `project.read` laden. External bleibt vollständig
+  ausgeschlossen. Candidate und Bytes bleiben Teil des Offer-Erasuregraphen.
+- Nicht enthalten: echte Firmen-/Rechtstextfreigabe, `issued`, Object Lock/WORM,
+  Versand, Annahme, Signatur, öffentlicher Link, Rechnung oder Deployment.
+- Abschlussnachweis: 111/111 Vitest-Dateien, 1.078 bestanden/1 übersprungen;
+  Chromium 17 bestanden/1 opt-in übersprungen; 88/88 Rollen- und 5/5
+  PG18-Proben; Production-Build, ESLint, Typecheck und Dependency-Cruiser
+  (237 Module/764 Abhängigkeiten) grün. Der gepinnte `linux/amd64`-Container
+  belegt den Pflichtstatus auf 11/11 PDF-Seiten. Security-, Regression-,
+  Navigation- und lokaler Claude-Code-Opus-Max-Lesereview sind GO ohne offene
+  P0–P2. Human Visual bleibt `INCONCLUSIVE`.
+- Der Browser-E2E verwendet einen synthetischen DB-Claim/Finalize mit exakt
+  geprüften Bytes; die echte Rendererevidenz stammt getrennt aus dem Container.
+
+## Feingranulare M2-03a-Capabilities
+
+| ID / F-Nr. | Job, Trigger und Happy Path | Inputs / Validierungen | Zustand und Nebenwirkung | Recht / Daten / Event | Tests | Status / Parität / Blocker |
+|---|---|---|---|---|---|---|
+| `M203A-01` / F16.2 | Admin erstellt einen neuen Dokumentprofilstand und aktiviert nach Prüfung exakt dessen Hash | strikte Plain-Text-Schemas; Pflichtfelder; serverseitige ID, Revision, Actor, DB-Zeit, Kanonisierung und SHA | Profil-Head zeigt auf append-only Revision und append-only Aktivierung; keine Defaults | `settings.manage`; interne Profilreads über `project.read`; Events/Audit ohne Rechtstexte oder Vollhashes | `M203A-CONTRACT-01`, `M203A-DB-01/02`, `M203A-SVC-01`, `M203A-RBAC-01` | REVIEWED/VERIFIED (lokal); echte WMEE-Inhalte bleiben fachlich/juristisch offen |
+| `M203A-02` / F2.7 | Bearbeiter speichert einen bestätigten Empfänger-/Rechnungsstand | Empfänger, optionale Firma, E-Mail, strukturierte Rechnungsadresse und feste Bestätigung; kein Anlagenadress-Fallback | Offer-lokale append-only Revision mit serverseitigem Hash | `offer.release.prepare`; kein External; keine PII in Event/Audit/Log | `M203A-CONTRACT-01`, `M203A-DB-01/02`, `M203A-PRIVACY-01`, `M203A-RBAC-01` | REVIEWED/VERIFIED (lokal) |
+| `M203A-03` / F2.7 | Bearbeiter prüft Readiness und fordert den exakten Freigabekandidaten an | aktuelle Varianten-, Draft-, Profil- und Empfängerrevision; `validThrough` 1–60 Tage; keine Hidden-Zeile; alle Hash-/Tenantbindungen gültig | idempotenter Reservation-Key; gleicher Stand repariert Dispatch, anderer Stand erzeugt neue Candidate-ID | `offer.release.prepare`; Event/Audit nur mit sicheren IDs/Statuscodes | `M203A-HIDDEN-01`, `M203A-SVC-01`, `M203A-DB-02`, `M203A-E2E-01` | REVIEWED/VERIFIED (lokal) |
+| `M203A-04` / F2.7 | System versiegelt den kundensicheren Candidate-Input | serverautoritatives Profil, Billing, Site, sichtbare Positionen, Summen, Daten und Versionen; strikte Allowlist/JCS/SHA | immutable Input und Quellbindungen; Publication-State bleibt `not_issued` | keine EK, Marge, Katalog-IDs, Kundentelefon/-koordinaten, Rohpayloads, Actor-IDs oder Signaturdaten | `M203A-CONTRACT-01`, `M203A-PRIVACY-01`, `M203A-TEMPLATE-01` | REVIEWED/VERIFIED (lokal); eigene WMEE-Semantik, keine private Reonic-Wahrheit |
+| `M203A-05` / F2.7 | `app_worker` claimt, rendert und finalisiert den ID-only-Job | DB-Reload; offline/sandboxed Chromium; gepinntes Rezept; MIME/Größe/Hash; deterministischer Doppelrender | `queued/retry_wait → running → ready_for_approval`, Retry oder `failed_final`; Lease/CAS; immutable Artefaktbytes | minimaler Worker-Principal; keine Portal-, Auth-, Katalog- oder Profilmutationsrechte | `M203A-WORKER-01`, `M203A-DB-02`, `M203A-RENDER-01` | REVIEWED/VERIFIED (lokal); echter Renderer separat im Container belegt, Deploy NOT RUN |
+| `M203A-06` / F2.7 | Approver bestätigt vier feste Prüfpunkte und bei Bedarf die 0-%-Steuerbehandlung über die echten Bytes | nur `ready_for_approval`; erneute Source-/Profil-/Byteprüfung; exakte Attestation; Race/Replay sicher | einmalige append-only Approval; abgeleitet `approved_not_issued`; kein Offer-/Vertragsstatus | `offer.release.approve`; Event/Audit ohne Inhalte oder Vollhashes | `M203A-APPROVAL-01`, `M203A-SVC-01`, `M203A-RBAC-01` | REVIEWED/VERIFIED (lokal); Vier-Augen-Regel und Rechtswirkung offen |
+| `M203A-07` / F2.7 | Interner Nutzer bedient Profil-, Empfänger-, Prepare-, Status-, Approval- und Downloadpfad | reauthentifizierte Actions/Route; ehrliche Zustände; Fokus-/Fehlerführung; Reflow/Keyboard | kein stiller Formularverlust; privater `no-store`-Download; vor Approval nur Approver, danach `project.read` | UI nie Sicherheitsgrenze; External und fremde Tenants fail-closed | `M203A-ROUTE-01`, `M203A-E2E-01`, `M203A-A11Y-01` | REVIEWED/VERIFIED (lokal); Chromium 17 bestanden/1 opt-in übersprungen |
+| `M203A-08` / F2.7 | System bewahrt Privacy, Append-only-Integrität und Löschbarkeit | Tenant-FKs/RLS, exakte Rollen-ACL, Erasure-Tombstone, keine aktive Lease | Candidate, Approval und Bytes kaskadieren im Offer-Erasuregraph; historische Quellen werden nie mutiert | Runtime/Worker nur engste Funktionen/Spalten; keine WORM-Behauptung | `M203A-DB-01/02`, `M203A-PRIVACY-01`, `M203A-RBAC-01` | REVIEWED/VERIFIED (lokal); Object Lock/Retention bleibt M2-03b |
+
 ## API-Operationen
 
-M2-01/M2-02 besitzen keine öffentliche REST-API. Die implementierten internen Commands heißen
+M2-01/M2-02/M2-03a besitzen keine öffentliche REST-API. Die implementierten internen Commands heißen
 `createOfferFromRequest`, `duplicateOfferVariant`, `reviseOfferVariant` und
 `createVariantFromCurrentResolution`; M2-02 ergänzt `requestOfferPdfDraft`,
 Status-/Listenreads und den reautorisierten privaten Download-Route-Handler.
+M2-03a ergänzt Profil-Revision/-Aktivierung, Empfängerrevision,
+`requestOfferReleaseCandidate`, `approveOfferReleaseCandidate`, Statusreads und
+den privaten Candidate-Download-Route-Handler.
 Jede Server-Action ist ein direkt erreichbarer POST-Endpunkt und muss den
 vollständigen Servicevertrag erneut erzwingen.

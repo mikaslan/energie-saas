@@ -18,9 +18,9 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 19 % | Fundament sowie Rechner→Lead→Adresse→Planung→eigener Katalog→Produktauflösung→Angebotsentwurf→interner PDF-Draft sind lokal technisch verifiziert; Signatur und operative Breite bleiben offen |
-| Technisches Fundament M0/M1 plus lokale M2-Basis | ca. 95–97 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog-, Angebots- und geschützte Webgrenzen sind lokal weitgehend real. Die hohe Zahl beschreibt das Fundament, nicht die Produktbreite; externe Provider-/Pilotgates bleiben offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 11–13 % | Login, Intake-Triage, Projektakte, Adresse, Energieprofil, Planungsschätzung, eigener Katalog, Produktzuordnung, Angebotsentwurf mit Varianten/BOM und geschützter interner PDF-Draft sind real und lokal technisch verifiziert; Ausführung, Abrechnung und die meisten F1–F16-Flows bleiben offen |
+| Gesamtmission einschließlich F1–F16 | ca. 20 % | Fundament sowie Rechner→Lead→Adresse→Planung→eigener Katalog→Produktauflösung→Angebotsentwurf→interner PDF-Draft→geprüfter, aber nicht ausgestellter Freigabekandidat sind lokal technisch verifiziert; Ausstellung, Signatur und operative Breite bleiben offen |
+| Technisches Fundament M0/M1 plus lokale M2-Basis | ca. 95–97 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog-, Angebots-, Freigabe- und geschützte Webgrenzen sind lokal weitgehend real. Die hohe Zahl beschreibt das Fundament, nicht die Produktbreite; externe Provider-/Pilotgates bleiben offen |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 11–13 % | Login, Intake-Triage, Projektakte, Adresse, Energieprofil, Planungsschätzung, eigener Katalog, Produktzuordnung, Angebotsentwurf mit Varianten/BOM, interner PDF-Draft und der interne Freigabekandidaten-Workflow sind real und lokal technisch verifiziert; Ausführung, Abrechnung und die meisten F1–F16-Flows bleiben offen |
 
 Diese Werte steigen nicht durch Seiten, Mocks oder Dokumentation allein, sondern nur
 durch belastbare vertikale Endzustände. Die Schätzung ist insbesondere **keine**
@@ -41,6 +41,7 @@ Behauptung einer Reonic-1:1-Parität.
 | M1-08 Produktkatalog/Projektauflösung | REVIEWED/VERIFIED (lokal) | Leerer eigener Katalog für sieben Produkttypen, unveränderliche Revisionen, EK/VK-Provenienz, Lifecycle, Current/Stale-Ableitung und revisionsgebundene Produkt-/Preissnapshots; 661 Repo-Tests, 7 Browser-E2E, Build, 75+5 Rollenproben, Nebenläufigkeits- und EK-Redaktionsreview grün. Echte Produkte/Preise, Asset-Storage und Angebot/BOM bleiben getrennte Folgegates |
 | M2-01 Angebotsvarianten/Snapshot-BOM | REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE 2 GO | Anfrage→Offer, Nummer, Basis-/Duplikat-/neue-Basis-Varianten, immutable Snapshot-BOM, serverseitige Geldlogik, RBAC/Privacy/Races und der geschützte Editor sind technisch abgenommen: 87/87 Testdateien, 856 bestandene Tests plus 1 ausdrücklich opt-in übersprungener Test, 88/88 Rollen- und 5/5 PG18-Proben, Chromium 16/16 (15 funktional/A11y plus 1 Visual-Capture mit 26/26 Kandidaten) und keine offenen Produkt-P0–P2. Das Candidate-Capture ist grün; `M201-VISUAL-01` bleibt ohne Mikails Screenshot-Baseline-Freigabe ausdrücklich INCONCLUSIVE |
 | M2-02 interner Angebots-PDF-Entwurf | REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE GO | Exakt eine immutable Variantenrevision wird serverseitig in einen minimierten, gehashten Input gebunden; der ID-only-Job durchläuft `queued`/`running`/`retry_wait`/`succeeded`/`failed_final`, wird mit offline/sandboxed Chromium unter einem auf `linux/amd64`, Playwright 1.62.1 und OCI-Digest gepinnten Rezept gerendert, bis 8 MiB tenantgeschützt in Postgres gestaged und nach Reauth privat heruntergeladen. Viewer darf lesen/downloaden, Editor/Admin mit `project.write` anfordern/replayen, External nie und `app_worker` nur least-privilege claimen/finalisieren. 96/96 Vitest-Dateien mit 949 bestandenen Tests, 88/88 Rollen- plus 5/5 PG18-Proben, 16/16 aktive Chromium-E2E, gepinnter Container-Smoke und unabhängiges P0–P2-Review sind grün. Kein Rollout-Flag by design; kein `issued`, Versand, Signatur, öffentlicher Link, Rechnung, WORM oder produktiver Deploy. `M202-VISUAL-01` bleibt menschlich `INCONCLUSIVE` |
+| M2-03a Angebotsprofil/Freigabekandidat | REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE GO | Versionierte und aktivierte Dokumentprofile, append-only Empfänger-/Rechnungsstände, strikte Readiness, versiegelter Candidate-Input, ID-only-Worker, Byte-/Hash-Prüfung, append-only Abschlussfreigabe und privater Download bis zum abgeleiteten Zustand `approved_not_issued` sind lokal real. 111/111 Vitest-Dateien mit 1.078 bestandenen und 1 übersprungenen Test, 17 bestandene plus 1 opt-in übersprungene Chromium-E2E, 88/88 Rollen- plus 5/5 PG18-Proben, Build/Lint/Typecheck/Dependency-Cruiser, gepinnter `linux/amd64`-Container-Smoke mit Status auf 11/11 PDF-Seiten sowie Security-, Regression-, Navigation- und lokaler Claude-Code-Opus-Max-Review sind grün und ohne offene P0–P2. Die E2E-Kette synthetisiert Claim/Finalize in der DB; der echte Renderer ist separat im Container belegt. Menschliches Visual bleibt `INCONCLUSIVE`; Deploy, echte Rechtstexte, WORM/Object Lock, Ausstellung, Versand und Signatur sind `NOT RUN` beziehungsweise offen |
 | Rechner V3 | CONTRACTED (Clone) / BLOCKED (Provider) | read-only Baseline `rechner/v3@2b00f6b`; Provider-Wiring erst nach veröffentlichtem korrektem Datenschutzhinweis und Secret-Provisioning |
 
 ## F1–F16-Matrix auf Capability-Ebene
@@ -51,7 +52,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | Bereich | Höchster belastbarer Stand | Nächster echte Slice |
 |---|---|---|
 | F1 CRM & Leads | PARTIAL VERIFIED | Rechner-V3-Intake → Kontakt → Standort/Adresskorrektur → Anfrage → Kanban/Projektakte → Energieprofil ist lokal real; als Nächstes Zuweisung und weitere CRM-Capabilities |
-| F2 Angebote | PARTIAL VERIFIED | M1-08 liefert verifizierte Produkt-/Preissnapshots; M2-01 liefert daraus technisch verifizierte Draft-Offers, Varianten, Snapshot-BOM sowie Preis-/Rabatt-/Steuerentwurf. M2-02 ergänzt einen lokal technisch verifizierten, geschützten, internen und nicht verbindlichen PDF-Draft aus exakt einer Revision. Die menschlichen Visual-Baselines bleiben separat `INCONCLUSIVE`; Ausstellung, Versand und Signatur folgen in eigenen Slices |
+| F2 Angebote | PARTIAL VERIFIED | M1-08 liefert verifizierte Produkt-/Preissnapshots; M2-01 liefert daraus Draft-Offers, Varianten, Snapshot-BOM sowie Preis-/Rabatt-/Steuerentwurf. M2-02 ergänzt den geschützten internen PDF-Draft. M2-03a ergänzt versionierte Aussteller-/Rechtstextprofile, bestätigte Empfängerdaten, einen kundentauglichen Renderkandidaten und die bytegebundene interne Freigabe `approved_not_issued`. Die menschlichen Visual-Baselines bleiben `INCONCLUSIVE`; echte Rechtstexte, Ausstellung, WORM, Versand und Signatur folgen in getrennten Gates |
 | F3 PV-Planung | PARTIAL VERIFIED | Hausbezogene, serverseitig reproduzierbare Planungsschätzung lokal real; rechtmäßige Dachdatenadapter und tiefere Planungswerkzeuge folgen capabilityweise |
 | F4 Simulation | SPECIFIED | deterministischer Rechenkern mit fachlichem Güte- und Haftungsgate |
 | F5 Wärmepumpe | SPECIFIED | Schätzverfahren klar von zertifizierter Normrechnung trennen |
@@ -91,7 +92,13 @@ Abnahmen als prüfbare Lieferartefakte erhalten.
 4. `M202-VISUAL-01` bis zur menschlichen Baseline-Freigabe getrennt
    `INCONCLUSIVE` lassen. Der produktive Worker-Deploy und Object Lock bleiben
    ausdrücklich außerhalb des lokal grünen Draft-Gates.
-5. Golden Path ab dem verifizierten PDF-Draft real weiterbauen:
+5. `M203A-VISUAL-01` sowie echte Firmen-/Rechtstexte separat fachlich,
+   juristisch und menschlich freigeben; die lokale technische Verifikation
+   nicht als Rechts- oder Brandfreigabe umdeuten.
+6. M2-03b als getrennten Issuance-Slice bauen: neue Ausstellungsbytes aus dem
+   freigegebenen Candidate-Input, erneute Bytefreigabe und erst nach echtem
+   Object-Lock-/Retention-/Hash-Readback einen `issued`-Status erlauben.
+7. Golden Path ab dem verifizierten Freigabekandidaten real weiterbauen:
    `Rechner → Lead → Kontakt → Standort/Adresskorrektur → Energieprofil/Kalkulation → Katalog/Speicher → Produktauflösung →`
-   `Angebot → Variante → PDF → Signatur → Installation → Rechnung → Kundenportal`.
-6. Danach F1–F16 capabilityweise bis VERIFIED schließen.
+   `Angebot → Variante → PDF-Draft → Freigabekandidat → Ausstellung → Signatur → Installation → Rechnung → Kundenportal`.
+8. Danach F1–F16 capabilityweise bis VERIFIED schließen.

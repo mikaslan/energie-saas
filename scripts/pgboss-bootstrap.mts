@@ -8,6 +8,7 @@ import { createVerifiedPgBossDatabase } from "../worker/pgboss-database.js";
 
 const QUEUE_NAME = "calculation.execute";
 const OFFER_PDF_QUEUE_NAME = "pdf.render";
+const OFFER_RELEASE_CANDIDATE_QUEUE_NAME = "offer.release-candidate.render";
 const BOOTSTRAP_LOCK = [1701734769, 7] as const;
 
 export const LEGACY_CALCULATION_QUEUE_OPTIONS = Object.freeze({
@@ -17,6 +18,15 @@ export const LEGACY_CALCULATION_QUEUE_OPTIONS = Object.freeze({
 });
 
 export const OFFER_PDF_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
+});
+
+export const OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS = Object.freeze({
   policy: "exclusive" as const,
   retryLimit: 10,
   retryDelay: 1,
@@ -231,6 +241,32 @@ export async function bootstrapCalculationQueue(
       || Number(pdf.retry_delay_max) !== 60
       || Number(pdf.expire_seconds) !== 180
       || pdf.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    // M2-03a uses an independent queue because its input, template and
+    // completion state are deliberately distinct from the internal M2-02
+    // preview. Domain attempts remain limited to three by its own lease/CAS.
+    await boss.createQueue(
+      OFFER_RELEASE_CANDIDATE_QUEUE_NAME,
+      OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
+    );
+    const releaseQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${OFFER_RELEASE_CANDIDATE_QUEUE_NAME}'
+    `);
+    const release = releaseQueue.rows[0] as Record<string, unknown> | undefined;
+    if (
+      release === undefined
+      || release.policy !== "exclusive"
+      || Number(release.retry_limit) !== 10
+      || Number(release.retry_delay) !== 1
+      || release.retry_backoff !== true
+      || Number(release.retry_delay_max) !== 60
+      || Number(release.expire_seconds) !== 180
+      || release.notify !== false
     ) {
       throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
     }

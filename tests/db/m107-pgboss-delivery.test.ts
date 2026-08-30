@@ -675,6 +675,13 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
       {
         grantee: "app_runtime",
         grantor: "app_worker",
+        signature: "enqueue_offer_release_candidate(uuid, uuid)",
+        privilege_type: "EXECUTE",
+        is_grantable: false,
+      },
+      {
+        grantee: "app_runtime",
+        grantor: "app_worker",
         signature: "enqueue_project_calculation(uuid, uuid)",
         privilege_type: "EXECUTE",
         is_grantable: false,

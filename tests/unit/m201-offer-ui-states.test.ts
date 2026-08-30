@@ -527,6 +527,18 @@ describe("M2-01 Offer-UI-Zustände", () => {
     expect(html).toContain("Speichern und fortfahren");
     expect(html).toContain("Ungespeicherte Änderungen");
     expectNoFutureControls(html);
+
+    const pendingHtml = render(DirtyNavigationDialog, {
+      open: true,
+      destinationLabel: "Angebotsliste",
+      pending: true,
+      onStay: vi.fn(),
+      onDiscard: vi.fn(),
+      onSaveAndContinue: vi.fn(),
+    });
+    expect(pendingHtml).not.toMatch(/<button[^>]*\sdisabled(?:=|\s|>)/iu);
+    expect(pendingHtml.match(/aria-disabled="true"/gu)).toHaveLength(3);
+    expect(pendingHtml).toContain('aria-busy="true"');
   });
 
   it("rendert Loading, Unexpected Error und Not Found ohne interne Details", async () => {

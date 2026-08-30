@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
+import {
+  OfferReleaseCandidatePanel,
+  type OfferRecipientPresenceSurfaceView,
+  type OfferRecipientSurfaceView,
+  type OfferReleaseCandidateSurfaceView,
+  type OfferReleaseProfileSurfaceView,
+  type OfferReleaseValidityWindowSurfaceView,
+} from "./offer-release-candidate-panel";
 import offerThemeStyles from "../offer-theme.module.css";
 import { formatOfferCents, formatOfferCentsTotal, formatOfferRetryDate } from "./offer-format";
 
@@ -157,6 +165,8 @@ export interface OfferDetailSurfaceView {
     canApplyDiscount: boolean;
     canEditPurchasePrice: boolean;
     canGeneratePdf: boolean;
+    canPrepareRelease: boolean;
+    canApproveRelease: boolean;
   };
   basisInput?: {
     expectedRequirementRevision: number;
@@ -166,6 +176,14 @@ export interface OfferDetailSurfaceView {
   actionState?: OfferDetailActionState;
   blockers?: readonly { code: string; label: string }[];
   pdfDrafts?: readonly OfferPdfDraftSurfaceView[];
+  offerRelease?: {
+    profile: OfferReleaseProfileSurfaceView | null;
+    recipient: OfferRecipientSurfaceView | null;
+    recipientPresence: OfferRecipientPresenceSurfaceView | null;
+    sourcePdfDraftId: string | null;
+    validityWindow: OfferReleaseValidityWindowSurfaceView;
+    candidates: readonly OfferReleaseCandidateSurfaceView[];
+  };
 }
 
 export type OfferComponentCategory =
@@ -614,27 +632,49 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
       drafts={view.pdfDrafts ?? []}
     />
   );
+  const offerReleasePanel = view.offerRelease ? (
+    <OfferReleaseCandidatePanel
+      workspaceId={view.workspaceId}
+      offerId={view.offer.id}
+      variantId={snapshot.variantId}
+      variantRevision={snapshot.revision}
+      contactDisplayName={view.permissions?.canPrepareRelease === true
+        ? snapshot.contactContext.displayName
+        : null}
+      profile={view.offerRelease.profile}
+      recipient={view.offerRelease.recipient}
+      recipientPresence={view.offerRelease.recipientPresence}
+      sourcePdfDraftId={view.offerRelease.sourcePdfDraftId}
+      validityWindow={view.offerRelease.validityWindow}
+      canPrepare={view.permissions?.canPrepareRelease === true}
+      canApprove={view.permissions?.canApproveRelease === true}
+      candidates={view.offerRelease.candidates}
+    />
+  ) : null;
 
   if (canEdit && view.permissions?.canEdit && view.recoveryScope) {
     return (
-      <>
-        <OfferVariantEditor
-          key={`${snapshot.variantId}:${snapshot.revision}`}
-          view={{
-            ...view,
-            recoveryScope: view.recoveryScope,
-            offer: view.offer,
-            activeVariant: view.activeVariant,
-            permissions: { ...view.permissions, canEdit: true },
-          }}
-        />
-        <div
+      <OfferVariantEditor
+        key={`${snapshot.variantId}:${snapshot.revision}`}
+        view={{
+          ...view,
+          recoveryScope: view.recoveryScope,
+          offer: view.offer,
+          activeVariant: view.activeVariant,
+          permissions: { ...view.permissions, canEdit: true },
+        }}
+        showReleaseSkipLink={offerReleasePanel !== null}
+        afterEditor={<div
+          key="offer-release-workflow"
           data-wmee-scope="offer"
           className={`${offerThemeStyles.offerTheme} bg-slate-50 px-4 pb-8 sm:px-6`}
         >
-          <div className="mx-auto w-full max-w-[1480px]">{pdfDraftPanel}</div>
-        </div>
-      </>
+          <div className="mx-auto grid w-full max-w-[1480px] gap-5">
+            {pdfDraftPanel}
+            {offerReleasePanel}
+          </div>
+        </div>}
+      />
     );
   }
 
@@ -729,6 +769,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
             />
           </div>
         </fieldset>
+        {offerReleasePanel ? <div className="mt-6">{offerReleasePanel}</div> : null}
       </div>
     </main>
   );

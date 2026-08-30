@@ -18,6 +18,7 @@ import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
 import {
   LEGACY_CALCULATION_QUEUE_OPTIONS,
   OFFER_PDF_QUEUE_OPTIONS,
+  OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
 } from "../../scripts/pgboss-bootstrap.mjs";
 import {
   startEmbeddedPostgres,
@@ -381,6 +382,10 @@ async function bootstrapStrictRolesAndPgBoss(
     await boss.start();
     await boss.createQueue("calculation.execute", LEGACY_CALCULATION_QUEUE_OPTIONS);
     await boss.createQueue("pdf.render", OFFER_PDF_QUEUE_OPTIONS);
+    await boss.createQueue(
+      "offer.release-candidate.render",
+      OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
+    );
   } finally {
     await boss.stop({ graceful: false }).catch(() => undefined);
   }
@@ -467,8 +472,8 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
       readFileSync(resolve("drizzle/meta/_journal.json"), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
     expect(journal.entries.at(-1)).toMatchObject({
-      idx: 33,
-      tag: "0033_supreme_jocasta",
+      idx: 34,
+      tag: "0034_m2_03a_offer_release_candidate",
     });
 
     const relation = await testPool.query<{
@@ -1151,7 +1156,7 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
     await expect(queryAs(
       workspaceA,
       "truncate table public.offer_pdf_draft",
-    )).rejects.toThrow(/offer_pdf_draft is append-only/);
+    )).rejects.toThrow(/offer_pdf_draft is append-only|referenced in a foreign key/u);
   });
 
   it("bewahrt den alten Tombstone-Shape und materialisiert PDF-IDs nur bei Bedarf", async () => {

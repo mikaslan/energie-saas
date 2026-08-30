@@ -1,6 +1,6 @@
 # Workflow- und Statusmaschinen
 
-Stand: 2026-08-30 · M2-01 und M2-02 lokal verifiziert
+Stand: 2026-08-30 · M2-01, M2-02 und M2-03a lokal verifiziert
 
 ## Project-Phase
 
@@ -102,6 +102,70 @@ weder `issued`/`sent`/`accepted`/`signed` noch öffentlichen Link, E-Mail,
 Rechnung oder Object-Lock-Archiv. Eine aktive Render-Lease blockiert Draft-
 Erasure; nach Ende der Lease löscht der Offer-Erasuregraph Job und Bytes.
 
+## Dokumentprofil und Aktivierung
+
+```text
+Profil fehlt -- Admin revise --> Profil-Head + Revision 1 (nicht aktiv)
+Revision N -- Admin revise(expected N) --> Revision N+1 (nicht automatisch aktiv)
+Revision N -- Admin activate(exakter Hash) --> append-only Aktivierung
+aktive Revision N -- neue Revision N+1 --> N bleibt aktiv, bis N+1 separat aktiviert wird
+expected != current oder Hashabweichung --> conflict/integrity error, no write
+```
+
+Die Aktivierung bedeutet `operator_reviewed` für exakt einen unveränderlichen
+Aussteller-/Rechtstextstand. Sie ist keine juristische Prüfung. Nur Admins mit
+`settings.manage` dürfen Revisionen anlegen oder aktivieren; interne Nutzer mit
+`project.read` dürfen den aktuellen Stand lesen. Kandidaten verwenden nur eine
+aktuelle hashvalide Aktivierung.
+
+## Empfänger-/Rechnungsstand
+
+```text
+Empfängerstand fehlt -- authorized revise --> recipient revision 1
+recipient revision N -- authorized revise(expected N) --> revision N+1
+expected != current --> conflict, no write
+```
+
+Jede Revision ist append-only und bestätigt Empfänger sowie Rechnungsadresse
+als eigenen Offer-Stand. Es gibt keinen stillen Fallback auf den
+Anlagenstandort. Die Mutation verlangt `offer.release.prepare`; External
+bleibt fail-closed.
+
+## Angebots-Freigabekandidat
+
+```text
+missing -- authorized prepare + readiness --> queued
+queued -- worker claim --> running
+running -- valid deterministic PDF commit --> ready_for_approval
+running -- retryable failure --> retry_wait
+retry_wait -- due recovery --> queued -- claim --> running
+running -- final/integrity failure --> failed_final
+running -- expired lease --> running@attempt N+1
+running -- expired lease at max attempts --> failed_final
+```
+
+Der Reservation-Key bindet Variantenrevision, validen M2-02-Quelldraft,
+aktivierte Profilrevision, Empfängerrevision, Gültigkeitsdatum und
+Renderrezept. Derselbe fachliche Request liefert denselben Candidate und
+repariert nötigenfalls nur den Dispatch; ein anderer gebundener Stand erzeugt
+einen neuen Candidate. Queue und Worker sehen ausschließlich Workspace- und
+Candidate-ID.
+
+```text
+ready_for_approval -- approver + exakte Attestations + Byte-Rehash
+  --> append-only approval; derived approved_not_issued
+ready_for_approval -- stale source/hash/byte mismatch --> blocked, no approval
+approved_not_issued -- replay same approval --> same approval, no new write
+queued/running/retry_wait/failed_final -- approval attempt --> rejected
+```
+
+Die Approval-Relation verändert den gespeicherten Publication-State
+`not_issued` und den Offer-Status nicht. `approved_not_issued` ist nur der
+abgeleitete interne Lesestatus. Vor dem Approval können allein Approver die
+Bytes laden, danach interne Nutzer mit `project.read`; jeder Download wird
+erneut autorisiert und verifiziert. Es entstehen weder Ausstellungsbytes noch
+Object-Lock, Versand, Annahme oder Signatur.
+
 ## Command-Ergebnisse
 
 ```text
@@ -124,4 +188,7 @@ erschöpften Offer-Mutationsquote und erhält den Draft bis zum angezeigten
 Retry-Zeitpunkt. Variantenwechsel, Breadcrumb/Back, Reload/Tab-Schließen,
 Logout/Login-Redirect, Duplizieren und neue Basis sind im `dirty`-Zustand nur
 nach Save oder bewusstem Discard zulässig. Kein Fehlerzustand darf einen
-Teilstand hinterlassen.
+Teilstand hinterlassen. Die M2-03a-Formulare erhalten fachliche Eingaben nach
+erwarteten Serverfehlern, führen den Fokus zur Fehlerzusammenfassung und nach
+Erfolg zum nächsten Schritt; zurückgesetzte Attestations-Checkboxen werden
+explizit angekündigt.

@@ -46,6 +46,29 @@ export type OfferPdfRendererOptions = Readonly<{
   allowUnpinnedRuntimeForVerification?: boolean;
 }>;
 
+type SealedOfferPdfInput = Readonly<{
+  rendererRecipeVersion: string;
+  preparedAt: string;
+}>;
+
+type SealedOfferPdfInputValidation<TInput extends SealedOfferPdfInput> =
+  | Readonly<{ ok: true; value: TInput }>
+  | Readonly<{ ok: false; paths: readonly string[] }>;
+
+export type SealedOfferPdfRenderer<TInput extends SealedOfferPdfInput> = {
+  render(input: TInput): Promise<RenderedOfferPdf>;
+};
+
+export type SealedOfferPdfRendererConfiguration<
+  TInput extends SealedOfferPdfInput,
+> = Readonly<{
+  expectedRendererRecipeVersion: string;
+  validateInput: (value: unknown) => SealedOfferPdfInputValidation<TInput>;
+  htmlRenderer: (input: TInput) => string;
+  /** Host-only diagnostics. Production callers must leave this false. */
+  allowUnpinnedRuntimeForVerification?: boolean;
+}>;
+
 const PINNED_RENDERER_PLATFORM = "linux";
 const PINNED_RENDERER_ARCH = "x64";
 
@@ -128,19 +151,28 @@ export function validateRenderedOfferPdf(
   };
 }
 
-export function createPlaywrightOfferPdfRenderer(
-  options: OfferPdfRendererOptions = {},
-): OfferPdfRenderer {
-  const htmlRenderer = options.htmlRenderer ?? renderOfferPdfDraftHtml;
+/**
+ * Shared fail-closed Chromium envelope for sealed offer documents. Template,
+ * validator and recipe are supplied as one immutable configuration so a
+ * caller cannot validate one document kind and render another accidentally.
+ */
+export function createSealedPlaywrightOfferPdfRenderer<
+  TInput extends SealedOfferPdfInput,
+>({
+  expectedRendererRecipeVersion,
+  validateInput,
+  htmlRenderer,
+  allowUnpinnedRuntimeForVerification = false,
+}: SealedOfferPdfRendererConfiguration<TInput>): SealedOfferPdfRenderer<TInput> {
   return {
     async render(value) {
-      const validated = validateOfferPdfDraftInput(value);
+      const validated = validateInput(value);
       if (!validated.ok) throw new OfferPdfRenderError("invalid_input", false);
       const input = validated.value;
-      if (input.rendererRecipeVersion !== OFFER_PDF_DRAFT_RENDERER_RECIPE_VERSION) {
+      if (input.rendererRecipeVersion !== expectedRendererRecipeVersion) {
         throw new OfferPdfRenderError("invalid_input", false);
       }
-      if (!isPinnedRendererRuntime() && !options.allowUnpinnedRuntimeForVerification) {
+      if (!isPinnedRendererRuntime() && !allowUnpinnedRuntimeForVerification) {
         // The recipe promises bytes for one exact OCI child image and CPU
         // architecture. A production worker on any other runtime must not
         // render under the same version string.
@@ -234,4 +266,16 @@ export function createPlaywrightOfferPdfRenderer(
       }
     },
   };
+}
+
+export function createPlaywrightOfferPdfRenderer(
+  options: OfferPdfRendererOptions = {},
+): OfferPdfRenderer {
+  return createSealedPlaywrightOfferPdfRenderer({
+    expectedRendererRecipeVersion: OFFER_PDF_DRAFT_RENDERER_RECIPE_VERSION,
+    validateInput: validateOfferPdfDraftInput,
+    htmlRenderer: options.htmlRenderer ?? renderOfferPdfDraftHtml,
+    allowUnpinnedRuntimeForVerification:
+      options.allowUnpinnedRuntimeForVerification,
+  });
 }

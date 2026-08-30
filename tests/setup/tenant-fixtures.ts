@@ -869,6 +869,288 @@ async function fixtureOfferPdfDraft(tx: TenantTx, wsId: string): Promise<void> {
   `);
 }
 
+/**
+ * Erzeugt den vollstaendigen M2-03a-Release-Graphen ueber dieselben schmalen
+ * Datenbankgrenzen wie die Anwendung. Die sieben Release-Tabellen teilen sich
+ * diese Factory, damit die generische Tenant-Suite fuer jede Relation echte
+ * Zeilen, RLS-Lesetrennung und einen Cross-Tenant-Schreibversuch prueft.
+ */
+async function fixtureOfferReleaseGraph(tx: TenantTx, wsId: string): Promise<void> {
+  const existing = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id
+      from offer_release_candidate_approval
+     where workspace_id = ${wsId}::uuid
+     limit 1
+  `);
+  if (existing.rows[0]) return;
+
+  await fixtureOfferPdfDraft(tx, wsId);
+  const sourceResult = await tx.execute<{
+    source_pdf_draft_id: string;
+    source_state: string;
+    project_id: string;
+    offer_id: string;
+    variant_id: string;
+    variant_revision_id: string;
+    variant_revision: number;
+    actor_id: string;
+    [key: string]: unknown;
+  }>(sql`
+    select draft.id as source_pdf_draft_id,
+           draft.state as source_state,
+           draft.project_id,
+           draft.offer_id,
+           draft.variant_id,
+           draft.variant_revision_id,
+           draft.variant_revision,
+           offer_record.created_by as actor_id
+      from offer_pdf_draft as draft
+      join offer as offer_record
+        on offer_record.workspace_id = draft.workspace_id
+       and offer_record.id = draft.offer_id
+     where draft.workspace_id = ${wsId}::uuid
+     order by draft.created_at desc, draft.id desc
+     limit 1
+  `);
+  const source = sourceResult.rows[0];
+  if (!source) throw new Error("Release-Tenant-Fixture braucht einen PDF-Entwurf.");
+
+  await tx.execute(sql`
+    update membership
+       set role = 'admin', capabilities = '{}'::jsonb
+     where workspace_id = ${wsId}::uuid
+       and user_id = ${source.actor_id}::uuid
+  `);
+  await tx.execute(sql`
+    select set_config('app.actor_id', ${source.actor_id}, true)
+  `);
+
+  const sender = {
+    legalName: "Fixture Energie GmbH",
+    tradingName: "Fixture Energie",
+    representedBy: "Fixture Vertretung",
+    address: {
+      street: "Testweg",
+      houseNumber: "1",
+      postalCode: "10115",
+      city: "Berlin",
+      country: "DE",
+    },
+    email: "office@fixture.invalid",
+    phoneE164: "+493000000000",
+    websiteHttpsUrl: "https://fixture.invalid",
+    registerCourt: "Fixture Registergericht",
+    registerNumber: "HRB FIXTURE 1",
+    vatId: "DE000000000",
+  };
+  const legalDocuments = {
+    terms: { title: "Fixture Bedingungen", plainText: "Synthetische Bedingungen." },
+    withdrawalInformation: {
+      title: "Fixture Widerrufsinformation",
+      plainText: "Synthetische Widerrufsinformation.",
+    },
+    privacyNotice: {
+      title: "Fixture Datenschutzhinweis",
+      plainText: "Synthetischer Datenschutzhinweis.",
+    },
+  };
+  await tx.execute(sql`
+    select public.revise_offer_release_profile(
+      ${wsId}::uuid,
+      0,
+      'Tenant Fixture Profil',
+      ${JSON.stringify(sender)}::jsonb,
+      ${JSON.stringify(legalDocuments)}::jsonb
+    )
+  `);
+  const profileResult = await tx.execute<{
+    profile_id: string;
+    profile_revision_id: string;
+    profile_revision: number;
+    [key: string]: unknown;
+  }>(sql`
+    select profile.id as profile_id,
+           revision.id as profile_revision_id,
+           revision.revision as profile_revision
+      from offer_release_profile as profile
+      join offer_release_profile_revision as revision
+        on revision.workspace_id = profile.workspace_id
+       and revision.profile_id = profile.id
+       and revision.revision = profile.current_revision
+     where profile.workspace_id = ${wsId}::uuid
+     limit 1
+  `);
+  const profile = profileResult.rows[0];
+  if (!profile) throw new Error("Release-Tenant-Fixture braucht eine Profilrevision.");
+  await tx.execute(sql`
+    select public.activate_offer_release_profile(
+      ${wsId}::uuid,
+      ${profile.profile_id}::uuid,
+      ${profile.profile_revision_id}::uuid,
+      ${profile.profile_revision}
+    )
+  `);
+
+  const billingAddress = {
+    street: "Rechnungsweg",
+    houseNumber: "8a",
+    postalCode: "10999",
+    city: "Berlin",
+    country: "DE",
+  };
+  await tx.execute(sql`
+    select public.revise_offer_recipient(
+      ${wsId}::uuid,
+      ${source.offer_id}::uuid,
+      0,
+      'Fixture Rechnungsempfaenger',
+      'Fixture Kundin GmbH',
+      'rechnung@fixture.invalid',
+      ${JSON.stringify(billingAddress)}::jsonb,
+      true
+    )
+  `);
+  const recipientResult = await tx.execute<{
+    recipient_revision_id: string;
+    recipient_revision: number;
+    [key: string]: unknown;
+  }>(sql`
+    select revision.id as recipient_revision_id,
+           revision.revision as recipient_revision
+      from offer_recipient as recipient
+      join offer_recipient_revision as revision
+        on revision.workspace_id = recipient.workspace_id
+       and revision.recipient_id = recipient.id
+       and revision.revision = recipient.current_revision
+     where recipient.workspace_id = ${wsId}::uuid
+       and recipient.offer_id = ${source.offer_id}::uuid
+     limit 1
+  `);
+  const recipient = recipientResult.rows[0];
+  if (!recipient) throw new Error("Release-Tenant-Fixture braucht eine Empfaengerrevision.");
+
+  if (source.source_state === "queued") {
+    await tx.execute(sql`
+      update offer_pdf_draft
+         set state = 'running',
+             attempt_count = 1,
+             lease_token = gen_random_uuid(),
+             lease_expires_at = clock_timestamp() + interval '5 minutes',
+             started_at = clock_timestamp(),
+             updated_at = clock_timestamp()
+       where workspace_id = ${wsId}::uuid
+         and id = ${source.source_pdf_draft_id}::uuid
+         and state = 'queued'
+    `);
+  }
+  if (source.source_state !== "succeeded") {
+    const sourceArtifact = Buffer.from(
+      `%PDF-1.7\n${"synthetic-tenant-release-source".repeat(8)}\n%%EOF`,
+      "utf8",
+    );
+    await tx.execute(sql`
+      update offer_pdf_draft
+         set state = 'succeeded',
+             lease_token = null,
+             lease_expires_at = null,
+             artifact_mime_type = 'application/pdf',
+             artifact_bytes = ${sourceArtifact},
+             artifact_sha256 = sha256(${sourceArtifact}),
+             artifact_size_bytes = octet_length(${sourceArtifact}),
+             finished_at = clock_timestamp(),
+             updated_at = clock_timestamp()
+       where workspace_id = ${wsId}::uuid
+         and id = ${source.source_pdf_draft_id}::uuid
+         and state = 'running'
+    `);
+  }
+
+  await tx.execute(sql`
+    select public.prepare_offer_release_candidate(
+      ${wsId}::uuid,
+      ${source.offer_id}::uuid,
+      ${source.variant_id}::uuid,
+      ${source.variant_revision},
+      ${source.source_pdf_draft_id}::uuid,
+      ${profile.profile_id}::uuid,
+      ${profile.profile_revision_id}::uuid,
+      ${profile.profile_revision},
+      ${recipient.recipient_revision_id}::uuid,
+      ${recipient.recipient_revision},
+      ((clock_timestamp() at time zone 'Europe/Berlin')::date + 14)::date
+    )
+  `);
+  const candidateResult = await tx.execute<{
+    candidate_id: string;
+    [key: string]: unknown;
+  }>(sql`
+    select id as candidate_id
+      from offer_release_candidate
+     where workspace_id = ${wsId}::uuid
+       and offer_id = ${source.offer_id}::uuid
+     order by created_at desc, id desc
+     limit 1
+  `);
+  const candidate = candidateResult.rows[0];
+  if (!candidate) throw new Error("Release-Tenant-Fixture braucht einen Candidate.");
+  await tx.execute(sql`
+    update offer_release_candidate
+       set state = 'running',
+           attempt_count = 1,
+           lease_token = gen_random_uuid(),
+           lease_expires_at = clock_timestamp() + interval '5 minutes',
+           started_at = clock_timestamp(),
+           updated_at = clock_timestamp()
+     where workspace_id = ${wsId}::uuid
+       and id = ${candidate.candidate_id}::uuid
+       and state = 'queued'
+  `);
+  const candidateArtifact = Buffer.from(
+    `%PDF-1.7\n${"synthetic-tenant-release-candidate".repeat(8)}\n%%EOF`,
+    "utf8",
+  );
+  const artifactVersion = randomUUID();
+  await tx.execute(sql`
+    update offer_release_candidate
+       set state = 'ready_for_approval',
+           lease_token = null,
+           lease_expires_at = null,
+           artifact_mime_type = 'application/pdf',
+           artifact_bytes = ${candidateArtifact},
+           artifact_sha256 = sha256(${candidateArtifact}),
+           artifact_size_bytes = octet_length(${candidateArtifact}),
+           artifact_version = ${artifactVersion}::uuid,
+           finished_at = clock_timestamp(),
+           updated_at = clock_timestamp()
+     where workspace_id = ${wsId}::uuid
+       and id = ${candidate.candidate_id}::uuid
+       and state = 'running'
+  `);
+  await tx.execute(sql`
+    select public.approve_offer_release_candidate(
+      ${wsId}::uuid,
+      ${source.offer_id}::uuid,
+      ${candidate.candidate_id}::uuid,
+      ${artifactVersion}::uuid,
+      true,
+      true,
+      true,
+      true,
+      null
+    )
+  `);
+  const approval = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id
+      from offer_release_candidate_approval
+     where workspace_id = ${wsId}::uuid
+       and candidate_id = ${candidate.candidate_id}::uuid
+     limit 1
+  `);
+  if (!approval.rows[0]) {
+    throw new Error("Release-Tenant-Fixture konnte keine Freigabe erzeugen.");
+  }
+}
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -1072,6 +1354,13 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   offer_mutation_rate_window: fixtureOfferGraph,
   offer_number_series: fixtureOfferGraph,
   offer_pdf_draft: fixtureOfferPdfDraft,
+  offer_recipient: fixtureOfferReleaseGraph,
+  offer_recipient_revision: fixtureOfferReleaseGraph,
+  offer_release_candidate: fixtureOfferReleaseGraph,
+  offer_release_candidate_approval: fixtureOfferReleaseGraph,
+  offer_release_profile: fixtureOfferReleaseGraph,
+  offer_release_profile_activation: fixtureOfferReleaseGraph,
+  offer_release_profile_revision: fixtureOfferReleaseGraph,
   offer_variant: fixtureOfferGraph,
   offer_variant_revision: fixtureOfferGraph,
   offer_variant_section: fixtureOfferGraph,
