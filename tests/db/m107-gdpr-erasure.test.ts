@@ -111,6 +111,13 @@ type SubjectFixture = {
   projects: ProjectFixture[];
 };
 
+type ProjectTaskErasureFixture = {
+  taskId: string;
+  assigneeId: string;
+  checklistId: string;
+  labelId: string;
+};
+
 type CatalogErasureFixture = {
   componentId: string;
   resolutionId: string;
@@ -1107,6 +1114,105 @@ async function restoreSubject(admin: Pool, fixture: SubjectFixture): Promise<voi
   for (const project of fixture.projects) await insertJob(admin, fixture, project, "succeeded");
 }
 
+async function createProjectTaskForErasure(
+  admin: Pool,
+  fixture: SubjectFixture,
+  options: {
+    ids?: ProjectTaskErasureFixture;
+    occurredAt?: Date;
+  } = {},
+): Promise<ProjectTaskErasureFixture> {
+  const project = fixture.projects[0];
+  if (!project) throw new Error("Project-Task-Erasure-Fixture verlangt ein Project.");
+  const membership = await admin.query<{ id: string }>(
+    `select id from public.membership
+      where workspace_id = $1 and user_id = $2`,
+    [fixture.workspaceId, fixture.actorId],
+  );
+  const membershipId = membership.rows[0]?.id;
+  if (!membershipId) throw new Error("Project-Task-Erasure-Fixture verlangt eine Membership.");
+
+  const ids = options.ids ?? {
+    taskId: randomUUID(),
+    assigneeId: randomUUID(),
+    checklistId: randomUUID(),
+    labelId: randomUUID(),
+  };
+  const client = await admin.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_catalog.set_config('app.workspace_id', $1, true)", [
+      fixture.workspaceId,
+    ]);
+    await client.query("select pg_catalog.set_config('app.actor_id', $1, true)", [
+      fixture.actorId,
+    ]);
+    await client.query(
+      `insert into public.project_task (
+         id, workspace_id, project_id, title, body_version, body,
+         created_by, updated_by
+       ) values (
+         $1, $2, $3, $4, 'task-rich-text.v1',
+         '{"type":"doc","content":[]}'::jsonb, $5, $5
+       )`,
+      [ids.taskId, fixture.workspaceId, project.id, fixture.marker, fixture.actorId],
+    );
+    await client.query(
+      `insert into public.project_task_assignee (
+         id, workspace_id, task_id, membership_id
+       ) values ($1, $2, $3, $4)`,
+      [ids.assigneeId, fixture.workspaceId, ids.taskId, membershipId],
+    );
+    await client.query(
+      `insert into public.project_task_checklist_item (
+         id, workspace_id, task_id, position, text
+       ) values ($1, $2, $3, 0, $4)`,
+      [ids.checklistId, fixture.workspaceId, ids.taskId, fixture.marker],
+    );
+    await client.query(
+      `insert into public.project_task_label (
+         id, workspace_id, task_id, position, name, color
+       ) values ($1, $2, $3, 0, $4, 'blue')`,
+      [ids.labelId, fixture.workspaceId, ids.taskId, fixture.marker],
+    );
+    await client.query("commit");
+
+    if (options.occurredAt) {
+      await client.query("begin");
+      await client.query("set local session_replication_role = replica");
+      await client.query(
+        `update public.project_task
+            set created_at = $1, updated_at = $1
+          where workspace_id = $2 and id = $3`,
+        [options.occurredAt, fixture.workspaceId, ids.taskId],
+      );
+      await client.query(
+        `update public.project_task_assignee set created_at = $1
+          where workspace_id = $2 and task_id = $3`,
+        [options.occurredAt, fixture.workspaceId, ids.taskId],
+      );
+      await client.query(
+        `update public.project_task_checklist_item
+            set created_at = $1, updated_at = $1
+          where workspace_id = $2 and task_id = $3`,
+        [options.occurredAt, fixture.workspaceId, ids.taskId],
+      );
+      await client.query(
+        `update public.project_task_label set created_at = $1
+          where workspace_id = $2 and task_id = $3`,
+        [options.occurredAt, fixture.workspaceId, ids.taskId],
+      );
+      await client.query("commit");
+    }
+    return ids;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function callAsErasure(
   admin: Pool,
   routine: "erase_inactive_lead" | "replay_erasure_tombstone",
@@ -1182,13 +1288,17 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
   let embedded: EmbeddedTestDatabase;
   let admin: Pool;
   let ownerPool: Pool;
+  let runtimePool: Pool;
   let workerPool: Pool;
   let migrationPrefixDir: string;
   let eligible: SubjectFixture;
+  let eligibleTask: ProjectTaskErasureFixture;
   let eligibleCatalog: CatalogErasureFixture;
   let eligibleOffer: OfferErasureFixture;
   let freshOfferSubject: SubjectFixture;
   let freshOffer: OfferErasureFixture;
+  let freshTaskSubject: SubjectFixture;
+  let freshTask: ProjectTaskErasureFixture;
   let legacyReplay: SubjectFixture;
   let recent: SubjectFixture;
   let held: SubjectFixture;
@@ -1227,12 +1337,19 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
     } finally {
       owner.release();
     }
+    runtimePool = new Pool({
+      connectionString: serviceUrl(embedded, "app_runtime", RUNTIME_PASSWORD),
+      max: 1,
+    });
     workerPool = new Pool({
       connectionString: serviceUrl(embedded, "app_worker", WORKER_PASSWORD),
       max: 1,
     });
 
     eligible = await createSubject(admin, { ageMonths: 25, sharedAndExclusive: true });
+    eligibleTask = await createProjectTaskForErasure(admin, eligible, {
+      occurredAt: eligible.oldAt,
+    });
     eligibleCatalog = await createCatalogResolutionForErasure(admin, eligible);
     eligibleOffer = await createOfferForErasure(admin, eligible, eligibleCatalog);
     freshOfferSubject = await createSubject(admin, { ageMonths: 25 });
@@ -1240,6 +1357,8 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
     freshOffer = await createOfferForErasure(admin, freshOfferSubject, freshCatalog, {
       revisionCreatedAt: new Date(),
     });
+    freshTaskSubject = await createSubject(admin, { ageMonths: 25 });
+    freshTask = await createProjectTaskForErasure(admin, freshTaskSubject);
     recent = await createSubject(admin, { ageMonths: 23 });
     held = await createSubject(admin, { ageMonths: 25 });
     won = await createSubject(admin, { ageMonths: 25, outcome: "won" });
@@ -1249,6 +1368,7 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
 
   afterAll(async () => {
     await workerPool?.end().catch(() => undefined);
+    await runtimePool?.end().catch(() => undefined);
     await ownerPool?.end().catch(() => undefined);
     await admin?.end().catch(() => undefined);
     await embedded?.stop().catch(() => undefined);
@@ -1490,6 +1610,65 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
     expect(await tombstoneCount(admin, recent)).toBe(0);
   });
 
+  it("wertet eine frische Projektaufgabe als Aktivitaet und behaelt ihren Graph", async () => {
+    await expectErasureRejection(
+      callAsErasure(admin, "erase_inactive_lead", [
+        freshTaskSubject.workspaceId,
+        freshTaskSubject.contactId,
+        randomUUID(),
+      ]),
+      /erasure_not_eligible/,
+    );
+    expect(await tombstoneCount(admin, freshTaskSubject)).toBe(0);
+    const retained = await admin.query<{ tasks: number; children: number }>(
+      `select
+         (select count(*)::int from public.project_task
+           where workspace_id = $1) as tasks,
+         (
+           (select count(*) from public.project_task_assignee where workspace_id = $1)
+           + (select count(*) from public.project_task_checklist_item where workspace_id = $1)
+           + (select count(*) from public.project_task_label where workspace_id = $1)
+         )::int as children`,
+      [freshTaskSubject.workspaceId],
+    );
+    expect(retained.rows[0]).toEqual({ tasks: 1, children: 3 });
+  });
+
+  it("haelt normale Kindmutationen in app_runtime vom privaten Erasurepfad getrennt", async () => {
+    const client = await runtimePool.connect();
+    try {
+      await client.query("begin");
+      await client.query("select pg_catalog.set_config('app.workspace_id', $1, true)", [
+        freshTaskSubject.workspaceId,
+      ]);
+      await client.query("select pg_catalog.set_config('app.actor_id', $1, true)", [
+        freshTaskSubject.actorId,
+      ]);
+      const deleted = await client.query<{ id: string }>(
+        `delete from public.project_task_label
+          where workspace_id = $1 and task_id = $2
+          returning id`,
+        [freshTaskSubject.workspaceId, freshTask.taskId],
+      );
+      expect(deleted.rowCount).toBe(1);
+      const updated = await client.query<{ id: string }>(
+        `update public.project_task_checklist_item
+            set text = text || ' runtime'
+          where workspace_id = $1
+          returning id`,
+        [freshTaskSubject.workspaceId],
+      );
+      expect(updated.rowCount).toBe(1);
+      await client.query("set constraints all immediate");
+      await client.query("rollback");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
   it("wertet eine frische Offer-Revision als Aktivitaet und sperrt Runtime-Loeschungen", async () => {
     await expectErasureRejection(
       callAsErasure(admin, "erase_inactive_lead", [
@@ -1684,6 +1863,10 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
       offer_sections: number;
       offer_lines: number;
       offer_number_series: number;
+      tasks: number;
+      task_assignees: number;
+      task_checklist_items: number;
+      task_labels: number;
     }>(`
       select
         (select count(*)::int from public.site_energy_profile
@@ -1721,7 +1904,15 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
         (select count(*)::int from public.offer_bom_line
           where workspace_id = $1 and id = $11) as offer_lines,
         (select count(*)::int from public.offer_number_series
-          where workspace_id = $1 and series_year = 2024) as offer_number_series
+          where workspace_id = $1 and series_year = 2024) as offer_number_series,
+        (select count(*)::int from public.project_task
+          where workspace_id = $1 and id = $12) as tasks,
+        (select count(*)::int from public.project_task_assignee
+          where workspace_id = $1 and task_id = $12) as task_assignees,
+        (select count(*)::int from public.project_task_checklist_item
+          where workspace_id = $1 and task_id = $12) as task_checklist_items,
+        (select count(*)::int from public.project_task_label
+          where workspace_id = $1 and task_id = $12) as task_labels
     `, [
       eligible.workspaceId,
       eligible.sites.map((site) => site.id),
@@ -1734,6 +1925,7 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
       eligibleOffer.revisionId,
       eligibleOffer.sectionId,
       eligibleOffer.lineId,
+      eligibleTask.taskId,
     ]);
     expect(remaining.rows[0]).toEqual({
       profiles: 0,
@@ -1754,6 +1946,10 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
       offer_sections: 0,
       offer_lines: 0,
       offer_number_series: 1,
+      tasks: 0,
+      task_assignees: 0,
+      task_checklist_items: 0,
+      task_labels: 0,
     });
 
     const retainedPii = await admin.query<{ document: string }>(`
@@ -1852,6 +2048,7 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
       offerVariantRevisionIds: [eligibleOffer.revisionId],
       offerVariantSectionIds: [eligibleOffer.sectionId],
       offerBomLineIds: [eligibleOffer.lineId],
+      taskIds: [eligibleTask.taskId],
     });
     for (const [key, value] of Object.entries(
       tombstone.rows[0]!.graph_ids as Record<string, unknown>,
@@ -1932,6 +2129,10 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
       "Die noch fehlende Erasure-Implementierung verhinderte den initialen Lauf",
     ).toBe(true);
     await restoreSubject(admin, eligible);
+    await createProjectTaskForErasure(admin, eligible, {
+      ids: eligibleTask,
+      occurredAt: eligible.oldAt,
+    });
     expect(await tombstoneCount(admin, eligible)).toBe(1);
     await expect(
       callAsErasure(admin, "replay_erasure_tombstone", [operationId]),
@@ -1941,16 +2142,43 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
     ).resolves.toBe(operationId);
     expect(await tombstoneCount(admin, eligible)).toBe(1);
 
-    const restored = await admin.query<{ deleted: boolean; snapshots: number; jobs: number }>(`
+    const restored = await admin.query<{
+      deleted: boolean;
+      snapshots: number;
+      jobs: number;
+      tasks: number;
+      task_children: number;
+    }>(`
       select
         (select deleted_at is not null from public.contact
           where workspace_id = $1 and id = $2) as deleted,
         (select count(*)::int from public.calculator_snapshot
           where workspace_id = $1 and project_id = any($3::uuid[])) as snapshots,
         (select count(*)::int from public.project_calculation_job
-          where workspace_id = $1 and project_id = any($3::uuid[])) as jobs
-    `, [eligible.workspaceId, eligible.contactId, eligible.projects.map((project) => project.id)]);
-    expect(restored.rows[0]).toEqual({ deleted: true, snapshots: 0, jobs: 0 });
+          where workspace_id = $1 and project_id = any($3::uuid[])) as jobs,
+        (select count(*)::int from public.project_task
+          where workspace_id = $1 and id = $4) as tasks,
+        (
+          (select count(*) from public.project_task_assignee
+            where workspace_id = $1 and task_id = $4)
+          + (select count(*) from public.project_task_checklist_item
+            where workspace_id = $1 and task_id = $4)
+          + (select count(*) from public.project_task_label
+            where workspace_id = $1 and task_id = $4)
+        )::int as task_children
+    `, [
+      eligible.workspaceId,
+      eligible.contactId,
+      eligible.projects.map((project) => project.id),
+      eligibleTask.taskId,
+    ]);
+    expect(restored.rows[0]).toEqual({
+      deleted: true,
+      snapshots: 0,
+      jobs: 0,
+      tasks: 0,
+      task_children: 0,
+    });
   });
 
   it("replayt einen vor M2-01 erzeugten Tombstone ohne Hash- oder Graphmigration idempotent", async () => {
