@@ -1,13 +1,56 @@
 # Capability-Matrix
 
-Stand: 2026-08-30 · Workflow:
+Stand: 2026-08-31 · Workflow:
 `DISCOVERED → SPECIFIED → CONTRACTED → RED → IMPLEMENTED → REVIEWED → VERIFIED`
 
 Die vollständige F1–F16-Übersicht steht in `STATUS.md`. Dieses Dokument führt
-die feingranularen M2-01-, M2-02-, M2-03a- und M2-03b1-Capabilities. Alle vier
-Slices sind lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind **GO**. Die formalen
+die feingranularen M1-08b-, M2-01-, M2-02-, M2-03a- und M2-03b1-Capabilities.
+Alle fünf Slices sind lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind
+**GO**. Die formalen
 Visual-Gates bleiben davon getrennt `INCONCLUSIVE`. Eine private
 Reonic-1:1-Semantik wird daraus nicht abgeleitet.
+
+## Gemeinsamer Liefervertrag M1-08b
+
+- Ein interner Nutzer lädt ausschließlich eine eigene oder ausdrücklich
+  autorisierte CSV bis 1 MiB, 1.000 Datenzeilen und 80 Spalten hoch. Die
+  persistierte Preview mutiert den Katalog nicht und speichert keine Rohdatei.
+- Start verlangt `catalog.manage`, `price.edit`, `price.read_purchase` und eine
+  versionierte, an Actor, Datei, Mapping und Reservation gebundene
+  Rechteattestation. Viewer, unvollständige/externe Editor und Fremdtenant
+  bleiben fail-closed.
+- Jede valide Zeile wird als create/revise/unchanged versiegelt. Ein
+  ID-only-Worker claimt höchstens 25 Zeilen, schreibt jede Zeile transaktional
+  über enge Definer-Gateways und verarbeitet 1.000 Zeilen in exakt 40
+  erfolgreichen Batches.
+- Neue/geänderte Produktstände enden als `draft`; Aktivierung bleibt eine
+  getrennte bewusste M1-08-Aktion. Ein Reimport verändert weder historische
+  Resolutionen noch Angebots-BOMs, sondern macht nur neue operative Stände
+  sichtbar und bestehende Ableitungen `stale`.
+- Fehlerreport, Pagination, Preview-Ablauf, Recovery und Redaction sind real.
+  Import- und Cleanup-Queues transportieren ausschließlich IDs; der Worker
+  besitzt kein direktes Katalog-DML.
+- Evidence: `docs/spec/M1-08b-katalog-csv-import.md`, ADR 0013 und
+  `TEST-EVIDENCE.md`. Reale WMEE-/Lieferantendaten, Assets, Feed-Sync und
+  produktiver Deploy sind nicht enthalten.
+- Abschlussnachweis: `npm run check` mit 144/144 Testdateien, 1.371 bestanden
+  und 1 opt-in übersprungen; 88/88 Rollen plus 5/5 PG18; Chromium 24 bestanden
+  plus 1 opt-in übersprungen, davon 7/7 fokussiert; Build und unabhängiger
+  P0–P2-Review grün.
+
+## Feingranulare M1-08b-Capabilities
+
+| ID / F-Nr. | Job, Trigger und Happy Path | Inputs / Validierungen | Zustand und Nebenwirkung | Recht / Daten / Event | Tests | Status / Parität / Blocker |
+|---|---|---|---|---|---|---|
+| `M108B-01` / F16.1 | Nutzer lädt CSV, ordnet Spalten zu und persistiert eine deterministische Vorschau | strict UTF-8; ≤1 MiB, ≤1.000 Zeilen, ≤80 Spalten; vollständiges Mapping | `missing → ready_for_review`; keine Katalogmutation, keine Rohdatei | drei Importrechte; minimierte Preview | `M108B-CONTRACT-01`, `M108B-ROUTE-01`, `M108B-E2E-01` | REVIEWED/VERIFIED (lokal) |
+| `M108B-02` / F16.1 | System validiert jede Zeile vollständig | bestehender Katalogvertrag, stabile Feld-/Fehlercodes, sichere Größenlimits | valide und fehlerhafte Zeilen getrennt; null valide Zeilen blockiert Start | keine freien Fehlermeldungen in Logs/Events | `M108B-CONTRACT-01`, `M108B-DB-01` | REVIEWED/VERIFIED (lokal) |
+| `M108B-03` / F16.1 | System bindet Technik-, EK-/VK-Provenienz und Quellstand | Datei-/Mapping-/Zeilenhash, Rechtebasis und versiegelter Zielstand | Preview und Ergebnis bleiben bis Due prüfbar, danach atomar redigiert | Preise nur für vollständig Berechtigte; keine Vollhashes in Event/Audit | `M108B-PRIVACY-01`, `M108B-RETENTION-01` | REVIEWED/VERIFIED (lokal) |
+| `M108B-04` / F16.1 | Worker erzeugt/ändert/überspringt Zeilen idempotent | ID-only; DB-Reload; Lease/CAS; max. 25 eindeutige Zeilen | create/revise/unchanged je eigener Transaktion; Replay dupliziert nichts | Worker nur Definer-Gateways, kein Katalog-DML | `M108B-SVC-01`, `M108B-WORKER-01`, `M108B-DB-01` | REVIEWED/VERIFIED (lokal); 1.000 = 40 Batches |
+| `M108B-05` / F16.1 | Importierte Produktstände bleiben bis zur manuellen Aktivierung Entwurf | aktueller SKU-/Revisionslock und hashgleicher Zielstand | create/revise endet `draft`; unchanged erzeugt keine Revision | bestehende M1-08-Lifecycle-Rechte | `M108B-SVC-01`, `M108B-E2E-02` | REVIEWED/VERIFIED (lokal); keine Autoaktivierung |
+| `M108B-06` / F16.1/F2.1/F2.3 | Aktivierte Importprodukte erreichen Resolution und neue Angebotsbasis | aktuelles Modul, Wechselrichter, Speicher/weitere Auswahl, exakte Mengen/Centwerte | neue immutable Resolution und Basis-BOM; alte Snapshots unverändert | Projekt-/Offer-Rechte werden erneut geprüft | `M108B-E2E-02` | REVIEWED/VERIFIED (lokal) |
+| `M108B-07` / F16.1 | Nur vollständig Berechtigte bedienen Upload, Start, Abbruch und Report | `catalog.manage + price.edit + price.read_purchase`; interne aktive Membership | denied/not-found ohne Objektoracle | Viewer, External, eingeschränkter Editor und Fremdtenant fail-closed | `M108B-RBAC-01`, `M108B-E2E-01` | REVIEWED/VERIFIED (lokal) |
+| `M108B-08` / F16.1/F2.3 | Reimport mit Änderung erzeugt einen neuen Draft und sichtbaren Drift | neues Intent, aktuelle Revision, getrennte Aktivierung | vorhandene Resolution/alte BOM bleiben unverändert; neue Basis erst nach neuer Resolution | kein stilles Rebase | `M108B-E2E-02`, `M108B-DB-01` | REVIEWED/VERIFIED (lokal) |
+| `M108B-09` / F16.1/F2.3 | Nutzer findet importierte aktive SKU auch hinter Eintrag 200 | serverseitige Suche oder exakte autorisierte ID-Auflösung | Auswahl erreicht Resolution/BOM ohne Client-Gesamtliste | `catalog.read`, Tenantbindung | `M108B-E2E-03`, Server-Search-Contract | REVIEWED/VERIFIED (lokal) |
 
 ## Gemeinsamer Liefervertrag M2-01
 

@@ -42,7 +42,7 @@ describe("M2-03b1 issuance worker integration", () => {
     expect(source).toContain("offerIssuanceRecovery?.stop()");
     expect(source).toContain("await offerIssuanceGateway.probe()");
     expect(source).toContain("offerIssuanceGateway.close()");
-    expect(source).toContain("await boss.work(\n    OFFER_ISSUANCE_QUEUE,");
+    expect(source).toMatch(/await boss\.work\(\s+OFFER_ISSUANCE_QUEUE,/u);
     expect(source).not.toMatch(/S3_(?:ARCHIVE|ISSUANCE)/u);
   });
 

@@ -10,6 +10,8 @@ const QUEUE_NAME = "calculation.execute";
 const OFFER_PDF_QUEUE_NAME = "pdf.render";
 const OFFER_RELEASE_CANDIDATE_QUEUE_NAME = "offer.release-candidate.render";
 const OFFER_ISSUANCE_QUEUE_NAME = "offer-issuance.render.v1";
+const CATALOG_IMPORT_QUEUE_NAME = "catalog.import.v1";
+const CATALOG_IMPORT_CLEANUP_QUEUE_NAME = "catalog.import.cleanup.v1";
 const BOOTSTRAP_LOCK = [1701734769, 7] as const;
 
 export const LEGACY_CALCULATION_QUEUE_OPTIONS = Object.freeze({
@@ -37,6 +39,24 @@ export const OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS = Object.freeze({
 });
 
 export const OFFER_ISSUANCE_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
+});
+
+export const CATALOG_IMPORT_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
+});
+
+export const CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS = Object.freeze({
   policy: "exclusive" as const,
   retryLimit: 10,
   retryDelay: 1,
@@ -300,6 +320,51 @@ export async function bootstrapCalculationQueue(
       || Number(issuance.retry_delay_max) !== 60
       || Number(issuance.expire_seconds) !== 180
       || issuance.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    await boss.createQueue(CATALOG_IMPORT_QUEUE_NAME, CATALOG_IMPORT_QUEUE_OPTIONS);
+    const catalogImportQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${CATALOG_IMPORT_QUEUE_NAME}'
+    `);
+    const catalogImport = catalogImportQueue.rows[0] as Record<string, unknown> | undefined;
+    if (
+      catalogImport === undefined
+      || catalogImport.policy !== "exclusive"
+      || Number(catalogImport.retry_limit) !== 10
+      || Number(catalogImport.retry_delay) !== 1
+      || catalogImport.retry_backoff !== true
+      || Number(catalogImport.retry_delay_max) !== 60
+      || Number(catalogImport.expire_seconds) !== 180
+      || catalogImport.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    await boss.createQueue(
+      CATALOG_IMPORT_CLEANUP_QUEUE_NAME,
+      CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
+    );
+    const catalogCleanupQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${CATALOG_IMPORT_CLEANUP_QUEUE_NAME}'
+    `);
+    const catalogCleanup = catalogCleanupQueue.rows[0] as
+      | Record<string, unknown>
+      | undefined;
+    if (
+      catalogCleanup === undefined
+      || catalogCleanup.policy !== "exclusive"
+      || Number(catalogCleanup.retry_limit) !== 10
+      || Number(catalogCleanup.retry_delay) !== 1
+      || catalogCleanup.retry_backoff !== true
+      || Number(catalogCleanup.retry_delay_max) !== 60
+      || Number(catalogCleanup.expire_seconds) !== 180
+      || catalogCleanup.notify !== false
     ) {
       throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
     }

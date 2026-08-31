@@ -1,12 +1,12 @@
 # Unknown- und Konfliktregister
 
-Stand: 2026-08-30
+Stand: 2026-08-31
 
 Unknowns werden nicht still als Reonic-Wahrheit oder WMEE-Default umgesetzt.
 Die sicheren Eigenentscheidungen sind seit Gate 1 `DECIDED WMEE`, bleiben als
 eigene Regeln ausgewiesen und austauschbar.
 
-| ID | Klasse | Frage / Konflikt | Behandlung bis M2-03b1 | Abschlussgate |
+| ID | Klasse | Frage / Konflikt | Aktuelle Behandlung | Abschlussgate |
 |---|---|---|---|---|
 | `UNK-F2-01` | UNKNOWN | exaktes Reonic-Nummernformat und Konfigurationsumfang | eigener versionierter Default; Einstellungs-UI später | Interview/öffentliche Doku |
 | `UNK-F2-02` | UNKNOWN | mehrere Offers pro Project oder nur Varianten | v1 unique Offer pro Project | Produktinterview vor Direct-Offer |
@@ -22,6 +22,8 @@ eigene Regeln ausgewiesen und austauschbar.
 | `UNK-F2-12` | UNKNOWN | issued/signed Retention versus DSGVO-Erasure | M2-03b1 staged auch finale Issuance-Bytes höchstens 8 MiB tenantgeschützt und Offer-löschbar in Postgres; aktive Render-Lease blockiert Erasure. Candidate, Issuance, Approvals und Withdrawal bleiben Offer-lokal. Es gibt keine WORM-/Retention-Behauptung; M2-03b2 bleibt bis Legal-/Providerentscheidung und Live-Readback blockiert | Legal/DSGVO, produktiver Object-Lock-Kauf/-Provisionierung, COMPLIANCE-Retention, Version-/Hash-Readback und Promotionsvertrag vor `issued` |
 | `UNK-F2-13` | UNKNOWN | strukturierte Klima-Produkte (Außen-/Innengerät, Leitung, Zubehör, Arbeit) | M2-01 ausdrücklich PV-first; `other` wird nicht als Klima-Modell missbraucht | Katalog-Slice vor Klima-Angebot |
 | `UNK-F2-14` | UNKNOWN | B2C-/B2B-/unklare Preiszielgruppe und getrennte Preislisten auch im PV-Wohngebäude | M2-01 akzeptiert nur ausdrücklich operatorbestätigtes `b2c`; `residential`/Website werden nicht als Nachweis inferiert, der einzelne Katalog-VK gilt durch Gate 1 nur in diesem Slice als B2C-Listenpreis; B2B/unklar blockiert | eigener Qualifikations-/Katalogvertrag vor B2B oder Pilot |
+| `UNK-F16-CSV-01` | UNKNOWN | private Reonic-Spaltennamen, Dialoge, Datei-/Zeilenlimits, Teilfehler- und Reimportsemantik | M1-08b verwendet einen eigenen versionierten WMEE-Vertrag mit explizitem Mapping, ≤1 MiB/1.000 Zeilen und stabilen create/revise/unchanged-Regeln; daraus wird keine private Reonic-Kompatibilität abgeleitet | rechtmäßige öffentliche Evidence oder Accepted Exception |
+| `UNK-F16-DATA-01` | BLOCKED | autoritative reale WMEE-/Lieferanten-SKU, EK/VK, technische Daten, Assets und belastbare Rechtekette | keine Produktdaten erfunden; lokaler Nachweis ausschließlich mit synthetischen/autorisierbaren Testdaten | autorisierte Quelldatei, Rechte-/Provenienzfreigabe und Pilotimport |
 | `UNK-DESIGN-01` | UNKNOWN | authentische WMEE-Farben, Typografie und freigegebene Screenshot-/PDF-Baseline | eigene scoped Grünrichtung und vollständige Tokens sind Gate-1-freigegeben; 320 als Reflow-Stress sowie 375/390/768/1024/1440/1920 und 44 px sind A11y-/QA-Entscheidungen, keine Brand-Evidenz. M2-02/M2-03a/M2-03b1 verwenden ausschließlich eigene WMEE-Tokens/Systemfonts; `M201-VISUAL-01`, `M202-VISUAL-01`, `M203A-VISUAL-01` und `M203B1-VISUAL-01` bleiben ohne menschliche Baseline `INCONCLUSIVE` | Mikails Portal- und gerasterte PDF-Baseline-/Brandfreigabe |
 | `UNK-PDF-01` | UNKNOWN | formale PDF/UA-Konformität, vollständige Tag-Struktur, Lesereihenfolge und Assistive-Technology-Verhalten realer Mehrseiter | M2-03b1 ist technisch mit Tagged-PDF-Option, Outline und 11/11 A4-Seiten belegt; zwei Render sind bytegleich. Das ist weiterhin kein formaler PDF/UA- oder Assistive-Technology-Nachweis | PDF/UA-Validator plus manueller Screenreader-/Dokument-A11y-Review vor externem Versand |
 | `UNK-OPS-01` | UNKNOWN | produktiver Worker-/Web-Deploy, Zielhost-Rollback, Monitoring, reale Queue-Recovery und Betriebs-SLO | der lokale M2-03b1-Issuance-Worker, Tests, Build und gepinnte Container sind grün; produktiver Web-/Render-/Archivworker-Deploy und jede externe Infrastrukturmutation wurden nicht ausgeführt | autorisierter Staging-/Produktionsdeploy mit Smoke, Monitoring, Backup/Restore und Rollback |

@@ -19,6 +19,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool, type PoolClient } from "pg";
 import { startEmbeddedPostgres, type EmbeddedTestDatabase } from "../setup/embedded-postgres.js";
+import { bootstrapCalculationQueue } from "../../scripts/pgboss-bootstrap.mjs";
+import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
 import {
   RECHNER_INTAKE_PATH,
   signatureMessage,
@@ -71,8 +73,12 @@ type SeedData = {
   foreignWorkspaceId: string;
   editorIdentityId: string;
   viewerIdentityId: string;
+  restrictedEditorIdentityId: string;
+  externalEditorIdentityId: string;
   editorEmail: string;
   viewerEmail: string;
+  restrictedEditorEmail: string;
+  externalEditorEmail: string;
   m201WorkspaceId: string;
   m201EditorIdentityId: string;
   m201EditorEmail: string;
@@ -92,6 +98,8 @@ type E2EState = Pick<
   | "foreignWorkspaceId"
   | "editorEmail"
   | "viewerEmail"
+  | "restrictedEditorEmail"
+  | "externalEditorEmail"
   | "mainContactName"
   | "foreignContactName"
 > & {
@@ -123,6 +131,13 @@ type ReadyState = {
   baseURL: string;
 };
 
+type StrictServiceUrls = Readonly<{
+  auth: string;
+  migrator: string;
+  runtime: string;
+  worker: string;
+}>;
+
 type FileSnapshot =
   | { existed: false }
   | { existed: true; content: Buffer; mode: number };
@@ -138,6 +153,7 @@ type GeoapifyStub = {
 let embedded: EmbeddedTestDatabase | undefined;
 let privateDirectory: string | undefined;
 let serverLogFd: number | undefined;
+let workerLogFd: number | undefined;
 let interruptedBy: NodeJS.Signals | undefined;
 let cleanupPromise: Promise<unknown[]> | undefined;
 let nextEnvSnapshot: FileSnapshot | undefined;
@@ -390,6 +406,8 @@ function cleanEnvironment(): NodeJS.ProcessEnv {
     "M1_05_E2E_BASE_URL",
     "M1_05_E2E_READY_FILE",
     "M1_05_E2E_READY_TOKEN",
+    "M1_05_E2E_GREP",
+    "WORKER_E2E_CATALOG_IMPORT_ONLY",
   ]) {
     delete env[name];
   }
@@ -397,25 +415,99 @@ function cleanEnvironment(): NodeJS.ProcessEnv {
   return env;
 }
 
-function destructiveTestConfirmation(databaseUrl: string): string {
-  const parsed = new URL(databaseUrl);
-  const database = decodeURI(parsed.pathname.replace(/^\//, ""));
-  return `${parsed.hostname}:${parsed.port}/${encodeURIComponent(database)}:ALLOW-DESTRUCTIVE-TESTS`;
+function strictServiceUrl(
+  databaseUrl: string,
+  role: "app_auth" | "app_migrator" | "app_runtime" | "app_worker",
+  password: string,
+): string {
+  const url = new URL(databaseUrl);
+  url.username = role;
+  url.password = password;
+  return url.toString();
+}
+
+async function provisionStrictServices(
+  database: EmbeddedTestDatabase,
+): Promise<StrictServiceUrls> {
+  const passwords = {
+    auth: randomBytes(24).toString("base64url"),
+    migrator: randomBytes(24).toString("base64url"),
+    runtime: randomBytes(24).toString("base64url"),
+    system: randomBytes(24).toString("base64url"),
+    worker: randomBytes(24).toString("base64url"),
+  };
+  if (!Object.values(passwords).every((password) => /^[A-Za-z0-9_-]{32}$/u.test(password))) {
+    throw new Error("Die ephemeren E2E-Rollenpasswörter sind nicht SQL-sicher kodiert.");
+  }
+  const databaseName = decodeURIComponent(new URL(database.url).pathname.slice(1));
+  if (databaseName !== "energie_saas_test") {
+    throw new Error("Der strikte E2E-Rollenaufbau darf nur die ephemere Testdatenbank verändern.");
+  }
+  const admin = new Pool({ connectionString: database.superuserUrl, max: 1 });
+  try {
+    await admin.query(`
+      revoke app_membership_writer from app_test;
+
+      create role app_owner nologin noinherit nosuperuser nobypassrls
+        nocreatedb nocreaterole noreplication;
+      create role app_migrator login password '${passwords.migrator}'
+        noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;
+      create role app_runtime login password '${passwords.runtime}'
+        noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;
+      create role app_system login password '${passwords.system}'
+        noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;
+      create role app_auth login password '${passwords.auth}'
+        noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;
+      create role app_worker login password '${passwords.worker}'
+        noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;
+      create role app_erasure nologin noinherit nosuperuser nobypassrls
+        nocreatedb nocreaterole noreplication;
+      create role identity_reconciler nologin noinherit nosuperuser nobypassrls
+        nocreatedb nocreaterole noreplication;
+
+      grant app_owner to app_migrator
+        with admin false, inherit false, set true;
+      grant app_worker to app_migrator
+        with admin false, inherit false, set true;
+      grant app_membership_writer to app_owner
+        with admin false, inherit false, set false;
+      grant app_membership_writer to app_system
+        with admin false, inherit false, set false;
+      grant identity_reconciler to app_owner
+        with admin true, inherit false, set false;
+
+      alter database energie_saas_test owner to app_owner;
+      revoke all privileges on database energie_saas_test from app_test;
+      revoke all privileges on database energie_saas_test from public;
+      grant connect on database energie_saas_test to public;
+      alter schema public owner to app_owner;
+      revoke all on schema public from public, app_test;
+      create schema pgboss authorization app_worker;
+    `);
+  } finally {
+    await admin.end();
+  }
+  const urls = {
+    auth: strictServiceUrl(database.url, "app_auth", passwords.auth),
+    migrator: strictServiceUrl(database.url, "app_migrator", passwords.migrator),
+    runtime: strictServiceUrl(database.url, "app_runtime", passwords.runtime),
+    worker: strictServiceUrl(database.url, "app_worker", passwords.worker),
+  } satisfies StrictServiceUrls;
+  await bootstrapCalculationQueue(urls.worker);
+  return urls;
 }
 
 function migrationEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
   return {
     ...cleanEnvironment(),
     NODE_ENV: "test",
-    VITEST: "true",
-    DB_ROLE_MODE: "test-legacy-single",
+    DB_ROLE_MODE: "strict",
     POSTGRES_URL_MIGRATE: databaseUrl,
-    POSTGRES_TEST_TARGET_CONFIRM: destructiveTestConfirmation(databaseUrl),
   };
 }
 
 function nextEnvironment(
-  databaseUrl: string,
+  database: Pick<StrictServiceUrls, "auth" | "runtime">,
   authSecret: string,
   credentials: IntakeCredential[],
   geocodingStub: GeoapifyStub,
@@ -425,11 +517,9 @@ function nextEnvironment(
   return {
     ...cleanEnvironment(),
     NODE_ENV: "development",
-    VITEST: "true",
-    DB_ROLE_MODE: "test-legacy-single",
-    POSTGRES_URL: databaseUrl,
-    POSTGRES_URL_AUTH: databaseUrl,
-    POSTGRES_TEST_TARGET_CONFIRM: destructiveTestConfirmation(databaseUrl),
+    DB_ROLE_MODE: "strict",
+    POSTGRES_URL: database.runtime,
+    POSTGRES_URL_AUTH: database.auth,
     BETTER_AUTH_SECRET: authSecret,
     RECHNER_INTAKE_KEYS_JSON: JSON.stringify(credentials.map((credential) => ({
       keyId: credential.keyId,
@@ -444,6 +534,18 @@ function nextEnvironment(
     GEOAPIFY_BASE_URL: geocodingStub.origin,
     M1_05_E2E_READY_FILE: readyFile,
     M1_05_E2E_READY_TOKEN: readyToken,
+  };
+}
+
+function workerEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
+  return {
+    ...cleanEnvironment(),
+    NODE_ENV: "test",
+    DB_ROLE_MODE: "strict",
+    POSTGRES_URL_WORKER: databaseUrl,
+    WORKER_HEALTH_PORT: "0",
+    WORKER_E2E_CATALOG_IMPORT_ONLY: "1",
+    SENTRY_DSN: "",
   };
 }
 
@@ -556,6 +658,26 @@ async function runMigration(databaseUrl: string, logPath: string): Promise<void>
   }
 }
 
+async function applyStrictRoleManifest(databaseUrl: string): Promise<void> {
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    options: "-c role=app_owner",
+    max: 1,
+  });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await applyRoleContract(client);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
 async function withWorkspaceSeed<T>(
   client: PoolClient,
   workspaceId: string,
@@ -603,6 +725,26 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
       await client.query(
         "insert into membership (workspace_id, user_id, role) values ($1::uuid, $2::uuid, 'viewer')",
         [data.workspaceId, data.viewerIdentityId],
+      );
+      await client.query(
+        "insert into user_identity (id, email) values ($1::uuid, $2)",
+        [data.restrictedEditorIdentityId, data.restrictedEditorEmail],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor', '{"manage_catalog":true}'::jsonb)`,
+        [data.workspaceId, data.restrictedEditorIdentityId],
+      );
+      await client.query(
+        "insert into user_identity (id, email) values ($1::uuid, $2)",
+        [data.externalEditorIdentityId, data.externalEditorEmail],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor',
+           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
+              "external_only":true}'::jsonb)`,
+        [data.workspaceId, data.externalEditorIdentityId],
       );
     });
 
@@ -703,12 +845,26 @@ async function waitForNext(
   child: ChildProcess,
   readyFile: string,
   readyToken: string,
+  serverLogPath: string,
 ): Promise<ReadyState> {
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
     throwIfInterrupted();
     if (child.exitCode !== null || child.signalCode !== null) {
-      throw new Error("Der isolierte Next-Prozess wurde vor der Bereitschaft beendet.");
+      if (serverLogFd !== undefined) fsyncSync(serverLogFd);
+      let diagnostic = "";
+      try {
+        diagnostic = safeMessage(readFileSync(serverLogPath, "utf8").slice(-12_000))
+          .replace(/\b[A-Za-z0-9_-]{32,}\b/gu, "[redacted-token]")
+          .trim();
+      } catch {
+        // Der allgemeine Startfehler bleibt auch ohne lesbaren Privatlog stabil.
+      }
+      throw new Error(
+        diagnostic.length > 0
+          ? `Der isolierte Next-Prozess wurde vor der Bereitschaft beendet.\n${diagnostic}`
+          : "Der isolierte Next-Prozess wurde vor der Bereitschaft beendet.",
+      );
     }
     const readyState = parseReadyState(readyFile, readyToken, child);
     if (readyState) {
@@ -727,6 +883,57 @@ async function waitForNext(
     await sleep(200);
   }
   throw new Error("Der isolierte Next-Prozess wurde nicht rechtzeitig bereit.");
+}
+
+async function waitForWorker(
+  child: ChildProcess,
+  workerLogPath: string,
+): Promise<void> {
+  const deadline = Date.now() + START_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    throwIfInterrupted();
+    if (child.exitCode !== null || child.signalCode !== null) {
+      if (workerLogFd !== undefined) fsyncSync(workerLogFd);
+      let diagnostic = "";
+      try {
+        diagnostic = safeMessage(readFileSync(workerLogPath, "utf8").slice(-12_000)).trim();
+      } catch {
+        // Der allgemeine Startfehler bleibt auch ohne lesbaren Privatlog stabil.
+      }
+      throw new Error(
+        diagnostic.length > 0
+          ? `Der isolierte Worker wurde vor der Bereitschaft beendet.\n${diagnostic}`
+          : "Der isolierte Worker wurde vor der Bereitschaft beendet.",
+      );
+    }
+    if (workerLogFd !== undefined) fsyncSync(workerLogFd);
+    let healthPort: number | undefined;
+    try {
+      const match = /worker health on :(\d{1,5})/u.exec(readFileSync(workerLogPath, "utf8"));
+      if (match) {
+        const parsed = Number(match[1]);
+        if (Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 65_535) {
+          healthPort = parsed;
+        }
+      }
+    } catch {
+      // Der Worker hat seinen privaten Log noch nicht angelegt.
+    }
+    if (healthPort !== undefined) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${healthPort}/health`, {
+          redirect: "error",
+          signal: AbortSignal.timeout(2_000),
+        });
+        const body = await response.json() as { ok?: unknown };
+        if (response.status === 200 && body.ok === true) return;
+      } catch {
+        // Registrierung ist geloggt; die aktuelle DB-Probe läuft noch an.
+      }
+    }
+    await sleep(200);
+  }
+  throw new Error("Der isolierte Worker wurde nicht rechtzeitig arbeitsfähig.");
 }
 
 function intakePayload(
@@ -854,10 +1061,13 @@ async function runPlaywright(
   statePath: string,
   outputPath: string,
   baseURL: string,
+  grep: string | undefined,
 ): Promise<number> {
+  const args = ["test", "--config", resolve(REPO_ROOT, "playwright.config.ts")];
+  if (grep) args.push("--grep", grep);
   const child = spawnTracked(
     resolve(REPO_ROOT, "node_modules/.bin/playwright"),
-    ["test", "--config", resolve(REPO_ROOT, "playwright.config.ts")],
+    args,
     {
       env: playwrightEnvironment(statePath, outputPath, baseURL),
       stdio: ["ignore", "inherit", "inherit"],
@@ -874,8 +1084,12 @@ function createSeedData(): SeedData {
     foreignWorkspaceId: randomUUID(),
     editorIdentityId: randomUUID(),
     viewerIdentityId: randomUUID(),
+    restrictedEditorIdentityId: randomUUID(),
+    externalEditorIdentityId: randomUUID(),
     editorEmail: `m1-05-editor-${runSuffix}@example.test`,
     viewerEmail: `m1-05-viewer-${runSuffix}@example.test`,
+    restrictedEditorEmail: `m108b-editor-ohne-preisrecht-${runSuffix}@example.test`,
+    externalEditorEmail: `m108b-external-editor-${runSuffix}@example.test`,
     m201WorkspaceId: randomUUID(),
     m201EditorIdentityId: randomUUID(),
     m201EditorEmail: `m2-01-editor-${runSuffix}@example.test`,
@@ -928,6 +1142,15 @@ async function cleanup(): Promise<unknown[]> {
       serverLogFd = undefined;
     }
 
+    if (workerLogFd !== undefined) {
+      try {
+        closeSync(workerLogFd);
+      } catch (error) {
+        errors.push(error);
+      }
+      workerLogFd = undefined;
+    }
+
     const database = embedded;
     embedded = undefined;
     if (database) {
@@ -960,12 +1183,18 @@ function safeMessage(error: unknown): string {
 }
 
 async function main(): Promise<number> {
+  const rawGrep = process.env.M1_05_E2E_GREP?.trim();
+  if (rawGrep && (rawGrep.length > 120 || !/^[A-Za-z0-9._:/ |()-]+$/u.test(rawGrep))) {
+    throw new Error("M1_05_E2E_GREP enthält kein zulässiges fokussiertes Testmuster.");
+  }
+  const grep = rawGrep || undefined;
   nextEnvSnapshot = snapshotFile(NEXT_ENV_PATH);
   console.log("[e2e] Isolierte M1-06-Testumgebung wird vorbereitet …");
   privateDirectory = mkdtempSync(join(tmpdir(), "energie-saas-m1-06-e2e-"));
   chmodSync(privateDirectory, PRIVATE_DIRECTORY_MODE);
   const migrationLogPath = join(privateDirectory, "migration.log");
   const serverLogPath = join(privateDirectory, "next.log");
+  const workerLogPath = join(privateDirectory, "worker.log");
   const statePath = join(privateDirectory, "state.json");
   const readyFile = join(privateDirectory, "next-ready.json");
   const playwrightOutputPath = join(privateDirectory, "playwright-output");
@@ -973,7 +1202,11 @@ async function main(): Promise<number> {
 
   embedded = await startEmbeddedPostgres();
   throwIfInterrupted();
-  await runMigration(embedded.url, migrationLogPath);
+  const serviceUrls = await provisionStrictServices(embedded);
+  throwIfInterrupted();
+  await runMigration(serviceUrls.migrator, migrationLogPath);
+  throwIfInterrupted();
+  await applyStrictRoleManifest(serviceUrls.migrator);
   throwIfInterrupted();
 
   const providerStub = await startGeoapifyContractStub();
@@ -981,8 +1214,8 @@ async function main(): Promise<number> {
   throwIfInterrupted();
 
   const seedData = createSeedData();
-  await seedInvitations(embedded.url, seedData);
-  const m201Seed = await seedM201ReadyProject(embedded.url, {
+  await seedInvitations(embedded.superuserUrl, seedData);
+  const m201Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.m201WorkspaceId,
     editorIdentityId: seedData.m201EditorIdentityId,
   });
@@ -1000,13 +1233,25 @@ async function main(): Promise<number> {
   };
   const authSecret = randomBytes(48).toString("base64url");
 
+  workerLogFd = openPrivateLog(workerLogPath);
+  const workerChild = spawnTracked(
+    process.execPath,
+    ["--import", "tsx", resolve(REPO_ROOT, "worker/index.ts")],
+    {
+      env: workerEnvironment(serviceUrls.worker),
+      stdio: ["ignore", workerLogFd, workerLogFd],
+    },
+  );
+  await waitForWorker(workerChild, workerLogPath);
+  throwIfInterrupted();
+
   serverLogFd = openPrivateLog(serverLogPath);
   const nextChild = spawnTracked(
     process.execPath,
     ["--import", "tsx", NEXT_SERVER_PATH],
     {
       env: nextEnvironment(
-        embedded.url,
+        serviceUrls,
         authSecret,
         [mainCredential, foreignCredential],
         providerStub,
@@ -1016,18 +1261,18 @@ async function main(): Promise<number> {
       stdio: ["ignore", serverLogFd, serverLogFd],
     },
   );
-  const server = await waitForNext(nextChild, readyFile, readyToken);
+  const server = await waitForNext(nextChild, readyFile, readyToken, serverLogPath);
   throwIfInterrupted();
 
   const mainLead = await submitSignedLead(
     server,
-    embedded.url,
+    embedded.superuserUrl,
     mainCredential,
     intakePayload(seedData.mainContactName, `main-${randomUUID()}`, true),
   );
   const foreignLead = await submitSignedLead(
     server,
-    embedded.url,
+    embedded.superuserUrl,
     foreignCredential,
     intakePayload(seedData.foreignContactName, `foreign-${randomUUID()}`),
   );
@@ -1035,7 +1280,7 @@ async function main(): Promise<number> {
 
   writeState(statePath, {
     baseURL: server.baseURL,
-    databaseUrl: embedded.url,
+    databaseUrl: embedded.superuserUrl,
     foreignProjectId: foreignLead.projectId,
     mainProjectId: mainLead.projectId,
     m201BatteryId: m201Seed.products.battery,
@@ -1051,17 +1296,43 @@ async function main(): Promise<number> {
     foreignWorkspaceId: seedData.foreignWorkspaceId,
     editorEmail: seedData.editorEmail,
     viewerEmail: seedData.viewerEmail,
+    restrictedEditorEmail: seedData.restrictedEditorEmail,
+    externalEditorEmail: seedData.externalEditorEmail,
     mainContactName: seedData.mainContactName,
     foreignContactName: seedData.foreignContactName,
   });
 
-  console.log("[e2e] Chromium prüft M1-06 bis M2-01, Viewer-Grenze, Fremdmandant und Axe …");
-  const playwrightExitCode = await runPlaywright(statePath, playwrightOutputPath, server.baseURL);
-  if (!geoapifyContractWasExercised(providerStub)) {
-    console.error("[e2e] Der lokale Geoapify-Vertrag wurde nicht exakt einmal vollständig durchlaufen.");
+  console.log(grep
+    ? `[e2e] Chromium prüft fokussiert: ${grep}`
+    : "[e2e] Chromium prüft M1-06 bis M2-01, Viewer-Grenze, Fremdmandant und Axe …");
+  const playwrightExitCode = await runPlaywright(
+    statePath,
+    playwrightOutputPath,
+    server.baseURL,
+    grep,
+  );
+  if (playwrightExitCode !== 0) {
+    if (serverLogFd !== undefined) fsyncSync(serverLogFd);
+    try {
+      const diagnostic = safeMessage(readFileSync(serverLogPath, "utf8").slice(-20_000)).trim();
+      if (diagnostic.length > 0) {
+        console.error(`[e2e] Sanitisiertes Next-Diagnoseende:\n${diagnostic}`);
+      }
+    } catch {
+      console.error("[e2e] Das sanitisierte Next-Diagnoseende war nicht lesbar.");
+    }
+  }
+  const geoapifyExercised = geoapifyContractWasExercised(providerStub);
+  const geoapifyUntouched = providerStub.violations.length === 0
+    && providerStub.autocompleteRequests === 0
+    && providerStub.detailsRequests === 0;
+  if ((!grep && !geoapifyExercised) || (grep && !geoapifyExercised && !geoapifyUntouched)) {
+    console.error("[e2e] Der lokale Geoapify-Vertrag war weder exakt 1/1 noch in einem fokussierten Lauf unberührt.");
     return 1;
   }
-  console.log("[e2e] Lokaler Geoapify-Vertrag: 1 Suche, 1 Detailauflösung, 0 Abweichungen.");
+  console.log(geoapifyExercised
+    ? "[e2e] Lokaler Geoapify-Vertrag: 1 Suche, 1 Detailauflösung, 0 Abweichungen."
+    : "[e2e] Fokussierter Lauf ohne Geoapify-Pfad: 0/0 Aufrufe, 0 Abweichungen.");
   return playwrightExitCode;
 }
 

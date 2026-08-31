@@ -1,19 +1,21 @@
 # Paritäts-Quellenregister
 
-Stand: 2026-08-30
+Stand: 2026-08-31
 
 Dieses Register klassifiziert Quellen; es ersetzt weder die Clean-Room-Regeln
 in `CONTRIBUTING.md` noch eine Capability-Abnahme. Reonic-Quellen dürfen nur
 beobachtbare Funktionssemantik belegen. UI, Texte, Assets, Code und Daten werden
 nicht übernommen.
 
-## Aktive Quellen für M2-01, M2-02, M2-03a und M2-03b1
+## Aktive Quellen für M1-08b, M2-01, M2-02, M2-03a und M2-03b1
 
 | ID | Quelle | Klasse | Belegt | Confidence / Grenze |
 |---|---|---|---|---|
 | `SRC-CONSTITUTION-01` | `CONTRIBUTING.md` | DOCUMENTED | Clean-Room, erlaubte Quellen, verbotene Zugänge | hoch; bindend |
 | `SRC-BLUEPRINT-F2` | `docs/blaupause/01-modulkatalog.md`, F2.1–F2.4 und F2.7 | INFERRED / sekundär synthetisiert | Arbeits-Hypothesen zu Offer, Varianten, BOM, Rabattstack und PDF als Capability | mittel; keine Primärevidenz und keine Layoutvorlage, Claims müssen an öffentliche Doku/Vault gebunden bleiben |
 | `SRC-M108-01` | `docs/spec/M1-08-produktkatalog-projektaufloesung.md` und ADR 0008 | DOCUMENTED | immutable Katalog-/Preissnapshots, EK-Grenze, Current/Stale | hoch; lokal verifiziert |
+| `SRC-M108B-SPEC` | `docs/spec/M1-08b-katalog-csv-import.md` | DOCUMENTED WMEE | eigener autorisierter CSV-Vertrag, Mapping, Preview, Zeilenvalidierung, Rechte, Zustände, Retention und Abnahme | hoch für den eigenen lokal verifizierten Vertrag; keine Reonic- oder Lieferantenimport-Evidenz |
+| `SRC-ADR-0013` | `docs/adr/0013-katalog-csv-import-worker.md` | DECIDED WMEE | persistierte Preview ohne Rohdatei, ID-only Worker/Queues, maximal 25 Zeilen je Claim, Teilerfolg, Recovery und Due-Redaction | hoch für die eigene Architekturentscheidung; kein produktiver Rollout oder Realimport |
 | `SRC-M202-SPEC` | `docs/spec/M2-02-angebots-pdf-entwurf.md` | DOCUMENTED | interner nicht verbindlicher PDF-Draft, exakte Revisionsbindung, minimierter Input, Zustands-/Rollen-/Download-/Testvertrag und harte Nicht-Ziele | hoch für den eigenen WMEE-Vertrag; lokal technisch verifiziert |
 | `SRC-ADR-0010` | `docs/adr/0010-pdf-entwurf-worker-und-staging.md` | DECIDED WMEE | isolierter offline/sandboxed Chromium-Worker, gepinntes `linux/amd64`-/Playwright-/OCI-Rezept, tenantgeschütztes Postgres-Staging und spätere separate Object-Lock-Promotion | hoch für die eigene Architekturentscheidung; kein produktiver Deploy-/WORM-Beleg |
 | `SRC-M203A-SPEC` | `docs/spec/M2-03a-angebots-freigabekandidat.md` | DOCUMENTED | versioniertes Dokumentprofil, Empfänger-/Rechnungsrevision, Candidate-Readiness, versiegelter Input, Workerzustände, Byte-Approval, Download-/Erasure- und Testvertrag | hoch für den eigenen WMEE-Vertrag; lokal technisch verifiziert, keine Rechts- oder Issuance-Freigabe |
@@ -54,6 +56,11 @@ nicht als private Reonic-Produktwahrheit ausgegeben.
 | ID | Entscheidung | Klasse | Ablage |
 |---|---|---|---|
 | `DEC-M201-01` | ein Offer pro Project im v1 | DECIDED WMEE | Spec M2-01, ADR 0009 |
+| `DEC-M108B-01` | CSV-Preview wird persistiert, die Rohdatei selbst nie gespeichert; dieselbe lokale Datei wird für Inspection und Preview erneut übertragen | DECIDED WMEE | Spec M1-08b, ADR 0013 |
+| `DEC-M108B-02` | Start verlangt gemeinsam `catalog.manage`, `price.edit`, `price.read_purchase` sowie eine versionierte Rechteattestation | DECIDED WMEE | Spec M1-08b, Rollenmatrix |
+| `DEC-M108B-03` | Queue/Worker bleiben ID-only; maximal 25 Zeilen je Lease, Produktmutation und Zeilenergebnis committen gemeinsam | DECIDED WMEE | Spec M1-08b, ADR 0013 |
+| `DEC-M108B-04` | create/revise endet immer als Draft, unchanged erzeugt keinen Stand; Aktivierung bleibt getrennte bewusste M1-08-Aktion | DECIDED WMEE | Spec M1-08b, ADR 0013 |
+| `DEC-M108B-05` | Preview verfällt nach sieben Tagen; schutzbedürftige Preview-/Commanddaten werden spätestens ab der 30-Tage-Due-Grenze atomar redigiert | DECIDED WMEE | Spec M1-08b, ADR 0013 |
 | `DEC-M201-02` | PV-Wohngebäude-Golden-Path zuerst | DECIDED WMEE | Spec M2-01, ADR 0009 |
 | `DEC-M201-03` | `ANG-{YYYY}-{sequence:6}` als eigener Nummernstandard | DECIDED WMEE | Spec M2-01, ADR 0009 |
 | `DEC-M201-04` | Cent/Basispunkte/BigInt/half-up/Largest Remainder | DECIDED WMEE | Spec M2-01, ADR 0009 |

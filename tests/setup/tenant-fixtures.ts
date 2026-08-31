@@ -4,9 +4,17 @@ import {
   CATALOG_CANONICALIZATION_VERSION,
   CATALOG_COMPONENT_CONTRACT_VERSION,
   PROJECT_CATALOG_RESOLUTION_CONTRACT_VERSION,
+  canonicalizeCatalogJson,
   sealCatalogComponentRevision,
   sealProjectCatalogResolution,
+  type CatalogComponentCreateCommandV1,
 } from "@/lib/integrations/catalog/contract";
+import {
+  CATALOG_IMPORT_RIGHTS_ATTESTATION_SHA256,
+  catalogCsvMappingPersistenceEnvelope,
+  catalogImportRowPersistenceEnvelope,
+  sealCatalogImportRowCommand,
+} from "@/lib/integrations/catalog/import-contract";
 import { canonicalizeOfferJson } from "@/lib/integrations/offers/contract";
 import { hashOfferPdfDraftInput } from "@/lib/integrations/offers/pdf-contract";
 import type { TenantTx } from "@/lib/db/types";
@@ -252,6 +260,247 @@ async function fixtureCalculationJob(tx: TenantTx, wsId: string): Promise<{
     )
   `);
   return { ...graph, jobId };
+}
+
+async function fixtureCatalogImportGraph(tx: TenantTx, wsId: string): Promise<void> {
+  const existing = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id
+      from catalog_import_job
+     where workspace_id = ${wsId}::uuid
+     limit 1
+  `);
+  if (existing.rows.length > 0) return;
+
+  const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+  const actorId = randomUUID();
+  const jobId = randomUUID();
+  const leaseToken = randomUUID();
+  const componentId = randomUUID();
+  const internalSku = `IMPORT-${componentId.slice(0, 8).toUpperCase()}`;
+  await tx.execute(sql`
+    insert into user_identity (id, email)
+    values (${actorId}::uuid, ${`${actorId}@catalog-import-fixture.test`})
+  `);
+  await tx.execute(sql`
+    insert into membership (workspace_id, user_id, role)
+    values (${wsId}::uuid, ${actorId}::uuid, 'editor')
+  `);
+
+  const requiredMappingFields = [
+    "internalSku",
+    "componentType",
+    "displayName",
+    "manufacturer",
+    "model",
+    "unit",
+    "technicalSourceKind",
+    "technicalReference",
+    "technicalObservedOn",
+    "technicalRightsBasis",
+    "purchasePriceNet",
+    "purchaseSourceKind",
+    "purchaseReference",
+    "purchaseObservedOn",
+    "purchaseRightsBasis",
+    "salesPriceNet",
+    "salesSourceKind",
+    "salesReference",
+    "salesObservedOn",
+    "salesRightsBasis",
+  ] as const;
+  const mappingEnvelope = catalogCsvMappingPersistenceEnvelope({
+    schemaVersion: "catalog-csv-column-mapping.v1",
+    columns: requiredMappingFields.map((field, index) => ({
+      field,
+      sourceHeader: `fixture-header-${index}`,
+    })),
+  });
+  const fileSha256 = digest("synthetic catalog import tenant fixture");
+  const sourceCommand = {
+    schemaVersion: "catalog-component-create-command.v1",
+    internalSku,
+    componentType: "module",
+    presentation: {
+      displayName: "Synthetisches Importmodul",
+      manufacturer: "WMEE Fixture",
+      model: internalSku,
+      unit: "piece",
+      keyPoints: ["Keine realen Produktdaten"],
+      image: null,
+      datasheet: null,
+    },
+    technicalData: {
+      schemaVersion: "module.v1",
+      nominalPowerWatts: 440,
+    },
+    commercial: {
+      currency: "EUR",
+      basis: "net",
+      purchasePriceNetCents: 7_900,
+      salesPriceNetCents: 12_900,
+      purchaseProvenance: {
+        sourceKind: "supplier_price_list",
+        reference: "synthetic-import-purchase-fixture",
+        observedOn: "2026-08-31",
+        rightsBasis: "supplier_authorized",
+        sourceDocumentSha256: null,
+      },
+      salesProvenance: {
+        sourceKind: "workspace_pricing",
+        reference: "synthetic-import-sales-fixture",
+        observedOn: "2026-08-31",
+        rightsBasis: "workspace_owned",
+        sourceDocumentSha256: null,
+      },
+    },
+    technicalProvenance: {
+      sourceKind: "manufacturer_datasheet",
+      reference: "synthetic-import-technical-fixture",
+      observedOn: "2026-08-31",
+      rightsBasis: "manufacturer_published",
+      sourceDocumentSha256: null,
+    },
+  } satisfies CatalogComponentCreateCommandV1;
+  const sourceCommandSha256 = digest(canonicalizeCatalogJson(sourceCommand));
+  const previewRowBody = {
+    status: "valid" as const,
+    rowNumber: 2,
+    normalizedSku: internalSku,
+    commandSha256: sourceCommandSha256,
+    command: sourceCommand,
+  };
+  const sourceRow = {
+    ...previewRowBody,
+    rowSha256: digest(canonicalizeCatalogJson(previewRowBody)),
+  };
+  const targetSnapshot = sealCatalogComponentRevision({
+    schemaVersion: CATALOG_COMPONENT_CONTRACT_VERSION,
+    canonicalizationVersion: CATALOG_CANONICALIZATION_VERSION,
+    identity: {
+      workspaceId: wsId,
+      componentId,
+      revision: 1,
+      internalSku,
+      componentType: "module",
+    },
+    presentation: sourceCommand.presentation,
+    technicalData: sourceCommand.technicalData,
+    commercial: sourceCommand.commercial,
+    technicalProvenance: sourceCommand.technicalProvenance,
+  });
+  const rowCommand = sealCatalogImportRowCommand({
+    fileSha256,
+    mappingSha256: mappingEnvelope.sha256,
+    sourceRow,
+    operation: "create",
+    targetComponentId: componentId,
+    expected: null,
+    sealedTarget: targetSnapshot,
+  });
+  const rowEnvelope = catalogImportRowPersistenceEnvelope(rowCommand);
+
+  await tx.execute(sql`
+    insert into catalog_import_job (
+      id, workspace_id, intent_id, reservation_key,
+      file_name, file_size_bytes, file_sha256, encoding, delimiter,
+      contract_version, parser_version, mapping_version,
+      mapping_snapshot, mapping_body_canonical, mapping_sha256,
+      total_count, valid_count, invalid_count, sensitive_payload_bytes,
+      state, created_by, preview_expires_at
+    ) values (
+      ${jobId}::uuid, ${wsId}::uuid, ${randomUUID()}::uuid,
+      decode(${digest(`catalog-import:${jobId}`)}, 'hex'),
+      'synthetic-fixture.csv', 128, decode(${fileSha256}, 'hex'),
+      'utf-8', ';', 'catalog-csv-import.v1', 'papaparse-5.7.0-wmee.v1',
+      'catalog-csv-column-mapping.v1',
+      ${JSON.stringify(mappingEnvelope.snapshot)}::jsonb,
+      pg_catalog.convert_to(${mappingEnvelope.bodyCanonical}, 'UTF8'),
+      decode(${mappingEnvelope.sha256}, 'hex'),
+      1, 1, 0, 1, 'ready_for_review', ${actorId}::uuid,
+      pg_catalog.transaction_timestamp() + interval '7 days'
+    )
+  `);
+  await tx.execute(sql`
+    insert into catalog_import_row (
+      workspace_id, job_id, row_number, validation_status,
+      normalized_sku, operation, command_snapshot,
+      preview_row_body_canonical, source_command_body_canonical,
+      row_command_body_canonical, row_sha256, source_command_sha256,
+      row_command_sha256, target_component_id, sealed_target_snapshot,
+      sealed_target_body_canonical, target_snapshot_sha256,
+      sensitive_payload_bytes
+    ) values (
+      ${wsId}::uuid, ${jobId}::uuid, 2, 'valid', ${internalSku}, 'create',
+      ${JSON.stringify(rowEnvelope.command)}::jsonb,
+      pg_catalog.convert_to(${rowEnvelope.previewRowBodyCanonical}, 'UTF8'),
+      pg_catalog.convert_to(${rowEnvelope.sourceCommandBodyCanonical}, 'UTF8'),
+      pg_catalog.convert_to(${rowEnvelope.rowCommandBodyCanonical}, 'UTF8'),
+      decode(${sourceRow.rowSha256}, 'hex'),
+      decode(${rowEnvelope.sourceCommandSha256}, 'hex'),
+      decode(${rowEnvelope.rowCommandSha256}, 'hex'),
+      ${componentId}::uuid, ${JSON.stringify(targetSnapshot)}::jsonb,
+      pg_catalog.convert_to(${rowEnvelope.sealedTargetBodyCanonical!}, 'UTF8'),
+      decode(${rowEnvelope.targetSnapshotSha256}, 'hex'), 0
+    )
+  `);
+  await tx.execute(sql`
+    with derived as (
+      select job.workspace_id, job.id,
+             (
+               pg_catalog.octet_length(pg_catalog.convert_to(job.file_name, 'UTF8'))
+               + pg_catalog.octet_length(pg_catalog.convert_to(
+                   job.mapping_snapshot::text,
+                   'UTF8'
+                 ))
+               + pg_catalog.octet_length(job.mapping_body_canonical)
+               + (
+                   select pg_catalog.sum(import_row.sensitive_payload_bytes)::integer
+                     from catalog_import_row as import_row
+                    where import_row.workspace_id = job.workspace_id
+                      and import_row.job_id = job.id
+                 )
+             )::integer as payload_bytes
+        from catalog_import_job as job
+       where job.workspace_id = ${wsId}::uuid and job.id = ${jobId}::uuid
+    )
+    update catalog_import_job as job
+       set sensitive_payload_bytes = derived.payload_bytes
+      from derived
+     where job.workspace_id = derived.workspace_id and job.id = derived.id
+  `);
+  await tx.execute(sql`
+    update catalog_import_job
+       set state = 'queued', execution_actor_id = ${actorId}::uuid,
+           attestation_version = 'catalog-import-rights-attestation.v1',
+           attestation_text_sha256 = decode(${CATALOG_IMPORT_RIGHTS_ATTESTATION_SHA256}, 'hex'),
+           attested_by = ${actorId}::uuid,
+           attested_at = pg_catalog.transaction_timestamp(),
+           started_at = pg_catalog.transaction_timestamp(),
+           next_attempt_at = pg_catalog.transaction_timestamp(),
+           updated_at = pg_catalog.transaction_timestamp()
+     where workspace_id = ${wsId}::uuid and id = ${jobId}::uuid
+  `);
+  await tx.execute(sql`
+    update catalog_import_job
+       set state = 'running', lease_generation = lease_generation + 1,
+           lease_token = ${leaseToken}::uuid,
+           lease_row_numbers = array[2]::integer[],
+           lease_expires_at = pg_catalog.transaction_timestamp() + interval '3 minutes',
+           next_attempt_at = null, updated_at = pg_catalog.transaction_timestamp()
+     where workspace_id = ${wsId}::uuid and id = ${jobId}::uuid
+  `);
+  await tx.execute(sql`
+    insert into catalog_import_row_result (
+      workspace_id, job_id, row_number, result_state, error_code
+    ) values (
+      ${wsId}::uuid, ${jobId}::uuid, 2, 'conflict', 'status_drift'
+    )
+  `);
+  await tx.execute(sql`
+    select public.complete_catalog_import_batch_v1(
+      ${wsId}::uuid, ${jobId}::uuid, ${leaseToken}::uuid, 1::bigint
+    )
+  `);
 }
 
 async function fixtureCatalogGraph(tx: TenantTx, wsId: string): Promise<void> {
@@ -1475,6 +1724,10 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   catalog_component_revision: fixtureCatalogGraph,
   project_catalog_resolution: fixtureCatalogGraph,
   project_catalog_resolution_line: fixtureCatalogGraph,
+  catalog_import_job: fixtureCatalogImportGraph,
+  catalog_import_row: fixtureCatalogImportGraph,
+  catalog_import_row_result: fixtureCatalogImportGraph,
+  catalog_import_dispatch_receipt: fixtureCatalogImportGraph,
   offer: fixtureOfferGraph,
   offer_bom_line: fixtureOfferGraph,
   offer_mutation_rate_window: fixtureOfferGraph,
@@ -1510,6 +1763,50 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
 export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>> = {
   workspace: async (tx) => {
     await tx.execute(sql`insert into workspace (id, name) values (${randomUUID()}::uuid, 'cross-write')`);
+  },
+  catalog_import_job: async (tx) => {
+    await tx.execute(sql`
+      alter table catalog_import_job
+      disable trigger catalog_import_job_validate_input
+    `);
+    await tx.execute(sql`
+      insert into catalog_import_job (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  catalog_import_row: async (tx) => {
+    await tx.execute(sql`
+      alter table catalog_import_row
+      disable trigger catalog_import_row_derive_payload
+    `);
+    await tx.execute(sql`
+      alter table catalog_import_row
+      disable trigger catalog_import_row_validate_input
+    `);
+    await tx.execute(sql`
+      insert into catalog_import_row (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  catalog_import_row_result: async (tx) => {
+    await tx.execute(sql`
+      alter table catalog_import_row_result
+      disable trigger catalog_import_row_result_validate_input
+    `);
+    await tx.execute(sql`
+      insert into catalog_import_row_result (workspace_id)
+      values (${randomUUID()}::uuid)
+    `);
+  },
+  catalog_import_dispatch_receipt: async (tx) => {
+    await tx.execute(sql`
+      alter table catalog_import_dispatch_receipt
+      disable trigger catalog_import_dispatch_receipt_validate_input
+    `);
+    await tx.execute(sql`
+      insert into catalog_import_dispatch_receipt (dispatch_id, workspace_id)
+      values (${randomUUID()}::uuid, ${randomUUID()}::uuid)
+    `);
   },
   project: async (tx) => {
     await tx.execute(sql`
@@ -1736,6 +2033,9 @@ export const COMPOSITE_KEY_EXEMPT = new Set<string>([
   "audit_log",
   // WORM-Blatt mit eigener operation_id-Identität; kein FK darf darauf zeigen.
   "erasure_tombstone",
+  // WORM-Receiptblatt: dispatch_id ist die global eindeutige Replay-Identität;
+  // kein FK zeigt auf diese technische Zustellquittung.
+  "catalog_import_dispatch_receipt",
 ]);
 
 // Regel 3 (FK workspace_id -> workspace.id): koppelt die Löschbarkeit des

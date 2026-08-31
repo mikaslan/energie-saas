@@ -580,18 +580,17 @@ export async function resolveProjectCatalogAction(
   _previous: ResolutionActionState,
   formData: FormData,
 ): Promise<ResolutionActionState> {
-  const componentCount = integerValue(stringValue(formData, "componentCount"), 0, 200);
-  if (componentCount === null) return { status: "invalid", field: "form" };
+  const selectionCount = integerValue(stringValue(formData, "selectionCount"), 1, 500);
+  if (selectionCount === null) return { status: "invalid", field: "form" };
   const allowed = new Set<string>([
     "workspaceId", "projectId", "expectedResolutionRevision",
-    "expectedRequirementRevision", "expectedCalculationRevision", "componentCount",
+    "expectedRequirementRevision", "expectedCalculationRevision", "selectionCount",
     ...acknowledgementCodes.map((code) => `ack.${code}`),
   ]);
-  for (let index = 0; index < componentCount; index += 1) {
+  for (let index = 0; index < selectionCount; index += 1) {
     allowed.add(`selection.${index}.componentId`);
     allowed.add(`selection.${index}.revision`);
     allowed.add(`selection.${index}.quantity`);
-    allowed.add(`selection.${index}.selected`);
   }
   const seen = new Set<string>();
   for (const name of formData.keys()) {
@@ -602,7 +601,7 @@ export async function resolveProjectCatalogAction(
     seen.add(name);
   }
   const requiredAlways = [...allowed].filter((name) => (
-    !name.endsWith(".selected") && !name.startsWith("ack.")
+    !name.startsWith("ack.")
   ));
   if (requiredAlways.some((name) => !seen.has(name))) {
     return { status: "invalid", field: "form" };
@@ -630,8 +629,8 @@ export async function resolveProjectCatalogAction(
     expectedComponentRevision: number;
     quantity: number;
   }> = [];
-  for (let index = 0; index < componentCount; index += 1) {
-    if (stringValue(formData, `selection.${index}.selected`) !== "yes") continue;
+  const selectedIds = new Set<string>();
+  for (let index = 0; index < selectionCount; index += 1) {
     const componentId = componentSchema.safeParse(
       stringValue(formData, `selection.${index}.componentId`),
     );
@@ -644,6 +643,9 @@ export async function resolveProjectCatalogAction(
     if (!componentId.success || !revision.success) {
       return { status: "invalid", field: "selection", selectionIndex: index };
     }
+    if (selectedIds.has(componentId.data)) {
+      return { status: "invalid", field: "selection", selectionIndex: index };
+    }
     if (quantity === null) {
       return { status: "invalid", field: "quantity", selectionIndex: index };
     }
@@ -652,6 +654,7 @@ export async function resolveProjectCatalogAction(
       expectedComponentRevision: revision.data,
       quantity,
     });
+    selectedIds.add(componentId.data);
   }
   if (selections.length < 1) return { status: "invalid", field: "selection" };
   const acknowledgements = acknowledgementCodes.filter((code) => (

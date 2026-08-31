@@ -3607,6 +3607,7 @@ async function verifyCutoverAclContract(client: PoolClient): Promise<void> {
 
   const expected = [
     `database:${currentDatabase}:PUBLIC:app_owner:CONNECT:false`,
+    "column:public.workspace.id:app_runtime:app_owner:UPDATE:false",
     "schema:public:app_auth:app_owner:USAGE:false",
     "schema:public:app_runtime:app_owner:USAGE:false",
     "schema:public:app_system:app_owner:USAGE:false",

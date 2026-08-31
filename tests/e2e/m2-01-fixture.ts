@@ -735,6 +735,20 @@ export async function seedM201AdditionalReadyProject(
   }
 }
 
+export async function seedM201CalculationReadyProject(
+  state: Pick<
+    M201RuntimeState,
+    "databaseUrl" | "editorIdentityId" | "workspaceId"
+  >,
+): Promise<string> {
+  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  try {
+    return await insertPlanningProject(pool, state);
+  } finally {
+    await pool.end();
+  }
+}
+
 export async function advanceM201Resolution(state: M201RuntimeState): Promise<void> {
   await withM201Database(state, async (tx, ctx) => {
     const component = await tx.execute<{

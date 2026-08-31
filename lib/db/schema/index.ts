@@ -12,6 +12,7 @@
 export * from "./core";
 export * from "./boards";
 export * from "./catalog";
+export * from "./catalog-import";
 export * from "./crm";
 export * from "./events";
 export * from "./energy";

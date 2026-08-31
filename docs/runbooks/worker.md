@@ -69,8 +69,12 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    Lease-/CAS-Zustand in `offer_release_candidate`. M2-03b1 nutzt zusätzlich
    `offer-issuance.render.v1` für die neu gerenderte finale
    Ausstellungsfassung. Auch diese Queue transportiert ausschließlich
-   Workspace- und Issuance-ID; der normale Worker pinnt alle vier aktuellen
-   Verträge.
+   Workspace- und Issuance-ID. M1-08b ergänzt `catalog.import.v1` und
+   `catalog.import.cleanup.v1`, beide ebenfalls mit Retry 10, maximal 60
+   Sekunden Backoff und 180 Sekunden Ablauf. Der normale Worker pinnt damit
+   sechs aktuelle Queueverträge. Das npm-Paket bleibt pg-boss **12.28.0**;
+   die in Migration 0036 attestierte Zahl `38` ist die interne
+   `pgboss.version`-Datenbankschemaversion, nicht die npm-Paketversion.
 4. **`fetch(name, options?)`** liefert ein Array (`Job<T>[]`); `complete(name,
    id | id[], data?, options?)` akzeptiert sowohl eine einzelne ID als auch ein
    Array. Die Skizze nutzt `complete(name, [job.id])` — passt unverändert.
@@ -157,7 +161,29 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
   Archiv-/Storage-Credentials und kann weder WORM archivieren noch den Zustand
   `issued` setzen. Das bleibt ein separates, reales M2-03b2-Provider-Gate.
 
-## Fresh-Install- und Upgrade-Reihenfolge für M1-07/M2-02/M2-03a/M2-03b1
+## Katalogimport-Recovery und Cleanup
+
+- `catalog.import.v1` arbeitet mit `batchSize: 1` und lokaler Parallelität 2;
+  der DB-Claim bindet je Job höchstens 25 Zeilen. `catalog.import.cleanup.v1`
+  läuft mit lokaler Parallelität 1. Beide Payloads enthalten nur
+  Contractversion, Workspace- und Import-ID.
+- Der Maintenance-Sweep läuft sofort nach vollständiger Registrierung und
+  danach alle 60 Sekunden, ohne Überlappung. Pro Locatorart liest er höchstens
+  100 pg-boss-Jobs und verarbeitet je Workspace höchstens 100 fällige
+  Domainjobs.
+- Recovery repariert fehlende/fällige Zustellungen, `retry_wait`, abgelaufene
+  Leases und sicher zuordenbare malformed/failed Locatorjobs. Lease-Token und
+  Generation verhindern verspätete Writes; ein erfolgreicher Batch setzt den
+  technischen Fehlerzähler zurück.
+- Nicht gestartete Preview-Jobs werden ab sieben Tagen atomar abgebrochen.
+  Ab der 30-Tage-Due-Grenze redigiert der Cleanup Dateiname, normalisierte
+  SKU, Mapping, Commands, versiegelte Ziele und freie Fehlerquellen. Counts,
+  feste Codes und erzeugte Component-/Revisionsbelege bleiben auditierbar.
+- Worker-Ausfall verzögert Import und Cleanup, blockiert aber weder Portal noch
+  vorhandenen Katalog. Ein produktiver Rollout und Alarm-/SLO-Nachweis bleiben
+  ein separates externes Gate.
+
+## Fresh-Install- und Upgrade-Reihenfolge für M1-07/M1-08b/M2-02/M2-03a/M2-03b1
 
 Die Reihenfolge ist bindend, weil die unveränderlichen Migrationen 0025/0026
 noch den historischen Retry-0-Startvertrag prüfen und erst 0029 auf den
@@ -166,15 +192,19 @@ aktuellen technischen Retry-10-Vertrag hebt:
 1. Rollen und das Schema `pgboss` mit Owner `app_worker` provisionieren.
 2. Mit ausschließlich `POSTGRES_URL_WORKER` und den erwarteten
    Neon-Tenant-/Timeline-IDs `npm run db:pgboss:bootstrap` ausführen. Der
-   Befehl initialisiert pg-boss v38, `calculation.execute` im historischen
+   Befehl initialisiert pg-boss 12.28.0 mit interner DB-Schemaversion 38,
+   `calculation.execute` im historischen
    Retry-0-Vertrag sowie `pdf.render`, `offer.release-candidate.render` und
-   `offer-issuance.render.v1` bereits in ihren aktuellen Verträgen.
-3. Mit `POSTGRES_URL_MIGRATE` `npm run db:migrate` bis einschließlich 0035
+   `offer-issuance.render.v1`, `catalog.import.v1` und
+   `catalog.import.cleanup.v1` bereits in ihren aktuellen Verträgen.
+3. Mit `POSTGRES_URL_MIGRATE` `npm run db:migrate` bis einschließlich 0036
    ausführen. 0029 aktualisiert Calculation-Queue und wartende Zustellungen auf
    Retry 10; 0033 attestiert `pdf.render` und installiert ausschließlich die
    minimale PDF-Dispatchroutine. 0034 attestiert die getrennte M2-03a-Queue und
    installiert nur deren ID-only-Dispatchroutine. 0035 attestiert analog die
    getrennte M2-03b1-Queue und deren ID-only-Issuance-Dispatchroutine.
+   0036 attestiert beide Katalogimport-Queues und installiert ausschließlich
+   deren enge Runtime-/Worker-Dispatch-, Locator- und Quarantäneroutinen.
 4. Auf dem tatsächlichen Zielhost vor dem Rollout ausführen:
    `test "$(uname -m)" = x86_64` und danach
    `docker compose -f worker/compose.yaml --profile renderer-smoke run --rm renderer-smoke`.

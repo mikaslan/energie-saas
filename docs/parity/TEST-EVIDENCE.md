@@ -1,6 +1,6 @@
 # Test Evidence
 
-Stand: 2026-08-30
+Stand: 2026-08-31
 
 Dieses Dokument trennt ausgeführte Evidenz strikt von geplanten Tests.
 
@@ -9,14 +9,44 @@ Dieses Dokument trennt ausgeführte Evidenz strikt von geplanten Tests.
 | Slice | Beleg | Status |
 |---|---|---|
 | M1-08 Katalog/Projektauflösung | 69 Vitest-Dateien, 661/661 Tests, Build, 75 Rollenproben, 5 PG18-Proben, 7/7 Chromium-E2E; Commit `71dded3` | REVIEWED/VERIFIED lokal |
+| M1-08b autorisierter Katalog-CSV-Import | `npm run check`: 144/144 Testdateien, 1.371 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollen- plus 5/5 PG18-Proben; Contract-SHA `5e1bc0ee180439944953106f17c3de1d551b320fd555c442a14797cac16f9e1b`; Dependency-Cruiser 276 Module/946 Abhängigkeiten; Chromium 24 bestanden/1 opt-in übersprungen, davon 7/7 fokussierte M1-08b-Fälle; Production-Build und `db:generate` grün | REVIEWED/VERIFIED lokal; technisches Gate **GO**; unabhängiger Review ohne P0–P2; kein Commit/Deploy/Realimport |
 | M2-01 Angebotsvarianten/Snapshot-BOM | `npm run check`: 87/87 Testdateien, 856 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollenproben, 5/5 PG18-Proben; Chromium 16/16 (15 funktionale/A11y-Fälle plus 1 Visual-Capture-Fall mit 26/26 Kandidaten); Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff- und `db:generate`-Prüfung grün | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; Visual-Candidate-Capture grün, menschliches Visual-Gate `INCONCLUSIVE` |
 | M2-02 interner Angebots-PDF-Entwurf | 96/96 Vitest-Dateien, 949 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 16/16 aktiv plus 1 opt-in Visual-Fall übersprungen; Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff, `db:generate`, Compose, Worker-Bundle und gepinnter `linux/amd64`-Container-Smoke grün | REVIEWED/VERIFIED lokal; technisches Gate **GO**; unabhängiges Review ohne offene P0–P2; `M202-VISUAL-01` `INCONCLUSIVE`; Deploy `NOT RUN` |
 | M2-03a Angebotsprofil/Freigabekandidat | 111/111 Vitest-Dateien, 1.078 bestanden, 1 übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 17 bestanden, 1 opt-in übersprungen; Production-Build, ESLint, TypeScript und Dependency-Cruiser (237 Module/764 Abhängigkeiten) grün; gepinnter `linux/amd64`-Container-Smoke mit Pflichtstatus auf 11/11 PDF-Seiten | REVIEWED/VERIFIED lokal; technisches Gate **GO**; Security-, Regression-, Navigation- und lokaler Claude-Code-Opus-Max-Review ohne offene P0–P2; Human Visual `INCONCLUSIVE`; Deploy/Issuance/WORM/Versand/Signatur `NOT RUN` |
 | M2-03b1 Angebots-Ausstellungsfassung | 126/126 Vitest-Dateien, 1.184 bestanden, 1 übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 17 bestanden, 1 opt-in übersprungen; Production-Build, ESLint, TypeScript und Dependency-Cruiser (248 Module/836 Abhängigkeiten) grün; deterministischer gepinnter Container-Render mit 11/11 A4-Seiten | REVIEWED/VERIFIED lokal; technisches Gate **GO**; Code-, Security- und Claude-Code-Opus-5-Max-Review ohne offene P0–P2; Human Visual `INCONCLUSIVE`; Deploy/Object Lock/Archivevidence/`issued`/Versand/Signatur `NOT RUN` |
 
 Die M1-08-Detailabnahme liegt in `Reonic Clone Final/08-Abnahme-M1-08.md`;
-der aktuelle M2-03b1-Abschluss in
-`Reonic Clone Final/16-Abnahme-M2-03b1.md`.
+der aktuelle M1-08b-Abschluss in
+`Reonic Clone Final/17-Abnahme-M1-08b.md`. M2-03b1 bleibt separat in
+`Reonic Clone Final/16-Abnahme-M2-03b1.md` dokumentiert.
+
+## M1-08b
+
+Status: **REVIEWED/VERIFIED lokal; technisches Gate GO**. Der finale
+Gesamtnachweis auf dem aktuellen Dirty-Worktree umfasst Lint, Next-Typegen,
+TypeScript, den generierten Contract, Dependency-Cruiser, 144/144
+Vitest-Dateien mit 1.371 bestandenen und einem ausdrücklich opt-in
+übersprungenen Test sowie 88/88 Rollen- und 5/5 PG18-Proben. Der
+Production-Build und `db:generate` sind ohne Drift grün. Der vollständige
+Chromium-Lauf bestand 24 Fälle; ein reiner Visual-Candidate-Fall blieb opt-in
+übersprungen. Die fokussierte M1-08b-Matrix bestand 7/7. Ein unabhängiger
+read-only Abschlussreview fand keine belastbaren P0–P2-Befunde.
+
+| Test-ID | Ebene | Beleg | Aktuell |
+|---|---|---|---|
+| `M108B-CONTRACT-01` | Contract | UTF-8/Delimiter/Mapping, sieben Typen, Preise/Provenienz, JSON-Attribute, Limits und stabile Fehlerklassen | GREEN; Schema-SHA `5e1bc0ee180439944953106f17c3de1d551b320fd555c442a14797cac16f9e1b` |
+| `M108B-ROUTE-01` | Route/Security | versionierter Wire-Body, same-origin Session, 32-KiB-Metadaten- und 1-MiB-Dateigrenze, private Vorlage/Fehler-CSV | GREEN |
+| `M108B-SVC-01` | Service/DB | persistierte Preview, Reservation, Attestation, Start/Cancel, create/revise/unchanged, 93/7-Teilerfolg, Replay und Drift | GREEN |
+| `M108B-DB-01` | Migration/RLS/ACL | Fresh/Upgrade, FORCE RLS, zusammengesetzte FKs, geschlossene Zustände, Append-only/WORM-Guards, enge Definer-Gateways und Redaction | GREEN; `db:generate` clean; Rollen 88/88 plus PG18 5/5 |
+| `M108B-RBAC-01` | Browser/Security | Admin, vollständiger Editor, Editor ohne Preisrechte, Viewer, External-only und Fremdtenant | GREEN im fokussierten 7/7-Lauf |
+| `M108B-WORKER-01` | Worker/Queue | echter separater Strict-Role-Worker, ID-only pg-boss, Lease/CAS, Replay/Recovery/Cleanup und exakt 40 erfolgreiche Batches für 1.000 Zeilen | GREEN |
+| `M108B-E2E-01/02/03` | Browser | 93/7→Report/Pagination; Import→Aktivierung→Resolution→BOM; Reimport→Stale→neue Basis und SKU hinter Position 200 | GREEN; alte Resolution/BOM unverändert |
+| `M108B-A11Y-01` | Browser/A11y | Keyboard, Fokus, Axe, 320-px-Reflow, 400-%-Semantik und Reduced Motion | GREEN |
+
+Die Evidenz verwendet ausschließlich synthetische beziehungsweise selbst
+autorisierte Testdaten. Es gab keinen realen WMEE-/Lieferantenimport, keinen
+Reonic-Innenzugriff, keinen Commit, Push, Deploy, Providerkauf oder
+produktiven Worker-Rollout.
 
 ## M2-01
 

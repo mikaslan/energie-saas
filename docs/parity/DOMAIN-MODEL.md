@@ -1,6 +1,6 @@
 # Domain Model
 
-Stand: 2026-08-30 · M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-08-31 · M1-08b, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Bestehender Spine und neue kommerzielle Grenze
 
@@ -35,6 +35,10 @@ Workspace
  │                                   └─ optionale OfferIssuanceWithdrawal
  ├─ CatalogComponent
  │    └─ CatalogComponentRevision (n, append-only)
+ ├─ CatalogImportJob (n; Preview und asynchroner Lauf)
+ │    ├─ CatalogImportRow (1..1000; versiegelter Zeilencommand)
+ │    │    └─ optionales CatalogImportRowResult (append-only)
+ │    └─ CatalogImportDispatchReceipt (idempotenter Runtime-Dispatch)
  ├─ OfferNumberSeries (per year)
  └─ OfferMutationRateWindow (Actor/Workspace fixed windows)
 ```
@@ -45,6 +49,10 @@ Workspace
 |---|---|---|
 | `Project` | bestehende Workspace-/Contact-/Site-Bindung | Phase und Boardposition; nicht die Preiswahrheit |
 | `ProjectCatalogResolution` | immutable Planungs-/Produktauswahlrevision | zulässige Seed-Quelle, ausdrücklich keine BOM |
+| `CatalogImportJob` | stabiler Workspace-Job, unique je Intent-/Datei-/Mapping-Reservation | persistierte Vorschau, Rechteattestation, Counts, geschlossene Zustandsmaschine, Lease/CAS sowie Preview-/Redaction-Due; keine gespeicherte Rohdatei |
+| `CatalogImportRow` | genau eine Datenzeile 2..1001 pro Import | unveränderlicher, vollständig validierter create/revise/unchanged-Command samt Datei-/Mapping-/Zeilenhash und versiegeltem Zielstand; freie Quellen werden zur Due-Grenze redigiert |
+| `CatalogImportRowResult` | höchstens ein append-only Ergebnis pro Importzeile | Erfolg bindet Component und Revision; Konflikt/Fehler ausschließlich mit stabilen Codes. Produktmutation, Event, Audit und Ergebnis committen gemeinsam |
+| `CatalogImportDispatchReceipt` | idempotente Antwort je Runtime-Dispatch | bindet Actor, Intent und Reservation ohne Rohzeile/Preise; verhindert doppelte Preview-/Start-Nebenwirkungen |
 | `OfferNumberSeries` | Workspace + Kalenderjahr | race-safe nächste Nummer und Formatversion |
 | `Offer` | stabil, im v1 unique pro Project | Nummer, Anlagenart, Draft-Status, Forecast, operatorbestätigtes B2C, exakt erlaubter Contact-/Anlagenstandort-Snapshot und private Quellbindungen an Requirement/Calculation/Resolution samt Revision/Hash; keine Rohpayload-Kopie |
 | `OfferVariant` | stabil pro Offer, eindeutige Ordinalzahl | aktueller Revisionszeiger, keine mutable BOM |
@@ -66,6 +74,18 @@ Workspace
 ## Kritische Invarianten
 
 - Jede Tenant-Relation besitzt Workspace-ID, zusammengesetzte FKs und FORCE RLS.
+- Ein CSV-Import speichert niemals die Rohdatei. Preview und Zeilencommands
+  sind streng begrenzt, gehasht und bis zur Due-Grenze geschützt; danach
+  werden Dateiname, SKU, Mapping, Command, versiegeltes Ziel und freie
+  Fehlerquellen atomar und idempotent redigiert.
+- Jede Importzeile verwendet dieselben Component-/Revision-Seals,
+  Sperrordnungen, Append-only- und Event-/Audit-Invarianten wie die manuelle
+  Katalogpflege. Runtime und Worker besitzen keine direkten Importtabellen-
+  beziehungsweise Worker-Katalog-DML-Rechte, sondern nur benannte enge
+  `SECURITY DEFINER`-Gateways.
+- Neue und geänderte Importstände bleiben `draft`. Aktivierung,
+  Projektauflösung und Angebots-BOM sind getrennte autorisierte Schritte;
+  Reimport mutiert keine historische Resolution oder BOM.
 - Ein Offer kann niemals Project, Contact, Site oder Resolution eines anderen
   Workspace referenzieren.
 - Ein Variantenstand wird nicht aktualisiert; jede Änderung erzeugt N+1.

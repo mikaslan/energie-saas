@@ -2379,6 +2379,20 @@ describe("M2-01 Angebots-Service", () => {
     expect(afterCatalogChange.snapshot_text).toBe(oldBasis.snapshot_text);
     expect(afterCatalogChange.snapshot_sha256_hex).toBe(oldBasis.snapshot_sha256_hex);
 
+    await expect(withTenantOn(testPool, fixture.members.workspaceId, (tx) =>
+      createVariantFromCurrentResolution(tx, operator, {
+        schemaVersion: OFFER_VARIANT_FROM_RESOLUTION_COMMAND_VERSION,
+        offerId: created.offerId,
+        expectedRequirementRevision: 1,
+        expectedCalculationRevision: 1,
+        expectedResolutionRevision: 1,
+        name: "Unzulässige Basis aus veralteter Produktauswahl",
+        taxTreatment: "standard_19",
+      }))).rejects.toMatchObject({
+      name: "OfferBlockedError",
+      code: "resolution_not_current",
+    });
+
     await withTenantOn(testPool, fixture.members.workspaceId, (tx) =>
       activateCatalogComponent(tx, operator, {
         componentId: fixture.products.battery,

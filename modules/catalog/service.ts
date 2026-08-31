@@ -42,6 +42,7 @@ import {
 } from "@/lib/integrations/catalog/contract";
 import {
   can,
+  isExternalOnly,
   PermissionDeniedError,
   type Action,
   type ServiceCtx,
@@ -198,6 +199,12 @@ const listFiltersSchema = z.strictObject({
   ]).optional(),
   query: z.string().max(120).optional(),
 });
+const projectCatalogSearchSchema = z.strictObject({
+  projectId: z.uuid(),
+  query: z.string().max(120)
+    .transform((value) => value.normalize("NFKC").trim())
+    .pipe(z.string().min(2).max(120)),
+});
 
 export class CatalogInputError extends Error {
   constructor(public readonly paths: string[]) {
@@ -275,7 +282,7 @@ function requireCatalogAccess(
   if (!can(ctx, action)) {
     throw new PermissionDeniedError(action, resource, undefined, ctx.actor);
   }
-  if (ctx.capabilities.external_only === true) {
+  if (isExternalOnly(ctx)) {
     throw new PermissionDeniedError(
       action,
       resource,
@@ -347,6 +354,7 @@ export async function listCatalogComponents(
   const safeFilters = parsedFilters.data;
   const canManage = can(ctx, "catalog.manage");
   const query = safeFilters.query?.normalize("NFKC").trim() ?? "";
+  const exactSku = query.toLocaleUpperCase("en-US");
   const result = await tx.execute<CatalogRow>(sql`
     select component.id, component.workspace_id, component.internal_sku,
            component.component_type, component.status, component.current_revision,
@@ -364,9 +372,19 @@ export async function listCatalogComponents(
          or component.status = ${safeFilters.status ?? null}::text)
        and (${safeFilters.componentType ?? null}::text is null
          or component.component_type = ${safeFilters.componentType ?? null}::text)
-       and (${query} = '' or component.internal_sku ilike ${`%${query}%`}
-         or revision.revision_snapshot#>>'{presentation,displayName}' ilike ${`%${query}%`})
-     order by component.status, component.component_type,
+       and (${query} = ''
+         or pg_catalog.strpos(
+           pg_catalog.lower(component.internal_sku),
+           pg_catalog.lower(${query})
+         ) > 0
+         or pg_catalog.strpos(
+           pg_catalog.lower(
+             revision.revision_snapshot#>>'{presentation,displayName}'
+           ),
+           pg_catalog.lower(${query})
+         ) > 0)
+     order by (component.internal_sku = ${exactSku}) desc,
+              component.status, component.component_type,
               component.internal_sku, component.id
      limit 200
   `);
@@ -400,6 +418,51 @@ export async function getCatalogComponent(
   `);
   const row = result.rows[0];
   return row ? toReadModel(row, ctx) : null;
+}
+
+export async function searchActiveProjectCatalogComponents(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<CatalogComponentReadModel[] | null> {
+  requireCatalogAccess(ctx, "project.read", "project_catalog_search");
+  const parsed = projectCatalogSearchSchema.safeParse(value);
+  if (!parsed.success) throw new CatalogInputError(issuePaths(parsed.error));
+  const project = await readProject(tx, ctx, parsed.data.projectId);
+  if (!project) return null;
+  const components = await listCatalogComponents(tx, ctx, {
+    status: "active",
+    query: parsed.data.query,
+  });
+  return components.slice(0, 50);
+}
+
+async function readActiveCatalogComponentsByIds(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  componentIds: readonly string[],
+): Promise<CatalogComponentReadModel[]> {
+  requireCatalogAccess(ctx, "catalog.read", "project_catalog_resolution");
+  const ids = [...new Set(componentIds)].sort();
+  if (ids.length === 0) return [];
+  const idList = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `);
+  const result = await tx.execute<CatalogRow>(sql`
+    select component.id, component.workspace_id, component.internal_sku,
+           component.component_type, component.status, component.current_revision,
+           component.archived_at, component.created_at, component.updated_at,
+           revision.revision_snapshot,
+           encode(revision.snapshot_sha256, 'hex') as snapshot_sha256_hex
+      from catalog_component component
+      join catalog_component_revision revision
+        on revision.workspace_id = component.workspace_id
+       and revision.component_id = component.id
+       and revision.revision = component.current_revision
+     where component.workspace_id = ${ctx.workspaceId}::uuid
+       and component.status = 'active'
+       and component.id in (${idList})
+     order by component.component_type, component.internal_sku, component.id
+  `);
+  return result.rows.map((row) => toReadModel(row, ctx));
 }
 
 function parseCreateCommand(value: unknown): CatalogComponentCreateCommandV1 {
@@ -1161,9 +1224,23 @@ export async function getProjectCatalogResolutionContext(
     requirement = await readLatestRequirement(tx, ctx, project.id, false);
     calculation = await readLatestCalculation(tx, ctx, project.id, false);
   }
-  const activeComponents = await listCatalogComponents(tx, ctx, { status: "active" });
+  const listedActiveComponents = await listCatalogComponents(tx, ctx, { status: "active" });
   const resolutionRow = await readLatestResolution(tx, ctx, project.id);
   const resolution = resolutionRow ? validatedResolution(resolutionRow) : null;
+  const selectedActiveComponents = resolution === null
+    ? []
+    : await readActiveCatalogComponentsByIds(
+        tx,
+        ctx,
+        resolution.lines.map((line) => line.catalogComponentId),
+      );
+  const activeComponentsById = new Map(listedActiveComponents.map((component) => (
+    [component.id, component]
+  )));
+  for (const component of selectedActiveComponents) {
+    activeComponentsById.set(component.id, component);
+  }
+  const activeComponents = [...activeComponentsById.values()];
 
   let blocker: ProjectCatalogResolutionContext["blocker"] = null;
   let requested: RequestedCatalogCoverageV1 | null = null;

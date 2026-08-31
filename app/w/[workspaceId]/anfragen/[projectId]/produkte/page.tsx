@@ -12,8 +12,11 @@ import {
 import { DeniedState, DetailItem, Section, YesNo } from "../_ui";
 import {
   ResolutionForm,
-  type ResolutionSelectableComponent,
 } from "./resolution-form";
+import {
+  toResolutionSelectableComponent,
+  type ResolutionSelectableComponent,
+} from "./selection-view";
 
 export const metadata: Metadata = { title: "Produkte zuordnen | Energie-SaaS" };
 
@@ -73,25 +76,7 @@ function formatDate(value: string): string {
 }
 
 function selectableComponents(context: ProjectCatalogResolutionContext): ResolutionSelectableComponent[] {
-  return context.activeComponents.map((component) => {
-    const commercial = component.current.commercial;
-    if (!commercial) throw new Error("active catalog component has no commercial snapshot");
-    const purchase = "purchasePriceNetCents" in commercial
-      ? commercial.purchasePriceNetCents
-      : undefined;
-    return {
-      id: component.id,
-      revision: component.currentRevision,
-      sku: component.current.identity.internalSku,
-      name: component.current.presentation.displayName,
-      manufacturer: component.current.presentation.manufacturer,
-      model: component.current.presentation.model,
-      componentType: component.current.identity.componentType,
-      technicalData: component.current.technicalData,
-      salesPriceNetCents: commercial.salesPriceNetCents,
-      ...(purchase === undefined ? {} : { purchasePriceNetCents: purchase }),
-    };
-  });
+  return context.activeComponents.map(toResolutionSelectableComponent);
 }
 
 export default async function ProjectProductsPage({
