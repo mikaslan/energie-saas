@@ -476,10 +476,10 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
     const journal = JSON.parse(
       readFileSync(resolve("drizzle/meta/_journal.json"), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
-    expect(journal.entries.at(-1)).toMatchObject({
-      idx: 35,
-      tag: "0035_m2_03b1_offer_issuance",
-    });
+    expect(journal.entries).toContainEqual(expect.objectContaining({
+      idx: 33,
+      tag: "0033_supreme_jocasta",
+    }));
 
     const relation = await testPool.query<{
       owner: string;

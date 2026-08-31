@@ -1,6 +1,6 @@
 # Workflow- und Statusmaschinen
 
-Stand: 2026-08-30 · M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-08-31 · M1-09, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Project-Phase
 
@@ -14,6 +14,32 @@ Vorbedingungen: autorisierter Editor, bestätigter Standort, keine Dedupe-/Pin-
 Blocker, aktuelle Calculation und aktuelle Projektauflösung. Offer, Phase,
 Spalte, Event und Audit sind eine Transaktion. Rückwärts-, Won-, Lost- und
 Installation-Übergänge gehören nicht in M2-01.
+
+## Projektzuweisung und abgeleitete External-Sicht
+
+```text
+unassigned@rev N -- set KAM A(expected N) --> A:key_account@rev N+1
+A:key_account -- set KAM B --> B:key_account + A:user
+assigned -- add/remove user --> rev N+1
+A:key_account -- clear --> A:user
+current identical command --> no-op, same revision
+expected != current --> conflict, no write
+```
+
+Set/Clear/Add/Remove sperren Project, Workspace und Assignment in fester
+Reihenfolge. Revision, Beziehung, Event und Audit committen gemeinsam. Ein
+Project-Context hält einen Share-Lock, sodass Revision, Personenstand und Suche
+einen ungeteilten Transaktionssnapshot bilden.
+
+```text
+external_only + own direct assignment + request/open --> assigned_external
+assignment removal commit | phase != request | outcome != open --> hidden next transaction
+```
+
+Eine bereits laufende SQL-Anweisung darf ihren konsistenten Snapshot beenden;
+M1-09 verspricht keinen Mid-Response-Kill. Alle folgenden Transaktionen sehen
+den Entzug. Teams, Teamvererbung, Auto-Routing und External-Schreiben besitzen
+in M1-09 keine Zustandskante.
 
 ## Offer v1
 

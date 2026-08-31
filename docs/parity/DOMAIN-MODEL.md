@@ -1,6 +1,6 @@
 # Domain Model
 
-Stand: 2026-08-30 · M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-08-31 · M1-09, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Bestehender Spine und neue kommerzielle Grenze
 
@@ -9,8 +9,8 @@ Workspace
  ├─ OfferReleaseProfile (genau ein stabiler Head)
  │    ├─ OfferReleaseProfileRevision (n, append-only)
  │    └─ OfferReleaseProfileActivation (n, append-only)
- ├─ Contact ── Site ── Project
- │                    ├─ Requirement revisions
+ ├─ Membership ← ProjectAssignment → Project ← Site ← Contact
+│                    ├─ Requirement revisions
  │                    ├─ Calculation revisions
  │                    ├─ Catalog resolution revisions
  │                    └─ Offer (max. 1 in v1)
@@ -43,7 +43,8 @@ Workspace
 
 | Entität | Identität / Lebensdauer | Wahrheit / Grenze |
 |---|---|---|
-| `Project` | bestehende Workspace-/Contact-/Site-Bindung | Phase und Boardposition; nicht die Preiswahrheit |
+| `Project` | bestehende Workspace-/Contact-/Site-Bindung | Phase, Boardposition und monotone `assignment_revision`; nicht die Preiswahrheit |
+| `ProjectAssignment` | Workspace + Project + Membership, pro Membership/Project eindeutig | aktuelle direkte Beziehung als `key_account` oder `user`; Project-Löschung kaskadiert, Membership-Löschung bleibt bei aktiver Zuweisung RESTRICT |
 | `ProjectCatalogResolution` | immutable Planungs-/Produktauswahlrevision | zulässige Seed-Quelle, ausdrücklich keine BOM |
 | `OfferNumberSeries` | Workspace + Kalenderjahr | race-safe nächste Nummer und Formatversion |
 | `Offer` | stabil, im v1 unique pro Project | Nummer, Anlagenart, Draft-Status, Forecast, operatorbestätigtes B2C, exakt erlaubter Contact-/Anlagenstandort-Snapshot und private Quellbindungen an Requirement/Calculation/Resolution samt Revision/Hash; keine Rohpayload-Kopie |
@@ -66,6 +67,18 @@ Workspace
 ## Kritische Invarianten
 
 - Jede Tenant-Relation besitzt Workspace-ID, zusammengesetzte FKs und FORCE RLS.
+- Pro Projekt existiert höchstens eine direkte `key_account`-Zeile; eine
+  Membership ist je Projekt höchstens einmal direkt zugewiesen. Höchstens 50
+  direkte Zuweisungen werden unter dem Project-Lock im Servicevertrag
+  erzwungen; das ist bewusst kein einzelner deklarativer DB-Constraint.
+- Jede wirksame Assignmentmutation bindet erwartete Project-Revision,
+  Assignmentstand, Event und Audit in einer Transaktion. Die feste
+  Project→Workspace→Assignment-Lockreihenfolge serialisiert Project-Delete,
+  Assignmentcommands und Membership-Offboarding ohne Teilstand.
+- External-Projektsicht ist aus eigener aktiver Membership, eigener direkter
+  Assignmentzeile und `request/open` abgeleitet. Nach Removal-/Phase-/Outcome-
+  Commit ist die Sicht in der nächsten Transaktion entzogen; ein bereits
+  laufendes Statement darf seinen konsistenten Snapshot beenden.
 - Ein Offer kann niemals Project, Contact, Site oder Resolution eines anderen
   Workspace referenzieren.
 - Ein Variantenstand wird nicht aktualisiert; jede Änderung erzeugt N+1.

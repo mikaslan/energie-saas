@@ -774,6 +774,28 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       from public, app_runtime, app_system, app_auth, app_worker, app_erasure
   `);
 
+  const projectAssignmentExisting = await client.query<{ present: boolean }>(`
+    select pg_catalog.to_regclass('public.project_assignment') is not null as present
+  `);
+  if (projectAssignmentExisting.rows[0]?.present) {
+    await client.query(`
+      revoke all privileges on public.project_assignment
+        from public, app_migrator, app_runtime, app_system, app_auth, app_worker,
+          app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update, delete on public.project_assignment to app_runtime;
+
+      revoke execute on function
+        public.app_actor_membership_id(uuid),
+        public.app_actor_is_external_only(uuid)
+        from public, app_migrator, app_runtime, app_system, app_auth, app_worker,
+          app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        public.app_actor_membership_id(uuid),
+        public.app_actor_is_external_only(uuid)
+        to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -1571,6 +1593,10 @@ export async function verifyRoleContract(
     OFFER_ISSUANCE_RELATIONS,
     "Rollenvertrag: M2-03b1-Issuance-Relationen",
   );
+  const projectAssignmentPresence = await client.query<{ present: boolean }>(`
+    select pg_catalog.to_regclass('public.project_assignment') is not null as present
+  `);
+  const hasProjectAssignment = projectAssignmentPresence.rows[0]?.present === true;
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -1701,6 +1727,7 @@ export async function verifyRoleContract(
       "r:offer_variant_revision",
       "r:offer_variant_section",
       "r:project",
+      ...(hasProjectAssignment ? ["r:project_assignment"] : []),
       "r:project_calculation_job",
       "r:project_calculation_revision",
       "r:project_catalog_resolution",
@@ -1900,6 +1927,10 @@ export async function verifyRoleContract(
       ] : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
+      ...(hasProjectAssignment ? [
+        "app_actor_is_external_only:app_owner",
+        "app_actor_membership_id:app_owner",
+      ] : []),
       "build_inactive_lead_erasure_graph:app_owner",
       ...(hasOfferPdfDraft ? [
         "build_inactive_lead_erasure_graph_m201:app_owner",
@@ -1997,6 +2028,14 @@ export async function verifyRoleContract(
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
         "acca23aaae3a91eda3aa424256de1527e1bb61d02fdd4b0d2c0803ecd6a37542",
+      ...(hasProjectAssignment ? [
+        "app_actor_is_external_only(uuid):boolean:app_owner:plpgsql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "3f10ce69854a1689d5c2369fe7ac291c30f1cc126b6b29fa30ba0f64b636f3be",
+        "app_actor_membership_id(uuid):uuid:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:" +
+          "5678c8f36cfd957778128123fd5f1c11805f6b486fd2de31c52c6d09e402e051",
+      ] : []),
       ...(hasOfferRelease ? [
         "_m203a_approved_candidate_result(uuid, uuid, boolean):jsonb:app_owner:sql:f:s:" +
           "false:false:false:u:search_path=pg_catalog:" +
@@ -2304,6 +2343,7 @@ export async function verifyRoleContract(
       "offer_variant_revision:true:true",
       "offer_variant_section:true:true",
       "project:true:true",
+      ...(hasProjectAssignment ? ["project_assignment:true:true"] : []),
       "project_calculation_job:true:true",
       "project_calculation_revision:true:true",
       "project_catalog_resolution:true:true",
@@ -2393,7 +2433,20 @@ export async function verifyRoleContract(
       "offer_variant:tenant_isolation:7680e41d5dec01e43a1499356bfd50ff62271af486afe8ee80cf13d3f7f0cb41",
       "offer_variant_revision:tenant_isolation:d0bf5b1f1871b07a4364b679486f63ad33dbae0259d94a22e090cfe7b1b6c148",
       "offer_variant_section:tenant_isolation:6cd95ab344fdff675ca080283bf4c0043d3121d14dcc19ce944e7c572becd84f",
+      ...(hasProjectAssignment ? [
+        "project:project_external_delete_guard:1f5a592a24eca964211cea91e9aec2e657161e4b39cd2fac29557cc86aeb7f93",
+        "project:project_external_insert_guard:728f471851bf43960d33861512e1aa494fb66d2136d7faca0d7d6e0cfc5642c2",
+        "project:project_external_select_scope:80731c3803b4e9ee2749fe865e1ee9a1f2d221a1bb1d12cce3632956f124b52e",
+        "project:project_external_update_guard:0745da945e4fe5f92e7bc24e058eef1e2d7c07b6bacc4b27b92e5e52b3f23e35",
+      ] : []),
       "project:tenant_isolation:c5f62af4cbba473885ce886d0eef10a80ab1f5dca746c0cb4b6204dd1050717b",
+      ...(hasProjectAssignment ? [
+        "project_assignment:project_assignment_actor_delete_guard:a9afa7bb8b30ec16564abdc50e9e98de6e65e399a7cbcbb9cd9d945782de29c7",
+        "project_assignment:project_assignment_actor_insert_guard:5e1ce3e84ff33e76a7e584067add6ba82831fb8f551c8688ba76f18d8f413574",
+        "project_assignment:project_assignment_actor_select:0323acfe157c9f0ed0e1a51872ad1045ce1ae4207e4494908804fc5554eee361",
+        "project_assignment:project_assignment_actor_update_guard:1d87f004a251aef6bbd7abf10ed20ca9ff93700374685cff170eb75a2d2ac3a5",
+        "project_assignment:tenant_isolation:42a4f48d761c22abfe96ad7c526f440895bef20615e73fc62cd0f9644db7729f",
+      ] : []),
       "project_calculation_job:tenant_isolation:46c9a1a09bfdfc88ddf839242f17c560ea614e34d1961a341580c40b4cdabf84",
       "project_calculation_revision:tenant_isolation:84bebd69ee64a8388f406f44da215b86328497c5235e70628a8df0e8c1b56a9d",
       "project_catalog_resolution:tenant_isolation:28a50950efb5f725b0db20a0d82671d5a03a0ec9aa20e93775bd3e88c625a46f",
@@ -2632,6 +2685,12 @@ export async function verifyRoleContract(
       "app_runtime:project:INSERT:app_owner:false",
       "app_runtime:project:SELECT:app_owner:false",
       "app_runtime:project:UPDATE:app_owner:false",
+      ...(hasProjectAssignment ? [
+        "app_runtime:project_assignment:DELETE:app_owner:false",
+        "app_runtime:project_assignment:INSERT:app_owner:false",
+        "app_runtime:project_assignment:SELECT:app_owner:false",
+        "app_runtime:project_assignment:UPDATE:app_owner:false",
+      ] : []),
       "app_runtime:project_calculation_job:INSERT:app_owner:false",
       "app_runtime:project_calculation_job:SELECT:app_owner:false",
       "app_runtime:project_calculation_revision:SELECT:app_owner:false",
@@ -2826,6 +2885,10 @@ export async function verifyRoleContract(
       "app_erasure:erase_inactive_lead(uuid, uuid, uuid):EXECUTE:app_owner:false",
       "app_erasure:replay_erasure_tombstone(uuid):EXECUTE:app_owner:false",
       "app_runtime:app_actor_id():EXECUTE:app_owner:false",
+      ...(hasProjectAssignment ? [
+        "app_runtime:app_actor_is_external_only(uuid):EXECUTE:app_owner:false",
+        "app_runtime:app_actor_membership_id(uuid):EXECUTE:app_owner:false",
+      ] : []),
       ...(hasOfferIssuance ? [
         "app_runtime:approve_offer_issuance(uuid, uuid, boolean, boolean, boolean, boolean, boolean):EXECUTE:app_owner:false",
         "app_runtime:prepare_offer_issuance(uuid, uuid, uuid):EXECUTE:app_owner:false",

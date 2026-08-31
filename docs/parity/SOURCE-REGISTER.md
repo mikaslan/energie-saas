@@ -1,17 +1,22 @@
 # Paritäts-Quellenregister
 
-Stand: 2026-08-30
+Stand: 2026-08-31
 
 Dieses Register klassifiziert Quellen; es ersetzt weder die Clean-Room-Regeln
 in `CONTRIBUTING.md` noch eine Capability-Abnahme. Reonic-Quellen dürfen nur
 beobachtbare Funktionssemantik belegen. UI, Texte, Assets, Code und Daten werden
 nicht übernommen.
 
-## Aktive Quellen für M2-01, M2-02, M2-03a und M2-03b1
+## Aktive Quellen für M1-09, M2-01, M2-02, M2-03a und M2-03b1
 
 | ID | Quelle | Klasse | Belegt | Confidence / Grenze |
 |---|---|---|---|---|
 | `SRC-CONSTITUTION-01` | `CONTRIBUTING.md` | DOCUMENTED | Clean-Room, erlaubte Quellen, verbotene Zugänge | hoch; bindend |
+| `SRC-M109-SPEC` | `docs/spec/M1-09-projektzuweisung.md` | DOCUMENTED | eigener Assignment-, External-Sicht-, Rollen-, Race- und Abnahmevertrag | hoch für eigene WMEE-Semantik; lokal technisch verifiziert |
+| `SRC-ADR-0014` | `docs/adr/0014-projektzuweisung-und-externe-sicht.md` | DECIDED WMEE | direkte Membership-Zuweisung, separate Capability, restriktive RLS und minimierte External-Sicht | hoch für eigene Architektur; keine private Reonic-Wahrheit |
+| `SRC-REONIC-PROJECT-ASSIGNMENTS` | [Project assignments](https://docs.reonic.com/docs/en/settings-company-project-assignments) | DOCUMENTED | öffentlich beschriebene Hauptverantwortung, Nutzer, Teams und zuweisungsabhängige Sicht | hoch für beobachtbare Capability; kein Login, Datenmodell/Limit/Locksemantik unbekannt |
+| `SRC-REONIC-LEAD-CHARACTERISTICS` | [Lead characteristics](https://docs.reonic.com/docs/en/leads-overview-lead-characteristics) | DOCUMENTED | mehrere Nutzer, eine aktuelle Hauptverantwortung und eingeschränkte Sicht | hoch für öffentlich beschriebene Semantik; private Details unbekannt |
+| `SRC-REONIC-USER-TEAMS` | [Users, roles, licenses, and teams](https://docs.reonic.com/docs/en/settings-company-user-teams) | DOCUMENTED | getrenntes Zuweisungsrecht und zuweisungsgebundene eingeschränkte Nutzer | hoch; Teams/Vererbung bleiben außerhalb M1-09 |
 | `SRC-BLUEPRINT-F2` | `docs/blaupause/01-modulkatalog.md`, F2.1–F2.4 und F2.7 | INFERRED / sekundär synthetisiert | Arbeits-Hypothesen zu Offer, Varianten, BOM, Rabattstack und PDF als Capability | mittel; keine Primärevidenz und keine Layoutvorlage, Claims müssen an öffentliche Doku/Vault gebunden bleiben |
 | `SRC-M108-01` | `docs/spec/M1-08-produktkatalog-projektaufloesung.md` und ADR 0008 | DOCUMENTED | immutable Katalog-/Preissnapshots, EK-Grenze, Current/Stale | hoch; lokal verifiziert |
 | `SRC-M202-SPEC` | `docs/spec/M2-02-angebots-pdf-entwurf.md` | DOCUMENTED | interner nicht verbindlicher PDF-Draft, exakte Revisionsbindung, minimierter Input, Zustands-/Rollen-/Download-/Testvertrag und harte Nicht-Ziele | hoch für den eigenen WMEE-Vertrag; lokal technisch verifiziert |
@@ -40,8 +45,9 @@ nicht übernommen.
 | `SRC-CLAUDE-M203A-DESIGN` | finaler lokaler Claude-Code-Lesereview, Modellalias `opus`, Effort `max` | INFERRED / design input | unabhängige Gegenprobe des Profil-/Candidate-Flows, der Landmark-/Fokusführung, Validierungszustände und Statuskommunikation nach A11y-Nacharbeit | mittel; final GO ohne offene P0–P2, aber keine Produkt-, Rechts-, Brand- oder Reonic-Wahrheit und keine Schreibrechte |
 | `SRC-CLAUDE-M203B1-DESIGN` | finaler lokaler Claude-Code-Lesereview, Modell `claude-opus-5`, Effort `max` | INFERRED / design input | unabhängige Gegenprobe der Issuance-Informationshierarchie, Label-in-Name-, Fokus-, Fehler-, Reset-, Reflow- und Withdrawal-Nacharbeit | mittel; final GO ohne offene P0–P2, aber keine menschliche Visual-, Produkt-, Rechts-, Brand- oder Reonic-Wahrheit und keine Schreibrechte |
 
-Öffentliche Reonic-Seiten wurden am 2026-08-29 und die Preview-/Link-Seite am
-2026-08-30 ohne Account gelesen. Die Vault-Auswertung war read-only. Keine
+Öffentliche Reonic-Seiten wurden am 2026-08-29, die Preview-/Link-Seite am
+2026-08-30 und die drei M1-09-Seiten am 2026-08-31 ohne Account gelesen. Die
+Vault-Auswertung war read-only. Keine
 Quelle liefert einen autoritativen WMEE-SKU-/Preiskatalog oder exakte private
 Reonic-Rundungsregeln.
 
@@ -53,6 +59,11 @@ nicht als private Reonic-Produktwahrheit ausgegeben.
 
 | ID | Entscheidung | Klasse | Ablage |
 |---|---|---|---|
+| `DEC-M109-01` | neue Rechner-/manuelle Requests dürfen unzugewiesen mit Revision 0 starten; kein erfundener Default-Owner | DECIDED WMEE | Spec M1-09, ADR 0014 |
+| `DEC-M109-02` | M1-09 modelliert nur direkte Memberships; beim KAM-Wechsel bleibt der frühere KAM als `user` erhalten | DECIDED WMEE | Spec M1-09, ADR 0014 |
+| `DEC-M109-03` | Zuweisungsmutationen verlangen ein eigenes internal-only `project.assign` und optimistische Revision | DECIDED WMEE | Spec M1-09, ADR 0014, Rollenmatrix |
+| `DEC-M109-04` | External sieht ausschließlich direkt zugewiesene `request/open`-Projekte über minimiertes read-only DTO; Offers und Mutationen bleiben gesperrt | DECIDED WMEE | Spec M1-09, ADR 0014 |
+| `DEC-M109-05` | Sichtentzug gilt ab der nächsten Transaktion; Membership-Offboarding bleibt bis zur Assignmentbereinigung per FK fail-closed | DECIDED WMEE | Spec M1-09, ADR 0014 |
 | `DEC-M201-01` | ein Offer pro Project im v1 | DECIDED WMEE | Spec M2-01, ADR 0009 |
 | `DEC-M201-02` | PV-Wohngebäude-Golden-Path zuerst | DECIDED WMEE | Spec M2-01, ADR 0009 |
 | `DEC-M201-03` | `ANG-{YYYY}-{sequence:6}` als eigener Nummernstandard | DECIDED WMEE | Spec M2-01, ADR 0009 |

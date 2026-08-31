@@ -4,6 +4,7 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -33,6 +34,7 @@ export const project = pgTable(
     sourceKey: text("source_key").notNull(),
     dedupeReviewRequired: boolean("dedupe_review_required").notNull().default(false),
     catalogResolutionStatus: text("catalog_resolution_status").notNull().default("pending"),
+    assignmentRevision: integer("assignment_revision").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -90,5 +92,6 @@ export const project = pgTable(
       "project_catalog_resolution_ck",
       sql`${t.catalogResolutionStatus} in ('pending', 'resolved')`,
     ),
+    check("project_assignment_revision_ck", sql`${t.assignmentRevision} >= 0`),
   ],
 );

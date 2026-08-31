@@ -71,8 +71,10 @@ type SeedData = {
   foreignWorkspaceId: string;
   editorIdentityId: string;
   viewerIdentityId: string;
+  externalIdentityId: string;
   editorEmail: string;
   viewerEmail: string;
+  externalEmail: string;
   m201WorkspaceId: string;
   m201EditorIdentityId: string;
   m201EditorEmail: string;
@@ -92,6 +94,7 @@ type E2EState = Pick<
   | "foreignWorkspaceId"
   | "editorEmail"
   | "viewerEmail"
+  | "externalEmail"
   | "mainContactName"
   | "foreignContactName"
 > & {
@@ -593,7 +596,8 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
       await client.query(
         `insert into membership (workspace_id, user_id, role, capabilities)
          values ($1::uuid, $2::uuid, 'editor',
-           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true}'::jsonb)`,
+           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
+              "assign_projects":true}'::jsonb)`,
         [data.workspaceId, data.editorIdentityId],
       );
       await client.query(
@@ -603,6 +607,15 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
       await client.query(
         "insert into membership (workspace_id, user_id, role) values ($1::uuid, $2::uuid, 'viewer')",
         [data.workspaceId, data.viewerIdentityId],
+      );
+      await client.query(
+        "insert into user_identity (id, email) values ($1::uuid, $2)",
+        [data.externalIdentityId, data.externalEmail],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'viewer', '{"external_only":true}'::jsonb)`,
+        [data.workspaceId, data.externalIdentityId],
       );
     });
 
@@ -874,8 +887,10 @@ function createSeedData(): SeedData {
     foreignWorkspaceId: randomUUID(),
     editorIdentityId: randomUUID(),
     viewerIdentityId: randomUUID(),
+    externalIdentityId: randomUUID(),
     editorEmail: `m1-05-editor-${runSuffix}@example.test`,
     viewerEmail: `m1-05-viewer-${runSuffix}@example.test`,
+    externalEmail: `m1-09-external-${runSuffix}@example.test`,
     m201WorkspaceId: randomUUID(),
     m201EditorIdentityId: randomUUID(),
     m201EditorEmail: `m2-01-editor-${runSuffix}@example.test`,
@@ -1051,11 +1066,23 @@ async function main(): Promise<number> {
     foreignWorkspaceId: seedData.foreignWorkspaceId,
     editorEmail: seedData.editorEmail,
     viewerEmail: seedData.viewerEmail,
+    externalEmail: seedData.externalEmail,
     mainContactName: seedData.mainContactName,
     foreignContactName: seedData.foreignContactName,
   });
 
-  console.log("[e2e] Chromium prüft M1-06 bis M2-01, Viewer-Grenze, Fremdmandant und Axe …");
+  if (process.env.ENERGIE_SAAS_LOCAL_PREVIEW === "1") {
+    const boardUrl = `${server.baseURL}/w/${seedData.workspaceId}/anfragen`;
+    console.log(`[preview] URL: ${boardUrl}`);
+    console.log(`[preview] Editor: ${seedData.editorEmail}`);
+    console.log(`[preview] External: ${seedData.externalEmail}`);
+    console.log("[preview] Der Login-Code erscheint ausschließlich im privaten Serverlog.");
+    console.log("[preview] Beenden mit Ctrl+C; Testdaten und Server werden danach automatisch entfernt.");
+    while (!interruptedBy) await sleep(1_000);
+    return signalExitCode(interruptedBy);
+  }
+
+  console.log("[e2e] Chromium prüft M1-06 bis M2-03b1, M1-09-Zuweisung, Rollen, Fremdmandant und Axe …");
   const playwrightExitCode = await runPlaywright(statePath, playwrightOutputPath, server.baseURL);
   if (!geoapifyContractWasExercised(providerStub)) {
     console.error("[e2e] Der lokale Geoapify-Vertrag wurde nicht exakt einmal vollständig durchlaufen.");

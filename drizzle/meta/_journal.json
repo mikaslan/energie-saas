@@ -253,6 +253,13 @@
       "when": 1788113312568,
       "tag": "0035_m2_03b1_offer_issuance",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788186770589,
+      "tag": "0037_m1_09_project_assignment",
+      "breakpoints": true
     }
   ]
 }
