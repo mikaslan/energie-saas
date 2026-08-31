@@ -61,6 +61,25 @@ async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
   return { contactId, siteId, projectId };
 }
 
+async function fixtureMembership(tx: TenantTx, wsId: string): Promise<{
+  userId: string;
+  membershipId: string;
+}> {
+  // Keine RETURNING-Klausel: die SELECT-Policy von user_identity setzt bereits
+  // eine Membership voraus. Clientseitige IDs halten den Bootstrap eindeutig.
+  const userId = randomUUID();
+  const membershipId = randomUUID();
+  await tx.execute(sql`
+    insert into user_identity (id, email)
+    values (${userId}::uuid, ${`${randomUUID()}@test.local`})
+  `);
+  await tx.execute(sql`
+    insert into membership (id, workspace_id, user_id, role)
+    values (${membershipId}::uuid, ${wsId}::uuid, ${userId}::uuid, 'viewer')
+  `);
+  return { userId, membershipId };
+}
+
 async function fixtureReceipt(tx: TenantTx, wsId: string): Promise<{
   receiptId: string;
   projectId: string;
@@ -1545,13 +1564,7 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     // demselben Grund auch kein "insert ... returning" (RETURNING unterliegt
     // ebenfalls der SELECT-Policy). Stattdessen: client-seitige UUID, die
     // direkt in beide Inserts eingesetzt wird.
-    const userId = randomUUID();
-    await tx.execute(
-      sql`insert into user_identity (id, email) values (${userId}, ${`${randomUUID()}@test.local`})`,
-    );
-    await tx.execute(
-      sql`insert into membership (workspace_id, user_id, role) values (${wsId}, ${userId}, 'viewer')`,
-    );
+    await fixtureMembership(tx, wsId);
   },
   domain_events: async (tx, wsId) => {
     await tx.execute(sql`insert into domain_events (workspace_id, aggregate_type, aggregate_id, event_type, actor)
@@ -1630,6 +1643,17 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   },
   project: async (tx, wsId) => {
     await fixtureProjectGraph(tx, wsId);
+  },
+  project_assignment: async (tx, wsId) => {
+    const { membershipId } = await fixtureMembership(tx, wsId);
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    await tx.execute(sql`
+      insert into project_assignment (
+        workspace_id, project_id, membership_id, assignment_role
+      ) values (
+        ${wsId}::uuid, ${projectId}::uuid, ${membershipId}::uuid, 'user'
+      )
+    `);
   },
   inbound_receipt: async (tx, wsId) => {
     await fixtureReceipt(tx, wsId);
@@ -1816,6 +1840,16 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
       ) values (
         ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
         ${randomUUID()}::uuid, ${randomUUID()}::uuid, 'Cross Write', 'fixture'
+      )
+    `);
+  },
+  project_assignment: async (tx) => {
+    await tx.execute(sql`
+      insert into project_assignment (
+        workspace_id, project_id, membership_id, assignment_role
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid, 'user'
       )
     `);
   },

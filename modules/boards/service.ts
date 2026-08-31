@@ -4,6 +4,7 @@ import { emitEvent } from "@/lib/events";
 import { writeAudit } from "@/lib/audit";
 import {
   can,
+  isExternalOnly,
   PermissionDeniedError,
   type ServiceCtx,
 } from "@/lib/permissions";
@@ -28,6 +29,10 @@ export type RequestBoardCard = {
     pinConfirmationRequired: boolean;
     catalogResolutionPending: boolean;
   };
+  assignment: {
+    assignmentRevision: number;
+    keyAccountLabel: string | null;
+  } | null;
 };
 
 export type RequestBoardColumn = {
@@ -44,8 +49,9 @@ export type RequestBoard = {
   id: string;
   name: string;
   scope: "residential" | "commercial";
+  audience: "internal" | "assigned_external";
   columns: RequestBoardColumn[];
-  permissions: { canMoveCards: boolean };
+  permissions: { canMoveCards: boolean; canOpenCatalog: boolean };
 };
 
 type BoardRow = {
@@ -70,7 +76,7 @@ type CardRow = {
   city: string | null;
   formatted_address: string | null;
   address_mode: string;
-  source_key: string;
+  source_key: string | null;
   created_at: Date | string;
   target_storage_kwh: number | string | null;
   wallbox: boolean | null;
@@ -80,6 +86,8 @@ type CardRow = {
   address_follow_up_required: boolean;
   pin_confirmed: boolean;
   catalog_resolution_status: string;
+  assignment_revision: number;
+  key_account_label: string | null;
   [key: string]: unknown;
 };
 
@@ -114,7 +122,7 @@ function requireProjectAccess(
   if (!can(ctx, action)) {
     throw new PermissionDeniedError(action, resource, undefined, ctx.actor);
   }
-  if (ctx.capabilities.external_only === true) {
+  if (action === "project.write" && isExternalOnly(ctx)) {
     throw new PermissionDeniedError(
       action,
       resource,
@@ -148,6 +156,7 @@ export async function getDefaultRequestBoard(
   ctx: ServiceCtx,
 ): Promise<RequestBoard> {
   requireProjectAccess(ctx, "project.read", "kanban_board");
+  const external = isExternalOnly(ctx);
 
   const boardResult = await tx.execute<BoardRow>(sql`
     select b.id as board_id, b.name as board_name, b.scope as board_scope,
@@ -174,19 +183,24 @@ export async function getDefaultRequestBoard(
 
   const cardResult = await tx.execute<CardRow>(sql`
     select p.id as project_id, p.name as project_name,
-           p.kanban_column_id as column_id, p.source_key, p.created_at,
+           p.kanban_column_id as column_id,
+           case when ${external} then null else p.source_key end as source_key,
+           p.created_at,
            c.display_name as contact_name,
            s.postal_code, s.city, s.formatted_address, s.address_mode,
            coalesce(p.dedupe_review_required, false)
              or coalesce(c.dedupe_review_required, false) as dedupe_review_required,
            s.address_follow_up_required, s.pin_confirmed,
            p.catalog_resolution_status,
+           case when ${external} then 0 else p.assignment_revision end
+             as assignment_revision,
            nullif(pr.requirements #>> '{requestedProducts,targetStorageKwh}', '')::numeric
              as target_storage_kwh,
            (pr.requirements #>> '{requestedProducts,wallbox}')::boolean as wallbox,
            (pr.requirements #>> '{requestedProducts,bidirectionalCharging}')::boolean
              as bidirectional_charging,
-           (pr.requirements #>> '{requestedProducts,backupPower}')::boolean as backup_power
+           (pr.requirements #>> '{requestedProducts,backupPower}')::boolean as backup_power,
+           key_account.label as key_account_label
     from project p
     join contact c
       on c.workspace_id = p.workspace_id and c.id = p.contact_id
@@ -200,10 +214,38 @@ export async function getDefaultRequestBoard(
       order by requirement.revision desc
       limit 1
     ) pr on true
+    left join lateral (
+      select identity_record.email as label
+      from project_assignment assignment_record
+      join membership membership_record
+        on membership_record.workspace_id = assignment_record.workspace_id
+       and membership_record.id = assignment_record.membership_id
+      join user_identity identity_record
+        on identity_record.id = membership_record.user_id
+      where assignment_record.workspace_id = p.workspace_id
+        and assignment_record.project_id = p.id
+        and assignment_record.assignment_role = 'key_account'
+        and ${!external}
+      limit 1
+    ) key_account on true
     where p.workspace_id = ${ctx.workspaceId}::uuid
       and p.kanban_board_id = ${boardId}::uuid
       and p.phase = 'request'
       and p.outcome = 'open'
+      and (
+        ${!external}
+        or exists (
+          select 1
+          from membership actor_membership
+          join project_assignment direct_assignment
+            on direct_assignment.workspace_id = actor_membership.workspace_id
+           and direct_assignment.membership_id = actor_membership.id
+           and direct_assignment.project_id = p.id
+           and direct_assignment.assignment_role in ('key_account', 'user')
+          where actor_membership.workspace_id = p.workspace_id
+            and actor_membership.user_id = ${ctx.actor}::uuid
+        )
+      )
     order by p.created_at desc, p.id desc
   `);
 
@@ -221,10 +263,12 @@ export async function getDefaultRequestBoard(
       name: row.project_name,
       contactName: row.contact_name,
       locationLabel: locationLabel(row),
-      sourceLabel: row.source_key === "wmee-rechner-v3" ? "Solarrechner" : "Manuell",
+      sourceLabel: external
+        ? "Zugewiesene Anfrage"
+        : row.source_key === "wmee-rechner-v3" ? "Solarrechner" : "Manuell",
       createdAt: iso(row.created_at),
       requestedProducts: {
-        photovoltaics: row.source_key === "wmee-rechner-v3",
+        photovoltaics: external || row.source_key === "wmee-rechner-v3",
         targetStorageKwh: numberOrNull(row.target_storage_kwh),
         wallbox: row.wallbox === true,
         bidirectionalCharging: row.bidirectional_charging === true,
@@ -236,6 +280,10 @@ export async function getDefaultRequestBoard(
         pinConfirmationRequired: !row.pin_confirmed,
         catalogResolutionPending: row.catalog_resolution_status !== "resolved",
       },
+      assignment: external ? null : {
+        assignmentRevision: row.assignment_revision,
+        keyAccountLabel: row.key_account_label,
+      },
     });
     cardsByColumn.set(row.column_id, cards);
   }
@@ -245,6 +293,7 @@ export async function getDefaultRequestBoard(
     id: first.board_id,
     name: first.board_name,
     scope: first.board_scope,
+    audience: external ? "assigned_external" : "internal",
     columns: boardResult.rows.map((row) => ({
       id: row.column_id,
       name: row.column_name,
@@ -254,7 +303,12 @@ export async function getDefaultRequestBoard(
       isIntake: row.is_intake,
       cards: cardsByColumn.get(row.column_id) ?? [],
     })),
-    permissions: { canMoveCards: can(ctx, "project.write") },
+    permissions: external
+      ? { canMoveCards: false, canOpenCatalog: false }
+      : {
+          canMoveCards: can(ctx, "project.write"),
+          canOpenCatalog: can(ctx, "catalog.read"),
+        },
   };
 }
 

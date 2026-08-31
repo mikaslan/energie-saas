@@ -114,12 +114,9 @@ describe("sites-Service (Referenzmuster)", () => {
     expect(ev.rows).toHaveLength(1);
     expect(ev.rows[0].payload).toEqual({ siteId: id });
 
-    // Gegenprobe über den rohen JSON-Text: KEIN Adressbestandteil darf
-    // irgendwo im Payload auftauchen.
-    const roh = JSON.stringify(ev.rows[0].payload);
-    for (const wert of ["Hauptstraße", "42a", "69117", "Heidelberg", "Zentrale", "49.4093", "8.6939"]) {
-      expect(roh, `Adress-Klartext "${wert}" im append-only Event-Payload`).not.toContain(wert);
-    }
+    // Die exakte Objektgleichheit oben ist die strukturelle Allowlist. Eine
+    // Substring-Prüfung wäre falsch-positiv, wenn die zufällige UUID zufällig
+    // Zeichen wie die Hausnummer enthält.
 
     // Die Adresse selbst liegt weiterhin in der (löschbaren) site-Zeile.
     const row = await withTenantOn(testPool, ws, (tx) =>

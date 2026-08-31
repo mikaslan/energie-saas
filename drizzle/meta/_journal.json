@@ -260,6 +260,13 @@
       "when": 1788134317232,
       "tag": "0036_m1_08b_catalog_import",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788186770589,
+      "tag": "0037_m1_09_project_assignment",
+      "breakpoints": true
     }
   ]
 }

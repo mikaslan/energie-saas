@@ -241,18 +241,22 @@ describe("M1-05 Default-Request-Kanban", () => {
     expect(serialized).not.toContain("investmentCents");
   });
 
-  it("liest für Viewer, sperrt external_only aber bis zum Assignment-Slice", async () => {
+  it("liest intern für Viewer und zeigt External ohne Zuweisung ein leeres Board", async () => {
     const workspaceId = await createWorkspace();
     await submit(workspaceId);
     const board = await withTenantOn(testPool, workspaceId, (tx) =>
       getDefaultRequestBoard(tx, viewerCtx(workspaceId)));
+    expect(board.audience).toBe("internal");
     expect(board.permissions.canMoveCards).toBe(false);
+    expect(board.columns.flatMap(({ cards }) => cards)).toHaveLength(1);
 
-    await expect(withTenantOn(testPool, workspaceId, (tx) =>
-      getDefaultRequestBoard(tx, externalCtx(workspaceId)))).rejects.toMatchObject({
-        name: "PermissionDeniedError",
-        reason: "external_only_without_assignment",
-      });
+    const externalBoard = await withTenantOn(testPool, workspaceId, (tx) =>
+      getDefaultRequestBoard(tx, externalCtx(workspaceId)));
+    expect(externalBoard).toMatchObject({
+      audience: "assigned_external",
+      permissions: { canMoveCards: false, canOpenCatalog: false },
+    });
+    expect(externalBoard.columns.flatMap(({ cards }) => cards)).toHaveLength(0);
   });
 
   it("verschweigt keine offene Anfrage in einer inaktiven Spalte", async () => {

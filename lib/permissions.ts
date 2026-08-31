@@ -2,11 +2,11 @@ import type { Role } from "./db/schema/core";
 
 export type Capability =
   | "see_purchase_prices" | "edit_prices" | "discounts" | "invoicing"
-  | "convert_phase" | "manage_catalog" | "manage_settings"
+  | "convert_phase" | "assign_projects" | "manage_catalog" | "manage_settings"
   | "prepare_offer_documents" | "approve_offer_documents" | "external_only";
 
 export type Action =
-  | "project.read" | "project.write" | "phase.convert"
+  | "project.read" | "project.write" | "project.assign" | "phase.convert"
   | "price.read_purchase" | "price.edit" | "discount.apply"
   | "invoice.issue" | "offer.release.prepare" | "offer.release.approve"
   | "offer.issue.prepare" | "offer.issue.approve" | "offer.issue.withdraw"
@@ -55,6 +55,7 @@ export const ACTION_REQUIREMENTS: Record<Action, {
 }> = {
   "project.read":        { minRole: "viewer" },
   "project.write":       { minRole: "editor" },
+  "project.assign":      { minRole: "editor", capability: "assign_projects", internalOnly: true },
   "phase.convert":       { minRole: "editor", capability: "convert_phase" },
   "price.read_purchase": { minRole: "editor", capability: "see_purchase_prices" },
   "price.edit":          { minRole: "editor", capability: "edit_prices" },

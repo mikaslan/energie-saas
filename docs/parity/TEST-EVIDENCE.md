@@ -10,15 +10,16 @@ Dieses Dokument trennt ausgeführte Evidenz strikt von geplanten Tests.
 |---|---|---|
 | M1-08 Katalog/Projektauflösung | 69 Vitest-Dateien, 661/661 Tests, Build, 75 Rollenproben, 5 PG18-Proben, 7/7 Chromium-E2E; Commit `71dded3` | REVIEWED/VERIFIED lokal |
 | M1-08b autorisierter Katalog-CSV-Import | `npm run check`: 144/144 Testdateien, 1.371 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollen- plus 5/5 PG18-Proben; Contract-SHA `5e1bc0ee180439944953106f17c3de1d551b320fd555c442a14797cac16f9e1b`; Dependency-Cruiser 276 Module/946 Abhängigkeiten; Chromium 24 bestanden/1 opt-in übersprungen, davon 7/7 fokussierte M1-08b-Fälle; Production-Build und `db:generate` grün | REVIEWED/VERIFIED lokal; technisches Gate **GO**; unabhängiger Review ohne P0–P2; kein Commit/Deploy/Realimport |
+| M1-09 Projektzuweisung/zugewiesene Request-Sicht | 132/132 Vitest-Dateien, 1.245 bestanden/1 opt-in übersprungen; fokussiert 58/58; Rollen 88/88 plus PG18 5/5; Chromium 20 bestanden/1 opt-in übersprungen; Production-Build, ESLint, TypeScript, Dependency-Cruiser (254 Module/865 Abhängigkeiten) und zwei unabhängige Abschlussreviews grün | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; Human Visual offen |
 | M2-01 Angebotsvarianten/Snapshot-BOM | `npm run check`: 87/87 Testdateien, 856 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollenproben, 5/5 PG18-Proben; Chromium 16/16 (15 funktionale/A11y-Fälle plus 1 Visual-Capture-Fall mit 26/26 Kandidaten); Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff- und `db:generate`-Prüfung grün | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; Visual-Candidate-Capture grün, menschliches Visual-Gate `INCONCLUSIVE` |
 | M2-02 interner Angebots-PDF-Entwurf | 96/96 Vitest-Dateien, 949 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 16/16 aktiv plus 1 opt-in Visual-Fall übersprungen; Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff, `db:generate`, Compose, Worker-Bundle und gepinnter `linux/amd64`-Container-Smoke grün | REVIEWED/VERIFIED lokal; technisches Gate **GO**; unabhängiges Review ohne offene P0–P2; `M202-VISUAL-01` `INCONCLUSIVE`; Deploy `NOT RUN` |
 | M2-03a Angebotsprofil/Freigabekandidat | 111/111 Vitest-Dateien, 1.078 bestanden, 1 übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 17 bestanden, 1 opt-in übersprungen; Production-Build, ESLint, TypeScript und Dependency-Cruiser (237 Module/764 Abhängigkeiten) grün; gepinnter `linux/amd64`-Container-Smoke mit Pflichtstatus auf 11/11 PDF-Seiten | REVIEWED/VERIFIED lokal; technisches Gate **GO**; Security-, Regression-, Navigation- und lokaler Claude-Code-Opus-Max-Review ohne offene P0–P2; Human Visual `INCONCLUSIVE`; Deploy/Issuance/WORM/Versand/Signatur `NOT RUN` |
 | M2-03b1 Angebots-Ausstellungsfassung | 126/126 Vitest-Dateien, 1.184 bestanden, 1 übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 17 bestanden, 1 opt-in übersprungen; Production-Build, ESLint, TypeScript und Dependency-Cruiser (248 Module/836 Abhängigkeiten) grün; deterministischer gepinnter Container-Render mit 11/11 A4-Seiten | REVIEWED/VERIFIED lokal; technisches Gate **GO**; Code-, Security- und Claude-Code-Opus-5-Max-Review ohne offene P0–P2; Human Visual `INCONCLUSIVE`; Deploy/Object Lock/Archivevidence/`issued`/Versand/Signatur `NOT RUN` |
 
 Die M1-08-Detailabnahme liegt in `Reonic Clone Final/08-Abnahme-M1-08.md`;
-der aktuelle M1-08b-Abschluss in
-`Reonic Clone Final/17-Abnahme-M1-08b.md`. M2-03b1 bleibt separat in
-`Reonic Clone Final/16-Abnahme-M2-03b1.md` dokumentiert.
+der aktuelle M1-08b-Abschluss in `Reonic Clone Final/17-Abnahme-M1-08b.md`,
+die M1-09-Abnahme in `Reonic Clone Final/18-Abnahme-M1-09.md`; M2-03b1 bleibt
+separat in `Reonic Clone Final/16-Abnahme-M2-03b1.md` dokumentiert.
 
 ## M1-08b
 
@@ -44,9 +45,39 @@ read-only Abschlussreview fand keine belastbaren P0–P2-Befunde.
 | `M108B-A11Y-01` | Browser/A11y | Keyboard, Fokus, Axe, 320-px-Reflow, 400-%-Semantik und Reduced Motion | GREEN |
 
 Die Evidenz verwendet ausschließlich synthetische beziehungsweise selbst
-autorisierte Testdaten. Es gab keinen realen WMEE-/Lieferantenimport, keinen
-Reonic-Innenzugriff, keinen Commit, Push, Deploy, Providerkauf oder
-produktiven Worker-Rollout.
+autorisierte Testdaten. Es gab keinen realen WMEE-/Lieferantenimport und
+keinen privaten Reonic-Innenzugriff. Produktiver Worker-Rollout und Deploy
+werden erst nach dem gemeinsamen Integrationsgate beansprucht.
+
+## M1-09
+
+Status: **REVIEWED/VERIFIED lokal; technisches Gate 2 GO**. Der
+finale Gesamtnachweis umfasst 132/132 Vitest-Dateien mit 1.245 bestandenen und
+einem ausdrücklich opt-in übersprungenen Test, einen fokussierten 58/58-Lauf,
+88/88 Rollen- plus 5/5 PostgreSQL-18-Proben sowie Chromium mit 20 bestandenen
+und einem opt-in übersprungenen Fall. Production-Build, ESLint, TypeScript und
+Dependency-Cruiser (254 Module/865 Abhängigkeiten) sind grün. Unabhängiger
+Service- und RLS-Reaudit endeten **GO** ohne Blocker.
+
+| Test-ID | Ebene | Finaler Beleg | Aktuell |
+|---|---|---|---|
+| `M109-CONTRACT-01` | Contract | geschlossene Commands, Revision, Rollen und DTO-Allowlist | GREEN im fokussierten und vollständigen Lauf |
+| `M109-DB-01` | Migration/DB | Fresh-/Upgrade-Vertrag, Composite-FKs, Project-Cascade, Membership-RESTRICT, FORCE RLS, genaue Policies/ACLs und idempotente Migration | GREEN; Rollenvertrag 88/88 plus PG18 5/5 |
+| `M109-SVC-01` | Integration | Set/Clear/Add/Remove, KAM-Wechsel, No-op, Limit, Readmodelle, Event und Audit atomar | GREEN im vollständigen Lauf |
+| `M109-RACE-01` | DB concurrency | konkurrierende Revisionen, konsistenter Context-Snapshot, Project-Delete sowie Assignment/Clear gegen Membership-Offboarding in beiden Lockreihenfolgen | GREEN; Reaudit bestätigt Project→Workspace→Assignment ohne Deadlock |
+| `M109-ACTION-01` | Next/Action | untrusted FormData, Duplicate-/Unknown-Fields, Auth-/Domainmapping und gezielte Revalidation | GREEN |
+| `M109-RBAC-01` | Integration/Security | Viewer, berechtigter/unberechtigter Editor, Admin, External, Cross-Tenant sowie echter Non-Owner-Login als `app_runtime` | GREEN; der isolierte Strict-Test erzwingt den `TO app_runtime`-Zweig und prüft `session_user=current_user=app_runtime`, `NOBYPASSRLS` |
+| `M109-PRIVACY-01` | Contract/Integration | minimierter External-DTO, keine Assignment-/Katalog-/Kalkulations-/Offer-/Preis- oder Koordinatendaten, PII-freie Events/Audits | GREEN |
+| `M109-E2E-01` | Browser | Editor setzt KAM und External-Person; External sieht nur die eigene offene Anfrage; Entfernung entzieht Board und Detail | GREEN in drei M1-09-Fällen innerhalb des 20+1-Chromium-Laufs |
+| `M109-A11Y-01` | Browser/A11y | native Controls, Fokus-/Fehlervertrag, Axe sowie 320/375-Reflow ohne neue Regression | GREEN; globale Keyboard-/Zoom-/Reflow-Suite ebenfalls grün |
+
+Die Legacy-Testdatenbank verwendet weiterhin den dokumentierten PUBLIC-
+Fallback, wenn `app_runtime` vor der Migration fehlt. Die zusätzliche isolierte
+Suite legt `app_runtime` dagegen vor Migration 0037 an und beweist funktional
+den echten rollenadressierten Pfad; sie ist kein Worker-Login-Test. Die grüne
+Evidenz gilt für den isolierten M1-09-Worktree, nicht für eine bereits
+integrierte Migrationsfolge M1-08b `0036` → M1-09 `0037`, keinen Deploy und
+keine private Reonic-1:1-Semantik.
 
 ## M2-01
 

@@ -1,13 +1,16 @@
 # Rollen- und Berechtigungsmatrix
 
-Stand: 2026-08-31 · M1-08b, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-08-31 · M1-08b, M1-09, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 Die Laufzeitwahrheit bleibt `lib/permissions.ts`; diese Matrix dokumentiert die
 beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
 
 | Fähigkeit | Viewer | Editor | Admin | External | `app_worker` | Einzelrecht / Bedingung |
 |---|---:|---:|---:|---:|---:|---|
-| Offer-Liste/-Detail lesen | ja | ja | ja | nein | nein | `project.read`, gleicher Workspace; External bis Assignment fail-closed |
+| Request-/Projektboard und interne Akte lesen | ja | ja | ja | nur direkt zugewiesener offener Request | nein | internes `project.read`; External ausschließlich über eigene direkte Assignmentzeile und minimierten DTO |
+| Assignmentstand/Personenliste lesen | ja | ja | ja | keine Personenliste; DB sieht höchstens eigene Zeile | nein | internes `project.read`; External-UI/DTO liefert keine Assignmentliste |
+| Assignment suchen/ändern | nein | nur mit Recht | ja | nein | nein | `project.assign` / `assign_projects`, internal-only, `expectedAssignmentRevision`; Set/Clear KAM und Add/Remove User |
+| Offer-Liste/-Detail lesen | ja | ja | ja | nein | nein | `project.read`, gleicher Workspace; External bleibt auch mit M1-09-Assignment gesperrt |
 | B2C-Request in Offer konvertieren | nein | nur mit Rechten | ja | nein | nein | `project.write` + `phase.convert` + `price.edit`, B2C-/Steuerbestätigung und alle Readiness-Gates |
 | Variante duplizieren/benennen | nein | ja | ja | nein | nein | `project.write`, `expectedRevision` |
 | Neue Basis aus aktueller Resolution | nein | nur mit Recht | ja | nein | nein | `project.write` + `price.edit`, explizite Steuerwahl; 0 % frisch bestätigt |
@@ -78,4 +81,8 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
   Drift-, Tenant- noch Withdrawal-Regel. Auch
   `approved_for_archive_not_issued` erteilt kein Recht auf Object Lock,
   Archivevidence, `issued`, Versand oder Signatur.
-- `external_only` wird erst mit einem echten Assignmentmodell freigeschaltet.
+- `external_only` ist seit M1-09 ausschließlich für direkt zugewiesene offene
+  Requests über eine minimierte read-only Sicht freigeschaltet. Fehlende oder
+  falsch typisierte `external_only`-Markierung bleibt fail-closed; Offer,
+  Katalog, Kalkulation, Personenliste und jede Assignmentmutation bleiben
+  gesperrt.

@@ -14,8 +14,11 @@ import {
   type ProjectCatalogResolutionContext,
 } from "@/modules/catalog";
 import {
-  getProjectTriageDetail,
-  type ProjectTriageDetail,
+  getProjectAssignmentContext,
+  getProjectPageDetail,
+  PROJECT_ASSIGNMENT_COMMAND_VERSION,
+  type ProjectAssignmentContext,
+  type ProjectPageDetail,
 } from "@/modules/projects";
 import {
   getProjectEnergyContext,
@@ -24,6 +27,7 @@ import {
 import { listOffers } from "@/modules/offers";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
+import { AssignedExternalRequestView } from "./assigned-external-request-view";
 import { EnergyCalculationSection } from "./energy-calculation-section";
 import { EnergyProfileSection } from "./energy-profile-section";
 import { OfferCreateEntry } from "./offer-create-entry";
@@ -33,6 +37,7 @@ import {
 } from "./offer-create-view";
 import { PinForm } from "./pin-form";
 import { ProductResolutionSection } from "./product-resolution-section";
+import { ProjectAssignmentPanel } from "./project-assignment-panel";
 
 export const metadata: Metadata = {
   title: "Projektakte | Energie-SaaS",
@@ -66,7 +71,12 @@ const dateFormatter = new Intl.DateTimeFormat("de-DE", {
 });
 
 type LoadResult =
-  | { kind: "loaded"; detail: ProjectTriageDetail | null }
+  | { kind: "loaded"; detail: ProjectPageDetail | null }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+type AssignmentLoadResult =
+  | { kind: "loaded"; context: ProjectAssignmentContext | null }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
@@ -89,7 +99,7 @@ async function loadProjectDetail(
       workspaceId,
       "project.read",
       "project",
-      (tx, ctx) => getProjectTriageDetail(tx, ctx, projectId),
+      (tx, ctx) => getProjectPageDetail(tx, ctx, projectId),
     );
     return { kind: "loaded", detail };
   } catch (error) {
@@ -99,6 +109,25 @@ async function loadProjectDetail(
     if (error instanceof PermissionDeniedError) {
       return { kind: "denied" };
     }
+    throw error;
+  }
+}
+
+async function loadProjectAssignmentContext(
+  workspaceId: string,
+  projectId: string,
+): Promise<AssignmentLoadResult> {
+  try {
+    const context = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "project_assignment",
+      (tx, ctx) => getProjectAssignmentContext(tx, ctx, projectId),
+    );
+    return { kind: "loaded", context };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
     throw error;
   }
 }
@@ -286,7 +315,25 @@ export default async function ProjectTriagePage({
   if (result.kind === "denied") return <DeniedState />;
   if (result.detail === null) notFound();
 
-  const detail = result.detail;
+  const pageDetail = result.detail;
+  if (pageDetail.audience === "assigned_external") {
+    return (
+      <AssignedExternalRequestView
+        workspaceId={workspaceId}
+        detail={pageDetail.record}
+      />
+    );
+  }
+  const detail = pageDetail.record;
+
+  const assignmentResult = await loadProjectAssignmentContext(workspaceId, projectId);
+  if (assignmentResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+  if (assignmentResult.kind === "denied") return <DeniedState />;
+  if (assignmentResult.context === null) notFound();
+  const assignmentContext = assignmentResult.context;
+
   // Die Projektakte und das Energie-Readmodel werden bewusst nacheinander
   // autorisiert. So entsteht weder ein paralleler Session-Race noch ein
   // Energie-Read vor der bestehenden Projektgrenze.
@@ -543,6 +590,13 @@ export default async function ProjectTriagePage({
           </div>
 
           <aside className="grid gap-6 lg:sticky lg:top-6">
+            <ProjectAssignmentPanel
+              workspaceId={workspaceId}
+              projectId={projectId}
+              commandVersion={PROJECT_ASSIGNMENT_COMMAND_VERSION}
+              assignment={assignmentContext}
+            />
+
             <Section title="Blocker">
               {activeBlockers.length > 0 ? (
                 <ul className="grid gap-2">

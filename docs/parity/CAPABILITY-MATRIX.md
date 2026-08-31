@@ -4,8 +4,8 @@ Stand: 2026-08-31 · Workflow:
 `DISCOVERED → SPECIFIED → CONTRACTED → RED → IMPLEMENTED → REVIEWED → VERIFIED`
 
 Die vollständige F1–F16-Übersicht steht in `STATUS.md`. Dieses Dokument führt
-die feingranularen M1-08b-, M2-01-, M2-02-, M2-03a- und M2-03b1-Capabilities.
-Alle fünf Slices sind lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind
+die feingranularen M1-08b-, M1-09-, M2-01-, M2-02-, M2-03a- und
+M2-03b1-Capabilities. Alle sechs Slices sind lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind
 **GO**. Die formalen
 Visual-Gates bleiben davon getrennt `INCONCLUSIVE`. Eine private
 Reonic-1:1-Semantik wird daraus nicht abgeleitet.
@@ -52,11 +52,50 @@ Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 | `M108B-08` / F16.1/F2.3 | Reimport mit Änderung erzeugt einen neuen Draft und sichtbaren Drift | neues Intent, aktuelle Revision, getrennte Aktivierung | vorhandene Resolution/alte BOM bleiben unverändert; neue Basis erst nach neuer Resolution | kein stilles Rebase | `M108B-E2E-02`, `M108B-DB-01` | REVIEWED/VERIFIED (lokal) |
 | `M108B-09` / F16.1/F2.3 | Nutzer findet importierte aktive SKU auch hinter Eintrag 200 | serverseitige Suche oder exakte autorisierte ID-Auflösung | Auswahl erreicht Resolution/BOM ohne Client-Gesamtliste | `catalog.read`, Tenantbindung | `M108B-E2E-03`, Server-Search-Contract | REVIEWED/VERIFIED (lokal) |
 
+## Gemeinsamer Liefervertrag M1-09
+
+- Modul: Requests/Projects; Tenant-/Owner-Scope: Workspace plus Project und
+  Workspace-Membership.
+- Neue Requests dürfen ehrlich unzugewiesen mit Revision 0 starten. Pro Projekt
+  gibt es höchstens eine direkte Hauptverantwortung und insgesamt höchstens 50
+  eindeutige direkte Memberships.
+- Ein Hauptverantwortungswechsel macht die frühere Hauptverantwortung zum
+  weiteren Nutzer; Entfernen und Clear bleiben getrennte bewusste Commands.
+- Assignment-Mutationen sind ausschließlich intern und verlangen
+  `project.assign`, aktuelle Membership sowie `expectedAssignmentRevision`.
+- `external_only` erhält ausschließlich für eine eigene direkte Zuweisung auf
+  ein `request/open`-Projekt ein minimiertes read-only Board und Detail. Offers,
+  Katalog, Kalkulation, Preise, Personenlisten und Mutationen bleiben gesperrt.
+- Project-, Workspace- und Assignment-Locks, Composite-FKs, FORCE RLS,
+  restriktive Actor-Policies, Event und Audit bilden eine gemeinsame
+  fail-closed Grenze. Sichtentzug gilt ab der nächsten Transaktion.
+- Abschlussnachweis: 132/132 Vitest-Dateien, 1.245 bestanden/1 opt-in
+  übersprungen; fokussiert 58/58; Rollen 88/88 plus PG18 5/5; Chromium 20
+  bestanden/1 opt-in übersprungen; Production-Build, ESLint, TypeScript und
+  Dependency-Cruiser grün; unabhängiger Service- und RLS-Reaudit **GO**.
+- Nicht enthalten: Teams/Vererbung, Auto-Routing, External-Schreiben,
+  Benachrichtigungen, KAM-Mail-/PDF-Effekt, Deployment oder private
+  Reonic-1:1-Semantik.
+
+## Feingranulare M1-09-Capabilities
+
+| ID / F-Nr. | Job, Trigger und Happy Path | Inputs / Validierungen | Zustand und Nebenwirkung | Recht / Daten / Event | Tests | Status / Parität / Blocker |
+|---|---|---|---|---|---|---|
+| `M109-01` / F1.1 | Rechner- oder manueller Intake bleibt zunächst ehrlich unzugewiesen | bestehender Project-Create-Vertrag; kein erfundener Actor oder Default | Project startet mit `assignment_revision=0`, ohne Assignmentzeile | bestehende Intake-Rechte; keine neue externe Nebenwirkung | `M109-DB-01`, `M109-CONTRACT-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+| `M109-02` / F1.2 | Berechtigter Nutzer setzt oder wechselt die Hauptverantwortung | Project, Membership und erwartete Revision; gleicher Workspace, aktive Membership | maximal ein `key_account`; bisheriger KAM wird atomar `user`; wirksamer Command erhöht Revision | `project.assign`, internal-only; sichere IDs in Event/Audit | `M109-SVC-01`, `M109-RACE-01`, `M109-RBAC-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+| `M109-03` / F1.2 | Berechtigter Nutzer ergänzt oder entfernt weitere direkte Personen | eindeutige Membership, gleicher Workspace, erwartete Revision; max. 50 | add/remove atomar; identischer Command ist No-op ohne Revisionserhöhung | `project.assign`; Project/Assignment | `M109-CONTRACT-01`, `M109-SVC-01`, `M109-RACE-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+| `M109-04` / F1.5 | Nur berechtigte interne Rollen ändern Zuweisungen | serverautoritatives Actor-/Membership-/Capability-Reload | Denied ohne Teilzustand oder Objekt-Oracle | Admin oder interner Editor mit `assign_projects`; Viewer/External/Worker nein | `M109-ACTION-01`, `M109-RBAC-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+| `M109-05` / F1.2/F1.5 | Direkt zugewiesenes External-Mitglied öffnet sein Anfrageboard | eigene aktive direkte Assignmentzeile; Project `request/open` | Board-Audience `assigned_external`; nur eigene Karten | restriktive Project-/Assignment-RLS; kein Offer-Zugriff | `M109-DB-01`, `M109-RBAC-01`, `M109-E2E-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+| `M109-06` / F1.1/F1.5 | External öffnet eine minimierte eigene Request-Akte | Workspace/Project werden intern geladen; feste Allowlist | Name, erlaubter Kontakt-/Adress-/Bedarfsstand; keine Koordinaten, Preise, Provenienz, Katalog-, Offer- oder Personenliste | `project.read` nur über eigene restriktive Sicht; getrenntes DTO/UI | `M109-PRIVACY-01`, `M109-E2E-01`, `M109-A11Y-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+| `M109-07` / F1.5 | Entfernen der letzten direkten Zuweisung entzieht folgende Sicht | wirksamer Commit; Membership-Löschung nur ohne aktive Referenz | ab nächster Transaktion hidden; laufendes Statement darf seinen Snapshot beenden | Composite-FK RESTRICT für Membership, Project-Cascade für fachlich nutzlose Assignments | `M109-DB-01`, `M109-RACE-01`, `M109-E2E-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+| `M109-08` / F1.2 | Parallele Commands, Reads, Project-Delete und Offboarding bleiben konsistent | erwartete Revision; Project→Workspace→Assignment-Lockordnung | genau ein serieller Stand; Stale/Target/FK-Fehler ohne Deadlock oder Teilstand | Transaction, Revision, Event und Audit atomar | `M109-RACE-01`, `M109-SVC-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+| `M109-09` / F1.1/F1.2/F1.5 | System beweist DB-, Rollen-, UI-, A11y- und Privacy-Grenzen | Fresh/Upgrade, echte `app_runtime`-Loginrolle, Cross-Tenant und Revocation | reproduzierbare grüne Gatekette; kein Deployment-Claim | FORCE RLS, genaue ACL, Worker ohne Assignment-/Helper-Rechte | `M109-CONTRACT-01`, `M109-DB-01`, `M109-RBAC-01`, `M109-PRIVACY-01`, `M109-E2E-01`, `M109-A11Y-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+
 ## Gemeinsamer Liefervertrag M2-01
 
 - Modul: Offers; Tenant-/Owner-Scope: Workspace plus Project/Offer.
-- Rollen: Viewer read-only, Editor capabilitygebunden, External ohne Assignment
-  fail-closed; Admin impliziert wie in der Runtime Capabilities, aktive
+- Rollen: Viewer read-only, Editor capabilitygebunden; External bleibt auch
+  mit M1-09-Assignment für Offers fail-closed; Admin impliziert wie in der Runtime Capabilities, aktive
   Workspace-Feature-Flags bleiben bindend.
 - Oberflächen: Project-CTA, `/w/[workspaceId]/angebote`,
   `/w/[workspaceId]/angebote/[offerId]`.
@@ -89,7 +128,7 @@ Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 | `M201-04` / F2.3 | Editor gliedert und ändert BOM, freie Zeilen und Positionen | strikt erlaubter kompakter Patch; nichtnegative sichere Menge/Preise, BPS, Steuer, Reihenfolge; max. 500 Zeilen | gebündelter Save erzeugt N+1; Snapshot+Mirror atomar | `project.write`, `price.edit` für Preis/Steuer, `discount.apply` für Rabatt; Variant/Section/Line; `offer.variant_revised` | `M201-CONTRACT-01`, `M201-DB-01`, `M201-ACTION-01`, `M201-RBAC-01`, `M201-E2E-01` | REVIEWED/VERIFIED (lokal); reale Produkte/Preise bleiben externes Datengate |
 | `M201-05` / F2.4 | System berechnet reproduzierbar Netto, Rabatt, Steuer und Brutto | serverautoritativ; keine Floats/Clienttotals; Overflow und Cap | pures Resultat im Snapshot; Fehler ohne Teilstand | Service-only; VariantRevision; Event ohne Beträge | `M201-MONEY-01/02` | REVIEWED/VERIFIED (lokal); eigene WMEE-Rundung, private Reonic-Rundung UNKNOWN |
 | `M201-06` / F2.2/F2.3 | Editor erkennt Drift und erzeugt bewusst neue Basisvariante | aktuelle Resolution, alte Variant-ID, explizite Steuerwahl; 0 % frisch bestätigt, keine Vererbung | Outdated bleibt sichtbar; alter Snapshot unverändert; neue Variant | `project.write+price.edit`; Resolution/Variant; `offer.variant_created` | `M201-E2E-02`, `M201-DB-02`, `M201-RBAC-01` | REVIEWED/VERIFIED (lokal); kein stilles Rebase |
-| `M201-07` / F2.3 | Viewer liest Angebot ohne Einkaufsgeheimnisse | autorisierte Workspace-/Offer-ID | read-only DTO; Denied/NotFound ohne Oracle | `project.read`; EK nur `price.read_purchase`; keine Eventseite | `M201-RBAC-01` | REVIEWED/VERIFIED (lokal); External ohne Assignment fail-closed |
+| `M201-07` / F2.3 | Viewer liest Angebot ohne Einkaufsgeheimnisse | autorisierte Workspace-/Offer-ID | read-only DTO; Denied/NotFound ohne Oracle | `project.read`; EK nur `price.read_purchase`; keine Eventseite | `M201-RBAC-01` | REVIEWED/VERIFIED (lokal); External bleibt auch mit M1-09-Assignment gesperrt |
 | `M201-08` / F2.1–F2.4 | Nutzer bedient Editor in allen realen UI-Zuständen | Server-DTOs und untrusted FormData | Loading, Empty, Blocked, Outdated, Dirty, Pending, Conflict, Unavailable/Retry-after, Error, Success, Read-only | jede Action reauthentifiziert; 15-Minuten-Quoten 120/Actor und 1200/Workspace; keine externen Nebenwirkungen | `M201-ACTION-01`, `M201-DB-02`, `M201-E2E-01/02`, `M201-A11Y-01`, `M201-VISUAL-01` | REVIEWED/VERIFIED (lokal); technisches Gate 2 GO; Visual ohne freigegebene Baseline INCONCLUSIVE |
 
 ## Gemeinsamer Liefervertrag M2-02
@@ -229,7 +268,11 @@ Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 
 ## API-Operationen
 
-M2-01/M2-02/M2-03a/M2-03b1 besitzen keine öffentliche REST-API. Die implementierten internen Commands heißen
+M1-09/M2-01/M2-02/M2-03a/M2-03b1 besitzen keine öffentliche REST-API.
+M1-09 ergänzt die vier internen Assignment-Commands Set/Clear
+Hauptverantwortung sowie Add/Remove weitere Person und eine serverseitige
+Membership-Suchaction; alle verlangen erneute Autorisierung und Revision.
+Die implementierten M2-01-Commands heißen
 `createOfferFromRequest`, `duplicateOfferVariant`, `reviseOfferVariant` und
 `createVariantFromCurrentResolution`; M2-02 ergänzt `requestOfferPdfDraft`,
 Status-/Listenreads und den reautorisierten privaten Download-Route-Handler.

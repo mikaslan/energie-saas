@@ -11,6 +11,14 @@ describe("M1-05 Modulgrenzen", () => {
       "moveProjectCard",
     ]);
     expect(Object.keys(projects).sort()).toEqual([
+      "PROJECT_ASSIGNMENT_COMMAND_VERSION",
+      "PROJECT_ASSIGNMENT_MAX_USERS",
+      "ProjectAssignmentConflictError",
+      "ProjectAssignmentLimitError",
+      "ProjectAssignmentNotFoundError",
+      "ProjectAssignmentRoleError",
+      "ProjectAssignmentTargetError",
+      "ProjectAssignmentValidationError",
       "SiteAddressCollisionError",
       "SiteAddressConflictError",
       "SiteAddressInvalidError",
@@ -18,10 +26,15 @@ describe("M1-05 Modulgrenzen", () => {
       "SiteAddressSharedError",
       "SitePinNotConfirmableError",
       "SitePinOutOfRangeError",
+      "changeProjectAssignment",
       "confirmProjectSitePin",
       "correctProjectSiteAddress",
       "getProjectAddressCorrectionContext",
+      "getProjectAssignmentContext",
+      "getProjectPageDetail",
       "getProjectTriageDetail",
+      "projectAssignmentCommandV1Schema",
+      "projectAssignmentSearchV1Schema",
     ]);
   });
 });

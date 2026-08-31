@@ -75,10 +75,12 @@ type SeedData = {
   viewerIdentityId: string;
   restrictedEditorIdentityId: string;
   externalEditorIdentityId: string;
+  externalIdentityId: string;
   editorEmail: string;
   viewerEmail: string;
   restrictedEditorEmail: string;
   externalEditorEmail: string;
+  externalEmail: string;
   m201WorkspaceId: string;
   m201EditorIdentityId: string;
   m201EditorEmail: string;
@@ -100,6 +102,7 @@ type E2EState = Pick<
   | "viewerEmail"
   | "restrictedEditorEmail"
   | "externalEditorEmail"
+  | "externalEmail"
   | "mainContactName"
   | "foreignContactName"
 > & {
@@ -715,7 +718,8 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
       await client.query(
         `insert into membership (workspace_id, user_id, role, capabilities)
          values ($1::uuid, $2::uuid, 'editor',
-           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true}'::jsonb)`,
+           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
+              "assign_projects":true}'::jsonb)`,
         [data.workspaceId, data.editorIdentityId],
       );
       await client.query(
@@ -745,6 +749,15 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
            '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
               "external_only":true}'::jsonb)`,
         [data.workspaceId, data.externalEditorIdentityId],
+      );
+      await client.query(
+        "insert into user_identity (id, email) values ($1::uuid, $2)",
+        [data.externalIdentityId, data.externalEmail],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'viewer', '{"external_only":true}'::jsonb)`,
+        [data.workspaceId, data.externalIdentityId],
       );
     });
 
@@ -1086,10 +1099,12 @@ function createSeedData(): SeedData {
     viewerIdentityId: randomUUID(),
     restrictedEditorIdentityId: randomUUID(),
     externalEditorIdentityId: randomUUID(),
+    externalIdentityId: randomUUID(),
     editorEmail: `m1-05-editor-${runSuffix}@example.test`,
     viewerEmail: `m1-05-viewer-${runSuffix}@example.test`,
     restrictedEditorEmail: `m108b-editor-ohne-preisrecht-${runSuffix}@example.test`,
     externalEditorEmail: `m108b-external-editor-${runSuffix}@example.test`,
+    externalEmail: `m1-09-external-${runSuffix}@example.test`,
     m201WorkspaceId: randomUUID(),
     m201EditorIdentityId: randomUUID(),
     m201EditorEmail: `m2-01-editor-${runSuffix}@example.test`,
@@ -1298,13 +1313,26 @@ async function main(): Promise<number> {
     viewerEmail: seedData.viewerEmail,
     restrictedEditorEmail: seedData.restrictedEditorEmail,
     externalEditorEmail: seedData.externalEditorEmail,
+    externalEmail: seedData.externalEmail,
     mainContactName: seedData.mainContactName,
     foreignContactName: seedData.foreignContactName,
   });
 
+  if (process.env.ENERGIE_SAAS_LOCAL_PREVIEW === "1") {
+    const boardUrl = `${server.baseURL}/w/${seedData.workspaceId}/anfragen`;
+    console.log(`[preview] URL: ${boardUrl}`);
+    console.log(`[preview] Editor: ${seedData.editorEmail}`);
+    console.log(`[preview] External: ${seedData.externalEmail}`);
+    console.log(`[preview] Privates Serverlog: ${serverLogPath}`);
+    console.log("[preview] Der Login-Code erscheint ausschließlich im privaten Serverlog.");
+    console.log("[preview] Beenden mit Ctrl+C; Testdaten und Server werden danach automatisch entfernt.");
+    while (!interruptedBy) await sleep(1_000);
+    return signalExitCode(interruptedBy);
+  }
+
   console.log(grep
     ? `[e2e] Chromium prüft fokussiert: ${grep}`
-    : "[e2e] Chromium prüft M1-06 bis M2-01, Viewer-Grenze, Fremdmandant und Axe …");
+    : "[e2e] Chromium prüft M1-06 bis M2-03b1, M1-08b-Import, M1-09-Zuweisung, Rollen, Fremdmandant und Axe …");
   const playwrightExitCode = await runPlaywright(
     statePath,
     playwrightOutputPath,

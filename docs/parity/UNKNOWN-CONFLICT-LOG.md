@@ -8,6 +8,8 @@ eigene Regeln ausgewiesen und austauschbar.
 
 | ID | Klasse | Frage / Konflikt | Aktuelle Behandlung | Abschlussgate |
 |---|---|---|---|---|
+| `UNK-F1-01` | UNKNOWN | exakte Reonic-Teamvererbung, Assignmentlimits, KAM-Wechsel und Auto-Routing | M1-09 verwendet ausschließlich direkte Memberships, maximal 50, und behält den früheren KAM als weiteren Nutzer; Teams/Routing werden nicht erfunden | öffentliche Evidenz oder Produktinterview vor Team-/Routing-Slice |
+| `UNK-F1-02` | UNKNOWN | exakter Editierumfang eingeschränkter Nutzer, Feldsicht und Offboardingverhalten | eigene WMEE-Regel: nur direkt zugewiesene offene Requests, minimiertes read-only DTO, keine External-Mutation; Membership-Offboarding bleibt bei Assignment fail-closed | öffentliche Evidenz, Datenschutz-/Owner-Review vor breiter External- oder Kundenportal-Sicht |
 | `UNK-F2-01` | UNKNOWN | exaktes Reonic-Nummernformat und Konfigurationsumfang | eigener versionierter Default; Einstellungs-UI später | Interview/öffentliche Doku |
 | `UNK-F2-02` | UNKNOWN | mehrere Offers pro Project oder nur Varianten | v1 unique Offer pro Project | Produktinterview vor Direct-Offer |
 | `UNK-F2-03` | UNKNOWN | private Cent-Rundung je Rabattstufe | eigener gepinnter BigInt-Vertrag | rechtmäßige Evidence oder Accepted Exception |

@@ -12,6 +12,7 @@ import {
 } from "@/lib/integrations/geocoding/contract";
 import {
   can,
+  isExternalOnly,
   PermissionDeniedError,
   type ServiceCtx,
 } from "@/lib/permissions";
@@ -229,7 +230,7 @@ function requireProjectAccess(
   if (!can(ctx, action)) {
     throw new PermissionDeniedError(action, resource, undefined, ctx.actor);
   }
-  if (ctx.capabilities.external_only === true) {
+  if (isExternalOnly(ctx)) {
     throw new PermissionDeniedError(
       action,
       resource,

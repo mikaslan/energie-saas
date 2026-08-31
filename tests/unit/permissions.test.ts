@@ -70,6 +70,10 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
   "project.write": {
     expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
   },
+  "project.assign": {
+    capability: "assign_projects",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
   // Ab hier: editor braucht die Capability, admin nicht (Admin impliziert alle).
   "phase.convert": {
     capability: "convert_phase",
@@ -132,12 +136,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 15 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 16 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(15);
+    expect(Object.keys(MATRIX)).toHaveLength(16);
   });
 
-  it("15 Actions × 3 Rollen × Capability an/aus", () => {
+  it("16 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];
@@ -154,6 +158,45 @@ describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
         expect(can(ctx(role, { [feature]: true }, { [feature]: false }), action), `${action} / ${role}`).toBe(false);
       }
     }
+  });
+});
+
+describe("M1-09 Projektzuweisung ist eine getrennte interne Berechtigungsgrenze", () => {
+  it("verlangt Editor plus assign_projects oder Admin", () => {
+    expect(can(ctx("viewer", { assign_projects: true }), "project.assign")).toBe(false);
+    expect(can(ctx("editor"), "project.assign")).toBe(false);
+    expect(can(ctx("editor", { assign_projects: false }), "project.assign")).toBe(false);
+    expect(can(ctx("editor", { assign_projects: true }), "project.assign")).toBe(true);
+    expect(can(ctx("admin"), "project.assign")).toBe(true);
+  });
+
+  it("sperrt external_only auch bei Editor/Admin und malformed Flags", () => {
+    expect(can(ctx("editor", {
+      assign_projects: true,
+      external_only: true,
+    }), "project.assign")).toBe(false);
+    expect(can(ctx("admin", { external_only: true }), "project.assign")).toBe(false);
+    expect(can(ctx("editor", {
+      assign_projects: true,
+      external_only: false,
+    }), "project.assign")).toBe(true);
+
+    const malformed = {
+      role: "admin",
+      capabilities: { external_only: "false", assign_projects: true },
+      featureFlags: {},
+    } as unknown as PermissionCtx;
+    expect(can(malformed, "project.assign")).toBe(false);
+  });
+
+  it("verwendet kein Workspace-Feature als Ersatz", () => {
+    expect(can(ctx("editor", {}, { assign_projects: true }), "project.assign")).toBe(false);
+    expect(ACTION_REQUIREMENTS["project.assign"]).not.toHaveProperty("feature");
+    expect(ACTION_REQUIREMENTS["project.assign"]).toMatchObject({
+      minRole: "editor",
+      capability: "assign_projects",
+      internalOnly: true,
+    });
   });
 });
 
