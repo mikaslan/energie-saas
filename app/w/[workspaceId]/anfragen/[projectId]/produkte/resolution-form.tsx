@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
-import type { CatalogComponentViewV1 } from "@/lib/integrations/catalog/contract";
+import { Fragment, useActionState, useMemo, useState } from "react";
 import {
   deriveCatalogSelectionPreview,
   type CatalogSelectionAcknowledgement,
@@ -12,21 +11,13 @@ import {
   resolveProjectCatalogAction,
   type ResolutionActionState,
 } from "../../../katalog/actions";
+import {
+  searchProjectCatalogAction,
+  type ProjectCatalogSearchState,
+} from "./actions";
+import type { ResolutionSelectableComponent } from "./selection-view";
 
 const MAX_QUANTITY = 100_000;
-
-export type ResolutionSelectableComponent = {
-  id: string;
-  revision: number;
-  sku: string;
-  name: string;
-  manufacturer: string;
-  model: string;
-  componentType: CatalogComponentViewV1["identity"]["componentType"];
-  technicalData: CatalogComponentViewV1["technicalData"];
-  salesPriceNetCents: number;
-  purchasePriceNetCents?: number;
-};
 
 const typeLabels: Record<ResolutionSelectableComponent["componentType"], string> = {
   module: "PV-Module", inverter: "Wechselrichter", battery: "Speicher",
@@ -56,12 +47,10 @@ function formatCents(value: number): string {
 
 function checkedMoneyTotal(
   components: ResolutionSelectableComponent[],
-  selected: Record<string, boolean>,
   quantities: Record<string, number>,
 ): number {
   let total = 0;
   for (const component of components) {
-    if (!selected[component.id]) continue;
     const quantity = quantities[component.id] ?? 1;
     const purchasePrice = component.purchasePriceNetCents;
     if (purchasePrice === undefined) continue;
@@ -89,6 +78,15 @@ function actionMessage(state: ResolutionActionState): string | null {
   if (state.status === "invalid" && state.field === "selection") return "Die Produktauswahl ist unvollständig oder veraltet. Prüfe die markierte Auswahl und lade sie bei Bedarf neu.";
   if (state.status === "invalid" && state.field === "acknowledgements") return "Bestätige exakt die aktuell angezeigten Abweichungen.";
   return "Prüfe Auswahl, Mengen und alle erforderlichen Bestätigungen.";
+}
+
+function searchMessage(state: ProjectCatalogSearchState): string | null {
+  if (state.status === "idle" || state.status === "success") return null;
+  if (state.status === "invalid") return "Gib mindestens zwei Zeichen für die Produktsuche ein.";
+  if (state.status === "unauthenticated") return "Deine Sitzung ist abgelaufen.";
+  if (state.status === "denied") return "Die Katalogsuche ist für dich nicht freigegeben.";
+  if (state.status === "not_found") return "Das Projekt ist nicht mehr verfügbar.";
+  return "Die serverseitige Katalogsuche ist gerade nicht verfügbar.";
 }
 
 function technicalLabel(component: ResolutionSelectableComponent): string {
@@ -121,11 +119,12 @@ export function ResolutionForm({
   components: ResolutionSelectableComponent[];
   initialSelections: Record<string, number>;
 }) {
-  const [selected, setSelected] = useState<Record<string, boolean>>(() => (
-    Object.fromEntries(components.map((component) => [
-      component.id,
-      initialSelections[component.id] !== undefined,
-    ]))
+  const [selectedComponents, setSelectedComponents] = useState<
+    Record<string, ResolutionSelectableComponent>
+  >(() => (
+    Object.fromEntries(components.filter((component) => (
+      initialSelections[component.id] !== undefined
+    )).map((component) => [component.id, component]))
   ));
   const [quantities, setQuantities] = useState<Record<string, number>>(() => (
     Object.fromEntries(components.map((component) => [
@@ -137,10 +136,30 @@ export function ResolutionForm({
     resolveProjectCatalogAction,
     { status: "idle" } satisfies ResolutionActionState,
   );
+  const [searchState, searchAction, searchPending] = useActionState(
+    searchProjectCatalogAction,
+    { status: "idle" } satisfies ProjectCatalogSearchState,
+  );
+  const selectedComponentList = useMemo(() => (
+    Object.values(selectedComponents).sort((left, right) => (
+      left.componentType.localeCompare(right.componentType, "en-US")
+      || left.sku.localeCompare(right.sku, "en-US")
+      || left.id.localeCompare(right.id, "en-US")
+    ))
+  ), [selectedComponents]);
+  const availableComponents = useMemo(() => {
+    const byId = new Map<string, ResolutionSelectableComponent>();
+    for (const component of components) byId.set(component.id, component);
+    if (searchState.status === "success") {
+      for (const component of searchState.components) byId.set(component.id, component);
+    }
+    for (const component of selectedComponentList) byId.set(component.id, component);
+    return [...byId.values()];
+  }, [components, searchState, selectedComponentList]);
   const previewResult = useMemo(() => {
     try {
       const preview = deriveCatalogSelectionPreview(
-        components.filter((component) => selected[component.id]).map((component) => ({
+        selectedComponentList.map((component) => ({
           componentId: component.id,
           componentType: component.componentType,
           quantity: quantities[component.id] ?? 1,
@@ -152,7 +171,7 @@ export function ResolutionForm({
       return {
         ok: true as const,
         preview,
-        purchaseTotal: checkedMoneyTotal(components, selected, quantities),
+        purchaseTotal: checkedMoneyTotal(selectedComponentList, quantities),
       };
     } catch {
       return {
@@ -161,16 +180,17 @@ export function ResolutionForm({
         purchaseTotal: 0,
       };
     }
-  }, [components, quantities, requested, selected]);
-  const canShowPurchaseTotal = components.length > 0 && components.every((component) => (
+  }, [quantities, requested, selectedComponentList]);
+  const canShowPurchaseTotal = selectedComponentList.length > 0
+    && selectedComponentList.every((component) => (
     component.purchasePriceNetCents !== undefined
   ));
   const message = actionMessage(state);
+  const searchError = searchMessage(searchState);
   const actionErrorId = state.status === "invalid" ? "resolution-action-error" : undefined;
 
   const { preview, purchaseTotal } = previewResult;
-  const acknowledgementFingerprint = components
-    .filter((component) => selected[component.id])
+  const acknowledgementFingerprint = selectedComponentList
     .map((component) => `${component.id}:${component.revision}:${quantities[component.id] ?? 1}`)
     .concat(preview.requiredAcknowledgements)
     .join("|");
@@ -181,13 +201,76 @@ export function ResolutionForm({
       : `Auswahl vollständig. PV ${preview.selected.pvModulePowerWatts} von ${requested.pvPeakPowerWatts} Watt. Speicher ${preview.selected.storageUsableCapacityWh} von ${requested.storageCapacityWh} Wattstunden. VK-Summe ${formatCents(preview.salesPriceNetCents)}. Erforderliche Bestätigungen: ${preview.requiredAcknowledgements.length > 0 ? preview.requiredAcknowledgements.map((code) => ackLabels[code]).join(" ") : "keine"}.`;
 
   return (
-    <form action={action} className="grid gap-6">
+    <div className="grid gap-6">
+      <section aria-labelledby="catalog-search-title" className="rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5">
+        <h3 id="catalog-search-title" className="text-sm font-semibold text-slate-950">Katalog serverseitig durchsuchen</h3>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          Die Suche läuft vor der 200er-Anzeigegrenze. Gefundene Produkte bleiben
+          in deiner Auswahl, auch wenn du danach nach einer anderen SKU suchst.
+        </p>
+        <form action={searchAction} role="search" className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="projectId" value={projectId} />
+          <label className="grid flex-1 gap-1.5 text-sm font-semibold text-slate-800">
+            Produkt-SKU oder Name suchen
+            <input
+              name="query"
+              type="search"
+              minLength={2}
+              maxLength={120}
+              required
+              aria-invalid={searchError !== null}
+              aria-describedby={searchError ? "catalog-search-error" : undefined}
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+            />
+          </label>
+          <button type="submit" disabled={searchPending} className="min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-50">
+            {searchPending ? "Suche läuft …" : "Katalog durchsuchen"}
+          </button>
+        </form>
+        {searchError ? <p id="catalog-search-error" role="alert" className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900">{searchError}</p> : null}
+        <div role="region" aria-labelledby="catalog-search-results-title" className="mt-4">
+          <h4 id="catalog-search-results-title" className="text-sm font-semibold text-slate-950">Suchergebnisse</h4>
+          {searchState.status === "success" ? (
+            <p role="status" className="mt-1 text-sm text-slate-600">
+              {searchState.components.length.toLocaleString("de-DE")} Treffer für „{searchState.query}“ sind unten auswählbar.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-slate-600">Noch keine serverseitige Suche ausgeführt.</p>
+          )}
+        </div>
+      </section>
+
+      <section aria-labelledby="selected-products-title" className="rounded-lg border border-blue-200 bg-blue-50 p-4 sm:p-5">
+        <h3 id="selected-products-title" className="text-sm font-semibold text-blue-950">Ausgewählte Produkte</h3>
+        {selectedComponentList.length === 0 ? (
+          <p className="mt-1 text-sm text-blue-900">Noch kein Produkt ausgewählt.</p>
+        ) : (
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {selectedComponentList.map((component) => (
+              <li key={component.id} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-slate-800">
+                <span className="font-semibold">{component.name}</span>
+                <span className="ml-2 font-mono text-xs text-slate-600">{component.sku}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <form action={action} className="grid gap-6">
       <input type="hidden" name="workspaceId" value={workspaceId} />
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="expectedResolutionRevision" value={expectedResolutionRevision} />
       <input type="hidden" name="expectedRequirementRevision" value={expectedRequirementRevision} />
       <input type="hidden" name="expectedCalculationRevision" value={expectedCalculationRevision} />
-      <input type="hidden" name="componentCount" value={components.length} />
+      <input type="hidden" name="selectionCount" value={selectedComponentList.length} />
+      {selectedComponentList.map((component, index) => (
+        <Fragment key={component.id}>
+          <input type="hidden" name={`selection.${index}.componentId`} value={component.id} />
+          <input type="hidden" name={`selection.${index}.revision`} value={component.revision} />
+          <input type="hidden" name={`selection.${index}.quantity`} value={quantities[component.id] ?? 1} />
+        </Fragment>
+      ))}
 
       {message ? (
         <p id={actionErrorId} role={state.status === "success" ? "status" : "alert"} aria-live="polite" className={state.status === "success" ? "rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-950" : "rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900"}>
@@ -202,27 +285,37 @@ export function ResolutionForm({
       >
         <legend className="mb-1 text-base font-semibold text-slate-950">Aktive Produkte auswählen</legend>
         {Object.entries(typeLabels).map(([componentType, groupLabel]) => {
-          const group = components.filter((component) => component.componentType === componentType);
+          const group = availableComponents.filter(
+            (component) => component.componentType === componentType,
+          );
           if (group.length === 0) return null;
           return (
             <section key={componentType} aria-labelledby={`group-${componentType}`} className="grid gap-3">
               <h3 id={`group-${componentType}`} className="text-sm font-semibold text-slate-700">{groupLabel}</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 {group.map((component) => {
-                  const index = components.findIndex((candidate) => candidate.id === component.id);
+                  const selectedIndex = selectedComponentList.findIndex(
+                    (candidate) => candidate.id === component.id,
+                  );
+                  const selected = selectedComponents[component.id] !== undefined;
                   return (
-                    <div key={component.id} className={selected[component.id] ? "rounded-lg border border-blue-300 bg-blue-50 p-4" : "rounded-lg border border-slate-200 bg-white p-4"}>
-                      <input type="hidden" name={`selection.${index}.componentId`} value={component.id} />
-                      <input type="hidden" name={`selection.${index}.revision`} value={component.revision} />
+                    <div key={component.id} className={selected ? "rounded-lg border border-blue-300 bg-blue-50 p-4" : "rounded-lg border border-slate-200 bg-white p-4"}>
                       <label className="flex min-h-11 cursor-pointer items-start gap-3">
                         <input
                           type="checkbox"
-                          name={`selection.${index}.selected`}
-                          value="yes"
-                          checked={selected[component.id] ?? false}
+                          checked={selected}
                           aria-invalid={state.status === "invalid" && state.field === "selection"
-                            && (state.selectionIndex === undefined || state.selectionIndex === index)}
-                          onChange={(event) => setSelected((current) => ({ ...current, [component.id]: event.target.checked }))}
+                            && selected
+                            && (state.selectionIndex === undefined
+                              || state.selectionIndex === selectedIndex)}
+                          onChange={(event) => setSelectedComponents((current) => {
+                            if (event.target.checked) {
+                              return { ...current, [component.id]: component };
+                            }
+                            const next = { ...current };
+                            delete next[component.id];
+                            return next;
+                          })}
                           className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-700 focus:ring-blue-600"
                         />
                         <span className="min-w-0">
@@ -235,17 +328,21 @@ export function ResolutionForm({
                       <label className="mt-3 grid gap-1 text-xs font-semibold text-slate-700">
                         Menge für {component.name}
                         <input
-                          name={`selection.${index}.quantity`}
                           type="number"
                           min="1"
                           max={MAX_QUANTITY}
                           step="1"
                           required
+                          disabled={!selected}
                           value={quantities[component.id] ?? 1}
                           aria-invalid={state.status === "invalid" && state.field === "quantity"
-                            && (state.selectionIndex === undefined || state.selectionIndex === index)}
+                            && selected
+                            && (state.selectionIndex === undefined
+                              || state.selectionIndex === selectedIndex)}
                           aria-describedby={state.status === "invalid" && state.field === "quantity"
-                            && (state.selectionIndex === undefined || state.selectionIndex === index)
+                            && selected
+                            && (state.selectionIndex === undefined
+                              || state.selectionIndex === selectedIndex)
                             ? actionErrorId
                             : undefined}
                           onChange={(event) => {
@@ -313,6 +410,7 @@ export function ResolutionForm({
       <button type="submit" disabled={pending || !previewResult.ok || preview.blockers.length > 0} className="min-h-11 w-full rounded-md bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:justify-self-start">
         {pending ? "Wird revisionssicher bestätigt …" : "Projektauflösung bestätigen"}
       </button>
-    </form>
+      </form>
+    </div>
   );
 }

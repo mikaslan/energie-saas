@@ -1,6 +1,6 @@
 # Workflow- und Statusmaschinen
 
-Stand: 2026-08-30 · M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-08-31 · M1-08b, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Project-Phase
 
@@ -14,6 +14,35 @@ Vorbedingungen: autorisierter Editor, bestätigter Standort, keine Dedupe-/Pin-
 Blocker, aktuelle Calculation und aktuelle Projektauflösung. Offer, Phase,
 Spalte, Event und Audit sind eine Transaktion. Rückwärts-, Won-, Lost- und
 Installation-Übergänge gehören nicht in M2-01.
+
+## Katalog-CSV-Import
+
+```text
+missing -- valid preview --> ready_for_review
+ready_for_review -- authorized start + attestation --> queued
+ready_for_review -- cancel/7-day expiry --> cancelled_before_start
+queued|retry_wait -- valid worker claim --> running (1..25 rows)
+running -- successful batch + rows remaining --> queued
+running -- successful last batch + no row errors --> succeeded
+running -- successful last batch + successes and errors/conflicts --> partial
+running -- no successful row/all conflicts --> failed_final
+queued|running|retry_wait -- third consecutive technical failure --> failed_final
+```
+
+Ein Claim bindet höchstens 25 eindeutige Zeilen 2..1001 an Lease-Token und
+Generation. Erfolgreicher Batchfortschritt setzt den technischen
+Fehlerzähler zurück; deshalb sind 1.000 valide Zeilen in exakt 40
+erfolgreichen Batches zulässig. Technische Retry-/Recovery-Zustellung und
+fachliche Zeilenergebnisse bleiben getrennt. Verlorene, fällige oder
+malformed ID-only-Dispatches werden begrenzt repariert beziehungsweise
+quarantänisiert; ein alter Worker kann nach Lease-/Generationwechsel nichts
+mehr committen.
+
+`succeeded`, `partial`, `failed_final` und `cancelled_before_start` sind
+terminal. Nach der 30-Tage-Due-Grenze redigiert der Cleanup atomar die
+geschützten Preview-/Commanddaten, ohne Counts, feste Codes, Component- und
+Revisionsbelege umzuschreiben. Neue/geänderte Komponenten bleiben `draft`;
+die bestehende M1-08-Aktivierung ist kein Importzustand.
 
 ## Offer v1
 

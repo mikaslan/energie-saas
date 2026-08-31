@@ -36,6 +36,7 @@ import {
   ProjectCatalogConflictError,
   resolveProjectCatalog,
   reviseCatalogComponentPricing,
+  searchActiveProjectCatalogComponents,
 } from "@/modules/catalog";
 import { testPool } from "../setup/test-db";
 
@@ -502,6 +503,53 @@ async function waitForNamedSessionLock(
 }
 
 describe("M1-08 Projekt-Katalogauflösung", () => {
+  it("findet eine aktive SKU hinter der 200er-Anzeigegrenze serverseitig", async () => {
+    const members = await createResolutionMembers();
+    const project = await createPlanningProject(members);
+    const editor = resolutionCtx(members, "editor");
+    const projectEditor = resolutionCtx(members, "project");
+    let targetId = "";
+
+    await withTenantOn(testPool, members.workspaceId, async (tx) => {
+      for (let index = 0; index < 205; index += 1) {
+        const command = productCommand("module", 10_000 + index);
+        command.internalSku = `AAA-M108-${index.toString().padStart(3, "0")}`;
+        const created = await createCatalogComponent(tx, editor, command);
+        await activateCatalogComponent(tx, editor, {
+          componentId: created.componentId,
+          expectedRevision: 1,
+          expectedStatus: "draft",
+        });
+      }
+      const target = productCommand("module", 20_000);
+      target.internalSku = "ZZZ-M108-SERVER-SEARCH-TARGET";
+      const created = await createCatalogComponent(tx, editor, target);
+      targetId = created.componentId;
+      await activateCatalogComponent(tx, editor, {
+        componentId: created.componentId,
+        expectedRevision: 1,
+        expectedStatus: "draft",
+      });
+    });
+
+    const context = await withTenantOn(testPool, members.workspaceId, (tx) =>
+      getProjectCatalogResolutionContext(tx, projectEditor, project.projectId));
+    expect(context?.activeComponents).toHaveLength(200);
+    expect(context?.activeComponents.some((component) => component.id === targetId)).toBe(false);
+
+    const found = await withTenantOn(testPool, members.workspaceId, (tx) =>
+      searchActiveProjectCatalogComponents(tx, projectEditor, {
+        projectId: project.projectId,
+        query: "zzz-m108-server-search-target",
+      }));
+    expect(found).toHaveLength(1);
+    expect(found?.[0]).toMatchObject({
+      id: targetId,
+      status: "active",
+      current: { identity: { internalSku: "ZZZ-M108-SERVER-SEARCH-TARGET" } },
+    });
+  }, 30_000);
+
   it("bindet ausschließlich aktuelle Planung und aktive Revisionen, redigiert Reads und leitet Stale ab", async () => {
     const members = await createResolutionMembers();
     const project = await createPlanningProject(members);

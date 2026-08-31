@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
+  CATALOG_IMPORT_QUEUE_OPTIONS,
   CalculationQueueBootstrapError,
   OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
   classifyCalculationQueueBootstrap,
@@ -40,6 +42,21 @@ function snapshot(
 }
 
 describe("M1-07 pg-boss Fresh-Install-Bootstrap", () => {
+  it("pinnt beide M1-08b-Katalogimport-Queues identisch", () => {
+    const expected = {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    };
+    expect(CATALOG_IMPORT_QUEUE_OPTIONS).toEqual(expected);
+    expect(CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS).toEqual(expected);
+    expect(Object.isFrozen(CATALOG_IMPORT_QUEUE_OPTIONS)).toBe(true);
+    expect(Object.isFrozen(CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS)).toBe(true);
+  });
+
   it("pinnt den getrennten M2-03a-Queue-Vertrag", () => {
     expect(OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS).toEqual({
       policy: "exclusive",

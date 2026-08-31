@@ -1,6 +1,6 @@
 # Rollen- und Berechtigungsmatrix
 
-Stand: 2026-08-30 · M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-08-31 · M1-08b, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 Die Laufzeitwahrheit bleibt `lib/permissions.ts`; diese Matrix dokumentiert die
 beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
@@ -17,6 +17,11 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
 | Rabatt oder Custom Deal Value ändern | nein | nur mit Recht | ja | nein | nein | zusätzlich `discount.apply`; Admin impliziert Capability |
 | EK, Einkaufsquelle, Marge, private Vollhashes lesen | nein | nur mit Recht | ja | nein | nein | zusätzlich `price.read_purchase`; strukturelle DTO-Trennung |
 | EK einer freien Zeile ändern | nein | nur mit beiden Rechten | ja | nein | nein | `price.edit` + `price.read_purchase`; Admin impliziert beide |
+| CSV-Datei prüfen und Preview persistieren | nein | nur mit allen drei Rechten | ja | nein | nein | `catalog.manage` + `price.edit` + `price.read_purchase`; gleiche Session/Origin, ≤1 MiB/1.000 Zeilen |
+| Katalogimport starten | nein | nur mit allen drei Rechten | ja | nein | nein | dieselben drei Rechte plus versionierte Rechteattestation und `ready_for_review` |
+| Nicht gestartete Preview abbrechen | nein | nur mit allen drei Rechten | ja | nein | nein | dieselben drei Rechte; exakte Workspace-/Importbindung |
+| Importstatus, Vorschau und Fehlerreport lesen | nein | nur mit allen drei Rechten | ja | nein | nur fachlicher Job | dieselben drei Rechte; private paginierte DTO/CSV, kein Objektoracle |
+| Import claimen, verarbeiten, recovern und redigieren | nein | nein | nein | nein | ja, minimal | ID-only-Queues; ausschließlich M1-08b-Definer-Gateways, maximal 25 Zeilen je Claim; kein direktes Importtabellen- oder Katalog-DML |
 | PDF-Jobstatus lesen | ja | ja | ja | nein | nur fachlicher Job | `project.read`, gleicher Workspace; DTO ohne Input, Bytes, Preise und Vollhashes |
 | Erfolgreichen PDF-Entwurf herunterladen | ja | ja | ja | nein | nein | `project.read`, erneute Tenant-/Offer-/Job- sowie MIME-/Längen-/Hashprüfung; privat/no-store |
 | PDF-Entwurf anfordern oder Dispatch replayen | nein | nur mit Recht | ja | nein | nein | `project.write`, aktuelle Variantenrevision; kein M2-02-Rollout-Flag |
@@ -62,6 +67,10 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
   die zwingend nötige Kanonizitätsprüfung. Er darf weder Profile aktivieren,
   Empfänger ändern, menschliche Approvals/Withdrawals schreiben noch Archive
   oder Storage bedienen.
+- M1-08b erlaubt dem Worker ausschließlich ID-only Claim/Apply/Finalize,
+  Recovery, Locator-Quarantäne und Due-Cleanup über eng signierte Gateways.
+  Runtime und Worker besitzen keinerlei direkte DML auf den vier
+  Importrelationen; der Worker darf Katalogtabellen nicht direkt mutieren.
 - `approved_not_issued` ist ausschließlich ein abgeleiteter interner
   Freigabestand. Er erteilt kein Recht auf Ausstellung, Versand, WORM-Promotion
   oder Signatur und verändert den Offer-Vertragsstatus nicht.

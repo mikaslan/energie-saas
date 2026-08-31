@@ -16,6 +16,8 @@ import {
 import { withTenantOn } from "@/lib/db/tenant";
 import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
 import {
+  CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
+  CATALOG_IMPORT_QUEUE_OPTIONS,
   LEGACY_CALCULATION_QUEUE_OPTIONS,
   OFFER_ISSUANCE_QUEUE_OPTIONS,
   OFFER_PDF_QUEUE_OPTIONS,
@@ -382,6 +384,11 @@ async function bootstrapStrictRolesAndPgBoss(
   try {
     await boss.start();
     await boss.createQueue("calculation.execute", LEGACY_CALCULATION_QUEUE_OPTIONS);
+    await boss.createQueue("catalog.import.v1", CATALOG_IMPORT_QUEUE_OPTIONS);
+    await boss.createQueue(
+      "catalog.import.cleanup.v1",
+      CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
+    );
     await boss.createQueue("pdf.render", OFFER_PDF_QUEUE_OPTIONS);
     await boss.createQueue(
       "offer.release-candidate.render",
@@ -476,7 +483,7 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
     const journal = JSON.parse(
       readFileSync(resolve("drizzle/meta/_journal.json"), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
-    expect(journal.entries.at(-1)).toMatchObject({
+    expect(journal.entries[35]).toMatchObject({
       idx: 35,
       tag: "0035_m2_03b1_offer_issuance",
     });

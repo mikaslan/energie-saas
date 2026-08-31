@@ -5,10 +5,12 @@ import { z } from "zod";
 import { SignOutButton } from "@/app/_components/sign-out-button";
 import { DeniedState, Section } from "../_ui";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
-import { can, PermissionDeniedError } from "@/lib/permissions";
+import { can, isExternalOnly, PermissionDeniedError } from "@/lib/permissions";
 import {
+  getLatestCatalogImport,
   listCatalogComponents,
   type CatalogComponentReadModel,
+  type CatalogImportDetails,
   type CatalogListFilters,
 } from "@/modules/catalog";
 import { ProductForm } from "./product-form";
@@ -34,6 +36,16 @@ const typeLabels: Record<string, string> = {
   other: "Sonstiges",
 };
 const statusLabels = { draft: "Entwurf", active: "Aktiv", archived: "Archiviert" } as const;
+const importStateLabels: Record<CatalogImportDetails["state"], string> = {
+  ready_for_review: "Bereit zur Prüfung",
+  queued: "Eingeplant",
+  running: "Wird verarbeitet",
+  retry_wait: "Wartet auf Wiederholung",
+  succeeded: "Erfolgreich",
+  partial: "Teilweise erfolgreich",
+  failed_final: "Fehlgeschlagen",
+  cancelled_before_start: "Vor Start abgebrochen",
+};
 
 type CatalogLoad =
   | {
@@ -41,6 +53,8 @@ type CatalogLoad =
       components: CatalogComponentReadModel[];
       canManage: boolean;
       canReadPurchasePrice: boolean;
+      canImport: boolean;
+      latestImport: CatalogImportDetails | null;
     }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
@@ -51,12 +65,20 @@ async function loadCatalog(workspaceId: string, filters: CatalogListFilters): Pr
       workspaceId,
       "catalog.read",
       "catalog_component",
-      async (tx, ctx) => ({
-        kind: "loaded" as const,
-        components: await listCatalogComponents(tx, ctx, filters),
-        canManage: can(ctx, "catalog.manage"),
-        canReadPurchasePrice: can(ctx, "price.read_purchase"),
-      }),
+      async (tx, ctx) => {
+        const canImport = can(ctx, "catalog.manage")
+          && can(ctx, "price.edit")
+          && can(ctx, "price.read_purchase")
+          && !isExternalOnly(ctx);
+        return {
+          kind: "loaded" as const,
+          components: await listCatalogComponents(tx, ctx, filters),
+          canManage: can(ctx, "catalog.manage"),
+          canReadPurchasePrice: can(ctx, "price.read_purchase"),
+          canImport,
+          latestImport: canImport ? await getLatestCatalogImport(tx, ctx) : null,
+        };
+      },
     );
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
@@ -142,6 +164,42 @@ export default async function CatalogPage({
         </header>
 
         <div className="grid gap-6">
+          {result.canImport ? (
+            <Section
+              title="CSV-Import"
+              intro="Eigene Produktdaten prüfen, zuordnen und erst nach einer Vorschau übernehmen."
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-950">Letzter CSV-Import</h3>
+                  {result.latestImport ? (
+                    <p className="mt-1 text-sm text-slate-600">
+                      {importStateLabels[result.latestImport.state]} · {result.latestImport.counts.total.toLocaleString("de-DE")} Zeilen
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-600">Noch kein CSV-Import in diesem Workspace.</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {result.latestImport ? (
+                    <Link
+                      href={`${catalogPath}/importe/${result.latestImport.importId}`}
+                      className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                    >
+                      Letzten Import öffnen
+                    </Link>
+                  ) : null}
+                  <Link
+                    href={`${catalogPath}/import`}
+                    className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  >
+                    CSV importieren
+                  </Link>
+                </div>
+              </div>
+            </Section>
+          ) : null}
+
           <Section title="Katalog filtern" intro="Filter bleiben in der URL erhalten und können geteilt werden.">
             <form method="get" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_2fr_auto]">
               <label className="grid gap-1.5 text-sm font-medium text-slate-800">

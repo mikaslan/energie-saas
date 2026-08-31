@@ -13,6 +13,7 @@ import {
   returnCatalogComponentToDraft,
   reviseCatalogComponentDetails,
   reviseCatalogComponentPricing,
+  searchActiveProjectCatalogComponents,
 } from "@/modules/catalog";
 
 describe("M1-08 external-only Kataloggrenze", () => {
@@ -47,6 +48,7 @@ describe("M1-08 external-only Kataloggrenze", () => {
       () => returnCatalogComponentToDraft(tx, context, invalid),
       () => getProjectCatalogResolutionContext(tx, context, invalid),
       () => resolveProjectCatalog(tx, context, invalid),
+      () => searchActiveProjectCatalogComponents(tx, context, invalid),
     ];
 
     for (const call of calls) {

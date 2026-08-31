@@ -71,6 +71,97 @@ const OFFER_ISSUANCE_RELATIONS = [
   "offer_issuance_withdrawal",
 ] as const;
 
+const CATALOG_IMPORT_RELATIONS = [
+  "catalog_import_dispatch_receipt",
+  "catalog_import_job",
+  "catalog_import_row",
+  "catalog_import_row_result",
+] as const;
+
+const CATALOG_IMPORT_PRIVATE_ROUTINES = [
+  "public._m108b_authorize_catalog_import_runtime(uuid)",
+  "public._m108b_catalog_import_actor_auth_code(uuid,uuid)",
+  "public._m108b_catalog_import_error_source_header_bytes(jsonb)",
+  "public._m108b_catalog_import_persisted_input_valid(uuid,uuid)",
+  "public._m108b_catalog_import_receipt_response(uuid,uuid,uuid,text,text,bigint)",
+  "public._m108b_derive_catalog_import_row_payload()",
+  "public._m108b_guard_catalog_import_job()",
+  "public._m108b_guard_catalog_import_row()",
+  "public._m108b_jsonb_date(jsonb)",
+  "public._m108b_jsonb_exact_keys(jsonb,text[])",
+  "public._m108b_jsonb_integer_between(jsonb,numeric,numeric)",
+  "public._m108b_jsonb_sha256(jsonb)",
+  "public._m108b_jsonb_trimmed_text(jsonb,integer,integer)",
+  "public._m108b_jsonb_uuid(jsonb)",
+  "public._m108b_lock_catalog_import_workspace(uuid)",
+  "public._m108b_redact_catalog_import_error_array(jsonb)",
+  "public._m108b_valid_catalog_import_commercial(jsonb)",
+  "public._m108b_valid_catalog_import_error_array(jsonb)",
+  "public._m108b_valid_catalog_import_expected(jsonb)",
+  "public._m108b_valid_catalog_import_lease_rows(integer[])",
+  "public._m108b_valid_catalog_import_mapping(jsonb)",
+  "public._m108b_valid_catalog_import_presentation(jsonb)",
+  "public._m108b_valid_catalog_import_provenance(jsonb)",
+  "public._m108b_valid_catalog_import_revision(jsonb)",
+  "public._m108b_valid_catalog_import_row_command(jsonb)",
+  "public._m108b_valid_catalog_import_sealed_target(jsonb)",
+  "public._m108b_valid_catalog_import_source_command(jsonb)",
+  "public._m108b_valid_catalog_import_technical_data(text,jsonb)",
+  "public._m108b_validate_catalog_import_dispatch_receipt()",
+  "public._m108b_validate_catalog_import_job_input()",
+  "public._m108b_validate_catalog_import_redaction()",
+  "public._m108b_validate_catalog_import_result_input()",
+  "public._m108b_validate_catalog_import_row_input()",
+  "public.canonicalize_catalog_json_v1(jsonb)",
+] as const;
+
+const CATALOG_IMPORT_RUNTIME_ROUTINES = [
+  "public.cancel_catalog_import_v1(uuid,uuid)",
+  "public.prepare_catalog_import_v1(uuid,uuid,jsonb)",
+  "public.read_catalog_import_rows_v1(uuid,uuid,integer,integer)",
+  "public.read_catalog_import_v1(uuid,uuid)",
+  "public.read_latest_catalog_import_id_v1(uuid)",
+  "public.start_catalog_import_v1(uuid,uuid,text)",
+] as const;
+
+const CATALOG_IMPORT_WORKER_ROUTINES = [
+  "public.apply_catalog_import_row_v1(uuid,uuid,integer,uuid,bigint)",
+  "public.claim_catalog_import_v1(uuid,uuid,uuid,integer)",
+  "public.cleanup_catalog_import_snapshots_v1(uuid,integer)",
+  "public.complete_catalog_import_batch_v1(uuid,uuid,uuid,bigint)",
+  "public._m108b_catalog_import_dispatch_state(uuid,uuid,text)",
+  "public.finalize_catalog_import_failure_v1(uuid,uuid,uuid,bigint,text)",
+  "public.record_catalog_import_dispatch_failure_v1(uuid,uuid,uuid,text)",
+  "public.record_catalog_import_preclaim_failure_v1(uuid,uuid,uuid,text)",
+  "public.recover_catalog_imports_v1(uuid,integer)",
+] as const;
+
+const CATALOG_IMPORT_PGBOSS_RUNTIME_ROUTINES = [
+  "pgboss.enqueue_catalog_import_cleanup_v1(uuid,uuid,uuid)",
+  "pgboss.enqueue_catalog_import_v1(uuid,uuid,uuid)",
+] as const;
+
+const CATALOG_IMPORT_PGBOSS_WORKER_ROUTINES = [
+  "pgboss.list_catalog_import_cleanup_locator_jobs_v1(uuid,integer)",
+  "pgboss.list_catalog_import_recovery_locator_jobs_v1(uuid,integer)",
+  "pgboss.quarantine_catalog_import_locator_job_v1(uuid)",
+] as const;
+
+const CATALOG_IMPORT_PGBOSS_ROUTINES = [
+  ...CATALOG_IMPORT_PGBOSS_RUNTIME_ROUTINES,
+  ...CATALOG_IMPORT_PGBOSS_WORKER_ROUTINES,
+] as const;
+
+const CATALOG_IMPORT_ROUTINES = [
+  ...CATALOG_IMPORT_PRIVATE_ROUTINES,
+  ...CATALOG_IMPORT_RUNTIME_ROUTINES,
+  ...CATALOG_IMPORT_WORKER_ROUTINES,
+] as const;
+
+const CATALOG_IMPORT_FUNCTION_NAMES = CATALOG_IMPORT_ROUTINES.map(
+  (signature) => signature.slice("public.".length, signature.indexOf("(")),
+);
+
 export interface DbRoleProvisioningTopology {
   /** SQL-Admin, der die Zielrollen angelegt und die Fachkanten erteilt hat. */
   provisioningAdminRole: string;
@@ -265,6 +356,12 @@ const APPLY_ROLE_CONTRACT_SQL = `
     public.domain_events,
     public.audit_log
   to app_runtime;
+  -- PostgreSQL verlangt fuer SELECT ... FOR SHARE neben SELECT auch ein
+  -- UPDATE-Recht. Die Autorisierungsgrenze sperrt damit am Commit genau die
+  -- Workspace-Zeile gegen Membership-Widerrufe. Nur die bereits durch PK,
+  -- RLS und FK-Vertrag unveraenderliche ID-Spalte wird dafuer freigegeben;
+  -- Name und Feature-Flags bleiben fuer Runtime strikt nicht mutierbar.
+  grant update (id) on public.workspace to app_runtime;
   grant insert, update, delete on public.site to app_runtime;
   grant insert on public.domain_events, public.audit_log to app_runtime;
 
@@ -742,6 +839,13 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         public.inbound_receipt,
         public.calculator_snapshot,
         public.project_requirement
+      to app_runtime;
+      -- SELECT ... FOR SHARE braucht laut PostgreSQL zusaetzlich ein
+      -- UPDATE-Recht auf mindestens einer Spalte. Nur die durch PK/FK-
+      -- Bindungen geschuetzte Identitaet wird fuer die Basis-Locks geoeffnet.
+      grant update (id) on
+        public.inbound_receipt,
+        public.project_requirement
       to app_runtime
     `);
   }
@@ -800,7 +904,9 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
 
     grant select, insert, update on public.site_energy_profile to app_runtime;
     grant select, insert on public.project_calculation_job to app_runtime;
+    grant update (id) on public.project_calculation_job to app_runtime;
     grant select on public.project_calculation_revision to app_runtime;
+    grant update (id) on public.project_calculation_revision to app_runtime;
 
     grant select on
       public.workspace,
@@ -897,6 +1003,7 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         public.project_catalog_resolution,
         public.project_catalog_resolution_line
       to app_runtime;
+      grant update (id) on public.project_catalog_resolution to app_runtime;
 
       revoke execute on function public.guard_catalog_component_mutation()
         from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
@@ -1038,6 +1145,7 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         input_version, canonicalization_version, template_version,
         renderer_recipe_version, created_by
       ) on public.offer_pdf_draft to app_runtime;
+      grant update (id) on public.offer_pdf_draft to app_runtime;
       grant execute on function public.canonicalize_offer_json_v1(jsonb)
         to app_runtime, app_worker;
 
@@ -1225,6 +1333,39 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // M1-08b ist eine atomare Vierer-Einheit. Runtime und Worker erhalten
+  // keinerlei Tabellenrechte; die Web-App arbeitet ueber sechs und der
+  // Worker ueber neun getrennte SECURITY-DEFINER-Gateways.
+  const hasCatalogImport = await hasAtomicPublicRelationSet(
+    client,
+    CATALOG_IMPORT_RELATIONS,
+    "Rollen-ACL-Manifest: M1-08b-Import-Relationen",
+  );
+  if (hasCatalogImport) {
+    await client.query(`
+      revoke all privileges on
+        ${CATALOG_IMPORT_RELATIONS.map(
+          (relation) => `public.${relation}`,
+        ).join(",\n        ")}
+      from public, app_migrator, app_runtime, app_system, app_auth, app_worker,
+        app_erasure, app_membership_writer, identity_reconciler;
+
+      revoke execute on function
+        ${CATALOG_IMPORT_ROUTINES.join(",\n        ")}
+      from public, app_migrator, app_runtime, app_system, app_auth, app_worker,
+        app_erasure, app_membership_writer, identity_reconciler;
+
+      grant execute on function
+        ${CATALOG_IMPORT_RUNTIME_ROUTINES.join(",\n        ")}
+      to app_runtime;
+
+      grant usage on schema public to app_worker;
+      grant execute on function
+        ${CATALOG_IMPORT_WORKER_ROUTINES.join(",\n        ")}
+      to app_worker
+    `);
+  }
+
   // pg-boss bleibt vollstaendig worker-owned. Nur der SET-only-Migrator darf
   // fuer das nach jeder Migration wiederholte ACL-Manifest kurz in diesen
   // Owner wechseln; app_owner und app_worker erhalten keine gegenseitige
@@ -1253,6 +1394,11 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     ${hasOfferIssuance ? `
       grant execute on function pgboss.enqueue_offer_issuance(uuid, uuid)
         to app_runtime;
+    ` : ""}
+    ${hasCatalogImport ? `
+      grant execute on function
+        ${CATALOG_IMPORT_PGBOSS_RUNTIME_ROUTINES.join(",\n        ")}
+      to app_runtime;
     ` : ""}
     set role app_owner
   `);
@@ -1571,6 +1717,11 @@ export async function verifyRoleContract(
     OFFER_ISSUANCE_RELATIONS,
     "Rollenvertrag: M2-03b1-Issuance-Relationen",
   );
+  const hasCatalogImport = await hasAtomicPublicRelationSet(
+    client,
+    CATALOG_IMPORT_RELATIONS,
+    "Rollenvertrag: M1-08b-Import-Relationen",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -1671,6 +1822,9 @@ export async function verifyRoleContract(
       "r:calculator_snapshot",
       "r:catalog_component",
       "r:catalog_component_revision",
+      ...(hasCatalogImport ? CATALOG_IMPORT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
       "r:contact",
       "r:contact_legal_hold",
       "r:domain_events",
@@ -1805,10 +1959,15 @@ export async function verifyRoleContract(
     join pg_catalog.pg_language language on language.oid = routine.prolang
     where namespace.nspname = 'pgboss'
       and routine.proname in (
+        'enqueue_catalog_import_cleanup_v1',
+        'enqueue_catalog_import_v1',
         'enqueue_offer_issuance',
         'enqueue_offer_pdf_draft',
         'enqueue_offer_release_candidate',
-        'enqueue_project_calculation'
+        'enqueue_project_calculation',
+        'list_catalog_import_cleanup_locator_jobs_v1',
+        'list_catalog_import_recovery_locator_jobs_v1',
+        'quarantine_catalog_import_locator_job_v1'
       )
     order by routine.proname, routine.oid
   `);
@@ -1828,6 +1987,18 @@ export async function verifyRoleContract(
       sha256(row.prosrc),
     ].join(":")),
     [
+      ...(hasCatalogImport ? [
+        "enqueue_catalog_import_cleanup_v1(uuid, uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:1889a094a237462030b2cdc8ee8a93b6649ea77d9e73f2916eaf9766e5a352dd",
+        "enqueue_catalog_import_v1(uuid, uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:2fdd7123cea6ea37aa612f5410b9197fbd985135cbdfd46be458bfd3a30d5e2d",
+        "list_catalog_import_cleanup_locator_jobs_v1(uuid, integer):TABLE(locator_job_id uuid, workspace_id uuid, import_id uuid, locator_status text):app_worker:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:bafe9dd64d9cd293c158b595ae935ae7c5ef9e0ad4c92a6ece45592be0705353",
+        "list_catalog_import_recovery_locator_jobs_v1(uuid, integer):TABLE(locator_job_id uuid, workspace_id uuid, import_id uuid, locator_status text):app_worker:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:492c68f7a243bf3d77a6660e64a6f999d8b1f1ce50f7c24593f08680383ae4ef",
+        "quarantine_catalog_import_locator_job_v1(uuid):boolean:app_worker:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:9f26d3c0291504d6d1bcbe75c5ddf051fd9c574b9f5db9e8e9307e95d350a5bf",
+      ] : []),
       "enqueue_project_calculation(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:b4b87f16145bfbe691c2a5ad7db08a212e8254b3545660e0d6b063bb1d5a26f4",
       ...(hasOfferPdfDraft ? [
@@ -1898,6 +2069,9 @@ export async function verifyRoleContract(
         "recover_offer_issuance_renders:app_owner",
         "withdraw_offer_issuance:app_owner",
       ] : []),
+      ...(hasCatalogImport ? CATALOG_IMPORT_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       "build_inactive_lead_erasure_graph:app_owner",
@@ -1993,6 +2167,57 @@ export async function verifyRoleContract(
       sha256(row.prosrc),
     ].join(":")),
     [
+      ...(hasCatalogImport ? [
+        "_m108b_authorize_catalog_import_runtime(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:340a6059972954e2866e8042e18c5fb6b2ef96f975f61be36519abe221d3e91a",
+        "_m108b_catalog_import_actor_auth_code(uuid, uuid):text:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:fae878a570c7daab47dcf89a1e809eaee16f541b3108bac48c39626718289d37",
+        "_m108b_catalog_import_error_source_header_bytes(jsonb):integer:app_owner:plpgsql:f:i:false:false:false:u:search_path=pg_catalog:fa8e7c4c14c0dedf97e82badfad5dbc14233744e81cded64f98936c09baa0d8b",
+        "_m108b_catalog_import_persisted_input_valid(uuid, uuid):boolean:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:72ec10f41e76e3a8131f72e8e7eaae53f396217331189a69747bb28624b163e9",
+        "_m108b_catalog_import_receipt_response(uuid, uuid, uuid, text, text, bigint):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:8378ef10a9fc51cbc875d62b1b1549054e0d39920b1bf19362d197c2f10edf6e",
+        "_m108b_catalog_import_dispatch_state(uuid, uuid, text):TABLE(domain_state text, lease_generation bigint, failure_count integer, dispatch_start_after timestamp with time zone, dispatch_key text):app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:46387383e26e124fe486c94e504cb4dc46c153d1407f9d3211531c02a2b884f4",
+        "_m108b_derive_catalog_import_row_payload():trigger:app_owner:plpgsql:f:v:false:false:false:u:search_path=pg_catalog:96f007825ca64629f445275d87402035e335cd1859abb4a32ba70b8b6b8605d6",
+        "_m108b_guard_catalog_import_job():trigger:app_owner:plpgsql:f:v:false:false:false:u:search_path=pg_catalog:452c08005b98e21b5355f68aac12ee3675ad496eb38f80f9ccd13bbab1d6b5a0",
+        "_m108b_guard_catalog_import_row():trigger:app_owner:plpgsql:f:v:false:false:false:u:search_path=pg_catalog:c113a5cba8b0e07b22c2ceaf5006f92e25f2c004868ad5e1fdeba98d008b4beb",
+        "_m108b_jsonb_date(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:c0dafd542cdbc2aa00f6a18868a6b6c34415ab61d364d0ecc2828df3110a9f14",
+        "_m108b_jsonb_exact_keys(jsonb, text[]):boolean:app_owner:sql:f:i:false:false:false:s:search_path=pg_catalog:0b00897a5213330e7f76c6f145819b4b81b10b7a6e1dbfb2dd5b72231fa65e82",
+        "_m108b_jsonb_integer_between(jsonb, numeric, numeric):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:46f30e288d91f82df1138dd04d350cf76ec33d83966caa162121650f37cdcbdd",
+        "_m108b_jsonb_sha256(jsonb):boolean:app_owner:sql:f:i:false:false:false:s:search_path=pg_catalog:0721a151022604ae5e7d2f5a128a13f144cf9b56fdf891ee0641de818429c74d",
+        "_m108b_jsonb_trimmed_text(jsonb, integer, integer):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:69fb24e7597b9a0d65b1f358f2e070e2d59e8463f7b75d654d6b097fb8a3d4da",
+        "_m108b_jsonb_uuid(jsonb):boolean:app_owner:sql:f:i:false:false:false:s:search_path=pg_catalog:cc64d3a300185bc7fdf959df351e2c17ae13ee33bd9a46192c3c2309a6fad1ae",
+        "_m108b_lock_catalog_import_workspace(uuid):void:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:33e85863138115005ffd56f84d5b0ed05376c86433f41bb52e271def42d0339d",
+        "_m108b_redact_catalog_import_error_array(jsonb):jsonb:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:981fac512eac9f96e91bac9ca4530b72439e7c03c7b1b13cd74a51428135952a",
+        "_m108b_valid_catalog_import_commercial(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:6e8bde7f54b7cd4258b43486d95a09375133c1c1dcb2e3473f28ef676b78f947",
+        "_m108b_valid_catalog_import_error_array(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:ba1f60093e5b557bad5c4378027934bc7e5e1d932abd48d273817e3e3aacaaf1",
+        "_m108b_valid_catalog_import_expected(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:010a8ccfe08c70cac1265e99be14706489266c15d93230c569b3a25b39aaa50c",
+        "_m108b_valid_catalog_import_lease_rows(integer[]):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:9069e06be215cca5674dbee7c487513412239ee3e9ce59b347add16377715f63",
+        "_m108b_valid_catalog_import_mapping(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:1b5c2499b26013b7a1e571c3319ba3f558f5f86b899f4a58217c6e2ec38003d7",
+        "_m108b_valid_catalog_import_presentation(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:751196dc350da8e985b5c9d26f78624570cf34344a346300a28620fbfcf3d350",
+        "_m108b_valid_catalog_import_provenance(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:e5f1a7082f22f654268292420c8520724349bd97e88dc0cfedc79c588d1b6a9f",
+        "_m108b_valid_catalog_import_revision(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:faee666e10b41bbeb7cf03cb7b12dbda58b1af44be950c01c7239f23026bceea",
+        "_m108b_valid_catalog_import_row_command(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:042df3ef4dbe2a9e0035418444ff9fe9e6040cfc0b60a64595e913db6f7bc724",
+        "_m108b_valid_catalog_import_sealed_target(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:d05d209bccbf1839449c4d009b3541c29da17b6870fe910f4111c94585a03449",
+        "_m108b_valid_catalog_import_source_command(jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:e1ff814f28586c950e00e6e6c90ea9e1e178f315d265fb7534f5252719119db3",
+        "_m108b_valid_catalog_import_technical_data(text, jsonb):boolean:app_owner:plpgsql:f:i:false:false:false:s:search_path=pg_catalog:4a1971f31dff7b71f41e798d8db025853f51ec941027954f46508af47a9ed403",
+        "_m108b_validate_catalog_import_dispatch_receipt():trigger:app_owner:plpgsql:f:v:false:false:false:u:search_path=pg_catalog:f998ec12f08263a2ce7335c87156dd5f971790f773fab6d7e18e95f3a95dfd13",
+        "_m108b_validate_catalog_import_job_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:search_path=pg_catalog:348a491a671ee665486900745803dbbb243b6e635f97d6bedc9d30c3c0d0a1cb",
+        "_m108b_validate_catalog_import_redaction():trigger:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:6719b65767b1bef4e388444df5b4bd668d2a239c09650552826cfd99bef7f6ae",
+        "_m108b_validate_catalog_import_result_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:search_path=pg_catalog:563a2bad01207be23002c1d60b3d965034e2146acd393d7392eb4a97a1d734ae",
+        "_m108b_validate_catalog_import_row_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:search_path=pg_catalog:6b0fa4fe3457fa88055e9e668c141e3925adb10f3cd5ea01136c6e7bc8d08dc9",
+        "apply_catalog_import_row_v1(uuid, uuid, integer, uuid, bigint):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:8c1c68fcff969bcbcf5f545c3d81e7fdac1370d81cd1eb4d266bf4aa5742eab8",
+        "cancel_catalog_import_v1(uuid, uuid):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:856dd527e6775193192910499f0d0c045f32865237be0691fd292650586bd56e",
+        "canonicalize_catalog_json_v1(jsonb):text:app_owner:plpgsql:f:i:false:false:true:s:search_path=pg_catalog:0fd29dc1767fd498b4cf798931f2f192b2b0da1e1f1cbab8f8ce89fcc0ff631a",
+        "claim_catalog_import_v1(uuid, uuid, uuid, integer):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:a5c2008b89d146d3d3e986ac0a7224339564a7241805621a8fdb3f45d8eeda46",
+        "cleanup_catalog_import_snapshots_v1(uuid, integer):TABLE(import_id uuid, redacted_at timestamp with time zone):app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:a5c3045993fa9eaaafd024e44b8c56b7e91e9f48e68789276124b9a1c689e01d",
+        "complete_catalog_import_batch_v1(uuid, uuid, uuid, bigint):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:9d0c38b9e858ada12590bb4c41ffdda1c73eb5a40af82a76bc41c886c761bc03",
+        "finalize_catalog_import_failure_v1(uuid, uuid, uuid, bigint, text):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:c6249c195f9bd4a1f424599cc6843c3fd80fb7375a6a454e137412888cdf5029",
+        "record_catalog_import_dispatch_failure_v1(uuid, uuid, uuid, text):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:bd643665c444020c6486cf587e3bb8a97b8e5ab64f1a2b8d754c6985cfd0ddcb",
+        "prepare_catalog_import_v1(uuid, uuid, jsonb):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:fbc1c7432901c25a44464d18ee504a3b91a1f9a664138c1b0889358be03d4053",
+        "read_catalog_import_rows_v1(uuid, uuid, integer, integer):TABLE(row_number integer, validation_status text, normalized_sku text, operation text, source_command jsonb, error_snapshot jsonb, target_component_id uuid, expected_component_id uuid, expected_revision integer, expected_status text, result_state text, result_component_id uuid, result_revision integer, result_error_code text, result_created_at timestamp with time zone):app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:635b78f861683a8709fc823c67bbccb0c98d2d47bbdc38d683c2e2e1962de4d7",
+        "read_catalog_import_v1(uuid, uuid):TABLE(import_id uuid, intent_id uuid, file_name text, file_size_bytes integer, encoding text, delimiter text, mapping_snapshot jsonb, total_count integer, valid_count integer, invalid_count integer, state text, consecutive_failure_count integer, next_attempt_at timestamp with time zone, error_code text, created_by uuid, execution_actor_id uuid, attested_by uuid, attested_at timestamp with time zone, created_at timestamp with time zone, preview_expires_at timestamp with time zone, started_at timestamp with time zone, terminal_at timestamp with time zone, snapshot_cleanup_due_at timestamp with time zone, snapshot_redacted_at timestamp with time zone, created_result_count integer, revised_result_count integer, unchanged_result_count integer, conflict_result_count integer):app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:dcd3e8f124e5aa49ed891e8292a9fc64c0a87f8c067ca5698df3ca4767e5a0e0",
+        "read_latest_catalog_import_id_v1(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:6709d00cec1b7ea6f99967720c1b0e232515655029816ff93c8f6fae934c690c",
+        "record_catalog_import_preclaim_failure_v1(uuid, uuid, uuid, text):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:9139c3f04b976547b7dcd688334305024918c7c900962d14f1a3c79ccc476725",
+        "recover_catalog_imports_v1(uuid, integer):TABLE(import_id uuid, recovery_action text, dispatch_id uuid):app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:9c21da09b190910bd3aec087b4718a7ecb8844b5e4e2e971a927335e055e0941",
+        "start_catalog_import_v1(uuid, uuid, text):jsonb:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:90f3d47bfc0ea23d3bc02545c0939f47ed7e90c6827d3900098805270982d7d1",
+      ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
@@ -2280,6 +2505,9 @@ export async function verifyRoleContract(
       "calculator_snapshot:true:true",
       "catalog_component:true:true",
       "catalog_component_revision:true:true",
+      ...(hasCatalogImport ? CATALOG_IMPORT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       "contact:true:true",
       "contact_legal_hold:true:true",
       "domain_events:true:true",
@@ -2355,6 +2583,12 @@ export async function verifyRoleContract(
       "calculator_snapshot:tenant_isolation:8c816e39dfc3d5d774d0de6f02961882e9ae6679904da2b9007d5ff86becbb72",
       "catalog_component:tenant_isolation:0f52f117c39d494bf05b96f6f8a38b776282a706c0765c9b1a88011be6fc7d9d",
       "catalog_component_revision:tenant_isolation:e2a00cf04ea7089b3abdfd9fc87f71b7d0b3460a0be58bdadbe0f23a61fd3758",
+      ...(hasCatalogImport ? [
+        "catalog_import_dispatch_receipt:tenant_isolation:3175a1e6d37824a28ffeba853f7f7ff4138e8b424adf5c3d1246623fd4a0643a",
+        "catalog_import_job:tenant_isolation:237eac7b292ed88d95145d60479ab11474ba0998129cb064b11b904ccd7be974",
+        "catalog_import_row:tenant_isolation:67142c1fd1fbdd23fd6ef9d6f64278ec7e354fd62369c7f662849e6feebfc392",
+        "catalog_import_row_result:tenant_isolation:71585a8bbf22b1bd7ed674d7ab4b32b8db698bc34d05f55a1d2a1333a4577d77",
+      ] : []),
       "contact:tenant_isolation:e339a6411d39679d749a45535df17ea42132453c4725e42f0d5b310379489e46",
       "contact_legal_hold:tenant_isolation:752e8f298e0a4cc77a31ee680540edf91831654263d7f0dd39bafc42b6d54477",
       "domain_events:tenant_isolation:f1715696222caf43a2adc220b67b8aebdce61f5ef9659884af1c7263ccab8284",
@@ -2461,6 +2695,23 @@ export async function verifyRoleContract(
       "catalog_component_revision:catalog_component_revision_apply:5:O:public:apply_catalog_component_revision::-:0",
       "catalog_component_revision:catalog_component_revision_immutable:31:O:public:guard_catalog_component_revision::-:0",
       "catalog_component_revision:catalog_component_revision_no_truncate:34:O:public:forbid_mutation::-:0",
+      ...(hasCatalogImport ? [
+        "catalog_import_dispatch_receipt:catalog_import_dispatch_receipt_immutable:27:O:public:forbid_mutation::-:0",
+        "catalog_import_dispatch_receipt:catalog_import_dispatch_receipt_no_truncate:34:O:public:forbid_mutation::-:0",
+        "catalog_import_dispatch_receipt:catalog_import_dispatch_receipt_validate_input:7:O:public:_m108b_validate_catalog_import_dispatch_receipt::-:0",
+        "catalog_import_job:catalog_import_job_guard:27:O:public:_m108b_guard_catalog_import_job::-:0",
+        "catalog_import_job:catalog_import_job_no_truncate:34:O:public:forbid_mutation::-:0",
+        "catalog_import_job:catalog_import_job_redaction_complete:21:O:public:_m108b_validate_catalog_import_redaction::-:constraint",
+        "catalog_import_job:catalog_import_job_validate_input:7:O:public:_m108b_validate_catalog_import_job_input::-:0",
+        "catalog_import_row:catalog_import_row_derive_payload:23:O:public:_m108b_derive_catalog_import_row_payload::-:0",
+        "catalog_import_row:catalog_import_row_guard:27:O:public:_m108b_guard_catalog_import_row::-:0",
+        "catalog_import_row:catalog_import_row_no_truncate:34:O:public:forbid_mutation::-:0",
+        "catalog_import_row:catalog_import_row_redaction_complete:21:O:public:_m108b_validate_catalog_import_redaction::-:constraint",
+        "catalog_import_row:catalog_import_row_validate_input:7:O:public:_m108b_validate_catalog_import_row_input::-:0",
+        "catalog_import_row_result:catalog_import_row_result_immutable:27:O:public:forbid_mutation::-:0",
+        "catalog_import_row_result:catalog_import_row_result_no_truncate:34:O:public:forbid_mutation::-:0",
+        "catalog_import_row_result:catalog_import_row_result_validate_input:7:O:public:_m108b_validate_catalog_import_result_input::-:0",
+      ] : []),
       "domain_events:domain_events_append_only:27:O:public:forbid_mutation::-:0",
       "domain_events:domain_events_no_truncate:34:O:public:forbid_mutation::-:0",
       "erasure_operation_locator:erasure_operation_locator_append_only:27:O:" +
@@ -2720,6 +2971,7 @@ export async function verifyRoleContract(
         "app_runtime:offer_pdf_draft.canonicalization_version:INSERT:app_owner:false",
         "app_runtime:offer_pdf_draft.created_by:INSERT:app_owner:false",
         "app_runtime:offer_pdf_draft.id:INSERT:app_owner:false",
+        "app_runtime:offer_pdf_draft.id:UPDATE:app_owner:false",
         "app_runtime:offer_pdf_draft.input_version:INSERT:app_owner:false",
         "app_runtime:offer_pdf_draft.offer_id:INSERT:app_owner:false",
         "app_runtime:offer_pdf_draft.project_id:INSERT:app_owner:false",
@@ -2740,6 +2992,12 @@ export async function verifyRoleContract(
       "app_runtime:offer_variant.description:UPDATE:app_owner:false",
       "app_runtime:offer_variant.name:UPDATE:app_owner:false",
       "app_runtime:offer_variant.updated_at:UPDATE:app_owner:false",
+      "app_runtime:inbound_receipt.id:UPDATE:app_owner:false",
+      "app_runtime:project_calculation_job.id:UPDATE:app_owner:false",
+      "app_runtime:project_calculation_revision.id:UPDATE:app_owner:false",
+      "app_runtime:project_catalog_resolution.id:UPDATE:app_owner:false",
+      "app_runtime:project_requirement.id:UPDATE:app_owner:false",
+      "app_runtime:workspace.id:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.attempt_count:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.error_code:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.error_retryable:UPDATE:app_owner:false",
@@ -2826,6 +3084,23 @@ export async function verifyRoleContract(
       "app_erasure:erase_inactive_lead(uuid, uuid, uuid):EXECUTE:app_owner:false",
       "app_erasure:replay_erasure_tombstone(uuid):EXECUTE:app_owner:false",
       "app_runtime:app_actor_id():EXECUTE:app_owner:false",
+      ...(hasCatalogImport ? [
+        "app_runtime:cancel_catalog_import_v1(uuid, uuid):EXECUTE:app_owner:false",
+        "app_runtime:prepare_catalog_import_v1(uuid, uuid, jsonb):EXECUTE:app_owner:false",
+        "app_runtime:read_catalog_import_rows_v1(uuid, uuid, integer, integer):EXECUTE:app_owner:false",
+        "app_runtime:read_catalog_import_v1(uuid, uuid):EXECUTE:app_owner:false",
+        "app_runtime:read_latest_catalog_import_id_v1(uuid):EXECUTE:app_owner:false",
+        "app_runtime:start_catalog_import_v1(uuid, uuid, text):EXECUTE:app_owner:false",
+        "app_worker:apply_catalog_import_row_v1(uuid, uuid, integer, uuid, bigint):EXECUTE:app_owner:false",
+        "app_worker:claim_catalog_import_v1(uuid, uuid, uuid, integer):EXECUTE:app_owner:false",
+        "app_worker:cleanup_catalog_import_snapshots_v1(uuid, integer):EXECUTE:app_owner:false",
+        "app_worker:complete_catalog_import_batch_v1(uuid, uuid, uuid, bigint):EXECUTE:app_owner:false",
+        "app_worker:_m108b_catalog_import_dispatch_state(uuid, uuid, text):EXECUTE:app_owner:false",
+        "app_worker:finalize_catalog_import_failure_v1(uuid, uuid, uuid, bigint, text):EXECUTE:app_owner:false",
+        "app_worker:record_catalog_import_dispatch_failure_v1(uuid, uuid, uuid, text):EXECUTE:app_owner:false",
+        "app_worker:record_catalog_import_preclaim_failure_v1(uuid, uuid, uuid, text):EXECUTE:app_owner:false",
+        "app_worker:recover_catalog_imports_v1(uuid, integer):EXECUTE:app_owner:false",
+      ] : []),
       ...(hasOfferIssuance ? [
         "app_runtime:approve_offer_issuance(uuid, uuid, boolean, boolean, boolean, boolean, boolean):EXECUTE:app_owner:false",
         "app_runtime:prepare_offer_issuance(uuid, uuid, uuid):EXECUTE:app_owner:false",
@@ -2886,6 +3161,10 @@ export async function verifyRoleContract(
     ),
     [
       "app_runtime:enqueue_project_calculation(uuid, uuid):EXECUTE:app_worker:false",
+      ...(hasCatalogImport ? [
+        "app_runtime:enqueue_catalog_import_cleanup_v1(uuid, uuid, uuid):EXECUTE:app_worker:false",
+        "app_runtime:enqueue_catalog_import_v1(uuid, uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
       ...(hasOfferPdfDraft ? [
         "app_runtime:enqueue_offer_pdf_draft(uuid, uuid):EXECUTE:app_worker:false",
       ] : []),
@@ -3250,6 +3529,69 @@ export async function verifyRoleContract(
         return `${principal}:${routine}:${String(isOwner || isRuntimeGrant || isWorkerGrant)}`;
       })),
       "M2-03b1 effektive Funktions-ACLs",
+    );
+  }
+
+  if (hasCatalogImport) {
+    const principals = ["public", ...APP_ROLES] as const;
+    const routines = [
+      ...CATALOG_IMPORT_ROUTINES,
+      ...CATALOG_IMPORT_PGBOSS_ROUTINES,
+    ];
+    const catalogImportFunctionAcl = await (async () => {
+      await client.query("set role app_worker");
+      try {
+        return await client.query<{
+          principal: string;
+          routine_signature: string;
+          may_execute: boolean | null;
+        }>(`
+          with principals(principal) as (
+            select * from pg_catalog.unnest($1::text[])
+          ),
+          routines(routine_signature) as (
+            select * from pg_catalog.unnest($2::text[])
+          )
+          select principal.principal,
+                 routine.routine_signature,
+                 pg_catalog.has_function_privilege(
+                   principal.principal,
+                   pg_catalog.to_regprocedure(routine.routine_signature),
+                   'EXECUTE'
+                 ) as may_execute
+            from principals as principal
+            cross join routines as routine
+           order by principal.principal, routine.routine_signature
+        `, [principals, routines]);
+      } finally {
+        await client.query("set role app_owner");
+      }
+    })();
+    equalRows(
+      catalogImportFunctionAcl.rows.map((row) =>
+        `${row.principal}:${row.routine_signature}:` +
+          `${row.may_execute === null ? "NULL" : String(row.may_execute)}`,
+      ),
+      principals.flatMap((principal) => routines.map((routine) => {
+        const isOwner = routine.startsWith("public.")
+          ? principal === "app_owner"
+          : principal === "app_worker";
+        const isRuntimeGrant = principal === "app_runtime" &&
+          (
+            CATALOG_IMPORT_RUNTIME_ROUTINES.includes(
+              routine as (typeof CATALOG_IMPORT_RUNTIME_ROUTINES)[number],
+            ) || CATALOG_IMPORT_PGBOSS_RUNTIME_ROUTINES.includes(
+              routine as (typeof CATALOG_IMPORT_PGBOSS_RUNTIME_ROUTINES)[number],
+            )
+          );
+        const isWorkerGrant = principal === "app_worker" &&
+          CATALOG_IMPORT_WORKER_ROUTINES.includes(
+            routine as (typeof CATALOG_IMPORT_WORKER_ROUTINES)[number],
+          );
+        return `${principal}:${routine}:` +
+          `${String(isOwner || isRuntimeGrant || isWorkerGrant)}`;
+      })),
+      "M1-08b effektive Funktions-ACLs",
     );
   }
 

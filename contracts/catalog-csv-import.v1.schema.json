@@ -1,0 +1,4761 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/catalog-csv-import.v1.schema.json",
+  "title": "WMEE Catalog CSV Import v1",
+  "x-rights-attestation": {
+    "version": "catalog-import-rights-attestation.v1",
+    "text": "Ich bestätige, dass dieser Workspace zur Verarbeitung und Nutzung der in dieser CSV enthaltenen Produkt-, Preis- und Provenienzdaten berechtigt ist.",
+    "sha256": "4511413a407acc4c073184ecbb127b449b13c72db28fe8b1682ba17cced1b4f8"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/mapping"
+    },
+    {
+      "$ref": "#/$defs/preview"
+    },
+    {
+      "$ref": "#/$defs/rowError"
+    },
+    {
+      "$ref": "#/$defs/errorReportRow"
+    },
+    {
+      "$ref": "#/$defs/rowCommand"
+    },
+    {
+      "$ref": "#/$defs/requestErrorCode"
+    },
+    {
+      "$ref": "#/$defs/processingResultCode"
+    },
+    {
+      "$ref": "#/$defs/jobErrorCode"
+    }
+  ],
+  "$defs": {
+    "mapping": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/mapping/$defs/__schema0"
+        },
+        "columns": {
+          "$ref": "#/$defs/mapping/$defs/__schema1"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "columns"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "const": "catalog-csv-column-mapping.v1"
+        },
+        "__schema1": {
+          "minItems": 1,
+          "maxItems": 41,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mapping/$defs/__schema2"
+          }
+        },
+        "__schema2": {
+          "type": "object",
+          "properties": {
+            "field": {
+              "type": "string",
+              "enum": [
+                "internalSku",
+                "componentType",
+                "displayName",
+                "manufacturer",
+                "model",
+                "unit",
+                "keyPoints",
+                "technicalSourceKind",
+                "technicalReference",
+                "technicalObservedOn",
+                "technicalRightsBasis",
+                "technicalDocumentSha256",
+                "purchasePriceNet",
+                "purchaseSourceKind",
+                "purchaseReference",
+                "purchaseObservedOn",
+                "purchaseRightsBasis",
+                "purchaseDocumentSha256",
+                "salesPriceNet",
+                "salesSourceKind",
+                "salesReference",
+                "salesObservedOn",
+                "salesRightsBasis",
+                "salesDocumentSha256",
+                "nominalPowerWatts",
+                "nominalAcPowerWatts",
+                "phaseCount",
+                "mpptTrackerCount",
+                "nominalCapacityWh",
+                "usableCapacityWh",
+                "maxContinuousPowerWatts",
+                "roundTripEfficiencyPercent",
+                "backupCapability",
+                "maxChargingPowerWatts",
+                "connector",
+                "bidirectionalCapability",
+                "nominalHeatingPowerWatts",
+                "scop",
+                "systemName",
+                "roofTypes",
+                "attributes"
+              ]
+            },
+            "sourceHeader": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/preview/$defs/__schema0"
+        },
+        "file": {
+          "$ref": "#/$defs/preview/$defs/__schema1"
+        },
+        "mapping": {
+          "$ref": "#/$defs/preview/$defs/__schema2"
+        },
+        "mappingSha256": {
+          "$ref": "#/$defs/preview/$defs/__schema7"
+        },
+        "counts": {
+          "$ref": "#/$defs/preview/$defs/__schema8"
+        },
+        "rows": {
+          "$ref": "#/$defs/preview/$defs/__schema9"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "file",
+        "mapping",
+        "mappingSha256",
+        "counts",
+        "rows"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "const": "catalog-csv-import.v1"
+        },
+        "__schema1": {
+          "type": "object",
+          "properties": {
+            "filename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180,
+              "pattern": "^(?!\\s)(?!.*\\s$)(?!.*[\\\\/\\u0000-\\u001f\\u007f-\\u009f\\u202a-\\u202e\\u2066-\\u2069]).+\\.[cC][sS][vV]$"
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "encoding": {
+              "type": "string",
+              "enum": [
+                "utf-8",
+                "windows-1252"
+              ]
+            },
+            "delimiter": {
+              "type": "string",
+              "enum": [
+                ";",
+                ","
+              ]
+            },
+            "parserVersion": {
+              "type": "string",
+              "const": "papaparse-5.7.0-wmee.v1"
+            },
+            "rowCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          "required": [
+            "filename",
+            "sizeBytes",
+            "sha256",
+            "encoding",
+            "delimiter",
+            "parserVersion",
+            "rowCount"
+          ],
+          "additionalProperties": false
+        },
+        "__schema2": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/preview/$defs/__schema3"
+            },
+            "columns": {
+              "$ref": "#/$defs/preview/$defs/__schema4"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "columns"
+          ],
+          "additionalProperties": false
+        },
+        "__schema3": {
+          "type": "string",
+          "const": "catalog-csv-column-mapping.v1"
+        },
+        "__schema4": {
+          "minItems": 1,
+          "maxItems": 41,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/preview/$defs/__schema5"
+          }
+        },
+        "__schema5": {
+          "type": "object",
+          "properties": {
+            "field": {
+              "$ref": "#/$defs/preview/$defs/__schema6"
+            },
+            "sourceHeader": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader"
+          ],
+          "additionalProperties": false
+        },
+        "__schema6": {
+          "type": "string",
+          "enum": [
+            "internalSku",
+            "componentType",
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "technicalSourceKind",
+            "technicalReference",
+            "technicalObservedOn",
+            "technicalRightsBasis",
+            "technicalDocumentSha256",
+            "purchasePriceNet",
+            "purchaseSourceKind",
+            "purchaseReference",
+            "purchaseObservedOn",
+            "purchaseRightsBasis",
+            "purchaseDocumentSha256",
+            "salesPriceNet",
+            "salesSourceKind",
+            "salesReference",
+            "salesObservedOn",
+            "salesRightsBasis",
+            "salesDocumentSha256",
+            "nominalPowerWatts",
+            "nominalAcPowerWatts",
+            "phaseCount",
+            "mpptTrackerCount",
+            "nominalCapacityWh",
+            "usableCapacityWh",
+            "maxContinuousPowerWatts",
+            "roundTripEfficiencyPercent",
+            "backupCapability",
+            "maxChargingPowerWatts",
+            "connector",
+            "bidirectionalCapability",
+            "nominalHeatingPowerWatts",
+            "scop",
+            "systemName",
+            "roofTypes",
+            "attributes"
+          ]
+        },
+        "__schema7": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema8": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "valid": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "invalid": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            }
+          },
+          "required": [
+            "total",
+            "valid",
+            "invalid"
+          ],
+          "additionalProperties": false
+        },
+        "__schema9": {
+          "minItems": 1,
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/preview/$defs/__schema10"
+          }
+        },
+        "__schema10": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "const": "valid"
+                },
+                "rowNumber": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1001
+                },
+                "rowSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "normalizedSku": {
+                  "$ref": "#/$defs/preview/$defs/__schema11"
+                },
+                "commandSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "command": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/preview/$defs/__schema12"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/preview/$defs/__schema11"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "module"
+                        },
+                        "presentation": {
+                          "$ref": "#/$defs/preview/$defs/__schema13"
+                        },
+                        "technicalData": {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "string",
+                              "const": "module.v1"
+                            },
+                            "nominalPowerWatts": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 10000
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "nominalPowerWatts"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "commercial": {
+                          "$ref": "#/$defs/preview/$defs/__schema19"
+                        },
+                        "technicalProvenance": {
+                          "$ref": "#/$defs/preview/$defs/__schema21"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "internalSku",
+                        "componentType",
+                        "presentation",
+                        "technicalData",
+                        "commercial",
+                        "technicalProvenance"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/preview/$defs/__schema12"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/preview/$defs/__schema11"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "inverter"
+                        },
+                        "presentation": {
+                          "$ref": "#/$defs/preview/$defs/__schema13"
+                        },
+                        "technicalData": {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "string",
+                              "const": "inverter.v1"
+                            },
+                            "nominalAcPowerWatts": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 10000000
+                            },
+                            "phaseCount": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "const": 1
+                                },
+                                {
+                                  "type": "number",
+                                  "const": 3
+                                }
+                              ]
+                            },
+                            "mpptTrackerCount": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "nominalAcPowerWatts",
+                            "phaseCount",
+                            "mpptTrackerCount"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "commercial": {
+                          "$ref": "#/$defs/preview/$defs/__schema19"
+                        },
+                        "technicalProvenance": {
+                          "$ref": "#/$defs/preview/$defs/__schema21"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "internalSku",
+                        "componentType",
+                        "presentation",
+                        "technicalData",
+                        "commercial",
+                        "technicalProvenance"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/preview/$defs/__schema12"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/preview/$defs/__schema11"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "battery"
+                        },
+                        "presentation": {
+                          "$ref": "#/$defs/preview/$defs/__schema13"
+                        },
+                        "technicalData": {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "$ref": "#/$defs/preview/$defs/__schema22"
+                            },
+                            "nominalCapacityWh": {
+                              "$ref": "#/$defs/preview/$defs/__schema23"
+                            },
+                            "usableCapacityWh": {
+                              "$ref": "#/$defs/preview/$defs/__schema24"
+                            },
+                            "maxContinuousPowerWatts": {
+                              "$ref": "#/$defs/preview/$defs/__schema25"
+                            },
+                            "roundTripEfficiencyBasisPoints": {
+                              "$ref": "#/$defs/preview/$defs/__schema26"
+                            },
+                            "backupCapability": {
+                              "$ref": "#/$defs/preview/$defs/__schema27"
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "nominalCapacityWh",
+                            "usableCapacityWh",
+                            "maxContinuousPowerWatts",
+                            "roundTripEfficiencyBasisPoints",
+                            "backupCapability"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "commercial": {
+                          "$ref": "#/$defs/preview/$defs/__schema19"
+                        },
+                        "technicalProvenance": {
+                          "$ref": "#/$defs/preview/$defs/__schema21"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "internalSku",
+                        "componentType",
+                        "presentation",
+                        "technicalData",
+                        "commercial",
+                        "technicalProvenance"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/preview/$defs/__schema12"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/preview/$defs/__schema11"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "wallbox"
+                        },
+                        "presentation": {
+                          "$ref": "#/$defs/preview/$defs/__schema13"
+                        },
+                        "technicalData": {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "string",
+                              "const": "wallbox.v1"
+                            },
+                            "maxChargingPowerWatts": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000000
+                            },
+                            "phaseCount": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "const": 1
+                                },
+                                {
+                                  "type": "number",
+                                  "const": 3
+                                }
+                              ]
+                            },
+                            "connector": {
+                              "type": "string",
+                              "enum": [
+                                "type2_socket",
+                                "type2_cable",
+                                "other"
+                              ]
+                            },
+                            "bidirectionalCapability": {
+                              "$ref": "#/$defs/preview/$defs/__schema27"
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "maxChargingPowerWatts",
+                            "phaseCount",
+                            "connector",
+                            "bidirectionalCapability"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "commercial": {
+                          "$ref": "#/$defs/preview/$defs/__schema19"
+                        },
+                        "technicalProvenance": {
+                          "$ref": "#/$defs/preview/$defs/__schema21"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "internalSku",
+                        "componentType",
+                        "presentation",
+                        "technicalData",
+                        "commercial",
+                        "technicalProvenance"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/preview/$defs/__schema12"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/preview/$defs/__schema11"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "heat_pump"
+                        },
+                        "presentation": {
+                          "$ref": "#/$defs/preview/$defs/__schema13"
+                        },
+                        "technicalData": {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "string",
+                              "const": "heat_pump.v1"
+                            },
+                            "nominalHeatingPowerWatts": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 10000000
+                            },
+                            "scopHundredths": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 2000
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "nominalHeatingPowerWatts",
+                            "scopHundredths"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "commercial": {
+                          "$ref": "#/$defs/preview/$defs/__schema19"
+                        },
+                        "technicalProvenance": {
+                          "$ref": "#/$defs/preview/$defs/__schema21"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "internalSku",
+                        "componentType",
+                        "presentation",
+                        "technicalData",
+                        "commercial",
+                        "technicalProvenance"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/preview/$defs/__schema12"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/preview/$defs/__schema11"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "mounting"
+                        },
+                        "presentation": {
+                          "$ref": "#/$defs/preview/$defs/__schema28"
+                        },
+                        "technicalData": {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "string",
+                              "const": "mounting.v1"
+                            },
+                            "systemName": {
+                              "$ref": "#/$defs/preview/$defs/__schema14"
+                            },
+                            "roofTypes": {
+                              "minItems": 1,
+                              "maxItems": 4,
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/$defs/preview/$defs/__schema29"
+                              }
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "systemName",
+                            "roofTypes"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "commercial": {
+                          "$ref": "#/$defs/preview/$defs/__schema19"
+                        },
+                        "technicalProvenance": {
+                          "$ref": "#/$defs/preview/$defs/__schema21"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "internalSku",
+                        "componentType",
+                        "presentation",
+                        "technicalData",
+                        "commercial",
+                        "technicalProvenance"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "$ref": "#/$defs/preview/$defs/__schema12"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/preview/$defs/__schema11"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "other"
+                        },
+                        "presentation": {
+                          "$ref": "#/$defs/preview/$defs/__schema28"
+                        },
+                        "technicalData": {
+                          "type": "object",
+                          "properties": {
+                            "schemaVersion": {
+                              "type": "string",
+                              "const": "other.v1"
+                            },
+                            "attributes": {
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/$defs/preview/$defs/__schema30"
+                              }
+                            }
+                          },
+                          "required": [
+                            "schemaVersion",
+                            "attributes"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "commercial": {
+                          "$ref": "#/$defs/preview/$defs/__schema19"
+                        },
+                        "technicalProvenance": {
+                          "$ref": "#/$defs/preview/$defs/__schema21"
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "internalSku",
+                        "componentType",
+                        "presentation",
+                        "technicalData",
+                        "commercial",
+                        "technicalProvenance"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "status",
+                "rowNumber",
+                "rowSha256",
+                "normalizedSku",
+                "commandSha256",
+                "command"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "const": "invalid"
+                },
+                "rowNumber": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 1001
+                },
+                "rowSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "normalizedSku": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema11"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "errors": {
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/preview/$defs/__schema31"
+                  }
+                }
+              },
+              "required": [
+                "status",
+                "rowNumber",
+                "rowSha256",
+                "normalizedSku",
+                "errors"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "__schema11": {
+          "type": "string",
+          "pattern": "^[A-Z0-9][A-Z0-9._-]{0,63}$"
+        },
+        "__schema12": {
+          "type": "string",
+          "const": "catalog-component-create-command.v1"
+        },
+        "__schema13": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/preview/$defs/__schema14"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/preview/$defs/__schema14"
+            },
+            "model": {
+              "$ref": "#/$defs/preview/$defs/__schema14"
+            },
+            "unit": {
+              "type": "string",
+              "const": "piece"
+            },
+            "keyPoints": {
+              "$ref": "#/$defs/preview/$defs/__schema15"
+            },
+            "image": {
+              "$ref": "#/$defs/preview/$defs/__schema17"
+            },
+            "datasheet": {
+              "$ref": "#/$defs/preview/$defs/__schema18"
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "__schema14": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "__schema15": {
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/preview/$defs/__schema16"
+          }
+        },
+        "__schema16": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "__schema17": {
+          "type": "null"
+        },
+        "__schema18": {
+          "type": "null"
+        },
+        "__schema19": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "string",
+              "const": "EUR"
+            },
+            "basis": {
+              "type": "string",
+              "const": "net"
+            },
+            "purchasePriceNetCents": {
+              "$ref": "#/$defs/preview/$defs/__schema20"
+            },
+            "salesPriceNetCents": {
+              "$ref": "#/$defs/preview/$defs/__schema20"
+            },
+            "purchaseProvenance": {
+              "$ref": "#/$defs/preview/$defs/__schema21"
+            },
+            "salesProvenance": {
+              "$ref": "#/$defs/preview/$defs/__schema21"
+            }
+          },
+          "required": [
+            "currency",
+            "basis",
+            "purchasePriceNetCents",
+            "salesPriceNetCents",
+            "purchaseProvenance",
+            "salesProvenance"
+          ],
+          "additionalProperties": false
+        },
+        "__schema20": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema21": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "allOf": [
+                {
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                {
+                  "pattern": "^(?!0000-)"
+                }
+              ]
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema22": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema23": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema24": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema25": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema26": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema27": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema28": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/preview/$defs/__schema14"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/preview/$defs/__schema14"
+            },
+            "model": {
+              "$ref": "#/$defs/preview/$defs/__schema14"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "piece",
+                "set",
+                "meter"
+              ]
+            },
+            "keyPoints": {
+              "$ref": "#/$defs/preview/$defs/__schema15"
+            },
+            "image": {
+              "$ref": "#/$defs/preview/$defs/__schema17"
+            },
+            "datasheet": {
+              "$ref": "#/$defs/preview/$defs/__schema18"
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "__schema29": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema30": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "__schema31": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "empty_row"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Die Datenzeile ist leer."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "missing_mapping"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Die benoetigte Spalte ist nicht zugeordnet."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "missing_value"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Ein benoetigter Wert fehlt."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "invalid_value"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Der Wert entspricht nicht dem Importvertrag."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "invalid_money"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Der Nettopreis ist nicht eindeutig lesbar."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "invalid_date"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Das Datum muss YYYY-MM-DD entsprechen."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "invalid_enum"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Der Wert ist fuer dieses Feld nicht erlaubt."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "invalid_sha256"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Der Dokumenthash muss leer oder ein SHA-256 in Kleinbuchstaben sein."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "invalid_technical_shape"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Die technischen Werte passen nicht zum Produkttyp."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "duplicate_sku_in_file"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Die normalisierte SKU kommt in der Datei mehrfach vor."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "sku_type_conflict"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Die SKU kollidiert mit einem anderen Produkttyp."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "archived_requires_manual_reactivation"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Archivierte Produkte brauchen eine manuelle Reaktivierung."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "mapping_conflict"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Die Spaltenzuordnung ist nicht eindeutig."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "row_too_large"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Mindestens eine Zelle ueberschreitet das Zeichenlimit."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/preview/$defs/__schema6"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sourceHeader": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "const": "parser_error"
+                },
+                "message": {
+                  "type": "string",
+                  "const": "Die CSV-Zeile konnte nicht sicher gelesen werden."
+                }
+              },
+              "required": [
+                "field",
+                "sourceHeader",
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      }
+    },
+    "rowError": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "empty_row"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die Datenzeile ist leer."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "missing_mapping"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die benoetigte Spalte ist nicht zugeordnet."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "missing_value"
+            },
+            "message": {
+              "type": "string",
+              "const": "Ein benoetigter Wert fehlt."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_value"
+            },
+            "message": {
+              "type": "string",
+              "const": "Der Wert entspricht nicht dem Importvertrag."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_money"
+            },
+            "message": {
+              "type": "string",
+              "const": "Der Nettopreis ist nicht eindeutig lesbar."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_date"
+            },
+            "message": {
+              "type": "string",
+              "const": "Das Datum muss YYYY-MM-DD entsprechen."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_enum"
+            },
+            "message": {
+              "type": "string",
+              "const": "Der Wert ist fuer dieses Feld nicht erlaubt."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_sha256"
+            },
+            "message": {
+              "type": "string",
+              "const": "Der Dokumenthash muss leer oder ein SHA-256 in Kleinbuchstaben sein."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_technical_shape"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die technischen Werte passen nicht zum Produkttyp."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "duplicate_sku_in_file"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die normalisierte SKU kommt in der Datei mehrfach vor."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "sku_type_conflict"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die SKU kollidiert mit einem anderen Produkttyp."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "archived_requires_manual_reactivation"
+            },
+            "message": {
+              "type": "string",
+              "const": "Archivierte Produkte brauchen eine manuelle Reaktivierung."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "mapping_conflict"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die Spaltenzuordnung ist nicht eindeutig."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "row_too_large"
+            },
+            "message": {
+              "type": "string",
+              "const": "Mindestens eine Zelle ueberschreitet das Zeichenlimit."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowError/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "parser_error"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die CSV-Zeile konnte nicht sicher gelesen werden."
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "enum": [
+            "internalSku",
+            "componentType",
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "technicalSourceKind",
+            "technicalReference",
+            "technicalObservedOn",
+            "technicalRightsBasis",
+            "technicalDocumentSha256",
+            "purchasePriceNet",
+            "purchaseSourceKind",
+            "purchaseReference",
+            "purchaseObservedOn",
+            "purchaseRightsBasis",
+            "purchaseDocumentSha256",
+            "salesPriceNet",
+            "salesSourceKind",
+            "salesReference",
+            "salesObservedOn",
+            "salesRightsBasis",
+            "salesDocumentSha256",
+            "nominalPowerWatts",
+            "nominalAcPowerWatts",
+            "phaseCount",
+            "mpptTrackerCount",
+            "nominalCapacityWh",
+            "usableCapacityWh",
+            "maxContinuousPowerWatts",
+            "roundTripEfficiencyPercent",
+            "backupCapability",
+            "maxChargingPowerWatts",
+            "connector",
+            "bidirectionalCapability",
+            "nominalHeatingPowerWatts",
+            "scop",
+            "systemName",
+            "roofTypes",
+            "attributes"
+          ]
+        }
+      }
+    },
+    "errorReportRow": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "empty_row"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die Datenzeile ist leer."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "missing_mapping"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die benoetigte Spalte ist nicht zugeordnet."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "missing_value"
+            },
+            "message": {
+              "type": "string",
+              "const": "Ein benoetigter Wert fehlt."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_value"
+            },
+            "message": {
+              "type": "string",
+              "const": "Der Wert entspricht nicht dem Importvertrag."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_money"
+            },
+            "message": {
+              "type": "string",
+              "const": "Der Nettopreis ist nicht eindeutig lesbar."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_date"
+            },
+            "message": {
+              "type": "string",
+              "const": "Das Datum muss YYYY-MM-DD entsprechen."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_enum"
+            },
+            "message": {
+              "type": "string",
+              "const": "Der Wert ist fuer dieses Feld nicht erlaubt."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_sha256"
+            },
+            "message": {
+              "type": "string",
+              "const": "Der Dokumenthash muss leer oder ein SHA-256 in Kleinbuchstaben sein."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "invalid_technical_shape"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die technischen Werte passen nicht zum Produkttyp."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "duplicate_sku_in_file"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die normalisierte SKU kommt in der Datei mehrfach vor."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "sku_type_conflict"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die SKU kollidiert mit einem anderen Produkttyp."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "archived_requires_manual_reactivation"
+            },
+            "message": {
+              "type": "string",
+              "const": "Archivierte Produkte brauchen eine manuelle Reaktivierung."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "mapping_conflict"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die Spaltenzuordnung ist nicht eindeutig."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "row_too_large"
+            },
+            "message": {
+              "type": "string",
+              "const": "Mindestens eine Zelle ueberschreitet das Zeichenlimit."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/errorReportRow/$defs/__schema0"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sourceHeader": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "code": {
+              "type": "string",
+              "const": "parser_error"
+            },
+            "message": {
+              "type": "string",
+              "const": "Die CSV-Zeile konnte nicht sicher gelesen werden."
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            }
+          },
+          "required": [
+            "field",
+            "sourceHeader",
+            "code",
+            "message",
+            "rowNumber"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "enum": [
+            "internalSku",
+            "componentType",
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "technicalSourceKind",
+            "technicalReference",
+            "technicalObservedOn",
+            "technicalRightsBasis",
+            "technicalDocumentSha256",
+            "purchasePriceNet",
+            "purchaseSourceKind",
+            "purchaseReference",
+            "purchaseObservedOn",
+            "purchaseRightsBasis",
+            "purchaseDocumentSha256",
+            "salesPriceNet",
+            "salesSourceKind",
+            "salesReference",
+            "salesObservedOn",
+            "salesRightsBasis",
+            "salesDocumentSha256",
+            "nominalPowerWatts",
+            "nominalAcPowerWatts",
+            "phaseCount",
+            "mpptTrackerCount",
+            "nominalCapacityWh",
+            "usableCapacityWh",
+            "maxContinuousPowerWatts",
+            "roundTripEfficiencyPercent",
+            "backupCapability",
+            "maxChargingPowerWatts",
+            "connector",
+            "bidirectionalCapability",
+            "nominalHeatingPowerWatts",
+            "scop",
+            "systemName",
+            "roofTypes",
+            "attributes"
+          ]
+        }
+      }
+    },
+    "rowCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema0"
+            },
+            "source": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema1"
+            },
+            "targetComponentId": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema2"
+            },
+            "sourceCommand": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema3"
+            },
+            "operation": {
+              "type": "string",
+              "const": "create"
+            },
+            "expected": {
+              "type": "null"
+            },
+            "sealedTarget": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema32"
+            },
+            "rowCommandSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "source",
+            "targetComponentId",
+            "sourceCommand",
+            "operation",
+            "expected",
+            "sealedTarget",
+            "rowCommandSha256"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema0"
+            },
+            "source": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema1"
+            },
+            "targetComponentId": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema2"
+            },
+            "sourceCommand": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema3"
+            },
+            "operation": {
+              "type": "string",
+              "const": "revise"
+            },
+            "expected": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema36"
+            },
+            "sealedTarget": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema32"
+            },
+            "rowCommandSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "source",
+            "targetComponentId",
+            "sourceCommand",
+            "operation",
+            "expected",
+            "sealedTarget",
+            "rowCommandSha256"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema0"
+            },
+            "source": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema1"
+            },
+            "targetComponentId": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema2"
+            },
+            "sourceCommand": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema3"
+            },
+            "operation": {
+              "type": "string",
+              "const": "unchanged"
+            },
+            "expected": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema36"
+            },
+            "sealedTarget": {
+              "type": "null"
+            },
+            "rowCommandSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "source",
+            "targetComponentId",
+            "sourceCommand",
+            "operation",
+            "expected",
+            "sealedTarget",
+            "rowCommandSha256"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "const": "catalog-import-row-command.v1"
+        },
+        "__schema1": {
+          "type": "object",
+          "properties": {
+            "fileSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "mappingSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "rowNumber": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1001
+            },
+            "rowSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "sourceCommandSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "fileSha256",
+            "mappingSha256",
+            "rowNumber",
+            "rowSha256",
+            "sourceCommandSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema2": {
+          "type": "string",
+          "allOf": [
+            {
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          ]
+        },
+        "__schema3": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema4"
+                },
+                "internalSku": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                },
+                "componentType": {
+                  "type": "string",
+                  "const": "module"
+                },
+                "presentation": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                },
+                "technicalData": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema12"
+                },
+                "commercial": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "internalSku",
+                "componentType",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema4"
+                },
+                "internalSku": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                },
+                "componentType": {
+                  "type": "string",
+                  "const": "inverter"
+                },
+                "presentation": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                },
+                "technicalData": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema17"
+                },
+                "commercial": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "internalSku",
+                "componentType",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema4"
+                },
+                "internalSku": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                },
+                "componentType": {
+                  "type": "string",
+                  "const": "battery"
+                },
+                "presentation": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                },
+                "technicalData": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema18"
+                },
+                "commercial": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "internalSku",
+                "componentType",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema4"
+                },
+                "internalSku": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                },
+                "componentType": {
+                  "type": "string",
+                  "const": "wallbox"
+                },
+                "presentation": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                },
+                "technicalData": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema25"
+                },
+                "commercial": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "internalSku",
+                "componentType",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema4"
+                },
+                "internalSku": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                },
+                "componentType": {
+                  "type": "string",
+                  "const": "heat_pump"
+                },
+                "presentation": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                },
+                "technicalData": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema26"
+                },
+                "commercial": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "internalSku",
+                "componentType",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema4"
+                },
+                "internalSku": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                },
+                "componentType": {
+                  "type": "string",
+                  "const": "mounting"
+                },
+                "presentation": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema27"
+                },
+                "technicalData": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema28"
+                },
+                "commercial": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "internalSku",
+                "componentType",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "schemaVersion": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema4"
+                },
+                "internalSku": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                },
+                "componentType": {
+                  "type": "string",
+                  "const": "other"
+                },
+                "presentation": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema27"
+                },
+                "technicalData": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema30"
+                },
+                "commercial": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                },
+                "technicalProvenance": {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                }
+              },
+              "required": [
+                "schemaVersion",
+                "internalSku",
+                "componentType",
+                "presentation",
+                "technicalData",
+                "commercial",
+                "technicalProvenance"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "__schema4": {
+          "type": "string",
+          "const": "catalog-component-create-command.v1"
+        },
+        "__schema5": {
+          "type": "string",
+          "pattern": "^[A-Z0-9][A-Z0-9._-]{0,63}$"
+        },
+        "__schema6": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema7"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema7"
+            },
+            "model": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema7"
+            },
+            "unit": {
+              "type": "string",
+              "const": "piece"
+            },
+            "keyPoints": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema8"
+            },
+            "image": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema10"
+            },
+            "datasheet": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema11"
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "__schema7": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "__schema8": {
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rowCommand/$defs/__schema9"
+          }
+        },
+        "__schema9": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "__schema10": {
+          "type": "null"
+        },
+        "__schema11": {
+          "type": "null"
+        },
+        "__schema12": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "string",
+              "const": "module.v1"
+            },
+            "nominalPowerWatts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "nominalPowerWatts"
+          ],
+          "additionalProperties": false
+        },
+        "__schema13": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "type": "string",
+              "const": "EUR"
+            },
+            "basis": {
+              "type": "string",
+              "const": "net"
+            },
+            "purchasePriceNetCents": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema14"
+            },
+            "salesPriceNetCents": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema14"
+            },
+            "purchaseProvenance": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema15"
+            },
+            "salesProvenance": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema15"
+            }
+          },
+          "required": [
+            "currency",
+            "basis",
+            "purchasePriceNetCents",
+            "salesPriceNetCents",
+            "purchaseProvenance",
+            "salesProvenance"
+          ],
+          "additionalProperties": false
+        },
+        "__schema14": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9000000000000000
+        },
+        "__schema15": {
+          "type": "object",
+          "properties": {
+            "sourceKind": {
+              "type": "string",
+              "enum": [
+                "manufacturer_datasheet",
+                "supplier_price_list",
+                "supplier_quote",
+                "workspace_pricing",
+                "workspace_manual",
+                "csv_import",
+                "customer_provided"
+              ]
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            },
+            "observedOn": {
+              "type": "string",
+              "allOf": [
+                {
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                {
+                  "pattern": "^(?!0000-)"
+                }
+              ]
+            },
+            "rightsBasis": {
+              "type": "string",
+              "enum": [
+                "manufacturer_published",
+                "supplier_authorized",
+                "workspace_owned",
+                "customer_provided"
+              ]
+            },
+            "sourceDocumentSha256": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/rowCommand/$defs/__schema16"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "reference",
+            "observedOn",
+            "rightsBasis",
+            "sourceDocumentSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema16": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "__schema17": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "string",
+              "const": "inverter.v1"
+            },
+            "nominalAcPowerWatts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000000
+            },
+            "phaseCount": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "const": 1
+                },
+                {
+                  "type": "number",
+                  "const": 3
+                }
+              ]
+            },
+            "mpptTrackerCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "nominalAcPowerWatts",
+            "phaseCount",
+            "mpptTrackerCount"
+          ],
+          "additionalProperties": false
+        },
+        "__schema18": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema19"
+            },
+            "nominalCapacityWh": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema20"
+            },
+            "usableCapacityWh": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema21"
+            },
+            "maxContinuousPowerWatts": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema22"
+            },
+            "roundTripEfficiencyBasisPoints": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema23"
+            },
+            "backupCapability": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema24"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "nominalCapacityWh",
+            "usableCapacityWh",
+            "maxContinuousPowerWatts",
+            "roundTripEfficiencyBasisPoints",
+            "backupCapability"
+          ],
+          "additionalProperties": false
+        },
+        "__schema19": {
+          "type": "string",
+          "const": "battery.v1"
+        },
+        "__schema20": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema21": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema22": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "__schema23": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema24": {
+          "type": "string",
+          "enum": [
+            "known_supported",
+            "known_unsupported",
+            "unknown"
+          ]
+        },
+        "__schema25": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "string",
+              "const": "wallbox.v1"
+            },
+            "maxChargingPowerWatts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "phaseCount": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "const": 1
+                },
+                {
+                  "type": "number",
+                  "const": 3
+                }
+              ]
+            },
+            "connector": {
+              "type": "string",
+              "enum": [
+                "type2_socket",
+                "type2_cable",
+                "other"
+              ]
+            },
+            "bidirectionalCapability": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema24"
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "maxChargingPowerWatts",
+            "phaseCount",
+            "connector",
+            "bidirectionalCapability"
+          ],
+          "additionalProperties": false
+        },
+        "__schema26": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "string",
+              "const": "heat_pump.v1"
+            },
+            "nominalHeatingPowerWatts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000000
+            },
+            "scopHundredths": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "nominalHeatingPowerWatts",
+            "scopHundredths"
+          ],
+          "additionalProperties": false
+        },
+        "__schema27": {
+          "type": "object",
+          "properties": {
+            "displayName": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema7"
+            },
+            "manufacturer": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema7"
+            },
+            "model": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema7"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "piece",
+                "set",
+                "meter"
+              ]
+            },
+            "keyPoints": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema8"
+            },
+            "image": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema10"
+            },
+            "datasheet": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema11"
+            }
+          },
+          "required": [
+            "displayName",
+            "manufacturer",
+            "model",
+            "unit",
+            "keyPoints",
+            "image",
+            "datasheet"
+          ],
+          "additionalProperties": false
+        },
+        "__schema28": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "string",
+              "const": "mounting.v1"
+            },
+            "systemName": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema7"
+            },
+            "roofTypes": {
+              "minItems": 1,
+              "maxItems": 4,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rowCommand/$defs/__schema29"
+              }
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "systemName",
+            "roofTypes"
+          ],
+          "additionalProperties": false
+        },
+        "__schema29": {
+          "type": "string",
+          "enum": [
+            "pitched",
+            "flat",
+            "facade",
+            "ground"
+          ]
+        },
+        "__schema30": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "string",
+              "const": "other.v1"
+            },
+            "attributes": {
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rowCommand/$defs/__schema31"
+              }
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "attributes"
+          ],
+          "additionalProperties": false
+        },
+        "__schema31": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "__schema32": {
+          "type": "object",
+          "properties": {
+            "snapshot": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema33"
+                    },
+                    "canonicalizationVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema34"
+                    },
+                    "identity": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "componentId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "revision": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema35"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "module"
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "componentId",
+                        "revision",
+                        "internalSku",
+                        "componentType"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "presentation": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                    },
+                    "technicalData": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema12"
+                    },
+                    "commercial": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                    },
+                    "technicalProvenance": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                    },
+                    "snapshotSha256": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "canonicalizationVersion",
+                    "identity",
+                    "presentation",
+                    "technicalData",
+                    "commercial",
+                    "technicalProvenance",
+                    "snapshotSha256"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema33"
+                    },
+                    "canonicalizationVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema34"
+                    },
+                    "identity": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "componentId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "revision": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema35"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "inverter"
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "componentId",
+                        "revision",
+                        "internalSku",
+                        "componentType"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "presentation": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                    },
+                    "technicalData": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema17"
+                    },
+                    "commercial": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                    },
+                    "technicalProvenance": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                    },
+                    "snapshotSha256": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "canonicalizationVersion",
+                    "identity",
+                    "presentation",
+                    "technicalData",
+                    "commercial",
+                    "technicalProvenance",
+                    "snapshotSha256"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema33"
+                    },
+                    "canonicalizationVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema34"
+                    },
+                    "identity": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "componentId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "revision": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema35"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "battery"
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "componentId",
+                        "revision",
+                        "internalSku",
+                        "componentType"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "presentation": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                    },
+                    "technicalData": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema18"
+                    },
+                    "commercial": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                    },
+                    "technicalProvenance": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                    },
+                    "snapshotSha256": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "canonicalizationVersion",
+                    "identity",
+                    "presentation",
+                    "technicalData",
+                    "commercial",
+                    "technicalProvenance",
+                    "snapshotSha256"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema33"
+                    },
+                    "canonicalizationVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema34"
+                    },
+                    "identity": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "componentId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "revision": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema35"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "wallbox"
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "componentId",
+                        "revision",
+                        "internalSku",
+                        "componentType"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "presentation": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                    },
+                    "technicalData": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema25"
+                    },
+                    "commercial": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                    },
+                    "technicalProvenance": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                    },
+                    "snapshotSha256": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "canonicalizationVersion",
+                    "identity",
+                    "presentation",
+                    "technicalData",
+                    "commercial",
+                    "technicalProvenance",
+                    "snapshotSha256"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema33"
+                    },
+                    "canonicalizationVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema34"
+                    },
+                    "identity": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "componentId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "revision": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema35"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "heat_pump"
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "componentId",
+                        "revision",
+                        "internalSku",
+                        "componentType"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "presentation": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema6"
+                    },
+                    "technicalData": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema26"
+                    },
+                    "commercial": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                    },
+                    "technicalProvenance": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                    },
+                    "snapshotSha256": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "canonicalizationVersion",
+                    "identity",
+                    "presentation",
+                    "technicalData",
+                    "commercial",
+                    "technicalProvenance",
+                    "snapshotSha256"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema33"
+                    },
+                    "canonicalizationVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema34"
+                    },
+                    "identity": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "componentId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "revision": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema35"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "mounting"
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "componentId",
+                        "revision",
+                        "internalSku",
+                        "componentType"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "presentation": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema27"
+                    },
+                    "technicalData": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema28"
+                    },
+                    "commercial": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                    },
+                    "technicalProvenance": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                    },
+                    "snapshotSha256": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "canonicalizationVersion",
+                    "identity",
+                    "presentation",
+                    "technicalData",
+                    "commercial",
+                    "technicalProvenance",
+                    "snapshotSha256"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema33"
+                    },
+                    "canonicalizationVersion": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema34"
+                    },
+                    "identity": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "componentId": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema2"
+                        },
+                        "revision": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema35"
+                        },
+                        "internalSku": {
+                          "$ref": "#/$defs/rowCommand/$defs/__schema5"
+                        },
+                        "componentType": {
+                          "type": "string",
+                          "const": "other"
+                        }
+                      },
+                      "required": [
+                        "workspaceId",
+                        "componentId",
+                        "revision",
+                        "internalSku",
+                        "componentType"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "presentation": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema27"
+                    },
+                    "technicalData": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema30"
+                    },
+                    "commercial": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema13"
+                    },
+                    "technicalProvenance": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema15"
+                    },
+                    "snapshotSha256": {
+                      "$ref": "#/$defs/rowCommand/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "canonicalizationVersion",
+                    "identity",
+                    "presentation",
+                    "technicalData",
+                    "commercial",
+                    "technicalProvenance",
+                    "snapshotSha256"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "bodyCanonicalBase64": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 1000000,
+              "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+            },
+            "snapshotSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "snapshot",
+            "bodyCanonicalBase64",
+            "snapshotSha256"
+          ],
+          "additionalProperties": false
+        },
+        "__schema33": {
+          "type": "string",
+          "const": "catalog-component-revision.v1"
+        },
+        "__schema34": {
+          "type": "string",
+          "const": "catalog-jcs.v1"
+        },
+        "__schema35": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "__schema36": {
+          "type": "object",
+          "properties": {
+            "componentId": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema2"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active"
+              ]
+            },
+            "snapshotSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "internalSku": {
+              "$ref": "#/$defs/rowCommand/$defs/__schema5"
+            },
+            "componentType": {
+              "type": "string",
+              "enum": [
+                "module",
+                "inverter",
+                "battery",
+                "wallbox",
+                "heat_pump",
+                "mounting",
+                "other"
+              ]
+            }
+          },
+          "required": [
+            "componentId",
+            "revision",
+            "status",
+            "snapshotSha256",
+            "internalSku",
+            "componentType"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "requestErrorCode": {
+      "type": "string",
+      "enum": [
+        "invalid_file",
+        "file_too_large",
+        "invalid_encoding",
+        "invalid_filename",
+        "invalid_headers",
+        "too_many_columns",
+        "too_many_rows",
+        "missing_mapping",
+        "mapping_conflict",
+        "snapshot_budget_exceeded",
+        "parser_error"
+      ]
+    },
+    "processingResultCode": {
+      "type": "string",
+      "enum": [
+        "sku_created_since_preview",
+        "revision_drift",
+        "status_drift",
+        "type_drift",
+        "archived_requires_manual_reactivation",
+        "catalog_write_conflict"
+      ]
+    },
+    "jobErrorCode": {
+      "type": "string",
+      "enum": [
+        "actor_revoked",
+        "capability_revoked",
+        "lease_lost",
+        "enqueue_failed",
+        "invalid_persisted_input",
+        "technical_retry_exhausted",
+        "all_rows_conflicted",
+        "queue_locator_invalid"
+      ]
+    }
+  },
+  "x-semantic-invariants": [
+    "browser header inspection is advisory; only the server parser and mapping are authoritative",
+    "workspace, actor, identifiers, revisions, lifecycle status, assets, and activation are never CSV fields",
+    "money is parsed as a decimal string and converted exactly to safe integer EUR/net cents",
+    "roundTripEfficiencyPercent and scop accept at most two decimals and are converted without rounding to basis points or hundredths",
+    "other.attributes is exclusively an RFC 8259 JSON array of strict name/value objects",
+    "invalid rows contain only row number, canonical field, source header, stable code, and fixed message; never raw row values",
+    "duplicate normalized SKUs invalidate every duplicate row before persistence",
+    "file, canonical mapping, sanitized row, and source command SHA-256 values bind the persisted preview",
+    "a transient valid preview row contains exactly a catalog-component-create-command.v1 and creates no catalog mutation",
+    "a persisted catalog-import-row-command.v1 binds every operation to immutable source; revise and unchanged also bind expected state; only create and revise bind canonical sealed target bytes, while unchanged requires no sealed target"
+  ]
+}

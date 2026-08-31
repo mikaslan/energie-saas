@@ -24,6 +24,7 @@ export {
   returnCatalogComponentToDraft,
   reviseCatalogComponentDetails,
   reviseCatalogComponentPricing,
+  searchActiveProjectCatalogComponents,
 } from "./service";
 export type {
   CatalogComponentReadModel,
@@ -34,6 +35,29 @@ export type {
   ProjectCatalogResolutionMutationResult,
   ProjectCatalogResolutionStaleReason,
 } from "./service";
+export {
+  assertCatalogImportAccess,
+  cancelCatalogImport,
+  CatalogImportConflictError,
+  CatalogImportDispatchError,
+  CatalogImportInputError,
+  CatalogImportIntegrityError,
+  CatalogImportPersistenceError,
+  getCatalogImport,
+  getCatalogImportErrorReport,
+  getLatestCatalogImport,
+  listCatalogImportRows,
+  prepareCatalogImport,
+  startCatalogImport,
+} from "./import-service";
+export type {
+  CatalogImportCancelResult,
+  CatalogImportDetails,
+  CatalogImportPrepareResult,
+  CatalogImportRowReadModel,
+  CatalogImportRowsPage,
+  CatalogImportStartResult,
+} from "./import-service";
 export type {
   OfferCatalogBasisReference,
   OfferCatalogCopy,

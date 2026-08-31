@@ -24,6 +24,15 @@ import { fetchPvgisYieldSnapshots } from
 import { requireServiceDatabaseUrl } from "../lib/db/role-env";
 import { createCalculationExecuteHandler } from "./calculation";
 import { createCalculationDatabaseGateway } from "./calculation-database";
+import {
+  createCatalogImportCleanupHandler,
+  createCatalogImportHandler,
+  startCatalogImportMaintenanceSweep,
+  type CatalogImportMaintenanceController,
+} from "./catalog-import";
+import {
+  createCatalogImportDatabaseGateway,
+} from "./catalog-import-database";
 import { createHealthProbe, createHealthServer, startHeartbeat } from "./health";
 import {
   createOfferPdfRenderHandler,
@@ -65,6 +74,34 @@ const CALCULATION_QUEUE = "calculation.execute";
 const OFFER_PDF_QUEUE = "pdf.render";
 const OFFER_RELEASE_CANDIDATE_QUEUE = "offer.release-candidate.render";
 const OFFER_ISSUANCE_QUEUE = "offer-issuance.render.v1";
+const CATALOG_IMPORT_QUEUE = "catalog.import.v1";
+const CATALOG_IMPORT_CLEANUP_QUEUE = "catalog.import.cleanup.v1";
+const DEFAULT_WORKER_HEALTH_PORT = 8080;
+
+function workerHealthPort(): number {
+  const raw = process.env.WORKER_HEALTH_PORT ?? String(DEFAULT_WORKER_HEALTH_PORT);
+  if (!/^(?:0|[1-9][0-9]{0,4})$/u.test(raw)) {
+    throw new Error("WORKER_HEALTH_PORT must be an integer between 0 and 65535");
+  }
+  const port = Number(raw);
+  if (!Number.isSafeInteger(port) || port > 65_535) {
+    throw new Error("WORKER_HEALTH_PORT must be an integer between 0 and 65535");
+  }
+  return port;
+}
+
+function catalogImportOnlyForE2e(): boolean {
+  const raw = process.env.WORKER_E2E_CATALOG_IMPORT_ONLY;
+  if (raw === undefined) return false;
+  if (raw !== "1" || process.env.NODE_ENV !== "test") {
+    throw new Error(
+      "WORKER_E2E_CATALOG_IMPORT_ONLY=1 is allowed only when NODE_ENV=test",
+    );
+  }
+  return true;
+}
+
+const CATALOG_IMPORT_ONLY_FOR_E2E = catalogImportOnlyForE2e();
 
 // Einziger Worker-Principal: kein stiller Rückfall auf die Runtime-Rolle. Der
 // Wert wird EINMAL aufgelöst, damit pg-boss und Health-Probe garantiert dieselbe
@@ -81,6 +118,7 @@ let offerReleaseCandidateRecovery:
   | OfferReleaseCandidateRecoveryController
   | undefined;
 let offerIssuanceRecovery: OfferIssuanceRecoveryController | undefined;
+let catalogImportMaintenance: CatalogImportMaintenanceController | undefined;
 let shutdownPromise: Promise<void> | undefined;
 let fatalShutdown = false;
 let bossFailure: Error | undefined;
@@ -117,6 +155,11 @@ const offerReleaseCandidateGateway = createOfferReleaseCandidateDatabaseGateway(
 const offerIssuanceGateway = createOfferIssuanceDatabaseGateway(
   WORKER_URL,
   (error) => reportFatalWorkerError("offer-issuance-pool", error),
+  2,
+);
+const catalogImportGateway = createCatalogImportDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("catalog-import-pool", error),
   2,
 );
 const boss = new PgBoss({
@@ -166,6 +209,12 @@ const offerIssuanceHandler = createOfferIssuanceRenderHandler({
     reportFatalWorkerError("offer-issuance-integrity", error);
   },
 });
+const catalogImportHandler = createCatalogImportHandler({
+  database: catalogImportGateway.database,
+});
+const catalogImportCleanupHandler = createCatalogImportCleanupHandler(
+  catalogImportGateway,
+);
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
 // diese Probe braucht Timeouts, die tatsächlich abbrechen. Beides steckt in
@@ -200,6 +249,9 @@ function shutdown(signal: string, fatal = false): Promise<void> {
     const issuanceRecoveryStopped = offerIssuanceRecovery?.stop()
       ?? Promise.resolve();
     offerIssuanceRecovery = undefined;
+    const catalogImportMaintenanceStopped = catalogImportMaintenance?.stop()
+      ?? Promise.resolve();
+    catalogImportMaintenance = undefined;
 
     // Keine neuen Health-Requests mehr annehmen; bestehende Requests dürfen
     // parallel zum pg-boss-Drain innerhalb ihres 2-s-Probe-Budgets enden.
@@ -212,6 +264,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
         await recoveryStopped;
         await releaseRecoveryStopped;
         await issuanceRecoveryStopped;
+        await catalogImportMaintenanceStopped;
         await boss.stop({ graceful: true, timeout: 15_000 });
       } finally {
         // Bei einem benutzerdefinierten IDatabase-Adapter verwaltet pg-boss
@@ -224,6 +277,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
           offerPdfGateway.close(),
           offerReleaseCandidateGateway.close(),
           offerIssuanceGateway.close(),
+          catalogImportGateway.close(),
         ]);
       }
     };
@@ -261,34 +315,117 @@ async function main() {
   // Danach prüft derselbe Pool jede neu aufgebaute Probe-Verbindung erneut.
   await health.probe();
   startupGate.assertOpen();
-  await calculationGateway.probe();
-  startupGate.assertOpen();
-  await offerPdfGateway.probe();
-  startupGate.assertOpen();
-  await offerReleaseCandidateGateway.probe();
-  startupGate.assertOpen();
-  await offerIssuanceGateway.probe();
+  if (!CATALOG_IMPORT_ONLY_FOR_E2E) {
+    await calculationGateway.probe();
+    startupGate.assertOpen();
+    await offerPdfGateway.probe();
+    startupGate.assertOpen();
+    await offerReleaseCandidateGateway.probe();
+    startupGate.assertOpen();
+    await offerIssuanceGateway.probe();
+    startupGate.assertOpen();
+  } else {
+    console.log("[worker] E2E-Katalogisolierung aktiv");
+  }
+  await catalogImportGateway.probe();
   startupGate.assertOpen();
   await boss.start();
   startupGate.assertOpen();
-  await boss.createQueue(CALCULATION_QUEUE, {
+  if (!CATALOG_IMPORT_ONLY_FOR_E2E) {
+    await boss.createQueue(CALCULATION_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 900,
+    });
+    startupGate.assertOpen();
+    await boss.createQueue("health.echo");
+    startupGate.assertOpen();
+    await boss.work("health.echo", async (jobs) => {
+      for (const job of jobs) console.log("[health.echo]", job.id, job.data);
+    });
+    startupGate.assertOpen();
+    await boss.work(CALCULATION_QUEUE, calculationHandler);
+    startupGate.assertOpen();
+    await boss.createQueue(OFFER_PDF_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    startupGate.assertOpen();
+    await boss.work(
+      OFFER_PDF_QUEUE,
+      { batchSize: 1, localConcurrency: 2 },
+      offerPdfHandler,
+    );
+    startupGate.assertOpen();
+    offerPdfRecovery = startOfferPdfRecoverySweep({
+      database: offerPdfGateway,
+      onFatal: (error) => {
+        reportFatalWorkerError("offer-pdf-recovery", error);
+      },
+    });
+    startupGate.assertOpen();
+    await boss.createQueue(OFFER_RELEASE_CANDIDATE_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    startupGate.assertOpen();
+    await boss.work(
+      OFFER_RELEASE_CANDIDATE_QUEUE,
+      { batchSize: 1, localConcurrency: 2 },
+      offerReleaseCandidateHandler,
+    );
+    startupGate.assertOpen();
+    offerReleaseCandidateRecovery = startOfferReleaseCandidateRecoverySweep({
+      database: offerReleaseCandidateGateway,
+      onFatal: (error) => {
+        reportFatalWorkerError("offer-release-candidate-recovery", error);
+      },
+    });
+    startupGate.assertOpen();
+    await boss.createQueue(OFFER_ISSUANCE_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    startupGate.assertOpen();
+    await boss.work(
+      OFFER_ISSUANCE_QUEUE,
+      { batchSize: 1, localConcurrency: 2 },
+      offerIssuanceHandler,
+    );
+    startupGate.assertOpen();
+    offerIssuanceRecovery = startOfferIssuanceRecoverySweep({
+      database: offerIssuanceGateway,
+      onFatal: (error) => {
+        reportFatalWorkerError("offer-issuance-recovery", error);
+      },
+    });
+    startupGate.assertOpen();
+  }
+  await boss.createQueue(CATALOG_IMPORT_QUEUE, {
     policy: "exclusive",
     retryLimit: 10,
     retryDelay: 1,
     retryBackoff: true,
     retryDelayMax: 60,
-    expireInSeconds: 900,
+    expireInSeconds: 180,
   });
   startupGate.assertOpen();
-  await boss.createQueue("health.echo");
-  startupGate.assertOpen();
-  await boss.work("health.echo", async (jobs) => {
-    for (const job of jobs) console.log("[health.echo]", job.id, job.data);
-  });
-  startupGate.assertOpen();
-  await boss.work(CALCULATION_QUEUE, calculationHandler);
-  startupGate.assertOpen();
-  await boss.createQueue(OFFER_PDF_QUEUE, {
+  await boss.createQueue(CATALOG_IMPORT_CLEANUP_QUEUE, {
     policy: "exclusive",
     retryLimit: 10,
     retryDelay: 1,
@@ -298,59 +435,21 @@ async function main() {
   });
   startupGate.assertOpen();
   await boss.work(
-    OFFER_PDF_QUEUE,
+    CATALOG_IMPORT_QUEUE,
     { batchSize: 1, localConcurrency: 2 },
-    offerPdfHandler,
+    catalogImportHandler,
   );
-  startupGate.assertOpen();
-  offerPdfRecovery = startOfferPdfRecoverySweep({
-    database: offerPdfGateway,
-    onFatal: (error) => {
-      reportFatalWorkerError("offer-pdf-recovery", error);
-    },
-  });
-  startupGate.assertOpen();
-  await boss.createQueue(OFFER_RELEASE_CANDIDATE_QUEUE, {
-    policy: "exclusive",
-    retryLimit: 10,
-    retryDelay: 1,
-    retryBackoff: true,
-    retryDelayMax: 60,
-    expireInSeconds: 180,
-  });
   startupGate.assertOpen();
   await boss.work(
-    OFFER_RELEASE_CANDIDATE_QUEUE,
-    { batchSize: 1, localConcurrency: 2 },
-    offerReleaseCandidateHandler,
+    CATALOG_IMPORT_CLEANUP_QUEUE,
+    { batchSize: 1, localConcurrency: 1 },
+    catalogImportCleanupHandler,
   );
   startupGate.assertOpen();
-  offerReleaseCandidateRecovery = startOfferReleaseCandidateRecoverySweep({
-    database: offerReleaseCandidateGateway,
+  catalogImportMaintenance = startCatalogImportMaintenanceSweep({
+    database: catalogImportGateway,
     onFatal: (error) => {
-      reportFatalWorkerError("offer-release-candidate-recovery", error);
-    },
-  });
-  startupGate.assertOpen();
-  await boss.createQueue(OFFER_ISSUANCE_QUEUE, {
-    policy: "exclusive",
-    retryLimit: 10,
-    retryDelay: 1,
-    retryBackoff: true,
-    retryDelayMax: 60,
-    expireInSeconds: 180,
-  });
-  startupGate.assertOpen();
-  await boss.work(
-    OFFER_ISSUANCE_QUEUE,
-    { batchSize: 1, localConcurrency: 2 },
-    offerIssuanceHandler,
-  );
-  startupGate.assertOpen();
-  offerIssuanceRecovery = startOfferIssuanceRecoverySweep({
-    database: offerIssuanceGateway,
-    onFatal: (error) => {
-      reportFatalWorkerError("offer-issuance-recovery", error);
+      reportFatalWorkerError("catalog-import-maintenance", error);
     },
   });
   startupGate.assertOpen();
@@ -365,7 +464,13 @@ async function main() {
   }
 
   startupGate.assertOpen();
-  server.listen(8080, () => console.log("worker health on :8080"));
+  server.listen(workerHealthPort(), () => {
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("worker health endpoint did not bind to a TCP port");
+    }
+    console.log(`worker health on :${address.port}`);
+  });
 }
 
 // Bereits vor dem ersten await in main() registriert: Auch ein Signal während
