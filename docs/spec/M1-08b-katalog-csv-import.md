@@ -676,7 +676,7 @@ Upgrade-Migration, Production-Build und Chromium-E2E.
 
 ## Tatsächlicher Abnahmestand vom 31. August 2026
 
-- `npm run check` ist auf dem aktuellen Dirty-Worktree vollständig grün:
+- `npm run check` ist für den Feature-Commit `d632f3d` vollständig grün:
   Lint, Next-Typegen/TypeScript, Contract-Drift, Dependency-Cruiser, 144/144
   Testdateien mit 1.371 bestandenen und einem ausdrücklich opt-in
   übersprungenen Test sowie 88/88 Rollen- und 5/5 PG18-Proben.
@@ -694,8 +694,9 @@ Upgrade-Migration, Production-Build und Chromium-E2E.
 
 Diese lokale Abnahme verwendete ausschließlich synthetische beziehungsweise
 selbst autorisierte Testdaten. Es wurde keine reale WMEE-/Lieferantendatei
-importiert, kein Reonic-Innenzugang verwendet und kein Commit, Push, Deploy,
-Providerkauf oder produktiver Worker-Rollout ausgeführt.
+importiert und kein Reonic-Innenzugang verwendet. Der Slice wurde als
+`d632f3d` committet und über `bdaf952` mit M1-09 in `e631814` integriert;
+Push, Deploy, Providerkauf und produktiver Worker-Rollout wurden nicht ausgeführt.
 
 ## Nichtziele
 
@@ -707,5 +708,7 @@ Providerkauf oder produktiver Worker-Rollout ausgeführt.
   Herstellerempfehlung;
 - keine automatische Aktivierung und keine Paket-/Offer-Templates;
 - kein Klimaanlagenmodell über den unzureichenden Typ `other`;
-- keine Projektzuweisung, Teams oder External-Freischaltung;
+- Projektzuweisung, Teams oder External-Freischaltung waren kein Bestandteil
+  dieses Slices; M1-09 ergänzt inzwischen ausschließlich die direkte Zuweisung
+  und minimierte External-Request-Sicht;
 - kein Deploy, Push, Providerkauf oder produktiver Import.

@@ -1,6 +1,6 @@
 # M1-09 — Projektverantwortung und zugewiesene Request-Sicht
 
-- Status: REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE 2 GO · UNCOMMITTED
+- Status: REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE 2 GO · COMMITTED/INTEGRATED (`e631814`)
 - Datum: 2026-08-31
 - F-Bezug: F1.1, F1.2 und F1.5 (PARTIAL)
 - Architektur: ADR 0014
@@ -386,6 +386,7 @@ nach dem bestehenden Pseudonymisierungskonzept nur mit IDs erhalten.
 ## Gate 1
 
 Der Nutzer hat im laufenden Gesamtziel Gate 1 und alle weiteren
-Implementierungsgates allgemein freigegeben. Diese Spec bleibt innerhalb dieser
-Freigabe. Gate 2 vor einem Commit bleibt separat: kein Commit, Push oder Deploy
-ohne erneute ausdrückliche Bestätigung.
+Implementierungs- und Commitgates allgemein freigegeben. Die isolierte Abnahme
+und das gemeinsame M1-08b→M1-09-Integrationsgate sind grün; Feature-Commit
+`af8f297` ist in Integrationscommit `e631814` enthalten. Push und Deploy wurden
+für diesen Stand noch nicht ausgeführt.

@@ -1,5 +1,12 @@
 # M1-09 — Umsetzungsplan Projektzuweisung
 
+Abschluss 2026-08-31: Feature-Commit `af8f297`; gemeinsam mit M1-08b/`0036`
+in `e631814` integriert. Das Integrationsgate ist mit 150/150 Testdateien,
+1.432 bestandenen Tests, 27 aktiven Chromium-Fällen, Build, Rollen-/PG18-Proben
+und drei unabhängigen Reviews ohne offene P0–P2 grün. Die nachfolgenden
+Commit-/Deploy-Sperren dokumentieren den historischen Planstand vor der späteren
+ausdrücklichen Automatisierungsfreigabe.
+
 ## Ziel
 
 ```text
