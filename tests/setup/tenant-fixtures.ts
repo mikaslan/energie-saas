@@ -61,7 +61,11 @@ async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
   return { contactId, siteId, projectId };
 }
 
-async function fixtureMembership(tx: TenantTx, wsId: string): Promise<{
+async function fixtureMembership(
+  tx: TenantTx,
+  wsId: string,
+  role: "viewer" | "editor" = "viewer",
+): Promise<{
   userId: string;
   membershipId: string;
 }> {
@@ -75,9 +79,38 @@ async function fixtureMembership(tx: TenantTx, wsId: string): Promise<{
   `);
   await tx.execute(sql`
     insert into membership (id, workspace_id, user_id, role)
-    values (${membershipId}::uuid, ${wsId}::uuid, ${userId}::uuid, 'viewer')
+    values (${membershipId}::uuid, ${wsId}::uuid, ${userId}::uuid, ${role})
   `);
   return { userId, membershipId };
+}
+
+async function fixtureProjectTaskGraph(tx: TenantTx, wsId: string): Promise<void> {
+  const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor");
+  await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+  const { projectId } = await fixtureProjectGraph(tx, wsId);
+  const taskId = randomUUID();
+  await tx.execute(sql`
+    insert into project_task (
+      id, workspace_id, project_id, title, body_version, body,
+      created_by, updated_by
+    ) values (
+      ${taskId}::uuid, ${wsId}::uuid, ${projectId}::uuid, 'Fixture Task',
+      'task-rich-text.v1', '{"type":"doc","content":[]}'::jsonb,
+      ${userId}::uuid, ${userId}::uuid
+    )
+  `);
+  await tx.execute(sql`
+    insert into project_task_assignee (workspace_id, task_id, membership_id)
+    values (${wsId}::uuid, ${taskId}::uuid, ${membershipId}::uuid)
+  `);
+  await tx.execute(sql`
+    insert into project_task_checklist_item (workspace_id, task_id, position, text)
+    values (${wsId}::uuid, ${taskId}::uuid, 0, 'Fixture Checklist')
+  `);
+  await tx.execute(sql`
+    insert into project_task_label (workspace_id, task_id, position, name, color)
+    values (${wsId}::uuid, ${taskId}::uuid, 0, 'Fixture Label', 'blue')
+  `);
 }
 
 async function fixtureReceipt(tx: TenantTx, wsId: string): Promise<{
@@ -1655,6 +1688,10 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  project_task: fixtureProjectTaskGraph,
+  project_task_assignee: fixtureProjectTaskGraph,
+  project_task_checklist_item: fixtureProjectTaskGraph,
+  project_task_label: fixtureProjectTaskGraph,
   inbound_receipt: async (tx, wsId) => {
     await fixtureReceipt(tx, wsId);
   },
@@ -1830,6 +1867,44 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
     await tx.execute(sql`
       insert into catalog_import_dispatch_receipt (dispatch_id, workspace_id)
       values (${randomUUID()}::uuid, ${randomUUID()}::uuid)
+    `);
+  },
+  project_task: async (tx) => {
+    await tx.execute(sql`alter table project_task disable trigger project_task_mutation_guard`);
+    await tx.execute(sql`
+      insert into project_task (
+        workspace_id, project_id, title, created_by, updated_by
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, 'cross-write',
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid
+      )
+    `);
+  },
+  project_task_assignee: async (tx) => {
+    await tx.execute(sql`
+      alter table project_task_assignee disable trigger project_task_assignee_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into project_task_assignee (workspace_id, task_id, membership_id)
+      values (${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid)
+    `);
+  },
+  project_task_checklist_item: async (tx) => {
+    await tx.execute(sql`
+      alter table project_task_checklist_item disable trigger project_task_checklist_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into project_task_checklist_item (workspace_id, task_id, position, text)
+      values (${randomUUID()}::uuid, ${randomUUID()}::uuid, 0, 'cross-write')
+    `);
+  },
+  project_task_label: async (tx) => {
+    await tx.execute(sql`
+      alter table project_task_label disable trigger project_task_label_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into project_task_label (workspace_id, task_id, position, name, color)
+      values (${randomUUID()}::uuid, ${randomUUID()}::uuid, 0, 'cross-write', 'blue')
     `);
   },
   project: async (tx) => {

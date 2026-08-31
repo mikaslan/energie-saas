@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { sql } from "drizzle-orm";
 import { testPool } from "../setup/test-db";
-import { withTenantOn } from "@/lib/db/tenant";
+import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
 import {
   tenantFixtures,
   crossWriteOverrides,
@@ -64,6 +64,49 @@ let allRelations: Relation[] = [];
 let tables: Relation[] = [];
 const wsA = randomUUID();
 const wsB = randomUUID();
+const ACTOR_SCOPED_TABLES = new Set([
+  "project_task",
+  "project_task_assignee",
+  "project_task_checklist_item",
+  "project_task_label",
+]);
+const actorByWorkspace = new Map<string, string>();
+
+async function ensureInternalViewer(workspaceId: string): Promise<string> {
+  const existing = actorByWorkspace.get(workspaceId);
+  if (existing) return existing;
+  const actorId = randomUUID();
+  const membershipId = randomUUID();
+  await withTenantOn(testPool, workspaceId, async (tx) => {
+    await tx.execute(sql`
+      insert into user_identity (id, email)
+      values (${actorId}::uuid, ${`${actorId}@tenant-invariant.test`})
+    `);
+    await tx.execute(sql`
+      insert into membership (id, workspace_id, user_id, role, capabilities)
+      values (
+        ${membershipId}::uuid, ${workspaceId}::uuid, ${actorId}::uuid,
+        'viewer', '{"external_only":false}'::jsonb
+      )
+    `);
+  });
+  actorByWorkspace.set(workspaceId, actorId);
+  return actorId;
+}
+
+async function countVisibleRows(table: string, workspaceId: string): Promise<number> {
+  const read = async (tx: Parameters<typeof tenantFixtures.workspace>[0]) => {
+    const result = await tx.execute<CountRow>(
+      sql.raw(`select count(*)::int as n from ${table}`),
+    );
+    return result.rows[0].n;
+  };
+  if (!ACTOR_SCOPED_TABLES.has(table)) {
+    return withTenantOn(testPool, workspaceId, read);
+  }
+  const actorId = await ensureInternalViewer(workspaceId);
+  return withAuthorizedTenantOn(testPool, actorId, workspaceId, read);
+}
 
 // Der kanonische with-check-/using-Ausdruck, den JEDE Tenant-Policy tragen
 // muss. Verglichen wird whitespace-normalisiert und EXAKT — nicht per
@@ -309,18 +352,12 @@ describe("Tenant-Invarianten über ALLE Tabellen", () => {
 
   it("Zeilen aus Workspace A sind in Workspace B unsichtbar", async () => {
     for (const t of tables) {
+      const beforeB = await countVisibleRows(t.name, wsB);
       await withTenantOn(testPool, wsA, (tx) => tenantFixtures[t.name](tx, wsA));
-      const inA = await withTenantOn(testPool, wsA, (tx) =>
-        tx.execute<CountRow>(sql.raw(`select count(*)::int as n from ${t.name}`)));
-      const inB = await withTenantOn(testPool, wsB, (tx) =>
-        tx.execute<CountRow>(sql.raw(`select count(*)::int as n from ${t.name}`)));
-      expect(inA.rows[0].n, `${t.name}: Fixture hat nichts angelegt`).toBeGreaterThan(0);
-      const bBaseline = t.name === "workspace" || t.name === "kanban_board"
-        ? 1
-        : t.name === "kanban_column"
-          ? 4
-          : 0;
-      expect(inB.rows[0].n, `${t.name}: LECK — B sieht Daten von A`).toBe(bBaseline);
+      const inA = await countVisibleRows(t.name, wsA);
+      const inB = await countVisibleRows(t.name, wsB);
+      expect(inA, `${t.name}: Fixture hat nichts angelegt`).toBeGreaterThan(0);
+      expect(inB, `${t.name}: LECK — B sieht Daten von A`).toBe(beforeB);
     }
   });
 });

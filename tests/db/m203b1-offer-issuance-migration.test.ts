@@ -899,6 +899,7 @@ describe("M2-03b1 offer-issuance migration contract", () => {
        where routine.oid = any(array[
          'public.guard_erasure_tombstone_worm()'::regprocedure,
          'public.build_inactive_lead_erasure_graph(uuid,uuid)'::regprocedure,
+         'public.build_inactive_lead_erasure_graph_m203b1(uuid,uuid)'::regprocedure,
          'public.erase_inactive_lead(uuid,uuid,uuid)'::regprocedure
        ]::oid[])
        order by routine.proname
@@ -907,7 +908,10 @@ describe("M2-03b1 offer-issuance migration contract", () => {
     expect(byName.get("guard_erasure_tombstone_worm")).toMatch(
       /offerIssuanceIds[\s\S]*offerIssuanceApprovalIds[\s\S]*offerIssuanceWithdrawalIds/u,
     );
-    const graphSource = byName.get("build_inactive_lead_erasure_graph");
+    expect(byName.get("build_inactive_lead_erasure_graph")).toContain(
+      "build_inactive_lead_erasure_graph_m203b1",
+    );
+    const graphSource = byName.get("build_inactive_lead_erasure_graph_m203b1");
     for (const binding of [
       "offerIssuanceIds",
       "offerIssuanceApprovalIds",
