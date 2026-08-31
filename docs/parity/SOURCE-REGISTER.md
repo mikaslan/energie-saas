@@ -7,11 +7,15 @@ in `CONTRIBUTING.md` noch eine Capability-Abnahme. Reonic-Quellen dürfen nur
 beobachtbare Funktionssemantik belegen. UI, Texte, Assets, Code und Daten werden
 nicht übernommen.
 
-## Aktive Quellen für M1-08b, M1-09, M2-01, M2-02, M2-03a und M2-03b1
+## Aktive Quellen für M1-08b, M1-09, M1-10, M2-01, M2-02, M2-03a und M2-03b1
 
 | ID | Quelle | Klasse | Belegt | Confidence / Grenze |
 |---|---|---|---|---|
 | `SRC-CONSTITUTION-01` | `CONTRIBUTING.md` | DOCUMENTED | Clean-Room, erlaubte Quellen, verbotene Zugänge | hoch; bindend |
+| `SRC-M110-SPEC` | `docs/spec/M1-10-projektaufgaben-aktivitaet.md` | DOCUMENTED WMEE | eigener Task-, Richtext-, Rollen-, Activity-, Erasure- und Abnahmevertrag | hoch für eigene WMEE-Semantik; Implementierung ausstehend |
+| `SRC-ADR-0015` | `docs/adr/0015-projektaufgaben-und-interne-aktivitaet.md` | DECIDED WMEE | feste Project-Eltern, Taskrevision, interne RLS, sichere Events und einwegiges Archive | hoch für eigene Architektur; keine private Reonic-Wahrheit |
+| `SRC-REONIC-TASKS` | [Manage tasks in Reonic](https://docs.reonic.com/docs/en/crm-tasks) | DOCUMENTED | Quick/Full Create, Parent, Datum, Assignees/Teams, Labels, Checkliste, Complete/Reopen, Archive und Activity | hoch für öffentlich beschriebene Capability; kein Login, private Limits/Implementierung unbekannt |
+| `SRC-REONIC-TASK-TEMPLATES` | [Task templates and labels](https://docs.reonic.com/docs/en/settings-tasks-task-templates-labels) | DOCUMENTED | zentrale farbige Labels sowie persönliche/unternehmensweite Templates mit relativer Frist | hoch; Templates bleiben außerhalb M1-10 |
 | `SRC-M109-SPEC` | `docs/spec/M1-09-projektzuweisung.md` | DOCUMENTED | eigener Assignment-, External-Sicht-, Rollen-, Race- und Abnahmevertrag | hoch für eigene WMEE-Semantik; lokal technisch verifiziert |
 | `SRC-ADR-0014` | `docs/adr/0014-projektzuweisung-und-externe-sicht.md` | DECIDED WMEE | direkte Membership-Zuweisung, separate Capability, restriktive RLS und minimierte External-Sicht | hoch für eigene Architektur; keine private Reonic-Wahrheit |
 | `SRC-REONIC-PROJECT-ASSIGNMENTS` | [Project assignments](https://docs.reonic.com/docs/en/settings-company-project-assignments) | DOCUMENTED | öffentlich beschriebene Hauptverantwortung, Nutzer, Teams und zuweisungsabhängige Sicht | hoch für beobachtbare Capability; kein Login, Datenmodell/Limit/Locksemantik unbekannt |

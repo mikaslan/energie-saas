@@ -74,6 +74,15 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
     capability: "assign_projects",
     expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
   },
+  "project.activity.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
+  "task.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
+  "task.write": {
+    expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
+  },
   // Ab hier: editor braucht die Capability, admin nicht (Admin impliziert alle).
   "phase.convert": {
     capability: "convert_phase",
@@ -136,12 +145,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 16 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 19 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(16);
+    expect(Object.keys(MATRIX)).toHaveLength(19);
   });
 
-  it("16 Actions × 3 Rollen × Capability an/aus", () => {
+  it("19 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];
@@ -197,6 +206,32 @@ describe("M1-09 Projektzuweisung ist eine getrennte interne Berechtigungsgrenze"
       capability: "assign_projects",
       internalOnly: true,
     });
+  });
+});
+
+describe("M1-10 Aufgaben sind eine getrennte interne Berechtigungsgrenze", () => {
+  it("lässt interne Viewer nur lesen und Editor/Admin zusätzlich schreiben", () => {
+    expect(can(ctx("viewer"), "task.read")).toBe(true);
+    expect(can(ctx("viewer"), "project.activity.read")).toBe(true);
+    expect(can(ctx("viewer"), "task.write")).toBe(false);
+    expect(can(ctx("editor"), "task.read")).toBe(true);
+    expect(can(ctx("editor"), "task.write")).toBe(true);
+    expect(can(ctx("admin"), "task.read")).toBe(true);
+    expect(can(ctx("admin"), "task.write")).toBe(true);
+  });
+
+  it("sperrt External und malformed Flags für Lesen und Schreiben fail-closed", () => {
+    for (const action of ["task.read", "task.write", "project.activity.read"] as const) {
+      expect(can(ctx("admin", { external_only: true }), action), action).toBe(false);
+      expect(can(ctx("admin", { external_only: false }), action), action).toBe(true);
+      const malformed = {
+        role: "admin",
+        capabilities: { external_only: "false" },
+        featureFlags: {},
+      } as unknown as PermissionCtx;
+      expect(can(malformed, action), `${action} / malformed`).toBe(false);
+      expect(ACTION_REQUIREMENTS[action]).toHaveProperty("internalOnly", true);
+    }
   });
 });
 
