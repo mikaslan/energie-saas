@@ -25,6 +25,12 @@ import {
   type ProjectEnergyContext,
 } from "@/modules/energy";
 import { listOffers } from "@/modules/offers";
+import {
+  getProjectTaskPage,
+  projectTaskCursorTokenSchema,
+  type ProjectActivityCursor,
+  type ProjectTaskPageV1,
+} from "@/modules/tasks";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
 import { AssignedExternalRequestView } from "./assigned-external-request-view";
@@ -37,7 +43,9 @@ import {
 } from "./offer-create-view";
 import { PinForm } from "./pin-form";
 import { ProductResolutionSection } from "./product-resolution-section";
+import { ProjectActivityPanel } from "./project-activity-panel";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import { ProjectTasksSection } from "./project-tasks-section";
 
 export const metadata: Metadata = {
   title: "Projektakte | Energie-SaaS",
@@ -47,6 +55,39 @@ const routeParamsSchema = z.object({
   workspaceId: z.uuid(),
   projectId: z.uuid(),
 });
+
+const activityQuerySchema = z.strictObject({
+  activityAt: z.iso.datetime({ offset: true }).optional(),
+  activityId: z.uuid().optional(),
+  taskCursor: projectTaskCursorTokenSchema.optional(),
+  tasks: z.literal("archived").optional(),
+}).superRefine((value, ctx) => {
+  if ((value.activityAt === undefined) !== (value.activityId === undefined)) {
+    ctx.addIssue({ code: "custom", message: "activity cursor must be complete" });
+  }
+});
+
+type ActivityQuery = z.infer<typeof activityQuerySchema>;
+type SearchParamValue = string | string[] | undefined;
+
+function singleSearchParam(value: SearchParamValue): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function safeActivityQuery(rawSearch: {
+  activityAt?: SearchParamValue;
+  activityId?: SearchParamValue;
+  taskCursor?: SearchParamValue;
+  tasks?: SearchParamValue;
+}): ActivityQuery {
+  const parsed = activityQuerySchema.safeParse({
+    activityAt: singleSearchParam(rawSearch.activityAt),
+    activityId: singleSearchParam(rawSearch.activityId),
+    taskCursor: singleSearchParam(rawSearch.taskCursor),
+    tasks: singleSearchParam(rawSearch.tasks),
+  });
+  return parsed.success ? parsed.data : {};
+}
 
 const decimalFormatter = new Intl.NumberFormat("de-DE", {
   minimumFractionDigits: 0,
@@ -90,6 +131,11 @@ type OfferCreationLoadResult =
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
+type TaskPageLoadResult =
+  | { kind: "loaded"; page: ProjectTaskPageV1 | null }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
 async function loadProjectDetail(
   workspaceId: string,
   projectId: string,
@@ -125,6 +171,32 @@ async function loadProjectAssignmentContext(
       (tx, ctx) => getProjectAssignmentContext(tx, ctx, projectId),
     );
     return { kind: "loaded", context };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+async function loadProjectTaskPage(
+  workspaceId: string,
+  projectId: string,
+  showingArchived: boolean,
+  taskCursor: string | null,
+  activityCursor: ProjectActivityCursor | null,
+): Promise<TaskPageLoadResult> {
+  try {
+    const page = await authorizedQuery(
+      workspaceId,
+      "task.read",
+      "project_task_page",
+      (tx, ctx) => getProjectTaskPage(tx, ctx, projectId, {
+        archived: showingArchived,
+        taskCursor,
+        activityCursor,
+      }),
+    );
+    return { kind: "loaded", page };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -301,9 +373,21 @@ function redirectToProjectLogin(detailPath: string): never {
 
 export default async function ProjectTriagePage({
   params,
+  searchParams,
 }: PageProps<"/w/[workspaceId]/anfragen/[projectId]">) {
   const parsedParams = routeParamsSchema.safeParse(await params);
   if (!parsedParams.success) notFound();
+  const rawSearch = await searchParams;
+  const parsedActivityQuery = safeActivityQuery(rawSearch);
+  const showingArchived = parsedActivityQuery.tasks === "archived";
+  const taskCursor = parsedActivityQuery.taskCursor ?? null;
+  const activityCursor: ProjectActivityCursor | null = parsedActivityQuery.activityAt
+    && parsedActivityQuery.activityId
+    ? {
+        occurredAt: parsedActivityQuery.activityAt,
+        id: parsedActivityQuery.activityId.toLowerCase(),
+      }
+    : null;
 
   const { workspaceId, projectId } = parsedParams.data;
   const detailPath = `/w/${workspaceId}/anfragen/${projectId}`;
@@ -325,6 +409,46 @@ export default async function ProjectTriagePage({
     );
   }
   const detail = pageDetail.record;
+
+  const taskPageResult = await loadProjectTaskPage(
+    workspaceId,
+    projectId,
+    showingArchived,
+    taskCursor,
+    activityCursor,
+  );
+  if (taskPageResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+  if (taskPageResult.kind === "denied") {
+    return <DeniedState title="Aufgaben und interne Aktivität sind für dich nicht freigegeben." />;
+  }
+  if (taskPageResult.page === null) notFound();
+  const taskWorkspace = taskPageResult.page.workspace;
+  const projectActivity = taskPageResult.page.activity;
+  const nextTaskHref = taskWorkspace.nextTaskCursor === null
+    ? null
+    : `${detailPath}?${new URLSearchParams({
+        ...(showingArchived ? { tasks: "archived" } : {}),
+        taskCursor: taskWorkspace.nextTaskCursor,
+      }).toString()}#project-tasks`;
+  const latestTaskHref = taskCursor === null
+    ? null
+    : `${detailPath}${showingArchived ? "?tasks=archived" : ""}#project-tasks`;
+  const activityNextHref = projectActivity.nextCursor === null
+    ? null
+    : `${detailPath}?${new URLSearchParams({
+         ...(showingArchived ? { tasks: "archived" } : {}),
+         ...(taskCursor ? { taskCursor } : {}),
+        activityAt: projectActivity.nextCursor.occurredAt,
+        activityId: projectActivity.nextCursor.id,
+      }).toString()}#project-activity`;
+  const activityLatestHref = activityCursor === null
+    ? null
+    : `${detailPath}?${new URLSearchParams({
+        ...(showingArchived ? { tasks: "archived" } : {}),
+        ...(taskCursor ? { taskCursor } : {}),
+      }).toString()}#project-activity`;
 
   const assignmentResult = await loadProjectAssignmentContext(workspaceId, projectId);
   if (assignmentResult.kind === "unauthenticated") {
@@ -430,6 +554,22 @@ export default async function ProjectTriagePage({
             </div>
           </div>
         </header>
+
+        <div className="mb-6 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] lg:items-start">
+          <ProjectTasksSection
+            workspaceId={workspaceId}
+            projectId={projectId}
+            workspace={taskWorkspace}
+            showingArchived={showingArchived}
+            nextTaskHref={nextTaskHref}
+            latestTaskHref={latestTaskHref}
+          />
+          <ProjectActivityPanel
+            activity={projectActivity}
+            nextHref={activityNextHref}
+            latestHref={activityLatestHref}
+          />
+        </div>
 
         <div className="mb-6">
           <OfferCreateEntry view={offerCreateView} />

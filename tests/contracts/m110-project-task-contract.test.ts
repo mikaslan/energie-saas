@@ -4,13 +4,16 @@ import {
   PROJECT_TASK_MAX_ASSIGNEES,
   PROJECT_TASK_MAX_CHECKLIST_ITEMS,
   PROJECT_TASK_MAX_LABELS,
+  PROJECT_TASK_MEMBER_SEARCH_LIMIT,
+  projectTaskCursorTokenSchema,
+  projectTaskMemberSearchV1Schema,
   TASK_RICH_TEXT_MAX_BYTES,
   TASK_RICH_TEXT_MAX_DEPTH,
   TASK_RICH_TEXT_MAX_NODES,
   TASK_RICH_TEXT_MAX_TEXT,
   projectTaskCommandV1Schema,
   taskRichTextV1Schema,
-} from "@/modules/tasks";
+} from "@/lib/integrations/tasks/contract";
 
 const PROJECT_ID = "10000000-0000-4000-8000-000000000001";
 const TASK_ID = "20000000-0000-4000-8000-000000000002";
@@ -75,6 +78,38 @@ describe("M1-10 Project-Task-Vertrag", () => {
       dueDate: "2026-10-25",
       assigneeMembershipIds: [MEMBERSHIP_ID],
     });
+  });
+
+  it("normalisiert Labels vor finalem Trim, Längencheck und Duplikatvergleich", () => {
+    const command = {
+      schemaVersion: PROJECT_TASK_COMMAND_VERSION,
+      kind: "create" as const,
+      projectId: PROJECT_ID,
+      title: "Montage vorbereiten",
+      body,
+      dueDate: null,
+      assigneeMembershipIds: [],
+      checklist: [],
+      labels: [{ name: "  Ｖｏｒ　Ｏｒｔ  ", color: "emerald" as const }],
+    };
+
+    const parsed = projectTaskCommandV1Schema.parse(command);
+    expect(parsed.kind).toBe("create");
+    if (parsed.kind !== "create") throw new Error("expected create command");
+    expect(parsed.labels).toEqual([
+      { name: "Vor Ort", color: "emerald" },
+    ]);
+    expect(projectTaskCommandV1Schema.safeParse({
+      ...command,
+      labels: [{ name: "ﬃ".repeat(14), color: "emerald" }],
+    }).success).toBe(false);
+    expect(projectTaskCommandV1Schema.safeParse({
+      ...command,
+      labels: [
+        { name: "Ａ", color: "emerald" },
+        { name: "A", color: "blue" },
+      ],
+    }).success).toBe(false);
   });
 
   it("bindet Full Edit, Checklist und Zustandswechsel an die Taskrevision", () => {
@@ -144,6 +179,7 @@ describe("M1-10 Project-Task-Vertrag", () => {
       { ...body, doc: { type: "doc", content: [{ type: "image", attrs: { src: "https://example.test/x" } }] } },
       { ...body, doc: { type: "doc", content: [{ type: "paragraph", attrs: { style: "color:red" } }] } },
       { ...body, doc: { type: "doc", content: [{ type: "heading", attrs: { level: 1 }, content: [] }] } },
+      { ...body, doc: { type: "doc", content: [{ type: "heading", attrs: { level: 2 }, content: [] }] } },
       { ...body, doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "x", marks: [{ type: "link", attrs: { href: "javascript:alert(1)" } }] }] }] } },
       { ...body, doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "nul\u0000byte" }] }] } },
     ]) {
@@ -200,5 +236,17 @@ describe("M1-10 Project-Task-Vertrag", () => {
     expect(TASK_RICH_TEXT_MAX_NODES).toBe(500);
     expect(TASK_RICH_TEXT_MAX_DEPTH).toBe(8);
     expect(TASK_RICH_TEXT_MAX_TEXT).toBe(10_000);
+    expect(PROJECT_TASK_MEMBER_SEARCH_LIMIT).toBe(20);
+  });
+
+  it("kanonisiert die task.write-gated Membersuche und begrenzt Cursortokens", () => {
+    expect(projectTaskMemberSearchV1Schema.parse({ query: "  Ｍｉｋａ  " }))
+      .toEqual({ query: "Mika" });
+    for (const query of ["x", "x".repeat(81), "Mika\nAdmin"]) {
+      expect(projectTaskMemberSearchV1Schema.safeParse({ query }).success).toBe(false);
+    }
+    expect(projectTaskCursorTokenSchema.safeParse("eyJ2IjoxfQ").success).toBe(true);
+    expect(projectTaskCursorTokenSchema.safeParse("../cursor").success).toBe(false);
+    expect(projectTaskCursorTokenSchema.safeParse("x".repeat(513)).success).toBe(false);
   });
 });

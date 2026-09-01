@@ -3145,6 +3145,40 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "domain_events_project_task_activity_idx": {
+          "name": "domain_events_project_task_activity_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "aggregate_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"domain_events\".\"aggregate_type\" = 'project' and \"domain_events\".\"event_type\" in (\n        'project.task_created', 'project.task_updated',\n        'project.task_checklist_changed', 'project.task_completed',\n        'project.task_reopened', 'project.task_archived'\n      )",
+          "concurrently": true,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -11575,14 +11609,26 @@
             {
               "expression": "status",
               "isExpression": false,
-              "asc": true,
-              "nulls": "last"
+              "asc": false,
+              "nulls": "first"
             },
             {
               "expression": "due_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
+            },
+            {
+              "expression": "completed_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
             },
             {
               "expression": "id",
@@ -11593,6 +11639,58 @@
           ],
           "isUnique": false,
           "where": "\"project_task\".\"archived_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "project_task_ws_project_archived_idx": {
+          "name": "project_task_ws_project_archived_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
+            },
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "completed_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"project_task\".\"archived_at\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -12128,7 +12226,7 @@
         },
         "project_task_label_name_ck": {
           "name": "project_task_label_name_ck",
-          "value": "length(btrim(\"project_task_label\".\"name\")) between 1 and 40"
+          "value": "length(btrim(\"project_task_label\".\"name\")) between 1 and 40\n          and \"project_task_label\".\"name\" = normalize(\"project_task_label\".\"name\", NFKC)\n          and \"project_task_label\".\"name\" !~ '[[:cntrl:]]'\n          and \"project_task_label\".\"name\" !~ '(^[[:space:]])|([[:space:]]$)'"
         },
         "project_task_label_color_ck": {
           "name": "project_task_label_color_ck",

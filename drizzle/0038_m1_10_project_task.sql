@@ -58,6 +58,7 @@ BEGIN
                AND pg_catalog.jsonb_typeof(node->'attrs'->'level') = 'number'
                AND node->'attrs'->>'level' IN ('2', '3')
                AND pg_catalog.jsonb_typeof(node->'content') = 'array'
+               AND pg_catalog.jsonb_array_length(node->'content') BETWEEN 1 AND 500
              WHEN 'bulletList' THEN
                node ?& ARRAY['type', 'content']::text[]
                AND node - ARRAY['type', 'content']::text[] = '{}'::jsonb
@@ -224,7 +225,10 @@ CREATE TABLE "project_task_label" (
 	CONSTRAINT "project_task_label_ws_id_uq" UNIQUE("workspace_id","id"),
 	CONSTRAINT "project_task_label_ws_task_position_uq" UNIQUE("workspace_id","task_id","position"),
 	CONSTRAINT "project_task_label_position_ck" CHECK ("project_task_label"."position" between 0 and 14),
-	CONSTRAINT "project_task_label_name_ck" CHECK (length(btrim("project_task_label"."name")) between 1 and 40),
+	CONSTRAINT "project_task_label_name_ck" CHECK (length(btrim("project_task_label"."name")) between 1 and 40
+          and "project_task_label"."name" = normalize("project_task_label"."name", NFKC)
+          and "project_task_label"."name" !~ '[[:cntrl:]]'
+          and "project_task_label"."name" !~ '(^[[:space:]])|([[:space:]]$)'),
 	CONSTRAINT "project_task_label_color_ck" CHECK ("project_task_label"."color" in ('slate', 'blue', 'emerald', 'amber', 'rose', 'violet'))
 );
 --> statement-breakpoint
@@ -237,8 +241,9 @@ ALTER TABLE "project_task_checklist_item" ADD CONSTRAINT "project_task_checklist
 ALTER TABLE "project_task_checklist_item" ADD CONSTRAINT "project_task_checklist_task_fk" FOREIGN KEY ("workspace_id","task_id") REFERENCES "public"."project_task"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_task_label" ADD CONSTRAINT "project_task_label_workspace_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspace"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_task_label" ADD CONSTRAINT "project_task_label_task_fk" FOREIGN KEY ("workspace_id","task_id") REFERENCES "public"."project_task"("workspace_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "project_task_ws_project_active_idx" ON "project_task" USING btree ("workspace_id","project_id","status","due_at","id") WHERE "project_task"."archived_at" is null;--> statement-breakpoint
+CREATE INDEX "project_task_ws_project_active_idx" ON "project_task" USING btree ("workspace_id","project_id","status" DESC NULLS FIRST,"due_at" ASC NULLS LAST,"completed_at" DESC NULLS LAST,"created_at" DESC NULLS FIRST,"id" ASC NULLS LAST) WHERE "project_task"."archived_at" is null;--> statement-breakpoint
 CREATE INDEX "project_task_ws_due_active_idx" ON "project_task" USING btree ("workspace_id","due_at","id") WHERE "project_task"."archived_at" is null and "project_task"."due_at" is not null;--> statement-breakpoint
+CREATE INDEX "project_task_ws_project_archived_idx" ON "project_task" USING btree ("workspace_id","project_id","status" DESC NULLS FIRST,"due_at" ASC NULLS LAST,"completed_at" DESC NULLS LAST,"created_at" DESC NULLS FIRST,"id" ASC NULLS LAST) WHERE "project_task"."archived_at" is not null;--> statement-breakpoint
 CREATE INDEX "project_task_assignee_ws_membership_task_idx" ON "project_task_assignee" USING btree ("workspace_id","membership_id","task_id");--> statement-breakpoint
 CREATE INDEX "project_task_checklist_ws_task_idx" ON "project_task_checklist_item" USING btree ("workspace_id","task_id","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "project_task_label_ws_task_name_ci_uq" ON "project_task_label" USING btree ("workspace_id","task_id",lower(btrim("name")));--> statement-breakpoint
@@ -384,6 +389,21 @@ BEGIN
      WHERE project_record.workspace_id = NEW.workspace_id
        AND project_record.id = NEW.project_id
      FOR SHARE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'project_task Project-Bindung fehlt'
+        USING ERRCODE = '23514';
+    END IF;
+    -- Zweites READ-COMMITTED-Statement nach dem Project-Lock: wenn eine
+    -- Erasure zuerst committet, darf der Trigger keine alte Contact-Joinseite
+    -- aus dem vor dem Lock-Wait erzeugten Statement-Snapshot verwenden.
+    PERFORM 1
+      FROM public.project AS project_record
+      JOIN public.contact AS contact_record
+        ON contact_record.workspace_id = project_record.workspace_id
+       AND contact_record.id = project_record.contact_id
+     WHERE project_record.workspace_id = NEW.workspace_id
+       AND project_record.id = NEW.project_id
+       AND contact_record.deleted_at IS NULL;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'project_task Project-Bindung fehlt'
         USING ERRCODE = '23514';

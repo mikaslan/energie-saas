@@ -1,6 +1,6 @@
 # Domain Model
 
-Stand: 2026-08-31 · M1-08b, M1-09, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Bestehender Spine und neue kommerzielle Grenze
 
@@ -10,7 +10,12 @@ Workspace
  │    ├─ OfferReleaseProfileRevision (n, append-only)
  │    └─ OfferReleaseProfileActivation (n, append-only)
  ├─ Membership ← ProjectAssignment → Project ← Site ← Contact
-│                    ├─ Requirement revisions
+ │                    ├─ ProjectTask (n; mutable CAS-Aggregat)
+ │                    │    ├─ ProjectTaskAssignee (0..50)
+ │                    │    ├─ ProjectTaskChecklistItem (0..100)
+ │                    │    └─ ProjectTaskLabel (0..15)
+ │                    ├─ ProjectEvent (redigierte interne Aktivität)
+ │                    ├─ Requirement revisions
  │                    ├─ Calculation revisions
  │                    ├─ Catalog resolution revisions
  │                    └─ Offer (max. 1 in v1)
@@ -49,6 +54,10 @@ Workspace
 |---|---|---|
 | `Project` | bestehende Workspace-/Contact-/Site-Bindung | Phase, Boardposition und monotone `assignment_revision`; nicht die Preiswahrheit |
 | `ProjectAssignment` | Workspace + Project + Membership, pro Membership/Project eindeutig | aktuelle direkte Beziehung als `key_account` oder `user`; Project-Löschung kaskadiert, Membership-Löschung bleibt bei aktiver Zuweisung RESTRICT |
+| `ProjectTask` | stabile Workspace-/Project-Task-ID, Revision ab 1 | Titel, sichere `task-rich-text.v1`-Beschreibung, absolutes Datum, open/done, Completion und einwegiges Archive; CAS-Aggregat, keine globale Task |
+| `ProjectTaskAssignee` | Task + aktive interne Workspace-Membership, eindeutig | 0–50 interne Personen; Membership-FK RESTRICT, Project-/Task-Erasure kontrolliert |
+| `ProjectTaskChecklistItem` | stabile Item-ID und Position 0–99 innerhalb der Task | Text und Done-Stand; Task-FK-Cascade, keine eigenständige Aktivitäts-/Erasureidentität |
+| `ProjectTaskLabel` | task-eigen, kanonisch eindeutiger Name und Position | 0–15 Labels aus geschlossener Farbpalette; keine zentrale Workspace-Taxonomie |
 | `ProjectCatalogResolution` | immutable Planungs-/Produktauswahlrevision | zulässige Seed-Quelle, ausdrücklich keine BOM |
 | `CatalogImportJob` | stabiler Workspace-Job, unique je Intent-/Datei-/Mapping-Reservation | persistierte Vorschau, Rechteattestation, Counts, geschlossene Zustandsmaschine, Lease/CAS sowie Preview-/Redaction-Due; keine gespeicherte Rohdatei |
 | `CatalogImportRow` | genau eine Datenzeile 2..1001 pro Import | unveränderlicher, vollständig validierter create/revise/unchanged-Command samt Datei-/Mapping-/Zeilenhash und versiegeltem Zielstand; freie Quellen werden zur Due-Grenze redigiert |
@@ -95,6 +104,17 @@ Workspace
   Assignmentstand, Event und Audit in einer Transaktion. Die feste
   Project→Workspace→Assignment-Lockreihenfolge serialisiert Project-Delete,
   Assignmentcommands und Membership-Offboarding ohne Teilstand.
+- Create startet unter dem Project-Lock ohne `expectedRevision` bei Revision 1.
+  Jede wirksame Änderung einer bestehenden Task bindet erwartete Taskrevision,
+  vollständigen Aggregate-Stand, genau ein redigiertes Project-Event und ein
+  Audit in einer Transaktion. Project→Task→Kind ist die feste Lockreihenfolge;
+  Conflict und No-op hinterlassen keinen Teilstand.
+- Task-Richtext wird ausschließlich als geschlossenes strukturiertes JSON
+  gespeichert und ohne Raw-HTML-Sink gerendert. Events/Audits enthalten weder
+  Titel/Body/Datum noch Label-/Checklisttexte, Child-IDs oder PII.
+- Der Erasure-Tombstone bindet Aggregate-Task-IDs. Assignees, Checklistitems
+  und Labels folgen per kontrollierter FK-Cascade; archivierte Tasks sind kein
+  eigenständiges Retention- oder WORM-Artefakt.
 - External-Projektsicht ist aus eigener aktiver Membership, eigener direkter
   Assignmentzeile und `request/open` abgeleitet. Nach Removal-/Phase-/Outcome-
   Commit ist die Sicht in der nächsten Transaktion entzogen; ein bereits

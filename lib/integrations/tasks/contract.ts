@@ -4,7 +4,11 @@ export const PROJECT_TASK_COMMAND_VERSION = "project-task-command.v1" as const;
 export const TASK_RICH_TEXT_VERSION = "task-rich-text.v1" as const;
 export const PROJECT_TASK_MAX_ASSIGNEES = 50 as const;
 export const PROJECT_TASK_MAX_CHECKLIST_ITEMS = 100 as const;
+export const PROJECT_TASK_MAX_CHECKLIST_TEXT_LENGTH = 500 as const;
 export const PROJECT_TASK_MAX_LABELS = 15 as const;
+export const PROJECT_TASK_MEMBER_SEARCH_LIMIT = 20 as const;
+export const PROJECT_TASK_PAGE_LIMIT = 50 as const;
+export const PROJECT_TASK_CURSOR_TOKEN_MAX_LENGTH = 512 as const;
 export const PROJECT_TASK_MAX_REVISION = 2_147_483_647 as const;
 export const TASK_RICH_TEXT_MAX_BYTES = 32 * 1024;
 export const TASK_RICH_TEXT_MAX_NODES = 500;
@@ -95,7 +99,7 @@ const paragraphNodeSchema: z.ZodType<TaskRichTextParagraphNode> = z.strictObject
 const headingNodeSchema: z.ZodType<TaskRichTextHeadingNode> = z.strictObject({
   type: z.literal("heading"),
   attrs: z.strictObject({ level: z.union([z.literal(2), z.literal(3)]) }),
-  content: z.array(inlineNodeSchema).max(TASK_RICH_TEXT_MAX_NODES),
+  content: z.array(inlineNodeSchema).min(1).max(TASK_RICH_TEXT_MAX_NODES),
 });
 const listItemNodeSchema: z.ZodType<TaskRichTextListItemNode> = z.lazy(() =>
   z.strictObject({
@@ -186,9 +190,24 @@ const singleLine = (max: number) => z.string().trim().min(1).max(max).refine(
   "control characters are not allowed",
 );
 const titleSchema = singleLine(200);
-const checklistTextSchema = singleLine(500);
-const labelNameSchema = singleLine(40).transform((value) => value.normalize("NFKC"));
+const checklistTextSchema = singleLine(PROJECT_TASK_MAX_CHECKLIST_TEXT_LENGTH);
+const labelNameSchema = z.string()
+  .transform((value) => value.normalize("NFKC"))
+  .pipe(singleLine(40));
 const colorSchema = z.enum(taskLabelColors);
+
+export const projectTaskCursorTokenSchema = z.string()
+  .min(1)
+  .max(PROJECT_TASK_CURSOR_TOKEN_MAX_LENGTH)
+  .regex(/^[A-Za-z0-9_-]+$/u);
+export const projectTaskMemberSearchV1Schema = z.strictObject({
+  query: z.string()
+    .transform((value) => value.normalize("NFKC"))
+    .pipe(singleLine(80).refine(
+      (value) => Array.from(value).length >= 2,
+      "search query is too short",
+    )),
+});
 
 function isCalendarDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
@@ -312,3 +331,80 @@ export const projectTaskCommandV1Schema = z.discriminatedUnion("kind", [
 ]);
 
 export type ProjectTaskCommandV1 = z.infer<typeof projectTaskCommandV1Schema>;
+export type ProjectTaskMemberSearchV1 = z.infer<typeof projectTaskMemberSearchV1Schema>;
+
+export type ProjectTaskAssigneeV1 = { membershipId: string; label: string };
+export type ProjectTaskMemberOptionV1 = { membershipId: string; label: string };
+export type ProjectTaskChecklistItemV1 = {
+  id: string;
+  position: number;
+  text: string;
+  done: boolean;
+};
+export type ProjectTaskLabelV1 = {
+  id: string;
+  position: number;
+  name: string;
+  color: TaskLabelColor;
+};
+export type ProjectTaskItemV1 = {
+  id: string;
+  revision: number;
+  title: string;
+  body: TaskRichTextV1;
+  dueAt: string | null;
+  status: "open" | "done";
+  completedAt: string | null;
+  archivedAt: string | null;
+  assignees: ProjectTaskAssigneeV1[];
+  checklist: ProjectTaskChecklistItemV1[];
+  labels: ProjectTaskLabelV1[];
+};
+export type ProjectTaskWorkspaceV1 = {
+  schemaVersion: "project-task-workspace.v1";
+  projectId: string;
+  permissions: { canWrite: boolean };
+  taskPageLimit: typeof PROJECT_TASK_PAGE_LIMIT;
+  nextTaskCursor: string | null;
+  open: ProjectTaskItemV1[];
+  done: ProjectTaskItemV1[];
+  archived: ProjectTaskItemV1[];
+  archivedCount: number;
+};
+export type ProjectActivityKind =
+  | "task_created"
+  | "task_updated"
+  | "task_checklist_changed"
+  | "task_completed"
+  | "task_reopened"
+  | "task_archived";
+export type ProjectActivityCursor = { occurredAt: string; id: string };
+export type ProjectActivityPageV1 = {
+  schemaVersion: "project-activity-page.v1";
+  items: Array<{
+    id: string;
+    kind: ProjectActivityKind;
+    occurredAt: string;
+    actorLabel: string;
+    taskId: string;
+    taskTitle: string | null;
+  }>;
+  nextCursor: ProjectActivityCursor | null;
+};
+export type ProjectTaskPageV1 = {
+  schemaVersion: "project-task-page.v1";
+  workspace: ProjectTaskWorkspaceV1;
+  activity: ProjectActivityPageV1;
+};
+export type ProjectTaskMemberSearchPageV1 = {
+  schemaVersion: "project-task-member-search-page.v1";
+  query: string;
+  members: ProjectTaskMemberOptionV1[];
+  hasMore: boolean;
+};
+export type ProjectTaskCommandResult = {
+  projectId: string;
+  taskId: string;
+  revision: number;
+  changed: boolean;
+};

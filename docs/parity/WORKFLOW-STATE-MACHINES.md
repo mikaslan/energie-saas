@@ -1,6 +1,6 @@
 # Workflow- und Statusmaschinen
 
-Stand: 2026-08-31 · M1-08b, M1-09, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Project-Phase
 
@@ -69,6 +69,28 @@ Eine bereits laufende SQL-Anweisung darf ihren konsistenten Snapshot beenden;
 M1-09 verspricht keinen Mid-Response-Kill. Alle folgenden Transaktionen sehen
 den Entzug. Teams, Teamvererbung, Auto-Routing und External-Schreiben besitzen
   in M1-09 keine Zustandskante.
+
+## Projektaufgabe und interne Projektaktivität
+
+```text
+missing -- quick/full create --> active/open@revision 1
+active/open -- complete(expected N) --> active/done@revision N+1
+active/done -- reopen(expected N) --> active/open@revision N+1
+active/* -- edit/toggle(expected N) --> active/*@revision N+1
+active/* -- archive(expected N + confirmation) --> archived/*@revision N+1
+archived/* --> keine Edit-/Toggle-/Complete-/Reopen-/Unarchive-Kante
+expected != current --> conflict, no write
+identischer wirksamer Zielstand --> no-op, gleiche Revision
+```
+
+Full Edit ersetzt Body, Datum, Assignees, Labels und Checkliste atomar. Ein
+Conflict bewahrt den gesamten lokalen Entwurf; ein bewusster Retry verwendet
+die neu geladene Serverrevision. Ungeprüfte Checklistitems verhindern
+Completion nicht. Jede wirksame Kante schreibt genau ein redigiertes
+Project-Event und ein Audit in derselben Transaktion; No-op und Conflict
+schreiben beides nicht. Standardlisten blenden archivierte Tasks aus, das
+Archiv bleibt getrennt lesbar. External besitzt weder eine Lese- noch eine
+Schreibkante.
 
 ## Offer v1
 

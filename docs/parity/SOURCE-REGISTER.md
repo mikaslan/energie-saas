@@ -1,6 +1,6 @@
 # Paritäts-Quellenregister
 
-Stand: 2026-08-31
+Stand: 2026-09-01
 
 Dieses Register klassifiziert Quellen; es ersetzt weder die Clean-Room-Regeln
 in `CONTRIBUTING.md` noch eine Capability-Abnahme. Reonic-Quellen dürfen nur
@@ -12,7 +12,7 @@ nicht übernommen.
 | ID | Quelle | Klasse | Belegt | Confidence / Grenze |
 |---|---|---|---|---|
 | `SRC-CONSTITUTION-01` | `CONTRIBUTING.md` | DOCUMENTED | Clean-Room, erlaubte Quellen, verbotene Zugänge | hoch; bindend |
-| `SRC-M110-SPEC` | `docs/spec/M1-10-projektaufgaben-aktivitaet.md` | DOCUMENTED WMEE | eigener Task-, Richtext-, Rollen-, Activity-, Erasure- und Abnahmevertrag | hoch für eigene WMEE-Semantik; Implementierung ausstehend |
+| `SRC-M110-SPEC` | `docs/spec/M1-10-projektaufgaben-aktivitaet.md` | DOCUMENTED WMEE | eigener Task-, Richtext-, Rollen-, Activity-, Erasure- und Abnahmevertrag | hoch für eigene WMEE-Semantik; lokal technisch verifiziert |
 | `SRC-ADR-0015` | `docs/adr/0015-projektaufgaben-und-interne-aktivitaet.md` | DECIDED WMEE | feste Project-Eltern, Taskrevision, interne RLS, sichere Events und einwegiges Archive | hoch für eigene Architektur; keine private Reonic-Wahrheit |
 | `SRC-REONIC-TASKS` | [Manage tasks in Reonic](https://docs.reonic.com/docs/en/crm-tasks) | DOCUMENTED | Quick/Full Create, Parent, Datum, Assignees/Teams, Labels, Checkliste, Complete/Reopen, Archive und Activity | hoch für öffentlich beschriebene Capability; kein Login, private Limits/Implementierung unbekannt |
 | `SRC-REONIC-TASK-TEMPLATES` | [Task templates and labels](https://docs.reonic.com/docs/en/settings-tasks-task-templates-labels) | DOCUMENTED | zentrale farbige Labels sowie persönliche/unternehmensweite Templates mit relativer Frist | hoch; Templates bleiben außerhalb M1-10 |
@@ -70,6 +70,11 @@ nicht als private Reonic-Produktwahrheit ausgegeben.
 | `DEC-M109-03` | Zuweisungsmutationen verlangen ein eigenes internal-only `project.assign` und optimistische Revision | DECIDED WMEE | Spec M1-09, ADR 0014, Rollenmatrix |
 | `DEC-M109-04` | External sieht ausschließlich direkt zugewiesene `request/open`-Projekte über minimiertes read-only DTO; Offers und Mutationen bleiben gesperrt | DECIDED WMEE | Spec M1-09, ADR 0014 |
 | `DEC-M109-05` | Sichtentzug gilt ab der nächsten Transaktion; Membership-Offboarding bleibt bis zur Assignmentbereinigung per FK fail-closed | DECIDED WMEE | Spec M1-09, ADR 0014 |
+| `DEC-M110-01` | M1-10 modelliert ausschließlich Project-Tasks mit absolutem Datum, task-eigenen Labels/Checklisten und eigenen begrenzten Mengen; Teams, Templates und zentrale Labels bleiben Folgefähigkeiten | DECIDED WMEE | Spec M1-10, ADR 0015 |
+| `DEC-M110-02` | `task.read`, `task.write` und `project.activity.read` sind internal-only; External erhält keinerlei Task-, Label-, Checklist- oder Aktivitätsdaten | DECIDED WMEE | Spec M1-10, ADR 0015, Rollenmatrix |
+| `DEC-M110-03` | Completion ist reversibel, Archive einwegig; offene Checklistenpunkte blockieren Completion nicht | DECIDED WMEE | Spec M1-10, ADR 0015, Statusmaschinen |
+| `DEC-M110-04` | Project-Events/Audits enthalten nur Task-/Project-ID, Revision, Kind, Changed-Keys und Counts; keine Child-IDs, Titel, Freitexte, Daten oder PII | DECIDED WMEE | Spec M1-10, ADR 0015 |
+| `DEC-M110-05` | Erasure-Tombstones speichern ausschließlich Aggregate-Task-IDs; Assignees, Labels und Checklistitems folgen über die kontrollierte FK-Cascade | DECIDED WMEE | ADR 0015, Domain Model |
 | `DEC-M201-01` | ein Offer pro Project im v1 | DECIDED WMEE | Spec M2-01, ADR 0009 |
 | `DEC-M108B-01` | CSV-Preview wird persistiert, die Rohdatei selbst nie gespeichert; dieselbe lokale Datei wird für Inspection und Preview erneut übertragen | DECIDED WMEE | Spec M1-08b, ADR 0013 |
 | `DEC-M108B-02` | Start verlangt gemeinsam `catalog.manage`, `price.edit`, `price.read_purchase` sowie eine versionierte Rechteattestation | DECIDED WMEE | Spec M1-08b, Rollenmatrix |

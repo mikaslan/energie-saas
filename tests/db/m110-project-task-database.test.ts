@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -18,6 +18,7 @@ const EMPTY_DOC = { type: "doc", content: [] };
 type Fixture = {
   workspaceId: string;
   otherWorkspaceId: string;
+  contactId: string;
   projectId: string;
   editorId: string;
   editorMembershipId: string;
@@ -47,6 +48,22 @@ async function rejected(work: Promise<unknown>): Promise<unknown> {
   return error;
 }
 
+async function waitForNamedSessionLock(applicationName: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const waiting = await testPool.query<{ waiting: boolean }>(`
+      select exists (
+        select 1
+          from pg_catalog.pg_stat_activity
+         where application_name = $1
+           and wait_event_type = 'Lock'
+      ) as waiting
+    `, [applicationName]);
+    if (waiting.rows[0]?.waiting) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`M1-10 DB-Lockwaiter ${applicationName} wurde nicht sichtbar`);
+}
+
 async function asActor<T>(
   fixture: Fixture,
   actorId: string,
@@ -64,6 +81,7 @@ async function seedFixture(): Promise<Fixture> {
   const fixture: Fixture = {
     workspaceId: randomUUID(),
     otherWorkspaceId: randomUUID(),
+    contactId: randomUUID(),
     projectId: randomUUID(),
     editorId: randomUUID(),
     editorMembershipId: randomUUID(),
@@ -72,7 +90,6 @@ async function seedFixture(): Promise<Fixture> {
     externalId: randomUUID(),
     externalMembershipId: randomUUID(),
   };
-  const contactId = randomUUID();
   const siteId = randomUUID();
 
   await withTenantOn(testPool, fixture.workspaceId, async (tx) => {
@@ -101,14 +118,14 @@ async function seedFixture(): Promise<Fixture> {
       insert into contact (
         id, workspace_id, display_name, email_primary, email_normalized
       ) values (
-        ${contactId}::uuid, ${fixture.workspaceId}::uuid, 'M1-10 Contact',
-        ${`${contactId}@m110.test`}, ${`${contactId}@m110.test`}
+        ${fixture.contactId}::uuid, ${fixture.workspaceId}::uuid, 'M1-10 Contact',
+        ${`${fixture.contactId}@m110.test`}, ${`${fixture.contactId}@m110.test`}
       )
     `);
     await tx.execute(sql`
       insert into site (id, workspace_id, contact_id, label)
       values (${siteId}::uuid, ${fixture.workspaceId}::uuid,
-        ${contactId}::uuid, 'M1-10 Site')
+        ${fixture.contactId}::uuid, 'M1-10 Site')
     `);
     await tx.execute(sql`
       insert into project (
@@ -116,7 +133,7 @@ async function seedFixture(): Promise<Fixture> {
         kanban_column_id, name, phase, outcome, source_key
       )
       select ${fixture.projectId}::uuid, ${fixture.workspaceId}::uuid,
-             ${contactId}::uuid, ${siteId}::uuid, board.id, intake.id,
+             ${fixture.contactId}::uuid, ${siteId}::uuid, board.id, intake.id,
              'M1-10 Project', 'request', 'open', 'fixture'
         from kanban_board board
         join kanban_column intake
@@ -149,12 +166,14 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
   });
 
   it("pinnt vier task-owned Tabellen, Limits und die getrennte Rich-Text-v1-Ablage", async () => {
-    const [migration, schema, barrel, erasureSchema, journal] = await Promise.all([
+    const [migration, schema, barrel, erasureSchema, journal, concurrentIndex, migrator] = await Promise.all([
       readFile(MIGRATION, "utf8"),
       readFile("lib/db/schema/project-task.ts", "utf8"),
       readFile("lib/db/schema/index.ts", "utf8"),
       readFile("lib/db/schema/erasure.ts", "utf8"),
       readFile("drizzle/meta/_journal.json", "utf8"),
+      readFile("scripts/concurrent-index-contract.mts", "utf8"),
+      readFile("scripts/migrate.mts", "utf8"),
     ]);
 
     for (const table of TABLES) {
@@ -175,6 +194,12 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
     expect(migration).toContain("project_task_checklist_position_ck");
     expect(migration).toContain("project_task_label_color_ck");
     expect(migration).toContain("project_task_revision_ck");
+    expect(migration).toContain("project_task_ws_project_archived_idx");
+    expect(schema).toContain('index("project_task_ws_project_archived_idx")');
+    expect(migration).not.toContain('CREATE INDEX "domain_events_project_task_activity_idx"');
+    expect(concurrentIndex).toContain("CREATE INDEX CONCURRENTLY");
+    expect(concurrentIndex).toContain("DROP INDEX CONCURRENTLY IF EXISTS");
+    expect(migrator).toContain("ensureM110ProjectTaskActivityIndex(client)");
     expect(erasureSchema).toMatch(/taskIds\?: string\[\]/u);
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
       idx: 38,
@@ -183,13 +208,36 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
   });
 
   it("pinnt Allowlist, interne Rollen, geschlossene ACLs und den Erasure-Upgradepfad", async () => {
-    const migration = await readFile(MIGRATION, "utf8");
+    const [migration, roleContract, functionSources] = await Promise.all([
+      readFile(MIGRATION, "utf8"),
+      readFile("scripts/db-role-contract.mts", "utf8"),
+      testPool.query<{ proname: string; prosrc: string }>(`
+        select function_record.proname, function_record.prosrc
+          from pg_catalog.pg_proc function_record
+          join pg_catalog.pg_namespace namespace_record
+            on namespace_record.oid = function_record.pronamespace
+         where namespace_record.nspname = 'public'
+           and function_record.proname in (
+             '_m110_guard_project_task', '_m110_valid_task_rich_text_v1'
+           )
+         order by function_record.proname
+      `),
+    ]);
+    expect(functionSources.rows.map(({ proname }) => proname)).toEqual([
+      "_m110_guard_project_task",
+      "_m110_valid_task_rich_text_v1",
+    ]);
+    for (const { prosrc } of functionSources.rows) {
+      const functionHash = createHash("sha256").update(prosrc).digest("hex");
+      expect(roleContract).toContain(functionHash);
+    }
     expect(migration).toContain("_m110_valid_task_rich_text_v1");
     expect(migration).toMatch(/paragraph[\s\S]+heading[\s\S]+bulletList[\s\S]+orderedList[\s\S]+listItem[\s\S]+hardBreak[\s\S]+text/u);
     expect(migration).toMatch(/bold[\s\S]+italic/u);
     expect(migration).not.toMatch(/INSERT INTO public\.domain_events/iu);
     expect(migration).toContain("_m110_actor_can_read_tasks");
     expect(migration).toContain("_m110_actor_can_write_tasks");
+    expect(migration).toContain("contact_record.deleted_at IS NULL");
     expect(migration).toContain("external_only");
     expect(migration).toContain("actor_role NOT IN ('viewer', 'editor', 'admin')");
     expect(migration).toContain("IN ('editor', 'admin')");
@@ -201,6 +249,63 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
     expect(migration).toContain("'taskIds'");
     expect(migration).toContain("operational_graph_document->'taskIds'");
     expect(migration).toContain("DELETE FROM public.project_task AS task_record");
+  });
+
+  it("belegt sortierungsdeckende partielle Indizes ohne zusätzlichen Sort-Knoten", async () => {
+    const plans = await asActor(fixture, fixture.editorId, async (tx) => {
+      await tx.execute(sql`set local enable_seqscan = off`);
+      await tx.execute(sql`set local enable_sort = off`);
+      const active = await tx.execute<{ "QUERY PLAN": unknown; [key: string]: unknown }>(sql`
+        explain (format json)
+        select id
+          from project_task
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and project_id = ${fixture.projectId}::uuid
+           and archived_at is null
+         order by status desc, due_at asc nulls last,
+                  completed_at desc nulls last, created_at desc, id
+         limit 51
+      `);
+      const archived = await tx.execute<{ "QUERY PLAN": unknown; [key: string]: unknown }>(sql`
+        explain (format json)
+        select id
+          from project_task
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and project_id = ${fixture.projectId}::uuid
+           and archived_at is not null
+         order by status desc, due_at asc nulls last,
+                  completed_at desc nulls last, created_at desc, id
+         limit 51
+      `);
+      const activity = await tx.execute<{ "QUERY PLAN": unknown; [key: string]: unknown }>(sql`
+        explain (format json)
+        select id
+          from domain_events
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and aggregate_type = 'project'
+           and aggregate_id = ${fixture.projectId}::uuid
+           and event_type in (
+             'project.task_created', 'project.task_updated',
+             'project.task_checklist_changed', 'project.task_completed',
+             'project.task_reopened', 'project.task_archived'
+           )
+         order by occurred_at desc, id desc
+         limit 26
+      `);
+      return {
+        active: JSON.stringify(active.rows[0]?.["QUERY PLAN"]),
+        archived: JSON.stringify(archived.rows[0]?.["QUERY PLAN"]),
+        activity: JSON.stringify(activity.rows[0]?.["QUERY PLAN"]),
+      };
+    });
+
+    expect(plans.active).toContain("project_task_ws_project_active_idx");
+    expect(plans.archived).toContain("project_task_ws_project_archived_idx");
+    expect(plans.activity).toContain("domain_events_project_task_activity_idx");
+    for (const plan of Object.values(plans)) {
+      expect(plan).not.toContain('"Node Type":"Sort"');
+      expect(plan).not.toContain('"Node Type":"Incremental Sort"');
+    }
   });
 
   it("erstellt Revision 1 und validiert das kanonische leere Dokument", async () => {
@@ -261,6 +366,7 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
     const bodies: unknown[] = [
       { type: "doc", content: [{ type: "image", attrs: { src: "https://example.test/x" } }] },
       { type: "doc", content: [{ type: "paragraph", attrs: { style: "color:red" } }] },
+      { type: "doc", content: [{ type: "heading", attrs: { level: 2 }, content: [] }] },
       { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "x".repeat(6_000) }, { type: "text", text: "y".repeat(6_000) }] }] },
       { type: "doc", content: Array.from({ length: 500 }, () => ({ type: "paragraph", content: [] })) },
       { type: "doc", content: [{ type: "bulletList", content: [{ type: "listItem", content: [{ type: "bulletList", content: [{ type: "listItem", content: [{ type: "bulletList", content: [{ type: "listItem", content: [{ type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph", content: [] }] }] }] }] }] }] }] }] }] },
@@ -386,6 +492,16 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
     `)));
     expect(postgresCode(overLabels)).toBe("23514");
 
+    const nonCanonicalLabel = await rejected(asActor(
+      fixture,
+      fixture.editorId,
+      async (tx) => tx.execute(sql`
+        insert into project_task_label (workspace_id, task_id, position, name, color)
+        values (${fixture.workspaceId}::uuid, ${taskId}::uuid, 0, 'Ｌａｂｅｌ', 'slate')
+      `),
+    ));
+    expect(postgresCode(nonCanonicalLabel)).toBe("23514");
+
     await asActor(fixture, fixture.editorId, async (tx) => {
       await tx.execute(sql`
         update project_task
@@ -408,5 +524,66 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
        where id = ${taskId}::uuid and revision = 3
     `)));
     expect(postgresCode(archivedMutation)).toBe("23514");
+  });
+
+  it("verhindert im DB-Trigger wartende und frische Task-Inserts nach Kontakterasure", async () => {
+    const applicationName = `m110-db-${randomUUID().slice(0, 8)}`;
+    const erasureTx = await testPool.connect();
+    let committed = false;
+    let waitingInsert: Promise<unknown> | undefined;
+    try {
+      await erasureTx.query("begin");
+      await erasureTx.query(
+        "select set_config('app.workspace_id', $1, true), set_config('app.actor_id', $2, true)",
+        [fixture.workspaceId, fixture.editorId],
+      );
+      await erasureTx.query(
+        "select id from project where workspace_id = $1::uuid and id = $2::uuid for update",
+        [fixture.workspaceId, fixture.projectId],
+      );
+      await erasureTx.query(
+        "update contact set deleted_at = statement_timestamp() where workspace_id = $1::uuid and id = $2::uuid",
+        [fixture.workspaceId, fixture.contactId],
+      );
+      waitingInsert = asActor(fixture, fixture.editorId, async (tx) => {
+        await tx.execute(sql`
+          select set_config('application_name', ${applicationName}, true)
+        `);
+        return tx.execute(sql`
+          insert into project_task (
+            workspace_id, project_id, title, body_version, body, created_by, updated_by
+          ) values (
+            ${fixture.workspaceId}::uuid, ${fixture.projectId}::uuid,
+            'Wartender Insert', 'task-rich-text.v1',
+            ${JSON.stringify(EMPTY_DOC)}::jsonb,
+            ${fixture.editorId}::uuid, ${fixture.editorId}::uuid
+          )
+        `);
+      });
+      await waitForNamedSessionLock(applicationName);
+      await erasureTx.query("commit");
+      committed = true;
+    } finally {
+      if (!committed) await erasureTx.query("rollback").catch(() => undefined);
+      erasureTx.release();
+    }
+    if (!waitingInsert) throw new Error("M1-10 DB-Race-Insert wurde nicht gestartet");
+    expect(postgresCode(await rejected(waitingInsert))).toBe("23514");
+
+    const freshInsert = await rejected(asActor(
+      fixture,
+      fixture.editorId,
+      async (tx) => tx.execute(sql`
+        insert into project_task (
+          workspace_id, project_id, title, body_version, body, created_by, updated_by
+        ) values (
+          ${fixture.workspaceId}::uuid, ${fixture.projectId}::uuid,
+          'Darf nach Erasure nicht entstehen', 'task-rich-text.v1',
+          ${JSON.stringify(EMPTY_DOC)}::jsonb,
+          ${fixture.editorId}::uuid, ${fixture.editorId}::uuid
+        )
+      `),
+    ));
+    expect(postgresCode(freshInsert)).toBe("23514");
   });
 });

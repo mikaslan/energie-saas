@@ -2334,14 +2334,14 @@ export async function verifyRoleContract(
           "false:false:false:u:search_path=pg_catalog:" +
           "2d578a95578ffed5bd7e23693039bb419d0cffbc05617f61be903642961e3605",
         "_m110_guard_project_task():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:af33c2c1055d33161b13d8812b1763e25a16bb85ea92ce4a9a53204cdb21a1e4",
+          "search_path=pg_catalog:1e1d9edfe6566822ee3dceed4a14f7158687cba647a12b779dccdb58603ca97f",
         "_m110_guard_project_task_child():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:82c359b25fc6f07467d09724285682147a92c4bfd8bc0239b24777f7ff1872ff",
         "_m110_guard_project_task_positions():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:1ea84dfe7c1008dd5095bb937a41345b99f2ed89042dfc56beee427b391986e6",
         "_m110_valid_task_rich_text_v1(jsonb):boolean:app_owner:plpgsql:f:i:" +
           "false:false:true:s:search_path=pg_catalog:" +
-          "acaf9a2c6e564ba01bd31eda6f057adda01a1d6ad518bf5b370bedba32d82325",
+          "e4438649b75d0bed79426fce38d31d8889c65927397fd9317d5fcfe1c25f871c",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",

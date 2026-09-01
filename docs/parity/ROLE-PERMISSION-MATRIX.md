@@ -1,6 +1,6 @@
 # Rollen- und Berechtigungsmatrix
 
-Stand: 2026-08-31 · M1-08b, M1-09, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 Die Laufzeitwahrheit bleibt `lib/permissions.ts`; diese Matrix dokumentiert die
 beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
@@ -10,6 +10,9 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
 | Request-/Projektboard und interne Akte lesen | ja | ja | ja | nur direkt zugewiesener offener Request | nein | internes `project.read`; External ausschließlich über eigene direkte Assignmentzeile und minimierten DTO |
 | Assignmentstand/Personenliste lesen | ja | ja | ja | keine Personenliste; DB sieht höchstens eigene Zeile | nein | internes `project.read`; External-UI/DTO liefert keine Assignmentliste |
 | Assignment suchen/ändern | nein | nur mit Recht | ja | nein | nein | `project.assign` / `assign_projects`, internal-only, `expectedAssignmentRevision`; Set/Clear KAM und Add/Remove User |
+| Project-Tasks und interne Aktivität lesen | ja | ja | ja | nein | nein | getrenntes internal-only `task.read` und `project.activity.read`; autorisierter Project-Context, paginierte DTO-Allowlist |
+| Project-Task Quick/Full Create, Edit, Checklist, Complete/Reopen, Archive | nein | nur mit Recht | ja | nein | nein | internal-only `task.write`; Create startet revisionslos bei 1, Änderungen bestehender Tasks verlangen die aktuelle Revision; Event und Audit atomar; Archive einwegig |
+| interne Assignees für eine Task suchen | nein | nur mit Recht | ja | nein | nein | `task.write`; ausschließlich aktive interne Workspace-Memberships, begrenzte serverseitige Suche |
 | Offer-Liste/-Detail lesen | ja | ja | ja | nein | nein | `project.read`, gleicher Workspace; External bleibt auch mit M1-09-Assignment gesperrt |
 | B2C-Request in Offer konvertieren | nein | nur mit Rechten | ja | nein | nein | `project.write` + `phase.convert` + `price.edit`, B2C-/Steuerbestätigung und alle Readiness-Gates |
 | Variante duplizieren/benennen | nein | ja | ja | nein | nein | `project.write`, `expectedRevision` |
@@ -86,3 +89,7 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
   falsch typisierte `external_only`-Markierung bleibt fail-closed; Offer,
   Katalog, Kalkulation, Personenliste und jede Assignmentmutation bleiben
   gesperrt.
+- M1-10 erweitert diese External-Sicht ausdrücklich nicht. Task-, Label-,
+  Checklist- und Projektaktivitätsrelationen besitzen restriktive internal-only
+  Policies; weder DTO, RSC/HTML noch Actions liefern External Daten oder
+  Mutationscontrols.

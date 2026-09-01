@@ -60,11 +60,30 @@ export const projectTask = pgTable(
   (t) => [
     unique("project_task_ws_id_uq").on(t.workspaceId, t.id),
     index("project_task_ws_project_active_idx")
-      .on(t.workspaceId, t.projectId, t.status, t.dueAt, t.id)
+      .on(
+        t.workspaceId,
+        t.projectId,
+        t.status.desc().nullsFirst(),
+        t.dueAt.asc().nullsLast(),
+        t.completedAt.desc().nullsLast(),
+        t.createdAt.desc().nullsFirst(),
+        t.id.asc().nullsLast(),
+      )
       .where(sql`${t.archivedAt} is null`),
     index("project_task_ws_due_active_idx")
       .on(t.workspaceId, t.dueAt, t.id)
       .where(sql`${t.archivedAt} is null and ${t.dueAt} is not null`),
+    index("project_task_ws_project_archived_idx")
+      .on(
+        t.workspaceId,
+        t.projectId,
+        t.status.desc().nullsFirst(),
+        t.dueAt.asc().nullsLast(),
+        t.completedAt.desc().nullsLast(),
+        t.createdAt.desc().nullsFirst(),
+        t.id.asc().nullsLast(),
+      )
+      .where(sql`${t.archivedAt} is not null`),
     foreignKey({
       columns: [t.workspaceId],
       foreignColumns: [workspace.id],
@@ -218,7 +237,13 @@ export const projectTaskLabel = pgTable(
       name: "project_task_label_task_fk",
     }).onDelete("cascade"),
     check("project_task_label_position_ck", sql`${t.position} between 0 and 14`),
-    check("project_task_label_name_ck", sql`length(btrim(${t.name})) between 1 and 40`),
+    check(
+      "project_task_label_name_ck",
+      sql`length(btrim(${t.name})) between 1 and 40
+          and ${t.name} = normalize(${t.name}, NFKC)
+          and ${t.name} !~ '[[:cntrl:]]'
+          and ${t.name} !~ '(^[[:space:]])|([[:space:]]$)'`,
+    ),
     check(
       "project_task_label_color_ck",
       sql`${t.color} in ('slate', 'blue', 'emerald', 'amber', 'rose', 'violet')`,

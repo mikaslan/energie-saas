@@ -1,10 +1,11 @@
 # M1-10 — Projektaufgaben und interne Projektaktivität
 
-- Status: SPECIFIED / CONTRACTED · RED ausstehend
-- Datum: 2026-08-31
+- Status: REVIEWED / VERIFIED (lokal) · TECHNISCHES GATE 2 GO
+- Datum: 2026-09-01
 - F-Bezug: F1.9 (PARTIAL)
 - Architektur: ADR 0015
-- Basis: Integrationscommit `091e7a1`; nächste Migration `0038`
+- Basis: Integrationscommit `091e7a1`, Contract-Commit `4faa833`,
+  DB-Kern `8a40e7e`; Migration `0038`
 
 ## Nutzerergebnis
 
@@ -167,7 +168,18 @@ Title, Body, Due-Date, Labeltext, Checklisttext, E-Mail und Name sind verboten.
 
 ## Gate 2
 
-Commit erst nach vollständigem Check, Build, DB-/Rollen-/Erasuretests,
-Chromium-E2E, unabhängigen Security-/Migration-/UI-Reviews und geschlossenem
-P0–P2-Stand. Push/Preview folgt ausschließlich einem separat nachgewiesenen
-geschützten Deploypfad.
+Das lokale technische Gate ist **GO**. Ausgeführt und grün sind:
+
+- `npm run check`: 157/157 Testdateien, 1.528 bestanden und 1 ausdrücklich
+  opt-in übersprungen; Rollenvertrag 88/88 plus PostgreSQL-18-Proben 5/5;
+  Dependency-Cruiser 296 Module/1.026 Abhängigkeiten ohne Verletzung.
+- Production-Build und `db:generate`: 55 Tabellen, keine Schemadrift.
+- Chromium: 32 aktive Fälle bestanden, 1 dokumentierter Visual-Fall opt-in
+  übersprungen; die unabhängige M1-10-Matrix bestand 5/5 einschließlich echtem
+  Zwei-Browser-CAS-Konflikt und vollständigem Entwurfserhalt.
+- Unabhängige Security-, Migration-, UI-/A11y- und Race-Reviews melden keine
+  offenen P0–P2.
+
+Kein Push, Preview- oder Produktionsdeploy wurde ausgeführt. Eine menschliche
+visuelle Baseline und die ausdrücklich ausgeschlossenen Task-Breiten bleiben
+separate Gates.

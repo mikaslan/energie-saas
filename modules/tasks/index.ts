@@ -3,7 +3,11 @@ export {
   PROJECT_TASK_COMMAND_VERSION,
   PROJECT_TASK_MAX_ASSIGNEES,
   PROJECT_TASK_MAX_CHECKLIST_ITEMS,
+  PROJECT_TASK_MAX_CHECKLIST_TEXT_LENGTH,
+  PROJECT_TASK_CURSOR_TOKEN_MAX_LENGTH,
   PROJECT_TASK_MAX_LABELS,
+  PROJECT_TASK_MEMBER_SEARCH_LIMIT,
+  PROJECT_TASK_PAGE_LIMIT,
   PROJECT_TASK_MAX_REVISION,
   TASK_RICH_TEXT_MAX_BYTES,
   TASK_RICH_TEXT_MAX_DEPTH,
@@ -11,13 +15,43 @@ export {
   TASK_RICH_TEXT_MAX_TEXT,
   TASK_RICH_TEXT_VERSION,
   projectTaskCommandV1Schema,
+  projectTaskCursorTokenSchema,
   projectTaskDueDateSchema,
+  projectTaskMemberSearchV1Schema,
   taskLabelColors,
   taskRichTextV1Schema,
-} from "./task-contract";
+} from "@/lib/integrations/tasks/contract";
 export type {
   ProjectTaskCommandV1,
+  ProjectActivityCursor,
+  ProjectActivityKind,
+  ProjectActivityPageV1,
+  ProjectTaskAssigneeV1,
+  ProjectTaskChecklistItemV1,
+  ProjectTaskCommandResult,
+  ProjectTaskItemV1,
+  ProjectTaskLabelV1,
+  ProjectTaskMemberOptionV1,
+  ProjectTaskMemberSearchPageV1,
+  ProjectTaskMemberSearchV1,
+  ProjectTaskPageV1,
+  ProjectTaskWorkspaceV1,
   TaskLabelColor,
   TaskRichTextBlockNode,
   TaskRichTextV1,
-} from "./task-contract";
+} from "@/lib/integrations/tasks/contract";
+export {
+  ProjectTaskArchivedError,
+  ProjectTaskConflictError,
+  ProjectTaskIllegalTransitionError,
+  ProjectTaskLimitError,
+  ProjectTaskNotFoundError,
+  ProjectTaskValidationError,
+} from "./errors";
+export {
+  executeProjectTaskCommand,
+  getProjectActivityPage,
+  getProjectTaskPage,
+  getProjectTaskWorkspace,
+  searchProjectTaskMembers,
+} from "./service";

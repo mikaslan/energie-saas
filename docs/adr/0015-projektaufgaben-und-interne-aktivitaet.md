@@ -27,11 +27,13 @@ M1-10 führt vier Tenant-Tabellen ein: `project_task`,
 Tenant-FK-Ziel und FORCE RLS. Aufgaben haben genau ein unveränderliches Project
 als Elternobjekt. Freistehende, Kontakt- oder Commercial-Eltern folgen später.
 
-`project_task.revision` ist die optimistische Aggregate-Revision. Jeder
-wirksame Command sperrt zuerst das Project, danach die Task und erforderliche
-Membership-/Kindzeilen, verlangt `expectedRevision` und erhöht die Revision
-genau einmal. Kindänderungen spiegeln `updated_at` auf dem Task. Create startet
-bei Revision 1; semantische No-ops erzeugen weder Revision noch Event.
+`project_task.revision` ist die optimistische Aggregate-Revision. Create
+sperrt das Project und startet ohne `expectedRevision` bei Revision 1. Jeder
+wirksame Command an einer bestehenden Task sperrt zuerst das Project, danach
+die Task und erforderliche Membership-/Kindzeilen, verlangt
+`expectedRevision` und erhöht die Revision genau einmal. Kindänderungen
+spiegeln `updated_at` auf dem Task; semantische No-ops erzeugen weder Revision
+noch Event.
 
 Die Beschreibung wird als `task-rich-text.v1` gespeichert. App-Vertrag und
 Datenbank akzeptieren ausschließlich eine kleine Tiptap/ProseMirror-Allowlist,
@@ -70,11 +72,13 @@ Membership-/Kind-IDs, Titel, Beschreibung, Datum, Namen, E-Mail oder
 Labeltexte. Das Readmodel projiziert ausschließlich eine feste
 Task-Event-Allowlist.
 
-Der DSGVO-Erasuregraph enthält Task- und Kind-IDs. Erasure sperrt Project vor
-Tasks und löscht die Kindrelationen FK-sicher; Taskaktivität zählt für die
-Inaktivitätsgrenze. Die bestehende dynamisch gehärtete Erasure-Funktion darf
-nur über gepinnten Quellhash, exakte Anker und Fresh-/Upgrade-/Replaytests
-erweitert werden.
+Der DSGVO-Erasuregraph enthält die Task-Aggregat-IDs. Erasure sperrt Project
+vor Tasks; Assignee-, Checklisten- und Labelrelationen werden dabei über ihre
+FKs deterministisch mitgelöscht und benötigen keine separaten WORM-Kind-IDs.
+Replay und Verifikation verwenden die Aggregat-IDs. Taskaktivität zählt für
+die Inaktivitätsgrenze. Die bestehende dynamisch gehärtete Erasure-Funktion
+darf nur über gepinnten Quellhash, exakte Anker und
+Fresh-/Upgrade-/Replaytests erweitert werden.
 
 ## Konsequenzen
 

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, uuid, text, jsonb, timestamp, boolean, index } from "drizzle-orm/pg-core";
 
 // Outbox-Muster: jede Service-Funktion (ab M1) schreibt ihr Domain-Event in
@@ -17,7 +18,26 @@ export const domainEvents = pgTable(
     payload: jsonb("payload").notNull().default({}),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("domain_events_aggregate_idx").on(t.workspaceId, t.aggregateType, t.aggregateId)],
+  (t) => [
+    index("domain_events_aggregate_idx").on(
+      t.workspaceId,
+      t.aggregateType,
+      t.aggregateId,
+    ),
+    index("domain_events_project_task_activity_idx")
+      .on(
+        t.workspaceId,
+        t.aggregateId,
+        t.occurredAt.desc().nullsFirst(),
+        t.id.desc().nullsFirst(),
+      )
+      .concurrently()
+      .where(sql`${t.aggregateType} = 'project' and ${t.eventType} in (
+        'project.task_created', 'project.task_updated',
+        'project.task_checklist_changed', 'project.task_completed',
+        'project.task_reopened', 'project.task_archived'
+      )`),
+  ],
 );
 
 // Append-only Audit-Trail: ERLAUBTE und ABGELEHNTE Zugriffe landen hier

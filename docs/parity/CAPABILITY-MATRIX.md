@@ -1,11 +1,11 @@
 # Capability-Matrix
 
-Stand: 2026-08-31 · Workflow:
+Stand: 2026-09-01 · Workflow:
 `DISCOVERED → SPECIFIED → CONTRACTED → RED → IMPLEMENTED → REVIEWED → VERIFIED`
 
 Die vollständige F1–F16-Übersicht steht in `STATUS.md`. Dieses Dokument führt
-die feingranularen M1-08b-, M1-09-, M2-01-, M2-02-, M2-03a- und
-M2-03b1-Capabilities. Alle sechs Slices sind lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind
+die feingranularen M1-08b-, M1-09-, M1-10-, M2-01-, M2-02-, M2-03a- und
+M2-03b1-Capabilities. Alle sieben Slices sind lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind
 **GO**. Die formalen
 Visual-Gates bleiben davon getrennt `INCONCLUSIVE`. Eine private
 Reonic-1:1-Semantik wird daraus nicht abgeleitet.
@@ -90,6 +90,43 @@ Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 | `M109-07` / F1.5 | Entfernen der letzten direkten Zuweisung entzieht folgende Sicht | wirksamer Commit; Membership-Löschung nur ohne aktive Referenz | ab nächster Transaktion hidden; laufendes Statement darf seinen Snapshot beenden | Composite-FK RESTRICT für Membership, Project-Cascade für fachlich nutzlose Assignments | `M109-DB-01`, `M109-RACE-01`, `M109-E2E-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
 | `M109-08` / F1.2 | Parallele Commands, Reads, Project-Delete und Offboarding bleiben konsistent | erwartete Revision; Project→Workspace→Assignment-Lockordnung | genau ein serieller Stand; Stale/Target/FK-Fehler ohne Deadlock oder Teilstand | Transaction, Revision, Event und Audit atomar | `M109-RACE-01`, `M109-SVC-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
 | `M109-09` / F1.1/F1.2/F1.5 | System beweist DB-, Rollen-, UI-, A11y- und Privacy-Grenzen | Fresh/Upgrade, echte `app_runtime`-Loginrolle, Cross-Tenant und Revocation | reproduzierbare grüne Gatekette; kein Deployment-Claim | FORCE RLS, genaue ACL, Worker ohne Assignment-/Helper-Rechte | `M109-CONTRACT-01`, `M109-DB-01`, `M109-RBAC-01`, `M109-PRIVACY-01`, `M109-E2E-01`, `M109-A11Y-01` | REVIEWED/VERIFIED (lokal); F1 PARTIAL; eigene WMEE-Semantik |
+
+## Gemeinsamer Liefervertrag M1-10
+
+- Project-Tasks leben ausschließlich in einer bestehenden Projektakte. Quick
+  Create setzt den Actor als Default-Assignee; Full Create/Edit unterstützt
+  sichere Rich-Text-Beschreibung, absolutes Datum, interne Assignees,
+  task-eigene Labels und geordnete Checkliste.
+- Create startet ohne `expectedRevision` bei Revision 1. Jede Änderung einer
+  bestehenden Task ist revisionsgebunden. Completion ist reversibel, Archive
+  einwegig; ein Konflikt bewahrt den vollständigen lokalen Entwurf und lädt
+  erst für einen bewussten Retry die neue Serverrevision.
+- Viewer lesen, Editor/Admin mutieren. External, Worker, Fremdtenant und
+  widerrufene Membership sehen weder Task- noch Aktivitätsdaten.
+- Wirksame Änderungen schreiben genau ein redigiertes Project-Event und ein
+  erlaubtes Audit. No-ops schreiben nichts; Erasure löscht das Taskaggregat
+  unter der gemeinsamen Project-Lockordnung.
+- Abschlussnachweis: 157/157 Vitest-Dateien, 1.528 bestanden/1 opt-in
+  übersprungen; Rollen 88/88 plus PG18 5/5; Chromium 32 bestanden/1 opt-in
+  übersprungen, davon M1-10 5/5; Build, `db:generate` und unabhängige Reviews
+  ohne offene P0–P2 grün. Kein Push oder Deploy.
+
+## Feingranulare M1-10-Capabilities
+
+| ID / F-Nr. | Job, Trigger und Happy Path | Inputs / Validierungen | Zustand und Nebenwirkung | Recht / Daten / Event | Tests | Status / Parität / Blocker |
+|---|---|---|---|---|---|---|
+| `M110-01` / F1.9 | interner Bearbeiter legt per Enter/Plus eine schnelle Projektaufgabe an | Titel 1–200; feste Project-ID; Actor als Default-Assignee | neue aktive/open Task Revision 1 | `task.write`; genau ein redigiertes Event/Audit | `M110-CONTRACT-01`, `M110-SVC-01`, `M110-E2E-01` | REVIEWED/VERIFIED lokal; F1 PARTIAL |
+| `M110-02` / F1.9 | Full Create/Edit speichert alle Details atomar | `task-rich-text.v1`, absolutes Datum, ≤50 Assignees, ≤100 Items, ≤15 Labels; aktuelle Revision | Create Revision 1 oder CAS N→N+1; Konflikt ohne Teilstand | internal-only; DTO-/Event-Allowlist | `M110-CONTRACT-01`, `M110-ACTION-01`, `M110-RACE-01` | REVIEWED/VERIFIED lokal |
+| `M110-03` / F1.9 | strukturierte Beschreibung wird sicher editiert und gerendert | geschlossene Nodes/Marks/Attrs; 32 KiB, 500 Nodes, Tiefe 8, 10.000 Textzeichen | kein Raw HTML und kein Parser-Sink | keine Beschreibung in Event/Audit | `M110-CONTRACT-01`, `M110-A11Y-01` | REVIEWED/VERIFIED lokal |
+| `M110-04` / F1.9 | Nutzer toggelt Checkliste, schließt und öffnet wieder | Task-/Item-ID, erwartete Revision, kohärenter Zustand | Toggle/Complete/Reopen erhöht genau einmal; unchecked blockiert nicht | `task.write`; atomare Aktivität | `M110-SVC-01`, `M110-RACE-01`, `M110-E2E-01` | REVIEWED/VERIFIED lokal |
+| `M110-05` / F1.9 | Nutzer archiviert bewusst und findet Archive getrennt | aktuelle Revision plus Bestätigung | aktiv→archiviert, keine Rückkante; danach immutable | internal-only, kein External-Leak | `M110-DB-01`, `M110-SVC-01`, `M110-E2E-01` | REVIEWED/VERIFIED lokal |
+| `M110-06` / F1.9 | Viewer liest Aufgaben und redigierte Aktivität ohne Fake-Controls | autorisierter interner Project-Context und Cursor | paginierte, stabile Reihenfolge; Viewer read-only | `task.read` + `project.activity.read` | `M110-RBAC/PRIVACY-01`, `M110-E2E-01` | REVIEWED/VERIFIED lokal |
+| `M110-07` / F1.9 | External/Fremdtenant/revoked/Worker bleiben fail-closed | Actor-, Workspace-, Project- und Membership-Reload | not-found/denied ohne Objektoracle oder HTML/RSC-Leak | FORCE RLS, restriktive Policies, genaue ACLs | `M110-DB-01`, `M110-RBAC/PRIVACY-01` | REVIEWED/VERIFIED lokal |
+| `M110-08` / F1.9 | System serialisiert Edit, Toggle, Archive und Erasure | Project→Task→Kind-Locks und expectedRevision | genau ein serieller Stand; kein Teilzustand/Resurrection | Event/Audit in derselben Transaktion | `M110-RACE-01`, `M110-DB-01` | REVIEWED/VERIFIED lokal |
+| `M110-09` / F1.9 | UI funktioniert mit Tastatur, Fokus und schmalem Reflow | 320/375 px, Reduced Motion, echte Dialog-/Fehlerzustände | Konflikt bewahrt Titel, Datum, Body, Assignees, Labels, Checkliste und Fokus | WCAG-A/AA-Axe; semantische Listen | `M110-A11Y-01`, `M110-E2E-01` | REVIEWED/VERIFIED lokal; Human Visual getrennt |
+| `M110-10` / F1.9 | Migration und Index bleiben fresh/upgrade/retry-sicher | Forward-only `0038`, FORCE RLS, Concurrent-Activity-Index | 55 Tabellen ohne Generator-Drift; wiederholbarer Index-Helper | Runtime-/Worker-ACL fail-closed | `M110-DB-01` | REVIEWED/VERIFIED lokal |
+| `M110-11` / F1.9 | Erasure entfernt Taskaggregate samt Kindern | Aggregate-Task-IDs im Tombstone; FK-Cascade für Kindzeilen | Replay/idempotent, keine Kind-ID-/Freitextspeicherung | bestehender privilegierter Erasurevertrag | `M110-DB-01`, `M110-RACE-01` | REVIEWED/VERIFIED lokal |
+| `M110-12` / F1.9 | System beweist Gesamtpfad und unabhängige Fälle | Quick/Full/Edit/Conflict/Archive/Viewer/External | reproduzierbare Gatekette; kein Deployment-Claim | Clean-Room, keine private Reonic-Innenaufnahme | alle `M110-*` | REVIEWED/VERIFIED lokal; technisches Gate 2 GO |
 
 ## Gemeinsamer Liefervertrag M2-01
 

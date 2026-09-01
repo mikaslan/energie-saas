@@ -21,6 +21,7 @@ import {
   verifyRoleContract,
 } from "./db-role-contract.mjs";
 import { verifyAppliedMigrationHistory } from "./migration-history.mjs";
+import { ensureM110ProjectTaskActivityIndex } from "./concurrent-index-contract.mjs";
 
 function requireMigrationUrl(): string {
   const url = process.env.POSTGRES_URL_MIGRATE;
@@ -144,6 +145,12 @@ try {
   }
 
   await migrate(drizzle(client), { migrationsFolder: migrationFolder });
+
+  // Drizzle führt SQL-Migrationen in einer Transaktion aus. Der partielle
+  // Activity-Index liegt dagegen auf der bereits befüllten append-only
+  // Eventtabelle und wird deshalb unter dem sessionweiten Migrationslock
+  // explizit außerhalb der Transaktion ohne Write-Blockade aufgebaut.
+  await ensureM110ProjectTaskActivityIndex(client);
 
   if (mode === STRICT_DB_ROLE_MODE) {
     await client.query("begin");
