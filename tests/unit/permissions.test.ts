@@ -70,6 +70,9 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
   "project.write": {
     expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
   },
+  "project.outcome.write": {
+    expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
+  },
   "project.assign": {
     capability: "assign_projects",
     expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
@@ -145,12 +148,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 19 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 20 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(19);
+    expect(Object.keys(MATRIX)).toHaveLength(20);
   });
 
-  it("19 Actions × 3 Rollen × Capability an/aus", () => {
+  it("20 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];
@@ -232,6 +235,30 @@ describe("M1-10 Aufgaben sind eine getrennte interne Berechtigungsgrenze", () =>
       expect(can(malformed, action), `${action} / malformed`).toBe(false);
       expect(ACTION_REQUIREMENTS[action]).toHaveProperty("internalOnly", true);
     }
+  });
+});
+
+describe("M1-11a Outcome ist eine getrennte interne Berechtigungsgrenze", () => {
+  it("verlangt mindestens einen internen Editor ohne Ersatz-Feature", () => {
+    expect(can(ctx("viewer"), "project.outcome.write")).toBe(false);
+    expect(can(ctx("editor"), "project.outcome.write")).toBe(true);
+    expect(can(ctx("admin"), "project.outcome.write")).toBe(true);
+    expect(ACTION_REQUIREMENTS["project.outcome.write"]).toEqual({
+      minRole: "editor",
+      internalOnly: true,
+    });
+  });
+
+  it("sperrt External und malformed Flags fail-closed", () => {
+    expect(can(ctx("editor", { external_only: true }), "project.outcome.write")).toBe(false);
+    expect(can(ctx("admin", { external_only: true }), "project.outcome.write")).toBe(false);
+    expect(can(ctx("editor", { external_only: false }), "project.outcome.write")).toBe(true);
+    const malformed = {
+      role: "admin",
+      capabilities: { external_only: "false" },
+      featureFlags: {},
+    } as unknown as PermissionCtx;
+    expect(can(malformed, "project.outcome.write")).toBe(false);
   });
 });
 

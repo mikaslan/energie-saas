@@ -6,7 +6,8 @@ export type Capability =
   | "prepare_offer_documents" | "approve_offer_documents" | "external_only";
 
 export type Action =
-  | "project.read" | "project.write" | "project.assign" | "project.activity.read"
+  | "project.read" | "project.write" | "project.assign" | "project.outcome.write"
+  | "project.activity.read"
   | "task.read" | "task.write" | "phase.convert"
   | "price.read_purchase" | "price.edit" | "discount.apply"
   | "invoice.issue" | "offer.release.prepare" | "offer.release.approve"
@@ -57,6 +58,7 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "project.read":        { minRole: "viewer" },
   "project.write":       { minRole: "editor" },
   "project.assign":      { minRole: "editor", capability: "assign_projects", internalOnly: true },
+  "project.outcome.write": { minRole: "editor", internalOnly: true },
   "project.activity.read": { minRole: "viewer", internalOnly: true },
   "task.read":           { minRole: "viewer", internalOnly: true },
   "task.write":          { minRole: "editor", internalOnly: true },

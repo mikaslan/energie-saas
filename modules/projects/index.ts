@@ -27,6 +27,24 @@ export type {
   ProjectAssignmentSearchV1,
 } from "./assignment-contract";
 export {
+  PROJECT_CLOSED_REQUEST_CURSOR_MAX_LENGTH,
+  PROJECT_CLOSED_REQUEST_PAGE_LIMIT,
+  PROJECT_LOSS_REASON_COMMAND_VERSION,
+  PROJECT_LOSS_REASON_LABEL_MAX_LENGTH,
+  PROJECT_OUTCOME_COMMAND_VERSION,
+  PROJECT_OUTCOME_MAX_REVISION,
+  PROJECT_OUTCOME_TEXT_MAX_LENGTH,
+  projectClosedRequestCursorSchema,
+  projectClosedRequestFilterSchema,
+  projectLossReasonCommandV1Schema,
+  projectOutcomeCommandV1Schema,
+} from "./outcome-contract";
+export type {
+  ProjectClosedRequestFilter,
+  ProjectLossReasonCommandV1,
+  ProjectOutcomeCommandV1,
+} from "./outcome-contract";
+export {
   changeProjectAssignment,
   getProjectAssignmentContext,
   getProjectPageDetail,
