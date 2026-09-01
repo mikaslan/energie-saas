@@ -305,3 +305,37 @@ Nicht ausgeführt oder geliefert sind Deploy, Object Lock/WORM, Retention,
 Archivevidence, `issued`, Versand, öffentlicher Link, Annahme und Signatur.
 Diese Punkte gehören zum weiterhin `BLOCKED` geführten M2-03b2 beziehungsweise
 zu späteren Slices.
+
+## M1-12a
+
+Status: **REVIEWED/VERIFIED lokal; technisches Gate GO**. `npm run check` belegt
+171/171 Vitest-Dateien mit 1.701 bestandenen und einem bewusst übersprungenen
+Test, 88/88 Rollen- plus 5/5 PostgreSQL-18-Proben und einen
+Dependency-Cruiser-Lauf über 311 Module und 1.096 Abhängigkeiten ohne Verstoß.
+Der vollständige Chromium-Lauf endete mit 44 bestandenen, einem opt-in
+übersprungenen und keinem fehlgeschlagenen Fall. Production-Build, ESLint,
+TypeScript und `drizzle-kit generate` („No schema changes") sind grün.
+Fokussiert auf M1-12a: 93 Tests in fünf Dateien.
+
+| Test-ID | Ebene | Finaler Beleg | Aktuell |
+|---|---|---|---|
+| `M112A-CONTRACT-01` | Contract | geschlossene Filtermengen, NFKC-Query, Steuerzeichen- und Fremdfeldabwehr, Cursor-/Seitenschema, Berliner Tagesgrenzen inklusive beider DST-Wechseltage, Idempotenz des Queryschemas, aus der Querygrenze abgeleitete Cursorlänge am Worst Case | GREEN, 17/17 |
+| `M112A-ROUTE-01` | Unit | Routenparser: geschlossene Defaults, strikte Ablehnung unbekannter und doppelter Parameter, kanonische Erst-/Folgeseitenlinks, Kürzung erst durch NFKC zu langer Eingaben ohne Surrogatbruch | GREEN, 20/20 |
+| `M112A-BUILD-01` | Build/Quelle | serverseitige `task.read`-Grenze, geschlossene GET-Filter, kein Mutationscontrol, External aus der Navigation, fokussierbares Skip-Link-Ziel, Projektionsfehler an die Error Boundary, Formular-Reset per `key`, Ladezustand unter Reduced Motion, `retry`-Prop der Error Boundary | GREEN, 11/11 |
+| `M112A-DB-01` | DB/Service | Scope `mine`/`assigned_by_me`/`all`, Status, alle Fälligkeitseimer an der Berliner Tagesgrenze, Ordnung `due_at asc nulls last, created_at desc, id asc`, SQL-Tagesgrenze deckungsgleich mit der Vertragsfunktion | GREEN |
+| `M112A-DB-02` | DB/Suche | Titel- und Beschreibungstreffer; kein Treffer über Projektname, Strukturwörter, Marks, JSON-Schlüssel, Checkliste, Label, Kontakt oder E-Mail; NFKC beidseitig für dekomponierte Zeichen und Kompatibilitätsligaturen; Beschreibungstext wird blockweise wie angezeigt zusammengesetzt, Fettungsgrenzen erzeugen keine Phantomleerzeichen | GREEN |
+| `M112A-DB-03` | DB/Paginierung | 50er-Seite mit 51er-Fenster, Folgecursor, UUID-Tie-Breaker bei identischem `created_at`, lückenfreie 260-Aufgaben-Traversierung über sechs Seiten, `asOf`-Fence gegen spätere Einfügungen | GREEN |
+| `M112A-DB-04` | DB/Cursor-Sicherheit | Bindung an Workspace, Actor, Membership, jeden Filter, Query und Zone; nichtkanonische, manipulierte, Zukunfts- und Jahr-null-Cursor kontrolliert abgewiesen; Revoke und Revoke→Re-add mit neuer Membership-ID | GREEN |
+| `M112A-DB-05` | DB/Privacy | exakt das minimierte DTO, keine Actor-/Membership-IDs, kein Body, keine Checklisten-/Labeltexte, keine Kontaktdaten; archivierte Tasks und Projekte mit gelöschtem Kontakt unsichtbar; genau ein `tx.execute` je Aufruf | GREEN; 39/39 über DB-01 bis DB-05 |
+| `M112A-STRICT-01` | DB/Strict Runtime | echte nicht besitzende `app_runtime`-Rolle ohne `BYPASSRLS` und ohne `app_owner`-Mitgliedschaft; `normalize(..., NFKC)` und `jsonb_path_query` unter dieser Rolle ausführbar; ohne Actor keine Zeile, Fremdworkspace keine Zeile; External und Fremdtenant fail-closed | GREEN, 6/6 |
+| `M112A-E2E-01` | Browser | Navigation, Standardansicht `mine/open/any`, Textsignale überfällig/heute, Projekt-Deep-Link auf `#project-tasks` | GREEN |
+| `M112A-E2E-02` | Browser | Filter, Suche bis in den Beschreibungstext, Seitenwechsel über 55 Aufgaben ohne Doppelung, Rückkehr auf die erste Seite, Formular-Reset | GREEN |
+| `M112A-E2E-03` | Browser/Security | Fremdmandant, Cursor ohne `asOf`, gebrochene Cursorbindung, gefälschter Cursor und unbekannter Query-Schlüssel rendern keinerlei Aufgabendaten | GREEN; Soft-404 dokumentiert |
+| `M112A-E2E-04` | Browser/RBAC | Viewer read-only ohne jedes Mutationscontrol; External erhält auf der direkten URL weder Liste noch Suche noch Titel im HTML | GREEN |
+| `M112A-A11Y-01` | Browser/A11y | Axe WCAG A/AA, Skip-Link mit tatsächlicher Fokusübernahme, Tastaturführung, `aria-current`, Reduced Motion, 320 und 375 CSS px ohne Querlauf | GREEN; 8/8 Chromium für M1-12a |
+| `M112A-PERF-01` | EXPLAIN | gemessene Pläne für `all`, `mine`, `assigned_by_me`, Due und Suche bei 4.000 Aufgaben; 0,09 bis 47,7 ms, jede unbegrenzte Form sortiert den vollen aktiven Bestand | GEMESSEN; Index bewusst nicht ergänzt, Begründung in der Spec |
+| `M112A-VISUAL-01` | Human Visual | menschlich freigegebene Inbox-Baseline | `INCONCLUSIVE` |
+
+Der Browserlauf verwendet einen eigenen isolierten M1-12a-Workspace mit eigenen
+Identitäten. Ein Seed im gemeinsamen M1-05-Workspace hätte dessen
+Anfrageboard-Erwartungen verändert; die Fixture ist deshalb bewusst getrennt.

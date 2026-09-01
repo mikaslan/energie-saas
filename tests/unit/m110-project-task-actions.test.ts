@@ -358,12 +358,14 @@ describe("M1-10 Project-Task-Action", () => {
     expect(deps.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("revalidiert ausschließlich den tatsächlich existierenden Detailpfad", async () => {
+  it("revalidiert ausschließlich die tatsächlich existierenden Lesepfade", async () => {
     await changeProjectTask(WORKSPACE_ID, PROJECT_ID, IDLE, quickForm());
-    expect(deps.revalidatePath).toHaveBeenCalledTimes(1);
-    expect(deps.revalidatePath).toHaveBeenCalledWith(
-      `/w/${WORKSPACE_ID}/anfragen/${PROJECT_ID}`,
-    );
+    // Seit M1-12a liest die globale Aufgaben-Inbox dieselben Aggregate. Sie ist
+    // der zweite und letzte Pfad, der nach einer Task-Mutation veralten kann.
+    expect(deps.revalidatePath.mock.calls).toEqual([
+      [`/w/${WORKSPACE_ID}/anfragen/${PROJECT_ID}`],
+      [`/w/${WORKSPACE_ID}/aufgaben`],
+    ]);
   });
 
   it("sucht Members ausschließlich task.write-gated, kanonisiert und gibt hasMore sichtbar weiter", async () => {

@@ -134,6 +134,14 @@ export default async function RequestsPage({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {board.audience === "internal" ? (
+              <Link
+                href={`/w/${validWorkspaceId}/aufgaben`}
+                className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              >
+                Aufgaben
+              </Link>
+            ) : null}
             {board.permissions.canOpenCatalog ? (
               <Link
                 href={`/w/${validWorkspaceId}/katalog`}

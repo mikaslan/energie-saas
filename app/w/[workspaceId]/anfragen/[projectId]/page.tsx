@@ -561,6 +561,12 @@ export default async function ProjectTriagePage({
               Zurück zu den Anfragen
             </Link>
             <Link
+              href={`/w/${workspaceId}/aufgaben`}
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-slate-700 outline-none hover:text-slate-950 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            >
+              Alle Aufgaben
+            </Link>
+            <Link
               href={`/w/${workspaceId}/katalog`}
               className="inline-flex min-h-11 items-center text-sm font-semibold text-slate-700 outline-none hover:text-slate-950 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
             >

@@ -300,6 +300,7 @@ function mapError(error: unknown): ProjectTaskActionState | null {
 
 function revalidateTaskPaths(workspaceId: string, projectId: string): void {
   revalidatePath(`/w/${workspaceId}/anfragen/${projectId}`);
+  revalidatePath(`/w/${workspaceId}/aufgaben`);
 }
 
 export async function searchProjectTaskMembers(

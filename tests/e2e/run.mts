@@ -33,6 +33,7 @@ import {
   M1_06_E2E_ADDRESS,
   M1_06_E2E_REGION,
 } from "./m1-06-fixture.js";
+import { seedM112aInboxTasks } from "./m1-12a-fixture.js";
 import { seedM201ReadyProject } from "./m2-01-fixture.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -84,6 +85,16 @@ type SeedData = {
   m201WorkspaceId: string;
   m201EditorIdentityId: string;
   m201EditorEmail: string;
+  // M1-12a bekommt einen eigenen Workspace. Die Inbox braucht mehr als eine
+  // Seitengrenze an Aufgaben; ein zusätzliches Projekt im gemeinsamen
+  // M1-05-Workspace würde dessen Anfrageboard-Erwartungen verändern.
+  m112aWorkspaceId: string;
+  m112aEditorIdentityId: string;
+  m112aEditorEmail: string;
+  m112aViewerIdentityId: string;
+  m112aViewerEmail: string;
+  m112aExternalIdentityId: string;
+  m112aExternalEmail: string;
   mainContactName: string;
   foreignContactName: string;
 };
@@ -110,6 +121,11 @@ type E2EState = Pick<
   databaseUrl: string;
   foreignProjectId: string;
   mainProjectId: string;
+  m112aProjectId: string;
+  m112aWorkspaceId: string;
+  m112aEditorEmail: string;
+  m112aViewerEmail: string;
+  m112aExternalEmail: string;
   m201BatteryId: string;
   m201EditorEmail: string;
   m201EditorIdentityId: string;
@@ -785,6 +801,33 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
         [data.m201WorkspaceId, data.m201EditorIdentityId],
       );
     });
+
+    await withWorkspaceSeed(client, data.m112aWorkspaceId, async () => {
+      await client.query(
+        "insert into workspace (id, name) values ($1::uuid, $2)",
+        [data.m112aWorkspaceId, "M1-12a isolierter E2E Workspace"],
+      );
+      await client.query(
+        "insert into user_identity (id, email) values ($1::uuid, $2), ($3::uuid, $4), ($5::uuid, $6)",
+        [
+          data.m112aEditorIdentityId, data.m112aEditorEmail,
+          data.m112aViewerIdentityId, data.m112aViewerEmail,
+          data.m112aExternalIdentityId, data.m112aExternalEmail,
+        ],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor', '{}'::jsonb),
+                ($1::uuid, $3::uuid, 'viewer', '{}'::jsonb),
+                ($1::uuid, $4::uuid, 'viewer', '{"external_only":true}'::jsonb)`,
+        [
+          data.m112aWorkspaceId,
+          data.m112aEditorIdentityId,
+          data.m112aViewerIdentityId,
+          data.m112aExternalIdentityId,
+        ],
+      );
+    });
   } finally {
     client.release();
     await pool.end();
@@ -1108,6 +1151,13 @@ function createSeedData(): SeedData {
     m201WorkspaceId: randomUUID(),
     m201EditorIdentityId: randomUUID(),
     m201EditorEmail: `m2-01-editor-${runSuffix}@example.test`,
+    m112aWorkspaceId: randomUUID(),
+    m112aEditorIdentityId: randomUUID(),
+    m112aEditorEmail: `m1-12a-editor-${runSuffix}@example.test`,
+    m112aViewerIdentityId: randomUUID(),
+    m112aViewerEmail: `m1-12a-viewer-${runSuffix}@example.test`,
+    m112aExternalIdentityId: randomUUID(),
+    m112aExternalEmail: `m1-12a-external-${runSuffix}@example.test`,
     mainContactName: "Erika E2E Muster",
     foreignContactName: "Fremdmandant E2E Geheim",
   };
@@ -1234,6 +1284,14 @@ async function main(): Promise<number> {
     workspaceId: seedData.m201WorkspaceId,
     editorIdentityId: seedData.m201EditorIdentityId,
   });
+  // Der Runner legt sonst keine Projektaufgaben an. Die Inbox braucht einen
+  // deterministischen Bestand jenseits der 50er-Seitengrenze, der auch in
+  // einem fokussierten Lauf ohne m1-10/m1-11a existiert.
+  const m112aSeed = await seedM112aInboxTasks(embedded.superuserUrl, {
+    workspaceId: seedData.m112aWorkspaceId,
+    editorIdentityId: seedData.m112aEditorIdentityId,
+    viewerIdentityId: seedData.m112aViewerIdentityId,
+  });
   throwIfInterrupted();
 
   const mainCredential: IntakeCredential = {
@@ -1298,6 +1356,11 @@ async function main(): Promise<number> {
     databaseUrl: embedded.superuserUrl,
     foreignProjectId: foreignLead.projectId,
     mainProjectId: mainLead.projectId,
+    m112aProjectId: m112aSeed.projectId,
+    m112aWorkspaceId: seedData.m112aWorkspaceId,
+    m112aEditorEmail: seedData.m112aEditorEmail,
+    m112aViewerEmail: seedData.m112aViewerEmail,
+    m112aExternalEmail: seedData.m112aExternalEmail,
     m201BatteryId: m201Seed.products.battery,
     m201EditorEmail: seedData.m201EditorEmail,
     m201EditorIdentityId: seedData.m201EditorIdentityId,

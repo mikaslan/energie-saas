@@ -230,11 +230,11 @@ describe("M2-03b1 offer issuance database", () => {
       workspaceId,
       null,
       `select public._m203a_offer_release_instant(
-                pg_catalog.date_trunc('milliseconds', pg_catalog.clock_timestamp())
+                pg_catalog.date_trunc('milliseconds', pg_catalog.statement_timestamp())
               ) as prepared_at,
-              (pg_catalog.clock_timestamp() at time zone 'Europe/Berlin')::date::text
+              (pg_catalog.statement_timestamp() at time zone 'Europe/Berlin')::date::text
                 as document_date,
-              ((pg_catalog.clock_timestamp() at time zone 'Europe/Berlin')::date
+              ((pg_catalog.statement_timestamp() at time zone 'Europe/Berlin')::date
                 + 30)::text as valid_through`,
     );
     const clock = clockRows.rows[0];
@@ -1218,19 +1218,19 @@ describe("M2-03b1 offer issuance database", () => {
       await driftAdmin.query(
         `update public.offer_release_candidate
             set prepared_at = pg_catalog.date_trunc(
-                  'milliseconds', pg_catalog.clock_timestamp() - interval '2 days'
+                  'milliseconds', pg_catalog.statement_timestamp() - interval '2 days'
                 ),
                 created_at = pg_catalog.date_trunc(
-                  'milliseconds', pg_catalog.clock_timestamp() - interval '2 days'
+                  'milliseconds', pg_catalog.statement_timestamp() - interval '2 days'
                 ),
                 updated_at = pg_catalog.date_trunc(
-                  'milliseconds', pg_catalog.clock_timestamp() - interval '2 days'
+                  'milliseconds', pg_catalog.statement_timestamp() - interval '2 days'
                 ),
                 document_date = (
-                  pg_catalog.clock_timestamp() at time zone 'Europe/Berlin'
+                  pg_catalog.statement_timestamp() at time zone 'Europe/Berlin'
                 )::date - 2,
                 valid_through = (
-                  pg_catalog.clock_timestamp() at time zone 'Europe/Berlin'
+                  pg_catalog.statement_timestamp() at time zone 'Europe/Berlin'
                 )::date - 1
           where workspace_id = $1::uuid and id = $2::uuid`,
         [workspaceId, candidateId],

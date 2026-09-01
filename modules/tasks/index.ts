@@ -21,6 +21,45 @@ export {
   taskLabelColors,
   taskRichTextV1Schema,
 } from "@/lib/integrations/tasks/contract";
+export {
+  GLOBAL_TASK_INBOX_CURSOR_MAX_LENGTH,
+  GLOBAL_TASK_INBOX_CURSOR_VERSION,
+  GLOBAL_TASK_INBOX_ORDER,
+  GLOBAL_TASK_INBOX_PAGE_LIMIT,
+  GLOBAL_TASK_INBOX_PAGE_VERSION,
+  GLOBAL_TASK_INBOX_QUERY_MAX_LENGTH,
+  GLOBAL_TASK_INBOX_QUERY_VERSION,
+  GLOBAL_TASK_INBOX_TIME_ZONE,
+  GlobalTaskInboxContractError,
+  globalTaskInboxBerlinDayBounds,
+  globalTaskInboxCursorMatchesBinding,
+  globalTaskInboxCursorBindingV1Schema,
+  globalTaskInboxCursorPayloadV1Schema,
+  globalTaskInboxCursorTokenSchema,
+  globalTaskInboxDueBucketSchema,
+  globalTaskInboxErrorCodeSchema,
+  globalTaskInboxFilterSchema,
+  globalTaskInboxItemV1Schema,
+  globalTaskInboxPageV1Schema,
+  globalTaskInboxProjectOutcomeSchema,
+  globalTaskInboxQueryV1Schema,
+  globalTaskInboxStateSchema,
+  parseGlobalTaskInboxCursorPayloadV1,
+  parseGlobalTaskInboxPageV1,
+  parseGlobalTaskInboxQueryV1,
+} from "@/lib/integrations/tasks/inbox-contract";
+export type {
+  GlobalTaskInboxBerlinDayBounds,
+  GlobalTaskInboxCursorBindingV1,
+  GlobalTaskInboxCursorPayloadV1,
+  GlobalTaskInboxDueBucket,
+  GlobalTaskInboxErrorCode,
+  GlobalTaskInboxFilter,
+  GlobalTaskInboxItemV1,
+  GlobalTaskInboxPageV1,
+  GlobalTaskInboxQueryV1,
+  GlobalTaskInboxState,
+} from "@/lib/integrations/tasks/inbox-contract";
 export type {
   ProjectTaskCommandV1,
   ProjectActivityCursor,
@@ -50,6 +89,7 @@ export {
 } from "./errors";
 export {
   executeProjectTaskCommand,
+  getGlobalTaskInboxPage,
   getProjectActivityPage,
   getProjectTaskPage,
   getProjectTaskWorkspace,

@@ -38,6 +38,21 @@ import {
   type TaskLabelColor,
 } from "@/lib/integrations/tasks/contract";
 import {
+  GLOBAL_TASK_INBOX_CURSOR_VERSION,
+  GLOBAL_TASK_INBOX_ORDER,
+  GLOBAL_TASK_INBOX_PAGE_LIMIT,
+  GLOBAL_TASK_INBOX_PAGE_VERSION,
+  GLOBAL_TASK_INBOX_TIME_ZONE,
+  GlobalTaskInboxContractError,
+  globalTaskInboxCursorMatchesBinding,
+  parseGlobalTaskInboxCursorPayloadV1,
+  parseGlobalTaskInboxPageV1,
+  parseGlobalTaskInboxQueryV1,
+  type GlobalTaskInboxCursorPayloadV1,
+  type GlobalTaskInboxPageV1,
+  type GlobalTaskInboxQueryV1,
+} from "@/lib/integrations/tasks/inbox-contract";
+import {
   ProjectTaskArchivedError,
   ProjectTaskConflictError,
   ProjectTaskNotFoundError,
@@ -89,6 +104,28 @@ type WorkspaceProjectionRow = {
   next_task_cursor: unknown;
   activity_rows: unknown;
   activity_has_more: unknown;
+  [key: string]: unknown;
+};
+
+type GlobalTaskInboxProjectionRow = {
+  as_of: unknown;
+  as_of_in_future: unknown;
+  actor_membership_id: unknown;
+  task_id: unknown;
+  revision: unknown;
+  title: unknown;
+  status: unknown;
+  due_at: unknown;
+  created_at_cursor: unknown;
+  checklist_done: unknown;
+  checklist_total: unknown;
+  label_count: unknown;
+  project_id: unknown;
+  project_name: unknown;
+  project_outcome: unknown;
+  assigned_to_current_actor: unknown;
+  created_by_current_actor: unknown;
+  assignee_count: unknown;
   [key: string]: unknown;
 };
 
@@ -263,6 +300,52 @@ function decodeTaskCursor(
 function encodeTaskCursor(payload: TaskCursorPayload | null): string | null {
   if (payload === null) return null;
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+function invalidGlobalTaskInboxCursor(): never {
+  throw new GlobalTaskInboxContractError("invalid_global_task_inbox_cursor");
+}
+
+function decodeGlobalTaskInboxCursor(
+  query: GlobalTaskInboxQueryV1,
+  ctx: ServiceCtx,
+): GlobalTaskInboxCursorPayloadV1 | null {
+  if (query.cursor === null) return null;
+  try {
+    const bytes = Buffer.from(query.cursor, "base64url");
+    if (bytes.toString("base64url") !== query.cursor) {
+      return invalidGlobalTaskInboxCursor();
+    }
+    const payload = parseGlobalTaskInboxCursorPayloadV1(
+      JSON.parse(bytes.toString("utf8")) as unknown,
+    );
+    if (query.asOf === null || !globalTaskInboxCursorMatchesBinding(payload, {
+      workspaceId: ctx.workspaceId.toLowerCase(),
+      actorId: ctx.actor.toLowerCase(),
+      membershipId: payload.binding.membershipId,
+      filter: query.filter,
+      state: query.state,
+      dueBucket: query.dueBucket,
+      query: query.query,
+      timeZone: query.timeZone,
+      asOf: query.asOf,
+      order: GLOBAL_TASK_INBOX_ORDER,
+    })) {
+      return invalidGlobalTaskInboxCursor();
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof GlobalTaskInboxContractError) throw error;
+    return invalidGlobalTaskInboxCursor();
+  }
+}
+
+function encodeGlobalTaskInboxCursor(
+  payload: GlobalTaskInboxCursorPayloadV1 | null,
+): string | null {
+  if (payload === null) return null;
+  const parsed = parseGlobalTaskInboxCursorPayloadV1(payload);
+  return Buffer.from(JSON.stringify(parsed), "utf8").toString("base64url");
 }
 
 function requireTaskRead(ctx: ServiceCtx): void {
@@ -771,6 +854,381 @@ async function queryProjectTaskPageProjection(
       parsed.data.activity_has_more,
     ),
   };
+}
+
+export async function getGlobalTaskInboxPage(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: unknown,
+): Promise<GlobalTaskInboxPageV1> {
+  requireTaskRead(ctx);
+  const query = parseGlobalTaskInboxQueryV1(input);
+  const cursor = decodeGlobalTaskInboxCursor(query, ctx);
+  const scopeFilter = query.filter === "mine"
+    ? sql`and exists (
+        select 1
+          from project_task_assignee actor_assignment
+         where actor_assignment.workspace_id = task_record.workspace_id
+           and actor_assignment.task_id = task_record.id
+           and actor_assignment.membership_id = actor_membership.id
+      )`
+    : query.filter === "assigned_by_me"
+      ? sql`and task_record.created_by = ${ctx.actor}::uuid`
+      : sql``;
+  const dueFilter = query.dueBucket === "overdue"
+    ? sql`and task_record.due_at < inbox_bounds.day_start`
+    : query.dueBucket === "today"
+      ? sql`and task_record.due_at >= inbox_bounds.day_start
+            and task_record.due_at < inbox_bounds.next_day_start`
+      : query.dueBucket === "upcoming"
+        ? sql`and task_record.due_at >= inbox_bounds.next_day_start`
+        : query.dueBucket === "no_due"
+          ? sql`and task_record.due_at is null`
+          : sql``;
+  // Der Beschreibungstext wird blockweise zusammengesetzt, nicht als flache
+  // Textknotenliste. Eine Markgrenze (fett/kursiv) zerlegt einen Absatz in
+  // mehrere Inline-Laeufe; die Anzeige haengt sie ohne Trenner aneinander.
+  // Ein Leerzeichen zwischen ALLEN Knoten erzeugte deshalb eine Zeichenkette,
+  // die das Dokument nie zeigt: "Netzanschluss <b>pruefen</b>" waere als
+  // "Netzanschluss  pruefen" durchsuchbar und als angezeigte Phrase gar nicht.
+  // Innerhalb eines Blocks werden Laeufe darum leer verbunden, `hardBreak`
+  // wird zum Leerzeichen, und erst Bloecke trennt ein Leerzeichen. Der
+  // Rich-Text-CHECK garantiert, dass jeder Textknoten genau in einem
+  // `paragraph` oder `heading` liegt.
+  //
+  // Die Query ist im Vertrag bereits NFKC-normalisiert. Ohne dieselbe
+  // Normalisierung auf der gespeicherten Seite faende eine komponierte Suche
+  // dekomponiert gespeicherte Zeichen nicht ("Ma"+U+0308 gegen U+00E4) und
+  // eine ASCII-Suche keine Kompatibilitaetszeichen (U+FB01 "fi"). Beide Seiten
+  // durchlaufen deshalb dieselbe Kette: NFKC, danach lower().
+  const searchFilter = query.query === null
+    ? sql``
+    : sql`and (
+        position(
+          lower(${query.query})
+            in lower(normalize(task_record.title, NFKC))
+        ) > 0
+        or position(
+          lower(${query.query}) in lower(normalize(coalesce((
+            select pg_catalog.string_agg(
+              block_text.rendered, ' ' order by block_text.position
+            )
+              from (
+                select block.position as position,
+                       coalesce((
+                         select pg_catalog.string_agg(
+                           case
+                             when inline.value->>'type' = 'text'
+                               then inline.value->>'text'
+                             else ' '
+                           end,
+                           '' order by inline.position
+                         )
+                           from pg_catalog.jsonb_path_query(
+                             block.value,
+                             'strict $.** ? (@.type == "text" || @.type == "hardBreak")'
+                               ::pg_catalog.jsonpath
+                           ) with ordinality as inline(value, position)
+                       ), '') as rendered
+                  from pg_catalog.jsonb_path_query(
+                    task_record.body,
+                    'strict $.** ? (@.type == "paragraph" || @.type == "heading")'
+                      ::pg_catalog.jsonpath
+                  ) with ordinality as block(value, position)
+              ) as block_text
+          ), ''), NFKC))
+        ) > 0
+      )`;
+  const cursorFilter = cursor === null
+    ? sql``
+    : sql`and (
+        (
+          ${cursor.position.dueAt}::timestamptz is not null
+          and (
+            task_record.due_at is null
+            or date_trunc('milliseconds', task_record.due_at)
+                 > ${cursor.position.dueAt}::timestamptz
+          )
+        )
+        or (
+          date_trunc('milliseconds', task_record.due_at)
+            is not distinct from ${cursor.position.dueAt}::timestamptz
+          and (
+            date_trunc('milliseconds', task_record.created_at)
+              < ${cursor.position.createdAt}::timestamptz
+            or (
+              date_trunc('milliseconds', task_record.created_at)
+                = ${cursor.position.createdAt}::timestamptz
+              and task_record.id > ${cursor.position.taskId}::uuid
+            )
+          )
+        )
+      )`;
+  const cursorMembershipId = cursor?.binding.membershipId ?? null;
+  const result = await tx.execute<GlobalTaskInboxProjectionRow>(sql`
+    with inbox_parameters as materialized (
+      select coalesce(
+               ${query.asOf}::timestamptz,
+               date_trunc('milliseconds', statement_timestamp())
+             ) as as_of,
+             -- Ein gefaelschter Cursor darf kein asOf hinter der aktuellen
+             -- Serverzeit tragen. Sonst verschoebe er den created_at-Fence in
+             -- die Zukunft und zeigte auf einer Folgeseite genau die Aufgaben,
+             -- die nach der ersten Seite entstanden sind. Der Vergleich muss
+             -- serverseitig laufen; eine Clientuhr ist dafuer keine Quelle.
+             (
+               ${query.asOf}::timestamptz is not null
+               and ${query.asOf}::timestamptz
+                     > date_trunc('milliseconds', statement_timestamp())
+             ) as as_of_in_future
+    ), inbox_bounds as materialized (
+      select inbox_parameters.as_of,
+             inbox_parameters.as_of_in_future,
+             date_trunc(
+               'day',
+               inbox_parameters.as_of at time zone 'Europe/Berlin'
+             ) at time zone 'Europe/Berlin' as day_start,
+             (
+               date_trunc(
+                 'day',
+                 inbox_parameters.as_of at time zone 'Europe/Berlin'
+               ) + interval '1 day'
+             ) at time zone 'Europe/Berlin' as next_day_start
+        from inbox_parameters
+    ), actor_membership as materialized (
+      select membership_record.id
+        from membership membership_record
+       where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+         and membership_record.user_id = ${ctx.actor}::uuid
+         and membership_record.role in ('viewer', 'editor', 'admin')
+         and jsonb_typeof(membership_record.capabilities) = 'object'
+         and not exists (
+           select 1
+             from jsonb_each(membership_record.capabilities)
+                  as capability(key, value)
+            where jsonb_typeof(capability.value) <> 'boolean'
+         )
+         and (
+           not (membership_record.capabilities ? 'external_only')
+           or membership_record.capabilities->'external_only'
+                is not distinct from 'false'::jsonb
+         )
+       limit 1
+    ), task_window as materialized (
+      select task_record.id, task_record.revision, task_record.title,
+             task_record.status,
+             date_trunc('milliseconds', task_record.due_at) as due_at_sort,
+             date_trunc('milliseconds', task_record.created_at) as created_at_sort,
+             task_record.project_id, task_record.created_by,
+             project_record.name as project_name,
+             project_record.outcome as project_outcome,
+             actor_membership.id as actor_membership_id
+        from inbox_bounds
+        cross join actor_membership
+        join project_task task_record
+          on task_record.workspace_id = ${ctx.workspaceId}::uuid
+        join project project_record
+          on project_record.workspace_id = task_record.workspace_id
+         and project_record.id = task_record.project_id
+        join contact contact_record
+          on contact_record.workspace_id = project_record.workspace_id
+         and contact_record.id = project_record.contact_id
+         and contact_record.deleted_at is null
+       where task_record.archived_at is null
+         and task_record.status = ${query.state}
+         and task_record.created_at <= inbox_bounds.as_of
+         and (
+           ${cursorMembershipId}::uuid is null
+           or actor_membership.id = ${cursorMembershipId}::uuid
+         )
+         ${scopeFilter}
+         ${dueFilter}
+         ${searchFilter}
+         ${cursorFilter}
+       order by
+         date_trunc('milliseconds', task_record.due_at) asc nulls last,
+         date_trunc('milliseconds', task_record.created_at) desc,
+         task_record.id
+       limit ${GLOBAL_TASK_INBOX_PAGE_LIMIT + 1}
+    ), projected_task as materialized (
+      select task_window.*,
+             (
+               select count(*)::int
+                 from project_task_checklist_item checklist_item
+                where checklist_item.workspace_id = ${ctx.workspaceId}::uuid
+                  and checklist_item.task_id = task_window.id
+                  and checklist_item.is_done
+             ) as checklist_done,
+             (
+               select count(*)::int
+                 from project_task_checklist_item checklist_item
+                where checklist_item.workspace_id = ${ctx.workspaceId}::uuid
+                  and checklist_item.task_id = task_window.id
+             ) as checklist_total,
+             (
+               select count(*)::int
+                 from project_task_label task_label
+                where task_label.workspace_id = ${ctx.workspaceId}::uuid
+                  and task_label.task_id = task_window.id
+             ) as label_count,
+             exists (
+               select 1
+                 from project_task_assignee actor_assignment
+                where actor_assignment.workspace_id = ${ctx.workspaceId}::uuid
+                  and actor_assignment.task_id = task_window.id
+                  and actor_assignment.membership_id = task_window.actor_membership_id
+             ) as assigned_to_current_actor,
+             (
+               select count(*)::int
+                 from project_task_assignee task_assignment
+                where task_assignment.workspace_id = ${ctx.workspaceId}::uuid
+                  and task_assignment.task_id = task_window.id
+             ) as assignee_count
+        from task_window
+    )
+    select to_char(
+             inbox_bounds.as_of at time zone 'UTC',
+             'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+           ) as as_of,
+           inbox_bounds.as_of_in_future,
+           actor_membership.id as actor_membership_id,
+           projected_task.id as task_id,
+           projected_task.revision,
+           projected_task.title,
+           projected_task.status,
+           case when projected_task.due_at_sort is null then null else
+             to_char(
+               projected_task.due_at_sort at time zone 'UTC',
+               'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+             )
+           end as due_at,
+           case when projected_task.created_at_sort is null then null else
+             to_char(
+               projected_task.created_at_sort at time zone 'UTC',
+               'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+             )
+           end as created_at_cursor,
+           projected_task.checklist_done,
+           projected_task.checklist_total,
+           projected_task.label_count,
+           projected_task.project_id,
+           projected_task.project_name,
+           projected_task.project_outcome,
+           projected_task.assigned_to_current_actor,
+           projected_task.created_by = ${ctx.actor}::uuid
+             as created_by_current_actor,
+           projected_task.assignee_count
+      from inbox_bounds
+      left join actor_membership on true
+      left join projected_task on actor_membership.id is not null
+     order by projected_task.due_at_sort asc nulls last,
+              projected_task.created_at_sort desc,
+              projected_task.id
+  `);
+  const first = result.rows[0];
+  if (!first) {
+    throw new GlobalTaskInboxContractError("invalid_global_task_inbox_projection");
+  }
+  if (typeof first.actor_membership_id !== "string") {
+    throw new PermissionDeniedError(
+      "task.read",
+      "global_task_inbox",
+      undefined,
+      ctx.actor,
+    );
+  }
+  const membershipId = first.actor_membership_id.toLowerCase();
+  if (cursor !== null && cursor.binding.membershipId !== membershipId) {
+    invalidGlobalTaskInboxCursor();
+  }
+  if (typeof first.as_of_in_future !== "boolean") {
+    throw new GlobalTaskInboxContractError("invalid_global_task_inbox_projection");
+  }
+  if (first.as_of_in_future) {
+    invalidGlobalTaskInboxCursor();
+  }
+  if (typeof first.as_of !== "string") {
+    throw new GlobalTaskInboxContractError("invalid_global_task_inbox_projection");
+  }
+  if (result.rows.some((row) => (
+    row.as_of !== first.as_of
+    || row.as_of_in_future !== first.as_of_in_future
+    || row.actor_membership_id !== first.actor_membership_id
+  ))) {
+    throw new GlobalTaskInboxContractError("invalid_global_task_inbox_projection");
+  }
+
+  const projectedRows = result.rows.filter((row) => row.task_id !== null);
+  const hasMore = projectedRows.length > GLOBAL_TASK_INBOX_PAGE_LIMIT;
+  const pageRows = projectedRows.slice(0, GLOBAL_TASK_INBOX_PAGE_LIMIT);
+  const items = pageRows.map((row) => ({
+    id: row.task_id,
+    revision: row.revision,
+    title: row.title,
+    status: row.status,
+    dueAt: row.due_at,
+    counts: {
+      checklistDone: row.checklist_done,
+      checklistTotal: row.checklist_total,
+      labels: row.label_count,
+    },
+    project: {
+      id: row.project_id,
+      name: row.project_name,
+      outcome: row.project_outcome,
+    },
+    assignedToCurrentActor: row.assigned_to_current_actor,
+    createdByCurrentActor: row.created_by_current_actor,
+    assigneeCount: row.assignee_count,
+  }));
+  const last = hasMore ? pageRows.at(-1) : undefined;
+  // Ein unbrauchbarer Cursoranker entsteht im Server, nicht in der Anfrage.
+  // Er ist deshalb ein Projektionsfehler und darf nicht als ungueltiger
+  // Cursor zu einem stillen 404 werden, sonst bleibt der Defekt unsichtbar.
+  const anchorCreatedAt = last?.created_at_cursor;
+  const anchorTaskId = last?.task_id;
+  if (last !== undefined && (
+    typeof anchorCreatedAt !== "string" || typeof anchorTaskId !== "string"
+  )) {
+    throw new GlobalTaskInboxContractError("invalid_global_task_inbox_projection");
+  }
+  const nextCursor = last === undefined
+    || typeof anchorCreatedAt !== "string"
+    || typeof anchorTaskId !== "string"
+    ? null
+    : encodeGlobalTaskInboxCursor({
+        v: GLOBAL_TASK_INBOX_CURSOR_VERSION,
+        binding: {
+          workspaceId: ctx.workspaceId.toLowerCase(),
+          actorId: ctx.actor.toLowerCase(),
+          membershipId,
+          filter: query.filter,
+          state: query.state,
+          dueBucket: query.dueBucket,
+          query: query.query,
+          timeZone: GLOBAL_TASK_INBOX_TIME_ZONE,
+          asOf: first.as_of,
+          order: GLOBAL_TASK_INBOX_ORDER,
+        },
+        position: {
+          dueAt: typeof last.due_at === "string" ? last.due_at : null,
+          createdAt: anchorCreatedAt,
+          taskId: anchorTaskId.toLowerCase(),
+        },
+      });
+  return parseGlobalTaskInboxPageV1({
+    schemaVersion: GLOBAL_TASK_INBOX_PAGE_VERSION,
+    filter: query.filter,
+    state: query.state,
+    dueBucket: query.dueBucket,
+    query: query.query,
+    timeZone: GLOBAL_TASK_INBOX_TIME_ZONE,
+    asOf: first.as_of,
+    order: GLOBAL_TASK_INBOX_ORDER,
+    pageLimit: GLOBAL_TASK_INBOX_PAGE_LIMIT,
+    items,
+    nextCursor,
+  });
 }
 
 export async function getProjectTaskWorkspace(

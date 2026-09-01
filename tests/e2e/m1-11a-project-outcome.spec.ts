@@ -262,15 +262,23 @@ async function ensureExternalAssignment(page: Page, data: E2EState): Promise<voi
   await panel.getByLabel("Personensuche").fill(data.externalEmail);
   await panel.getByRole("button", { name: "Suchen" }).click();
   await expect(panel.getByText("1 passende Person gefunden.", { exact: true })).toBeVisible();
-  await panel.getByRole("button", {
+  // m1-10 weist dieselbe External-Person demselben Projekt zu und entfernt sie
+  // bewusst nicht wieder. Im vollständigen, seriellen Lauf ist die Zuweisung
+  // hier also bereits vorhanden und der Zuweisen-Knopf existiert nicht mehr.
+  // Der Helfer stellt den Zustand her, statt ihn blind zu erzeugen — dieselbe
+  // Idempotenz, die m1-10 an dieser Stelle schon besitzt.
+  const addButton = panel.getByRole("button", {
     name: `${data.externalEmail} zusätzlich zuweisen`,
-  }).click();
-  const feedback = panel.getByText(
-    "Die Projektverantwortung wurde gespeichert.",
-    { exact: true },
-  );
-  await expect(feedback).toBeVisible();
-  await expect(feedback).toBeFocused();
+  });
+  if (await addButton.isVisible()) {
+    await addButton.click();
+    const feedback = panel.getByText(
+      "Die Projektverantwortung wurde gespeichert.",
+      { exact: true },
+    );
+    await expect(feedback).toBeVisible();
+    await expect(feedback).toBeFocused();
+  }
   await expect(panel.getByRole("button", {
     name: `${data.externalEmail} vom Projekt entfernen`,
   })).toBeVisible();

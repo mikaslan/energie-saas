@@ -329,9 +329,48 @@ Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 | `M203B1-07` / F2.7 | Interner Nutzer bedient Request, Status, Approval, Withdrawal und privaten Download | jede Action/Route reautorisiert; gestufte Leserechte, Feldfehler/Fokus, Keyboard/Reflow/Axe | ehrliche 0/2-, 1/2-, 2/2-, Reset- und Rücknahmezustände; `private, no-store` | `project.read` plus Issue-Capabilities; External/cross-tenant fail-closed | `M203B1-ROUTE-01`, `M203B1-E2E-01`, `M203B1-A11Y-01` | REVIEWED/VERIFIED (lokal); 17+1 Chromium |
 | `M203B1-08` / F2.7 | System schützt Tenantgrenze, Append-only-Integrität und Erasuregraph | zusammengesetzte FKs, FORCE RLS, genaue ACL, Drift-/Byte-Guards, aktive Lease | erfolgreiche Bytes/Approvals/Withdrawal unveränderlich; vor Archivierung Offer-löschbar | Runtime/Worker Least Privilege; keinerlei Archivclaim | `M203B1-DB-01/02`, `M203B1-PRIVACY-01`, `M203B1-RBAC-01` | REVIEWED/VERIFIED (lokal); M2-03b2 BLOCKED |
 
+## Gemeinsamer Liefervertrag M1-12a
+
+- Eine ausschließlich interne, read-only Workspace-Projektion über bereits
+  vorhandene aktive `project_task`-Aggregate unter `/w/{workspaceId}/aufgaben`.
+  Kein zweiter Aggregatetyp, kein zweiter Mutationsweg.
+- Geschlossene Filter `mine | assigned_by_me | all`, `open | done`,
+  `any | overdue | today | upcoming | no_due` sowie eine NFKC-kanonisierte
+  Suche über Tasktitel oder sicher extrahierten Rich-Text-Plaintext. Der
+  Beschreibungstext darf gesucht, aber nie projiziert werden.
+- Beide Vergleichsseiten der Suche durchlaufen dieselbe Kette NFKC → `lower()`.
+  Ohne das fände eine komponierte Suche dekomponiert gespeicherte Zeichen nicht.
+- Genau ein `tx.execute` je Aufruf; eine Abfrage trägt frische interne
+  Actor-Membership, RLS, Contact-Erasure-Filter, Scope/Due/Suche/Keyset, ein
+  51er-Fenster und die minimierte Projektion.
+- Der opake Base64url-Cursor bindet Workspace, Actor, konkrete Membership-ID,
+  alle Filter, Query, Zeitzone, `asOf` und Ordnung. Ein `asOf` hinter der
+  Serverzeit wird serverseitig gegen `statement_timestamp()` fail-closed
+  abgewiesen; die Cursorgrenze ist aus der Querygrenze abgeleitet statt gesetzt.
+- Das Queryschema ist idempotent: die Route parst die URL und der Service parst
+  das Ergebnis als Vertrauensgrenze erneut.
+- Viewer, Editor und Admin lesen. External, Worker, widerrufene Memberships und
+  Fremdtenant bleiben auf App-, Service- und SQL-Ebene fail-closed, auch unter
+  der echten nicht besitzenden `app_runtime`-Rolle.
+
+## Feingranulare M1-12a-Capabilities
+
+| ID / F-Nr. | Job, Trigger und Happy Path | Inputs / Validierungen | Zustand und Nebenwirkung | Recht / Daten / Event | Tests | Status / Parität / Blocker |
+|---|---|---|---|---|---|---|
+| `M112A-01` / F1.9 | Interner Nutzer öffnet die projektübergreifende Aufgaben-Inbox | geschlossene GET-Filter, unbekannte oder doppelte Parameter fail-closed | keine Mutation, keine neue Tabelle, kein neuer Command | `task.read`, `internalOnly`; Kontext aus der Session, nie aus der URL | `M112A-CONTRACT-01`, `M112A-ROUTE-01`, `M112A-E2E-01` | REVIEWED/VERIFIED (lokal) |
+| `M112A-02` / F1.9 | Scope, Status und Fälligkeit filtern über Projektgrenzen hinweg | `mine` = aktuelle direkte Assignee-Membership; `assigned_by_me` = `created_by = actor`; Berliner Tagesgrenze | reine Leseprojektion; archivierte Tasks nie sichtbar | minimiertes DTO ohne Actor-/Membership-IDs | `M112A-DB-01`, `M112A-E2E-01` | REVIEWED/VERIFIED (lokal) |
+| `M112A-03` / F1.9 | Suche trifft Titel und sicheren Beschreibungstext | NFKC beidseitig, `jsonb_path_query` ausschließlich auf Textnodes | keine; Body wird gesucht, nie projiziert | kein Treffer über Projektname, Checkliste, Label, Kontakt oder Struktur | `M112A-DB-02`, `M112A-STRICT-01` | REVIEWED/VERIFIED (lokal) |
+| `M112A-04` / F1.9 | Seitenbildung über einen vollständig gebundenen Keysetcursor | kanonisches Base64url, abgeleitete Längengrenze, `created_at <= asOf` | lückenfreie, duplikatfreie Traversierung; Fence gegen spätere Einfügungen | Cursor erteilt keine Autorisierung; jede Seite prüft RLS/RBAC erneut | `M112A-DB-03`, `M112A-E2E-02` | REVIEWED/VERIFIED (lokal) |
+| `M112A-05` / F1.9 | Manipulierte, fremde und Zukunfts-Cursor bleiben fail-closed | Bindungsvergleich, Membershipwechsel, `asOf` gegen `statement_timestamp()` | keine Datenausgabe; kontrollierter Fehlercode | Revoke → Re-add mit neuer Membership-ID entwertet den Cursor | `M112A-DB-04`, `M112A-E2E-03` | REVIEWED/VERIFIED (lokal); Soft-404 dokumentiert |
+| `M112A-06` / F1.9 | Rollen- und Mandantengrenze unter der echten Runtime-Rolle | nicht besitzende `app_runtime`, RESTRICTIVE Actor-Policy, FORCE RLS | ohne Actor keine Zeile, Fremdworkspace keine Zeile | External, fehlende Membership und Fremdtenant fail-closed | `M112A-STRICT-01`, `M112A-DB-05` | REVIEWED/VERIFIED (lokal) |
+| `M112A-07` / F1.9 | Read-only Oberfläche mit Projekt-Deep-Link | genau ein GET-Formular, keine Action, kein Mutationscontrol | Mutationen bleiben ausschließlich in der Projektakte | Revalidation der Inbox nach jeder Projekt-Task-Mutation | `M112A-BUILD-01`, `M112A-E2E-04` | REVIEWED/VERIFIED (lokal) |
+| `M112A-08` / F1.9 | Tastatur, Reflow und Textsignale ohne reine Farbbedeutung | Skip-Link mit fokussierbarem Ziel, Axe WCAG A/AA, 320/375 px | keine | keine | `M112A-A11Y-01` | REVIEWED/VERIFIED (lokal); Human Visual offen |
+
 ## API-Operationen
 
 M1-09/M2-01/M2-02/M2-03a/M2-03b1 besitzen keine öffentliche REST-API.
+M1-12a ergänzt ebenfalls keine API und keinen Command; die Inbox ist eine reine
+serverseitig gerenderte Leseprojektion.
 M1-09 ergänzt die vier internen Assignment-Commands Set/Clear
 Hauptverantwortung sowie Add/Remove weitere Person und eine serverseitige
 Membership-Suchaction; alle verlangen erneute Autorisierung und Revision.
