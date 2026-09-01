@@ -371,24 +371,51 @@ export type ProjectTaskWorkspaceV1 = {
   archived: ProjectTaskItemV1[];
   archivedCount: number;
 };
-export type ProjectActivityKind =
+export type ProjectTaskActivityKind =
   | "task_created"
   | "task_updated"
   | "task_checklist_changed"
   | "task_completed"
   | "task_reopened"
   | "task_archived";
+export type ProjectOutcomeActivityKind =
+  | "outcome_won"
+  | "outcome_lost"
+  | "outcome_reopened";
+export type ProjectActivityKind = ProjectTaskActivityKind | ProjectOutcomeActivityKind;
+export const projectActivityLabels = {
+  task_created: "Aufgabe erstellt",
+  task_updated: "Aufgabe aktualisiert",
+  task_checklist_changed: "Checkliste aktualisiert",
+  task_completed: "Aufgabe abgeschlossen",
+  task_reopened: "Aufgabe wieder geöffnet",
+  task_archived: "Aufgabe archiviert",
+  outcome_won: "Anfrage gewonnen",
+  outcome_lost: "Anfrage verloren",
+  outcome_reopened: "Anfrage wieder geöffnet",
+} as const satisfies Record<ProjectActivityKind, string>;
 export type ProjectActivityCursor = { occurredAt: string; id: string };
+type ProjectActivityItemBaseV1 = {
+  id: string;
+  occurredAt: string;
+  actorLabel: string;
+};
+export type ProjectActivityItemV1 =
+  | (ProjectActivityItemBaseV1 & {
+      kind: ProjectTaskActivityKind;
+      label: (typeof projectActivityLabels)[ProjectTaskActivityKind];
+      taskId: string;
+      taskTitle: string | null;
+    })
+  | (ProjectActivityItemBaseV1 & {
+      kind: ProjectOutcomeActivityKind;
+      label: (typeof projectActivityLabels)[ProjectOutcomeActivityKind];
+      taskId: null;
+      taskTitle: null;
+    });
 export type ProjectActivityPageV1 = {
   schemaVersion: "project-activity-page.v1";
-  items: Array<{
-    id: string;
-    kind: ProjectActivityKind;
-    occurredAt: string;
-    actorLabel: string;
-    taskId: string;
-    taskTitle: string | null;
-  }>;
+  items: ProjectActivityItemV1[];
   nextCursor: ProjectActivityCursor | null;
 };
 export type ProjectTaskPageV1 = {

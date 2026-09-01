@@ -15,9 +15,12 @@ import {
 } from "@/modules/catalog";
 import {
   getProjectAssignmentContext,
+  getProjectOutcomeContext,
   getProjectPageDetail,
   PROJECT_ASSIGNMENT_COMMAND_VERSION,
+  PROJECT_OUTCOME_COMMAND_VERSION,
   type ProjectAssignmentContext,
+  type ProjectOutcomeContext,
   type ProjectPageDetail,
 } from "@/modules/projects";
 import {
@@ -45,6 +48,7 @@ import { PinForm } from "./pin-form";
 import { ProductResolutionSection } from "./product-resolution-section";
 import { ProjectActivityPanel } from "./project-activity-panel";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import { ProjectOutcomePanel } from "./project-outcome-panel";
 import { ProjectTasksSection } from "./project-tasks-section";
 
 export const metadata: Metadata = {
@@ -121,6 +125,11 @@ type AssignmentLoadResult =
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
+type OutcomeLoadResult =
+  | { kind: "loaded"; context: ProjectOutcomeContext | null }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
 type EnergyLoadResult =
   | { kind: "loaded"; context: ProjectEnergyContext | null }
   | { kind: "unauthenticated" }
@@ -169,6 +178,25 @@ async function loadProjectAssignmentContext(
       "project.read",
       "project_assignment",
       (tx, ctx) => getProjectAssignmentContext(tx, ctx, projectId),
+    );
+    return { kind: "loaded", context };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+async function loadProjectOutcomeContext(
+  workspaceId: string,
+  projectId: string,
+): Promise<OutcomeLoadResult> {
+  try {
+    const context = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "project_outcome",
+      (tx, ctx) => getProjectOutcomeContext(tx, ctx, projectId),
     );
     return { kind: "loaded", context };
   } catch (error) {
@@ -410,6 +438,12 @@ export default async function ProjectTriagePage({
   }
   const detail = pageDetail.record;
 
+  const outcomeResult = await loadProjectOutcomeContext(workspaceId, projectId);
+  if (outcomeResult.kind === "unauthenticated") redirectToProjectLogin(detailPath);
+  if (outcomeResult.kind === "denied") return <DeniedState />;
+  if (outcomeResult.context === null) notFound();
+  const outcomeContext = outcomeResult.context;
+
   const taskPageResult = await loadProjectTaskPage(
     workspaceId,
     projectId,
@@ -480,7 +514,7 @@ export default async function ProjectTriagePage({
     detailPath,
     detail: {
       phase: detail.project.phase,
-      outcome: detail.project.outcome,
+      outcome: outcomeContext.outcome,
       sourceLabel: detail.source.label,
       submittedAt: detail.source.submittedAt,
       customerDisplayName: detail.contact.displayName,
@@ -510,6 +544,9 @@ export default async function ProjectTriagePage({
     && Number.isFinite(detail.site.longitude)
       ? `${coordinateFormatter.format(detail.site.latitude)}, ${coordinateFormatter.format(detail.site.longitude)}`
       : "Nicht verfügbar";
+  const requestListPath = outcomeContext.outcome === "won" || outcomeContext.outcome === "lost"
+    ? `/w/${workspaceId}/anfragen/abgeschlossen`
+    : `/w/${workspaceId}/anfragen`;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -517,7 +554,7 @@ export default async function ProjectTriagePage({
         <nav aria-label="Brotkrumen" className="mb-6 flex items-start justify-between gap-4">
           <div className="flex flex-wrap gap-x-5">
             <Link
-              href={`/w/${workspaceId}/anfragen`}
+              href={requestListPath}
               className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
             >
               <span aria-hidden="true" className="mr-2">←</span>
@@ -549,7 +586,7 @@ export default async function ProjectTriagePage({
                 {phaseLabel(detail.project.phase)}
               </span>
               <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800">
-                {outcomeLabel(detail.project.outcome)} · {detail.project.columnName}
+                {outcomeLabel(outcomeContext.outcome)} · {detail.project.columnName}
               </span>
             </div>
           </div>
@@ -730,6 +767,12 @@ export default async function ProjectTriagePage({
           </div>
 
           <aside className="grid gap-6 lg:sticky lg:top-6">
+            <ProjectOutcomePanel
+              workspaceId={workspaceId}
+              commandVersion={PROJECT_OUTCOME_COMMAND_VERSION}
+              context={outcomeContext}
+            />
+
             <ProjectAssignmentPanel
               workspaceId={workspaceId}
               projectId={projectId}

@@ -15,6 +15,7 @@ import { contact } from "./crm";
 import { kanbanBoard, kanbanColumn } from "./boards";
 import { workspace } from "./core";
 import { site } from "./site";
+import { projectLossReason } from "./project-loss-reason";
 
 export const projectPhases = ["request", "offer", "installation"] as const;
 export const projectOutcomes = ["open", "won", "lost", "cannot_fulfill"] as const;
@@ -35,6 +36,10 @@ export const project = pgTable(
     dedupeReviewRequired: boolean("dedupe_review_required").notNull().default(false),
     catalogResolutionStatus: text("catalog_resolution_status").notNull().default("pending"),
     assignmentRevision: integer("assignment_revision").notNull().default(0),
+    outcomeRevision: integer("outcome_revision").notNull().default(0),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    lossReasonId: uuid("loss_reason_id"),
+    lossReasonText: text("loss_reason_text"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -47,6 +52,9 @@ export const project = pgTable(
       t.createdAt,
       t.id,
     ),
+    index("project_ws_request_closed_idx")
+      .on(t.workspaceId, t.closedAt.desc().nullsLast(), t.id.desc().nullsLast())
+      .where(sql`${t.phase} = 'request' and ${t.outcome} in ('won', 'lost')`),
     unique("project_ws_id_uq").on(t.workspaceId, t.id),
     unique("project_ws_id_site_uq").on(t.workspaceId, t.id, t.siteId),
     unique("project_ws_id_contact_site_uq").on(
@@ -84,6 +92,11 @@ export const project = pgTable(
       ],
       name: "project_kanban_column_fk",
     }),
+    foreignKey({
+      columns: [t.workspaceId, t.lossReasonId],
+      foreignColumns: [projectLossReason.workspaceId, projectLossReason.id],
+      name: "project_loss_reason_fk",
+    }),
     check("project_name_ck", sql`length(btrim(${t.name})) between 1 and 200`),
     check("project_phase_ck", sql`${t.phase} in ('request', 'offer', 'installation')`),
     check("project_outcome_ck", sql`${t.outcome} in ('open', 'won', 'lost', 'cannot_fulfill')`),
@@ -93,5 +106,45 @@ export const project = pgTable(
       sql`${t.catalogResolutionStatus} in ('pending', 'resolved')`,
     ),
     check("project_assignment_revision_ck", sql`${t.assignmentRevision} >= 0`),
+    check(
+      "project_outcome_revision_ck",
+      sql`${t.outcomeRevision} between 0 and 2147483647`,
+    ),
+    check(
+      "project_closed_at_ck",
+      sql`${t.closedAt} is null or isfinite(${t.closedAt})`,
+    ),
+    check(
+      "project_loss_reason_text_ck",
+      sql`${t.lossReasonText} is null or (
+        length(${t.lossReasonText}) between 1 and 500
+        and ${t.lossReasonText} = btrim(${t.lossReasonText})
+        and ${t.lossReasonText} = normalize(${t.lossReasonText}, NFKC)
+        and ${t.lossReasonText} !~ '[[:cntrl:]]'
+      )`,
+    ),
+    check(
+      "project_outcome_state_ck",
+      sql`(
+        ${t.outcome} = 'open'
+        and ${t.closedAt} is null
+        and ${t.lossReasonId} is null
+        and ${t.lossReasonText} is null
+      ) or (
+        ${t.outcome} = 'won'
+        and ${t.closedAt} is not null
+        and ${t.lossReasonId} is null
+        and ${t.lossReasonText} is null
+      ) or (
+        ${t.outcome} = 'lost'
+        and ${t.closedAt} is not null
+        and ${t.lossReasonId} is not null
+      ) or (
+        ${t.outcome} = 'cannot_fulfill'
+        and ${t.closedAt} is not null
+        and ${t.lossReasonId} is null
+        and ${t.lossReasonText} is null
+      )`,
+    ),
   ],
 );

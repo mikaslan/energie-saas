@@ -6,8 +6,10 @@ import { PermissionDeniedError } from "@/lib/permissions";
 import { getDefaultRequestBoard } from "@/modules/boards";
 import {
   PROJECT_ASSIGNMENT_COMMAND_VERSION,
+  PROJECT_OUTCOME_COMMAND_VERSION,
   PROJECT_ASSIGNMENT_MAX_USERS,
   changeProjectAssignment,
+  changeProjectOutcome,
   getProjectAssignmentContext,
   getProjectPageDetail,
   getProjectTriageDetail,
@@ -506,10 +508,22 @@ describe("M1-09 Assignment-Service und External-Sicht", () => {
 
     await withTenantOn(testPool, fixture.workspaceId, (tx) => tx.execute(sql`
       update project
-         set phase = 'request', outcome = 'won'
+         set phase = 'request'
        where workspace_id = ${fixture.workspaceId}::uuid
          and id = ${fixture.projectId}::uuid
     `));
+    await withAuthorizedTenantOn(
+      testPool,
+      fixture.editorId,
+      fixture.workspaceId,
+      (tx, ctx) => changeProjectOutcome(tx, ctx, {
+        schemaVersion: PROJECT_OUTCOME_COMMAND_VERSION,
+        kind: "mark_won",
+        projectId: fixture.projectId,
+        expectedOutcomeRevision: 0,
+        confirmation: "mark_won",
+      }),
+    );
     const [closedBoard, closedDetail] = await Promise.all([
       withAuthorizedTenantOn(testPool, fixture.externalAId, fixture.workspaceId, (tx, ctx) =>
         getDefaultRequestBoard(tx, ctx)),

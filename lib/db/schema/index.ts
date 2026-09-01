@@ -22,6 +22,7 @@ export * from "./offers";
 export * from "./offer-release";
 export * from "./offer-issuance";
 export * from "./project";
+export * from "./project-loss-reason";
 export * from "./project-assignment";
 export * from "./project-task";
 export * from "./site";

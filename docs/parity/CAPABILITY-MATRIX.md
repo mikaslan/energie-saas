@@ -4,7 +4,7 @@ Stand: 2026-09-01 · Workflow:
 `DISCOVERED → SPECIFIED → CONTRACTED → RED → IMPLEMENTED → REVIEWED → VERIFIED`
 
 Die vollständige F1–F16-Übersicht steht in `STATUS.md`. Dieses Dokument führt
-die feingranularen M1-08b-, M1-09-, M1-10-, M2-01-, M2-02-, M2-03a- und
+die feingranularen M1-08b-, M1-09-, M1-10-, M1-11a-, M2-01-, M2-02-, M2-03a- und
 M2-03b1-Capabilities. Alle sieben Slices sind lokal `REVIEWED/VERIFIED`; ihre technischen Gates sind
 **GO**. Die formalen
 Visual-Gates bleiben davon getrennt `INCONCLUSIVE`. Eine private
@@ -127,6 +127,32 @@ Reonic-1:1-Semantik wird daraus nicht abgeleitet.
 | `M110-10` / F1.9 | Migration und Index bleiben fresh/upgrade/retry-sicher | Forward-only `0038`, FORCE RLS, Concurrent-Activity-Index | 55 Tabellen ohne Generator-Drift; wiederholbarer Index-Helper | Runtime-/Worker-ACL fail-closed | `M110-DB-01` | REVIEWED/VERIFIED lokal |
 | `M110-11` / F1.9 | Erasure entfernt Taskaggregate samt Kindern | Aggregate-Task-IDs im Tombstone; FK-Cascade für Kindzeilen | Replay/idempotent, keine Kind-ID-/Freitextspeicherung | bestehender privilegierter Erasurevertrag | `M110-DB-01`, `M110-RACE-01` | REVIEWED/VERIFIED lokal |
 | `M110-12` / F1.9 | System beweist Gesamtpfad und unabhängige Fälle | Quick/Full/Edit/Conflict/Archive/Viewer/External | reproduzierbare Gatekette; kein Deployment-Claim | Clean-Room, keine private Reonic-Innenaufnahme | alle `M110-*` | REVIEWED/VERIFIED lokal; technisches Gate 2 GO |
+
+## Gemeinsamer Liefervertrag M1-11a
+
+- Nur Requests wechseln unabhängig von ihrer Kanban-Spalte zwischen
+  `open`, `won` und `lost`; Reopen leert den aktiven Abschlussstand.
+- Lost verlangt einen aktiven, tenantgebundenen Grund; nur Admin verwaltet die
+  kanonisch eindeutige, logisch archivierte Workspace-Taxonomie.
+- Viewer lesen, Editor/Admin mutieren. External, Worker, widerrufene und
+  fremde Actors erhalten weder Abschlussliste noch Mutation oder Kommentar.
+- Project-Lock, Outcome-CAS, Contact-Erasure-Check, FORCE RLS und
+  triggergebundene Event-/Audit-Provenienz verhindern Teilstand und Fakebelege.
+- Abschlussnachweis: 166/166 Testdateien, 1.608 bestanden/1 opt-in übersprungen,
+  Rollen 88/88 plus PG18 5/5, fokussiert 86/86, Strict-Runtime 3/3,
+  Chromium 4/4, Build und 56 Tabellen ohne Drift; keine offenen P0–P2.
+
+## Feingranulare M1-11a-Capabilities
+
+| ID / F-Nr. | Job, Trigger und Happy Path | Inputs / Validierungen | Zustand und Nebenwirkung | Recht / Daten / Event | Tests | Status / Parität / Blocker |
+|---|---|---|---|---|---|---|
+| `M111A-01` / F1.6 | Admin erstellt, archiviert oder reaktiviert Verlustgründe | NFKC-Label 1–80, eindeutige Position, aktuelle Revision | kein Hard Delete; Archive/Reaktivierung per CAS | `settings.manage`; Tenant-RLS | `M111A-CONTRACT-01`, `M111A-DB-01` | REVIEWED/VERIFIED lokal |
+| `M111A-02/03/04` / F1.6 | Editor/Admin markiert Won/Lost oder öffnet wieder | Request, Bestätigung, erwartete Outcome-Revision; Lost mit aktivem Grund und optionalem Kommentar | `open@N → won/lost@N+1 → open@N+2`; Kanban-Spalte unverändert | `project.outcome.write`; genau ein redigiertes Event/Audit | `M111A-SVC-01`, `M111A-RACE-01`, `M111A-E2E-01` | REVIEWED/VERIFIED lokal |
+| `M111A-05/06` / F1.6 | Interner Nutzer liest geschlossene Liste und Outcome-Kontext | Filter Won/Lost, stabiler Cursor, autorisierter Project-Context | offene Pipeline enthält nur Open; Viewer ohne Fake-Controls | `project.read`; minimierte DTOs | `M111A-ACTION-01`, `M111A-E2E-01` | REVIEWED/VERIFIED lokal |
+| `M111A-07` / F1.6 | Rollen- und Datenschutzgrenze bleibt fail-closed | Membership, Tenant, Rolle und Objekt werden frisch geprüft | External/Worker/revoked/cross-tenant ohne Daten oder Objektoracle | FORCE RLS, exakte ACLs, private Helper | `M111A-RBAC/PRIVACY-01`, `M111A-DB-01` | REVIEWED/VERIFIED lokal |
+| `M111A-08/09` / F1.6 | Races und Belegschreibung sind seriell und atomar | Project-Lock, erwartete Revision, triggergebundene Actor-/Project-Provenienz | genau ein Gewinner; Conflict/No-op ohne Event/Audit | Event und Audit in Outcome-Transaktion | `M111A-RACE-01`, Strict-`app_runtime` | REVIEWED/VERIFIED lokal |
+| `M111A-10` / F1.6 | Erasure verhindert Outcome-Wiederauferstehung | Project-Lock plus frischer Contact-Stand | Kommentar wird gelöscht; Workspace-Taxonomie bleibt | privater Erasure-Helper, direkte Runtime-Mutation blockiert | `M111A-ERASURE-01`, Strict-`app_runtime` | REVIEWED/VERIFIED lokal |
+| `M111A-11/12` / F1.6 | UI, Migration und Gesamtpfad bestehen | Tastatur/Fokus/Reflow/Axe; Fresh/Upgrade/Retry/Generator | reproduzierbare Gatekette ohne Deployment-Claim | Clean-Room; keine private Reonic-Innenaufnahme | alle `M111A-*` | REVIEWED/VERIFIED lokal; Gate 2 GO |
 
 ## Gemeinsamer Liefervertrag M2-01
 

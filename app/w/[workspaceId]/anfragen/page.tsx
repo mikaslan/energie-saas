@@ -153,6 +153,21 @@ export default async function RequestsPage({
       </header>
 
       <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <nav aria-label="Anfrageansichten" className="mb-6 flex flex-wrap gap-2 border-b border-slate-300">
+          <Link
+            aria-current="page"
+            href={`/w/${validWorkspaceId}/anfragen`}
+            className="inline-flex min-h-11 items-center border-b-2 border-blue-700 px-3 text-sm font-semibold text-blue-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          >
+            Offen
+          </Link>
+          <Link
+            href={`/w/${validWorkspaceId}/anfragen/abgeschlossen`}
+            className="inline-flex min-h-11 items-center border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 outline-none hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          >
+            Abgeschlossen
+          </Link>
+        </nav>
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Rechner-Leads</p>

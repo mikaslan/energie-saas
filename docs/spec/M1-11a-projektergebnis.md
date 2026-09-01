@@ -1,6 +1,6 @@
 # M1-11a — Projektergebnis Won/Lost/Reopen
 
-- Status: IN ARBEIT
+- Status: REVIEWED/VERIFIED lokal · TECHNISCHES GATE 2 GO
 - Datum: 2026-09-01
 - F-Bezug: F1.6 (PARTIAL)
 - Architektur: ADR 0016
@@ -224,3 +224,11 @@ müssen Fresh-/Upgrade-/Retry-Migration, Generator ohne Drift, Rollenvertrag,
 PostgreSQL-18-Proben, Dependency-Cruiser, Production-Build und der vollständige
 Chromium-Pfad bestehen. Human Visual bleibt ein separates, ausdrücklich
 benanntes Gate. Kein Push oder Deployment gehört zu M1-11a.
+
+Finaler lokaler Nachweis: `npm run check` mit 166/166 Testdateien, 1.608
+bestandenen und einem ausdrücklich opt-in übersprungenen Test; Rollenvertrag
+88/88 plus PostgreSQL-18-Proben 5/5; Dependency-Cruiser 305 Module/1.077
+Abhängigkeiten; fokussierte M1-11a-Matrix 86/86, Strict-`app_runtime` 3/3 und
+Chromium 4/4. Production-Build und `db:generate` mit 56 Tabellen ohne Drift
+sind grün. Unabhängige Abschlussreviews melden keine offenen P0–P2. Human
+Visual bleibt separat; Push und Deployment wurden nicht ausgeführt.

@@ -64,7 +64,7 @@ async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
 async function fixtureMembership(
   tx: TenantTx,
   wsId: string,
-  role: "viewer" | "editor" = "viewer",
+  role: "viewer" | "editor" | "admin" = "viewer",
 ): Promise<{
   userId: string;
   membershipId: string;
@@ -1677,6 +1677,14 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   project: async (tx, wsId) => {
     await fixtureProjectGraph(tx, wsId);
   },
+  project_loss_reason: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "admin");
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into project_loss_reason (workspace_id, label, position)
+      values (${wsId}::uuid, ${`Fixture Loss ${randomUUID()}`}, 1)
+    `);
+  },
   project_assignment: async (tx, wsId) => {
     const { membershipId } = await fixtureMembership(tx, wsId);
     const { projectId } = await fixtureProjectGraph(tx, wsId);
@@ -1916,6 +1924,15 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
         ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
         ${randomUUID()}::uuid, ${randomUUID()}::uuid, 'Cross Write', 'fixture'
       )
+    `);
+  },
+  project_loss_reason: async (tx) => {
+    await tx.execute(sql`
+      alter table project_loss_reason disable trigger project_loss_reason_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into project_loss_reason (workspace_id, label, position)
+      values (${randomUUID()}::uuid, 'Cross Write', 1)
     `);
   },
   project_assignment: async (tx) => {

@@ -201,6 +201,50 @@ describe("authorizedAction", () => {
     expect(audit.rows[0]).toEqual({ actor: viewerIdentityId, allowed: false });
   });
 
+  it("bewahrt einen Project-Outcome-Denial als genau einen Boundary-Audit", async () => {
+    vi.mocked(getSessionUser).mockResolvedValue({ authUserId: authViewer });
+
+    await expect(authorizedAction(
+      ws,
+      "project.outcome.write",
+      "project_outcome",
+      async (_tx, ctx) => {
+        throw new PermissionDeniedError(
+          "project.outcome.write",
+          "project_outcome",
+          "viewer_denied_test",
+          ctx.actor,
+        );
+      },
+    )).rejects.toMatchObject({
+      name: "PermissionDeniedError",
+      action: "project.outcome.write",
+      resource: "project_outcome",
+      actor: viewerIdentityId,
+    });
+
+    const audit = await withTenantOn(testPool, ws, (tx) => tx.execute<{
+      actor: string;
+      allowed: boolean;
+      details: { reason?: string };
+      [key: string]: unknown;
+    }>(sql`
+      select actor, allowed, details
+        from audit_log
+       where workspace_id = ${ws}::uuid
+         and action = 'project.outcome.write'
+         and resource = 'project_outcome'
+         and allowed = false
+         and actor = ${viewerIdentityId}
+         and details->>'reason' = 'viewer_denied_test'
+    `));
+    expect(audit.rows).toEqual([{
+      actor: viewerIdentityId,
+      allowed: false,
+      details: { reason: "viewer_denied_test" },
+    }]);
+  });
+
   it("schreibt bei fehlender Membership keinen Tenant-Audit und meldet das Systemereignis", async () => {
     process.env.SENTRY_DSN = "https://example.invalid/1";
     vi.mocked(getSessionUser).mockResolvedValue({ authUserId: authOutsider });

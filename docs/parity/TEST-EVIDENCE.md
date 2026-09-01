@@ -13,6 +13,7 @@ Dieses Dokument trennt ausgeführte Evidenz strikt von geplanten Tests.
 | M1-09 Projektzuweisung/zugewiesene Request-Sicht | 132/132 Vitest-Dateien, 1.245 bestanden/1 opt-in übersprungen; fokussiert 58/58; Rollen 88/88 plus PG18 5/5; Chromium 20 bestanden/1 opt-in übersprungen; Production-Build, ESLint, TypeScript, Dependency-Cruiser (254 Module/865 Abhängigkeiten) und zwei unabhängige Abschlussreviews grün | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; Feature-Commit `af8f297`; integriert in `e631814`; Human Visual offen |
 | M1-08b → M1-09 Integration | `db:generate`: 51 Tabellen/null Drift; `npm run check`: 150/150 Testdateien, 1.432 bestanden/1 opt-in übersprungen; 88/88 Rollen plus PG18 5/5; Dependency-Cruiser 282 Module/975 Abhängigkeiten; Production-Build grün; Chromium 27 bestanden/1 opt-in übersprungen; M1-09 seriell 3/3 und beide Einzel-Greps 1/1 | REVIEWED/VERIFIED lokal; Integrationsgate **GO**; drei unabhängige Reviews ohne offene P0–P2; Commit `e631814`; Deploy `NOT RUN` |
 | M1-10 Projektaufgaben/interne Projektaktivität | `npm run check`: 157/157 Testdateien, 1.528 bestanden/1 opt-in übersprungen; Rollen 88/88 plus PG18 5/5; Dependency-Cruiser 296 Module/1.026 Abhängigkeiten; Production-Build; `db:generate` 55 Tabellen/null Drift; Chromium 32 bestanden/1 opt-in übersprungen, davon M1-10 5/5 einschließlich Zwei-Browser-Konflikt | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; unabhängige Reviews ohne offene P0–P2; kein Push/Deploy; Human Visual getrennt |
+| M1-11a Projektergebnis/Verlustgründe | `npm run check`: 166/166 Testdateien, 1.608 bestanden/1 opt-in übersprungen; Rollen 88/88 plus PG18 5/5; Dependency-Cruiser 305 Module/1.077 Abhängigkeiten; fokussiert 86/86; Strict-`app_runtime` 3/3; Chromium 4/4; Production-Build; `db:generate` 56 Tabellen/null Drift | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; unabhängige Reviews ohne offene P0–P2; kein Push/Deploy; Human Visual getrennt |
 | M2-01 Angebotsvarianten/Snapshot-BOM | `npm run check`: 87/87 Testdateien, 856 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollenproben, 5/5 PG18-Proben; Chromium 16/16 (15 funktionale/A11y-Fälle plus 1 Visual-Capture-Fall mit 26/26 Kandidaten); Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff- und `db:generate`-Prüfung grün | REVIEWED/VERIFIED lokal; technisches Gate 2 **GO**; Visual-Candidate-Capture grün, menschliches Visual-Gate `INCONCLUSIVE` |
 | M2-02 interner Angebots-PDF-Entwurf | 96/96 Vitest-Dateien, 949 bestanden, 1 ausdrücklich opt-in übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 16/16 aktiv plus 1 opt-in Visual-Fall übersprungen; Production-Build, ESLint, TypeScript, Dependency-Cruiser, Diff, `db:generate`, Compose, Worker-Bundle und gepinnter `linux/amd64`-Container-Smoke grün | REVIEWED/VERIFIED lokal; technisches Gate **GO**; unabhängiges Review ohne offene P0–P2; `M202-VISUAL-01` `INCONCLUSIVE`; Deploy `NOT RUN` |
 | M2-03a Angebotsprofil/Freigabekandidat | 111/111 Vitest-Dateien, 1.078 bestanden, 1 übersprungen; 88/88 Rollen- und 5/5 PG18-Proben; Chromium 17 bestanden, 1 opt-in übersprungen; Production-Build, ESLint, TypeScript und Dependency-Cruiser (237 Module/764 Abhängigkeiten) grün; gepinnter `linux/amd64`-Container-Smoke mit Pflichtstatus auf 11/11 PDF-Seiten | REVIEWED/VERIFIED lokal; technisches Gate **GO**; Security-, Regression-, Navigation- und lokaler Claude-Code-Opus-Max-Review ohne offene P0–P2; Human Visual `INCONCLUSIVE`; Deploy/Issuance/WORM/Versand/Signatur `NOT RUN` |
@@ -22,7 +23,8 @@ Die M1-08-Detailabnahme liegt in `Reonic Clone Final/08-Abnahme-M1-08.md`;
 der aktuelle M1-08b-Abschluss in `Reonic Clone Final/17-Abnahme-M1-08b.md`,
 die M1-09-Abnahme in `Reonic Clone Final/18-Abnahme-M1-09.md` und das gemeinsame
 Integrationsgate in `Reonic Clone Final/19-Abnahme-M1-08b-M1-09-Integration.md`;
-die M1-10-Abnahme in `Reonic Clone Final/20-Abnahme-M1-10.md`; M2-03b1 bleibt
+die M1-10-Abnahme in `Reonic Clone Final/20-Abnahme-M1-10.md` und M1-11a in
+`Reonic Clone Final/21-Abnahme-M1-11a.md`; M2-03b1 bleibt
 separat in `Reonic Clone Final/16-Abnahme-M2-03b1.md` dokumentiert.
 
 ## M1-08b
@@ -110,6 +112,28 @@ keine offenen P0–P2.
 Alle Daten sind synthetische Testdaten. Es gab keinen privaten Reonic-
 Innenzugriff und keinen OpenRouter-/Kimi-K3-Lauf in dieser Abnahme. Push und
 Deploy wurden nicht ausgeführt.
+
+## M1-11a
+
+Status: **REVIEWED/VERIFIED lokal; technisches Gate 2 GO**. Der vollständige
+Nachweis umfasst 166/166 Vitest-Dateien mit 1.608 bestandenen und einem
+ausdrücklich opt-in übersprungenen Test, Rollen 88/88 plus PostgreSQL-18 5/5,
+Dependency-Cruiser 305/1.077, Production-Build und 56 Tabellen ohne
+Generator-Drift. Die fokussierte Matrix bestand 86/86, ein echter
+Non-Owner-`app_runtime`-Lauf 3/3 und Chromium 4/4. Abschlussreviews melden
+keine offenen P0–P2.
+
+| Test-ID | Ebene | Finaler Beleg | Aktuell |
+|---|---|---|---|
+| `M111A-CONTRACT-01` | Contract/UI | geschlossene Commands, DTO-/Event-Allowlist, FormData, Viewer- und Konfliktzustände | GREEN |
+| `M111A-DB-01` | Migration/RLS/ACL | Fresh/Upgrade/Retry, 56 Tabellen, FORCE RLS, Policies, Trigger, Routine-ACL und gepinnte Hashes | GREEN; Rollen 88/88 plus PG18 5/5 |
+| `M111A-SVC-01` | Service/Readmodel | Reason Create/Archive/Reactivate, Won/Lost/Reopen, offene/geschlossene Listen, genau ein Event/Audit | GREEN |
+| `M111A-RACE-01` | Concurrency | Won/Lost/Reopen sowie Outcome gegen Contact-Erasure unter Project-Lock | GREEN; kein Teilstand oder Resurrection |
+| `M111A-RBAC/PRIVACY-01` | Security | Viewer/Editor/Admin, External/Worker/revoked/cross-tenant, Fake-Evidenz und privater Helper | GREEN; Strict-`app_runtime` 3/3 |
+| `M111A-E2E/A11Y-01` | Browser | Won, Lost, Reopen, Filter/Deep-Link, Viewer, Fokus, Reflow und Axe | GREEN; Chromium 4/4 |
+
+Alle Daten sind synthetisch. Kein privater Reonic-Innenzugriff,
+OpenRouter-/Kimi-K3-Lauf, Push oder Deployment gehört zu dieser Abnahme.
 
 ## M2-01
 

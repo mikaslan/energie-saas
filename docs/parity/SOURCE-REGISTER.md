@@ -7,13 +7,19 @@ in `CONTRIBUTING.md` noch eine Capability-Abnahme. Reonic-Quellen dürfen nur
 beobachtbare Funktionssemantik belegen. UI, Texte, Assets, Code und Daten werden
 nicht übernommen.
 
-## Aktive Quellen für M1-08b, M1-09, M1-10, M2-01, M2-02, M2-03a und M2-03b1
+## Aktive Quellen für M1-08b, M1-09, M1-10, M1-11a, M2-01, M2-02, M2-03a und M2-03b1
 
 | ID | Quelle | Klasse | Belegt | Confidence / Grenze |
 |---|---|---|---|---|
 | `SRC-CONSTITUTION-01` | `CONTRIBUTING.md` | DOCUMENTED | Clean-Room, erlaubte Quellen, verbotene Zugänge | hoch; bindend |
 | `SRC-M110-SPEC` | `docs/spec/M1-10-projektaufgaben-aktivitaet.md` | DOCUMENTED WMEE | eigener Task-, Richtext-, Rollen-, Activity-, Erasure- und Abnahmevertrag | hoch für eigene WMEE-Semantik; lokal technisch verifiziert |
 | `SRC-ADR-0015` | `docs/adr/0015-projektaufgaben-und-interne-aktivitaet.md` | DECIDED WMEE | feste Project-Eltern, Taskrevision, interne RLS, sichere Events und einwegiges Archive | hoch für eigene Architektur; keine private Reonic-Wahrheit |
+| `SRC-M111A-SPEC` | `docs/spec/M1-11a-projektergebnis.md` | DOCUMENTED WMEE | eigener Outcome-, Verlustgrund-, Rollen-, Race-, Erasure- und Abnahmevertrag | hoch für eigene WMEE-Semantik; lokal technisch verifiziert |
+| `SRC-ADR-0016` | `docs/adr/0016-projektergebnis-und-verlustgruende.md` | DECIDED WMEE | getrennte Outcome-Achse, Workspace-Taxonomie, CAS, geschlossene Sicht und Belegprovenienz | hoch für eigene Architektur; keine private Reonic-Wahrheit |
+| `SRC-REONIC-OUTCOME` | [Lead characteristics](https://docs.reonic.com/docs/en/leads-overview-lead-characteristics) | DOCUMENTED | öffentlich beschriebene Open/Won/Lost-/Reopen-Semantik und Verlustgrund | hoch für beobachtbare Capability; kein Login, private Taxonomie/Implementierung unbekannt |
+| `SRC-REONIC-OFFER-LIFECYCLE` | [Offer characteristics](https://docs.reonic.com/docs/en/offers-overview-overview-offer-characteristics) | DOCUMENTED | Outcome-Achse auch für Angebote und Trennung vom Artefaktstand | hoch für öffentliche Semantik; M1-11a verändert keine Offer-Artefakte |
+| `SRC-REONIC-KANBAN-MANAGEMENT` | [Kanban board management](https://docs.reonic.com/docs/en/settings-kanban-boards-board-management) | DOCUMENTED | Trennung von Kanban-Spalte, Closed und Archive | hoch für beobachtbare Capability; private UI unbekannt |
+| `SRC-REONIC-CONTACTS` | [Contacts](https://docs.reonic.com/docs/en/crm-contacts) | DOCUMENTED | Kontakt-, Planungs- und Aktivitätshistorie bleibt bei Reopen erhalten | hoch für öffentliche Semantik; kein privater Zugriff |
 | `SRC-REONIC-TASKS` | [Manage tasks in Reonic](https://docs.reonic.com/docs/en/crm-tasks) | DOCUMENTED | Quick/Full Create, Parent, Datum, Assignees/Teams, Labels, Checkliste, Complete/Reopen, Archive und Activity | hoch für öffentlich beschriebene Capability; kein Login, private Limits/Implementierung unbekannt |
 | `SRC-REONIC-TASK-TEMPLATES` | [Task templates and labels](https://docs.reonic.com/docs/en/settings-tasks-task-templates-labels) | DOCUMENTED | zentrale farbige Labels sowie persönliche/unternehmensweite Templates mit relativer Frist | hoch; Templates bleiben außerhalb M1-10 |
 | `SRC-M109-SPEC` | `docs/spec/M1-09-projektzuweisung.md` | DOCUMENTED | eigener Assignment-, External-Sicht-, Rollen-, Race- und Abnahmevertrag | hoch für eigene WMEE-Semantik; lokal technisch verifiziert |
@@ -75,6 +81,10 @@ nicht als private Reonic-Produktwahrheit ausgegeben.
 | `DEC-M110-03` | Completion ist reversibel, Archive einwegig; offene Checklistenpunkte blockieren Completion nicht | DECIDED WMEE | Spec M1-10, ADR 0015, Statusmaschinen |
 | `DEC-M110-04` | Project-Events/Audits enthalten nur Task-/Project-ID, Revision, Kind, Changed-Keys und Counts; keine Child-IDs, Titel, Freitexte, Daten oder PII | DECIDED WMEE | Spec M1-10, ADR 0015 |
 | `DEC-M110-05` | Erasure-Tombstones speichern ausschließlich Aggregate-Task-IDs; Assignees, Labels und Checklistitems folgen über die kontrollierte FK-Cascade | DECIDED WMEE | ADR 0015, Domain Model |
+| `DEC-M111A-01` | Outcome ist unabhängig von Phase/Kanban-Spalte; M1-11a erlaubt nur Request `open→won/lost→open` | DECIDED WMEE | Spec M1-11a, ADR 0016, Statusmaschinen |
+| `DEC-M111A-02` | Lost verlangt einen aktiven strukturierten Workspace-Grund; Taxonomie bleibt ohne Seed-Daten, logisch archiviert und Admin-only | DECIDED WMEE | Spec M1-11a, ADR 0016, Rollenmatrix |
+| `DEC-M111A-03` | Viewer liest, Editor/Admin mutiert per `project.outcome.write`; External und Worker erhalten weder Abschlussliste noch Outcome-Details | DECIDED WMEE | Spec M1-11a, Rollenmatrix |
+| `DEC-M111A-04` | Reopen leert aktive Reason-/Kommentarwerte, während das redigierte append-only Event die historische Reason-ID behält | DECIDED WMEE | Spec M1-11a, ADR 0016 |
 | `DEC-M201-01` | ein Offer pro Project im v1 | DECIDED WMEE | Spec M2-01, ADR 0009 |
 | `DEC-M108B-01` | CSV-Preview wird persistiert, die Rohdatei selbst nie gespeichert; dieselbe lokale Datei wird für Inspection und Preview erneut übertragen | DECIDED WMEE | Spec M1-08b, ADR 0013 |
 | `DEC-M108B-02` | Start verlangt gemeinsam `catalog.manage`, `price.edit`, `price.read_purchase` sowie eine versionierte Rechteattestation | DECIDED WMEE | Spec M1-08b, Rollenmatrix |

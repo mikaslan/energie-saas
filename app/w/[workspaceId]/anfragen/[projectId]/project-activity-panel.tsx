@@ -1,17 +1,5 @@
 import Link from "next/link";
-import type {
-  ProjectActivityKind,
-  ProjectActivityPageV1,
-} from "@/modules/tasks";
-
-const ACTIVITY_LABELS = {
-  task_created: "Aufgabe erstellt",
-  task_updated: "Aufgabe aktualisiert",
-  task_checklist_changed: "Checkliste aktualisiert",
-  task_completed: "Aufgabe abgeschlossen",
-  task_reopened: "Aufgabe wieder geöffnet",
-  task_archived: "Aufgabe archiviert",
-} as const satisfies Record<ProjectActivityKind, string>;
+import type { ProjectActivityPageV1 } from "@/modules/tasks";
 
 const activityDateFormatter = new Intl.DateTimeFormat("de-DE", {
   dateStyle: "medium",
@@ -48,18 +36,20 @@ export function ProjectActivityPanel({
 
       {activity.items.length === 0 ? (
         <p className="mt-4 text-sm leading-6 text-slate-600">
-          Für dieses Projekt gibt es noch keine Aufgabenaktivität.
+          Für dieses Projekt gibt es noch keine Aktivität.
         </p>
       ) : (
         <ol role="list" className="mt-4 grid list-none gap-3">
           {activity.items.map((item) => (
             <li key={item.id} className="min-w-0 border-l-2 border-blue-200 pl-3">
               <p className="break-words text-sm font-semibold text-slate-900">
-                {ACTIVITY_LABELS[item.kind]}
+                {item.label}
               </p>
-              <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-700">
-                Aufgabe: {item.taskTitle ?? "Nicht mehr verfügbar"}
-              </p>
+              {item.taskId !== null ? (
+                <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-700">
+                  Aufgabe: {item.taskTitle ?? "Nicht mehr verfügbar"}
+                </p>
+              ) : null}
               <p className="mt-1 break-all text-xs leading-5 text-slate-600">
                 {item.actorLabel}
                 <span aria-hidden="true"> · </span>

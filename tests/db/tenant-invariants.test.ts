@@ -65,6 +65,7 @@ let tables: Relation[] = [];
 const wsA = randomUUID();
 const wsB = randomUUID();
 const ACTOR_SCOPED_TABLES = new Set([
+  "project_loss_reason",
   "project_task",
   "project_task_assignee",
   "project_task_checklist_item",

@@ -1,6 +1,6 @@
 # Rollen- und Berechtigungsmatrix
 
-Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M1-11a, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 Die Laufzeitwahrheit bleibt `lib/permissions.ts`; diese Matrix dokumentiert die
 beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
@@ -13,6 +13,9 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
 | Project-Tasks und interne Aktivität lesen | ja | ja | ja | nein | nein | getrenntes internal-only `task.read` und `project.activity.read`; autorisierter Project-Context, paginierte DTO-Allowlist |
 | Project-Task Quick/Full Create, Edit, Checklist, Complete/Reopen, Archive | nein | nur mit Recht | ja | nein | nein | internal-only `task.write`; Create startet revisionslos bei 1, Änderungen bestehender Tasks verlangen die aktuelle Revision; Event und Audit atomar; Archive einwegig |
 | interne Assignees für eine Task suchen | nein | nur mit Recht | ja | nein | nein | `task.write`; ausschließlich aktive interne Workspace-Memberships, begrenzte serverseitige Suche |
+| Outcome-Kontext und geschlossene Request-Liste lesen | ja | ja | ja | nein | nein | internes `project.read`; stabil paginiert, Kommentar nur im autorisierten Detail-Readmodel |
+| Request als Won/Lost markieren oder wieder öffnen | nein | nur mit Recht | ja | nein | nein | internal-only `project.outcome.write`; aktuelle Outcome-Revision, Bestätigung und bei Lost aktiver Tenant-Grund |
+| Verlustgründe erstellen, archivieren oder reaktivieren | nein | nein | ja | nein | nein | `settings.manage`; Admin-only, CAS, kein Hard Delete |
 | Offer-Liste/-Detail lesen | ja | ja | ja | nein | nein | `project.read`, gleicher Workspace; External bleibt auch mit M1-09-Assignment gesperrt |
 | B2C-Request in Offer konvertieren | nein | nur mit Rechten | ja | nein | nein | `project.write` + `phase.convert` + `price.edit`, B2C-/Steuerbestätigung und alle Readiness-Gates |
 | Variante duplizieren/benennen | nein | ja | ja | nein | nein | `project.write`, `expectedRevision` |
@@ -93,3 +96,9 @@ beabsichtigte beobachtbare Semantik. UI-Sichtbarkeit ist keine Autorisierung.
   Checklist- und Projektaktivitätsrelationen besitzen restriktive internal-only
   Policies; weder DTO, RSC/HTML noch Actions liefern External Daten oder
   Mutationscontrols.
+- M1-11a erweitert die External-Sicht ebenfalls nicht: Sobald ein Request
+  geschlossen ist, entfällt die bestehende offene Assignment-Sicht ab der
+  nächsten Transaktion. `app_worker` besitzt kein Project-`SELECT`.
+- Erfolgreiche Outcome-Events/-Audits sind ausschließlich aus dem gebundenen
+  Triggerpfad zulässig. Der Erasure-Helper bleibt privat; direkte Runtime-
+  Aufrufe und Fake-Evidenz scheitern fail-closed.

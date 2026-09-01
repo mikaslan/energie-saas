@@ -24,7 +24,7 @@ export const domainEvents = pgTable(
       t.aggregateType,
       t.aggregateId,
     ),
-    index("domain_events_project_task_activity_idx")
+    index("domain_events_project_activity_idx")
       .on(
         t.workspaceId,
         t.aggregateId,
@@ -35,7 +35,9 @@ export const domainEvents = pgTable(
       .where(sql`${t.aggregateType} = 'project' and ${t.eventType} in (
         'project.task_created', 'project.task_updated',
         'project.task_checklist_changed', 'project.task_completed',
-        'project.task_reopened', 'project.task_archived'
+        'project.task_reopened', 'project.task_archived',
+        'project.outcome_won', 'project.outcome_lost',
+        'project.outcome_reopened'
       )`),
   ],
 );

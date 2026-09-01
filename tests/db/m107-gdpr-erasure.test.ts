@@ -453,7 +453,7 @@ async function createSubject(
     ageMonths: number;
     sharedAndExclusive?: boolean;
     jobState?: JobState;
-    outcome?: "open" | "won";
+    outcome?: "open" | "won" | "lost";
   },
 ): Promise<SubjectFixture> {
   const workspaceId = randomUUID();
@@ -480,7 +480,7 @@ async function createSubject(
       [workspaceId],
     );
     await membershipClient.query(
-      "insert into public.membership (workspace_id, user_id, role, created_at) values ($1, $2, 'editor', $3)",
+      "insert into public.membership (workspace_id, user_id, role, created_at) values ($1, $2, 'admin', $3)",
       [workspaceId, actorId, oldAt],
     );
     await membershipClient.query("commit");
@@ -527,6 +527,43 @@ async function createSubject(
   const projectSiteIds = options.sharedAndExclusive
     ? [siteIds[0]!, siteIds[0]!, siteIds[1]!]
     : [siteIds[0]!];
+  const outcomeMetadata = await admin.query<{ available: boolean }>(`
+    select exists (
+      select 1
+        from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'project'
+         and column_name = 'closed_at'
+    ) as available
+  `);
+  const supportsOutcomeMetadata = outcomeMetadata.rows[0]?.available === true;
+  let lossReasonId: string | null = null;
+  if (supportsOutcomeMetadata && options.outcome === "lost") {
+    lossReasonId = randomUUID();
+    const reasonClient = await admin.connect();
+    try {
+      await reasonClient.query("begin");
+      await reasonClient.query(
+        "select pg_catalog.set_config('app.workspace_id', $1, true)",
+        [workspaceId],
+      );
+      await reasonClient.query(
+        "select pg_catalog.set_config('app.actor_id', $1, true)",
+        [actorId],
+      );
+      await reasonClient.query(
+        `insert into public.project_loss_reason (id, workspace_id, label, position)
+         values ($1, $2, 'Nicht mehr aktuell', 1)`,
+        [lossReasonId, workspaceId],
+      );
+      await reasonClient.query("commit");
+    } catch (error) {
+      await reasonClient.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      reasonClient.release();
+    }
+  }
   const projects: ProjectFixture[] = [];
   for (const siteId of projectSiteIds) {
     const project: ProjectFixture = {
@@ -538,23 +575,83 @@ async function createSubject(
       jobId: randomUUID(),
       revisionId: options.jobState === "running" ? null : randomUUID(),
     };
+    const projectValues = [
+      project.id,
+      workspaceId,
+      contactId,
+      siteId,
+      boardRow.board_id,
+      boardRow.column_id,
+      marker,
+      supportsOutcomeMetadata ? "open" : options.outcome ?? "open",
+      oldAt,
+    ];
     await admin.query(
-      `insert into public.project (
-         id, workspace_id, contact_id, site_id, kanban_board_id,
-         kanban_column_id, name, phase, outcome, source_key, created_at, updated_at
-       ) values ($1, $2, $3, $4, $5, $6, $7, 'request', $8, 'fixture', $9, $9)`,
-      [
-        project.id,
-        workspaceId,
-        contactId,
-        siteId,
-        boardRow.board_id,
-        boardRow.column_id,
-        marker,
-        options.outcome ?? "open",
-        oldAt,
-      ],
+      supportsOutcomeMetadata
+        ? `insert into public.project (
+             id, workspace_id, contact_id, site_id, kanban_board_id,
+             kanban_column_id, name, phase, outcome, closed_at, source_key,
+             created_at, updated_at
+           ) values (
+             $1, $2, $3, $4, $5, $6, $7, 'request', $8,
+             case when $8::text = 'won' then $9::timestamptz else null end,
+             'fixture', $9, $9
+           )`
+        : `insert into public.project (
+             id, workspace_id, contact_id, site_id, kanban_board_id,
+             kanban_column_id, name, phase, outcome, source_key,
+             created_at, updated_at
+           ) values (
+             $1, $2, $3, $4, $5, $6, $7, 'request', $8,
+             'fixture', $9, $9
+           )`,
+      projectValues,
     );
+    if (supportsOutcomeMetadata && options.outcome && options.outcome !== "open") {
+      const transitionClient = await admin.connect();
+      try {
+        await transitionClient.query("begin");
+        await transitionClient.query(
+          "select pg_catalog.set_config('app.workspace_id', $1, true)",
+          [workspaceId],
+        );
+        await transitionClient.query(
+          "select pg_catalog.set_config('app.actor_id', $1, true)",
+          [actorId],
+        );
+        await transitionClient.query(
+          `update public.project
+              set outcome = $1,
+                  outcome_revision = 1,
+                  loss_reason_id = $2,
+                  loss_reason_text = $3,
+                  updated_at = $4
+            where workspace_id = $5 and id = $6`,
+          [
+            options.outcome,
+            lossReasonId,
+            options.outcome === "lost" ? `Verlustnotiz ${marker}` : null,
+            oldAt,
+            workspaceId,
+            project.id,
+          ],
+        );
+        await transitionClient.query("commit");
+      } catch (error) {
+        await transitionClient.query("rollback").catch(() => undefined);
+        throw error;
+      } finally {
+        transitionClient.release();
+      }
+      // Der Guard besitzt den Transaktionszeitpunkt. Für die synthetische
+      // 25-Monats-Fixture wird nur die allgemeine Activity-Uhr zurückgesetzt;
+      // closed_at bleibt als unveränderliche Outcome-Evidenz bestehen.
+      await admin.query(
+        `update public.project set updated_at = $1
+          where workspace_id = $2 and id = $3`,
+        [oldAt, workspaceId, project.id],
+      );
+    }
     projects.push(project);
   }
 
@@ -1303,6 +1400,7 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
   let recent: SubjectFixture;
   let held: SubjectFixture;
   let won: SubjectFixture;
+  let lostWithComment: SubjectFixture;
   let running: SubjectFixture;
   let locked: SubjectFixture;
   let operationId: string;
@@ -1362,6 +1460,7 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
     recent = await createSubject(admin, { ageMonths: 23 });
     held = await createSubject(admin, { ageMonths: 25 });
     won = await createSubject(admin, { ageMonths: 25, outcome: "won" });
+    lostWithComment = await createSubject(admin, { ageMonths: 25, outcome: "lost" });
     running = await createSubject(admin, { ageMonths: 25, jobState: "running" });
     locked = await createSubject(admin, { ageMonths: 25 });
   }, 180_000);
@@ -1768,6 +1867,52 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
       "55006",
     );
     expect(await tombstoneCount(admin, running)).toBe(0);
+  });
+
+  it("entfernt Lost-Freitext atomar, ohne die strukturierte Ergebnisakte zu verlieren", async () => {
+    const projectId = lostWithComment.projects[0]!.id;
+    const before = await admin.query<{ loss_reason_text: string | null }>(
+      `select loss_reason_text from public.project
+        where workspace_id = $1 and id = $2`,
+      [lostWithComment.workspaceId, projectId],
+    );
+    expect(before.rows[0]!.loss_reason_text).toContain(lostWithComment.marker);
+
+    await expect(callAsErasure(admin, "erase_inactive_lead", [
+      lostWithComment.workspaceId,
+      lostWithComment.contactId,
+      randomUUID(),
+    ])).resolves.toBeTypeOf("string");
+
+    const after = await admin.query<{
+      name: string;
+      outcome: string;
+      loss_reason_id: string | null;
+      loss_reason_text: string | null;
+    }>(
+      `select name, outcome, loss_reason_id, loss_reason_text
+         from public.project
+        where workspace_id = $1 and id = $2`,
+      [lostWithComment.workspaceId, projectId],
+    );
+    expect(after.rows[0]).toEqual({
+      name: `geloescht-${projectId}`,
+      outcome: "lost",
+      loss_reason_id: expect.any(String),
+      loss_reason_text: null,
+    });
+    const retainedEvidence = await admin.query<{ document: string }>(
+      `select pg_catalog.jsonb_build_object(
+         'events', (select pg_catalog.jsonb_agg(event_row)
+                      from public.domain_events event_row
+                     where workspace_id = $1),
+         'audit', (select pg_catalog.jsonb_agg(audit_row)
+                     from public.audit_log audit_row
+                    where workspace_id = $1)
+       )::text as document`,
+      [lostWithComment.workspaceId],
+    );
+    expect(retainedEvidence.rows[0]!.document).not.toContain(lostWithComment.marker);
   });
 
   it("wartet auf Worker-Locks und committet bei einem Race keinen Teilgraphen", async () => {

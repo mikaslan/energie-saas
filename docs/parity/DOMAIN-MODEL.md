@@ -1,11 +1,12 @@
 # Domain Model
 
-Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M1-11a, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Bestehender Spine und neue kommerzielle Grenze
 
 ```text
 Workspace
+ ├─ ProjectLossReason (n; Workspace-Taxonomie, logisch archiviert)
  ├─ OfferReleaseProfile (genau ein stabiler Head)
  │    ├─ OfferReleaseProfileRevision (n, append-only)
  │    └─ OfferReleaseProfileActivation (n, append-only)
@@ -52,7 +53,8 @@ Workspace
 
 | Entität | Identität / Lebensdauer | Wahrheit / Grenze |
 |---|---|---|
-| `Project` | bestehende Workspace-/Contact-/Site-Bindung | Phase, Boardposition und monotone `assignment_revision`; nicht die Preiswahrheit |
+| `Project` | bestehende Workspace-/Contact-/Site-Bindung | Phase, Boardposition, monotone `assignment_revision` sowie getrenntes Outcome mit `outcome_revision`, `closed_at` und löschbarem Lost-Kontext; nicht die Preiswahrheit |
+| `ProjectLossReason` | stabile Workspace-ID, kanonisch eindeutiges Label und positive Position | Admin-only Taxonomie mit CAS-Revision und logischem Archive; kein Hard Delete, kein kontaktbezogener Freitext |
 | `ProjectAssignment` | Workspace + Project + Membership, pro Membership/Project eindeutig | aktuelle direkte Beziehung als `key_account` oder `user`; Project-Löschung kaskadiert, Membership-Löschung bleibt bei aktiver Zuweisung RESTRICT |
 | `ProjectTask` | stabile Workspace-/Project-Task-ID, Revision ab 1 | Titel, sichere `task-rich-text.v1`-Beschreibung, absolutes Datum, open/done, Completion und einwegiges Archive; CAS-Aggregat, keine globale Task |
 | `ProjectTaskAssignee` | Task + aktive interne Workspace-Membership, eindeutig | 0–50 interne Personen; Membership-FK RESTRICT, Project-/Task-Erasure kontrolliert |
@@ -84,6 +86,15 @@ Workspace
 ## Kritische Invarianten
 
 - Jede Tenant-Relation besitzt Workspace-ID, zusammengesetzte FKs und FORCE RLS.
+- Project-Outcome ist von Phase und Kanban-Spalte getrennt. Nur Request/Open
+  darf Won/Lost werden; Reopen leert aktive Abschlussfelder. Lost verlangt
+  einen aktiven Grund aus demselben Workspace.
+- Jede wirksame Outcome-Transition erhöht `outcome_revision` genau einmal und
+  schreibt genau ein triggergebundenes, redigiertes Event/Audit. Direkte
+  Fake-Evidenz, NULL-Actor und vorab geschlossenes INSERT sind gesperrt.
+- Contact-Erasure sperrt zuerst Project und löscht den freien Lost-Kommentar;
+  die kontaktunabhängige Workspace-Taxonomie bleibt. Nach Erasure kann weder
+  Service noch direkter `app_runtime`-DML ein Outcome wiederauferstehen lassen.
 - Ein CSV-Import speichert niemals die Rohdatei. Preview und Zeilencommands
   sind streng begrenzt, gehasht und bis zur Due-Grenze geschützt; danach
   werden Dateiname, SKU, Mapping, Command, versiegeltes Ziel und freie

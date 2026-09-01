@@ -99,6 +99,24 @@ const PROJECT_TASK_PRIVATE_ROUTINES = [
   "public._m110_guard_project_task_positions()",
 ] as const;
 
+const PROJECT_OUTCOME_RELATIONS = ["project_loss_reason"] as const;
+const PROJECT_OUTCOME_RUNTIME_ROUTINES = [
+  "public._m111a_actor_can_manage_loss_reasons(uuid)",
+  "public._m111a_actor_can_read_loss_reasons(uuid)",
+  "public._m111a_actor_role(uuid)",
+] as const;
+const PROJECT_OUTCOME_PRIVATE_ROUTINES = [
+  "public._m111a_erasure_scrub_allowed(uuid,uuid)",
+  "public._m111a_guard_loss_reason()",
+  "public._m111a_guard_outcome_evidence_insert()",
+  "public._m111a_guard_project_outcome()",
+  "public._m111a_record_project_outcome()",
+] as const;
+const PROJECT_OUTCOME_FUNCTION_NAMES = [
+  ...PROJECT_OUTCOME_RUNTIME_ROUTINES,
+  ...PROJECT_OUTCOME_PRIVATE_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+
 const CATALOG_IMPORT_PRIVATE_ROUTINES = [
   "public._m108b_authorize_catalog_import_runtime(uuid)",
   "public._m108b_catalog_import_actor_auth_code(uuid,uuid)",
@@ -953,6 +971,35 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasProjectOutcomes = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_OUTCOME_RELATIONS,
+    "Rollen-ACL-Manifest: M1-11a-Projektergebnis",
+  );
+  if (hasProjectOutcomes) {
+    await client.query(`
+      -- Berechnungs-Worker finalisieren ausschliesslich ueber enge Routinen.
+      -- Tabellenweites oder spaltenweites Project-SELECT wuerde den internen
+      -- Verlustkommentar offenlegen und bleibt deshalb vollstaendig entzogen.
+      revoke all privileges on public.project from app_worker;
+      revoke all privileges on public.project_loss_reason
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.project_loss_reason to app_runtime;
+
+      revoke execute on function
+        ${[
+          ...PROJECT_OUTCOME_RUNTIME_ROUTINES,
+          ...PROJECT_OUTCOME_PRIVATE_ROUTINES,
+        ].join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${PROJECT_OUTCOME_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -987,7 +1034,6 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       public.workspace,
       public.membership,
       public.site,
-      public.project,
       public.calculator_snapshot,
       public.project_requirement,
       public.site_energy_profile,
@@ -1806,6 +1852,11 @@ export async function verifyRoleContract(
     PROJECT_TASK_RELATIONS,
     "Rollenvertrag: M1-10-Projektaufgaben",
   );
+  const hasProjectOutcomes = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_OUTCOME_RELATIONS,
+    "Rollenvertrag: M1-11a-Projektergebnis",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -1941,6 +1992,9 @@ export async function verifyRoleContract(
       "r:project",
       ...(hasProjectAssignment ? ["r:project_assignment"] : []),
       ...(hasProjectTasks ? PROJECT_TASK_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasProjectOutcomes ? PROJECT_OUTCOME_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       "r:project_calculation_job",
@@ -2170,6 +2224,9 @@ export async function verifyRoleContract(
         "_m110_guard_project_task_positions:app_owner",
         "_m110_valid_task_rich_text_v1:app_owner",
       ] : []),
+      ...(hasProjectOutcomes ? PROJECT_OUTCOME_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -2342,6 +2399,32 @@ export async function verifyRoleContract(
         "_m110_valid_task_rich_text_v1(jsonb):boolean:app_owner:plpgsql:f:i:" +
           "false:false:true:s:search_path=pg_catalog:" +
           "e4438649b75d0bed79426fce38d31d8889c65927397fd9317d5fcfe1c25f871c",
+      ] : []),
+      ...(hasProjectOutcomes ? [
+        "_m111a_actor_can_manage_loss_reasons(uuid):boolean:app_owner:sql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "1fc4823ad8a20ea1b2d74447fdb3ca538ec7e0c94f93804e1ebd8194143e60df",
+        "_m111a_actor_can_read_loss_reasons(uuid):boolean:app_owner:sql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "eb511559978b32dfb6afc2a749bdf997fa1a460adb0bc5e3ca6b138f3b8d35cc",
+        "_m111a_actor_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:" +
+          "f09f8a1d579c02c6585e7d74d8c47f379c4574b38331c56fcdf454efa77673e4",
+        "_m111a_erasure_scrub_allowed(uuid, uuid):boolean:app_owner:plpgsql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "2fae356dfbade63bfc0fe00685d41a13891ba868941681a00d1c2024e862b16d",
+        "_m111a_guard_loss_reason():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:" +
+          "b31b2eaad4c5e1beabb07ea2b2bd1cd2e6a8fff3e88d648e7a729770662ff4da",
+        "_m111a_guard_outcome_evidence_insert():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "0816b66f08461d515e44d3746c08e12e0f85bc8390d57d73ec1d17ccd39ed876",
+        "_m111a_guard_project_outcome():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "3952346bb8ee74692d7608d62f29fd57b4a13c847f6fd5a16db71b004ccd88a6",
+        "_m111a_record_project_outcome():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "2472df44c865e488ca1d205c905c8fb85a5a9f1fd2c0bdd9f8ef271cee210a81",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
@@ -2556,7 +2639,9 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectTasks
+        `search_path=pg_catalog:${hasProjectOutcomes
+          ? "859c9563aef9d9d4ccba5b0ee91b578dc35ab431beb2b3a9ee5d216f5eccb088"
+          : hasProjectTasks
           ? "c7bbe2311d331eb8ad272b4d8dd48ccfb53d21be2418989703d980c61f3e1562"
           : hasOfferIssuance
           ? "1d865e697787271c715ee6a606f5cc6463456c53ee0c2fb5c906213e5170287c"
@@ -2678,6 +2763,9 @@ export async function verifyRoleContract(
       "project:true:true",
       ...(hasProjectAssignment ? ["project_assignment:true:true"] : []),
       ...(hasProjectTasks ? PROJECT_TASK_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasProjectOutcomes ? PROJECT_OUTCOME_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
       "project_calculation_job:true:true",
@@ -2811,6 +2899,18 @@ export async function verifyRoleContract(
         "project_task_label:project_task_label_actor_update:1b0efd2722df968ae3f430fbd2eb25123a26f97ae6a478a6507e5cd43b84f699",
         "project_task_label:tenant_isolation:2e89081414c7ac7dbbd754458bf8b931b0658f11bdae1ad810c1ed8cd723f962",
       ] : []),
+      ...(hasProjectOutcomes ? [
+        "project_loss_reason:project_loss_reason_actor_delete:" +
+          "f712efba8e38b48ad7dfe33921c5b47a93e396cfec9e68e1d7bd13c79345753f",
+        "project_loss_reason:project_loss_reason_actor_insert:" +
+          "f5fd05e0f2bb77bdd91b08778bee10376c098b9cc757e7def3453377067dcc2e",
+        "project_loss_reason:project_loss_reason_actor_select:" +
+          "301cb23eefa067694aa48d3020af7b824ca0b2f09afd1cb9a904b93ec6787f89",
+        "project_loss_reason:project_loss_reason_actor_update:" +
+          "9df6abebd6999c5e510ce351621f19af78db527c17faaea6820fb28affaa608a",
+        "project_loss_reason:tenant_isolation:" +
+          "13519652442642e4c8536a8e4f75d98f94ad536c312a95798fbc61471025d7f4",
+      ] : []),
       "project_calculation_job:tenant_isolation:46c9a1a09bfdfc88ddf839242f17c560ea614e34d1961a341580c40b4cdabf84",
       "project_calculation_revision:tenant_isolation:84bebd69ee64a8388f406f44da215b86328497c5235e70628a8df0e8c1b56a9d",
       "project_catalog_resolution:tenant_isolation:28a50950efb5f725b0db20a0d82671d5a03a0ec9aa20e93775bd3e88c625a46f",
@@ -2845,8 +2945,17 @@ export async function verifyRoleContract(
            function_schema.nspname as function_schema,
            function.proname,
            pg_catalog.encode(trigger.tgargs, 'hex') as args,
-           coalesce(pg_catalog.pg_get_expr(trigger.tgqual, trigger.tgrelid, false), '-')
-             as when_expression,
+           case
+             when trigger.tgqual is null then '-'
+             -- pg_get_expr(tgqual, tgrelid) kann OLD/NEW nicht gemeinsam
+             -- deparsen (22023). pg_get_triggerdef ist fuer Trigger-WHEN
+             -- kanonisch und der Anker entfernt nur die aeussere DDL-Huelle.
+             else pg_catalog.regexp_replace(
+               pg_catalog.pg_get_triggerdef(trigger.oid, false),
+               '^.* WHEN \\((.*)\\) EXECUTE FUNCTION .*$',
+               '\\1'
+             )
+           end as when_expression,
            trigger.tgconstraint::text
     from pg_catalog.pg_trigger trigger
     join pg_catalog.pg_class relation on relation.oid = trigger.tgrelid
@@ -2872,6 +2981,10 @@ export async function verifyRoleContract(
     [
       "audit_log:audit_log_append_only:27:O:public:forbid_mutation::-:0",
       "audit_log:audit_log_no_truncate:34:O:public:forbid_mutation::-:0",
+      ...(hasProjectOutcomes ? [
+        "audit_log:audit_log_project_outcome_insert_guard:7:O:public:" +
+          "_m111a_guard_outcome_evidence_insert::-:0",
+      ] : []),
       "catalog_component:catalog_component_mutation_guard:27:O:public:guard_catalog_component_mutation::-:0",
       "catalog_component:catalog_component_no_truncate:34:O:public:forbid_mutation::-:0",
       "catalog_component:catalog_component_projects_stale:17:O:public:mark_catalog_component_projects_stale::-:0",
@@ -2897,6 +3010,10 @@ export async function verifyRoleContract(
       ] : []),
       "domain_events:domain_events_append_only:27:O:public:forbid_mutation::-:0",
       "domain_events:domain_events_no_truncate:34:O:public:forbid_mutation::-:0",
+      ...(hasProjectOutcomes ? [
+        "domain_events:domain_events_project_outcome_insert_guard:7:O:public:" +
+          "_m111a_guard_outcome_evidence_insert::-:0",
+      ] : []),
       "erasure_operation_locator:erasure_operation_locator_append_only:27:O:" +
         "public:guard_erasure_tombstone_worm::-:0",
       "erasure_operation_locator:erasure_operation_locator_no_truncate:34:O:" +
@@ -2986,6 +3103,21 @@ export async function verifyRoleContract(
         "project_task_label:project_task_label_no_truncate:34:O:public:forbid_mutation::-:0",
         "project_task_label:project_task_label_positions_guard:29:O:public:" +
           "_m110_guard_project_task_positions::-:constraint",
+      ] : []),
+      ...(hasProjectOutcomes ? [
+        "project:project_outcome_evidence:17:O:public:_m111a_record_project_outcome::" +
+          "(old.outcome IS DISTINCT FROM new.outcome):0",
+        "project:project_outcome_insert_guard:7:O:public:_m111a_guard_project_outcome::-:0",
+        "project:project_outcome_mutation_guard:19:O:public:_m111a_guard_project_outcome::" +
+          "((old.outcome IS DISTINCT FROM new.outcome) OR " +
+          "(old.outcome_revision IS DISTINCT FROM new.outcome_revision) OR " +
+          "(old.closed_at IS DISTINCT FROM new.closed_at) OR " +
+          "(old.loss_reason_id IS DISTINCT FROM new.loss_reason_id) OR " +
+          "(old.loss_reason_text IS DISTINCT FROM new.loss_reason_text)):0",
+        "project_loss_reason:project_loss_reason_mutation_guard:31:O:public:" +
+          "_m111a_guard_loss_reason::-:0",
+        "project_loss_reason:project_loss_reason_no_truncate:34:O:public:" +
+          "forbid_mutation::-:0",
       ] : []),
       "offer_variant:offer_variant_current_complete:21:O:public:" +
         "validate_offer_variant_snapshot_mirrors::-:constraint",
@@ -3102,6 +3234,11 @@ export async function verifyRoleContract(
           `app_runtime:${relation}:UPDATE:app_owner:false`,
         ]),
       ] : []),
+      ...(hasProjectOutcomes ? [
+        "app_runtime:project_loss_reason:INSERT:app_owner:false",
+        "app_runtime:project_loss_reason:SELECT:app_owner:false",
+        "app_runtime:project_loss_reason:UPDATE:app_owner:false",
+      ] : []),
       "app_runtime:project_calculation_job:INSERT:app_owner:false",
       "app_runtime:project_calculation_job:SELECT:app_owner:false",
       "app_runtime:project_calculation_revision:SELECT:app_owner:false",
@@ -3143,7 +3280,6 @@ export async function verifyRoleContract(
       ...(hasOfferRelease ? [
         "app_worker:offer_release_candidate:SELECT:app_owner:false",
       ] : []),
-      "app_worker:project:SELECT:app_owner:false",
       "app_worker:project_calculation_job:SELECT:app_owner:false",
       "app_worker:project_calculation_revision:SELECT:app_owner:false",
       "app_worker:project_requirement:SELECT:app_owner:false",
@@ -3253,6 +3389,36 @@ export async function verifyRoleContract(
     "Spalten-Grants",
   );
 
+  if (hasProjectOutcomes) {
+    const workerProjectRead = await client.query<{
+      table_select: boolean;
+      readable_columns: string[];
+    }>(`
+      select pg_catalog.has_table_privilege(
+               'app_worker', 'public.project', 'SELECT'
+             ) as table_select,
+             coalesce(
+               pg_catalog.array_agg(attribute.attname order by attribute.attnum)
+                 filter (
+                   where pg_catalog.has_column_privilege(
+                     'app_worker', 'public.project', attribute.attname, 'SELECT'
+                   )
+                 ),
+               array[]::name[]
+             )::text[] as readable_columns
+        from pg_catalog.pg_attribute as attribute
+       where attribute.attrelid = 'public.project'::pg_catalog.regclass
+         and attribute.attnum > 0
+         and not attribute.attisdropped
+    `);
+    const workerRead = workerProjectRead.rows[0];
+    if (workerRead?.table_select || (workerRead?.readable_columns.length ?? 0) > 0) {
+      throw new Error(
+        `app_worker darf keine Project-Spalte lesen: ${JSON.stringify(workerRead)}`,
+      );
+    }
+  }
+
   const sequenceGrants = await client.query<AclRow>(`
     select coalesce(grantee.rolname, 'PUBLIC') as grantee,
            grantor.rolname as grantor,
@@ -3325,6 +3491,9 @@ export async function verifyRoleContract(
         "app_runtime:app_actor_membership_id(uuid):EXECUTE:app_owner:false",
       ] : []),
       ...(hasProjectTasks ? PROJECT_TASK_RUNTIME_ROUTINES.map((signature) =>
+        `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
+      ) : []),
+      ...(hasProjectOutcomes ? PROJECT_OUTCOME_RUNTIME_ROUTINES.map((signature) =>
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
       ...(hasOfferIssuance ? [

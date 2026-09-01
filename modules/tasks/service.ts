@@ -20,12 +20,15 @@ import {
   projectTaskCommandV1Schema,
   projectTaskCursorTokenSchema,
   projectTaskMemberSearchV1Schema,
+  projectActivityLabels,
   taskLabelColors,
   taskRichTextV1Schema,
   type ProjectTaskCommandV1,
   type ProjectActivityCursor,
   type ProjectActivityKind,
+  type ProjectOutcomeActivityKind,
   type ProjectActivityPageV1,
+  type ProjectTaskActivityKind,
   type ProjectTaskCommandResult,
   type ProjectTaskItemV1,
   type ProjectTaskMemberSearchV1,
@@ -100,14 +103,52 @@ type TaskCursorPayload = {
   id: string;
 };
 
-const activityKinds: Readonly<Record<string, ProjectActivityKind>> = {
+const taskActivityEventTypes = [
+  "project.task_created",
+  "project.task_updated",
+  "project.task_checklist_changed",
+  "project.task_completed",
+  "project.task_reopened",
+  "project.task_archived",
+] as const;
+const outcomeActivityEventTypes = [
+  "project.outcome_won",
+  "project.outcome_lost",
+  "project.outcome_reopened",
+] as const;
+const activityKinds = {
   "project.task_created": "task_created",
   "project.task_updated": "task_updated",
   "project.task_checklist_changed": "task_checklist_changed",
   "project.task_completed": "task_completed",
   "project.task_reopened": "task_reopened",
   "project.task_archived": "task_archived",
-};
+  "project.outcome_won": "outcome_won",
+  "project.outcome_lost": "outcome_lost",
+  "project.outcome_reopened": "outcome_reopened",
+} as const satisfies Readonly<Record<string, ProjectActivityKind>>;
+const taskActivityKinds: ReadonlySet<ProjectActivityKind> = new Set<ProjectTaskActivityKind>([
+  "task_created",
+  "task_updated",
+  "task_checklist_changed",
+  "task_completed",
+  "task_reopened",
+  "task_archived",
+]);
+const outcomeActivityKinds: ReadonlySet<ProjectActivityKind> =
+  new Set<ProjectOutcomeActivityKind>([
+    "outcome_won",
+    "outcome_lost",
+    "outcome_reopened",
+  ]);
+
+function isTaskActivityKind(kind: ProjectActivityKind): kind is ProjectTaskActivityKind {
+  return taskActivityKinds.has(kind);
+}
+
+function isOutcomeActivityKind(kind: ProjectActivityKind): kind is ProjectOutcomeActivityKind {
+  return outcomeActivityKinds.has(kind);
+}
 const activityCursorSchema = z.strictObject({
   occurredAt: z.iso.datetime({ offset: true }),
   id: z.uuid().transform((value) => value.toLowerCase()),
@@ -161,14 +202,27 @@ const projectedTaskSchema: z.ZodType<ProjectTaskItemV1> = z.strictObject({
     ctx.addIssue({ code: "custom", message: "task completion state is inconsistent" });
   }
 });
-const projectedActivityRowSchema = z.strictObject({
+const projectedActivityRowBase = {
   id: projectedUuidSchema,
-  event_type: z.string().min(1),
   occurred_at: z.iso.datetime({ offset: true }),
   actor_label: z.string().min(1),
+} as const;
+const projectedTaskActivityRowSchema = z.strictObject({
+  ...projectedActivityRowBase,
+  event_type: z.enum(taskActivityEventTypes),
   task_id: projectedUuidSchema,
   task_title: z.string().min(1).max(200).nullable(),
 });
+const projectedOutcomeActivityRowSchema = z.strictObject({
+  ...projectedActivityRowBase,
+  event_type: z.enum(outcomeActivityEventTypes),
+  task_id: z.null(),
+  task_title: z.null(),
+});
+const projectedActivityRowSchema = z.union([
+  projectedTaskActivityRowSchema,
+  projectedOutcomeActivityRowSchema,
+]);
 const workspaceProjectionSchema = z.strictObject({
   project_id: projectedUuidSchema,
   archived_count: z.number().int().nonnegative(),
@@ -362,13 +416,30 @@ function activityPageFromRows(
   const items = rows.map((row) => {
     const kind = activityKinds[row.event_type];
     if (!kind) throw new ProjectTaskValidationError();
-    return {
+    const base = {
       id: row.id,
-      kind,
       occurredAt: row.occurred_at,
       actorLabel: row.actor_label,
-      taskId: row.task_id,
-      taskTitle: row.task_title,
+    };
+    if (isTaskActivityKind(kind)) {
+      if (row.task_id === null) throw new ProjectTaskValidationError();
+      return {
+        ...base,
+        kind,
+        label: projectActivityLabels[kind],
+        taskId: row.task_id,
+        taskTitle: row.task_title,
+      };
+    }
+    if (!isOutcomeActivityKind(kind) || row.task_id !== null || row.task_title !== null) {
+      throw new ProjectTaskValidationError();
+    }
+    return {
+      ...base,
+      kind,
+      label: projectActivityLabels[kind],
+      taskId: null,
+      taskTitle: null,
     };
   });
   const last = items.at(-1);
@@ -528,7 +599,12 @@ async function queryProjectTaskPageProjection(
         from selected_task task
     ), activity_event_window as materialized (
       select event.id, event.event_type, event.occurred_at,
-             event.actor, event.payload, event.workspace_id, event.aggregate_id
+             event.actor, event.workspace_id, event.aggregate_id,
+             case when event.event_type in (
+               'project.task_created', 'project.task_updated',
+               'project.task_checklist_changed', 'project.task_completed',
+               'project.task_reopened', 'project.task_archived'
+             ) then event.payload->>'taskId' else null end as task_id_text
         from domain_events event
        where ${includeActivity}::boolean
          and event.workspace_id = ${ctx.workspaceId}::uuid
@@ -537,9 +613,24 @@ async function queryProjectTaskPageProjection(
          and event.event_type in (
            'project.task_created', 'project.task_updated',
            'project.task_checklist_changed', 'project.task_completed',
-           'project.task_reopened', 'project.task_archived'
+           'project.task_reopened', 'project.task_archived',
+           'project.outcome_won', 'project.outcome_lost',
+           'project.outcome_reopened'
          )
-         and pg_catalog.pg_input_is_valid(event.payload->>'taskId', 'uuid')
+         and (
+           event.event_type in (
+             'project.outcome_won', 'project.outcome_lost',
+             'project.outcome_reopened'
+           )
+           or (
+             event.event_type in (
+               'project.task_created', 'project.task_updated',
+               'project.task_checklist_changed', 'project.task_completed',
+               'project.task_reopened', 'project.task_archived'
+             )
+             and pg_catalog.pg_input_is_valid(event.payload->>'taskId', 'uuid')
+           )
+         )
          ${activityCursorFilter}
        order by event.occurred_at desc, event.id desc
        limit ${activityLimit + 1}
@@ -550,7 +641,7 @@ async function queryProjectTaskPageProjection(
                'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
              ) as occurred_at,
              coalesce(identity_record.email, 'System') as actor_label,
-             event.payload->'taskId' as task_id,
+             event.task_id_text as task_id,
              activity_task.title as task_title
         from activity_event_window event
         left join user_identity identity_record
@@ -562,7 +653,7 @@ async function queryProjectTaskPageProjection(
         left join project_task activity_task
           on activity_task.workspace_id = event.workspace_id
          and activity_task.project_id = event.aggregate_id
-         and activity_task.id = (event.payload->>'taskId')::uuid
+         and activity_task.id = event.task_id_text::uuid
     )
     select project_record.id as project_id,
            coalesce((
@@ -760,7 +851,12 @@ export async function getProjectActivityPage(
   const result = await tx.execute<ActivityRow>(sql`
     with activity_event_window as materialized (
       select event.id, event.event_type, event.occurred_at,
-             event.actor, event.payload, event.workspace_id, event.aggregate_id
+             event.actor, event.workspace_id, event.aggregate_id,
+             case when event.event_type in (
+               'project.task_created', 'project.task_updated',
+               'project.task_checklist_changed', 'project.task_completed',
+               'project.task_reopened', 'project.task_archived'
+             ) then event.payload->>'taskId' else null end as task_id_text
         from domain_events event
        where event.workspace_id = ${ctx.workspaceId}::uuid
          and event.aggregate_type = 'project'
@@ -768,9 +864,24 @@ export async function getProjectActivityPage(
          and event.event_type in (
            'project.task_created', 'project.task_updated',
            'project.task_checklist_changed', 'project.task_completed',
-           'project.task_reopened', 'project.task_archived'
+           'project.task_reopened', 'project.task_archived',
+           'project.outcome_won', 'project.outcome_lost',
+           'project.outcome_reopened'
          )
-         and pg_catalog.pg_input_is_valid(event.payload->>'taskId', 'uuid')
+         and (
+           event.event_type in (
+             'project.outcome_won', 'project.outcome_lost',
+             'project.outcome_reopened'
+           )
+           or (
+             event.event_type in (
+               'project.task_created', 'project.task_updated',
+               'project.task_checklist_changed', 'project.task_completed',
+               'project.task_reopened', 'project.task_archived'
+             )
+             and pg_catalog.pg_input_is_valid(event.payload->>'taskId', 'uuid')
+           )
+         )
          ${cursorFilter}
        order by event.occurred_at desc, event.id desc
        limit ${limit + 1}
@@ -781,7 +892,7 @@ export async function getProjectActivityPage(
              'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
            ) as occurred_at,
            coalesce(identity_record.email, 'System') as actor_label,
-           event.payload->'taskId' as task_id,
+           event.task_id_text as task_id,
            activity_task.title as task_title
       from activity_event_window event
       left join user_identity identity_record
@@ -793,7 +904,7 @@ export async function getProjectActivityPage(
       left join project_task activity_task
         on activity_task.workspace_id = event.workspace_id
        and activity_task.project_id = event.aggregate_id
-       and activity_task.id = (event.payload->>'taskId')::uuid
+       and activity_task.id = event.task_id_text::uuid
      order by event.occurred_at desc, event.id desc
   `);
   const pageRows = result.rows.slice(0, limit);

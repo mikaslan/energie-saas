@@ -146,14 +146,17 @@ stehen im Katalog.
   Suite bei jeder Migration, Rechte-Matrix-Test, ~6 Playwright-E2E-Flows.
 - Abnahme je Meilenstein gegen die F-Nummern des Modulkatalogs.
 
-## Aktueller Ausführungsstand M2
+## Aktueller Ausführungsstand
 
-- Ehrlicher Gesamtstand der F1–F16-Mission: nach der lokalen technischen
-  M2-02-Abnahme rund **19 %**. Das technische lokale Fundament ist weit, die
-  nutzerseitige Produktbreite bleibt niedrig.
-- M2-01 und M2-02 sind lokal `REVIEWED/VERIFIED`; das technische M2-02-Gate ist
-  `GO`. Sein menschliches Portal-/PDF-Visual-Gate bleibt davon unabhängig
-  `INCONCLUSIVE`.
+- Ehrlicher Gesamtstand der F1–F16-Mission nach M1-11a und der lokalen
+  M2-03b1-Basis: ca. **23–24 %**. Das technische Fundament liegt bei ca.
+  **97–98 %**, die heute nutzbare Produktbreite bei ca. **16–17 %**.
+- M1-11a ist lokal `REVIEWED/VERIFIED`; das technische Gate 2 ist `GO`.
+  Won/Lost/Reopen, administrierbare Verlustgründe, geschlossene Liste,
+  Rollen-/Privacy-, Race-, Evidence- und Erasure-Grenzen sind belegt.
+- M2-01 bis M2-03b1 sind lokal technisch verifiziert. Ihre menschlichen
+  Portal-/PDF-Visual-Gates und M2-03b2 Object Lock bleiben davon unabhängig
+  `INCONCLUSIVE` beziehungsweise extern blockiert.
 - M2-02 kennt ehrlich nur `queued`, `running`, `retry_wait`, `succeeded` und
   terminal `failed_final`. Viewer dürfen Status und erfolgreiche interne Drafts
   lesen/downloaden; Editor/Admin dürfen mit `project.write` anfordern/replayen;
@@ -167,6 +170,7 @@ stehen im Katalog.
 
 ## Betriebsnotizen (sofort, außerhalb des Builds)
 
-- **OpenRouter-Guthaben aufladen** (Stand: 0,02 $ Rest — K3 faktisch offline).
-- `~/.claude/bin/k3` härten: Kostenausweis auch im length-Fehlerpfad, optionale
-  Reasoning-Budget-Kappe.
+- Kimi K3 über OpenRouter bleibt eine deadline-begrenzte parallele
+  Implementierungsunterstützung, niemals ein Freigabe-Gate. Aktivierung erst
+  mit lokal sicher hinterlegtem, rotiertem `OPENROUTER_API_KEY`; ohne Schlüssel
+  läuft der Hauptpfad unverzögert weiter.

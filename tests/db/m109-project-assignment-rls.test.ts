@@ -166,7 +166,7 @@ async function seedFixture(): Promise<Fixture> {
             (${fixture.assignedOfferProjectId}::uuid, 'Assigned Offer'::text,
               'offer'::text, 'open'::text),
             (${fixture.assignedClosedProjectId}::uuid, 'Assigned Closed'::text,
-              'request'::text, 'lost'::text)
+              'request'::text, 'open'::text)
         ) as project_seed(id, name, phase, outcome)
         join kanban_board board
           on board.workspace_id = ${fixture.workspaceId}::uuid
@@ -191,6 +191,15 @@ async function seedFixture(): Promise<Fixture> {
           ${fixture.externalAMembershipId}::uuid, 'user'),
         (${fixture.workspaceId}::uuid, ${fixture.assignedClosedProjectId}::uuid,
           ${fixture.externalAMembershipId}::uuid, 'user')
+    `);
+  });
+
+  await withRawActor(fixture, fixture.internalId, async (tx) => {
+    await tx.execute(sql`
+      update project
+         set outcome = 'won', outcome_revision = 1,
+             updated_at = statement_timestamp()
+       where id = ${fixture.assignedClosedProjectId}::uuid
     `);
   });
 
@@ -613,7 +622,7 @@ describe.sequential("M1-09 Actor-RLS als echte app_runtime-Loginrolle", () => {
                 (${assignedOfferProjectId}::uuid, 'Assigned Offer'::text,
                   'offer'::text, 'open'::text),
                 (${assignedClosedProjectId}::uuid, 'Assigned Closed'::text,
-                  'request'::text, 'lost'::text)
+                  'request'::text, 'open'::text)
             ) as project_seed(id, name, phase, outcome)
             join kanban_board board
               on board.workspace_id = ${workspaceA}::uuid
@@ -636,6 +645,15 @@ describe.sequential("M1-09 Actor-RLS als echte app_runtime-Loginrolle", () => {
               ${externalMembershipId}::uuid, 'user'),
             (${workspaceA}::uuid, ${assignedClosedProjectId}::uuid,
               ${externalMembershipId}::uuid, 'user')
+        `);
+      });
+
+      await withRuntimeActor(owner, workspaceA, internalId, async (tx) => {
+        await tx.execute(sql`
+          update project
+             set outcome = 'won', outcome_revision = 1,
+                 updated_at = statement_timestamp()
+           where id = ${assignedClosedProjectId}::uuid
         `);
       });
 

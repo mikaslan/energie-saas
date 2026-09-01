@@ -45,6 +45,29 @@ export type {
   ProjectOutcomeCommandV1,
 } from "./outcome-contract";
 export {
+  changeProjectLossReason,
+  changeProjectOutcome,
+  getProjectOutcomeContext,
+  listClosedRequests,
+  listManagedProjectLossReasons,
+  listProjectLossReasons,
+  ProjectLossReasonConflictError,
+  ProjectLossReasonNotFoundError,
+  ProjectLossReasonUnavailableError,
+  ProjectLossReasonValidationError,
+  ProjectOutcomeConflictError,
+  ProjectOutcomeIllegalTransitionError,
+  ProjectOutcomeNotFoundError,
+  ProjectOutcomeValidationError,
+} from "./outcome-service";
+export type {
+  ProjectClosedRequestPage,
+  ProjectClosedRequestRecord,
+  ProjectLossReasonRecord,
+  ProjectOutcomeContext,
+  RequestOutcome,
+} from "./outcome-service";
+export {
   changeProjectAssignment,
   getProjectAssignmentContext,
   getProjectPageDetail,

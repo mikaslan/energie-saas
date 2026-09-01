@@ -201,7 +201,7 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
     expect(concurrentIndex).toContain("DROP INDEX CONCURRENTLY IF EXISTS");
     expect(migrator).toContain("ensureM110ProjectTaskActivityIndex(client)");
     expect(erasureSchema).toMatch(/taskIds\?: string\[\]/u);
-    expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
+    expect(JSON.parse(journal).entries.find((entry: { idx: number }) => entry.idx === 38)).toMatchObject({
       idx: 38,
       tag: "0038_m1_10_project_task",
     });
@@ -301,7 +301,7 @@ describe.sequential("M1-10 Project-Task DB-Vertrag", () => {
 
     expect(plans.active).toContain("project_task_ws_project_active_idx");
     expect(plans.archived).toContain("project_task_ws_project_archived_idx");
-    expect(plans.activity).toContain("domain_events_project_task_activity_idx");
+    expect(plans.activity).toContain("domain_events_project_activity_idx");
     for (const plan of Object.values(plans)) {
       expect(plan).not.toContain('"Node Type":"Sort"');
       expect(plan).not.toContain('"Node Type":"Incremental Sort"');

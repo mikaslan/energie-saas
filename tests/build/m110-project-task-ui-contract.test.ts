@@ -37,11 +37,12 @@ describe("M1-10 Task-UI-Core-Vertrag", () => {
 
   it("projiziert Activity nur über geschlossene Ereignisbezeichnungen", async () => {
     const panel = await readFile(`${DETAIL}/project-activity-panel.tsx`, "utf8");
-    expect(panel).toContain("ACTIVITY_LABELS");
+    expect(panel).toContain("{item.label}");
     expect(panel).toContain("item.taskTitle");
     expect(panel).toContain("Aufgabe:");
     expect(panel).toContain('<ol role="list"');
     expect(panel).toContain("<time");
+    expect(panel).not.toContain("ACTIVITY_LABELS");
     expect(panel).not.toContain("eventType");
     expect(panel).not.toContain("payload");
   });

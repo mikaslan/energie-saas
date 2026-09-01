@@ -1,6 +1,6 @@
 # Workflow- und Statusmaschinen
 
-Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
+Stand: 2026-09-01 · M1-08b, M1-09, M1-10, M1-11a, M2-01, M2-02, M2-03a und M2-03b1 lokal verifiziert
 
 ## Project-Phase
 
@@ -91,6 +91,23 @@ Project-Event und ein Audit in derselben Transaktion; No-op und Conflict
 schreiben beides nicht. Standardlisten blenden archivierte Tasks aus, das
 Archiv bleibt getrennt lesbar. External besitzt weder eine Lese- noch eine
 Schreibkante.
+
+## Projektergebnis und Verlustgrund
+
+```text
+request/open@N -- mark_won(expected N) --> request/won@N+1
+request/open@N -- mark_lost(active reason, expected N) --> request/lost@N+1
+request/won@N -- reopen(expected N) --> request/open@N+1
+request/lost@N -- reopen(expected N) --> request/open@N+1
+request/cannot_fulfill --> keine M1-11a-Kante
+```
+
+Outcome, Abschlusszeit, aktiver Grund und Kommentar wechseln atomar; Reopen
+leert die aktiven Abschlussfelder. Phase, Board und Spalte bleiben unverändert.
+Project-Lock und erwartete Revision liefern genau einen seriellen Gewinner;
+Conflict schreibt weder Event noch Audit. Jede wirksame Kante schreibt genau
+ein redigiertes Event und Audit. Ein gelöschter Contact blockiert auch direkte
+Runtime-Transitionen; Erasure und Outcome verwenden denselben ersten Lock.
 
 ## Offer v1
 
