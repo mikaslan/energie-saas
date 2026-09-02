@@ -187,10 +187,14 @@ export async function seedM112aInboxTasks(
             body: EMPTY_DOC,
           },
           {
+            // „Heute fällig" ist kalendertagsgebunden (Europe/Berlin):
+            // day_start <= due_at < next_day_start. Das Fälligkeitsdatum wird
+            // relativ zum Laufzeitpunkt auf das ENDE des aktuellen Berlin-Tages
+            // gelegt (23:59:59) statt auf eine feste Uhrzeit wie 09:00.
             title: M1_12A_TODAY_TITLE,
             due: `(date_trunc('day',
                     pg_catalog.statement_timestamp() at time zone 'Europe/Berlin')
-                  + interval '9 hours') at time zone 'Europe/Berlin'`,
+                  + interval '1 day' - interval '1 second') at time zone 'Europe/Berlin'`,
             body: EMPTY_DOC,
           },
           { title: M1_12A_NO_DUE_TITLE, due: "null::timestamptz", body: EMPTY_DOC },
