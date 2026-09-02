@@ -686,6 +686,41 @@ END
 $m111b_read_notification_delivery$;--> statement-breakpoint
 
 -- ════════════════════════════════════════════════════════════════════════
+-- Dispatch-State-Kapsel (Muster Migration 0035): die pgboss-Enqueue-Funktion
+-- ist SECURITY DEFINER mit Eigner app_worker und darf customer_notification
+-- NICHT direkt lesen. Deshalb loest diese schmale app_owner-Definer-Kapsel die
+-- zustellbare Outbox-Zeile (id + attempt_count + next_attempt_at) auf; die
+-- Enqueue-Funktion ruft sie statt eines direkten SELECT auf (Chromium-P0:
+-- permission denied for table customer_notification).
+-- ════════════════════════════════════════════════════════════════════════
+CREATE FUNCTION public._m111b_customer_notification_dispatch_state(
+  requested_workspace_id uuid,
+  requested_project_id uuid
+)
+RETURNS TABLE(id uuid, attempt_count integer, next_attempt_at timestamptz)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $m111b_dispatch_state$
+BEGIN
+  PERFORM pg_catalog.set_config(
+    'app.workspace_id', requested_workspace_id::text, true
+  );
+  RETURN QUERY
+    SELECT notification_record.id,
+           notification_record.attempt_count,
+           notification_record.next_attempt_at
+      FROM public.customer_notification AS notification_record
+     WHERE notification_record.workspace_id = requested_workspace_id
+       AND notification_record.project_id = requested_project_id
+       AND notification_record.status IN ('queued', 'failed_retriable')
+     ORDER BY notification_record.created_at DESC
+     LIMIT 1;
+END
+$m111b_dispatch_state$;--> statement-breakpoint
+
+-- ════════════════════════════════════════════════════════════════════════
 -- Drei Worker-Zugriffskapseln (SECURITY DEFINER). Review-Befund P2-10: alle mit
 -- search_path = pg_catalog; der Workspace-GUC wird intern aus dem Parameter
 -- gesetzt (die Quelle ist der Job-Payload), damit FORCE-RLS die Zeilen sieht.
@@ -1074,17 +1109,16 @@ BEGIN
       END IF;
       -- Der Dispatch haengt am Project statt an der Notification-ID: so braucht
       -- app_runtime keinerlei SELECT auf customer_notification (kein
-      -- RETURNING-Zwang) und die Outbox-Zeile wird hier Definer-seitig aufgeloest.
-      SELECT notification_record.id,
-             notification_record.attempt_count,
-             notification_record.next_attempt_at
+      -- RETURNING-Zwang). Die Outbox-Zeile wird Definer-seitig ueber die schmale
+      -- app_owner-Kapsel _m111b_customer_notification_dispatch_state aufgeloest
+      -- (Muster Migration 0035: enqueue_offer_issuance -> _m203b1_offer_issuance_dispatch_state),
+      -- weil diese Funktion selbst app_worker-gehoert und die Tabelle nicht direkt
+      -- lesen darf.
+      SELECT dispatch_state.id,
+             dispatch_state.attempt_count,
+             dispatch_state.next_attempt_at
         INTO dispatch_notification_id, dispatch_attempt, notification_next_attempt_at
-        FROM public.customer_notification AS notification_record
-       WHERE notification_record.workspace_id = $1
-         AND notification_record.project_id = $2
-         AND notification_record.status IN ('queued', 'failed_retriable')
-       ORDER BY notification_record.created_at DESC
-       LIMIT 1;
+        FROM public._m111b_customer_notification_dispatch_state($1, $2) AS dispatch_state;
       IF NOT FOUND THEN
         RAISE EXCEPTION 'M1-11b dispatch: keine zustellbare Outbox-Zeile'
           USING ERRCODE = '42501';
@@ -1201,6 +1235,7 @@ REVOKE ALL ON FUNCTION public._m111b_record_project_outcome() FROM PUBLIC;--> st
 REVOKE ALL ON FUNCTION public._m111b_guard_outcome_evidence_insert() FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_project_has_binding_issuance(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_read_notification_delivery(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION public._m111b_customer_notification_dispatch_state(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_worker_resolve_recipient(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_worker_deliver(uuid, uuid, integer, text, text) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_worker_cancel_erased(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
@@ -1249,9 +1284,12 @@ BEGIN
       TO app_runtime;
   END IF;
 
-  -- Worker: ausschliesslich ueber die drei Definer-Kapseln, KEINE Tabellengrants.
+  -- Worker: ausschliesslich ueber die Definer-Kapseln, KEINE Tabellengrants.
+  -- Die Dispatch-State-Kapsel wird von der pgboss-Enqueue-Funktion (Eigner
+  -- app_worker) aufgerufen und braucht deshalb EXECUTE fuer app_worker.
   IF pg_catalog.to_regrole('app_worker') IS NOT NULL THEN
     GRANT EXECUTE ON FUNCTION
+      public._m111b_customer_notification_dispatch_state(uuid, uuid),
       public._m111b_worker_resolve_recipient(uuid, uuid),
       public._m111b_worker_deliver(uuid, uuid, integer, text, text),
       public._m111b_worker_cancel_erased(uuid, uuid)

@@ -457,6 +457,15 @@ physisches DELETE verboten.
 - Worker (drei): `_m111b_worker_resolve_recipient(uuid, uuid)`,
   `_m111b_worker_deliver(uuid, uuid, integer, text, text)`,
   `_m111b_worker_cancel_erased(uuid, uuid)`.
+- Dispatch-State-Kapsel: `_m111b_customer_notification_dispatch_state(uuid, uuid)`
+  → `TABLE(id uuid, attempt_count integer, next_attempt_at timestamptz)`
+  (Grant nur `app_worker`). `app_owner`-Definer, `STABLE`,
+  `search_path = pg_catalog`, interne Workspace-Bindung (`set_config`). Sie löst
+  die zustellbare Outbox-Zeile für die pgboss-Enqueue-Funktion auf. Grund (Muster
+  Migration 0035: `enqueue_offer_issuance` → `_m203b1_offer_issuance_dispatch_state`):
+  die Enqueue-Funktion gehört `app_worker` und darf `customer_notification` nicht
+  direkt lesen (Chromium-P0: `permission denied for table
+  customer_notification`).
 
 ### Quellgepinnte `_m111b_*`-Ersatzfunktionen
 
@@ -470,10 +479,12 @@ Funktionen; Trigger werden umgehängt, alte Funktionen entfernt).
 - Queue: `notification.customer`.
 - Dispatch: `pgboss.enqueue_customer_notification(workspace_id uuid,
   project_id uuid)` — projektbasiert, löst die Notification-ID Definer-seitig
-  auf. Der Service schreibt die Outbox-Zeile **ohne `RETURNING`** und braucht
-  deshalb keinerlei SELECT auf `customer_notification` (RETURNING verlangt in
-  PostgreSQL SELECT auf die Rückgabespalten). Design bleibt Kapsel-only:
-  `app_runtime` hat nur INSERT.
+  über die Dispatch-State-Kapsel `_m111b_customer_notification_dispatch_state`
+  auf (kein direktes Tabellen-SELECT in der `app_worker`-gehörenden
+  Enqueue-Funktion, Muster Migration 0035). Der Service schreibt die
+  Outbox-Zeile **ohne `RETURNING`** und braucht deshalb keinerlei SELECT auf
+  `customer_notification` (RETURNING verlangt in PostgreSQL SELECT auf die
+  Rückgabespalten). Design bleibt Kapsel-only: `app_runtime` hat nur INSERT.
 - `EXECUTE` auf die Dispatch-Funktion ist **nur `app_runtime`** erteilt und im
   Rollenvertrag unter „pg-boss-Funktions-Grants“ gepinnt
   (`app_runtime:enqueue_customer_notification(uuid, uuid):EXECUTE:app_worker:false`).

@@ -126,6 +126,7 @@ const CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES = [
   "public._m111b_read_notification_delivery(uuid,uuid)",
 ] as const;
 const CUSTOMER_NOTIFICATION_WORKER_ROUTINES = [
+  "public._m111b_customer_notification_dispatch_state(uuid,uuid)",
   "public._m111b_worker_resolve_recipient(uuid,uuid)",
   "public._m111b_worker_deliver(uuid,uuid,integer,text,text)",
   "public._m111b_worker_cancel_erased(uuid,uuid)",
@@ -2227,7 +2228,7 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasCustomerNotification ? [
         "enqueue_customer_notification(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
-          "search_path=pg_catalog:59a1bd79ce43ccfe08e415136f1142e932ddd44344fcc2aa23c6b87ca4899256",
+          "search_path=pg_catalog:15705e053ce84cc9bfc4b2d5dfed00b377fb1d445be718d6e9801358df1adf1c",
       ] : []),
     ],
     "Worker-Dispatch-Sicherheitsvertrag",
@@ -2504,6 +2505,8 @@ export async function verifyRoleContract(
           "77198d622ee01484e2f9660e44a2be19c96468aec1ba9fae76ff622b60d2249a",
       ] : []),
       ...(hasCustomerNotification ? [
+        "_m111b_customer_notification_dispatch_state(uuid, uuid):TABLE(id uuid, attempt_count integer, next_attempt_at timestamp with time zone):app_owner:plpgsql:f:s:true:false:false:u:" +
+          "search_path=pg_catalog:aecf8cc0fc7790c6e67b7570a590d2912696588674c3480921abbcfb800e96f3",
         "_m111b_guard_customer_notification():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
           "665a1b06f3891baf5b7c11f01ea90b013a3da9f44f94bbcaa62c72ac3fcffd63",
@@ -3632,6 +3635,7 @@ export async function verifyRoleContract(
       ...(hasCustomerNotification ? [
         "app_runtime:_m111b_project_has_binding_issuance(uuid, uuid):EXECUTE:app_owner:false",
         "app_runtime:_m111b_read_notification_delivery(uuid, uuid):EXECUTE:app_owner:false",
+        "app_worker:_m111b_customer_notification_dispatch_state(uuid, uuid):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_cancel_erased(uuid, uuid):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_deliver(uuid, uuid, integer, text, text):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_resolve_recipient(uuid, uuid):EXECUTE:app_owner:false",
