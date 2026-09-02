@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-09-03 (01:30) · kanonische Abnahmequelle:
+Stand: 2026-09-03 (02:00) · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -147,17 +147,33 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
-## 2026-09-03 (01:30) — M3-01 Spec final, drei Implementierungs-Lanes
+## 2026-09-03 (02:00) — M3-00 SPECIFIED, M1-14/M1-15 Vollgates grün, Integrations-Vorbereitung
 
-- **M3-01 Rechnungs-Kern (F8):** DISCOVERED→SPECIFIED final, committet
-  `635eb34` (tooling, gepusht). Root-Arbitrage O1–O5: Migration **0046**
-  (M2-04 behält 0044, M3-00 Stammdaten nimmt 0045); Spec-Basis `12c863f`,
-  Implementierung zweigt vom Integrationsstand nach 0042/0043/0044/0045 ab;
-  „Ausstellen" = Nummer+Snapshot ohne PDF (M3-02 folgt); F8.2 wird eigenes
-  Slice **M3-00 (Workspace-Stammdaten „Ausstellungsdetails", 0045)** vor
-  M3-01; `goebd_retention_until` wird bereits modelliert, Durchsetzung =
-  GoBD-Folge.
-- **Lanes in Implementierung (Migrationen reserviert):** M1-14 Kontakte
-  (0042), M1-15 Termine/Kalender (0043), M2-04 E-Signatur (0044).
-  Integrationsreihenfolge: 0042 → 0043 → 0044 → (M3-Welle: 0045/0046).
-- Kimi-K3-Spec-Review für M3-01 läuft; M3-00-Spec delegiert.
+- **M3-00 Workspace-Stammdaten (0045, F8.2):** DISCOVERED→SPECIFIED, committet
+  `426f025` (Spec 387 Zeilen + ADR 0024 Singleton-Entscheidung); Root löst
+  O1–O5 (eigene Settings-Tabellen je Gruppe, Retention 3650 bestätigt, kein
+  Field-Level-Encryption in M3-00, Nicht-DE blockt Geld-Ausstellung,
+  dokumenttyp-eigene Prefixe). M3-Welle jetzt vollständig spezifiziert:
+  0045 M3-00 → 0046 M3-01.
+- **M3-01 Kimi-Spec-Review:** GO MIT AUFLAGEN (3 P0, 4 P1, 1 P2) — alle
+  geschlossen und committet `eab6373`: Hash-/PII-Scope (issuedSnapshot
+  PII-frei, recipientSnapshot scrub-bar), `creditNoteType`-Spalte,
+  Dokument-`archivedAt`-Achse, Überzahlungs-Semantik, 6-Typen-Zählung,
+  ADR-0023-NOT-VALID-Regel. Review: `docs/parity/REVIEW-KIMI-M3-01-SPEC.md`.
+- **M1-14 Kontakte (0042):** Vollgate als Root-Implementierung verifiziert
+  grün (lint/tsc/contract/depcruise/test/88+5, Build, `db:generate` ohne
+  Drift); 1 depcruise-Verstoß (Modul-Barrel-Import) von Root behoben und
+  re-verifiziert (333 Module, 0 violations). Kimi-Code-Review läuft.
+- **M1-15 Termine/Kalender (0043):** Vollgate grün (180/180 Dateien,
+  1771 passed/1 skipped, 88/88+5/5, Build, keine Drift). FullCalendar-Pin
+  6.1.21 (Major-Konflikt-Doku). Kimi-Code-Review läuft. Root-Entscheid
+  `UNK-M115-02`: Termine NICHT im 24-Monats-Eligibility-Fenster.
+- **Erasure-Ketten-Re-Ankerung dokumentiert:** 0042/0043/0044 pinnen
+  `erase_inactive_lead` per SHA auf post-0041; 0043 (und später 0044) müssen
+  bei der Integration auf den post-Vorgänger-Hash neu verankert werden —
+  Verfahren in `INTEGRATION-PLAN-M1-WAVE-01.md` § „Erasure-Ketten-
+  Re-Ankerung" (committet `907c2b6`). 0041-Snapshot-Reparatur beider Lanes
+  byte-gleich verifiziert.
+- **Lanes:** M2-04 (0044) in Implementierung (Signature-Panel/Share-Link UI
+  aktiv); Chromium-E2E-Specs für M1-14/M1-15 an E2E-Agenten delegiert
+  (Muster M1-11b, schreiben + lokal grün laufen lassen).
