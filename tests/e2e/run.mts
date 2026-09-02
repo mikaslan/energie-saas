@@ -855,9 +855,14 @@ async function runPlaywright(
   outputPath: string,
   baseURL: string,
 ): Promise<number> {
+  const args = ["test", "--config", resolve(REPO_ROOT, "playwright.config.ts")];
+  // Optionaler Einzel-Spec-Filter (z. B. "visual-baseline-current.spec.ts").
+  // Unverändertes Verhalten, wenn nicht gesetzt: die komplette E2E-Suite läuft.
+  const specFilter = process.env.M1_05_E2E_SPEC;
+  if (specFilter) args.push(specFilter);
   const child = spawnTracked(
     resolve(REPO_ROOT, "node_modules/.bin/playwright"),
-    ["test", "--config", resolve(REPO_ROOT, "playwright.config.ts")],
+    args,
     {
       env: playwrightEnvironment(statePath, outputPath, baseURL),
       stdio: ["ignore", "inherit", "inherit"],
@@ -1057,7 +1062,10 @@ async function main(): Promise<number> {
 
   console.log("[e2e] Chromium prüft M1-06 bis M2-01, Viewer-Grenze, Fremdmandant und Axe …");
   const playwrightExitCode = await runPlaywright(statePath, playwrightOutputPath, server.baseURL);
-  if (!geoapifyContractWasExercised(providerStub)) {
+  // Der Geoapify-Vertrag wird nur von der vollständigen Suite (m1-05-Triage)
+  // durchlaufen. Bei einem gezielten Einzel-Spec-Lauf (z. B. Visual-Baseline)
+  // ist diese Invariante bewusst außer Kraft.
+  if (!process.env.M1_05_E2E_SPEC && !geoapifyContractWasExercised(providerStub)) {
     console.error("[e2e] Der lokale Geoapify-Vertrag wurde nicht exakt einmal vollständig durchlaufen.");
     return 1;
   }
