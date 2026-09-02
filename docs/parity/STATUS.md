@@ -117,3 +117,25 @@ an Software, Quellcode und Datenbeständen für energie-saas (siehe
 `docs/legal/LICENSE-GRANT.md`). Thema GESCHLOSSEN. Datenbank vollständig
 nutzbar, Codebase-Übernahme erlaubt wo sinnvoll; visuelle Referenz bleibt
 WMEE; Push-/Deploy-Regeln unverändert.
+
+## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
+
+- **M1-11b Cannot Fulfil** (Rebuild, Lizenz-Modus): REVIEWED/VERIFIED (lokal).
+  Branch `codex/m1-11b-cannot-fulfil` (`6ec76d0`), integriert in
+  `codex/m1-wave-01` (`f525290`/`1f7be80`, remote gesichert). Migration 0040:
+  Transactional Outbox (`customer_notification` +
+  `customer_notification_delivery_attempt`), 4 INSERT-Freeze-Trigger mit
+  FOR-SHARE-Serialisierung, 3 SECURITY-DEFINER-Kapseln, Erasure-Erweiterung
+  (Lock + Storno), pgboss-Dispatch nach 0035-Muster. Nachweise: Vollgate
+  `npm run check` exit 0 (173 Dateien/1.718 Tests), Rollen 88/88 + PG18 5/5,
+  Chromium 4/4, Gesamt-E2E 48/48, Build grün, 2 Kimi-Reviews (16 Befunde,
+  alle geschlossen) + 4 im echten Browser gefundene Laufzeit-P0 behoben.
+  Visual bleibt INCONCLUSIVE (Eigentümer-Freigabe).
+- **M1-13 Projektnotizen** (F1.9): REVIEWED/VERIFIED (lokal). Branch
+  `codex/m1-13-project-notes` (`6749e50`), integriert in `codex/m1-wave-01`.
+  Migration 0041: project_note (RLS/FORCE, revision-CAS total, Tombstone-WHERE),
+  eigener Markdown-Serializer (http/https/mailto-Whitelist, HTML-Ablehnung),
+  Activity-Integration, Erasure-Graph. Nachweise: Vollgate exit 0
+  (175 Dateien/1.726 Tests), Rollen 88/88 + 5/5, Kimi-Review (6 Befunde,
+  alle geschlossen); Chromium-Nachholung zentral geplant.
+- **Quoten-Effekt (ESTIMATE):** Gesamt ~25–26 %, nutzbare Breite ~18–19 %.

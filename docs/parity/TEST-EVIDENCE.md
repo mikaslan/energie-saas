@@ -44,3 +44,10 @@ unabhängige Abschlussreview sind abgeschlossen. M2-01 ist technisch
 `REVIEWED/VERIFIED (lokal)` und Gate 2 ist **GO**. `M201-VISUAL-01` bleibt davon
 ausdrücklich getrennt bis zu Mikails Screenshot-Baseline-Freigabe
 `INCONCLUSIVE`.
+
+## M1-11b + M1-13 (2026-09-02)
+
+| Slice | Vitest | Rollen | Chromium | Build | Reviews |
+|---|---|---|---|---|---|
+| M1-11b | 173 Dateien / 1.718 grün / 1 opt-in skip | 88/88 + PG18 5/5 | 4/4 (Slice) · 48/48 (Suite) | grün | Kimi Spec (10) + Kimi Code (6) geschlossen; 4 Browser-Laufzeit-P0 behoben |
+| M1-13 | 175 Dateien / 1.726 grün / 1 skip | 88/88 + PG18 5/5 | zentral geplant | grün | Kimi Spec (6) geschlossen |
