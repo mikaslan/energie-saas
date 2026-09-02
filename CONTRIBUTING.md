@@ -6,11 +6,14 @@ Dieses Produkt baut den *Funktionsumfang* eines Wettbewerbers (Reonic) nach. Das
 rechtlich zulässig (§ 69a Abs. 2 UrhG; EuGH C-406/10 „SAS") — aber nur innerhalb dieser
 Grenzen:
 
-1. **Kein Reonic-Zugang.** Niemals einen Test-, Demo- oder Kundenzugang zu Reonic nutzen
-   oder nutzen lassen. Reonics AGB verbieten die Nutzung für Konkurrenzentwicklung;
-   ein Verstoß öffnet GeschGehG- und UWG-Angriffsflächen (§ 4 Nr. 3 UWG).
-   Erkenntnisquellen sind ausschließlich öffentlich (Website, Doku, Videos, Reviews)
-   plus eigene Anwender-Interviews.
+1. **Reonic-Zugang nur über das dokumentierte API-Gate.** Ein Zugang zu Reonic darf
+   ausschließlich gemäß `docs/parity/COMPLIANCE-REONIC-API.md` genutzt werden, das der
+   Eigentümer am 02.09.2026 bewusst freigegeben hat: nur öffentlich dokumentierte
+   Endpunkte der REST API v3, read-only, PII-/ID-Bereinigung, keine Mutationen ohne
+   separate Freigabe, keine Übernahme von Texten, Assets, Layouts oder
+   Datenbank-Inhalten. Test-, Demo- oder Kunden-**Login**-Zugänge zu Reonic bleiben
+   verboten. Übrige Erkenntnisquellen sind ausschließlich öffentlich (Website, Doku,
+   Videos, Reviews) plus eigene Anwender-Interviews.
 2. **Nichts kopieren außer Funktionsideen.** Tabu sind: Reonics UI-Gestaltung, Layouts,
    Icons, Texte (auch Hilfe-Texte), Code sowie Inhalte der Komponenten-Datenbank
    (§§ 87a ff. UrhG — Datenbankschutz). Eigene Benennungen, eigenes Design, eigene Daten.
