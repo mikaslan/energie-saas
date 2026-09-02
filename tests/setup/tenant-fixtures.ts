@@ -61,6 +61,34 @@ async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
   return { contactId, siteId, projectId };
 }
 
+// M1-11b: erzeugt ein cannot_fulfill-Projekt + eine queued Outbox-Zeile.
+// Die Outcome-Trigger werden fuer das Fixture-Update deaktiviert, weil der
+// direkte UPDATE weder den Transition-Guard (Actor/Rolle) noch die
+// Evidenz-Trigger (nested trigger depth) durchlaufen soll.
+async function fixtureCustomerNotificationGraph(
+  tx: TenantTx,
+  wsId: string,
+): Promise<{ projectId: string; notificationId: string }> {
+  const { projectId } = await fixtureProjectGraph(tx, wsId);
+  await tx.execute(sql`alter table project disable trigger project_outcome_mutation_guard`);
+  await tx.execute(sql`alter table project disable trigger project_outcome_evidence`);
+  await tx.execute(sql`
+    update project
+       set outcome = 'cannot_fulfill', outcome_revision = 1,
+           closed_at = now(), updated_at = now()
+     where workspace_id = ${wsId}::uuid and id = ${projectId}::uuid
+  `);
+  await tx.execute(sql`alter table project enable trigger project_outcome_mutation_guard`);
+  await tx.execute(sql`alter table project enable trigger project_outcome_evidence`);
+  const notificationId = randomUUID();
+  await tx.execute(sql`
+    insert into customer_notification (id, workspace_id, project_id, idempotency_key)
+    values (${notificationId}::uuid, ${wsId}::uuid, ${projectId}::uuid,
+      ${`cannot-fulfil:${projectId}`})
+  `);
+  return { projectId, notificationId };
+}
+
 async function fixtureMembership(
   tx: TenantTx,
   wsId: string,
@@ -1677,6 +1705,17 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   project: async (tx, wsId) => {
     await fixtureProjectGraph(tx, wsId);
   },
+  customer_notification: async (tx, wsId) => {
+    await fixtureCustomerNotificationGraph(tx, wsId);
+  },
+  customer_notification_delivery_attempt: async (tx, wsId) => {
+    const { notificationId } = await fixtureCustomerNotificationGraph(tx, wsId);
+    await tx.execute(sql`
+      insert into customer_notification_delivery_attempt (
+        workspace_id, notification_id, attempt_number, outcome, error_class
+      ) values (${wsId}::uuid, ${notificationId}::uuid, 1, 'delivered', null)
+    `);
+  },
   project_loss_reason: async (tx, wsId) => {
     const { userId } = await fixtureMembership(tx, wsId, "admin");
     await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
@@ -1924,6 +1963,25 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
         ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
         ${randomUUID()}::uuid, ${randomUUID()}::uuid, 'Cross Write', 'fixture'
       )
+    `);
+  },
+  customer_notification: async (tx) => {
+    await tx.execute(sql`
+      alter table customer_notification disable trigger customer_notification_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into customer_notification (workspace_id, project_id, idempotency_key)
+      values (${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::text)
+    `);
+  },
+  customer_notification_delivery_attempt: async (tx) => {
+    await tx.execute(sql`
+      alter table customer_notification_delivery_attempt disable trigger customer_notification_delivery_attempt_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into customer_notification_delivery_attempt (
+        workspace_id, notification_id, attempt_number, outcome
+      ) values (${randomUUID()}::uuid, ${randomUUID()}::uuid, 1, 'delivered')
     `);
   },
   project_loss_reason: async (tx) => {

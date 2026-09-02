@@ -85,6 +85,7 @@ export type OfferDetailViewModel = {
   offer: {
     id: string;
     projectId: string;
+    projectOutcome: string;
     offerNumber: string;
     status: "draft";
     outdated: boolean;
@@ -484,15 +485,20 @@ export async function getOfferDetail(
   const offerResult = await tx.execute<{
     id: string;
     project_id: string;
+    project_outcome: string;
     offer_number: string;
     status: "draft";
     forecast_value_net_cents: string | null;
     [key: string]: unknown;
   }>(sql`
     select offer_record.id, offer_record.project_id,
+           project_record.outcome as project_outcome,
            offer_record.offer_number, offer_record.status,
            offer_record.forecast_value_net_cents
       from offer offer_record
+      join project project_record
+        on project_record.workspace_id = offer_record.workspace_id
+       and project_record.id = offer_record.project_id
      where offer_record.workspace_id = ${ctx.workspaceId}::uuid
        and offer_record.id = ${parsed.data.offerId}::uuid
      limit 1
@@ -588,6 +594,7 @@ export async function getOfferDetail(
     offer: {
       id: offerRecord.id,
       projectId: offerRecord.project_id,
+      projectOutcome: offerRecord.project_outcome,
       offerNumber: offerRecord.offer_number,
       status: offerRecord.status,
       outdated,

@@ -108,13 +108,36 @@ const PROJECT_OUTCOME_RUNTIME_ROUTINES = [
 const PROJECT_OUTCOME_PRIVATE_ROUTINES = [
   "public._m111a_erasure_scrub_allowed(uuid,uuid)",
   "public._m111a_guard_loss_reason()",
-  "public._m111a_guard_outcome_evidence_insert()",
-  "public._m111a_guard_project_outcome()",
-  "public._m111a_record_project_outcome()",
+  "public._m111b_guard_outcome_evidence_insert()",
+  "public._m111b_guard_project_outcome()",
+  "public._m111b_record_project_outcome()",
 ] as const;
 const PROJECT_OUTCOME_FUNCTION_NAMES = [
   ...PROJECT_OUTCOME_RUNTIME_ROUTINES,
   ...PROJECT_OUTCOME_PRIVATE_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+
+const CUSTOMER_NOTIFICATION_RELATIONS = [
+  "customer_notification",
+  "customer_notification_delivery_attempt",
+] as const;
+const CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES = [
+  "public._m111b_project_has_binding_issuance(uuid,uuid)",
+] as const;
+const CUSTOMER_NOTIFICATION_WORKER_ROUTINES = [
+  "public._m111b_worker_resolve_recipient(uuid,uuid)",
+  "public._m111b_worker_deliver(uuid,uuid,integer,text,text)",
+  "public._m111b_worker_cancel_erased(uuid,uuid)",
+] as const;
+const CUSTOMER_NOTIFICATION_PRIVATE_ROUTINES = [
+  "public._m111b_guard_offer_freeze()",
+  "public._m111b_guard_customer_notification()",
+  "public._m111b_guard_delivery_attempt()",
+] as const;
+const CUSTOMER_NOTIFICATION_FUNCTION_NAMES = [
+  ...CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES,
+  ...CUSTOMER_NOTIFICATION_WORKER_ROUTINES,
+  ...CUSTOMER_NOTIFICATION_PRIVATE_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 
 const CATALOG_IMPORT_PRIVATE_ROUTINES = [
@@ -1857,6 +1880,11 @@ export async function verifyRoleContract(
     PROJECT_OUTCOME_RELATIONS,
     "Rollenvertrag: M1-11a-Projektergebnis",
   );
+  const hasCustomerNotification = await hasAtomicPublicRelationSet(
+    client,
+    CUSTOMER_NOTIFICATION_RELATIONS,
+    "Rollenvertrag: M1-11b-Customer-Notification",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -1962,6 +1990,9 @@ export async function verifyRoleContract(
       ) : []),
       "r:contact",
       "r:contact_legal_hold",
+      ...(hasCustomerNotification ? CUSTOMER_NOTIFICATION_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
       "r:domain_events",
       "r:erasure_operation_locator",
       "r:erasure_tombstone",
@@ -2227,6 +2258,9 @@ export async function verifyRoleContract(
       ...(hasProjectOutcomes ? PROJECT_OUTCOME_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
+      ...(hasCustomerNotification ? CUSTOMER_NOTIFICATION_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -2416,15 +2450,38 @@ export async function verifyRoleContract(
         "_m111a_guard_loss_reason():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:" +
           "b31b2eaad4c5e1beabb07ea2b2bd1cd2e6a8fff3e88d648e7a729770662ff4da",
-        "_m111a_guard_outcome_evidence_insert():trigger:app_owner:plpgsql:f:v:" +
+        "_m111b_guard_outcome_evidence_insert():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
-          "0816b66f08461d515e44d3746c08e12e0f85bc8390d57d73ec1d17ccd39ed876",
-        "_m111a_guard_project_outcome():trigger:app_owner:plpgsql:f:v:" +
+          "e865e7cb5014b44cc05d377f552329ea92c9e385de20021ab84fe8f9acc5f58c",
+        "_m111b_guard_project_outcome():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
-          "3952346bb8ee74692d7608d62f29fd57b4a13c847f6fd5a16db71b004ccd88a6",
-        "_m111a_record_project_outcome():trigger:app_owner:plpgsql:f:v:" +
+          "ec8b1e0da4c1a21da65b964c38dafbc3e71788663a1d76e1e0af8cdf83393590",
+        "_m111b_record_project_outcome():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
-          "2472df44c865e488ca1d205c905c8fb85a5a9f1fd2c0bdd9f8ef271cee210a81",
+          "77198d622ee01484e2f9660e44a2be19c96468aec1ba9fae76ff622b60d2249a",
+      ] : []),
+      ...(hasCustomerNotification ? [
+        "_m111b_guard_customer_notification():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "0aadf749b33344c878578d1d40a1ff95a784e124f8bf4d9443cfd3ea851b4760",
+        "_m111b_guard_delivery_attempt():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "5870c85b721ea15d44af62cfa7d154ba5f7b64dae650718cb8b3607a16b5def8",
+        "_m111b_guard_offer_freeze():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "4edd226e94aa739dd968d2460f2c4813e9b370bc7fabc4f11a1789f593f0d23b",
+        "_m111b_project_has_binding_issuance(uuid, uuid):boolean:app_owner:plpgsql:f:s:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "940efd86798ce1072d7ea4a5c2c6e37f17f259f4b8376f1bbe304e01dab99412",
+        "_m111b_worker_cancel_erased(uuid, uuid):void:app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "09ec0ad7f11a3a0c54a472a44aaca7fbc7ed90d287972a0e53c284e5e3b72522",
+        "_m111b_worker_deliver(uuid, uuid, integer, text, text):void:app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "b334ae6c6e0e9278cd32185d45b33fabe711364c481ce5d2ee9c8eeffb013e27",
+        "_m111b_worker_resolve_recipient(uuid, uuid):text:app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "5b4a3a308ee8fe2b2b751d3f545244a3cb2721545761c188add96e715725c046",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
@@ -2639,7 +2696,9 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectOutcomes
+        `search_path=pg_catalog:${hasCustomerNotification
+          ? "26656181bde7172aad3ebb717cffe37bb6e874f1a298a703090ed706d750fd4d"
+          : hasProjectOutcomes
           ? "859c9563aef9d9d4ccba5b0ee91b578dc35ab431beb2b3a9ee5d216f5eccb088"
           : hasProjectTasks
           ? "c7bbe2311d331eb8ad272b4d8dd48ccfb53d21be2418989703d980c61f3e1562"
@@ -2739,6 +2798,9 @@ export async function verifyRoleContract(
       ) : []),
       "contact:true:true",
       "contact_legal_hold:true:true",
+      ...(hasCustomerNotification ? CUSTOMER_NOTIFICATION_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       "domain_events:true:true",
       "erasure_operation_locator:false:false",
       "erasure_tombstone:true:true",
@@ -2827,6 +2889,10 @@ export async function verifyRoleContract(
       ] : []),
       "contact:tenant_isolation:e339a6411d39679d749a45535df17ea42132453c4725e42f0d5b310379489e46",
       "contact_legal_hold:tenant_isolation:752e8f298e0a4cc77a31ee680540edf91831654263d7f0dd39bafc42b6d54477",
+      ...(hasCustomerNotification ? [
+        "customer_notification:tenant_isolation:be27711f3e58ccabc9897a4bca69e260a5f7d3dd060accdd4ecc8f77ad07fc27",
+        "customer_notification_delivery_attempt:tenant_isolation:fa9a4eaa0c345815d9d88f1cde298f115aa31e061d59d76f6c9a1eab895533d8",
+      ] : []),
       "domain_events:tenant_isolation:f1715696222caf43a2adc220b67b8aebdce61f5ef9659884af1c7263ccab8284",
       "erasure_tombstone:tenant_isolation:70b18b744913ed4f29de03a9d1f20ddbbcee7e89796d40bd650fc3c838e4b0df",
       "inbound_receipt:tenant_isolation:866b6644bba9899118c16bc502e420f0409e632a3cd6b709b3321f6c10c28c1c",
@@ -2983,7 +3049,7 @@ export async function verifyRoleContract(
       "audit_log:audit_log_no_truncate:34:O:public:forbid_mutation::-:0",
       ...(hasProjectOutcomes ? [
         "audit_log:audit_log_project_outcome_insert_guard:7:O:public:" +
-          "_m111a_guard_outcome_evidence_insert::-:0",
+          "_m111b_guard_outcome_evidence_insert::-:0",
       ] : []),
       "catalog_component:catalog_component_mutation_guard:27:O:public:guard_catalog_component_mutation::-:0",
       "catalog_component:catalog_component_no_truncate:34:O:public:forbid_mutation::-:0",
@@ -3012,7 +3078,7 @@ export async function verifyRoleContract(
       "domain_events:domain_events_no_truncate:34:O:public:forbid_mutation::-:0",
       ...(hasProjectOutcomes ? [
         "domain_events:domain_events_project_outcome_insert_guard:7:O:public:" +
-          "_m111a_guard_outcome_evidence_insert::-:0",
+          "_m111b_guard_outcome_evidence_insert::-:0",
       ] : []),
       "erasure_operation_locator:erasure_operation_locator_append_only:27:O:" +
         "public:guard_erasure_tombstone_worm::-:0",
@@ -3105,10 +3171,10 @@ export async function verifyRoleContract(
           "_m110_guard_project_task_positions::-:constraint",
       ] : []),
       ...(hasProjectOutcomes ? [
-        "project:project_outcome_evidence:17:O:public:_m111a_record_project_outcome::" +
+        "project:project_outcome_evidence:17:O:public:_m111b_record_project_outcome::" +
           "(old.outcome IS DISTINCT FROM new.outcome):0",
-        "project:project_outcome_insert_guard:7:O:public:_m111a_guard_project_outcome::-:0",
-        "project:project_outcome_mutation_guard:19:O:public:_m111a_guard_project_outcome::" +
+        "project:project_outcome_insert_guard:7:O:public:_m111b_guard_project_outcome::-:0",
+        "project:project_outcome_mutation_guard:19:O:public:_m111b_guard_project_outcome::" +
           "((old.outcome IS DISTINCT FROM new.outcome) OR " +
           "(old.outcome_revision IS DISTINCT FROM new.outcome_revision) OR " +
           "(old.closed_at IS DISTINCT FROM new.closed_at) OR " +
@@ -3118,6 +3184,24 @@ export async function verifyRoleContract(
           "_m111a_guard_loss_reason::-:0",
         "project_loss_reason:project_loss_reason_no_truncate:34:O:public:" +
           "forbid_mutation::-:0",
+      ] : []),
+      ...(hasCustomerNotification ? [
+        "customer_notification:customer_notification_mutation_guard:31:O:public:" +
+          "_m111b_guard_customer_notification::-:0",
+        "customer_notification:customer_notification_no_truncate:34:O:public:" +
+          "forbid_mutation::-:0",
+        "customer_notification_delivery_attempt:customer_notification_delivery_attempt_mutation_guard:31:O:public:" +
+          "_m111b_guard_delivery_attempt::-:0",
+        "customer_notification_delivery_attempt:customer_notification_delivery_attempt_no_truncate:34:O:public:" +
+          "forbid_mutation::-:0",
+        "offer_release_candidate:offer_release_candidate_cannot_fulfil_freeze:7:O:public:" +
+          "_m111b_guard_offer_freeze::-:0",
+        "offer_release_candidate_approval:offer_release_candidate_approval_cannot_fulfil_freeze:7:O:public:" +
+          "_m111b_guard_offer_freeze::-:0",
+        "offer_issuance:offer_issuance_cannot_fulfil_freeze:7:O:public:" +
+          "_m111b_guard_offer_freeze::-:0",
+        "offer_issuance_approval:offer_issuance_approval_cannot_fulfil_freeze:7:O:public:" +
+          "_m111b_guard_offer_freeze::-:0",
       ] : []),
       "offer_variant:offer_variant_current_complete:21:O:public:" +
         "validate_offer_variant_snapshot_mirrors::-:constraint",
@@ -3496,6 +3580,12 @@ export async function verifyRoleContract(
       ...(hasProjectOutcomes ? PROJECT_OUTCOME_RUNTIME_ROUTINES.map((signature) =>
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
+      ...(hasCustomerNotification ? [
+        "app_runtime:_m111b_project_has_binding_issuance(uuid, uuid):EXECUTE:app_owner:false",
+        "app_worker:_m111b_worker_cancel_erased(uuid, uuid):EXECUTE:app_owner:false",
+        "app_worker:_m111b_worker_deliver(uuid, uuid, integer, text, text):EXECUTE:app_owner:false",
+        "app_worker:_m111b_worker_resolve_recipient(uuid, uuid):EXECUTE:app_owner:false",
+      ] : []),
       ...(hasOfferIssuance ? [
         "app_runtime:approve_offer_issuance(uuid, uuid, boolean, boolean, boolean, boolean, boolean):EXECUTE:app_owner:false",
         "app_runtime:prepare_offer_issuance(uuid, uuid, uuid):EXECUTE:app_owner:false",

@@ -381,7 +381,8 @@ export type ProjectTaskActivityKind =
 export type ProjectOutcomeActivityKind =
   | "outcome_won"
   | "outcome_lost"
-  | "outcome_reopened";
+  | "outcome_reopened"
+  | "outcome_cannot_fulfil";
 export type ProjectActivityKind = ProjectTaskActivityKind | ProjectOutcomeActivityKind;
 export const projectActivityLabels = {
   task_created: "Aufgabe erstellt",
@@ -393,6 +394,7 @@ export const projectActivityLabels = {
   outcome_won: "Anfrage gewonnen",
   outcome_lost: "Anfrage verloren",
   outcome_reopened: "Anfrage wieder geöffnet",
+  outcome_cannot_fulfil: "Anfrage nicht erfüllbar",
 } as const satisfies Record<ProjectActivityKind, string>;
 export type ProjectActivityCursor = { occurredAt: string; id: string };
 type ProjectActivityItemBaseV1 = {

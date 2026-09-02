@@ -14,6 +14,7 @@ export * from "./boards";
 export * from "./catalog";
 export * from "./catalog-import";
 export * from "./crm";
+export * from "./customer-notification";
 export * from "./events";
 export * from "./energy";
 export * from "./erasure";

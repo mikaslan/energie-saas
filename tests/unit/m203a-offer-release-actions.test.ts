@@ -379,6 +379,7 @@ describe("M2-03a Offer-Release-Panel", () => {
     return renderToStaticMarkup(createElement(OfferReleaseCandidatePanel, {
       workspaceId: WORKSPACE_ID,
       offerId: OFFER_ID,
+      projectOutcome: "open",
       variantId: VARIANT_ID,
       variantRevision: 7,
       contactDisplayName: input.canPrepare ? "Synthetische Kundin" : null,

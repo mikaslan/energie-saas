@@ -160,10 +160,10 @@ describe("M1-11a Verlustgrund-Vertrag", () => {
 
 describe("M1-11a Closed-List-Vertrag", () => {
   it("begrenzt Filter und opaque Cursor", () => {
-    for (const filter of ["all", "won", "lost"]) {
+    for (const filter of ["all", "won", "lost", "cannot_fulfill"]) {
       expect(projectClosedRequestFilterSchema.parse(filter)).toBe(filter);
     }
-    for (const filter of ["open", "cannot_fulfill", "archived", ""]) {
+    for (const filter of ["open", "archived", ""]) {
       expect(projectClosedRequestFilterSchema.safeParse(filter).success).toBe(false);
     }
     expect(projectClosedRequestCursorSchema.safeParse("eyJ2IjoxfQ").success).toBe(true);

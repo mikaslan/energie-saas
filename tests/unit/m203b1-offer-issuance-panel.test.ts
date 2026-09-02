@@ -58,6 +58,7 @@ function renderPanel(overrides: Partial<Parameters<typeof OfferIssuancePanel>[0]
   return renderToStaticMarkup(createElement(OfferIssuancePanel, {
     workspaceId: WORKSPACE_ID,
     offerId: OFFER_ID,
+    projectOutcome: "open",
     canPrepare: true,
     canApprove: true,
     canWithdraw: true,

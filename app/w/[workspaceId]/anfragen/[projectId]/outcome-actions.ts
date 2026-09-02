@@ -7,6 +7,7 @@ import { PermissionDeniedError } from "@/lib/permissions";
 import {
   PROJECT_OUTCOME_COMMAND_VERSION,
   ProjectLossReasonUnavailableError,
+  ProjectOutcomeCannotFulfilLockedError,
   ProjectOutcomeConflictError,
   ProjectOutcomeIllegalTransitionError,
   ProjectOutcomeNotFoundError,
@@ -29,11 +30,12 @@ const LOST_FIELDS = new Set([...COMMON_FIELDS, "lossReasonId", "lossReasonText"]
 
 export type ProjectOutcomeActionState =
   | { status: "idle" }
-  | { status: "success"; outcome: "open" | "won" | "lost"; outcomeRevision: number }
+  | { status: "success"; outcome: "open" | "won" | "lost" | "cannot_fulfill"; outcomeRevision: number }
   | { status: "invalid" }
   | { status: "not_found" }
   | { status: "conflict"; currentRevision?: number }
   | { status: "illegal_transition" }
+  | { status: "locked" }
   | { status: "loss_reason_unavailable" }
   | { status: "denied" }
   | { status: "unauthenticated" };
@@ -68,6 +70,9 @@ function mapError(error: unknown): ProjectOutcomeActionState | null {
   if (error instanceof ProjectOutcomeNotFoundError) return { status: "not_found" };
   if (error instanceof ProjectOutcomeIllegalTransitionError) {
     return { status: "illegal_transition" };
+  }
+  if (error instanceof ProjectOutcomeCannotFulfilLockedError) {
+    return { status: "locked" };
   }
   if (error instanceof ProjectLossReasonUnavailableError) {
     return { status: "loss_reason_unavailable" };
@@ -121,7 +126,6 @@ export async function changeProjectOutcomeAction(
     revalidatePath(`/w/${workspaceId}/anfragen`);
     revalidatePath(`/w/${workspaceId}/anfragen/abgeschlossen`);
     revalidatePath(`/w/${workspaceId}/anfragen/${result.projectId}`);
-    if (result.outcome === "cannot_fulfill") return { status: "invalid" };
     return {
       status: "success",
       outcome: result.outcome,

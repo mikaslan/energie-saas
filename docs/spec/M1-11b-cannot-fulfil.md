@@ -399,7 +399,98 @@ werden bewusst erst nach dem Review aktualisiert [V24:212].
 - Keine private Reonic-Texte, UI, Daten, Taxonomie oder
   Implementierungsdetails; keine Reonic-1:1-Behauptung [V24:237, H22:314–316].
 
-## 14. Verbleibende UNKNOWN-Lücken (zur Root-Integrator-Klärung)
+## 14. Festgelegte Namen und Semantik (DECIDED 2026-09-02)
+
+Diese Namen waren in der verlorenen Migration 0040 nicht einzeln belegt und
+werden hiermit im Sinne der Clean-Room-Parität als eigene WMEE-Entscheidung
+festgeschrieben. Sie sind Teil des Slices und für Migration, Contract, Service,
+Worker und Rollenvertrag bindend.
+
+### Status-Enum `customer_notification.status`
+
+`queued`, `delivered`, `failed_retriable`, `failed_final`,
+`cancelled_contact_erased`, `cancelled_manual`. `queued` ist der einzige
+Ausgangswert. Storno ist der Übergang `queued`/`failed_retriable` → (a)
+`cancelled_contact_erased` (DSGVO-Erasure) oder (b) `cancelled_manual`
+(fachliches Storno vor Zustellung) — jeweils ohne Versuchszeile.
+
+### Outbox `customer_notification` (Spalten)
+
+`id` (uuid PK), `workspace_id` (uuid), `project_id` (uuid), `status` (text),
+`template_id` (text, fest `cannot-fulfil.v1`), `idempotency_key` (text),
+`attempt_count` (integer), `next_attempt_at` (timestamptz), `dispatched_at`
+(timestamptz), `delivered_at` (timestamptz), `failed_at` (timestamptz),
+`error_code` (text), `error_retryable` (boolean), `cancelled_at` (timestamptz),
+`created_at` (timestamptz), `updated_at` (timestamptz). Keine Empfänger- oder
+Inhalts-PII. Unique `(workspace_id, id)` und `(workspace_id, idempotency_key)`;
+Partial-Unique `(workspace_id, project_id)` WHERE `status IN ('queued',
+'failed_retriable')` (höchstens eine aktive Notification je Projekt);
+FK `(workspace_id, project_id) → project`.
+
+### Zustellevidenz `customer_notification_delivery_attempt` (Spalten)
+
+`id` (uuid PK), `workspace_id` (uuid), `notification_id` (uuid),
+`attempt_number` (integer), `outcome` (text: `delivered` | `failed_retriable` |
+`failed_final`), `error_class` (text), `occurred_at` (timestamptz). Unique
+`(workspace_id, id)` und `(workspace_id, notification_id, attempt_number)`; FK
+`(workspace_id, notification_id) → customer_notification`. Append-only,
+physisches DELETE verboten.
+
+### Vier Freeze-Tabellen (Angebotssperre, nur INSERT)
+
+`offer_release_candidate`, `offer_release_candidate_approval`, `offer_issuance`,
+`offer_issuance_approval` (verifiziert gegen Migration 0034/0035).
+
+### SECURITY-DEFINER-Kapseln
+
+- Runtime: `_m111b_project_has_binding_issuance(uuid, uuid)` (Grant nur
+  `app_runtime`).
+- Worker (drei): `_m111b_worker_resolve_recipient(uuid, uuid)`,
+  `_m111b_worker_deliver(uuid, uuid, integer, text, text)`,
+  `_m111b_worker_cancel_erased(uuid, uuid)`.
+
+### Quellgepinnte `_m111b_*`-Ersatzfunktionen
+
+`_m111b_guard_project_outcome()`, `_m111b_record_project_outcome()`,
+`_m111b_guard_outcome_evidence_insert()` (ersetzen die drei `_m111a_*`-
+Funktionen; Trigger werden umgehängt, alte Funktionen entfernt).
+
+### Event, Queue, Dispatch, Vorlage
+
+- Eventtyp: `project.outcome_cannot_fulfil`.
+- Queue: `notification.customer`.
+- Dispatch: `pgboss.enqueue_customer_notification(uuid, uuid)`.
+- Mailvorlage: `cannot-fulfil.v1` (einzige feste interne Vorlage; kein Editor,
+  kein Freitext, kein PII).
+
+## 15. Review-Befunde M1-11b-R1 (Kimi K3, 2026-09-02)
+
+Unabhängige Zweitstimme zu Spec/ADR (`REVIEW-KIMI-M1-11B-SPEC.md`). Auflösungen:
+
+| Befund | Maßnahme |
+|---|---|
+| **P0-1** Race `mark_cannot_fulfill` ↔ `approve_offer_issuance` | Gemeinsamer Serialisierungspunkt: Freeze-Guard liest die Project-Zeile mit `SELECT … FOR SHARE` (gegen `FOR UPDATE` der Transition), DANN Outcome-Prüfung. `_m111b_project_has_binding_issuance` läuft nach dem Project-`FOR UPDATE`-Lock. DB-Test mit echtem Interleaving (M111B-12). |
+| **P1-2** at-least-once | pgboss-`singletonKey` = `notification_id:attempt`; Resend-Idempotency-Key = `notification_id`; Evidenz + Statuswechsel atomar in einer Tx (record-then-send). Ehrlich at-least-once, kein „genau einmal“ behauptet. |
+| **P1-3** zwei Retry-Wahrheiten | pgboss ist die einzige Retry-Quelle: Handler wirft retriable Fehler, Outbox wird `failed_retriable`, pgboss retried; Evidenz je Versuch. Monitoring-Abfrage für stuck `queued` dokumentiert. |
+| **P1-4** Erasure-TOCTOU | Empfängerauflösung (`FOR UPDATE OF contact`) + Cancel-Check unmittelbar vor Send in kurzer Tx; nach Send Status-Recheck. Nicht „geschlossen“ behauptet — at-least-once mit Storno-Zustandsmaschine. |
+| **P1-5** Freeze nur INSERT | Verifiziert: alle vier Freeze-Tabellen entstehen ausschließlich per INSERT (Approvals append-only, Candidates/Issuances per INSERT; worker-`state` ist Fortschritt). Keine Signatur-Tabelle im Scope (M2-03b2 blockiert). Freeze bleibt INSERT-only. |
+| **P2-6** Storno nur `queued` | Storno deckt `queued` UND `failed_retriable` (alle nicht-terminalen Zustände). |
+| **P2-7** Evidenz-PII | Nur Enum-Fehlercodes (`error_code`/`error_class` ∈ feste Menge) + Metadaten; keine Provider-/SMTP-Rohmeldungen. |
+| **P2-8** Eindeutigkeit | Partial-Unique-Index `(workspace_id, project_id)` WHERE `status IN ('queued','failed_retriable')`. |
+| **P2-9** Erasure als Undo | `cancelled_manual` ergänzt (fachliches Storno, Outcome bleibt terminal); `cancelled_contact_erased` bleibt DSGVO-Erasure. |
+| **P2-10** Definer-Hygiene | Alle Kapseln `SET search_path = pg_catalog`; Binding-Kapsel prüft Workspace/Projekt-Zusammengehörigkeit intern (WHERE-Bindung); Worker-Kapseln setzen den Workspace-GUC intern aus dem Parameter (Quelle Job-Payload) und sind im Rollenvertrag gepinnt. |
+
+### Monitoring-Abfrage (stuck `queued`, P1-3)
+
+```sql
+select workspace_id, id, attempt_count, next_attempt_at, created_at
+  from customer_notification
+ where status = 'queued'
+   and next_attempt_at < now() - interval '5 minutes'
+ order by next_attempt_at;
+```
+
+## 16. Verbleibende UNKNOWN-Lücken (zur Root-Integrator-Klärung)
 
 1. Exakter Status-Enum und Spaltennamen/-typen von `customer_notification` und
    `customer_notification_delivery_attempt` (verlorene Migration 0040).

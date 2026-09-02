@@ -643,6 +643,7 @@ function RequestForm({
 export function OfferIssuancePanel({
   workspaceId,
   offerId,
+  projectOutcome,
   canPrepare,
   canApprove,
   canWithdraw,
@@ -651,6 +652,7 @@ export function OfferIssuancePanel({
 }: {
   workspaceId: string;
   offerId: string;
+  projectOutcome: string;
   canPrepare: boolean;
   canApprove: boolean;
   canWithdraw: boolean;
@@ -707,6 +709,12 @@ export function OfferIssuancePanel({
           <span className="sr-only">Ausstellungsfassungen: </span>Status aktualisieren
         </OfferDirtyNavigationLink>
       </div>
+
+      {projectOutcome === "cannot_fulfill" ? (
+        <p role="status" className="mt-5 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-950">
+          Dieses Angebot gehört zu einer als „nicht erfüllbar“ abgeschlossenen Anfrage. Freigabekandidat, Genehmigung und Ausstellung sind unter diesem Projekt gesperrt.
+        </p>
+      ) : null}
 
       {canPrepare && requestableCandidates.length > 0 ? (
         <div className="mt-5">

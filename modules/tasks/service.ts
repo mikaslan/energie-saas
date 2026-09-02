@@ -152,6 +152,7 @@ const outcomeActivityEventTypes = [
   "project.outcome_won",
   "project.outcome_lost",
   "project.outcome_reopened",
+  "project.outcome_cannot_fulfil",
 ] as const;
 const activityKinds = {
   "project.task_created": "task_created",
@@ -163,6 +164,7 @@ const activityKinds = {
   "project.outcome_won": "outcome_won",
   "project.outcome_lost": "outcome_lost",
   "project.outcome_reopened": "outcome_reopened",
+  "project.outcome_cannot_fulfil": "outcome_cannot_fulfil",
 } as const satisfies Readonly<Record<string, ProjectActivityKind>>;
 const taskActivityKinds: ReadonlySet<ProjectActivityKind> = new Set<ProjectTaskActivityKind>([
   "task_created",
@@ -177,6 +179,7 @@ const outcomeActivityKinds: ReadonlySet<ProjectActivityKind> =
     "outcome_won",
     "outcome_lost",
     "outcome_reopened",
+    "outcome_cannot_fulfil",
   ]);
 
 function isTaskActivityKind(kind: ProjectActivityKind): kind is ProjectTaskActivityKind {
@@ -698,12 +701,12 @@ async function queryProjectTaskPageProjection(
            'project.task_checklist_changed', 'project.task_completed',
            'project.task_reopened', 'project.task_archived',
            'project.outcome_won', 'project.outcome_lost',
-           'project.outcome_reopened'
+           'project.outcome_reopened', 'project.outcome_cannot_fulfil'
          )
          and (
            event.event_type in (
              'project.outcome_won', 'project.outcome_lost',
-             'project.outcome_reopened'
+             'project.outcome_reopened', 'project.outcome_cannot_fulfil'
            )
            or (
              event.event_type in (
@@ -1324,12 +1327,12 @@ export async function getProjectActivityPage(
            'project.task_checklist_changed', 'project.task_completed',
            'project.task_reopened', 'project.task_archived',
            'project.outcome_won', 'project.outcome_lost',
-           'project.outcome_reopened'
+           'project.outcome_reopened', 'project.outcome_cannot_fulfil'
          )
          and (
            event.event_type in (
              'project.outcome_won', 'project.outcome_lost',
-             'project.outcome_reopened'
+             'project.outcome_reopened', 'project.outcome_cannot_fulfil'
            )
            or (
              event.event_type in (

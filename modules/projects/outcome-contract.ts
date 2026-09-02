@@ -54,6 +54,11 @@ export const projectOutcomeCommandV1Schema = z.discriminatedUnion("kind", [
     kind: z.literal("reopen"),
     confirmation: z.literal("reopen"),
   }),
+  z.strictObject({
+    ...projectCommandBase,
+    kind: z.literal("mark_cannot_fulfill"),
+    confirmation: z.literal("mark_cannot_fulfill"),
+  }),
 ]);
 
 const reasonCommandBase = {
@@ -82,7 +87,7 @@ export const projectLossReasonCommandV1Schema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const projectClosedRequestFilterSchema = z.enum(["all", "won", "lost"]);
+export const projectClosedRequestFilterSchema = z.enum(["all", "won", "lost", "cannot_fulfill"]);
 export const projectClosedRequestCursorSchema = z.string()
   .min(1)
   .max(PROJECT_CLOSED_REQUEST_CURSOR_MAX_LENGTH)

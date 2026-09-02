@@ -25,6 +25,19 @@ function outcomeLabel(outcome: ProjectOutcomeContext["outcome"]): string {
   }
 }
 
+// Nur Status + Versuchsanzahl — KEINE Empfängeradresse, KEIN Mailtext.
+function deliveryStatusLabel(status: string): string {
+  switch (status) {
+    case "queued": return "In Warteschlange";
+    case "delivered": return "Zugestellt";
+    case "failed_retriable": return "Zustellung ausstehend";
+    case "failed_final": return "Zustellung fehlgeschlagen";
+    case "cancelled_contact_erased": return "Storniert (Daten gelöscht)";
+    case "cancelled_manual": return "Storniert";
+    default: return status;
+  }
+}
+
 function feedback(state: ProjectOutcomeActionState): string {
   switch (state.status) {
     case "success":
@@ -32,7 +45,9 @@ function feedback(state: ProjectOutcomeActionState): string {
         ? "Die Anfrage wurde wieder geöffnet."
         : state.outcome === "won"
           ? "Die Anfrage wurde als gewonnen abgeschlossen."
-          : "Die Anfrage wurde als verloren abgeschlossen.";
+          : state.outcome === "lost"
+            ? "Die Anfrage wurde als verloren abgeschlossen."
+            : "Die Anfrage wurde endgültig als nicht erfüllbar abgeschlossen.";
     case "invalid":
       return "Die Eingabe ist unvollständig oder ungültig. Bitte prüfe die Angaben.";
     case "not_found":
@@ -41,6 +56,8 @@ function feedback(state: ProjectOutcomeActionState): string {
       return "Der Status wurde zwischenzeitlich geändert. Die Projektakte wird aktualisiert; deine Eingabe bleibt erhalten.";
     case "illegal_transition":
       return "Diese Statusänderung ist aus dem aktuellen Zustand nicht mehr zulässig.";
+    case "locked":
+      return "Diese Anfrage kann nicht als nicht erfüllbar abgeschlossen werden, weil bereits ein verbindliches Angebot ausgestellt wurde.";
     case "loss_reason_unavailable":
       return "Der gewählte Verlustgrund ist nicht mehr aktiv. Bitte wähle einen anderen Grund.";
     case "denied":
@@ -59,7 +76,7 @@ function CommonFields({
   revision,
 }: {
   commandVersion: string;
-  kind: "mark_won" | "mark_lost" | "reopen";
+  kind: "mark_won" | "mark_lost" | "reopen" | "mark_cannot_fulfill";
   projectId: string;
   revision: number;
 }) {
@@ -125,6 +142,16 @@ export function ProjectOutcomePanel({
               : dateFormatter.format(new Date(context.closedAt))}
           </dd>
         </div>
+        {context.notificationDelivery ? (
+          <div className="grid gap-1 sm:grid-cols-[9rem_minmax(0,1fr)]">
+            <dt className="font-medium text-slate-500">Absage-Status</dt>
+            <dd className="break-words text-slate-900">
+              {deliveryStatusLabel(context.notificationDelivery.status)}
+              {" · "}{context.notificationDelivery.attemptCount} Versuch
+              {context.notificationDelivery.attemptCount === 1 ? "" : "e"}
+            </dd>
+          </div>
+        ) : null}
         {context.lossReason ? (
           <div className="grid gap-1 sm:grid-cols-[9rem_minmax(0,1fr)]">
             <dt className="font-medium text-slate-500">Verlustgrund</dt>
@@ -212,6 +239,21 @@ export function ProjectOutcomePanel({
                     </button>
                   </form>
                 )}
+              </details>
+
+              <details className="rounded-md border border-rose-200 bg-rose-50 p-3">
+                <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-rose-950 outline-none focus-visible:ring-2 focus-visible:ring-rose-600">
+                  Als nicht erfüllbar abschließen
+                </summary>
+                <p className="mt-2 text-sm leading-6 text-rose-900">
+                  Endgültig: Die Anfrage wird als nicht erfüllbar abgeschlossen und kann nicht wieder geöffnet werden. Eine Absage an die Kundin/den Kunden wird automatisch ausgelöst; Freigabe, Genehmigung und Ausstellung werden unter diesem Projekt gesperrt.
+                </p>
+                <form action={action} className="mt-3">
+                  <CommonFields commandVersion={commandVersion} kind="mark_cannot_fulfill" projectId={context.projectId} revision={context.outcomeRevision} />
+                  <button type="submit" className="min-h-11 rounded-md bg-rose-800 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-rose-900 focus-visible:ring-2 focus-visible:ring-rose-700 focus-visible:ring-offset-2 disabled:cursor-wait">
+                    Nicht erfüllbar verbindlich bestätigen
+                  </button>
+                </form>
               </details>
             </>
           ) : context.outcome === "won" || context.outcome === "lost" ? (

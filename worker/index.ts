@@ -33,6 +33,12 @@ import {
 import {
   createCatalogImportDatabaseGateway,
 } from "./catalog-import-database";
+import {
+  createCustomerNotificationDatabaseGateway,
+  createCustomerNotificationHandler,
+} from "./customer-notification";
+import { CUSTOMER_NOTIFICATION_QUEUE } from "../lib/integrations/notifications/contract";
+import { NoopCustomerNotificationTransport } from "../lib/integrations/notifications/resend-transport";
 import { createHealthProbe, createHealthServer, startHeartbeat } from "./health";
 import {
   createOfferPdfRenderHandler,
@@ -162,6 +168,11 @@ const catalogImportGateway = createCatalogImportDatabaseGateway(
   (error) => reportFatalWorkerError("catalog-import-pool", error),
   2,
 );
+const customerNotificationGateway = createCustomerNotificationDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("customer-notification-pool", error),
+  2,
+);
 const boss = new PgBoss({
   db: bossDatabase,
   schema: "pgboss",
@@ -215,6 +226,10 @@ const catalogImportHandler = createCatalogImportHandler({
 const catalogImportCleanupHandler = createCatalogImportCleanupHandler(
   catalogImportGateway,
 );
+const customerNotificationHandler = createCustomerNotificationHandler({
+  database: customerNotificationGateway.database,
+  transport: new NoopCustomerNotificationTransport(),
+});
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
 // diese Probe braucht Timeouts, die tatsächlich abbrechen. Beides steckt in
@@ -278,6 +293,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
           offerReleaseCandidateGateway.close(),
           offerIssuanceGateway.close(),
           catalogImportGateway.close(),
+          customerNotificationGateway.close(),
         ]);
       }
     };
@@ -323,6 +339,8 @@ async function main() {
     await offerReleaseCandidateGateway.probe();
     startupGate.assertOpen();
     await offerIssuanceGateway.probe();
+    startupGate.assertOpen();
+    await customerNotificationGateway.probe();
     startupGate.assertOpen();
   } else {
     console.log("[worker] E2E-Katalogisolierung aktiv");
@@ -414,6 +432,21 @@ async function main() {
         reportFatalWorkerError("offer-issuance-recovery", error);
       },
     });
+    startupGate.assertOpen();
+    await boss.createQueue(CUSTOMER_NOTIFICATION_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    startupGate.assertOpen();
+    await boss.work(
+      CUSTOMER_NOTIFICATION_QUEUE,
+      { batchSize: 1, localConcurrency: 2 },
+      customerNotificationHandler,
+    );
     startupGate.assertOpen();
   }
   await boss.createQueue(CATALOG_IMPORT_QUEUE, {

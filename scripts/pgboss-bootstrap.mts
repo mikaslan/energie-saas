@@ -12,6 +12,7 @@ const OFFER_RELEASE_CANDIDATE_QUEUE_NAME = "offer.release-candidate.render";
 const OFFER_ISSUANCE_QUEUE_NAME = "offer-issuance.render.v1";
 const CATALOG_IMPORT_QUEUE_NAME = "catalog.import.v1";
 const CATALOG_IMPORT_CLEANUP_QUEUE_NAME = "catalog.import.cleanup.v1";
+const CUSTOMER_NOTIFICATION_QUEUE_NAME = "notification.customer";
 const BOOTSTRAP_LOCK = [1701734769, 7] as const;
 
 export const LEGACY_CALCULATION_QUEUE_OPTIONS = Object.freeze({
@@ -57,6 +58,15 @@ export const CATALOG_IMPORT_QUEUE_OPTIONS = Object.freeze({
 });
 
 export const CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
+});
+
+export const CUSTOMER_NOTIFICATION_QUEUE_OPTIONS = Object.freeze({
   policy: "exclusive" as const,
   retryLimit: 10,
   retryDelay: 1,
@@ -365,6 +375,31 @@ export async function bootstrapCalculationQueue(
       || Number(catalogCleanup.retry_delay_max) !== 60
       || Number(catalogCleanup.expire_seconds) !== 180
       || catalogCleanup.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    await boss.createQueue(
+      CUSTOMER_NOTIFICATION_QUEUE_NAME,
+      CUSTOMER_NOTIFICATION_QUEUE_OPTIONS,
+    );
+    const customerNotificationQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${CUSTOMER_NOTIFICATION_QUEUE_NAME}'
+    `);
+    const customerNotification = customerNotificationQueue.rows[0] as
+      | Record<string, unknown>
+      | undefined;
+    if (
+      customerNotification === undefined
+      || customerNotification.policy !== "exclusive"
+      || Number(customerNotification.retry_limit) !== 10
+      || Number(customerNotification.retry_delay) !== 1
+      || customerNotification.retry_backoff !== true
+      || Number(customerNotification.retry_delay_max) !== 60
+      || Number(customerNotification.expire_seconds) !== 180
+      || customerNotification.notify !== false
     ) {
       throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
     }

@@ -54,7 +54,7 @@ export const project = pgTable(
     ),
     index("project_ws_request_closed_idx")
       .on(t.workspaceId, t.closedAt.desc().nullsLast(), t.id.desc().nullsLast())
-      .where(sql`${t.phase} = 'request' and ${t.outcome} in ('won', 'lost')`),
+      .where(sql`${t.phase} = 'request' and ${t.outcome} in ('won', 'lost', 'cannot_fulfill')`),
     unique("project_ws_id_uq").on(t.workspaceId, t.id),
     unique("project_ws_id_site_uq").on(t.workspaceId, t.id, t.siteId),
     unique("project_ws_id_contact_site_uq").on(

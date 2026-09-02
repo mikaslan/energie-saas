@@ -55,6 +55,7 @@ export {
   ProjectLossReasonNotFoundError,
   ProjectLossReasonUnavailableError,
   ProjectLossReasonValidationError,
+  ProjectOutcomeCannotFulfilLockedError,
   ProjectOutcomeConflictError,
   ProjectOutcomeIllegalTransitionError,
   ProjectOutcomeNotFoundError,

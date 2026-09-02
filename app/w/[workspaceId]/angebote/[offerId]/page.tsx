@@ -318,6 +318,7 @@ function projectOfferDetailView(
     offer: {
       id: view.offer.id,
       projectId: view.offer.projectId,
+      projectOutcome: view.offer.projectOutcome,
       offerNumber: view.offer.offerNumber,
       status: view.offer.status,
       outdated: view.offer.outdated,

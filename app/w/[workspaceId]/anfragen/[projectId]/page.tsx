@@ -360,6 +360,7 @@ function outcomeLabel(value: string): string {
   if (value === "open") return "Offen";
   if (value === "won") return "Gewonnen";
   if (value === "lost") return "Verloren";
+  if (value === "cannot_fulfill") return "Nicht erfüllbar";
   return value;
 }
 
@@ -544,7 +545,9 @@ export default async function ProjectTriagePage({
     && Number.isFinite(detail.site.longitude)
       ? `${coordinateFormatter.format(detail.site.latitude)}, ${coordinateFormatter.format(detail.site.longitude)}`
       : "Nicht verfügbar";
-  const requestListPath = outcomeContext.outcome === "won" || outcomeContext.outcome === "lost"
+  const requestListPath = outcomeContext.outcome === "won"
+    || outcomeContext.outcome === "lost"
+    || outcomeContext.outcome === "cannot_fulfill"
     ? `/w/${workspaceId}/anfragen/abgeschlossen`
     : `/w/${workspaceId}/anfragen`;
 

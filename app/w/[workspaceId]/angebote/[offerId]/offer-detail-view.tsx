@@ -154,6 +154,7 @@ export interface OfferDetailSurfaceView {
   offer?: {
     id: string;
     projectId: string;
+    projectOutcome: string;
     offerNumber: string;
     status: string;
     outdated: boolean;
@@ -648,6 +649,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
     <OfferReleaseCandidatePanel
       workspaceId={view.workspaceId}
       offerId={view.offer.id}
+      projectOutcome={view.offer.projectOutcome}
       variantId={snapshot.variantId}
       variantRevision={snapshot.revision}
       contactDisplayName={view.permissions?.canPrepareRelease === true
@@ -667,6 +669,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
     <OfferIssuancePanel
       workspaceId={view.workspaceId}
       offerId={view.offer.id}
+      projectOutcome={view.offer.projectOutcome}
       canPrepare={view.permissions?.canPrepareIssuance === true}
       canApprove={view.permissions?.canApproveIssuance === true}
       canWithdraw={view.permissions?.canWithdrawIssuance === true}

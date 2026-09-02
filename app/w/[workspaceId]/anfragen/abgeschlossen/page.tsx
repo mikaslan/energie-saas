@@ -46,7 +46,7 @@ function AccessDenied() {
   );
 }
 
-function filterHref(workspaceId: string, filter: "all" | "won" | "lost"): string {
+function filterHref(workspaceId: string, filter: "all" | "won" | "lost" | "cannot_fulfill"): string {
   const base = `/w/${workspaceId}/anfragen/abgeschlossen`;
   return filter === "all" ? base : `${base}?${new URLSearchParams({ filter }).toString()}`;
 }
@@ -138,9 +138,9 @@ export default async function ClosedRequestsPage({
         </div>
 
         <nav aria-label="Abschlussfilter" className="mt-6 flex flex-wrap gap-2">
-          {(["all", "won", "lost"] as const).map((value) => {
+          {(["all", "won", "lost", "cannot_fulfill"] as const).map((value) => {
             const active = filter === value;
-            const label = value === "all" ? "Alle" : value === "won" ? "Gewonnen" : "Verloren";
+            const label = value === "all" ? "Alle" : value === "won" ? "Gewonnen" : value === "lost" ? "Verloren" : "Nicht erfüllbar";
             return (
               <Link key={value} aria-current={active ? "page" : undefined} href={filterHref(workspaceId, value)} className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${active ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}>
                 {label}
@@ -161,8 +161,16 @@ export default async function ClosedRequestsPage({
                 <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${record.outcome === "won" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-950"}`}>
-                        {record.outcome === "won" ? "Gewonnen" : "Verloren"}
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        record.outcome === "won"
+                          ? "bg-emerald-100 text-emerald-900"
+                          : record.outcome === "lost"
+                            ? "bg-amber-100 text-amber-950"
+                            : "bg-rose-100 text-rose-950"
+                      }`}>
+                        {record.outcome === "won"
+                          ? "Gewonnen"
+                          : record.outcome === "lost" ? "Verloren" : "Nicht erfüllbar"}
                       </span>
                       <span className="text-xs tabular-nums text-slate-500">Stand {record.outcomeRevision}</span>
                     </div>

@@ -487,6 +487,7 @@ function CandidateApprovalItem({
 export function OfferReleaseCandidatePanel({
   workspaceId,
   offerId,
+  projectOutcome,
   variantId,
   variantRevision,
   contactDisplayName,
@@ -501,6 +502,7 @@ export function OfferReleaseCandidatePanel({
 }: {
   workspaceId: string;
   offerId: string;
+  projectOutcome: string;
   variantId: string;
   variantRevision: number;
   contactDisplayName: string | null;
@@ -558,6 +560,12 @@ export function OfferReleaseCandidatePanel({
         </div>
         <OfferDirtyNavigationLink href={refreshHref} label="Freigabestatus aktualisieren" kind="refresh" className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-blue-700 underline decoration-2 underline-offset-4 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Status aktualisieren</OfferDirtyNavigationLink>
       </div>
+
+      {projectOutcome === "cannot_fulfill" ? (
+        <p role="status" className="mt-5 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-950">
+          Dieses Angebot gehört zu einer als „nicht erfüllbar“ abgeschlossenen Anfrage. Freigabekandidat, Genehmigung und Ausstellung sind unter diesem Projekt gesperrt.
+        </p>
+      ) : null}
 
       <ol role="list" className="mt-6 grid list-none gap-6 p-0">
         <li>

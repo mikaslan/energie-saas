@@ -40,6 +40,8 @@ export type ProjectOutcomeContext = {
   lossReason: { id: string; label: string; archived: boolean } | null;
   lossReasonText: string | null;
   activeLossReasons: Array<{ id: string; label: string }>;
+  // Zustellstatus der Kundenmail OHNE PII (nur Status + Versuchsanzahl).
+  notificationDelivery: { status: string; attemptCount: number } | null;
   permissions: {
     canChangeOutcome: boolean;
     canManageReasons: boolean;
@@ -51,7 +53,7 @@ export type ProjectClosedRequestRecord = {
   projectName: string;
   contactName: string;
   locationLabel: string;
-  outcome: "won" | "lost";
+  outcome: "won" | "lost" | "cannot_fulfill";
   outcomeRevision: number;
   closedAt: string;
   lossReasonLabel: string | null;
@@ -101,7 +103,7 @@ type ClosedRequestRow = {
   project_name: string;
   contact_name: string;
   location_label: string | null;
-  outcome: "won" | "lost";
+  outcome: "won" | "lost" | "cannot_fulfill";
   outcome_revision: number;
   closed_at: Date | string;
   closed_at_cursor: string;
@@ -152,6 +154,15 @@ export class ProjectOutcomeIllegalTransitionError extends Error {
   constructor() {
     super("project outcome transition is not permitted");
     this.name = "ProjectOutcomeIllegalTransitionError";
+  }
+}
+
+export class ProjectOutcomeCannotFulfilLockedError extends Error {
+  readonly code = "project_cannot_fulfil_locked";
+
+  constructor() {
+    super("project has a binding issuance and cannot be marked cannot_fulfill");
+    this.name = "ProjectOutcomeCannotFulfilLockedError";
   }
 }
 
@@ -354,6 +365,19 @@ export async function getProjectOutcomeContext(
     ? (await listProjectLossReasons(tx, ctx, { includeArchived: false }))
         .map(({ id, label }) => ({ id, label }))
     : [];
+  const notificationResult = await tx.execute<{
+    notification_status: string;
+    notification_attempt_count: number;
+  }>(sql`
+    select notification_record.status as notification_status,
+           notification_record.attempt_count as notification_attempt_count
+      from customer_notification notification_record
+     where notification_record.workspace_id = ${ctx.workspaceId}::uuid
+       and notification_record.project_id = ${projectId}::uuid
+     order by notification_record.created_at desc
+     limit 1
+  `);
+  const notificationRow = notificationResult.rows[0];
   return {
     projectId: row.project_id,
     phase: row.phase,
@@ -369,6 +393,12 @@ export async function getProjectOutcomeContext(
         },
     lossReasonText: row.loss_reason_text,
     activeLossReasons,
+    notificationDelivery: notificationRow
+      ? {
+          status: notificationRow.notification_status,
+          attemptCount: notificationRow.notification_attempt_count,
+        }
+      : null,
     permissions: {
       canChangeOutcome,
       canManageReasons: can(ctx, "settings.manage") && !isExternalOnly(ctx),
@@ -380,7 +410,11 @@ function transitionPermitted(
   current: RequestOutcome,
   command: ProjectOutcomeCommandV1,
 ): boolean {
-  if (command.kind === "mark_won" || command.kind === "mark_lost") {
+  if (
+    command.kind === "mark_won"
+    || command.kind === "mark_lost"
+    || command.kind === "mark_cannot_fulfill"
+  ) {
     return current === "open";
   }
   return current === "won" || current === "lost";
@@ -439,9 +473,25 @@ export async function changeProjectOutcome(
     if (!reason.rows[0]) throw new ProjectLossReasonUnavailableError();
   }
 
+  // Ein verbindlich ausgestelltes Angebot (Approval ohne Withdrawal) blockiert
+  // die Transition. Die schmale Definer-Kapsel liest die fuer app_runtime
+  // unsichtbaren Issuance-Relationen; sie laeuft NACH dem Project-FOR-UPDATE-Lock,
+  // damit der Freeze-Guard (FOR SHARE auf project) und diese Transition gegen
+  // dieselbe Project-Zeile serialisieren (Review-Befund P0-1).
+  if (command.kind === "mark_cannot_fulfill") {
+    const binding = await tx.execute<{ has_binding: boolean }>(sql`
+      select public._m111b_project_has_binding_issuance(
+        ${ctx.workspaceId}::uuid, ${command.projectId}::uuid
+      ) as has_binding
+    `);
+    if (binding.rows[0]?.has_binding) throw new ProjectOutcomeCannotFulfilLockedError();
+  }
+
   const nextOutcome = command.kind === "reopen"
     ? "open"
-    : command.kind === "mark_won" ? "won" : "lost";
+    : command.kind === "mark_won" ? "won"
+    : command.kind === "mark_lost" ? "lost"
+    : "cannot_fulfill";
   const nextRevision = current.outcome_revision + 1;
   const lossReasonId = command.kind === "mark_lost" ? command.lossReasonId : null;
   const lossReasonText = command.kind === "mark_lost" ? command.lossReasonText : null;
@@ -466,6 +516,33 @@ export async function changeProjectOutcome(
                null::timestamptz as loss_reason_archived_at
   `);
   if (!updated.rows[0]) throw new ProjectOutcomeConflictError();
+
+  // Outbox-Insert + Dispatch in derselben Transaktion wie das Project-Update.
+  // Keine PII: die Zeile traegt nur Projekt-/Idempotenzbezug.
+  if (command.kind === "mark_cannot_fulfill") {
+    const notification = await tx.execute<{ id: string }>(sql`
+      insert into customer_notification (workspace_id, project_id, idempotency_key)
+      values (${ctx.workspaceId}::uuid, ${command.projectId}::uuid,
+              ${`cannot-fulfil:${command.projectId}`})
+      returning id
+    `);
+    // Dispatch in derselben Transaktion wie Project-Update + Outbox-Insert.
+    // In der Test-DB (ohne pgboss-Schema) existiert die Dispatch-Funktion nicht;
+    // dann bleibt die Outbox-Zeile die Zustellwahrheit und der Sweeper reicht
+    // nach (kein Fehler, keine abgebrochene Transaktion).
+    const dispatchAvailable = await tx.execute<{ has_dispatch: boolean }>(sql`
+      select pg_catalog.to_regprocedure(
+        'pgboss.enqueue_customer_notification(uuid,uuid)'
+      ) is not null as has_dispatch
+    `);
+    if (dispatchAvailable.rows[0]?.has_dispatch) {
+      await tx.execute(sql`
+        select pgboss.enqueue_customer_notification(
+          ${ctx.workspaceId}::uuid, ${notification.rows[0]!.id}::uuid
+        )
+      `);
+    }
+  }
 
   const context = await getProjectOutcomeContext(tx, ctx, command.projectId);
   if (!context) throw new ProjectOutcomeNotFoundError();
@@ -592,7 +669,7 @@ export async function listClosedRequests(
        and reason_record.id = project_record.loss_reason_id
      where project_record.workspace_id = ${ctx.workspaceId}::uuid
        and project_record.phase = 'request'
-       and project_record.outcome in ('won', 'lost')
+       and project_record.outcome in ('won', 'lost', 'cannot_fulfill')
        and project_record.closed_at is not null
        ${filterSql}
        ${cursorSql}
