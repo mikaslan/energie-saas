@@ -3,7 +3,7 @@
 - Status: VORGESCHLAGEN (im Rahmen der M3-01-Spec DISCOVERED→SPECIFIED)
 - Datum: 2026-09-03
 - Betroffene Slice-Spec: `docs/spec/M3-01-rechnungen-kern.md`
-- Basis: `codex/m2-integration` HEAD `e5a9c5d` (Spec-/ADR-Ablage; M3-01 ist reine Spezifikation, kein Code)
+- Basis: `codex/m2-integration` HEAD `12c863f` (Spec-/ADR-Ablage; M3-01 ist reine Spezifikation, kein Code)
 
 ## Kontext
 
@@ -30,12 +30,12 @@ hoch und fehleranfällig.
 
 ## Entscheidung
 
-Wir modellieren **ein** generisches `document`-Aggregat mit einem
+Wir modellieren **ein** generisches `commercial_document`-Aggregat mit einem
 `type`-Diskriminator und **typisierten, nullable Spalten** für die
 typ-spezifischen Datumsfelder, abgesichert durch CHECK-Constraints je Typ.
-Daneben stehen `document_group` (Dokumentgruppen), `document_line`
-(Positionen, M2-01-Geldvertrag) und `document_number_series`
-(workspaceweiter Nummernkreis je Typ). Nur echte typ-eigene Zusatzfelder ohne
+Daneben stehen `commercial_document_group` (Dokumentgruppen),
+`commercial_document_line` (Positionen, M2-01-Geldvertrag) und
+`commercial_document_number_series` (workspaceweiter Nummernkreis je Typ). Nur echte typ-eigene Zusatzfelder ohne
 Filter-/Indexbedarf landen in einem kleinen `type_specific`-JSONB. Die
 Immutable-Ausstellung wird als gespeicherter `issued_snapshot`-JSONB plus
 `snapshot_sha256` (bytea, 32 Byte) am Document umgesetzt — analog
