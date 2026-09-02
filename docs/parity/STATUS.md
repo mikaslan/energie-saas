@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-08-30 · kanonische Abnahmequelle:
+Stand: 2026-09-02 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -18,9 +18,27 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 16–18 % | Fundament sowie Rechner→Lead→Adresse→Planung→eigener Katalog→Produktauflösung→Angebotsentwurf sind lokal technisch verifiziert; PDF, Signatur und operative Breite bleiben offen |
-| Technisches Fundament M0/M1 | ca. 94–96 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 10–12 % | Login, Intake-Triage, Projektakte, Adresse, Energieprofil, Planungsschätzung, eigener Katalog, Produktzuordnung und Angebotsentwurf mit Varianten/BOM sind real und lokal technisch verifiziert; Ausführung und Abrechnung bleiben offen |
+| Gesamtmission einschließlich F1–F16 | ca. 23–24 % | M1-11a/M1-12a lokal REVIEWED/VERIFIED (`4d31b9f`/`01b52e9`, remote gesichert); M1-11b verloren → Rekonstruktion/Neuaufbau läuft |
+| Technisches Fundament M0/M1 | ca. 97–98 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 16–17 % | Projektakte, Aufgaben, Outcomes, Inbox, Katalog-Import, Varianten/BOM, Angebots-PDF-Entwurf lokal technisch verifiziert; M1-11b/Notizen/Rechnungen offen |
+
+## 2026-09-02 — API-Gate, Discovery, M1-11b-Lage
+
+- **Reonic REST API v3:** Eigentümer-Freigabe; Key per `GET /me` als read-only
+  belegt. Compliance-Gate: `COMPLIANCE-REONIC-API.md`; Clean-Room-Regel 1 in
+  CONTRIBUTING.md ersetzt. Öffentliche OpenAPI v3.11.0 kartiert in
+  `REONIC-API-CAPABILITY-MAP.md` (124 Pfade; F4/F6/F8/F10/F12/F13/F14 sind
+  API-seitig NICHT exponiert — M3/Rechnungen gegen Portal/Doku planen).
+- **WMEE-Design-System:** Token-Discovery `WMEE-DESIGN-SYSTEM.md` (DRAFT;
+  visuelle Abnahme durch den Eigentümer offen).
+- **M1-11b-Verlust:** Ordner `~/Projects/reonic-clone-finale-claude`
+  (`claude/reonic-finale`, `c9e6b50…09240ae`) auf diesem MacBook nicht
+  auffindbar (Logs/Codex/git-fsck/Trash geprüft); Vault-Notiz entstand auf dem
+  Mac Studio → Eigentümer-Prüfung ausstehend. Spec/ADR rekonstruiert
+  (`M1-11b-cannot-fulfil.md`, ADR `0018`); TDD-Neuaufbau im Worktree
+  `energie-saas-m111b-cannot-fulfil` (Branch `codex/m1-11b-cannot-fulfil`).
+- **Laufende Lanes:** M1-13-Projektnotizen-Spec; visuelle Baseline-Kandidaten
+  (`artifacts/visual-baseline-20260902/`).
 
 Diese Werte steigen nicht durch Seiten, Mocks oder Dokumentation allein, sondern nur
 durch belastbare vertikale Endzustände. Die Schätzung ist insbesondere **keine**
