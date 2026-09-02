@@ -84,9 +84,9 @@ Canonical-F-Nummern bleiben unverändert.
 ## 1. Nutzerergebnis (JTBD)
 
 Ein interner **Editor/Admin mit Invoicing-Recht** verwaltet workspaceweit
-kaufmännische Dokumente über sieben typgetrennte Tabs plus eine
+kaufmännische Dokumente über sechs typgetrennte Tabs plus eine
 Dokumentgruppen-Übersicht und eine Berichtsseite. Er kann Dokumente anlegen
-(7 Typen), als Entwurf pflegen, **ausstellen** (dann Nummer + unveränderlicher
+(6 Typen), als Entwurf pflegen, **ausstellen** (dann Nummer + unveränderlicher
 Snapshot), **versenden** (Versand-Achse) und **stornieren** (Void mit Grund).
 Parallel pflegt er die **Zahlungsachse** (Unbezahlt/Teilweise/Bezahlt/Überfällig/
 Uneinbringlich). Die Berichtsseite zeigt Einnahmen/Cashflow/Ausstehend/Überfällig
@@ -149,12 +149,12 @@ immer Cent-Integer (`bigint`); Externe Nebenwirkungen = keine (kein E-Mail-/PDF-
 Versand in M3-01); Notifications = keine (Folgeslice); Pflichtzustände
 Loading/Empty/Error/Success/Disabled/Permission-Denied gemäß §11.
 
-### M301-01 — Dokument anlegen (7 Typen + Dokumentgruppen)
+### M301-01 — Dokument anlegen (6 Typen + Dokumentgruppen)
 
 - **F-Nr:** F8.1 · **Modul:** `modules/invoicing/` · **Route:** je Typ-Tab
   `/w/{workspaceId}/rechnungen/{typ}` + Übersicht `…/rechnungen` (Gruppen)
 - **Akteur/Rolle:** Editor+ mit `invoicing.write`
-- **JTBD:** Dokument eines der 7 Typen anlegen (frei oder gruppengebunden);
+- **JTBD:** Dokument eines der 6 Typen anlegen (frei oder gruppengebunden);
   Dokumentgruppen als Projekt-Behälter anlegen/archivieren
 - **Trigger:** „Neu“ (bei Rechnungen Dropdown Rechnung/Teilrechnung — Teilrechnung = Non-Goal)
 - **Vorbedingungen:** Workspace aktiv; Issuing-Details vorhanden (F8.2) für Geld-Dokumente
@@ -162,13 +162,18 @@ Loading/Empty/Error/Success/Disabled/Permission-Denied gemäß §11.
 - **Varianten:** Brief ohne Betrag; freie vs. gruppengebundene Anlage; leerer Zustand „0 Artikel“
 - **Eingabefelder:** Name, Positionen (Menge/Einheit/Netto/Steuer), typ-spezifische Daten (Fälligkeit/Lieferung/Gültigkeit/geplante Daten); Gruppe: Name
 - **Validierungen:** Typ-Enum; typ-abhängige Pflichtfelder (CHECK+Service); Beträge cent-ganz ≥ 0; Gruppenname 1–120 non-empty, workspaceweit eindeutig
-- **Zustände:** Dokument `draft` (initial); Gruppe `aktiv | archiviert`
-- **Erlaubte Übergänge:** Gruppe `aktiv ↔ archiviert`; Dokument-Übergänge → M301-02/04
-- **Persistente Nebenwirkungen:** `commercial_document`(+`_line`), `commercial_document_group`
+- **Zustände:** Dokument `draft` (initial) + Archiv-Achse `archivedAt`
+  (DECIDED: reversibler Toggle, eigene Achse — Portal-Filter „Archiviert“
+  OBSERVED, exakte Semantik UNKNOWN); Gruppe `aktiv | archiviert`
+- **Erlaubte Übergänge:** Gruppe `aktiv ↔ archiviert`; Dokument-Archiv
+  `archivedAt setzen/löschen` unabhängig vom Status; Dokument-Übergänge →
+  M301-02/04
+- **Persistente Nebenwirkungen:** `commercial_document`(+`_line`),
+  `commercial_document_group`
 - **Berechtigung:** `invoicing.write` · **Tenant-Scope:** `workspaceId` (+ optional `projectId`/`groupId`)
-- **API-Operationen:** `createDocument(type, input)`, `listDocumentGroups`, `createDocumentGroup`, `archiveDocumentGroup`
+- **API-Operationen:** `createDocument(type, input)`, `listDocumentGroups`, `createDocumentGroup`, `archiveDocumentGroup`, `archiveDocument`/`unarchiveDocument`
 - **Datenentitäten:** `commercial_document`, `commercial_document_line`, `commercial_document_group`
-- **Audit Events:** `commercial_document.created`, `commercial_document_group.created/archived/unarchived`
+- **Audit Events:** `commercial_document.created`, `commercial_document.archived/unarchived`, `commercial_document_group.created/archived/unarchived`
 - **Evidence:** `PDEEP` §1a–1g; `ACSV` Routen · **Confidence:** OBSERVED (Typen/Routen), DECIDED (freie Anlage; Angebot-zu-Rechnung = Non-Goal)
 
 ### M301-02 — Dokument ausstellen (Nummernkreis + Snapshot, immutable)
@@ -295,24 +300,33 @@ FK auf `workspace.id`, tenant-gebundenes Unique `(workspaceId, id)` wie M2-01):
    `name` (1–120), `archivedAt` (nullable), `createdBy`→membership,
    `createdAt`/`updatedAt`. Unique `(workspaceId, id)`, `(workspaceId, name)`.
 2. **`commercial_document_number_series`** — Muster `offer_number_series`: `id`,
-   `workspaceId`, `type` (7-Enum), `seriesYear`, `prefix`, `padding`,
+   `workspaceId`, `type` (6-Enum), `seriesYear`, `prefix`, `padding`,
    `lastSequence` (0…999999). Unique `(workspaceId, type, seriesYear)`.
 3. **`commercial_document`** (Kern, ADR 0023) — `id`, `workspaceId`, `type`,
    `groupId` (nullable), `projectId` (nullable), `contactId` (nullable,
    Empfänger), `status` (`draft|issued|voided`), `sentAt` (nullable),
-   `voidedAt`/`voidReason` (nullable), `name` (1–160), `number`/`numberYear`/
-   `numberSequence` (nullable bis `issued`), `issuedAt` (nullable),
+   `voidedAt`/`voidReason` (nullable), `archivedAt` (nullable, Archiv-Achse,
+   unabhängig vom Status, reversibel — DECIDED), `name` (1–160),
+   `number`/`numberYear`/`numberSequence` (nullable bis `issued`),
+   `issuedAt` (nullable), `creditNoteType` (text, nullable — Portal-Filter
+   „Typ“ bei Gutschrift OBSERVED, Werteliste UNKNOWN, daher noch kein
+   Pflicht-CHECK), `goebdRetentionUntil` (date, nullable bis `issued`;
+   CHECK `status='issued' ⇒ not null`, Wert aus M3-00-Workspace-Default),
    `currency` (`'EUR'`), `netCents`/`taxCents`/`grossCents` (bigint,
    `moneyCheck`; bei `letter` 0/0/0), `paymentStatus` (nullable für `letter`,
    sonst `unpaid|partially_paid|paid|overdue|uncollectable`), `paidCents`
    (bigint, default 0), `dueDate`/`deliveryDate`/`validityDate`/
    `plannedDeliveryDate`/`plannedServiceDate` (nullable, typ-bedingt),
-   `recipientSnapshot` (JSONB, PII-arm: Anrede/Name/Adresse als Snapshot),
-   `issuedSnapshot` (JSONB, nullable bis `issued`), `snapshotSha256`
-   (bytea, nullable bis `issued`), `issuedBy`→membership, `createdBy`,
+   `recipientSnapshot` (JSONB, PII-arm: Anrede/Name/Adresse als Snapshot —
+   **einziger PII-Träger**, außerhalb des Hash-Scope, scrub-bar),
+   `issuedSnapshot` (JSONB, nullable bis `issued`, **PII-frei**: enthält nur
+   `recipientRef` = `contactId` + Kontakt-Revision statt PII-Feldern),
+   `snapshotSha256` (bytea, nullable bis `issued`, Hash **nur** über
+   `issuedSnapshot`), `issuedBy`→membership, `createdBy`,
    `createdAt`/`updatedAt`. CHECKs: Typ-Enum; je Typ Pflicht-Datumfelder;
-   `status='issued' ⇒ number/snapshot/hash/issuedAt not null`; Geld-/Zahlungs-
-   Konsistenz; `letter ⇒ grossCents=0 ∧ paymentStatus is null`.
+   `status='issued' ⇒ number/snapshot/hash/issuedAt/goebdRetentionUntil not
+   null`; Geld-/Zahlungs-Konsistenz; `letter ⇒ grossCents=0 ∧ paymentStatus
+   is null`; `creditNoteType not null ⇒ type='credit_note'`.
 4. **`commercial_document_line`** — Muster `offer_bom_line` (vereinfacht, ohne
    Katalog-FK): `id`, `workspaceId`, `documentId`, `position`, `name`,
    `quantityMilli`, `unit` (`piece|set|meter`), `netCents`/`taxCents`/`grossCents`
@@ -322,6 +336,11 @@ FK auf `workspace.id`, tenant-gebundenes Unique `(workspaceId, id)` wie M2-01):
 **Kanonisierung:** `issued_snapshot` trägt `schemaVersion =
 'document-snapshot.v1'` und `canonicalizationVersion = 'document-jcs.v1'`,
 analog `offer_variant_revision` (`offer-variant-snapshot.v1`/`offer-jcs.v1`).
+**Hash-/PII-Scope (Kimi-P0-1-Fix):** `snapshotSha256` deckt ausschließlich
+`issuedSnapshot` (PII-frei, `recipientRef` statt PII) ab; `recipientSnapshot`
+liegt bewusst außerhalb des Hash-Scope, damit DSGVO-Scrub den
+Integritäts-Hash nie divergiert. Der Service-Kanonisierer erzwingt diese
+Whitelist (PII-Felder im `issuedSnapshot` = Contract-Fehler).
 
 **Index:** `(workspaceId, type, status, updatedAt, id)` für Listen;
 `(workspaceId, type, numberYear, numberSequence)` für Nummernkreis; partielle
@@ -368,12 +387,22 @@ unpaid ─▶ partially_paid ─▶ paid
   exakter Takt UNKNOWN).
 - `paid`/`uncollectable` terminal.
 - `partially_paid` ⇔ `0 < paidCents < grossCents`; `paid` ⇒ `paidCents ≥ grossCents`.
+- **Überzahlung (Kimi-P1-6-Fix, DECIDED):** `paidCents > grossCents` ist
+  erlaubt und wird als Überzahlungs-Delta geführt/angezeigt; Berichts-KPIs
+  zählen `grossCents` als Einnahme, das Delta bleibt sichtbar. Exakte
+  Reonic-Semantik UNKNOWN.
+
+### 5.4 Archiv-Achse (`commercial_document.archivedAt`)
+
+- Unabhängige, reversible Achse (Toggle) über alle Status; ausgefiltert über
+  den Portal-Filter „Archiviert“. Exakte Reonic-Übergangs-Semantik UNKNOWN,
+  daher DECIDED minimal (kein Statuswechsel, kein Audit-Effekt außer Event).
 
 ---
 
 ## 6. Nummernkreise
 
-- Workspaceweit, **je Typ** (7 Serien), jahresbasiert (`seriesYear`).
+- Workspaceweit, **je Typ** (6 Serien), jahresbasiert (`seriesYear`).
 - Format DECIDED (Standard, konfigurierbar über Workspace-Stammdaten, F8.2):
   `<PREFIX>-<JJJJ>-<NNNNNN>`, Padding 6. Vorschlags-Präfixe (DECIDED):
   `RE` (Rechnung), `GU` (Gutschrift), `AB` (Auftragsbestätigung), `BE`
@@ -465,7 +494,9 @@ ohne neue Rundungsentscheidungen:
     (Legal-Hold-/Vertrags-Gate, Muster `contact_legal_hold`).
   - `draft`/`voided` oder bereits `paid`/`uncollectable` → PII im
     `recipientSnapshot` (Anrede/Name/Adresse) wird gescrubbt; Beträge, Nummern
-    und Status bleiben erhalten (Geldkern ohne PII).
+    und Status bleiben erhalten (Geldkern ohne PII). **Der Hash bleibt
+    unberührt:** `issuedSnapshot`/`snapshotSha256` enthalten keine PII
+    (`recipientRef`-Muster, §4) — kein Hash-Divergenz-Konflikt (Kimi-P0-1).
   - GoBD-Vollarchivierung/-Aufbewahrungs-Durchsetzung = Non-Goal (M3-01);
     das Aufbewahrungsdatum wird aber bereits als `goebd_retention_until`
     (nullable `date`, bei Ausstellung aus Workspace-Default gesetzt) modelliert
@@ -531,8 +562,8 @@ ohne neue Rundungsentscheidungen:
 | `M301-02` | Ausstellen/Snapshot | DB | `issued`-Guard; SHA 32 byte; Snapshot-Konsistenz | `M301-DB-02` |
 | `M301-03` | Versenden | Unit/DB | `sentAt` nur ab `issued`; nicht rücknehmbar | `M301-DB-03` |
 | `M301-04` | Stornieren | Unit/DB | alle Void-Übergänge; Grund-Pflicht; `voided` terminal | `M301-DB-04` |
-| `M301-05` | Zahlungsachse | Unit/DB | Enum-Übergänge; auto-overdue; `paid`-Bedingung | `M301-DB-05` |
-| `M301-05` | Nummernkreise | DB/Race | Monotonie; Jahreswechsel; Void gibt Nummer nicht frei; Race (2 parallele Issues) | `M301-RACE-01` |
+| `M301-05` | Zahlungsachse | Unit/DB | Enum-Übergänge; auto-overdue; `paid`-Bedingung; Überzahlungs-Delta | `M301-DB-05` |
+| `M301-02` | Nummernkreise | DB/Race | Monotonie; Jahreswechsel; Void gibt Nummer nicht frei; Race (2 parallele Issues) | `M301-RACE-01` |
 | `M301-06` | Filter-Sets | Contract | je Typ Spalten/Filter-Enums; Suche; Archiv | `M301-CON-01` |
 | `M301-07` | Berichte | Unit/Contract | KPI-Werte; Buckets disjunkt; Vormonats-Delta; CSV-Format | `M301-CON-02` |
 | `M301-08` | Geld/Rundung | Unit | Cent-Genauigkeit; `gross=net+tax`; Half-up-Kanten; Bereichsgrenzen | `M301-UNIT-01` |
@@ -581,6 +612,15 @@ P0–P2). **Visual-Gate** bleibt `INCONCLUSIVE` bis Eigentümer-Freigabe.
 10. **Erasure**: issued+offene Forderung blockt; draft/void/paid scrubben PII;
     Geldkern bleibt. `goebd_retention_until` wird bereits modelliert
     (O5), Durchsetzung/Export/WORM = GoBD-Folgeslice.
+11. **Hash-/PII-Scope** (Kimi-P0-1): `snapshotSha256` nur über das
+    PII-freie `issuedSnapshot`; PII lebt allein im scrub-baren
+    `recipientSnapshot` (ADR 0023).
+12. **Überzahlung erlaubt** (Kimi-P1-6): `paidCents > grossCents` zulässig,
+    Delta sichtbar; KPIs zählen `grossCents`. Exakte Reonic-Semantik UNKNOWN.
+13. **Archiv-Achse** (Kimi-P0-3): `archivedAt` am Dokument, reversibel,
+    unabhängig vom Status; exakte Reonic-Semantik UNKNOWN (nur Filter OBSERVED).
+14. **Gutschrift-Typ** (Kimi-P0-2): Spalte `creditNoteType` nullable modelliert;
+    Werteliste UNKNOWN → kein Pflicht-CHECK, Filter rendert Ist-Werte.
 
 ### UNKNOWN
 

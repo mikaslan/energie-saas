@@ -41,6 +41,13 @@ Immutable-Ausstellung wird als gespeicherter `issued_snapshot`-JSONB plus
 `snapshot_sha256` (bytea, 32 Byte) am Document umgesetzt — analog
 `offer_variant_revision`.
 
+**PII-/Hash-Scope (Kimi-Review M3-01-Spec, P0-1):** PII (Empfänger-Anrede/
+Name/Adresse) liegt ausschließlich in der separaten, scrub-baren Spalte
+`recipient_snapshot`; `issued_snapshot` ist **PII-frei** und referenziert den
+Empfänger nur als `recipientRef` (Kontakt-ID + Revision). `snapshot_sha256`
+deckt ausschließlich `issued_snapshot` ab — DSGVO-Scrub divergiert den
+Integritäts-Hash dadurch nie.
+
 ## Alternativen betrachtet
 
 ### Alternative 1: eine Tabelle je Dokumenttyp
@@ -87,3 +94,7 @@ Immutable-Ausstellung wird als gespeicherter `issued_snapshot`-JSONB plus
 - **CHECK-Komplexität:** Fehler in bedingten Constraints fallen erst im DB-Matrix-Test
   auf. Mitigation: exhaustive DB-Matrix je Typ (frisch + Legacy + Verletzungsfälle)
   als Pflicht-Gate in der Spec.
+- **CHECK-Evolution:** Spätere Typ-Erweiterungen dürfen bestehende Constraints
+  nicht in einem exklusiven `ADD CONSTRAINT`-Lock nachziehen; neue typ-bedingte
+  CHECKs werden als `NOT VALID` angelegt und anschließend separat
+  `VALIDATE CONSTRAINT` ausgeführt (kein langer exklusiver Tabellenlock).
