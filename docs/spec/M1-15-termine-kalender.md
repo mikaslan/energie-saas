@@ -300,8 +300,11 @@ active --delete--> (Zeile gelöscht, Hard-Delete)   [terminal; Historie via Even
 
 ## 6. Commands und Actions
 
-Vertrag `lib/integrations/appointments/contract.ts` (Version
-`project-appointment-command.v1`); Service `modules/appointments/`. Jede Action
+Vertrag `lib/integrations/calendar/contract.ts` (Version
+`project-appointment-command.v1`); Service `modules/calendar/`. *(Amendment
+2026-09-03 nach Kimi-Code-Review P2: Implementierung nutzt `calendar/` statt
+des ursprünglich spezifizierten `appointments/`; diese Spec folgt der
+Implementierung.)* Jede Action
 reauthentifiziert, allowlistet Felder, liest Project/Membership serverseitig
 neu und sperrt zuerst das Project (Lock-Ordnung wie [M110SVC] `lockProject` →
 Project `FOR KEY SHARE`; `lockReadableProject` für Reads):
@@ -381,10 +384,10 @@ Neue Capabilities `appointment.read` und `appointment.write` (Muster
 
 - Neuer Abschnitt „Termine“ in der Projektakte
   (`app/w/[workspaceId]/anfragen/[projectId]/`, neben `project-tasks-section.tsx`).
-  Dateien (künftig): `appointment-calendar-section.tsx`,
+  Dateien: `appointment-calendar-section.tsx`,
   `appointment-calendar.tsx` (Client-Wrapper für FullCalendar),
-  `appointment-dialog.tsx`, `appointment-actions.ts`, Readmodel über
-  `modules/appointments/`.
+  `appointment-dialog.tsx`, `appointment-actions.ts`, `appointment-editor-model.ts`
+  (Zustandsmodell), Readmodel über `modules/calendar/`.
 - **Kein eigenes Mutationstool außerhalb der Projektakte** (Non-Goal
   workspaceweite Kalender-Route / globale Terminsuche).
 - FullCalendar: `@fullcalendar/react` + `daygrid` (Monat), `timegrid` (Woche),

@@ -285,8 +285,13 @@ doppelt fail-closed. Kein Contact-Leak über Fehlermeldungen.
 - Sektion „Identität und Kontakt“ wird von read-only `<dl>` [page.tsx:393-408]
   zu Editor mit Lese-/Edit-Modus; Viewer sieht nur Lesezustand.
 - Feldgruppen: Name+Anrede, B2B, Kontaktwege (primär/sekundär E-Mail, Mobil,
-  Festnetz), Erreichbarkeit, Kontaktadresse, Consent (Checkbox + Version/Text/
-  Link, read-only bei fehlender `contact.write`), UTM-/Kampagnenfelder.
+  Festnetz), Erreichbarkeit, Kontaktadresse, Consent (Checkbox **read-only**
+  zeigt den `granted`-Zustand — der Boolean ist intake-owned und nicht
+  patchbar, API-konform `UNK-M114-02`; **editierbar** sind Version/Text/Link
+  bei `contact.write`), UTM-/Kampagnenfelder.
+  *(Amendment 2026-09-03 nach Kimi-Code-Review P2: vorher „Checkbox … read-only
+  bei fehlender contact.write“ — implizierte fälschlich einen editierbaren
+  Boolean; die Patch-Allowlist schließt `granted` bewusst aus.)*
 - Konflikt-/Fehlerzustand bewahrt Entwurf und Fokus (Muster M1-10).
 - Kein Farbsignal ohne Text/Icon; Touchziele ≥ 44 px; kein horizontaler
   Overflow bei 320/375 px; `aria-live` für Ergebnis.
