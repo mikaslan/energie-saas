@@ -7,3 +7,17 @@ node_modules/
 .superpowers/pgdata/
 playwright-report/
 test-results/
+
+# ProjectAtlas (lokaler Index, generierte Host-Configs)
+.projectatlas/*.db
+.projectatlas/*.db-*
+.projectatlas/*.lock
+.projectatlas/graph-stage-*/
+.projectatlas/projectatlas.toon
+.projectatlas/projectatlas-purpose-review.json
+.projectatlas/projectatlas.mcp.json
+.projectatlas/projectatlas.claude.mcp.json
+.projectatlas/projectatlas.opencode.json
+
+# Import-Artefakte (Bilder, CSVs, Rohexporte — bewusst NICHT versioniert)
+artifacts/
