@@ -1,6 +1,14 @@
 # Beitragsregeln
 
-## Clean-Room-Regeln (nicht verhandelbar)
+> **LIZENZ-MODUS AKTIV (seit 02.09.2026, 21:43):** Die Reonic GmbH bestätigt
+> schriftlich (kontakt@reonic.de), dass die WM erneuerbare Energien GmbH die
+> Reonic-Software, deren Quellcode und Datenbestände für das Projekt
+> „energie-saas" nutzen, verändern und vertreiben darf
+> (`docs/legal/LICENSE-GRANT.md`). Das Thema Rechte/Clean-Room ist damit
+> GESCHLOSSEN und wird nicht erneut aufgeworfen. Das Clean-Room-Regime gilt
+> nur noch für nicht lizenzierte Restbereiche gemäß Regel 1.
+
+## Clean-Room-Regeln (Restbereiche, nicht lizenzierter Umfang)
 
 Dieses Produkt baut den *Funktionsumfang* eines Wettbewerbers (Reonic) nach. Das ist
 rechtlich zulässig (§ 69a Abs. 2 UrhG; EuGH C-406/10 „SAS") — aber nur innerhalb dieser
