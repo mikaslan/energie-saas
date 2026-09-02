@@ -77,7 +77,9 @@ Absicht explizit und testbar, die Invariante hält beide Sichten kohärent.
 (`address_street`, `address_house_number`, `address_postal_code`,
 `address_city`, `address_country`), alle nullable. Die bestehende
 `site`-Tabelle (Projekt-/Planungsadresse, Pin, Geocoding) wird **nicht**
-angefasst.
+angefasst. Das PLZ-Muster `^[0-9]{5}$` greift **nur**, wenn
+`address_country IN ('DE', NULL)` ist; für andere Länder gilt eine freie,
+getrimmte Form (1–20 Zeichen).
 
 **Verworfen:** JSONB `address` (wie die API es als Objekt führt) oder
 Wiederverwendung der `site`-Zeile. JSONB schwächt Check-Constraints
@@ -128,32 +130,105 @@ Kontaktstammdaten reicht der CAS + Event/Audit-Trail; die API exponiert keine
 Kontakt-Revisionshistorie, der F1.1-Scope verlangt nur „Edit mit
 Revisionen/CAS wie bestehende Muster“.
 
-## Entscheidung 6 — Erasure: quellgepinnte Scrub-Erweiterung
+## Entscheidung 6 — Erasure: quellgepinnte Scrub-Erweiterung (nur echte PII)
 
 **Gewählt:** Die bestehende `erase_inactive_lead()` (Migration 0027) scrubbt den
 Contact über eine **explizite Spaltenliste** (UPDATE, keine Zeilen-DELETE).
-M1-14 erweitert diese Liste **quellgepinnt** um alle neuen PII-Spalten
-(`first_name`, `last_name`, `salutation`, `email_secondary`, `phone_mobile`,
-die fünf Adressspalten, `marketing_consent_policy_version`,
-`marketing_consent_text`, `marketing_consent_data_protection_link`, UTM-Spalten,
-`is_business`, `revision` wird auf 0/neutral zurückgesetzt, `deleted_at` bleibt
-`erase_time`).
+M1-14 erweitert diese Liste **quellgepinnt** um **ausschließlich echte PII-
+Spalten**: `first_name`, `last_name`, `salutation`, `email_secondary`,
+`phone_mobile`, die fünf Adressspalten, `marketing_consent_policy_version`,
+`marketing_consent_text`, `marketing_consent_data_protection_link` und die fünf
+UTM-Spalten. `deleted_at` bleibt `erase_time`; die Bestandsspalten aus 0027
+(`display_name`, `email_primary`/`email_normalized`, `phone_raw`/`phone_e164`,
+`marketing_consent`/`_at`/`_source`) bleiben unverändert Teil der Scrub-Liste.
 
-**Begründung:** Ohne diese Erweiterung blieben neue PII-Spalten nach einem
-Erasure-Lauf stehen — ein DSGVO-Verstoß. Da M1-14 keine neue Tabelle einführt
-(Entscheidungen 1 und 4), entsteht kein neuer Graphen-Knoten; die bestehenden
-`graph_ids` bleiben gültig. Die Erweiterung folgt dem Muster aus M1-11b
-(ADR 0018): SHA-256-Prüfung des Ist-Standes plus eindeutiger Anker, sonst
-Abbruch der Migration.
+**Nicht gescrubbt (keine PII):** `is_business`, `revision` und
+`phone_reachability`. `revision` darf **nicht** genullt werden — der CHECK
+`revision between 1 and 2147483647` bliebe sonst verletzt; `revision` bleibt
+nach der Erasure unverändert.
+
+**Begründung:** Ohne die PII-Erweiterung blieben neue personenbezogene Spalten
+nach einem Erasure-Lauf stehen — ein DSGVO-Verstoß. `is_business` und
+`phone_reachability` sind nicht identifizierend, `revision` ist interne
+Buchführung — alle drei müssen nicht gelöscht werden. Da M1-14 keine neue
+Tabelle einführt (Entscheidungen 1 und 4), entsteht kein neuer Graphen-Knoten;
+die bestehenden `graph_ids` bleiben gültig. Die Erweiterung folgt dem Muster
+aus M1-11b (ADR 0018): SHA-256-Prüfung des Ist-Standes plus eindeutiger Anker,
+sonst Abbruch der Migration.
+
+## Entscheidung 7 — geteilte Namens-Normalisierung (Vertragsteil)
+
+**Gewählt:** Eine einzige, gemeinsame Normalisierungsfunktion
+`contact_name_split_v1(raw)` wird als Vertragsteil festgeschrieben und von
+Intake (Contact-Insert), Edit und Migrations-Backfill identisch verwendet:
+
+1. `btrim(raw)`; interne Whitespace-Läufe (Leerzeichen, Tabs, Zeilenumbrüche)
+   auf genau ein Leerzeichen kollabieren.
+2. Am **ersten** Whitespace-Lauf teilen.
+3. Zwei oder mehr Tokens: `first_name = Teil vor dem Lauf`,
+   `last_name = btrim(Teil danach)`.
+4. Ein Token: `first_name = token`, `last_name = token`; `display_name` bleibt
+   der Original-Eintoken (wird beim Backfill **nicht** neu abgeleitet).
+5. `display_name` (Create/Edit) = `btrim(first_name || ' ' || last_name)` —
+   eine **Service-Konvention**, kein DB-CHECK.
+
+**Begründung:** Zwei unabhängige Split-Implementierungen (Intake vs. Backfill)
+würden identische `display_name`-Werte unterschiedlich zerlegen. Eine gepinnte
+Funktion macht das Verhalten deterministisch und testbar; der Eintoken-Fall ist
+explizit geregelt, ohne `display_name` beim Backfill umzuschreiben.
+
+## Entscheidung 8 — Lock-Reihenfolge: Advisory-Lock wie Erasure
+
+**Gewählt:** `updateContact` nimmt als **ersten** Synchronisationspunkt exakt
+denselben Advisory-Lock wie `erase_inactive_lead()` (Migration 0027):
+`pg_advisory_xact_lock(hashtextextended(workspace_id::text || ':' ||
+contact_id::text, 1701734770))`. Danach Zeilensperren in fester Reihenfolge
+Contact → Project (wie der Erasure-Pfad nach seinem Advisory-Lock).
+
+**Verworfen:** „Project → Contact“ als erste Sperre. Der Erasure-Pfad sperrt
+nicht zuerst Project, sondern serialisiert über den Contact-Advisory-Lock; ohne
+gemeinsamen ersten Lock wäre `M114-RACE-02` (Edit ↔ Erasure) nicht garantiert.
+
+**Begründung:** Beide Pfade konkurrieren um denselben Advisory-Lock-Schlüssel
+und serialisieren dadurch vollständig. Ein Edit, der den Advisory-Lock verliert,
+sieht nach dem Erasure-Commit `deleted_at` gesetzt und antwortet
+`deleted_contact`; ein Edit, der ihn gewinnt, schließt vor der Erasure ab.
+
+## Entscheidung 9 — Intake: Contact-Insert minimal angepasst
+
+**Gewählt:** Der bestehende Intake-Insert (`persistContact` in
+`modules/intake/service.ts`) wird **minimal** erweitert: der Insert setzt
+`first_name`/`last_name` über `contact_name_split_v1(displayName)`. Der
+Rechner-Payload liefert weiterhin nur `displayName` (ein String).
+
+**Verworfen:** DB-DEFAULT-/Trigger-/Generated-Column-Ableitung. `first_name`/
+`last_name` sind `NOT NULL` mit CHECK `1..200`; ein leerer DEFAULT verletzt den
+CHECK, und Postgres kann die Split-Logik nicht als sinnvollen Spalten-DEFAULT
+abbilden.
+
+**Begründung:** Der Ist-Code (`persistContact`) ist die einzige Stelle, die beim
+Anlegen verbindlich `first_name`/`last_name` setzen kann. Die geteilte Funktion
+(Entscheidung 7) hält Intake und Edit deterministisch konsistent; der
+bestehende `contact.created`-Event bleibt unverändert.
 
 ## Konsequenzen
 
-- Migration `0042_m1_14_contact_dataset.sql` (additiv, Nummer vor Lane-Merge
-  gegen parallele Lanes M1-11b/M1-13 abzugleichen).
+- Migration `0042_m1_14_contact_dataset.sql` (additiv; Root-Fix 2026-09-02:
+  0040 = M1-11b, 0041 = M1-13, 0042 = M1-14, Integration in dieser Reihenfolge).
 - Neue PII-Spalten leben ausschließlich am `contact`-Aggregat → Erasure bleibt
-  eine Spaltenlisten-Erweiterung, kein neuer Graphen-Knoten.
-- `display_name` bleibt kanonisches Label und wird serverseitig auf
-  `btrim(first_name || ' ' || last_name)` gehalten (kein DB-Trigger); der
-  bestehende `contact_active_identity_ck`-Guard bleibt gültig.
+  eine Spaltenlisten-Erweiterung (nur PII, Entscheidung 6), kein neuer
+  Graphen-Knoten.
+- `display_name` bleibt kanonisches Label über die Konvention
+  `contact_name_split_v1` (Entscheidung 7); der bestehende
+  `contact_active_identity_ck`-Guard bleibt gültig.
 - Keine öffentliche REST-API in M1-14; die API-Felder sind funktionale
   Referenz für Datenmodell und Semantik, nicht ein zu bauender Endpunkt.
+
+## Review-Befunde M1-14-R1
+
+Sieben unabhängige Kimi-Befunde wurden eingearbeitet (Detailtabelle in der
+Slice-Spec, Abschnitt „Review-Befunde M1-14-R1“): P0 `revision` nicht scrubben
+(Entscheidung 6); P1 Intake minimal angepasst (Entscheidung 9); P1
+Advisory-Lock wie Erasure (Entscheidung 8); P2 deterministischer Backfill und
+geteilte Normalisierung (Entscheidung 7); P2 PLZ-Regex an `country` koppeln
+(Entscheidung 3/Spec §4); P2 Scrub-Liste nur echte PII (Entscheidung 6).

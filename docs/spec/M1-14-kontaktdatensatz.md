@@ -28,6 +28,7 @@
   Datenachse …“)
 - `CRM` — `lib/db/schema/crm.ts` (Ist-`contact`-Tabelle)
 - `INTAKE` — `lib/db/schema/intake.ts` (UTM im `inbound_receipt.acquisition`)
+- `INTAKE-SVC` — `modules/intake/service.ts` (`persistContact`, Contact-Insert)
 - `ERASURE` — `drizzle/0027_m1_07_gdpr_erasure.sql` (`erase_inactive_lead`)
 - `M111A/0039` — `drizzle/0039_m1_11a_project_outcome.sql` (Revision/CAS-Muster)
 - `M111B` — Spec `M1-11b-cannot-fulfil.md` (quellgepinnte Funktionsersetzung)
@@ -163,7 +164,7 @@ Beobachtungen, die die Spec treiben:
 | `M114-09` / F1.1 | Erreichbarkeitsfenster | `phone_reachability` Enum (6 Werte + null), API-belegt | persistente Spalte | `contact.write`; Contact | `M114-CONTRACT-06` | SPECIFIED |
 | `M114-10` / F1.1 | Activity-Event + Audit | — | `domain_events` (`contact.updated`) + `audit_log`; Payload ohne PII-Werte | Trigger/Service wie Muster | `M114-EVENT-01` | SPECIFIED |
 | `M114-11` / F1.1 | RLS/RBAC fail-closed | — | Viewer/External/Fremdmandant/Worker lesen/mutieren nicht | RLS/FORCE-RLS + Actions | `M114-RBAC-01/02` | SPECIFIED |
-| `M114-12` / F1.1 | Race/CAS | paralleler Edit | genau ein Schreiber gewinnt; anderer Conflict ohne Teilstand | Project→Contact-Lockreihenfolge | `M114-RACE-01/02` | SPECIFIED |
+| `M114-12` / F1.1 | Race/CAS | paralleler Edit | genau ein Schreiber gewinnt; anderer Conflict ohne Teilstand | Advisory-Lock (wie Erasure) → Contact→Project | `M114-RACE-01/02` | SPECIFIED |
 | `M114-13` / F1.1 | Migration + Rollenvertrag | — | additive Migration, `db:generate` ohne Drift, Rollenprobe | Migrator/Runtime/Worker | `M114-MIG-01`, Rollenprobe | SPECIFIED |
 | `M114-14` / F1.1 | UI/A11y | — | Editor-/Viewer-Zustände, Axe, Tastatur, 375 px | — | `M114-E2E-01…04`, `M114-A11Y-01` | SPECIFIED |
 
@@ -180,27 +181,41 @@ Additiv am `contact` [CRM] (Details ADR 0020):
 | `email_secondary` | text | nullable, ≤254, E-Mail-Format |
 | `phone_mobile` | text | nullable, E.164-Muster (wie `phone_e164`) |
 | `phone_reachability` | text | CHECK `in ('morning','afternoon','evening','fulltime','weekend_only','email_only') or null` |
-| `address_street` / `address_house_number` / `address_postal_code` / `address_city` / `address_country` | text (je nullable) | Längen; PLZ-Muster `^[0-9]{5}$` für DE |
+| `address_street` / `address_house_number` / `address_postal_code` / `address_city` / `address_country` | text (je nullable) | Längen; PLZ-Muster `^[0-9]{5}$` **nur wenn `address_country IN ('DE', null)`**; sonst freie, getrimmte Form (1–20) |
 | `marketing_consent_policy_version` | text | nullable, 1–100 |
 | `marketing_consent_text` | text | nullable |
 | `marketing_consent_data_protection_link` | text | nullable, `https://` |
 | `utm_source` / `utm_medium` / `utm_campaign` / `utm_term` / `utm_content` | text (je nullable) | je ≤1000 |
 | `revision` | integer not null default 1 | CHECK `between 1 and 2147483647` |
 
-- `display_name` bleibt NOT NULL und wird serverseitig auf
-  `btrim(first_name || ' ' || last_name)` gehalten; bestehende
+- `display_name` bleibt NOT NULL und wird bei Create/Edit über die geteilte
+  Normalisierungsfunktion `contact_name_split_v1` auf
+  `btrim(first_name || ' ' || last_name)` gehalten (Service-Konvention, kein
+  DB-CHECK) [ADR 0020, Entscheidung 7]; bestehende
   `contact_active_identity_ck`-Semantik bleibt (Name oder E-Mail oder Telefon).
-- **Backfill:** bestehende Zeilen erhalten `first_name`/`last_name` per
-  Split-on-first-space aus `display_name` (Eintoken-Fall: beide = Token;
-  exakte Regel ESTIMATE/Implementierungsdetail, vom Intake künftig durch echte
-  Vor-/Nachnamen ersetzt). `is_business = false`, `revision = 1`.
+- **Backfill (deterministisch gepinnt):** bestehende Zeilen erhalten
+  `first_name`/`last_name` über `contact_name_split_v1(display_name)`:
+  (1) `btrim` + interne Whitespace-Läufe auf ein Leerzeichen kollabieren;
+  (2) am ersten Whitespace-Lauf teilen; (3) zwei+ Tokens → vor/nach dem Lauf;
+  (4) **ein Token → `first_name = token`, `last_name = token`, `display_name`
+  bleibt der Original-Eintoken** (wird beim Backfill nicht neu abgeleitet).
+  `is_business = false`, `revision = 1`.
+- **Intake (minimal angepasst):** `persistContact` [INTAKE-SVC:323] setzt beim
+  Insert `first_name`/`last_name` über `contact_name_split_v1(displayName)`;
+  der Rechner-Payload liefert weiterhin nur `displayName` [ADR 0020,
+  Entscheidung 9]. Kein DEFAULT-/Trigger-/Generated-Column.
 - **UTM-Backfill:** beim Intake werden die UTM-Spalten des Contacts aus
   `inbound_receipt.acquisition.utm` [INTAKE:26] befüllt (nur wenn leer bzw.
   beim Create); kein Rückwärts-Reprocessing alter Receipts in M1-14
   (DECIDED M114-08).
-- **Erasure (quellgepinnt):** `erase_inactive_lead()` [ERASURE] wird um die
-  neuen PII-Spalten in seiner UPDATE-Spaltenliste erweitert (SHA-256-Ist-Prüfung
-  + Anker, Muster ADR 0018 [M111B]). Keine neue Tabelle → kein neuer
+- **Erasure (quellgepinnt, nur echte PII):** `erase_inactive_lead()` [ERASURE]
+  wird um **ausschließlich** die neuen PII-Spalten in seiner
+  UPDATE-Spaltenliste erweitert (SHA-256-Ist-Prüfung + Anker, Muster ADR 0018
+  [M111B]): `first_name`, `last_name`, `salutation`, `email_secondary`,
+  `phone_mobile`, die fünf Adressspalten, `marketing_consent_policy_version`,
+  `marketing_consent_text`, `marketing_consent_data_protection_link`, fünf
+  UTM-Spalten. **Nicht gescrubbt:** `is_business`, `revision` (CHECK `1..2^31`
+  bliebe sonst verletzt), `phone_reachability`. Keine neue Tabelle → kein neuer
   Graphen-Knoten.
 
 ## 5. Commands und Actions
@@ -212,9 +227,12 @@ Allowlist, Re-Authentifizierung):
   `patch` strikt allowlistet auf die M1-14-Felder (Name, Anrede, B2B,
   E-Mail-Sekundär, Mobil, Erreichbarkeit, Kontaktadresse, Consent-Felder,
   UTM-Felder). Kein `site`-Feld im Patch.
-- Ablauf: Project laden → Contact-Lock (Reihenfolge Project → Contact, wie
-  Muster) → CAS `revision = expectedRevision` → Spalten-Update →
-  `revision+1`, `updatedAt` → Event + Audit in derselben Transaktion.
+- Ablauf: Advisory-Lock
+  `pg_advisory_xact_lock(hashtextextended(workspaceId||':'||contactId, 1701734770))`
+  (identisch zu `erase_inactive_lead` [ERASURE]) → Contact-Lock → Project-Lock
+  (Reihenfolge Contact → Project) → CAS `revision = expectedRevision` →
+  Spalten-Update → `revision+1`, `updatedAt` → Event + Audit in derselben
+  Transaktion [ADR 0020, Entscheidung 8].
 - Fehlerklassen: `invalid`, `not_found`, `conflict` (Revisionskonflikt),
   `deleted_contact`, `unauthenticated`, `denied`. Unbekannte Fehler nicht roh
   nach außen.
@@ -249,12 +267,18 @@ doppelt fail-closed. Kein Contact-Leak über Fehlermeldungen.
 
 ## 8. Lock- und Race-Vertrag
 
-- Lock-Reihenfolge fest: Project → Contact (erster Lock wie Erasure-Pfad).
+- **Erster Synchronisationspunkt:** `updateContact` nimmt exakt denselben
+  Advisory-Lock wie `erase_inactive_lead()` —
+  `pg_advisory_xact_lock(hashtextextended(workspace_id||':'||contact_id, 1701734770))`
+  — **vor** allen Zeilensperren [ADR 0020, Entscheidung 8].
+- Zeilensperren danach in fester Reihenfolge Contact → Project (deckungsgleich
+  mit dem Erasure-Pfad nach dessen Advisory-Lock).
 - CAS über `revision`; null Zeilen = Conflict; kein Teilstand.
 - Event, Audit und Spalten-Update committen in derselben Transaktion.
-- Kreuzung mit Erasure: Erasure sperrt Contact zuerst (`FOR UPDATE` auf die
-  Contact-Zeile) und gewinnt; ein paralleler Edit auf einer gerade gelöschten
-  Zeile erhält `deleted_contact`.
+- Kreuzung mit Erasure: beide Pfade serialisieren über den gemeinsamen
+  Advisory-Lock. Gewinnt die Erasure, sieht der nachfolgende Edit `deleted_at`
+  gesetzt und antwortet `deleted_contact`; gewinnt der Edit, schließt er vor
+  der Erasure ab. `M114-RACE-02` ist damit garantiert.
 
 ## 9. UI-Vertrag
 
@@ -274,10 +298,14 @@ doppelt fail-closed. Kein Contact-Leak über Fehlermeldungen.
 - `M114-CONTRACT-01`: Anrede-Enum + B2B-Invariante (gültig/ungültig).
 - `M114-CONTRACT-02`: E-Mail-Normalisierung (primär/sekundär), E.164
   (Mobil/Festnetz), Längen.
-- `M114-CONTRACT-03`: Kontaktadresse (PLZ-Muster, Längen, nullable).
+- `M114-CONTRACT-03`: Kontaktadresse (Längen, nullable; PLZ-Muster `^[0-9]{5}$`
+  nur bei `address_country IN ('DE', null)`, sonst freie Form).
 - `M114-CONTRACT-04`: Consent-CHECK (true ⇒ Version/At/Source gesetzt).
 - `M114-CONTRACT-05`: UTM-Spalten (Längen, nullable).
 - `M114-CONTRACT-06`: `phone_reachability`-Enum.
+- `M114-CONTRACT-07`: `contact_name_split_v1` deterministisch (Whitespace-
+  Kollabierung, Split am ersten Lauf, Eintoken → first=last=token und
+  `display_name` unverändert beim Backfill).
 - `M114-SVC-01`: `updateContact`-Allowlist + Fehlerklassen (invalid/not_found/
   conflict/deleted_contact/denied).
 
@@ -296,12 +324,15 @@ doppelt fail-closed. Kein Contact-Leak über Fehlermeldungen.
 ### 10.4 Race
 
 - `M114-RACE-01`: zwei parallele Edits — genau einer gewinnt.
-- `M114-RACE-02`: Edit gegen Erasure — Erasure gewinnt, Edit `deleted_contact`.
+- `M114-RACE-02`: Edit gegen Erasure — gemeinsamer Advisory-Lock serialisiert;
+  Erasure gewinnt, Edit `deleted_contact` (Lock-Reihenfolge §8).
 
 ### 10.5 Erasure
 
-- `M114-ERASURE-01`: vollständiger Erasure-Lauf nullt alle neuen PII-Spalten
-  (inkl. UTM, Consent-Version/-Text/-Link, Adresse, Anrede).
+- `M114-ERASURE-01`: vollständiger Erasure-Lauf nullt **nur** die neuen
+  PII-Spalten (Name, Anrede, Sekundär-E-Mail, Mobil, Adresse, Consent-Version/
+  -Text/-Link, UTM); `is_business`, `revision` und `phone_reachability` bleiben
+  unverändert, `revision` verletzt den CHECK `1..2^31` nicht.
 - `M114-ERASURE-02`: quellgepinnte Erweiterung bricht bei Drift ab; Tombstone/
   Replay bleibt gültig.
 
@@ -348,10 +379,13 @@ doppelt fail-closed. Kein Contact-Leak über Fehlermeldungen.
 | `DEC-M114-03` | Kontaktadresse flach am `contact`, `site` unangetastet | ADR 0020 |
 | `DEC-M114-04` | Consent flach + Policy-Version; Historie über Events/Audit | ADR 0020 |
 | `DEC-M114-05` | Edit mit `revision`-CAS (Muster site/project) | ADR 0020 |
-| `DEC-M114-06` | Erasure quellgepinnter Spaltenlisten-Scrub erweitert | ADR 0020 |
+| `DEC-M114-06` | Erasure quellgepinnter Spaltenlisten-Scrub **nur echte PII**; `is_business`/`revision`/`phone_reachability` nicht scrubben | ADR 0020 |
 | `DEC-M114-07` | UTM flach am Contact, aus Intake befüllt | ADR 0020 |
-| `DEC-M114-08` | `displayName` = `btrim(first || ' ' || last)` serverseitig | ADR 0020 |
+| `DEC-M114-08` | `display_name` = `btrim(first || ' ' || last)` als Service-Konvention (kein DB-CHECK); Backfill-Eintoken ohne Neutableitung | ADR 0020, Entsch. 7 |
 | `DEC-M114-09` | Keine öffentliche REST-API in M1-14; API = Datenmodell-Referenz | §2 |
+| `DEC-M114-10` | `updateContact` nimmt denselben Advisory-Lock wie Erasure, dann Contact→Project | ADR 0020, Entsch. 8 |
+| `DEC-M114-11` | Intake-Insert minimal angepasst: `first`/`last` via `contact_name_split_v1` | ADR 0020, Entsch. 9 |
+| `DEC-M114-12` | Geteilte Namens-Normalisierung `contact_name_split_v1` als Vertragsteil | ADR 0020, Entsch. 7 |
 
 ## 14. Verbleibende UNKNOWN (zur Root-Integrator-/Owner-Klärung)
 
@@ -367,3 +401,18 @@ doppelt fail-closed. Kein Contact-Leak über Fehlermeldungen.
    (Root-Entscheidung 2026-09-02; Integration in dieser Reihenfolge).
 5. `UNK-M114-05`: Ob `integrations` (Drittsystem-IDs) je gespeichert werden
    sollen — bewusst NON-GOAL, Entscheidung für späteres Integrations-Slice.
+
+## 15. Review-Befunde M1-14-R1
+
+Unabhängiger Kimi-Review (gegen Ist-Code geprüft, 2026-09-02). Sieben Befunde,
+alle eingearbeitet in Spec + ADR 0020.
+
+| # | Schwere | Befund | Maßnahme |
+|---|---|---|---|
+| R1-01 | P0 | `revision` darf nicht gescrubbt werden; CHECK `between 1 and 2147483647` bliebe bei `0` verletzt | ADR 0020 Entsch. 6 + §4/§10.5: Scrub-Liste **ohne** `revision`; `revision` bleibt nach Erasure unverändert |
+| R1-02 | P1 | Intake-Scope klären: `first`/`last` aus `display_name`-Split ODER DEFAULT-Ableitung — nach Ist-Code entscheiden | DEC-M114-11 + ADR 0020 Entsch. 9: `persistContact` [INTAKE-SVC:323] setzt `first`/`last` via `contact_name_split_v1` (Insert minimal angepasst); keine DEFAULT-/Trigger-/Generated-Column, da NOT NULL + CHECK `1..200` |
+| R1-03 | P1 | Lock-Reihenfolge vereinheitlichen, damit `M114-RACE-02` (Edit ↔ Erasure) garantiert bleibt | DEC-M114-10 + ADR 0020 Entsch. 8 + §8: `updateContact` nimmt denselben `pg_advisory_xact_lock(hashtextextended(workspace||':'||contact, 1701734770))` wie `erase_inactive_lead`, dann Contact→Project |
+| R1-04 | P2 | Backfill-Regel deterministisch pinnen (btrim + Whitespace-Normalisierung vor Split, Eintoken-Verhalten) | §4 + ADR 0020 Entsch. 7: `contact_name_split_v1` (btrim, Whitespace-Kollabierung, Split am ersten Lauf, Eintoken → first=last=token und `display_name` unverändert) |
+| R1-05 | P2 | PLZ-Regex an `country` koppeln | §4 + ADR 0020 Entsch. 3: `^[0-9]{5}$` nur bei `address_country IN ('DE', null)`; sonst freie, getrimmte Form (1–20) |
+| R1-06 | P2 | Scrub-Liste nur echte PII | ADR 0020 Entsch. 6 + §4/§10.5: `is_business` und `revision` raus (zusätzlich `phone_reachability` als Nicht-PII-Präferenz nicht gescrubbt) |
+| R1-07 | P2 | Eine geteilte Normalisierungsfunktion für `display_name` als Vertragsteil festschreiben | DEC-M114-12 + ADR 0020 Entsch. 7: `contact_name_split_v1` als verbindlicher Vertragsteil für Intake, Edit und Backfill |
