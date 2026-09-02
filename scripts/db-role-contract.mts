@@ -1578,6 +1578,10 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         ${CATALOG_IMPORT_PGBOSS_RUNTIME_ROUTINES.join(",\n        ")}
       to app_runtime;
     ` : ""}
+    ${hasCustomerNotification ? `
+      grant execute on function pgboss.enqueue_customer_notification(uuid, uuid)
+        to app_runtime;
+    ` : ""}
     set role app_owner
   `);
   const offerPdfDispatch = await client.query<{ present: boolean }>(`
@@ -3704,6 +3708,9 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasOfferIssuance ? [
         "app_runtime:enqueue_offer_issuance(uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
+      ...(hasCustomerNotification ? [
+        "app_runtime:enqueue_customer_notification(uuid, uuid):EXECUTE:app_worker:false",
       ] : []),
     ],
     "pg-boss-Funktions-Grants",

@@ -474,6 +474,13 @@ Funktionen; Trigger werden umgehängt, alte Funktionen entfernt).
   deshalb keinerlei SELECT auf `customer_notification` (RETURNING verlangt in
   PostgreSQL SELECT auf die Rückgabespalten). Design bleibt Kapsel-only:
   `app_runtime` hat nur INSERT.
+- `EXECUTE` auf die Dispatch-Funktion ist **nur `app_runtime`** erteilt und im
+  Rollenvertrag unter „pg-boss-Funktions-Grants“ gepinnt
+  (`app_runtime:enqueue_customer_notification(uuid, uuid):EXECUTE:app_worker:false`).
+  Der Funktionseigner `app_worker` braucht als Eigner keinen eigenen Grant; der
+  Worker-Pfad nutzt ausschließlich die `_m111b_worker_*`-Kapseln und ruft die
+  Enqueue-Funktion nie auf (Chromium-P0: `permission denied for function
+  enqueue_customer_notification`).
 - Mailvorlage: `cannot-fulfil.v1` (einzige feste interne Vorlage; kein Editor,
   kein Freitext, kein PII).
 
