@@ -505,3 +505,11 @@ Neue Capabilities `appointment.read` und `appointment.write` (Muster
 - **O5 → bestätigt:** `ErasureGraphIds.appointmentIds` als neuer
   Graphen-Knoten + quellgepinnter Scrub der Appointment-Spalten bei
   Integration (Migration 0043).
+
+## Anhang: Follow-up M1-15b (Root-Notiz 2026-09-03)
+
+Das Reonic-Kalendermodell (API: `calendarId` Pflicht, 4 Scopes
+Team/Tenancy/User/Client; Portal: Unternehmens-/Benutzer-/persönliche
+Kalender) wird in M1-15 bewusst NICHT gebaut (DECIDED, ACCEPTED_EXCEPTION).
+Folgeslice M1-15b „Kalender-Scopes" ist als UNK-M115-01 registriert und wird
+nach M1-15 eingeplant — erst damit ist die Kalender-Parität vollständig.

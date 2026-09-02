@@ -37,3 +37,4 @@ eigene Regeln ausgewiesen und austauschbar.
 Historische Steuer-/Abrechnungsbehauptungen aus Transkripten, insbesondere das
 Verschieben von Arbeitswerten zwischen Gewerken, sind ungeprüft und kein
 Produktvertrag.
+| `UNK-M115-01` | UNKNOWN | Reonic-Kalendermodell: API verlangt `calendarId` (Pflicht) mit 4 Scopes (Team/Tenancy/User/Client); Portal zeigt Unternehmens-/Benutzer-/persönliche Kalender + Kalenderauswahl | M1-15 spezifiziert bewusst OHNE calendar-Objekt (DECIDED, ACCEPTED_EXCEPTION) — Termine + Kategorien zuerst | Folgeslice M1-15b „Kalender-Scopes" einplanen; erst dann ist die Kalender-Parität vollständig |
