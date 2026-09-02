@@ -139,3 +139,10 @@ WMEE; Push-/Deploy-Regeln unverändert.
   (175 Dateien/1.726 Tests), Rollen 88/88 + 5/5, Kimi-Review (6 Befunde,
   alle geschlossen); Chromium-Nachholung zentral geplant.
 - **Quoten-Effekt (ESTIMATE):** Gesamt ~25–26 %, nutzbare Breite ~18–19 %.
+
+## 2026-09-03 (00:30) — M1-Welle 01 komplett grün
+
+`codex/m1-wave-01` (`e5a9c5d`): M1-11b (0040) + M1-13 (0041) integriert;
+komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
+behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
+M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).

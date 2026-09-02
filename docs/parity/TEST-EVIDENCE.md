@@ -51,3 +51,11 @@ ausdrücklich getrennt bis zu Mikails Screenshot-Baseline-Freigabe
 |---|---|---|---|---|---|
 | M1-11b | 173 Dateien / 1.718 grün / 1 opt-in skip | 88/88 + PG18 5/5 | 4/4 (Slice) · 48/48 (Suite) | grün | Kimi Spec (10) + Kimi Code (6) geschlossen; 4 Browser-Laufzeit-P0 behoben |
 | M1-13 | 175 Dateien / 1.726 grün / 1 skip | 88/88 + PG18 5/5 | zentral geplant | grün | Kimi Spec (6) geschlossen |
+
+## M1-Welle-01 Gesamt-E2E (2026-09-03, 00:30)
+
+Integrations-Branch `codex/m1-wave-01` (`e5a9c5d`, remote): komplette
+Chromium-Suite **48/48 passed, Exit 0** (3,1 Min) — inkl. M1-11b 4/4, M1-12a
+8/8 (Mitternachts-Flake behoben: Fälligkeit relativ zum Berlin-Tagesende),
+M1-05…M2-03b1. Vollgate `npm run check` Exit 0 (177 Dateien, 1.743 Tests,
+Rollen 88/88 + PG18 5/5), Build grün.
