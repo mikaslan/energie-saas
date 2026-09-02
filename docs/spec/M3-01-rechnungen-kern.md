@@ -308,10 +308,12 @@ FK auf `workspace.id`, tenant-gebundenes Unique `(workspaceId, id)` wie M2-01):
    `voidedAt`/`voidReason` (nullable), `archivedAt` (nullable, Archiv-Achse,
    unabhängig vom Status, reversibel — DECIDED), `name` (1–160),
    `number`/`numberYear`/`numberSequence` (nullable bis `issued`),
-   `issuedAt` (nullable), `creditNoteType` (text, nullable — Portal-Filter
-   „Typ“ bei Gutschrift OBSERVED, Werteliste UNKNOWN, daher noch kein
-   Pflicht-CHECK), `goebdRetentionUntil` (date, nullable bis `issued`;
-   CHECK `status='issued' ⇒ not null`, Wert aus M3-00-Workspace-Default),
+   `issuedAt` (nullable), `creditNoteType` (text, nullable — OBSERVED-Enum
+   `M3-UNKNOWN-RECON.md` §2: `minderleistung|empfehlungspraemie` + „Ohne
+   Typ“/null; CHECK `creditNoteType in ('minderleistung','empfehlungspraemie')
+   or creditNoteType is null`), `goebdRetentionUntil` (date, nullable bis
+   `issued`; CHECK `status='issued' ⇒ not null`, Wert aus
+   M3-00-Workspace-Default),
    `currency` (`'EUR'`), `netCents`/`taxCents`/`grossCents` (bigint,
    `moneyCheck`; bei `letter` 0/0/0), `paymentStatus` (nullable für `letter`,
    sonst `unpaid|partially_paid|paid|overdue|uncollectable`), `paidCents`
@@ -403,11 +405,20 @@ unpaid ─▶ partially_paid ─▶ paid
 ## 6. Nummernkreise
 
 - Workspaceweit, **je Typ** (6 Serien), jahresbasiert (`seriesYear`).
-- Format DECIDED (Standard, konfigurierbar über Workspace-Stammdaten, F8.2):
-  `<PREFIX>-<JJJJ>-<NNNNNN>`, Padding 6. Vorschlags-Präfixe (DECIDED):
-  `RE` (Rechnung), `GU` (Gutschrift), `AB` (Auftragsbestätigung), `BE`
-  (Bestellung), `LS` (Lieferschein), `BR` (Brief). Exakte Reonic-Präfixe
-  UNKNOWN.
+- Format = **OBSERVED-Reonic-Templates** (`M3-UNKNOWN-RECON.md` §1d),
+  konfigurierbar über M3-00-Workspace-Stammdaten (F8.2):
+  Rechnung `Rechnung-{YEAR}-{MONTH}-{NUMBER}` · Gutschrift
+  `CRN-{YEAR}-{MONTH}-{DAY}-{NUMBER}` · Auftragsbestätigung
+  `OFC-{YEAR}-{MONTH}-{DAY}-{NUMBER}` · Bestellung
+  `PO-{YEAR}-{MONTH}-{DAY}-{NUMBER}` · Lieferschein
+  `DN-{YEAR}-{MONTH}-{DAY}-{NUMBER}` · Brief
+  `LE-{YEAR}-{MONTH}-{DAY}-{NUMBER}`.
+  Platzhalter: `{YEAR}`/`{MONTH}`/`{DAY}` = Ausstellungsdatum
+  (Europe/Berlin), `{NUMBER}` = fortlaufender Zähler aus
+  `workspace_document_number_format.counter` (M3-00 §4.2). Teilrechnungs-
+  Format `Abschlagsrechnung-{YEAR}-{MONTH}-{NUMBER}` ist für den
+  Teilrechnungs-Folgeslice notiert (Non-Goal M3-01).
+  *(Ersetzt die früheren DECIDED-Präfixe `RE/GU/AB/BE/LS/BR`/Padding 6.)*
 - **Verbrannte Nummern bleiben verbrannt:** `void` gibt die Nummer nicht frei;
   `lastSequence` ist monoton. Race-sichere Vergabe innerhalb der
   Issue-Transaktion (Row-Lock auf `commercial_document_number_series`,
@@ -604,8 +615,10 @@ P0–P2). **Visual-Gate** bleibt `INCONCLUSIVE` bis Eigentümer-Freigabe.
    exakter Job-Takt bleibt UNKNOWN.
 6. **Immutable `issued`** via JSON-Snapshot + SHA-256 (Muster
    `offer_variant_revision`); WORM/Object-Lock (GoBD) = Folgeslice.
-7. **Nummernkreis-Präfixe** `RE/GU/AB/BE/LS/BR`, Padding 6, Jahres-Serien —
-   Standard, konfigurierbar; exakte Reonic-Präfixe UNKNOWN.
+7. **Nummernkreis = OBSERVED-Templates** (`M3-UNKNOWN-RECON.md` §1d):
+   `Rechnung-{YEAR}-{MONTH}-{NUMBER}` bzw. `CRN/OFC/PO/DN/LE-{YEAR}-{MONTH}-
+   {DAY}-{NUMBER}`; konfigurierbar über M3-00 (F8.2). Teilrechnungs-Format
+   notiert für den Teilrechnungs-Slice.
 8. **Berichts-KPIs** wie §8 definiert (Kalendermonat Europe/Berlin);
    „Cashflow“ = Zahlungseingang als Proxi (ESTIMATE).
 9. **CSV-Export** UTF-8, `;`-getrennt, ISO-Datum, Euro-Dezimal aus Cent.
@@ -624,18 +637,22 @@ P0–P2). **Visual-Gate** bleibt `INCONCLUSIVE` bis Eigentümer-Freigabe.
 
 ### UNKNOWN
 
-1. Exakte Reonic-Definitionen der Berichts-KPIs (Cashflow vs. Einnahmen,
-   Vormonatsfenster) — eigene Definitionen sind DECIDED/ESTIMATE.
-2. Exaktes Nummernformat/Präfixe je Typ in Reonic (Einstellungen
-   „Rechnungsstellung“ nicht ausgewertet).
+1. Semantik der Berichts-KPIs (Cashflow vs. Einnahmen, genaues
+   Vormonatsfenster) — Labels/Untertitel OBSERVED („Kein Vormonat“ =
+   Vormonatsvergleich-Indikator, keine Tooltips; `M3-UNKNOWN-RECON.md` §4);
+   die Werte-Definition bleibt DECIDED/ESTIMATE (§8).
+2. ~~Exaktes Nummernformat/Präfixe je Typ~~ → RESOLVED: OBSERVED-Templates
+   (`M3-UNKNOWN-RECON.md` §1d, §6).
 3. Auto-`overdue`-Mechanik (Job-Takt, on-read vs. periodisch) und
    exakter Übergangszeitpunkt.
-4. Gutschrift-„Typ“-Enum (Filter „Typ“ in `credit-notes`) — Werte nicht
-   vollständig beobachtet (leerer Datenbestand).
-5. Dokument-Gruppen-Detailfelder (nur Spalte „Name“ + „0 Artikel“ beobachtet;
-   Detail-Ansicht nicht geöffnet).
+4. ~~Gutschrift-„Typ“-Enum~~ → RESOLVED: OBSERVED `Minderleistung` |
+   `Empfehlungsprämie` (+ „Ohne Typ“) — `M3-UNKNOWN-RECON.md` §2; als
+   `minderleistung|empfehlungspraemie` modelliert (§4).
+5. Dokument-Gruppen-Detailfelder — OBSERVED leerer Bestand (nur Spalte
+   „Name“, „0 Artikel“; `M3-UNKNOWN-RECON.md` §3): Detail bleibt UNKNOWN.
 6. Teilrechnungs-„Neu“-Dropdown-Semantik (Rechnung/Teilrechnung) — als
-   Folgeslice markiert, aber die exakte Reonic-Ausprägung bleibt UNKNOWN.
+   Folgeslice markiert, aber die exakte Reonic-Ausprägung bleibt UNKNOWN;
+   Format `Abschlagsrechnung-{YEAR}-{MONTH}-{NUMBER}` ist OBSERVED notiert.
 
 ---
 

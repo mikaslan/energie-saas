@@ -117,21 +117,33 @@ Error/Success/Disabled/Permission-Denied (§7).
 ### M300-02 — Nummernserien-Defaults je Dokumenttyp
 
 - **F-Nr:** F8.3 (Nummernkreise-Default) · **Akteur:** wie M300-01
-- **Route:** gleiche Einstellungsseite (Gruppe „Nummerierung“)
-- **JTBD:** je Dokumenttyp Präfix/Padding als Workspace-Default festlegen (Seed für M3-01-Serien)
+- **Route:** gleiche Einstellungsseite (Unter-Tab „Zahlenkreise“,
+  `tab=number-circles` — OBSERVED via `M3-UNKNOWN-RECON.md` §1d)
+- **JTBD:** je Dokumenttyp ein **Format-Template** als Workspace-Default
+  festlegen (Seed für M3-01-Serien) + Nummer-Zähler einsehen
 - **Trigger:** Nummerierungsgruppe bearbeiten; „Speichern“
 - **Vorbedingungen:** Workspace aktiv
-- **Happy Path:** je Typ Präfix+Padding setzen → M3-01 seedet neue Jahres-Serie daraus
-- **Varianten:** Defaults DECIDED `RE/GU/AB/BE/LS/BR`, Padding 6; konfigurierbar
-- **Eingabefelder:** Präfix (1–8, A-Z/0-9), Padding (1–9) je Typ (6 Typen)
-- **Validierungen:** Präfix non-empty, uppercase alnum; Padding 1–9
+- **Happy Path:** je Typ Template setzen → M3-01 rendert neue Belegnummern daraus
+- **Varianten:** OBSERVED-Defaults (Reonic, `M3-UNKNOWN-RECON.md` §1d):
+  Rechnung `Rechnung-{YEAR}-{MONTH}-{NUMBER}`; Gutschrift
+  `CRN-{YEAR}-{MONTH}-{DAY}-{NUMBER}`; Auftragsbestätigung
+  `OFC-{YEAR}-{MONTH}-{DAY}-{NUMBER}`; Bestellung
+  `PO-{YEAR}-{MONTH}-{DAY}-{NUMBER}`; Lieferschein
+  `DN-{YEAR}-{MONTH}-{DAY}-{NUMBER}`; Brief
+  `LE-{YEAR}-{MONTH}-{DAY}-{NUMBER}`. Teilrechnungs-Format
+  `Abschlagsrechnung-{YEAR}-{MONTH}-{NUMBER}` wird für den Teilrechnungs-
+  Folgeslice (M3-01 Non-Goal) mitgeführt.
+- **Eingabefelder:** Format-Template (1–120) je Typ; **Validierungen:**
+  Template non-empty; erlaubte Platzhalter ausschließlich
+  `{YEAR}`/`{MONTH}`/`{DAY}`/`{NUMBER}` (je mind. einmal `{NUMBER}`,
+  höchstens je einmal die Datums-Platzhalter); keine unbekannten Platzhalter
 - **Zustände:** — · **Übergänge:** — (Update)
 - **Persistente Nebenwirkungen:** `workspace_document_number_format` (Upsert je Typ)
 - **Berechtigung:** `invoicing.write` · **API-Operationen:** `getNumberFormats`, `upsertNumberFormat`
 - **Datenentitäten:** `workspace_document_number_format`
 - **Audit Events:** `workspace_document_number_format.updated`
-- **Evidence:** `ACSV` „Nummerierung“; `M201` `offer_number_series` · **Confidence:**
-  OBSERVED (Label), DECIDED (Präfixe/Padding), UNKNOWN (exakte Reonic-Formate)
+- **Evidence:** `M3-UNKNOWN-RECON.md` §1d (OBSERVED Formate + Platzhalter) ·
+  **Confidence:** OBSERVED (Formate/Labels), DECIDED (Template-Validierung)
 
 ### M300-03 — GoBD-Retention-Default
 
@@ -194,17 +206,26 @@ Unique wie bestehende Muster).
 
 1. **`workspace_invoicing_settings`** (Singleton je Workspace):
    - `workspaceId` uuid **PK** → `workspace.id`
-   - `companyName` text not null (1–160)
-   - `companyLegalForm` text nullable (1–80)
-   - `companyTaxId` text nullable (1–64) — sensitive Geschäftsdaten
+   - `companyName` text not null (1–160) — OBSERVED Pflicht „Name des Unternehmens“
+   - `companyEmail` text not null (3–254, E-Mail-CHECK) — OBSERVED Pflicht „Email“
+   - `companyLegalForm` text nullable (1–80) — OBSERVED „Behörde“ (Bezeichnung der
+     zuständigen Behörde; nicht „Rechtsform“ — Feldname angepasst: `companyAuthority`)
+   - `companyRegisterNumber` text nullable (1–64) — OBSERVED „Registernummer“
+   - `companyTaxId` text nullable (1–64) — OBSERVED „USt-IdNr.“, sensitive
    - `companyAddressLine1` text not null (1–160)
    - `companyAddressLine2` text nullable (1–160)
    - `companyPostalCode` text not null (1–20)
    - `companyCity` text not null (1–120)
    - `companyCountry` text not null, CHECK `in ('DE','AT','CH','FR','UK','JE')`
-   - `paymentAccountHolder` text nullable (1–160)
+     — OBSERVED Pflicht „Land“ (Select)
+   - `accountingMethod` text not null default `'accrual'`, CHECK
+     `in ('accrual','cash')` — OBSERVED „Buchhaltungsmethode“
+     („Periodengerecht“/„Zahlungsbasiert“; bei `cash` ergänzt M3-01 die
+     Notiz „Umsatzsteuer nach vereinnahmten Entgelten“ in
+     Rechnungen/Teilrechnungen/Gutschriften — DE/FR/CH/UK)
+   - `paymentAccountHolder` text nullable (1–160) — OBSERVED „Name des Kontoinhabers“
    - `paymentIban` text nullable (1–34)
-   - `paymentBic` text nullable (8–11)
+   - `paymentBic` text nullable (8–11) — OBSERVED „BIC / SWIFT“
    - `goebdRetentionDefaultDays` integer not null default 3650, CHECK `1…36500`
    - `revision` integer not null default 1, CHECK `>= 1`
    - `createdBy`/`updatedBy` uuid → membership; `createdAt`/`updatedAt` timestamptz
@@ -215,19 +236,29 @@ Unique wie bestehende Muster).
    - `workspaceId` uuid not null → `workspace.id`
    - `type` text not null, CHECK `in ('invoice','credit_note','order_confirmation',
      'purchase_order','delivery_note','letter')`
-   - `prefix` text not null (1–8, uppercase alnum via CHECK-Regex)
-   - `padding` integer not null, CHECK `1…9`
+   - `formatTemplate` text not null (1–120) — OBSERVED-Platzhalter
+     `{YEAR}`/`{MONTH}`/`{DAY}`/`{NUMBER}`, validiert im Service (CHECK nur:
+     enthält `{NUMBER}`, keine unbekannten `{…}`-Token via Regex)
+   - `counter` bigint not null default 0, CHECK `>= 0` — Nummer-Zähler,
+     **nur M3-01 inkrementiert** (M3-00 setzt/liest, kein manueller Reset)
    - `updatedAt` timestamptz; **PK** `(workspaceId, type)`
-   - Defaults (DECIDED): `RE`/`GU`/`AB`/`BE`/`LS`/`BR`, Padding 6
+   - Defaults (OBSERVED, `M3-UNKNOWN-RECON.md` §1d):
+     `Rechnung-{YEAR}-{MONTH}-{NUMBER}` /
+     `CRN-{YEAR}-{MONTH}-{DAY}-{NUMBER}` /
+     `OFC-{YEAR}-{MONTH}-{DAY}-{NUMBER}` /
+     `PO-{YEAR}-{MONTH}-{DAY}-{NUMBER}` /
+     `DN-{YEAR}-{MONTH}-{DAY}-{NUMBER}` /
+     `LE-{YEAR}-{MONTH}-{DAY}-{NUMBER}`
 
 > **Hinweis Typanzahl:** M3-01 sprach von „7 Dokumenttypen“ = 6 Dokumenttypen +
 > Dokumentgruppen-Übersicht. Dokumentgruppen besitzen **keine** eigene
 > Nummernserie; daher 6 `type`-Werte. Skizze, kein Schema-Contract — exakter
 > Drizzle-/CHECK-Vertrag bei CONTRACTED (schema-hash-gepinnt).
 
-**Seeding-Vertrag M3-01:** `commercial_document_number_series` liest Präfix/
-Padding beim Anlegen einer neuen Jahres-Serie aus
-`workspace_document_number_format` (M3-01 §6); das M3-00-Default ist die Quelle.
+**Seeding-Vertrag M3-01:** `commercial_document_number_series` rendert die
+Belegnummer beim Ausstellen aus `workspace_document_number_format.formatTemplate`
+(`{YEAR}`/`{MONTH}`/`{DAY}` = Ausstellungsdatum Europe/Berlin, `{NUMBER}` =
+fortlaufender `counter`; M3-01 §6); das M3-00-Default ist die Quelle.
 
 ---
 
@@ -346,8 +377,11 @@ unabhängiger Review ohne offene P0–P2. **Visual-Gate** `INCONCLUSIVE`.
 2. **Land-Enum `DE|AT|CH|FR|UK|JE`** (F8.2 DOCUMENTED).
 3. **Precondition-Gate fail-closed** als `PreconditionConflict` in M3-01, nicht
    als stiller Default („Issuing Details Pflicht“).
-4. **Nummernserien-Defaults** `RE/GU/AB/BE/LS/BR`, Padding 6 (konsistent mit
-   M3-01 §6); konfigurierbar.
+4. **Nummernserien-Defaults = OBSERVED-Formate** (Reonic,
+   `M3-UNKNOWN-RECON.md` §1d): `Rechnung-{YEAR}-{MONTH}-{NUMBER}`,
+   `CRN-{YEAR}-{MONTH}-{DAY}-{NUMBER}`, `OFC-…`, `PO-…`, `DN-…`, `LE-…` —
+   ersetzt die früheren DECIDED-Präfixe `RE/GU/AB/BE/LS/BR`/Padding 6;
+   konfigurierbar (Template + Platzhalter-Validierung, M300-02).
 5. **`goebd_retention_default_days` = 3650** (10 Jahre, ESTIMATE), Bereich 1…36500.
 6. **DTO-Minimierung:** `companyTaxId`/`paymentIban` nur bei
    Issuing-Details-Berechtigung im Readmodell.
@@ -363,15 +397,20 @@ unabhängiger Review ohne offene P0–P2. **Visual-Gate** `INCONCLUSIVE`.
     SECURITY-Folgeslice dokumentiert.
 11. **Nicht-DE-Land blockt Geld-Ausstellung** (Root O4): fail-closed mit
     klarem Hinweis bis Steuer-Folgeslice; `letter` (ohne Betrag) bleibt möglich.
-12. **Dokumenttyp-eigene Prefixe** (Root O5): `RE/GU/AB/BE/LS/BR` behalten;
-    `offer_number_series` (ANG) bleibt unangetastet — getrennte
-    Nummernwelten Angebot vs. kaufmännische Dokumente.
+12. **OBSERVED-Formate statt eigener Prefixe** (Root O5 superseded):
+   `offer_number_series` (ANG) bleibt unangetastet; die kaufmännische
+   Nummernwelt nutzt ab sofort die OBSERVED-Templates (§4.2/M300-02) —
+   getrennte Nummernwelten Angebot vs. kaufmännische Dokumente.
 
 ## 13. Verbleibende UNKNOWN (zur Root-/Owner-Klärung)
 
-1. Konkrete Feldnamen/-validierungen der Reonic-Unterseite `issuing-details`
-   (nur Feldgruppen-Labels beobachtet).
-2. Exakte Nummernformate/Präfixe je Typ in Reonic.
+1. Exakte Feld-**Validierungen** (Längen, Formate) der Reonic-Unterseite
+   `issuing-details` — Feldnamen/Pflichtfelder sind OBSERVED
+   (`M3-UNKNOWN-RECON.md` §1a–1c: Name*/Email*/Land*, USt-IdNr, Behörde,
+   Registernummer, Adresse, Buchhaltungsmethode, Bankkonto, Textvorlagen);
+   nur die Validierungsregeln selbst bleiben UNKNOWN → eigene = ESTIMATE.
+2. ~~Exakte Nummernformate/Präfixe je Typ~~ → RESOLVED: OBSERVED
+   (`M3-UNKNOWN-RECON.md` §1d, DECIDED 4).
 3. Exakte GoBD-Aufbewahrungsfrist (Default 3650 = ESTIMATE).
 4. Mehrstaatliche Steuer-/Zahlungs-Anforderungen (Land-Enum belegt, aber
    AT/CH/FR/UK/JE-Detailregeln UNKNOWN).
