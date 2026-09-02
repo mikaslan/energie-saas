@@ -75,6 +75,27 @@ gestellte Client-ID, `clientName` = WM…, `locale` = de-DE, `currency` = EUR,
 Key ist technisch auf Lesen begrenzt — Mutationen sind damit ausgeschlossen,
 bis der Eigentümer ggf. einen anderen Key-Typ freigibt.
 
+## 6. Eigendaten-Import (Eigentümer-Entscheidung 2026-09-02)
+
+Der Eigentümer hat am 02.09.2026 ausdrücklich entschieden und freigegeben:
+Die im EIGENEN Workspace (clientId `0bc6e4bf…`) angelegten Produkte/Komponenten
+sowie die vom Eigentümer selbst fotografierten Produktbilder dürfen über die
+API ausgelesen und in den eigenen Katalog übernommen werden. Begründung des
+Eigentümers: Die Produkte hat er selbst angelegt, die Fotos selbst geschossen;
+das Risiko trägt er bewusst.
+
+Geltungsbereich (bewusst eng):
+- NUR der eigene Workspace (Key-Scope), NUR eigene Komponenten-Records.
+- NUR Bilder, die der Eigentümer als eigene Aufnahmen bestätigt; URLs, die auf
+  Hersteller-Domains zeigen, werden NICHT still übernommen, sondern dem
+  Eigentümer zur Einzelfreigabe vorgelegt.
+- Keine Reonic-Texte, -Beschreibungen Dritter, -Datenblätter oder Daten
+  anderer Workspaces; Reonics globale Komponenten-Datenbank bleibt tabu.
+- Übernahme in unseren Katalog ausschließlich als DRAFT mit Provenienz
+  „eigene WMEE-Daten (Reonic-Workspace-Export 2026-09-02)" über den
+  autorisierten Importpfad (Muster M1-08b); Preise werden als EK/VK des
+  Eigentümers geführt, nicht als Marktdaten.
+
 ## 7. Evidence-Klassifikation
 
 Antworten dieser API werden als OBSERVED geführt, soweit sie aktuelles,
