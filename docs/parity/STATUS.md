@@ -109,3 +109,11 @@ Abnahmen als prüfbare Lieferartefakte erhalten.
    `Rechner → Lead → Kontakt → Standort/Adresskorrektur → Energieprofil/Kalkulation → Katalog/Speicher → Produktauflösung →`
    `Angebot → Variante → PDF → Signatur → Installation → Rechnung → Kundenportal`.
 5. Danach F1–F16 capabilityweise bis VERIFIED schließen.
+
+## 2026-09-02 (21:43) — Lizenz-Modus aktiv
+
+Reonic GmbH bestätigt schriftlich die Nutzungs-/Veränderungs-/Vertriebsrechte
+an Software, Quellcode und Datenbeständen für energie-saas (siehe
+`docs/legal/LICENSE-GRANT.md`). Thema GESCHLOSSEN. Datenbank vollständig
+nutzbar, Codebase-Übernahme erlaubt wo sinnvoll; visuelle Referenz bleibt
+WMEE; Push-/Deploy-Regeln unverändert.
