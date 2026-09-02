@@ -517,11 +517,13 @@ export async function changeProjectOutcome(
   // Outbox-Insert + Dispatch in derselben Transaktion wie das Project-Update.
   // Keine PII: die Zeile traegt nur Projekt-/Idempotenzbezug.
   if (command.kind === "mark_cannot_fulfill") {
-    const notification = await tx.execute<{ id: string }>(sql`
+    // Kein RETURNING: app_runtime hat bewusst KEIN SELECT auf der Tabelle
+    // (Kapsel-only). Der Dispatch haengt am Project; die Notification-ID wird
+    // in enqueue_customer_notification Definer-seitig aufgeloest.
+    await tx.execute(sql`
       insert into customer_notification (workspace_id, project_id, idempotency_key)
       values (${ctx.workspaceId}::uuid, ${command.projectId}::uuid,
               ${`cannot-fulfil:${command.projectId}`})
-      returning id
     `);
     // Dispatch in derselben Transaktion wie Project-Update + Outbox-Insert.
     // In der Test-DB (ohne pgboss-Schema) existiert die Dispatch-Funktion nicht;
@@ -535,7 +537,7 @@ export async function changeProjectOutcome(
     if (dispatchAvailable.rows[0]?.has_dispatch) {
       await tx.execute(sql`
         select pgboss.enqueue_customer_notification(
-          ${ctx.workspaceId}::uuid, ${notification.rows[0]!.id}::uuid
+          ${ctx.workspaceId}::uuid, ${command.projectId}::uuid
         )
       `);
     }

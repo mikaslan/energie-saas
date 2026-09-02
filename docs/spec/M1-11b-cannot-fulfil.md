@@ -468,7 +468,12 @@ Funktionen; Trigger werden umgehängt, alte Funktionen entfernt).
 
 - Eventtyp: `project.outcome_cannot_fulfil`.
 - Queue: `notification.customer`.
-- Dispatch: `pgboss.enqueue_customer_notification(uuid, uuid)`.
+- Dispatch: `pgboss.enqueue_customer_notification(workspace_id uuid,
+  project_id uuid)` — projektbasiert, löst die Notification-ID Definer-seitig
+  auf. Der Service schreibt die Outbox-Zeile **ohne `RETURNING`** und braucht
+  deshalb keinerlei SELECT auf `customer_notification` (RETURNING verlangt in
+  PostgreSQL SELECT auf die Rückgabespalten). Design bleibt Kapsel-only:
+  `app_runtime` hat nur INSERT.
 - Mailvorlage: `cannot-fulfil.v1` (einzige feste interne Vorlage; kein Editor,
   kein Freitext, kein PII).
 

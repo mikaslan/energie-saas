@@ -1050,7 +1050,7 @@ BEGIN
   EXECUTE $m111b_dispatch_ddl$
     CREATE FUNCTION pgboss.enqueue_customer_notification(
       workspace_id uuid,
-      notification_id uuid
+      project_id uuid
     )
     RETURNS void
     LANGUAGE plpgsql
@@ -1060,6 +1060,7 @@ BEGIN
     DECLARE
       queue_config pgboss.queue%ROWTYPE;
       dispatch_payload jsonb;
+      dispatch_notification_id uuid;
       dispatch_attempt integer;
       dispatch_key text;
       dispatch_start_after timestamptz;
@@ -1071,13 +1072,19 @@ BEGIN
         RAISE EXCEPTION 'M1-11b dispatch: workspace context mismatch'
           USING ERRCODE = '42501';
       END IF;
-      SELECT notification_record.attempt_count,
+      -- Der Dispatch haengt am Project statt an der Notification-ID: so braucht
+      -- app_runtime keinerlei SELECT auf customer_notification (kein
+      -- RETURNING-Zwang) und die Outbox-Zeile wird hier Definer-seitig aufgeloest.
+      SELECT notification_record.id,
+             notification_record.attempt_count,
              notification_record.next_attempt_at
-        INTO dispatch_attempt, notification_next_attempt_at
+        INTO dispatch_notification_id, dispatch_attempt, notification_next_attempt_at
         FROM public.customer_notification AS notification_record
        WHERE notification_record.workspace_id = $1
-         AND notification_record.id = $2
-         AND notification_record.status IN ('queued', 'failed_retriable');
+         AND notification_record.project_id = $2
+         AND notification_record.status IN ('queued', 'failed_retriable')
+       ORDER BY notification_record.created_at DESC
+       LIMIT 1;
       IF NOT FOUND THEN
         RAISE EXCEPTION 'M1-11b dispatch: keine zustellbare Outbox-Zeile'
           USING ERRCODE = '42501';
@@ -1085,13 +1092,13 @@ BEGIN
       dispatch_attempt := dispatch_attempt + 1;
       -- Review-Befund P1-2: singletonKey aus Notification-ID + Attempt, damit
       -- parallele Worker denselben Versuch nicht doppelt zustellen.
-      dispatch_key := $2::text || ':' || dispatch_attempt::text;
+      dispatch_key := dispatch_notification_id::text || ':' || dispatch_attempt::text;
       dispatch_start_after := notification_next_attempt_at;
       IF dispatch_start_after IS NULL THEN
         dispatch_start_after := pg_catalog.statement_timestamp();
       END IF;
       PERFORM pg_catalog.pg_advisory_xact_lock(
-        pg_catalog.hashtextextended($2::text, 1701734778)
+        pg_catalog.hashtextextended(dispatch_notification_id::text, 1701734778)
       );
       SELECT * INTO queue_config
         FROM pgboss.queue AS queue
@@ -1109,7 +1116,7 @@ BEGIN
       dispatch_payload := pg_catalog.jsonb_build_object(
         'schemaVersion', 'customer-notification-dispatch.v1',
         'workspaceId', $1::text,
-        'notificationId', $2::text,
+        'notificationId', dispatch_notification_id::text,
         'attemptNumber', dispatch_attempt
       );
       IF EXISTS (

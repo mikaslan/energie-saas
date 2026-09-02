@@ -2223,7 +2223,7 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasCustomerNotification ? [
         "enqueue_customer_notification(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
-          "search_path=pg_catalog:ac6549976f30a2a177668f5ffaa97c95bdc8e9cc7f38269ad419710598b5ba73",
+          "search_path=pg_catalog:59a1bd79ce43ccfe08e415136f1142e932ddd44344fcc2aa23c6b87ca4899256",
       ] : []),
     ],
     "Worker-Dispatch-Sicherheitsvertrag",
