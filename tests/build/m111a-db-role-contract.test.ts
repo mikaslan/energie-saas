@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const ROLE_CONTRACT = "scripts/db-role-contract.mts";
 const MIGRATION = "drizzle/0039_m1_11a_project_outcome.sql";
+const M111B_MIGRATION = "drizzle/0040_m1_11b_cannot_fulfill.sql";
 
 const RUNTIME_ROUTINES = [
   "_m111a_actor_can_manage_loss_reasons(uuid)",
@@ -15,9 +16,9 @@ const RUNTIME_ROUTINES = [
 const PRIVATE_ROUTINES = [
   "_m111a_erasure_scrub_allowed(uuid,uuid)",
   "_m111a_guard_loss_reason()",
-  "_m111a_guard_outcome_evidence_insert()",
-  "_m111a_guard_project_outcome()",
-  "_m111a_record_project_outcome()",
+  "_m111b_guard_outcome_evidence_insert()",
+  "_m111b_guard_project_outcome()",
+  "_m111b_record_project_outcome()",
 ] as const;
 
 function compactSql(value: string): string {
@@ -41,6 +42,16 @@ function functionBody(migration: string, name: string): string {
   const match = migration.slice(functionStart).match(/AS \$(\w+)\$([\s\S]*?)\$\1\$/u);
   expect(match).not.toBeNull();
   return match?.[2] ?? "";
+}
+
+async function functionBodyAcrossMigrations(name: string): Promise<string> {
+  const sources = await Promise.all([
+    readFile(MIGRATION, "utf8"),
+    readFile(M111B_MIGRATION, "utf8"),
+  ]);
+  const source = sources.find((candidate) => candidate.includes(`CREATE FUNCTION public.${name}`));
+  if (!source) throw new Error(`${name} fehlt in 0039 und 0040`);
+  return functionBody(source, name);
 }
 
 describe("M1-11a DB-Rollenmanifest", () => {
@@ -90,16 +101,13 @@ describe("M1-11a DB-Rollenmanifest", () => {
     }
   });
 
-  it("pinnt alle acht aktuellen 0039-Funktionskörper per SHA-256", async () => {
-    const [source, migration] = await Promise.all([
-      readFile(ROLE_CONTRACT, "utf8"),
-      readFile(MIGRATION, "utf8"),
-    ]);
+  it("pinnt alle acht aktuellen 0039/0040-Funktionskörper per SHA-256", async () => {
+    const source = await readFile(ROLE_CONTRACT, "utf8");
 
     for (const signature of [...RUNTIME_ROUTINES, ...PRIVATE_ROUTINES]) {
       const name = signature.slice(0, signature.indexOf("("));
       const hash = createHash("sha256")
-        .update(functionBody(migration, name))
+        .update(await functionBodyAcrossMigrations(name))
         .digest("hex");
       expect(source, `${name} ist nicht im Rollenvertrag gepinnt`).toContain(hash);
     }

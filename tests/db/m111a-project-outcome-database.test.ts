@@ -188,8 +188,8 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     expect(migration).toContain("M1-11a kann bestehende Lost-Projects ohne strukturierten Grund nicht migrieren");
     expect(migration).toMatch(/SET closed_at = updated_at[\s\S]+outcome IN \('won', 'cannot_fulfill'\)/u);
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 39,
-      tag: "0039_m1_11a_project_outcome",
+      idx: 40,
+      tag: "0040_m1_11b_cannot_fulfill",
     });
   });
 

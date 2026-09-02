@@ -29,6 +29,7 @@ type LegacyProject = {
 
 const PRE_M111A_MIGRATION_INDEX = 38;
 const M111A_MIGRATION_INDEX = 39;
+const M111B_MIGRATION_INDEX = 40;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 
@@ -296,7 +297,7 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         exact_backfill: null,
         finite_close: null,
       });
-      expect(await migrationCount(pool)).toBe(M111A_MIGRATION_INDEX + 1);
+      expect(await migrationCount(pool)).toBe(M111B_MIGRATION_INDEX + 1);
       expect(await projectForceRls(pool)).toBe(true);
       const reasonRls = await pool.query<{
         enabled: boolean;
@@ -362,7 +363,7 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         outcome_revision: 0,
         closed_at: null,
       }]);
-      expect(await migrationCount(pool)).toBe(M111A_MIGRATION_INDEX + 1);
+      expect(await migrationCount(pool)).toBe(M111B_MIGRATION_INDEX + 1);
       expect(await projectForceRls(pool)).toBe(true);
     } finally {
       await pool.end().catch(() => undefined);
@@ -423,7 +424,7 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         exact_backfill: true,
       });
       expect(repaired.rows[0]?.closed_at.toISOString()).toBe(repairedAt);
-      expect(await migrationCount(pool)).toBe(M111A_MIGRATION_INDEX + 1);
+      expect(await migrationCount(pool)).toBe(M111B_MIGRATION_INDEX + 1);
       expect(await projectForceRls(pool)).toBe(true);
     } finally {
       await pool.end().catch(() => undefined);

@@ -2134,6 +2134,7 @@ export async function verifyRoleContract(
       and routine.proname in (
         'enqueue_catalog_import_cleanup_v1',
         'enqueue_catalog_import_v1',
+        'enqueue_customer_notification',
         'enqueue_offer_issuance',
         'enqueue_offer_pdf_draft',
         'enqueue_offer_release_candidate',
@@ -2185,6 +2186,10 @@ export async function verifyRoleContract(
       ...(hasOfferIssuance ? [
         "enqueue_offer_issuance(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:69b7b615d8d91e3ee124499f2cb00847a190bef05f34d05d9a07ef2deb91ff52",
+      ] : []),
+      ...(hasCustomerNotification ? [
+        "enqueue_customer_notification(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:ac6549976f30a2a177668f5ffaa97c95bdc8e9cc7f38269ad419710598b5ba73",
       ] : []),
     ],
     "Worker-Dispatch-Sicherheitsvertrag",
@@ -2463,7 +2468,7 @@ export async function verifyRoleContract(
       ...(hasCustomerNotification ? [
         "_m111b_guard_customer_notification():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
-          "0aadf749b33344c878578d1d40a1ff95a784e124f8bf4d9443cfd3ea851b4760",
+          "665a1b06f3891baf5b7c11f01ea90b013a3da9f44f94bbcaa62c72ac3fcffd63",
         "_m111b_guard_delivery_attempt():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
           "5870c85b721ea15d44af62cfa7d154ba5f7b64dae650718cb8b3607a16b5def8",
@@ -2475,13 +2480,13 @@ export async function verifyRoleContract(
           "940efd86798ce1072d7ea4a5c2c6e37f17f259f4b8376f1bbe304e01dab99412",
         "_m111b_worker_cancel_erased(uuid, uuid):void:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
-          "09ec0ad7f11a3a0c54a472a44aaca7fbc7ed90d287972a0e53c284e5e3b72522",
+          "6ef5110ecb0f89e11af56c580e0378a5c4a13704bcd832da3a6ace2437291050",
         "_m111b_worker_deliver(uuid, uuid, integer, text, text):void:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
-          "b334ae6c6e0e9278cd32185d45b33fabe711364c481ce5d2ee9c8eeffb013e27",
+          "1ce2a012ab30db04fe8da3beb8d7a2baf5b06101298bfd34ccbbd66441e7d9bb",
         "_m111b_worker_resolve_recipient(uuid, uuid):text:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
-          "5b4a3a308ee8fe2b2b751d3f545244a3cb2721545761c188add96e715725c046",
+          "b5ce5d43143330224d0e095c20c9a3d8215fd57445299a5bb02b60d849e62d13",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",

@@ -462,4 +462,72 @@ describe("M1-11b Cannot-Fulfil Service (DB)", () => {
       });
     });
   });
+
+  async function createQueuedNotification(): Promise<string> {
+    const contactId = randomUUID();
+    const siteId = randomUUID();
+    await withTenantOn(testPool, f.workspaceId, async (tx) => {
+      await tx.execute(sql`
+        insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
+        values (${contactId}::uuid, ${f.workspaceId}::uuid, 'B1/B2 Contact',
+          ${`${contactId}@m111b.test`}, ${`${contactId}@m111b.test`})
+      `);
+      await tx.execute(sql`
+        insert into site (id, workspace_id, contact_id, label)
+        values (${siteId}::uuid, ${f.workspaceId}::uuid, ${contactId}::uuid, 'B1/B2 Site')
+      `);
+    });
+    const projectId = await seedOpenProject(contactId, siteId);
+    await asActor(f.workspaceId, f.editorId, (tx, ctx) =>
+      changeProjectOutcome(tx, ctx, cannotFulfilCommand(projectId)));
+    const notification = await withTenantOn(testPool, f.workspaceId, async (tx) => {
+      const r = await tx.execute<{ id: string }>(sql`
+        select id from customer_notification where project_id = ${projectId}::uuid
+      `);
+      return r.rows[0]!.id;
+    });
+    return notification;
+  }
+
+  it("P1-B1: Retry-Erfolg nach failed_retriable hebt den Status nach, ohne zweite Evidenz", async () => {
+    const notificationId = await createQueuedNotification();
+    await withTenantOn(testPool, f.workspaceId, async (tx) => {
+      await tx.execute(sql`
+        select public._m111b_worker_deliver(
+          ${f.workspaceId}::uuid, ${notificationId}::uuid, 1, 'failed_retriable', 'transport_unavailable'
+        )
+      `);
+      await tx.execute(sql`
+        select public._m111b_worker_deliver(
+          ${f.workspaceId}::uuid, ${notificationId}::uuid, 1, 'delivered', null
+        )
+      `);
+      const status = await tx.execute<{ status: string }>(sql`
+        select status from customer_notification where id = ${notificationId}::uuid
+      `);
+      expect(status.rows[0]?.status).toBe("delivered");
+      const attempts = await tx.execute<{ count: number }>(sql`
+        select count(*)::int as count from customer_notification_delivery_attempt
+        where notification_id = ${notificationId}::uuid
+      `);
+      expect(attempts.rows[0]?.count).toBe(1);
+    });
+  });
+
+  it("P1-B2: resolve_recipient liefert fuer nicht-zustellbare (stornierte) Zeilen NULL", async () => {
+    const notificationId = await createQueuedNotification();
+    await withTenantOn(testPool, f.workspaceId, async (tx) => {
+      await tx.execute(sql`
+        update customer_notification
+           set status = 'cancelled_manual', cancelled_at = now(), updated_at = now()
+         where id = ${notificationId}::uuid
+      `);
+      const resolved = await tx.execute<{ email: string | null }>(sql`
+        select public._m111b_worker_resolve_recipient(
+          ${f.workspaceId}::uuid, ${notificationId}::uuid
+        ) as email
+      `);
+      expect(resolved.rows[0]?.email).toBeNull();
+    });
+  });
 });

@@ -26,6 +26,7 @@ import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
 import {
   CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
   CATALOG_IMPORT_QUEUE_OPTIONS,
+  CUSTOMER_NOTIFICATION_QUEUE_OPTIONS,
   OFFER_ISSUANCE_QUEUE_OPTIONS,
   OFFER_PDF_QUEUE_OPTIONS,
   OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
@@ -233,6 +234,10 @@ async function installPgBoss(workerUrl: string): Promise<void> {
     await boss.createQueue(
       "offer-issuance.render.v1",
       OFFER_ISSUANCE_QUEUE_OPTIONS,
+    );
+    await boss.createQueue(
+      "notification.customer",
+      CUSTOMER_NOTIFICATION_QUEUE_OPTIONS,
     );
   } finally {
     await boss.stop({ graceful: false }).catch(() => undefined);

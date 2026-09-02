@@ -30,6 +30,7 @@ describe("M1-05 Modulgrenzen", () => {
       "ProjectLossReasonNotFoundError",
       "ProjectLossReasonUnavailableError",
       "ProjectLossReasonValidationError",
+      "ProjectOutcomeCannotFulfilLockedError",
       "ProjectOutcomeConflictError",
       "ProjectOutcomeIllegalTransitionError",
       "ProjectOutcomeNotFoundError",

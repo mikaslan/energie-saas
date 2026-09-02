@@ -188,10 +188,17 @@ BEGIN
   END IF;
 
   IF OLD.status = NEW.status THEN
-    -- Reiner Dispatch-/Retry-Fortschritt ohne Statuswechsel.
+    -- P2-B6: Reiner Dispatch-/Retry-Fortschritt ohne Statuswechsel. Nur
+    -- attempt_count, next_attempt_at und dispatched_at duerfen sich bewegen;
+    -- Evidenzfelder (delivered_at/failed_at/cancelled_at/error*) bleiben fix.
     IF NEW.attempt_count < OLD.attempt_count
-       OR NEW.attempt_count > OLD.attempt_count + 1 THEN
-      RAISE EXCEPTION 'customer_notification attempt_count driftet'
+       OR NEW.attempt_count > OLD.attempt_count + 1
+       OR NEW.delivered_at IS DISTINCT FROM OLD.delivered_at
+       OR NEW.failed_at IS DISTINCT FROM OLD.failed_at
+       OR NEW.cancelled_at IS DISTINCT FROM OLD.cancelled_at
+       OR NEW.error_code IS DISTINCT FROM OLD.error_code
+       OR NEW.error_retryable IS DISTINCT FROM OLD.error_retryable THEN
+      RAISE EXCEPTION 'customer_notification Same-Status-Update darf nur Dispatch-Fortschritt aendern'
         USING ERRCODE = '23514';
     END IF;
   ELSIF OLD.status IN ('queued', 'failed_retriable')
@@ -666,12 +673,13 @@ SET search_path = pg_catalog
 AS $m111b_resolve_recipient$
 DECLARE
   recipient_email text;
+  notification_status text;
 BEGIN
   PERFORM pg_catalog.set_config(
     'app.workspace_id', requested_workspace_id::text, true
   );
-  SELECT contact_record.email_primary
-    INTO recipient_email
+  SELECT notification_record.status, contact_record.email_primary
+    INTO notification_status, recipient_email
     FROM public.customer_notification AS notification_record
     JOIN public.project AS project_record
       ON project_record.workspace_id = notification_record.workspace_id
@@ -685,6 +693,11 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'M1-11b recipient: Notification, Projekt oder Contact fehlt'
       USING ERRCODE = '23503';
+  END IF;
+  -- P1-B2: nur zustellbare Zeilen werden aufgeloest; Storno/Zustellung-schon-erfolgt
+  -- liefert NULL, damit der Handler VOR transport.send abbricht.
+  IF notification_status NOT IN ('queued', 'failed_retriable') THEN
+    RETURN NULL;
   END IF;
   RETURN recipient_email;
 END
@@ -706,6 +719,8 @@ DECLARE
   mutation_time timestamptz := pg_catalog.transaction_timestamp();
   notification_status text;
   notification_attempt_count integer;
+  effective_outcome text;
+  effective_error_class text;
 BEGIN
   PERFORM pg_catalog.set_config(
     'app.workspace_id', requested_workspace_id::text, true
@@ -719,17 +734,6 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
 
-  -- Idempotenter Doppel-Dispatch: existiert der Versuch bereits, ist die
-  -- Zustellung schon verbucht und es entsteht KEINE zweite Evidenz.
-  IF EXISTS (
-    SELECT 1 FROM public.customer_notification_delivery_attempt AS attempt_record
-     WHERE attempt_record.workspace_id = requested_workspace_id
-       AND attempt_record.notification_id = requested_notification_id
-       AND attempt_record.attempt_number = requested_attempt_number
-  ) THEN
-    RETURN;
-  END IF;
-
   SELECT notification_record.status, notification_record.attempt_count
     INTO notification_status, notification_attempt_count
     FROM public.customer_notification AS notification_record
@@ -740,6 +744,36 @@ BEGIN
     RAISE EXCEPTION 'M1-11b deliver: Outbox-Zeile fehlt'
       USING ERRCODE = '23503';
   END IF;
+
+  -- P1-B1: idempotenter Doppel-Dispatch/Retry erzeugt keine zweite Evidenz,
+  -- zieht aber den Status nach, wenn ein retriable Fehlversuch jetzt Erfolg/final wird.
+  IF EXISTS (
+    SELECT 1 FROM public.customer_notification_delivery_attempt AS attempt_record
+     WHERE attempt_record.workspace_id = requested_workspace_id
+       AND attempt_record.notification_id = requested_notification_id
+       AND attempt_record.attempt_number = requested_attempt_number
+  ) THEN
+    IF requested_outcome = 'delivered' AND notification_status = 'failed_retriable' THEN
+      UPDATE public.customer_notification AS notification_record
+         SET status = 'delivered', delivered_at = mutation_time,
+             failed_at = NULL, error_code = NULL, error_retryable = NULL,
+             cancelled_at = NULL, updated_at = mutation_time
+       WHERE notification_record.workspace_id = requested_workspace_id
+         AND notification_record.id = requested_notification_id
+         AND notification_record.status = 'failed_retriable';
+    ELSIF requested_outcome = 'failed_final'
+          AND notification_status IN ('queued', 'failed_retriable') THEN
+      UPDATE public.customer_notification AS notification_record
+         SET status = 'failed_final', failed_at = mutation_time,
+             error_code = requested_error_class, error_retryable = false,
+             cancelled_at = NULL, updated_at = mutation_time
+       WHERE notification_record.workspace_id = requested_workspace_id
+         AND notification_record.id = requested_notification_id
+         AND notification_record.status IN ('queued', 'failed_retriable');
+    END IF;
+    RETURN;
+  END IF;
+
   IF notification_status NOT IN ('queued', 'failed_retriable') THEN
     RAISE EXCEPTION 'M1-11b deliver: Outbox-Zeile ist nicht zustellbar'
       USING ERRCODE = '23514';
@@ -749,33 +783,41 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
 
-  -- Review-Befund P1-2: Evidenz (record) wird in derselben Transaktion wie der
-  -- Statusuebergang geschrieben; der Idempotenzschluessel ist (notification_id,
-  -- attempt_number). Ein idempotenter Doppel-Dispatch erzeugt keine zweite Zeile.
-  BEGIN
-    INSERT INTO public.customer_notification_delivery_attempt (
-      workspace_id, notification_id, attempt_number, outcome, error_class, occurred_at
-    ) VALUES (
-      requested_workspace_id, requested_notification_id, requested_attempt_number,
-      requested_outcome, requested_error_class, mutation_time
-    );
-  EXCEPTION WHEN unique_violation THEN
-    RETURN; -- idempotenter Doppel-Dispatch: keine zweite Evidenz
-  END;
+  -- P2-B4: Attempt-Deckel — nach 10 Versuchen wird retriable zu failed_final.
+  effective_outcome := requested_outcome;
+  effective_error_class := requested_error_class;
+  IF requested_outcome = 'failed_retriable' AND requested_attempt_number >= 10 THEN
+    effective_outcome := 'failed_final';
+    effective_error_class := COALESCE(requested_error_class, 'transport_unavailable');
+  END IF;
+
+  INSERT INTO public.customer_notification_delivery_attempt (
+    workspace_id, notification_id, attempt_number, outcome, error_class, occurred_at
+  ) VALUES (
+    requested_workspace_id, requested_notification_id, requested_attempt_number,
+    effective_outcome, effective_error_class, mutation_time
+  );
 
   UPDATE public.customer_notification AS notification_record
      SET attempt_count = requested_attempt_number,
          dispatched_at = COALESCE(notification_record.dispatched_at, mutation_time),
-         delivered_at = CASE WHEN requested_outcome = 'delivered' THEN mutation_time ELSE NULL END,
-         failed_at = CASE WHEN requested_outcome IN ('failed_retriable', 'failed_final') THEN mutation_time ELSE NULL END,
-         error_code = CASE WHEN requested_outcome = 'delivered' THEN NULL ELSE requested_error_class END,
-         error_retryable = CASE WHEN requested_outcome = 'failed_retriable' THEN true
-                                WHEN requested_outcome = 'failed_final' THEN false
+         -- P2-B4: retriable Fehlschlag schreibt den naechsten Zustellzeitpunkt fort.
+         next_attempt_at = CASE
+           WHEN effective_outcome = 'failed_retriable'
+             THEN mutation_time
+                  + (least(requested_attempt_number * 5, 300) * interval '1 second')
+           ELSE notification_record.next_attempt_at
+         END,
+         delivered_at = CASE WHEN effective_outcome = 'delivered' THEN mutation_time ELSE NULL END,
+         failed_at = CASE WHEN effective_outcome IN ('failed_retriable', 'failed_final') THEN mutation_time ELSE NULL END,
+         error_code = CASE WHEN effective_outcome = 'delivered' THEN NULL ELSE effective_error_class END,
+         error_retryable = CASE WHEN effective_outcome = 'failed_retriable' THEN true
+                                WHEN effective_outcome = 'failed_final' THEN false
                                 ELSE NULL END,
          cancelled_at = NULL,
          status = CASE
-           WHEN requested_outcome = 'delivered' THEN 'delivered'
-           WHEN requested_outcome = 'failed_retriable' THEN 'failed_retriable'
+           WHEN effective_outcome = 'delivered' THEN 'delivered'
+           WHEN effective_outcome = 'failed_retriable' THEN 'failed_retriable'
            ELSE 'failed_final'
          END,
          updated_at = mutation_time
@@ -811,8 +853,8 @@ BEGIN
       USING ERRCODE = '23503';
   END IF;
   IF notification_status NOT IN ('queued', 'failed_retriable') THEN
-    RAISE EXCEPTION 'M1-11b cancel: nur nicht-terminale Zeilen stornierbar'
-      USING ERRCODE = '23514';
+    -- P2-B3: idempotent — bereits stornierte/terminale Zeilen sind kein Retry-Rauschen.
+    RETURN;
   END IF;
   UPDATE public.customer_notification AS notification_record
      SET status = 'cancelled_contact_erased',
@@ -1004,7 +1046,8 @@ BEGIN
         INTO dispatch_attempt, notification_next_attempt_at
         FROM public.customer_notification AS notification_record
        WHERE notification_record.workspace_id = $1
-         AND notification_record.id = $2;
+         AND notification_record.id = $2
+         AND notification_record.status IN ('queued', 'failed_retriable');
       IF NOT FOUND THEN
         RAISE EXCEPTION 'M1-11b dispatch: keine zustellbare Outbox-Zeile'
           USING ERRCODE = '42501';

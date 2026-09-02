@@ -11,6 +11,7 @@ const deps = vi.hoisted(() => {
     }
   }
   class ProjectOutcomeIllegalTransitionError extends Error {}
+  class ProjectOutcomeCannotFulfilLockedError extends Error {}
   class ProjectLossReasonUnavailableError extends Error {}
   class ProjectLossReasonValidationError extends Error {}
   class ProjectLossReasonNotFoundError extends Error {}
@@ -27,6 +28,7 @@ const deps = vi.hoisted(() => {
     ProjectOutcomeNotFoundError,
     ProjectOutcomeConflictError,
     ProjectOutcomeIllegalTransitionError,
+    ProjectOutcomeCannotFulfilLockedError,
     ProjectLossReasonUnavailableError,
     ProjectLossReasonValidationError,
     ProjectLossReasonNotFoundError,
@@ -56,6 +58,7 @@ vi.mock("@/modules/projects", async () => {
     ProjectOutcomeNotFoundError: deps.ProjectOutcomeNotFoundError,
     ProjectOutcomeConflictError: deps.ProjectOutcomeConflictError,
     ProjectOutcomeIllegalTransitionError: deps.ProjectOutcomeIllegalTransitionError,
+    ProjectOutcomeCannotFulfilLockedError: deps.ProjectOutcomeCannotFulfilLockedError,
     ProjectLossReasonUnavailableError: deps.ProjectLossReasonUnavailableError,
     ProjectLossReasonValidationError: deps.ProjectLossReasonValidationError,
     ProjectLossReasonNotFoundError: deps.ProjectLossReasonNotFoundError,
@@ -230,6 +233,10 @@ describe("M1-11a Project-Outcome Server Action", () => {
       [
         new deps.ProjectOutcomeIllegalTransitionError(),
         { status: "illegal_transition" },
+      ],
+      [
+        new deps.ProjectOutcomeCannotFulfilLockedError(),
+        { status: "locked" },
       ],
       [
         new deps.ProjectLossReasonUnavailableError(),
