@@ -20,27 +20,23 @@ import { expect, test, type Locator, type Page } from "playwright/test";
  * `prefers-reduced-motion` und „keine Browser-Konsolenfehler" (nach Muster
  * `m1-11a-project-outcome.spec.ts`).
  *
- * Laufvoraussetzung / Fixture-Bedarf (WICHTIG — NICHT selbst geändert):
- * --------------------------------------------------------------------
- * Der Slice setzt voraus, dass das Hauptprojekt beim Teststart den Outcome
- * `open` besitzt. Im vollständigen Serienlauf der Suite beendet
- * `m1-11a-project-outcome.spec.ts` dasselbe Hauptprojekt jedoch im Zustand
- * `won`. Deshalb darf diese Spec im Voll-Serienlauf NICHT nach M1-11a auf
- * demselben Projekt laufen. Der Root-Integrator wählt genau eine der beiden
- * deterministischen Varianten:
+ * Laufvoraussetzung / Fixture-Bedarf (Option B — umgesetzt):
+ * ----------------------------------------------------------
+ * Der Slice setzt voraus, dass das Projekt beim Teststart den Outcome `open`
+ * besitzt. Da `m1-11a-project-outcome.spec.ts` das gemeinsame Hauptprojekt im
+ * Zustand `won` hinterlässt, seedet `tests/e2e/run.mts` ein DEDIZIERTES offenes
+ * Projekt in einem eigenen Workspace (Option B des Root-Integrators):
  *
- *   (a) EMPFOHLEN — isolierter Einzel-Spec-Lauf auf frischer Datenbank:
- *       `M1_05_E2E_SPEC=m1-11b-cannot-fulfil.spec.ts npm run test:e2e`.
- *       Das Hauptprojekt ist dort noch `open`; kein Eingriff in `run.mts`
- *       nötig. Die External-Zuweisung stellt die Spec selbst idempotent her
- *       (siehe `ensureExternalAssignment`, identisch zu M1-11a).
+ *   - `m111bWorkspaceId` — isolierter „M1-11b E2E Workspace".
+ *   - `m111bProjectId`  — offener Intake-Lead (eigener Rechner-Intake).
+ *   - `m111bContactName`— synthetischer Kontakt („Clara E2E Absage").
+ *   - Editor/Viewer/External werden als zusätzliche Memberships der bestehenden
+ *     Identitäten (`editorEmail`/`viewerEmail`/`externalEmail`) angelegt; die
+ *     External-Zuweisung auf das Projekt stellt die Spec selbst idempotent her
+ *     (`ensureExternalAssignment`, identisches Muster wie M1-11a).
  *
- *   (b) Falls die Spec in den Voll-Serienlauf eingereiht werden soll, braucht
- *       `run.mts` eine dedizierte Fixture-Erweiterung: ein ZWEITES offenes
- *       Request-Projekt (eigener Intake-Lead) plus State-Felder
- *       `m111bProjectId` und `m111bContactName` (und die External-Zuweisung
- *       darauf). Diese Spec nutzt dann statt `mainProjectId`/`mainContactName`
- *       die `m111b*`-Felder.
+ * Das Hauptprojekt von M1-11a bleibt unangetastet. Einzel-Spec-Lauf:
+ * `M1_05_E2E_GREP="M1-11b:" npm run test:e2e`.
  *
  * Erwartete, aber in der UI noch NICHT finale Test-IDs/Labels („voraussichtlich"):
  * --------------------------------------------------------------------------------
@@ -78,12 +74,12 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 type E2EState = {
   databaseUrl: string;
   serverLogPath: string;
-  workspaceId: string;
-  mainProjectId: string;
+  m111bWorkspaceId: string;
+  m111bProjectId: string;
+  m111bContactName: string;
   editorEmail: string;
   viewerEmail: string;
   externalEmail: string;
-  mainContactName: string;
 };
 
 const browserErrors = new WeakMap<Page, string[]>();
@@ -95,12 +91,12 @@ function state(): E2EState {
   const required: Array<keyof E2EState> = [
     "databaseUrl",
     "serverLogPath",
-    "workspaceId",
-    "mainProjectId",
+    "m111bWorkspaceId",
+    "m111bProjectId",
+    "m111bContactName",
     "editorEmail",
     "viewerEmail",
     "externalEmail",
-    "mainContactName",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
     throw new Error("Der private M1-11b-E2E-State ist unvollständig.");
@@ -309,7 +305,7 @@ test.describe("M1-11b: Cannot Fulfil als terminale, gesperrte Abschlusskante", (
   test("M1-11b: Editor schließt Cannot Fulfil ab; die Akte friert terminal ein", async ({ page }) => {
     test.setTimeout(120_000);
     const data = state();
-    const detailPath = `/w/${data.workspaceId}/anfragen/${data.mainProjectId}`;
+    const detailPath = `/w/${data.m111bWorkspaceId}/anfragen/${data.m111bProjectId}`;
     await page.goto(detailPath);
     await loginWithRealOtp(page, data.editorEmail, detailPath);
     await ensureExternalAssignment(page, data);
@@ -375,7 +371,7 @@ test.describe("M1-11b: Cannot Fulfil als terminale, gesperrte Abschlusskante", (
 
   test("M1-11b: Abgeschlossen-Liste führt „Nicht erfüllbar“ als dritten Filter", async ({ page }) => {
     const data = state();
-    const boardPath = `/w/${data.workspaceId}/anfragen`;
+    const boardPath = `/w/${data.m111bWorkspaceId}/anfragen`;
     const closedPath = `${boardPath}/abgeschlossen`;
     await page.setViewportSize({ width: 375, height: 900 });
     await page.goto(closedPath);
@@ -388,19 +384,19 @@ test.describe("M1-11b: Cannot Fulfil als terminale, gesperrte Abschlusskante", (
       url.pathname === closedPath && url.searchParams.get("filter") === "cannot_fulfill"
     ));
 
-    const closedRow = closedProjectRow(page, data.mainContactName);
+    const closedRow = closedProjectRow(page, data.m111bContactName);
     await expect(closedRow).toContainText("Nicht erfüllbar");
     await expect(closedRow).toContainText("Stand 1");
     await expectNoHorizontalOverflow(page, 375);
     await expectNoWcagAaAxeViolations(page, "main", "Cannot-Fulfil-Archivfilter");
     await closedRow.getByRole("link", { name: "Projektakte öffnen" }).click();
-    await page.waitForURL((url) => url.pathname === `${boardPath}/${data.mainProjectId}`);
+    await page.waitForURL((url) => url.pathname === `${boardPath}/${data.m111bProjectId}`);
     await expect(page.locator("#project-outcome")).toContainText("Nicht erfüllbar · Stand 1");
   });
 
   test("M1-11b: Viewer sieht den terminalen Status ausschließlich lesend", async ({ page }) => {
     const data = state();
-    const detailPath = `/w/${data.workspaceId}/anfragen/${data.mainProjectId}`;
+    const detailPath = `/w/${data.m111bWorkspaceId}/anfragen/${data.m111bProjectId}`;
     await page.setViewportSize({ width: 375, height: 900 });
     await page.goto(detailPath);
     await loginWithRealOtp(page, data.viewerEmail, detailPath);
@@ -433,9 +429,9 @@ test.describe("M1-11b: Cannot Fulfil als terminale, gesperrte Abschlusskante", (
   test("M1-11b: External bleibt bei terminaler Akte fail-closed", async ({ browser }) => {
     test.setTimeout(120_000);
     const data = state();
-    const boardPath = `/w/${data.workspaceId}/anfragen`;
+    const boardPath = `/w/${data.m111bWorkspaceId}/anfragen`;
     const closedPath = `${boardPath}/abgeschlossen`;
-    const detailPath = `${boardPath}/${data.mainProjectId}`;
+    const detailPath = `${boardPath}/${data.m111bProjectId}`;
 
     const externalContext = await browser.newContext({
       locale: "de-DE",
@@ -454,7 +450,7 @@ test.describe("M1-11b: Cannot Fulfil als terminale, gesperrte Abschlusskante", (
       await externalPage.goto(closedPath);
       await expect(externalPage.getByRole("heading", { name: "Kein Zugriff", level: 1 }))
         .toBeVisible();
-      await expect(externalPage.getByText(data.mainContactName, { exact: true })).toHaveCount(0);
+      await expect(externalPage.getByText(data.m111bContactName, { exact: true })).toHaveCount(0);
       await expectNoNotificationInternals(externalPage);
 
       await externalPage.goto(detailPath);
@@ -464,7 +460,7 @@ test.describe("M1-11b: Cannot Fulfil als terminale, gesperrte Abschlusskante", (
       })).toBeVisible();
       await expect(externalPage.locator("#project-outcome")).toHaveCount(0);
       await expect(externalPage.locator("#project-activity")).toHaveCount(0);
-      await expect(externalPage.getByText(data.mainContactName, { exact: true })).toHaveCount(0);
+      await expect(externalPage.getByText(data.m111bContactName, { exact: true })).toHaveCount(0);
       await expectNoNotificationInternals(externalPage);
       await expectNoHorizontalOverflow(externalPage, 375);
       await expectNoWcagAaAxeViolations(externalPage, "main", "terminal geschlossene External-Akte");

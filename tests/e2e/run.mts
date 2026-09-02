@@ -95,6 +95,14 @@ type SeedData = {
   m112aViewerEmail: string;
   m112aExternalIdentityId: string;
   m112aExternalEmail: string;
+  // M1-11b (Cannot Fulfil) bekommt ebenfalls einen eigenen Workspace, damit
+  // sein offenes Abschluss-Projekt die Board-/Archiv-Erwartungen des
+  // gemeinsamen M1-05-Workspace (m1-05/m1-09/m1-10/m1-11a) nicht verändert.
+  // Editor/Viewer/External werden als zusätzliche Memberships der bestehenden
+  // Identitäten (editorIdentityId/viewerIdentityId/externalIdentityId) angelegt,
+  // d. h. keine zweiten Accounts.
+  m111bWorkspaceId: string;
+  m111bContactName: string;
   mainContactName: string;
   foreignContactName: string;
 };
@@ -114,6 +122,8 @@ type E2EState = Pick<
   | "restrictedEditorEmail"
   | "externalEditorEmail"
   | "externalEmail"
+  | "m111bContactName"
+  | "m111bWorkspaceId"
   | "mainContactName"
   | "foreignContactName"
 > & {
@@ -121,6 +131,7 @@ type E2EState = Pick<
   databaseUrl: string;
   foreignProjectId: string;
   mainProjectId: string;
+  m111bProjectId: string;
   m112aProjectId: string;
   m112aWorkspaceId: string;
   m112aEditorEmail: string;
@@ -828,6 +839,28 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
         ],
       );
     });
+
+    await withWorkspaceSeed(client, data.m111bWorkspaceId, async () => {
+      await client.query(
+        "insert into workspace (id, name) values ($1::uuid, $2)",
+        [data.m111bWorkspaceId, "M1-11b isolierter E2E Workspace"],
+      );
+      // Editor/Viewer/External werden als zusätzliche Memberships der
+      // bestehenden Identitäten angelegt (kein zweiter Account). Der Editor
+      // braucht assign_projects für die External-Zuweisung in der Spec.
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor', '{"assign_projects":true}'::jsonb),
+                ($1::uuid, $3::uuid, 'viewer', '{}'::jsonb),
+                ($1::uuid, $4::uuid, 'viewer', '{"external_only":true}'::jsonb)`,
+        [
+          data.m111bWorkspaceId,
+          data.editorIdentityId,
+          data.viewerIdentityId,
+          data.externalIdentityId,
+        ],
+      );
+    });
   } finally {
     client.release();
     await pool.end();
@@ -1158,6 +1191,8 @@ function createSeedData(): SeedData {
     m112aViewerEmail: `m1-12a-viewer-${runSuffix}@example.test`,
     m112aExternalIdentityId: randomUUID(),
     m112aExternalEmail: `m1-12a-external-${runSuffix}@example.test`,
+    m111bWorkspaceId: randomUUID(),
+    m111bContactName: "Clara E2E Absage",
     mainContactName: "Erika E2E Muster",
     foreignContactName: "Fremdmandant E2E Geheim",
   };
@@ -1272,6 +1307,7 @@ async function main(): Promise<number> {
   await runMigration(serviceUrls.migrator, migrationLogPath);
   throwIfInterrupted();
   await applyStrictRoleManifest(serviceUrls.migrator);
+
   throwIfInterrupted();
 
   const providerStub = await startGeoapifyContractStub();
@@ -1304,6 +1340,11 @@ async function main(): Promise<number> {
     workspaceId: seedData.foreignWorkspaceId,
     secret: randomBytes(32),
   };
+  const m111bCredential: IntakeCredential = {
+    keyId: `e2e-m111b-${randomUUID()}`,
+    workspaceId: seedData.m111bWorkspaceId,
+    secret: randomBytes(32),
+  };
   const authSecret = randomBytes(48).toString("base64url");
 
   workerLogFd = openPrivateLog(workerLogPath);
@@ -1326,7 +1367,7 @@ async function main(): Promise<number> {
       env: nextEnvironment(
         serviceUrls,
         authSecret,
-        [mainCredential, foreignCredential],
+        [mainCredential, foreignCredential, m111bCredential],
         providerStub,
         readyFile,
         readyToken,
@@ -1349,6 +1390,12 @@ async function main(): Promise<number> {
     foreignCredential,
     intakePayload(seedData.foreignContactName, `foreign-${randomUUID()}`),
   );
+  const m111bLead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    m111bCredential,
+    intakePayload(seedData.m111bContactName, `m111b-${randomUUID()}`, true),
+  );
   throwIfInterrupted();
 
   writeState(statePath, {
@@ -1356,6 +1403,9 @@ async function main(): Promise<number> {
     databaseUrl: embedded.superuserUrl,
     foreignProjectId: foreignLead.projectId,
     mainProjectId: mainLead.projectId,
+    m111bContactName: seedData.m111bContactName,
+    m111bProjectId: m111bLead.projectId,
+    m111bWorkspaceId: seedData.m111bWorkspaceId,
     m112aProjectId: m112aSeed.projectId,
     m112aWorkspaceId: seedData.m112aWorkspaceId,
     m112aEditorEmail: seedData.m112aEditorEmail,
@@ -1396,6 +1446,7 @@ async function main(): Promise<number> {
   console.log(grep
     ? `[e2e] Chromium prüft fokussiert: ${grep}`
     : "[e2e] Chromium prüft M1-06 bis M2-03b1, M1-08b-Import, M1-09-Zuweisung, Rollen, Fremdmandant und Axe …");
+
   const playwrightExitCode = await runPlaywright(
     statePath,
     playwrightOutputPath,
@@ -1426,6 +1477,7 @@ async function main(): Promise<number> {
     : "[e2e] Fokussierter Lauf ohne Geoapify-Pfad: 0/0 Aufrufe, 0 Abweichungen.");
   return playwrightExitCode;
 }
+
 
 // Listener bis zum abgeschlossenen finally behalten: ein zweites Terminalsignal
 // darf die laufende Restore-/Cleanup-Sequenz nicht auf Node-Defaultverhalten abkürzen.
