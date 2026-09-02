@@ -1,11 +1,25 @@
 # Paritäts-Quellenregister
 
-Stand: 2026-08-30
+Stand: 2026-09-02
 
 Dieses Register klassifiziert Quellen; es ersetzt weder die Clean-Room-Regeln
 in `CONTRIBUTING.md` noch eine Capability-Abnahme. Reonic-Quellen dürfen nur
 beobachtbare Funktionssemantik belegen. UI, Texte, Assets, Code und Daten werden
 nicht übernommen.
+
+## Reonic REST API v3 — autorisierter read-only-Zugang (seit 2026-09-02)
+
+Zugang vom Eigentümer freigegeben und in `COMPLIANCE-REONIC-API.md` dokumentiert.
+Nur öffentlich dokumentierte Endpunkte, nur GET, keine Rohdaten-Persistenz,
+Werte werden vor jeder Weitergabe maskiert/anonymisiert.
+
+| ID | Quelle | Klasse | Belegt | Confidence / Grenze |
+|---|---|---|---|---|
+| `SRC-API-SPEC` | OpenAPI v3.11.0, `https://api.reonic.de/rest/v3/openapi` | DOCUMENTED | 124 Pfade, Schemas, Scopes, Rate-Limits; kartiert in `REONIC-API-CAPABILITY-MAP.md` | hoch (öffentliche Spec); kein Laufzeitbeweis |
+| `SRC-API-ME` | `GET /me` (2026-09-02) | OBSERVED | clientId/Workspace, locale de-DE, currency EUR, Key-Typ `read-only` | hoch; Werte maskiert |
+| `SRC-API-LEADSOURCES` | `GET /leadSources` (2026-09-02) | OBSERVED | 8 Einträge; Felder: id, name, projectDomain, createdAt, updatedAt, archivedAt | hoch (Schema); Inhalte maskiert |
+| `SRC-API-TAGS` | `GET /tags` (2026-09-02) | OBSERVED | 2 Einträge; Felder: id, label, parentType, textColor, backgroundColor, createdAt, updatedAt, archivedAt | hoch (Schema); Inhalte maskiert |
+| `SRC-API-CALCAT` | `GET /calendarCategories` (2026-09-02) | OBSERVED | 0 Einträge (leerer Bestand) | hoch (Bestandsfakt) |
 
 ## Aktive Quellen für M2-01
 
@@ -92,8 +106,10 @@ außerhalb des Goal-Manifests wurden nicht als gelesen oder belegt ausgegeben.
 
 ## Nicht zulässige Quellen
 
-- Reonic-Test-, Demo-, Kunden- oder Mitarbeiterzugänge;
-- interne Reonic-APIs, Browserstorage oder Netzwerkverkehr hinter Login;
+- Reonic-Test-, Demo-, Kunden- oder Mitarbeiter-Login-Zugänge;
+- Reonic-API-Zugriffe außerhalb des autorisierten read-only-Gates
+  (`COMPLIANCE-REONIC-API.md`): keine Mutationen, keine un-dokumentierten
+  Endpunkte, keine Rohdaten-Speicherung, keine Werte-Weitergabe;
 - kopierte Reonic-Texte, Screens, UI-Assets, Komponenten- oder Preisdaten;
 - historische Klartext-Credentials aus Mitschriften;
 - Rechner-`market_estimate` als Produkt- oder Angebotspreis.
