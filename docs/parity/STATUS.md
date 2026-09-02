@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-09-02 · kanonische Abnahmequelle:
+Stand: 2026-09-03 (01:30) · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -18,9 +18,9 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 23–24 % | M1-11a/M1-12a lokal REVIEWED/VERIFIED (`4d31b9f`/`01b52e9`, remote gesichert); M1-11b verloren → Rekonstruktion/Neuaufbau läuft |
+| Gesamtmission einschließlich F1–F16 | ca. 25–26 % | M1-Welle 01 komplett grün (`e5a9c5d`, remote); M3-01-Spec final (`635eb34`); M1-14/M1-15/M2-04 in Implementierung |
 | Technisches Fundament M0/M1 | ca. 97–98 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 16–17 % | Projektakte, Aufgaben, Outcomes, Inbox, Katalog-Import, Varianten/BOM, Angebots-PDF-Entwurf lokal technisch verifiziert; M1-11b/Notizen/Rechnungen offen |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 18–19 % | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF-Entwurf lokal verifiziert; Kontakte/Termine/E-Signatur/Rechnungen in Arbeit |
 
 ## 2026-09-02 — API-Gate, Discovery, M1-11b-Lage
 
@@ -74,7 +74,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | F5 Wärmepumpe | SPECIFIED | Schätzverfahren klar von zertifizierter Normrechnung trennen |
 | F6 Schaltplan | SPECIFIED | eigener Editor-/Exportvertrag |
 | F7 Installation | SPECIFIED | Signatur → Installation → Checkliste/Disposition/Handover |
-| F8 Rechnungen | SPECIFIED | unveränderliche Belegkette und Teil-/Schlussrechnung |
+| F8 Rechnungen | SPECIFIED (M3-01 final, O1–O5 resolvt) | generisches `commercial_document`-Modell (ADR 0023), Migration 0046; M3-00 Stammdaten (0045) davor |
 | F9 Zeiterfassung | SPECIFIED | Timer/Eintrag → Audit → Export |
 | F10 Kundenportal | SPECIFIED | geschützter Projektlink → Angebot/Status/Dateien |
 | F11 Mobile/PWA | SPECIFIED | schmale Offline-Outbox für Fotos/Checklisten/Zeit |
@@ -146,3 +146,18 @@ WMEE; Push-/Deploy-Regeln unverändert.
 komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
+
+## 2026-09-03 (01:30) — M3-01 Spec final, drei Implementierungs-Lanes
+
+- **M3-01 Rechnungs-Kern (F8):** DISCOVERED→SPECIFIED final, committet
+  `635eb34` (tooling, gepusht). Root-Arbitrage O1–O5: Migration **0046**
+  (M2-04 behält 0044, M3-00 Stammdaten nimmt 0045); Spec-Basis `12c863f`,
+  Implementierung zweigt vom Integrationsstand nach 0042/0043/0044/0045 ab;
+  „Ausstellen" = Nummer+Snapshot ohne PDF (M3-02 folgt); F8.2 wird eigenes
+  Slice **M3-00 (Workspace-Stammdaten „Ausstellungsdetails", 0045)** vor
+  M3-01; `goebd_retention_until` wird bereits modelliert, Durchsetzung =
+  GoBD-Folge.
+- **Lanes in Implementierung (Migrationen reserviert):** M1-14 Kontakte
+  (0042), M1-15 Termine/Kalender (0043), M2-04 E-Signatur (0044).
+  Integrationsreihenfolge: 0042 → 0043 → 0044 → (M3-Welle: 0045/0046).
+- Kimi-K3-Spec-Review für M3-01 läuft; M3-00-Spec delegiert.

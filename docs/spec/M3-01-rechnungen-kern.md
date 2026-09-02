@@ -7,8 +7,9 @@
   **DOKUMENT-KERN**, bewusst begrenzt (Non-Goals §13).
 - Architektur: **ADR 0023** (`docs/adr/0023-rechnungs-dokumentmodell.md`)
 - Basis: **`codex/m2-integration`** (HEAD `12c863f`) — Begründung §0.1
-- Geplante Migration: **`0045_m3_01_invoicing_core.sql`** (Root-Arbitrage vom
-  2026-09-03: M2-04 behält `0044`; Kette `0042→0043→0044→0045`, §0.1)
+- Geplante Migration: **`0046_m3_01_invoicing_core.sql`** (Root-Arbitrage vom
+  2026-09-03: M2-04 behält `0044`, M3-00 nimmt `0045`; Kette
+  `0042→0043→0044→0045(M3-00)→0046(M3-01)`, §0.1)
 - Ziel: keine — dieser Slice ist reine Spezifikation (nur Doku, kein Code/Commit).
 
 > **Vorgänger-Dokument:** Diese Fassung ersetzt die Root-Skizze „M3-01 …
@@ -64,10 +65,12 @@ Stand (0041-Fix). Eine spätere Divergenz (M1-Welle-02 vs. M2/M3-Welle) würde
 bei falscher Basiswahl teuer; hier ist die Wahl risikoarm und eindeutig.
 
 **Migrationsnummer (Root-Arbitrage 2026-09-03, O1 RESOLVED):** M3-01 erhält
-**`0045_m3_01_invoicing_core.sql`**. M2-04 ist bereits mit `0044` in
+**`0046_m3_01_invoicing_core.sql`**. M2-04 ist bereits mit `0044` in
 Implementierung (`0044_m2_04_e_signature.sql`); es wird nicht umnummeriert.
-Reservierte Kette: `0042`=M1-14 (Kontakt) → `0043`=M1-15 (Termine) →
-`0044`=M2-04 (E-Signatur) → `0045`=M3-01 (Invoicing-Kern).
+M3-00 (Workspace-Stammdaten, O4) ist Vorbedingung und nimmt als zuerst
+integrierter M3-Slice `0045`. Reservierte Kette: `0042`=M1-14 (Kontakt) →
+`0043`=M1-15 (Termine) → `0044`=M2-04 (E-Signatur) → `0045`=M3-00
+(Stammdaten) → `0046`=M3-01 (Invoicing-Kern).
 
 ### 0.2 F-Nummern-Hinweis (nicht konfliktär)
 
@@ -283,7 +286,7 @@ Loading/Empty/Error/Success/Disabled/Permission-Denied gemäß §11.
 
 ---
 
-## 4. Datenmodell-Skizze (Migration `0045`, additiv)
+## 4. Datenmodell-Skizze (Migration `0046`, additiv)
 
 Reihenfolge der Tabellen in der Migration (alle workspace-tenantgebunden,
 FK auf `workspace.id`, tenant-gebundenes Unique `(workspaceId, id)` wie M2-01):
@@ -558,9 +561,10 @@ P0–P2). **Visual-Gate** bleibt `INCONCLUSIVE` bis Eigentümer-Freigabe.
 
 1. **Generisches `commercial_document`-Modell** mit Typ-Diskriminator +
    typisierten nullable Spalten + CHECKs (ADR 0023).
-2. **Basis `codex/m2-integration`** (`12c863f`); Migration **`0045`**
-   (Root-Arbitrage 2026-09-03: `0044` gehört M2-04). Implementierungs-Basis ist
-   der Integrationsstand nach `0042`/`0043`/`0044` zum RED-Zeitpunkt.
+2. **Basis `codex/m2-integration`** (`12c863f`); Migration **`0046`**
+   (Root-Arbitrage 2026-09-03: `0044` gehört M2-04, `0045` gehört M3-00
+   Stammdaten). Implementierungs-Basis ist der Integrationsstand nach
+   `0042`/`0043`/`0044`/`0045` zum RED-Zeitpunkt.
 3. **Versand als boolesche Achse** (`sentAt`), nicht als vierter Dokument-Status;
    die Portal-Gruppierung „Versendet|Bezahlt|Überfällig“ ist eine Reporting-Zusammenführung.
 4. **Geldvertrag = M2-01-Verbatim** (Cent, Netto-Basis EUR, Half-up,
@@ -597,12 +601,13 @@ P0–P2). **Visual-Gate** bleibt `INCONCLUSIVE` bis Eigentümer-Freigabe.
 
 ## 16. Offene Fragen an den Root-Integrator — RESOLVED (2026-09-03)
 
-1. **O1 — Migrationsnummer:** RESOLVED → M3-01 = **`0045`**; M2-04 behält
-   `0044` (bereits in Implementierung, keine Umnummerierung). Kette
-   `0042 (M1-14) → 0043 (M1-15) → 0044 (M2-04) → 0045 (M3-01)`.
+1. **O1 — Migrationsnummer:** RESOLVED → M3-01 = **`0046`**; M2-04 behält
+   `0044` (bereits in Implementierung, keine Umnummerierung); M3-00
+   (Stammdaten, O4) nimmt `0045`. Kette
+   `0042 (M1-14) → 0043 (M1-15) → 0044 (M2-04) → 0045 (M3-00) → 0046 (M3-01)`.
 2. **O2 — Basis-Review:** RESOLVED → Spec-Basis `12c863f` bestätigt.
    Implementierung zweigt zum RED-Zeitpunkt vom Integrationsstand nach
-   `0042`/`0043`/`0044` ab; kein Warten, Spec geht in CONTRACTED.
+   `0042`/`0043`/`0044`/`0045` ab; kein Warten, Spec geht in CONTRACTED.
 3. **O3 — PDF-Grenze:** RESOLVED → bestätigt. „Ausstellen“ in M3-01 =
    Nummer + Snapshot (kein PDF); PDF-Rendering = M3-02 (analog M2-02).
 4. **O4 — Issuing-Details-Gate:** RESOLVED → F8.2 wird eigenes kleines
