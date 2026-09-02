@@ -91,3 +91,26 @@ Importe, aber unverändert evidenzbasiert (kein VERIFIED ohne Gates).
 **GO** (2026-09-02, Kimi K3 via OpenRouter) unter drei Auflagen — alle in §5
 verankert: (1) Beleg-Regime, (2) PII-Einordnung, (3) Import-Gates. Volltext:
 `docs/parity/REVIEW-KIMI-PLAN-LIZENZMODUS.md`.
+
+## 9. Eigener WMEE-Rechner (Vault-Referenz, 2026-09-02)
+
+Der Eigentümer hat auf den eigenen Rechner verwiesen: Repo
+`mikaslan/wmee-remake-magic`, Zweige `rechner/v5` (fünf Festpreis-Pakete
+S–XXL, live wmee-rechner-v5.vercel.app) und `rechner/v6` (3D-Dachplanung aus
+LoD2 + Orthofoto, live wmee-rechner-v6.vercel.app). Gemeinsamer Rechenkern
+`src/lib/solar/` (ertrag, simulation, wirtschaftlichkeit, lod2, lastprofil,
+gebaeude, preise, bestand; mit Tests + Fixtures). Vault-Quellen:
+`20-Bereiche/D-Wmee/Rechner/` (insb. „v5 verkauft feste Pakete, v6 plant das
+Dach in 3D").
+
+Folgen für den Plan:
+- **F12 (Endkunden-Funnel) = eigener Rechner v5**, kein Nachbau des
+  Reonic-Embeds. Integration als Embed/Adapter + Intake-Vertrag auf die
+  aktuelle Rechner-Generation (M1-04 nutzt noch Rechner-V3-Vertrag).
+- **F3 (PV-Planung) = Rechner v6** (LoD2/Orthofoto statt Google — bewusste
+  WMEE-Entscheidung, Vault-Beleg vorhanden).
+- Rechenkern-Harmonisierung: energie-saas M1-07-Kern (PVGIS) und
+  `solar/`-Kern abgleichen; ADR, bevor doppelte Wahrheiten entstehen.
+- Lizenz-/Standprüfung des Repos vor Übernahme (Goal-Prompt F12):
+  Status: aktiv, privat, gleicher Eigentümer — Prüfung als eigener
+  Discovery-Schritt vor dem F12-Slice.
