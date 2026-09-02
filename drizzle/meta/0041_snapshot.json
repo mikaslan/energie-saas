@@ -1,6 +1,6 @@
 {
   "id": "2313ed75-ba72-499e-9c04-ad6665e83be2",
-  "prevId": "bdf159e4-5305-40fc-8944-5e26a0e73fcf",
+  "prevId": "7c1f8d4b-e9da-49da-acda-f6bc11da3cb0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2994,6 +2994,325 @@
         "contact_marketing_consent_ck": {
           "name": "contact_marketing_consent_ck",
           "value": "(\n        \"contact\".\"marketing_consent\" = false\n        and \"contact\".\"marketing_consent_at\" is null\n        and \"contact\".\"marketing_consent_source\" is null\n      ) or (\n        \"contact\".\"marketing_consent\" = true\n        and \"contact\".\"marketing_consent_at\" is not null\n        and length(btrim(\"contact\".\"marketing_consent_source\")) > 0\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.customer_notification": {
+      "name": "customer_notification",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "template_id": {
+          "name": "template_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'cannot-fulfil.v1'"
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "dispatched_at": {
+          "name": "dispatched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_at": {
+          "name": "failed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_retryable": {
+          "name": "error_retryable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "customer_notification_ws_project_active_uq": {
+          "name": "customer_notification_ws_project_active_uq",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"customer_notification\".\"status\" in ('queued', 'failed_retriable')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "customer_notification_workspace_id_fk": {
+          "name": "customer_notification_workspace_id_fk",
+          "tableFrom": "customer_notification",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "customer_notification_project_fk": {
+          "name": "customer_notification_project_fk",
+          "tableFrom": "customer_notification",
+          "tableTo": "project",
+          "columnsFrom": [
+            "workspace_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "customer_notification_ws_id_uq": {
+          "name": "customer_notification_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "customer_notification_ws_idempotency_uq": {
+          "name": "customer_notification_ws_idempotency_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "customer_notification_status_ck": {
+          "name": "customer_notification_status_ck",
+          "value": "\"customer_notification\".\"status\" in ('queued', 'delivered', 'failed_retriable', 'failed_final', 'cancelled_contact_erased', 'cancelled_manual')"
+        },
+        "customer_notification_attempt_count_ck": {
+          "name": "customer_notification_attempt_count_ck",
+          "value": "\"customer_notification\".\"attempt_count\" >= 0"
+        },
+        "customer_notification_error_class_ck": {
+          "name": "customer_notification_error_class_ck",
+          "value": "\"customer_notification\".\"error_code\" is null or \"customer_notification\".\"error_code\" in ('recipient_unavailable', 'transport_unavailable', 'provider_rejected', 'invalid_template')"
+        },
+        "customer_notification_timestamps_ck": {
+          "name": "customer_notification_timestamps_ck",
+          "value": "\"customer_notification\".\"updated_at\" >= \"customer_notification\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.customer_notification_delivery_attempt": {
+      "name": "customer_notification_delivery_attempt",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notification_id": {
+          "name": "notification_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt_number": {
+          "name": "attempt_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error_class": {
+          "name": "error_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "customer_notification_delivery_attempt_workspace_id_fk": {
+          "name": "customer_notification_delivery_attempt_workspace_id_fk",
+          "tableFrom": "customer_notification_delivery_attempt",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "customer_notification_delivery_attempt_notification_fk": {
+          "name": "customer_notification_delivery_attempt_notification_fk",
+          "tableFrom": "customer_notification_delivery_attempt",
+          "tableTo": "customer_notification",
+          "columnsFrom": [
+            "workspace_id",
+            "notification_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "customer_notification_delivery_attempt_ws_id_uq": {
+          "name": "customer_notification_delivery_attempt_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "customer_notification_delivery_attempt_ws_notification_attempt_uq": {
+          "name": "customer_notification_delivery_attempt_ws_notification_attempt_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "notification_id",
+            "attempt_number"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "customer_notification_delivery_attempt_outcome_ck": {
+          "name": "customer_notification_delivery_attempt_outcome_ck",
+          "value": "\"customer_notification_delivery_attempt\".\"outcome\" in ('delivered', 'failed_retriable', 'failed_final')"
+        },
+        "customer_notification_delivery_attempt_number_ck": {
+          "name": "customer_notification_delivery_attempt_number_ck",
+          "value": "\"customer_notification_delivery_attempt\".\"attempt_number\" >= 1"
+        },
+        "customer_notification_delivery_attempt_error_ck": {
+          "name": "customer_notification_delivery_attempt_error_ck",
+          "value": "(\"customer_notification_delivery_attempt\".\"outcome\" = 'delivered' and \"customer_notification_delivery_attempt\".\"error_class\" is null)\n          or (\"customer_notification_delivery_attempt\".\"outcome\" in ('failed_retriable', 'failed_final')\n              and \"customer_notification_delivery_attempt\".\"error_class\" in ('recipient_unavailable', 'transport_unavailable', 'provider_rejected', 'invalid_template'))"
         }
       },
       "isRLSEnabled": false
@@ -11222,7 +11541,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"project\".\"phase\" = 'request' and \"project\".\"outcome\" in ('won', 'lost')",
+          "where": "\"project\".\"phase\" = 'request' and \"project\".\"outcome\" in ('won', 'lost', 'cannot_fulfill')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -11731,220 +12050,6 @@
         "project_assignment_role_ck": {
           "name": "project_assignment_role_ck",
           "value": "\"project_assignment\".\"assignment_role\" in ('key_account', 'user')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.project_note": {
-      "name": "project_note",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "parent_type": {
-          "name": "parent_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'project'"
-        },
-        "text_version": {
-          "name": "text_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'note-text.v1'"
-        },
-        "text_markdown": {
-          "name": "text_markdown",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "pinned_at": {
-          "name": "pinned_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pinned_by": {
-          "name": "pinned_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "edited_by": {
-          "name": "edited_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "edited_at": {
-          "name": "edited_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "project_note_ws_project_active_idx": {
-          "name": "project_note_ws_project_active_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "pinned_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"project_note\".\"deleted_at\" is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "project_note_workspace_id_fk": {
-          "name": "project_note_workspace_id_fk",
-          "tableFrom": "project_note",
-          "tableTo": "workspace",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "project_note_project_fk": {
-          "name": "project_note_project_fk",
-          "tableFrom": "project_note",
-          "tableTo": "project",
-          "columnsFrom": [
-            "workspace_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "workspace_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "project_note_ws_id_uq": {
-          "name": "project_note_ws_id_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "project_note_parent_type_ck": {
-          "name": "project_note_parent_type_ck",
-          "value": "\"project_note\".\"parent_type\" = 'project'"
-        },
-        "project_note_text_version_ck": {
-          "name": "project_note_text_version_ck",
-          "value": "\"project_note\".\"text_version\" = 'note-text.v1'"
-        },
-        "project_note_text_markdown_ck": {
-          "name": "project_note_text_markdown_ck",
-          "value": "length(\"project_note\".\"text_markdown\") between 1 and 10000"
-        },
-        "project_note_pin_pair_ck": {
-          "name": "project_note_pin_pair_ck",
-          "value": "(\"project_note\".\"pinned_at\" is null) = (\"project_note\".\"pinned_by\" is null)"
-        },
-        "project_note_edit_pair_ck": {
-          "name": "project_note_edit_pair_ck",
-          "value": "(\"project_note\".\"edited_at\" is null) = (\"project_note\".\"edited_by\" is null)"
-        },
-        "project_note_deleted_at_ck": {
-          "name": "project_note_deleted_at_ck",
-          "value": "\"project_note\".\"deleted_at\" is null or \"project_note\".\"deleted_at\" >= \"project_note\".\"created_at\""
-        },
-        "project_note_revision_ck": {
-          "name": "project_note_revision_ck",
-          "value": "\"project_note\".\"revision\" between 1 and 2147483647"
-        },
-        "project_note_timestamps_ck": {
-          "name": "project_note_timestamps_ck",
-          "value": "isfinite(\"project_note\".\"created_at\")\n          and (\"project_note\".\"pinned_at\" is null or isfinite(\"project_note\".\"pinned_at\"))\n          and (\"project_note\".\"edited_at\" is null or isfinite(\"project_note\".\"edited_at\"))\n          and (\"project_note\".\"deleted_at\" is null or isfinite(\"project_note\".\"deleted_at\"))"
         }
       },
       "isRLSEnabled": false
@@ -13428,6 +13533,220 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.project_note": {
+      "name": "project_note",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_type": {
+          "name": "parent_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'project'"
+        },
+        "text_version": {
+          "name": "text_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'note-text.v1'"
+        },
+        "text_markdown": {
+          "name": "text_markdown",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pinned_at": {
+          "name": "pinned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pinned_by": {
+          "name": "pinned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "edited_by": {
+          "name": "edited_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "edited_at": {
+          "name": "edited_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "project_note_ws_project_active_idx": {
+          "name": "project_note_ws_project_active_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pinned_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"project_note\".\"deleted_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "project_note_workspace_id_fk": {
+          "name": "project_note_workspace_id_fk",
+          "tableFrom": "project_note",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "project_note_project_fk": {
+          "name": "project_note_project_fk",
+          "tableFrom": "project_note",
+          "tableTo": "project",
+          "columnsFrom": [
+            "workspace_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "project_note_ws_id_uq": {
+          "name": "project_note_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "project_note_parent_type_ck": {
+          "name": "project_note_parent_type_ck",
+          "value": "\"project_note\".\"parent_type\" = 'project'"
+        },
+        "project_note_text_version_ck": {
+          "name": "project_note_text_version_ck",
+          "value": "\"project_note\".\"text_version\" = 'note-text.v1'"
+        },
+        "project_note_text_markdown_ck": {
+          "name": "project_note_text_markdown_ck",
+          "value": "length(\"project_note\".\"text_markdown\") between 1 and 10000"
+        },
+        "project_note_pin_pair_ck": {
+          "name": "project_note_pin_pair_ck",
+          "value": "(\"project_note\".\"pinned_at\" is null) = (\"project_note\".\"pinned_by\" is null)"
+        },
+        "project_note_edit_pair_ck": {
+          "name": "project_note_edit_pair_ck",
+          "value": "(\"project_note\".\"edited_at\" is null) = (\"project_note\".\"edited_by\" is null)"
+        },
+        "project_note_deleted_at_ck": {
+          "name": "project_note_deleted_at_ck",
+          "value": "\"project_note\".\"deleted_at\" is null or \"project_note\".\"deleted_at\" >= \"project_note\".\"created_at\""
+        },
+        "project_note_revision_ck": {
+          "name": "project_note_revision_ck",
+          "value": "\"project_note\".\"revision\" between 1 and 2147483647"
+        },
+        "project_note_timestamps_ck": {
+          "name": "project_note_timestamps_ck",
+          "value": "isfinite(\"project_note\".\"created_at\")\n          and (\"project_note\".\"pinned_at\" is null or isfinite(\"project_note\".\"pinned_at\"))\n          and (\"project_note\".\"edited_at\" is null or isfinite(\"project_note\".\"edited_at\"))\n          and (\"project_note\".\"deleted_at\" is null or isfinite(\"project_note\".\"deleted_at\"))"
+        }
+      },
       "isRLSEnabled": false
     }
   },
