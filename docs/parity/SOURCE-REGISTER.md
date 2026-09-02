@@ -113,3 +113,6 @@ außerhalb des Goal-Manifests wurden nicht als gelesen oder belegt ausgegeben.
 - kopierte Reonic-Texte, Screens, UI-Assets, Komponenten- oder Preisdaten;
 - historische Klartext-Credentials aus Mitschriften;
 - Rechner-`market_estimate` als Produkt- oder Angebotspreis.
+
+| `SRC-PORTAL-AUDIT` | `docs/parity/reonic-portal-audit/reonic_portal_audit_gesamt.csv` (Browser-Agent, eingeloggte Sitzung Daniel Ehmer / WM Erneuerbare Energien, 2026-09-02) | OBSERVED | 18 Bereiche des Portals, Funktionen, Zugriffsstatus, Grenzen | hoch (beobachtet); keine Aktionen ausgeführt |
+| `SRC-PORTAL-KATALOG` | `docs/parity/reonic-portal-audit/reonic_funktionskatalog.csv` (dito) | OBSERVED | kompakter Funktionskatalog je Seite/Route | hoch (beobachtet) |
