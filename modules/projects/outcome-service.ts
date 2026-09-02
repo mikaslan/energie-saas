@@ -357,7 +357,6 @@ export async function getProjectOutcomeContext(
   const row = result.rows[0];
   if (!row) return null;
   const canChangeOutcome = row.phase === "request"
-    && row.outcome !== "cannot_fulfill"
     && row.contact_deleted_at === null
     && can(ctx, "project.outcome.write")
     && !isExternalOnly(ctx);
