@@ -30,7 +30,7 @@ function compactSql(value: string): string {
 
 function outcomeApplySection(source: string): string {
   const start = source.indexOf("const hasProjectOutcomes = await hasAtomicPublicRelationSet(");
-  const end = source.indexOf("const energyRelations = [", start);
+  const end = source.indexOf("const hasCustomerNotification = await hasAtomicPublicRelationSet(", start);
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
   return source.slice(start, end);

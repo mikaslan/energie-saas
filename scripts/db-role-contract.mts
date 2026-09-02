@@ -1024,6 +1024,39 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasCustomerNotification = await hasAtomicPublicRelationSet(
+    client,
+    CUSTOMER_NOTIFICATION_RELATIONS,
+    "Rollen-ACL-Manifest: M1-11b-Customer-Notification",
+  );
+  if (hasCustomerNotification) {
+    await client.query(`
+      -- app_runtime liest customer_notification ausschliesslich ueber die
+      -- schmale Lesekapsel (kein SELECT/UPDATE); nur die Outbox-Insert-Zeile
+      -- und die zwei Runtime-Kapseln sind freigegeben. Worker nur ueber Kapseln.
+      revoke all privileges on public.customer_notification,
+        public.customer_notification_delivery_attempt
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant insert on public.customer_notification to app_runtime;
+
+      revoke execute on function
+        ${[
+          ...CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES,
+          ...CUSTOMER_NOTIFICATION_WORKER_ROUTINES,
+          ...CUSTOMER_NOTIFICATION_PRIVATE_ROUTINES,
+        ].join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime;
+      grant execute on function
+        ${CUSTOMER_NOTIFICATION_WORKER_ROUTINES.join(",\n        ")}
+        to app_worker
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -3331,6 +3364,9 @@ export async function verifyRoleContract(
         "app_runtime:project_loss_reason:INSERT:app_owner:false",
         "app_runtime:project_loss_reason:SELECT:app_owner:false",
         "app_runtime:project_loss_reason:UPDATE:app_owner:false",
+      ] : []),
+      ...(hasCustomerNotification ? [
+        "app_runtime:customer_notification:INSERT:app_owner:false",
       ] : []),
       "app_runtime:project_calculation_job:INSERT:app_owner:false",
       "app_runtime:project_calculation_job:SELECT:app_owner:false",
