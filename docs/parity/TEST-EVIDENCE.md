@@ -59,3 +59,11 @@ Chromium-Suite **48/48 passed, Exit 0** (3,1 Min) — inkl. M1-11b 4/4, M1-12a
 8/8 (Mitternachts-Flake behoben: Fälligkeit relativ zum Berlin-Tagesende),
 M1-05…M2-03b1. Vollgate `npm run check` Exit 0 (177 Dateien, 1.743 Tests,
 Rollen 88/88 + PG18 5/5), Build grün.
+
+## Import-Gate Katalog (2026-09-03, Kimi-Auflage 3)
+
+`scripts/catalog-import-dry-run.mts` validiert die 337 Komponenten mit dem
+echten `parseCatalogCsvPreview`: 38 gültig / 299 ungültig / 0 Formatfehler
+(deterministisch, SHA-256 gepinnt; Bericht `artifacts/catalog-import-20260902/DRY-RUN.md`).
+Top-Lücken: purchasePriceNet (264), Batterie-Technik (71), WR-Leistung (52),
+Marke (25). 13-Reonic-Typen→7-Katalogtypen-Mapping verifiziert.
