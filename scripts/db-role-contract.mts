@@ -123,6 +123,7 @@ const CUSTOMER_NOTIFICATION_RELATIONS = [
 ] as const;
 const CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES = [
   "public._m111b_project_has_binding_issuance(uuid,uuid)",
+  "public._m111b_read_notification_delivery(uuid,uuid)",
 ] as const;
 const CUSTOMER_NOTIFICATION_WORKER_ROUTINES = [
   "public._m111b_worker_resolve_recipient(uuid,uuid)",
@@ -2478,6 +2479,9 @@ export async function verifyRoleContract(
         "_m111b_project_has_binding_issuance(uuid, uuid):boolean:app_owner:plpgsql:f:s:" +
           "true:false:false:u:search_path=pg_catalog:" +
           "940efd86798ce1072d7ea4a5c2c6e37f17f259f4b8376f1bbe304e01dab99412",
+        "_m111b_read_notification_delivery(uuid, uuid):TABLE(status text, attempt_count integer):" +
+          "app_owner:plpgsql:f:s:true:false:false:u:search_path=pg_catalog:" +
+          "839c8e517398cc75a2f531fa8385d201b3c9889d677d748e1692d5029de792f0",
         "_m111b_worker_cancel_erased(uuid, uuid):void:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
           "6ef5110ecb0f89e11af56c580e0378a5c4a13704bcd832da3a6ace2437291050",
@@ -3587,6 +3591,7 @@ export async function verifyRoleContract(
       ) : []),
       ...(hasCustomerNotification ? [
         "app_runtime:_m111b_project_has_binding_issuance(uuid, uuid):EXECUTE:app_owner:false",
+        "app_runtime:_m111b_read_notification_delivery(uuid, uuid):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_cancel_erased(uuid, uuid):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_deliver(uuid, uuid, integer, text, text):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_resolve_recipient(uuid, uuid):EXECUTE:app_owner:false",

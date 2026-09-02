@@ -366,16 +366,13 @@ export async function getProjectOutcomeContext(
         .map(({ id, label }) => ({ id, label }))
     : [];
   const notificationResult = await tx.execute<{
-    notification_status: string;
-    notification_attempt_count: number;
+    status: string;
+    attempt_count: number;
   }>(sql`
-    select notification_record.status as notification_status,
-           notification_record.attempt_count as notification_attempt_count
-      from customer_notification notification_record
-     where notification_record.workspace_id = ${ctx.workspaceId}::uuid
-       and notification_record.project_id = ${projectId}::uuid
-     order by notification_record.created_at desc
-     limit 1
+    select delivery.status, delivery.attempt_count
+      from public._m111b_read_notification_delivery(
+        ${ctx.workspaceId}::uuid, ${projectId}::uuid
+      ) as delivery
   `);
   const notificationRow = notificationResult.rows[0];
   return {
@@ -395,8 +392,8 @@ export async function getProjectOutcomeContext(
     activeLossReasons,
     notificationDelivery: notificationRow
       ? {
-          status: notificationRow.notification_status,
-          attemptCount: notificationRow.notification_attempt_count,
+          status: notificationRow.status,
+          attemptCount: notificationRow.attempt_count,
         }
       : null,
     permissions: {

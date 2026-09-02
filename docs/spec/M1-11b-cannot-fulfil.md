@@ -445,6 +445,15 @@ physisches DELETE verboten.
 
 - Runtime: `_m111b_project_has_binding_issuance(uuid, uuid)` (Grant nur
   `app_runtime`).
+- Runtime-Lesekapsel: `_m111b_read_notification_delivery(uuid, uuid)` → `TABLE
+  (status text, attempt_count integer)` (Grant nur `app_runtime`). Sie liest
+  ausschließlich Status + Versuchsanzahl (keine Empfänger-/Text-PII; die Tabelle
+  ist ohnehin PII-frei). `app_runtime` erhält **kein** direktes SELECT/UPDATE auf
+  `customer_notification` — nur INSERT (Outbox-Zeile im Transition-Tx) und die
+  schmale Lesekapsel. Entscheidung nach dem 0035-Muster (`SECURITY DEFINER`,
+  `search_path = pg_catalog`, interne Workspace/Projekt-Bindung über die WHERE-
+  Klausel), damit die Runtime-Sichtbarkeitsgrenze erhalten bleibt (Chromium-P0:
+  `permission denied for table customer_notification`).
 - Worker (drei): `_m111b_worker_resolve_recipient(uuid, uuid)`,
   `_m111b_worker_deliver(uuid, uuid, integer, text, text)`,
   `_m111b_worker_cancel_erased(uuid, uuid)`.

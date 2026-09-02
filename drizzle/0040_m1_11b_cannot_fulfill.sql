@@ -656,6 +656,36 @@ END
 $m111b_binding_issuance$;--> statement-breakpoint
 
 -- ════════════════════════════════════════════════════════════════════════
+-- Runtime-Lesekapsel: nur Status + Versuchsanzahl, NIE Empfaenger/Text. Die
+-- Tabelle ist ohnehin PII-frei; die Kapsel erhaelt die Runtime-Sichtbarkeits-
+-- grenze (app_runtime liest customer_notification nicht direkt, sondern ueber
+-- diese schmale Definer-Funktion, Muster _m111b_project_has_binding_issuance).
+-- ════════════════════════════════════════════════════════════════════════
+CREATE FUNCTION public._m111b_read_notification_delivery(
+  requested_workspace_id uuid,
+  requested_project_id uuid
+)
+RETURNS TABLE(status text, attempt_count integer)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $m111b_read_notification_delivery$
+BEGIN
+  PERFORM pg_catalog.set_config(
+    'app.workspace_id', requested_workspace_id::text, true
+  );
+  RETURN QUERY
+    SELECT notification_record.status, notification_record.attempt_count
+      FROM public.customer_notification AS notification_record
+     WHERE notification_record.workspace_id = requested_workspace_id
+       AND notification_record.project_id = requested_project_id
+     ORDER BY notification_record.created_at DESC
+     LIMIT 1;
+END
+$m111b_read_notification_delivery$;--> statement-breakpoint
+
+-- ════════════════════════════════════════════════════════════════════════
 -- Drei Worker-Zugriffskapseln (SECURITY DEFINER). Review-Befund P2-10: alle mit
 -- search_path = pg_catalog; der Workspace-GUC wird intern aus dem Parameter
 -- gesetzt (die Quelle ist der Job-Payload), damit FORCE-RLS die Zeilen sieht.
@@ -1163,6 +1193,7 @@ REVOKE ALL ON FUNCTION public._m111b_guard_project_outcome() FROM PUBLIC;--> sta
 REVOKE ALL ON FUNCTION public._m111b_record_project_outcome() FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_guard_outcome_evidence_insert() FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_project_has_binding_issuance(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON FUNCTION public._m111b_read_notification_delivery(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_worker_resolve_recipient(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_worker_deliver(uuid, uuid, integer, text, text) FROM PUBLIC;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public._m111b_worker_cancel_erased(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
@@ -1200,13 +1231,14 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Runtime: lesen (Zustellstatus ohne PII), insert (Outbox im Transition-Tx),
-  -- update (Dispatch-Fortschritt) und die schmale Binding-Kapsel.
+  -- Runtime: insert (Outbox im Transition-Tx) und die schmale Binding-/Lese-
+  -- Kapseln. Kein direktes SELECT/UPDATE auf customer_notification (Runtime-
+  -- Sichtbarkeitsgrenze; der Zustellstatus laeuft ueber die Definer-Kapsel).
   IF pg_catalog.to_regrole('app_runtime') IS NOT NULL THEN
-    GRANT SELECT, INSERT, UPDATE ON public.customer_notification TO app_runtime;
-    GRANT SELECT ON public.customer_notification_delivery_attempt TO app_runtime;
+    GRANT INSERT ON public.customer_notification TO app_runtime;
     GRANT EXECUTE ON FUNCTION
-      public._m111b_project_has_binding_issuance(uuid, uuid)
+      public._m111b_project_has_binding_issuance(uuid, uuid),
+      public._m111b_read_notification_delivery(uuid, uuid)
       TO app_runtime;
   END IF;
 
