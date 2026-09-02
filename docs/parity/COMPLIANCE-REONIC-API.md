@@ -70,10 +70,12 @@ niemals zum kanonischen Domainmodell.
 
 `GET https://api.reonic.de/rest/v3/me` mit `X-Authorization`-Header → HTTP 200
 in 0,8 s. Antwort (Werte maskiert, Rohantwort verworfen): `clientId` = bereit-
-gestellte Client-ID, `clientName` = WM…, `locale` = de-DE, `currency` = EUR,
-`accessLevel` = **read-only** (9 Zeichen, `rea…`). Basis-URL bestätigt; der
-Key ist technisch auf Lesen begrenzt — Mutationen sind damit ausgeschlossen,
-bis der Eigentümer ggf. einen anderen Key-Typ freigibt.
+gestellte Client-ID, `clientName` = WM…, `locale` = de-DE, `currency` = EUR.
+Basis-URL bestätigt. **Korrektur 2026-09-02 (Import-Lane, erneutes `GET /me`):
+`accessLevel` = `readWrite`** — die ursprüngliche Annahme „read-only" war
+falsch. Es wurden dennoch ausschließlich GET-Operationen ausgeführt;
+Mutationen bleiben bis zu einer ausdrücklichen Einzelfreigabe des Eigentümers
+verboten.
 
 ## 6. Eigendaten-Import (Eigentümer-Entscheidung 2026-09-02)
 
