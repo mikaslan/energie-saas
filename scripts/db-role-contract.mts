@@ -142,6 +142,21 @@ const CUSTOMER_NOTIFICATION_FUNCTION_NAMES = [
   ...CUSTOMER_NOTIFICATION_PRIVATE_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 
+const PROJECT_NOTE_RELATIONS = ["project_note"] as const;
+const PROJECT_NOTE_RUNTIME_ROUTINES = [
+  "public._m113_actor_can_read_notes(uuid)",
+  "public._m113_actor_can_write_notes(uuid)",
+  "public._m113_actor_note_role(uuid)",
+] as const;
+const PROJECT_NOTE_PRIVATE_ROUTINES = [
+  "public._m113_erasure_delete_allowed(uuid,uuid)",
+  "public._m113_guard_project_note()",
+] as const;
+const PROJECT_NOTE_FUNCTION_NAMES = [
+  ...PROJECT_NOTE_RUNTIME_ROUTINES,
+  ...PROJECT_NOTE_PRIVATE_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+
 const CATALOG_IMPORT_PRIVATE_ROUTINES = [
   "public._m108b_authorize_catalog_import_runtime(uuid)",
   "public._m108b_catalog_import_actor_auth_code(uuid,uuid)",
@@ -1058,6 +1073,28 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasProjectNotes = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_NOTE_RELATIONS,
+    "Rollen-ACL-Manifest: M1-13-Projektnotizen",
+  );
+  if (hasProjectNotes) {
+    await client.query(`
+      revoke all privileges on public.project_note
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.project_note to app_runtime;
+
+      revoke execute on function
+        ${[...PROJECT_NOTE_RUNTIME_ROUTINES, ...PROJECT_NOTE_PRIVATE_ROUTINES].join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${PROJECT_NOTE_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -1924,6 +1961,11 @@ export async function verifyRoleContract(
     CUSTOMER_NOTIFICATION_RELATIONS,
     "Rollenvertrag: M1-11b-Customer-Notification",
   );
+  const hasProjectNotes = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_NOTE_RELATIONS,
+    "Rollenvertrag: M1-13-Projektnotizen",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -2065,6 +2107,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasProjectOutcomes ? PROJECT_OUTCOME_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasProjectNotes ? PROJECT_NOTE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       "r:project_calculation_job",
@@ -2305,6 +2350,9 @@ export async function verifyRoleContract(
       ...(hasCustomerNotification ? CUSTOMER_NOTIFICATION_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
+      ...(hasProjectNotes ? PROJECT_NOTE_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -2312,6 +2360,9 @@ export async function verifyRoleContract(
         "app_actor_membership_id:app_owner",
       ] : []),
       "build_inactive_lead_erasure_graph:app_owner",
+      ...(hasProjectNotes ? [
+        "build_inactive_lead_erasure_graph_m113:app_owner",
+      ] : []),
       ...(hasProjectTasks ? [
         "build_inactive_lead_erasure_graph_m203b1:app_owner",
       ] : []),
@@ -2532,6 +2583,19 @@ export async function verifyRoleContract(
           "true:false:false:u:search_path=pg_catalog:" +
           "b5ce5d43143330224d0e095c20c9a3d8215fd57445299a5bb02b60d849e62d13",
       ] : []),
+      ...(hasProjectNotes ? [
+        "_m113_actor_can_read_notes(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:7fbee4934dbed119ee3ee98b28cbc940555ee1e834fb35c925c24a38766bb0d8",
+        "_m113_actor_can_write_notes(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:7177ba6f0466992d8a9a66c5d10d86fbaa90f67cf7a44fcdeb30f2a8a679b761",
+        "_m113_actor_note_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+        "_m113_erasure_delete_allowed(uuid, uuid):boolean:app_owner:plpgsql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "16b80db50109c706578cd61d24db440d69a889a61467952935efde77502cddc0",
+        "_m113_guard_project_note():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:7773c5bbffe07ea7aeab05c175ee45bbcf8f6bf0580a9178be5d4bc063fc1d26",
+      ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
@@ -2715,8 +2779,15 @@ export async function verifyRoleContract(
           "true:false:false:u:search_path=pg_catalog:" +
           "cc3f1a3b9956eca75e1a770cb4e8d59cc65bf7598b34454266f744ab6ddf9edb",
       ] : []),
+      ...(hasProjectNotes ? [
+        "build_inactive_lead_erasure_graph_m113(uuid, uuid):jsonb:app_owner:sql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "e10bcf2cfd57ed151270b8c7674eddc1a280733bf4a166402a2327e3f5c389b2",
+      ] : []),
       "build_inactive_lead_erasure_graph(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectTasks
+        `search_path=pg_catalog:${hasProjectNotes
+          ? "721aecb517ece42d09e1101afb397af22491f1798995ceaabf963dd4598870fc"
+          : hasProjectTasks
           ? "e10bcf2cfd57ed151270b8c7674eddc1a280733bf4a166402a2327e3f5c389b2"
           : hasOfferIssuance
           ? "16833496d12956cafb41b94341d78ac9baa6fa00a60cc2d2450dbe420cf2621c"
@@ -2745,8 +2816,12 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
-        `search_path=pg_catalog:${hasCustomerNotification
+        `search_path=pg_catalog:${hasCustomerNotification && hasProjectNotes
+          ? "891d9914094e8b0b9b42716813dd957f24301a048b95b91049e4d0f8029da3bb"
+          : hasCustomerNotification
           ? "26656181bde7172aad3ebb717cffe37bb6e874f1a298a703090ed706d750fd4d"
+          : hasProjectNotes
+          ? "7e6f20126d9b1d9fdf44699b81855d1961c94bee6fbd581e5fa35b3e67d92c0d"
           : hasProjectOutcomes
           ? "859c9563aef9d9d4ccba5b0ee91b578dc35ab431beb2b3a9ee5d216f5eccb088"
           : hasProjectTasks
@@ -2769,7 +2844,9 @@ export async function verifyRoleContract(
       "guard_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:febb6a39265ceb1661f5dc21709f4a2912df799c6b4dd06db27b540253b8c88d",
       "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectTasks
+        `search_path=pg_catalog:${hasProjectNotes
+          ? "94518798af295e4e491d4ae098b994ce788bc9c836b05cc748e612bf85c29897"
+          : hasProjectTasks
           ? "928466ed994915b001addeb9e66dfe6615f0971665f5619a6b3c7babcf74ddcd"
           : hasOfferIssuance
           ? "1f045417e17bf2db3be42eb29f956396e9a80f8ea84e73a670b5cac69776a105"
@@ -2877,6 +2954,9 @@ export async function verifyRoleContract(
         (relation) => `${relation}:true:true`,
       ) : []),
       ...(hasProjectOutcomes ? PROJECT_OUTCOME_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasProjectNotes ? PROJECT_NOTE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
       "project_calculation_job:true:true",
@@ -3025,6 +3105,18 @@ export async function verifyRoleContract(
           "9df6abebd6999c5e510ce351621f19af78db527c17faaea6820fb28affaa608a",
         "project_loss_reason:tenant_isolation:" +
           "13519652442642e4c8536a8e4f75d98f94ad536c312a95798fbc61471025d7f4",
+      ] : []),
+      ...(hasProjectNotes ? [
+        "project_note:project_note_actor_delete:" +
+          "b4d81852cc35d7211bc3d2e4a422f357dad3fdc9a6a066ec4d353785b4b4df10",
+        "project_note:project_note_actor_insert:" +
+          "ce4c2d74612ee904abd0507cb073414167386ff8ff681780af6f39c29802cd8c",
+        "project_note:project_note_actor_select:" +
+          "42e477fcef92ccad9641b1a0a685397429f06d95046819dfb0ac2300949549a7",
+        "project_note:project_note_actor_update:" +
+          "596d2f037a747407acec1a511dd06d76173e821dc084a70be41836f6f8fd0523",
+        "project_note:tenant_isolation:" +
+          "4b78e950322a127404b38299187851b8afc1499a93cb3fbbb7c6089169604b79",
       ] : []),
       "project_calculation_job:tenant_isolation:46c9a1a09bfdfc88ddf839242f17c560ea614e34d1961a341580c40b4cdabf84",
       "project_calculation_revision:tenant_isolation:84bebd69ee64a8388f406f44da215b86328497c5235e70628a8df0e8c1b56a9d",
@@ -3252,6 +3344,10 @@ export async function verifyRoleContract(
         "offer_issuance_approval:offer_issuance_approval_cannot_fulfil_freeze:7:O:public:" +
           "_m111b_guard_offer_freeze::-:0",
       ] : []),
+      ...(hasProjectNotes ? [
+        "project_note:project_note_mutation_guard:31:O:public:_m113_guard_project_note::-:0",
+        "project_note:project_note_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
       "offer_variant:offer_variant_current_complete:21:O:public:" +
         "validate_offer_variant_snapshot_mirrors::-:constraint",
       "offer_variant:offer_variant_mutation_guard:27:O:public:guard_offer_erasure_mutation::-:0",
@@ -3374,6 +3470,11 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasCustomerNotification ? [
         "app_runtime:customer_notification:INSERT:app_owner:false",
+      ] : []),
+      ...(hasProjectNotes ? [
+        "app_runtime:project_note:INSERT:app_owner:false",
+        "app_runtime:project_note:SELECT:app_owner:false",
+        "app_runtime:project_note:UPDATE:app_owner:false",
       ] : []),
       "app_runtime:project_calculation_job:INSERT:app_owner:false",
       "app_runtime:project_calculation_job:SELECT:app_owner:false",
@@ -3640,6 +3741,9 @@ export async function verifyRoleContract(
         "app_worker:_m111b_worker_deliver(uuid, uuid, integer, text, text):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_resolve_recipient(uuid, uuid):EXECUTE:app_owner:false",
       ] : []),
+      ...(hasProjectNotes ? PROJECT_NOTE_RUNTIME_ROUTINES.map((signature) =>
+        `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
+      ) : []),
       ...(hasOfferIssuance ? [
         "app_runtime:approve_offer_issuance(uuid, uuid, boolean, boolean, boolean, boolean, boolean):EXECUTE:app_owner:false",
         "app_runtime:prepare_offer_issuance(uuid, uuid, uuid):EXECUTE:app_owner:false",

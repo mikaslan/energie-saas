@@ -141,6 +141,21 @@ async function fixtureProjectTaskGraph(tx: TenantTx, wsId: string): Promise<void
   `);
 }
 
+async function fixtureProjectNoteGraph(tx: TenantTx, wsId: string): Promise<void> {
+  const { userId } = await fixtureMembership(tx, wsId, "editor");
+  await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+  const { projectId } = await fixtureProjectGraph(tx, wsId);
+  await tx.execute(sql`
+    insert into project_note (
+      id, workspace_id, project_id, parent_type, text_version, text_markdown,
+      revision, created_by
+    ) values (
+      ${randomUUID()}::uuid, ${wsId}::uuid, ${projectId}::uuid,
+      'project', 'note-text.v1', 'Fixture Note', 1, ${userId}::uuid
+    )
+  `);
+}
+
 async function fixtureReceipt(tx: TenantTx, wsId: string): Promise<{
   receiptId: string;
   projectId: string;
@@ -1739,6 +1754,7 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   project_task_assignee: fixtureProjectTaskGraph,
   project_task_checklist_item: fixtureProjectTaskGraph,
   project_task_label: fixtureProjectTaskGraph,
+  project_note: fixtureProjectNoteGraph,
   inbound_receipt: async (tx, wsId) => {
     await fixtureReceipt(tx, wsId);
   },

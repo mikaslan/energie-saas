@@ -37,7 +37,10 @@ export const domainEvents = pgTable(
         'project.task_checklist_changed', 'project.task_completed',
         'project.task_reopened', 'project.task_archived',
         'project.outcome_won', 'project.outcome_lost',
-        'project.outcome_reopened'
+        'project.outcome_reopened',
+        'project.note_created', 'project.note_updated',
+        'project.note_deleted', 'project.note_pinned',
+        'project.note_unpinned'
       )`),
   ],
 );

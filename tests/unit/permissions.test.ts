@@ -86,6 +86,12 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
   "task.write": {
     expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
   },
+  "note.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
+  "note.write": {
+    expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
+  },
   // Ab hier: editor braucht die Capability, admin nicht (Admin impliziert alle).
   "phase.convert": {
     capability: "convert_phase",
@@ -148,12 +154,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 20 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 22 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(20);
+    expect(Object.keys(MATRIX)).toHaveLength(22);
   });
 
-  it("20 Actions × 3 Rollen × Capability an/aus", () => {
+  it("22 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];

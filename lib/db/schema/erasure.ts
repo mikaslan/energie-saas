@@ -26,6 +26,7 @@ export type ErasureGraphIds = {
   snapshotIds: string[];
   receiptIds: string[];
   taskIds?: string[];
+  noteIds?: string[];
 };
 
 export const contactLegalHold = pgTable(
