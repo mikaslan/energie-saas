@@ -27,6 +27,7 @@ import {
   type ProjectActivityCursor,
   type ProjectActivityKind,
   type ProjectOutcomeActivityKind,
+  type ProjectNoteActivityKind,
   type ProjectActivityPageV1,
   type ProjectTaskActivityKind,
   type ProjectTaskCommandResult,
@@ -153,6 +154,13 @@ const outcomeActivityEventTypes = [
   "project.outcome_lost",
   "project.outcome_reopened",
 ] as const;
+const noteActivityEventTypes = [
+  "project.note_created",
+  "project.note_updated",
+  "project.note_deleted",
+  "project.note_pinned",
+  "project.note_unpinned",
+] as const;
 const activityKinds = {
   "project.task_created": "task_created",
   "project.task_updated": "task_updated",
@@ -163,6 +171,11 @@ const activityKinds = {
   "project.outcome_won": "outcome_won",
   "project.outcome_lost": "outcome_lost",
   "project.outcome_reopened": "outcome_reopened",
+  "project.note_created": "note_created",
+  "project.note_updated": "note_updated",
+  "project.note_deleted": "note_deleted",
+  "project.note_pinned": "note_pinned",
+  "project.note_unpinned": "note_unpinned",
 } as const satisfies Readonly<Record<string, ProjectActivityKind>>;
 const taskActivityKinds: ReadonlySet<ProjectActivityKind> = new Set<ProjectTaskActivityKind>([
   "task_created",
@@ -178,6 +191,14 @@ const outcomeActivityKinds: ReadonlySet<ProjectActivityKind> =
     "outcome_lost",
     "outcome_reopened",
   ]);
+const noteActivityKinds: ReadonlySet<ProjectActivityKind> =
+  new Set<ProjectNoteActivityKind>([
+    "note_created",
+    "note_updated",
+    "note_deleted",
+    "note_pinned",
+    "note_unpinned",
+  ]);
 
 function isTaskActivityKind(kind: ProjectActivityKind): kind is ProjectTaskActivityKind {
   return taskActivityKinds.has(kind);
@@ -185,6 +206,10 @@ function isTaskActivityKind(kind: ProjectActivityKind): kind is ProjectTaskActiv
 
 function isOutcomeActivityKind(kind: ProjectActivityKind): kind is ProjectOutcomeActivityKind {
   return outcomeActivityKinds.has(kind);
+}
+
+function isNoteActivityKind(kind: ProjectActivityKind): kind is ProjectNoteActivityKind {
+  return noteActivityKinds.has(kind);
 }
 const activityCursorSchema = z.strictObject({
   occurredAt: z.iso.datetime({ offset: true }),
@@ -256,9 +281,16 @@ const projectedOutcomeActivityRowSchema = z.strictObject({
   task_id: z.null(),
   task_title: z.null(),
 });
+const projectedNoteActivityRowSchema = z.strictObject({
+  ...projectedActivityRowBase,
+  event_type: z.enum(noteActivityEventTypes),
+  task_id: z.null(),
+  task_title: z.null(),
+});
 const projectedActivityRowSchema = z.union([
   projectedTaskActivityRowSchema,
   projectedOutcomeActivityRowSchema,
+  projectedNoteActivityRowSchema,
 ]);
 const workspaceProjectionSchema = z.strictObject({
   project_id: projectedUuidSchema,
@@ -514,7 +546,10 @@ function activityPageFromRows(
         taskTitle: row.task_title,
       };
     }
-    if (!isOutcomeActivityKind(kind) || row.task_id !== null || row.task_title !== null) {
+    if (!isOutcomeActivityKind(kind) && !isNoteActivityKind(kind)) {
+      throw new ProjectTaskValidationError();
+    }
+    if (row.task_id !== null || row.task_title !== null) {
       throw new ProjectTaskValidationError();
     }
     return {
@@ -698,12 +733,18 @@ async function queryProjectTaskPageProjection(
            'project.task_checklist_changed', 'project.task_completed',
            'project.task_reopened', 'project.task_archived',
            'project.outcome_won', 'project.outcome_lost',
-           'project.outcome_reopened'
+           'project.outcome_reopened',
+           'project.note_created', 'project.note_updated',
+           'project.note_deleted', 'project.note_pinned',
+           'project.note_unpinned'
          )
          and (
            event.event_type in (
              'project.outcome_won', 'project.outcome_lost',
-             'project.outcome_reopened'
+             'project.outcome_reopened',
+             'project.note_created', 'project.note_updated',
+             'project.note_deleted', 'project.note_pinned',
+             'project.note_unpinned'
            )
            or (
              event.event_type in (
@@ -1324,12 +1365,18 @@ export async function getProjectActivityPage(
            'project.task_checklist_changed', 'project.task_completed',
            'project.task_reopened', 'project.task_archived',
            'project.outcome_won', 'project.outcome_lost',
-           'project.outcome_reopened'
+           'project.outcome_reopened',
+           'project.note_created', 'project.note_updated',
+           'project.note_deleted', 'project.note_pinned',
+           'project.note_unpinned'
          )
          and (
            event.event_type in (
              'project.outcome_won', 'project.outcome_lost',
-             'project.outcome_reopened'
+             'project.outcome_reopened',
+             'project.note_created', 'project.note_updated',
+             'project.note_deleted', 'project.note_pinned',
+             'project.note_unpinned'
            )
            or (
              event.event_type in (

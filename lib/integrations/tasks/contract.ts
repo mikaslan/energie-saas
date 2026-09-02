@@ -382,7 +382,16 @@ export type ProjectOutcomeActivityKind =
   | "outcome_won"
   | "outcome_lost"
   | "outcome_reopened";
-export type ProjectActivityKind = ProjectTaskActivityKind | ProjectOutcomeActivityKind;
+export type ProjectNoteActivityKind =
+  | "note_created"
+  | "note_updated"
+  | "note_deleted"
+  | "note_pinned"
+  | "note_unpinned";
+export type ProjectActivityKind =
+  | ProjectTaskActivityKind
+  | ProjectOutcomeActivityKind
+  | ProjectNoteActivityKind;
 export const projectActivityLabels = {
   task_created: "Aufgabe erstellt",
   task_updated: "Aufgabe aktualisiert",
@@ -393,6 +402,11 @@ export const projectActivityLabels = {
   outcome_won: "Anfrage gewonnen",
   outcome_lost: "Anfrage verloren",
   outcome_reopened: "Anfrage wieder geöffnet",
+  note_created: "Notiz erstellt",
+  note_updated: "Notiz bearbeitet",
+  note_deleted: "Notiz gelöscht",
+  note_pinned: "Notiz angepinnt",
+  note_unpinned: "Notiz losgelöst",
 } as const satisfies Record<ProjectActivityKind, string>;
 export type ProjectActivityCursor = { occurredAt: string; id: string };
 type ProjectActivityItemBaseV1 = {
@@ -408,8 +422,10 @@ export type ProjectActivityItemV1 =
       taskTitle: string | null;
     })
   | (ProjectActivityItemBaseV1 & {
-      kind: ProjectOutcomeActivityKind;
-      label: (typeof projectActivityLabels)[ProjectOutcomeActivityKind];
+      kind: ProjectOutcomeActivityKind | ProjectNoteActivityKind;
+      label: (typeof projectActivityLabels)[
+        ProjectOutcomeActivityKind | ProjectNoteActivityKind
+      ];
       taskId: null;
       taskTitle: null;
     });

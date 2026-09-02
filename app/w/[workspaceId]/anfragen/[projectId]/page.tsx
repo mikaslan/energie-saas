@@ -29,6 +29,10 @@ import {
 } from "@/modules/energy";
 import { listOffers } from "@/modules/offers";
 import {
+  listProjectNotes,
+  type ProjectNotePageV1,
+} from "@/modules/notes";
+import {
   getProjectTaskPage,
   projectTaskCursorTokenSchema,
   type ProjectActivityCursor,
@@ -48,6 +52,7 @@ import { PinForm } from "./pin-form";
 import { ProductResolutionSection } from "./product-resolution-section";
 import { ProjectActivityPanel } from "./project-activity-panel";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import { ProjectNotesSection } from "./project-notes-section";
 import { ProjectOutcomePanel } from "./project-outcome-panel";
 import { ProjectTasksSection } from "./project-tasks-section";
 
@@ -145,6 +150,11 @@ type TaskPageLoadResult =
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
+type NotePageLoadResult =
+  | { kind: "loaded"; page: ProjectNotePageV1 | null }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
 async function loadProjectDetail(
   workspaceId: string,
   projectId: string,
@@ -223,6 +233,25 @@ async function loadProjectTaskPage(
         taskCursor,
         activityCursor,
       }),
+    );
+    return { kind: "loaded", page };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+async function loadProjectNotePage(
+  workspaceId: string,
+  projectId: string,
+): Promise<NotePageLoadResult> {
+  try {
+    const page = await authorizedQuery(
+      workspaceId,
+      "note.read",
+      "project_note_page",
+      (tx, ctx) => listProjectNotes(tx, ctx, projectId),
     );
     return { kind: "loaded", page };
   } catch (error) {
@@ -460,6 +489,14 @@ export default async function ProjectTriagePage({
   if (taskPageResult.page === null) notFound();
   const taskWorkspace = taskPageResult.page.workspace;
   const projectActivity = taskPageResult.page.activity;
+
+  const notePageResult = await loadProjectNotePage(workspaceId, projectId);
+  if (notePageResult.kind === "unauthenticated") redirectToProjectLogin(detailPath);
+  if (notePageResult.kind === "denied") {
+    return <DeniedState title="Notizen sind für dich nicht freigegeben." />;
+  }
+  if (notePageResult.page === null) notFound();
+  const notePage = notePageResult.page;
   const nextTaskHref = taskWorkspace.nextTaskCursor === null
     ? null
     : `${detailPath}?${new URLSearchParams({
@@ -611,6 +648,14 @@ export default async function ProjectTriagePage({
             activity={projectActivity}
             nextHref={activityNextHref}
             latestHref={activityLatestHref}
+          />
+        </div>
+
+        <div className="mb-6">
+          <ProjectNotesSection
+            workspaceId={workspaceId}
+            projectId={projectId}
+            page={notePage}
           />
         </div>
 

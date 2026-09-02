@@ -118,8 +118,7 @@ Vorgesehene Verträge:
 | `project_id` | uuid not null | `parent.id` (composite FK → `project`) |
 | `parent_type` | text not null, default `'project'` | `parent.type` — M1-13 nur `'project'` (CHECK) |
 | `text_version` | text not null | eigener Versionierungsanker `'note-text.v1'` (nicht Reonys `MDCV_2`) |
-| `text_markdown` | text not null | `Note.text.markdown` (kanonisch, aus Tiptap-Serializer) |
-| `text_plain` | text not null | `Note.text.plain` (serverseitig abgeleitet, nie client-seitig) |
+| `text_markdown` | text not null | `Note.text.markdown` (kanonisch, aus Tiptap-Serializer) — einzige gespeicherte Textform |
 | `pinned_at` | timestamptz null | `Note.pinnedAt` |
 | `pinned_by` | uuid null | `Note.pinnedById` |
 | `revision` | integer not null default 1 | CAS-Anker für Edit/Pin/Delete |
@@ -135,20 +134,28 @@ Constraints (analog [M110]):
 - `foreignKey (workspace_id) → workspace.id`; `foreignKey (workspace_id, project_id) → project(workspace_id, id) ON DELETE CASCADE` (Erasure-Pfad, nicht Nutzer-Delete).
 - `check parent_type = 'project'` — M1-13 erlaubt nur Projekteltern.
 - `check text_version = 'note-text.v1'`.
-- `check` Länge `text_markdown` 1–10000 Zeichen (Reonic `maxLength 10000`) und `text_plain` nicht leer; `pinned_at/pinned_by` paarweise NULL/NOT NULL (`(pinned_at IS NULL) = (pinned_by IS NULL)`); `edited_at/edited_by` paarweise; `deleted_at ≥ created_at`; `revision 1..2147483647`; `isfinite` auf Zeitstempel.
+- `check` Länge `text_markdown` 1–10000 Zeichen (Reonic `maxLength 10000`); `pinned_at/pinned_by` paarweise NULL/NOT NULL (`(pinned_at IS NULL) = (pinned_by IS NULL)`); `edited_at/edited_by` paarweise; `deleted_at ≥ created_at`; `revision 1..2147483647`; `isfinite` auf Zeitstempel.
+- `text_plain` wird **nicht** gespeichert: siehe P2-4 (Review-Befunde) — die einzige
+  kanonische Textform ist `text_markdown`; `text_plain` wird bei jedem Read
+  deterministisch aus `text_markdown` abgeleitet (kein Drift möglich).
 - RLS: `FORCE ROW LEVEL SECURITY` + Tenant-Policy wie `project_task` [M110/M110SVC].
 
 Index:
 
 - `project_note_ws_project_active_idx` auf `(workspace_id, project_id, pinned_at DESC NULLS LAST, created_at DESC, id)` mit `WHERE deleted_at IS NULL` — trägt die Pinning-an-erster-Stelle-Ordnung.
-- `project_note_ws_project_deleted_idx` auf `(workspace_id, project_id)` mit `WHERE deleted_at IS NOT NULL` (Archiv-/Wiederherstellung später; M1-13 rendert gelöschte Notizen **nicht**).
+- (P2-5: der spekulative `project_note_ws_project_deleted_idx` entfällt — Restore ist Non-Goal, kein Lösch-Index in M1-13.)
 
 ### 4.2 Rich-Text-Vertrag `note-text.v1` (ADR 0019)
 
 - Kanonisch gespeichert wird **Markdown** (`text_markdown`), erzeugt vom
   vorhandenen Tiptap-Editor über einen Markdown-Serializer. `text_plain` wird
-  **serverseitig** aus dem validierten Markdown abgeleitet (Display/Liste/
-  Suche); es ist nie ein Client-Feld.
+  bei jedem Read **serverseitig** deterministisch aus dem validierten Markdown
+  abgeleitet (Display/Liste/Suche); es ist nie ein Client-Feld und wird nicht
+  gespeichert (P2-4).
+- **Link-Hygiene (P1-1):** Link-Ziele dürfen ausschließlich die Schemes
+  `http`, `https` und `mailto` tragen (case-insensitive). `javascript:`,
+  `data:`, `vbscript:` und alle übrigen Schemes sowie **Roh-HTML im Markdown**
+  werden serverseitig abgelehnt (weder gespeichert noch gerendert).
 - Reonys interner Marker `<!-- MDCV_2 -->` wird **nicht** übernommen
   (Clean-Room: fremdes Formatdetail). Stattdessen versioniert `text_version`
   unseren eigenen Vertrag.
@@ -177,8 +184,10 @@ pinned   --unpin--> unpinned  (beide genullt)
 ```
 
 - `deleted` ist terminal; es gibt in M1-13 **kein** Restore.
-- Pin/Unpin und Text-Edit sind unabhängig von `deleted`; eine gelöschte Notiz
-  wird nie mehr gerendert oder gemutet.
+- **P1-3:** Pin/Unpin und Text-Edit sind **nicht** unabhängig von `deleted`.
+  Eine gelöschte Notiz wird nie mehr gerendert oder gemutet: jede Mutation
+  trägt `WHERE deleted_at IS NULL` und meldet auf eine gelöschte Notiz
+  `not_found` (nie `conflict`).
 - **DECIDED D2 (Pinning):** mehrere Notizen dürfen gleichzeitig gepinnt sein.
   Es gibt **keinen** „genau eine gepinnte Notiz je Projekt“-Constraint, weil die
   Spec keinerlei Einzigartigkeit oder Fehlerfall dafür dokumentiert. Die Liste
@@ -193,15 +202,21 @@ Erst-/Folgesnapshot gegen Erasure):
 
 - `create_note(projectId, textMarkdown, pinned = false)` → Insert; Revision 1;
   `created_by = actor`; bei `pinned` zusätzlich `pinned_at/pinned_by`;
-  serverseitig `text_plain` ableiten.
+  Markdown wird serverseitig validiert (P1-1).
 - `update_note_text(noteId, expectedRevision, textMarkdown)` → CAS auf
   `expectedRevision`; setzt `edited_at = now`, `edited_by = actor`,
-  `revision + 1`, leitet `text_plain` neu ab. **[DECIDED WMEE, D1]**
-- `set_note_pinned(noteId, expectedRevision, pinned)` → CAS; setzt/löscht
-  `pinned_at/pinned_by`. (Ändert **nicht** `edited_*`, da Reonic Pin/Unpin
-  getrennt vom Text-Edit modelliert.)
-- `delete_note(noteId, expectedRevision)` → CAS; Soft-Delete
-  `deleted_at = now`. **[DECIDED WMEE, D1]**
+  `revision + 1`. **[DECIDED WMEE, D1]**
+- `set_note_pinned(noteId, expectedRevision, pinned)` → CAS auf
+  `expectedRevision`; setzt/löscht `pinned_at/pinned_by` **und** inkrementiert
+  `revision + 1` (P1-2). Ändert **nicht** `edited_*`, da Reonic Pin/Unpin
+  getrennt vom Text-Edit modelliert.
+- `delete_note(noteId, expectedRevision)` → CAS auf `expectedRevision`; Soft-Delete
+  `deleted_at = now` **und** `revision + 1` (P1-2). **[DECIDED WMEE, D1]**
+
+**P1-2:** Jede Mutation (Edit, Pin/Unpin, Delete) inkrementiert `revision`;
+`expectedRevision` ist bei allen drei Pflicht. **P1-3:** alle drei Mutationen
+laufen gegen `WHERE deleted_at IS NULL`; eine gelöschte Notiz liefert
+`not_found`, ein Revisionsmismatch auf einer aktiven Notiz `conflict`.
 
 Erwartete Fehler: `invalid`, `not_found`, `conflict` (Revisionskonflikt),
 `denied`, `unauthenticated`; unbekannte Fehler bleiben laut [M111A/M111B].
@@ -414,3 +429,19 @@ Gemeinsamer Liefervertrag (gilt für alle fünf Capabilities):
   bold/italic/strike/code, H1–H3, UL/OL, Links) in beide Richtungen
   (JSON↔Markdown); alles andere wird serverseitig abgelehnt. Lizenzrisiko
   damit null.
+
+## 18. Review-Befunde M1-13-R1 (Kimi K3, unabhängiger Architektur-Review)
+
+Kein P0. Alle Befunde sind in Spec + Implementierung eingearbeitet:
+
+| Befund | Schwere | Auflösung |
+|---|---|---|
+| P1-1 Stored-XSS (Link-Hygiene) | P1 | `note-text.v1` validiert serverseitig: Link-Schemes nur `http`/`https`/`mailto` (case-insensitive); `javascript:`/`data:`/übrige Schemes und Roh-HTML im Markdown werden abgelehnt. Serializer sanitized zusätzlich; Tests decken `javascript:`-Links und HTML-Injection ab (§4.2). |
+| P1-2 CAS total | P1 | Jede Mutation (`update_note_text`, `set_note_pinned`, `delete_note`) inkrementiert `revision`; `expectedRevision` ist überall Pflicht; Konflikttests für alle drei Mutationen (§6). |
+| P1-3 Tombstone-WHERE | P1 | `deleted` ist terminal; Pin/Edit sind **nicht** unabhängig von `deleted`. Alle Mutationen mit `WHERE deleted_at IS NULL`; gelöschte Notiz → `not_found` (§5, §6). |
+| P2-4 Plain-Derivation | P2 | `text_plain` wird **nicht** gespeichert; nur `text_markdown` ist kanonisch, `text_plain` wird bei jedem Read deterministisch abgeleitet — kein Drift möglich (Repo-Muster: eine kanonische Form + abgeleitete Projektion, analog `project_task.body`). |
+| P2-5 YAGNI | P2 | Der spekulative `project_note_ws_project_deleted_idx` entfällt; Restore ist Non-Goal (§4.1). |
+| P2-6 Index-Prozedur | P2 | Der Partial-Activity-Index wird **außerhalb** der Migrationstransaktion über `scripts/concurrent-index-contract.mts` (`ensureM110ProjectTaskActivityIndex`) unter dem sessionweiten Migrationslock neu erzeugt: `DROP INDEX CONCURRENTLY` des alten + `CREATE INDEX CONCURRENTLY` des erweiterten Predikats; Fresh- und Prod-Migration werden nicht blockiert. |
+
+Sonstige Review-Hinweise (Parent-Modell, DECIDED Edit/Delete, Erasure-Pfad,
+Event/Audit Service-Level) wurden als konform bestätigt und bleiben unverändert.
