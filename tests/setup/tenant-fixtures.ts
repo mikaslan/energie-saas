@@ -156,6 +156,34 @@ async function fixtureProjectNoteGraph(tx: TenantTx, wsId: string): Promise<void
   `);
 }
 
+async function fixtureProjectAppointmentGraph(tx: TenantTx, wsId: string): Promise<void> {
+  const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor");
+  await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+  const { projectId } = await fixtureProjectGraph(tx, wsId);
+  const appointmentId = randomUUID();
+  await tx.execute(sql`
+    insert into project_appointment (
+      id, workspace_id, project_id, title, start_at, end_at, all_day,
+      appointment_type, revision, created_by
+    ) values (
+      ${appointmentId}::uuid, ${wsId}::uuid, ${projectId}::uuid, 'Fixture Appointment',
+      now() - interval '1 hour', now() + interval '1 hour', false,
+      'on_site', 1, ${userId}::uuid
+    )
+  `);
+  await tx.execute(sql`
+    insert into project_appointment_attendee (workspace_id, appointment_id, membership_id)
+    values (${wsId}::uuid, ${appointmentId}::uuid, ${membershipId}::uuid)
+  `);
+}
+
+async function fixtureCalendarCategoryGraph(tx: TenantTx, wsId: string): Promise<void> {
+  await tx.execute(sql`
+    insert into calendar_category (workspace_id, name, "order")
+    values (${wsId}::uuid, ${`Fixture Category ${randomUUID()}`}, 0)
+  `);
+}
+
 async function fixtureReceipt(tx: TenantTx, wsId: string): Promise<{
   receiptId: string;
   projectId: string;
@@ -1755,6 +1783,9 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   project_task_checklist_item: fixtureProjectTaskGraph,
   project_task_label: fixtureProjectTaskGraph,
   project_note: fixtureProjectNoteGraph,
+  project_appointment: fixtureProjectAppointmentGraph,
+  project_appointment_attendee: fixtureProjectAppointmentGraph,
+  calendar_category: fixtureCalendarCategoryGraph,
   inbound_receipt: async (tx, wsId) => {
     await fixtureReceipt(tx, wsId);
   },
@@ -1968,6 +1999,30 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
     await tx.execute(sql`
       insert into project_task_label (workspace_id, task_id, position, name, color)
       values (${randomUUID()}::uuid, ${randomUUID()}::uuid, 0, 'cross-write', 'blue')
+    `);
+  },
+  project_appointment: async (tx) => {
+    await tx.execute(sql`
+      alter table project_appointment disable trigger project_appointment_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into project_appointment (
+        workspace_id, project_id, title, start_at, end_at, appointment_type,
+        created_by
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, 'cross-write',
+        now(), now() + interval '1 hour', 'phone', ${randomUUID()}::uuid
+      )
+    `);
+  },
+  project_appointment_attendee: async (tx) => {
+    await tx.execute(sql`
+      alter table project_appointment_attendee
+      disable trigger project_appointment_attendee_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into project_appointment_attendee (workspace_id, appointment_id, membership_id)
+      values (${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid)
     `);
   },
   project: async (tx) => {

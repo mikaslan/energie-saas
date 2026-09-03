@@ -9,6 +9,7 @@
 // Wer Auth-Tabellen braucht (nur lib/auth.ts), importiert "./schema/auth"
 // direkt; dependency-cruiser erzwingt das. drizzle.config.ts kennt beide Pfade,
 // damit Migrationen weiterhin ALLE Tabellen sehen.
+export * from "./appointment";
 export * from "./core";
 export * from "./boards";
 export * from "./catalog";

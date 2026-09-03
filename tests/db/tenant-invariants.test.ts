@@ -71,6 +71,9 @@ const ACTOR_SCOPED_TABLES = new Set([
   "project_task_assignee",
   "project_task_checklist_item",
   "project_task_label",
+  "project_appointment",
+  "project_appointment_attendee",
+  "calendar_category",
 ]);
 const actorByWorkspace = new Map<string, string>();
 

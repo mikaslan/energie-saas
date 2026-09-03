@@ -38,6 +38,10 @@ import {
   type ProjectActivityCursor,
   type ProjectTaskPageV1,
 } from "@/modules/tasks";
+import {
+  listProjectAppointments,
+  type ProjectAppointmentRangeV1,
+} from "@/modules/calendar";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
 import { AssignedExternalRequestView } from "./assigned-external-request-view";
@@ -55,6 +59,7 @@ import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import { ProjectNotesSection } from "./project-notes-section";
 import { ProjectOutcomePanel } from "./project-outcome-panel";
 import { ProjectTasksSection } from "./project-tasks-section";
+import { AppointmentCalendarSection } from "./appointment-calendar-section";
 
 export const metadata: Metadata = {
   title: "Projektakte | Energie-SaaS",
@@ -152,6 +157,11 @@ type TaskPageLoadResult =
 
 type NotePageLoadResult =
   | { kind: "loaded"; page: ProjectNotePageV1 | null }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+type AppointmentRangeLoadResult =
+  | { kind: "loaded"; range: ProjectAppointmentRangeV1 | null }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
@@ -254,6 +264,50 @@ async function loadProjectNotePage(
       (tx, ctx) => listProjectNotes(tx, ctx, projectId),
     );
     return { kind: "loaded", page };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+function berlinWallClockIso(value: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
+async function loadProjectAppointmentRange(
+  workspaceId: string,
+  projectId: string,
+): Promise<AppointmentRangeLoadResult> {
+  try {
+    const now = new Date();
+    const rangeStart = new Date(now);
+    rangeStart.setUTCFullYear(rangeStart.getUTCFullYear() - 1);
+    const rangeEnd = new Date(now);
+    rangeEnd.setUTCFullYear(rangeEnd.getUTCFullYear() + 1);
+    const range = await authorizedQuery(
+      workspaceId,
+      "appointment.read",
+      "project_appointment_range",
+      (tx, ctx) => listProjectAppointments(tx, ctx, projectId, {
+        rangeStart: berlinWallClockIso(rangeStart),
+        rangeEnd: berlinWallClockIso(rangeEnd),
+        view: "month",
+      }),
+    );
+    return { kind: "loaded", range };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -498,6 +552,16 @@ export default async function ProjectTriagePage({
   }
   if (notePageResult.page === null) notFound();
   const notePage = notePageResult.page;
+
+  const appointmentRangeResult = await loadProjectAppointmentRange(workspaceId, projectId);
+  if (appointmentRangeResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+  if (appointmentRangeResult.kind === "denied") {
+    return <DeniedState title="Termine sind für dich nicht freigegeben." />;
+  }
+  if (appointmentRangeResult.range === null) notFound();
+  const appointmentRange = appointmentRangeResult.range;
   const nextTaskHref = taskWorkspace.nextTaskCursor === null
     ? null
     : `${detailPath}?${new URLSearchParams({
@@ -659,6 +723,14 @@ export default async function ProjectTriagePage({
             workspaceId={workspaceId}
             projectId={projectId}
             page={notePage}
+          />
+        </div>
+
+        <div className="mb-6">
+          <AppointmentCalendarSection
+            workspaceId={workspaceId}
+            projectId={projectId}
+            range={appointmentRange}
           />
         </div>
 

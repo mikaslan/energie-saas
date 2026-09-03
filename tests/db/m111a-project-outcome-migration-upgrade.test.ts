@@ -29,9 +29,9 @@ type LegacyProject = {
 
 const PRE_M111A_MIGRATION_INDEX = 38;
 const M111A_MIGRATION_INDEX = 39;
-// M1-13 (0041) folgt auf M1-11b (0040); der Gesamtbestand zaehlt 42
-// Migrationen (idx 0..41).
-const TOTAL_MIGRATION_COUNT = 42;
+// M1-15 (0043) folgt auf M1-13 (0041); idx 42 ist für M1-14 parallel
+// reserviert, der Gesamtbestand zaehlt 43 Migrationen.
+const TOTAL_MIGRATION_COUNT = 43;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 

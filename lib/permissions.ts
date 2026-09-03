@@ -10,6 +10,7 @@ export type Action =
   | "project.activity.read"
   | "task.read" | "task.write" | "phase.convert"
   | "note.read" | "note.write"
+  | "appointment.read" | "appointment.write"
   | "price.read_purchase" | "price.edit" | "discount.apply"
   | "invoice.issue" | "offer.release.prepare" | "offer.release.approve"
   | "offer.issue.prepare" | "offer.issue.approve" | "offer.issue.withdraw"
@@ -65,6 +66,8 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "task.write":          { minRole: "editor", internalOnly: true },
   "note.read":           { minRole: "viewer", internalOnly: true },
   "note.write":          { minRole: "editor", internalOnly: true },
+  "appointment.read":    { minRole: "viewer", internalOnly: true },
+  "appointment.write":   { minRole: "editor", internalOnly: true },
   "phase.convert":       { minRole: "editor", capability: "convert_phase" },
   "price.read_purchase": { minRole: "editor", capability: "see_purchase_prices" },
   "price.edit":          { minRole: "editor", capability: "edit_prices" },

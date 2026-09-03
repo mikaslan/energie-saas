@@ -40,7 +40,9 @@ export const domainEvents = pgTable(
         'project.outcome_reopened',
         'project.note_created', 'project.note_updated',
         'project.note_deleted', 'project.note_pinned',
-        'project.note_unpinned'
+        'project.note_unpinned',
+        'project.appointment_created', 'project.appointment_updated',
+        'project.appointment_deleted'
       )`),
   ],
 );

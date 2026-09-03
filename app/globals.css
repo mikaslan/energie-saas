@@ -43,3 +43,43 @@ textarea {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ── FullCalendar (M1-15) ────────────────────────────────────────────────
+   WMEE-/A11y-Anpassungen: hoher Kontrast für Tageszahlen und neutrale Texte,
+   kompaktere Header-Titel auf kleinen Viewports. Kein Farbsignal-only. */
+.fc {
+  --fc-neutral-text-color: #475569;
+  --fc-border-color: #cbd5e1;
+  --fc-button-bg-color: #1e293b;
+  --fc-button-border-color: #1e293b;
+  --fc-button-hover-bg-color: #0f172a;
+  --fc-button-hover-border-color: #0f172a;
+  --fc-button-active-bg-color: #0f172a;
+  --fc-button-active-border-color: #0f172a;
+}
+
+.fc .fc-daygrid-day-number,
+.fc .fc-col-header-cell-cushion {
+  color: #0f172a;
+}
+
+/* Fremdmonats-Tage statt `opacity: .3` (FullCalendar-Default) über eine
+   ausreichend kontrastreiche Farbe abgrenzen — sonst schlägt Axe color-contrast
+   auf den Tageszahlen fehl. */
+.fc .fc-day-other .fc-daygrid-day-top {
+  opacity: 1;
+}
+
+.fc .fc-day-other .fc-daygrid-day-number {
+  color: #475569;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1.15rem;
+}
+
+@media (min-width: 640px) {
+  .fc .fc-toolbar-title {
+    font-size: 1.5rem;
+  }
+}

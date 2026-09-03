@@ -150,6 +150,14 @@ verlangt `@fullcalendar/core@~6.1.21`. Das ist ein **harter Major-Konflikt**
 (empfohlen `6.1.x` durchgängig; ADR 0021 E5). Ohne Pin ist der Kalender nicht
 lauffähig bzw. doppelt gebundelt.
 
+
+**Implementierungs-Pin (RED-Entscheidung, 2026-09-03):** `@fullcalendar/react`
+wird auf `^6.1.21` gepinnt (alle sechs `@fullcalendar/*`-Pakete auf der 6.1.x-
+Linie). Das Caret `^` ist bewusst: Es lässt innerhalb der 6.x-Major-Grenze
+Patch-/Minor-Updates zu, während das `package-lock.json` (gehört zum Slice) die
+exakte aufgelöste Version festhält; ein Major-Sprung auf 7.x ist durch `^`
+ausgeschlossen, solange die 6.1.x-Plugins nicht gemeinsam migriert werden.
+
 ## 3. Capability-Sheet (Goal-Prompt §7)
 
 ### 3.1 Gemeinsamer Liefervertrag
@@ -300,8 +308,11 @@ active --delete--> (Zeile gelöscht, Hard-Delete)   [terminal; Historie via Even
 
 ## 6. Commands und Actions
 
-Vertrag `lib/integrations/appointments/contract.ts` (Version
-`project-appointment-command.v1`); Service `modules/appointments/`. Jede Action
+Vertrag `lib/integrations/calendar/contract.ts` (Version
+`project-appointment-command.v1`); Service `modules/calendar/`. *(Amendment
+2026-09-03 nach Kimi-Code-Review P2: Implementierung nutzt `calendar/` statt
+des ursprünglich spezifizierten `appointments/`; diese Spec folgt der
+Implementierung.)* Jede Action
 reauthentifiziert, allowlistet Felder, liest Project/Membership serverseitig
 neu und sperrt zuerst das Project (Lock-Ordnung wie [M110SVC] `lockProject` →
 Project `FOR KEY SHARE`; `lockReadableProject` für Reads):
@@ -381,10 +392,10 @@ Neue Capabilities `appointment.read` und `appointment.write` (Muster
 
 - Neuer Abschnitt „Termine“ in der Projektakte
   (`app/w/[workspaceId]/anfragen/[projectId]/`, neben `project-tasks-section.tsx`).
-  Dateien (künftig): `appointment-calendar-section.tsx`,
+  Dateien: `appointment-calendar-section.tsx`,
   `appointment-calendar.tsx` (Client-Wrapper für FullCalendar),
-  `appointment-dialog.tsx`, `appointment-actions.ts`, Readmodel über
-  `modules/appointments/`.
+  `appointment-dialog.tsx`, `appointment-actions.ts`, `appointment-editor-model.ts`
+  (Zustandsmodell), Readmodel über `modules/calendar/`.
 - **Kein eigenes Mutationstool außerhalb der Projektakte** (Non-Goal
   workspaceweite Kalender-Route / globale Terminsuche).
 - FullCalendar: `@fullcalendar/react` + `daygrid` (Monat), `timegrid` (Woche),
@@ -505,3 +516,11 @@ Neue Capabilities `appointment.read` und `appointment.write` (Muster
 - **O5 → bestätigt:** `ErasureGraphIds.appointmentIds` als neuer
   Graphen-Knoten + quellgepinnter Scrub der Appointment-Spalten bei
   Integration (Migration 0043).
+
+## Anhang: Follow-up M1-15b (Root-Notiz 2026-09-03)
+
+Das Reonic-Kalendermodell (API: `calendarId` Pflicht, 4 Scopes
+Team/Tenancy/User/Client; Portal: Unternehmens-/Benutzer-/persönliche
+Kalender) wird in M1-15 bewusst NICHT gebaut (DECIDED, ACCEPTED_EXCEPTION).
+Folgeslice M1-15b „Kalender-Scopes" ist als UNK-M115-01 registriert und wird
+nach M1-15 eingeplant — erst damit ist die Kalender-Parität vollständig.
