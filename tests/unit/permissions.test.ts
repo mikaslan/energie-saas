@@ -133,6 +133,21 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
     capability: "approve_offer_documents",
     expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
   },
+  "offer.signature.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
+  "offer.signature.create": {
+    capability: "offer_signature",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
+  "offer.signature.withdraw": {
+    capability: "offer_signature",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
+  "offer.signature.upload_analog": {
+    capability: "offer_signature",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
   "catalog.read": {
     expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
   },
@@ -154,12 +169,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 22 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 26 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(22);
+    expect(Object.keys(MATRIX)).toHaveLength(26);
   });
 
-  it("22 Actions × 3 Rollen × Capability an/aus", () => {
+  it("26 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];

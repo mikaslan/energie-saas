@@ -3,7 +3,8 @@ import type { Role } from "./db/schema/core";
 export type Capability =
   | "see_purchase_prices" | "edit_prices" | "discounts" | "invoicing"
   | "convert_phase" | "assign_projects" | "manage_catalog" | "manage_settings"
-  | "prepare_offer_documents" | "approve_offer_documents" | "external_only";
+  | "prepare_offer_documents" | "approve_offer_documents" | "offer_signature"
+  | "external_only";
 
 export type Action =
   | "project.read" | "project.write" | "project.assign" | "project.outcome.write"
@@ -13,6 +14,8 @@ export type Action =
   | "price.read_purchase" | "price.edit" | "discount.apply"
   | "invoice.issue" | "offer.release.prepare" | "offer.release.approve"
   | "offer.issue.prepare" | "offer.issue.approve" | "offer.issue.withdraw"
+  | "offer.signature.read" | "offer.signature.create"
+  | "offer.signature.withdraw" | "offer.signature.upload_analog"
   | "catalog.read" | "catalog.manage" | "settings.manage";
 
 export type PermissionCtx = {
@@ -75,6 +78,10 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "offer.issue.prepare": { minRole: "editor", capability: "prepare_offer_documents", internalOnly: true },
   "offer.issue.approve": { minRole: "editor", capability: "approve_offer_documents", internalOnly: true },
   "offer.issue.withdraw": { minRole: "editor", capability: "approve_offer_documents", internalOnly: true },
+  "offer.signature.read": { minRole: "viewer", internalOnly: true },
+  "offer.signature.create": { minRole: "editor", capability: "offer_signature", internalOnly: true },
+  "offer.signature.withdraw": { minRole: "editor", capability: "offer_signature", internalOnly: true },
+  "offer.signature.upload_analog": { minRole: "editor", capability: "offer_signature", internalOnly: true },
   "catalog.read":        { minRole: "viewer" },
   "catalog.manage":      { minRole: "editor", capability: "manage_catalog" },
   "settings.manage":     { minRole: "admin" },

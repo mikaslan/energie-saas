@@ -15,6 +15,12 @@ import {
   MATVIEW_ALLOWLIST,
 } from "../setup/tenant-fixtures";
 
+// workspace_id-gebunden, aber BEWUSST RLS-frei (Definer-only, Muster
+// erasure_operation_locator): der öffentliche Token-Locator muss den
+// Token-Hash cross-tenant auflösen, BEVOR app.workspace_id gesetzt werden
+// kann. Er trägt workspace_id nur für die FK-Integrität.
+const RLS_FREE_WORKSPACE_EXEMPT = new Set<string>(["signature_token_locator"]);
+
 interface Relation {
   name: string;
   relkind: string;
@@ -71,6 +77,9 @@ const ACTOR_SCOPED_TABLES = new Set([
   "project_task_assignee",
   "project_task_checklist_item",
   "project_task_label",
+  "signature_request",
+  "signature_attestation",
+  "signature_view_log",
 ]);
 const actorByWorkspace = new Map<string, string>();
 
@@ -344,6 +353,7 @@ describe("Tenant-Invarianten über ALLE Tabellen", () => {
     // sich hinter einem Exempt-Namen versteckt.
     const exempted = allRelations.filter((t) => isExempt(t.name));
     for (const t of exempted) {
+      if (RLS_FREE_WORKSPACE_EXEMPT.has(t.name)) continue;
       const col = await testPool.query<NullableRow>(
         `select is_nullable from information_schema.columns where table_name = $1 and column_name = 'workspace_id'`,
         [t.name]);

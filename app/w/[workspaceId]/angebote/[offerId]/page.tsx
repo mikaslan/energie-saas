@@ -26,6 +26,7 @@ import {
   OfferDetailView,
   type OfferDetailSurfaceView,
 } from "./offer-detail-view";
+import { OfferSignaturePanel } from "./offer-signature-panel";
 
 export const metadata: Metadata = {
   title: "Angebotsentwurf | WMEE Vertrieb",
@@ -574,21 +575,28 @@ export default async function OfferDetailPage(
 
   if (result.view === null) notFound();
   return (
-    <OfferDetailView
-      view={projectOfferDetailView(
-        result.view,
-        result.editorCapabilities,
-        result.recoveryScope,
-        result.pdfDrafts,
-        {
-          profile: result.releaseProfile,
-          recipient: result.releaseRecipient,
-          candidates: result.releaseCandidates,
-          issuances: result.offerIssuances,
-          validityWindow: result.releaseValidityWindow,
-          showPanel: result.showReleasePanel,
-        },
-      )}
-    />
+    <>
+      <OfferDetailView
+        view={projectOfferDetailView(
+          result.view,
+          result.editorCapabilities,
+          result.recoveryScope,
+          result.pdfDrafts,
+          {
+            profile: result.releaseProfile,
+            recipient: result.releaseRecipient,
+            candidates: result.releaseCandidates,
+            issuances: result.offerIssuances,
+            validityWindow: result.releaseValidityWindow,
+            showPanel: result.showReleasePanel,
+          },
+        )}
+      />
+      <OfferSignaturePanel
+        workspaceId={workspaceId}
+        offerId={offerId}
+        variantId={selectedVariantId}
+      />
+    </>
   );
 }

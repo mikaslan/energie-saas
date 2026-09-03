@@ -27,4 +27,5 @@ export * from "./project-loss-reason";
 export * from "./project-assignment";
 export * from "./project-note";
 export * from "./project-task";
+export * from "./signatures";
 export * from "./site";
