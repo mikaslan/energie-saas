@@ -93,3 +93,22 @@ Defaults (6 Typen, {NUMBER}-Pflicht), RLS-Schreibmatrix (Admin ODER Editor mit
 Invoicing-Capability), Issuing-Details-Minimierung, Precondition-Gate.
 Belege: Vollcheck 186/186, E2E 4/4 (Lane) + 66/66 (Integration),
 M300-DB-RBAC-01, Kimi FREIGABE.
+
+## M3-01 Rechnungs-Kern (0046) — REVIEWED/VERIFIED, integriert (2026-09-04)
+
+F8.3/F8.x: generisches commercial_document-Modell (6 Typen, typ-gebundene
+Datums-CHECKs, Geldvertrag M2-01-verbatim), Gruppen, Nummernkreise
+(workspaceweit je Typ/Jahr, verbrannte Nummern, Race-sicher), Ausstellen
+(CAS draft→issued, GoBD-Snapshot + SHA-256, O4-Precondition), Versand-
+Achse, Storno (Pflichtgrund-Festliste, voided terminal), Zahlungsachse
+(Ableitung NUR aus paid_cents, paid/uncollectable terminal, Überzahlungs-
+Delta), Archiv-Achse (reversibel), Listen/Filter je Typ (Keyset-Cursor,
+Spec §7), Berichte (Berlin-Monats-KPIs, disjunkte Buckets, Vormonats-
+Delta für Fluss-KPIs) + CSV-Export (UTF-8, ;, Formula-Guard), UI-Bereich
+mit Tabs + Server-Actions, Dialog-Fokus/A11y.
+Belege: Lane-Vollgates 96–194 Dateien (1874 passed/1 skipped), Rollenprobe
+88/88 + PG18 5/5, Kimi je Slice (A1–A4 FREIGABE, UI NACHBESSERUNG→zu,
+Integration FREIGABE), Chromium-E2E 5/5 (Lane) + **71/71 (Integration)**.
+Visual INCONCLUSIVE. Offen als Folgeslices: Teilrechnungsketten (F8.5),
+PDF-Rendering (M3-02), E-Rechnung/DATEV (F8.6/8.7), GoBD-Durchsetzung,
+Erasure-Verkabelung (M3-10), Nummern-Template-Verkabelung (UNK-M301-02).

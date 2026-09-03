@@ -18,9 +18,9 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 27–28 % (ESTIMATE) | M1-Welle 01+02 komplett grün; M2-04 + M3-00 integriert und VERIFIED (E2E 66/66, `codex/m1-wave-02` `1b1f944`); M3-01 (0046) in Implementierung |
+| Gesamtmission einschließlich F1–F16 | ca. 30 % (ESTIMATE) | M1-Welle 01+02 grün; M2-04 + M3-00 VERIFIED; M3-01 Rechnungs-Kern integriert und VERIFIED (E2E 71/71, `codex/m1-wave-02` `5c7ea33`) |
 | Technisches Fundament M0/M1 | ca. 97–98 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 20–21 % (ESTIMATE) | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF, Kontakte, Termine, E-Signatur-Vorbereitung, Rechnungs-Stammdaten lokal verifiziert; Rechnungs-Kern in Arbeit |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 22–23 % (ESTIMATE) | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF, Kontakte, Termine, E-Signatur-Vorbereitung, Rechnungs-Stammdaten und der komplette Rechnungs-Kern (F8-Kernsuite) lokal verifiziert |
 
 ## 2026-09-02 — API-Gate, Discovery, M1-11b-Lage
 
@@ -74,7 +74,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | F5 Wärmepumpe | SPECIFIED | Schätzverfahren klar von zertifizierter Normrechnung trennen |
 | F6 Schaltplan | SPECIFIED | eigener Editor-/Exportvertrag |
 | F7 Installation | SPECIFIED | Signatur → Installation → Checkliste/Disposition/Handover |
-| F8 Rechnungen | SPECIFIED (M3-01 final, O1–O5 resolvt) | generisches `commercial_document`-Modell (ADR 0023), Migration 0046; M3-00 Stammdaten (0045) davor |
+| F8 Rechnungen | PARTIAL VERIFIED | M3-01-Kern integriert (0046): 6 Dokumenttypen, Nummernkreise, Ausstellen/Snapshot, Versand/Storno/Zahlungs-/Archiv-Achse, Listen/Filter, Berichte+CSV, UI/E2E 71/71; Folgeslices: Teilrechnungen (F8.5), PDF (M3-02), E-Rechnung/DATEV (F8.6/8.7), GoBD, Erasure-Verkabelung |
 | F9 Zeiterfassung | SPECIFIED | Timer/Eintrag → Audit → Export |
 | F10 Kundenportal | SPECIFIED | geschützter Projektlink → Angebot/Status/Dateien |
 | F11 Mobile/PWA | SPECIFIED | schmale Offline-Outbox für Fotos/Checklisten/Zeit |
@@ -146,6 +146,25 @@ WMEE; Push-/Deploy-Regeln unverändert.
 komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
+
+## 2026-09-04 (Nacht) — M3-01 INTEGRIERT in codex/m1-wave-02: Kimi FREIGABE, E2E 71/71
+
+- **0046-Integration** `codex/m1-wave-02` HEAD **`5c7ea33`** (remote): Fast-
+  Forward der Lane (Basis 1b1f944, linear) + E2E-Seed-Fix `3a0d048`
+  (M3-00-Spec hinterlässt im Gesamtlauf Settings ohne Zahlungsdaten →
+  Nachrüst-Update). Journal `when` monoton, 0046.prevId = 0045.id,
+  Snapshot drei-Wege, keine Drift, keine Erasure-Pin-Änderung.
+- **Kimi-Integrations-Review FREIGABE** (0 P0/P1/P2; 2 P3 dokumentiert):
+  _m301-Pins (3 Runtime-Routinen + Trigger, 20 Policies, ACL ohne
+  DELETE/app_worker), ACTOR_SCOPED_TABLES, m111a idx 46.
+- **Gesamt-E2E 71/71** (66 Bestand + 5 M3-01): Journey, Filter/Archiv,
+  Berichte/CSV, Rollen, Typ-Abdeckung; Axe A/AA inkl. offenem Dialog.
+  `npm run check` exit 0 (194 Dateien, 1874 passed/1 skipped, 88/88+5/5),
+  Build exit 0.
+- **F8 Rechnungen: SPECIFIED → PARTIAL VERIFIED** (Kern-Suite komplett;
+  Teilrechnungen/PDF/E-Rechnung/GoBD/Erasure = Folgeslices).
+- **Quote (ESTIMATE):** Gesamt ~30 %, nutzbare F1–F16-Breite ~22–23 %,
+  Fundament unverändert ~97–98 %.
 
 ## 2026-09-04 (spät) — M3-01 UI-/E2E-Schicht gebaut (Root): 5/5 Chromium, Kimi NACHBESSERUNG→geschlossen
 

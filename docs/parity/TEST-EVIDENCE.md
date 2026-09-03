@@ -115,3 +115,22 @@ exit 0 (186/186), E2E fokussiert 4/4. Integration `codex/m1-wave-02`
 0045-Snapshot auf 0044-Kette (prevId 97b3db4b, exakt 2 neue Tabellen);
 Vollcheck exit 0 im ersten Lauf, `db:generate` keine Drift, Build exit 0,
 **Chromium-E2E komplett 66/66**. Kimi-Integrations-Review FREIGABE.
+
+## M3-01 Rechnungs-Kern (0046) — REVIEWED/VERIFIED, integriert (2026-09-04)
+
+Lane `codex/m3-01-invoicing-core` (`0dcfd8e` A1–A3, `4218842` A4,
+`1059b06` UI/E2E — je Kimi-reviewed: A1 FREIGABE, A2/A3 geschlossen,
+A4 FREIGABE, UI NACHBESSERUNG→alle P1/P2/P3 zu). Integration
+`codex/m1-wave-02` (`5c7ea33`, remote): Fast-Forward auf 1b1f944-Basis +
+E2E-Seed-Fix (`3a0d048`, M3-00-Spec hinterlässt Settings ohne
+Zahlungsdaten → Nachrüst-Update); Journal `when` monoton, 0046.prevId =
+0045.id, Snapshot drei-Wege (`db:generate` „No schema changes"), keine
+Erasure-Pin-Änderung, _m301-Pins aus Ist verankert, ACTOR_SCOPED_TABLES
+4 Einträge, m111a-Journal-Assert idx 46. Kimi-Integrations-Review
+**FREIGABE** (0 P0/P1/P2). Nachweise: `npm run check` exit 0
+(194 Dateien, 1874 passed/1 skipped), Rollenprobe 88/88 + PG18 5/5,
+Production-Build exit 0, **Chromium-E2E komplett 71/71** (66 Bestand +
+5 M3-01: Journey Create→Issue→Send→Void, Filter/Suche/Archiv, Berichte+
+CSV inkl. Empty-States, Viewer/External, Typ-Abdeckung). Axe A/AA inkl.
+offenem Storno-Dialog. `UNK-M301-02` (Nummern-Template-Verkabelung
+M3-00↔M3-01) als Folgeslice offen.
