@@ -1432,12 +1432,150 @@ async function main(): Promise<number> {
   });
 
   if (process.env.ENERGIE_SAAS_LOCAL_PREVIEW === "1") {
-    const boardUrl = `${server.baseURL}/w/${seedData.workspaceId}/anfragen`;
-    console.log(`[preview] URL: ${boardUrl}`);
-    console.log(`[preview] Editor: ${seedData.editorEmail}`);
+    // Mikail 2026-09-04: „localhost von ALLEN gebauten Funktionen" — die
+    // Runner-Seeds decken Board/Katalog/Angebote bereits ab; hier kommen die
+    // Bereiche hinzu, die sonst erst die Einzel-Specs befüllen würden:
+    // Rechnungen (Stammdaten + Belege), Wirtschaftlichkeit, Kontakt, Termin.
+    const previewPool = new Pool({ connectionString: embedded.url, max: 1 });
+    try {
+      await previewPool.query("begin");
+      await previewPool.query(
+        "select pg_catalog.set_config('app.workspace_id', $1, true)",
+        [seedData.workspaceId],
+      );
+      await previewPool.query(
+        `select pg_catalog.set_config('app.actor_id', u.id::text, true)
+           from user_identity u where u.email = $1 limit 1`,
+        [seedData.editorEmail],
+      );
+      // Capabilities für Rechnungen + Wirtschaftlichkeit
+      for (const capability of ["invoicing", "economics"]) {
+        await previewPool.query(
+          `update membership
+              set capabilities = pg_catalog.jsonb_set(
+                coalesce(capabilities, '{}'::jsonb), $2, 'true'::jsonb, true
+              )
+            where workspace_id = $1::uuid
+              and user_id = (select id from user_identity where email = $3 limit 1)`,
+          [seedData.workspaceId, `{${capability}}`, seedData.editorEmail],
+        );
+      }
+      // Rechnungsstellung (vollständig, idempotent)
+      await previewPool.query(
+        `insert into workspace_invoicing_settings (
+           id, workspace_id, company_name, company_email, company_country,
+           company_address_line1, company_postal_code, company_city,
+           accounting_method, revision, created_by,
+           payment_account_holder, payment_iban, payment_bic
+         ) select gen_random_uuid(), $1::uuid, 'Solarwerk Demo GmbH',
+           'rechnung@demo.invalid', 'DE', 'Musterstraße 1', '10115', 'Berlin',
+           'accrual', 1, (select id from user_identity where email = $2 limit 1),
+           'Solarwerk Demo GmbH', 'DE89370400440532013000', 'MARKDEF1100'
+         where not exists (
+           select 1 from workspace_invoicing_settings where workspace_id = $1::uuid
+         )`,
+        [seedData.workspaceId, seedData.editorEmail],
+      );
+      // Rechnungen: Gruppe + Entwurf + ausgestellte Rechnung
+      await previewPool.query(
+        `insert into commercial_document_group (id, workspace_id, name, created_by)
+         select gen_random_uuid(), $1::uuid, 'Solarprojekte 2026',
+                (select id from user_identity where email = $2 limit 1)
+         where not exists (
+           select 1 from commercial_document_group
+            where workspace_id = $1::uuid and name = 'Solarprojekte 2026'
+         )`,
+        [seedData.workspaceId, seedData.editorEmail],
+      );
+      await previewPool.query(
+        `insert into commercial_document (
+           id, workspace_id, type, status, name, created_by, due_date, payment_status
+         ) select gen_random_uuid(), $1::uuid, 'invoice', 'draft',
+           'Demo-Entwurf (ausstellbar)', u.id, (now()::date + 30), 'unpaid'
+           from user_identity u where u.email = $2 limit 1
+         where not exists (
+           select 1 from commercial_document
+            where workspace_id = $1::uuid and name = 'Demo-Entwurf (ausstellbar)'
+         )`,
+        [seedData.workspaceId, seedData.editorEmail],
+      );
+      await previewPool.query(
+        `insert into commercial_document (
+           id, workspace_id, type, status, name, created_by, issued_at,
+           issued_snapshot, snapshot_sha256, issued_by, goebd_retention_until,
+           number, number_year, number_sequence, net_cents, tax_cents,
+           gross_cents, payment_status, paid_cents, due_date
+         ) select gen_random_uuid(), $1::uuid, 'invoice', 'issued',
+           'Demo-Rechnung (ausgestellt)', u.id, (now() - interval '2 days'),
+           '{"schemaVersion":"document-snapshot.v1"}'::jsonb,
+           decode('0000000000000000000000000000000000000000000000000000000000000000', 'hex'),
+           u.id, '2036-12-31'::date, 'Rechnung-Demo-2026-900001', 2026, 900001,
+           10000, 1900, 11900, 'unpaid', 0, (now()::date + 14)
+           from user_identity u where u.email = $2 limit 1
+         where not exists (
+           select 1 from commercial_document
+            where workspace_id = $1::uuid and name = 'Demo-Rechnung (ausgestellt)'
+         )`,
+        [seedData.workspaceId, seedData.editorEmail],
+      );
+      // Wirtschaftlichkeits-Defaults
+      await previewPool.query(
+        `insert into workspace_economics_settings (
+           id, workspace_id, electricity_price_net_cents_per_kwh,
+           escalation_rate_bps, oil_price_net_cents_per_liter,
+           gas_price_net_cents_per_kwh, cashflow_horizon_years, revision, created_by
+         ) select gen_random_uuid(), $1::uuid, 32, 150, 105, 12, 20, 1, u.id
+           from user_identity u where u.email = $2 limit 1
+         where not exists (
+           select 1 from workspace_economics_settings where workspace_id = $1::uuid
+         )`,
+        [seedData.workspaceId, seedData.editorEmail],
+      );
+      // Kontakt (M1-14) + Termin (M1-15) am Haupt-Projekt
+      await previewPool.query(
+        `insert into contact (
+           id, workspace_id, display_name, first_name, last_name,
+           is_business, email_primary, created_by
+         ) select gen_random_uuid(), $1::uuid, 'Demo Kontakt GmbH',
+           'Demo', 'Kontakt', true, 'kontakt@demo.invalid', u.id
+           from user_identity u where u.email = $2 limit 1
+         where not exists (
+           select 1 from contact where workspace_id = $1::uuid
+             and display_name = 'Demo Kontakt GmbH'
+         )`,
+        [seedData.workspaceId, seedData.editorEmail],
+      );
+      await previewPool.query(
+        `insert into project_appointment (
+           id, workspace_id, project_id, title, start_at, end_at,
+           appointment_type, revision, created_by
+         ) select gen_random_uuid(), $1::uuid, $3::uuid,
+           'Demo-Termin Vor-Ort', (now() + interval '3 days'),
+           (now() + interval '3 days 1 hour'), 'on_site', 1, u.id
+           from user_identity u where u.email = $2 limit 1
+         where not exists (
+           select 1 from project_appointment
+            where workspace_id = $1::uuid and title = 'Demo-Termin Vor-Ort'
+         )`,
+        [seedData.workspaceId, seedData.editorEmail, mainLead.projectId],
+      );
+      await previewPool.query("commit");
+    } finally {
+      await previewPool.end();
+    }
+
+    const base = `/w/${seedData.workspaceId}`;
+    console.log("[preview] Demo-Localhost mit ALLEN integrierten Bereichen:");
+    console.log(`[preview]   Anfragen/Board:  ${server.baseURL}${base}/anfragen`);
+    console.log(`[preview]   Katalog:         ${server.baseURL}${base}/katalog`);
+    console.log(`[preview]   Angebote:        ${server.baseURL}${base}/angebote`);
+    console.log(`[preview]   Rechnungen:      ${server.baseURL}${base}/rechnungen`);
+    console.log(`[preview]   Rechnungsstellung: ${server.baseURL}${base}/einstellungen/rechnungsstellung`);
+    console.log(`[preview]   Wirtschaftlichkeit: ${server.baseURL}${base}/einstellungen/wirtschaftlichkeit`);
+    console.log(`[preview] Editor (invoicing+conomics): ${seedData.editorEmail}`);
+    console.log(`[preview] Viewer:  ${seedData.viewerEmail}`);
     console.log(`[preview] External: ${seedData.externalEmail}`);
-    console.log(`[preview] Privates Serverlog: ${serverLogPath}`);
-    console.log("[preview] Der Login-Code erscheint ausschließlich im privaten Serverlog.");
+    console.log(`[preview] OTP-Login-Codes erscheinen im privaten Serverlog: ${serverLogPath}`);
     console.log("[preview] Beenden mit Ctrl+C; Testdaten und Server werden danach automatisch entfernt.");
     while (!interruptedBy) await sleep(1_000);
     return signalExitCode(interruptedBy);
@@ -1477,7 +1615,6 @@ async function main(): Promise<number> {
     : "[e2e] Fokussierter Lauf ohne Geoapify-Pfad: 0/0 Aufrufe, 0 Abweichungen.");
   return playwrightExitCode;
 }
-
 
 // Listener bis zum abgeschlossenen finally behalten: ein zweites Terminalsignal
 // darf die laufende Restore-/Cleanup-Sequenz nicht auf Node-Defaultverhalten abkürzen.
