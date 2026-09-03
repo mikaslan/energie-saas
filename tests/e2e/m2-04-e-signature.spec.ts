@@ -208,6 +208,9 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
   test("M2-04: Editor erzeugt Signatur-Request und widerruft den Pending-Link", async ({ page }) => {
     test.setTimeout(120_000);
     const data = state();
+    // Offset 13 statt UI-Default 14: m2-03a legt im vollen Lauf auf demselben
+    // Workspace einen +14-Kandidaten an; identischer Input waere ein
+    // Reservations-Replay dessen Kandidaten.
     const released = await seedM204ReleasedOffer({
       databaseUrl: data.databaseUrl,
       serverLogPath: data.serverLogPath,
@@ -219,7 +222,7 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
       m201ModuleId: data.m201ModuleId,
       m201ProjectId: data.m201ProjectId,
       m201WallboxId: data.m201WallboxId,
-    });
+    }, { validThroughOffsetDays: 13 });
     const offerPath = `/w/${data.m201WorkspaceId}/angebote/${released.offerId}?variante=${released.variantId}`;
     await page.goto(offerPath);
     await loginWithRealOtp(page, data.m201EditorEmail, offerPath);

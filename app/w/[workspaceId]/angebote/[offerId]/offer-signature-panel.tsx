@@ -45,7 +45,7 @@ export async function OfferSignaturePanel(props: {
 
   return (
     <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">E-Signatur</p>
           <h2 className="mt-1 text-lg font-semibold text-slate-950">Signaturanforderungen</h2>
