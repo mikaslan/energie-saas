@@ -1549,6 +1549,14 @@ async function main(): Promise<number> {
          )`,
         [seedData.workspaceId],
       );
+      // Termin-Guard verlangt einen internen Editor/Admin als Actor —
+      // nach den Membership-Updates darf der Editor-Kontext wieder gesetzt
+      // werden (Self-Mutation betrifft nur membership-DML).
+      await previewPool.query(
+        `select pg_catalog.set_config('app.actor_id', u.id::text, true)
+           from user_identity u where u.email = $1 limit 1`,
+        [seedData.editorEmail],
+      );
       await previewPool.query(
         `insert into project_appointment (
            id, workspace_id, project_id, title, start_at, end_at,
