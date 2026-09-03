@@ -291,8 +291,21 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog
 AS $m301_issued_immutable$
 BEGIN
-  IF OLD.status = 'issued' THEN
-    IF NEW.type IS DISTINCT FROM OLD.type
+  -- Kimi-P1-3: Statusmaschine draft -> issued -> voided ist die einzige
+  -- erlaubte Kantenfolge; voided ist terminal, issued nur nach voided.
+  IF OLD.status = 'draft' AND NEW.status NOT IN ('draft', 'issued', 'voided') THEN
+    RAISE EXCEPTION 'invalid_document_status_transition' USING ERRCODE = '23514';
+  END IF;
+  IF OLD.status = 'issued' AND NEW.status NOT IN ('issued', 'voided') THEN
+    RAISE EXCEPTION 'invalid_document_status_transition' USING ERRCODE = '23514';
+  END IF;
+  IF OLD.status = 'voided' AND NEW.status <> 'voided' THEN
+    RAISE EXCEPTION 'invalid_document_status_transition' USING ERRCODE = '23514';
+  END IF;
+
+  IF OLD.status IN ('issued', 'voided') THEN
+    IF NEW.status IS DISTINCT FROM OLD.status
+       OR NEW.type IS DISTINCT FROM OLD.type
        OR NEW.name IS DISTINCT FROM OLD.name
        OR NEW.group_id IS DISTINCT FROM OLD.group_id
        OR NEW.project_id IS DISTINCT FROM OLD.project_id

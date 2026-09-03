@@ -2915,7 +2915,7 @@ export async function verifyRoleContract(
         "_m301_actor_invoicing_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
         "_m301_guard_issued_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:cc1998e0e0d40bde1b22341ceb7b726a1aad709496da599edd99eabf9ba53245",
+          "search_path=pg_catalog:74b12d49291b86d08bfbed526775e8b3d39704d07b88c0163a0661592fae4877",
       ] : []),
       ...(hasWorkspaceInvoicing ? [
         "_m300_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +

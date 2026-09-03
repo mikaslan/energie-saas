@@ -1834,10 +1834,10 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
     await tx.execute(sql`
       insert into commercial_document (
-        id, workspace_id, type, status, name, created_by, due_date
+        id, workspace_id, type, status, name, created_by, due_date, payment_status
       ) values (
         ${randomUUID()}::uuid, ${wsId}::uuid, 'invoice', 'draft',
-        'M3-01 Entwurf', ${userId}::uuid, (now()::date + 14)
+        'M3-01 Entwurf', ${userId}::uuid, (now()::date + 14), 'unpaid'
       )
     `);
   },
@@ -1847,10 +1847,10 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     const documentId = randomUUID();
     await tx.execute(sql`
       insert into commercial_document (
-        id, workspace_id, type, status, name, created_by, due_date
+        id, workspace_id, type, status, name, created_by, due_date, payment_status
       ) values (
         ${documentId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
-        'M3-01 Entwurf (Line-Fixture)', ${userId}::uuid, (now()::date + 14)
+        'M3-01 Entwurf (Line-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid'
       )
     `);
     await tx.execute(sql`

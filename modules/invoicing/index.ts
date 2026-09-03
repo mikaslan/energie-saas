@@ -83,7 +83,6 @@ export {
   getNumberFormats,
   listDocumentGroups,
   renameDocumentGroup,
-  seedNumberSeries,
   upsertInvoicingSettings,
   upsertNumberFormat,
 } from "./service";

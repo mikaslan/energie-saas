@@ -308,7 +308,7 @@ const moneyCentsSchema = z.number().int().min(0).max(MAX_DOCUMENT_MONEY_CENTS);
 const quantityMilliSchema = z.number().int().min(1).max(MAX_DOCUMENT_QUANTITY_MILLI);
 const taxRateBpsSchema = z.union([z.literal(0), z.literal(1900)]);
 const optionalUuid = z.string().uuid().nullable();
-const optionalDate = z.string().trim().min(1).max(32).nullable();
+const optionalDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).nullable();
 
 const documentDraftInputFields = {
   type: commercialDocumentTypeSchema,

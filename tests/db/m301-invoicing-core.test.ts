@@ -19,7 +19,6 @@ import {
   getNumberFormats,
   listDocumentGroups,
   renameDocumentGroup,
-  seedNumberSeries,
   upsertInvoicingSettings,
   InvoicingConflictError,
   InvoicingPreconditionConflictError,
@@ -173,7 +172,14 @@ describe("M3-01 Rechnungs-Kern (PostgreSQL)", () => {
     );
     await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
-      (tx) => seedNumberSeries(tx, fixture.workspaceId),
+      (tx, ctx) => createDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+        input: {
+          type: "invoice" as const, name: "Serien-Seed", groupId: null, projectId: null,
+          contactId: null, dueDate: "2026-12-31", deliveryDate: null, validityDate: null,
+          plannedDeliveryDate: null, plannedServiceDate: null, creditNoteType: null,
+        },
+      }),
     );
     const series = await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
@@ -196,7 +202,8 @@ describe("M3-01 Rechnungs-Kern (PostgreSQL)", () => {
           insert into commercial_document (
             id, workspace_id, type, status, name, number, number_year,
             number_sequence, issued_at, issued_by, created_by,
-            issued_snapshot, snapshot_sha256, goebd_retention_until, due_date
+            issued_snapshot, snapshot_sha256, goebd_retention_until, due_date,
+            payment_status
           ) values (
             ${documentId}::uuid, ${fixture.workspaceId}::uuid, 'invoice', 'issued',
             'Ausgestellt', 'RE-2026-000001', 2026, 1,
@@ -205,7 +212,8 @@ describe("M3-01 Rechnungs-Kern (PostgreSQL)", () => {
             '{"schemaVersion":"document-snapshot.v1"}'::jsonb,
             sha256('issued-test'::bytea),
             (statement_timestamp()::date + 3650),
-            (statement_timestamp()::date + 14)
+            (statement_timestamp()::date + 14),
+            'unpaid'
           )
         `);
       },
@@ -267,5 +275,124 @@ describe("M3-01 Rechnungs-Kern (PostgreSQL)", () => {
       (tx, ctx) => getNumberFormats(tx, ctx),
     );
     expect(formats.formats.length).toBeGreaterThan(0);
+  });
+
+  it("M301-DB-05 (Kimi-P1-1): Steuerberechnung bleibt bei Grossbetraegen exakt", async () => {
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => upsertInvoicingSettings(tx, ctx, settingsCommand(0)),
+    );
+    const draft = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+        input: {
+          type: "invoice" as const, name: "Grossbetrag", groupId: null, projectId: null,
+          contactId: null, dueDate: "2026-12-31", deliveryDate: null, validityDate: null,
+          plannedDeliveryDate: null, plannedServiceDate: null, creditNoteType: null,
+        },
+      }),
+    );
+    // 1e15 * 1900 = 1.9e18 — jenseits von 2^53; Float-Arithmetik wuerde hier
+    // falsch runden. Erwartung exakt: 190_000_000_000_000 Steuer-Cents.
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocumentLine(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
+        documentId: draft.id,
+        input: {
+          position: 1, name: "Grossposition", quantityMilli: 1000, unit: "piece",
+          netCents: 1_000_000_000_000_000, taxRateBps: 1900,
+        },
+      }),
+    );
+    const rows = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx) => tx.execute<{ tax_cents: number; gross_cents: number }>(sql`
+        select tax_cents, gross_cents from commercial_document
+         where workspace_id = ${fixture.workspaceId}::uuid and id = ${draft.id}::uuid
+      `),
+    );
+    expect(Number(rows.rows[0]?.tax_cents)).toBe(190_000_000_000_000);
+    expect(Number(rows.rows[0]?.gross_cents)).toBe(1_190_000_000_000_000);
+  });
+
+  it("M301-DB-06 (Kimi-P1-3): Statusmaschine — issued→draft und voided-Mutation sind verboten", async () => {
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => upsertInvoicingSettings(tx, ctx, settingsCommand(0)),
+    );
+    const documentId = randomUUID();
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      async (tx) => {
+        await tx.execute(sql`
+          insert into commercial_document (
+            id, workspace_id, type, status, name, number, number_year,
+            number_sequence, issued_at, issued_by, created_by,
+            issued_snapshot, snapshot_sha256, goebd_retention_until, due_date,
+            payment_status
+          ) values (
+            ${documentId}::uuid, ${fixture.workspaceId}::uuid, 'invoice', 'issued',
+            'Ausgestellt', 'RE-2026-000002', 2026, 2,
+            statement_timestamp(), ${fixture.editorId}::uuid,
+            ${fixture.editorId}::uuid,
+            '{"schemaVersion":"document-snapshot.v1"}'::jsonb,
+            sha256('issued-test-2'::bytea),
+            (statement_timestamp()::date + 3650),
+            (statement_timestamp()::date + 14),
+            'unpaid'
+          )
+        `);
+      },
+    );
+    const attempt = (sqlText: string) => withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      async (tx) => {
+        await tx.execute(sql.raw(sqlText.replaceAll("__DOC__", documentId)
+          .replaceAll("__WS__", fixture.workspaceId)));
+      },
+    );
+    const isGuarded = async (statement: string) => {
+      try {
+        await attempt(statement);
+        return false;
+      } catch (error) {
+        const cause = (error as { cause?: Error }).cause;
+        const text = `${error instanceof Error ? error.message : ""} ${cause?.message ?? ""}`;
+        return /invalid_document_status_transition|issued_document_immutable/u.test(text);
+      }
+    };
+    expect(await isGuarded(
+      "update commercial_document set status = 'draft' where workspace_id = '__WS__'::uuid and id = '__DOC__'::uuid",
+    )).toBe(true);
+    expect(await isGuarded(
+      "update commercial_document set name = 'Mutiert' where workspace_id = '__WS__'::uuid and id = '__DOC__'::uuid",
+    )).toBe(true);
+  });
+
+  it("M301-DB-07 (Kimi-P2-7): archivierte Gruppe nimmt keine neuen Dokumente", async () => {
+    const created = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocumentGroup(tx, ctx, groupCommand("Archivierte Gruppe")),
+    );
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx) => tx.execute(sql`
+        update commercial_document_group set archived_at = statement_timestamp()
+         where workspace_id = ${fixture.workspaceId}::uuid and id = ${created.id}::uuid
+      `),
+    );
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+        input: {
+          type: "letter", name: "In Archivgruppe", groupId: created.id, projectId: null,
+          contactId: null, dueDate: null, deliveryDate: null, validityDate: "2026-12-31",
+          plannedDeliveryDate: null, plannedServiceDate: null, creditNoteType: null,
+        },
+      }),
+    )).rejects.toBeInstanceOf(InvoicingConflictError);
   });
 });

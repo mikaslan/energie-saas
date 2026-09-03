@@ -401,7 +401,14 @@ function roundHalfUpCents(netCents: number, taxRateBps: number): number {
   if (taxRateBps !== 0 && taxRateBps !== 1900) {
     throw new InvoicingValidationError();
   }
-  return Math.floor((netCents * taxRateBps + 5000) / 10000);
+  // Kimi-P1-1: netCents * taxRateBps kann 1.7e19 erreichen — jenseits von
+  // Number.MAX_SAFE_INTEGER. Rechnung vollständig in BigInt, dann auf den
+  // Geldbereich zurueckpruefen.
+  const rounded = (BigInt(netCents) * BigInt(taxRateBps) + BigInt(5000)) / BigInt(10000);
+  if (rounded > BigInt(MAX_DOCUMENT_MONEY_CENTS)) {
+    throw new InvoicingValidationError();
+  }
+  return Number(rounded);
 }
 
 function isLetter(type: DocumentNumberType): boolean {
@@ -585,15 +592,27 @@ export async function createDocument(
   const command = parsed.data.input;
   const type = command.type;
 
+  // Kimi-P2-7: archivierte Gruppen nehmen keine neuen Dokumente auf.
+  if (command.groupId !== null) {
+    const group = await tx.execute<{ archived_at: unknown }>(sql`
+      select archived_at
+        from commercial_document_group
+       where workspace_id = ${ctx.workspaceId}::uuid and id = ${command.groupId}::uuid
+       limit 1
+    `);
+    if (group.rows[0] === undefined) throw new InvoicingNotFoundError();
+    if (group.rows[0].archived_at !== null) throw new InvoicingConflictError();
+  }
+
   // O4-Precondition: Geld-Dokumente verlangen vollständige Issuing-Details
   // (0045), Briefe nicht.
   if (!isLetter(type)) {
     await assertIssuingDetailsComplete(tx, ctx.workspaceId, type);
   }
 
-  if (can(ctx, "invoicing.write")) {
-    await seedNumberSeries(tx, ctx.workspaceId);
-  }
+  // requireInvoicingWrite hat bereits gegriffen — Seeding läuft damit
+  // ausschließlich im Schreibpfad (Kimi-P2-4).
+  await seedNumberSeries(tx, ctx.workspaceId);
 
   const documentId = randomUUID();
   try {
@@ -702,29 +721,52 @@ export async function createDocumentLine(
     throw error;
   }
 
-  await tx.execute(sql`
-    update commercial_document
-       set net_cents = (
-             select coalesce(sum(line_row.net_cents), 0)
-               from commercial_document_line line_row
-              where line_row.workspace_id = commercial_document.workspace_id
-                and line_row.document_id = commercial_document.id
-           ),
-           tax_cents = (
-             select coalesce(sum(line_row.tax_cents), 0)
-               from commercial_document_line line_row
-              where line_row.workspace_id = commercial_document.workspace_id
-                and line_row.document_id = commercial_document.id
-           ),
-           gross_cents = (
-             select coalesce(sum(line_row.gross_cents), 0)
+  try {
+    await tx.execute(sql`
+      update commercial_document
+         set net_cents = (
+               select coalesce(sum(line_row.net_cents), 0)
+                 from commercial_document_line line_row
+                where line_row.workspace_id = commercial_document.workspace_id
+                  and line_row.document_id = commercial_document.id
+             ),
+             tax_cents = (
+               select coalesce(sum(line_row.tax_cents), 0)
+                 from commercial_document_line line_row
+                where line_row.workspace_id = commercial_document.workspace_id
+                  and line_row.document_id = commercial_document.id
+             ),
+             gross_cents = (
+               select coalesce(sum(line_row.gross_cents), 0)
                from commercial_document_line line_row
               where line_row.workspace_id = commercial_document.workspace_id
                 and line_row.document_id = commercial_document.id
            ),
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid and id = ${command.documentId}::uuid
-  `);
+    `);
+  } catch (error) {
+    const code = postgresErrorCode(error);
+    if (code === "23514") throw new InvoicingValidationError();
+    throw error;
+  }
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: command.documentId,
+    eventType: "commercial_document_line.created",
+    actor: ctx.actor,
+    payload: { documentId: command.documentId, lineId, netCents: line.netCents, taxCents, grossCents },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.line.write",
+    resource: "commercial_document_line",
+    allowed: true,
+    details: { documentId: command.documentId, lineId },
+  });
 
   return commercialDocumentLineV1Schema.parse({
     schemaVersion: COMMERCIAL_DOCUMENT_LINE_VERSION,
