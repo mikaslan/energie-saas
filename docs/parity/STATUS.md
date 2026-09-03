@@ -18,9 +18,9 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 30 % (ESTIMATE) | M1-Welle 01+02 grün; M2-04 + M3-00 VERIFIED; M3-01 Rechnungs-Kern integriert und VERIFIED (E2E 71/71, `codex/m1-wave-02` `5c7ea33`) |
+| Gesamtmission einschließlich F1–F16 | ca. 31 % (ESTIMATE) | M1-Welle 01+02 grün; M2-04 + M3-00 VERIFIED; M3-01 Rechnungs-Kern integriert und VERIFIED (E2E 71/71, `codex/m1-wave-02` `5c7ea33`) |
 | Technisches Fundament M0/M1 | ca. 97–98 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 22–23 % (ESTIMATE) | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF, Kontakte, Termine, E-Signatur-Vorbereitung, Rechnungs-Stammdaten und der komplette Rechnungs-Kern (F8-Kernsuite) lokal verifiziert |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 23–24 % (ESTIMATE) | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF, Kontakte, Termine, E-Signatur-Vorbereitung, Rechnungs-Stammdaten und der komplette Rechnungs-Kern (F8-Kernsuite) lokal verifiziert |
 
 ## 2026-09-02 — API-Gate, Discovery, M1-11b-Lage
 
@@ -70,7 +70,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | F1 CRM & Leads | PARTIAL VERIFIED | Rechner-V3-Intake → Kontakt → Standort/Adresskorrektur → Anfrage → Kanban/Projektakte → Energieprofil ist lokal real; als Nächstes Zuweisung und weitere CRM-Capabilities |
 | F2 Angebote | PARTIAL VERIFIED | M1-08 liefert verifizierte Produkt-/Preissnapshots; M2-01 liefert daraus technisch verifizierte Draft-Offers, Varianten, Snapshot-BOM sowie Preis-/Rabatt-/Steuerentwurf. Die menschliche Screenshot-Baseline bleibt separat `INCONCLUSIVE`; PDF und Signatur folgen in eigenen Slices |
 | F3 PV-Planung | PARTIAL VERIFIED | Hausbezogene, serverseitig reproduzierbare Planungsschätzung lokal real; rechtmäßige Dachdatenadapter und tiefere Planungswerkzeuge folgen capabilityweise |
-| F4 Simulation | SPECIFIED | deterministischer Rechenkern mit fachlichem Güte- und Haftungsgate |
+| F4 Simulation | PARTIAL VERIFIED | F4.6 Workspace-Simulationsdefaults integriert (0047, E2E 73/73); Rechenkern F4.1–F4.5 spec-first nach ADR + Mikail-Fragen |
 | F5 Wärmepumpe | SPECIFIED | Schätzverfahren klar von zertifizierter Normrechnung trennen |
 | F6 Schaltplan | SPECIFIED | eigener Editor-/Exportvertrag |
 | F7 Installation | SPECIFIED | Signatur → Installation → Checkliste/Disposition/Handover |
@@ -146,6 +146,19 @@ WMEE; Push-/Deploy-Regeln unverändert.
 komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
+
+## 2026-09-04 (Nacht II) — F4.6 INTEGRIERT: Kimi APPROVE, E2E 73/73, M4 PARTIAL VERIFIED
+
+- **0047-Integration** `codex/m1-wave-02` HEAD **`75cf00e`** (remote):
+  Fast-Forward der Lane auf 5c7ea33; Journal monoton, 0047.prevId =
+  0046.id, keine Drift, Erasure unangetastet. Kimi-Integrations-Review
+  **APPROVE** (0 P0/P1/P2). **Chromium-E2E komplett 73/73**
+  (71 Bestand + 2 F4.6); `npm run check` exit 0 (1883/1, 88/88+5/5).
+- **M4/F4 Simulation & Wirtschaftlichkeit: SPECIFIED → PARTIAL VERIFIED**
+  (F4.6 Defaults-Speicher real; Rechenkern F4.1–F4.5 wartet auf ADR +
+  Mikail-Fragen UNK-F4-01..05).
+- **Quote (ESTIMATE):** Gesamt ~31 %, nutzbare Breite ~23–24 %,
+  Fundament ~97–98 %.
 
 ## 2026-09-04 (spät) — F4.6 Workspace-Simulationsdefaults gebaut (0047): Kimi SPEC+CODE geschlossen
 

@@ -134,3 +134,15 @@ Production-Build exit 0, **Chromium-E2E komplett 71/71** (66 Bestand +
 CSV inkl. Empty-States, Viewer/External, Typ-Abdeckung). Axe A/AA inkl.
 offenem Storno-Dialog. `UNK-M301-02` (Nummern-Template-Verkabelung
 M3-00↔M3-01) als Folgeslice offen.
+
+## F4.6 Workspace-Simulationsdefaults (0047) — REVIEWED/VERIFIED, integriert (2026-09-04)
+
+Lane `codex/f4-06-wirtschaftlichkeits-defaults` (`5fee9ca`, remote):
+M3-00-Klon — Singleton `workspace_economics_settings` (Preise nullable =
+Länderreferenz, Eskalation bps, Horizont 20 ESTIMATE), CAS-Revision,
+_f406-RLS/no_truncate. Kimi Spec + Code NACHBESSERUNG → alle P1/P2/P3
+geschlossen; Integration `codex/m1-wave-02` (`75cf00e`): Fast-Forward auf
+5c7ea33, Journal monoton, 0047.prevId = 0046.id, Pins aus Ist verankert,
+Kimi-Integrations-Review APPROVE. Nachweise: `npm run check` exit 0
+(196 Dateien, 1883 passed/1 skipped), Rollenprobe 88/88 + PG18 5/5,
+Build exit 0, keine Drift, **Chromium-E2E komplett 73/73** (71 + 2 F4.6).

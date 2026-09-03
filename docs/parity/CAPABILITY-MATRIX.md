@@ -112,3 +112,13 @@ Integration FREIGABE), Chromium-E2E 5/5 (Lane) + **71/71 (Integration)**.
 Visual INCONCLUSIVE. Offen als Folgeslices: Teilrechnungsketten (F8.5),
 PDF-Rendering (M3-02), E-Rechnung/DATEV (F8.6/8.7), GoBD-Durchsetzung,
 Erasure-Verkabelung (M3-10), Nummern-Template-Verkabelung (UNK-M301-02).
+
+## F4.6 Workspace-Simulationsdefaults (0047) — REVIEWED/VERIFIED, integriert (2026-09-04)
+
+M4/F4.6: Workspace-weite Simulations-Defaults (Strompreis, Eskalation,
+Öl-/Gaspreis, Cashflow-Horizont) als Singleton mit CAS-Revision;
+nullable-Semantik „leere Felder → Länderreferenz" (UNK-F4-03-konform:
+keine erfundenen Zahlen), RBAC economics.read/write, UI
+`/einstellungen/wirtschaftlichkeit`. Belege: 1883/1 Tests, 88/88 + 5/5,
+E2E 73/73 (Integration), Kimi SPEC+CODE+INTEGRATION. Offen: echte
+Default-Werte (UNK-F4-03, Mikail), F4.5-Rechenkern (ADR + Mikail-Fragen).
