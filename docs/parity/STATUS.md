@@ -147,6 +147,22 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-03 (17:20) — M3-01 A2 gebaut (Root), A3 als Nächstes
+
+- **A2-Agent kam erneut nicht aus der Einlesephase** (40 min, null
+  Dateiänderungen) → Root baute A2 selbst: assignDocumentNumber (atomarer
+  Upsert je (ws,type,series_year), Rollover, verbrannte Nummern),
+  issueDocument (CAS draft→issued, GOEBD-Snapshot + SHA-32, O4-Precondition,
+  goebd_retention_until), Präfixe auf Spec §6 korrigiert (RE/GU/AB/BE/LS/BR —
+  Kimi P2-9), V1-DTO um Nummern-/Achsen-Felder erweitert (P2-10).
+  M301-ISSUE-01..04; Vollgate grün (95/95, 887/1, 88/88+5/5, keine Drift).
+  Gepusht `189051f`. Kimi-Review läuft.
+- **Lane-Entscheid:** Slice-Umsetzung läuft künftig direkt beim Root
+  (zwei Agenten-Ausfälle in Folge); Agenten weiterhin für Discovery/Briefe
+  (funktionierte zuverlässig).
+- Offene Mikail-Punkte unverändert (v5-Deploy, Katalog-Datenlücken,
+  S3-Object-Lock, Codex-Limit, UNK-F4-01..05).
+
 ## 2026-09-03 (16:00) — M3-01 A1 recovered + Kimi-FREIGABE, A2 gestartet, F4-Brief fertig
 
 - **A1-Implementierer kreiste** in der Test-/Snapshot-Schleife (kein Commit
