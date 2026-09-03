@@ -100,6 +100,10 @@ export function generateSignatureToken(): {
 
 export function hashSignatureToken(token: string): Buffer {
   // base64url dekodiert (der Token wird als base64url erzeugt).
+  // TODO M2-04b (Kimi-P2 b2): diese Funktion wird nur von den öffentlichen
+  // Service-Kapseln aufgerufen, die in M2-04 noch nicht geroutet sind (nur
+  // Guard-Seite). Beim Routen in M2-04b muss ein deformiertes Token als
+  // not_found (ohne Orakel) behandelt werden — nicht als TypeError/500.
   const raw = Buffer.from(token, "base64url");
   if (raw.length !== 32) throw new TypeError("Ungueltiges Signatur-Token.");
   return createHash("sha256").update(raw).digest();

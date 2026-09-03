@@ -31,6 +31,10 @@ function actionMessage(state: SignatureActionState): string | null {
       return "Signaturanforderung nicht gefunden.";
     case "unavailable":
       return "Vorübergehend nicht verfügbar.";
+    case "invalid":
+      return "Eingaben sind unvollständig oder ungültig.";
+    case "unauthenticated":
+      return "Sitzung abgelaufen — bitte neu anmelden.";
     default:
       return null;
   }
@@ -50,10 +54,26 @@ function SubmitButton(props: { children: string; tone: "primary" | "secondary" }
 
 function Feedback(props: { state: SignatureActionState }) {
   const message = actionMessage(props.state);
-  if (!message) return null;
+  const token = props.state.status === "created" ? props.state.token : null;
+  const isError = props.state.status !== "idle" && props.state.status !== "created"
+    && props.state.status !== "withdrawn" && props.state.status !== "signed";
+  if (!message && !token) return null;
   return (
-    <p className="mt-2 text-sm font-medium text-blue-800" aria-live="polite" role="status">
+    <p
+      className={`mt-2 text-sm font-medium ${isError ? "text-amber-700" : "text-blue-800"}`}
+      aria-live={isError ? "assertive" : "polite"}
+      role={isError ? "alert" : "status"}
+    >
       {message}
+      {message && token ? " " : null}
+      {token ? (
+        <a
+          href={`/s/${token}`}
+          className="font-mono text-xs break-all text-blue-800 underline underline-offset-2"
+        >
+          /s/{token}
+        </a>
+      ) : null}
     </p>
   );
 }
@@ -91,13 +111,35 @@ export function CreateSignatureForm(props: {
   );
 }
 
+const WITHDRAW_REASONS: Array<{ value: string; label: string }> = [
+  { value: "content_error", label: "Inhaltlicher Fehler" },
+  { value: "recipient_error", label: "Empfängerfehler" },
+  { value: "commercial_error", label: "Kommerzieller Fehler" },
+  { value: "other", label: "Sonstiges" },
+];
+
 export function WithdrawSignatureForm(props: { workspaceId: string; requestId: string }) {
   const [state, formAction] = useActionState(withdrawSignatureRequestAction, SIGNATURE_ACTION_INITIAL_STATE);
   return (
-    <form action={formAction}>
+    <form action={formAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="workspaceId" value={props.workspaceId} />
       <input type="hidden" name="requestId" value={props.requestId} />
-      <input type="hidden" name="reasonCode" value="other" />
+      <div className="grid gap-1">
+        <label htmlFor={`withdraw-reason-${props.requestId}`} className="text-xs font-medium text-slate-600">
+          Widerrufsgrund
+        </label>
+        <select
+          id={`withdraw-reason-${props.requestId}`}
+          name="reasonCode"
+          required
+          defaultValue="other"
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-2 py-2 text-sm"
+        >
+          {WITHDRAW_REASONS.map((reason) => (
+            <option key={reason.value} value={reason.value}>{reason.label}</option>
+          ))}
+        </select>
+      </div>
       <SubmitButton tone="secondary">Link widerrufen</SubmitButton>
       <Feedback state={state} />
     </form>

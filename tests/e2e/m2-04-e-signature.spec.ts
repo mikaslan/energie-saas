@@ -236,8 +236,13 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
     await expect(panel.getByText(/gültig bis/u).first()).toBeVisible();
     await expect(panel.getByText(/0 Öffnungen/u)).toBeVisible();
     await expect(panel.getByText(/Content-Hash/u)).toBeVisible();
+    // Der frisch erzeugte Link ist im Panel einmalig kopierbar (Kimi P1 a1).
+    const freshLink = panel.locator("a[href^='/s/']");
+    await expect(freshLink).toBeVisible();
+    await expect(freshLink).toHaveAttribute("href", /^\/s\/[A-Za-z0-9_-]{43}$/u);
 
-    // Widerruf des Pending-Links.
+    // Widerruf des Pending-Links mit strukturiertem Grund (Kimi P1 a2).
+    await panel.getByLabel("Widerrufsgrund").selectOption("content_error");
     await panel.getByRole("button", { name: "Link widerrufen" }).click();
     await expect(panel.getByText("widerrufen", { exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Link widerrufen" })).toHaveCount(0);
@@ -249,12 +254,11 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
   test("M2-04: Abgelaufener Link zeigt terminalen expired-Zustand", async ({ page }) => {
     test.setTimeout(120_000);
     const data = state();
-    // Test 2 hat auf demselben Workspace bereits eine freigegebene Kette
-    // erzeugt und deren Link widerrufen. Ein identischer Seed waere ein
-    // Replay derselben Issuance (Reservations-Idempotenz) — genau ein
-    // Signatur-Request pro Issuance ist aber das Modell (Withdraw ist
-    // terminal). Der abweichende Gueltigkeits-Offset erzeugt eine frische
-    // Kette mit eigener Issuance.
+    // Ordnungsunabhaengiger Seed: auf frischem Workspace erzeugt der
+    // Offset-15-Seed eine eigene Kette (Standalone lauffaehig); hat Test 2
+    // zuvor mit Offset 14 geseedet, unterscheidet sich der Input-Snapshot
+    // (valid_through) und erzeugt so ebenfalls eine frische Issuance statt
+    // eines Replays der widerrufenen Kette.
     const released = await seedM204ReleasedOffer({
       databaseUrl: data.databaseUrl,
       serverLogPath: data.serverLogPath,
