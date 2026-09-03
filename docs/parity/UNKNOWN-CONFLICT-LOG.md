@@ -36,6 +36,14 @@ eigene Regeln ausgewiesen und austauschbar.
 
 | `UNK-M301-01` | DECIDED (ADR 0023) | Zahl der Dokumenttypen im commercial_document-Diskriminator: Spec-Übersicht nennt „7", ADR 0023 zählt 6 Typen (invoice, credit_note, order_confirmation, purchase_order, delivery_note, letter) | Die „7" = 6 Typen + Gruppen-Übersicht (Gruppe ohne Nummernserie); der Implementierungs-Brief M3-01 (2026-09-03) legt 6 Typen als SPECIFIED fest | M3-01-Spec-Übersicht bei Gelegenheit präzisieren, damit kein Implementierer einen 7. Typ baut |
 
+| `UNK-F4-01` | UNKNOWN (Mikail) | F4.5-KPI-Liste: Portal belegt nur die Existenz des Angebots-„Ergebnisse"-Bereichs; die KPI-Aufschlüsselung (Amortisation/IRR/Break-even/20-J-Cashflow, Sankey, Autarkie, Eigenverbrauchsquote) stammt aus dem Modulkatalog | Modulkatalog F4.5 als SPECIFIED-Basis vorgeschlagen; exakte Formeln/Reihenfolge Portal-UNKNOWN | Mikail-Freigabe der KPI-Liste ODER ausdrücklich ESTIMATE-kennzeichnen |
+| `UNK-F4-02` | UNKNOWN (Mikail) | Rechenkern: WMEE src/lib/solar/wirtschaftlichkeit (v5/v6) übernehmen vs. M1-07-Kern erweitern | PLAN-LIZENZ-MODUS §9 verlangt ADR vor doppelten Wahrheiten | ADR „F4-Rechenkern" vor F4.5-Implementierung; Mikail-Entscheid |
+| `UNK-F4-03` | UNKNOWN (Mikail) | Einspeisevergütungs-/Strompreis-Defaults: echte WMEE-/Länderwerte (Lizenz-Modus) oder leer + Länderreferenz | keine erfundenen Zahlen erlaubt | Mikail-Entscheid; bis dahin leer starten |
+| `UNK-F4-04` | UNKNOWN (Mikail) | F4.4 TOU/dynamische Tarife + Speicher-Arbitrage im ersten Parity-Freeze nötig oder nur statischer DE-Tarifvergleich? | Portal-OBSERVED dünn | Mikail-Entscheid über Slice-Umfang |
+| `UNK-F4-05` | UNKNOWN (Mikail) | Cashflow-Horizont-Default (20 J.) + Eskalations-Defaults: Werte von Mikail oder ESTIMATE | Modulkatalog nennt 20 Jahre | Mikail-Entscheid |
+| `UNK-F4-06` | DECIDED (Namensführung) | Dev-„M3" = F8 (Rechnungen, M3-00/M3-01) ≠ Modulkatalog-M3 (PV-Planung) | Brief als „F4" führen, nicht als Dev-M4 | in Register/Status übernommen |
+| `UNK-F4-07` | DECIDED (Empfehlung Brief) | F4.6-Defaults = schmaler M3-00-Klon, direkt implementierbar; F4.5 spec-first | OBSERVED-Beleg nur für F4.6 | F4.6 nach M3-01 einplanen; F4.5 erst nach ADR + Mikail-Fragen |
+
 Historische Steuer-/Abrechnungsbehauptungen aus Transkripten, insbesondere das
 Verschieben von Arbeitswerten zwischen Gewerken, sind ungeprüft und kein
 Produktvertrag.
