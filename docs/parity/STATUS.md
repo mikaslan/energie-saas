@@ -147,6 +147,36 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-04 — M3-01 A4 gebaut (Root): Listen/Filter + Berichte/CSV — Kimi FREIGABE
+
+Lane `codex/m3-01-invoicing-core` HEAD **`4218842`** (remote gesichert).
+- **M301-06 `listDocuments`:** Keyset-Cursor (base64url, (created_at,id)
+  DESC), Archiv-Achse active/archived/all (Default active), typ-gebundene
+  Filter (Status, Zahlungsstatus nur Geld-Typen, Ausstellungsfenster Berlin,
+  Fach-Datum invoice→Fälligkeit/credit_note→Lieferdatum, Gutschrift-Typ),
+  Namenssuche mit LIKE-Escaping, totalCount. DTO-Mapper extrahiert
+  (`toDocumentV1`/`toIso`); dabei `archivedAt`-Bug in readDocument behoben
+  (war hart null).
+- **M301-07 `getInvoicingReport`:** Berlin-Monatsfenster; KPIs Einnahmen
+  (issued im Monat, voided raus), Cashflow-Proxi (payment_updated_at im
+  Monat), Ausstehend/Überfällig (all-time, je Dokument ≥0 geklemmt);
+  Vormonats-Delta nur für Fluss-KPIs (Bestands-KPIs null = „Kein Vormonat");
+  5 disjunkte Lebenszyklus-Buckets; Überfälligkeits-Buckets
+  0–30/31–60/61–90/>90 + Insgesamt ausstehend; Neueste 10.
+- **`exportInvoicingReport`:** CSV UTF-8, `;`-getrennt, ISO-Daten,
+  Euro-Dezimal Punkt (DECIDED), RFC-4180-Quoting, Formula-Guard.
+- **0046 additiv:** `payment_updated_at` (Spec-M301-05-Nebenwirkung) in
+  recordPayment/setPaymentStatus gesetzt; Snapshot drei-Wege, keine Drift;
+  Issued-Freeze-Trigger unverändert (Zahlungsachse bleibt erlaubt).
+- **Kimi-K3 FREIGABE** (0 P0/P1): alle 5 P2 (Cursor-/Datumsvalidierung,
+  Grenzmonat 2000-01, Escaping-Tests, Dezimaltrenner-DECIDED, Formula-Guard)
+  + 8 P3 geschlossen/dokumentiert → `REVIEW-KIMI-M3-01-A4.md`.
+- **Vollgate:** `npm run check` exit 0 (1870 passed/1 skipped), Rollenprobe
+  88/88 + PG18 5/5, Production-Build exit 0, `db:generate` keine Drift,
+  `git diff --check` sauber.
+- **Nächster Slice:** M3-01 UI-/E2E-Schicht zentral (Seiten je Typ, A11y,
+  E2E 66+) → danach 0046-Integration in `codex/m1-wave-02`.
+
 ## 2026-09-03 (18:45) — PAUSE-HANDOVER: M3-01 A1–A3 abgeschlossen
 
 Lane `codex/m3-01-invoicing-core` HEAD **`0dcfd8e`** (remote gesichert):
