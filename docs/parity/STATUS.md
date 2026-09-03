@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-09-03 (03:00) · kanonische Abnahmequelle:
+Stand: 2026-09-03 (07:50) · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -146,6 +146,33 @@ WMEE; Push-/Deploy-Regeln unverändert.
 komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
+
+## 2026-09-03 (07:50) — M2-04 + M3-00 implementiert und grün; Agenten-Ausfall bewältigt
+
+- **M2-04 E-Signatur (0044):** IMPLEMENTED, Vollcheck `npm run check` exit 0
+  (180/180 Dateien, 1755 passed/1 skipped), Rollen 88/88+5/5, Build,
+  `db:generate` ohne Drift. Kern: `signature_token_locator` (RLS-frei,
+  Definer-only, erasure_operation_locator-Muster), 4 Token-Kapseln, Strict-
+  Tests 4/4 (Token-Pfad/Race/Analog/Scoped-Erasure), tenant-Factories,
+  `RLS_FREE_WORKSPACE_EXEMPT`, Panel-Rollen-Gating + aria-live (E2E-Befunde).
+  Branch `codex/m2-04-e-signature` GEPUSHT. OFFEN bis VERIFIED: Chromium-
+  E2E-Lauf (Fixture-Port auf Strict-Kette war beim Agentenausfall in Arbeit),
+  Kimi-Code-Review, 0044-Integration in wave-02 (Erasure-Pin auf post-0043).
+- **M3-00 Workspace-Stammdaten (0045):** IMPLEMENTED, Vollcheck exit 0
+  (186/186 Dateien, 1816 passed/1 skipped), Rollen 88/88+5/5. Implementierer
+  stürzte kurz vor Schluss ab (Kontextlimit); Root stellte fertig: `(ws,id)`-
+  Uniques, Actor-Helfer `_m300_*` + RLS-/Policy-Vertrag rekonstruiert,
+  Policy-/Funktions-Pins auf Ist-Hashes, no_truncate-Trigger, Fixtures +
+  ACTOR_SCOPED_TABLES. Branch `codex/m3-00-workspace-stammdaten` GEPUSHT.
+  OFFEN bis VERIFIED: E2E, Kimi-Code-Review, Integration nach 0044.
+- **Agenten-Ausfall:** alle drei Subagenten (M2-04-Implementierer,
+  M3-00-Implementierer, E2E-Agent) endeten mit Fehlern (Kontextlimits);
+  sämtliche Arbeit war auf der Platte und wurde von Root gesichert —
+  nichts verloren, eine 0045-Teilstrecke rekonstruiert (Rollenprobe 88/88
+  belegt die Konsistenz).
+- **Quote unverändert ehrlich:** ~25–26 % Gesamt / ~18–19 % nutzbar /
+  ~97–98 % Fundament (nur VERIFIED zählt; M2-04/M3-00 steigen erst nach
+  E2E + Kimi-Review + Integration).
 
 ## 2026-09-03 (03:00) — WAVE-02 INTEGRIERT: M1-14 + M1-15 komplett grün
 
