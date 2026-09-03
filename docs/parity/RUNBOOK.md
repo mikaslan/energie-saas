@@ -58,9 +58,16 @@ Erwartung: Slice-Szenarien grün, keine Konsolenfehler, Axe A/AA, Keyboard,
 
 ## 3. Unabhängiger Review-Schwarm
 
-- Codex-Review (`codex exec review`) auf dem Slice-Diff.
-- Kimi-K3-Review (`kimi -p` mit inline Spec/Diff) — Muster:
-  `docs/parity/REVIEW-KIMI-*.md`.
+- Codex-Review (`codex exec review`) auf dem Slice-Diff (falls Usage-Limit
+  aktiv: Kimi übernimmt als Zweitstimme, Vermerk im Register).
+- Kimi-K3-Review **über den Wrapper** (Vorgabe Mikail 2026-09-03):
+  `npx tsx scripts/kimi-review.mts <promptFile> <bundleFile> [outFile]`
+  - Primär: OpenRouter-API (`moonshotai/kimi-k3`, `reasoning.effort=high`).
+  - Fallback bei leerem/erschöpftem OpenRouter (402/429/5xx/401/Netz):
+    lokales Kimi-Binding (`~/.kimi-code/bin/kimi`, Effort max).
+  - Beide erfolglos → Review aussetzen, Mikail informieren (Exit 3).
+  - Bundle-Erzeugung weiterhin `scripts/kimi-review-bundle.sh`; Muster:
+    `docs/parity/REVIEW-KIMI-*.md`.
 - P0/P1 müssen vor Commit geschlossen sein; P2 bewusst dokumentieren.
 
 ## 4. Commit & Sicherung
