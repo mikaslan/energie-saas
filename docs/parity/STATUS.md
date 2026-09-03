@@ -151,6 +151,23 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-04 (Nacht III) — F4.5 SPECIFIED-Draft + ADR 0026: Kimi-FREIGABE (3 Runden)
+
+- **F4.5-Spec** (`docs/spec/F4-05-wirtschaftlichkeits-outputs.md`):
+  KPI-Vertrag je Punkt getaggt (DECIDED/ESTIMATE/INTERPRETATION),
+  Quoten-Null-Nenner-Semantik, IRR-Konventionen (inkl. Mehrfach-
+  Vorzeichenwechsel), Kaskade zeitkonditional als INTERPRETATION
+  markiert (Mikail-Bestätigung angefordert), Sankey-Erhaltungs-
+  invariante, Goldwert-Regression F405-GOLD-01, Horizont-Ownership
+  F4.5/F4.6 geklärt. 3 Kimi-Review-Runden → **FREIGABE als
+  SPECIFIED-Draft** (4 P2 verbindlich vor CONTRACTED — eingearbeitet).
+- **ADR 0026 Rechenkern (DRAFT):** Optionen A/A′/B/C1/C2, Empfehlung
+  C2 (Clean-Room-Hybrid), C1-Fallback mit Audit-Auflage,
+  Verifikationspfad für alle Optionen, Schließungspfad mit Owner.
+  **Mikail-Entscheid offen (UNK-F4-02).**
+- Gepusht `aa94d1c`. F4.5 bleibt SPECIFIED, bis Mikail UNK-F4-01/02/03/
+  04/05 beantwortet; danach CONTRACTED + Kern-Umsetzung.
+
 ## 2026-09-04 (Nacht II) — F4.6 INTEGRIERT: Kimi APPROVE, E2E 73/73, M4 PARTIAL VERIFIED
 
 - **0047-Integration** `codex/m1-wave-02` HEAD **`75cf00e`** (remote):
