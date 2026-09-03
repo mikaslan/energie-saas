@@ -147,6 +147,14 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-03 (18:45) — PAUSE-HANDOVER: M3-01 A1–A3 abgeschlossen
+
+Lane `codex/m3-01-invoicing-core` HEAD **`0dcfd8e`** (remote gesichert):
+A1 Kern, A2 Ausstellen/Nummernkreis/Snapshot, A3 Versand/Storno/Zahlungsachse
+— jeweils Kimi-reviewed und nachgebessert; Vollgate grün (96/96, 896/1,
+88/88+5/5, keine Drift). Offen: A4 (Listen/Filter/Berichte), UI-/E2E-Schicht,
+0046-Integration in codex/m1-wave-02, externe Gates (siehe Vault-Handover).
+
 ## 2026-09-03 (18:10) — M3-01 A3 gebaut (Root): Versand/Storno/Zahlung
 
 - **A2-Kimi-Nachlese geschlossen:** Overflow-Test (999999-Grenze) + echter
