@@ -1539,16 +1539,14 @@ async function main(): Promise<number> {
       await previewPool.query(
         `insert into contact (
            id, workspace_id, display_name, first_name, last_name,
-           is_business, email_primary, created_by
+           is_business, email_primary
          ) select gen_random_uuid(), $1::uuid, 'Demo Kontakt GmbH',
-           'Demo', 'Kontakt', true, 'kontakt@demo.invalid', u.id
-           from user_identity u where u.email = $2
-            and not exists (
-             select 1 from contact where workspace_id = $1::uuid
-               and display_name = 'Demo Kontakt GmbH'
-           )
-         limit 1`,
-        [seedData.workspaceId, seedData.editorEmail],
+           'Demo', 'Kontakt', true, 'kontakt@demo.invalid'
+         where not exists (
+           select 1 from contact where workspace_id = $1::uuid
+             and display_name = 'Demo Kontakt GmbH'
+         )`,
+        [seedData.workspaceId],
       );
       await previewPool.query(
         `insert into project_appointment (
