@@ -157,9 +157,9 @@ async function createFixture(): Promise<Fixture> {
     `);
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
-        ${contactId}::uuid, ${workspaceId}::uuid, 'M1-07 Security Contact',
+        ${contactId}::uuid, ${workspaceId}::uuid, 'M1-07 Security Contact', 'Fixture', 'Contact',
         ${`${contactId}@m107-security.test`}, ${`${contactId}@m107-security.test`}
       )
     `);

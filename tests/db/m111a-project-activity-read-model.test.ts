@@ -52,9 +52,9 @@ async function seedFixture(): Promise<Fixture> {
     `);
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
-        ${contactId}::uuid, ${workspaceId}::uuid, 'M111A Customer',
+        ${contactId}::uuid, ${workspaceId}::uuid, 'M111A Customer', 'Fixture', 'Contact',
         'customer@m111a.test', 'customer@m111a.test'
       )
     `);

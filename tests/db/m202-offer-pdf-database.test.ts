@@ -1185,8 +1185,9 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
     await queryAs(
       workspaceB,
       `insert into public.contact (
-         id, workspace_id, display_name, email_primary, email_normalized
-       ) values ($1::uuid, $2::uuid, 'Legacy Tombstone Shape', $3, $3)`,
+         id, workspace_id, display_name, first_name, last_name,
+         email_primary, email_normalized
+       ) values ($1::uuid, $2::uuid, 'Legacy Tombstone Shape', 'Legacy', 'Tombstone', $3, $3)`,
       [contactWithoutPdf, workspaceB, `${contactWithoutPdf}@test.local`],
     );
     const graphResult = await queryAs<{ graph: ErasureGraph }>(

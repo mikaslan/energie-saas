@@ -29,9 +29,9 @@ async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
   const projectId = randomUUID();
   await tx.execute(sql`
     insert into contact (
-      id, workspace_id, display_name, email_primary, email_normalized
+      id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
     ) values (
-      ${contactId}::uuid, ${wsId}::uuid, 'Fixture Contact',
+      ${contactId}::uuid, ${wsId}::uuid, 'Fixture Contact', 'Fixture', 'Contact',
       ${`${contactId}@test.local`}, ${`${contactId}@test.local`}
     )
   `);
@@ -1653,16 +1653,16 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   contact: async (tx, wsId) => {
     const id = randomUUID();
     await tx.execute(sql`
-      insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
-      values (${id}::uuid, ${wsId}::uuid, 'Fixture Contact',
+      insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+      values (${id}::uuid, ${wsId}::uuid, 'Fixture Contact', 'Fixture', 'Contact',
         ${`${id}@test.local`}, ${`${id}@test.local`})
     `);
   },
   contact_legal_hold: async (tx, wsId) => {
     const contactId = randomUUID();
     await tx.execute(sql`
-      insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
-      values (${contactId}::uuid, ${wsId}::uuid, 'Legal Hold Fixture',
+      insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+      values (${contactId}::uuid, ${wsId}::uuid, 'Legal Hold Fixture', 'Legal', 'Hold',
         ${`${contactId}@test.local`}, ${`${contactId}@test.local`})
     `);
     await tx.execute(sql`
@@ -1675,10 +1675,10 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     const operationId = randomUUID();
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, deleted_at
+        id, workspace_id, display_name, first_name, last_name, deleted_at
       ) values (
         ${contactId}::uuid, ${wsId}::uuid,
-        ${`geloescht-${contactId}`}, now()
+        ${`geloescht-${contactId}`}, 'Fixture', 'Contact', now()
       )
     `);
     await tx.execute(sql`

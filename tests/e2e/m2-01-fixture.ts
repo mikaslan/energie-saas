@@ -266,10 +266,10 @@ async function insertPlanningProject(
     await tx.execute(sql`select set_config('app.actor_id', ${state.editorIdentityId}, true)`);
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
         ${ids.contactId}::uuid, ${state.workspaceId}::uuid,
-        ${M2_01_E2E_CONTACT}, 'm201-browser@example.test',
+        ${M2_01_E2E_CONTACT}, 'Fixture', 'Contact', 'm201-browser@example.test',
         'm201-browser@example.test'
       )
     `);

@@ -298,9 +298,9 @@ async function createFixture(options: {
     `);
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
-        ${ids.contactId}::uuid, ${ids.workspaceId}::uuid, 'Worker Secret Customer',
+        ${ids.contactId}::uuid, ${ids.workspaceId}::uuid, 'Worker Secret Customer', 'Fixture', 'Contact',
         'customer.secret@example.test', 'customer.secret@example.test'
       )
     `);

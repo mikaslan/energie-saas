@@ -278,10 +278,10 @@ async function createPlanningProject(members: OfferMembers): Promise<PlanningPro
   await withTenantOn(testPool, members.workspaceId, async (tx) => {
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
         ${ids.contactId}::uuid, ${members.workspaceId}::uuid,
-        'Synthetischer Angebotskontakt', 'offer.fixture@example.test',
+        'Synthetischer Angebotskontakt', 'Fixture', 'Contact', 'offer.fixture@example.test',
         'offer.fixture@example.test'
       )
     `);

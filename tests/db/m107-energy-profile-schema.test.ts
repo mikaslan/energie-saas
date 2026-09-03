@@ -209,9 +209,9 @@ async function createProjectGraph(label: string): Promise<ProjectGraph> {
     `);
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
-        ${graph.contactId}::uuid, ${graph.workspaceId}::uuid, ${label},
+        ${graph.contactId}::uuid, ${graph.workspaceId}::uuid, ${label}, 'Fixture', 'Contact',
         ${`${graph.contactId}@m107.test`}, ${`${graph.contactId}@m107.test`}
       )
     `);

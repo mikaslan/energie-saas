@@ -407,8 +407,8 @@ it("installiert das M1-06-Schema frisch mit sicheren Defaults und Constraints", 
     );
     await tenantQuery(pool, workspaceId, `
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
-      ) values ($1::uuid, $2::uuid, 'Fresh Contact', 'fresh@example.test', 'fresh@example.test')
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
+      ) values ($1::uuid, $2::uuid, 'Fresh Contact', 'Fresh', 'Contact', 'fresh@example.test', 'fresh@example.test')
     `, [contactId, workspaceId]);
     await tenantQuery(pool, workspaceId, `
       insert into site (

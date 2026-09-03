@@ -33,6 +33,10 @@ import {
   type ProjectNotePageV1,
 } from "@/modules/notes";
 import {
+  getContactDataset,
+  type ContactDatasetV1,
+} from "@/modules/contacts";
+import {
   getProjectTaskPage,
   projectTaskCursorTokenSchema,
   type ProjectActivityCursor,
@@ -41,6 +45,7 @@ import {
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
 import { AssignedExternalRequestView } from "./assigned-external-request-view";
+import { ContactSection } from "./contact-section";
 import { EnergyCalculationSection } from "./energy-calculation-section";
 import { EnergyProfileSection } from "./energy-profile-section";
 import { OfferCreateEntry } from "./offer-create-entry";
@@ -155,6 +160,11 @@ type NotePageLoadResult =
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
+type ContactLoadResult =
+  | { kind: "loaded"; dataset: ContactDatasetV1 | null }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
 async function loadProjectDetail(
   workspaceId: string,
   projectId: string,
@@ -254,6 +264,25 @@ async function loadProjectNotePage(
       (tx, ctx) => listProjectNotes(tx, ctx, projectId),
     );
     return { kind: "loaded", page };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+async function loadContactDataset(
+  workspaceId: string,
+  projectId: string,
+): Promise<ContactLoadResult> {
+  try {
+    const dataset = await authorizedQuery(
+      workspaceId,
+      "contact.read",
+      "contact",
+      (tx, ctx) => getContactDataset(tx, ctx, projectId),
+    );
+    return { kind: "loaded", dataset };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -498,6 +527,14 @@ export default async function ProjectTriagePage({
   }
   if (notePageResult.page === null) notFound();
   const notePage = notePageResult.page;
+
+  const contactResult = await loadContactDataset(workspaceId, projectId);
+  if (contactResult.kind === "unauthenticated") redirectToProjectLogin(detailPath);
+  if (contactResult.kind === "denied") {
+    return <DeniedState title="Die Kontaktdaten sind für dich nicht freigegeben." />;
+  }
+  if (contactResult.dataset === null) notFound();
+  const contactDataset = contactResult.dataset;
   const nextTaskHref = taskWorkspace.nextTaskCursor === null
     ? null
     : `${detailPath}?${new URLSearchParams({
@@ -669,20 +706,18 @@ export default async function ProjectTriagePage({
         <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] lg:items-start">
           <div className="grid min-w-0 gap-6">
             <Section title="Identität und Kontakt">
-              <dl>
-                <DetailItem term="Ansprechperson">{detail.contact.displayName}</DetailItem>
-                <DetailItem term="E-Mail">
-                  {detail.contact.email ?? "Nicht übermittelt"}
-                </DetailItem>
-                <DetailItem term="Telefon">
-                  {detail.contact.phone ?? "Nicht übermittelt"}
-                </DetailItem>
+              <dl className="mb-5">
                 <DetailItem term="Projekt-ID">
                   <code className="break-all font-mono text-xs font-normal text-slate-700">
                     {detail.project.id}
                   </code>
                 </DetailItem>
               </dl>
+              <ContactSection
+                workspaceId={workspaceId}
+                projectId={projectId}
+                dataset={contactDataset}
+              />
             </Section>
 
             <div id="standort-und-pin" className="scroll-mt-6">

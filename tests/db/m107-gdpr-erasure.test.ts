@@ -495,11 +495,26 @@ async function createSubject(
   } finally {
     membershipClient.release();
   }
+  const contactName = await admin.query<{ available: boolean }>(`
+    select exists (
+      select 1
+        from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'contact'
+         and column_name = 'first_name'
+    ) as available
+  `);
+  const supportsContactName = contactName.rows[0]?.available === true;
   await admin.query(
-    `insert into public.contact (
-       id, workspace_id, display_name, email_primary, email_normalized,
-       phone_raw, phone_e164, created_at, updated_at
-     ) values ($1, $2, $3, $4, $4, '+491701234567', '+491701234567', $5, $5)`,
+    supportsContactName
+      ? `insert into public.contact (
+           id, workspace_id, display_name, first_name, last_name,
+           email_primary, email_normalized, phone_raw, phone_e164, created_at, updated_at
+         ) values ($1, $2, $3, $3, $3, $4, $4, '+491701234567', '+491701234567', $5, $5)`
+      : `insert into public.contact (
+           id, workspace_id, display_name, email_primary, email_normalized,
+           phone_raw, phone_e164, created_at, updated_at
+         ) values ($1, $2, $3, $4, $4, '+491701234567', '+491701234567', $5, $5)`,
     [contactId, workspaceId, marker, email, oldAt],
   );
   const board = await admin.query<{ board_id: string; column_id: string }>(
@@ -1183,12 +1198,29 @@ async function createOfferForErasure(
 }
 
 async function restoreSubject(admin: Pool, fixture: SubjectFixture): Promise<void> {
+  const contactName = await admin.query<{ available: boolean }>(`
+    select exists (
+      select 1
+        from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'contact'
+         and column_name = 'first_name'
+    ) as available
+  `);
+  const supportsContactName = contactName.rows[0]?.available === true;
   await admin.query(
-    `update public.contact
-        set display_name = $1, email_primary = $2, email_normalized = $2,
-            phone_raw = '+491701234567', phone_e164 = '+491701234567',
-            deleted_at = null, updated_at = $3
-      where workspace_id = $4 and id = $5`,
+    supportsContactName
+      ? `update public.contact
+            set display_name = $1, first_name = $1, last_name = $1,
+                email_primary = $2, email_normalized = $2,
+                phone_raw = '+491701234567', phone_e164 = '+491701234567',
+                deleted_at = null, updated_at = $3
+          where workspace_id = $4 and id = $5`
+      : `update public.contact
+            set display_name = $1, email_primary = $2, email_normalized = $2,
+                phone_raw = '+491701234567', phone_e164 = '+491701234567',
+                deleted_at = null, updated_at = $3
+          where workspace_id = $4 and id = $5`,
     [fixture.marker, fixture.email, fixture.oldAt, fixture.workspaceId, fixture.contactId],
   );
   await admin.query(

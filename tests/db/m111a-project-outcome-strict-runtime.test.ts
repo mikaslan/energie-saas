@@ -200,10 +200,10 @@ async function seedFixture(admin: Pool): Promise<Fixture> {
     );
     await client.query(
       `insert into public.contact (
-         id, workspace_id, display_name, email_primary, email_normalized
+         id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
        ) values
-         ($1, $2, 'Aktiver Strict Contact', $3, $3),
-         ($4, $2, 'Spaeter geloeschter Strict Contact', $5, $5)`,
+         ($1, $2, 'Aktiver Strict Contact', 'Fixture', 'Contact', $3, $3),
+         ($4, $2, 'Spaeter geloeschter Strict Contact', 'Fixture', 'Contact', $5, $5)`,
       [
         activeContactId,
         fixture.workspaceId,

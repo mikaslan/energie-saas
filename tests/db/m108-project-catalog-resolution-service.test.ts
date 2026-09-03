@@ -219,10 +219,10 @@ async function createPlanningProject(members: ResolutionMembers): Promise<Planni
   await withTenantOn(testPool, members.workspaceId, async (tx) => {
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
         ${ids.contactId}::uuid, ${members.workspaceId}::uuid,
-        'Synthetischer Auflösungskontakt', 'resolution@example.test',
+        'Synthetischer Auflösungskontakt', 'Fixture', 'Contact', 'resolution@example.test',
         'resolution@example.test'
       )
     `);

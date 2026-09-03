@@ -182,8 +182,8 @@ async function seedTenant(admin: Pool, label: string): Promise<Tenant> {
     );
     await client.query(
       `insert into public.contact (
-         id, workspace_id, display_name, email_primary, email_normalized
-       ) values ($1, $2, 'Strict Kontakt', $3, $3)`,
+         id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
+       ) values ($1, $2, 'Strict Kontakt', 'Fixture', 'Contact', $3, $3)`,
       [contactId, tenant.workspaceId, `c-${contactId}@m112a-strict.test`],
     );
     await client.query(
