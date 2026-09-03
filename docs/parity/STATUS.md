@@ -147,6 +147,22 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-03 (18:10) — M3-01 A3 gebaut (Root): Versand/Storno/Zahlung
+
+- **A2-Kimi-Nachlese geschlossen:** Overflow-Test (999999-Grenze) + echter
+  Berlin-Offset statt Z-Suffix; Spot-Recheck: 5/6 + Nachlieferung →
+  FREIGABE-reif. Gepusht `99c17a4`.
+- **A3:** markSentDocument (einmalig, terminal), voidDocument
+  (draft/issued/sent→voided, Pflichtgrund-Festliste, Nummer bleibt
+  verbrannt; Guard-Fix: Status aus dem Content-Freeze genommen, Kanten
+  regeln die Transitionen — Pin b3d5ec89), recordPayment
+  (paid/unpaid/partially_paid NUR aus paid_cents abgeleitet, terminale
+  Zustände blockieren), setPaymentStatus (nur overdue/uncollectable).
+  M301-AX-01..04; Vollgate grün (96/96, 894/1, 88/88+5/5, keine Drift).
+  Gepusht `39fae92`. Kimi-Review läuft.
+- **Nächster Slice: A4** (Listen/Filter je Typ, Berichte M301-06/07 +
+  CSV-Export) — danach UI-/E2E-Schicht zentral.
+
 ## 2026-09-03 (17:20) — M3-01 A2 gebaut (Root), A3 als Nächstes
 
 - **A2-Agent kam erneut nicht aus der Einlesephase** (40 min, null
