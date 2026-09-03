@@ -147,6 +147,19 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-03 (14:40) — M3-01 A1 in der Testschleife, M4-Discovery parallel
+
+- **M3-01 A1:** Implementierer hat 0046 (4 Tabellen, 6-Typen-Diskriminator
+  laut ADR 0023, _m301_actor-Helfer, Issued-Immutable-Guard, FORCE-RLS nach
+  0045-Muster) + Contract + Service stehen; Early-Quality-Check des Schemas
+  gegen Hausmuster bestanden. Läuft gerade in der Test-/Drift-Schleife
+  (Vitest-Prozess aktiv, Dateien in Bewegung). Abnahme durch Root, sobald
+  der Agent committet.
+- **M4-Wirtschaftlichkeit:** Discovery-Brief in Arbeit (Portal-Audit-Map +
+  Modulkatalog; OBSERVED/ESTIMATE-Trennung, Slice-Vorschlag, Mikail-Fragen).
+- Externe Gates unverändert: v5-Deploy-GO, Katalog-Import-Datenlücken,
+  S3-Object-Lock (M2-03b2), Codex-Usage-Limit (Reset 7. Sep.).
+
 ## 2026-09-03 (13:10) — Welle 02 komplett integriert: 0044 + 0045 VERIFIED auf codex/m1-wave-02
 
 - **0044 M2-04 E-Signatur integriert** (`163d2a8`): Erasure-Kette auf post-0043
