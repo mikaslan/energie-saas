@@ -138,16 +138,51 @@ $m300_actor_read$;--> statement-breakpoint
 
 CREATE FUNCTION public._m300_actor_can_write_invoicing(requested_workspace_id uuid)
 RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY INVOKER
 SET search_path = pg_catalog
 AS $m300_actor_write$
-  SELECT COALESCE(
-    public._m300_actor_invoicing_role(requested_workspace_id)
-      IN ('editor', 'admin'),
-    false
-  )
+DECLARE
+  actor_id uuid;
+  actor_role text;
+  actor_capabilities jsonb;
+BEGIN
+  -- Spec M3-00 §5/M300-05: schreiben darf ein Admin oder ein Editor mit
+  -- Invoicing-Recht (capability 'invoicing' = true). Das spiegelt die
+  -- App-Permission 'invoicing.write' (minRole editor, capability invoicing,
+  -- Admin-Bypass) auf der RLS-Ebene wider; Muster wie die M2-03b1-Approval-
+  -- Guard-Pruefung.
+  actor_id := public.app_actor_id();
+  IF actor_id IS NULL THEN
+    RETURN false;
+  END IF;
+  SELECT membership_record.role, membership_record.capabilities
+    INTO actor_role, actor_capabilities
+    FROM public.membership AS membership_record
+   WHERE membership_record.workspace_id = requested_workspace_id
+     AND membership_record.user_id = actor_id
+   LIMIT 1;
+  IF NOT FOUND
+     OR actor_role NOT IN ('editor', 'admin')
+     OR pg_catalog.jsonb_typeof(actor_capabilities) <> 'object'
+     OR EXISTS (
+       SELECT 1 FROM pg_catalog.jsonb_each(actor_capabilities) AS capability(key, value)
+        WHERE pg_catalog.jsonb_typeof(capability.value) <> 'boolean'
+     )
+     OR (
+       actor_capabilities ? 'external_only'
+       AND actor_capabilities->'external_only' IS DISTINCT FROM 'false'::jsonb
+     ) THEN
+    RETURN false;
+  END IF;
+  IF actor_role = 'admin' THEN
+    RETURN true;
+  END IF;
+  RETURN COALESCE(actor_capabilities->>'invoicing' = 'true', false);
+EXCEPTION WHEN invalid_text_representation THEN
+  RETURN NULL;
+END
 $m300_actor_write$;--> statement-breakpoint
 
 -- ═══════════════════════════════════════════════════════════════════════

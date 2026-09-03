@@ -93,6 +93,7 @@ async function fixtureMembership(
   tx: TenantTx,
   wsId: string,
   role: "viewer" | "editor" | "admin" = "viewer",
+  capabilities: string | null = null,
 ): Promise<{
   userId: string;
   membershipId: string;
@@ -106,8 +107,8 @@ async function fixtureMembership(
     values (${userId}::uuid, ${`${randomUUID()}@test.local`})
   `);
   await tx.execute(sql`
-    insert into membership (id, workspace_id, user_id, role)
-    values (${membershipId}::uuid, ${wsId}::uuid, ${userId}::uuid, ${role})
+    insert into membership (id, workspace_id, user_id, role, capabilities)
+    values (${membershipId}::uuid, ${wsId}::uuid, ${userId}::uuid, ${role}, ${capabilities ?? "{}"}::jsonb)
   `);
   return { userId, membershipId };
 }
@@ -1655,7 +1656,7 @@ async function fixtureOfferIssuanceGraph(tx: TenantTx, wsId: string): Promise<vo
 // Tenant-Isolations-Invariante über alle künftigen Module (M1–M8) trägt.
 export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Promise<void>> = {
   workspace_invoicing_settings: async (tx, wsId) => {
-    const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor");
+    const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
     await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
     await tx.execute(sql`
       insert into workspace_invoicing_settings (
@@ -1669,7 +1670,7 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     `);
   },
   workspace_document_number_format: async (tx, wsId) => {
-    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
     await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
     await tx.execute(sql`
       insert into workspace_document_number_format (

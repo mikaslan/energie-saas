@@ -146,7 +146,12 @@ export function InvoicingSettingsForm({
     if (isSettingsError) settingsFeedbackRef.current?.focus();
   }, [isSettingsError, settingsState]);
 
-  const canWrite = settings?.permissions.canWrite ?? false;
+  // Schreibrecht kommt aus dem Formate-DTO, wenn noch keine Stammdaten
+  // existieren (settings === null): ein Editor muss die ERSTE Anlage ohne
+  // vorhandene Zeile duerfen, sonst ist die Seite auf frischen Workspaces
+  // faktisch read-only.
+  const canWrite = (settings === null ? null : settings.permissions.canWrite)
+    ?? formats.permissions.canWrite;
   const baseRevision = settings?.revision ?? 0;
 
   return (

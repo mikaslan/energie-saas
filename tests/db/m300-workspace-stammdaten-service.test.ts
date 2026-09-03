@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
-import { PermissionDeniedError } from "@/lib/permissions";
+import { PermissionDeniedError, can } from "@/lib/permissions";
 import {
   WORKSPACE_DOCUMENT_NUMBER_FORMAT_COMMAND_VERSION,
   WORKSPACE_INVOICING_SETTINGS_COMMAND_VERSION,
@@ -28,6 +28,8 @@ const DE_IBAN = "DE89370400440532013000";
 type Fixture = {
   workspaceId: string;
   editorId: string;
+  editorNoCapId: string;
+  adminId: string;
   viewerId: string;
   externalId: string;
 };
@@ -35,6 +37,8 @@ type Fixture = {
 async function seedFixture(): Promise<Fixture> {
   const workspaceId = randomUUID();
   const editorId = randomUUID();
+  const editorNoCapId = randomUUID();
+  const adminId = randomUUID();
   const viewerId = randomUUID();
   const externalId = randomUUID();
 
@@ -44,6 +48,8 @@ async function seedFixture(): Promise<Fixture> {
       insert into user_identity (id, email)
       values
         (${editorId}::uuid, ${`editor-${editorId}@m300.test`}),
+        (${editorNoCapId}::uuid, ${`editor-nocap-${editorNoCapId}@m300.test`}),
+        (${adminId}::uuid, ${`admin-${adminId}@m300.test`}),
         (${viewerId}::uuid, ${`viewer-${viewerId}@m300.test`}),
         (${externalId}::uuid, ${`external-${externalId}@m300.test`})
     `);
@@ -51,12 +57,14 @@ async function seedFixture(): Promise<Fixture> {
       insert into membership (id, workspace_id, user_id, role, capabilities)
       values
         (${randomUUID()}::uuid, ${workspaceId}::uuid, ${editorId}::uuid, 'editor', '{"invoicing":true}'::jsonb),
+        (${randomUUID()}::uuid, ${workspaceId}::uuid, ${editorNoCapId}::uuid, 'editor', '{}'::jsonb),
+        (${randomUUID()}::uuid, ${workspaceId}::uuid, ${adminId}::uuid, 'admin', '{}'::jsonb),
         (${randomUUID()}::uuid, ${workspaceId}::uuid, ${viewerId}::uuid, 'viewer', '{}'::jsonb),
         (${randomUUID()}::uuid, ${workspaceId}::uuid, ${externalId}::uuid, 'admin', '{"external_only":true}'::jsonb)
     `);
   });
 
-  return { workspaceId, editorId, viewerId, externalId };
+  return { workspaceId, editorId, editorNoCapId, adminId, viewerId, externalId };
 }
 
 function settingsCommand(
@@ -280,5 +288,36 @@ describe("M3-00 Workspace-Stammdaten-Service (PostgreSQL)", () => {
       (tx, ctx) => getInvoicingSettings(tx, ctx),
     );
     expect(foreign).toBeNull();
+  });
+
+  it("M300-DB-RBAC-01: RLS-Schreib-Matrix erzwingt Invoicing-Capability", async () => {
+    // Spec M3-00 §5/M300-05: schreiben darf Admin oder Editor MIT
+    // Invoicing-Recht. Der RLS-Helfer _m300_actor_can_write_invoicing muss
+    // dieselbe Matrix durchsetzen wie die App-Permission invoicing.write.
+    const canWrite = (userId: string) => withAuthorizedTenantOn(
+      testPool, userId, fixture.workspaceId,
+      (tx) => tx.execute<{ can_write: boolean | null }>(sql`
+        select public._m300_actor_can_write_invoicing(
+          ${fixture.workspaceId}::uuid
+        ) as can_write
+      `),
+    ).then((result) => result.rows[0]?.can_write);
+
+    await expect(canWrite(fixture.editorId)).resolves.toBe(true);
+    await expect(canWrite(fixture.editorNoCapId)).resolves.toBe(false);
+    await expect(canWrite(fixture.adminId)).resolves.toBe(true);
+    await expect(canWrite(fixture.viewerId)).resolves.toBe(false);
+    await expect(canWrite(fixture.externalId)).resolves.toBe(false);
+
+    // Und die App-Permission deckt dieselbe Matrix ab.
+    const appWrite = (userId: string) => withAuthorizedTenantOn(
+      testPool, userId, fixture.workspaceId,
+      async (_tx, ctx) => can(ctx, "invoicing.write"),
+    );
+    await expect(appWrite(fixture.editorId)).resolves.toBe(true);
+    await expect(appWrite(fixture.editorNoCapId)).resolves.toBe(false);
+    await expect(appWrite(fixture.adminId)).resolves.toBe(true);
+    await expect(appWrite(fixture.viewerId)).resolves.toBe(false);
+    await expect(appWrite(fixture.externalId)).resolves.toBe(false);
   });
 });

@@ -2732,8 +2732,8 @@ export async function verifyRoleContract(
       ...(hasWorkspaceInvoicing ? [
         "_m300_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:119ffa84bc4ed5b45ce1981706a305b3d959ee5e8ac2eedd81c32e210bb6f101",
-        "_m300_actor_can_write_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
-          "search_path=pg_catalog:30649431afc15dbfc214143cc5f16da3a2a417d4270706a85b3f01f10d99048b",
+        "_m300_actor_can_write_invoicing(uuid):boolean:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:de23b1e63c666e2ce9e7340abae43550dc034c2f6e6de79e9951eb41baa292e4",
         "_m300_actor_invoicing_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
       ] : []),

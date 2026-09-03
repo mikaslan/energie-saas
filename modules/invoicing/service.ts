@@ -257,7 +257,12 @@ export async function getNumberFormats(
   ctx: ServiceCtx,
 ): Promise<NumberFormatListV1> {
   requireInvoicingRead(ctx);
-  await seedNumberFormats(tx, ctx.workspaceId);
+  // Das Idempotenz-Seeding schreibt Defaults. Unter FORCE-RLS ist der
+  // INSERT durch die restriktive Actor-Policy nur fuer Schreiber erlaubt —
+  // Leser (Viewer) duerfen den Read-Pfad nicht mit Schreibzugriff belasten.
+  if (can(ctx, "invoicing.write")) {
+    await seedNumberFormats(tx, ctx.workspaceId);
+  }
   const result = await tx.execute<NumberFormatRow>(sql`
     select type, format_template, counter
       from workspace_document_number_format
