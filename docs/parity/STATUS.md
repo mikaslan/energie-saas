@@ -18,9 +18,9 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 25–26 % | M1-Welle 01 komplett grün (`e5a9c5d`, remote); M3-01-Spec final (`635eb34`); M1-14/M1-15/M2-04 in Implementierung |
+| Gesamtmission einschließlich F1–F16 | ca. 27–28 % (ESTIMATE) | M1-Welle 01+02 komplett grün; M2-04 + M3-00 integriert und VERIFIED (E2E 66/66, `codex/m1-wave-02` `1b1f944`); M3-01 (0046) in Implementierung |
 | Technisches Fundament M0/M1 | ca. 97–98 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 18–19 % | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF-Entwurf lokal verifiziert; Kontakte/Termine/E-Signatur/Rechnungen in Arbeit |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 20–21 % (ESTIMATE) | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF, Kontakte, Termine, E-Signatur-Vorbereitung, Rechnungs-Stammdaten lokal verifiziert; Rechnungs-Kern in Arbeit |
 
 ## 2026-09-02 — API-Gate, Discovery, M1-11b-Lage
 
@@ -146,6 +146,23 @@ WMEE; Push-/Deploy-Regeln unverändert.
 komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
+
+## 2026-09-03 (13:10) — Welle 02 komplett integriert: 0044 + 0045 VERIFIED auf codex/m1-wave-02
+
+- **0044 M2-04 E-Signatur integriert** (`163d2a8`): Erasure-Kette auf post-0043
+  re-verankert, Rollenvertrags-Pins auf Integrations-Ist, Snapshot drei-Wege
+  rekonstruiert (db:generate ohne Drift), E2E 62/62. Kimi FREIGABE.
+- **0045 M3-00 Stammdaten integriert** (`1b1f944`): Merge-Konflikte additiv
+  gelöst (Rollenvertrag, Permissions 33, tenant-fixtures, m111a-Zähler 46),
+  0045-Snapshot auf 0044-Kette rekonstruiert; Vollcheck grün im ersten Lauf,
+  E2E **66/66**, Build grün, keine Drift. Kimi FREIGABE (Vorbehalte des
+  Bundles durch Rollenprobe + db:generate abgedeckt).
+- **Token-Disziplin aktiv** (RUNBOOK §1a, test:db/test:unit/test:focus,
+  kimi-review-Wrapper OpenRouter→lokal), Codex-Review weiterhin am
+  Usage-Limit (Reset 7. Sep.) — Kimi übernimmt.
+- **M3-01 Rechnungs-Kern (0046):** Implementierungs-Brief fertig (4 Slices,
+  6 Dokumenttypen laut ADR 0023); Implementierer-Agent arbeitet Slice A1
+  (Schema+Gruppen+Entwurf) im Worktree energie-saas-m301-rechnungen.
 
 ## 2026-09-03 (07:50) — M2-04 + M3-00 implementiert und grün; Agenten-Ausfall bewältigt
 
