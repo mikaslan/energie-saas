@@ -1445,11 +1445,10 @@ async function main(): Promise<number> {
         "select pg_catalog.set_config('app.workspace_id', $1, true)",
         [seedData.workspaceId],
       );
-      await previewPool.query(
-        `select pg_catalog.set_config('app.actor_id', u.id::text, true)
-           from user_identity u where u.email = $1 limit 1`,
-        [seedData.editorEmail],
-      );
+      // Actor-Kontext leer lassen: der membership-DML-Guard verbietet
+      // Self-Mutation; als Superuser ist RLS ohnehin umgangen, die
+      // Trigger brauchen nur einen nicht-selbst Actor.
+      await previewPool.query("select pg_catalog.set_config('app.actor_id', '', true)");
       // Capabilities für Rechnungen + Wirtschaftlichkeit
       for (const capability of ["invoicing", "economics"]) {
         await previewPool.query(
