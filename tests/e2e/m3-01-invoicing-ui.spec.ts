@@ -243,6 +243,17 @@ async function seedInvoicingSettings(): Promise<void> {
        )`,
       [data.workspaceId, data.editorEmail],
     );
+    // Der M3-00-Spec kann im Gesamtlauf zuerst laufen und Settings OHNE
+    // Zahlungsdaten hinterlassen — die O4-Precondition der Anlage verlangt
+    // sie aber. Fehlende Felder nachrüsten.
+    await client.query(
+      `update workspace_invoicing_settings
+          set payment_account_holder = coalesce(payment_account_holder, 'Solarwerk E2E GmbH'),
+              payment_iban = coalesce(payment_iban, 'DE89370400440532013000'),
+              payment_bic = coalesce(payment_bic, 'MARKDEF1100')
+        where workspace_id = $1::uuid`,
+      [data.workspaceId],
+    );
     await client.query("commit");
   } finally {
     await client.release();
