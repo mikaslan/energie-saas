@@ -76,3 +76,20 @@ erzwingen.
 - `M115-08` Erasure: appointmentIds im Graphen, echter erase_inactive_lead-Lauf — GREEN
 - `M115-09` Races: paralleler Edit/Delete; Guards ohne 42501 für app_runtime — GREEN
 - E2E 6/6; Visual INCONCLUSIVE. Kalender-Scopes = M1-15b (0047, SPECIFIED).
+
+## M2-04 E-Signatur (0044) — REVIEWED/VERIFIED, integriert (2026-09-03)
+
+Vorbereitungs-Slice F2.8: 5-Zustands-Modell (pending/signed/expired/withdrawn/
+revoked_by_customer), Token-Locator (RLS-frei, Definer-Kapseln), öffentliche
+Guard-Route ohne Dokument-Leak, interner Widerruf mit strukturiertem Grund,
+Analog-Upload, View-Zähler, kopierbarer Signaturlink, Erasure-Graph-Erweiterung.
+Send/Issued + Click-to-sign/Draw folgen in M2-04b (Gate: M2-03b2 issued).
+Belege: Vollcheck 180/180, E2E 4/4 (Lane) + 62/62 (Integration), Kimi 0 P0.
+
+## M3-00 Workspace-Stammdaten (0045) — REVIEWED/VERIFIED, integriert (2026-09-03)
+
+F8.2: Ausstellungsdetails-Singleton (Upsert + CAS-Revision), Nummernserien-
+Defaults (6 Typen, {NUMBER}-Pflicht), RLS-Schreibmatrix (Admin ODER Editor mit
+Invoicing-Capability), Issuing-Details-Minimierung, Precondition-Gate.
+Belege: Vollcheck 186/186, E2E 4/4 (Lane) + 66/66 (Integration),
+M300-DB-RBAC-01, Kimi FREIGABE.
