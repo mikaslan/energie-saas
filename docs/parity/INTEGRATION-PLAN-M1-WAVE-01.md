@@ -1,6 +1,6 @@
 # Integrationsplan — M1-Welle 01 + 02 (0040 → 0041 → 0042 → 0043 → 0044)
 
-Stand: 2026-09-03 · Owner: Root-Integrator · Status: VORBEREITET (0040/0041 integriert; 0042/0043 in Review; 0044 in Implementierung)
+Stand: 2026-09-03 (13:20) · Owner: Root-Integrator · Status: Welle 02 ABGESCHLOSSEN (0040–0045 integriert auf codex/m1-wave-02, E2E 66/66); nächste Kette: 0046 (M3-01) → M2-Rest/M3-Suite
 
 ## Ziel
 
@@ -12,8 +12,10 @@ Reihenfolge zu einem Integrations-Branch zusammenführen:
 | 1 | M1-11b Cannot Fulfil | `codex/m1-11b-cannot-fulfil` | `0040` | INTEGRIERT (`codex/m1-wave-01`) |
 | 2 | M1-13 Projektnotizen | `codex/m1-13-project-notes` | `0041` | INTEGRIERT (`codex/m1-wave-01`) |
 | 3 | M1-14 Kontakt-Datensatz | `codex/m1-14-contact-dataset` | `0042` | Vollgate grün, Kimi-Code-Review läuft |
-| 4 | M1-15 Termine/Kalender | `codex/m1-15-calendar-appointments` | `0043` | Vollgate grün, Kimi-Code-Review läuft |
-| 5 | M2-04 E-Signatur | `codex/m2-04-e-signature` | `0044` | Implementierung läuft |
+| 4 | M1-15 Termine/Kalender | `codex/m1-15-calendar-appointments` | `0043` | INTEGRIERT (Welle 02) |
+| 5 | M2-04 E-Signatur | `codex/m2-04-e-signature` | `0044` | INTEGRIERT (`163d2a8`, E2E 62/62) |
+| 6 | M3-00 Workspace-Stammdaten | `codex/m3-00-workspace-stammdaten` | `0045` | INTEGRIERT (`1b1f944`, E2E 66/66) |
+| 7 | M3-01 Rechnungs-Kern | `codex/m3-01-invoicing-core` | `0046` | Slice A1 in Implementierung (Worktree energie-saas-m301-rechnungen) |
 
 Jeder Slice wird ZUERST auf seinem eigenen Branch vollständig abgenommen
 (Gate-Kette inkl. unabhängigem Review). Erst danach Integration — niemals
