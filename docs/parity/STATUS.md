@@ -147,6 +147,38 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-04 (spät) — M3-01 UI-/E2E-Schicht gebaut (Root): 5/5 Chromium, Kimi NACHBESSERUNG→geschlossen
+
+Lane `codex/m3-01-invoicing-core` HEAD **`1059b06`** (remote gesichert).
+- **Bereich „Rechnungen & Dokumente":** Tabs (Übersicht, 6 Typen, Berichte);
+  Listen je Typ mit Spec-§7-Filtern (Status/Zahlung/Ausstellungsfenster/
+  Fach-Datum/Grund/Archiv/Suche), Keyset-Pagination, typ-spezifische
+  Spalten; Übersicht mit Gruppen (Anlage + Archiv-Toggle); Berichte mit
+  Berlin-Monats-KPIs, Lebenszyklus-Buckets, Überfälligkeits-Buckets,
+  Neueste-10 + CSV-Download-Route (private, nosniff, CSP sandbox).
+- **Server-Actions** (Zod + serverseitige UUID-/Enum-Prüfung): Gruppe
+  anlegen/archivieren; Dokument anlegen/ausstellen/versenden/stornieren/
+  archivieren. `setDocumentArchived`/`setDocumentGroupArchived` im Service
+  neu (Spec §5.4). UI-Gating nur Anzeige — Actions sind die Grenze.
+- **A11y:** Fokus-Falle + Escape + Fokus-Rückgabe (`useModalDialog`),
+  null-on-success-Dialogschließen, sr-only-Zusammenfassungen, role=alert,
+  keine farbalone Codierung; Berlin-Datumsanzeige (kein Server-TZ).
+- **E2E 5/5** (Chromium): Journey Gruppe→Anlage→Ausstellen→Versenden→
+  Stornieren; Filter/Suche/Archiv-Achse; Berichte+CSV im isolierten
+  Workspace inkl. Empty-States; Viewer read-only/External fail-closed;
+  Typ-Abdeckung Gutschrift/Auftragsbestätigung/Bestellung/Lieferschein/
+  Brief. Axe A/AA inkl. offenem Storno-Dialog.
+- **Kimi-K3 NACHBESSERUNG** (1 P1 + 6 P2 + 6 P3) → alle geschlossen
+  (`REVIEW-KIMI-M3-01-UI.md`): Spaltenversatz-Zahlung, Monatsgrenz-Flake,
+  Typ-Abdeckung, Pflichtzustände, Dialog-Fokus, Storno-Gating u. a.
+- **Vollgate:** `npm run check` exit 0 (194 Dateien, 1874 passed/1
+  skipped, Rollenprobe 88/88 + PG18 5/5), Production-Build exit 0,
+  `db:generate` keine Drift. `UNK-M301-02` (M3-00-Nummern-Template ↔
+  M3-01-Serienformat) als Integrations-Folgeslice eingetragen.
+- **Nächster Schritt: 0046-Integration** in `codex/m1-wave-02` (Journal
+  monoton, Snapshot-Drei-Wege, Rollen-Pins aus Ist, ACTOR_SCOPED,
+  m111a=47) → danach Gesamt-E2E (66+5) und M3-01 VERIFIED.
+
 ## 2026-09-04 — M3-01 A4 gebaut (Root): Listen/Filter + Berichte/CSV — Kimi FREIGABE
 
 Lane `codex/m3-01-invoicing-core` HEAD **`4218842`** (remote gesichert).
