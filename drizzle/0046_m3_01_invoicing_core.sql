@@ -23,6 +23,7 @@ CREATE TABLE "commercial_document" (
 	"gross_cents" bigint DEFAULT 0 NOT NULL,
 	"payment_status" text,
 	"paid_cents" bigint DEFAULT 0 NOT NULL,
+	"payment_updated_at" timestamp with time zone,
 	"due_date" date,
 	"delivery_date" date,
 	"validity_date" date,
@@ -93,7 +94,8 @@ CREATE TABLE "commercial_document" (
         else true
       end),
 	CONSTRAINT "commercial_document_timestamps_ck" CHECK (isfinite("commercial_document"."created_at") and isfinite("commercial_document"."updated_at")
-        and "commercial_document"."updated_at" >= "commercial_document"."created_at")
+        and "commercial_document"."updated_at" >= "commercial_document"."created_at"),
+	CONSTRAINT "commercial_document_payment_updated_ck" CHECK ("commercial_document"."payment_updated_at" is null or isfinite("commercial_document"."payment_updated_at"))
 );
 --> statement-breakpoint
 CREATE TABLE "commercial_document_group" (

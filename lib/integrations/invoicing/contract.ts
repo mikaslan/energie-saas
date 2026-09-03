@@ -238,10 +238,20 @@ export const COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION =
   "commercial-document-line-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_VERSION = "commercial-document.v1" as const;
 export const COMMERCIAL_DOCUMENT_LINE_VERSION = "commercial-document-line.v1" as const;
+export const COMMERCIAL_DOCUMENT_LIST_COMMAND_VERSION =
+  "commercial-document-list-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_LIST_VERSION =
+  "commercial-document-list.v1" as const;
+export const INVOICING_REPORT_COMMAND_VERSION = "invoicing-report-command.v1" as const;
+export const INVOICING_REPORT_VERSION = "invoicing-report.v1" as const;
+export const INVOICING_REPORT_CSV_VERSION = "invoicing-report-csv.v1" as const;
 
 export const MAX_DOCUMENT_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const MAX_DOCUMENT_QUANTITY_MILLI = 100_000_000 as const;
 export const MAX_DOCUMENT_LINE_POSITION = 500 as const;
+export const DOCUMENT_LIST_DEFAULT_LIMIT = 25 as const;
+export const DOCUMENT_LIST_MAX_LIMIT = 100 as const;
+export const INVOICING_REPORT_LATEST_DOCUMENTS = 10 as const;
 export const GOEBD_SNAPSHOT_SCHEMA_VERSION = "document-snapshot.v1" as const;
 export const GOEBD_SNAPSHOT_CANONICALIZATION_VERSION = "document-jcs.v1" as const;
 
@@ -531,3 +541,170 @@ export const commercialDocumentV1Schema = z.strictObject({
   permissions: z.strictObject({ canWrite: z.boolean() }),
 });
 export type CommercialDocumentV1 = z.infer<typeof commercialDocumentV1Schema>;
+
+// ═══════════════════════════════════════════════════════════════════════
+// M301-06 · Liste + Filter je Typ (Spec §7). Keyset-Cursor, Archiv-Achse,
+// typ-gebundene Datums-/Zahlungs-/Gutschrift-Filter.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Kimi-P2-1: nicht nur Form, sondern echtes Kalenderdatum — sonst liefe
+// "2026-02-30" bis in den ::date-Cast und scheiterte dort mit rohem PG-Fehler.
+const isoDateOnlySchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/u)
+  .refine((value) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year
+      && date.getUTCMonth() === month - 1
+      && date.getUTCDate() === day;
+  }, "must be a real calendar date");
+
+export const commercialDocumentListFiltersV1Schema = z
+  .strictObject({
+    status: commercialDocumentStatusSchema.optional(),
+    paymentStatus: z
+      .enum(["unpaid", "partially_paid", "paid", "overdue", "uncollectable"])
+      .optional(),
+    issuedFrom: isoDateOnlySchema.optional(),
+    issuedTo: isoDateOnlySchema.optional(),
+    // Typ-gebundenes Datumsfeld: invoice → dueDate, credit_note → deliveryDate
+    // (Spec §7 filtert nur diese beiden Typen über ihr Fach-Datum).
+    typeDateFrom: isoDateOnlySchema.optional(),
+    typeDateTo: isoDateOnlySchema.optional(),
+    creditNoteType: commercialCreditNoteTypeSchema.optional(),
+    archived: z.enum(["active", "archived", "all"]).optional(),
+    search: z.string().trim().min(1).max(160).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.issuedFrom !== undefined && value.issuedTo !== undefined
+      && value.issuedFrom > value.issuedTo) {
+      ctx.addIssue({ code: "custom", path: ["issuedTo"], message: "issuedTo must be >= issuedFrom" });
+    }
+    if (value.typeDateFrom !== undefined && value.typeDateTo !== undefined
+      && value.typeDateFrom > value.typeDateTo) {
+      ctx.addIssue({ code: "custom", path: ["typeDateTo"], message: "typeDateTo must be >= typeDateFrom" });
+    }
+  });
+export type CommercialDocumentListFiltersV1 = z.infer<
+  typeof commercialDocumentListFiltersV1Schema
+>;
+
+export const commercialDocumentListCommandV1Schema = z
+  .strictObject({
+    schemaVersion: z.literal(COMMERCIAL_DOCUMENT_LIST_COMMAND_VERSION),
+    type: commercialDocumentTypeSchema,
+    filters: commercialDocumentListFiltersV1Schema.optional(),
+    cursor: z.string().min(1).max(256).optional(),
+    limit: z.number().int().min(1).max(DOCUMENT_LIST_MAX_LIMIT).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const filters = value.filters ?? {};
+    const issue = (field: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: ["filters", field], message });
+    // Typ-Scopes (Spec §7): Zahlungsachse nur Geld-Typen, Gutschrift-Typ nur
+    // credit_note, Fach-Datumsfilter nur invoice/credit_note.
+    if (filters.paymentStatus !== undefined && value.type === "letter") {
+      issue("paymentStatus", "paymentStatus is only valid for money document types");
+    }
+    if (filters.creditNoteType !== undefined && value.type !== "credit_note") {
+      issue("creditNoteType", "creditNoteType is only valid for credit_note");
+    }
+    if ((filters.typeDateFrom !== undefined || filters.typeDateTo !== undefined)
+      && value.type !== "invoice" && value.type !== "credit_note") {
+      issue("typeDateFrom", "typeDate is only valid for invoice and credit_note");
+    }
+  });
+export type CommercialDocumentListCommandV1 = z.infer<
+  typeof commercialDocumentListCommandV1Schema
+>;
+
+export const commercialDocumentListV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_LIST_VERSION),
+  type: commercialDocumentTypeSchema,
+  items: z.array(commercialDocumentV1Schema),
+  totalCount: z.number().int().nonnegative(),
+  nextCursor: z.string().min(1).max(256).nullable(),
+  permissions: z.strictObject({ canWrite: z.boolean() }),
+});
+export type CommercialDocumentListV1 = z.infer<typeof commercialDocumentListV1Schema>;
+
+// ═══════════════════════════════════════════════════════════════════════
+// M301-07 · Berichte (Spec §8). Kalendermonat Europe/Berlin; DECIDED-KPIs.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Kalendermonat "YYYY-MM" im Wertebereich 2000-01 … 2099-12 (DECIDED).
+export const invoicingReportMonthSchema = z
+  .string()
+  .trim()
+  .regex(/^20\d{2}-(0[1-9]|1[0-2])$/u);
+
+export const invoicingReportCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(INVOICING_REPORT_COMMAND_VERSION),
+  month: invoicingReportMonthSchema,
+});
+export type InvoicingReportCommandV1 = z.infer<typeof invoicingReportCommandV1Schema>;
+
+export const invoicingReportV1Schema = z.strictObject({
+  schemaVersion: z.literal(INVOICING_REPORT_VERSION),
+  month: invoicingReportMonthSchema,
+  monthStart: isoDateOnlySchema,
+  monthEnd: isoDateOnlySchema,
+  revenueThisMonthCents: moneyCentsSchema,
+  cashflowThisMonthCents: moneyCentsSchema,
+  outstandingCents: moneyCentsSchema,
+  overdueCents: moneyCentsSchema,
+  // DECIDED: Vormonatsvergleich nur für die beiden Fluss-KPIs (Einnahmen,
+  // Cashflow). Bestands-KPIs (ausstehend/überfällig) haben ohne Zahlungs-
+  // Ledger keine historische Momentaufnahme → previous null = „Kein
+  // Vormonat" (OBSERVED-Indikator, exakte Reonic-Semantik UNKNOWN).
+  // Kimi-P2-2: previousMonth.month ist bewusst NICHT gegen die 20xx-Grenze
+  // geprüft — für month = "2000-01" ist der Vormonat "1999-12".
+  previousMonth: z.strictObject({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u),
+    revenueCents: moneyCentsSchema,
+    cashflowCents: moneyCentsSchema,
+    outstandingCents: moneyCentsSchema.nullable(),
+    overdueCents: moneyCentsSchema.nullable(),
+  }),
+  latestDocuments: z.array(commercialDocumentV1Schema).max(INVOICING_REPORT_LATEST_DOCUMENTS),
+  // DECIDED (Spec §8, ESTIMATE): 5 disjunkte Lebenszyklus-Buckets, Partition
+  // aller Dokumente: draft | voided | paid | overdue | sent(=issued, offen).
+  // uncollectable fällt in keinen Bucket (exakte Reonic-Gruppierung UNKNOWN).
+  revenueByStatus: z.strictObject({
+    draftCents: moneyCentsSchema,
+    sentCents: moneyCentsSchema,
+    paidCents: moneyCentsSchema,
+    overdueCents: moneyCentsSchema,
+    voidedCents: moneyCentsSchema,
+    draftCount: z.number().int().nonnegative(),
+    sentCount: z.number().int().nonnegative(),
+    paidCount: z.number().int().nonnegative(),
+    overdueCount: z.number().int().nonnegative(),
+    voidedCount: z.number().int().nonnegative(),
+  }),
+  // Überfälligkeitsreport: disjunkte Buckets nach Tagen seit Fälligkeit
+  // (Europe/Berlin-Heute), kumulierte offene Beträge je Bucket;
+  // totalOutstanding = „Insgesamt ausstehend" (alle offenen Dokumente).
+  overdueBuckets: z.strictObject({
+    days0To30Cents: moneyCentsSchema,
+    days31To60Cents: moneyCentsSchema,
+    days61To90Cents: moneyCentsSchema,
+    over90Cents: moneyCentsSchema,
+    totalOutstandingCents: moneyCentsSchema,
+  }),
+  permissions: z.strictObject({ canWrite: z.boolean() }),
+});
+export type InvoicingReportV1 = z.infer<typeof invoicingReportV1Schema>;
+
+// CSV-Export (DECIDED §8): UTF-8, ";"-getrennt, ISO-8601-Daten, Euro-Dezimal
+// mit 2 Nachkommastellen aus Cent, CRLF, RFC-4180-Quoting.
+export const invoicingReportCsvV1Schema = z.strictObject({
+  schemaVersion: z.literal(INVOICING_REPORT_CSV_VERSION),
+  month: invoicingReportMonthSchema,
+  fileName: z.string().min(1).max(120),
+  contentType: z.literal("text/csv; charset=utf-8"),
+  content: z.string(),
+});
+export type InvoicingReportCsvV1 = z.infer<typeof invoicingReportCsvV1Schema>;

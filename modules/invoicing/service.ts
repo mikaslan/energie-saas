@@ -2,30 +2,30 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { createHash } from "node:crypto";
 import {
-  COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_GROUP_VERSION,
-  COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_LINE_VERSION,
-  COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_LIST_VERSION,
   COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS,
-  COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
-  COMMERCIAL_DOCUMENT_PAYMENT_STATUS_COMMAND_VERSION,
-  COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION,
-  COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_VERSION,
   GOEBD_SNAPSHOT_CANONICALIZATION_VERSION,
   GOEBD_SNAPSHOT_SCHEMA_VERSION,
+  DOCUMENT_LIST_DEFAULT_LIMIT,
   DOCUMENT_NUMBER_FORMAT_DEFAULTS,
+  INVOICING_REPORT_CSV_VERSION,
+  INVOICING_REPORT_LATEST_DOCUMENTS,
+  INVOICING_REPORT_VERSION,
   commercialDocumentGroupCommandV1Schema,
   commercialDocumentCommandV1Schema,
   commercialDocumentIssueCommandV1Schema,
+  commercialDocumentListCommandV1Schema,
+  commercialDocumentListV1Schema,
   commercialDocumentPaymentCommandV1Schema,
   commercialDocumentPaymentStatusCommandV1Schema,
   commercialDocumentSentCommandV1Schema,
@@ -34,6 +34,9 @@ import {
   commercialDocumentGroupV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineV1Schema,
+  invoicingReportCommandV1Schema,
+  invoicingReportCsvV1Schema,
+  invoicingReportV1Schema,
   invoicingSettingsCommandV1Schema,
   invoicingSettingsV1Schema,
   numberFormatCommandV1Schema,
@@ -43,6 +46,8 @@ import {
   type CommercialDocumentCommandV1,
   type CommercialDocumentGroupCommandV1,
   type CommercialDocumentIssueCommandV1,
+  type CommercialDocumentListCommandV1,
+  type CommercialDocumentListV1,
   type CommercialDocumentPaymentCommandV1,
   type CommercialDocumentPaymentStatusCommandV1,
   type CommercialDocumentSentCommandV1,
@@ -52,6 +57,9 @@ import {
   type CommercialDocumentLineCommandV1,
   type CommercialDocumentLineV1,
   type DocumentNumberType,
+  type InvoicingReportCommandV1,
+  type InvoicingReportCsvV1,
+  type InvoicingReportV1,
   type InvoicingSettingsCommandV1,
   type InvoicingSettingsV1,
   type NumberFormatCommandV1,
@@ -443,6 +451,101 @@ type DocumentRow = {
   [key: string]: unknown;
 };
 
+// Vollständige Zeilenform für DTO-Mapping (readDocument, listDocuments,
+// latestDocuments im Bericht).
+type DocumentDtoRow = {
+  id: string;
+  type: string;
+  status: string;
+  name: string;
+  group_id: string | null;
+  project_id: string | null;
+  contact_id: string | null;
+  archived_at: Date | null;
+  currency: string;
+  net_cents: number;
+  tax_cents: number;
+  gross_cents: number;
+  due_date: string | null;
+  delivery_date: string | null;
+  validity_date: string | null;
+  planned_delivery_date: string | null;
+  planned_service_date: string | null;
+  credit_note_type: string | null;
+  payment_status: string | null;
+  number: string | null;
+  number_year: number | null;
+  number_sequence: number | null;
+  issued_at: Date | null;
+  sent_at: Date | null;
+  voided_at: Date | null;
+  void_reason: string | null;
+  paid_cents: number | null;
+  created_at: Date | string;
+  [key: string]: unknown;
+};
+
+const DOCUMENT_DTO_SELECT = sql`
+  select id, type, status, name, group_id, project_id, contact_id,
+         archived_at, currency, net_cents, tax_cents, gross_cents, due_date,
+         delivery_date, validity_date, planned_delivery_date,
+         planned_service_date, credit_note_type, payment_status, number,
+         number_year, number_sequence, issued_at, sent_at, voided_at,
+         void_reason, paid_cents, created_at
+    from commercial_document
+`;
+
+// pg liefert timestamptz je nach Treiber-Konfiguration als Date ODER String
+// im pg-Format "YYYY-MM-DD HH:MM:SS[.ffffff]+HH" (Offset ohne Doppelpunkt,
+// das JS-Date-Parser ablehnt). Beides auf ISO-8601 normalisieren.
+function toIso(value: Date | string | null): string | null {
+  if (value === null) return null;
+  if (value instanceof Date) return value.toISOString();
+  const normalized = value.replace(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}(?::?\d{2})?)?$/u,
+    (match, date: string, time: string, fraction: string | undefined, zone: string | undefined) =>
+      `${date}T${time}${fraction ? `.${fraction.slice(0, 3)}` : ""}${zone ? (zone === "Z" ? "Z" : zone.includes(":") ? zone : `${zone}:00`) : ""}`,
+  );
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`invalid document timestamp: ${value}`);
+  }
+  return parsed.toISOString();
+}
+
+function toDocumentV1(row: DocumentDtoRow, canWrite: boolean): CommercialDocumentV1 {
+  return commercialDocumentV1Schema.parse({
+    schemaVersion: COMMERCIAL_DOCUMENT_VERSION,
+    id: row.id,
+    type: row.type,
+    status: row.status,
+    name: row.name,
+    groupId: row.group_id,
+    projectId: row.project_id,
+    contactId: row.contact_id,
+    archivedAt: toIso(row.archived_at),
+    netCents: Number(row.net_cents),
+    taxCents: Number(row.tax_cents),
+    grossCents: Number(row.gross_cents),
+    paymentStatus: row.payment_status,
+    dueDate: row.due_date,
+    deliveryDate: row.delivery_date,
+    validityDate: row.validity_date,
+    plannedDeliveryDate: row.planned_delivery_date,
+    plannedServiceDate: row.planned_service_date,
+    creditNoteType: row.credit_note_type,
+    number: row.number,
+    numberYear: row.number_year === null ? null : Number(row.number_year),
+    numberSequence: row.number_sequence === null ? null : Number(row.number_sequence),
+    issuedAt: toIso(row.issued_at),
+    sentAt: toIso(row.sent_at),
+    voidedAt: toIso(row.voided_at),
+    voidReason: row.void_reason,
+    paidCents: row.paid_cents === null ? null : Number(row.paid_cents),
+    permissions: { canWrite },
+  });
+}
+
 type IssueDocumentRow = {
   id: string;
   type: string;
@@ -484,20 +587,6 @@ type GroupRow = {
   project_id: string | null;
   archived_at: Date | null;
   document_count: number;
-  [key: string]: unknown;
-};
-
-type LineRow = {
-  id: string;
-  document_id: string;
-  position: number;
-  name: string;
-  quantity_milli: number;
-  unit: string;
-  net_cents: number;
-  tax_cents: number;
-  gross_cents: number;
-  tax_rate_bps: number;
   [key: string]: unknown;
 };
 
@@ -724,49 +813,14 @@ async function readDocument(
   ctx: ServiceCtx,
   documentId: string,
 ): Promise<CommercialDocumentV1> {
-  const row = await tx.execute<DocumentRow>(sql`
-    select id, type, status, name, group_id, project_id, contact_id,
-           currency, net_cents, tax_cents, gross_cents, due_date,
-           delivery_date, validity_date, planned_delivery_date,
-           planned_service_date, credit_note_type, payment_status, number,
-           number_year, number_sequence, issued_at, sent_at, voided_at,
-           void_reason, paid_cents
-      from commercial_document
+  const row = await tx.execute<DocumentDtoRow>(sql`
+    ${DOCUMENT_DTO_SELECT}
      where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
      limit 1
   `);
   const doc = row.rows[0];
   if (!doc) throw new InvoicingNotFoundError();
-  return commercialDocumentV1Schema.parse({
-    schemaVersion: COMMERCIAL_DOCUMENT_VERSION,
-    id: doc.id,
-    type: doc.type,
-    status: doc.status,
-    name: doc.name,
-    groupId: doc.group_id,
-    projectId: doc.project_id,
-    contactId: doc.contact_id,
-    archivedAt: null,
-    netCents: Number(doc.net_cents),
-    taxCents: Number(doc.tax_cents),
-    grossCents: Number(doc.gross_cents),
-    paymentStatus: doc.payment_status,
-    dueDate: doc.due_date,
-    deliveryDate: doc.delivery_date,
-    validityDate: doc.validity_date,
-    plannedDeliveryDate: doc.planned_delivery_date,
-    plannedServiceDate: doc.planned_service_date,
-    creditNoteType: doc.credit_note_type,
-    number: doc.number,
-    numberYear: doc.number_year === null ? null : Number(doc.number_year),
-    numberSequence: doc.number_sequence === null ? null : Number(doc.number_sequence),
-    issuedAt: doc.issued_at,
-    sentAt: doc.sent_at,
-    voidedAt: doc.voided_at,
-    voidReason: doc.void_reason,
-    paidCents: doc.paid_cents === null ? null : Number(doc.paid_cents),
-    permissions: { canWrite: can(ctx, "invoicing.write") },
-  });
+  return toDocumentV1(doc, can(ctx, "invoicing.write"));
 }
 
 export function canonicalizeDocumentSnapshot(snapshot: unknown): string {
@@ -1126,6 +1180,7 @@ export async function recordPayment(
     update commercial_document
        set payment_status = ${paymentStatus},
            paid_cents = ${paidCents},
+           payment_updated_at = statement_timestamp(),
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${documentId}::uuid
@@ -1156,6 +1211,9 @@ export async function setPaymentStatus(
   ctx: ServiceCtx,
   input: CommercialDocumentPaymentStatusCommandV1,
 ): Promise<CommercialDocumentV1> {
+  // DECIDED (Kimi-P3-3): auch Statuswechsel (overdue/uncollectable) aktualisieren
+  // payment_updated_at — der Cashflow-KPI zählt dann den aktuellen paid_cents
+  // erneut im Folgemonat (Proxi-Grenze des ESTIMATE-Vertrags, dokumentiert).
   requireInvoicingWrite(ctx);
   const parsed = commercialDocumentPaymentStatusCommandV1Schema.safeParse(input);
   if (!parsed.success) throw new InvoicingValidationError();
@@ -1179,6 +1237,7 @@ export async function setPaymentStatus(
   await tx.execute(sql`
     update commercial_document
        set payment_status = ${parsed.data.status},
+           payment_updated_at = statement_timestamp(),
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${documentId}::uuid
@@ -1322,5 +1381,434 @@ export async function createDocumentLine(
     taxCents,
     grossCents,
     taxRateBps: line.taxRateBps,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// M301-06 · Liste + Filter je Typ (Spec §7)
+// ═══════════════════════════════════════════════════════════════════════
+
+function encodeListCursor(createdAt: Date | string, id: string): string {
+  const iso = typeof createdAt === "string" ? createdAt : createdAt.toISOString();
+  return Buffer.from(
+    JSON.stringify({ c: iso, i: id }),
+    "utf8",
+  ).toString("base64url");
+}
+
+const CURSOR_TIMESTAMP_PATTERNS: RegExp[] = [
+  // encodeListCursor: Date → ISO-8601 UTC ("2026-09-04T08:30:00.000Z")
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u,
+  // encodeListCursor: pg-String ("2026-09-04 08:30:00.123456+02")
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?[+-]\d{2}$/u,
+];
+const CURSOR_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+function decodeListCursor(cursor: string): { c: string; i: string } | null {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    ) as { c?: unknown; i?: unknown };
+    // Kimi-P2-1: Formen vollständig validieren — sonst läuft ein gefälschter
+    // Cursor bis in den ::timestamptz/::uuid-Cast und wirft rohe PG-Fehler.
+    const c = parsed.c;
+    const i = parsed.i;
+    if (typeof c !== "string" || typeof i !== "string") return null;
+    if (!CURSOR_TIMESTAMP_PATTERNS.some((pattern) => pattern.test(c))) return null;
+    if (!CURSOR_UUID_PATTERN.test(i)) return null;
+    return { c, i };
+  } catch {
+    return null;
+  }
+}
+
+// Typ-gebundenes Fach-Datumsfeld (Spec §7): invoice → due_date,
+// credit_note → delivery_date. Nur über diese Whitelist referenziert.
+function typeDateColumn(type: string): string | null {
+  if (type === "invoice") return "due_date";
+  if (type === "credit_note") return "delivery_date";
+  return null;
+}
+
+export async function listDocuments(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentListCommandV1,
+): Promise<CommercialDocumentListV1> {
+  requireInvoicingRead(ctx);
+  const parsed = commercialDocumentListCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const command = parsed.data;
+  const filters = command.filters ?? {};
+  const limit = command.limit ?? DOCUMENT_LIST_DEFAULT_LIMIT;
+
+  const conditions: SQL[] = [
+    sql`workspace_id = ${ctx.workspaceId}::uuid`,
+    sql`type = ${command.type}`,
+  ];
+  if (filters.status !== undefined) {
+    conditions.push(sql`status = ${filters.status}`);
+  }
+  if (filters.paymentStatus !== undefined) {
+    conditions.push(sql`payment_status = ${filters.paymentStatus}`);
+  }
+  if (filters.issuedFrom !== undefined) {
+    conditions.push(sql`(issued_at at time zone 'Europe/Berlin')::date >= ${filters.issuedFrom}::date`);
+  }
+  if (filters.issuedTo !== undefined) {
+    conditions.push(sql`(issued_at at time zone 'Europe/Berlin')::date <= ${filters.issuedTo}::date`);
+  }
+  const typeDate = typeDateColumn(command.type);
+  if (typeDate !== null && filters.typeDateFrom !== undefined) {
+    conditions.push(sql`${sql.raw(typeDate)} >= ${filters.typeDateFrom}::date`);
+  }
+  if (typeDate !== null && filters.typeDateTo !== undefined) {
+    conditions.push(sql`${sql.raw(typeDate)} <= ${filters.typeDateTo}::date`);
+  }
+  if (filters.creditNoteType !== undefined) {
+    conditions.push(sql`credit_note_type = ${filters.creditNoteType}`);
+  }
+  // Archiv-Achse (Spec §5.4): active = Standard (nur nicht archivierte).
+  if (filters.archived === undefined || filters.archived === "active") {
+    conditions.push(sql`archived_at is null`);
+  } else if (filters.archived === "archived") {
+    conditions.push(sql`archived_at is not null`);
+  }
+  if (filters.search !== undefined) {
+    // DECIDED: Namenssuche (case-insensitiv), LIKE-Wildcards escaped;
+    // Projekt-/Kontaktsuche über Fremdschlüssel ist nicht spezifiziert.
+    const escaped = filters.search.replace(/[\\%_]/gu, (ch) => `\\${ch}`);
+    conditions.push(sql`name ilike ${`%${escaped}%`} escape '\\'`);
+  }
+  if (command.cursor !== undefined) {
+    const decoded = decodeListCursor(command.cursor);
+    if (!decoded) throw new InvoicingValidationError();
+    conditions.push(sql`(
+      created_at < ${decoded.c}::timestamptz
+      or (created_at = ${decoded.c}::timestamptz and id < ${decoded.i}::uuid)
+    )`);
+  }
+  const where = sql.join(conditions, sql` and `);
+
+  const total = await tx.execute<{ c: number; [key: string]: unknown }>(sql`
+    select count(*)::int as c from commercial_document where ${where}
+  `);
+  const totalCount = Number(total.rows[0]?.c ?? 0);
+
+  const result = await tx.execute<DocumentDtoRow>(sql`
+    ${DOCUMENT_DTO_SELECT} where ${where}
+     order by created_at desc, id desc
+     limit ${limit}
+  `);
+  const canWrite = can(ctx, "invoicing.write");
+  const items = result.rows.map((row) => toDocumentV1(row, canWrite));
+  const last = result.rows[result.rows.length - 1];
+  const nextCursor = result.rows.length === limit && last
+    ? encodeListCursor(last.created_at, last.id)
+    : null;
+
+  return commercialDocumentListV1Schema.parse({
+    schemaVersion: COMMERCIAL_DOCUMENT_LIST_VERSION,
+    type: command.type,
+    items,
+    totalCount,
+    nextCursor,
+    permissions: { canWrite },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// M301-07 · Berichte + CSV (Spec §8, DECIDED-KPIs)
+// ═══════════════════════════════════════════════════════════════════════
+
+function shiftMonth(month: string, delta: number): string {
+  const [year, monthPart] = month.split("-").map(Number);
+  const absolute = year * 12 + (monthPart - 1) + delta;
+  const targetYear = Math.floor(absolute / 12);
+  const targetMonth = (absolute % 12) + 1;
+  return `${String(targetYear).padStart(4, "0")}-${String(targetMonth).padStart(2, "0")}`;
+}
+
+type KpiRow = { v: number; [key: string]: unknown };
+
+export async function getInvoicingReport(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: InvoicingReportCommandV1,
+): Promise<InvoicingReportV1> {
+  requireInvoicingRead(ctx);
+  const parsed = invoicingReportCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const month = parsed.data.month;
+  const monthStart = `${month}-01`;
+  const monthEnd = `${shiftMonth(month, 1)}-01`;
+  const previousMonth = shiftMonth(month, -1);
+  const previousMonthStart = `${previousMonth}-01`;
+
+  const moneyMonthWindow = (start: string, end: string) => sql`(issued_at at time zone 'Europe/Berlin')::date >= ${start}::date
+        and (issued_at at time zone 'Europe/Berlin')::date < ${end}::date`;
+
+  // Einnahmen: Σ grossCents aller issued-Geld-Dokumente mit issuedAt im Monat
+  // (Spec §8 DECIDED; voided zählt nicht mehr, da status = 'issued' gefiltert).
+  // DECIDED (Kimi-P3-8): die Archiv-Achse filtert hier NICHT — archivierte
+  // ausgestellte Dokumente bleiben wirtschaftlich wirksam (Liste filtert,
+  // Bericht aggregiert; exakte Reonic-Semantik UNKNOWN).
+  const revenue = await tx.execute<KpiRow>(sql`
+    select coalesce(sum(gross_cents), 0) as v
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and status = 'issued' and type <> 'letter'
+       and ${moneyMonthWindow(monthStart, monthEnd)}
+  `);
+  // Cashflow: Σ paidCents mit letztem Zahlungs-Update im Monat (ESTIMATE-Proxi,
+  // exakte Reonic-Definition UNKNOWN). payment_updated_at wird von
+  // recordPayment/setPaymentStatus gepflegt. DECIDED (Kimi-P3-4): ein später
+  // storniertes Dokument bleibt enthalten — der Zahlungseingang ist real,
+  // die Stornierung bildet die Gutschrift getrennt ab.
+  const cashflow = await tx.execute<KpiRow>(sql`
+    select coalesce(sum(paid_cents), 0) as v
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and payment_updated_at is not null
+       and (payment_updated_at at time zone 'Europe/Berlin')::date >= ${monthStart}::date
+       and (payment_updated_at at time zone 'Europe/Berlin')::date < ${monthEnd}::date
+  `);
+  const previousRevenue = await tx.execute<KpiRow>(sql`
+    select coalesce(sum(gross_cents), 0) as v
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and status = 'issued' and type <> 'letter'
+       and ${moneyMonthWindow(previousMonthStart, monthStart)}
+  `);
+  const previousCashflow = await tx.execute<KpiRow>(sql`
+    select coalesce(sum(paid_cents), 0) as v
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and payment_updated_at is not null
+       and (payment_updated_at at time zone 'Europe/Berlin')::date >= ${previousMonthStart}::date
+       and (payment_updated_at at time zone 'Europe/Berlin')::date < ${monthStart}::date
+  `);
+  // Ausstehend/Überfällig (Bestands-KPIs): offene Beträge werden je Dokument
+  // auf >= 0 geklemmt (Überzahlung erzeugt keinen negativen Bestand).
+  const outstanding = await tx.execute<KpiRow>(sql`
+    select coalesce(sum(greatest(gross_cents - paid_cents, 0)), 0) as v
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and status = 'issued'
+       and payment_status in ('unpaid', 'partially_paid', 'overdue')
+  `);
+  const overdue = await tx.execute<KpiRow>(sql`
+    select coalesce(sum(greatest(gross_cents - paid_cents, 0)), 0) as v
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and status = 'issued' and payment_status = 'overdue'
+  `);
+
+  const latest = await tx.execute<DocumentDtoRow>(sql`
+    ${DOCUMENT_DTO_SELECT}
+     where workspace_id = ${ctx.workspaceId}::uuid
+     order by created_at desc, id desc
+     limit ${INVOICING_REPORT_LATEST_DOCUMENTS}
+  `);
+
+  // DECIDED-Gruppierung (Spec §8, ESTIMATE): 5 disjunkte Lebenszyklus-Buckets
+  // draft | voided | paid | overdue | sent(=issued, offen; letter zählt als
+  // „versendet", da es keine Zahlungsachse trägt). KEINE vollständige
+  // Partition: uncollectable fällt in keinen Bucket (Kimi-P3-5; exakte
+  // Reonic-Gruppierung UNKNOWN).
+  const byStatus = await tx.execute<{
+    draft_cents: number;
+    draft_count: number;
+    voided_cents: number;
+    voided_count: number;
+    paid_cents: number;
+    paid_count: number;
+    overdue_cents: number;
+    overdue_count: number;
+    sent_cents: number;
+    sent_count: number;
+    [key: string]: unknown;
+  }>(sql`
+    select
+      coalesce(sum(gross_cents) filter (where status = 'draft'), 0) as draft_cents,
+      count(*) filter (where status = 'draft')::int as draft_count,
+      coalesce(sum(gross_cents) filter (where status = 'voided'), 0) as voided_cents,
+      count(*) filter (where status = 'voided')::int as voided_count,
+      coalesce(sum(gross_cents) filter (where status = 'issued' and payment_status = 'paid'), 0) as paid_cents,
+      count(*) filter (where status = 'issued' and payment_status = 'paid')::int as paid_count,
+      coalesce(sum(gross_cents) filter (where status = 'issued' and payment_status = 'overdue'), 0) as overdue_cents,
+      count(*) filter (where status = 'issued' and payment_status = 'overdue')::int as overdue_count,
+      coalesce(sum(gross_cents) filter (where status = 'issued' and (payment_status in ('unpaid', 'partially_paid') or type = 'letter')), 0) as sent_cents,
+      count(*) filter (where status = 'issued' and (payment_status in ('unpaid', 'partially_paid') or type = 'letter'))::int as sent_count
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+  `);
+
+  // Überfälligkeitsbuckets: Tage seit dueDate (Europe/Berlin-Heute), disjunkt.
+  // DECIDED (Kimi-P3-1): negative Tage (Zukunfts-Fälligkeit bei manuell
+  // gesetztem overdue) fallen aus allen Buckets; totalOutstandingCents bleibt
+  // die Summe aller offenen Dokumente und kann dann größer sein.
+  const buckets = await tx.execute<{
+    b0_30: number;
+    b31_60: number;
+    b61_90: number;
+    over90: number;
+    [key: string]: unknown;
+  }>(sql`
+    select
+      coalesce(sum(open_cents) filter (where days between 0 and 30), 0) as b0_30,
+      coalesce(sum(open_cents) filter (where days between 31 and 60), 0) as b31_60,
+      coalesce(sum(open_cents) filter (where days between 61 and 90), 0) as b61_90,
+      coalesce(sum(open_cents) filter (where days > 90), 0) as over90
+      from (
+        select greatest(gross_cents - paid_cents, 0) as open_cents,
+               ((statement_timestamp() at time zone 'Europe/Berlin')::date - due_date) as days
+          from commercial_document
+         where workspace_id = ${ctx.workspaceId}::uuid
+           and status = 'issued' and payment_status = 'overdue'
+      ) as overdue_docs
+  `);
+
+  const statusRow = byStatus.rows[0];
+  const bucketRow = buckets.rows[0];
+  const canWrite = can(ctx, "invoicing.write");
+
+  return invoicingReportV1Schema.parse({
+    schemaVersion: INVOICING_REPORT_VERSION,
+    month,
+    monthStart,
+    monthEnd,
+    revenueThisMonthCents: Number(revenue.rows[0]?.v ?? 0),
+    cashflowThisMonthCents: Number(cashflow.rows[0]?.v ?? 0),
+    outstandingCents: Number(outstanding.rows[0]?.v ?? 0),
+    overdueCents: Number(overdue.rows[0]?.v ?? 0),
+    previousMonth: {
+      month: previousMonth,
+      revenueCents: Number(previousRevenue.rows[0]?.v ?? 0),
+      cashflowCents: Number(previousCashflow.rows[0]?.v ?? 0),
+      outstandingCents: null,
+      overdueCents: null,
+    },
+    latestDocuments: latest.rows.map((row) => toDocumentV1(row, canWrite)),
+    revenueByStatus: {
+      draftCents: Number(statusRow?.draft_cents ?? 0),
+      sentCents: Number(statusRow?.sent_cents ?? 0),
+      paidCents: Number(statusRow?.paid_cents ?? 0),
+      overdueCents: Number(statusRow?.overdue_cents ?? 0),
+      voidedCents: Number(statusRow?.voided_cents ?? 0),
+      draftCount: Number(statusRow?.draft_count ?? 0),
+      sentCount: Number(statusRow?.sent_count ?? 0),
+      paidCount: Number(statusRow?.paid_count ?? 0),
+      overdueCount: Number(statusRow?.overdue_count ?? 0),
+      voidedCount: Number(statusRow?.voided_count ?? 0),
+    },
+    overdueBuckets: {
+      days0To30Cents: Number(bucketRow?.b0_30 ?? 0),
+      days31To60Cents: Number(bucketRow?.b31_60 ?? 0),
+      days61To90Cents: Number(bucketRow?.b61_90 ?? 0),
+      over90Cents: Number(bucketRow?.over90 ?? 0),
+      totalOutstandingCents: Number(outstanding.rows[0]?.v ?? 0),
+    },
+    permissions: { canWrite },
+  });
+}
+
+// CSV-Export (DECIDED §8): UTF-8, ";"-getrennt, ISO-8601-Daten, Euro-Dezimal
+// mit 2 Nachkommastellen aus Cent, CRLF, RFC-4180-Quoting. Scope: alle im
+// Monat ausgestellten Dokumente (alle Typen; letter hat 0,00-Beträge).
+// DECIDED (Kimi-P2-4): Dezimaltrenner ist der Punkt ("119.00") — parse-sicher
+// und maschinenlesbar; eine Komma-Variante wäre nur ein Anzeige-Layer.
+function csvCell(value: string): string {
+  // Kimi-P2-5: Formula-Injection abwehren — Excel/LibreOffice werten Werte
+  // mit führendem = + - @ als Formel aus.
+  const guarded = /^[=+\-@]/u.test(value) ? `'${value}` : value;
+  if (/[";\r\n]/u.test(guarded)) {
+    return `"${guarded.replace(/"/gu, '""')}"`;
+  }
+  return guarded;
+}
+
+function eurosFromCents(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+
+type CsvExportRow = {
+  type: string;
+  number: string | null;
+  name: string;
+  status: string;
+  payment_status: string | null;
+  issued_date: string | null;
+  due_date: string | null;
+  net_cents: number;
+  tax_cents: number;
+  gross_cents: number;
+  paid_cents: number;
+  [key: string]: unknown;
+};
+
+const CSV_HEADER = [
+  "Typ",
+  "Nummer",
+  "Name",
+  "Status",
+  "Zahlungsstatus",
+  "Ausstellungsdatum",
+  "Fälligkeitsdatum",
+  "Netto (EUR)",
+  "Steuer (EUR)",
+  "Brutto (EUR)",
+  "Bezahlt (EUR)",
+];
+
+export async function exportInvoicingReport(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: InvoicingReportCommandV1,
+): Promise<InvoicingReportCsvV1> {
+  requireInvoicingRead(ctx);
+  const parsed = invoicingReportCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const month = parsed.data.month;
+  const monthStart = `${month}-01`;
+  const monthEnd = `${shiftMonth(month, 1)}-01`;
+
+  const result = await tx.execute<CsvExportRow>(sql`
+    select type, number, name, status, payment_status,
+           (issued_at at time zone 'Europe/Berlin')::date as issued_date,
+           due_date, net_cents, tax_cents, gross_cents, paid_cents
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and status = 'issued'
+       and (issued_at at time zone 'Europe/Berlin')::date >= ${monthStart}::date
+       and (issued_at at time zone 'Europe/Berlin')::date < ${monthEnd}::date
+     order by issued_at asc, id asc
+  `);
+
+  const lines = [CSV_HEADER.join(";")];
+  for (const row of result.rows) {
+    lines.push([
+      row.type,
+      row.number ?? "",
+      row.name,
+      row.status,
+      row.payment_status ?? "",
+      row.issued_date ?? "",
+      row.due_date ?? "",
+      eurosFromCents(Number(row.net_cents)),
+      eurosFromCents(Number(row.tax_cents)),
+      eurosFromCents(Number(row.gross_cents)),
+      eurosFromCents(Number(row.paid_cents)),
+    ].map(csvCell).join(";"));
+  }
+  const content = `${lines.join("\r\n")}\r\n`;
+
+  return invoicingReportCsvV1Schema.parse({
+    schemaVersion: INVOICING_REPORT_CSV_VERSION,
+    month,
+    fileName: `invoicing-report-${month}.csv`,
+    contentType: "text/csv; charset=utf-8",
+    content,
   });
 }

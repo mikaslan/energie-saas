@@ -6733,6 +6733,12 @@
           "notNull": true,
           "default": 0
         },
+        "payment_updated_at": {
+          "name": "payment_updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "due_date": {
           "name": "due_date",
           "type": "date",
@@ -7072,6 +7078,10 @@
         "commercial_document_timestamps_ck": {
           "name": "commercial_document_timestamps_ck",
           "value": "isfinite(\"commercial_document\".\"created_at\") and isfinite(\"commercial_document\".\"updated_at\")\n        and \"commercial_document\".\"updated_at\" >= \"commercial_document\".\"created_at\""
+        },
+        "commercial_document_payment_updated_ck": {
+          "name": "commercial_document_payment_updated_ck",
+          "value": "\"commercial_document\".\"payment_updated_at\" is null or isfinite(\"commercial_document\".\"payment_updated_at\")"
         }
       },
       "isRLSEnabled": false

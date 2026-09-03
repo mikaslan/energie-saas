@@ -313,6 +313,7 @@ export const commercialDocument = pgTable(
     grossCents: bigint("gross_cents", { mode: "number" }).notNull().default(0),
     paymentStatus: text("payment_status"),
     paidCents: bigint("paid_cents", { mode: "number" }).notNull().default(0),
+    paymentUpdatedAt: timestamp("payment_updated_at", { withTimezone: true }),
     dueDate: date("due_date"),
     deliveryDate: date("delivery_date"),
     validityDate: date("validity_date"),
@@ -490,6 +491,10 @@ export const commercialDocument = pgTable(
       "commercial_document_timestamps_ck",
       sql`isfinite(${t.createdAt}) and isfinite(${t.updatedAt})
         and ${t.updatedAt} >= ${t.createdAt}`,
+    ),
+    check(
+      "commercial_document_payment_updated_ck",
+      sql`${t.paymentUpdatedAt} is null or isfinite(${t.paymentUpdatedAt})`,
     ),
   ],
 );
