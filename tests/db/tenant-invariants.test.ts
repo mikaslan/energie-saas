@@ -85,6 +85,7 @@ const ACTOR_SCOPED_TABLES = new Set([
   "signature_view_log",
   "workspace_invoicing_settings",
   "workspace_document_number_format",
+  "workspace_economics_settings",
   "commercial_document",
   "commercial_document_group",
   "commercial_document_line",

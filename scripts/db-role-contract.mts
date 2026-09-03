@@ -215,6 +215,18 @@ const INVOICING_FUNCTION_NAMES = [
   ...INVOICING_RUNTIME_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 
+const ECONOMICS_RELATIONS = [
+  "workspace_economics_settings",
+] as const;
+const ECONOMICS_RUNTIME_ROUTINES = [
+  "public._f406_actor_economics_role(uuid)",
+  "public._f406_actor_can_read_economics(uuid)",
+  "public._f406_actor_can_write_economics(uuid)",
+] as const;
+const ECONOMICS_FUNCTION_NAMES = [
+  ...ECONOMICS_RUNTIME_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+
 const COMMERCIAL_DOCUMENT_RELATIONS = [
   "commercial_document",
   "commercial_document_group",
@@ -1258,6 +1270,29 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasEconomicsSettings = await hasAtomicPublicRelationSet(
+    client,
+    ECONOMICS_RELATIONS,
+    "Rollen-ACL-Manifest: F4-06-Economics-Defaults",
+  );
+  if (hasEconomicsSettings) {
+    await client.query(`
+      revoke all privileges on
+        public.workspace_economics_settings
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.workspace_economics_settings to app_runtime;
+
+      revoke execute on function
+        ${ECONOMICS_RUNTIME_ROUTINES.join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${ECONOMICS_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime
+    `);
+  }
+
   const hasCommercialDocuments = await hasAtomicPublicRelationSet(
     client,
     COMMERCIAL_DOCUMENT_RELATIONS,
@@ -2178,6 +2213,11 @@ export async function verifyRoleContract(
     COMMERCIAL_DOCUMENT_RELATIONS,
     "Rollenvertrag: M3-01-Rechnungs-Kern",
   );
+  const hasEconomicsSettings = await hasAtomicPublicRelationSet(
+    client,
+    ECONOMICS_RELATIONS,
+    "Rollenvertrag: F4-06-Economics-Defaults",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -2348,6 +2388,9 @@ export async function verifyRoleContract(
         "r:workspace_document_number_format",
         "r:workspace_invoicing_settings",
       ] : []),
+      ...(hasEconomicsSettings ? ECONOMICS_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
@@ -2596,6 +2639,9 @@ export async function verifyRoleContract(
         "_m204_guard_signature_view_log:app_owner",
       ] : []),
       ...(hasWorkspaceInvoicing ? INVOICING_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
+      ...(hasEconomicsSettings ? ECONOMICS_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_FUNCTION_NAMES.map(
@@ -2923,6 +2969,14 @@ export async function verifyRoleContract(
         "_m300_actor_can_write_invoicing(uuid):boolean:app_owner:plpgsql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:de23b1e63c666e2ce9e7340abae43550dc034c2f6e6de79e9951eb41baa292e4",
         "_m300_actor_invoicing_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+      ] : []),
+      ...(hasEconomicsSettings ? [
+        "_f406_actor_can_read_economics(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:f4fa2e35c359d94c3720355e117e84cd0d8a59e4111c7c04d0fb0dc5afecd19a",
+        "_f406_actor_can_write_economics(uuid):boolean:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:fa421d51c0479d14c9f8ebbc7674494a3c7b925b27f09e8e98f3de5f722e8583",
+        "_f406_actor_economics_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -3337,6 +3391,9 @@ export async function verifyRoleContract(
         "workspace_document_number_format:true:true",
         "workspace_invoicing_settings:true:true",
       ] : []),
+      ...(hasEconomicsSettings ? ECONOMICS_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -3598,6 +3655,13 @@ export async function verifyRoleContract(
         "workspace_invoicing_settings:workspace_invoicing_settings_actor_insert:b96bb9c40c4e70a358f820c29855e5f4fe762455108ddecbcabd1f52f9eae245",
         "workspace_invoicing_settings:workspace_invoicing_settings_actor_select:c6e745795ecdeb6e9401f3c80b368ca216eb02c43abeaa3c2e83d6ea1d914b8c",
         "workspace_invoicing_settings:workspace_invoicing_settings_actor_update:30bcb5b3762e5713b51a0d054baf9356ea71fde6950fcac9351174c82fc6c215",
+        ...(hasEconomicsSettings ? [
+          "workspace_economics_settings:tenant_isolation:532da64d43858e29a4972a499dcd4673c65fa376b13acdf0cb36c71be935aab8",
+          "workspace_economics_settings:workspace_economics_settings_actor_delete:8ba0561af0a03be9f1f121c375770c57f66abcebddbe7207460e4dbcae1cb50b",
+          "workspace_economics_settings:workspace_economics_settings_actor_insert:60f5e6821d3b9748afaf213f6b2e3da5fe095d0e2733273035d84757ee791fdd",
+          "workspace_economics_settings:workspace_economics_settings_actor_select:974b3da5aa92a3c7b91b55791ed65b9ff26274846fe8be10b1cb6b1ecb885dee",
+          "workspace_economics_settings:workspace_economics_settings_actor_update:3df901b67e8ad033d4d1edd4922dda5c1530464fcfba5410ca739d6eff9d1a4e",
+        ] : []),
       ] : []),
     ],
     "Live-Policyvertrag",
@@ -3866,6 +3930,9 @@ export async function verifyRoleContract(
         "workspace_document_number_format:workspace_document_number_format_no_truncate:34:O:public:forbid_mutation::-:0",
         "workspace_invoicing_settings:workspace_invoicing_settings_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
+      ...(hasEconomicsSettings ? [
+        "workspace_economics_settings:workspace_economics_settings_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
       ...(hasCommercialDocuments ? [
         "commercial_document:commercial_document_issued_immutable:19:O:public:_m301_guard_issued_immutable::-:0",
         "commercial_document:commercial_document_no_truncate:34:O:public:forbid_mutation::-:0",
@@ -4019,6 +4086,11 @@ export async function verifyRoleContract(
         "app_runtime:workspace_invoicing_settings:SELECT:app_owner:false",
         "app_runtime:workspace_invoicing_settings:UPDATE:app_owner:false",
       ] : []),
+      ...(hasEconomicsSettings ? ECONOMICS_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
@@ -4288,6 +4360,9 @@ export async function verifyRoleContract(
         "app_runtime:sign_signature_by_token(bytea, text, text, bytea):EXECUTE:app_owner:false",
       ] : []),
       ...(hasWorkspaceInvoicing ? INVOICING_RUNTIME_ROUTINES.map((signature) =>
+        `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
+      ) : []),
+      ...(hasEconomicsSettings ? ECONOMICS_RUNTIME_ROUTINES.map((signature) =>
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES.map((signature) =>

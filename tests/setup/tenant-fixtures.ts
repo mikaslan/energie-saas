@@ -1863,6 +1863,19 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  workspace_economics_settings: async (tx, wsId) => {
+    const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor", '{"economics":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into workspace_economics_settings (
+        id, workspace_id, electricity_price_net_cents_per_kwh,
+        escalation_rate_bps, cashflow_horizon_years, revision, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 30, 100, 20, 1, ${membershipId}::uuid
+      )
+    `);
+  },
+
   workspace_document_number_format: async (tx, wsId) => {
     const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
     await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);

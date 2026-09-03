@@ -2,6 +2,7 @@ import type { Role } from "./db/schema/core";
 
 export type Capability =
   | "see_purchase_prices" | "edit_prices" | "discounts" | "invoicing"
+  | "economics"
   | "convert_phase" | "assign_projects" | "manage_catalog" | "manage_settings"
   | "prepare_offer_documents" | "approve_offer_documents" | "offer_signature"
   | "external_only";
@@ -14,6 +15,7 @@ export type Action =
   | "contact.read" | "contact.write"
   | "appointment.read" | "appointment.write"
   | "invoicing.read" | "invoicing.write" | "invoicing.issuing_details.write"
+  | "economics.read" | "economics.write"
   | "price.read_purchase" | "price.edit" | "discount.apply"
   | "invoice.issue" | "offer.release.prepare" | "offer.release.approve"
   | "offer.issue.prepare" | "offer.issue.approve" | "offer.issue.withdraw"
@@ -76,7 +78,9 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "appointment.read":    { minRole: "viewer", internalOnly: true },
   "appointment.write":   { minRole: "editor", internalOnly: true },
   "invoicing.read":      { minRole: "viewer", internalOnly: true },
+  "economics.read":      { minRole: "viewer", internalOnly: true },
   "invoicing.write":     { minRole: "editor", capability: "invoicing", internalOnly: true },
+  "economics.write":     { minRole: "editor", capability: "economics", internalOnly: true },
   "invoicing.issuing_details.write": { minRole: "editor", capability: "invoicing", internalOnly: true },
   "phase.convert":       { minRole: "editor", capability: "convert_phase" },
   "price.read_purchase": { minRole: "editor", capability: "see_purchase_prices" },

@@ -330,6 +330,13 @@
       "when": 1788427781620,
       "tag": "0046_m3_01_invoicing_core",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1788452938566,
+      "tag": "0047_f4_06_economics_defaults",
+      "breakpoints": true
     }
   ]
 }

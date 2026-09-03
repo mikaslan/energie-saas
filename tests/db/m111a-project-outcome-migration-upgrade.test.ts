@@ -29,9 +29,9 @@ type LegacyProject = {
 
 const PRE_M111A_MIGRATION_INDEX = 38;
 const M111A_MIGRATION_INDEX = 39;
-// Integrierte Kette: … → M2-04 (0044) → M3-00 (0045) → M3-01 (0046);
-// Gesamtbestand: 47 Migrationen (idx 0..46).
-const TOTAL_MIGRATION_COUNT = 47;
+// Integrierte Kette: … → M2-04 (0044) → M3-00 (0045) → M3-01 (0046) →
+// F4.6 (0047); Gesamtbestand: 48 Migrationen (idx 0..47).
+const TOTAL_MIGRATION_COUNT = 48;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 
