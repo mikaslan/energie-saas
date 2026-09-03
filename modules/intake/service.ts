@@ -11,6 +11,7 @@ import {
   site,
   type RechnerProjectRequirementsV1,
 } from "@/lib/db/schema";
+import { contactNameSplitV1 } from "@/lib/db/schema/contact-name-split";
 import type { TenantTx } from "@/lib/db/types";
 import {
   ADDRESS_FINGERPRINT_VERSION,
@@ -333,14 +334,22 @@ async function persistContact(
 ): Promise<void> {
   const phoneRaw = payload.customer.phoneRaw;
   if (!decision.existing) {
+    const nameSplit = contactNameSplitV1(displayName);
     await tx.insert(contact).values({
       id: decision.contactId,
       workspaceId: ctx.workspaceId,
       displayName,
+      firstName: nameSplit.firstName,
+      lastName: nameSplit.lastName,
       emailPrimary,
       emailNormalized: email,
       phoneRaw,
       phoneE164,
+      utmSource: payload.acquisition.utm.source ?? null,
+      utmMedium: payload.acquisition.utm.medium ?? null,
+      utmCampaign: payload.acquisition.utm.campaign ?? null,
+      utmTerm: payload.acquisition.utm.term ?? null,
+      utmContent: payload.acquisition.utm.content ?? null,
       marketingConsent: false,
       dedupeReviewRequired: decision.reviewRequired,
       createdAt: now,

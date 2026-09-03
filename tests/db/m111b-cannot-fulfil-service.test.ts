@@ -87,8 +87,8 @@ async function seedFixture(): Promise<Fixture> {
         (${randomUUID()}::uuid, ${fixture.workspaceId}::uuid, ${fixture.externalId}::uuid, 'editor', '{"external_only":true}'::jsonb)
     `);
     await tx.execute(sql`
-      insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
-      values (${fixture.contactId}::uuid, ${fixture.workspaceId}::uuid, 'M1-11b Contact',
+      insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+      values (${fixture.contactId}::uuid, ${fixture.workspaceId}::uuid, 'M1-11b Contact', 'Fixture', 'Contact',
         ${`${fixture.contactId}@m111b.test`}, ${`${fixture.contactId}@m111b.test`})
     `);
     await tx.execute(sql`
@@ -357,8 +357,8 @@ describe("M1-11b Cannot-Fulfil Service (DB)", () => {
     const siteId = randomUUID();
     await withTenantOn(testPool, f.workspaceId, async (tx) => {
       await tx.execute(sql`
-        insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
-        values (${contactId}::uuid, ${f.workspaceId}::uuid, 'Race Contact',
+        insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+        values (${contactId}::uuid, ${f.workspaceId}::uuid, 'Race Contact', 'Fixture', 'Contact',
           ${`${contactId}@m111b.test`}, ${`${contactId}@m111b.test`})
       `);
       await tx.execute(sql`
@@ -396,8 +396,8 @@ describe("M1-11b Cannot-Fulfil Service (DB)", () => {
     const siteId = randomUUID();
     await withTenantOn(testPool, f.workspaceId, async (tx) => {
       await tx.execute(sql`
-        insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
-        values (${contactId}::uuid, ${f.workspaceId}::uuid, 'Erasure Contact',
+        insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+        values (${contactId}::uuid, ${f.workspaceId}::uuid, 'Erasure Contact', 'Fixture', 'Contact',
           ${`${contactId}@m111b.test`}, ${`${contactId}@m111b.test`})
       `);
       await tx.execute(sql`
@@ -468,8 +468,8 @@ describe("M1-11b Cannot-Fulfil Service (DB)", () => {
     const siteId = randomUUID();
     await withTenantOn(testPool, f.workspaceId, async (tx) => {
       await tx.execute(sql`
-        insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
-        values (${contactId}::uuid, ${f.workspaceId}::uuid, 'B1/B2 Contact',
+        insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+        values (${contactId}::uuid, ${f.workspaceId}::uuid, 'B1/B2 Contact', 'Fixture', 'Contact',
           ${`${contactId}@m111b.test`}, ${`${contactId}@m111b.test`})
       `);
       await tx.execute(sql`

@@ -89,8 +89,8 @@ export async function seedM112aInboxTasks(
     await inTransaction(client, input.workspaceId, "", async () => {
       await client.query(
         `insert into public.contact (
-           id, workspace_id, display_name, email_primary, email_normalized
-         ) values ($1::uuid, $2::uuid, $3, $4, $4)`,
+           id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
+         ) values ($1::uuid, $2::uuid, $3, 'Fixture', 'Contact', $4, $4)`,
         [
           contactId,
           input.workspaceId,

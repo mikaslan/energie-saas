@@ -135,9 +135,9 @@ async function seedFixture(): Promise<Fixture> {
     `);
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
-        ${contactId}::uuid, ${fixture.workspaceId}::uuid, 'M1-09 RLS Contact A',
+        ${contactId}::uuid, ${fixture.workspaceId}::uuid, 'M1-09 RLS Contact A', 'Fixture', 'Contact',
         ${`contact-a-${contactId}@m109-rls.test`},
         ${`contact-a-${contactId}@m109-rls.test`}
       )
@@ -217,10 +217,10 @@ async function seedFixture(): Promise<Fixture> {
     `);
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
         ${crossContactId}::uuid, ${fixture.otherWorkspaceId}::uuid,
-        'M1-09 RLS Contact B', ${`contact-b-${crossContactId}@m109-rls.test`},
+        'M1-09 RLS Contact B', 'Fixture', 'Contact', ${`contact-b-${crossContactId}@m109-rls.test`},
         ${`contact-b-${crossContactId}@m109-rls.test`}
       )
     `);
@@ -594,9 +594,9 @@ describe.sequential("M1-09 Actor-RLS als echte app_runtime-Loginrolle", () => {
         `);
         await tx.execute(sql`
           insert into contact (
-            id, workspace_id, display_name, email_primary, email_normalized
+            id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
           ) values (
-            ${contactId}::uuid, ${workspaceA}::uuid, 'Runtime Contact A',
+            ${contactId}::uuid, ${workspaceA}::uuid, 'Runtime Contact A', 'Fixture', 'Contact',
             ${`contact-${contactId}@m109-runtime.test`},
             ${`contact-${contactId}@m109-runtime.test`}
           )
@@ -666,9 +666,9 @@ describe.sequential("M1-09 Actor-RLS als echte app_runtime-Loginrolle", () => {
         `);
         await tx.execute(sql`
           insert into contact (
-            id, workspace_id, display_name, email_primary, email_normalized
+            id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
           ) values (
-            ${contactId}::uuid, ${workspaceB}::uuid, 'Runtime Contact B',
+            ${contactId}::uuid, ${workspaceB}::uuid, 'Runtime Contact B', 'Fixture', 'Contact',
             ${`contact-${contactId}@m109-runtime.test`},
             ${`contact-${contactId}@m109-runtime.test`}
           )

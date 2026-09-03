@@ -224,12 +224,27 @@ async function insertM106Graph(pool: Pool): Promise<GraphIds> {
      values ($1::uuid, $2::uuid, 'editor')`,
     [ids.workspaceId, ids.actorId],
   );
+  const contactName = await pool.query<{ available: boolean }>(`
+    select exists (
+      select 1
+        from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'contact'
+         and column_name = 'first_name'
+    ) as available
+  `);
+  const supportsContactName = contactName.rows[0]?.available === true;
   await tenantQuery(
     pool,
     ids.workspaceId,
-    `insert into contact (
-       id, workspace_id, display_name, email_primary, email_normalized
-     ) values ($1::uuid, $2::uuid, 'M1-07 Bestand', $3, $3)`,
+    supportsContactName
+      ? `insert into contact (
+           id, workspace_id, display_name, first_name, last_name,
+           email_primary, email_normalized
+         ) values ($1::uuid, $2::uuid, 'M1-07 Bestand', 'M1-07', 'Bestand', $3, $3)`
+      : `insert into contact (
+           id, workspace_id, display_name, email_primary, email_normalized
+         ) values ($1::uuid, $2::uuid, 'M1-07 Bestand', $3, $3)`,
     [ids.contactId, ids.workspaceId, `lead-${ids.contactId}@example.test`],
   );
   await tenantQuery(

@@ -1,6 +1,6 @@
 {
-  "id": "2313ed75-ba72-499e-9c04-ad6665e83be2",
-  "prevId": "7c1f8d4b-e9da-49da-acda-f6bc11da3cb0",
+  "id": "49e40e72-3369-48f4-a566-bf42f9f16cbc",
+  "prevId": "2313ed75-ba72-499e-9c04-ad6665e83be2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2824,6 +2824,31 @@
           "primaryKey": false,
           "notNull": true
         },
+        "first_name": {
+          "name": "first_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_name": {
+          "name": "last_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "salutation": {
+          "name": "salutation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_business": {
+          "name": "is_business",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "email_primary": {
           "name": "email_primary",
           "type": "text",
@@ -2836,6 +2861,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "email_secondary": {
+          "name": "email_secondary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "phone_raw": {
           "name": "phone_raw",
           "type": "text",
@@ -2844,6 +2875,48 @@
         },
         "phone_e164": {
           "name": "phone_e164",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_mobile": {
+          "name": "phone_mobile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_reachability": {
+          "name": "phone_reachability",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_street": {
+          "name": "address_street",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_house_number": {
+          "name": "address_house_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_postal_code": {
+          "name": "address_postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_city": {
+          "name": "address_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_country": {
+          "name": "address_country",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2867,12 +2940,67 @@
           "primaryKey": false,
           "notNull": false
         },
+        "marketing_consent_policy_version": {
+          "name": "marketing_consent_policy_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_consent_text": {
+          "name": "marketing_consent_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_consent_data_protection_link": {
+          "name": "marketing_consent_data_protection_link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_source": {
+          "name": "utm_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_medium": {
+          "name": "utm_medium",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_campaign": {
+          "name": "utm_campaign",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_term": {
+          "name": "utm_term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_content": {
+          "name": "utm_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "dedupe_review_required": {
           "name": "dedupe_review_required",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         },
         "deleted_at": {
           "name": "deleted_at",
@@ -2994,6 +3122,90 @@
         "contact_marketing_consent_ck": {
           "name": "contact_marketing_consent_ck",
           "value": "(\n        \"contact\".\"marketing_consent\" = false\n        and \"contact\".\"marketing_consent_at\" is null\n        and \"contact\".\"marketing_consent_source\" is null\n      ) or (\n        \"contact\".\"marketing_consent\" = true\n        and \"contact\".\"marketing_consent_at\" is not null\n        and length(btrim(\"contact\".\"marketing_consent_source\")) > 0\n      )"
+        },
+        "contact_marketing_consent_version_ck": {
+          "name": "contact_marketing_consent_version_ck",
+          "value": "\"contact\".\"marketing_consent\" = false or \"contact\".\"marketing_consent_policy_version\" is not null"
+        },
+        "contact_first_name_ck": {
+          "name": "contact_first_name_ck",
+          "value": "length(btrim(\"contact\".\"first_name\")) between 1 and 200"
+        },
+        "contact_last_name_ck": {
+          "name": "contact_last_name_ck",
+          "value": "length(btrim(\"contact\".\"last_name\")) between 1 and 200"
+        },
+        "contact_salutation_ck": {
+          "name": "contact_salutation_ck",
+          "value": "\"contact\".\"salutation\" is null or \"contact\".\"salutation\" in ('female', 'male', 'diverse', 'family', 'business')"
+        },
+        "contact_is_business_ck": {
+          "name": "contact_is_business_ck",
+          "value": "\"contact\".\"salutation\" is distinct from 'business' or \"contact\".\"is_business\" = true"
+        },
+        "contact_email_secondary_ck": {
+          "name": "contact_email_secondary_ck",
+          "value": "\"contact\".\"email_secondary\" is null or (\n        \"contact\".\"email_secondary\" = lower(btrim(\"contact\".\"email_secondary\"))\n        and \"contact\".\"email_secondary\" ~ '^[^@[:space:]]+@[^@[:space:]]+$'\n        and length(\"contact\".\"email_secondary\") between 3 and 254\n      )"
+        },
+        "contact_phone_mobile_ck": {
+          "name": "contact_phone_mobile_ck",
+          "value": "\"contact\".\"phone_mobile\" is null or \"contact\".\"phone_mobile\" ~ '^\\+[1-9][0-9]{1,14}$'"
+        },
+        "contact_phone_reachability_ck": {
+          "name": "contact_phone_reachability_ck",
+          "value": "\"contact\".\"phone_reachability\" is null or \"contact\".\"phone_reachability\" in ('morning', 'afternoon', 'evening', 'fulltime', 'weekend_only', 'email_only')"
+        },
+        "contact_address_street_ck": {
+          "name": "contact_address_street_ck",
+          "value": "\"contact\".\"address_street\" is null or length(btrim(\"contact\".\"address_street\")) between 1 and 200"
+        },
+        "contact_address_house_number_ck": {
+          "name": "contact_address_house_number_ck",
+          "value": "\"contact\".\"address_house_number\" is null or length(btrim(\"contact\".\"address_house_number\")) between 1 and 30"
+        },
+        "contact_address_postal_code_ck": {
+          "name": "contact_address_postal_code_ck",
+          "value": "\"contact\".\"address_postal_code\" is null or (\n        (\n          (\"contact\".\"address_country\" = 'DE' or \"contact\".\"address_country\" is null)\n          and \"contact\".\"address_postal_code\" ~ '^[0-9]{5}$'\n        ) or (\n          \"contact\".\"address_country\" is not null\n          and \"contact\".\"address_country\" <> 'DE'\n          and length(btrim(\"contact\".\"address_postal_code\")) between 1 and 20\n        )\n      )"
+        },
+        "contact_address_city_ck": {
+          "name": "contact_address_city_ck",
+          "value": "\"contact\".\"address_city\" is null or length(btrim(\"contact\".\"address_city\")) between 1 and 200"
+        },
+        "contact_address_country_ck": {
+          "name": "contact_address_country_ck",
+          "value": "\"contact\".\"address_country\" is null or length(btrim(\"contact\".\"address_country\")) between 1 and 20"
+        },
+        "contact_marketing_consent_policy_version_ck": {
+          "name": "contact_marketing_consent_policy_version_ck",
+          "value": "\"contact\".\"marketing_consent_policy_version\" is null or length(btrim(\"contact\".\"marketing_consent_policy_version\")) between 1 and 100"
+        },
+        "contact_marketing_consent_data_protection_link_ck": {
+          "name": "contact_marketing_consent_data_protection_link_ck",
+          "value": "\"contact\".\"marketing_consent_data_protection_link\" is null or \"contact\".\"marketing_consent_data_protection_link\" ~ '^https://'"
+        },
+        "contact_utm_source_ck": {
+          "name": "contact_utm_source_ck",
+          "value": "\"contact\".\"utm_source\" is null or length(btrim(\"contact\".\"utm_source\")) between 1 and 1000"
+        },
+        "contact_utm_medium_ck": {
+          "name": "contact_utm_medium_ck",
+          "value": "\"contact\".\"utm_medium\" is null or length(btrim(\"contact\".\"utm_medium\")) between 1 and 1000"
+        },
+        "contact_utm_campaign_ck": {
+          "name": "contact_utm_campaign_ck",
+          "value": "\"contact\".\"utm_campaign\" is null or length(btrim(\"contact\".\"utm_campaign\")) between 1 and 1000"
+        },
+        "contact_utm_term_ck": {
+          "name": "contact_utm_term_ck",
+          "value": "\"contact\".\"utm_term\" is null or length(btrim(\"contact\".\"utm_term\")) between 1 and 1000"
+        },
+        "contact_utm_content_ck": {
+          "name": "contact_utm_content_ck",
+          "value": "\"contact\".\"utm_content\" is null or length(btrim(\"contact\".\"utm_content\")) between 1 and 1000"
+        },
+        "contact_revision_ck": {
+          "name": "contact_revision_ck",
+          "value": "\"contact\".\"revision\" between 1 and 2147483647"
         }
       },
       "isRLSEnabled": false
@@ -12054,6 +12266,220 @@
       },
       "isRLSEnabled": false
     },
+    "public.project_note": {
+      "name": "project_note",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_type": {
+          "name": "parent_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'project'"
+        },
+        "text_version": {
+          "name": "text_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'note-text.v1'"
+        },
+        "text_markdown": {
+          "name": "text_markdown",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pinned_at": {
+          "name": "pinned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pinned_by": {
+          "name": "pinned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "edited_by": {
+          "name": "edited_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "edited_at": {
+          "name": "edited_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "project_note_ws_project_active_idx": {
+          "name": "project_note_ws_project_active_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pinned_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"project_note\".\"deleted_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "project_note_workspace_id_fk": {
+          "name": "project_note_workspace_id_fk",
+          "tableFrom": "project_note",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "project_note_project_fk": {
+          "name": "project_note_project_fk",
+          "tableFrom": "project_note",
+          "tableTo": "project",
+          "columnsFrom": [
+            "workspace_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "project_note_ws_id_uq": {
+          "name": "project_note_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "project_note_parent_type_ck": {
+          "name": "project_note_parent_type_ck",
+          "value": "\"project_note\".\"parent_type\" = 'project'"
+        },
+        "project_note_text_version_ck": {
+          "name": "project_note_text_version_ck",
+          "value": "\"project_note\".\"text_version\" = 'note-text.v1'"
+        },
+        "project_note_text_markdown_ck": {
+          "name": "project_note_text_markdown_ck",
+          "value": "length(\"project_note\".\"text_markdown\") between 1 and 10000"
+        },
+        "project_note_pin_pair_ck": {
+          "name": "project_note_pin_pair_ck",
+          "value": "(\"project_note\".\"pinned_at\" is null) = (\"project_note\".\"pinned_by\" is null)"
+        },
+        "project_note_edit_pair_ck": {
+          "name": "project_note_edit_pair_ck",
+          "value": "(\"project_note\".\"edited_at\" is null) = (\"project_note\".\"edited_by\" is null)"
+        },
+        "project_note_deleted_at_ck": {
+          "name": "project_note_deleted_at_ck",
+          "value": "\"project_note\".\"deleted_at\" is null or \"project_note\".\"deleted_at\" >= \"project_note\".\"created_at\""
+        },
+        "project_note_revision_ck": {
+          "name": "project_note_revision_ck",
+          "value": "\"project_note\".\"revision\" between 1 and 2147483647"
+        },
+        "project_note_timestamps_ck": {
+          "name": "project_note_timestamps_ck",
+          "value": "isfinite(\"project_note\".\"created_at\")\n          and (\"project_note\".\"pinned_at\" is null or isfinite(\"project_note\".\"pinned_at\"))\n          and (\"project_note\".\"edited_at\" is null or isfinite(\"project_note\".\"edited_at\"))\n          and (\"project_note\".\"deleted_at\" is null or isfinite(\"project_note\".\"deleted_at\"))"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.project_task": {
       "name": "project_task",
       "schema": "",
@@ -13533,220 +13959,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.project_note": {
-      "name": "project_note",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "parent_type": {
-          "name": "parent_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'project'"
-        },
-        "text_version": {
-          "name": "text_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'note-text.v1'"
-        },
-        "text_markdown": {
-          "name": "text_markdown",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "pinned_at": {
-          "name": "pinned_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pinned_by": {
-          "name": "pinned_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "edited_by": {
-          "name": "edited_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "edited_at": {
-          "name": "edited_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "project_note_ws_project_active_idx": {
-          "name": "project_note_ws_project_active_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "pinned_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"project_note\".\"deleted_at\" is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "project_note_workspace_id_fk": {
-          "name": "project_note_workspace_id_fk",
-          "tableFrom": "project_note",
-          "tableTo": "workspace",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "project_note_project_fk": {
-          "name": "project_note_project_fk",
-          "tableFrom": "project_note",
-          "tableTo": "project",
-          "columnsFrom": [
-            "workspace_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "workspace_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "project_note_ws_id_uq": {
-          "name": "project_note_ws_id_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "project_note_parent_type_ck": {
-          "name": "project_note_parent_type_ck",
-          "value": "\"project_note\".\"parent_type\" = 'project'"
-        },
-        "project_note_text_version_ck": {
-          "name": "project_note_text_version_ck",
-          "value": "\"project_note\".\"text_version\" = 'note-text.v1'"
-        },
-        "project_note_text_markdown_ck": {
-          "name": "project_note_text_markdown_ck",
-          "value": "length(\"project_note\".\"text_markdown\") between 1 and 10000"
-        },
-        "project_note_pin_pair_ck": {
-          "name": "project_note_pin_pair_ck",
-          "value": "(\"project_note\".\"pinned_at\" is null) = (\"project_note\".\"pinned_by\" is null)"
-        },
-        "project_note_edit_pair_ck": {
-          "name": "project_note_edit_pair_ck",
-          "value": "(\"project_note\".\"edited_at\" is null) = (\"project_note\".\"edited_by\" is null)"
-        },
-        "project_note_deleted_at_ck": {
-          "name": "project_note_deleted_at_ck",
-          "value": "\"project_note\".\"deleted_at\" is null or \"project_note\".\"deleted_at\" >= \"project_note\".\"created_at\""
-        },
-        "project_note_revision_ck": {
-          "name": "project_note_revision_ck",
-          "value": "\"project_note\".\"revision\" between 1 and 2147483647"
-        },
-        "project_note_timestamps_ck": {
-          "name": "project_note_timestamps_ck",
-          "value": "isfinite(\"project_note\".\"created_at\")\n          and (\"project_note\".\"pinned_at\" is null or isfinite(\"project_note\".\"pinned_at\"))\n          and (\"project_note\".\"edited_at\" is null or isfinite(\"project_note\".\"edited_at\"))\n          and (\"project_note\".\"deleted_at\" is null or isfinite(\"project_note\".\"deleted_at\"))"
-        }
-      },
       "isRLSEnabled": false
     }
   },

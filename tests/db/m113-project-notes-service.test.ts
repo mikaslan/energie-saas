@@ -52,8 +52,8 @@ async function seedFixture(): Promise<Fixture> {
         (${randomUUID()}::uuid, ${workspaceId}::uuid, ${externalId}::uuid, 'admin', '{"external_only":true}'::jsonb)
     `);
     await tx.execute(sql`
-      insert into contact (id, workspace_id, display_name, email_primary, email_normalized)
-      values (${contactId}::uuid, ${workspaceId}::uuid, 'M113-CUSTOMER', 'c@m113.test', 'c@m113.test')
+      insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+      values (${contactId}::uuid, ${workspaceId}::uuid, 'M113-CUSTOMER', 'Fixture', 'Contact', 'c@m113.test', 'c@m113.test')
     `);
     await tx.execute(sql`insert into site (id, workspace_id, contact_id, label) values (${siteId}::uuid, ${workspaceId}::uuid, ${contactId}::uuid, 'M113 Site')`);
     await tx.execute(sql`

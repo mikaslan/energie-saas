@@ -2373,6 +2373,7 @@ export async function verifyRoleContract(
         "build_inactive_lead_erasure_graph_m202:app_owner",
       ] : []),
       "canonicalize_offer_json_v1:app_owner",
+      "contact_name_split_v1:app_owner",
       ...(hasOfferPdfDraft ? ["derive_offer_pdf_draft_input:app_owner"] : []),
       "erase_inactive_lead:app_owner",
       "finalize_project_calculation_success:app_owner",
@@ -2811,13 +2812,16 @@ export async function verifyRoleContract(
       ] : []),
       "canonicalize_offer_json_v1(jsonb):text:app_owner:plpgsql:f:i:false:false:true:s:" +
         "search_path=pg_catalog:0b5cdc7c4aa05552def26bc36f3f64bfc73e18689b646b473db607ad858ca85c",
+      "contact_name_split_v1(text):TABLE(first_name text, last_name text):app_owner:sql:f:i:" +
+        "false:false:false:u:search_path=pg_catalog:" +
+        "0ff6e6a4ca03690a776d797382168024ebf845f3647c4f9a7ecea108ede4fe11",
       ...(hasOfferPdfDraft ? [
         "derive_offer_pdf_draft_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
         `search_path=pg_catalog:${hasCustomerNotification && hasProjectNotes
-          ? "891d9914094e8b0b9b42716813dd957f24301a048b95b91049e4d0f8029da3bb"
+          ? "742a9a4ef9f8f459268ab3b0e27af875424bf43d361a157fab59ed6930596e3e"
           : hasCustomerNotification
           ? "26656181bde7172aad3ebb717cffe37bb6e874f1a298a703090ed706d750fd4d"
           : hasProjectNotes

@@ -90,9 +90,9 @@ async function seedFixture(): Promise<Fixture> {
     `);
     await tx.execute(sql`
       insert into contact (
-        id, workspace_id, display_name, email_primary, email_normalized
+        id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized
       ) values (
-        ${fixture.contactId}::uuid, ${fixture.workspaceId}::uuid, 'M1-11a Contact',
+        ${fixture.contactId}::uuid, ${fixture.workspaceId}::uuid, 'M1-11a Contact', 'Fixture', 'Contact',
         ${`${fixture.contactId}@m111a.test`}, ${`${fixture.contactId}@m111a.test`}
       )
     `);
@@ -188,8 +188,8 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     expect(migration).toContain("M1-11a kann bestehende Lost-Projects ohne strukturierten Grund nicht migrieren");
     expect(migration).toMatch(/SET closed_at = updated_at[\s\S]+outcome IN \('won', 'cannot_fulfill'\)/u);
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 41,
-      tag: "0041_m1_13_project_notes",
+      idx: 42,
+      tag: "0042_m1_14_contact_dataset",
     });
   });
 

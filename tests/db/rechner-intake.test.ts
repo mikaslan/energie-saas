@@ -141,6 +141,8 @@ async function seedContact(
     id,
     workspaceId,
     displayName: "Vorhandener Kontakt",
+    firstName: "Vorhandener",
+    lastName: "Kontakt",
     emailPrimary: email,
     emailNormalized: email?.toLowerCase() ?? null,
     phoneRaw: values.phoneRaw ?? null,
