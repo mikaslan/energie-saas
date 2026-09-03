@@ -809,7 +809,7 @@ DECLARE
     'offerPdfDraftIds', 'offerRecipientIds', 'offerRecipientRevisionIds',
     'offerReleaseCandidateIds', 'offerReleaseCandidateApprovalIds',
     'offerIssuanceIds', 'offerIssuanceApprovalIds',
-    'offerIssuanceWithdrawalIds', 'taskIds', 'noteIds'
+    'offerIssuanceWithdrawalIds', 'taskIds', 'noteIds', 'appointmentIds'
   ]::text[];
 $m204_old_optional_keys$;
   new_optional_keys constant text := $m204_new_optional_keys$
@@ -817,7 +817,7 @@ $m204_old_optional_keys$;
     'offerPdfDraftIds', 'offerRecipientIds', 'offerRecipientRevisionIds',
     'offerReleaseCandidateIds', 'offerReleaseCandidateApprovalIds',
     'offerIssuanceIds', 'offerIssuanceApprovalIds',
-    'offerIssuanceWithdrawalIds', 'taskIds', 'noteIds',
+    'offerIssuanceWithdrawalIds', 'taskIds', 'noteIds', 'appointmentIds',
     'signatureRequestIds', 'signatureAttestationIds', 'signatureViewLogIds'
   ]::text[];
 $m204_new_optional_keys$;
@@ -838,7 +838,7 @@ BEGIN
     RAISE EXCEPTION 'M2-04 Erasure: guard_erasure_tombstone_worm fehlt';
   END IF;
   IF worm_sha256 IS DISTINCT FROM
-       '94518798af295e4e491d4ae098b994ce788bc9c836b05cc748e612bf85c29897' THEN
+       '66dbe75a59c983c1042a498ef086ccfee0f8a2c48b6cef4c3b9bb2892a687663' THEN
     RAISE EXCEPTION 'M2-04 Erasure: unerwarteter tombstone-worm-Quellhash %',
       worm_sha256;
   END IF;
@@ -875,7 +875,7 @@ BEGIN
     RAISE EXCEPTION 'M2-04 Erasure: build_inactive_lead_erasure_graph fehlt';
   END IF;
   IF graph_sha256 IS DISTINCT FROM
-       '721aecb517ece42d09e1101afb397af22491f1798995ceaabf963dd4598870fc' THEN
+       '350a4c4f1de2df81dd39da00cfda75505802ddc72b03212975e2ad1c0302dec6' THEN
     RAISE EXCEPTION 'M2-04 Erasure: unerwarteter graph-builder-Quellhash %',
       graph_sha256;
   END IF;
@@ -967,11 +967,13 @@ DECLARE
   upgraded_source text;
   source_sha256 text;
   old_replay_graph constant text := $m204_old_replay_graph$
-      'noteIds', COALESCE(graph_document->'noteIds', '[]'::jsonb)
+      'noteIds', COALESCE(graph_document->'noteIds', '[]'::jsonb),
+      'appointmentIds', COALESCE(graph_document->'appointmentIds', '[]'::jsonb)
     );
 $m204_old_replay_graph$;
   new_replay_graph constant text := $m204_new_replay_graph$
       'noteIds', COALESCE(graph_document->'noteIds', '[]'::jsonb),
+      'appointmentIds', COALESCE(graph_document->'appointmentIds', '[]'::jsonb),
       'signatureRequestIds', COALESCE(graph_document->'signatureRequestIds', '[]'::jsonb),
       'signatureAttestationIds', COALESCE(graph_document->'signatureAttestationIds', '[]'::jsonb),
       'signatureViewLogIds', COALESCE(graph_document->'signatureViewLogIds', '[]'::jsonb)
