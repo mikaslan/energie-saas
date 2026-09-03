@@ -147,6 +147,29 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-04 (spät) — F4.6 Workspace-Simulationsdefaults gebaut (0047): Kimi SPEC+CODE geschlossen
+
+Lane `codex/f4-06-wirtschaftlichkeits-defaults` HEAD **`5fee9ca`** (remote).
+- **Migration 0047** (Root-Arbitrage: M1-15b rückt auf 0048): Singleton
+  `workspace_economics_settings` (Strompreis/Eskalation/Öl-/Gaspreis
+  nullable = „leere Felder → Länderreferenz" (UNK-F4-03: keine erfundenen
+  Zahlen), Horizont DEFAULT 20 ESTIMATE-markiert), CAS-Revision,
+  `_f406`-Actor-Helfer, RLS+no_truncate; ACL idempotent im Rollenvertrag
+  (Pins aus Ist, Probe 88/88).
+- Service get/upsert (Leerstand-DTO revision 0, 23505→Conflict),
+  Event/Audit im eigenen Namespace `economics.settings.write`;
+  Permissions `economics.read`/`economics.write` (35 Actions).
+- UI `/einstellungen/wirtschaftlichkeit` (Prozent→bps, Viewer read-only,
+  leerer Zustand); E2E 2/2 inkl. Feld-Leerung + Axe.
+- **Kimi:** Spec NACHBESSERUNG (2 P1 + 3 P2 + 2 P3) und Code
+  NACHBESSERUNG (1 P1-Klarstellung + 3 P2 + 2 P3) → alle geschlossen
+  (`REVIEW-KIMI-F4-06.md`).
+- **Vollgate Lane:** 196 Dateien, 1883 passed/1 skipped, 88/88 + 5/5,
+  Build, keine Drift. Integration in `codex/m1-wave-02` = nächster
+  Schritt (Fast-Forward-Muster).
+- UNK-F4-03 (echte Default-Werte) bleibt an Mikail eskaliert; F4.5
+  spec-first wartet auf ADR + Mikail-Fragen.
+
 ## 2026-09-04 (Nacht) — M3-01 INTEGRIERT in codex/m1-wave-02: Kimi FREIGABE, E2E 71/71
 
 - **0046-Integration** `codex/m1-wave-02` HEAD **`5c7ea33`** (remote): Fast-

@@ -9,8 +9,9 @@
   **ADR 0025** (supersedes ADR 0021 E2 formell — Root O2).
 - Basis: **M1-15-Stand (`0043`)** — M1-15b baut **additiv** auf M1-15 auf
   (M1-15 selbst basiert auf `01b52e9`/M1-12a).
-- Geplante Migration: **`0047_m1_15b_calendar_scopes.sql`** (Root-Arbitrage
-  2026-09-03: nächste frei nach `0046`/M3-01; M3-02 rückt auf `0048`).
+- Geplante Migration: **`0048_m1_15b_calendar_scopes.sql`** (Root-Arbitrage
+  2026-09-04: `0047` wurde an F4.6-Wirtschaftlichkeits-Defaults vergeben,
+  die zuerst gebaut wurden; M1-15b rückt auf `0048`, M3-02 auf `0049`).
   Integrationsreihenfolge: nach der M3-Welle.
 - Ziel: keine — reine Spezifikation (Branch `tooling`, nur Doku; Root committet).
 
@@ -39,8 +40,8 @@
 
 M1-15 hat `0043` reserviert (parallel zu `0040`=M1-11b, `0041`=M1-13,
 `0042`=M1-14). M1-15b liegt **nach der M3-Welle** und erhält die
-**`0047_m1_15b_calendar_scopes.sql`** (Root-Arbitrage 2026-09-03: nächste frei
-nach `0046`/M3-01; M3-02 rückt auf `0048`). Integrationsreihenfolge: nach der
+**`0048_m1_15b_calendar_scopes.sql`** (Root-Arbitrage 2026-09-04: `0047` =
+F4.6-Defaults; M3-02 rückt auf `0049`). Integrationsreihenfolge: nach der
 M3-Welle (siehe DEC-M115B-11, §15).
 
 ### 0.2 Einordnung (warum M1-15b)
@@ -244,7 +245,7 @@ Indexe:
 - Index `project_appointment_ws_project_range_idx` (§M1-15) bleibt; zusätzlich
   `project_appointment_ws_calendar_range_idx` auf `(workspace_id, calendar_id,
   start_at, end_at, id)` für die kalenderbasierte Range-Query.
-- **Backfill (RESOLVED, DEC-M115B-14 + DEC-M115B-16):** Migration `0047` legt
+- **Backfill (RESOLVED, DEC-M115B-14 + DEC-M115B-16):** Migration `0048` legt
   zuerst die `calendar`-Tabelle an und provisioniert **genau einen
   persönlichen Kalender je `created_by`-Membership** (`ensure_personal_calendar`
   über alle Bestands-Mitglieder). Bestands-Termine aus M1-15 erhalten dann
@@ -450,7 +451,7 @@ M1-09/ROLE-PERMISSION-MATRIX; exakte Reonic-Regeln `UNKNOWN`):
 | `DEC-M115B-08` | `calendar.write` = internalOnly, Admin | §7 |
 | `DEC-M115B-09` | Eventtypen `calendar.created/updated/archived`; Termin-Events unverändert | §8 |
 | `DEC-M115B-10` | `team_id` strukturell vorbereitet, FK erst mit Team-Slice (UNK-F1-01) | §4.1 |
-| `DEC-M115B-11` | Migration **0047**, Integrationsreihenfolge nach M3-Welle; M3-02 rückt auf 0048 (Root O1) | Header |
+| `DEC-M115B-11` | Migration **0048** (Root-Arbitrage 2026-09-04: 0047 = F4.6), Integrationsreihenfolge nach M3-Welle; M3-02 rückt auf 0049 | Header |
 | `DEC-M115B-12` | ADR 0025 supersedes ADR 0021 E2 formell (Root O2) | ADR 0025 |
 | `DEC-M115B-13` | Workspaceweite `/calendar`-Route (Monatsansicht + Scope-Filter „Alle/einzeln“) ist **Teil von M1-15b** — kein M1-15c (Root O3); Planungsmodus bleibt Nichtziel | §10 |
 | `DEC-M115B-14` | Backfill: Bestands-Termine → persönlicher Kalender des `created_by` (Auto-Provisionierung zuerst), sonst Unternehmenskalender — ESTIMATE bestätigt (Root O4) | §4.2 |
@@ -479,7 +480,7 @@ M1-09/ROLE-PERMISSION-MATRIX; exakte Reonic-Regeln `UNKNOWN`):
 
 ## 15. Offene Fragen an den Root-Integrator — RESOLVED (2026-09-03)
 
-1. **O1 — Migrationsnummer:** RESOLVED → **`0047_m1_15b_calendar_scopes.sql`**
+1. **O1 — Migrationsnummer:** RESOLVED → **`0048_m1_15b_calendar_scopes.sql`** (Root-Arbitrage 2026-09-04: 0047 = F4.6)
    (nach M3-Welle; M3-02 rückt auf 0048).
 2. **O2 — ADR 0021 E2:** RESOLVED → formell superseded durch **ADR 0025**
    (`docs/adr/0025-kalender-scopes.md`).
