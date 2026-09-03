@@ -224,6 +224,8 @@ export const COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION =
   "commercial-document-group-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_COMMAND_VERSION =
   "commercial-document-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION =
+  "commercial-document-issue-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION =
   "commercial-document-line-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_VERSION = "commercial-document.v1" as const;
@@ -279,12 +281,14 @@ export const COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS: Record<
   CommercialDocumentType,
   { prefix: string; padding: number }
 > = {
-  invoice: { prefix: "Rechnung", padding: 6 },
-  credit_note: { prefix: "CRN", padding: 6 },
-  order_confirmation: { prefix: "OFC", padding: 6 },
-  purchase_order: { prefix: "PO", padding: 6 },
-  delivery_note: { prefix: "DN", padding: 6 },
-  letter: { prefix: "LE", padding: 6 },
+  // Spec §6 DECIDED: <PREFIX>-<JJJJ>-<NNNNNN>, Padding 6; exakte Reonic-
+  // Präfixe UNKNOWN — diese sind die spezifizierten Vorschlags-Präfixe.
+  invoice: { prefix: "RE", padding: 6 },
+  credit_note: { prefix: "GU", padding: 6 },
+  order_confirmation: { prefix: "AB", padding: 6 },
+  purchase_order: { prefix: "BE", padding: 6 },
+  delivery_note: { prefix: "LS", padding: 6 },
+  letter: { prefix: "BR", padding: 6 },
 };
 
 const commercialDocumentTypeSchema = z.enum(commercialDocumentTypes);
@@ -375,6 +379,14 @@ export const commercialDocumentCommandV1Schema = z.strictObject({
 });
 export type CommercialDocumentCommandV1 = z.infer<typeof commercialDocumentCommandV1Schema>;
 
+export const commercialDocumentIssueCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+});
+export type CommercialDocumentIssueCommandV1 = z.infer<
+  typeof commercialDocumentIssueCommandV1Schema
+>;
+
 export const commercialDocumentGroupCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION),
   name: groupNameSchema,
@@ -452,6 +464,14 @@ export const commercialDocumentV1Schema = z.strictObject({
   plannedDeliveryDate: z.string().nullable(),
   plannedServiceDate: z.string().nullable(),
   creditNoteType: commercialCreditNoteTypeSchema.nullable(),
+  number: z.string().nullable(),
+  numberYear: z.number().int().nullable(),
+  numberSequence: z.number().int().nullable(),
+  issuedAt: z.string().nullable(),
+  sentAt: z.string().nullable(),
+  voidedAt: z.string().nullable(),
+  voidReason: commercialVoidReasonSchema.nullable(),
+  paidCents: moneyCentsSchema.nullable(),
   permissions: z.strictObject({ canWrite: z.boolean() }),
 });
 export type CommercialDocumentV1 = z.infer<typeof commercialDocumentV1Schema>;

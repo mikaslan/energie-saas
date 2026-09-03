@@ -7,16 +7,22 @@ import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
+import { createHash } from "node:crypto";
 import {
   COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_GROUP_VERSION,
   COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_LINE_VERSION,
+  COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS,
   COMMERCIAL_DOCUMENT_VERSION,
+  GOEBD_SNAPSHOT_CANONICALIZATION_VERSION,
+  GOEBD_SNAPSHOT_SCHEMA_VERSION,
   DOCUMENT_NUMBER_FORMAT_DEFAULTS,
   commercialDocumentGroupCommandV1Schema,
   commercialDocumentCommandV1Schema,
+  commercialDocumentIssueCommandV1Schema,
+  commercialDocumentV1Schema,
   commercialDocumentGroupV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineV1Schema,
@@ -28,6 +34,8 @@ import {
   WORKSPACE_INVOICING_SETTINGS_VERSION,
   type CommercialDocumentCommandV1,
   type CommercialDocumentGroupCommandV1,
+  type CommercialDocumentIssueCommandV1,
+  type CommercialDocumentV1,
   type CommercialDocumentGroupV1,
   type CommercialDocumentLineCommandV1,
   type CommercialDocumentLineV1,
@@ -423,6 +431,41 @@ type DocumentRow = {
   [key: string]: unknown;
 };
 
+type IssueDocumentRow = {
+  id: string;
+  type: string;
+  status: string;
+  name: string;
+  group_id: string | null;
+  project_id: string | null;
+  contact_id: string | null;
+  currency: string;
+  net_cents: number;
+  tax_cents: number;
+  gross_cents: number;
+  due_date: string | null;
+  delivery_date: string | null;
+  validity_date: string | null;
+  planned_delivery_date: string | null;
+  planned_service_date: string | null;
+  credit_note_type: string | null;
+  recipient_snapshot: unknown;
+  created_by: string;
+  [key: string]: unknown;
+};
+
+type IssueLineRow = {
+  position: number;
+  name: string;
+  quantity_milli: number;
+  unit: string;
+  net_cents: number;
+  tax_cents: number;
+  gross_cents: number;
+  tax_rate_bps: number;
+  [key: string]: unknown;
+};
+
 type GroupRow = {
   id: string;
   name: string;
@@ -660,6 +703,219 @@ export async function createDocument(
     details: evidence,
   });
   return { id: documentId, type, status: "draft" };
+}
+
+
+type AssignedDocumentNumber = {
+  number: string;
+  numberYear: number;
+  numberSequence: number;
+};
+
+async function assignDocumentNumber(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  type: DocumentNumberType,
+): Promise<AssignedDocumentNumber> {
+  const defaults = COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS[type];
+  const yearResult = await tx.execute<{ year: number; [key: string]: unknown }>(sql`
+    select extract(year from statement_timestamp() at time zone 'Europe/Berlin')::integer as year
+  `);
+  const year = yearResult.rows[0]?.year;
+  if (!year) throw new InvoicingConflictError();
+  const allocated = await tx.execute<{
+    prefix: string;
+    padding: number;
+    last_sequence: number;
+    [key: string]: unknown;
+  }>(sql`
+    insert into commercial_document_number_series (
+      id, workspace_id, type, series_year, prefix, padding, last_sequence,
+      created_at, updated_at
+    ) values (
+      ${randomUUID()}::uuid, ${ctx.workspaceId}::uuid, ${type}, ${year},
+      ${defaults.prefix}, ${defaults.padding}, 1,
+      statement_timestamp(), statement_timestamp()
+    )
+    on conflict (workspace_id, type, series_year)
+    do update set last_sequence = commercial_document_number_series.last_sequence + 1,
+                  updated_at = clock_timestamp()
+      where commercial_document_number_series.last_sequence < 999999
+    returning prefix, padding, last_sequence
+  `);
+  const row = allocated.rows[0];
+  if (!row) throw new InvoicingConflictError();
+  const number = `${row.prefix}-${year}-${String(row.last_sequence).padStart(row.padding, "0")}`;
+  return { number, numberYear: year, numberSequence: Number(row.last_sequence) };
+}
+
+export async function issueDocument(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentIssueCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentIssueCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const documentId = parsed.data.documentId;
+
+  const doc = await tx.execute<IssueDocumentRow>(sql`
+    select id, type, status, name, group_id, project_id, contact_id,
+           currency, net_cents, tax_cents, gross_cents, due_date,
+           delivery_date, validity_date, planned_delivery_date,
+           planned_service_date, credit_note_type, recipient_snapshot,
+           created_by
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+     for update
+  `);
+  const document = doc.rows[0];
+  if (!document) throw new InvoicingNotFoundError();
+  if (document.status !== "draft") throw new InvoicingConflictError();
+
+  // O4: Geld-Dokumente brauchen vollständige Issuing-Details auch beim
+  // Ausstellen (Spec M301-02 „Vorbedingungen: Issuing-Details vorhanden").
+  const isLetterDocument = document.type === "letter";
+  const documentType = document.type as DocumentNumberType;
+  if (!isLetterDocument) {
+    await assertIssuingDetailsComplete(tx, ctx.workspaceId, documentType);
+  }
+
+  const assigned = await assignDocumentNumber(tx, ctx, documentType);
+
+  const issuedAt = new Date().toISOString();
+  const retention = await tx.execute<{ goebd_retention_default_days: number }>(sql`
+    select goebd_retention_default_days
+      from workspace_invoicing_settings
+     where workspace_id = ${ctx.workspaceId}::uuid
+     limit 1
+  `);
+  const retentionDays = retention.rows[0]?.goebd_retention_default_days ?? 3650;
+  const retentionUntil = new Date();
+  retentionUntil.setDate(retentionUntil.getDate() + retentionDays);
+
+  const lines = await tx.execute<IssueLineRow>(sql`
+    select position, name, quantity_milli, unit, net_cents, tax_cents,
+           gross_cents, tax_rate_bps
+      from commercial_document_line
+     where workspace_id = ${ctx.workspaceId}::uuid and document_id = ${documentId}::uuid
+     order by position asc
+  `);
+
+  const snapshot = {
+    schemaVersion: GOEBD_SNAPSHOT_SCHEMA_VERSION,
+    canonicalizationVersion: GOEBD_SNAPSHOT_CANONICALIZATION_VERSION,
+    type: document.type,
+    number: assigned.number,
+    numberYear: assigned.numberYear,
+    numberSequence: assigned.numberSequence,
+    issuedAt,
+    currency: document.currency,
+    netCents: Number(document.net_cents),
+    taxCents: Number(document.tax_cents),
+    grossCents: Number(document.gross_cents),
+    dueDate: document.due_date,
+    deliveryDate: document.delivery_date,
+    validityDate: document.validity_date,
+    plannedDeliveryDate: document.planned_delivery_date,
+    plannedServiceDate: document.planned_service_date,
+    creditNoteType: document.credit_note_type,
+    name: document.name,
+    recipientSnapshot: document.recipient_snapshot,
+    lines: lines.rows.map((line) => ({
+      position: Number(line.position),
+      name: line.name,
+      quantityMilli: Number(line.quantity_milli),
+      unit: line.unit,
+      netCents: Number(line.net_cents),
+      taxCents: Number(line.tax_cents),
+      grossCents: Number(line.gross_cents),
+      taxRateBps: Number(line.tax_rate_bps),
+    })),
+  };
+  const canonical = JSON.stringify(snapshot);
+  const snapshotSha256 = createHash("sha256").update(canonical, "utf8").digest();
+
+  const updated = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    update commercial_document
+       set status = 'issued',
+           number = ${assigned.number},
+           number_year = ${assigned.numberYear},
+           number_sequence = ${assigned.numberSequence},
+           issued_at = ${issuedAt}::timestamptz,
+           issued_by = ${ctx.actor}::uuid,
+           issued_snapshot = ${canonical}::jsonb,
+           snapshot_sha256 = ${snapshotSha256}::bytea,
+           goebd_retention_until = ${retentionUntil.toISOString().slice(0, 10)}::date,
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${documentId}::uuid
+       and status = 'draft'
+    returning id
+  `);
+  if (updated.rows.length === 0) throw new InvoicingConflictError();
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.issued",
+    actor: ctx.actor,
+    payload: { documentId, number: assigned.number },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.issue",
+    resource: "commercial_document",
+    allowed: true,
+    details: { documentId, number: assigned.number },
+  });
+
+  const row = await tx.execute<DocumentRow>(sql`
+    select id, type, status, name, group_id, project_id, contact_id,
+           currency, net_cents, tax_cents, gross_cents, due_date,
+           delivery_date, validity_date, planned_delivery_date,
+           planned_service_date, credit_note_type, number, number_year,
+           number_sequence, issued_at, sent_at, voided_at, void_reason,
+           paid_cents
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+  `);
+  const issuedRow = row.rows[0];
+  if (!issuedRow) throw new InvoicingNotFoundError();
+  return commercialDocumentV1Schema.parse({
+    schemaVersion: COMMERCIAL_DOCUMENT_VERSION,
+    id: issuedRow.id,
+    type: issuedRow.type,
+    status: issuedRow.status,
+    name: issuedRow.name,
+    groupId: issuedRow.group_id,
+    projectId: issuedRow.project_id,
+    contactId: issuedRow.contact_id,
+    archivedAt: null,
+    netCents: Number(issuedRow.net_cents),
+    taxCents: Number(issuedRow.tax_cents),
+    grossCents: Number(issuedRow.gross_cents),
+    paymentStatus: null,
+    dueDate: issuedRow.due_date,
+    deliveryDate: issuedRow.delivery_date,
+    validityDate: issuedRow.validity_date,
+    plannedDeliveryDate: issuedRow.planned_delivery_date,
+    plannedServiceDate: issuedRow.planned_service_date,
+    creditNoteType: issuedRow.credit_note_type,
+    number: issuedRow.number,
+    numberYear: issuedRow.number_year === null ? null : Number(issuedRow.number_year),
+    numberSequence: issuedRow.number_sequence === null ? null : Number(issuedRow.number_sequence),
+    issuedAt: issuedRow.issued_at,
+    sentAt: issuedRow.sent_at,
+    voidedAt: issuedRow.voided_at,
+    voidReason: issuedRow.void_reason,
+    paidCents: issuedRow.paid_cents === null ? null : Number(issuedRow.paid_cents),
+    permissions: { canWrite: can(ctx, "invoicing.write") },
+  });
 }
 
 export async function createDocumentLine(

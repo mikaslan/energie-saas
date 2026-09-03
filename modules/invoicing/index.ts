@@ -79,6 +79,7 @@ export {
   createDocument,
   createDocumentGroup,
   createDocumentLine,
+  issueDocument,
   getInvoicingSettings,
   getNumberFormats,
   listDocumentGroups,
