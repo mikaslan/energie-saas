@@ -157,6 +157,26 @@ const PROJECT_NOTE_FUNCTION_NAMES = [
   ...PROJECT_NOTE_PRIVATE_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 
+const PROJECT_APPOINTMENT_RELATIONS = [
+  "calendar_category",
+  "project_appointment",
+  "project_appointment_attendee",
+] as const;
+const PROJECT_APPOINTMENT_RUNTIME_ROUTINES = [
+  "public._m115_actor_appointment_role(uuid)",
+  "public._m115_actor_can_read_appointments(uuid)",
+  "public._m115_actor_can_write_appointments(uuid)",
+] as const;
+const PROJECT_APPOINTMENT_PRIVATE_ROUTINES = [
+  "public._m115_erasure_delete_allowed(uuid,uuid)",
+  "public._m115_guard_project_appointment()",
+  "public._m115_guard_project_appointment_attendee()",
+] as const;
+const PROJECT_APPOINTMENT_FUNCTION_NAMES = [
+  ...PROJECT_APPOINTMENT_RUNTIME_ROUTINES,
+  ...PROJECT_APPOINTMENT_PRIVATE_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+
 const CATALOG_IMPORT_PRIVATE_ROUTINES = [
   "public._m108b_authorize_catalog_import_runtime(uuid)",
   "public._m108b_catalog_import_actor_auth_code(uuid,uuid)",
@@ -1095,6 +1115,36 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasProjectAppointments = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_APPOINTMENT_RELATIONS,
+    "Rollen-ACL-Manifest: M1-15-Termine",
+  );
+  if (hasProjectAppointments) {
+    await client.query(`
+      revoke all privileges on
+        public.calendar_category,
+        public.project_appointment,
+        public.project_appointment_attendee
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select on public.calendar_category to app_runtime;
+      grant select, insert, update, delete on public.project_appointment to app_runtime;
+      grant select, insert, delete on public.project_appointment_attendee to app_runtime;
+
+      revoke execute on function
+        ${[
+          ...PROJECT_APPOINTMENT_RUNTIME_ROUTINES,
+          ...PROJECT_APPOINTMENT_PRIVATE_ROUTINES,
+        ].join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${PROJECT_APPOINTMENT_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -1966,6 +2016,11 @@ export async function verifyRoleContract(
     PROJECT_NOTE_RELATIONS,
     "Rollenvertrag: M1-13-Projektnotizen",
   );
+  const hasProjectAppointments = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_APPOINTMENT_RELATIONS,
+    "Rollenvertrag: M1-15-Termine",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -2064,6 +2119,7 @@ export async function verifyRoleContract(
       "r:auth_user",
       "r:auth_verification",
       "r:calculator_snapshot",
+      ...(hasProjectAppointments ? ["r:calendar_category"] : []),
       "r:catalog_component",
       "r:catalog_component_revision",
       ...(hasCatalogImport ? CATALOG_IMPORT_RELATIONS.map(
@@ -2102,6 +2158,10 @@ export async function verifyRoleContract(
       "r:offer_variant_revision",
       "r:offer_variant_section",
       "r:project",
+      ...(hasProjectAppointments ? [
+        "r:project_appointment",
+        "r:project_appointment_attendee",
+      ] : []),
       ...(hasProjectAssignment ? ["r:project_assignment"] : []),
       ...(hasProjectTasks ? PROJECT_TASK_RELATIONS.map(
         (relation) => `r:${relation}`,
@@ -2353,6 +2413,9 @@ export async function verifyRoleContract(
       ...(hasProjectNotes ? PROJECT_NOTE_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
+      ...(hasProjectAppointments ? PROJECT_APPOINTMENT_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -2362,6 +2425,9 @@ export async function verifyRoleContract(
       "build_inactive_lead_erasure_graph:app_owner",
       ...(hasProjectNotes ? [
         "build_inactive_lead_erasure_graph_m113:app_owner",
+      ] : []),
+      ...(hasProjectAppointments ? [
+        "build_inactive_lead_erasure_graph_m115:app_owner",
       ] : []),
       ...(hasProjectTasks ? [
         "build_inactive_lead_erasure_graph_m203b1:app_owner",
@@ -2597,6 +2663,22 @@ export async function verifyRoleContract(
         "_m113_guard_project_note():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:7773c5bbffe07ea7aeab05c175ee45bbcf8f6bf0580a9178be5d4bc063fc1d26",
       ] : []),
+      ...(hasProjectAppointments ? [
+        "_m115_actor_appointment_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+        "_m115_actor_can_read_appointments(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:522e04036cc964e17b7c6a8cb24b8b16474a0d624f61010c70cf4866868e14fe",
+        "_m115_actor_can_write_appointments(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:72490376fe41c89621ec2a6461874308c5c372c2246d402ece28ab2636b28f4a",
+        "_m115_erasure_delete_allowed(uuid, uuid):boolean:app_owner:plpgsql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "e679f220100342b2bcdf30f0f983b6ccfd663533475bb2f2831873ae64a27938",
+        "_m115_guard_project_appointment():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:f1a8c76783c6bc8200d567221cf6905dbfe29baaa12a2c2e4603fb608eecfffb",
+        "_m115_guard_project_appointment_attendee():trigger:app_owner:plpgsql:f:v:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "ccc3aedc47bc055ad1a35f3c1d05ef4abb5c5651fa88241930881d9304574d75",
+      ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
@@ -2785,8 +2867,15 @@ export async function verifyRoleContract(
           "false:false:false:u:search_path=pg_catalog:" +
           "e10bcf2cfd57ed151270b8c7674eddc1a280733bf4a166402a2327e3f5c389b2",
       ] : []),
+      ...(hasProjectAppointments ? [
+        "build_inactive_lead_erasure_graph_m115(uuid, uuid):jsonb:app_owner:sql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "721aecb517ece42d09e1101afb397af22491f1798995ceaabf963dd4598870fc",
+      ] : []),
       "build_inactive_lead_erasure_graph(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectNotes
+        `search_path=pg_catalog:${hasProjectAppointments
+          ? "350a4c4f1de2df81dd39da00cfda75505802ddc72b03212975e2ad1c0302dec6"
+          : hasProjectNotes
           ? "721aecb517ece42d09e1101afb397af22491f1798995ceaabf963dd4598870fc"
           : hasProjectTasks
           ? "e10bcf2cfd57ed151270b8c7674eddc1a280733bf4a166402a2327e3f5c389b2"
@@ -2820,7 +2909,9 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
-        `search_path=pg_catalog:${hasCustomerNotification && hasProjectNotes
+        `search_path=pg_catalog:${hasProjectAppointments
+          ? "cec63897e55831166ccb154e07fab02b7b0c381d619597933c3381c74eac70b9"
+          : hasCustomerNotification && hasProjectNotes
           ? "742a9a4ef9f8f459268ab3b0e27af875424bf43d361a157fab59ed6930596e3e"
           : hasCustomerNotification
           ? "26656181bde7172aad3ebb717cffe37bb6e874f1a298a703090ed706d750fd4d"
@@ -2848,7 +2939,9 @@ export async function verifyRoleContract(
       "guard_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:febb6a39265ceb1661f5dc21709f4a2912df799c6b4dd06db27b540253b8c88d",
       "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectNotes
+        `search_path=pg_catalog:${hasProjectAppointments
+          ? "66dbe75a59c983c1042a498ef086ccfee0f8a2c48b6cef4c3b9bb2892a687663"
+          : hasProjectNotes
           ? "94518798af295e4e491d4ae098b994ce788bc9c836b05cc748e612bf85c29897"
           : hasProjectTasks
           ? "928466ed994915b001addeb9e66dfe6615f0971665f5619a6b3c7babcf74ddcd"
@@ -2921,6 +3014,7 @@ export async function verifyRoleContract(
       "auth_user:false:false",
       "auth_verification:false:false",
       "calculator_snapshot:true:true",
+      ...(hasProjectAppointments ? ["calendar_category:true:true"] : []),
       "catalog_component:true:true",
       "catalog_component_revision:true:true",
       ...(hasCatalogImport ? CATALOG_IMPORT_RELATIONS.map(
@@ -2953,6 +3047,10 @@ export async function verifyRoleContract(
       "offer_variant_revision:true:true",
       "offer_variant_section:true:true",
       "project:true:true",
+      ...(hasProjectAppointments ? [
+        "project_appointment:true:true",
+        "project_appointment_attendee:true:true",
+      ] : []),
       ...(hasProjectAssignment ? ["project_assignment:true:true"] : []),
       ...(hasProjectTasks ? PROJECT_TASK_RELATIONS.map(
         (relation) => `${relation}:true:true`,
@@ -3012,6 +3110,10 @@ export async function verifyRoleContract(
     [
       "audit_log:tenant_isolation:23ff85358d0c0e94974353f538c267f99f5a3e7219bf9e1cd8769f69744ae417",
       "calculator_snapshot:tenant_isolation:8c816e39dfc3d5d774d0de6f02961882e9ae6679904da2b9007d5ff86becbb72",
+      ...(hasProjectAppointments ? [
+        "calendar_category:calendar_category_actor_select:944baa976bed1f1a4e20f9ee155478d1eefe7d1977c01e94405ae85ff8d0a31b",
+        "calendar_category:tenant_isolation:de0baabe6e6d5890088d293469efb4736bc3531434b961187c90f2c7bda7c8c6",
+      ] : []),
       "catalog_component:tenant_isolation:0f52f117c39d494bf05b96f6f8a38b776282a706c0765c9b1a88011be6fc7d9d",
       "catalog_component_revision:tenant_isolation:e2a00cf04ea7089b3abdfd9fc87f71b7d0b3460a0be58bdadbe0f23a61fd3758",
       ...(hasCatalogImport ? [
@@ -3069,6 +3171,17 @@ export async function verifyRoleContract(
         "project:project_external_update_guard:0745da945e4fe5f92e7bc24e058eef1e2d7c07b6bacc4b27b92e5e52b3f23e35",
       ] : []),
       "project:tenant_isolation:c5f62af4cbba473885ce886d0eef10a80ab1f5dca746c0cb4b6204dd1050717b",
+      ...(hasProjectAppointments ? [
+        "project_appointment:project_appointment_actor_delete:a836eac80bd999359f776b0c85751c5d08b22d98cc6ce7007a24fabe16454645",
+        "project_appointment:project_appointment_actor_insert:8d6b0f998e0ec34e79158ff950e72c099c4a653a745e83303c6396b025994cdf",
+        "project_appointment:project_appointment_actor_select:777eec775dfee475f7cd880229bfc6450073d2949b0eb9a48a02e1d04b51cde0",
+        "project_appointment:project_appointment_actor_update:6ecdd4899188a2c5327b2ece1c4691ce59700f7ee7863009315dc537d1eb36e3",
+        "project_appointment:tenant_isolation:95839d10d0234f6b2ad472c52373f41f7a88dd14512e5b48e97b6638e1c724b3",
+        "project_appointment_attendee:project_appointment_attendee_actor_delete:11682a9736f819872cc4f0976a0d61faf092c253e88b7c19d0a1ca2714c9c608",
+        "project_appointment_attendee:project_appointment_attendee_actor_insert:db7a0526905f7d1fe8cf7a7384dc85aae970e48438792dcf033d83a334501db5",
+        "project_appointment_attendee:project_appointment_attendee_actor_select:0634803bc8e565a5982b923e3832f7e68141faec8493caa8cb7890eca49c0177",
+        "project_appointment_attendee:tenant_isolation:eb5b7292fdf443f6440e7fa03bb9012f0fbbf58ff42ee87714266310a154a85f",
+      ] : []),
       ...(hasProjectAssignment ? [
         "project_assignment:project_assignment_actor_delete_guard:a9afa7bb8b30ec16564abdc50e9e98de6e65e399a7cbcbb9cd9d945782de29c7",
         "project_assignment:project_assignment_actor_insert_guard:5e1ce3e84ff33e76a7e584067add6ba82831fb8f551c8688ba76f18d8f413574",
@@ -3352,6 +3465,13 @@ export async function verifyRoleContract(
         "project_note:project_note_mutation_guard:31:O:public:_m113_guard_project_note::-:0",
         "project_note:project_note_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
+      ...(hasProjectAppointments ? [
+        "calendar_category:calendar_category_no_truncate:34:O:public:forbid_mutation::-:0",
+        "project_appointment:project_appointment_mutation_guard:31:O:public:_m115_guard_project_appointment::-:0",
+        "project_appointment:project_appointment_no_truncate:34:O:public:forbid_mutation::-:0",
+        "project_appointment_attendee:project_appointment_attendee_mutation_guard:31:O:public:_m115_guard_project_appointment_attendee::-:0",
+        "project_appointment_attendee:project_appointment_attendee_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
       "offer_variant:offer_variant_current_complete:21:O:public:" +
         "validate_offer_variant_snapshot_mirrors::-:constraint",
       "offer_variant:offer_variant_mutation_guard:27:O:public:guard_offer_erasure_mutation::-:0",
@@ -3479,6 +3599,16 @@ export async function verifyRoleContract(
         "app_runtime:project_note:INSERT:app_owner:false",
         "app_runtime:project_note:SELECT:app_owner:false",
         "app_runtime:project_note:UPDATE:app_owner:false",
+      ] : []),
+      ...(hasProjectAppointments ? [
+        "app_runtime:calendar_category:SELECT:app_owner:false",
+        "app_runtime:project_appointment:DELETE:app_owner:false",
+        "app_runtime:project_appointment:INSERT:app_owner:false",
+        "app_runtime:project_appointment:SELECT:app_owner:false",
+        "app_runtime:project_appointment:UPDATE:app_owner:false",
+        "app_runtime:project_appointment_attendee:DELETE:app_owner:false",
+        "app_runtime:project_appointment_attendee:INSERT:app_owner:false",
+        "app_runtime:project_appointment_attendee:SELECT:app_owner:false",
       ] : []),
       "app_runtime:project_calculation_job:INSERT:app_owner:false",
       "app_runtime:project_calculation_job:SELECT:app_owner:false",
@@ -3746,6 +3876,9 @@ export async function verifyRoleContract(
         "app_worker:_m111b_worker_resolve_recipient(uuid, uuid):EXECUTE:app_owner:false",
       ] : []),
       ...(hasProjectNotes ? PROJECT_NOTE_RUNTIME_ROUTINES.map((signature) =>
+        `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
+      ) : []),
+      ...(hasProjectAppointments ? PROJECT_APPOINTMENT_RUNTIME_ROUTINES.map((signature) =>
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
       ...(hasOfferIssuance ? [

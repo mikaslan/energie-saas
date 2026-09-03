@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 const M110_MIGRATION_CREATED_AT = "1788211758291";
 const M111A_MIGRATION_CREATED_AT = "1788226143009";
 const M113_MIGRATION_CREATED_AT = "1788371388211";
+const M115_MIGRATION_CREATED_AT = "1788392865371";
 export const M110_PROJECT_TASK_ACTIVITY_INDEX =
   "domain_events_project_task_activity_idx" as const;
 export const M111A_PROJECT_ACTIVITY_INDEX =
@@ -31,6 +32,15 @@ const NOTE_EVENT_TYPES = [
 const M113_PROJECT_ACTIVITY_EVENT_TYPES = [
   ...PROJECT_ACTIVITY_EVENT_TYPES,
   ...NOTE_EVENT_TYPES,
+] as const;
+const APPOINTMENT_EVENT_TYPES = [
+  "project.appointment_created",
+  "project.appointment_updated",
+  "project.appointment_deleted",
+] as const;
+const M115_PROJECT_ACTIVITY_EVENT_TYPES = [
+  ...M113_PROJECT_ACTIVITY_EVENT_TYPES,
+  ...APPOINTMENT_EVENT_TYPES,
 ] as const;
 
 export const M110_PROJECT_TASK_ACTIVITY_INDEX_SQL = `
@@ -85,6 +95,29 @@ WHERE aggregate_type = 'project'
     'project.note_created', 'project.note_updated',
     'project.note_deleted', 'project.note_pinned',
     'project.note_unpinned'
+  )
+`;
+
+export const M115_PROJECT_ACTIVITY_INDEX_SQL = `
+CREATE INDEX CONCURRENTLY ${M111A_PROJECT_ACTIVITY_INDEX}
+ON public.domain_events USING btree (
+  workspace_id,
+  aggregate_id,
+  occurred_at DESC NULLS FIRST,
+  id DESC NULLS FIRST
+)
+WHERE aggregate_type = 'project'
+  AND event_type IN (
+    'project.task_created', 'project.task_updated',
+    'project.task_checklist_changed', 'project.task_completed',
+    'project.task_reopened', 'project.task_archived',
+    'project.outcome_won', 'project.outcome_lost',
+    'project.outcome_reopened',
+    'project.note_created', 'project.note_updated',
+    'project.note_deleted', 'project.note_pinned',
+    'project.note_unpinned',
+    'project.appointment_created', 'project.appointment_updated',
+    'project.appointment_deleted'
   )
 `;
 
@@ -183,7 +216,7 @@ function assertCanonicalIndex(
     throw new Error(`${indexName} besitzt kein Project-Prädikat.`);
   }
   const eventTypes = [...new Set(
-    predicate.match(/project\.(?:task|outcome|note)_[a-z_]+/gu) ?? [],
+    predicate.match(/project\.(?:task|outcome|note|appointment)_[a-z_]+/gu) ?? [],
   )].sort();
   if (JSON.stringify(eventTypes) !== JSON.stringify([...expectedEventTypes].sort())) {
     throw new Error(`${indexName} besitzt eine falsche Event-Allowlist.`);
@@ -238,9 +271,39 @@ async function ensureNoteActivityIndex(client: PoolClient): Promise<void> {
   }
 }
 
+async function ensureAppointmentActivityIndex(client: PoolClient): Promise<void> {
+  let state = await readIndexState(client, M111A_PROJECT_ACTIVITY_INDEX);
+  const predicateHasAppointments =
+    /project\.appointment_[a-z_]+/gu.test(state?.predicate ?? "");
+  if (state && (!state.indisvalid || !state.indisready || !predicateHasAppointments)) {
+    await client.query(
+      `DROP INDEX CONCURRENTLY IF EXISTS public.${M111A_PROJECT_ACTIVITY_INDEX}`,
+    );
+    state = null;
+  }
+  if (!state) {
+    await client.query(M115_PROJECT_ACTIVITY_INDEX_SQL);
+  }
+  assertCanonicalIndex(
+    await readIndexState(client, M111A_PROJECT_ACTIVITY_INDEX),
+    M111A_PROJECT_ACTIVITY_INDEX,
+    M115_PROJECT_ACTIVITY_EVENT_TYPES,
+  );
+  // Der verifizierte breitere Ersatz erlaubt, den M1-10-Task-Index zu entfernen.
+  if (await readIndexState(client, M110_PROJECT_TASK_ACTIVITY_INDEX)) {
+    await client.query(
+      `DROP INDEX CONCURRENTLY IF EXISTS public.${M110_PROJECT_TASK_ACTIVITY_INDEX}`,
+    );
+  }
+}
+
 export async function ensureM110ProjectTaskActivityIndex(
   client: PoolClient,
 ): Promise<void> {
+  if (await migrationWasApplied(client, M115_MIGRATION_CREATED_AT)) {
+    await ensureAppointmentActivityIndex(client);
+    return;
+  }
   if (await migrationWasApplied(client, M113_MIGRATION_CREATED_AT)) {
     await ensureNoteActivityIndex(client);
     return;

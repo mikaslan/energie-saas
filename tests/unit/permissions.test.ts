@@ -98,6 +98,12 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
   "contact.write": {
     expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
   },
+  "appointment.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
+  "appointment.write": {
+    expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
+  },
   // Ab hier: editor braucht die Capability, admin nicht (Admin impliziert alle).
   "phase.convert": {
     capability: "convert_phase",
