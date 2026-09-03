@@ -1436,7 +1436,9 @@ async function main(): Promise<number> {
     // Runner-Seeds decken Board/Katalog/Angebote bereits ab; hier kommen die
     // Bereiche hinzu, die sonst erst die Einzel-Specs befüllen würden:
     // Rechnungen (Stammdaten + Belege), Wirtschaftlichkeit, Kontakt, Termin.
-    const previewPool = new Pool({ connectionString: embedded.url, max: 1 });
+    // superuserUrl: die Specs nutzen dieselbe URL — RLS/Schema-Härtung der
+    // Service-Rollen bleibt wirksam, die Demo-Seeds laufen als Superuser.
+    const previewPool = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
     try {
       await previewPool.query("begin");
       await previewPool.query(
