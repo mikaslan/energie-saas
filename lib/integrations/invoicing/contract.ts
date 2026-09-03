@@ -224,6 +224,14 @@ export const COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION =
   "commercial-document-group-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_COMMAND_VERSION =
   "commercial-document-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION =
+  "commercial-document-sent-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION =
+  "commercial-document-void-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION =
+  "commercial-document-payment-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_PAYMENT_STATUS_COMMAND_VERSION =
+  "commercial-document-payment-status-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION =
   "commercial-document-issue-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION =
@@ -378,6 +386,44 @@ export const commercialDocumentCommandV1Schema = z.strictObject({
   input: commercialDocumentDraftInputV1Schema,
 });
 export type CommercialDocumentCommandV1 = z.infer<typeof commercialDocumentCommandV1Schema>;
+
+export const commercialDocumentSentCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+});
+export type CommercialDocumentSentCommandV1 = z.infer<
+  typeof commercialDocumentSentCommandV1Schema
+>;
+
+export const commercialDocumentVoidCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+  reason: commercialVoidReasonSchema,
+});
+export type CommercialDocumentVoidCommandV1 = z.infer<
+  typeof commercialDocumentVoidCommandV1Schema
+>;
+
+export const commercialDocumentPaymentCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+  paidCents: moneyCentsSchema,
+});
+export type CommercialDocumentPaymentCommandV1 = z.infer<
+  typeof commercialDocumentPaymentCommandV1Schema
+>;
+
+// DECIDED: setPaymentStatus darf nur die nicht ableitbaren Zustände setzen
+// (overdue/uncollectable); paid/unpaid/partially_paid entstehen ausschließlich
+// über recordPayment aus paid_cents (Ableitungsregel M301-05).
+export const commercialDocumentPaymentStatusCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_PAYMENT_STATUS_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+  status: z.enum(["overdue", "uncollectable"]),
+});
+export type CommercialDocumentPaymentStatusCommandV1 = z.infer<
+  typeof commercialDocumentPaymentStatusCommandV1Schema
+>;
 
 // DECIDED (Kimi-P2-5): kein baseRevision im Issue-Kommando — die
 // Nebenläufigkeitskontrolle ist das CAS `where status = 'draft'` auf der

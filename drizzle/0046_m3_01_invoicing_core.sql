@@ -304,8 +304,9 @@ BEGIN
   END IF;
 
   IF OLD.status IN ('issued', 'voided') THEN
-    IF NEW.status IS DISTINCT FROM OLD.status
-       OR NEW.type IS DISTINCT FROM OLD.type
+    -- Status ist NICHT Teil des Content-Freezes: die erlaubten Kanten
+    -- (issued→voided) regeln die Transition-Checks oben.
+    IF NEW.type IS DISTINCT FROM OLD.type
        OR NEW.name IS DISTINCT FROM OLD.name
        OR NEW.group_id IS DISTINCT FROM OLD.group_id
        OR NEW.project_id IS DISTINCT FROM OLD.project_id

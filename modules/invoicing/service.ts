@@ -15,6 +15,10 @@ import {
   COMMERCIAL_DOCUMENT_LINE_VERSION,
   COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS,
+  COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_PAYMENT_STATUS_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_VERSION,
   GOEBD_SNAPSHOT_CANONICALIZATION_VERSION,
   GOEBD_SNAPSHOT_SCHEMA_VERSION,
@@ -22,7 +26,11 @@ import {
   commercialDocumentGroupCommandV1Schema,
   commercialDocumentCommandV1Schema,
   commercialDocumentIssueCommandV1Schema,
+  commercialDocumentPaymentCommandV1Schema,
+  commercialDocumentPaymentStatusCommandV1Schema,
+  commercialDocumentSentCommandV1Schema,
   commercialDocumentV1Schema,
+  commercialDocumentVoidCommandV1Schema,
   commercialDocumentGroupV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineV1Schema,
@@ -35,7 +43,11 @@ import {
   type CommercialDocumentCommandV1,
   type CommercialDocumentGroupCommandV1,
   type CommercialDocumentIssueCommandV1,
+  type CommercialDocumentPaymentCommandV1,
+  type CommercialDocumentPaymentStatusCommandV1,
+  type CommercialDocumentSentCommandV1,
   type CommercialDocumentV1,
+  type CommercialDocumentVoidCommandV1,
   type CommercialDocumentGroupV1,
   type CommercialDocumentLineCommandV1,
   type CommercialDocumentLineV1,
@@ -706,6 +718,57 @@ export async function createDocument(
 }
 
 
+
+async function readDocument(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  documentId: string,
+): Promise<CommercialDocumentV1> {
+  const row = await tx.execute<DocumentRow>(sql`
+    select id, type, status, name, group_id, project_id, contact_id,
+           currency, net_cents, tax_cents, gross_cents, due_date,
+           delivery_date, validity_date, planned_delivery_date,
+           planned_service_date, credit_note_type, payment_status, number,
+           number_year, number_sequence, issued_at, sent_at, voided_at,
+           void_reason, paid_cents
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+  `);
+  const doc = row.rows[0];
+  if (!doc) throw new InvoicingNotFoundError();
+  return commercialDocumentV1Schema.parse({
+    schemaVersion: COMMERCIAL_DOCUMENT_VERSION,
+    id: doc.id,
+    type: doc.type,
+    status: doc.status,
+    name: doc.name,
+    groupId: doc.group_id,
+    projectId: doc.project_id,
+    contactId: doc.contact_id,
+    archivedAt: null,
+    netCents: Number(doc.net_cents),
+    taxCents: Number(doc.tax_cents),
+    grossCents: Number(doc.gross_cents),
+    paymentStatus: doc.payment_status,
+    dueDate: doc.due_date,
+    deliveryDate: doc.delivery_date,
+    validityDate: doc.validity_date,
+    plannedDeliveryDate: doc.planned_delivery_date,
+    plannedServiceDate: doc.planned_service_date,
+    creditNoteType: doc.credit_note_type,
+    number: doc.number,
+    numberYear: doc.number_year === null ? null : Number(doc.number_year),
+    numberSequence: doc.number_sequence === null ? null : Number(doc.number_sequence),
+    issuedAt: doc.issued_at,
+    sentAt: doc.sent_at,
+    voidedAt: doc.voided_at,
+    voidReason: doc.void_reason,
+    paidCents: doc.paid_cents === null ? null : Number(doc.paid_cents),
+    permissions: { canWrite: can(ctx, "invoicing.write") },
+  });
+}
+
 export function canonicalizeDocumentSnapshot(snapshot: unknown): string {
   // Deterministische Byteform für die SHA-Verifikation: Schlüssel in
   // Einfüge-Reihenfolge (der Snapshot wird hier immer gleich aufgebaut).
@@ -936,6 +999,210 @@ export async function issueDocument(
     paidCents: issuedRow.paid_cents === null ? null : Number(issuedRow.paid_cents),
     permissions: { canWrite: can(ctx, "invoicing.write") },
   });
+}
+
+
+export async function markSentDocument(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentSentCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentSentCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const documentId = parsed.data.documentId;
+
+  const updated = await tx.execute<{ id: string }>(sql`
+    update commercial_document
+       set sent_at = statement_timestamp(), updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${documentId}::uuid
+       and status = 'issued'
+       and sent_at is null
+    returning id
+  `);
+  if (updated.rows.length === 0) throw new InvoicingConflictError();
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.sent",
+    actor: ctx.actor,
+    payload: { documentId },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.send",
+    resource: "commercial_document",
+    allowed: true,
+    details: { documentId },
+  });
+  return readDocument(tx, ctx, documentId);
+}
+
+export async function voidDocument(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentVoidCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentVoidCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const documentId = parsed.data.documentId;
+
+  // M301-04: draft (Verwerfen), issued und issued+sent duerfen storniert
+  // werden; voided ist terminal. Die Nummer wird nicht freigegeben.
+  const updated = await tx.execute<{ id: string }>(sql`
+    update commercial_document
+       set status = 'voided',
+           voided_at = statement_timestamp(),
+           void_reason = ${parsed.data.reason},
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${documentId}::uuid
+       and status in ('draft', 'issued')
+    returning id
+  `);
+  if (updated.rows.length === 0) throw new InvoicingConflictError();
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.voided",
+    actor: ctx.actor,
+    payload: { documentId, reason: parsed.data.reason },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.void",
+    resource: "commercial_document",
+    allowed: true,
+    details: { documentId, reason: parsed.data.reason },
+  });
+  return readDocument(tx, ctx, documentId);
+}
+
+export async function recordPayment(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentPaymentCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentPaymentCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const documentId = parsed.data.documentId;
+  const paidCents = parsed.data.paidCents;
+
+  const document = await tx.execute<{ type: string; status: string; gross_cents: number; payment_status: string | null }>(sql`
+    select type, status, gross_cents, payment_status
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+     for update
+  `);
+  const row = document.rows[0];
+  if (!row) throw new InvoicingNotFoundError();
+  if (row.type === "letter") throw new InvoicingValidationError();
+  if (row.status !== "issued") throw new InvoicingConflictError();
+  if (row.payment_status === "paid" || row.payment_status === "uncollectable") {
+    throw new InvoicingConflictError();
+  }
+  const grossCents = Number(row.gross_cents);
+
+  // Ableitung (M301-05): unpaid/partially_paid/paid NUR aus paid_cents.
+  const paymentStatus = paidCents === 0
+    ? "unpaid"
+    : paidCents >= grossCents
+      ? "paid"
+      : "partially_paid";
+  if (paymentStatus === "paid" && grossCents > 0 && paidCents < grossCents) {
+    throw new InvoicingValidationError();
+  }
+
+  await tx.execute(sql`
+    update commercial_document
+       set payment_status = ${paymentStatus},
+           paid_cents = ${paidCents},
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${documentId}::uuid
+       and status = 'issued'
+  `);
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.payment_updated",
+    actor: ctx.actor,
+    payload: { documentId, paymentStatus, paidCents },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.payment.write",
+    resource: "commercial_document",
+    allowed: true,
+    details: { documentId, paymentStatus, paidCents },
+  });
+  return readDocument(tx, ctx, documentId);
+}
+
+export async function setPaymentStatus(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentPaymentStatusCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentPaymentStatusCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const documentId = parsed.data.documentId;
+
+  const document = await tx.execute<{ type: string; status: string; payment_status: string | null }>(sql`
+    select type, status, payment_status
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+     for update
+  `);
+  const row = document.rows[0];
+  if (!row) throw new InvoicingNotFoundError();
+  if (row.type === "letter") throw new InvoicingValidationError();
+  if (row.status !== "issued") throw new InvoicingConflictError();
+  if (row.payment_status === "paid" || row.payment_status === "uncollectable") {
+    throw new InvoicingConflictError();
+  }
+
+  await tx.execute(sql`
+    update commercial_document
+       set payment_status = ${parsed.data.status},
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${documentId}::uuid
+       and status = 'issued'
+  `);
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.payment_updated",
+    actor: ctx.actor,
+    payload: { documentId, paymentStatus: parsed.data.status },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.payment.write",
+    resource: "commercial_document",
+    allowed: true,
+    details: { documentId, paymentStatus: parsed.data.status },
+  });
+  return readDocument(tx, ctx, documentId);
 }
 
 export async function createDocumentLine(
