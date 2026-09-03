@@ -3022,7 +3022,7 @@ export async function verifyRoleContract(
       ...(hasSignatures ? [
         "build_inactive_lead_erasure_graph_m204(uuid, uuid):jsonb:app_owner:sql:f:s:" +
           "false:false:false:u:search_path=pg_catalog:" +
-          "721aecb517ece42d09e1101afb397af22491f1798995ceaabf963dd4598870fc",
+          "350a4c4f1de2df81dd39da00cfda75505802ddc72b03212975e2ad1c0302dec6",
       ] : []),
       "canonicalize_offer_json_v1(jsonb):text:app_owner:plpgsql:f:i:false:false:true:s:" +
         "search_path=pg_catalog:0b5cdc7c4aa05552def26bc36f3f64bfc73e18689b646b473db607ad858ca85c",
@@ -3035,7 +3035,7 @@ export async function verifyRoleContract(
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
         `search_path=pg_catalog:${hasSignatures
-          ? "0ed06a12c77f21483fb42385c0659a880038acdb7ac56b09bbcdaf25c691c223"
+          ? "0c4442f592807e72c2cd9b7997bdc48685a57e8415e865fc8cceff4cd85f26a3"
           : hasProjectAppointments
           ? "cec63897e55831166ccb154e07fab02b7b0c381d619597933c3381c74eac70b9"
           : hasCustomerNotification && hasProjectNotes
@@ -3067,7 +3067,7 @@ export async function verifyRoleContract(
         "search_path=pg_catalog:febb6a39265ceb1661f5dc21709f4a2912df799c6b4dd06db27b540253b8c88d",
       "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         `search_path=pg_catalog:${hasSignatures
-          ? "bbf0d46496ab5c0a69ecd892c65465b43c7c8cccace8ac12f567dc56c7c0ff53"
+          ? "cc6f8018143ef868b4d69851d7e1ac5098e42efc6fb7ec6ac741b26a1016fe19"
           : hasProjectAppointments
           ? "66dbe75a59c983c1042a498ef086ccfee0f8a2c48b6cef4c3b9bb2892a687663"
           : hasProjectNotes
