@@ -67,3 +67,29 @@ echten `parseCatalogCsvPreview`: 38 gültig / 299 ungültig / 0 Formatfehler
 (deterministisch, SHA-256 gepinnt; Bericht `artifacts/catalog-import-20260902/DRY-RUN.md`).
 Top-Lücken: purchasePriceNet (264), Batterie-Technik (71), WR-Leistung (52),
 Marke (25). 13-Reonic-Typen→7-Katalogtypen-Mapping verifiziert.
+
+## M1-14 Kontakt-Datensatz (0042) — REVIEWED/VERIFIED (2026-09-03, 02:30)
+
+Branch `codex/m1-14-contact-dataset` (`f6a990b`, remote): Kimi-Code-Review
+geschlossen (2 P1 + 5 P2 + 2 Race-Tests nachgeliefert); Legacy-sichere
+Migration (nullable → Backfill → SET NOT NULL); echte Browser-Funde behoben
+(server-only-Barrel → `lib/integrations/contacts`; Editor-Schließen über
+Server-Wahrheit; `<dl>`-A11y). Nachweise: Vollgate exit 0 (180/180 Dateien,
+1771/1), Rollen 88/88 + PG18 5/5, Build, keine Drift, **Chromium-E2E 4/4**.
+
+## M1-15 Termine/Kalender (0043) — REVIEWED/VERIFIED (2026-09-03, 02:30)
+
+Branch `codex/m1-15-calendar-appointments` (`6d80f62`, remote):
+Kimi-Code-Review geschlossen (2 P1 + 5 P2); DST-CHECK auf Berliner
+Datumsebene; echter `erase_inactive_lead`-Lauf; Dialog-Fix (M1-13-Muster) +
+DB-Guard-P0 (42501 auf jedem DELETE) nur vom Browser gefunden. Nachweise:
+Vollgate exit 0 (181/181 Dateien, 1776/1), Rollen 88/88 + PG18 5/5, Build,
+keine Drift, **Chromium-E2E 6/6**.
+
+## M1-Welle-02 Integration (2026-09-03, 03:00)
+
+`codex/m1-wave-02` (`db9e13d`, remote): 0042→0043 gemergt; Journal-`when`
+monoton, 0043-Snapshot prevId→0042, Erasure-Pin post-0042 `cec63897…`
+(Rollenprobe-gedeckt). Nachweise: `npm run check` exit 0 (**184/184 Dateien,
+1804 passed/1 skipped**), Rollen 88/88 + PG18 5/5, Build exit 0, `db:generate`
+keine Drift, depcruise 0 (352 Module), **Chromium-E2E komplett 58/58, exit 0**.
