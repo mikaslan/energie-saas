@@ -57,3 +57,22 @@ M2-01 besitzt keine öffentliche REST-API. Die implementierten internen Commands
 `createVariantFromCurrentResolution`. Jede Server-Action ist ein direkt
 erreichbarer POST-Endpunkt und muss den vollständigen Servicevertrag erneut
 erzwingen.
+
+## M1-14 Kontakt-Datensatz (0042) — REVIEWED/VERIFIED (2026-09-03)
+
+- `M114-01` Projektakte liest vollständigen Contact-Datensatz (minimiertes DTO) — GREEN
+- `M114-02` Revisionsgebundenes Edit (CAS, Advisory-Lock erster Sync-Punkt) — GREEN
+- `M114-03` Namens-Split (btrim-gepinnter Splitter, TS/SQL-Divergenz dokumentiert) — GREEN
+- `M114-04` Consent-/UTM-Felder (Boolean intake-owned, Version/Text/Link patchbar) — GREEN
+- `M114-05` RLS/RBAC: Viewer read-only, External fail-closed (404 ohne Leak) — GREEN
+- `M114-06` DSGVO: Consent-CHECK (NOT VALID), deletedAt-Tombstone, Scrub-Erweiterung — GREEN
+- Races: M114-RACE-01 (parallele Edits), M114-RACE-02 (Edit↔Erasure Advisory) — GREEN
+- E2E 4/4; Visual INCONCLUSIVE.
+
+## M1-15 Termine/Kalender (0043) — REVIEWED/VERIFIED (2026-09-03)
+
+- `M115-01…04` Create/Edit/Delete/CAS mit Berliner Wanduhrzeit (DST-Datumsebene) — GREEN
+- `M115-05` Kategorien read-only (leerer Bestand) — GREEN
+- `M115-08` Erasure: appointmentIds im Graphen, echter erase_inactive_lead-Lauf — GREEN
+- `M115-09` Races: paralleler Edit/Delete; Guards ohne 42501 für app_runtime — GREEN
+- E2E 6/6; Visual INCONCLUSIVE. Kalender-Scopes = M1-15b (0047, SPECIFIED).
