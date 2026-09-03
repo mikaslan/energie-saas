@@ -80,6 +80,7 @@ export {
   createDocumentGroup,
   createDocumentLine,
   issueDocument,
+  canonicalizeDocumentSnapshot,
   getInvoicingSettings,
   getNumberFormats,
   listDocumentGroups,

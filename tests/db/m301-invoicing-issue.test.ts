@@ -160,7 +160,7 @@ describe("M3-01 Ausstellen + Nummernkreis (PostgreSQL)", () => {
     )).rejects.toBeInstanceOf(InvoicingConflictError);
   });
 
-  it("M301-ISSUE-02: Sequenzen monoton, verbrannte Nummern bleiben verbrannt, Jahreswechsel", async () => {
+  it("M301-ISSUE-02: Sequenzen monoton, Rollback-in-Transaktion (Spec §6), Jahreswechsel", async () => {
     await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => upsertInvoicingSettings(tx, ctx, settingsCommand(0)),
@@ -268,5 +268,92 @@ describe("M3-01 Ausstellen + Nummernkreis (PostgreSQL)", () => {
       testPool, other.editorId, other.workspaceId,
       (tx, ctx) => issueDocument(tx, ctx, issueCommand(documentId)),
     )).rejects.toBeInstanceOf(InvoicingNotFoundError);
+  });
+
+  it("M301-ISSUE-05 (Kimi-P2-6): parallele Ausstellungen erhalten disjunkte Nummern", async () => {
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => upsertInvoicingSettings(tx, ctx, settingsCommand(0)),
+    );
+    const ids = await Promise.all([
+      seedInvoice(fixture, "Race 1"),
+      seedInvoice(fixture, "Race 2"),
+      seedInvoice(fixture, "Race 3"),
+    ]);
+    const issued = await Promise.all(ids.map((id) => withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => issueDocument(tx, ctx, issueCommand(id)),
+    )));
+    const sequences = issued
+      .map((document) => document.numberSequence ?? 0)
+      .sort((a, b) => a - b);
+    expect(sequences).toEqual([1, 2, 3]);
+    expect(new Set(issued.map((document) => document.number)).size).toBe(3);
+  });
+
+  it("M301-ISSUE-06 (Kimi-P2-6): Snapshot-Hash ist aus der gespeicherten Form rekonstruierbar", async () => {
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => upsertInvoicingSettings(tx, ctx, settingsCommand(0)),
+    );
+    const documentId = await seedInvoice(fixture);
+    await seedLine(fixture, documentId);
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => issueDocument(tx, ctx, issueCommand(documentId)),
+    );
+    const row = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx) => tx.execute<{ snapshot: unknown; hash_hex: string }>(sql`
+        select issued_snapshot as snapshot,
+               encode(snapshot_sha256, 'hex') as hash_hex
+          from commercial_document
+         where workspace_id = ${fixture.workspaceId}::uuid and id = ${documentId}::uuid
+      `),
+    );
+    // Verifikationsvertrag (Kimi-P2-2): der Hash deckt die Byteform des
+    // Snapshot-Objekts in KANONISCHER FELDREIHENFOLGE (wie der Service sie
+    // baut). Verifiziert wird durch Rekonstruktion aus den Spalten — nicht
+    // durch Re-Serialisierung des gespeicherten jsonb (Postgres normalisiert
+    // Schlüsselreihenfolge und Numerik).
+    const { createHash } = await import("node:crypto");
+    const { canonicalizeDocumentSnapshot } = await import("@/modules/invoicing");
+    const stored = row.rows[0]?.snapshot as Record<string, unknown> | undefined;
+    expect(stored).toBeTruthy();
+    const rebuilt = {
+      schemaVersion: stored?.schemaVersion,
+      canonicalizationVersion: stored?.canonicalizationVersion,
+      type: stored?.type,
+      number: stored?.number,
+      numberYear: stored?.numberYear,
+      numberSequence: stored?.numberSequence,
+      issuedAt: stored?.issuedAt,
+      currency: stored?.currency,
+      netCents: stored?.netCents,
+      taxCents: stored?.taxCents,
+      grossCents: stored?.grossCents,
+      dueDate: stored?.dueDate,
+      deliveryDate: stored?.deliveryDate,
+      validityDate: stored?.validityDate,
+      plannedDeliveryDate: stored?.plannedDeliveryDate,
+      plannedServiceDate: stored?.plannedServiceDate,
+      creditNoteType: stored?.creditNoteType,
+      name: stored?.name,
+      recipientSnapshot: stored?.recipientSnapshot ?? null,
+      lines: ((stored?.lines ?? []) as Array<Record<string, unknown>>).map((line) => ({
+        position: line.position,
+        name: line.name,
+        quantityMilli: line.quantityMilli,
+        unit: line.unit,
+        netCents: line.netCents,
+        taxCents: line.taxCents,
+        grossCents: line.grossCents,
+        taxRateBps: line.taxRateBps,
+      })),
+    };
+    const recomputed = createHash("sha256")
+      .update(canonicalizeDocumentSnapshot(rebuilt), "utf8")
+      .digest("hex");
+    expect(recomputed).toBe(row.rows[0]?.hash_hex);
   });
 });

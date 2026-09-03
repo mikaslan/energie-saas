@@ -706,6 +706,12 @@ export async function createDocument(
 }
 
 
+export function canonicalizeDocumentSnapshot(snapshot: unknown): string {
+  // Deterministische Byteform für die SHA-Verifikation: Schlüssel in
+  // Einfüge-Reihenfolge (der Snapshot wird hier immer gleich aufgebaut).
+  return JSON.stringify(snapshot);
+}
+
 type AssignedDocumentNumber = {
   number: string;
   numberYear: number;
@@ -784,7 +790,15 @@ export async function issueDocument(
 
   const assigned = await assignDocumentNumber(tx, ctx, documentType);
 
-  const issuedAt = new Date().toISOString();
+  // O5/DECIDED: goebd_retention_until = Ausstellungsdatum + Default-Frist
+  // (nur modelliert, keine Durchsetzung). Zeitbasis durchgängig Europe/Berlin.
+  const nowBerlin = await tx.execute<{ now_iso: string; date: string }>(sql`
+    select to_char(statement_timestamp() at time zone 'Europe/Berlin',
+                   'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as now_iso,
+           to_char((statement_timestamp() at time zone 'Europe/Berlin')::date,
+                   'YYYY-MM-DD') as date
+  `);
+  const issuedAt = nowBerlin.rows[0]?.now_iso ?? new Date().toISOString();
   const retention = await tx.execute<{ goebd_retention_default_days: number }>(sql`
     select goebd_retention_default_days
       from workspace_invoicing_settings
@@ -792,8 +806,12 @@ export async function issueDocument(
      limit 1
   `);
   const retentionDays = retention.rows[0]?.goebd_retention_default_days ?? 3650;
-  const retentionUntil = new Date();
-  retentionUntil.setDate(retentionUntil.getDate() + retentionDays);
+  const retentionUntil = await tx.execute<{ date: string }>(sql`
+    select to_char(
+      (statement_timestamp() at time zone 'Europe/Berlin')::date + ${retentionDays}::integer,
+      'YYYY-MM-DD'
+    ) as date
+  `);
 
   const lines = await tx.execute<IssueLineRow>(sql`
     select position, name, quantity_milli, unit, net_cents, tax_cents,
@@ -834,7 +852,7 @@ export async function issueDocument(
       taxRateBps: Number(line.tax_rate_bps),
     })),
   };
-  const canonical = JSON.stringify(snapshot);
+  const canonical = canonicalizeDocumentSnapshot(snapshot);
   const snapshotSha256 = createHash("sha256").update(canonical, "utf8").digest();
 
   const updated = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
@@ -847,7 +865,7 @@ export async function issueDocument(
            issued_by = ${ctx.actor}::uuid,
            issued_snapshot = ${canonical}::jsonb,
            snapshot_sha256 = ${snapshotSha256}::bytea,
-           goebd_retention_until = ${retentionUntil.toISOString().slice(0, 10)}::date,
+           goebd_retention_until = ${retentionUntil.rows[0]?.date}::date,
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${documentId}::uuid
@@ -877,9 +895,9 @@ export async function issueDocument(
     select id, type, status, name, group_id, project_id, contact_id,
            currency, net_cents, tax_cents, gross_cents, due_date,
            delivery_date, validity_date, planned_delivery_date,
-           planned_service_date, credit_note_type, number, number_year,
-           number_sequence, issued_at, sent_at, voided_at, void_reason,
-           paid_cents
+           planned_service_date, credit_note_type, payment_status, number,
+           number_year, number_sequence, issued_at, sent_at, voided_at,
+           void_reason, paid_cents
       from commercial_document
      where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
      limit 1
@@ -899,7 +917,7 @@ export async function issueDocument(
     netCents: Number(issuedRow.net_cents),
     taxCents: Number(issuedRow.tax_cents),
     grossCents: Number(issuedRow.gross_cents),
-    paymentStatus: null,
+    paymentStatus: issuedRow.payment_status,
     dueDate: issuedRow.due_date,
     deliveryDate: issuedRow.delivery_date,
     validityDate: issuedRow.validity_date,

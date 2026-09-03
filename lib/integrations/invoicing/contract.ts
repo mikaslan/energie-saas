@@ -379,6 +379,9 @@ export const commercialDocumentCommandV1Schema = z.strictObject({
 });
 export type CommercialDocumentCommandV1 = z.infer<typeof commercialDocumentCommandV1Schema>;
 
+// DECIDED (Kimi-P2-5): kein baseRevision im Issue-Kommando — die
+// Nebenläufigkeitskontrolle ist das CAS `where status = 'draft'` auf der
+// Dokumentzeile selbst (Transition ist idempotent-frei, genau ein Gewinner).
 export const commercialDocumentIssueCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION),
   documentId: z.string().uuid(),
