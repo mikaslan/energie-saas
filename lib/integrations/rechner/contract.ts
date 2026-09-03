@@ -6,7 +6,7 @@ import type { RechnerIntakeV1 } from "./types";
 // Provideradapter pinnen exakt diese Datei. Eine Vertragsänderung verlangt
 // damit bewusst einen neuen Review statt stillschweigender Drift.
 export const RECHNER_INTAKE_SCHEMA_SHA256 =
-  "2ce5c5b2c7dfeb5a4483b02fda9c79664eff3399065d70d801680daadec9f67b" as const;
+  "9a61e31f1934a9958ed60ad978da0c902e0f509ef7bb43fb89862228e3c3e7fc" as const;
 
 const ajv = new Ajv2020({
   allErrors: true,

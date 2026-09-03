@@ -12,7 +12,7 @@ export interface RechnerIntakeV1 {
   submissionId: string;
   submittedAt: string;
   producer: {
-    application: "wmee-rechner-v3";
+    application: "wmee-rechner-v3" | "wmee-rechner-v5";
     gitRevision: string;
     environment: "production" | "preview" | "development";
     deploymentId: string | null;
@@ -56,7 +56,10 @@ export interface RechnerIntakeV1 {
     geocodeSource: "photon" | "regional_default";
     precision: "house" | "street" | "locality" | "region";
   };
-  calculation: RechnerCalculationSnapshotV1;
+  // v3 liefert den vollen Berechnungs-Snapshot; der v5-Lead-only-Fan-out
+  // (Kontaktformular ohne Fachdaten) darf ihn weglassen — das Board zeigt
+  // dann eine unqualifizierte Anfrage ohne Berechnung.
+  calculation?: RechnerCalculationSnapshotV1;
 }
 
 export interface RechnerCalculationSnapshotV1 extends JsonObject {

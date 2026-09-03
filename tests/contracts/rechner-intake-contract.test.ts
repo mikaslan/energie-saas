@@ -7,6 +7,7 @@ import {
   RECHNER_INTAKE_SCHEMA_SHA256,
   validateRechnerIntake,
 } from "@/lib/integrations/rechner/contract";
+import type { RechnerIntakeV1 } from "@/lib/integrations/rechner/types";
 
 const root = resolve(import.meta.dirname, "../..");
 const schemaPath = resolve(root, "contracts/rechner-intake.v1.schema.json");
@@ -141,5 +142,29 @@ describe("rechner-intake.v1 contract", () => {
     expect(Object.keys(operation.responses as Record<string, unknown>).sort()).toEqual(
       ["200", "201", "400", "401", "409", "413", "415", "422", "429", "500", "503"],
     );
+  });
+});
+
+describe("rechner-intake.v1 — v5-Lead-only-Variante (Leadquelle)", () => {
+  it("v5 ohne calculation ist gültig; v3 ohne calculation wird abgelehnt", () => {
+    const value = fixture();
+    (value.producer as Record<string, unknown>).application = "wmee-rechner-v5";
+    delete (value as Partial<RechnerIntakeV1>).calculation;
+    expect(validateRechnerIntake(value).ok).toBe(true);
+
+    const v3Without = fixture();
+    (v3Without.producer as Record<string, unknown>).application = "wmee-rechner-v3";
+    delete (v3Without as Partial<RechnerIntakeV1>).calculation;
+    expect(validateRechnerIntake(v3Without).ok).toBe(false);
+  });
+
+  it("v5 MIT calculation bleibt gültig; unbekannte Producer-Applikation fail-closed", () => {
+    const value = fixture();
+    (value.producer as Record<string, unknown>).application = "wmee-rechner-v5";
+    expect(validateRechnerIntake(value).ok).toBe(true);
+
+    const unknown = fixture();
+    (unknown.producer as Record<string, unknown>).application = "wmee-rechner-v4";
+    expect(validateRechnerIntake(unknown).ok).toBe(false);
   });
 });

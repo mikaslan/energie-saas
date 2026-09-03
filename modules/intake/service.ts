@@ -464,6 +464,7 @@ async function persistSite(
 
 function calculationOnly(payload: RechnerIntakeV1): RechnerCalculationSnapshotV1 {
   const value = payload.calculation;
+  if (!value) throw new RechnerInvalidRequestError();
   return {
     schemaVersion: value.schemaVersion,
     calculatedAt: value.calculatedAt,
@@ -477,11 +478,13 @@ function calculationOnly(payload: RechnerIntakeV1): RechnerCalculationSnapshotV1
 }
 
 function requirementsOnly(payload: RechnerIntakeV1): RechnerProjectRequirementsV1 {
-  const requested = payload.calculation.inputs.requestedProducts;
+  const calculation = payload.calculation;
+  if (!calculation) throw new RechnerInvalidRequestError();
+  const requested = calculation.inputs.requestedProducts;
   return {
     schemaVersion: "project-requirements.rechner.v1",
     source: RECHNER_SOURCE_KEY,
-    branch: payload.calculation.branch,
+    branch: calculation.branch,
     requestedProducts: {
       targetStorageKwh: requested.targetStorageKwh,
       wallbox: requested.wallbox,
@@ -633,31 +636,37 @@ export async function processRechnerIntake(
     updatedAt: meta.receivedAt,
   });
 
-  const snapshot = calculationOnly(payload);
-  await tx.insert(calculatorSnapshot).values({
-    id: snapshotId,
-    workspaceId: ctx.workspaceId,
-    receiptId,
-    projectId,
-    schemaVersion: snapshot.schemaVersion,
-    calculatorEngine: payload.producer.calculatorEngine,
-    resultIntegrity: snapshot.resultIntegrity,
-    investmentSource: snapshot.provenance.investment,
-    calculatedAt: contractDate(snapshot.calculatedAt),
-    snapshot,
-    createdAt: meta.receivedAt,
-  });
+  // v5-Lead-only-Fan-out (Producer wmee-rechner-v5): Kontaktformular-Leads
+  // kommen ohne Berechnungs-Snapshot — das Board zeigt dann eine
+  // unqualifizierte Anfrage ohne Kalkulations-Snapshot/Anforderungen.
+  // v3 bleibt strikt (Schema: calculation Pflicht für wmee-rechner-v3).
+  if (payload.calculation) {
+    const snapshot = calculationOnly(payload);
+    await tx.insert(calculatorSnapshot).values({
+      id: snapshotId,
+      workspaceId: ctx.workspaceId,
+      receiptId,
+      projectId,
+      schemaVersion: snapshot.schemaVersion,
+      calculatorEngine: payload.producer.calculatorEngine,
+      resultIntegrity: snapshot.resultIntegrity,
+      investmentSource: snapshot.provenance.investment,
+      calculatedAt: contractDate(snapshot.calculatedAt),
+      snapshot,
+      createdAt: meta.receivedAt,
+    });
 
-  await tx.insert(projectRequirement).values({
-    id: requirementId,
-    workspaceId: ctx.workspaceId,
-    projectId,
-    revision: 1,
-    schemaVersion: "project-requirements.rechner.v1",
-    sourceSnapshotId: snapshotId,
-    requirements: requirementsOnly(payload),
-    createdAt: meta.receivedAt,
-  });
+    await tx.insert(projectRequirement).values({
+      id: requirementId,
+      workspaceId: ctx.workspaceId,
+      projectId,
+      revision: 1,
+      schemaVersion: "project-requirements.rechner.v1",
+      sourceSnapshotId: snapshotId,
+      requirements: requirementsOnly(payload),
+      createdAt: meta.receivedAt,
+    });
+  }
 
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
@@ -678,8 +687,8 @@ export async function processRechnerIntake(
       projectId,
       contactId: contactDecision.contactId,
       siteId: selectedSite.siteId,
-      snapshotId,
-      requirementId,
+      snapshotId: payload.calculation ? snapshotId : null,
+      requirementId: payload.calculation ? requirementId : null,
     },
   });
 

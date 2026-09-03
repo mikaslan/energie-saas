@@ -91,34 +91,35 @@ function payload(): RechnerIntakeV1 {
   const value = structuredClone(GOLDEN);
   value.submissionId = randomUUID();
   value.submittedAt = NOW.toISOString();
-  value.calculation.calculatedAt = NOW.toISOString();
-  if (!value.calculation.inputs.answeredFieldIds.includes("verschattung")) {
-    value.calculation.inputs.answeredFieldIds.push("verschattung");
+  value.calculation!.calculatedAt = NOW.toISOString();
+  if (!value.calculation!.inputs.answeredFieldIds.includes("verschattung")) {
+    value.calculation!.inputs.answeredFieldIds.push("verschattung");
   }
   return value;
 }
 
 function existingInstallationWithoutStorageTruth(): RechnerIntakeV1 {
   const value = payload();
-  value.calculation.branch = "existing_installation";
-  value.calculation.inputs.existingInstallation = {
+  const calculation = value.calculation!;
+  calculation.branch = "existing_installation";
+  calculation.inputs.existingInstallation = {
     peakPowerKwp: 7.4,
     commissioningYear: 2012,
     storageKwh: 0,
   };
-  value.calculation.inputs.answeredFieldIds = [
-    ...value.calculation.inputs.answeredFieldIds.filter(
+  calculation.inputs.answeredFieldIds = [
+    ...calculation.inputs.answeredFieldIds.filter(
       (field) => !["bestandKwp", "bestandJahr", "bestandSpeicher"].includes(field),
     ),
     "bestandKwp",
     "bestandJahr",
   ];
-  value.calculation.result = {
+  value.calculation!.result = {
     mode: "existing_installation",
     existingPeakPowerKwp: 7.4,
     existingStorageKwh: 0,
     requestedAdditionalStorageKwh:
-      value.calculation.inputs.requestedProducts.targetStorageKwh,
+      value.calculation!.inputs.requestedProducts.targetStorageKwh,
     retrofit: null,
   };
   return value;
@@ -383,11 +384,11 @@ async function confirmationFootprint(fixture: LeadFixture): Promise<Confirmation
 }
 
 function requirementsFrom(value: RechnerIntakeV1): ProjectRequirementsRechnerV1 {
-  const requested = value.calculation.inputs.requestedProducts;
+  const requested = value.calculation!.inputs.requestedProducts;
   return {
     schemaVersion: "project-requirements.rechner.v1",
     source: "wmee-rechner-v3",
-    branch: value.calculation.branch,
+    branch: value.calculation!.branch,
     requestedProducts: {
       targetStorageKwh: requested.targetStorageKwh,
       wallbox: requested.wallbox,
@@ -863,7 +864,7 @@ async function failJobPermanently(
 describe.sequential("M1-07 fachlicher Energieprofil-Domainvertrag", () => {
   it("macht aus einem unveraenderten Default-Dach auch mit Ack keine bestaetigte Site-Wahrheit", async () => {
     const value = payload();
-    value.calculation.provenance.roof = "default";
+    value.calculation!.provenance.roof = "default";
     const fixture = await submitLead(await createActor(), value);
     await confirmPin(fixture);
     const projected = await candidate(fixture);
@@ -919,7 +920,7 @@ describe.sequential("M1-07 fachlicher Energieprofil-Domainvertrag", () => {
     const actor = await createActor();
     const projectA = await submitLead(actor);
     const valueB = payload();
-    valueB.calculation.inputs.requestedProducts.targetStorageKwh = 12;
+    valueB.calculation!.inputs.requestedProducts.targetStorageKwh = 12;
     const projectB = await submitLead(actor, valueB);
     expect(projectB.siteId).toBe(projectA.siteId);
     expect(projectB.projectId).not.toBe(projectA.projectId);
@@ -1255,7 +1256,7 @@ describe.sequential("M1-07 fachlicher Energieprofil-Domainvertrag", () => {
 
   it("setzt canConfirm nur bei wirklich ausfuehrbaren Confirmation-Preconditions", async () => {
     const defaultRoofValue = payload();
-    defaultRoofValue.calculation.provenance.roof = "default";
+    defaultRoofValue.calculation!.provenance.roof = "default";
     const defaultRoof = await submitLead(await createActor(), defaultRoofValue);
     await confirmPin(defaultRoof);
     const defaultCandidate = await candidate(defaultRoof);
@@ -1288,8 +1289,8 @@ describe.sequential("M1-07 fachlicher Energieprofil-Domainvertrag", () => {
     });
 
     const unknownShadingValue = payload();
-    unknownShadingValue.calculation.inputs.answeredFieldIds =
-      unknownShadingValue.calculation.inputs.answeredFieldIds.filter(
+    unknownShadingValue.calculation!.inputs.answeredFieldIds =
+      unknownShadingValue.calculation!.inputs.answeredFieldIds.filter(
         (field) => field !== "verschattung",
       );
     const unknownShading = await submitLead(await createActor(), unknownShadingValue);

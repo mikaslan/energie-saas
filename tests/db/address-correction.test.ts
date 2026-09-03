@@ -127,7 +127,7 @@ function payload(): RechnerIntakeV1 {
   const value = structuredClone(GOLDEN);
   value.submissionId = randomUUID();
   value.submittedAt = NOW.toISOString();
-  value.calculation.calculatedAt = NOW.toISOString();
+  value.calculation!.calculatedAt = NOW.toISOString();
   return value;
 }
 

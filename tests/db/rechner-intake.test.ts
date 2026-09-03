@@ -218,7 +218,7 @@ describe("Rechner-Intake-Fachtransaktion", () => {
       schemaVersion: "project-requirements.rechner.v1",
       source: "wmee-rechner-v3",
       branch: "new_installation",
-      requestedProducts: value.calculation.inputs.requestedProducts,
+      requestedProducts: value.calculation!.inputs.requestedProducts,
     });
     for (const forbidden of ["sku", "bom", "catalogComponentId", "brand", "price"]) {
       expect(JSON.stringify(graph.requirements).toLowerCase()).not.toContain(forbidden.toLowerCase());
@@ -512,3 +512,35 @@ describe("Rechner-Intake-Fachtransaktion", () => {
     `))).rejects.toThrow();
   });
 });
+
+  it("v5-Lead-only: Kontaktformular-Lead ohne calculation persistiert Kontakt/Site/Projekt, aber KEINEN Kalkulations-Snapshot und KEINE Anforderungen", async () => {
+    const ws = await workspace();
+    const identity = verifiedIdentity(ws);
+    const value = payload();
+    (value.producer as unknown as { application: string }).application = "wmee-rechner-v5";
+    delete (value as Partial<RechnerIntakeV1>).calculation;
+    value.site = {
+      addressMode: "regional_estimate",
+      formattedAddress: "Deutschland (regional)",
+      street: null,
+      houseNumber: null,
+      postalCode: null,
+      city: null,
+      countryCode: "DE",
+      latitude: 51.1657,
+      longitude: 10.4515,
+      geocodeSource: "regional_default",
+      precision: "region",
+    };
+
+    const receipt = await submit(ws, identity, value);
+    expect(receipt.receiptId).toBeTruthy();
+
+    const graph = await counts(ws);
+    expect(graph.contacts).toBe(1);
+    expect(graph.sites).toBe(1);
+    expect(graph.projects).toBe(1);
+    expect(graph.receipts).toBe(1);
+    expect(graph.snapshots).toBe(0);
+    expect(graph.requirements).toBe(0);
+  });

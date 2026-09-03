@@ -77,7 +77,7 @@ function postgresCode(error: unknown): string | undefined {
 }
 
 function projectedProfile(): SiteEnergyProfileV1 {
-  const projected = projectRechnerSnapshotToEnergyProfile(GOLDEN.calculation);
+  const projected = projectRechnerSnapshotToEnergyProfile(GOLDEN.calculation!);
   if (!projected.ok) throw new Error(`Golden-Profil nicht projizierbar: ${projected.code}`);
   return structuredClone(projected.value);
 }
@@ -129,11 +129,11 @@ async function createFixture(): Promise<Fixture> {
   const snapshotId = randomUUID();
   const requirementId = randomUUID();
   const profile = projectedProfile();
-  const requestedProducts = GOLDEN.calculation.inputs.requestedProducts;
+  const requestedProducts = GOLDEN.calculation!.inputs.requestedProducts;
   const requirements = {
     schemaVersion: "project-requirements.rechner.v1",
     source: "wmee-rechner-v3",
-    branch: GOLDEN.calculation.branch,
+    branch: GOLDEN.calculation!.branch,
     requestedProducts: {
       targetStorageKwh: requestedProducts.targetStorageKwh,
       wallbox: requestedProducts.wallbox,
@@ -227,7 +227,7 @@ async function createFixture(): Promise<Fixture> {
         ${snapshotId}::uuid, ${workspaceId}::uuid, ${receiptId}::uuid,
         ${projectId}::uuid, 'wmee-solar-snapshot.v1', 'wmee-solar.v1',
         'client_reported_unverified', 'market_estimate',
-        ${new Date(GOLDEN.calculation.calculatedAt)},
+        ${new Date(GOLDEN.calculation!.calculatedAt)},
         ${JSON.stringify(GOLDEN.calculation)}::jsonb
       )
     `);

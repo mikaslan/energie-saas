@@ -126,15 +126,15 @@ function payload(): RechnerIntakeV1 {
   const value = structuredClone(GOLDEN);
   value.submissionId = randomUUID();
   value.submittedAt = NOW.toISOString();
-  value.calculation.calculatedAt = NOW.toISOString();
-  if (!value.calculation.inputs.answeredFieldIds.includes("verschattung")) {
-    value.calculation.inputs.answeredFieldIds.push("verschattung");
+  value.calculation!.calculatedAt = NOW.toISOString();
+  if (!value.calculation!.inputs.answeredFieldIds.includes("verschattung")) {
+    value.calculation!.inputs.answeredFieldIds.push("verschattung");
   }
   return value;
 }
 
 function expectedProfile(value: RechnerIntakeV1): SiteEnergyProfileV1 {
-  const projected = projectRechnerSnapshotToEnergyProfile(value.calculation);
+  const projected = projectRechnerSnapshotToEnergyProfile(value.calculation!);
   if (!projected.ok) {
     throw new Error(`Golden-Rechnerprofil ist nicht projizierbar: ${projected.code}`);
   }
@@ -1051,8 +1051,8 @@ describe.sequential("M1-07 Energieprofil-Servicevertrag", () => {
 
   it("reserviert bei unbekannter Dachverschattung keinen Calculation-Job", async () => {
     const value = payload();
-    value.calculation.inputs.answeredFieldIds =
-      value.calculation.inputs.answeredFieldIds.filter((field) => field !== "verschattung");
+    value.calculation!.inputs.answeredFieldIds =
+      value.calculation!.inputs.answeredFieldIds.filter((field) => field !== "verschattung");
     const fixture = await createLead(value);
     await confirmPin(fixture);
     const candidate = await requireCandidate(fixture);
@@ -1075,7 +1075,7 @@ describe.sequential("M1-07 Energieprofil-Servicevertrag", () => {
 
   it("blockiert Default-Daecher bis zu einer klaren manuellen Ersatzgeometrie", async () => {
     const value = payload();
-    value.calculation.provenance.roof = "default";
+    value.calculation!.provenance.roof = "default";
     const fixture = await createLead(value);
     await confirmPin(fixture);
     const candidate = await requireCandidate(fixture);

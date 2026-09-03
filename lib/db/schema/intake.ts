@@ -113,7 +113,7 @@ export const inboundReceipt = pgTable(
     ),
     check(
       "inbound_receipt_producer_ck",
-      sql`${t.producerApplication} = 'wmee-rechner-v3'
+      sql`${t.producerApplication} in ('wmee-rechner-v3', 'wmee-rechner-v5')
         and ${t.producerGitRevision} ~ '^[0-9a-f]{40}$'
         and ${t.producerEnvironment} in ('production', 'preview', 'development')
         and ${t.calculatorEngine} = 'wmee-solar.v1'`,

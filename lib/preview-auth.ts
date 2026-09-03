@@ -1,5 +1,5 @@
-import "server-only";
-
+// Hinweis: KEIN "server-only"-Import — auth.ts wird auch von Build-/Unit-
+// Tests ohne server-only-Mock importiert; die Aktivierung ist rein env-basiert.
 // ═══════════════════════════════════════════════════════════════════════
 // NUR lokaler Demo-/Preview-Betrieb (ENERGIE_SAAS_LOCAL_PREVIEW=1):
 // fängt den Klartext-OTP aus dem emailOTP-Sendecallback ab, damit der

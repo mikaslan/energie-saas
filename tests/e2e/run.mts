@@ -1038,7 +1038,7 @@ function intakePayload(
   const now = new Date().toISOString();
   payload.submissionId = randomUUID();
   payload.submittedAt = now;
-  payload.calculation.calculatedAt = now;
+  payload.calculation!.calculatedAt = now;
   payload.customer.displayName = contactName;
   payload.customer.email = `lead-${contactSuffix}@example.test`;
   payload.customer.phoneRaw = `+49 6222 ${String(Math.floor(Math.random() * 9_000_000) + 1_000_000)}`;
