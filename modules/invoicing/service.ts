@@ -1114,14 +1114,13 @@ export async function recordPayment(
   const grossCents = Number(row.gross_cents);
 
   // Ableitung (M301-05): unpaid/partially_paid/paid NUR aus paid_cents.
+  // DECIDED (Kimi-P3-2): 0-EUR-Dokumente bleiben unpaid (paid verlangt eine
+  // echte Zahlung; es gibt nichts zu begleichen).
   const paymentStatus = paidCents === 0
     ? "unpaid"
     : paidCents >= grossCents
       ? "paid"
       : "partially_paid";
-  if (paymentStatus === "paid" && grossCents > 0 && paidCents < grossCents) {
-    throw new InvoicingValidationError();
-  }
 
   await tx.execute(sql`
     update commercial_document

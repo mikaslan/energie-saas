@@ -250,6 +250,13 @@ export const GOEBD_SNAPSHOT_CANONICALIZATION_VERSION = "document-jcs.v1" as cons
 export const commercialDocumentTypes = documentNumberTypes;
 export type CommercialDocumentType = DocumentNumberType;
 
+// DECIDED (Spec M301-03): „sent" ist eine BOOLESCHE ACHSE (sent_at), kein
+// vierter Status. Status-Enum bleibt draft/issued/voided; void erfasst
+// versendete Dokumente über status='issued' + sent_at gesetzt (Kimi-P1-1).
+// DECIDED (Spec M301-04, Kimi-P1-2): Void ist unabhängig vom Zahlungsstatus
+// erlaubt (Nummer bleibt verbrannt, Content eingefroren); eine bezahlte
+// Rechnung wird NICHT durch Void rückabgewickelt — dafür ist die Gutschrift
+// getrennt (Spec: „Gutschrift ist getrennt, nicht Teil von Void").
 export const commercialDocumentStatuses = ["draft", "issued", "voided"] as const;
 export type CommercialDocumentStatus = (typeof commercialDocumentStatuses)[number];
 

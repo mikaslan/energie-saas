@@ -23,6 +23,7 @@ import {
   upsertInvoicingSettings,
   voidDocument,
   InvoicingConflictError,
+  InvoicingNotFoundError,
   InvoicingValidationError,
   type InvoicingSettingsCommandV1,
 } from "@/modules/invoicing";
@@ -73,10 +74,21 @@ function settingsCommand(baseRevision: number): InvoicingSettingsCommandV1 {
 }
 
 async function seedIssuedInvoice(fixture: Fixture, grossCents = 11900): Promise<string> {
-  await withAuthorizedTenantOn(
+  // Idempotent: Settings nur anlegen, wenn noch keine Zeile existiert
+  // (zweiter Aufruf im selben Fixture liefe sonst in den Singleton-UNIQUE).
+  const existing = await withAuthorizedTenantOn(
     testPool, fixture.editorId, fixture.workspaceId,
-    (tx, ctx) => upsertInvoicingSettings(tx, ctx, settingsCommand(0)),
+    (tx) => tx.execute<{ c: number }>(sql`
+      select count(*)::integer as c from workspace_invoicing_settings
+       where workspace_id = ${fixture.workspaceId}::uuid
+    `),
   );
+  if (existing.rows[0]?.c === 0) {
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => upsertInvoicingSettings(tx, ctx, settingsCommand(0)),
+    );
+  }
   const id = await withAuthorizedTenantOn(
     testPool, fixture.editorId, fixture.workspaceId,
     (tx, ctx) => createDocument(tx, ctx, {
@@ -322,6 +334,101 @@ describe("M3-01 Versand-/Storno-/Zahlungsachse (PostgreSQL)", () => {
       (tx, ctx) => recordPayment(tx, ctx, {
         schemaVersion: COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
         documentId: id, paidCents: 11900,
+      }),
+    )).rejects.toBeInstanceOf(InvoicingConflictError);
+  });
+
+  it("M301-AX-05 (Kimi-P1-1/P2-1): sent→voided funktioniert; bezahltes Dokument ist stornierbar (DECIDED)", async () => {
+    const id = await seedIssuedInvoice(fixture);
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => markSentDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION, documentId: id,
+      }),
+    );
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => recordPayment(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
+        documentId: id, paidCents: 5000,
+      }),
+    );
+    const voided = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => voidDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION,
+        documentId: id, reason: "superseded",
+      }),
+    );
+    expect(voided.status).toBe("voided");
+    expect(voided.sentAt).toBeTruthy();
+  });
+
+  it("M301-AX-06 (Kimi-P2-2/P2-3): Fremdtenant scheitert; unpaid-Reset und Void-blockt-Zahlung", async () => {
+    const id = await seedIssuedInvoice(fixture);
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => recordPayment(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
+        documentId: id, paidCents: 5000,
+      }),
+    );
+    // unpaid-Reset auf 0 — aus partially_paid (paid ist terminal).
+    const reset = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => recordPayment(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
+        documentId: id, paidCents: 0,
+      }),
+    );
+    expect(reset.paymentStatus).toBe("unpaid");
+    // paid ist terminal: Reset aus paid wird abgelehnt (Spec M301-05).
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => recordPayment(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
+        documentId: id, paidCents: 11900,
+      }),
+    );
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => recordPayment(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
+        documentId: id, paidCents: 0,
+      }),
+    )).rejects.toBeInstanceOf(InvoicingConflictError);
+
+    // Fremdtenant: NotFound/Conflict.
+    const other = await seedFixture();
+    await expect(withAuthorizedTenantOn(
+      testPool, other.editorId, other.workspaceId,
+      (tx, ctx) => recordPayment(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
+        documentId: id, paidCents: 100,
+      }),
+    )).rejects.toBeInstanceOf(InvoicingNotFoundError);
+    await expect(withAuthorizedTenantOn(
+      testPool, other.editorId, other.workspaceId,
+      (tx, ctx) => voidDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION,
+        documentId: id, reason: "other",
+      }),
+    )).rejects.toBeInstanceOf(InvoicingConflictError);
+
+    // voided blockt Zahlungen.
+    const second = await seedIssuedInvoice(fixture);
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => voidDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION,
+        documentId: second, reason: "created_in_error",
+      }),
+    );
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => recordPayment(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
+        documentId: second, paidCents: 100,
       }),
     )).rejects.toBeInstanceOf(InvoicingConflictError);
   });
