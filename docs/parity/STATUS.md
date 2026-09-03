@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-09-03 (02:00) · kanonische Abnahmequelle:
+Stand: 2026-09-03 (02:20) · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -147,33 +147,35 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
-## 2026-09-03 (02:00) — M3-00 SPECIFIED, M1-14/M1-15 Vollgates grün, Integrations-Vorbereitung
+## 2026-09-03 (02:20) — E2E findet echte Bugs, M1-15-Schließung grün, M3-OBSERVED eingearbeitet
 
-- **M3-00 Workspace-Stammdaten (0045, F8.2):** DISCOVERED→SPECIFIED, committet
-  `426f025` (Spec 387 Zeilen + ADR 0024 Singleton-Entscheidung); Root löst
-  O1–O5 (eigene Settings-Tabellen je Gruppe, Retention 3650 bestätigt, kein
-  Field-Level-Encryption in M3-00, Nicht-DE blockt Geld-Ausstellung,
-  dokumenttyp-eigene Prefixe). M3-Welle jetzt vollständig spezifiziert:
-  0045 M3-00 → 0046 M3-01.
-- **M3-01 Kimi-Spec-Review:** GO MIT AUFLAGEN (3 P0, 4 P1, 1 P2) — alle
-  geschlossen und committet `eab6373`: Hash-/PII-Scope (issuedSnapshot
-  PII-frei, recipientSnapshot scrub-bar), `creditNoteType`-Spalte,
-  Dokument-`archivedAt`-Achse, Überzahlungs-Semantik, 6-Typen-Zählung,
-  ADR-0023-NOT-VALID-Regel. Review: `docs/parity/REVIEW-KIMI-M3-01-SPEC.md`.
-- **M1-14 Kontakte (0042):** Vollgate als Root-Implementierung verifiziert
-  grün (lint/tsc/contract/depcruise/test/88+5, Build, `db:generate` ohne
-  Drift); 1 depcruise-Verstoß (Modul-Barrel-Import) von Root behoben und
-  re-verifiziert (333 Module, 0 violations). Kimi-Code-Review läuft.
-- **M1-15 Termine/Kalender (0043):** Vollgate grün (180/180 Dateien,
-  1771 passed/1 skipped, 88/88+5/5, Build, keine Drift). FullCalendar-Pin
-  6.1.21 (Major-Konflikt-Doku). Kimi-Code-Review läuft. Root-Entscheid
-  `UNK-M115-02`: Termine NICHT im 24-Monats-Eligibility-Fenster.
-- **Erasure-Ketten-Re-Ankerung dokumentiert:** 0042/0043/0044 pinnen
-  `erase_inactive_lead` per SHA auf post-0041; 0043 (und später 0044) müssen
-  bei der Integration auf den post-Vorgänger-Hash neu verankert werden —
-  Verfahren in `INTEGRATION-PLAN-M1-WAVE-01.md` § „Erasure-Ketten-
-  Re-Ankerung" (committet `907c2b6`). 0041-Snapshot-Reparatur beider Lanes
-  byte-gleich verifiziert.
-- **Lanes:** M2-04 (0044) in Implementierung (Signature-Panel/Share-Link UI
-  aktiv); Chromium-E2E-Specs für M1-14/M1-15 an E2E-Agenten delegiert
-  (Muster M1-11b, schreiben + lokal grün laufen lassen).
+- **M1-14 (0042):** Kimi-Befunde geschlossen, E2E-Specs (4 Szenarien) von Root
+  grün gefahren (4/4, exit 0). Der echte Browser fand **3 Fehler**, die alle
+  Ebenen davor verpasst hatten: (1) Client-Komponente lief über den
+  server-only-Modul-Barrel (HTTP 500) → Contract nach
+  `lib/integrations/contacts/contract.ts` (Hausmuster notes/calendar);
+  (2) Editor schloss nach Erfolg nicht (RSC-Refresh remountet die Form via
+  `key={revision}` bevor der Success-Effekt feuert) → Schließen jetzt über
+  Server-Wahrheit (Revisions-Vorlauf); (3) `<dl>`-Struktur Axe-invalid →
+  restrukturiert. Zusätzlich 3 Spec-Assertions an das echte DOM angepasst.
+  Volllauf deckte danach **2 weitere P1** auf (0042 nicht Legacy-sicher:
+  `ADD COLUMN … NOT NULL` auf befüllten Bestand; Journal-Pins noch auf 0041) —
+  Schließung an Implementierer dispatcht.
+- **M1-15 (0043):** Kimi-Schließung komplett grün (181/181 Dateien,
+  1776 passed/1 skipped, 88/88+5/5, Build, keine Drift; DST-Fix auf
+  Berliner Datumsebene, echter `erase_inactive_lead`-Lauf, categoryId-
+  Validierung, hourCycle h23). E2E fand Dialog-Bug (Strict-Mode-Doppel-Effekt
+  schließt natives `<dialog>` sofort) → Fix (M1-13-Muster) in Arbeit beim
+  Implementierer; dessen E2E-Spec (6 Szenarien) wird danach grün erwartet.
+- **M3-OBSERVED-RECON eingearbeitet** (`179bdac`): Issuing-Details-Felder,
+  Nummern-Templates `Rechnung-{YEAR}-{MONTH}-{NUMBER}` bzw.
+  `CRN/OFC/PO/DN/LE-{YEAR}-{MONTH}-{DAY}-{NUMBER}`, Gutschrift-Enum
+  (Minderleistung/Empfehlungsprämie), KPI-Vormonats-Indikator.
+- **M1-15b Kalender-Scopes** SPECIFIED (Migration 0047; ADR 0025 supersedes
+  ADR 0021 E2; `/calendar`-Route in M1-15b).
+- **M2-04:** Rollenvertrag-Block beim Subagenten aktiv; Strict-DB-Tests und
+  Erasure-E2E danach; Zwischenstand dokumentiert (Guard-Seite = DECIDED,
+  M2-04b für öffentlichen Render nach M2-03b2/issued).
+- Kimi-UI-Nachreview für M1-14/M1-15 nach Schließung geplant (Bundle-Tool
+  `scripts/kimi-review-bundle.sh` committet, fixiert Bracket-Pathspec-Fallen).
+
