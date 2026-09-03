@@ -7,7 +7,8 @@
   F-Nummer ist F1.9 (Root-Entscheidung in M1-15, §Root-Entscheidungen).
 - Architektur: **ADR 0021** (E1/E2 werden in M1-15b aufgelöst/präzisiert) +
   **ADR 0025** (supersedes ADR 0021 E2 formell — Root O2).
-- Basis-Branch: `01b52e9` (M1-12a) — M1-15b baut **additiv** auf M1-15 auf.
+- Basis: **M1-15-Stand (`0043`)** — M1-15b baut **additiv** auf M1-15 auf
+  (M1-15 selbst basiert auf `01b52e9`/M1-12a).
 - Geplante Migration: **`0047_m1_15b_calendar_scopes.sql`** (Root-Arbitrage
   2026-09-03: nächste frei nach `0046`/M3-01; M3-02 rückt auf `0048`).
   Integrationsreihenfolge: nach der M3-Welle.
@@ -17,7 +18,7 @@
 
 | Kürzel | Quelle | Rolle |
 |---|---|---|
-| `OAS` | `/tmp/reonic-openapi.json` (öffentliche OpenAPI `3.11.0`, neu geladen per `curl -sL https://api.reonic.de/rest/v3/openapi`) | maschinenprüfbare Extraktion der Kalender-Pfade/`Calendar`-Schemas/enums |
+| `OAS` | öffentliche OpenAPI **`3.11.0`**, abgerufen **2026-09-03** per `curl -sL https://api.reonic.de/rest/v3/openapi` (Snapshot: `/tmp/reonic-openapi.json`, flüchtig) | maschinenprüfbare Extraktion der Kalender-Pfade/`Calendar`-Schemas/enums |
 | `AMAP` | `docs/parity/REONIC-API-CAPABILITY-MAP.md`, Z. 309–315 | `GET /calendars` (F1.9) |
 | `PORTAL` | `docs/parity/REONIC-PORTAL-AUDIT-MAP.md` (Stand 2026-09-03) | Portal-Kalenderbereich (OBSERVED) |
 | `PCSV` | `docs/parity/reonic-portal-audit/reonic_portal_audit_gesamt.csv` (2026-09-02) | Primärbeleg der Portal-Sicht (Zeilen 8, 22, 56–60, 65) |
@@ -34,14 +35,13 @@
 > API-Call mit Key** — nur die öffentliche OpenAPI-Spec. Keine Reonic-Texte,
 > Assets, PII oder Werte werden übernommen.
 
-### 0.1 Migrationsnummer offen (keine erfundene Nummer)
+### 0.1 Migrationsnummer (RESOLVED)
 
 M1-15 hat `0043` reserviert (parallel zu `0040`=M1-11b, `0041`=M1-13,
-`0042`=M1-14). M1-15b liegt **zeitlich nach der M3-Welle** (Rechnungen
-M3-01, Workspace-Stammdaten M3-00, E-Signatur M2-04). Die konkrete
-Migrationsnummer wird daher **nicht** festgelegt; sie ist eine offene Frage an
-den Root (O1) und wird erst bei der Slice-Einplanung vergeben. Die
-Datenmodell-Skizze (§4) ist bewusst nummernneutral.
+`0042`=M1-14). M1-15b liegt **nach der M3-Welle** und erhält die
+**`0047_m1_15b_calendar_scopes.sql`** (Root-Arbitrage 2026-09-03: nächste frei
+nach `0046`/M3-01; M3-02 rückt auf `0048`). Integrationsreihenfolge: nach der
+M3-Welle (siehe DEC-M115B-11, §15).
 
 ### 0.2 Einordnung (warum M1-15b)
 
@@ -152,8 +152,10 @@ Primärbeleg `PCSV` (read-only-Sweep, keine Aktionen, keine PII übernommen):
   internalOnly, mindestens Admin (Verwaltung), Editor wählt Kalender im
   Termin-Dialog via `appointment.write`. External/Worker/Fremdtenant fail-closed.
 - **Route/Oberfläche:** Projektakte `/w/[workspaceId]/anfragen/[projectId]`
-  (Termin-Dialog mit Kalenderauswahl) + späterer Einstellungsbereich
-  „Kalender“ (Admin). Server-Actions, keine öffentliche REST-API.
+  (Termin-Dialog mit Kalenderauswahl) + workspaceweite Kalenderroute
+  `/w/[workspaceId]/kalender` (Monatsansicht mit Scope-Filter, §10) +
+  Einstellungsbereich „Kalender“ (Admin). Server-Actions, keine öffentliche
+  REST-API.
 - **Notifications:** nur lokale `aria-live`; keine Mail/Push (Erinnerung und
   Google-/MS-Sync sind Nichtziele).
 - **Loading/Empty/Error/Success/Disabled/Denied:** echte getrennte Zustände;
@@ -201,6 +203,7 @@ Primärbeleg `PCSV` (read-only-Sweep, keine Aktionen, keine PII übernommen):
 | `membership_id` | uuid null | `Calendar.userId` → `membership` (Scope `user`; Owner) |
 | `team_id` | uuid null | `Calendar.teamId` → `team` (Scope `team`; **Teams noch nicht gebaut** → `UNKNOWN`/strukturell vorbereitet) |
 | `active` | boolean not null default true | `Calendar.active` |
+| `revision` | integer not null default 1 | CAS-Anker (Hausmuster; jede Mutation +1) |
 | `created_by` | uuid not null | WMEE (API hat keine `createdBy`) |
 | `created_at` | timestamptz not null default now | WMEE |
 | `updated_at` | timestamptz not null default now | WMEE |
@@ -210,15 +213,16 @@ Constraints:
 - `unique(workspace_id, id)`; `unique(workspace_id, lower(btrim(name)))` (Namensduplikat je Workspace).
 - `foreignKey (workspace_id) → workspace.id`; `foreignKey (workspace_id, category_id) → calendar_category(workspace_id, id) ON DELETE SET NULL`.
 - `foreignKey (workspace_id, membership_id) → membership(workspace_id, id) ON DELETE RESTRICT`.
-- `check calendar_type in ('team','tenancy','user','client')`; `check name` 1–200, NFKC, kein Steuerzeichen; `check color` null oder `^#[0-9a-fA-F]{6}$`.
+- `check calendar_type in ('team','tenancy','user','client')`; `check name` 1–200, NFKC, kein Steuerzeichen; `check color` null oder `^#[0-9a-fA-F]{6}$`; `check revision between 1 and 2147483647`.
 - **Scope-Invarianten (DECIDED):** `calendar_type='user' ⇒ membership_id is not null and team_id is null`; `calendar_type='team' ⇒ team_id is not null and membership_id is null`; `calendar_type='tenancy' ⇒ membership_id is null and team_id is null`; `calendar_type='client' ⇒ membership_id is null and team_id is null` (Client = Nichtziel, strukturell erlaubt).
 - RLS `FORCE ROW LEVEL SECURITY` + Scope-Policies (§7).
 
 Indexe:
 
 - `calendar_ws_type_active_idx` auf `(workspace_id, calendar_type, active, name, id)` — Kalenderauswahl.
+- `calendar_ws_membership_user_uniq` **partial unique** auf `(workspace_id, membership_id) WHERE calendar_type = 'user'` — 1:1-Idempotenz der Auto-Provisionierung.
 - `calendar_ws_membership_idx` auf `(workspace_id, membership_id)` (User-Scope).
-- `calendar_ws_team_idx` auf `(workspace_id, team_id)` (Team-Scope, vorbereitet).
+- `calendar_ws_team_idx` auf `(workspace_id, team_id)` (Team-Scope, vorbereitet); bei Team-Einführung analoger partial unique `(workspace_id, team_id) WHERE calendar_type = 'team'`.
 
 > **`team_id`-FK:** Es existiert derzeit **keine** `team`-Tabelle (UNK-F1-01:
 > M1-09 nutzt ausschließlich direkte Memberships; Teams sind nicht gebaut). Die
@@ -240,10 +244,16 @@ Indexe:
 - Index `project_appointment_ws_project_range_idx` (§M1-15) bleibt; zusätzlich
   `project_appointment_ws_calendar_range_idx` auf `(workspace_id, calendar_id,
   start_at, end_at, id)` für die kalenderbasierte Range-Query.
-- **Backfill (Implementierungsdetail, ESTIMATE):** Bestands-Termine aus M1-15
-  (falls vor M1-15b bereits gebaut) erhalten beim Einführen von `calendar_id`
-  einen Zielkalender (Default = persönlicher Kalender des `created_by` bzw.
-  Unternehmenskalender) — exakte Regel beim Root (O4).
+- **Backfill (RESOLVED, DEC-M115B-14 + DEC-M115B-16):** Migration `0047` legt
+  zuerst die `calendar`-Tabelle an und provisioniert **genau einen
+  persönlichen Kalender je `created_by`-Membership** (`ensure_personal_calendar`
+  über alle Bestands-Mitglieder). Bestands-Termine aus M1-15 erhalten dann
+  `calendar_id` = persönlicher Kalender ihres `created_by` (sonst
+  Unternehmenskalender). **Die Kategorie-Zuordnung der Bestands-Termine
+  verwirft sich explizit** (`calendar.category_id` bleibt `NULL`, die alte
+  `appointment.category_id` wird gedroppt) — `ACCEPTED_EXCEPTION`, begründet
+  durch den nachweislich **leeren** Kategorie-Bestand von `0043` (M1-15 hat
+  kein Kategorie-CRUD, Kategorien starten leer).
 
 ### 4.3 Minimiertes DTO
 
@@ -267,6 +277,9 @@ archived --reactivate--> active               [DECIDED: Reaktivierung erlaubt]
   bei Vorlagen/Kategorien, das `active`-Flag ist API-belegt).
 - Ein archivierter Kalender ist in der Kalenderauswahl ausgeblendet; bestehende
   Termine bleiben sichtbar (kein Kaskaden-Löschen).
+- **Offboarding (DEC-M115B-18):** Membership-Revoke ⇒ der zugehörige
+  `user`-Kalender wird `active=false` gesetzt; `membership_id` bleibt
+  historisch erhalten (der FK wird erst bei Workspace-Löschung geräumt).
 - Termine behalten ihre M1-15-Zustandsachse (create/update/delete), zusätzlich
   kalendergebunden.
 
@@ -276,20 +289,21 @@ Vertrag `lib/integrations/calendar/contract.ts` (Erweiterung des M1-15-Vertrags;
 Service `modules/calendar/` — Amendment-Konvention aus M1-15 §6):
 
 - `create_calendar({ name, color?, categoryId?, type })` → Insert; `active=true`;
-  `created_by=actor`; nur Admin (Scope-Invarianten §4.1). Event
+  `revision=1`; `created_by=actor`; nur Admin (Scope-Invarianten §4.1). Event
   `calendar.created` + `audit_log` in derselben Tx.
-- `update_calendar(calendarId, expectedRevision?, patch)` → allowlistet
-  `name`/`color`/`categoryId`/`active`; Event `calendar.updated`/`calendar.archived`.
-  (Revision/CAS optional — DECIDED: Kalender sind Stammdaten mit niedriger
-  Änderungsfrequenz; CAS wie M1-14-`contact` nur wenn günstig, sonst
-  `updated_at`-basiert → O5.)
+- `update_calendar(calendarId, expectedRevision, patch)` → **CAS auf
+  `expectedRevision`** (Pflicht); allowlistet `name`/`color`/`categoryId`/
+  `active`; `revision = revision + 1`, `updated_at = now`; Event
+  `calendar.updated`/`calendar.archived`. `0` Zeilen = `conflict`.
 - `list_visible_calendars(actor)` → Kalenderauswahl (Scope-gefärbt, §7) für den
   Termin-Dialog.
 - `ensure_personal_calendar(membershipId)` → lazy Auto-Provisionierung des
-  User-Standardkalenders (Idempotenz über `unique(workspace_id, membership_id)`
-  auf `type='user'`).
+  User-Standardkalenders. **Namensschema (DEC-M115B-17):** `name = „Persönlich —
+  <Membership-Anzeigename>“`; Idempotenz/1:1 über partial unique
+  `(workspace_id, membership_id) WHERE calendar_type='user'` (§4.1).
 - `create_appointment` (M1-15) erhält zusätzlich Pflicht-Parameter `calendarId`
-  (Validierung: `calendar_id` muss für den Actor sichtbar sein).
+  (Validierung: `calendar_id` muss für den Actor **sichtbar** und
+  **`active=true`** sein; andernfalls `invalid`).
 
 Fehler: `invalid`, `not_found`, `conflict`, `denied`, `unauthenticated`; keine
 Existenz-/Scope-Leaks.
@@ -314,6 +328,12 @@ M1-09/ROLE-PERMISSION-MATRIX; exakte Reonic-Regeln `UNKNOWN`):
   `user`-Kalender; Admin sieht alle internen Kalender (decided). External/
   Worker/Fremdtenant/revoked bleiben in RLS, Service und HTML fail-closed.
 - `membership_id`-Owner ist im `user`-Scope stets der aktive Actor (bzw. Admin).
+- **DSGVO/Beschäftigtendatenschutz (DEC-M115B-19):** Die Admin-Sicht auf
+  persönliche Kalender ist eine bewusste, begründete Abweichung (Disposition/
+  Vertretung im PV-Betrieb) und bleibt auf Kalender-Metadaten
+  (`name`/`color`/`active`/Termin-Zeitfenster) beschränkt; Termin-**Inhalte**
+  (`description`/`location`) privater Kalender werden in der Admin-Ansicht
+  redigiert. Offboarding folgt §5 (DEC-M115B-18).
 
 ## 8. Event-, Audit- und Activity-Vertrag
 
@@ -325,25 +345,35 @@ M1-09/ROLE-PERMISSION-MATRIX; exakte Reonic-Regeln `UNKNOWN`):
   Payload bleibt minimal (`appointmentId`, `projectId`, `revision`, optional
   `calendarId` — **kein** Titel/Ort/Zeitfenster).
 - `domain_events_project_activity_idx` bleibt unverändert (keine neuen
-  `project.*`-Eventtypen durch M1-15b); ein neuer Index
-  `domain_events_calendar_activity_idx` auf `(workspace_id, aggregate_id,
-  occurred_at desc)` für `aggregate_type='calendar'` ist optional (Kalender-
-  Aktivität wird nicht in der Projektaktivität gerendert).
+  `project.*`-Eventtypen durch M1-15b). **DEC-M115B-20:** Ein separater
+  `domain_events_calendar_activity_idx` wird in M1-15b **nicht** angelegt
+  (Kalender-Aktivität wird nicht in der Projektaktivität gerendert; bei Bedarf
+  späterer Reporting-Slice).
 
 ## 9. Lock-, Race- und Erasure-Vertrag
 
-- **Lock-Ordnung:** Kalender-Mutationen sperren zuerst den Workspace-Kontext
-  (bzw. `calendar` `FOR UPDATE`), dann `calendar_category`/`membership` —
-  analog bestehender Stammdaten-Muster. Termin-Mutationen behalten die
-  M1-15-Ordnung Project `FOR KEY SHARE` → Calendar `FOR KEY SHARE` →
+- **Lock-Ordnung (eindeutig):** (1) `ensure_personal_calendar` ist ein reines
+  Insert unter partial-unique-Schutz (`calendar_ws_membership_user_uniq`) und
+  hängt an keinem Project-Lock; Parallelaufrufe serialisiert der Unique-Index
+  (`ON CONFLICT DO NOTHING` → bestehenden Kalender lesen). (2)
+  Kalender-Mutationen (`create/update/archive`) sperren `calendar FOR UPDATE`
+  (bei Create zusätzlich `calendar_category`), dann ggf. `membership`.
+  (3) Termin-Mutationen behalten die M1-15-Ordnung
+  Project `FOR KEY SHARE` → Calendar `FOR KEY SHARE` →
   Appointment-Insert/Update/Delete.
 - **Race:** Kalender-`unique(workspace_id, name)` verhindert Namensduplikate;
-  Termin-`expectedRevision`-CAS bleibt.
+  Kalender-`revision`-CAS (paralleles Rename/Archive → genau ein Schreiber
+  gewinnt, der andere `conflict`); Termin-`expectedRevision`-CAS bleibt.
+  **Archivierungs-Race (DEC-M115B-21):** `create_appointment` auf
+  `active=false`-Kalender ist `invalid`; im Race gewinnt die Archivierung —
+  ein danach commitender Termin-Create erhält `invalid`, kein Teilstand.
 - **Erasure:** `calendar` und `calendar_category` sind **workspace-Stammdaten
   ohne Kontakt-PII** → **außerhalb** des `ErasureGraphIds`. Termine bleiben als
   `appointmentIds` im Graphen (`UNK-M115-02`, Root 2026-09-03: Termine werden
   bei der Kontakt-Erasure entfernt, kein Fenster-Eintrag). Das Löschen der
-  Termine kaskadiert **nicht** auf den Kalender.
+  Termine kaskadiert **nicht** auf den Kalender. **Die Kontakt-Erasure bleibt
+  damit unberührt;** die User-/Membership-Löschung folgt dem Offboarding-Pfad
+  (§5, DEC-M115B-18), nicht dem Kontakt-Erasure-Graphen.
 - Eine während der Termin-Mutation committende Erasure gewinnt (M1-15 §9).
 
 ## 10. UI-Vertrag (WMEE-Design)
@@ -352,13 +382,18 @@ M1-09/ROLE-PERMISSION-MATRIX; exakte Reonic-Regeln `UNKNOWN`):
   `list_visible_calendars`), Default = persönlicher Kalender des Actors (bzw.
   Workspace-Default); Kalenderfarbe als kleiner Farbpunkt **plus** Name
   (Icon + Text, kein Farbsignal-Only).
+- **Workspaceweite Kalenderroute `/w/[workspaceId]/kalender` (DEC-M115B-13):**
+  **Monatsansicht** (FullCalendar `daygrid`) mit **Scope-Filter** („Alle“ +
+  einzelne sichtbare Kalender, §7) und **Kalender-Einfärbung**
+  (`calendar.color`). **Nichtziel:** Planungsmodus, Wochen-/Tages-/Agenda-
+  Ansichten (U3 bleibt UNKNOWN), Drag&Drop-Resize.
 - **FullCalendar-Einfärbung:** Event-Farbe aus `calendar.color` (statt
   `appointment_type`); `appointment_type` bleibt als Icon/Text-Label sichtbar.
   `color=null` → neutraler WMEE-Wert.
-- **Admin-Verwaltung (späterer Einstellungsbereich „Kalender“):** Listen-
-  Ansicht je Tab (persönlich/Unternehmen/Benutzer), „Kalender erstellen“
-  (Unternehmenskalender), Umbenennen/Archivieren; Google-/MS-Sync-Schaltflächen
-  **nicht** gebaut (Nichtziel).
+- **Admin-Verwaltung (Einstellungsbereich „Kalender“):** Listen-Ansicht je Tab
+  (persönlich/Unternehmen/Benutzer), „Kalender erstellen“ (Unternehmenskalender),
+  Umbenennen/Archivieren; Google-/MS-Sync-Schaltflächen **nicht** gebaut
+  (Nichtziel).
 - Responsive 320/375/390/768/1024/1440/1920, 400-%-Reflow, Touchziele ≥ 44 px,
   `aria-live="polite"`, voller Tastaturpfad, Axe.
 
@@ -366,13 +401,13 @@ M1-09/ROLE-PERMISSION-MATRIX; exakte Reonic-Regeln `UNKNOWN`):
 
 | Schicht | Fälle |
 |---|---|
-| Unit/Contract | `calendar`-Schema (8 Felder, `type`-Enum, `color`-Hex, Scope-Invarianten user/team/tenancy/client), `calendar-item.v1`-Minimierung (verbietet `workspace_id`/Fremd-IDs), `project-appointment-item.v1` mit `calendarId` |
-| DB | `calendar`-Migration additiv; `unique(workspace_id,name)`; Scope-Invarianten (user⇒membership, team⇒team, tenancy⇒keins); `calendar_id`-FK `RESTRICT`; `category_id`-Migration (Kategorie am Kalender, nicht am Termin) |
-| RLS | Tenancy-Kalender für Viewer/Editor/Admin; User-Kalender nur Owner+Admin; External/Worker/Fremdtenant/revoked fail-closed (auch ohne Event/Audit) |
-| Race | Namensduplikat-Konflikt; Termin-CAS bleibt; Kalender-Archivierung vs. paralleler Termin-Create |
+| Unit/Contract | `calendar`-Schema (8 Felder + `revision`, `type`-Enum, `color`-Hex, Scope-Invarianten user/team/tenancy/client), `calendar-item.v1`-Minimierung (verbietet `workspace_id`/Fremd-IDs), `project-appointment-item.v1` mit `calendarId`; `update_calendar`-CAS (erwartete Revision) |
+| DB | `calendar`-Migration additiv; `unique(workspace_id,name)`; Scope-Invarianten (user⇒membership, team⇒team, tenancy⇒keins); partial unique `(workspace_id, membership_id) WHERE type='user'`; `calendar_id`-FK `RESTRICT`; `category_id`-Migration (Kategorie am Kalender, nicht am Termin); **Legacy-Migrationstest:** Creator mit ≥2 `category_id`-Terminen → Termine verlustfrei, `calendar.category_id = NULL` (ACCEPTED_EXCEPTION) |
+| RLS | Tenancy-Kalender für Viewer/Editor/Admin; User-Kalender nur Owner+Admin; **Editor sieht fremden User-Kalender nicht**; **Client-Scope-Zeilen fail-closed (default deny)**; External/Worker/Fremdtenant/revoked fail-closed (auch ohne Event/Audit) |
+| Race | Namensduplikat-Konflikt; **Kalender-CAS: paralleles Rename/Archive → einer gewinnt, anderer `conflict`**; **zwei parallele `ensure_personal_calendar` → genau ein Kalender**; Termin-CAS bleibt; **Archivierung vs. paralleler Termin-Create → Archivierung gewinnt, Create danach `invalid`** |
 | Erasure | Kontakt-Erasure löscht Termine (`appointmentIds`), lässt `calendar`/`calendar_category` unberührt; Tombstone-Hash stabil |
-| Chromium E2E | Editor erstellt Termin mit Kalenderauswahl; Admin legt/archiviert Kalender; Viewer sieht nur Tenancy-Kalender; External abgewiesen; Axe + Tastatur + 375 px |
-| A11y | Kalenderauswahl-Dropdown (Tastatur/Screenreader), Icon+Text (Farbpunkt+Name), 44-px-Touchziele |
+| Chromium E2E | Editor erstellt Termin mit Kalenderauswahl; Admin legt/archiviert Kalender; Viewer sieht nur Tenancy-Kalender; **`/kalender`-Route: Monatsansicht + Scope-Filter „Alle/einzeln“ rendert**; External abgewiesen; Axe + Tastatur + 375 px |
+| A11y | Kalenderauswahl-Dropdown (Tastatur/Screenreader), Scope-Filter der Route (Tastatur/Screenreader), Icon+Text (Farbpunkt+Name), 44-px-Touchziele |
 
 ## 12. Abschlussgates
 
@@ -387,6 +422,8 @@ M1-09/ROLE-PERMISSION-MATRIX; exakte Reonic-Regeln `UNKNOWN`):
 
 - **Gmail-/Microsoft-/Google-Workspace-Kalender-Sync** (Portal-belegt, aber
   Sync-/Integrations-Slice).
+- **Planungsmodus, Wochen-/Tages-/Agenda-Ansichten** der Kalenderroute
+  (U3 bleibt UNKNOWN; M1-15b liefert nur die Monatsansicht mit Scope-Filter).
 - **`Client`-Scope / Kundenportal-Kalender / Buchungsseite** (F10).
 - **Team-Scope fachlich** (hängt an der noch nicht gebauten `team`-Tabelle;
   strukturell vorbereitet).
@@ -415,9 +452,15 @@ M1-09/ROLE-PERMISSION-MATRIX; exakte Reonic-Regeln `UNKNOWN`):
 | `DEC-M115B-10` | `team_id` strukturell vorbereitet, FK erst mit Team-Slice (UNK-F1-01) | §4.1 |
 | `DEC-M115B-11` | Migration **0047**, Integrationsreihenfolge nach M3-Welle; M3-02 rückt auf 0048 (Root O1) | Header |
 | `DEC-M115B-12` | ADR 0025 supersedes ADR 0021 E2 formell (Root O2) | ADR 0025 |
-| `DEC-M115B-13` | Workspaceweite `/calendar`-Route („Alle/vier Kalender", Planungsmodus) ist **Teil von M1-15b** — kein M1-15c (Root O3) | §10 |
+| `DEC-M115B-13` | Workspaceweite `/calendar`-Route (Monatsansicht + Scope-Filter „Alle/einzeln“) ist **Teil von M1-15b** — kein M1-15c (Root O3); Planungsmodus bleibt Nichtziel | §10 |
 | `DEC-M115B-14` | Backfill: Bestands-Termine → persönlicher Kalender des `created_by` (Auto-Provisionierung zuerst), sonst Unternehmenskalender — ESTIMATE bestätigt (Root O4) | §4.2 |
-| `DEC-M115B-15` | `calendar` erhält `revision`-CAS (Hausmuster; billig, schützt Rename/Archive vor Lost Updates — Root O5) | §4.1 |
+| `DEC-M115B-15` | `calendar` erhält `revision`-CAS (Hausmuster; billig, schützt Rename/Archive vor Lost Updates — Root O5) | §4.1/§6 |
+| `DEC-M115B-16` | Backfill: Kategorie-Zuordnung der Bestands-Termine verwirft sich (`calendar.category_id = NULL`) — `ACCEPTED_EXCEPTION` (0043-Kategorie-Bestand leer) | §4.2 |
+| `DEC-M115B-17` | Auto-Kalender-Namensschema: „Persönlich — <Membership-Anzeigename>“; globaler Namens-Unique bleibt | §6 |
+| `DEC-M115B-18` | Offboarding: Membership-Revoke ⇒ User-Kalender `active=false`, `membership_id` bleibt historisch | §5 |
+| `DEC-M115B-19` | Admin-Sicht auf persönliche Kalender bleibt (Disposition/Vertretung), auf Metadaten beschränkt; Inhalte redigiert (Beschäftigtendatenschutz) | §7 |
+| `DEC-M115B-20` | `domain_events_calendar_activity_idx` wird in M1-15b **nicht** angelegt | §8 |
+| `DEC-M115B-21` | Termin-Create auf `active=false`-Kalender = `invalid`; im Archivierungs-Race gewinnt die Archivierung | §6/§9 |
 
 ### UNKNOWN
 

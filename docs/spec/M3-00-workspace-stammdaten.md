@@ -68,14 +68,15 @@ gültige Ausstellerdaten zu erzeugen.
   Textvorlagen · Nummerierung.
 
 **Gap / Grenzen:**
-- Die Unterseite wurde **nur als Route + Feldgruppen-Label** erfasst; konkrete
-  Feldnamen, Validierungen, Nummernformate und Textvorlagen-Inhalte wurden
-  **nicht ausgewertet** (`PDEEP` §7 „OFFEN“; `ACSV` „Formularfelder, Speichern“
-  ohne Feldliste).
+- Feldnamen und Pflichtfelder sind inzwischen **OBSERVED**
+  (`M3-UNKNOWN-RECON.md` §1a–1d: Name*/Email*/Land*, USt-IdNr, Behörde,
+  Registernummer, Adresse, Buchhaltungsmethode, Bankkonto, Textvorlagen,
+  Nummern-Templates) — nur die exakten **Validierungsregeln** bleiben
+  UNKNOWN → eigene Regeln sind ESTIMATE.
 - „Textvorlagen“ ist beobachtet, aber **Nichtziel** dieses Slices (Templates →
   Folgeslice, analog Brief-Templates in M3-01 §13).
-- Exakte Reonic-Nummernformate/-Präfixe und die exakte Aufbewahrungsfrist sind
-  **UNKNOWN**; eigene Defaults sind DECIDED/ESTIMATE.
+- Nummernformate sind **RESOLVED** (OBSERVED-Templates, DECIDED 4); die exakte
+  Aufbewahrungsfrist bleibt **UNKNOWN** (Default 3650 = ESTIMATE).
 
 ---
 
@@ -92,21 +93,28 @@ Error/Success/Disabled/Permission-Denied (§7).
 
 - **F-Nr:** F8.2 · **Modul:** `modules/invoicing/` (Settings-Dienst) ·
   **Route:** `/w/{workspaceId}/einstellungen/rechnungsstellung` (WMEE-Design)
-- **Akteur/Rolle:** Admin/Editor+ mit `invoicing.write` (Issuing-Details-Berechtigung)
+- **Akteur/Rolle:** Admin/Editor+ mit `invoicing.write` +
+  `invoicing.issuing_details.write`
 - **JTBD:** rechtlich gültige Ausstellerdaten workspaceweit hinterlegen und pflegen
 - **Trigger:** Einstellungsseite öffnen; „Speichern“
 - **Vorbedingungen:** Workspace-Membership aktiv
 - **Happy Path:** Stammdaten (Firmenname, Adresse, Land, Zahlungsdaten) setzen → gespeichert, `revision+1`
 - **Varianten:** Erst-Anlage (Singleton-Insert) vs. Update (CAS); Land-Enum 6 Werte
-- **Eingabefelder:** Firmenname (Pflicht), Rechtsform (optional), Steuernummer/USt-ID
-  (optional), Adresse (Zeile1/PLZ/Ort Pflicht, Zeile2 optional), Land (Pflicht,
-  Enum), Kontoinhaber/IBAN/BIC (Pflicht für Geld-Dokumente)
-- **Validierungen:** Firmenname 1–160 non-empty; Land ∈ {DE,AT,CH,FR,UK,JE};
-  IBAN-Format 1–34, BIC 8–11 (sofern gesetzt); Textlängen-Obergrenzen
+- **Eingabefelder:** Firmenname (Pflicht), E-Mail (Pflicht, OBSERVED),
+  Behörde (optional, OBSERVED „Behörde“ — nicht „Rechtsform“),
+  Registernummer (optional), USt-IdNr. (optional, `companyTaxId`), Adresse
+  (Zeile1/PLZ/Ort Pflicht, Zeile2 optional), Land (Pflicht, Enum),
+  Buchhaltungsmethode (periodengerecht|zahlungsbasiert),
+  Kontoinhaber/IBAN/BIC (Pflicht für Geld-Dokumente)
+- **Validierungen:** Firmenname 1–160 non-empty; E-Mail 3–254 mit Format-CHECK;
+  Land ∈ {DE,AT,CH,FR,UK,JE}; IBAN MOD-97-Prüfung + Länge 15–34 (DECIDED,
+  ESTIMATE); BIC 8 **oder** 11 Zeichen (SEPA: BIC optional, sofern gesetzt
+  gültig); Textlängen-Obergrenzen
 - **Zustände:** — (Einstellungswerte; `revision` monoton steigend)
 - **Erlaubte Übergänge:** — (Update erzeugt neue Revision)
 - **Persistente Nebenwirkungen:** `workspace_invoicing_settings` (Upsert, CAS)
-- **Berechtigung:** `invoicing.write` + Issuing-Details-Berechtigung
+- **Berechtigung:** `invoicing.write` + `invoicing.issuing_details.write`
+  (in M3-00 selbst definiert, von M3-01 §10 importiert — Kimi-P1-4)
 - **Tenant-Scope:** `workspaceId` (Singleton je Workspace)
 - **API-Operationen:** `getInvoicingSettings`, `upsertInvoicingSettings`
 - **Datenentitäten:** `workspace_invoicing_settings`
@@ -139,7 +147,7 @@ Error/Success/Disabled/Permission-Denied (§7).
   höchstens je einmal die Datums-Platzhalter); keine unbekannten Platzhalter
 - **Zustände:** — · **Übergänge:** — (Update)
 - **Persistente Nebenwirkungen:** `workspace_document_number_format` (Upsert je Typ)
-- **Berechtigung:** `invoicing.write` · **API-Operationen:** `getNumberFormats`, `upsertNumberFormat`
+- **Berechtigung:** `invoicing.write` · **API-Operationen:** `getNumberFormats`, `upsertNumberFormat(workspaceId, type, formatTemplate)`
 - **Datenentitäten:** `workspace_document_number_format`
 - **Audit Events:** `workspace_document_number_format.updated`
 - **Evidence:** `M3-UNKNOWN-RECON.md` §1d (OBSERVED Formate + Platzhalter) ·
@@ -175,11 +183,14 @@ Error/Success/Disabled/Permission-Denied (§7).
 - **Happy Path:** Stammdaten vollständig → Ausstellung läuft; unvollständig → fail-closed `PreconditionConflict`
 - **Varianten:** Geld-Dokumente zusätzlich Zahlungsdaten-Pflicht; Brief (kein Betrag) braucht kein IBAN
 - **Eingabefelder:** — (liest Settings)
-- **Validierungen:** `companyName`, `companyAddressLine1`, `companyPostalCode`,
-  `companyCity`, `companyCountry` Pflicht; IBAN Pflicht für Geld-Dokumente
+- **Validierungen:** `companyName`, `companyEmail`, `companyAddressLine1`,
+  `companyPostalCode`, `companyCity`, `companyCountry` Pflicht; IBAN Pflicht
+  für Geld-Dokumente; **Land-Gate (DECIDED 11):** `companyCountry` ≠ `DE`
+  → `PreconditionConflict` für Geld-Dokumente (Brief bleibt möglich)
 - **Zustände:** — · **Übergänge:** — (Guard, kein Zustandswechsel)
 - **Persistente Nebenwirkungen:** keine (reine Prüfung)
-- **Berechtigung:** Issuing-Details-Berechtigung (M3-01 §10)
+- **Berechtigung:** `invoicing.issuing_details.write` (Kimi-P1-4: M3-00
+  definiert den Key; M3-01 §10 importiert ihn)
 - **API-Operationen:** intern `assertIssuingDetailsComplete(workspaceId, documentType)`
 - **Datenentitäten:** `workspace_invoicing_settings` (Read)
 - **Audit Events:** (Ablehnung als `audit_log` allowed=false, Muster `auditLog`)
@@ -208,8 +219,9 @@ Unique wie bestehende Muster).
    - `workspaceId` uuid **PK** → `workspace.id`
    - `companyName` text not null (1–160) — OBSERVED Pflicht „Name des Unternehmens“
    - `companyEmail` text not null (3–254, E-Mail-CHECK) — OBSERVED Pflicht „Email“
-   - `companyLegalForm` text nullable (1–80) — OBSERVED „Behörde“ (Bezeichnung der
-     zuständigen Behörde; nicht „Rechtsform“ — Feldname angepasst: `companyAuthority`)
+   - `companyAuthority` text nullable (1–80) — OBSERVED „Behörde“ (Bezeichnung
+     der zuständigen Behörde; Kimi-P1-6: Spaltenname final, kein
+     „companyLegalForm“-Rest)
    - `companyRegisterNumber` text nullable (1–64) — OBSERVED „Registernummer“
    - `companyTaxId` text nullable (1–64) — OBSERVED „USt-IdNr.“, sensitive
    - `companyAddressLine1` text not null (1–160)
@@ -250,6 +262,22 @@ Unique wie bestehende Muster).
      `DN-{YEAR}-{MONTH}-{DAY}-{NUMBER}` /
      `LE-{YEAR}-{MONTH}-{DAY}-{NUMBER}`
 
+**Counter-/Seeding-Vertrag (Kimi-P1-3, DECIDED):**
+- `counter` ist **global monoton pro `(workspaceId, type)`** und wird **nie
+  zurückgesetzt** (GoBD-Eindeutigkeit); M3-01 inkrementiert atomar per
+  `UPDATE … RETURNING` in der Issue-Transaktion.
+- **Seeding:** die 6 Default-Zeilen werden beim ersten `getNumberFormats`
+  bzw. ersten Settings-Öffnen **idempotent** angelegt
+  (`INSERT … ON CONFLICT DO NOTHING` mit den OBSERVED-Defaults); kein
+  Migrations-Backfill für Bestands-Workspaces nötig — M3-01 fällt bei
+  fehlender Zeile auf den OBSERVED-Default zurück.
+- **Platzhalter-Rendering (ESTIMATE gepinnt):** `{YEAR}` vierstellig,
+  `{MONTH}`/`{DAY}` zweistellig zero-padded (09), `{NUMBER}` ungepaddete
+  Ganzzahl; das „Abschlagsrechnung“-Template wird nur als Doku-Notiz für den
+  Teilrechnungs-Folgeslice mitgeführt (kein 7. `type`-Wert, kein CHECK).
+- `workspace_document_number_format` ohne `revision`: **Last-Write-Wins**
+  ist explizit DECIDED (Stammdaten niedriger Frequenz; CAS entfällt bewusst).
+
 > **Hinweis Typanzahl:** M3-01 sprach von „7 Dokumenttypen“ = 6 Dokumenttypen +
 > Dokumentgruppen-Übersicht. Dokumentgruppen besitzen **keine** eigene
 > Nummernserie; daher 6 `type`-Werte. Skizze, kein Schema-Contract — exakter
@@ -268,7 +296,10 @@ fortlaufender `counter`; M3-01 §6); das M3-00-Default ist die Quelle.
   im Minimierten DTO, nur bei Issuing-Details-Berechtigung vollständig).
 - `upsertInvoicingSettings(workspaceId, input, baseRevision)` → Insert bei
   fehlender Zeile, sonst CAS-Update (`revision = baseRevision`); Konflikt → `Conflict`.
-- `getNumberFormats(workspaceId)` / `upsertNumberFormat(workspaceId, type, prefix, padding)`.
+- `getNumberFormats(workspaceId)` / `upsertNumberFormat(workspaceId, type, formatTemplate)`.
+  *(Kimi-P1-2: Signatur auf das Template-Modell umgestellt; das frühere
+  Präfix/Padding-Design ist superseded — `M201`/`offer_number_series` ist
+  kein Muster mehr für diese Tabelle.)*
 - intern `assertIssuingDetailsComplete(workspaceId, documentType)` → bool/`PreconditionConflict`.
 
 ---
@@ -336,7 +367,7 @@ fortlaufender `counter`; M3-01 §6); das M3-00-Default ist die Quelle.
 | Kürzel | Capability | Art | Prüfung | Gate |
 |---|---|---|---|---|
 | `M300-01` | Issuing-Details pflegen | Unit/Contract/DB | Insert+Update; Land-Enum; Längengrenzen; Zahlungsdaten gemeinsam-null | `M300-DB-01` |
-| `M300-02` | Nummernserien-Defaults | DB/Contract | 6 Typen; Präfix-Regex; Padding 1–9; Defaults | `M300-DB-02` |
+| `M300-02` | Nummernserien-Defaults | DB/Contract | 6 Typen; Template-Validierung (`{NUMBER}` Pflicht, unbekannte/doppelte Datums-Platzhalter, Länge 1–120); OBSERVED-Defaults | `M300-DB-02` |
 | `M300-03` | GoBD-Retention-Default | Unit/DB | Bereich 1…36500; Default 3650 | `M300-UNIT-01` |
 | `M300-04` | Precondition-Gate | Unit/DB | vollständig → ok; fehlende Pflichtfelder → `PreconditionConflict`; Geld vs. Brief (IBAN) | `M300-DB-03` |
 | `M300-05` | RLS/Rechte | RLS | Viewer read-only; External/Worker/Fremdtenant fail-closed; `invoicing.write`-Gate | Rollenprobe |
@@ -429,5 +460,7 @@ unabhängiger Review ohne offene P0–P2. **Visual-Gate** `INCONCLUSIVE`.
    Field-Level-Encryption = SECURITY-Folgeslice.
 4. **O4 — Land-Gate-Wirkung:** RESOLVED → Nicht-DE blockt Geld-Dokument-
    Ausstellung fail-closed bis Steuer-Folgeslice; Brief bleibt möglich.
-5. **O5 — Nummernserien-Default:** RESOLVED → dokumenttyp-eigene Prefixe
-   `RE/GU/AB/BE/LS/BR`; `offer_number_series` (ANG) unangetastet.
+5. **O5 — Nummernserien-Default:** RESOLVED, dann **SUPERSEDED**
+   (Kimi-P1-1): die frühere Entscheidung „dokumenttyp-eigene Prefixe
+   `RE/GU/AB/BE/LS/BR`“ ist durch die OBSERVED-Templates ersetzt
+   (DECIDED 4/12); `offer_number_series` (ANG) bleibt unangetastet.
