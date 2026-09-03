@@ -1,7 +1,15 @@
 # Reonic REST API v3 — API-Capability-Map
 
 Stand: 2026-09-02 · Spec-Version: **3.11.0** · Quelle: `https://api.reonic.de/rest/v3/openapi`
-Klassifikation: **DOCUMENTED (öffentliche OpenAPI-Spec)**. Es wurde **kein** API-Call mit einem Key ausgeführt; reine Spec-Analyse. Keine Reonic-Texte, Assets oder Werte werden als Produktinhalte übernommen.
+Klassifikation: **DOCUMENTED (öffentliche OpenAPI-Spec)** + **OBSERVED (Live-Sweep 2026-09-03, read-only)**.
+Es wurde kein API-Call mit einem Key ausgeführt, der Daten schreibt; alle Live-Calls waren GET.
+Keine Reonic-Texte, Assets oder Werte werden als Produktinhalte übernommen — nur Struktur-Keys/Typen als Capability-Evidenz.
+
+**Live-Sweep 2026-09-03 (nur GET, Compliance-Gate offen):** 63 GETs geprobt —
+26 List-Endpunkte mit echten Daten (u. a. 93 Residential Projects, 188 Kontakte,
+337 Komponenten, 3010 Aktivitäten, 47 Kanban-Spalten, 6 Boards, 8 Lead Sources),
+23/24 Detail-Endpunkte mit echten IDs (200). Einzige Scope-Lücke: `GET /commercialProjects` = 403 mit diesem Key.
+Details: `docs/parity/reonic-api-live/LIVE-SWEEP.md`, `LIVE-SWEEP-PASS2.md`, `LIVE-SWEEP-PASS3.md`.
 
 Zweck: Mapping jedes dokumentierten v3-Endpunkts auf die F-Nummern des kanonischen
 Modulkatalogs (`docs/blaupause/01-modulkatalog.md`), damit die Paritäts-Milestones
