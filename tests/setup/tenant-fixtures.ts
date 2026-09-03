@@ -1649,6 +1649,142 @@ async function fixtureOfferIssuanceGraph(tx: TenantTx, wsId: string): Promise<vo
   }
 }
 
+// M2-04: erzeugt eine NICHT zurückgezogene, 2/2-freigegebene Ausstellungsfassung
+// und darauf einen pending signature_request (idempotent). Die bestehende
+// fixtureOfferIssuanceGraph zieht am Ende zurück und ist hier ungeeignet.
+// M2-04: legt einen pending signature_request an (idempotent). Variante (c):
+// Direkt-INSERT auf der von fixtureOfferIssuanceGraph erzeugten Ausstellungs-
+// fassung — deren state bleibt 'ready_for_approval' (der Rückzug liegt in
+// offer_issuance_withdrawal, nicht im state), sodass der Insert-Guard die
+// Bindung akzeptiert. So ist die Factory unabhängig von der Fixture-Reihenfolge
+// und erzeugt keine zweite Issuance auf demselben Candidate.
+// M2-04: legt einen pending signature_request an (idempotent). Variante (c):
+// Direkt-INSERT auf der von fixtureOfferIssuanceGraph erzeugten Ausstellungs-
+// fassung — deren state bleibt 'ready_for_approval' (der Rückzug liegt in
+// offer_issuance_withdrawal, nicht im state), sodass der Insert-Guard die
+// Bindung akzeptiert. So ist die Factory unabhängig von der Fixture-Reihenfolge.
+async function fixtureSignatureRequest(tx: TenantTx, wsId: string): Promise<string> {
+  await fixtureOfferIssuanceGraph(tx, wsId);
+
+  const source = await tx.execute<{
+    issuance_id: string;
+    project_id: string;
+    offer_id: string;
+    variant_id: string;
+    variant_revision_id: string;
+    actor_id: string;
+    artifact_sha256: Buffer;
+    [key: string]: unknown;
+  }>(sql`
+    select issuance.id as issuance_id, issuance.project_id, issuance.offer_id,
+           issuance.variant_id, issuance.variant_revision_id,
+           issuance.artifact_sha256,
+           offer_record.created_by as actor_id
+      from offer_issuance as issuance
+      join offer as offer_record
+        on offer_record.workspace_id = issuance.workspace_id
+       and offer_record.id = issuance.offer_id
+     where issuance.workspace_id = ${wsId}::uuid
+     order by issuance.created_at desc, issuance.id desc
+     limit 1
+  `);
+  const row = source.rows[0];
+  if (!row) throw new Error("Signature-Tenant-Fixture braucht eine Ausstellungsfassung.");
+
+  // Actor setzen, damit der Idempotenz-Lookup die (actor-geschützten)
+  // signature_request-Zeilen sehen kann.
+  await tx.execute(sql`select set_config('app.actor_id', ${row.actor_id}, true)`);
+
+  const existing = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id from signature_request where workspace_id = ${wsId}::uuid limit 1
+  `);
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  const requestId = randomUUID();
+  const tokenHash = Buffer.alloc(32, 0x42);
+  await tx.execute(sql`
+    insert into public.signature_request (
+      id, workspace_id, project_id, offer_id, variant_id, variant_revision_id,
+      issuance_id, status, token_hash, expires_at, content_sha256, created_by
+    ) values (
+      ${requestId}::uuid, ${wsId}::uuid, ${row.project_id}::uuid, ${row.offer_id}::uuid,
+      ${row.variant_id}::uuid, ${row.variant_revision_id}::uuid, ${row.issuance_id}::uuid,
+      'pending', ${tokenHash}, clock_timestamp() + interval '14 days',
+      ${row.artifact_sha256}, ${row.actor_id}::uuid
+    )
+  `);
+  await tx.execute(sql`
+    insert into public.signature_token_locator (token_hash, workspace_id, signature_request_id)
+    values (${tokenHash}, ${wsId}::uuid, ${requestId}::uuid)
+  `);
+  return requestId;
+}
+
+async function fixtureSignatureAttestation(tx: TenantTx, wsId: string): Promise<void> {
+  const existing = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id from signature_attestation where workspace_id = ${wsId}::uuid limit 1
+  `);
+  if (existing.rows[0]) return;
+  const requestId = await fixtureSignatureRequest(tx, wsId);
+
+  // Analog-Pfad (interner Editor), da die öffentliche Token-Kapsel
+  // SECURITY DEFINER (app_owner) ist und im legacy-Testmodus nicht greift.
+  const req = await tx.execute<{
+    signer_name: string;
+    content_sha256: Buffer;
+    [key: string]: unknown;
+  }>(sql`
+    select request_record.content_sha256, contact_record.display_name as signer_name
+      from signature_request as request_record
+      join offer as offer_record
+        on offer_record.workspace_id = request_record.workspace_id
+       and offer_record.id = request_record.offer_id
+      join contact as contact_record
+        on contact_record.workspace_id = offer_record.workspace_id
+       and contact_record.id = offer_record.contact_id
+     where request_record.workspace_id = ${wsId}::uuid
+       and request_record.id = ${requestId}::uuid
+     limit 1
+  `);
+  const row = req.rows[0];
+  if (!row) throw new Error("Signature-Tenant-Fixture: Request/Signer fehlt.");
+
+  await tx.execute(sql`
+    update public.signature_request
+       set status = 'signed',
+           signer_name = ${row.signer_name}::text,
+           signed_variant_id = variant_id,
+           signed_at = clock_timestamp()
+     where workspace_id = ${wsId}::uuid
+       and id = ${requestId}::uuid
+       and status = 'pending'
+  `);
+  const artifact = Buffer.from("%PDF-1.7\nanalog-signature-scan\n%%EOF", "latin1");
+  await tx.execute(sql`
+    insert into public.signature_attestation (
+      id, workspace_id, signature_request_id, mode, signer_name, content_sha256,
+      signing_date, artifact_mime_type, artifact_sha256, artifact_size_bytes, artifact_bytes
+    ) values (
+      ${randomUUID()}::uuid, ${wsId}::uuid, ${requestId}::uuid, 'analog',
+      ${row.signer_name}::text, ${row.content_sha256},
+      clock_timestamp(), 'application/pdf', sha256(${artifact}),
+      octet_length(${artifact}), ${artifact}
+    )
+  `);
+}
+
+async function fixtureSignatureViewLog(tx: TenantTx, wsId: string): Promise<void> {
+  const existing = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id from signature_view_log where workspace_id = ${wsId}::uuid limit 1
+  `);
+  if (existing.rows[0]) return;
+  const requestId = await fixtureSignatureRequest(tx, wsId);
+  await tx.execute(sql`
+    insert into public.signature_view_log (workspace_id, signature_request_id)
+    values (${wsId}::uuid, ${requestId}::uuid)
+  `);
+}
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -1742,6 +1878,11 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  signature_request: async (tx, wsId) => {
+    await fixtureSignatureRequest(tx, wsId);
+  },
+  signature_attestation: fixtureSignatureAttestation,
+  signature_view_log: fixtureSignatureViewLog,
   site: async (tx, wsId) => {
     await tx.execute(sql`insert into site (workspace_id, city) values (${wsId}::uuid, 'fixture')`);
   },
@@ -2253,6 +2394,12 @@ export const TENANT_EXEMPT = new Set<string>([
   // keine workspace_id-Spalte: Erst der Definer-Lookup setzt den Tenant-
   // Kontext, bevor der neunspaltige FORCE-RLS-Tombstone gelesen wird.
   "erasure_operation_locator",
+  // RLS-FREIER Token-Locator des öffentlichen Signierlinks (M2-04). Er trägt
+  // workspace_id für die FK-Integrität, ist aber bewusst NICHT tenant-RLS-
+  // geschützt: Der Token-Pfad muss den Token-Hash cross-tenant auflösen, BEVOR
+  // app.workspace_id gesetzt werden kann. Zugriff ausschließlich über die
+  // SECURITY-DEFINER-Kapseln in drizzle/0044 (Muster erasure_operation_locator).
+  "signature_token_locator",
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -177,6 +177,30 @@ const PROJECT_APPOINTMENT_FUNCTION_NAMES = [
   ...PROJECT_APPOINTMENT_PRIVATE_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 
+const SIGNATURE_RELATIONS = [
+  "signature_attestation",
+  "signature_request",
+  "signature_view_log",
+] as const;
+// RLS-FREIER Token-Locator (Muster erasure_operation_locator): kein tenant-
+// RLS, Zugriff ausschließlich über SECURITY-DEFINER-Kapseln.
+const SIGNATURE_LOCATOR_RELATION = "signature_token_locator" as const;
+const SIGNATURE_RUNTIME_ROUTINES = [
+  "public._m204_actor_can_read_signatures(uuid)",
+  "public._m204_actor_can_write_signatures(uuid)",
+  "public._m204_actor_signature_role(uuid)",
+  "public.create_signature_request(uuid,uuid,uuid,integer,bytea)",
+  "public.record_signature_view(bytea)",
+  "public.resolve_signature_public_view(bytea)",
+  "public.revoke_signature_by_customer(bytea)",
+  "public.sign_signature_by_token(bytea,text,text,bytea)",
+] as const;
+const SIGNATURE_PRIVATE_ROUTINES = [
+  "public._m204_erasure_scrub_allowed(uuid,uuid)",
+  "public._m204_guard_signature_attestation()",
+  "public._m204_guard_signature_request()",
+  "public._m204_guard_signature_view_log()",
+] as const;
 const CATALOG_IMPORT_PRIVATE_ROUTINES = [
   "public._m108b_authorize_catalog_import_runtime(uuid)",
   "public._m108b_catalog_import_actor_auth_code(uuid,uuid)",
@@ -1145,6 +1169,37 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasSignatures = await hasAtomicPublicRelationSet(
+    client,
+    SIGNATURE_RELATIONS,
+    "Rollen-ACL-Manifest: M2-04-E-Signatur",
+  );
+  if (hasSignatures) {
+    await client.query(`
+      -- Delete läuft ausschließlich über die Erasure-Definer-Grenze;
+      -- app_runtime erhält bewusst keine DELETE-Rechte auf die drei
+      -- Signature-Relationen.
+      revoke all privileges on
+        public.signature_request,
+        public.signature_attestation,
+        public.signature_view_log,
+        public.signature_token_locator
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.signature_request to app_runtime;
+      grant select, insert on public.signature_attestation to app_runtime;
+      grant select, insert on public.signature_view_log to app_runtime;
+
+      revoke execute on function
+        ${[...SIGNATURE_RUNTIME_ROUTINES, ...SIGNATURE_PRIVATE_ROUTINES].join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${SIGNATURE_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -2021,6 +2076,11 @@ export async function verifyRoleContract(
     PROJECT_APPOINTMENT_RELATIONS,
     "Rollenvertrag: M1-15-Termine",
   );
+  const hasSignatures = await hasAtomicPublicRelationSet(
+    client,
+    SIGNATURE_RELATIONS,
+    "Rollenvertrag: M2-04-E-Signatur",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -2177,6 +2237,12 @@ export async function verifyRoleContract(
       "r:project_catalog_resolution",
       "r:project_catalog_resolution_line",
       "r:project_requirement",
+      ...(hasSignatures ? [
+        "r:signature_attestation",
+        "r:signature_request",
+        `r:${SIGNATURE_LOCATOR_RELATION}`,
+        "r:signature_view_log",
+      ] : []),
       "r:site",
       "r:site_energy_profile",
       "r:user_identity",
@@ -2416,6 +2482,15 @@ export async function verifyRoleContract(
       ...(hasProjectAppointments ? PROJECT_APPOINTMENT_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
+      ...(hasSignatures ? [
+        "_m204_actor_can_read_signatures:app_owner",
+        "_m204_actor_can_write_signatures:app_owner",
+        "_m204_actor_signature_role:app_owner",
+        "_m204_erasure_scrub_allowed:app_owner",
+        "_m204_guard_signature_attestation:app_owner",
+        "_m204_guard_signature_request:app_owner",
+        "_m204_guard_signature_view_log:app_owner",
+      ] : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -2423,6 +2498,9 @@ export async function verifyRoleContract(
         "app_actor_membership_id:app_owner",
       ] : []),
       "build_inactive_lead_erasure_graph:app_owner",
+      ...(hasSignatures ? [
+        "build_inactive_lead_erasure_graph_m204:app_owner",
+      ] : []),
       ...(hasProjectNotes ? [
         "build_inactive_lead_erasure_graph_m113:app_owner",
       ] : []),
@@ -2460,6 +2538,13 @@ export async function verifyRoleContract(
       "provision_default_request_board:app_owner",
       "reconcile_user_identity:identity_reconciler",
       "replay_erasure_tombstone:app_owner",
+      ...(hasSignatures ? [
+        "create_signature_request:app_owner",
+        "record_signature_view:app_owner",
+        "resolve_signature_public_view:app_owner",
+        "revoke_signature_by_customer:app_owner",
+        "sign_signature_by_token:app_owner",
+      ] : []),
       ...(hasOfferRelease ? [
         "prepare_offer_release_candidate:app_owner",
         "read_offer_release_candidate_artifact:app_owner",
@@ -2679,6 +2764,39 @@ export async function verifyRoleContract(
           "false:false:false:u:search_path=pg_catalog:" +
           "ccc3aedc47bc055ad1a35f3c1d05ef4abb5c5651fa88241930881d9304574d75",
       ] : []),
+      ...(hasSignatures ? [
+        "_m204_actor_can_read_signatures(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:a674590967cad29da90175af59af87f4ca580d2807d4bd6b7672b7ecec3f741d",
+        "_m204_actor_can_write_signatures(uuid):boolean:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:b4bf47ad539e69e9706013401fe225777f09613d29dd2ffacbfa24307564cfd9",
+        "_m204_actor_signature_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+        "_m204_erasure_scrub_allowed(uuid, uuid):boolean:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:d2cfff07e81fd845a3079f0e2799c6dd83ad600eea9cc5feb0548eb892b5fc10",
+        "_m204_guard_signature_attestation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:cc0f2b8a08b9de87cc2a939d951ab16670d91fcf59abd8996a16b06b3c565401",
+        "_m204_guard_signature_request():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:a609b4b52b65669aca6e12b5c0450e3e37a720e85bf4a5eacec99319d32a8a23",
+        "_m204_guard_signature_view_log():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:1b21d12aa2541ff0a4493a544b23657a157125831d3613a2558c674cf8c2940c",
+        "create_signature_request(uuid, uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "51678eab0018ed840fff664306cf9e2ca8876aef350122fc7f0439ed233ba6a2",
+        "record_signature_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:2adf77f4d0ec8b21f1dcd3b10c1ba142a70d0716f8327ae2d3a8b892a91e63d9",
+        "resolve_signature_public_view(bytea):TABLE(workspace_id uuid, signature_request_id uuid, " +
+          "offer_id uuid, issuance_id uuid, status text, expires_at timestamp with time zone, " +
+          "content_sha256 bytea, signer_name text, signed_at timestamp with time zone, " +
+          "attestation_mode text, document_mime_type text, document_sha256 bytea, " +
+          "document_size_bytes integer, document_bytes bytea):app_owner:plpgsql:f:s:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "1fbf9fddde50cb2d2298f1bd713b5c53922bd9e8179564286f9bce2ffc197040",
+        "revoke_signature_by_customer(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:c61869de7b489354884dc81af015d3d47947a7009804fbb48c73e46596cb89b1",
+        "sign_signature_by_token(bytea, text, text, bytea):jsonb:app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "4fc6f3a5f1fc65cd0ad98f10a6e13eea5d3922826171ffd2dafd6ee0af20b9f2",
+      ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
       "app_actor_id():uuid:app_owner:sql:f:s:false:false:false:s:search_path=pg_catalog:" +
@@ -2873,7 +2991,9 @@ export async function verifyRoleContract(
           "721aecb517ece42d09e1101afb397af22491f1798995ceaabf963dd4598870fc",
       ] : []),
       "build_inactive_lead_erasure_graph(uuid, uuid):jsonb:app_owner:sql:f:s:false:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectAppointments
+        `search_path=pg_catalog:${hasSignatures
+          ? "7aa48e1c58337cfa381a3dc5b3dd2a162eae9ae6960741e9d160200a5e636069"
+          : hasProjectAppointments
           ? "350a4c4f1de2df81dd39da00cfda75505802ddc72b03212975e2ad1c0302dec6"
           : hasProjectNotes
           ? "721aecb517ece42d09e1101afb397af22491f1798995ceaabf963dd4598870fc"
@@ -2899,6 +3019,11 @@ export async function verifyRoleContract(
           "false:false:false:u:search_path=pg_catalog:" +
           "16833496d12956cafb41b94341d78ac9baa6fa00a60cc2d2450dbe420cf2621c",
       ] : []),
+      ...(hasSignatures ? [
+        "build_inactive_lead_erasure_graph_m204(uuid, uuid):jsonb:app_owner:sql:f:s:" +
+          "false:false:false:u:search_path=pg_catalog:" +
+          "721aecb517ece42d09e1101afb397af22491f1798995ceaabf963dd4598870fc",
+      ] : []),
       "canonicalize_offer_json_v1(jsonb):text:app_owner:plpgsql:f:i:false:false:true:s:" +
         "search_path=pg_catalog:0b5cdc7c4aa05552def26bc36f3f64bfc73e18689b646b473db607ad858ca85c",
       "contact_name_split_v1(text):TABLE(first_name text, last_name text):app_owner:sql:f:i:" +
@@ -2909,7 +3034,9 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectAppointments
+        `search_path=pg_catalog:${hasSignatures
+          ? "0ed06a12c77f21483fb42385c0659a880038acdb7ac56b09bbcdaf25c691c223"
+          : hasProjectAppointments
           ? "cec63897e55831166ccb154e07fab02b7b0c381d619597933c3381c74eac70b9"
           : hasCustomerNotification && hasProjectNotes
           ? "742a9a4ef9f8f459268ab3b0e27af875424bf43d361a157fab59ed6930596e3e"
@@ -2939,7 +3066,9 @@ export async function verifyRoleContract(
       "guard_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:febb6a39265ceb1661f5dc21709f4a2912df799c6b4dd06db27b540253b8c88d",
       "guard_erasure_tombstone_worm():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        `search_path=pg_catalog:${hasProjectAppointments
+        `search_path=pg_catalog:${hasSignatures
+          ? "bbf0d46496ab5c0a69ecd892c65465b43c7c8cccace8ac12f567dc56c7c0ff53"
+          : hasProjectAppointments
           ? "66dbe75a59c983c1042a498ef086ccfee0f8a2c48b6cef4c3b9bb2892a687663"
           : hasProjectNotes
           ? "94518798af295e4e491d4ae098b994ce788bc9c836b05cc748e612bf85c29897"
@@ -3066,6 +3195,12 @@ export async function verifyRoleContract(
       "project_catalog_resolution:true:true",
       "project_catalog_resolution_line:true:true",
       "project_requirement:true:true",
+      ...(hasSignatures ? [
+        "signature_attestation:true:true",
+        "signature_request:true:true",
+        `${SIGNATURE_LOCATOR_RELATION}:false:false`,
+        "signature_view_log:true:true",
+      ] : []),
       "site:true:true",
       "site_energy_profile:true:true",
       "user_identity:true:true",
@@ -3240,6 +3375,34 @@ export async function verifyRoleContract(
       "project_catalog_resolution:tenant_isolation:28a50950efb5f725b0db20a0d82671d5a03a0ec9aa20e93775bd3e88c625a46f",
       "project_catalog_resolution_line:tenant_isolation:e86df4a2dda17e6eea6b929c96636cd1543396e661cdea87df4731ac043e05e2",
       "project_requirement:tenant_isolation:4c2d81a0ad4ae0aa71972c72dc7f7cd57028a0ba50e01420106b350f724de0cb",
+      ...(hasSignatures ? [
+        "signature_attestation:signature_attestation_actor_delete:" +
+          "cb9ed75cf80c1de9be9b3caa4c77a8750c5e80bc501a1595cc7b37ffe2abfc11",
+        "signature_attestation:signature_attestation_actor_insert:" +
+          "62a769b7cc4b9a4ad20dee2d83d4c344b5429b651e24d3dae433843dda086086",
+        "signature_attestation:signature_attestation_actor_select:" +
+          "0c24b1409f159c7e92485acc2a16ad6d1b44eaaef093f83025c2d1b4878bb5b4",
+        "signature_attestation:tenant_isolation:" +
+          "6e7e5e3c95669c907a8e1202de3f84b40d903a79be17df034630b861b8d03cd3",
+        "signature_request:signature_request_actor_delete:" +
+          "c997b838f47da31f1bfee9bf8d36fc2026bf92f1d853772b8a4fd815f5a48146",
+        "signature_request:signature_request_actor_insert:" +
+          "fc49e2b5334e260f1004d0c98b451c1feec794ec2793c0f3b01b39e7de19850e",
+        "signature_request:signature_request_actor_select:" +
+          "9191e047bd8f82c90a93eece11819340b2de0885746d0c09f52e5ee0a6c7cb3a",
+        "signature_request:signature_request_actor_update:" +
+          "353256787cf83a495ce86d400e9c051189f3fc23c039a3e5c778172b746e1494",
+        "signature_request:tenant_isolation:" +
+          "7f3e9a0e85069da865842958b0effe85cf35a4adf41da5565a6a68f8ed1119ee",
+        "signature_view_log:signature_view_log_actor_delete:" +
+          "e26246c5c96ef5e2254c90bb5f4b69beb9aa572601a0f6aab0b8e3b2601b36ee",
+        "signature_view_log:signature_view_log_actor_insert:" +
+          "0e03c04dae8b560e70f131ce3fc60a48dd881868e5761b4967ac586004b7d595",
+        "signature_view_log:signature_view_log_actor_select:" +
+          "8f07af921978700fd06399a86363d59783b474192c7e0b9f34f60d04a818b987",
+        "signature_view_log:tenant_isolation:" +
+          "906376b21c7d7f24c82a966863a10c6679a6553aec1e8d7238ad03ee6e3e9567",
+      ] : []),
       "site:tenant_isolation:26181215437698e628cbd47ab08562d51de16bb0172d907c36c75a679a555d3c",
       "site_energy_profile:tenant_isolation:dedfd647c982a06a434aa37f05bbba136aa817eaf84b76a2c360c709e229e609",
       "user_identity:user_identity_insert:ed42cd7d7ab49b586488c84e375edbd0c5679444866111bc9547a6a309424131",
@@ -3495,6 +3658,17 @@ export async function verifyRoleContract(
       "project_catalog_resolution_line:project_catalog_resolution_line_immutable:19:O:public:forbid_mutation::-:0",
       "project_catalog_resolution_line:project_catalog_resolution_line_no_truncate:34:O:public:forbid_mutation::-:0",
       "project_requirement:project_requirement_catalog_stale:5:O:public:mark_project_catalog_resolution_stale::-:0",
+      ...(hasSignatures ? [
+        "signature_attestation:signature_attestation_mutation_guard:31:O:public:" +
+          "_m204_guard_signature_attestation::-:0",
+        "signature_attestation:signature_attestation_no_truncate:34:O:public:forbid_mutation::-:0",
+        "signature_request:signature_request_mutation_guard:31:O:public:" +
+          "_m204_guard_signature_request::-:0",
+        "signature_request:signature_request_no_truncate:34:O:public:forbid_mutation::-:0",
+        "signature_view_log:signature_view_log_mutation_guard:31:O:public:" +
+          "_m204_guard_signature_view_log::-:0",
+        "signature_view_log:signature_view_log_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
       "site_energy_profile:site_energy_profile_mutation_guard:27:O:public:guard_site_energy_profile_mutation::-:0",
       "site_energy_profile:site_energy_profile_no_truncate:34:O:public:forbid_mutation::-:0",
       "user_identity:user_identity_link_auth_only:19:O:public:user_identity_link_auth_only::-:0",
@@ -3619,6 +3793,15 @@ export async function verifyRoleContract(
       "app_runtime:project_catalog_resolution_line:SELECT:app_owner:false",
       "app_runtime:project_requirement:INSERT:app_owner:false",
       "app_runtime:project_requirement:SELECT:app_owner:false",
+      ...(hasSignatures ? [
+        "app_runtime:signature_attestation:INSERT:app_owner:false",
+        "app_runtime:signature_attestation:SELECT:app_owner:false",
+        "app_runtime:signature_request:INSERT:app_owner:false",
+        "app_runtime:signature_request:SELECT:app_owner:false",
+        "app_runtime:signature_request:UPDATE:app_owner:false",
+        "app_runtime:signature_view_log:INSERT:app_owner:false",
+        "app_runtime:signature_view_log:SELECT:app_owner:false",
+      ] : []),
       "app_runtime:site:DELETE:app_owner:false",
       "app_runtime:site:INSERT:app_owner:false",
       "app_runtime:site:SELECT:app_owner:false",
@@ -3881,6 +4064,16 @@ export async function verifyRoleContract(
       ...(hasProjectAppointments ? PROJECT_APPOINTMENT_RUNTIME_ROUTINES.map((signature) =>
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
+      ...(hasSignatures ? [
+        "app_runtime:_m204_actor_can_read_signatures(uuid):EXECUTE:app_owner:false",
+        "app_runtime:_m204_actor_can_write_signatures(uuid):EXECUTE:app_owner:false",
+        "app_runtime:_m204_actor_signature_role(uuid):EXECUTE:app_owner:false",
+        "app_runtime:create_signature_request(uuid, uuid, uuid, integer, bytea):EXECUTE:app_owner:false",
+        "app_runtime:record_signature_view(bytea):EXECUTE:app_owner:false",
+        "app_runtime:resolve_signature_public_view(bytea):EXECUTE:app_owner:false",
+        "app_runtime:revoke_signature_by_customer(bytea):EXECUTE:app_owner:false",
+        "app_runtime:sign_signature_by_token(bytea, text, text, bytea):EXECUTE:app_owner:false",
+      ] : []),
       ...(hasOfferIssuance ? [
         "app_runtime:approve_offer_issuance(uuid, uuid, boolean, boolean, boolean, boolean, boolean):EXECUTE:app_owner:false",
         "app_runtime:prepare_offer_issuance(uuid, uuid, uuid):EXECUTE:app_owner:false",

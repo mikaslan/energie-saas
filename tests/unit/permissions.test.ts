@@ -145,6 +145,21 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
     capability: "approve_offer_documents",
     expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
   },
+  "offer.signature.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
+  "offer.signature.create": {
+    capability: "offer_signature",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
+  "offer.signature.withdraw": {
+    capability: "offer_signature",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
+  "offer.signature.upload_analog": {
+    capability: "offer_signature",
+    expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
+  },
   "catalog.read": {
     expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
   },

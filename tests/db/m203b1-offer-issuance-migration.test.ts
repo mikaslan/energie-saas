@@ -916,6 +916,9 @@ describe("M2-03b1 offer-issuance migration contract", () => {
     expect(byName.get("build_inactive_lead_erasure_graph")).toContain(
       "build_inactive_lead_erasure_graph_m115",
     );
+    expect(byName.get("build_inactive_lead_erasure_graph")).toContain(
+      "build_inactive_lead_erasure_graph_m204",
+    );
     const graphSource = byName.get("build_inactive_lead_erasure_graph_m203b1");
     for (const binding of [
       "offerIssuanceIds",
