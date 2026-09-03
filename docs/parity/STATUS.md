@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-09-03 (02:20) · kanonische Abnahmequelle:
+Stand: 2026-09-03 (03:00) · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -146,6 +146,31 @@ WMEE; Push-/Deploy-Regeln unverändert.
 komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
+
+## 2026-09-03 (03:00) — WAVE-02 INTEGRIERT: M1-14 + M1-15 komplett grün
+
+- **Slice-Branches gesichert (gepusht):** `codex/m1-14-contact-dataset`
+  (`f6a990b`, 50 Dateien) und `codex/m1-15-calendar-appointments`
+  (`6d80f62`, 36 Dateien) — je Vollgate grün + Chromium E2E 4/4 bzw. 6/6.
+- **Integration `codex/m1-wave-02` (`db9e13d`, gepusht):** 0042→0043 gemergt.
+  Integrations-Fixes: Journal-`when`-Reihenfolge monoton gemacht (beide Lanes
+  hatten invertierte Timestamps → History-Check divergierte an Position 43),
+  0043-Snapshot-Kette neu verankert (prevId→0042, Three-Way-Merge,
+  `db:generate` ohne Drift), M1-15-Fixtures um `first_name`/`last_name`
+  ergänzt (0042-NOT-NULL), Permissions-Zählung 24→26, **Erasure-Pin 0043 auf
+  den echten post-0042-Hash `cec63897…` gesetzt** (Rollenprobe deckt ihn).
+- **Nachweise integriert:** `npm run check` exit 0 (184/184 Dateien,
+  1804 passed/1 skipped), `db:roles:verify` 88/88 + PG18 5/5, Production-Build
+  exit 0, `db:generate` keine Drift, depcruise 0 violations (352 Module),
+  `git diff --check`, Secret-Scan — **Chromium-E2E komplett 58/58** (48
+  Bestand + 4 M1-14 + 6 M1-15).
+- **M2-04 (0044):** Locator-Fix (`signature_token_locator` nach
+  `erasure_operation_locator`-Muster) umgesetzt, Rollenvertrag grün (88+5),
+  Strict-Tests 3/4; Erasure-e2e per Root-Entscheid auf M2-04-spezifische
+  Assertions gescoped (Eligibility bleibt m107-Domäne) — Umsetzung läuft.
+- **Spec-Spuren:** M3-00 + M1-15b Kimi-reviewed und alle 8+12 Befunde
+  geschlossen (`ab6c260`); M1-15b = 0047, ADR 0025. Portal-Recon lieferte
+  OBSERVED-Issuing-Felder/-Nummern-Templates (CRN/OFC/PO/DN/LE).
 
 ## 2026-09-03 (02:20) — E2E findet echte Bugs, M1-15-Schließung grün, M3-OBSERVED eingearbeitet
 
