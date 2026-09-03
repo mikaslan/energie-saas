@@ -98,7 +98,11 @@ Abnahmen als prüfbare Lieferartefakte erhalten.
 
 ## Nächste Reihenfolge
 
-1. Externe Provider-/DR-Gates ausdrücklich BLOCKED lassen, bis echte autorisierte
+1. **Gesamt-Codebase-Review (Mikail-Entscheid 2026-09-04):** bewusst erst AM
+   ENDE vor dem Parity Freeze — ein Review-Schwarm über die komplette
+   integrierte Codebase (Sicherheit/RLS, Contract/Schema-Konsistenz,
+   UI/A11y, Testabdeckung) als eigenes Abschluss-Gate, nicht zwischendurch.
+2. Externe Provider-/DR-Gates ausdrücklich BLOCKED lassen, bis echte autorisierte
    Evidenz vorliegt.
 2. Rechner-V3-Provider erst nach Privacy-Freigabe und echtem Secret-Provisioning
    an den lokal verifizierten M1-04-Vertrag anschließen.
