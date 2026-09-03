@@ -34,6 +34,8 @@ eigene Regeln ausgewiesen und austauschbar.
 | `UNK-OPS-01` | UNKNOWN | produktiver Worker-/Web-Deploy, Zielhost-Rollback, Monitoring, reale Queue-Recovery und Betriebs-SLO | der lokale M2-03b1-Issuance-Worker, Tests, Build und gepinnte Container sind grün; produktiver Web-/Render-/Archivworker-Deploy und jede externe Infrastrukturmutation wurden nicht ausgeführt | autorisierter Staging-/Produktionsdeploy mit Smoke, Monitoring, Backup/Restore und Rollback |
 | `UNK-INT-01` | UNKNOWN | stabile Rechner-V3-Schnittstelle während externem Bau | bestehende immutable Intake-Grenze; kein Schreibzugriff auf V3 | separate Integrationsfreigabe |
 
+| `UNK-M301-01` | DECIDED (ADR 0023) | Zahl der Dokumenttypen im commercial_document-Diskriminator: Spec-Übersicht nennt „7", ADR 0023 zählt 6 Typen (invoice, credit_note, order_confirmation, purchase_order, delivery_note, letter) | Die „7" = 6 Typen + Gruppen-Übersicht (Gruppe ohne Nummernserie); der Implementierungs-Brief M3-01 (2026-09-03) legt 6 Typen als SPECIFIED fest | M3-01-Spec-Übersicht bei Gelegenheit präzisieren, damit kein Implementierer einen 7. Typ baut |
+
 Historische Steuer-/Abrechnungsbehauptungen aus Transkripten, insbesondere das
 Verschieben von Arbeitswerten zwischen Gewerken, sind ungeprüft und kein
 Produktvertrag.
