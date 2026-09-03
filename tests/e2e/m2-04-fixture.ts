@@ -50,9 +50,23 @@ async function tenantFn<Row extends QueryResultRow = QueryResultRow>(
   }
 }
 
+export type M204ReleasedOfferOptions = {
+  /**
+   * Abweichendes Gueltig-bis-Datum relativ zu heute. Die Reservation des
+   * Release-Candidates ist ueber den Input-Snapshot idempotent; ein zweiter
+   * Seed mit identischen Eingaben replays denselben Candidate/dieselbe
+   * Issuance. Fuer Tests, die eine FRISCHE freigegebene Ausstellungsfassung
+   * brauchen, erzeugt ein anderer Offset einen neuen Input-Snapshot und damit
+   * eine neue, eigenstaendig freizugebende Kette.
+   */
+  validThroughOffsetDays?: number;
+};
+
 export async function seedM204ReleasedOffer(
   state: M201RuntimeState,
+  options: M204ReleasedOfferOptions = {},
 ): Promise<M204ReleasedOffer> {
+  const validThroughOffsetDays = options.validThroughOffsetDays ?? 14;
   const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
   try {
     const workspaceId = state.workspaceId;
@@ -193,11 +207,11 @@ export async function seedM204ReleasedOffer(
       );
     }
 
-    await tenantFn(
+    const preparedCandidate = await tenantFn<JsonResult>(
       pool,
       workspaceId,
       row.actor_id,
-      `select public.prepare_offer_release_candidate($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::uuid, $6::uuid, $7::uuid, $8::integer, $9::uuid, $10::integer, ((clock_timestamp() at time zone 'Europe/Berlin')::date + 14)::date)`,
+      `select public.prepare_offer_release_candidate($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::uuid, $6::uuid, $7::uuid, $8::integer, $9::uuid, $10::integer, ((clock_timestamp() at time zone 'Europe/Berlin')::date + $11::integer)::date) as result`,
       [
         workspaceId,
         row.offer_id,
@@ -209,8 +223,13 @@ export async function seedM204ReleasedOffer(
         profile.rows[0]?.profile_revision,
         recipient.rows[0]?.recipient_revision_id,
         recipient.rows[0]?.recipient_revision,
+        validThroughOffsetDays,
       ],
     );
+    if (preparedCandidate.rows[0]?.result?.status !== "prepared") {
+      throw new Error(`M2-04: Release-Candidate-Vorbereitung fehlgeschlagen (${JSON.stringify(preparedCandidate.rows[0]?.result)}).`);
+    }
+
     const candidate = await tenantFn<{ candidate_id: string }>(
       pool,
       workspaceId,
@@ -244,13 +263,16 @@ export async function seedM204ReleasedOffer(
         where workspace_id = $1::uuid and id = $4::uuid and state = 'running'`,
       [workspaceId, candidateArtifact, artifactVersion, candidate.rows[0]?.candidate_id],
     );
-    await tenantFn(
+    const candidateApproval = await tenantFn<JsonResult>(
       pool,
       workspaceId,
       row.actor_id,
-      `select public.approve_offer_release_candidate($1::uuid, $2::uuid, $3::uuid, $4::uuid, true, true, true, true, null)`,
+      `select public.approve_offer_release_candidate($1::uuid, $2::uuid, $3::uuid, $4::uuid, true, true, true, true, null) as result`,
       [workspaceId, row.offer_id, candidate.rows[0]?.candidate_id, artifactVersion],
     );
+    if (candidateApproval.rows[0]?.result?.status !== "approved") {
+      throw new Error(`M2-04: Candidate-Freigabe fehlgeschlagen (${JSON.stringify(candidateApproval.rows[0]?.result)}).`);
+    }
 
     const prepared = await tenantFn<JsonResult>(
       pool,
@@ -259,8 +281,19 @@ export async function seedM204ReleasedOffer(
       `select public.prepare_offer_issuance($1::uuid, $2::uuid, $3::uuid) as result`,
       [workspaceId, row.offer_id, candidate.rows[0]?.candidate_id],
     );
+    if (prepared.rows[0]?.result?.status !== "prepared") {
+      throw new Error(`M2-04: Ausstellungsreservation fehlgeschlagen (${JSON.stringify(prepared.rows[0]?.result)}).`);
+    }
     const issuanceId = prepared.rows[0]?.result.issuanceId;
     if (typeof issuanceId !== "string") throw new Error("M2-04: Ausstellungsreservation fehlt.");
+
+    // Idempotente Reservation: wiederholtes Seeding (z. B. mehrere Tests auf
+    // demselben Workspace) liefert dieselbe, bereits freigegebene Issuance als
+    // Replay. Eine erneute Freigabe würde am Approval-Limit scheitern — der
+    // vorhandene Stand ist bereits die gewünschte Ausgangslage.
+    if (prepared.rows[0]?.result.replayed === true) {
+      return { offerId: row.offer_id, variantId: row.variant_id, issuanceId };
+    }
     const lease = randomUUID();
     await tenantFn(
       pool,

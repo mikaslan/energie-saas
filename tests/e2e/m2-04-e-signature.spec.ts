@@ -249,6 +249,12 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
   test("M2-04: Abgelaufener Link zeigt terminalen expired-Zustand", async ({ page }) => {
     test.setTimeout(120_000);
     const data = state();
+    // Test 2 hat auf demselben Workspace bereits eine freigegebene Kette
+    // erzeugt und deren Link widerrufen. Ein identischer Seed waere ein
+    // Replay derselben Issuance (Reservations-Idempotenz) — genau ein
+    // Signatur-Request pro Issuance ist aber das Modell (Withdraw ist
+    // terminal). Der abweichende Gueltigkeits-Offset erzeugt eine frische
+    // Kette mit eigener Issuance.
     const released = await seedM204ReleasedOffer({
       databaseUrl: data.databaseUrl,
       serverLogPath: data.serverLogPath,
@@ -260,7 +266,7 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
       m201ModuleId: data.m201ModuleId,
       m201ProjectId: data.m201ProjectId,
       m201WallboxId: data.m201WallboxId,
-    });
+    }, { validThroughOffsetDays: 15 });
     const offerPath = `/w/${data.m201WorkspaceId}/angebote/${released.offerId}?variante=${released.variantId}`;
     await page.goto(offerPath);
     await loginWithRealOtp(page, data.m201EditorEmail, offerPath);
@@ -271,18 +277,31 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
     await panel.getByRole("button", { name: "Signaturlink vorbereiten" }).click();
     await expect(panel.getByText("wartet auf Signatur", { exact: true })).toBeVisible();
 
-    // Ablauf serverseitig erzwingen (Fixtureschicht, kein UI-Pfad).
+    // Ablauf serverseitig erzwingen (Fixtureschicht, kein UI-Pfad). Der
+    // Immutable-Trigger verbietet expires_at-Aenderungen im Normalbetrieb;
+    // in session_replication_role=replica sind Trigger deaktiviert, die
+    // Shape-Checks bleiben aktiv (pending -> expired ist formkonform).
     const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+    const client = await pool.connect();
     try {
-      await pool.query(
+      await client.query("begin");
+      await client.query("set local session_replication_role = replica");
+      await client.query(
+        // expiry_ck verlangt expires_at > created_at: der Request muss also
+        // "vor zwei Tagen" entstanden sein, damit der Ablauf in der
+        // Vergangenheit liegen darf.
         `update public.signature_request
-            set expires_at = pg_catalog.statement_timestamp() - interval '1 second',
+            set created_at = pg_catalog.statement_timestamp() - interval '2 days',
+                expires_at = pg_catalog.statement_timestamp() - interval '1 second',
                 status = 'expired'
           where workspace_id = $1::uuid
-            and offer_id = $2::uuid`,
+            and offer_id = $2::uuid
+            and status = 'pending'`,
         [data.m201WorkspaceId, released.offerId],
       );
+      await client.query("commit");
     } finally {
+      await client.release();
       await pool.end();
     }
 

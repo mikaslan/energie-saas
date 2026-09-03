@@ -4,31 +4,10 @@ import {
   type SignatureRequestDto,
 } from "@/modules/signatures";
 import {
-  createSignatureRequestAction,
-  uploadAnalogSignatureAction,
-  withdrawSignatureRequestAction,
-} from "./signature-actions";
-import { SIGNATURE_ACTION_INITIAL_STATE } from "./signature-action-state";
-
-// Server-Actions tragen useActionState-Signaturen (previousState, formData);
-// <form action> erwartet dagegen (formData) => void | Promise<void>. Die
-// Wrapper binden den Initial-State und verwerfen den Rückgabewert bewusst:
-// das Panel rendert den Erfolg über den neu geladenen Listenstand
-// (revalidatePath), nicht über den Action-State.
-function asFormAction(
-  action: (
-    previousState: import("./signature-action-state").SignatureActionState,
-    formData: FormData,
-  ) => Promise<import("./signature-action-state").SignatureActionState>,
-): (formData: FormData) => Promise<void> {
-  return async (formData: FormData) => {
-    await action(SIGNATURE_ACTION_INITIAL_STATE, formData);
-  };
-}
-
-const withdrawFormAction = asFormAction(withdrawSignatureRequestAction);
-const uploadAnalogFormAction = asFormAction(uploadAnalogSignatureAction);
-const createFormAction = asFormAction(createSignatureRequestAction);
+  AnalogSignatureForm,
+  CreateSignatureForm,
+  WithdrawSignatureForm,
+} from "./signature-controls";
 
 function shortHash(hex: string): string {
   return hex.length > 16 ? `${hex.slice(0, 8)}…${hex.slice(-6)}` : hex;
@@ -122,33 +101,8 @@ export async function OfferSignaturePanel(props: {
 
               {request.status === "pending" ? (
                 <div className="mt-3 flex flex-wrap gap-3">
-                  <form action={withdrawFormAction}>
-                    <input type="hidden" name="workspaceId" value={props.workspaceId} />
-                    <input type="hidden" name="requestId" value={request.requestId} />
-                    <input type="hidden" name="reasonCode" value="other" />
-                    <button
-                      type="submit"
-                      className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Link widerrufen
-                    </button>
-                  </form>
-                  <form action={uploadAnalogFormAction} className="flex flex-wrap items-center gap-2">
-                    <input type="hidden" name="workspaceId" value={props.workspaceId} />
-                    <input type="hidden" name="requestId" value={request.requestId} />
-                    <input
-                      type="date"
-                      name="signingDate"
-                      className="rounded-md border border-slate-300 px-2 py-2 text-sm"
-                    />
-                    <input type="file" name="artifact" accept="application/pdf,image/jpeg" className="text-sm" />
-                    <button
-                      type="submit"
-                      className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700"
-                    >
-                      Analog hochladen
-                    </button>
-                  </form>
+                  <WithdrawSignatureForm workspaceId={props.workspaceId} requestId={request.requestId} />
+                  <AnalogSignatureForm workspaceId={props.workspaceId} requestId={request.requestId} />
                 </div>
               ) : null}
             </li>
@@ -157,33 +111,13 @@ export async function OfferSignaturePanel(props: {
       )}
 
       {props.variantId ? (
-        <form action={createFormAction} className="mt-6 grid gap-3 border-t border-slate-100 pt-5 sm:grid-cols-[1fr_auto]">
-          <div className="grid gap-1">
-            <label htmlFor="ttlDays" className="text-xs font-medium text-slate-600">
-              Gültigkeit in Tagen (1–60)
-            </label>
-            <input
-              id="ttlDays"
-              name="ttlDays"
-              type="number"
-              min={1}
-              max={60}
-              defaultValue={14}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <input type="hidden" name="workspaceId" value={props.workspaceId} />
-          <input type="hidden" name="offerId" value={props.offerId} />
-          <input type="hidden" name="variantId" value={props.variantId} />
-          <div className="flex items-end">
-            <button
-              type="submit"
-              className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-900 px-5 text-sm font-semibold text-white hover:bg-slate-700"
-            >
-              Signaturlink vorbereiten
-            </button>
-          </div>
-        </form>
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <CreateSignatureForm
+            workspaceId={props.workspaceId}
+            offerId={props.offerId}
+            variantId={props.variantId}
+          />
+        </div>
       ) : (
         <p className="mt-6 border-t border-slate-100 pt-5 text-xs text-slate-500">
           Wähle eine freigegebene Ausstellungsfassung, um einen Signaturlink vorzubereiten.
