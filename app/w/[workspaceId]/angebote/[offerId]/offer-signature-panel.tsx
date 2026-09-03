@@ -8,6 +8,27 @@ import {
   uploadAnalogSignatureAction,
   withdrawSignatureRequestAction,
 } from "./signature-actions";
+import { SIGNATURE_ACTION_INITIAL_STATE } from "./signature-action-state";
+
+// Server-Actions tragen useActionState-Signaturen (previousState, formData);
+// <form action> erwartet dagegen (formData) => void | Promise<void>. Die
+// Wrapper binden den Initial-State und verwerfen den Rückgabewert bewusst:
+// das Panel rendert den Erfolg über den neu geladenen Listenstand
+// (revalidatePath), nicht über den Action-State.
+function asFormAction(
+  action: (
+    previousState: import("./signature-action-state").SignatureActionState,
+    formData: FormData,
+  ) => Promise<import("./signature-action-state").SignatureActionState>,
+): (formData: FormData) => Promise<void> {
+  return async (formData: FormData) => {
+    await action(SIGNATURE_ACTION_INITIAL_STATE, formData);
+  };
+}
+
+const withdrawFormAction = asFormAction(withdrawSignatureRequestAction);
+const uploadAnalogFormAction = asFormAction(uploadAnalogSignatureAction);
+const createFormAction = asFormAction(createSignatureRequestAction);
 
 function shortHash(hex: string): string {
   return hex.length > 16 ? `${hex.slice(0, 8)}…${hex.slice(-6)}` : hex;
@@ -101,7 +122,7 @@ export async function OfferSignaturePanel(props: {
 
               {request.status === "pending" ? (
                 <div className="mt-3 flex flex-wrap gap-3">
-                  <form action={withdrawSignatureRequestAction}>
+                  <form action={withdrawFormAction}>
                     <input type="hidden" name="workspaceId" value={props.workspaceId} />
                     <input type="hidden" name="requestId" value={request.requestId} />
                     <input type="hidden" name="reasonCode" value="other" />
@@ -112,7 +133,7 @@ export async function OfferSignaturePanel(props: {
                       Link widerrufen
                     </button>
                   </form>
-                  <form action={uploadAnalogSignatureAction} className="flex flex-wrap items-center gap-2">
+                  <form action={uploadAnalogFormAction} className="flex flex-wrap items-center gap-2">
                     <input type="hidden" name="workspaceId" value={props.workspaceId} />
                     <input type="hidden" name="requestId" value={request.requestId} />
                     <input
@@ -136,7 +157,7 @@ export async function OfferSignaturePanel(props: {
       )}
 
       {props.variantId ? (
-        <form action={createSignatureRequestAction} className="mt-6 grid gap-3 border-t border-slate-100 pt-5 sm:grid-cols-[1fr_auto]">
+        <form action={createFormAction} className="mt-6 grid gap-3 border-t border-slate-100 pt-5 sm:grid-cols-[1fr_auto]">
           <div className="grid gap-1">
             <label htmlFor="ttlDays" className="text-xs font-medium text-slate-600">
               Gültigkeit in Tagen (1–60)
