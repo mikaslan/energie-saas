@@ -1,18 +1,36 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
+  COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_GROUP_VERSION,
+  COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_LINE_VERSION,
+  COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS,
+  COMMERCIAL_DOCUMENT_VERSION,
   DOCUMENT_NUMBER_FORMAT_DEFAULTS,
+  commercialDocumentGroupCommandV1Schema,
+  commercialDocumentCommandV1Schema,
+  commercialDocumentGroupV1Schema,
+  commercialDocumentLineCommandV1Schema,
+  commercialDocumentLineV1Schema,
   invoicingSettingsCommandV1Schema,
   invoicingSettingsV1Schema,
   numberFormatCommandV1Schema,
   numberFormatListV1Schema,
   WORKSPACE_DOCUMENT_NUMBER_FORMAT_LIST_VERSION,
   WORKSPACE_INVOICING_SETTINGS_VERSION,
+  type CommercialDocumentCommandV1,
+  type CommercialDocumentGroupCommandV1,
+  type CommercialDocumentGroupV1,
+  type CommercialDocumentLineCommandV1,
+  type CommercialDocumentLineV1,
   type DocumentNumberType,
   type InvoicingSettingsCommandV1,
   type InvoicingSettingsV1,
@@ -365,4 +383,360 @@ export async function assertIssuingDetailsComplete(
     });
     throw new InvoicingPreconditionConflictError(reason);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// M3-01 · Dokument-Kern (F8, ADR 0023). Entwurfs-Anlage, Gruppen-CRUD,
+// Zeilen-Anlage und Nummernserien-Seeding. Ausstellen/Versand/Void/Zahlung
+// sind Folge-Capabilities (M301-02..05) und hier bewusst nicht enthalten.
+// ═══════════════════════════════════════════════════════════════════════
+
+const MAX_DOCUMENT_MONEY_CENTS = 9_000_000_000_000_000;
+
+function roundHalfUpCents(netCents: number, taxRateBps: number): number {
+  if (!Number.isSafeInteger(netCents) || netCents < 0
+      || netCents > MAX_DOCUMENT_MONEY_CENTS) {
+    throw new InvoicingValidationError();
+  }
+  if (taxRateBps !== 0 && taxRateBps !== 1900) {
+    throw new InvoicingValidationError();
+  }
+  return Math.floor((netCents * taxRateBps + 5000) / 10000);
+}
+
+function isLetter(type: DocumentNumberType): boolean {
+  return type === "letter";
+}
+
+type DocumentRow = {
+  id: string;
+  type: string;
+  status: string;
+  group_id: string | null;
+  [key: string]: unknown;
+};
+
+type GroupRow = {
+  id: string;
+  name: string;
+  project_id: string | null;
+  archived_at: Date | null;
+  document_count: number;
+  [key: string]: unknown;
+};
+
+type LineRow = {
+  id: string;
+  document_id: string;
+  position: number;
+  name: string;
+  quantity_milli: number;
+  unit: string;
+  net_cents: number;
+  tax_cents: number;
+  gross_cents: number;
+  tax_rate_bps: number;
+  [key: string]: unknown;
+};
+
+export async function createDocumentGroup(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentGroupCommandV1,
+): Promise<{ id: string }> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentGroupCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const groupId = randomUUID();
+  try {
+    await tx.execute(sql`
+      insert into commercial_document_group (
+        id, workspace_id, name, created_by
+      ) values (
+        ${groupId}::uuid, ${ctx.workspaceId}::uuid, ${parsed.data.name}, ${ctx.actor}::uuid
+      )
+    `);
+  } catch (error) {
+    const code = postgresErrorCode(error);
+    if (code === "23505") throw new InvoicingConflictError();
+    if (code === "23514") throw new InvoicingValidationError();
+    throw error;
+  }
+  const evidence = { workspaceId: ctx.workspaceId, groupId, name: parsed.data.name };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document_group",
+    aggregateId: groupId,
+    eventType: "commercial_document_group.created",
+    actor: ctx.actor,
+    payload: evidence,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "invoicing.group.write",
+    resource: "commercial_document_group",
+    allowed: true,
+    details: evidence,
+  });
+  return { id: groupId };
+}
+
+export async function renameDocumentGroup(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  groupId: string,
+  input: CommercialDocumentGroupCommandV1,
+): Promise<{ id: string }> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentGroupCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  try {
+    const updated = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+      update commercial_document_group
+         set name = ${parsed.data.name}, updated_at = statement_timestamp()
+       where workspace_id = ${ctx.workspaceId}::uuid and id = ${groupId}::uuid
+       returning id
+    `);
+    if (!updated.rows[0]) throw new InvoicingNotFoundError();
+  } catch (error) {
+    if (error instanceof InvoicingNotFoundError) throw error;
+    const code = postgresErrorCode(error);
+    if (code === "23505") throw new InvoicingConflictError();
+    if (code === "23514") throw new InvoicingValidationError();
+    throw error;
+  }
+  const evidence = { workspaceId: ctx.workspaceId, groupId, name: parsed.data.name };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document_group",
+    aggregateId: groupId,
+    eventType: "commercial_document_group.renamed",
+    actor: ctx.actor,
+    payload: evidence,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "invoicing.group.write",
+    resource: "commercial_document_group",
+    allowed: true,
+    details: evidence,
+  });
+  return { id: groupId };
+}
+
+export async function listDocumentGroups(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<CommercialDocumentGroupV1[]> {
+  requireInvoicingRead(ctx);
+  const result = await tx.execute<GroupRow>(sql`
+    select g.id,
+           g.name,
+           g.project_id,
+           g.archived_at,
+           count(d.id)::int as document_count
+      from commercial_document_group g
+      left join commercial_document d
+        on d.workspace_id = g.workspace_id and d.group_id = g.id
+     where g.workspace_id = ${ctx.workspaceId}::uuid
+     group by g.id, g.name, g.project_id, g.archived_at
+     order by g.name asc
+  `);
+  const canWrite = can(ctx, "invoicing.write");
+  return result.rows.map((row) =>
+    commercialDocumentGroupV1Schema.parse({
+      schemaVersion: COMMERCIAL_DOCUMENT_GROUP_VERSION,
+      id: row.id,
+      name: row.name,
+      projectId: row.project_id,
+      archivedAt: row.archived_at === null ? null : new Date(row.archived_at).toISOString(),
+      documentCount: Number(row.document_count),
+      permissions: { canWrite },
+    }),
+  );
+}
+
+export async function seedNumberSeries(tx: TenantTx, workspaceId: string): Promise<void> {
+  const seriesYear = await tx.execute<{ year: number }>(sql`
+    select extract(year from statement_timestamp())::int as year
+  `);
+  const year = seriesYear.rows[0]?.year ?? new Date().getFullYear();
+  for (const [type, defaults] of Object.entries(COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS)) {
+    await tx.execute(sql`
+      insert into commercial_document_number_series (
+        workspace_id, type, series_year, prefix, padding
+      ) values (
+        ${workspaceId}::uuid, ${type}, ${year}, ${defaults.prefix}, ${defaults.padding}
+      ) on conflict (workspace_id, type, series_year) do nothing
+    `);
+  }
+}
+
+export async function createDocument(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentCommandV1,
+): Promise<{ id: string; type: DocumentNumberType; status: "draft" }> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const command = parsed.data.input;
+  const type = command.type;
+
+  // O4-Precondition: Geld-Dokumente verlangen vollständige Issuing-Details
+  // (0045), Briefe nicht.
+  if (!isLetter(type)) {
+    await assertIssuingDetailsComplete(tx, ctx.workspaceId, type);
+  }
+
+  if (can(ctx, "invoicing.write")) {
+    await seedNumberSeries(tx, ctx.workspaceId);
+  }
+
+  const documentId = randomUUID();
+  try {
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, group_id, project_id, contact_id,
+        name, status, currency, net_cents, tax_cents, gross_cents,
+        payment_status, paid_cents, due_date, delivery_date, validity_date,
+        planned_delivery_date, planned_service_date, credit_note_type,
+        created_by
+      ) values (
+        ${documentId}::uuid, ${ctx.workspaceId}::uuid, ${type},
+        ${command.groupId}::uuid, ${command.projectId}::uuid, ${command.contactId}::uuid,
+        ${command.name}, 'draft', 'EUR', 0, 0, 0,
+        ${isLetter(type) ? null : "unpaid"}, 0,
+        ${command.dueDate ? sql`${command.dueDate}::date` : null},
+        ${command.deliveryDate ? sql`${command.deliveryDate}::date` : null},
+        ${command.validityDate ? sql`${command.validityDate}::date` : null},
+        ${command.plannedDeliveryDate ? sql`${command.plannedDeliveryDate}::date` : null},
+        ${command.plannedServiceDate ? sql`${command.plannedServiceDate}::date` : null},
+        ${command.creditNoteType},
+        ${ctx.actor}::uuid
+      )
+    `);
+  } catch (error) {
+    const code = postgresErrorCode(error);
+    if (code === "23514") throw new InvoicingValidationError();
+    throw error;
+  }
+  const evidence = { workspaceId: ctx.workspaceId, documentId, type };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.created",
+    actor: ctx.actor,
+    payload: evidence,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "invoicing.document.write",
+    resource: "commercial_document",
+    allowed: true,
+    details: evidence,
+  });
+  return { id: documentId, type, status: "draft" };
+}
+
+export async function createDocumentLine(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentLineCommandV1,
+): Promise<CommercialDocumentLineV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentLineCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const command = parsed.data;
+
+  const doc = await tx.execute<DocumentRow>(sql`
+    select id, type, status
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${command.documentId}::uuid
+     limit 1
+  `);
+  const document = doc.rows[0];
+  if (!document) throw new InvoicingNotFoundError();
+  if (document.status !== "draft") {
+    throw new InvoicingConflictError();
+  }
+  if (document.type === "letter") {
+    throw new InvoicingValidationError();
+  }
+
+  const line = command.input;
+  const taxCents = roundHalfUpCents(line.netCents, line.taxRateBps);
+  const grossCents = line.netCents + taxCents;
+  const lineId = randomUUID();
+  const lineSnapshot = JSON.stringify({
+    schemaVersion: COMMERCIAL_DOCUMENT_LINE_VERSION,
+    name: line.name,
+    quantityMilli: line.quantityMilli,
+    unit: line.unit,
+    netCents: line.netCents,
+    taxCents,
+    grossCents,
+    taxRateBps: line.taxRateBps,
+  });
+
+  try {
+    await tx.execute(sql`
+      insert into commercial_document_line (
+        id, workspace_id, document_id, position, name, quantity_milli, unit,
+        net_cents, tax_cents, gross_cents, tax_rate_bps, line_snapshot
+      ) values (
+        ${lineId}::uuid, ${ctx.workspaceId}::uuid, ${command.documentId}::uuid,
+        ${line.position}, ${line.name}, ${line.quantityMilli}, ${line.unit},
+        ${line.netCents}, ${taxCents}, ${grossCents}, ${line.taxRateBps},
+        ${lineSnapshot}::jsonb
+      )
+    `);
+  } catch (error) {
+    const code = postgresErrorCode(error);
+    if (code === "23505") throw new InvoicingConflictError();
+    if (code === "23514") throw new InvoicingValidationError();
+    throw error;
+  }
+
+  await tx.execute(sql`
+    update commercial_document
+       set net_cents = (
+             select coalesce(sum(line_row.net_cents), 0)
+               from commercial_document_line line_row
+              where line_row.workspace_id = commercial_document.workspace_id
+                and line_row.document_id = commercial_document.id
+           ),
+           tax_cents = (
+             select coalesce(sum(line_row.tax_cents), 0)
+               from commercial_document_line line_row
+              where line_row.workspace_id = commercial_document.workspace_id
+                and line_row.document_id = commercial_document.id
+           ),
+           gross_cents = (
+             select coalesce(sum(line_row.gross_cents), 0)
+               from commercial_document_line line_row
+              where line_row.workspace_id = commercial_document.workspace_id
+                and line_row.document_id = commercial_document.id
+           ),
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${command.documentId}::uuid
+  `);
+
+  return commercialDocumentLineV1Schema.parse({
+    schemaVersion: COMMERCIAL_DOCUMENT_LINE_VERSION,
+    id: lineId,
+    documentId: command.documentId,
+    position: line.position,
+    name: line.name,
+    quantityMilli: line.quantityMilli,
+    unit: line.unit,
+    netCents: line.netCents,
+    taxCents,
+    grossCents,
+    taxRateBps: line.taxRateBps,
+  });
 }

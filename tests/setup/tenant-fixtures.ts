@@ -1805,6 +1805,64 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+
+  commercial_document_group: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into commercial_document_group (
+        id, workspace_id, name, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'M3-01 Gruppe', ${userId}::uuid
+      )
+    `);
+  },
+  commercial_document_number_series: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into commercial_document_number_series (
+        id, workspace_id, type, series_year, prefix, padding
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'invoice',
+        extract(year from now())::integer, 'RE', 5
+      )
+    `);
+  },
+  commercial_document: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, status, name, created_by, due_date
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+        'M3-01 Entwurf', ${userId}::uuid, (now()::date + 14)
+      )
+    `);
+  },
+  commercial_document_line: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const documentId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, status, name, created_by, due_date
+      ) values (
+        ${documentId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+        'M3-01 Entwurf (Line-Fixture)', ${userId}::uuid, (now()::date + 14)
+      )
+    `);
+    await tx.execute(sql`
+      insert into commercial_document_line (
+        id, workspace_id, document_id, position, name, quantity_milli, unit,
+        net_cents, tax_cents, gross_cents, tax_rate_bps
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, ${documentId}::uuid, 1,
+        'Position', 1000, 'piece', 100, 19, 119, 1900
+      )
+    `);
+  },
   workspace_document_number_format: async (tx, wsId) => {
     const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
     await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);

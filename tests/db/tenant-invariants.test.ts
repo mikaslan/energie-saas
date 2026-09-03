@@ -85,6 +85,10 @@ const ACTOR_SCOPED_TABLES = new Set([
   "signature_view_log",
   "workspace_invoicing_settings",
   "workspace_document_number_format",
+  "commercial_document",
+  "commercial_document_group",
+  "commercial_document_line",
+  "commercial_document_number_series",
 ]);
 const actorByWorkspace = new Map<string, string>();
 

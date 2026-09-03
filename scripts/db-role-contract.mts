@@ -214,6 +214,26 @@ const INVOICING_RUNTIME_ROUTINES = [
 const INVOICING_FUNCTION_NAMES = [
   ...INVOICING_RUNTIME_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+
+const COMMERCIAL_DOCUMENT_RELATIONS = [
+  "commercial_document",
+  "commercial_document_group",
+  "commercial_document_line",
+  "commercial_document_number_series",
+] as const;
+const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
+  "public._m301_actor_invoicing_role(uuid)",
+  "public._m301_actor_can_read_invoicing(uuid)",
+  "public._m301_actor_can_write_invoicing(uuid)",
+] as const;
+const COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES = [
+  "public._m301_guard_issued_immutable()",
+] as const;
+const COMMERCIAL_DOCUMENT_FUNCTION_NAMES = [
+  ...COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES,
+  ...COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+
 const CATALOG_IMPORT_PRIVATE_ROUTINES = [
   "public._m108b_authorize_catalog_import_runtime(uuid)",
   "public._m108b_catalog_import_actor_auth_code(uuid,uuid)",
@@ -1238,6 +1258,35 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasCommercialDocuments = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_RELATIONS,
+    "Rollen-ACL-Manifest: M3-01-Rechnungs-Kern",
+  );
+  if (hasCommercialDocuments) {
+    await client.query(`
+      revoke all privileges on
+        public.commercial_document,
+        public.commercial_document_group,
+        public.commercial_document_line,
+        public.commercial_document_number_series
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.commercial_document to app_runtime;
+      grant select, insert, update on public.commercial_document_group to app_runtime;
+      grant select, insert, update on public.commercial_document_line to app_runtime;
+      grant select, insert, update on public.commercial_document_number_series to app_runtime;
+
+      revoke execute on function
+        ${[...COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES, ...COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES].join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -2124,6 +2173,11 @@ export async function verifyRoleContract(
     INVOICING_RELATIONS,
     "Rollenvertrag: M3-00-Workspace-Invoicing",
   );
+  const hasCommercialDocuments = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_RELATIONS,
+    "Rollenvertrag: M3-01-Rechnungs-Kern",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -2294,6 +2348,9 @@ export async function verifyRoleContract(
         "r:workspace_document_number_format",
         "r:workspace_invoicing_settings",
       ] : []),
+      ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
     ],
     "Relationsinventar",
   );
@@ -2539,6 +2596,9 @@ export async function verifyRoleContract(
         "_m204_guard_signature_view_log:app_owner",
       ] : []),
       ...(hasWorkspaceInvoicing ? INVOICING_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
+      ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
       "apply_catalog_component_revision:app_owner",
@@ -2846,6 +2906,16 @@ export async function verifyRoleContract(
         "sign_signature_by_token(bytea, text, text, bytea):jsonb:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
           "4fc6f3a5f1fc65cd0ad98f10a6e13eea5d3922826171ffd2dafd6ee0af20b9f2",
+      ] : []),
+      ...(hasCommercialDocuments ? [
+        "_m301_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:2014c5374b59d3f8be0d21590c05b4f45d0c4ee3fcd1340a97cdef588cfa8704",
+        "_m301_actor_can_write_invoicing(uuid):boolean:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:27e89399412f45b63938cba8ca6442d81456a8039a9ce2f3294781544d2016c7",
+        "_m301_actor_invoicing_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+        "_m301_guard_issued_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:cc1998e0e0d40bde1b22341ceb7b726a1aad709496da599edd99eabf9ba53245",
       ] : []),
       ...(hasWorkspaceInvoicing ? [
         "_m300_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
@@ -3267,6 +3337,9 @@ export async function verifyRoleContract(
         "workspace_document_number_format:true:true",
         "workspace_invoicing_settings:true:true",
       ] : []),
+      ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -3472,6 +3545,48 @@ export async function verifyRoleContract(
       "user_identity:user_identity_reconcile_update:3763319bbd0208f0554077338d247e797d6122f9c56182072e2f3735b65eecd0",
       "user_identity:user_identity_select:824f30ce2ed4729f0ec66928efba45844aef4f048580c636bfd0c260d76bc9f6",
       "workspace:tenant_isolation:efde4221654b51f3f1df5df99ffe938484bd185d6d9057c808d0b2682d7be38f",
+      ...(hasCommercialDocuments ? [
+        "commercial_document_group:tenant_isolation:" +
+          "64aa7c644af44eca10c6e35ba00a58811631bbe8aed95f98cb7eba72ba74cd2e",
+        "commercial_document_group:commercial_document_group_actor_select:" +
+          "594e186ee11db34804cded2953b270b32278b361bbc91be53a473c052f0c945e",
+        "commercial_document_group:commercial_document_group_actor_insert:" +
+          "9189bf350c759ca4459361be201fc5cf10eec9a78a5ca60a186fb62eeab61347",
+        "commercial_document_group:commercial_document_group_actor_update:" +
+          "4be91a2d8049be5492dfee44bae7dbc46bca14df31d93ce1fc7e06339dae98b1",
+        "commercial_document_group:commercial_document_group_actor_delete:" +
+          "9bb78df5753d4b1d4d1be7dc68c3ca93f27358ae76cf507c022b358ddade578c",
+        "commercial_document_number_series:tenant_isolation:" +
+          "a8ee73a48c80642e6fd9baaf56ff33d1dc71419168b3d916cb4ae2ce3ba60f3d",
+        "commercial_document_number_series:commercial_document_number_series_actor_select:" +
+          "671da2bbbd9d45e5dd646c79df5313eb8bdaccaf0b9b3b4022126662df6a9818",
+        "commercial_document_number_series:commercial_document_number_series_actor_insert:" +
+          "7ba31cc2cbe6152cebd9725d51e4606c7c0fb8d3adc6cb14ef38cd6e79053927",
+        "commercial_document_number_series:commercial_document_number_series_actor_update:" +
+          "70113b97d0bf353c6f9554263dad64d2ba25347e5e37207a13e96dac374c7cce",
+        "commercial_document_number_series:commercial_document_number_series_actor_delete:" +
+          "c5a93b8eb938019870e53eac2a176bbbd62174f7c0d760a8b2480a1e69d3b2fa",
+        "commercial_document:tenant_isolation:" +
+          "3ef22b98b16e02afc38c5a4adf836d017f49b03be72455ce9ab67c5e9332382a",
+        "commercial_document:commercial_document_actor_select:" +
+          "ab81e68ab2b69cb6c6e41e0f0f78ed7154fb4929c984869814a9bbf650870bff",
+        "commercial_document:commercial_document_actor_insert:" +
+          "98213183157108bdafd7b9d972071e36f64fc9d7bfbe8a3bd686be302bc49eee",
+        "commercial_document:commercial_document_actor_update:" +
+          "bcc7d81aa91fe4bc19c4d12363f543b4f1200fe89f5942493adaf2edb72a8e9f",
+        "commercial_document:commercial_document_actor_delete:" +
+          "15b75560c2530b17b75a665ebcf2c8fdc8beca0fed96e5895ff2b2841d654f76",
+        "commercial_document_line:tenant_isolation:" +
+          "83792d4e90fffea91dfbb544506f1bf8ad113122043140f9d0e01ebc658cb839",
+        "commercial_document_line:commercial_document_line_actor_select:" +
+          "b856e932120e4bd21b9349c7aade14e9d908b1f6cf4d566b472308c502adf5c6",
+        "commercial_document_line:commercial_document_line_actor_insert:" +
+          "44cc6d030562e5f95cb633bc4b99d0b1a403ed5c28fa780606eefe0c93a0f88c",
+        "commercial_document_line:commercial_document_line_actor_update:" +
+          "bc2952cca8739e571d7a37f09a8976411247c65a460e74b90830de7d6fd46176",
+        "commercial_document_line:commercial_document_line_actor_delete:" +
+          "900aaadff384ed863a72e8386bafa2f428d4d4e35a251009386b63834e274c7a",
+      ] : []),
       ...(hasWorkspaceInvoicing ? [
         "workspace_document_number_format:tenant_isolation:6ba5999f7354596580df93d3463b8bd635c37085bfe034e0881641f6954c7c22",
         "workspace_document_number_format:workspace_document_number_format_actor_delete:c0ea21f9cd1ace066369e22a157ae56eb9ad95afb16498c35aeef08e294f73bf",
@@ -3751,6 +3866,13 @@ export async function verifyRoleContract(
         "workspace_document_number_format:workspace_document_number_format_no_truncate:34:O:public:forbid_mutation::-:0",
         "workspace_invoicing_settings:workspace_invoicing_settings_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
+      ...(hasCommercialDocuments ? [
+        "commercial_document:commercial_document_issued_immutable:19:O:public:_m301_guard_issued_immutable::-:0",
+        "commercial_document:commercial_document_no_truncate:34:O:public:forbid_mutation::-:0",
+        "commercial_document_group:commercial_document_group_no_truncate:34:O:public:forbid_mutation::-:0",
+        "commercial_document_line:commercial_document_line_no_truncate:34:O:public:forbid_mutation::-:0",
+        "commercial_document_number_series:commercial_document_number_series_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
     ],
     "Live-Triggervertrag",
   );
@@ -3897,6 +4019,11 @@ export async function verifyRoleContract(
         "app_runtime:workspace_invoicing_settings:SELECT:app_owner:false",
         "app_runtime:workspace_invoicing_settings:UPDATE:app_owner:false",
       ] : []),
+      ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
       "app_system:audit_log:INSERT:app_owner:false",
       "app_system:audit_log:SELECT:app_owner:false",
       "app_system:domain_events:INSERT:app_owner:false",
@@ -4161,6 +4288,9 @@ export async function verifyRoleContract(
         "app_runtime:sign_signature_by_token(bytea, text, text, bytea):EXECUTE:app_owner:false",
       ] : []),
       ...(hasWorkspaceInvoicing ? INVOICING_RUNTIME_ROUTINES.map((signature) =>
+        `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
+      ) : []),
+      ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES.map((signature) =>
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
       ...(hasOfferIssuance ? [

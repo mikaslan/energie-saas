@@ -213,3 +213,245 @@ export const invoicingErrorCodeSchema = z.enum([
   "denied",
   "unauthenticated",
 ]);
+
+// ═══════════════════════════════════════════════════════════════════════
+// M3-01 · Rechnungs-/Dokument-Kern (F8, ADR 0023). Additiv zum M3-00-Vertrag.
+// ═══════════════════════════════════════════════════════════════════════
+
+export const COMMERCIAL_DOCUMENT_GROUP_VERSION =
+  "commercial-document-group.v1" as const;
+export const COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION =
+  "commercial-document-group-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_COMMAND_VERSION =
+  "commercial-document-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION =
+  "commercial-document-line-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_VERSION = "commercial-document.v1" as const;
+export const COMMERCIAL_DOCUMENT_LINE_VERSION = "commercial-document-line.v1" as const;
+
+export const MAX_DOCUMENT_MONEY_CENTS = 9_000_000_000_000_000 as const;
+export const MAX_DOCUMENT_QUANTITY_MILLI = 100_000_000 as const;
+export const MAX_DOCUMENT_LINE_POSITION = 500 as const;
+export const GOEBD_SNAPSHOT_SCHEMA_VERSION = "document-snapshot.v1" as const;
+export const GOEBD_SNAPSHOT_CANONICALIZATION_VERSION = "document-jcs.v1" as const;
+
+// 6 Dokumenttypen (Spec §2/§4, ADR 0023). Der Diskriminator ist genau dieser
+// Sechsersatz; die Gruppen-Übersicht ist kein eigener Typ.
+export const commercialDocumentTypes = documentNumberTypes;
+export type CommercialDocumentType = DocumentNumberType;
+
+export const commercialDocumentStatuses = ["draft", "issued", "voided"] as const;
+export type CommercialDocumentStatus = (typeof commercialDocumentStatuses)[number];
+
+export const commercialPaymentStatuses = [
+  "unpaid",
+  "partially_paid",
+  "paid",
+  "overdue",
+  "uncollectable",
+] as const;
+export type CommercialPaymentStatus = (typeof commercialPaymentStatuses)[number];
+
+// Void-Grund-Festliste (M301-04, DECIDED eigene Werte; exakte Reonic-Liste UNKNOWN).
+export const commercialVoidReasons = [
+  "created_in_error",
+  "duplicate",
+  "superseded",
+  "cancelled",
+  "other",
+] as const;
+export type CommercialVoidReason = (typeof commercialVoidReasons)[number];
+
+export const commercialLineUnits = ["piece", "set", "meter"] as const;
+export type CommercialLineUnit = (typeof commercialLineUnits)[number];
+
+// OBSERVED-Enum (M3-UNKNOWN-RECON §2): Minderleistung | Empfehlungsprämie.
+export const commercialCreditNoteTypes = [
+  "minderleistung",
+  "empfehlungspraemie",
+] as const;
+export type CommercialCreditNoteType = (typeof commercialCreditNoteTypes)[number];
+
+// Nummernserien-Defaults je Typ (Spec §6, OBSERVED-Templates). prefix/padding
+// modellieren nur den {NUMBER}-Anteil; die vollständigen Datums-Platzhalter
+// ({YEAR}/{MONTH}/{DAY}) liegen im M3-00-Format-Template.
+export const COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS: Record<
+  CommercialDocumentType,
+  { prefix: string; padding: number }
+> = {
+  invoice: { prefix: "Rechnung", padding: 6 },
+  credit_note: { prefix: "CRN", padding: 6 },
+  order_confirmation: { prefix: "OFC", padding: 6 },
+  purchase_order: { prefix: "PO", padding: 6 },
+  delivery_note: { prefix: "DN", padding: 6 },
+  letter: { prefix: "LE", padding: 6 },
+};
+
+const commercialDocumentTypeSchema = z.enum(commercialDocumentTypes);
+const commercialDocumentStatusSchema = z.enum(commercialDocumentStatuses);
+const commercialPaymentStatusSchema = z.enum(commercialPaymentStatuses);
+const commercialVoidReasonSchema = z.enum(commercialVoidReasons);
+const commercialLineUnitSchema = z.enum(commercialLineUnits);
+const commercialCreditNoteTypeSchema = z.enum(commercialCreditNoteTypes);
+
+const groupNameSchema = z.string().trim().min(1).max(120).refine(
+  (value) => value.trim().length >= 1,
+  "group name must not be blank",
+);
+
+const documentNameSchema = z.string().trim().min(1).max(160).refine(
+  (value) => value.trim().length >= 1,
+  "document name must not be blank",
+);
+
+const moneyCentsSchema = z.number().int().min(0).max(MAX_DOCUMENT_MONEY_CENTS);
+const quantityMilliSchema = z.number().int().min(1).max(MAX_DOCUMENT_QUANTITY_MILLI);
+const taxRateBpsSchema = z.union([z.literal(0), z.literal(1900)]);
+const optionalUuid = z.string().uuid().nullable();
+const optionalDate = z.string().trim().min(1).max(32).nullable();
+
+const documentDraftInputFields = {
+  type: commercialDocumentTypeSchema,
+  name: documentNameSchema,
+  groupId: optionalUuid,
+  projectId: optionalUuid,
+  contactId: optionalUuid,
+  dueDate: optionalDate,
+  deliveryDate: optionalDate,
+  validityDate: optionalDate,
+  plannedDeliveryDate: optionalDate,
+  plannedServiceDate: optionalDate,
+  creditNoteType: commercialCreditNoteTypeSchema.nullable(),
+} as const;
+
+// Typ-bedingte Pflicht-Datumfelder (Spec §4/M301-01): je Typ die Spalten aus
+// §7. Brief bleibt ohne Betrag und ohne Zahlungsachse, braucht aber Gültigkeit.
+export const commercialDocumentDraftInputV1Schema = z
+  .strictObject(documentDraftInputFields)
+  .superRefine((value, ctx) => {
+    const missing = (field: string) =>
+      ctx.addIssue({
+        code: "custom",
+        path: [field],
+        message: `${field} is required for type ${value.type}`,
+      });
+    switch (value.type) {
+      case "invoice":
+        if (value.dueDate === null) missing("dueDate");
+        break;
+      case "credit_note":
+        if (value.deliveryDate === null) missing("deliveryDate");
+        if (value.creditNoteType === null) missing("creditNoteType");
+        break;
+      case "order_confirmation":
+        if (value.plannedDeliveryDate === null) missing("plannedDeliveryDate");
+        if (value.plannedServiceDate === null) missing("plannedServiceDate");
+        break;
+      case "purchase_order":
+        if (value.validityDate === null) missing("validityDate");
+        break;
+      case "delivery_note":
+        if (value.deliveryDate === null) missing("deliveryDate");
+        break;
+      case "letter":
+        if (value.validityDate === null) missing("validityDate");
+        break;
+    }
+    if (value.creditNoteType !== null && value.type !== "credit_note") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["creditNoteType"],
+        message: "creditNoteType is only valid for credit_note",
+      });
+    }
+  });
+export type CommercialDocumentDraftInputV1 = z.infer<
+  typeof commercialDocumentDraftInputV1Schema
+>;
+
+export const commercialDocumentCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_COMMAND_VERSION),
+  input: commercialDocumentDraftInputV1Schema,
+});
+export type CommercialDocumentCommandV1 = z.infer<typeof commercialDocumentCommandV1Schema>;
+
+export const commercialDocumentGroupCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION),
+  name: groupNameSchema,
+});
+export type CommercialDocumentGroupCommandV1 = z.infer<
+  typeof commercialDocumentGroupCommandV1Schema
+>;
+
+const lineInputFields = {
+  position: z.number().int().min(1).max(MAX_DOCUMENT_LINE_POSITION),
+  name: z.string().trim().min(1).max(300),
+  quantityMilli: quantityMilliSchema,
+  unit: commercialLineUnitSchema,
+  netCents: moneyCentsSchema,
+  taxRateBps: taxRateBpsSchema,
+} as const;
+
+export const commercialDocumentLineInputV1Schema = z.strictObject(lineInputFields);
+export type CommercialDocumentLineInputV1 = z.infer<
+  typeof commercialDocumentLineInputV1Schema
+>;
+
+export const commercialDocumentLineCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+  input: commercialDocumentLineInputV1Schema,
+});
+export type CommercialDocumentLineCommandV1 = z.infer<
+  typeof commercialDocumentLineCommandV1Schema
+>;
+
+export const commercialDocumentGroupV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_GROUP_VERSION),
+  id: z.string().uuid(),
+  name: groupNameSchema,
+  projectId: optionalUuid,
+  archivedAt: z.string().nullable(),
+  documentCount: z.number().int().nonnegative(),
+  permissions: z.strictObject({ canWrite: z.boolean() }),
+});
+export type CommercialDocumentGroupV1 = z.infer<typeof commercialDocumentGroupV1Schema>;
+
+export const commercialDocumentLineV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_LINE_VERSION),
+  id: z.string().uuid(),
+  documentId: z.string().uuid(),
+  position: z.number().int().min(1).max(MAX_DOCUMENT_LINE_POSITION),
+  name: z.string().min(1).max(300),
+  quantityMilli: quantityMilliSchema,
+  unit: commercialLineUnitSchema,
+  netCents: moneyCentsSchema,
+  taxCents: moneyCentsSchema,
+  grossCents: moneyCentsSchema,
+  taxRateBps: taxRateBpsSchema,
+});
+export type CommercialDocumentLineV1 = z.infer<typeof commercialDocumentLineV1Schema>;
+
+export const commercialDocumentV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_VERSION),
+  id: z.string().uuid(),
+  type: commercialDocumentTypeSchema,
+  status: commercialDocumentStatusSchema,
+  name: documentNameSchema,
+  groupId: optionalUuid,
+  projectId: optionalUuid,
+  contactId: optionalUuid,
+  archivedAt: z.string().nullable(),
+  netCents: moneyCentsSchema,
+  taxCents: moneyCentsSchema,
+  grossCents: moneyCentsSchema,
+  paymentStatus: commercialPaymentStatusSchema.nullable(),
+  dueDate: z.string().nullable(),
+  deliveryDate: z.string().nullable(),
+  validityDate: z.string().nullable(),
+  plannedDeliveryDate: z.string().nullable(),
+  plannedServiceDate: z.string().nullable(),
+  creditNoteType: commercialCreditNoteTypeSchema.nullable(),
+  permissions: z.strictObject({ canWrite: z.boolean() }),
+});
+export type CommercialDocumentV1 = z.infer<typeof commercialDocumentV1Schema>;
