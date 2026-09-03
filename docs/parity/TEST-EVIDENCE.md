@@ -93,3 +93,25 @@ monoton, 0043-Snapshot prevId→0042, Erasure-Pin post-0042 `cec63897…`
 (Rollenprobe-gedeckt). Nachweise: `npm run check` exit 0 (**184/184 Dateien,
 1804 passed/1 skipped**), Rollen 88/88 + PG18 5/5, Build exit 0, `db:generate`
 keine Drift, depcruise 0 (352 Module), **Chromium-E2E komplett 58/58, exit 0**.
+
+## M2-04 E-Signatur (0044) — REVIEWED/VERIFIED, integriert (2026-09-03)
+
+Lane `codex/m2-04-e-signature` (`5098e8f`, remote): Vollcheck exit 0
+(180/180 Dateien, 1755/1), Rollenprobe 88/88 + PG18 5/5, E2E fokussiert 4/4.
+Kimi-Code-Review: 0 P0 / 3 P1 / 9 P2 / 3 P3; P1 a1/a2 + P2 a3/b2/c2
+geschlossen, Spot-Recheck **FREIGABE**. d1/с1 als M2-04b-Gates eingestuft.
+Integration `codex/m1-wave-02` (`163d2a8`): Erasure-Kette post-0043
+re-verankert (tombstone 66dbe75a, graph 350a4c4f, erase cec63897),
+Rollenvertrags-Pins auf Integrations-Ist (m204 350a4c4f, Worm cc6f8018,
+Erase 0c4442f5), 0044-Snapshot drei-Wege (db:generate „No schema changes"),
+**E2E 62/62**. Kimi-Integrations-Review FREIGABE.
+
+## M3-00 Workspace-Stammdaten (0045) — REVIEWED/VERIFIED, integriert (2026-09-03)
+
+Lane `codex/m3-00-workspace-stammdaten` (`3e6b681`, remote): RLS-Capability-
+Gate (Admin ODER Editor+invoicing), M300-DB-RBAC-01-Schreibmatrix, Vollcheck
+exit 0 (186/186), E2E fokussiert 4/4. Integration `codex/m1-wave-02`
+(`1b1f944`): Permissions-Matrix 33, m111a-Zähler 46, tenant-fixtures additiv,
+0045-Snapshot auf 0044-Kette (prevId 97b3db4b, exakt 2 neue Tabellen);
+Vollcheck exit 0 im ersten Lauf, `db:generate` keine Drift, Build exit 0,
+**Chromium-E2E komplett 66/66**. Kimi-Integrations-Review FREIGABE.
