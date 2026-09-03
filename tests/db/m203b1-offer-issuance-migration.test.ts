@@ -913,11 +913,14 @@ describe("M2-03b1 offer-issuance migration contract", () => {
     expect(byName.get("guard_erasure_tombstone_worm")).toMatch(
       /offerIssuanceIds[\s\S]*offerIssuanceApprovalIds[\s\S]*offerIssuanceWithdrawalIds/u,
     );
-    expect(byName.get("build_inactive_lead_erasure_graph")).toContain(
-      "build_inactive_lead_erasure_graph_m115",
-    );
+    // 0044 hat die Top-Level-Kapsel erneut weitergereicht: die oberste
+    // Funktion delegiert an die (umbenannte) M2-04-Stufe, diese wiederum an
+    // die M1-15-Stufe — die Dispatch-Kette bleibt lückenlos.
     expect(byName.get("build_inactive_lead_erasure_graph")).toContain(
       "build_inactive_lead_erasure_graph_m204",
+    );
+    expect(byName.get("build_inactive_lead_erasure_graph_m204")).toContain(
+      "build_inactive_lead_erasure_graph_m115",
     );
     const graphSource = byName.get("build_inactive_lead_erasure_graph_m203b1");
     for (const binding of [
