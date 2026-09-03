@@ -151,6 +151,21 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-05 — v5-Leadquelle: Intake-Variante gebaut (0048, Lane e7246f8)
+
+- **Rechner-Leadquelle (saas-Seite fertig):** Producer-Enum
+  `wmee-rechner-v5` + Lead-only-Variante — calculation bleibt für v3
+  Pflicht (allOf-if/then), für v5 optional; SHA-Pin re-verankert.
+  `processRechnerIntake` persistiert Lead-only: Kontakt + Site + Projekt
+  (Board-Karte „unqualifiziert") OHNE Kalkulations-Snapshot/Anforderungen.
+  Migration 0048 (Producer-CHECK). Contract- + DB-Golden-Tests grün.
+  Vollgate Lane: 196 Dateien, 1886/1, 88/88 + 5/5, Build.
+  **Root-Arbitrage:** M1-15b rückt auf 0049 (Spec aktualisiert).
+- **Demo-Localhost:** Preview-Modus mit Direkt-Login („Demo-Login") und
+  Seeds für alle Bereiche läuft (Wave-02 b581f80).
+- **Offen:** v5-Seite (api/contact-Fan-out + HMAC + Payload-Mapping) —
+  nächster Schritt; dann Integration 0048 in wave-02.
+
 ## 2026-09-04 (Nacht III) — F4.5 SPECIFIED-Draft + ADR 0026: Kimi-FREIGABE (3 Runden)
 
 - **F4.5-Spec** (`docs/spec/F4-05-wirtschaftlichkeits-outputs.md`):
