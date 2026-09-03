@@ -147,6 +147,26 @@ komplette Chromium-Suite 48/48, Vollgate exit 0, M1-12a-Mitternachts-Flake
 behoben. Nächste Slices nach Portal-Audit-Priorisierung: M1-14 Kontakte →
 M2-04 E-Signatur → M1-15 Termine (Specs fertig, Kimi-reviewed).
 
+## 2026-09-03 (16:00) — M3-01 A1 recovered + Kimi-FREIGABE, A2 gestartet, F4-Brief fertig
+
+- **A1-Implementierer kreiste** in der Test-/Snapshot-Schleife (kein Commit
+  nach ~3h) → Root übernahm: Contract-/DB-Tests (7), tenant-fixtures,
+  Rollenvertrag komplett (_m301-Funktions-/Policy-/Trigger-Pins + Tabellen-
+  Grants aus Ist verankert), ACTOR_SCOPED_TABLES, m111a-Zähler 47.
+  Vollcheck exit 0 (191 Dateien, 1836/1), Rollenprobe 88/88 + 5/5, keine
+  Drift. Lane gepusht (`1c1e878`).
+- **Kimi-A1-Review:** 3 P1 + 7 P2 + P3 → alle P1 (Steuer-BigInt, Event/Audit
+  Zeilenpfad, Statusmaschine draft→issued→voided) + P2-4/6/7/8 geschlossen,
+  Regressionstests M301-DB-05/06/07, Pin 74b12d49 neu verankert. Spot-Recheck
+  **FREIGABE**. Gepusht (`64117d3`).
+- **A2 (Ausstellen + Nummernkreis + Snapshot)** läuft bei frischem
+  Implementierer; A1-Basis committet.
+- **F4-Wirtschaftlichkeit:** DISCOVERED-Brief fertig (F4.4–F4.6, OBSERVED
+  dünn, 7 Mikail-Fragen, Empfehlung: F4.6 als M3-00-Klon zuerst, F4.5
+  spec-first mit Rechenkern-ADR). Dev-„M3" = F8, Modulkatalog-M3 = PV-Planung.
+- Offene Mikail-Punkte unverändert: v5-Deploy-GO, Katalog-Datenlücken,
+  S3-Object-Lock, Codex-Limit.
+
 ## 2026-09-03 (14:40) — M3-01 A1 in der Testschleife, M4-Discovery parallel
 
 - **M3-01 A1:** Implementierer hat 0046 (4 Tabellen, 6-Typen-Diskriminator
