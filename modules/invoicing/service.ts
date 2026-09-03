@@ -794,7 +794,9 @@ export async function issueDocument(
   // (nur modelliert, keine Durchsetzung). Zeitbasis durchgängig Europe/Berlin.
   const nowBerlin = await tx.execute<{ now_iso: string; date: string }>(sql`
     select to_char(statement_timestamp() at time zone 'Europe/Berlin',
-                   'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as now_iso,
+                   'YYYY-MM-DD"T"HH24:MI:SS.MS')
+           || to_char(statement_timestamp() at time zone 'Europe/Berlin', 'OF')
+           as now_iso,
            to_char((statement_timestamp() at time zone 'Europe/Berlin')::date,
                    'YYYY-MM-DD') as date
   `);

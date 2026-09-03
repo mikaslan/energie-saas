@@ -356,4 +356,28 @@ describe("M3-01 Ausstellen + Nummernkreis (PostgreSQL)", () => {
       .digest("hex");
     expect(recomputed).toBe(row.rows[0]?.hash_hex);
   });
+
+  it("M301-ISSUE-07 (Kimi-P2-6): Sequenz-Überlauf wird als Konflikt abgewiesen", async () => {
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => upsertInvoicingSettings(tx, ctx, settingsCommand(0)),
+    );
+    // Serie erst via createDocument seeden (Seeding läuft im Schreibpfad),
+    // dann an die Überlaufgrenze schieben.
+    const documentId = await seedInvoice(fixture, "Überlauf");
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      async (tx) => {
+        await tx.execute(sql`
+          update commercial_document_number_series
+             set last_sequence = 999999
+           where workspace_id = ${fixture.workspaceId}::uuid and type = 'invoice'
+        `);
+      },
+    );
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => issueDocument(tx, ctx, issueCommand(documentId)),
+    )).rejects.toBeInstanceOf(InvoicingConflictError);
+  });
 });
