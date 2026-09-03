@@ -6,7 +6,9 @@ vi.mock("server-only", () => ({}));
 
 import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
 import {
+  COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_PAYMENT_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_PAYMENT_STATUS_COMMAND_VERSION,
@@ -16,9 +18,12 @@ import {
 } from "@/lib/integrations/invoicing/contract";
 import {
   createDocument,
+  createDocumentGroup,
   issueDocument,
   markSentDocument,
   recordPayment,
+  setDocumentArchived,
+  setDocumentGroupArchived,
   setPaymentStatus,
   upsertInvoicingSettings,
   voidDocument,
@@ -431,5 +436,115 @@ describe("M3-01 Versand-/Storno-/Zahlungsachse (PostgreSQL)", () => {
         documentId: second, paidCents: 100,
       }),
     )).rejects.toBeInstanceOf(InvoicingConflictError);
+  });
+
+  it("M301-AX-07: Archiv-Achse — reversibler Toggle über alle Status, Content bleibt unberührt", async () => {
+    const id = await seedIssuedInvoice(fixture);
+    const archived = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => setDocumentArchived(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION,
+        documentId: id, archived: true,
+      }),
+    );
+    expect(archived.archivedAt).toBeTruthy();
+    expect(archived.status).toBe("issued");
+    expect(archived.grossCents).toBe(11900);
+
+    const reopened = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => setDocumentArchived(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION,
+        documentId: id, archived: false,
+      }),
+    );
+    expect(reopened.archivedAt).toBeNull();
+
+    // Draft lässt sich ebenfalls archivieren.
+    const draftId = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+        input: {
+          type: "letter" as const, name: "Draft-Brief", groupId: null, projectId: null,
+          contactId: null, dueDate: null, deliveryDate: null, validityDate: "2026-12-31",
+          plannedDeliveryDate: null, plannedServiceDate: null, creditNoteType: null,
+        },
+      }),
+    ).then((result) => result.id);
+    const draftArchived = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => setDocumentArchived(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION,
+        documentId: draftId, archived: true,
+      }),
+    );
+    expect(draftArchived.archivedAt).toBeTruthy();
+    expect(draftArchived.status).toBe("draft");
+  });
+
+  it("M301-AX-08: Gruppen-Archiv-Toggle; unbekannte Gruppen-ID → NotFound ohne Leak", async () => {
+    // Settings idempotent seeden (Geld-Dokumente brauchen die O4-Precondition).
+    await seedIssuedInvoice(fixture);
+    const groupId = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocumentGroup(tx, ctx, {
+        schemaVersion: "commercial-document-group-command.v1" as const,
+        name: "Archiv-Gruppe",
+      }),
+    ).then((result) => result.id);
+
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => setDocumentGroupArchived(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION,
+        groupId, archived: true,
+      }),
+    );
+    // Archivierte Gruppe blockt neue Dokumente (M301-DB-07-Muster).
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+        input: {
+          type: "invoice" as const, name: "In Archiv-Gruppe", groupId,
+          projectId: null, contactId: null, dueDate: "2026-12-31",
+          deliveryDate: null, validityDate: null, plannedDeliveryDate: null,
+          plannedServiceDate: null, creditNoteType: null,
+        },
+      }),
+    )).rejects.toBeInstanceOf(InvoicingConflictError);
+
+    // Reopen hebt den Block auf.
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => setDocumentGroupArchived(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION,
+        groupId, archived: false,
+      }),
+    );
+    const created = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+        input: {
+          type: "invoice" as const, name: "Nach Reopen", groupId,
+          projectId: null, contactId: null, dueDate: "2026-12-31",
+          deliveryDate: null, validityDate: null, plannedDeliveryDate: null,
+          plannedServiceDate: null, creditNoteType: null,
+        },
+      }),
+    );
+    expect(created.id).toBeTruthy();
+
+    // Unbekannte Gruppe im eigenen Workspace: NotFound (kein Existenz-Leak;
+    // der Cross-Tenant-Negativfall der Listen liegt in M301-LIST-06).
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => setDocumentGroupArchived(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION,
+        groupId: randomUUID(), archived: true,
+      }),
+    )).rejects.toBeInstanceOf(InvoicingNotFoundError);
   });
 });

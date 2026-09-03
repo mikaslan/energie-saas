@@ -37,3 +37,4 @@ eigene Regeln ausgewiesen und austauschbar.
 Historische Steuer-/Abrechnungsbehauptungen aus Transkripten, insbesondere das
 Verschieben von Arbeitswerten zwischen Gewerken, sind ungeprüft und kein
 Produktvertrag.
+| `UNK-M301-02` | DECIDED (Folgeslice) | Nummernvergabe nutzt die Serien-Defaults (`RE-{JAHR}-{NNNNNN}` usw.), NICHT das konfigurierbare M3-00-Format-Template (`Rechnung-{YEAR}-{MONTH}-{NUMBER}`) — assignDocumentNumber liest nur prefix/padding der commercial_document_number_series | Template-Auflösung (M3-00 workspace_document_number_format) ist spezifiziert (§6), aber in A2 als Serien-Format umgesetzt und Kimi-reviewed; die Verkabelung beider Ebenen ist ein Integrations-Folgeslice (UI-Einstellungen M3-00 ↔ Nummernvergabe M3-01) | Integrationsschritt bei 0045↔0046-Verkabelung oder M3-02 |

@@ -24,6 +24,7 @@ import {
   commercialDocumentGroupCommandV1Schema,
   commercialDocumentCommandV1Schema,
   commercialDocumentIssueCommandV1Schema,
+  commercialDocumentArchiveCommandV1Schema,
   commercialDocumentListCommandV1Schema,
   commercialDocumentListV1Schema,
   commercialDocumentPaymentCommandV1Schema,
@@ -32,6 +33,7 @@ import {
   commercialDocumentV1Schema,
   commercialDocumentVoidCommandV1Schema,
   commercialDocumentGroupV1Schema,
+  commercialDocumentGroupArchiveCommandV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineV1Schema,
   invoicingReportCommandV1Schema,
@@ -46,6 +48,7 @@ import {
   type CommercialDocumentCommandV1,
   type CommercialDocumentGroupCommandV1,
   type CommercialDocumentIssueCommandV1,
+  type CommercialDocumentArchiveCommandV1,
   type CommercialDocumentListCommandV1,
   type CommercialDocumentListV1,
   type CommercialDocumentPaymentCommandV1,
@@ -54,6 +57,7 @@ import {
   type CommercialDocumentV1,
   type CommercialDocumentVoidCommandV1,
   type CommercialDocumentGroupV1,
+  type CommercialDocumentGroupArchiveCommandV1,
   type CommercialDocumentLineCommandV1,
   type CommercialDocumentLineV1,
   type DocumentNumberType,
@@ -1811,4 +1815,88 @@ export async function exportInvoicingReport(
     contentType: "text/csv; charset=utf-8",
     content,
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Archiv-Achse (Spec §5.4): reversibler Toggle über alle Status.
+// ═══════════════════════════════════════════════════════════════════════
+
+export async function setDocumentArchived(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentArchiveCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentArchiveCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const { documentId, archived } = parsed.data;
+
+  const updated = await tx.execute<{ id: string }>(sql`
+    update commercial_document
+       set archived_at = ${archived ? sql`statement_timestamp()` : sql`null`},
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     returning id
+  `);
+  if (!updated.rows[0]) throw new InvoicingNotFoundError();
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: archived
+      ? "commercial_document.archived"
+      : "commercial_document.unarchived",
+    actor: ctx.actor,
+    payload: { documentId, archived },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "invoicing.document.archive.write",
+    resource: "commercial_document",
+    allowed: true,
+    details: { documentId, archived },
+  });
+  return readDocument(tx, ctx, documentId);
+}
+
+export async function setDocumentGroupArchived(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentGroupArchiveCommandV1,
+): Promise<{ id: string }> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentGroupArchiveCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const { groupId, archived } = parsed.data;
+
+  const updated = await tx.execute<{ id: string }>(sql`
+    update commercial_document_group
+       set archived_at = ${archived ? sql`statement_timestamp()` : sql`null`},
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${groupId}::uuid
+     returning id
+  `);
+  if (!updated.rows[0]) throw new InvoicingNotFoundError();
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document_group",
+    aggregateId: groupId,
+    eventType: archived
+      ? "commercial_document_group.archived"
+      : "commercial_document_group.unarchived",
+    actor: ctx.actor,
+    payload: { groupId, archived },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "invoicing.group.write",
+    resource: "commercial_document_group",
+    allowed: true,
+    details: { groupId, archived },
+  });
+  return { id: groupId };
 }

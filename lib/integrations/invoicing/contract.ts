@@ -234,6 +234,10 @@ export const COMMERCIAL_DOCUMENT_PAYMENT_STATUS_COMMAND_VERSION =
   "commercial-document-payment-status-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION =
   "commercial-document-issue-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION =
+  "commercial-document-archive-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION =
+  "commercial-document-group-archive-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION =
   "commercial-document-line-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_VERSION = "commercial-document.v1" as const;
@@ -451,6 +455,26 @@ export const commercialDocumentIssueCommandV1Schema = z.strictObject({
 });
 export type CommercialDocumentIssueCommandV1 = z.infer<
   typeof commercialDocumentIssueCommandV1Schema
+>;
+
+// Archiv-Achse (Spec §5.4): unabhängiger, reversibler Toggle über alle
+// Status; kein Statuswechsel, einziger Nebeneffekt ist das Audit-Event.
+export const commercialDocumentArchiveCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+  archived: z.boolean(),
+});
+export type CommercialDocumentArchiveCommandV1 = z.infer<
+  typeof commercialDocumentArchiveCommandV1Schema
+>;
+
+export const commercialDocumentGroupArchiveCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION),
+  groupId: z.string().uuid(),
+  archived: z.boolean(),
+});
+export type CommercialDocumentGroupArchiveCommandV1 = z.infer<
+  typeof commercialDocumentGroupArchiveCommandV1Schema
 >;
 
 export const commercialDocumentGroupCommandV1Schema = z.strictObject({
