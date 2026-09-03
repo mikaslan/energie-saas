@@ -173,8 +173,8 @@ describe.sequential("M1-15 Appointment-Erasure (funktional)", () => {
         [membershipId, workspaceId, editorId],
       );
       await seed.query(
-        `insert into public.contact (id, workspace_id, display_name, email_primary, email_normalized, updated_at)
-         values ($1::uuid, $2::uuid, 'ERASURE-CUSTOMER', 'e@m115.test', 'e@m115.test', now() - interval '25 months')`,
+        `insert into public.contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized, updated_at)
+         values ($1::uuid, $2::uuid, 'ERASURE-CUSTOMER', 'Erasure', 'Customer', 'e@m115.test', 'e@m115.test', now() - interval '25 months')`,
         [contactId, workspaceId],
       );
       await seed.query(

@@ -1,528 +1,9 @@
 {
-  "id": "5788c3ea-bd33-4155-8d90-14d5d1ca4010",
-  "prevId": "2313ed75-ba72-499e-9c04-ad6665e83be2",
+  "id": "b1085166-b21e-4998-950f-1fc0d87de84a",
+  "prevId": "49e40e72-3369-48f4-a566-bf42f9f16cbc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.calendar_category": {
-      "name": "calendar_category",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "order": {
-          "name": "order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "calendar_category_ws_name_uq": {
-          "name": "calendar_category_ws_name_uq",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "lower(btrim(\"name\"))",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "calendar_category_workspace_id_fk": {
-          "name": "calendar_category_workspace_id_fk",
-          "tableFrom": "calendar_category",
-          "tableTo": "workspace",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "calendar_category_ws_id_uq": {
-          "name": "calendar_category_ws_id_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "calendar_category_name_ck": {
-          "name": "calendar_category_name_ck",
-          "value": "length(btrim(\"calendar_category\".\"name\")) between 1 and 200\n          and \"calendar_category\".\"name\" = normalize(\"calendar_category\".\"name\", NFKC)\n          and \"calendar_category\".\"name\" !~ '[[:cntrl:]]'\n          and \"calendar_category\".\"name\" !~ '(^[[:space:]])|([[:space:]]$)'"
-        },
-        "calendar_category_order_ck": {
-          "name": "calendar_category_order_ck",
-          "value": "\"calendar_category\".\"order\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.project_appointment": {
-      "name": "project_appointment",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "location": {
-          "name": "location",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "start_at": {
-          "name": "start_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "end_at": {
-          "name": "end_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "all_day": {
-          "name": "all_day",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "appointment_type": {
-          "name": "appointment_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "project_appointment_ws_project_range_idx": {
-          "name": "project_appointment_ws_project_range_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "start_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "end_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "project_appointment_ws_project_start_idx": {
-          "name": "project_appointment_ws_project_start_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "start_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "first"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "project_appointment_ws_category_idx": {
-          "name": "project_appointment_ws_category_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "category_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "project_appointment_workspace_id_fk": {
-          "name": "project_appointment_workspace_id_fk",
-          "tableFrom": "project_appointment",
-          "tableTo": "workspace",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "project_appointment_project_fk": {
-          "name": "project_appointment_project_fk",
-          "tableFrom": "project_appointment",
-          "tableTo": "project",
-          "columnsFrom": [
-            "workspace_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "workspace_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "project_appointment_category_fk": {
-          "name": "project_appointment_category_fk",
-          "tableFrom": "project_appointment",
-          "tableTo": "calendar_category",
-          "columnsFrom": [
-            "workspace_id",
-            "category_id"
-          ],
-          "columnsTo": [
-            "workspace_id",
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "project_appointment_ws_id_uq": {
-          "name": "project_appointment_ws_id_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "project_appointment_title_ck": {
-          "name": "project_appointment_title_ck",
-          "value": "length(btrim(\"project_appointment\".\"title\")) between 1 and 2000"
-        },
-        "project_appointment_description_ck": {
-          "name": "project_appointment_description_ck",
-          "value": "\"project_appointment\".\"description\" is null or length(btrim(\"project_appointment\".\"description\")) between 1 and 5000"
-        },
-        "project_appointment_location_ck": {
-          "name": "project_appointment_location_ck",
-          "value": "\"project_appointment\".\"location\" is null or length(btrim(\"project_appointment\".\"location\")) between 1 and 2000"
-        },
-        "project_appointment_type_ck": {
-          "name": "project_appointment_type_ck",
-          "value": "\"project_appointment\".\"appointment_type\" in ('on_site', 'phone', 'installation', 'maintenance', 'consultation', 'other')"
-        },
-        "project_appointment_window_ck": {
-          "name": "project_appointment_window_ck",
-          "value": "\"project_appointment\".\"end_at\" > \"project_appointment\".\"start_at\"\n          and (not \"project_appointment\".\"all_day\"\n               or (\"project_appointment\".\"end_at\" at time zone 'Europe/Berlin')::date\n                  >= (\"project_appointment\".\"start_at\" at time zone 'Europe/Berlin')::date + 1)\n          and isfinite(\"project_appointment\".\"start_at\")\n          and isfinite(\"project_appointment\".\"end_at\")"
-        },
-        "project_appointment_revision_ck": {
-          "name": "project_appointment_revision_ck",
-          "value": "\"project_appointment\".\"revision\" between 1 and 2147483647"
-        },
-        "project_appointment_timestamps_ck": {
-          "name": "project_appointment_timestamps_ck",
-          "value": "\"project_appointment\".\"updated_at\" >= \"project_appointment\".\"created_at\"\n          and isfinite(\"project_appointment\".\"created_at\")\n          and isfinite(\"project_appointment\".\"updated_at\")"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.project_appointment_attendee": {
-      "name": "project_appointment_attendee",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "appointment_id": {
-          "name": "appointment_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "membership_id": {
-          "name": "membership_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "project_appointment_attendee_ws_membership_appt_idx": {
-          "name": "project_appointment_attendee_ws_membership_appt_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "membership_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "appointment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "project_appointment_attendee_workspace_id_fk": {
-          "name": "project_appointment_attendee_workspace_id_fk",
-          "tableFrom": "project_appointment_attendee",
-          "tableTo": "workspace",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "project_appointment_attendee_appointment_fk": {
-          "name": "project_appointment_attendee_appointment_fk",
-          "tableFrom": "project_appointment_attendee",
-          "tableTo": "project_appointment",
-          "columnsFrom": [
-            "workspace_id",
-            "appointment_id"
-          ],
-          "columnsTo": [
-            "workspace_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "project_appointment_attendee_membership_fk": {
-          "name": "project_appointment_attendee_membership_fk",
-          "tableFrom": "project_appointment_attendee",
-          "tableTo": "membership",
-          "columnsFrom": [
-            "workspace_id",
-            "membership_id"
-          ],
-          "columnsTo": [
-            "workspace_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "project_appointment_attendee_ws_id_uq": {
-          "name": "project_appointment_attendee_ws_id_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "id"
-          ]
-        },
-        "project_appointment_attendee_ws_appt_membership_uq": {
-          "name": "project_appointment_attendee_ws_appt_membership_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "appointment_id",
-            "membership_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.membership": {
       "name": "membership",
       "schema": "",
@@ -3343,6 +2824,31 @@
           "primaryKey": false,
           "notNull": true
         },
+        "first_name": {
+          "name": "first_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_name": {
+          "name": "last_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "salutation": {
+          "name": "salutation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_business": {
+          "name": "is_business",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "email_primary": {
           "name": "email_primary",
           "type": "text",
@@ -3355,6 +2861,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "email_secondary": {
+          "name": "email_secondary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "phone_raw": {
           "name": "phone_raw",
           "type": "text",
@@ -3363,6 +2875,48 @@
         },
         "phone_e164": {
           "name": "phone_e164",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_mobile": {
+          "name": "phone_mobile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_reachability": {
+          "name": "phone_reachability",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_street": {
+          "name": "address_street",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_house_number": {
+          "name": "address_house_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_postal_code": {
+          "name": "address_postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_city": {
+          "name": "address_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address_country": {
+          "name": "address_country",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -3386,12 +2940,67 @@
           "primaryKey": false,
           "notNull": false
         },
+        "marketing_consent_policy_version": {
+          "name": "marketing_consent_policy_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_consent_text": {
+          "name": "marketing_consent_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marketing_consent_data_protection_link": {
+          "name": "marketing_consent_data_protection_link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_source": {
+          "name": "utm_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_medium": {
+          "name": "utm_medium",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_campaign": {
+          "name": "utm_campaign",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_term": {
+          "name": "utm_term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "utm_content": {
+          "name": "utm_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "dedupe_review_required": {
           "name": "dedupe_review_required",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         },
         "deleted_at": {
           "name": "deleted_at",
@@ -3513,6 +3122,90 @@
         "contact_marketing_consent_ck": {
           "name": "contact_marketing_consent_ck",
           "value": "(\n        \"contact\".\"marketing_consent\" = false\n        and \"contact\".\"marketing_consent_at\" is null\n        and \"contact\".\"marketing_consent_source\" is null\n      ) or (\n        \"contact\".\"marketing_consent\" = true\n        and \"contact\".\"marketing_consent_at\" is not null\n        and length(btrim(\"contact\".\"marketing_consent_source\")) > 0\n      )"
+        },
+        "contact_marketing_consent_version_ck": {
+          "name": "contact_marketing_consent_version_ck",
+          "value": "\"contact\".\"marketing_consent\" = false or \"contact\".\"marketing_consent_policy_version\" is not null"
+        },
+        "contact_first_name_ck": {
+          "name": "contact_first_name_ck",
+          "value": "length(btrim(\"contact\".\"first_name\")) between 1 and 200"
+        },
+        "contact_last_name_ck": {
+          "name": "contact_last_name_ck",
+          "value": "length(btrim(\"contact\".\"last_name\")) between 1 and 200"
+        },
+        "contact_salutation_ck": {
+          "name": "contact_salutation_ck",
+          "value": "\"contact\".\"salutation\" is null or \"contact\".\"salutation\" in ('female', 'male', 'diverse', 'family', 'business')"
+        },
+        "contact_is_business_ck": {
+          "name": "contact_is_business_ck",
+          "value": "\"contact\".\"salutation\" is distinct from 'business' or \"contact\".\"is_business\" = true"
+        },
+        "contact_email_secondary_ck": {
+          "name": "contact_email_secondary_ck",
+          "value": "\"contact\".\"email_secondary\" is null or (\n        \"contact\".\"email_secondary\" = lower(btrim(\"contact\".\"email_secondary\"))\n        and \"contact\".\"email_secondary\" ~ '^[^@[:space:]]+@[^@[:space:]]+$'\n        and length(\"contact\".\"email_secondary\") between 3 and 254\n      )"
+        },
+        "contact_phone_mobile_ck": {
+          "name": "contact_phone_mobile_ck",
+          "value": "\"contact\".\"phone_mobile\" is null or \"contact\".\"phone_mobile\" ~ '^\\+[1-9][0-9]{1,14}$'"
+        },
+        "contact_phone_reachability_ck": {
+          "name": "contact_phone_reachability_ck",
+          "value": "\"contact\".\"phone_reachability\" is null or \"contact\".\"phone_reachability\" in ('morning', 'afternoon', 'evening', 'fulltime', 'weekend_only', 'email_only')"
+        },
+        "contact_address_street_ck": {
+          "name": "contact_address_street_ck",
+          "value": "\"contact\".\"address_street\" is null or length(btrim(\"contact\".\"address_street\")) between 1 and 200"
+        },
+        "contact_address_house_number_ck": {
+          "name": "contact_address_house_number_ck",
+          "value": "\"contact\".\"address_house_number\" is null or length(btrim(\"contact\".\"address_house_number\")) between 1 and 30"
+        },
+        "contact_address_postal_code_ck": {
+          "name": "contact_address_postal_code_ck",
+          "value": "\"contact\".\"address_postal_code\" is null or (\n        (\n          (\"contact\".\"address_country\" = 'DE' or \"contact\".\"address_country\" is null)\n          and \"contact\".\"address_postal_code\" ~ '^[0-9]{5}$'\n        ) or (\n          \"contact\".\"address_country\" is not null\n          and \"contact\".\"address_country\" <> 'DE'\n          and length(btrim(\"contact\".\"address_postal_code\")) between 1 and 20\n        )\n      )"
+        },
+        "contact_address_city_ck": {
+          "name": "contact_address_city_ck",
+          "value": "\"contact\".\"address_city\" is null or length(btrim(\"contact\".\"address_city\")) between 1 and 200"
+        },
+        "contact_address_country_ck": {
+          "name": "contact_address_country_ck",
+          "value": "\"contact\".\"address_country\" is null or length(btrim(\"contact\".\"address_country\")) between 1 and 20"
+        },
+        "contact_marketing_consent_policy_version_ck": {
+          "name": "contact_marketing_consent_policy_version_ck",
+          "value": "\"contact\".\"marketing_consent_policy_version\" is null or length(btrim(\"contact\".\"marketing_consent_policy_version\")) between 1 and 100"
+        },
+        "contact_marketing_consent_data_protection_link_ck": {
+          "name": "contact_marketing_consent_data_protection_link_ck",
+          "value": "\"contact\".\"marketing_consent_data_protection_link\" is null or \"contact\".\"marketing_consent_data_protection_link\" ~ '^https://'"
+        },
+        "contact_utm_source_ck": {
+          "name": "contact_utm_source_ck",
+          "value": "\"contact\".\"utm_source\" is null or length(btrim(\"contact\".\"utm_source\")) between 1 and 1000"
+        },
+        "contact_utm_medium_ck": {
+          "name": "contact_utm_medium_ck",
+          "value": "\"contact\".\"utm_medium\" is null or length(btrim(\"contact\".\"utm_medium\")) between 1 and 1000"
+        },
+        "contact_utm_campaign_ck": {
+          "name": "contact_utm_campaign_ck",
+          "value": "\"contact\".\"utm_campaign\" is null or length(btrim(\"contact\".\"utm_campaign\")) between 1 and 1000"
+        },
+        "contact_utm_term_ck": {
+          "name": "contact_utm_term_ck",
+          "value": "\"contact\".\"utm_term\" is null or length(btrim(\"contact\".\"utm_term\")) between 1 and 1000"
+        },
+        "contact_utm_content_ck": {
+          "name": "contact_utm_content_ck",
+          "value": "\"contact\".\"utm_content\" is null or length(btrim(\"contact\".\"utm_content\")) between 1 and 1000"
+        },
+        "contact_revision_ck": {
+          "name": "contact_revision_ck",
+          "value": "\"contact\".\"revision\" between 1 and 2147483647"
         }
       },
       "isRLSEnabled": false
@@ -14264,6 +13957,525 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.calendar_category": {
+      "name": "calendar_category",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order": {
+          "name": "order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "calendar_category_ws_name_uq": {
+          "name": "calendar_category_ws_name_uq",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(btrim(\"name\"))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "calendar_category_workspace_id_fk": {
+          "name": "calendar_category_workspace_id_fk",
+          "tableFrom": "calendar_category",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "calendar_category_ws_id_uq": {
+          "name": "calendar_category_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "calendar_category_name_ck": {
+          "name": "calendar_category_name_ck",
+          "value": "length(btrim(\"calendar_category\".\"name\")) between 1 and 200\n          and \"calendar_category\".\"name\" = normalize(\"calendar_category\".\"name\", NFKC)\n          and \"calendar_category\".\"name\" !~ '[[:cntrl:]]'\n          and \"calendar_category\".\"name\" !~ '(^[[:space:]])|([[:space:]]$)'"
+        },
+        "calendar_category_order_ck": {
+          "name": "calendar_category_order_ck",
+          "value": "\"calendar_category\".\"order\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.project_appointment": {
+      "name": "project_appointment",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location": {
+          "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_at": {
+          "name": "start_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_at": {
+          "name": "end_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "all_day": {
+          "name": "all_day",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "appointment_type": {
+          "name": "appointment_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "project_appointment_ws_project_range_idx": {
+          "name": "project_appointment_ws_project_range_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "start_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "end_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "project_appointment_ws_project_start_idx": {
+          "name": "project_appointment_ws_project_start_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "start_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "project_appointment_ws_category_idx": {
+          "name": "project_appointment_ws_category_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "project_appointment_workspace_id_fk": {
+          "name": "project_appointment_workspace_id_fk",
+          "tableFrom": "project_appointment",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "project_appointment_project_fk": {
+          "name": "project_appointment_project_fk",
+          "tableFrom": "project_appointment",
+          "tableTo": "project",
+          "columnsFrom": [
+            "workspace_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_appointment_category_fk": {
+          "name": "project_appointment_category_fk",
+          "tableFrom": "project_appointment",
+          "tableTo": "calendar_category",
+          "columnsFrom": [
+            "workspace_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "project_appointment_ws_id_uq": {
+          "name": "project_appointment_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "project_appointment_title_ck": {
+          "name": "project_appointment_title_ck",
+          "value": "length(btrim(\"project_appointment\".\"title\")) between 1 and 2000"
+        },
+        "project_appointment_description_ck": {
+          "name": "project_appointment_description_ck",
+          "value": "\"project_appointment\".\"description\" is null or length(btrim(\"project_appointment\".\"description\")) between 1 and 5000"
+        },
+        "project_appointment_location_ck": {
+          "name": "project_appointment_location_ck",
+          "value": "\"project_appointment\".\"location\" is null or length(btrim(\"project_appointment\".\"location\")) between 1 and 2000"
+        },
+        "project_appointment_type_ck": {
+          "name": "project_appointment_type_ck",
+          "value": "\"project_appointment\".\"appointment_type\" in ('on_site', 'phone', 'installation', 'maintenance', 'consultation', 'other')"
+        },
+        "project_appointment_window_ck": {
+          "name": "project_appointment_window_ck",
+          "value": "\"project_appointment\".\"end_at\" > \"project_appointment\".\"start_at\"\n          and (not \"project_appointment\".\"all_day\"\n               or (\"project_appointment\".\"end_at\" at time zone 'Europe/Berlin')::date\n                  >= (\"project_appointment\".\"start_at\" at time zone 'Europe/Berlin')::date + 1)\n          and isfinite(\"project_appointment\".\"start_at\")\n          and isfinite(\"project_appointment\".\"end_at\")"
+        },
+        "project_appointment_revision_ck": {
+          "name": "project_appointment_revision_ck",
+          "value": "\"project_appointment\".\"revision\" between 1 and 2147483647"
+        },
+        "project_appointment_timestamps_ck": {
+          "name": "project_appointment_timestamps_ck",
+          "value": "\"project_appointment\".\"updated_at\" >= \"project_appointment\".\"created_at\"\n          and isfinite(\"project_appointment\".\"created_at\")\n          and isfinite(\"project_appointment\".\"updated_at\")"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.project_appointment_attendee": {
+      "name": "project_appointment_attendee",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "appointment_id": {
+          "name": "appointment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "membership_id": {
+          "name": "membership_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "project_appointment_attendee_ws_membership_appt_idx": {
+          "name": "project_appointment_attendee_ws_membership_appt_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "membership_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "appointment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "project_appointment_attendee_workspace_id_fk": {
+          "name": "project_appointment_attendee_workspace_id_fk",
+          "tableFrom": "project_appointment_attendee",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "project_appointment_attendee_appointment_fk": {
+          "name": "project_appointment_attendee_appointment_fk",
+          "tableFrom": "project_appointment_attendee",
+          "tableTo": "project_appointment",
+          "columnsFrom": [
+            "workspace_id",
+            "appointment_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_appointment_attendee_membership_fk": {
+          "name": "project_appointment_attendee_membership_fk",
+          "tableFrom": "project_appointment_attendee",
+          "tableTo": "membership",
+          "columnsFrom": [
+            "workspace_id",
+            "membership_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "project_appointment_attendee_ws_id_uq": {
+          "name": "project_appointment_attendee_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "project_appointment_attendee_ws_appt_membership_uq": {
+          "name": "project_appointment_attendee_ws_appt_membership_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "appointment_id",
+            "membership_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

@@ -70,7 +70,7 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "contact.read":        { minRole: "viewer", internalOnly: true },
   "contact.write":       { minRole: "editor", internalOnly: true },
   "appointment.read":    { minRole: "viewer", internalOnly: true },
-  "appointment.write":   { minRole: "editor", internalOnly: true }
+  "appointment.write":   { minRole: "editor", internalOnly: true },
   "phase.convert":       { minRole: "editor", capability: "convert_phase" },
   "price.read_purchase": { minRole: "editor", capability: "see_purchase_prices" },
   "price.edit":          { minRole: "editor", capability: "edit_prices" },
