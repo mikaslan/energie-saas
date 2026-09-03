@@ -1493,11 +1493,12 @@ async function main(): Promise<number> {
            id, workspace_id, type, status, name, created_by, due_date, payment_status
          ) select gen_random_uuid(), $1::uuid, 'invoice', 'draft',
            'Demo-Entwurf (ausstellbar)', u.id, (now()::date + 30), 'unpaid'
-           from user_identity u where u.email = $2 limit 1
-         where not exists (
-           select 1 from commercial_document
-            where workspace_id = $1::uuid and name = 'Demo-Entwurf (ausstellbar)'
-         )`,
+           from user_identity u where u.email = $2
+            and not exists (
+             select 1 from commercial_document
+              where workspace_id = $1::uuid and name = 'Demo-Entwurf (ausstellbar)'
+           )
+         limit 1`,
         [seedData.workspaceId, seedData.editorEmail],
       );
       await previewPool.query(
@@ -1512,11 +1513,12 @@ async function main(): Promise<number> {
            decode('0000000000000000000000000000000000000000000000000000000000000000', 'hex'),
            u.id, '2036-12-31'::date, 'Rechnung-Demo-2026-900001', 2026, 900001,
            10000, 1900, 11900, 'unpaid', 0, (now()::date + 14)
-           from user_identity u where u.email = $2 limit 1
-         where not exists (
-           select 1 from commercial_document
-            where workspace_id = $1::uuid and name = 'Demo-Rechnung (ausgestellt)'
-         )`,
+           from user_identity u where u.email = $2
+            and not exists (
+             select 1 from commercial_document
+              where workspace_id = $1::uuid and name = 'Demo-Rechnung (ausgestellt)'
+           )
+         limit 1`,
         [seedData.workspaceId, seedData.editorEmail],
       );
       // Wirtschaftlichkeits-Defaults
@@ -1526,10 +1528,11 @@ async function main(): Promise<number> {
            escalation_rate_bps, oil_price_net_cents_per_liter,
            gas_price_net_cents_per_kwh, cashflow_horizon_years, revision, created_by
          ) select gen_random_uuid(), $1::uuid, 32, 150, 105, 12, 20, 1, u.id
-           from user_identity u where u.email = $2 limit 1
-         where not exists (
-           select 1 from workspace_economics_settings where workspace_id = $1::uuid
-         )`,
+           from user_identity u where u.email = $2
+            and not exists (
+             select 1 from workspace_economics_settings where workspace_id = $1::uuid
+           )
+         limit 1`,
         [seedData.workspaceId, seedData.editorEmail],
       );
       // Kontakt (M1-14) + Termin (M1-15) am Haupt-Projekt
@@ -1539,11 +1542,12 @@ async function main(): Promise<number> {
            is_business, email_primary, created_by
          ) select gen_random_uuid(), $1::uuid, 'Demo Kontakt GmbH',
            'Demo', 'Kontakt', true, 'kontakt@demo.invalid', u.id
-           from user_identity u where u.email = $2 limit 1
-         where not exists (
-           select 1 from contact where workspace_id = $1::uuid
-             and display_name = 'Demo Kontakt GmbH'
-         )`,
+           from user_identity u where u.email = $2
+            and not exists (
+             select 1 from contact where workspace_id = $1::uuid
+               and display_name = 'Demo Kontakt GmbH'
+           )
+         limit 1`,
         [seedData.workspaceId, seedData.editorEmail],
       );
       await previewPool.query(
@@ -1553,11 +1557,12 @@ async function main(): Promise<number> {
          ) select gen_random_uuid(), $1::uuid, $3::uuid,
            'Demo-Termin Vor-Ort', (now() + interval '3 days'),
            (now() + interval '3 days 1 hour'), 'on_site', 1, u.id
-           from user_identity u where u.email = $2 limit 1
-         where not exists (
-           select 1 from project_appointment
-            where workspace_id = $1::uuid and title = 'Demo-Termin Vor-Ort'
-         )`,
+           from user_identity u where u.email = $2
+            and not exists (
+             select 1 from project_appointment
+              where workspace_id = $1::uuid and title = 'Demo-Termin Vor-Ort'
+           )
+         limit 1`,
         [seedData.workspaceId, seedData.editorEmail, mainLead.projectId],
       );
       await previewPool.query("commit");
