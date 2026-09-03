@@ -309,6 +309,13 @@
       "when": 1788392865371,
       "tag": "0043_m1_15_appointments_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788413648937,
+      "tag": "0045_m3_00_workspace_master_data",
+      "breakpoints": true
     }
   ]
 }

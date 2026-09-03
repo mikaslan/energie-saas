@@ -31,7 +31,7 @@ const PRE_M111A_MIGRATION_INDEX = 38;
 const M111A_MIGRATION_INDEX = 39;
 // Integrierte Kette: M1-13 (0041) → M1-14 (0042) → M1-15 (0043);
 // der Gesamtbestand zaehlt 44 Migrationen (idx 0..43).
-const TOTAL_MIGRATION_COUNT = 44;
+const TOTAL_MIGRATION_COUNT = 45;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 

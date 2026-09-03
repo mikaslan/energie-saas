@@ -74,6 +74,8 @@ const ACTOR_SCOPED_TABLES = new Set([
   "project_appointment",
   "project_appointment_attendee",
   "calendar_category",
+  "workspace_invoicing_settings",
+  "workspace_document_number_format",
 ]);
 const actorByWorkspace = new Map<string, string>();
 
