@@ -316,6 +316,13 @@
       "when": 1788392865372,
       "tag": "0044_m2_04_e_signature",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788413648937,
+      "tag": "0045_m3_00_workspace_master_data",
+      "breakpoints": true
     }
   ]
 }

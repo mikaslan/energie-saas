@@ -201,6 +201,19 @@ const SIGNATURE_PRIVATE_ROUTINES = [
   "public._m204_guard_signature_request()",
   "public._m204_guard_signature_view_log()",
 ] as const;
+
+const INVOICING_RELATIONS = [
+  "workspace_invoicing_settings",
+  "workspace_document_number_format",
+] as const;
+const INVOICING_RUNTIME_ROUTINES = [
+  "public._m300_actor_invoicing_role(uuid)",
+  "public._m300_actor_can_read_invoicing(uuid)",
+  "public._m300_actor_can_write_invoicing(uuid)",
+] as const;
+const INVOICING_FUNCTION_NAMES = [
+  ...INVOICING_RUNTIME_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 const CATALOG_IMPORT_PRIVATE_ROUTINES = [
   "public._m108b_authorize_catalog_import_runtime(uuid)",
   "public._m108b_catalog_import_actor_auth_code(uuid,uuid)",
@@ -1200,6 +1213,31 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasWorkspaceInvoicing = await hasAtomicPublicRelationSet(
+    client,
+    INVOICING_RELATIONS,
+    "Rollen-ACL-Manifest: M3-00-Workspace-Invoicing",
+  );
+  if (hasWorkspaceInvoicing) {
+    await client.query(`
+      revoke all privileges on
+        public.workspace_invoicing_settings,
+        public.workspace_document_number_format
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.workspace_invoicing_settings to app_runtime;
+      grant select, insert, update on public.workspace_document_number_format to app_runtime;
+
+      revoke execute on function
+        ${INVOICING_RUNTIME_ROUTINES.join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${INVOICING_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -2081,6 +2119,11 @@ export async function verifyRoleContract(
     SIGNATURE_RELATIONS,
     "Rollenvertrag: M2-04-E-Signatur",
   );
+  const hasWorkspaceInvoicing = await hasAtomicPublicRelationSet(
+    client,
+    INVOICING_RELATIONS,
+    "Rollenvertrag: M3-00-Workspace-Invoicing",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -2247,6 +2290,10 @@ export async function verifyRoleContract(
       "r:site_energy_profile",
       "r:user_identity",
       "r:workspace",
+      ...(hasWorkspaceInvoicing ? [
+        "r:workspace_document_number_format",
+        "r:workspace_invoicing_settings",
+      ] : []),
     ],
     "Relationsinventar",
   );
@@ -2491,6 +2538,9 @@ export async function verifyRoleContract(
         "_m204_guard_signature_request:app_owner",
         "_m204_guard_signature_view_log:app_owner",
       ] : []),
+      ...(hasWorkspaceInvoicing ? INVOICING_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -2796,6 +2846,14 @@ export async function verifyRoleContract(
         "sign_signature_by_token(bytea, text, text, bytea):jsonb:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
           "4fc6f3a5f1fc65cd0ad98f10a6e13eea5d3922826171ffd2dafd6ee0af20b9f2",
+      ] : []),
+      ...(hasWorkspaceInvoicing ? [
+        "_m300_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:119ffa84bc4ed5b45ce1981706a305b3d959ee5e8ac2eedd81c32e210bb6f101",
+        "_m300_actor_can_write_invoicing(uuid):boolean:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:de23b1e63c666e2ce9e7340abae43550dc034c2f6e6de79e9951eb41baa292e4",
+        "_m300_actor_invoicing_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
@@ -3205,6 +3263,10 @@ export async function verifyRoleContract(
       "site_energy_profile:true:true",
       "user_identity:true:true",
       "workspace:true:true",
+      ...(hasWorkspaceInvoicing ? [
+        "workspace_document_number_format:true:true",
+        "workspace_invoicing_settings:true:true",
+      ] : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -3410,6 +3472,18 @@ export async function verifyRoleContract(
       "user_identity:user_identity_reconcile_update:3763319bbd0208f0554077338d247e797d6122f9c56182072e2f3735b65eecd0",
       "user_identity:user_identity_select:824f30ce2ed4729f0ec66928efba45844aef4f048580c636bfd0c260d76bc9f6",
       "workspace:tenant_isolation:efde4221654b51f3f1df5df99ffe938484bd185d6d9057c808d0b2682d7be38f",
+      ...(hasWorkspaceInvoicing ? [
+        "workspace_document_number_format:tenant_isolation:6ba5999f7354596580df93d3463b8bd635c37085bfe034e0881641f6954c7c22",
+        "workspace_document_number_format:workspace_document_number_format_actor_delete:c0ea21f9cd1ace066369e22a157ae56eb9ad95afb16498c35aeef08e294f73bf",
+        "workspace_document_number_format:workspace_document_number_format_actor_insert:aae876738c2565e2a639f834d45047411ebae85a55d1a483ce86195973109e0e",
+        "workspace_document_number_format:workspace_document_number_format_actor_select:5f3d986ad63aa4eaff6ce604591f03bb29693a2cce97ea98c5110bd94b3d4449",
+        "workspace_document_number_format:workspace_document_number_format_actor_update:32a94850ca7282bcb98ba18498eeaf0e57e2a92c2a63d2925e2c840ff7e4ee3b",
+        "workspace_invoicing_settings:tenant_isolation:96b32506c586669df5208b339830cf49c38c599ea7c4ae58645abcf4cec56249",
+        "workspace_invoicing_settings:workspace_invoicing_settings_actor_delete:8a4783f458842d4cd320e4d60c9a893261d70d67c1eceac7441432e7b960b503",
+        "workspace_invoicing_settings:workspace_invoicing_settings_actor_insert:b96bb9c40c4e70a358f820c29855e5f4fe762455108ddecbcabd1f52f9eae245",
+        "workspace_invoicing_settings:workspace_invoicing_settings_actor_select:c6e745795ecdeb6e9401f3c80b368ca216eb02c43abeaa3c2e83d6ea1d914b8c",
+        "workspace_invoicing_settings:workspace_invoicing_settings_actor_update:30bcb5b3762e5713b51a0d054baf9356ea71fde6950fcac9351174c82fc6c215",
+      ] : []),
     ],
     "Live-Policyvertrag",
   );
@@ -3673,6 +3747,10 @@ export async function verifyRoleContract(
       "site_energy_profile:site_energy_profile_no_truncate:34:O:public:forbid_mutation::-:0",
       "user_identity:user_identity_link_auth_only:19:O:public:user_identity_link_auth_only::-:0",
       "workspace:workspace_default_request_board:5:O:public:provision_default_request_board::-:0",
+      ...(hasWorkspaceInvoicing ? [
+        "workspace_document_number_format:workspace_document_number_format_no_truncate:34:O:public:forbid_mutation::-:0",
+        "workspace_invoicing_settings:workspace_invoicing_settings_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
     ],
     "Live-Triggervertrag",
   );
@@ -3811,6 +3889,14 @@ export async function verifyRoleContract(
       "app_runtime:site_energy_profile:UPDATE:app_owner:false",
       "app_runtime:user_identity:SELECT:app_owner:false",
       "app_runtime:workspace:SELECT:app_owner:false",
+      ...(hasWorkspaceInvoicing ? [
+        "app_runtime:workspace_document_number_format:INSERT:app_owner:false",
+        "app_runtime:workspace_document_number_format:SELECT:app_owner:false",
+        "app_runtime:workspace_document_number_format:UPDATE:app_owner:false",
+        "app_runtime:workspace_invoicing_settings:INSERT:app_owner:false",
+        "app_runtime:workspace_invoicing_settings:SELECT:app_owner:false",
+        "app_runtime:workspace_invoicing_settings:UPDATE:app_owner:false",
+      ] : []),
       "app_system:audit_log:INSERT:app_owner:false",
       "app_system:audit_log:SELECT:app_owner:false",
       "app_system:domain_events:INSERT:app_owner:false",
@@ -4074,6 +4160,9 @@ export async function verifyRoleContract(
         "app_runtime:revoke_signature_by_customer(bytea):EXECUTE:app_owner:false",
         "app_runtime:sign_signature_by_token(bytea, text, text, bytea):EXECUTE:app_owner:false",
       ] : []),
+      ...(hasWorkspaceInvoicing ? INVOICING_RUNTIME_ROUTINES.map((signature) =>
+        `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
+      ) : []),
       ...(hasOfferIssuance ? [
         "app_runtime:approve_offer_issuance(uuid, uuid, boolean, boolean, boolean, boolean, boolean):EXECUTE:app_owner:false",
         "app_runtime:prepare_offer_issuance(uuid, uuid, uuid):EXECUTE:app_owner:false",

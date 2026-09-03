@@ -93,6 +93,7 @@ async function fixtureMembership(
   tx: TenantTx,
   wsId: string,
   role: "viewer" | "editor" | "admin" = "viewer",
+  capabilities: string | null = null,
 ): Promise<{
   userId: string;
   membershipId: string;
@@ -106,8 +107,8 @@ async function fixtureMembership(
     values (${userId}::uuid, ${`${randomUUID()}@test.local`})
   `);
   await tx.execute(sql`
-    insert into membership (id, workspace_id, user_id, role)
-    values (${membershipId}::uuid, ${wsId}::uuid, ${userId}::uuid, ${role})
+    insert into membership (id, workspace_id, user_id, role, capabilities)
+    values (${membershipId}::uuid, ${wsId}::uuid, ${userId}::uuid, ${role}, ${capabilities ?? "{}"}::jsonb)
   `);
   return { userId, membershipId };
 }
@@ -1790,6 +1791,32 @@ async function fixtureSignatureViewLog(tx: TenantTx, wsId: string): Promise<void
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
 // Tenant-Isolations-Invariante über alle künftigen Module (M1–M8) trägt.
 export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Promise<void>> = {
+  workspace_invoicing_settings: async (tx, wsId) => {
+    const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into workspace_invoicing_settings (
+        id, workspace_id, company_name, company_email, company_country,
+        company_address_line1, company_postal_code, company_city,
+        accounting_method, revision, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'M300 GmbH', 'office@m300.invalid', 'DE',
+        'Musterweg', '10115', 'Berlin', 'accrual', 1, ${membershipId}::uuid
+      )
+    `);
+  },
+  workspace_document_number_format: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into workspace_document_number_format (
+        id, workspace_id, type, format_template
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'invoice', 'Rechnung-{YEAR}-{MONTH}-{NUMBER}'
+      )
+    `);
+  },
+
   workspace: async () => {}, // Zeile wird vom Suite-Setup selbst angelegt
   // Der Workspace-Provisioning-Trigger legt diese Zeilen bereits an. Die
   // Lesebaseline wird in tenant-invariants.test.ts explizit berücksichtigt;
