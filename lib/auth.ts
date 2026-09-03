@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { capturePreviewOtp } from "./preview-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { magicLink, emailOTP } from "better-auth/plugins";
 import { eq, sql } from "drizzle-orm";
@@ -96,7 +97,10 @@ function createAuth() {
         //   `storeOTP?: ("hashed" | "plain" | "encrypted" | {…})`
         // Verifiziert in dist/plugins/email-otp/otp-token.mjs:7 (symmetricEncrypt).
         storeOTP: "encrypted",
-        sendVerificationOTP: async ({ email, otp }) => sendAuthMail(email, "Dein Login-Code", `Code: ${otp}`),
+        sendVerificationOTP: async ({ email, otp }) => {
+          capturePreviewOtp(email, otp);
+          return sendAuthMail(email, "Dein Login-Code", `Code: ${otp}`);
+        },
       }),
     ],
     databaseHooks: {

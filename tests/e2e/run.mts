@@ -543,6 +543,7 @@ function nextEnvironment(
   geocodingStub: GeoapifyStub,
   readyFile: string,
   readyToken: string,
+  demoLoginEmail: string | null,
 ): NodeJS.ProcessEnv {
   return {
     ...cleanEnvironment(),
@@ -551,6 +552,8 @@ function nextEnvironment(
     POSTGRES_URL: database.runtime,
     POSTGRES_URL_AUTH: database.auth,
     BETTER_AUTH_SECRET: authSecret,
+    ENERGIE_SAAS_LOCAL_PREVIEW: process.env.ENERGIE_SAAS_LOCAL_PREVIEW ?? "",
+    DEMO_LOGIN_EMAIL: demoLoginEmail ?? "",
     RECHNER_INTAKE_KEYS_JSON: JSON.stringify(credentials.map((credential) => ({
       keyId: credential.keyId,
       workspaceId: credential.workspaceId,
@@ -1371,6 +1374,7 @@ async function main(): Promise<number> {
         providerStub,
         readyFile,
         readyToken,
+        seedData.editorEmail,
       ),
       stdio: ["ignore", serverLogFd, serverLogFd],
     },

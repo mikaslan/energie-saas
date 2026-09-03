@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { safeInternalNextPath } from "@/lib/safe-next";
 import { getSessionUser } from "@/lib/session";
+import { isLocalPreview } from "@/lib/preview-auth";
 import { LoginForm } from "./login-form";
 
 type LoginPageProps = {
@@ -11,6 +12,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const query = await searchParams;
   const nextPath = safeInternalNextPath(query.next);
   if (await getSessionUser()) redirect(nextPath);
+
+  const demoLoginEmail = isLocalPreview() ? process.env.DEMO_LOGIN_EMAIL ?? null : null;
 
   return (
     <main className="flex min-h-screen flex-1 items-center justify-center bg-slate-100 px-4 py-12 text-slate-950">
@@ -39,7 +42,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </p>
         </header>
 
-        <LoginForm nextPath={nextPath} />
+        <LoginForm nextPath={nextPath} demoLoginEmail={demoLoginEmail} />
       </section>
     </main>
   );

@@ -8,9 +8,10 @@ const GENERIC_AUTH_ERROR =
 
 type LoginFormProps = {
   nextPath: string;
+  demoLoginEmail?: string | null;
 };
 
-export function LoginForm({ nextPath }: LoginFormProps) {
+export function LoginForm({ nextPath, demoLoginEmail }: LoginFormProps) {
   const [step, setStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -69,6 +70,35 @@ export function LoginForm({ nextPath }: LoginFormProps) {
     }
   }
 
+  // Demo-Modus: ein Klick — Code anfordern, OTP aus dem Preview-Endpoint
+  // ziehen und direkt anmelden. Außerhalb des Preview-Modus existiert der
+  // Button nicht (demoLoginEmail ist null).
+  async function handleDemoLogin() {
+    if (pending || !demoLoginEmail) return;
+    setPending(true);
+    setError(null);
+    try {
+      const sent = await authClient.emailOtp.sendVerificationOtp({
+        email: demoLoginEmail,
+        type: "sign-in",
+      });
+      if (sent.error) throw new Error("send failed");
+      const otpResponse = await fetch(
+        `/api/auth/preview-otp?email=${encodeURIComponent(demoLoginEmail)}`,
+      );
+      if (!otpResponse.ok) throw new Error("otp unavailable");
+      const payload = (await otpResponse.json()) as { otp?: string };
+      if (!payload.otp) throw new Error("otp missing");
+      const result = await authClient.signIn.emailOtp({ email: demoLoginEmail, otp: payload.otp });
+      if (result.error) throw new Error("signin failed");
+      window.location.replace(nextPath);
+    } catch {
+      setError(GENERIC_AUTH_ERROR);
+    } finally {
+      setPending(false);
+    }
+  }
+
   function returnToEmailStep() {
     if (pending) return;
     setOtp("");
@@ -85,6 +115,16 @@ export function LoginForm({ nextPath }: LoginFormProps) {
     <div>
       {step === "email" ? (
         <form onSubmit={handleEmailSubmit} aria-busy={pending}>
+          {demoLoginEmail ? (
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              disabled={pending}
+              className={`${primaryButtonClassName} mb-5`}
+            >
+              {pending ? "Anmeldung läuft …" : "Demo-Login (Direkt ins Portal)"}
+            </button>
+          ) : null}
           <div className="mb-5 flex items-center justify-between gap-4 text-xs">
             <span className="font-medium text-zinc-500">Schritt 1 von 2</span>
             <span className="text-zinc-500">E-Mail</span>
