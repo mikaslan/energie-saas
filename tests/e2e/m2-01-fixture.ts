@@ -57,6 +57,12 @@ export type M201RuntimeState = {
   m201WallboxId: string;
   serverLogPath: string;
   workspaceId: string;
+  // W3-Nachholblock: erlaubt mehrere Ready-Projekt-Seeds im SELBEN
+  // Workspace. Die Produkt-SKUs sind sonst deterministisch
+  // (E2E-M201-<TYP>-<index>) und der zweite Seed kollidiert mit
+  // catalog_component_ws_sku_ci_uq -> CatalogConflictError
+  // ("catalog component changed since it was loaded").
+  skuSuffix?: string;
 };
 
 export type M201OfferIdentity = {
@@ -118,7 +124,7 @@ async function asEditor<T>(
   return callback(editorContext(state));
 }
 
-function productCommand(type: ProductType, index: number): CatalogComponentCreateCommandV1 {
+function productCommand(type: ProductType, index: number, skuSuffix = ""): CatalogComponentCreateCommandV1 {
   const technicalData = type === "module"
     ? { schemaVersion: "module.v1" as const, nominalPowerWatts: 400 }
     : type === "inverter"
@@ -147,7 +153,7 @@ function productCommand(type: ProductType, index: number): CatalogComponentCreat
   const prices = PRODUCT_PRICES[type];
   return {
     schemaVersion: CATALOG_COMPONENT_CREATE_COMMAND_VERSION,
-    internalSku: `E2E-M201-${type.toUpperCase()}-${index}`,
+    internalSku: `E2E-M201-${type.toUpperCase()}-${index}${skuSuffix ? `-${skuSuffix}` : ""}`,
     componentType: type,
     presentation: {
       displayName: `Synthetische M2-01 ${type}-Komponente`,
@@ -421,14 +427,14 @@ async function insertPlanningProject(
 
 async function createActiveProducts(
   pool: Pool,
-  state: Pick<M201RuntimeState, "editorIdentityId" | "workspaceId">,
+  state: Pick<M201RuntimeState, "editorIdentityId" | "workspaceId" | "skuSuffix">,
 ): Promise<M201ProductIds> {
   const products = {} as M201ProductIds;
   for (const [index, type] of (
     ["module", "inverter", "battery", "wallbox"] as const
   ).entries()) {
     const created = await withTenantOn(pool, state.workspaceId, (tx) =>
-      asEditor(tx, state, (ctx) => createCatalogComponent(tx, ctx, productCommand(type, index + 1))));
+      asEditor(tx, state, (ctx) => createCatalogComponent(tx, ctx, productCommand(type, index + 1, state.skuSuffix ?? ""))));
     await withTenantOn(pool, state.workspaceId, (tx) =>
       asEditor(tx, state, (ctx) => activateCatalogComponent(tx, ctx, {
         componentId: created.componentId,
@@ -465,7 +471,7 @@ async function resolveInitialCatalog(
 
 export async function seedM201ReadyProject(
   databaseUrl: string,
-  state: Pick<M201RuntimeState, "editorIdentityId" | "workspaceId">,
+  state: Pick<M201RuntimeState, "editorIdentityId" | "workspaceId" | "skuSuffix">,
 ): Promise<M201Seed> {
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
   try {

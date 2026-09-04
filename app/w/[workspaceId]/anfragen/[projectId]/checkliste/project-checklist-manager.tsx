@@ -64,13 +64,23 @@ export function ProjectChecklistManager({
   templates: ChecklistTemplateDto[];
   canWrite: boolean;
 }) {
-  const [blocks, setBlocks] = useState<ChecklistBlocksV1>(checklist.blocks);
+  const [blocksState, setBlocksState] = useState<{
+    version: number;
+    blocks: ChecklistBlocksV1;
+  }>({ version: checklist.version, blocks: checklist.blocks });
   const [state, dispatch] = useActionState(saveProjectChecklistAction, initialState);
 
   // Kimi-P1-2: CAS-Version aus dem letzten Save-Ergebnis ableiten (kein
   // setState-in-Effect — React-Compiler-Regel): success trägt die neue
   // Version, sonst gilt die Server-Prop vom Initial-Render.
   const baseVersion = state.status === "success" ? state.version : checklist.version;
+
+  // W3-Fix (f7-02-Root-Cause): kein key-Remount mehr. Server-Blocks
+  // gewinnen, sobald ihre Version weiter ist als die lokale Bearbeitung
+  // (Apply-Aktualisierung); lokale Edits leben version-getaggt daneben.
+  const blocks = blocksState.version === checklist.version
+    ? blocksState.blocks
+    : checklist.blocks;
 
   const progress = checklistProgress(blocks);
 
@@ -87,7 +97,7 @@ export function ProjectChecklistManager({
     updater: (value: ChecklistBlocksV1) => ChecklistBlocksV1,
   ): void {
     if (!canWrite) return;
-    setBlocks(updater);
+    setBlocksState({ version: checklist.version, blocks: updater(blocks) });
   }
 
   const addBlock = () => patchBlocks((value) => [
