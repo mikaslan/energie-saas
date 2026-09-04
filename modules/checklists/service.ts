@@ -149,7 +149,7 @@ export async function saveProjectChecklist(
     }
     const code = postgresErrorCode(error);
     if (code === "23503") throw new ChecklistNotFoundError(command.projectId);
-    if (code === "23505") throw new ChecklistConflictError(undefined);
+    if (code === "23505") throw new ChecklistConflictError("concurrent create");
     if (code === "23514") throw new ChecklistValidationError();
     throw error;
   }

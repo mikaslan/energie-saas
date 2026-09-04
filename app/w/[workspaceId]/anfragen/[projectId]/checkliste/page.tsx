@@ -4,11 +4,12 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type { ProjectChecklistDto } from "@/lib/integrations/checklists/contract";
-import { getProjectChecklist } from "@/modules/checklists";
+import { getProjectChecklist, listChecklistTemplates } from "@/modules/checklists";
+import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { sql } from "drizzle-orm";
 import { DeniedState } from "../_ui";
-import { ProjectChecklistManager } from "./project-checklist-manager";
+import { ApplyTemplateSection, ProjectChecklistManager } from "./project-checklist-manager";
 
 export const metadata: Metadata = {
   title: "Checkliste | Energie-SaaS",
@@ -27,7 +28,7 @@ export default async function ProjectChecklistPage(
   const { workspaceId, projectId } = params.data;
 
   let result:
-    | { projectName: string; checklist: ProjectChecklistDto; canWrite: boolean }
+    | { projectName: string; checklist: ProjectChecklistDto; templates: ChecklistTemplateDto[]; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -49,6 +50,7 @@ export default async function ProjectChecklistPage(
         return {
           projectName: projectRow.rows[0].name,
           checklist,
+          templates: await listChecklistTemplates(tx, ctx),
           canWrite: can(ctx, "checklist.write"),
         };
       },
@@ -79,10 +81,20 @@ export default async function ProjectChecklistPage(
         </p>
       </div>
 
+      <ApplyTemplateSection
+        workspaceId={workspaceId}
+        projectId={projectId}
+        templates={result.templates}
+        canWrite={result.canWrite}
+        checklistVersion={result.checklist.version}
+      />
+
       <ProjectChecklistManager
+        key={result.checklist.version}
         workspaceId={workspaceId}
         projectId={projectId}
         checklist={result.checklist}
+        templates={result.templates}
         canWrite={result.canWrite}
       />
 

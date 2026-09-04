@@ -9,7 +9,8 @@ import type {
   ProjectChecklistDto,
 } from "@/lib/integrations/checklists/contract";
 import { checklistProgress } from "@/lib/integrations/checklists/contract";
-import { saveProjectChecklistAction, type ChecklistActionState } from "./actions";
+import { applyTemplateAction, saveProjectChecklistAction, type ChecklistActionState } from "./actions";
+import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
 
 const initialState: ChecklistActionState = { status: "idle" };
 
@@ -53,11 +54,13 @@ export function ProjectChecklistManager({
   workspaceId,
   projectId,
   checklist,
+  templates,
   canWrite,
 }: {
   workspaceId: string;
   projectId: string;
   checklist: ProjectChecklistDto;
+  templates: ChecklistTemplateDto[];
   canWrite: boolean;
 }) {
   const [blocks, setBlocks] = useState<ChecklistBlocksV1>(checklist.blocks);
@@ -344,5 +347,58 @@ function SegmentGroup({
         </button>
       ) : null}
     </div>
+  );
+}
+
+
+export function ApplyTemplateSection({
+  workspaceId,
+  projectId,
+  templates,
+  canWrite,
+  checklistVersion,
+}: {
+  workspaceId: string;
+  projectId: string;
+  templates: ChecklistTemplateDto[];
+  canWrite: boolean;
+  checklistVersion: number;
+}) {
+  const [applyState, applyDispatch] = useActionState(applyTemplateAction, initialState);
+  // Sektion bleibt nach Erfolg gemountet, damit das Feedback sichtbar bleibt.
+  if (
+    !canWrite
+    || templates.length === 0
+    || (checklistVersion !== 0 && applyState.status !== "success")
+  ) {
+    return null;
+  }
+  return (
+    <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <h2 className="text-base font-semibold text-slate-950">Aus Vorlage anlegen</h2>
+      <p className="mt-1 text-sm leading-6 text-slate-600">
+        Erzeugt die Material-Checkliste aus einer Vorlage (ESTIMATE-Mapping).
+      </p>
+      <form action={applyDispatch} className="mt-3 flex flex-wrap items-center gap-2">
+        <input type="hidden" name="workspaceId" value={workspaceId} />
+        <input type="hidden" name="projectId" value={projectId} />
+        <select
+          name="templateId"
+          aria-label="Vorlage"
+          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        >
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>{template.name}</option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+        >
+          Checkliste erstellen
+        </button>
+      </form>
+      <Feedback state={applyState} />
+    </section>
   );
 }

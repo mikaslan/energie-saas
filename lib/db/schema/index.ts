@@ -16,6 +16,7 @@ export * from "./boards";
 export * from "./catalog";
 export * from "./catalog-import";
 export * from "./checklist";
+export * from "./checklist-template";
 export * from "./crm";
 export * from "./economics";
 export * from "./customer-notification";

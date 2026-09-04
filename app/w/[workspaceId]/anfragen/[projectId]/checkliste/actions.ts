@@ -77,8 +77,53 @@ export async function saveProjectChecklistAction(
     return { status: "success", version: result.version };
   } catch (error) {
     if (error instanceof ChecklistConflictError) {
-      return { status: "conflict", currentVersion: error.currentVersion };
+      return { status: "conflict", currentVersion: typeof error.detail === "number" ? error.detail : undefined };
     }
+    if (error instanceof ChecklistNotFoundError) return { status: "not_found" };
+    if (error instanceof ChecklistValidationError) return { status: "invalid" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    throw error;
+  }
+}
+
+// F7.3: Vorlage auf dieses Projekt anwenden (ESTIMATE-Mapping).
+import { applyChecklistTemplate } from "@/modules/checklists";
+
+export async function applyTemplateAction(
+  _previous: ChecklistActionState,
+  formData: FormData,
+): Promise<ChecklistActionState> {
+  const workspaceValue = formData.get("workspaceId");
+  const projectValue = formData.get("projectId");
+  const templateValue = formData.get("templateId");
+  if (
+    typeof workspaceValue !== "string"
+    || typeof projectValue !== "string"
+    || typeof templateValue !== "string"
+  ) {
+    return { status: "invalid" };
+  }
+  const workspace = z.uuid().safeParse(workspaceValue);
+  const projectId = z.uuid().safeParse(projectValue);
+  const templateId = z.uuid().safeParse(templateValue);
+  if (!workspace.success || !projectId.success || !templateId.success) {
+    return { status: "invalid" };
+  }
+  try {
+    const result = await authorizedAction(
+      workspace.data,
+      "checklist.write",
+      "project_checklist",
+      (tx, ctx) => applyChecklistTemplate(tx, ctx, {
+        templateId: templateId.data,
+        projectId: projectId.data,
+      }),
+    );
+    revalidatePath(`/w/${workspace.data}/anfragen/${projectId.data}/checkliste`);
+    return { status: "success", version: result.version };
+  } catch (error) {
+    if (error instanceof ChecklistConflictError) return { status: "conflict" };
     if (error instanceof ChecklistNotFoundError) return { status: "not_found" };
     if (error instanceof ChecklistValidationError) return { status: "invalid" };
     if (error instanceof PermissionDeniedError) return { status: "denied" };

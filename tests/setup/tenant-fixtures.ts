@@ -1945,6 +1945,21 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         ${`fixture lead source ${id}`})
     `);
   },
+  checklist_template: async (tx, wsId) => {
+    const userId = randomUUID();
+    await tx.execute(sql`
+      insert into user_identity (id, email)
+      values (${userId}::uuid, ${`${userId}@fixture.local`})
+    `);
+    await tx.execute(sql`
+      insert into checklist_template (
+        workspace_id, name, name_normalized, created_by
+      ) values (
+        ${wsId}::uuid, ${`Fixture Template ${userId}`},
+        ${`fixture template ${userId}`}, ${userId}::uuid
+      )
+    `);
+  },
   calendar: async (tx, wsId) => {
     const userId = randomUUID();
     await tx.execute(sql`

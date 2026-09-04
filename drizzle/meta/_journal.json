@@ -372,6 +372,13 @@
       "when": 1788519761762,
       "tag": "0052_m1_15b_calendar_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1788524306472,
+      "tag": "0053_f7_03_checklist_templates",
+      "breakpoints": true
     }
   ]
 }

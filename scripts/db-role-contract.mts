@@ -244,6 +244,10 @@ const CALENDAR_RELATIONS = [
   "calendar",
 ] as const;
 
+const CHECKLIST_TEMPLATE_RELATIONS = [
+  "checklist_template",
+] as const;
+
 const COMMERCIAL_DOCUMENT_RELATIONS = [
   "commercial_document",
   "commercial_document_group",
@@ -1357,6 +1361,21 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasChecklistTemplates = await hasAtomicPublicRelationSet(
+    client,
+    CHECKLIST_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F7-03-Checklisten-Vorlagen",
+  );
+  if (hasChecklistTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.checklist_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.checklist_template to app_runtime
+    `);
+  }
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2315,6 +2334,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F7-02-Checklisten",
   );
 
+  const hasChecklistTemplates = await hasAtomicPublicRelationSet(
+    client,
+    CHECKLIST_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F7-03-Checklisten-Vorlagen",
+  );
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2503,6 +2528,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCalendars ? CALENDAR_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasChecklistTemplates ? CHECKLIST_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
@@ -3520,6 +3548,9 @@ export async function verifyRoleContract(
       ...(hasCalendars ? CALENDAR_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasChecklistTemplates ? CHECKLIST_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -3800,6 +3831,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasCalendars ? [
           "calendar:tenant_isolation:57296ca13f33ffe335cd1cde9f96a0024470521481da054313e6843d9ca6ce25",
+        ] : []),
+        ...(hasChecklistTemplates ? [
+          "checklist_template:tenant_isolation:9d1b4ac837189569dedc6d9b4ab8161b3f2952860e0fb3c9fccacc83d0e7606f",
         ] : []),
       ] : []),
     ],
@@ -4246,6 +4280,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasCalendars ? CALENDAR_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasChecklistTemplates ? CHECKLIST_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

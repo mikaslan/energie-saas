@@ -6,8 +6,8 @@ export class ChecklistNotFoundError extends Error {
 }
 
 export class ChecklistConflictError extends Error {
-  constructor(public readonly currentVersion?: number) {
-    super(`project checklist version conflict${currentVersion !== undefined ? ` (current: ${currentVersion})` : ""}`);
+  constructor(public readonly detail: number | string) {
+    super(`checklist conflict: ${detail}`);
     this.name = "ChecklistConflictError";
   }
 }
