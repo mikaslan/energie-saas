@@ -97,6 +97,15 @@ export const timeMemberOptionSchema = z.object({
 });
 export type TimeMemberOption = z.infer<typeof timeMemberOptionSchema>;
 
+// F9.4 Slice A CSV-Export: Filter = List-Filter wiederverwendet
+// (timeEntryListQuerySchema, kein neuer Dialekt).
+export const timeEntryExportResultSchema = z.object({
+  content: z.string(),
+  contentType: z.literal("text/csv; charset=utf-8"),
+  fileName: z.string().min(1).max(120),
+});
+export type TimeEntryExportResult = z.infer<typeof timeEntryExportResultSchema>;
+
 export const timeEntryUpsertFieldsSchema = z.object({
   typeId: z.string().uuid().nullable(),
   startAt: isoDateSchema,

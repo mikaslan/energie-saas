@@ -12,6 +12,7 @@ import {
   startTimeEntryCommandSchema,
   stopTimeEntryCommandSchema,
   timeEntryDtoSchema,
+  timeEntryExportResultSchema,
   timeEntryListDtoSchema,
   timeEntryListQuerySchema,
   timeMemberOptionSchema,
@@ -23,6 +24,7 @@ import {
   type StartTimeEntryCommand,
   type StopTimeEntryCommand,
   type TimeEntryDto,
+  type TimeEntryExportResult,
   type TimeEntryListDto,
   type TimeMemberOption,
   type TimeEventTypeDto,
@@ -687,4 +689,85 @@ export async function discardTimeEntry(
     payload: {},
   });
   await writeAuditFor(tx, ctx, "time.entry.discard", { id });
+}
+
+// F9.4 Slice A CSV-Export: gleiche Filter-Semantik wie listTimeEntries
+// (WYSIWYG), reiner Lese-Pfad (requireRead), keine Migration.
+const EXPORT_DATE_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Berlin",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const EXPORT_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function exportCell(value: string): string {
+  return /[;"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+type TimeExportRow = {
+  start_at: string | Date;
+  end_at: string | Date | null;
+  working_time_minutes: number | null;
+  break_duration_minutes: number | null;
+  type_name: string | null;
+  comment: string | null;
+  user_id: string;
+};
+
+export async function exportTimeEntries(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null },
+): Promise<TimeEntryExportResult> {
+  requireRead(ctx);
+  const parsed = timeEntryListQuerySchema.safeParse(query);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const includeArchived = parsed.data.includeArchived === true;
+  const userIds = parsed.data.userIds ?? [];
+  // F9.3-Fix gilt auch hier: IN-Liste statt Array-Literal (Muster oben).
+  const userFilter = userIds.length === 0
+    ? sql``
+    : sql`and e.user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const result = await tx.execute<TimeExportRow>(sql`
+    select e.start_at, e.end_at, e.working_time_minutes, e.break_duration_minutes,
+           t.name as type_name, e.comment, e.user_id
+      from time_entry e
+      left join time_event_type t
+        on t.workspace_id = e.workspace_id
+       and t.id = e.type_id
+     where e.workspace_id = ${ctx.workspaceId}::uuid
+       and e.project_id = ${parsed.data.projectId}::uuid
+       ${includeArchived ? sql`` : sql`and e.archived_at is null`}
+       ${userFilter}
+     order by (e.end_at is null) desc, e.start_at desc, e.id asc
+  `);
+  const lines = [
+    "datum;beginn;ende;minuten;pause_minuten;ereignistyp;kommentar;nutzer_id",
+  ];
+  for (const row of result.rows) {
+    const start = new Date(row.start_at);
+    const end = row.end_at === null ? null : new Date(row.end_at);
+    lines.push([
+      EXPORT_DATE_FORMAT.format(start),
+      EXPORT_TIME_FORMAT.format(start),
+      end === null ? "" : EXPORT_TIME_FORMAT.format(end),
+      row.working_time_minutes === null ? "" : String(row.working_time_minutes),
+      row.break_duration_minutes === null ? "" : String(row.break_duration_minutes),
+      row.type_name ?? "",
+      row.comment ?? "",
+      row.user_id,
+    ].map(exportCell).join(";"));
+  }
+  const stamp = EXPORT_DATE_FORMAT.format(new Date()).replaceAll("-", "");
+  return timeEntryExportResultSchema.parse({
+    content: `\uFEFF${lines.join("\r\n")}\r\n`,
+    contentType: "text/csv; charset=utf-8",
+    fileName: `zeiterfassung-${parsed.data.projectId.slice(0, 8)}-${stamp}.csv`,
+  });
 }

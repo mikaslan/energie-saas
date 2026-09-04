@@ -116,6 +116,19 @@ export default async function ProjectTimeTrackingPage(
         resetHref={`/w/${workspaceId}/anfragen/${projectId}/zeiterfassung`}
       />
 
+      <div className="mt-4">
+        <Link
+          href={`/w/${workspaceId}/anfragen/${projectId}/zeiterfassung/export${
+            result.selectedUserIds.length === 0
+              ? ""
+              : `?${result.selectedUserIds.map((id) => `userId=${encodeURIComponent(id)}`).join("&")}`
+          }`}
+          className="text-sm font-semibold text-blue-700 underline-offset-2 hover:underline"
+        >
+          CSV exportieren
+        </Link>
+      </div>
+
       <TimeEntryManager
         workspaceId={workspaceId}
         projectId={projectId}
