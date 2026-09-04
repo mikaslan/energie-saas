@@ -139,6 +139,7 @@ type E2EState = Pick<
   f703ProjectId: string;
   f22ProjectId: string;
   f93ProjectId: string;
+  f162ProjectId: string;
   w3WorkspaceId: string;
   m112aProjectId: string;
   m112aWorkspaceId: string;
@@ -1451,6 +1452,10 @@ async function main(): Promise<number> {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
   });
+  const w3F162Seed = await seedM201ReadyProject(embedded.superuserUrl, {
+    workspaceId: seedData.w3WorkspaceId,
+    editorIdentityId: seedData.editorIdentityId,
+  });
   const w3F93Lead = await submitSignedLead(
     server,
     embedded.superuserUrl,
@@ -1470,6 +1475,7 @@ async function main(): Promise<number> {
     f703ProjectId: w3F703Lead.projectId,
     f22ProjectId: w3F22Seed.projectId,
     f93ProjectId: w3F93Lead.projectId,
+    f162ProjectId: w3F162Seed.projectId,
     w3WorkspaceId: seedData.w3WorkspaceId,
     m112aProjectId: m112aSeed.projectId,
     m112aWorkspaceId: seedData.m112aWorkspaceId,
