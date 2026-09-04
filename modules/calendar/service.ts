@@ -7,9 +7,11 @@ import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
+  calendarItemV1Schema,
   projectAppointmentCommandV1Schema,
   projectAppointmentItemV1Schema,
   projectAppointmentRangeV1Schema,
+  type CalendarItemV1,
   type ProjectAppointmentCommandV1,
   type ProjectAppointmentCommandResult,
   type ProjectAppointmentRangeV1,
@@ -22,6 +24,29 @@ import {
 
 const BERLIN_TIMESTAMP = 'YYYY-MM-DD"T"HH24:MI:SS.MS';
 
+// M1-15b §7 Sichtbarkeit (Kimi-P3-1: ein Fragment statt drei Kopien):
+// tenancy für alle internen Rollen, user für Owner (Membership des Actors)
+// + Admin, client nie. Aktive-Kalender-Filter bleibt Aufrufersache.
+function calendarVisibleFragment(ctx: ServiceCtx) {
+  return sql`
+    calendar_record.calendar_type <> 'client'
+    and (
+      calendar_record.calendar_type = 'tenancy'
+      or (
+        calendar_record.calendar_type = 'user'
+        and calendar_record.membership_id = (
+          select membership_record.id
+            from membership membership_record
+           where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+             and membership_record.user_id = ${ctx.actor}::uuid
+           limit 1
+        )
+      )
+      or ${ctx.role === "admin"}
+    )
+  `;
+}
+
 type AppointmentRow = {
   id: string;
   revision: number;
@@ -32,16 +57,20 @@ type AppointmentRow = {
   end_iso: string;
   all_day: boolean;
   appointment_type: string;
-  category_id: string | null;
-  category_name: string | null;
+  calendar_id: string;
+  calendar_name: string | null;
+  calendar_color: string | null;
   attendees: unknown;
   [key: string]: unknown;
 };
 
-type CategoryRow = {
+type CalendarRow = {
   id: string;
   name: string;
-  order: number;
+  color: string | null;
+  calendar_type: string;
+  category_id: string | null;
+  category_name: string | null;
   [key: string]: unknown;
 };
 
@@ -152,20 +181,6 @@ async function validateAttendeeMemberships(
   if (result.rows.length !== expected.length) throw new AppointmentNotFoundError();
 }
 
-async function validateCategory(
-  tx: TenantTx,
-  workspaceId: string,
-  categoryId: string | null,
-): Promise<void> {
-  if (categoryId === null) return;
-  const result = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
-    select id
-      from calendar_category
-     where workspace_id = ${workspaceId}::uuid
-       and id = ${categoryId}::uuid
-  `);
-  if (result.rows.length !== 1) throw new AppointmentNotFoundError();
-}
 
 // PostgreSQL-CHECK- (23514) und FK- (23503) Fehler werden explizit auf
 // `invalid`/`not_found` gemappt, statt als unbekannter Fehler durchzuschlagen.
@@ -177,6 +192,25 @@ function postgresErrorCode(error: unknown): string | null {
     return typeof code === "string" ? code : null;
   }
   return null;
+}
+
+// M1-15b §6: calendar_id muss für den Actor SICHTBAR und active=true sein,
+// sonst `invalid` (keine Existenz-/Scope-Leaks).
+async function validateCalendar(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  calendarId: string,
+): Promise<void> {
+  const result = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select calendar_record.id
+      from calendar calendar_record
+     where calendar_record.workspace_id = ${ctx.workspaceId}::uuid
+       and calendar_record.id = ${calendarId}::uuid
+       and calendar_record.active = true
+       and ${calendarVisibleFragment(ctx)}
+      for share
+  `);
+  if (result.rows.length !== 1) throw new AppointmentValidationError();
 }
 
 async function mapAppointmentMutationError(error: unknown): Promise<never> {
@@ -267,13 +301,13 @@ async function createAppointment(
 ): Promise<ProjectAppointmentCommandResult> {
   await lockProject(tx, ctx.workspaceId, command.projectId);
   await validateAttendeeMemberships(tx, ctx.workspaceId, command.attendeeMembershipIds);
-  await validateCategory(tx, ctx.workspaceId, command.categoryId);
+  await validateCalendar(tx, ctx, command.calendarId);
   const appointmentId = randomUUID();
   try {
     await tx.execute(sql`
       insert into project_appointment (
         id, workspace_id, project_id, title, description, location,
-        start_at, end_at, all_day, appointment_type, category_id,
+        start_at, end_at, all_day, appointment_type, calendar_id,
         revision, created_by
       ) values (
         ${appointmentId}::uuid, ${ctx.workspaceId}::uuid, ${command.projectId}::uuid,
@@ -283,7 +317,7 @@ async function createAppointment(
         ${command.start}::timestamp at time zone 'Europe/Berlin',
         ${command.end}::timestamp at time zone 'Europe/Berlin',
         ${command.allDay}, ${command.type},
-        ${command.categoryId},
+        ${command.calendarId},
         1, ${ctx.actor}::uuid
       )
     `);
@@ -311,7 +345,7 @@ async function updateAppointment(
   );
   requireRevision(appointment.revision, command.expectedRevision);
   await validateAttendeeMemberships(tx, ctx.workspaceId, command.attendeeMembershipIds);
-  await validateCategory(tx, ctx.workspaceId, command.categoryId);
+  await validateCalendar(tx, ctx, command.calendarId);
 
   let revision: number | undefined;
   try {
@@ -324,7 +358,7 @@ async function updateAppointment(
              end_at = ${command.end}::timestamp at time zone 'Europe/Berlin',
              all_day = ${command.allDay},
              appointment_type = ${command.type},
-             category_id = ${command.categoryId},
+             calendar_id = ${command.calendarId},
              revision = revision + 1,
              updated_at = statement_timestamp()
        where workspace_id = ${ctx.workspaceId}::uuid
@@ -430,8 +464,9 @@ export async function listProjectAppointments(
            ) as end_iso,
            appointment_record.all_day,
            appointment_record.appointment_type,
-           appointment_record.category_id,
-           category_record.name as category_name,
+           appointment_record.calendar_id,
+           calendar_record.name as calendar_name,
+           calendar_record.color as calendar_color,
            coalesce((
              select jsonb_agg(
                jsonb_build_object(
@@ -462,9 +497,10 @@ export async function listProjectAppointments(
                 and attendee.appointment_id = appointment_record.id
            ), '[]'::jsonb) as attendees
       from project_appointment appointment_record
-      left join calendar_category category_record
-        on category_record.workspace_id = appointment_record.workspace_id
-       and category_record.id = appointment_record.category_id
+      left join calendar calendar_record
+        on calendar_record.workspace_id = appointment_record.workspace_id
+       and calendar_record.id = appointment_record.calendar_id
+       and ${calendarVisibleFragment(ctx)}
      where appointment_record.workspace_id = ${ctx.workspaceId}::uuid
        and appointment_record.project_id = ${projectId}::uuid
        and appointment_record.start_at < (${options.rangeEnd}::timestamp at time zone 'Europe/Berlin')
@@ -474,15 +510,23 @@ export async function listProjectAppointments(
               appointment_record.id asc
   `);
 
-  const categories = await tx.execute<CategoryRow>(sql`
-    select category_record.id,
-           category_record.name,
-           category_record.order
-      from calendar_category category_record
-     where category_record.workspace_id = ${ctx.workspaceId}::uuid
-     order by category_record.order asc,
-              category_record.name asc,
-              category_record.id asc
+  const calendars = await tx.execute<CalendarRow>(sql`
+    select calendar_record.id,
+           calendar_record.name,
+           calendar_record.color,
+           calendar_record.calendar_type,
+           calendar_record.category_id,
+           category_record.name as category_name
+      from calendar calendar_record
+      left join calendar_category category_record
+        on category_record.workspace_id = calendar_record.workspace_id
+       and category_record.id = calendar_record.category_id
+     where calendar_record.workspace_id = ${ctx.workspaceId}::uuid
+       and calendar_record.active = true
+       and ${calendarVisibleFragment(ctx)}
+     order by calendar_record.calendar_type asc,
+              calendar_record.name asc,
+              calendar_record.id asc
   `);
 
   const members = await tx.execute<{ membershipId: string; label: string; [key: string]: unknown }>(sql`
@@ -524,18 +568,222 @@ export async function listProjectAppointments(
       end: row.end_iso,
       allDay: row.all_day,
       type: row.appointment_type,
-      categoryId: row.category_id,
-      categoryName: row.category_name,
+      calendarId: row.calendar_id,
+      calendarName: row.calendar_name,
+      calendarColor: row.calendar_color,
       attendees: row.attendees,
     })),
-    categories: categories.rows.map((row) => ({
+    calendars: calendars.rows.map((row) => ({
       id: row.id,
       name: row.name,
-      order: row.order,
+      color: row.color,
+      type: row.calendar_type,
+      categoryId: row.category_id,
+      categoryName: row.category_name,
     })),
     members: members.rows.map((row) => ({
       membershipId: row.membershipId,
       label: row.label,
     })),
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// M1-15b: Kalender-Verwaltung (Spec §6/§7)
+// ═══════════════════════════════════════════════════════════════════════
+
+export const CALENDAR_SCOPE_TYPES = ["team", "tenancy", "user", "client"] as const;
+
+function requireCalendarRead(ctx: ServiceCtx): void {
+  if (!can(ctx, "calendar.read")) {
+    throw new PermissionDeniedError("calendar.read", "calendar", undefined, ctx.actor);
+  }
+}
+
+function requireCalendarWrite(ctx: ServiceCtx): void {
+  if (!can(ctx, "calendar.write")) {
+    throw new PermissionDeniedError("calendar.write", "calendar", undefined, ctx.actor);
+  }
+}
+
+// Sichtbarkeit (Spec §7, DECIDED WMEE): tenancy für alle internen Rollen,
+// user für Owner + Admin, team strukturell (später), client nie.
+export async function listVisibleCalendars(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<CalendarItemV1[]> {
+  requireCalendarRead(ctx);
+  const result = await tx.execute<CalendarRow>(sql`
+    select calendar_record.id,
+           calendar_record.name,
+           calendar_record.color,
+           calendar_record.calendar_type,
+           calendar_record.category_id,
+           category_record.name as category_name
+      from calendar calendar_record
+      left join calendar_category category_record
+        on category_record.workspace_id = calendar_record.workspace_id
+       and category_record.id = calendar_record.category_id
+     where calendar_record.workspace_id = ${ctx.workspaceId}::uuid
+       and calendar_record.active = true
+       and ${calendarVisibleFragment(ctx)}
+     order by calendar_record.calendar_type asc,
+              calendar_record.name asc,
+              calendar_record.id asc
+  `);
+  return result.rows.map((row) => calendarItemV1Schema.parse({
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    type: row.calendar_type,
+    categoryId: row.category_id,
+    categoryName: row.category_name,
+  }));
+}
+
+// Lazy Auto-Provisionierung des persönlichen Kalenders je Membership
+// (Spec §6, DEC-M115B-17: Name „Persönlich — <E-Mail>", da user_identity
+// keine Anzeigenamen führt).
+export async function ensurePersonalCalendar(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  membershipId: string,
+): Promise<string> {
+  const existing = await tx.execute<{ id: string }>(sql`
+    select id from calendar
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and membership_id = ${membershipId}::uuid
+       and calendar_type = 'user'
+     limit 1
+  `);
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  const member = await tx.execute<{ email: string }>(sql`
+    select identity_record.email
+      from membership membership_record
+      join user_identity identity_record
+        on identity_record.id = membership_record.user_id
+     where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+       and membership_record.id = ${membershipId}::uuid
+     limit 1
+  `);
+  if (!member.rows[0]) throw new AppointmentNotFoundError();
+
+  const calendarId = randomUUID();
+  // Kimi-P2-2/P2-3: Race-sicher — parallele Erst-Provisionierungen kollidieren
+  // am partial-unique (membership) oder am Namens-Unique; dann re-selectieren
+  // wir strikt über die MEMBERSHIP (nie über den Namen).
+  try {
+    await tx.execute(sql`
+      insert into calendar (
+        id, workspace_id, name, calendar_type, membership_id, created_by
+      ) values (
+        ${calendarId}::uuid, ${ctx.workspaceId}::uuid,
+        ${`Persönlich — ${member.rows[0].email}`}, 'user',
+        ${membershipId}::uuid, ${ctx.actor}::uuid
+      )
+    `);
+  } catch (error) {
+    const code = postgresErrorCode(error);
+    if (code !== "23505") throw error;
+    const winner = await tx.execute<{ id: string }>(sql`
+      select id from calendar
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and membership_id = ${membershipId}::uuid
+         and calendar_type = 'user'
+       limit 1
+    `);
+    if (winner.rows[0]) return winner.rows[0].id;
+    throw error;
+  }
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "calendar",
+    aggregateId: calendarId,
+    eventType: "calendar.created",
+    actor: ctx.actor,
+    payload: { calendarType: "user", membershipId },
+  });
+  return calendarId;
+}
+
+export async function createTenancyCalendar(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { name: string; color?: string | null },
+): Promise<CalendarItemV1> {
+  requireCalendarWrite(ctx);
+  const name = input.name.normalize("NFKC").trim();
+  if (name.length < 1 || name.length > 200) throw new AppointmentValidationError();
+  if (input.color !== undefined && input.color !== null
+      && !/^#[0-9a-fA-F]{6}$/u.test(input.color)) {
+    throw new AppointmentValidationError();
+  }
+  const calendarId = randomUUID();
+  await tx.execute(sql`
+    insert into calendar (
+      id, workspace_id, name, color, calendar_type, created_by
+    ) values (
+      ${calendarId}::uuid, ${ctx.workspaceId}::uuid,
+      ${name}, ${input.color ?? null}, 'tenancy', ${ctx.actor}::uuid
+    )
+  `);
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "calendar",
+    aggregateId: calendarId,
+    eventType: "calendar.created",
+    actor: ctx.actor,
+    payload: { calendarType: "tenancy" },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "calendar.write",
+    resource: "calendar",
+    allowed: true,
+    details: { calendarId, name },
+  });
+  return calendarItemV1Schema.parse({
+    id: calendarId, name, color: input.color ?? null, type: "tenancy",
+    categoryId: null, categoryName: null,
+  });
+}
+
+export async function archiveCalendar(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  calendarId: string,
+): Promise<void> {
+  requireCalendarWrite(ctx);
+  // Kimi-P1-2: persönliche Kalender sind membership-verwaltet und NICHT
+  // archivierbar (sonst dead-end: partial-unique verhindert Re-Provision,
+  // validateCalendar blockiert jede Terminanlage des Owners).
+  const target = await tx.execute<{ calendar_type: string }>(sql`
+    select calendar_type from calendar
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${calendarId}::uuid
+     limit 1
+  `);
+  if (!target.rows[0]) throw new AppointmentNotFoundError();
+  if (target.rows[0].calendar_type === "user") throw new AppointmentValidationError();
+  const updated = await tx.execute(sql`
+    update calendar
+       set active = false,
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${calendarId}::uuid
+       and active = true
+       and calendar_type in ('tenancy', 'team')
+     returning id
+  `);
+  if (!updated.rows[0]) throw new AppointmentNotFoundError();
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "calendar.write",
+    resource: "calendar",
+    allowed: true,
+    details: { calendarId, archived: true },
   });
 }

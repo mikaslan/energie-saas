@@ -136,7 +136,7 @@ export function AppointmentCalendarSection({
           workspaceId={workspaceId}
           projectId={projectId}
           appointment={dialogAppointment}
-          categories={range.categories}
+          calendars={range.calendars}
           members={range.members}
           returnFocusRef={createButtonRef}
           onClose={closeDialog}

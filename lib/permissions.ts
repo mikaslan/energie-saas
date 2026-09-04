@@ -16,6 +16,7 @@ export type Action =
   | "lead_source.read" | "lead_source.write"
   | "time.read" | "time.write"
   | "checklist.read" | "checklist.write"
+  | "calendar.read" | "calendar.write"
   | "appointment.read" | "appointment.write"
   | "invoicing.read" | "invoicing.write" | "invoicing.issuing_details.write"
   | "economics.read" | "economics.write"
@@ -84,6 +85,8 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "time.write":          { minRole: "editor", internalOnly: true },
   "checklist.read":      { minRole: "viewer", internalOnly: true },
   "checklist.write":     { minRole: "editor", internalOnly: true },
+  "calendar.read":       { minRole: "viewer", internalOnly: true },
+  "calendar.write":      { minRole: "admin", internalOnly: true },
   "appointment.read":    { minRole: "viewer", internalOnly: true },
   "appointment.write":   { minRole: "editor", internalOnly: true },
   "invoicing.read":      { minRole: "viewer", internalOnly: true },

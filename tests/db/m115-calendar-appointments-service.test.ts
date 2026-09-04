@@ -27,6 +27,7 @@ type Fixture = {
   viewerId: string;
   viewerMembershipId: string;
   externalId: string;
+  tenancyCalendarId: string;
 };
 
 async function seedFixture(): Promise<Fixture> {
@@ -39,6 +40,7 @@ async function seedFixture(): Promise<Fixture> {
   const viewerId = randomUUID();
   const viewerMembershipId = randomUUID();
   const externalId = randomUUID();
+  const tenancyCalendarId = randomUUID();
 
   await withTenantOn(testPool, workspaceId, async (tx) => {
     await tx.execute(sql`insert into workspace (id, name) values (${workspaceId}::uuid, 'M1-15 Calendar')`);
@@ -62,6 +64,10 @@ async function seedFixture(): Promise<Fixture> {
     `);
     await tx.execute(sql`insert into site (id, workspace_id, contact_id, label) values (${siteId}::uuid, ${workspaceId}::uuid, ${contactId}::uuid, 'M115 Site')`);
     await tx.execute(sql`
+      insert into calendar (id, workspace_id, name, calendar_type, created_by)
+      values (${tenancyCalendarId}::uuid, ${workspaceId}::uuid, 'Unternehmen', 'tenancy', ${editorId}::uuid)
+    `);
+    await tx.execute(sql`
       insert into project (id, workspace_id, contact_id, site_id, kanban_board_id, kanban_column_id, name, source_key)
       select ${projectId}::uuid, ${workspaceId}::uuid, ${contactId}::uuid, ${siteId}::uuid, board.id, intake.id, 'M115 Project', 'manual'
         from kanban_board board
@@ -82,6 +88,7 @@ async function seedFixture(): Promise<Fixture> {
     viewerId,
     viewerMembershipId,
     externalId,
+    tenancyCalendarId,
   };
 }
 
@@ -100,7 +107,7 @@ function createCommand(
     type: "on_site",
     location: "Musterstraße 1",
     description: "Erstgespräch",
-    categoryId: null,
+    calendarId: fixture.tenancyCalendarId,
     attendeeMembershipIds: [fixture.editorMembershipId],
     ...overrides,
   } as ProjectAppointmentCommandV1;
@@ -167,7 +174,7 @@ describe("M1-15 Termine/Kalender-Service (PostgreSQL)", () => {
         type: "phone",
         location: null,
         description: null,
-        categoryId: null,
+        calendarId: fixture.tenancyCalendarId,
         attendeeMembershipIds: [],
       }),
     );
@@ -232,7 +239,7 @@ describe("M1-15 Termine/Kalender-Service (PostgreSQL)", () => {
             type: "phone",
             location: null,
             description: null,
-            categoryId: null,
+            calendarId: fixture.tenancyCalendarId,
             attendeeMembershipIds: [],
           }
         : {
@@ -409,10 +416,54 @@ describe("M1-15 Termine/Kalender-Service (PostgreSQL)", () => {
     })).rejects.toBeInstanceOf(AppointmentValidationError);
   });
 
-  it("validiert categoryId gegen den Workspace", async () => {
+  it("M1-15b P1-1: Termin-Items maskieren fremde persönliche Kalender (Name=null)", async () => {
+    // Persönlicher Kalender des EDITORS + Termin darauf.
+    const personalId = randomUUID();
+    await withTenantOn(testPool, fixture.workspaceId, (tx) => tx.execute(sql`
+      insert into calendar (id, workspace_id, name, calendar_type, membership_id, created_by)
+      values (${personalId}::uuid, ${fixture.workspaceId}::uuid,
+        'Persönlich — editor@m115.test', 'user', ${fixture.editorMembershipId}::uuid,
+        ${fixture.editorId}::uuid)
+    `));
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => executeProjectAppointmentCommand(tx, ctx, {
+        schemaVersion: PROJECT_APPOINTMENT_COMMAND_VERSION,
+        kind: "create_appointment",
+        projectId: fixture.projectId,
+        title: "Privattermin",
+        start: "2026-07-01T12:00:00",
+        end: "2026-07-01T13:00:00",
+        allDay: false,
+        type: "phone",
+        location: null,
+        description: null,
+        calendarId: personalId,
+        attendeeMembershipIds: [],
+      }),
+    );
+
+    // Viewer liest die Range: Termin sichtbar, Kalender-Name MASKIERT.
+    const range = await withAuthorizedTenantOn(
+      testPool, fixture.viewerId, fixture.workspaceId,
+      (tx, ctx) => listProjectAppointments(tx, ctx, fixture.projectId, {
+        rangeStart: "2026-07-01T00:00:00",
+        rangeEnd: "2026-07-02T00:00:00",
+        view: "month",
+      }),
+    );
+    expect(range).not.toBeNull();
+    const item = range!.items.find((entry) => entry.title === "Privattermin");
+    expect(item).toBeDefined();
+    expect(item!.calendarId).toBe(personalId);
+    expect(item!.calendarName).toBeNull();
+    expect(item!.calendarColor).toBeNull();
+  });
+
+  it("validiert calendarId gegen den Workspace (unsichtbar → invalid, kein Scope-Leak)", async () => {
     await expect(createAppointment(fixture, {
-      categoryId: "99999999-9999-4999-8999-999999999999",
-    })).rejects.toBeInstanceOf(AppointmentNotFoundError);
+      calendarId: "99999999-9999-4999-8999-999999999999",
+    })).rejects.toBeInstanceOf(AppointmentValidationError);
   });
 
   it("Erasure-Graph und Migration tragen appointmentIds (quellgepinnt)", async () => {

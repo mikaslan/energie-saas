@@ -145,7 +145,7 @@ const editableFields = {
   location: locationSchema.nullable(),
   description: descriptionSchema.nullable(),
   attendeeMembershipIds: attendeeIdsSchema,
-  categoryId: uuidSchema.nullable(),
+  calendarId: uuidSchema,
 } as const;
 
 export const projectAppointmentCommandV1Schema = z.discriminatedUnion("kind", [
@@ -215,12 +215,28 @@ export const projectAppointmentItemV1Schema = z.strictObject({
   end: z.string().min(1),
   allDay: z.boolean(),
   type: typeSchema,
-  categoryId: canonicalUuidSchema.nullable(),
-  categoryName: z.string().min(1).max(CALENDAR_CATEGORY_NAME_MAX_LENGTH).nullable(),
+  calendarId: canonicalUuidSchema,
+  // Kimi-P1-1: für den Actor UNSICHTBARE Kalender (fremde persönliche)
+  // werden maskiert → Name/Color null (kein E-Mail-PII-Leak).
+  calendarName: z.string().min(1).max(200).nullable(),
+  calendarColor: z.string().nullable(),
   attendees: z.array(projectedAttendeeSchema).max(PROJECT_APPOINTMENT_MAX_ATTENDEES),
 });
 
 export type ProjectAppointmentItemV1 = z.infer<typeof projectAppointmentItemV1Schema>;
+
+// M1-15b §4.3: calendar-item.v1 — verboten sind workspace_id/membership_id/
+// team_id-Rohwerte und Fremd-PII.
+export const calendarItemV1Schema = z.strictObject({
+  id: canonicalUuidSchema,
+  name: z.string().min(1).max(200),
+  color: z.string().nullable(),
+  type: z.enum(["team", "tenancy", "user", "client"]),
+  categoryId: canonicalUuidSchema.nullable(),
+  categoryName: z.string().min(1).max(CALENDAR_CATEGORY_NAME_MAX_LENGTH).nullable(),
+});
+
+export type CalendarItemV1 = z.infer<typeof calendarItemV1Schema>;
 
 export const calendarCategoryItemV1Schema = z.strictObject({
   id: canonicalUuidSchema,
@@ -238,7 +254,7 @@ export const projectAppointmentRangeV1Schema = z.strictObject({
   rangeEnd: z.string().min(1),
   view: z.enum(["month", "week", "list"]),
   items: z.array(projectAppointmentItemV1Schema),
-  categories: z.array(calendarCategoryItemV1Schema),
+  calendars: z.array(calendarItemV1Schema),
   members: z.array(projectedAttendeeSchema).max(200),
 });
 

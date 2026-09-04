@@ -75,7 +75,7 @@ export const calendar = pgTable(
       "calendar_name_ck",
       sql`length(btrim(${t.name})) between 1 and 200
         and ${t.name} = normalize(${t.name}, NFKC)
-        and ${t.name} !~ '[\u0000-\u001F\u007F]'`,
+        and ${t.name} !~ '[[:cntrl:]]'`,
     ),
     check(
       "calendar_color_ck",

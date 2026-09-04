@@ -11,6 +11,7 @@ export {
   PROJECT_APPOINTMENT_RANGE_VERSION,
   appointmentTypes,
   calendarCategoryItemV1Schema,
+  calendarItemV1Schema,
   projectAppointmentCommandV1Schema,
   projectAppointmentItemV1Schema,
   projectAppointmentRangeV1Schema,
@@ -18,6 +19,7 @@ export {
 export type {
   AppointmentType,
   CalendarCategoryItemV1,
+  CalendarItemV1,
   ProjectAppointmentCommandResult,
   ProjectAppointmentCommandV1,
   ProjectAppointmentItemV1,
@@ -29,6 +31,10 @@ export {
   AppointmentValidationError,
 } from "./errors";
 export {
+  archiveCalendar,
+  createTenancyCalendar,
+  ensurePersonalCalendar,
   executeProjectAppointmentCommand,
   listProjectAppointments,
+  listVisibleCalendars,
 } from "./service";

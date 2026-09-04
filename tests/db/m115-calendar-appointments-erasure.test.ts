@@ -198,8 +198,16 @@ describe.sequential("M1-15 Appointment-Erasure (funktional)", () => {
         [editorId],
       );
       await seed.query(
-        `insert into public.project_appointment (id, workspace_id, project_id, title, start_at, end_at, appointment_type, revision, created_by)
-         values ($1::uuid, $2::uuid, $3::uuid, 'Zu löschen', now(), now() + interval '1 hour', 'phone', 1, $4::uuid)`,
+        `insert into public.calendar (id, workspace_id, name, calendar_type, created_by)
+         values ($1::uuid, $2::uuid, 'Erasure Calendar', 'tenancy', $3::uuid)`,
+        [randomUUID(), workspaceId, editorId],
+      );
+      await seed.query(
+        `insert into public.project_appointment (id, workspace_id, project_id, title, start_at, end_at, appointment_type, revision, calendar_id, created_by)
+         select $1::uuid, $2::uuid, $3::uuid, 'Zu löschen', now(), now() + interval '1 hour', 'phone', 1, calendar_record.id, $4::uuid
+           from public.calendar calendar_record
+          where calendar_record.workspace_id = $2::uuid and calendar_record.name = 'Erasure Calendar'
+          limit 1`,
         [appointmentId, workspaceId, projectId, editorId],
       );
       await seed.query(

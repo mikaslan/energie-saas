@@ -1562,13 +1562,28 @@ async function main(): Promise<number> {
         [seedData.editorEmail],
       );
       await previewPool.query(
+        `insert into calendar (id, workspace_id, name, calendar_type, created_by)
+         select gen_random_uuid(), $1::uuid, 'Unternehmen', 'tenancy', u.id
+           from user_identity u where u.email = $2
+            and not exists (
+             select 1 from calendar
+              where workspace_id = $1::uuid and name = 'Unternehmen'
+           )
+         limit 1`,
+        [seedData.workspaceId, seedData.editorEmail],
+      );
+      await previewPool.query(
         `insert into project_appointment (
            id, workspace_id, project_id, title, start_at, end_at,
-           appointment_type, revision, created_by
+           appointment_type, revision, calendar_id, created_by
          ) select gen_random_uuid(), $1::uuid, $3::uuid,
            'Demo-Termin Vor-Ort', (now() + interval '3 days'),
-           (now() + interval '3 days 1 hour'), 'on_site', 1, u.id
-           from user_identity u where u.email = $2
+           (now() + interval '3 days 1 hour'), 'on_site', 1,
+           calendar_record.id, u.id
+           from user_identity u, calendar calendar_record
+          where u.email = $2
+            and calendar_record.workspace_id = $1::uuid
+            and calendar_record.name = 'Unternehmen'
             and not exists (
              select 1 from project_appointment
               where workspace_id = $1::uuid and title = 'Demo-Termin Vor-Ort'

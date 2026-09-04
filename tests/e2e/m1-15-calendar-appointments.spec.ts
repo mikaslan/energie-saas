@@ -1,4 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
+import { Pool } from "pg";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "playwright/test";
 
@@ -233,10 +234,33 @@ test.afterEach(async ({ page }) => {
 test.describe("M1-15: Termine & Kalender in der Projektakte", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("M1-15: Monatsansicht rendert; Editor legt einen Termin an (persistent)", async ({ page }) => {
+
+async function seedTenancyCalendar(): Promise<void> {
+  const data = state();
+  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  try {
+    await pool.query(
+      `insert into calendar (id, workspace_id, name, calendar_type, created_by)
+       select gen_random_uuid(), $1::uuid, 'M1-15 E2E Kalender', 'tenancy', u.id
+         from user_identity u where u.email = $2
+          and not exists (
+            select 1 from calendar
+             where workspace_id = $1::uuid and name = 'M1-15 E2E Kalender'
+          )
+        limit 1`,
+      [data.m111bWorkspaceId, data.editorEmail],
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+test("M1-15: Monatsansicht rendert; Editor legt einen Termin an (persistent)", async ({ page }) => {
     test.setTimeout(120_000);
     const data = state();
     const detailPath = `/w/${data.m111bWorkspaceId}/anfragen/${data.m111bProjectId}`;
+    // Kalender muss VOR dem ersten Rendern existieren (Range-Query beim Laden).
+    await seedTenancyCalendar();
     await page.goto(detailPath);
     await loginWithRealOtp(page, data.editorEmail, detailPath);
 
@@ -263,11 +287,10 @@ test.describe("M1-15: Termine & Kalender in der Projektakte", () => {
     await expect(dialog.getByRole("heading", { name: "Termin anlegen", level: 2 }))
       .toBeVisible();
 
-    // Kategorie-Leerzustand: genau „Keine".
-    const category = dialog.getByLabel("Kategorie");
-    await expect(category).toHaveValue("");
-    await expect(category.locator("option")).toHaveCount(1);
-    await expect(category.locator("option")).toHaveText("Keine");
+    // Kalenderauswahl: der geseedete Tenancy-Kalender ist vorausgewählt.
+    const calendar = dialog.getByLabel("Kalender");
+    await expect(calendar.locator("option")).toHaveCount(1);
+    await expect(calendar.locator("option")).toHaveText("M1-15 E2E Kalender");
 
     // Teilnehmer: interne Mitglieder stehen als Checkboxen bereit.
     await expect(dialog.getByText("Teilnehmer", { exact: true })).toBeVisible();
@@ -276,7 +299,7 @@ test.describe("M1-15: Termine & Kalender in der Projektakte", () => {
     await dialog.getByLabel("Titel").fill(APPOINTMENT_TITLE);
     await dialog.getByLabel("Typ").selectOption("on_site");
     await dialog.getByLabel("Beginn").fill(`${date}T10:00`);
-    await dialog.getByLabel("Ende").fill(`${date}T11:00`);
+    await dialog.getByLabel("Ende", { exact: true }).fill(`${date}T11:00`);
     await dialog.getByRole("checkbox", { name: data.editorEmail }).check();
 
     // Tastatur: Speichern (ohne Maus).
@@ -327,7 +350,7 @@ test.describe("M1-15: Termine & Kalender in der Projektakte", () => {
     await dialog.getByLabel("Titel").fill("M1-15 E2E ungültig");
     // Ende vor Beginn verletzt `end > start`.
     await dialog.getByLabel("Beginn").fill(`${date}T14:00`);
-    await dialog.getByLabel("Ende").fill(`${date}T13:00`);
+    await dialog.getByLabel("Ende", { exact: true }).fill(`${date}T13:00`);
     await dialog.getByRole("button", { name: "Speichern" }).click();
 
     const feedback = dialog.getByRole("alert");
@@ -402,6 +425,7 @@ test.describe("M1-15: Termine & Kalender in der Projektakte", () => {
     await page.goto(detailPath);
     await loginWithRealOtp(page, data.viewerEmail, detailPath);
 
+    await seedTenancyCalendar();
     const section = page.locator("#project-appointments");
     await expect(section.getByRole("heading", { name: "Termine", level: 2 })).toBeVisible();
     await expect(section.getByRole("button", { name: "Termin anlegen" })).toHaveCount(0);

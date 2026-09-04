@@ -48,7 +48,7 @@ const CREATE_FIELDS = new Set([
   "type",
   "location",
   "description",
-  "categoryId",
+  "calendarId",
   "attendees",
 ]);
 const UPDATE_FIELDS = new Set([...CREATE_FIELDS, "appointmentId", "expectedRevision"]);
@@ -143,7 +143,7 @@ function commandCandidate(
     type: entries.type,
     location: parseOptionalText(entries.location),
     description: parseOptionalText(entries.description),
-    categoryId: entries.categoryId === "" ? null : entries.categoryId,
+    calendarId: entries.calendarId,
     attendeeMembershipIds: attendees,
   };
   if (kind === "create_appointment") return { ...base, ...editable };

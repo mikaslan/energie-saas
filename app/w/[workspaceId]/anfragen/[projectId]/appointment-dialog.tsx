@@ -11,7 +11,7 @@ import {
 } from "react";
 import {
   PROJECT_APPOINTMENT_COMMAND_VERSION,
-  type CalendarCategoryItemV1,
+  type CalendarItemV1,
   type ProjectAppointmentItemV1,
 } from "@/lib/integrations/calendar/contract";
 import {
@@ -56,7 +56,7 @@ export function AppointmentDialog({
   workspaceId,
   projectId,
   appointment,
-  categories,
+  calendars,
   members,
   returnFocusRef,
   onClose,
@@ -64,7 +64,7 @@ export function AppointmentDialog({
   workspaceId: string;
   projectId: string;
   appointment: ProjectAppointmentItemV1 | null;
-  categories: CalendarCategoryItemV1[];
+  calendars: CalendarItemV1[];
   members: { membershipId: string; label: string }[];
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
@@ -205,16 +205,19 @@ export function AppointmentDialog({
             </label>
 
             <label className="grid gap-1 text-sm font-semibold text-slate-800">
-              Kategorie
+              Kalender
               <select
-                name="categoryId"
-                disabled={pending}
-                defaultValue={appointment?.categoryId ?? ""}
+                name="calendarId"
+                required
+                disabled={pending || calendars.length === 0}
+                defaultValue={appointment?.calendarId ?? calendars[0]?.id ?? ""}
                 className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
               >
-                <option value="">Keine</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
+                {calendars.length === 0 ? (
+                  <option value="">Kein Kalender verfügbar</option>
+                ) : null}
+                {calendars.map((calendar) => (
+                  <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
                 ))}
               </select>
             </label>

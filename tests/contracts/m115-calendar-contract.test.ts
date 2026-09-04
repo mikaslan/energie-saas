@@ -29,7 +29,7 @@ function createCommand(overrides: Record<string, unknown> = {}) {
     type: "on_site",
     location: "Musterstraße 1",
     description: "Erstgespräch",
-    categoryId: "22222222-2222-4222-8222-222222222222",
+    calendarId: "22222222-2222-4222-8222-222222222222",
     attendeeMembershipIds: ["33333333-3333-4333-8333-333333333333"],
     ...overrides,
   };
@@ -45,7 +45,6 @@ describe("M1-15 Kalender-Vertrag (project-appointment-command.v1)", () => {
     const parsed = projectAppointmentCommandV1Schema.safeParse(createCommand({
       location: null,
       description: null,
-      categoryId: null,
       attendeeMembershipIds: [],
     }));
     expect(parsed.success).toBe(true);
@@ -155,7 +154,7 @@ describe("M1-15 Kalender-Vertrag (project-appointment-command.v1)", () => {
       type: "on_site",
       location: null,
       description: null,
-      categoryId: null,
+      calendarId: "22222222-2222-4222-8222-222222222222",
       attendeeMembershipIds: [],
     };
     const parsed = projectAppointmentCommandV1Schema.safeParse(update);
@@ -173,7 +172,7 @@ describe("M1-15 Kalender-Vertrag (project-appointment-command.v1)", () => {
 });
 
 describe("M1-15 minimierte DTOs", () => {
-  it("project-appointment-item.v1 verbietet workspace_id und calendarId", () => {
+  it("project-appointment-item.v1 trägt calendarId/Name/Farbe, verbietet workspace_id", () => {
     const valid = {
       id: "11111111-1111-4111-8111-111111111111",
       revision: 1,
@@ -184,8 +183,9 @@ describe("M1-15 minimierte DTOs", () => {
       end: "2026-07-01T11:00:00.000",
       allDay: false,
       type: "phone",
-      categoryId: null,
-      categoryName: null,
+      calendarId: "22222222-2222-4222-8222-222222222222",
+      calendarName: "Unternehmen",
+      calendarColor: null,
       attendees: [],
     };
     expect(projectAppointmentItemV1Schema.safeParse(valid).success).toBe(true);
@@ -195,7 +195,7 @@ describe("M1-15 minimierte DTOs", () => {
     }).success).toBe(false);
     expect(projectAppointmentItemV1Schema.safeParse({
       ...valid,
-      calendarId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      calendarId: null,
     }).success).toBe(false);
   });
 
@@ -218,7 +218,7 @@ describe("M1-15 minimierte DTOs", () => {
     }).success).toBe(false);
   });
 
-  it("project-appointment-range.v1 trägt Items, Kategorien, Mitglieder und Rechte", () => {
+  it("project-appointment-range.v1 trägt Items, Kalender, Mitglieder und Rechte", () => {
     expect(projectAppointmentRangeV1Schema.safeParse({
       schemaVersion: "project-appointment-range.v1",
       projectId: "11111111-1111-4111-8111-111111111111",
@@ -227,7 +227,7 @@ describe("M1-15 minimierte DTOs", () => {
       rangeEnd: "2026-12-31T23:59:59.000",
       view: "month",
       items: [],
-      categories: [],
+      calendars: [],
       members: [],
     }).success).toBe(true);
   });

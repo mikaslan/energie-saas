@@ -161,15 +161,20 @@ async function fixtureProjectAppointmentGraph(tx: TenantTx, wsId: string): Promi
   const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor");
   await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
   const { projectId } = await fixtureProjectGraph(tx, wsId);
+  const calendarId = randomUUID();
+  await tx.execute(sql`
+    insert into calendar (id, workspace_id, name, calendar_type, created_by)
+    values (${calendarId}::uuid, ${wsId}::uuid, ${`Fixture Calendar ${userId}`}, 'tenancy', ${userId}::uuid)
+  `);
   const appointmentId = randomUUID();
   await tx.execute(sql`
     insert into project_appointment (
       id, workspace_id, project_id, title, start_at, end_at, all_day,
-      appointment_type, revision, created_by
+      appointment_type, revision, calendar_id, created_by
     ) values (
       ${appointmentId}::uuid, ${wsId}::uuid, ${projectId}::uuid, 'Fixture Appointment',
       now() - interval '1 hour', now() + interval '1 hour', false,
-      'on_site', 1, ${userId}::uuid
+      'on_site', 1, ${calendarId}::uuid, ${userId}::uuid
     )
   `);
   await tx.execute(sql`
@@ -1938,6 +1943,17 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       insert into lead_source (id, workspace_id, name, name_normalized)
       values (${id}::uuid, ${wsId}::uuid, ${`Fixture Lead Source ${id}`},
         ${`fixture lead source ${id}`})
+    `);
+  },
+  calendar: async (tx, wsId) => {
+    const userId = randomUUID();
+    await tx.execute(sql`
+      insert into user_identity (id, email)
+      values (${userId}::uuid, ${`${userId}@fixture.local`})
+    `);
+    await tx.execute(sql`
+      insert into calendar (workspace_id, name, calendar_type, created_by)
+      values (${wsId}::uuid, ${`Fixture Calendar ${userId}`}, 'tenancy', ${userId}::uuid)
     `);
   },
   project_checklist: async (tx, wsId) => {
