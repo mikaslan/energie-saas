@@ -13,7 +13,7 @@ Dokument.
 - Branch `codex/m1-wave-02`, Remote `origin` = `https://github.com/mikaslan/energie-saas.git`.
   Kanonischer HEAD nach Mikails Verifikation/Integration: **`9fc49eb`**
   („Merge … codex/f10-portal-skeleton into codex/m1-wave-02"). Prüfen:
-  `git fetch origin && git rev-parse origin/codex/m1-wave-02` → `b6ee110…`.
+  `git fetch origin && git rev-parse origin/codex/m1-wave-02` → `9fc49eb…`.
 - Deine 4 Lanes sind VERIFIED und integriert (nicht neu bauen!):
   F2.2 (0055, `a030f4e`), F9.3 (`fd4168a`), F16.2 (`5ce53e9`), F10.1
   (0056, `e81fe46`). Migrationen lückenlos **0001–0056**.
