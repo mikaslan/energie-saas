@@ -239,6 +239,24 @@ WMEE; Push-/Deploy-Regeln unverändert.
   (`docs/handover/prompts/09-Muse-Fortsetzung-Welle-03.md`).
 - Quote: ~36 % (ESTIMATE); Dritter Reviewer (DeepSeek via OpenRouter) für
   Welle 03 beauftragt.
+- **Welle-03-Gatefix (23:55, Mikail-Verifikation):** Muse lieferte den
+  E2E-Nachholblock (4 neue Specs, f7-03-Isolierung, f7-02-Fehlermapping).
+  Verifikation fand 4 Root-Causes und behob sie an der Wurzel:
+  (1) f7-02-Toast (vorbestehend seit Baseline): key={checklist.version}-
+  Remount + revalidatePath zerstoerte den useActionState-Erfolg — Fix
+  versions-getaggte Blocks-Ableitung, revalidate nur im Apply-Pfad;
+  (2) f2-02/f16-02: W3-Editor fehlten convert_phase/discounts → Offer-
+  Create-Gate read_only; (3) f10-01: spezifizierte 404-Navigation
+  konsumiert ihre erwartete Konsolenmeldung (Muster m1-08b);
+  (4) m2-01-Fixture: skuSuffix gegen Doppel-Seed-Kollision. Integriert
+  in `codex/m1-wave-02` (`258fb8a`, gepusht); E2E-Job der Lane-CI jetzt
+  BLOCKIEREND. Gates: check 208/1969+1, Rollen 88/88, PG18 5/5, Build,
+  kein Drift, **E2E 90/90 gruen**.
+- **Offen bei Mikail (Muse-Fund Nr. 6):** GitHub-Actions-Billing/
+  Spending-Limit blockiert seit ~21:37 JEDEN CI-Lauf („payments have
+  failed or spending limit") — nur der Account-Inhaber kann das in den
+  Billing-Settings beheben. Bis dahin laufen die Gates auf Mikails
+  Maschine (hier), Muse arbeitet spec-first weiter.
 - **CI-Gate-Loop (22:20):** `.github/workflows/codex-lane-ci.yml` +
   `scripts/parity-progress.mts` auf Lane `codex/ci-parity-gates` gebaut
   (nach Freigabe): Jeder Push auf `codex/**` fährt Lint/Typecheck/
