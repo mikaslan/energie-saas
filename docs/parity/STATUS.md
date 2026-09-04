@@ -18,7 +18,7 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 31 % (ESTIMATE) | M1-Welle 01+02 grün; M2-04 + M3-00 VERIFIED; M3-01 Rechnungs-Kern integriert und VERIFIED (E2E 71/71, `codex/m1-wave-02` `5c7ea33`) |
+| Gesamtmission einschließlich F1–F16 | ca. 36 % (ESTIMATE) | M1-Welle 01+02 grün; M2-04 + M3-00 VERIFIED; M3-01 Rechnungs-Kern integriert und VERIFIED; Muse-Lanes F2.2/F9.3/F16.2/F10.1 verifiziert und in `codex/m1-wave-02` (`9fc49eb`) integriert |
 | Technisches Fundament M0/M1 | ca. 97–98 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
 | Nutzerseitige F1–F16-Funktionsparität | ca. 23–24 % (ESTIMATE) | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF, Kontakte, Termine, E-Signatur-Vorbereitung, Rechnungs-Stammdaten und der komplette Rechnungs-Kern (F8-Kernsuite) lokal verifiziert |
 
@@ -68,21 +68,21 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | Bereich | Höchster belastbarer Stand | Nächster echte Slice |
 |---|---|---|
 | F1 CRM & Leads | PARTIAL VERIFIED | Rechner-V3-Intake → Kontakt → Standort/Adresskorrektur → Anfrage → Kanban/Projektakte → Energieprofil ist lokal real; als Nächstes Zuweisung und weitere CRM-Capabilities |
-| F2 Angebote | PARTIAL VERIFIED | M1-08 liefert verifizierte Produkt-/Preissnapshots; M2-01 liefert daraus technisch verifizierte Draft-Offers, Varianten, Snapshot-BOM sowie Preis-/Rabatt-/Steuerentwurf. Die menschliche Screenshot-Baseline bleibt separat `INCONCLUSIVE`; PDF und Signatur folgen in eigenen Slices |
+| F2 Angebote | PARTIAL VERIFIED | M2-01 + F2.2 (Primary-Switch, Deal-Override, Bundles, 0055) verifizierte Produkt-/Preissnapshots; M2-01 liefert daraus technisch verifizierte Draft-Offers, Varianten, Snapshot-BOM sowie Preis-/Rabatt-/Steuerentwurf. Die menschliche Screenshot-Baseline bleibt separat `INCONCLUSIVE`; PDF und Signatur folgen in eigenen Slices |
 | F3 PV-Planung | PARTIAL VERIFIED | Hausbezogene, serverseitig reproduzierbare Planungsschätzung lokal real; rechtmäßige Dachdatenadapter und tiefere Planungswerkzeuge folgen capabilityweise |
 | F4 Simulation | PARTIAL VERIFIED | F4.6 Workspace-Simulationsdefaults integriert (0047, E2E 73/73); Rechenkern F4.1–F4.5 spec-first nach ADR + Mikail-Fragen |
 | F5 Wärmepumpe | SPECIFIED | Schätzverfahren klar von zertifizierter Normrechnung trennen |
 | F6 Schaltplan | SPECIFIED | eigener Editor-/Exportvertrag |
 | F7 Installation | SPECIFIED | Signatur → Installation → Checkliste/Disposition/Handover |
 | F8 Rechnungen | PARTIAL VERIFIED | M3-01-Kern integriert (0046): 6 Dokumenttypen, Nummernkreise, Ausstellen/Snapshot, Versand/Storno/Zahlungs-/Archiv-Achse, Listen/Filter, Berichte+CSV, UI/E2E 71/71; Folgeslices: Teilrechnungen (F8.5), PDF (M3-02), E-Rechnung/DATEV (F8.6/8.7), GoBD, Erasure-Verkabelung |
-| F9 Zeiterfassung | SPECIFIED | Timer/Eintrag → Audit → Export |
-| F10 Kundenportal | SPECIFIED | geschützter Projektlink → Angebot/Status/Dateien |
+| F9 Zeiterfassung | PARTIAL VERIFIED | F9.1/F9.2/F9.3 (Ereignistypen, Einträge, Stoppuhr, Fremdnutzer-Filter) → Audit → Export |
+| F10 Kundenportal | PARTIAL VERIFIED | F10.1 Skeleton (0056): Link-Infra, Status, Dok-Sicht, View-Log → Angebot/Status/Dateien |
 | F11 Mobile/PWA | SPECIFIED | schmale Offline-Outbox für Fotos/Checklisten/Zeit |
 | F12 Lead-Funnel | SPECIFIED | Provideradapter erst nach Privacy-Freigabe anbinden; weitere Funnels capabilityweise bauen |
 | F13 Services | SPECIFIED | Filing-Objekt und Statusmaschine, externe Human-Gates ehrlich markieren |
 | F14 KI | SPECIFIED | rechtegebundene Tools erst nach realen Domain-Commands |
 | F15 Gewerbe | SPECIFIED | getrenntes Commercial-Datenmodell |
-| F16 Katalog/Vorlagen | PARTIAL VERIFIED | M1-08a: eigener Katalog, sieben Produkttypen, Preise/Provenienz, Lifecycle und Projektauflösung lokal real; CSV, Assets, Vorlagen und Lieferantenfeeds folgen getrennt |
+| F16 Katalog/Vorlagen | PARTIAL VERIFIED | M1-08a + F16.2 PDF-Vorschau; CSV, Assets, Vorlagen, Lieferantenfeeds folgen eigener Katalog, sieben Produkttypen, Preise/Provenienz, Lifecycle und Projektauflösung lokal real; CSV, Assets, Vorlagen und Lieferantenfeeds folgen getrennt |
 
 ## Lieferform
 
@@ -210,6 +210,35 @@ WMEE; Push-/Deploy-Regeln unverändert.
   geschlossen (u. a. Archive-Guard gegen Deadlock).
 - Nachweise: check 203 Dateien/1931 Tests + 1 Skipped, Build,
   db:generate ohne Drift, E2E F9.2 2/2.
+
+## 2026-09-04 (21:50) — Muse-Welle 02b: 4 Lanes verifiziert und integriert
+
+- **F2.2 Varianten-Vertiefung (0055)** (`codex/f2-02-varianten-vertiefung`,
+  `a030f4e`): is_primary (partieller Unique), total_price_override_net_cents,
+  optional_bundles; Guard-Whitelist evolutionär erweitert
+  (`guard_offer_erasure_mutation`), Rollenvertrag-Pin nachgezogen.
+- **F9.3 Fremdnutzer-Filter** (`codex/f9-03-fremdnutzer-filter`, `fd4168a`):
+  `listTimeEntries` userIds-Filter (IN-Liste).
+- **F16.2 PDF-Vorschau** (`codex/f16-02-pdf-vorschau`, `5ce53e9`):
+  read-only PDF-Preview im Angebotsmodul.
+- **F10.1 Kundenportal-Skeleton (0056)** (`codex/f10-portal-skeleton`,
+  `e81fe46`): portal_invite/portal_token_locator/portal_view_log, Create/
+  Withdraw/Resolve (DEFINER), RLS-freier Token-Locator, app_owner-Owner-Tanz
+  für den Testmodus (Muster drizzle/0015), Rollenvertrag komplettiert
+  (9 Policy-Hashes, Trigger-/Funktions-Pins, EXECUTE-Grants).
+- Integration in `codex/m1-wave-02` (`9fc49eb`, gepusht): Journal 0001–0056
+  lückenlos, 0056-Snapshot auf den vollen integrierten Zustand gefaltet
+  (Full-State-Snapshots), m111a-Zähler 56/57.
+- Nachweise: check 208 Dateien/1969 Tests + 1 Skipped, Rollenprobe 88/88,
+  PG18 5/5, Build grün, db:generate ohne Drift, E2E 83/86.
+- **Bekannte Lücke (ehrlich):** Muse lieferte für die 4 Lanes KEINE
+  E2E-Specs (Nachholpflicht in Welle 03, Prompt 09). Die 2 roten E2E-Tests
+  (f7-02-E2E-01, f7-03-E2E-01) sind vorbestehend: identisch rot auf dem
+  Baseline-Stand `194fb3e` (isoliert nachgemessen), f7-03 zusätzlich
+  reihenfolge-empfindlich. Fixauftrag liegt im Muse-Fortsetzungsprompt
+  (`docs/handover/prompts/09-Muse-Fortsetzung-Welle-03.md`).
+- Quote: ~36 % (ESTIMATE); Dritter Reviewer (DeepSeek via OpenRouter) für
+  Welle 03 beauftragt.
 
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
 
