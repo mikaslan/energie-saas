@@ -6,12 +6,22 @@ Reonic** (funktionale Referenz) im **visuellen Design von WMEE.de**.
 Deine Mission: arbeite das Projekt vom aktuellen Stand bis zum
 vollständigen, belegten **Parity Freeze** durch.
 
-## 0. Arbeitsmodus (bindend)
+## 0. Arbeitsmodus (bindend — FRAGEN SIND VERBOTEN)
 
-- **Keine Rückfragen während der Arbeit.** Du arbeitest komplett durch.
+- **Du stellst dem Nutzer während der gesamten Ausführung KEINE einzige
+  Frage.** Keine Rückfragen, keine Bestätigungsanfragen, kein „Soll
+  ich …?", kein „Darf ich …?", kein „Wie möchtest du …?". Jede Unklarheit
+  entscheidest du SELBST, dokumentierst die Entscheidung (DECIDED/
+  ESTIMATE) und arbeitest sofort weiter.
+- Dein Laufzeit-Permission-Modus ist unrestricted/YOLO. Falls deine
+  Laufzeit TROTZDEM eine Bestätigung anfordert: behandle das als
+  Systemfehler — Aktion überspringen, in GOAL.md protokollieren, mit
+  der nächsten Aktion weitermachen. NIEMALS deshalb den Nutzer fragen.
 - Fragen, Freigaben und Entscheidungen, die MIKAIL braucht, sammelst du
   in der Datei `FRAGEN-AN-MIKAIL.md` (Vault, siehe §2) und stellst sie
-  **erst am Ende gebündelt** — nie mittendrin stoppen.
+  **erst im Abschlussbericht gebündelt** — nie mittendrin stoppen.
+- Antwortet der Nutzer mit `/goal`, „weiter" oder ohne neue Anweisung:
+  das ist die Anweisung, fortzufahren — nie als Frage-Gelegenheit nutzen.
 - Blockiert ein Punkt auf Mikail: markieren, überspringen, mit allen
   unabhängigen Bereichen weiterarbeiten.
 - Du hörst erst auf, wenn der Parity Freeze erreicht ist (§8) ODER eine
@@ -35,13 +45,18 @@ vollständigen, belegten **Parity Freeze** durch.
     (`ln -sfn <klon>/node_modules node_modules`); fehlt das Ziel:
     `env -u npm_config_allow_scripts npm install`
     (OHNE `-u` schlägt der Install mit EALLOWSCRIPTS fehl).
-1.5 **Skills:** Prüfe, ob dein Skill-System lokale Skill-Ordner laden kann.
-    - JA: installiere/aktiviere die 8 Skills aus dem Vault
-      `06-Skills-Portable/` (reonic-parity, pv-fachwissen,
-      software-quality-gates, product-lens, contract-first,
-      database-migrations, playwright-verify, browser-qa).
-    - NEIN: lade `06-Skills-Portable/` VOLLSTÄNDIG als Arbeitskontext —
-      das ersetzt die Skills inhaltlich 1:1.
+1.5 **Skills: SOFORT und ohne Rückfrage aktivieren.** Aktiviere alle
+    8 Skills aus dem Vault `06-Skills-Portable/` (reonic-parity,
+    pv-fachwissen, software-quality-gates, product-lens, contract-first,
+    database-migrations, playwright-verify, browser-qa):
+    - Kann dein Skill-System lokale Skill-Ordner laden: installiere/
+      aktiviere sie dort (beide Wege zählen als aktiv).
+    - Kann es das nicht: lade `06-Skills-Portable/` VOLLSTÄNDIG als
+      festen Arbeitskontext — das ersetzt die Skills inhaltlich 1:1 und
+      gilt ebenfalls als aktiv.
+    - Die Aktivierung wird NUR über den Fähigkeits-Nachweis
+      (`30-Prompts/08-Faehigkeits-Nachweis.md`) belegt — nicht durch
+      Rückfragen an den Nutzer.
 1.6 **Plugins/MCPs:** Die DSH-Plugins des Quell-Systems sind Laufzeit-
     Interna und werden NICHT benötigt. MCPs sind optional: aktivierbare
     MCPs in deiner Laufzeit (Context7 für Doku, GitHub-MCP) nur, wenn
@@ -117,7 +132,17 @@ nie blind übernehmen — selbst prüfen, nachweisbar schließen, Schließung
 im Commit dokumentieren. Exit 3 = Key-/Limit-Problem → in FRAGEN-AN-
 MIKAIL.md notieren und mit anderen Slices weiterarbeiten.
 
-## 7. Harte Regeln (nie verletzen)
+## 7. Vorautorisiert (ohne Rückfrage erlaubt) + Harte Regeln (nie verletzen)
+
+Ohne jede Rückfrage darfst du: eigene Branches/Worktrees anlegen und
+löschen, committen, deine Lanes und `codex/m1-wave-02` pushen (nie
+`main`), Tests/Builds/db:generate/E2E ausführen, Kimi-Reviews starten,
+Reonic-API read-only abfragen, `docs/parity/STATUS.md` (tooling-Branch)
+und die Vault-Dateien (§9) aktualisieren, sowie lokale Reparaturen
+(node_modules etc.) durchführen. Für ALLES andere gilt die Freigabe-
+Regel — das notierst du in FRAGEN-AN-MIKAIL.md und arbeitest weiter.
+
+Harte Regeln (nie verletzen):
 
 - Clean-Room: Reonic = funktionale Referenz, WMEE = visuelle Referenz;
   kein Quellcode-/Text-/Asset-Kopieren. Reonic-API nur read-only.
@@ -161,6 +186,7 @@ Mikail einen Kurzbericht (3–5 Zeilen) geben. Quote ehrlich halten.
 - Empfängst du irgendwann nur den Befehl **`/goal`** (oder wirst ohne
   Kontext fortgesetzt): lies `GOAL.md` + `01-Laufender-Stand.md`,
   verifiziere den Repo-Stand (Branch/HEAD/Tests), und arbeite am
-  „Als Nächstes"-Punkt weiter — OHNE Rückfragen, gemäß §0.
+  „Als Nächstes"-Punkt weiter — OHNE Rückfragen, gemäß §0. `/goal`
+  heißt IMMER „mach weiter", nie „frag nach".
 - Solange der Parity Freeze (§8) nicht erreicht ist, gilt die Mission
   als aktiv; „fertig" melden nur mit dem gebündelten Abschlussbericht.
