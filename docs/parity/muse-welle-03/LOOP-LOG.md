@@ -267,3 +267,13 @@
   keine Duplikate.
 - Nächster Schritt: Review-Pass über die 6 pending-CI-Slices
   (Verstetigung), dann F10.2-B-Spec.
+
+## Turn 17 — 2026-09-04, Review-Pass (Verstetigung), 1 Fix
+
+- StartForm-Fund: Hidden-Inputs kontrolliert (`value=""`) — jeder
+  Re-Render (z. B. `locating`) hätte Geokoordinaten zurückgesetzt.
+  Fix: `defaultValue` (uncontrolled). Committet als fix(f9.4).
+- Gegenlesen ohne Befund: Update-CTE (14=14 Spalten, Revision-CHECK
+  immer erfüllt), 0060-RLS (0053-identisch), getTimeUtilization
+  (bool_or/count-Casts, WYSIWYG-Set), run.mts-Leads (keine Duplikate).
+- Nächster Schritt: Fix pushen, dann F10.2-B-Spec (nächster Portal-Tab).
