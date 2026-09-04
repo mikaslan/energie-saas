@@ -143,3 +143,31 @@
   Env/ungegatete-Basis, kein Lane-Defekt. Billing weiter sein Part.
 - RUNTIME-BLOCKs: keine.
 - Nächster Schritt: F9.4-Spec (erster Vertiefungs-Slice).
+
+## Turn 11 — 2026-09-04, F9.4 Slice B implementiert ( Verlauf bei Edits )
+
+- SPEC `docs/spec/F9-04-zeiterfassung-historie.md` (bereits committet? nein:
+  untracked, geht in diesem Push mit). Reviews Exit-3 (kein Key, Q1 aktiv).
+- Migration `0057_f9_04_time_entry_revisions` (db:generate, RLS FORCE +
+  tenant_isolation im 0050-Muster, immutable: nur created_at).
+- Rollenvertrag: `time_entry_revision` in TIME_TRACKING_RELATIONS,
+  APPLY-Grants select/insert/update (kein DELETE), Policy-Pin
+  `f3bc4959…8633a1` — Herleitung per 6-fach-Orakel bewiesen (alle sechs
+  textidentischen tenant_isolation-Pins reproduziert; Rendering:
+  `(workspace_id = (NULLIF(current_setting('app.workspace_id'::text, true),
+  ''::text))::uuid)`). Sandbox-DB unmöglich (listen EPERM) → CI verifiziert.
+- Service: Update-CTE schreibt Vorher-Bild atomar (kein Diff, jede
+  Speicherung genau eine Revision); `listTimeEntryRevisions` (requireRead,
+  fremder Eintrag => not_found).
+- Contract: `timeEntryRevisionDtoSchema` + List-DTO + `{ entryId }`-Query.
+- UI: `Verlauf (n)`-Details je Eintrag (n=0 unsichtbar), Berlin-Zeiten
+  (explizite TZ), „Geändert von … am …" via Member-Labels.
+- Tests: `tests/db/f904b-time-entry-revisions.test.ts` (3 Fälle),
+  `tests/e2e/f9-04b-zeiterfassung-verlauf.spec.ts` (F9.4-E2E-02, f94-Projekt
+  wiederverwendet, unique Kommentare — DECIDED, kein run.mts-Eingriff).
+- Lokal grün: eslint, typecheck, depcruise, db:generate (no drift),
+  playwright --list (2 Tests). Vitest-DB/E2E-Ausführung + Rollenprobe nur
+  auf Mikails Maschine/CI (RUNTIME-BLOCK Sandbox: kein listen()).
+- RUNTIME-BLOCKs: Sandbox-listen EPERM (bestehend), CI-Billing dicht (Q6).
+- Nächster Schritt: Slice B committen + pushen (ECC_SKIP_PREPUSH=1, Q5),
+  CI-Lage lesen, dann F9.4 C/D.
