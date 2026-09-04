@@ -235,3 +235,23 @@
 - Lokal grün: eslint, typecheck, depcruise, generate, --list.
   DB-/E2E-Ausführung nur Maschine/CI (Billing-Block Q6 unverändert).
 - Nächster Schritt: Slice A pushen, dann F16.3-Spec.
+
+## Turn 15 — 2026-09-04, F16.3 Slice A implementiert (Rabatt-Vorlagen)
+
+- SPEC `docs/spec/F16-03-rabatt-vorlagen.md` (DECIDED: kein Steuerabzug
+  im Template, kein Angebots-Apply in A, Archiv statt Delete).
+  Reviews Exit-3 (kein Key, Q1 aktiv).
+- Migration 0060 (db:generate + 0053-RLS-Muster, Zähler 60).
+  Rollenvertrag: 7 Stellen gespiegelt, Pin per Orakel (Kontrolle
+  Checklist-Pin reproduziert exakt).
+- Berechtigung: discount_template.read/write additiv (+discounts-Cap);
+  Unit-Matrix 43→45 nachgezogen (admin-Verhalten wie economics.write).
+- Service modules/discounts (CRUD + Events/Audit, 23505/23514) +
+  reine applyDiscountTemplate (Integer, floor, Cap).
+- UI rabatt-vorlagen (Euro/Prozent-Eingaben, Cent-Umrechnung in Action;
+  kind-Umschalter). E2E nutzt W3-Editor (discounts-Cap im Seed).
+- Tests: f1603-DB (3 Fälle inkl. Cap-Gate), discount-apply-Unit
+  (Fix/Cap/Rundung/Fehler), F16.3-E2E-01.
+- Lokal grün: eslint, typecheck, depcruise, generate, --list.
+  DB-/E2E-Ausführung nur Maschine/CI (Billing-Block Q6 unverändert).
+- Nächster Schritt: Slice A pushen, dann M2-04-Status klären.
