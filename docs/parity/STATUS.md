@@ -122,6 +122,24 @@ an Software, Quellcode und Datenbeständen für energie-saas (siehe
 nutzbar, Codebase-Übernahme erlaubt wo sinnvoll; visuelle Referenz bleibt
 WMEE; Push-/Deploy-Regeln unverändert.
 
+## 2026-09-03 — v5-Leadquelle integriert + F1.8 Lead-Sources in Arbeit
+
+- `codex/m1-wave-02`: v5-Leadquelle (0048) per Fast-Forward integriert und
+  gepusht (`e7246f8`): 196 Testdateien, 1886 Tests + 1 Skipped, Build grün.
+- Reonic-API-Live-Sweep (read-only, nur GET, Compliance-Gate offen):
+  26 List-Endpunkte mit echten Daten, 23/24 Detail-200er, 12 Detail-
+  Strukturen (Key:Typ, keine Werte). Evidenz: `docs/parity/reonic-api-live/`
+  (tooling `c517059`). Scope-Lücke: commercialProjects 403.
+- F1.8 Lead-Sources (Lane `codex/m1-18-lead-sources`, Migration 0049):
+  SPECIFIED (OBSERVED-Schema: name, projectDomain, archivedAt; Farbe
+  ESTIMATE). Slice A: Stammdaten-CRUD (Soft-Delete, partieller Unique-
+  Index — Name nach Archivierung frei), Service-Layer-Rechte
+  (lead_source.read/write), Intake-Attribution (producer.name → aktive
+  Quelle), RLS im M1-CRM-Muster (tenant_isolation; DECIDED gegen 0047-
+  Actor-Muster, weil der HMAC-Intake ohne Membership-Actor läuft),
+  Einstellungs-UI + 2 E2E. DB-Tests 20/20 grün; Gate läuft.
+- Mikail: keine weiteren Localhost-Demos (Demo-Job gestoppt).
+
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
 
 - **M1-11b Cannot Fulfil** (Rebuild, Lizenz-Modus): REVIEWED/VERIFIED (lokal).
