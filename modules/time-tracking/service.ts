@@ -364,9 +364,12 @@ export async function listTimeEntries(
   if (!parsed.success) throw new TimeTrackingValidationError();
   const includeArchived = parsed.data.includeArchived === true;
   const userIds = parsed.data.userIds ?? [];
+  // F9.3-Fix: JS-Arrays werden hier NICHT als Postgres-Array serialisiert
+  // (malformed array literal) — explizit als IN-Liste bauen (Muster
+  // validateAttendeeMemberships).
   const userFilter = userIds.length === 0
     ? sql``
-    : sql`and user_id = any(${userIds}::uuid[])`;
+    : sql`and user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
   const result = await tx.execute<TimeEntryRow & { total: string }>(sql`
     select id, user_id, project_id, type_id, start_at, end_at,
            working_time_minutes, break_duration_minutes, comment, archived_at,
