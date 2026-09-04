@@ -18,6 +18,10 @@ type E2EState = {
   editorEmail: string;
   viewerEmail: string;
   mainProjectId: string;
+  // W3-Isolation (f7-03-Fix): eigenes Projekt im W3-Workspace statt
+  // mainProjectId — F7.2-Saves dürfen diese Spec nie beeinflussen.
+  w3WorkspaceId: string;
+  f703ProjectId: string;
 };
 
 const browserErrors = new WeakMap<Page, string[]>();
@@ -38,6 +42,7 @@ function state(): E2EState {
   const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<E2EState>;
   const required: Array<keyof E2EState> = [
     "baseURL", "databaseUrl", "serverLogPath", "workspaceId", "editorEmail", "viewerEmail", "mainProjectId",
+    "w3WorkspaceId", "f703ProjectId",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
     throw new Error("Der private F7.3-E2E-State ist unvollständig.");
@@ -93,15 +98,15 @@ async function seedCatalogComponent(): Promise<void> {
       `insert into catalog_component (id, workspace_id, internal_sku, component_type, created_by)
        select $1::uuid, $2::uuid, 'F7-3-WR', 'inverter', u.id
          from user_identity u where u.email = $3 limit 1`,
-      [randomUUID(), data.workspaceId, data.editorEmail],
+      [randomUUID(), data.w3WorkspaceId, data.editorEmail],
     );
   } finally {
     await pool.end();
   }
 }
 
-const settingsPath = (): string => `/w/${state().workspaceId}/einstellungen/checklisten-vorlagen`;
-const checklistPath = (): string => `/w/${state().workspaceId}/anfragen/${state().mainProjectId}/checkliste`;
+const settingsPath = (): string => `/w/${state().w3WorkspaceId}/einstellungen/checklisten-vorlagen`;
+const checklistPath = (): string => `/w/${state().w3WorkspaceId}/anfragen/${state().f703ProjectId}/checkliste`;
 
 test("F7.3-E2E-01: Editor legt Vorlage an und wendet sie am Projekt an", async ({ page }) => {
   test.setTimeout(150_000);
@@ -130,7 +135,7 @@ test("F7.3-E2E-01: Editor legt Vorlage an und wendet sie am Projekt an", async (
   await page.goto(checklist);
   await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Aus Vorlage anlegen" })).toBeVisible();
-  await page.getByLabel("Vorlage").selectOption({ index: 0 });
+  await page.getByLabel("Vorlage").selectOption({ label: templateName });
   await page.getByRole("button", { name: "Checkliste erstellen" }).click();
 
   await expect(page.getByText("Gespeichert (Version 1).", { exact: true })).toBeVisible();

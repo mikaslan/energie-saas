@@ -103,6 +103,9 @@ type SeedData = {
   // d. h. keine zweiten Accounts.
   m111bWorkspaceId: string;
   m111bContactName: string;
+  // W3-Nachholblock: eigener isolierter Workspace (f7-03-Fix + 4 neue
+  // Specs). Eigene Projekte je Spec — keine Kopplung an mainProjectId.
+  w3WorkspaceId: string;
   mainContactName: string;
   foreignContactName: string;
 };
@@ -124,6 +127,7 @@ type E2EState = Pick<
   | "externalEmail"
   | "m111bContactName"
   | "m111bWorkspaceId"
+  | "w3WorkspaceId"
   | "mainContactName"
   | "foreignContactName"
 > & {
@@ -132,6 +136,8 @@ type E2EState = Pick<
   foreignProjectId: string;
   mainProjectId: string;
   m111bProjectId: string;
+  f703ProjectId: string;
+  w3WorkspaceId: string;
   m112aProjectId: string;
   m112aWorkspaceId: string;
   m112aEditorEmail: string;
@@ -864,6 +870,28 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
         ],
       );
     });
+
+    await withWorkspaceSeed(client, data.w3WorkspaceId, async () => {
+      await client.query(
+        "insert into workspace (id, name) values ($1::uuid, $2)",
+        [data.w3WorkspaceId, "Welle-03 isolierter E2E Workspace"],
+      );
+      // Bestehende Identitäten, keine zweiten Accounts (M1-11b-Muster).
+      // Editor spiegelt die Main-Capabilities (Katalog-Vorlagen-Seite
+      // braucht manage_catalog), Viewer ist plain read-only.
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor',
+           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
+              "assign_projects":true}'::jsonb),
+                ($1::uuid, $3::uuid, 'viewer', '{}'::jsonb)`,
+        [
+          data.w3WorkspaceId,
+          data.editorIdentityId,
+          data.viewerIdentityId,
+        ],
+      );
+    });
   } finally {
     client.release();
     await pool.end();
@@ -1196,6 +1224,7 @@ function createSeedData(): SeedData {
     m112aExternalEmail: `m1-12a-external-${runSuffix}@example.test`,
     m111bWorkspaceId: randomUUID(),
     m111bContactName: "Clara E2E Absage",
+    w3WorkspaceId: randomUUID(),
     mainContactName: "Erika E2E Muster",
     foreignContactName: "Fremdmandant E2E Geheim",
   };
@@ -1348,6 +1377,11 @@ async function main(): Promise<number> {
     workspaceId: seedData.m111bWorkspaceId,
     secret: randomBytes(32),
   };
+  const w3Credential: IntakeCredential = {
+    keyId: `e2e-w3-${randomUUID()}`,
+    workspaceId: seedData.w3WorkspaceId,
+    secret: randomBytes(32),
+  };
   const authSecret = randomBytes(48).toString("base64url");
 
   workerLogFd = openPrivateLog(workerLogPath);
@@ -1370,7 +1404,7 @@ async function main(): Promise<number> {
       env: nextEnvironment(
         serviceUrls,
         authSecret,
-        [mainCredential, foreignCredential, m111bCredential],
+        [mainCredential, foreignCredential, m111bCredential, w3Credential],
         providerStub,
         readyFile,
         readyToken,
@@ -1400,6 +1434,14 @@ async function main(): Promise<number> {
     m111bCredential,
     intakePayload(seedData.m111bContactName, `m111b-${randomUUID()}`, true),
   );
+  // W3-Nachholblock: eigenes Projekt für f7-03 (weitere W3-Projekte folgen
+  // je Spec-Commit mit derselben Credential).
+  const w3F703Lead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("Wilma W3 Nachholblock", `w3-f703-${randomUUID()}`, true),
+  );
   throwIfInterrupted();
 
   writeState(statePath, {
@@ -1410,6 +1452,8 @@ async function main(): Promise<number> {
     m111bContactName: seedData.m111bContactName,
     m111bProjectId: m111bLead.projectId,
     m111bWorkspaceId: seedData.m111bWorkspaceId,
+    f703ProjectId: w3F703Lead.projectId,
+    w3WorkspaceId: seedData.w3WorkspaceId,
     m112aProjectId: m112aSeed.projectId,
     m112aWorkspaceId: seedData.m112aWorkspaceId,
     m112aEditorEmail: seedData.m112aEditorEmail,
