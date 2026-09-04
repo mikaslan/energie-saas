@@ -100,6 +100,18 @@
   Billing-Fix (Observability-Commit liegt bereit).
 - Nächster Schritt: F9.4+-Scoping (Modulkatalog), Spec-Arbeit ohne CI.
 
+## Turn 9 — 2026-09-04, F9.4 Slice A specifiziert
+
+- F9.4+ = Katalog-F9.3-Rest. Slice A (dieser Turn): CSV-Export
+  (`docs/spec/F9-04-zeiterfassung-export.md`) — Lese-Pfad ohne Migration,
+  Route nach Rechnungs-CSV-Muster, Berlin-Zeiten, Nutzer als UUID
+  (kein Identity-Join). Selbstreview: RFC-Widerspruch, TZ und
+  Cross-Spec-Abhängigkeit korrigiert.
+- Folge-Slices vorgemerkt: B Versionshistorie, C GPS, D Dashboards.
+- CI weiter dicht (Billing, FRAGEN-6). RUNTIME-BLOCKs: keine.
+- Nächster Schritt: Slice A implementieren (Contract→Service→Route→UI→
+  Tests), lokale Gates, Commit.
+
 ## Turn 8 — 2026-09-04, Integration erhalten, 4 Lektionen
 
 - Mikail hat Lane + Gatefix integriert (`e728fb5`, `31a61c4`) und den
