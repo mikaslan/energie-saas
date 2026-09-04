@@ -137,6 +137,7 @@ type E2EState = Pick<
   mainProjectId: string;
   m111bProjectId: string;
   f703ProjectId: string;
+  f22ProjectId: string;
   w3WorkspaceId: string;
   m112aProjectId: string;
   m112aWorkspaceId: string;
@@ -1434,14 +1435,18 @@ async function main(): Promise<number> {
     m111bCredential,
     intakePayload(seedData.m111bContactName, `m111b-${randomUUID()}`, true),
   );
-  // W3-Nachholblock: eigenes Projekt für f7-03 (weitere W3-Projekte folgen
-  // je Spec-Commit mit derselben Credential).
+  // W3-Nachholblock: eigenes Projekt je Spec (M1-11b-Muster). Ready-
+  // Projekte nutzen den parametrisierten M2-01-Seed im W3-Workspace.
   const w3F703Lead = await submitSignedLead(
     server,
     embedded.superuserUrl,
     w3Credential,
     intakePayload("Wilma W3 Nachholblock", `w3-f703-${randomUUID()}`, true),
   );
+  const w3F22Seed = await seedM201ReadyProject(embedded.superuserUrl, {
+    workspaceId: seedData.w3WorkspaceId,
+    editorIdentityId: seedData.editorIdentityId,
+  });
   throwIfInterrupted();
 
   writeState(statePath, {
@@ -1453,6 +1458,7 @@ async function main(): Promise<number> {
     m111bProjectId: m111bLead.projectId,
     m111bWorkspaceId: seedData.m111bWorkspaceId,
     f703ProjectId: w3F703Lead.projectId,
+    f22ProjectId: w3F22Seed.projectId,
     w3WorkspaceId: seedData.w3WorkspaceId,
     m112aProjectId: m112aSeed.projectId,
     m112aWorkspaceId: seedData.m112aWorkspaceId,
