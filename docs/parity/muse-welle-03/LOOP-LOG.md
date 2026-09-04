@@ -255,3 +255,15 @@
 - Lokal grün: eslint, typecheck, depcruise, generate, --list.
   DB-/E2E-Ausführung nur Maschine/CI (Billing-Block Q6 unverändert).
 - Nächster Schritt: Slice A pushen, dann M2-04-Status klären.
+
+## Turn 16 — 2026-09-04, M2-04-Status geklärt (kein Gap)
+
+- Befund: M2-04-Code ist in der Lane (via Basis 258fb8a); E2E-Spec
+  existiert (Guard, Create+Withdraw, Expiry, External-fail-closed).
+- Won-Automatik ist per DEC-M204-08 + Spec-Zeilen 6/400/448 explizit
+  NICHTZIEL (nur `signature.signed`-Event). Kein Folge-Slice nötig.
+- M2-04 = DONE pending CI (wie alle Slices; Billing-Block Q6).
+- run.mts-Kontrolle: f94/f94c/f94d/f102-Leads + State-Felder sauber,
+  keine Duplikate.
+- Nächster Schritt: Review-Pass über die 6 pending-CI-Slices
+  (Verstetigung), dann F10.2-B-Spec.
