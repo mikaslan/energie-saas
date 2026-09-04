@@ -248,6 +248,19 @@ const CHECKLIST_TEMPLATE_RELATIONS = [
   "checklist_template",
 ] as const;
 
+const PORTAL_RELATIONS = [
+  "portal_invite",
+  "portal_view_log",
+] as const;
+
+// RLS-FREIER Token-Locator des oeffentlichen Kundenportal-Links (F10.1,
+// Muster signature_token_locator/erasure_operation_locator): traegt
+// workspace_id nur fuer die FK-Integritaet, Zugriff ausschliesslich ueber
+// SECURITY-DEFINER-Kapseln. Deshalb NICHT Teil von PORTAL_RELATIONS
+// (keine RLS/FORCE- und Actor-Policy-Pins), aber Teil des
+// Relationsinventars und des Live-RLS-Vertrags (false/false).
+const PORTAL_LOCATOR_RELATION = "portal_token_locator" as const;
+
 const COMMERCIAL_DOCUMENT_RELATIONS = [
   "commercial_document",
   "commercial_document_group",
@@ -1364,6 +1377,26 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasPortal = await hasAtomicPublicRelationSet(
+    client,
+    PORTAL_RELATIONS,
+    "Rollen-ACL-Manifest: F10-01-Kundenportal",
+  );
+  if (hasPortal) {
+    await client.query(`
+      revoke all privileges on
+        public.portal_invite,
+        public.portal_view_log
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.portal_invite to app_runtime;
+      -- portal_view_log: bewusst KEIN INSERT fuer app_runtime (Review-Fund:
+      -- sonst koennte jeder Viewer View-Counts aufblaehen). Einziger
+      -- Schreiber ist resolve_portal_public_view (SECURITY DEFINER).
+      grant select on public.portal_view_log to app_runtime
+    `);
+  }
+
   const hasChecklistTemplates = await hasAtomicPublicRelationSet(
     client,
     CHECKLIST_TEMPLATE_RELATIONS,
@@ -2337,6 +2370,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F7-02-Checklisten",
   );
 
+  const hasPortal = await hasAtomicPublicRelationSet(
+    client,
+    PORTAL_RELATIONS,
+    "Rollenvertrag: F10-01-Kundenportal",
+  );
+
   const hasChecklistTemplates = await hasAtomicPublicRelationSet(
     client,
     CHECKLIST_TEMPLATE_RELATIONS,
@@ -2536,6 +2575,10 @@ export async function verifyRoleContract(
       ...(hasChecklistTemplates ? CHECKLIST_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
+      ...(hasPortal ? PORTAL_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPortal ? [`r:${PORTAL_LOCATOR_RELATION}`] : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
@@ -2708,6 +2751,15 @@ export async function verifyRoleContract(
   equalRows(
     functionOwners.rows.map((row) => `${row.proname}:${row.owner}`),
     [
+      ...(hasPortal ? [
+        "_f1001_actor_can_read_portal:app_owner",
+        "_f1001_actor_can_write_portal:app_owner",
+        "_f1001_actor_portal_role:app_owner",
+        "_f1001_guard_portal_invite:app_owner",
+        "_f1001_guard_portal_view_log:app_owner",
+        "create_portal_invite:app_owner",
+        "resolve_portal_public_view:app_owner",
+      ] : []),
       ...(hasOfferRelease ? [
         "_m203a_approved_candidate_result:app_owner",
         "_m203a_authorize_offer_release:app_owner",
@@ -3123,6 +3175,22 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:fa421d51c0479d14c9f8ebbc7674494a3c7b925b27f09e8e98f3de5f722e8583",
         "_f406_actor_economics_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+      ] : []),
+      ...(hasPortal ? [
+        "_f1001_actor_can_read_portal(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:58275acb7fa9023250b1811b56bf35430b9c6daaafe3d907266c24c5341ca684",
+        "_f1001_actor_can_write_portal(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:8a458e4b7e735bf6d491ad346189ac1c3023d8cdad9fd0633f8fb70bf564ffac",
+        "_f1001_actor_portal_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
+          "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+        "_f1001_guard_portal_invite():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:b375a3bac6becba7d6a9ef392f01b67a885ef27d57e66562806f60e15494dd20",
+        "_f1001_guard_portal_view_log():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+          "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
+        "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
+        "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:b7aa4c0de961cdb87ca7044290542617ed65ad14622b83cf535c830cfda51e4c",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
@@ -3554,6 +3622,10 @@ export async function verifyRoleContract(
       ...(hasChecklistTemplates ? CHECKLIST_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasPortal ? PORTAL_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasPortal ? [`${PORTAL_LOCATOR_RELATION}:false:false`] : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -3838,6 +3910,17 @@ export async function verifyRoleContract(
         ...(hasChecklistTemplates ? [
           "checklist_template:tenant_isolation:9d1b4ac837189569dedc6d9b4ab8161b3f2952860e0fb3c9fccacc83d0e7606f",
         ] : []),
+        ...(hasPortal ? [
+          "portal_invite:portal_invite_actor_delete:777085784fec1e8a4f2511b44c00e23fd09f98c13d9f99dded0180f10c4fe702",
+          "portal_invite:portal_invite_actor_insert:f7c1b59a0d05484f7c684f8ecb2bfb010a7654c7af17b5f05be3ed62e00291db",
+          "portal_invite:portal_invite_actor_select:e7b1a9ee8822e0000d026572e6a8fcc0c3c0c305f2d622e881e045ecfac858a1",
+          "portal_invite:portal_invite_actor_update:7887fcb05f2694af6a2b2d701a0a70d5c4093aece54d67fab3d8adebacb4b8f7",
+          "portal_invite:tenant_isolation:cd9416350e6cd0d56d533f8d93d6a0e23aed74c2d339ae48d4e676109d1554a6",
+          "portal_view_log:portal_view_log_actor_delete:ccf0af4972d2f5dc52f5e8d6e1e6c8c6764c11dcf1d70b6658dd3b311ff21187",
+          "portal_view_log:portal_view_log_actor_insert:3fa580d9e09fdd99cd325f6770593b1c4c45de357414455f0b44c2e2619323f8",
+          "portal_view_log:portal_view_log_actor_select:67613a5e7d2dbe2e22b0bef7c928c0b2b7f1b93e18d3911aabfc85a87ab4e44c",
+          "portal_view_log:tenant_isolation:c9b3c9ffd92590268fcdb651f22801033f05c0ef9a5dc801ed517b4431478bca",
+        ] : []),
       ] : []),
     ],
     "Live-Policyvertrag",
@@ -4000,6 +4083,14 @@ export async function verifyRoleContract(
           "_m203b1_guard_offer_issuance_append_only::-:0",
         "offer_issuance_withdrawal:offer_issuance_withdrawal_no_truncate:34:O:public:" +
           "forbid_mutation::-:0",
+      ] : []),
+      ...(hasPortal ? [
+        "portal_invite:portal_invite_mutation_guard:31:O:public:" +
+          "_f1001_guard_portal_invite::-:0",
+        "portal_invite:portal_invite_no_truncate:34:O:public:forbid_mutation::-:0",
+        "portal_view_log:portal_view_log_mutation_guard:31:O:public:" +
+          "_f1001_guard_portal_view_log::-:0",
+        "portal_view_log:portal_view_log_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
       ...(hasProjectTasks ? [
         "project_task:project_task_mutation_guard:31:O:public:_m110_guard_project_task::-:0",
@@ -4295,6 +4386,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
+      ...(hasPortal ? [
+        "app_runtime:portal_invite:INSERT:app_owner:false",
+        "app_runtime:portal_invite:SELECT:app_owner:false",
+        "app_runtime:portal_invite:UPDATE:app_owner:false",
+        "app_runtime:portal_view_log:SELECT:app_owner:false",
+      ] : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
@@ -4512,6 +4609,13 @@ export async function verifyRoleContract(
       "app_erasure:erase_inactive_lead(uuid, uuid, uuid):EXECUTE:app_owner:false",
       "app_erasure:replay_erasure_tombstone(uuid):EXECUTE:app_owner:false",
       "app_runtime:app_actor_id():EXECUTE:app_owner:false",
+      ...(hasPortal ? [
+        "app_runtime:_f1001_actor_can_read_portal(uuid):EXECUTE:app_owner:false",
+        "app_runtime:_f1001_actor_can_write_portal(uuid):EXECUTE:app_owner:false",
+        "app_runtime:_f1001_actor_portal_role(uuid):EXECUTE:app_owner:false",
+        "app_runtime:create_portal_invite(uuid, uuid, integer, bytea):EXECUTE:app_owner:false",
+        "app_runtime:resolve_portal_public_view(bytea):EXECUTE:app_owner:false",
+      ] : []),
       ...(hasCatalogImport ? [
         "app_runtime:cancel_catalog_import_v1(uuid, uuid):EXECUTE:app_owner:false",
         "app_runtime:prepare_catalog_import_v1(uuid, uuid, jsonb):EXECUTE:app_owner:false",

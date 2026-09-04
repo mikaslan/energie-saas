@@ -393,6 +393,13 @@
       "when": 1788538966711,
       "tag": "0055_f2_02_varianten_vertiefung",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1788541495288,
+      "tag": "0056_f10_portal_skeleton",
+      "breakpoints": true
     }
   ]
 }

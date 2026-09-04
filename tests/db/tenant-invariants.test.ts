@@ -19,7 +19,12 @@ import {
 // erasure_operation_locator): der öffentliche Token-Locator muss den
 // Token-Hash cross-tenant auflösen, BEVOR app.workspace_id gesetzt werden
 // kann. Er trägt workspace_id nur für die FK-Integrität.
-const RLS_FREE_WORKSPACE_EXEMPT = new Set<string>(["signature_token_locator"]);
+const RLS_FREE_WORKSPACE_EXEMPT = new Set<string>([
+  "signature_token_locator",
+  // F10.1 Kundenportal: baugleich M2-04, RLS-freier Token-Locator im
+  // TENANT_EXEMPT (Zugriff ausschliesslich ueber SECURITY-DEFINER-Kapseln).
+  "portal_token_locator",
+]);
 
 interface Relation {
   name: string;
@@ -83,6 +88,9 @@ const ACTOR_SCOPED_TABLES = new Set([
   "signature_request",
   "signature_attestation",
   "signature_view_log",
+  // F10.1: RESTRICTIVE Actor-Policies verlangen viewer+ fuer SELECT.
+  "portal_invite",
+  "portal_view_log",
   "workspace_invoicing_settings",
   "workspace_document_number_format",
   "workspace_economics_settings",

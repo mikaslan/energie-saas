@@ -37,6 +37,10 @@ import {
   type ContactDatasetV1,
 } from "@/modules/contacts";
 import {
+  getPortalStatus,
+  type PortalStatusResult,
+} from "@/modules/portal";
+import {
   getProjectTaskPage,
   projectTaskCursorTokenSchema,
   type ProjectActivityCursor,
@@ -58,6 +62,7 @@ import {
   type OfferCreateServerGate,
 } from "./offer-create-view";
 import { PinForm } from "./pin-form";
+import { PortalSection } from "./portal-section";
 import { ProductResolutionSection } from "./product-resolution-section";
 import { ProjectActivityPanel } from "./project-activity-panel";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
@@ -174,6 +179,36 @@ type AppointmentRangeLoadResult =
   | { kind: "loaded"; range: ProjectAppointmentRangeV1 | null }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
+
+type PortalLoadResult =
+  | { kind: "loaded"; status: PortalStatusResult; canWrite: boolean }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+async function loadPortalStatus(
+  workspaceId: string,
+  projectId: string,
+): Promise<PortalLoadResult> {
+  try {
+    const loaded = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "portal_invite",
+      (tx, ctx) => getPortalStatus(tx, ctx, { workspaceId, projectId }),
+    );
+    const writable = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "portal_invite_write_gate",
+      async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "project.write"),
+    );
+    return { kind: "loaded", status: loaded, canWrite: writable };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
 
 async function loadProjectDetail(
   workspaceId: string,
@@ -557,6 +592,10 @@ export default async function ProjectTriagePage({
   if (outcomeResult.context === null) notFound();
   const outcomeContext = outcomeResult.context;
 
+  const portalResult = await loadPortalStatus(workspaceId, projectId);
+  if (portalResult.kind === "unauthenticated") redirectToProjectLogin(detailPath);
+  if (portalResult.kind === "denied") return <DeniedState />;
+
   const taskPageResult = await loadProjectTaskPage(
     workspaceId,
     projectId,
@@ -762,6 +801,17 @@ export default async function ProjectTriagePage({
             page={notePage}
           />
         </div>
+
+        {portalResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <PortalSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              initialStatus={portalResult.status}
+              canWrite={portalResult.canWrite}
+            />
+          </div>
+        ) : null}
 
         <div className="mb-6">
           <AppointmentCalendarSection
