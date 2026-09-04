@@ -22,6 +22,7 @@ import {
   validateOfferPdfDraftInput,
   type OfferPdfDraftInputV1,
 } from "@/lib/integrations/offers/pdf-contract";
+import { renderOfferPdfDraftHtml } from "@/lib/integrations/offers/pdf-template";
 import {
   can,
   isExternalOnly,
@@ -302,22 +303,26 @@ async function readOfferProjectId(
   return projectId;
 }
 
-async function lockSource(
-  tx: TenantTx,
-  input: z.infer<typeof requestSchema>,
-): Promise<{
+type SourceInput = z.infer<typeof requestSchema>;
+
+type SourceRows = {
   offer: OfferRow;
   variant: VariantRow;
   revision: RevisionRow;
-  snapshot: OfferVariantSnapshotV1;
-}> {
+};
+
+async function fetchSourceRows(
+  tx: TenantTx,
+  input: SourceInput,
+  lock: boolean,
+): Promise<SourceRows> {
   const projectId = await readOfferProjectId(tx, input.workspaceId, input.offerId);
+  const lockFragment = lock ? sql` for update` : sql``;
   const projectLock = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
     select id
       from project
      where workspace_id = ${input.workspaceId}::uuid
-       and id = ${projectId}::uuid
-     for update
+       and id = ${projectId}::uuid${lockFragment}
   `);
   if (projectLock.rows.length !== 1) throw new OfferPdfDraftNotFoundError();
 
@@ -326,8 +331,7 @@ async function lockSource(
       from offer
      where workspace_id = ${input.workspaceId}::uuid
        and id = ${input.offerId}::uuid
-       and project_id = ${projectId}::uuid
-     for update
+       and project_id = ${projectId}::uuid${lockFragment}
   `);
   const offer = offerResult.rows[0];
   if (!offer) throw new OfferPdfDraftNotFoundError();
@@ -337,11 +341,11 @@ async function lockSource(
       from offer_variant
      where workspace_id = ${input.workspaceId}::uuid
        and offer_id = ${offer.id}::uuid
-       and id = ${input.variantId}::uuid
-     for update
+       and id = ${input.variantId}::uuid${lockFragment}
   `);
   const variant = variantResult.rows[0];
   if (!variant) throw new OfferPdfDraftNotFoundError();
+  // Reihenfolge wie historisch in lockSource: Conflict vor Revisions-SELECT.
   if (variant.current_revision !== input.expectedVariantRevision) {
     throw new OfferPdfDraftConflictError(variant.current_revision);
   }
@@ -358,6 +362,16 @@ async function lockSource(
   `);
   const revision = revisionResult.rows[0];
   if (!revision) throw new OfferPdfDraftIntegrityError();
+  return { offer, variant, revision };
+}
+
+function validateSourceRows(
+  rows: SourceRows,
+  input: SourceInput,
+): OfferVariantSnapshotV1 {
+  const { offer, variant, revision } = rows;
+  // Conflict wurde bereits in fetchSourceRows geprüft (Reihenfolge wie lockSource);
+  // hier folgt die Snapshot-Integrität.
   const validated = validateOfferVariantSnapshot(revision.revision_snapshot);
   if (
     !validated.ok
@@ -370,7 +384,35 @@ async function lockSource(
     || validated.value.sourceBindings.projectId !== offer.project_id
     || validated.value.snapshotSha256 !== revision.snapshot_sha256_hex
   ) throw new OfferPdfDraftIntegrityError();
-  return { offer, variant, revision, snapshot: validated.value };
+  return validated.value;
+}
+
+async function lockSource(
+  tx: TenantTx,
+  input: SourceInput,
+): Promise<{
+  offer: OfferRow;
+  variant: VariantRow;
+  revision: RevisionRow;
+  snapshot: OfferVariantSnapshotV1;
+}> {
+  const rows = await fetchSourceRows(tx, input, true);
+  const snapshot = validateSourceRows(rows, input);
+  return { ...rows, snapshot };
+}
+
+async function readSource(
+  tx: TenantTx,
+  input: SourceInput,
+): Promise<{
+  offer: OfferRow;
+  variant: VariantRow;
+  revision: RevisionRow;
+  snapshot: OfferVariantSnapshotV1;
+}> {
+  const rows = await fetchSourceRows(tx, input, false);
+  const snapshot = validateSourceRows(rows, input);
+  return { ...rows, snapshot };
 }
 
 function reservationKey(input: {
@@ -751,5 +793,47 @@ export async function readOfferPdfDraftArtifact(
     sha256: row.artifact_sha256_hex,
     sizeBytes: row.artifact_size_bytes,
     bytes: Buffer.from(row.artifact_bytes),
+  };
+}
+
+export type OfferPreviewHtmlResult = {
+  offerId: string;
+  variantId: string;
+  variantRevision: number;
+  html: string;
+};
+
+export async function getOfferPreviewHtml(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<OfferPreviewHtmlResult> {
+  requireAccess(ctx, "project.read", "offer_preview");
+  const command = parseCommand(requestSchema, value);
+  requireSameWorkspace(ctx, command.workspaceId);
+  // Zustandslos: readSource ohne FOR UPDATE, kein Touch, kein Event, kein Audit.
+  const source = await readSource(tx, command);
+  const preparedAt = await databaseNow(tx);
+  let input: OfferPdfDraftInputV1;
+  try {
+    input = buildOfferPdfDraftInput({
+      offerNumber: source.offer.offer_number,
+      preparedAt,
+      variantSnapshot: source.snapshot,
+    });
+  } catch {
+    throw new OfferPdfDraftIntegrityError();
+  }
+  if (
+    input.variant.revision !== source.revision.revision
+    || input.offerNumber !== source.offer.offer_number
+  ) throw new OfferPdfDraftIntegrityError();
+  // Parität zum Draft-Pfad: gebautes Input-Objekt validieren, nicht nur Snapshot.
+  if (!validateOfferPdfDraftInput(input).ok) throw new OfferPdfDraftIntegrityError();
+  return {
+    offerId: source.offer.id,
+    variantId: source.variant.id,
+    variantRevision: source.revision.revision,
+    html: renderOfferPdfDraftHtml(input),
   };
 }

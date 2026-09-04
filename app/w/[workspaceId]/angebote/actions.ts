@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { authorizedOfferMutationAction, NotAuthenticatedError } from "@/lib/action";
+import { authorizedOfferMutationAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import {
   createOfferCommandV1Schema,
   createVariantFromResolutionCommandV1Schema,
@@ -15,8 +15,12 @@ import {
   createOfferFromRequest,
   createVariantFromCurrentResolution,
   duplicateOfferVariant,
+  getOfferPreviewHtml,
   OfferBlockedError,
   OfferConflictError,
+  OfferPdfDraftConflictError,
+  OfferPdfDraftIntegrityError,
+  OfferPdfDraftNotFoundError,
   OfferRateLimitError,
   OfferValidationError,
   reviseOfferVariant,
@@ -515,4 +519,58 @@ export async function createVariantFromCurrentResolutionAction(
   revalidatePath(`/w/${workspaceId}/angebote/${result.offerId}`);
   revalidatePath(`/w/${workspaceId}/angebote`);
   redirect(`/w/${workspaceId}/angebote/${result.offerId}?variante=${result.variantId}`);
+}
+
+export type OfferPreviewState =
+  | { status: "idle" }
+  | { status: "pending" }
+  | { status: "invalid" }
+  | { status: "unauthenticated" }
+  | { status: "denied" }
+  | { status: "conflict"; currentRevision?: number }
+  | { status: "unavailable" }
+  | { status: "success"; html: string; variantRevision: number };
+
+export async function previewOfferHtmlAction(input: {
+  workspaceId: string;
+  offerId: string;
+  variantId: string;
+  expectedVariantRevision: number;
+}): Promise<OfferPreviewState> {
+  const parsed = z
+    .strictObject({
+      workspaceId: z.uuid(),
+      offerId: z.uuid(),
+      variantId: z.uuid(),
+      expectedVariantRevision: z.number().int().min(1),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { status: "invalid" };
+  try {
+    const result = await authorizedQuery(
+      parsed.data.workspaceId,
+      "project.read",
+      "offer_preview",
+      async (tx, ctx) =>
+        getOfferPreviewHtml(tx, ctx, {
+          workspaceId: parsed.data.workspaceId,
+          offerId: parsed.data.offerId,
+          variantId: parsed.data.variantId,
+          expectedVariantRevision: parsed.data.expectedVariantRevision,
+        }),
+    );
+    return { status: "success", html: result.html, variantRevision: result.variantRevision };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof OfferValidationError) return { status: "invalid" };
+    if (error instanceof OfferPdfDraftNotFoundError) return { status: "invalid" };
+    if (error instanceof OfferPdfDraftConflictError) {
+      return error.currentRevision === undefined
+        ? { status: "conflict" }
+        : { status: "conflict", currentRevision: error.currentRevision };
+    }
+    if (error instanceof OfferPdfDraftIntegrityError) return { status: "unavailable" };
+    throw error;
+  }
 }

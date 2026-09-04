@@ -32,6 +32,7 @@ export {
   OfferPdfDraftPersistenceError,
   OfferPdfDraftValidationError,
   getOfferPdfDraftStatus,
+  getOfferPreviewHtml,
   listOfferPdfDrafts,
   readOfferPdfDraftArtifact,
   requestOfferPdfDraft,
@@ -41,6 +42,7 @@ export type {
   OfferPdfDraftRequestResult,
   OfferPdfDraftState,
   OfferPdfDraftStatusResult,
+  OfferPreviewHtmlResult,
 } from "./pdf-service";
 export {
   OfferReleaseProfileConflictError,
