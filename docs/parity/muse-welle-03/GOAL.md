@@ -10,9 +10,11 @@ Branch `codex/m1-wave-02`, HEAD `9fc49eb` (verifiziert). Migrationen 0000–0056
 lückenlos. Ultra-Prompt 06 + Delta 09 vollständig gelesen.
 Diagnosen f7-02/f7-03 von Mikail bestätigt (Details: FRAGEN-AN-MIKAIL.md §B).
 
-Als Nächstes: npm-install → Gates-Baseline auf 9fc49eb → 4 E2E-Specs
-(F2.2, F9.3, F16.2, F10.1, je eigener Commit, eigenes Projekt je Spec nach
-M1-12a-Muster) → f7-02-Toast-Root-Cause + f7-03-Isolation fixen → M2-04.
+Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
+Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output
+→ M2-04. Pipeline: Lane `codex/muse-welle-03-e2e`, Commits lokal
+(f433631 f7-03-Isolation, 16365b5 Fehler-Mapping), Push blockiert durch
+globalen ECC-Pre-Push-Hook (FRAGEN-AN-MIKAIL.md Nr. 5) — kein Bypass.
 
 Offene Mikail-Fragen: siehe FRAGEN-AN-MIKAIL.md (3 aktiv).
 Mission: ~36 % (ESTIMATE) — steigt nur mit VERIFIED-Slices.

@@ -20,6 +20,14 @@
    „Primärkennzeichen + Override-Feld", nicht umgesetzt). Vorschlag:
    eigener UI-Slice nach dem E2E-Nachholblock. Kein Backend-Umbau in
    diesem Block.
+5. **Push-Transport blockiert: globaler ECC-Pre-Push-Hook.** Entgegen
+   „keine Hooks" greift global `core.hooksPath=/Users/mikailaslan/.codex/
+   git-hooks` (Hook: lint → typecheck → `npm run test`). In dieser
+   Sandbox scheitert er an `tsx`-EPERM + fehlendem listen() — unbehebbar
+   von hier, `--no-verify` bleibt verboten. Commits liegen lokal auf
+   `codex/muse-welle-03-e2e` bereit. Bitte entscheiden: Hook-Opt-out für
+   `codex/*`-Lanes, oder alternative Abholung. Bis dahin weiter lokale
+   Commits ohne Push.
 
 ## B. Bestätigte Diagnosen (keine Frage, zur Ablage)
 
