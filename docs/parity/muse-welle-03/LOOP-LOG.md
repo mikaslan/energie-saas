@@ -88,3 +88,14 @@
 - RUNTIME-BLOCKs: keine (Permission-Prompts: keine).
 - Nächster Schritt: ohne CI weiter (folgende Slices specen+bauen,
   Verifikation nach Billing-Fix); Kontroll-Gates-Urteil mitnehmen.
+
+## Turn 7 — 2026-09-04, Vitest-Rot: Hypothesen ohne Log
+
+- `ci.yml` stellt echtes PG per Service (`POSTGRES_URL_TEST`), die neue
+  Lane-CI nutzt Embedded-PG ohne Service. Lane-Delta ist vitest-neutral
+  (grep-belegt) → Rot sitzt in Basis/CI-Env.
+- Hypothesen (unbewiesen, Reihenfolge): Embedded-PG-Boot auf
+  ubuntu-latest (Binärkompatibilität/Download), Node-24-Laufzeit, echter
+  Testdefekt auf cf02c26. Klärung erst mit Logs/Artefakten nach
+  Billing-Fix (Observability-Commit liegt bereit).
+- Nächster Schritt: F9.4+-Scoping (Modulkatalog), Spec-Arbeit ohne CI.
