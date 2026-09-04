@@ -13,6 +13,8 @@ import {
   stopTimeEntryCommandSchema,
   timeEntryDtoSchema,
   timeEntryListDtoSchema,
+  timeEntryListQuerySchema,
+  timeMemberOptionSchema,
   timeEventTypeDtoSchema,
   updateTimeEntryCommandSchema,
   updateTimeEventTypeCommandSchema,
@@ -22,6 +24,7 @@ import {
   type StopTimeEntryCommand,
   type TimeEntryDto,
   type TimeEntryListDto,
+  type TimeMemberOption,
   type TimeEventTypeDto,
   type UpdateTimeEntryCommand,
   type UpdateTimeEventTypeCommand,
@@ -332,29 +335,57 @@ const ENTRY_SELECT = sql`
     from time_entry
 `;
 
+export async function listTimeMemberOptions(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<TimeMemberOption[]> {
+  requireRead(ctx);
+  const result = await tx.execute<{ user_id: string; label: string }>(sql`
+    select membership_record.user_id, identity_record.email as label
+      from membership membership_record
+      join user_identity identity_record
+        on identity_record.id = membership_record.user_id
+     where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+     order by lower(identity_record.email), membership_record.user_id
+     limit 200
+  `);
+  return timeMemberOptionSchema
+    .array()
+    .parse(result.rows.map((row) => ({ userId: row.user_id, label: row.label })));
+}
+
 export async function listTimeEntries(
   tx: TenantTx,
   ctx: ServiceCtx,
-  query: { projectId: string; includeArchived?: boolean },
+  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null },
 ): Promise<TimeEntryListDto> {
   requireRead(ctx);
-  const includeArchived = query.includeArchived === true;
+  const parsed = timeEntryListQuerySchema.safeParse(query);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const includeArchived = parsed.data.includeArchived === true;
+  const userIds = parsed.data.userIds ?? [];
+  const userFilter = userIds.length === 0
+    ? sql``
+    : sql`and user_id = any(${userIds}::uuid[])`;
   const result = await tx.execute<TimeEntryRow & { total: string }>(sql`
     select id, user_id, project_id, type_id, start_at, end_at,
            working_time_minutes, break_duration_minutes, comment, archived_at,
            created_at, updated_at,
            -- "total" = SUMME der Arbeitsminuten gestoppter Einträge
-           -- (nicht Zeilenzahl; laufende Einträge zählen bewusst nicht).
+           -- (nicht Zeilenzahl; laufende Einträge zählen bewusst nicht;
+           --  F9.3: Summe folgt dem userIds-Filter).
            (select coalesce(sum(working_time_minutes), 0)::text
               from time_entry total_entries
              where total_entries.workspace_id = ${ctx.workspaceId}::uuid
-               and total_entries.project_id = ${query.projectId}::uuid
+               and total_entries.project_id = ${parsed.data.projectId}::uuid
                and total_entries.archived_at is null
-               and total_entries.end_at is not null) as total
+               and total_entries.end_at is not null
+               ${userFilter}) as total
       from time_entry
      where workspace_id = ${ctx.workspaceId}::uuid
-       and project_id = ${query.projectId}::uuid
+       and project_id = ${parsed.data.projectId}::uuid
        ${includeArchived ? sql`` : sql`and archived_at is null`}
+       ${userFilter}
      order by (end_at is null) desc, start_at desc, id asc
   `);
   const canWrite = can(ctx, "time.write");

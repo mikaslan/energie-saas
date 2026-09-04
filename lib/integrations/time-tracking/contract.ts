@@ -83,6 +83,20 @@ export const timeEntryListDtoSchema = z.object({
 });
 export type TimeEntryListDto = z.infer<typeof timeEntryListDtoSchema>;
 
+// F9.3 Fremdnutzer-Filter: userIds wie live (UUID, max 50); null/fehlend = kein Filter.
+export const timeEntryListQuerySchema = z.object({
+  projectId: z.string().uuid(),
+  includeArchived: z.boolean().optional(),
+  userIds: z.array(z.string().uuid()).max(50).nullish(),
+});
+export type TimeEntryListQuery = z.infer<typeof timeEntryListQuerySchema>;
+
+export const timeMemberOptionSchema = z.object({
+  userId: z.string().uuid(),
+  label: z.string(),
+});
+export type TimeMemberOption = z.infer<typeof timeMemberOptionSchema>;
+
 export const timeEntryUpsertFieldsSchema = z.object({
   typeId: z.string().uuid().nullable(),
   startAt: isoDateSchema,
