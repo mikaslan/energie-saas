@@ -9,12 +9,12 @@ import {
   TIME_TRACKING_SCHEMA_VERSION,
   createTimeEntryCommandSchema,
   createTimeEventTypeCommandSchema,
-  startTimeEntryCommandSchema,
   stopTimeEntryCommandSchema,
   timeEntryDtoSchema,
   timeEntryExportResultSchema,
   timeEntryListDtoSchema,
   timeEntryListQuerySchema,
+  startTimeEntryCommandWithGpsSchema,
   timeEntryRevisionDtoSchema,
   timeEntryRevisionListDtoSchema,
   timeEntryRevisionListQuerySchema,
@@ -309,6 +309,8 @@ type TimeEntryRow = {
   type_id: string | null;
   start_at: string;
   end_at: string | null;
+  start_lat: number | null;
+  start_lng: number | null;
   working_time_minutes: number | null;
   break_duration_minutes: number;
   comment: string | null;
@@ -326,6 +328,8 @@ function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
     typeId: row.type_id,
     startAt: row.start_at,
     endAt: row.end_at,
+    startLat: row.start_lat,
+    startLng: row.start_lng,
     workingTimeMinutes: row.working_time_minutes,
     running: row.end_at === null && row.archived_at === null,
     breakDurationMinutes: row.break_duration_minutes,
@@ -339,6 +343,7 @@ function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
 
 const ENTRY_SELECT = sql`
   select id, user_id, project_id, type_id, start_at, end_at,
+         start_lat, start_lng,
          working_time_minutes, break_duration_minutes, comment, archived_at,
          created_at, updated_at
     from time_entry
@@ -381,6 +386,7 @@ export async function listTimeEntries(
     : sql`and user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
   const result = await tx.execute<TimeEntryRow & { total: string }>(sql`
     select id, user_id, project_id, type_id, start_at, end_at,
+           start_lat, start_lng,
            working_time_minutes, break_duration_minutes, comment, archived_at,
            created_at, updated_at,
            -- "total" = SUMME der Arbeitsminuten gestoppter Einträge
@@ -444,6 +450,7 @@ async function upsertTimeEntry(
           ${ctx.actor}::uuid
         )
         returning id, user_id, project_id, type_id, start_at, end_at,
+                  start_lat, start_lng,
                   working_time_minutes, break_duration_minutes, comment,
                   archived_at, created_at, updated_at
       `);
@@ -458,6 +465,7 @@ async function upsertTimeEntry(
       const updated = await tx.execute<TimeEntryRow>(sql`
         with old_entry as (
           select id, user_id, project_id, type_id, start_at, end_at,
+                 start_lat, start_lng,
                  working_time_minutes, break_duration_minutes, comment
             from time_entry
            where workspace_id = ${ctx.workspaceId}::uuid
@@ -476,24 +484,28 @@ async function upsertTimeEntry(
            where workspace_id = ${ctx.workspaceId}::uuid
              and id = ${update.id}::uuid
           returning id, user_id, project_id, type_id, start_at, end_at,
+                    start_lat, start_lng,
                     working_time_minutes, break_duration_minutes, comment,
                     archived_at, created_at, updated_at
         ),
         inserted_revision as (
           insert into time_entry_revision (
             workspace_id, entry_id, user_id, project_id, type_id, start_at,
-            end_at, working_time_minutes, break_duration_minutes, comment,
+            end_at, start_lat, start_lng,
+            working_time_minutes, break_duration_minutes, comment,
             revised_by, revised_at
           )
           select ${ctx.workspaceId}::uuid, old_entry.id, old_entry.user_id,
                  old_entry.project_id, old_entry.type_id, old_entry.start_at,
-                 old_entry.end_at, old_entry.working_time_minutes,
+                 old_entry.end_at, old_entry.start_lat, old_entry.start_lng,
+                 old_entry.working_time_minutes,
                  old_entry.break_duration_minutes, old_entry.comment,
                  ${ctx.actor}::uuid, statement_timestamp()
             from old_entry
             join updated on updated.id = old_entry.id
         )
         select id, user_id, project_id, type_id, start_at, end_at,
+               start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
                archived_at, created_at, updated_at
           from updated
@@ -558,6 +570,8 @@ type TimeEntryRevisionRow = {
   type_id: string | null;
   start_at: string;
   end_at: string | null;
+  start_lat: number | null;
+  start_lng: number | null;
   working_time_minutes: number | null;
   break_duration_minutes: number;
   comment: string | null;
@@ -576,6 +590,8 @@ function toTimeEntryRevisionDto(row: TimeEntryRevisionRow): TimeEntryRevisionDto
     typeId: row.type_id,
     startAt: row.start_at,
     endAt: row.end_at,
+    startLat: row.start_lat,
+    startLng: row.start_lng,
     workingTimeMinutes: row.working_time_minutes,
     breakDurationMinutes: row.break_duration_minutes,
     comment: row.comment,
@@ -604,6 +620,7 @@ export async function listTimeEntryRevisions(
   if (!entry.rows[0]) throw new TimeTrackingNotFoundError("time_entry", parsed.data.entryId);
   const result = await tx.execute<TimeEntryRevisionRow>(sql`
     select id, entry_id, user_id, project_id, type_id, start_at, end_at,
+           start_lat, start_lng,
            working_time_minutes, break_duration_minutes, comment,
            revised_by, revised_at, created_at
       from time_entry_revision
@@ -633,6 +650,7 @@ export async function archiveTimeEntry(
        and archived_at is null
        and end_at is not null
      returning id, user_id, project_id, type_id, start_at, end_at,
+               start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
                archived_at, created_at, updated_at
   `);
@@ -674,7 +692,8 @@ export async function startTimeEntry(
   input: StartTimeEntryCommand,
 ): Promise<TimeEntryDto> {
   requireWrite(ctx);
-  const parsed = startTimeEntryCommandSchema.safeParse(input);
+  // F9.4 Slice C: GPS-Refine (beide-oder-keiner) gilt nur hier am Start.
+  const parsed = startTimeEntryCommandWithGpsSchema.safeParse(input);
   if (!parsed.success) throw new TimeTrackingValidationError();
   const command = parsed.data;
 
@@ -690,7 +709,8 @@ export async function startTimeEntry(
   try {
     const inserted = await tx.execute<TimeEntryRow>(sql`
       insert into time_entry (
-        workspace_id, user_id, project_id, type_id, start_at, comment, created_by
+        workspace_id, user_id, project_id, type_id, start_at, comment,
+        start_lat, start_lng, created_by
       ) values (
         ${ctx.workspaceId}::uuid,
         ${ctx.actor}::uuid,
@@ -698,9 +718,12 @@ export async function startTimeEntry(
         ${command.typeId ?? null}::uuid,
         statement_timestamp(),
         ${command.comment},
+        ${command.startLat ?? null},
+        ${command.startLng ?? null},
         ${ctx.actor}::uuid
       )
       returning id, user_id, project_id, type_id, start_at, end_at,
+                start_lat, start_lng,
                 working_time_minutes, break_duration_minutes, comment,
                 archived_at, created_at, updated_at
     `);
@@ -749,6 +772,7 @@ export async function stopTimeEntry(
        and user_id = ${ctx.actor}::uuid
        and end_at is null
      returning id, user_id, project_id, type_id, start_at, end_at,
+               start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
                archived_at, created_at, updated_at
   `);

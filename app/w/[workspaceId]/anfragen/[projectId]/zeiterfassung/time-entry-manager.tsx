@@ -208,18 +208,11 @@ export function TimeEntryManager({
       ) : canWrite ? (
         <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <h2 className="text-base font-semibold text-slate-950">Stoppuhr</h2>
-          <form action={startDispatch} className="mt-3">
-            <input type="hidden" name="workspaceId" value={workspaceId} />
-            <input type="hidden" name="projectId" value={projectId} />
-            <input type="hidden" name="typeId" value="" />
-            <input type="hidden" name="comment" value="" />
-            <button
-              type="submit"
-              className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
-            >
-              Stoppuhr starten
-            </button>
-          </form>
+          <StartForm
+            workspaceId={workspaceId}
+            projectId={projectId}
+            dispatch={startDispatch}
+          />
         </section>
       ) : null}
       {startState.status !== "idle" ? <Feedback state={startState} /> : null}
@@ -251,6 +244,11 @@ export function TimeEntryManager({
                   </span>
                   {entry.comment ? (
                     <span className="block text-xs text-slate-500">{entry.comment}</span>
+                  ) : null}
+                  {entry.startLat !== null && entry.startLng !== null ? (
+                    <span className="block text-xs text-slate-500">
+                      Standort: {entry.startLat.toFixed(4)}, {entry.startLng.toFixed(4)}
+                    </span>
                   ) : null}
                 </span>
                 <RevisionHistory
@@ -377,6 +375,83 @@ export function TimeEntryManager({
         )}
       </section>
     </div>
+  );
+}
+
+// F9.4 Slice C: Stoppuhr-Start mit GPS-Opt-in. Die Checkbox ist reines
+// Client-Consent (kein Feldname): Nur mit Haken fragt der Browser nach
+// der Position; verweigert/nicht verfügbar/Timeout startet die Uhr OHNE
+// Koordinaten (SPEC: kein Block). Klick-Handler statt Submit-Intercept —
+// kein Re-Entry, kein Loop.
+function StartForm({
+  workspaceId,
+  projectId,
+  dispatch,
+}: {
+  workspaceId: string;
+  projectId: string;
+  dispatch: (formData: FormData) => void;
+}) {
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const latRef = useRef<HTMLInputElement | null>(null);
+  const lngRef = useRef<HTMLInputElement | null>(null);
+  const [consent, setConsent] = useState(false);
+  const [locating, setLocating] = useState(false);
+
+  const submit = (): void => {
+    setLocating(false);
+    formRef.current?.requestSubmit();
+  };
+
+  const handleStart = (): void => {
+    if (!consent || typeof navigator === "undefined" || !navigator.geolocation) {
+      formRef.current?.requestSubmit();
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (latRef.current) latRef.current.value = String(position.coords.latitude);
+        if (lngRef.current) lngRef.current.value = String(position.coords.longitude);
+        submit();
+      },
+      () => submit(),
+      { timeout: 10_000 },
+    );
+  };
+
+  return (
+    <form ref={formRef} action={dispatch} className="mt-3">
+      <input type="hidden" name="workspaceId" value={workspaceId} />
+      <input type="hidden" name="projectId" value={projectId} />
+      <input type="hidden" name="typeId" value="" />
+      <input type="hidden" name="comment" value="" />
+      <input ref={latRef} type="hidden" name="startLat" value="" />
+      <input ref={lngRef} type="hidden" name="startLng" value="" />
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={consent}
+          onChange={(event) => {
+            setConsent(event.target.checked);
+            if (!event.target.checked) {
+              if (latRef.current) latRef.current.value = "";
+              if (lngRef.current) lngRef.current.value = "";
+            }
+          }}
+          className="h-4 w-4 accent-blue-700"
+        />
+        Standort beim Start speichern
+      </label>
+      <button
+        type="button"
+        onClick={handleStart}
+        disabled={locating}
+        className="mt-3 min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:opacity-60"
+      >
+        {locating ? "Standort wird ermittelt …" : "Stoppuhr starten"}
+      </button>
+    </form>
   );
 }
 

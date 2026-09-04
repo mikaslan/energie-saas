@@ -65,6 +65,9 @@ export const timeEntryDtoSchema = z.object({
   startAt: z.string(),
   // F9.2: laufende Einträge tragen endAt/workingTimeMinutes = null.
   endAt: z.string().nullable(),
+  // F9.4 Slice C: Start-Koordinaten (NULL ohne Consent).
+  startLat: z.number().nullable(),
+  startLng: z.number().nullable(),
   workingTimeMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX).nullable(),
   running: z.boolean(),
   breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
@@ -108,6 +111,9 @@ export const timeEntryRevisionDtoSchema = z.object({
   typeId: z.string().uuid().nullable(),
   startAt: z.string(),
   endAt: z.string().nullable(),
+  // F9.4 Slice C: Vollbild — Start-Koordinaten werden mitkopiert.
+  startLat: z.number().nullable(),
+  startLng: z.number().nullable(),
   workingTimeMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX).nullable(),
   breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
   comment: z.string().nullable(),
@@ -191,10 +197,18 @@ export const updateTimeEntryCommandSchema = z.object({
 });
 export type UpdateTimeEntryCommand = z.infer<typeof updateTimeEntryCommandSchema>;
 
+// F9.4 Slice C: GPS-Koordinaten nur am Start-Event (Consent-Opt-in).
+// Beide oder keiner (halbe Paare sind nie ehrlich); finite + Range
+// symmetrisch zu den DB-CHECKs time_entry_gps_ck.
+const startLatSchema = z.number().finite().min(-90).max(90).nullable();
+const startLngSchema = z.number().finite().min(-180).max(180).nullable();
+
 // F9.2 Stoppuhr-Commands
 export const startTimeEntryCommandSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
   projectId: z.string().uuid(),
+  startLat: startLatSchema.optional(),
+  startLng: startLngSchema.optional(),
   typeId: z.string().uuid().nullable(),
   comment: z
     .string()
@@ -204,6 +218,14 @@ export const startTimeEntryCommandSchema = z.object({
     .nullable(),
 });
 export type StartTimeEntryCommand = z.infer<typeof startTimeEntryCommandSchema>;
+export const startTimeEntryCommandWithGpsSchema = startTimeEntryCommandSchema.refine(
+  (v) => {
+    const latMissing = (v.startLat ?? null) === null;
+    const lngMissing = (v.startLng ?? null) === null;
+    return latMissing === lngMissing;
+  },
+  { message: "startLat und startLng nur gemeinsam" },
+);
 
 export const stopTimeEntryCommandSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),

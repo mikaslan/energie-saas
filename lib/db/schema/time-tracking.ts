@@ -1,5 +1,6 @@
 import {
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -61,6 +62,9 @@ export const timeEntry = pgTable(
     workingTimeMinutes: integer("working_time_minutes"),
     breakDurationMinutes: integer("break_duration_minutes").notNull().default(0),
     comment: text("comment"),
+    // F9.4 Slice C: GPS nur am Start-Event (Consent-Opt-in, beide oder keiner).
+    startLat: doublePrecision("start_lat"),
+    startLng: doublePrecision("start_lng"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdBy: uuid("created_by").notNull(),
     updatedBy: uuid("updated_by"),
@@ -83,6 +87,7 @@ export const timeEntry = pgTable(
       and ${t.comment} = pg_catalog.btrim(${t.comment})
       and ${t.comment} !~ '[[:cntrl:]]'
     )`),
+    check("time_entry_gps_ck", sql`(${t.startLat} is null and ${t.startLng} is null) or (${t.startLat} between -90 and 90 and ${t.startLng} between -180 and 180)`),
     check("time_entry_timestamps_ck", sql`${t.updatedAt} >= ${t.createdAt} and pg_catalog.isfinite(${t.createdAt}) and pg_catalog.isfinite(${t.updatedAt})`),
     foreignKey({
       columns: [t.workspaceId],
@@ -125,6 +130,9 @@ export const timeEntryRevision = pgTable(
     workingTimeMinutes: integer("working_time_minutes"),
     breakDurationMinutes: integer("break_duration_minutes").notNull().default(0),
     comment: text("comment"),
+    // F9.4 Slice C: Vollbild-Prinzip — Start-Koordinaten werden mitkopiert.
+    startLat: doublePrecision("start_lat"),
+    startLng: doublePrecision("start_lng"),
     revisedBy: uuid("revised_by").notNull(),
     revisedAt: timestamp("revised_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -132,6 +140,7 @@ export const timeEntryRevision = pgTable(
   (t) => [
     index("time_entry_revision_ws_entry_idx").on(t.workspaceId, t.entryId, t.revisedAt),
     unique("time_entry_revision_ws_id_uq").on(t.workspaceId, t.id),
+    check("time_entry_revision_gps_ck", sql`(${t.startLat} is null and ${t.startLng} is null) or (${t.startLat} between -90 and 90 and ${t.startLng} between -180 and 180)`),
     foreignKey({
       columns: [t.workspaceId],
       foreignColumns: [workspace.id],

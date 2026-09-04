@@ -77,6 +77,25 @@ function parseComment(value: FormDataEntryValue | null): string | null {
   return trimmed.length >= 1 && trimmed.length <= TIME_COMMENT_MAX ? trimmed : null;
 }
 
+// F9.4 Slice C: GPS nur mit Consent (Hidden-Fields aus Geolocation).
+// Beide oder keiner — halbe Paare, Unfug und crafted Files => invalid.
+// Leere Felder (kein Consent/Verweigert) => { null, null }, nie ein Fehler.
+function parseGps(formData: FormData): { startLat: number | null; startLng: number | null } | null {
+  const rawLat = formData.get("startLat");
+  const rawLng = formData.get("startLng");
+  const empty = (value: FormDataEntryValue | null): boolean =>
+    value === null || (typeof value === "string" && value.trim() === "");
+  if (empty(rawLat) && empty(rawLng)) return { startLat: null, startLng: null };
+  if (typeof rawLat !== "string" || typeof rawLng !== "string") return null;
+  const startLat = Number(rawLat);
+  const startLng = Number(rawLng);
+  if (
+    !Number.isFinite(startLat) || !Number.isFinite(startLng)
+    || startLat < -90 || startLat > 90 || startLng < -180 || startLng > 180
+  ) return null;
+  return { startLat, startLng };
+}
+
 function parseFields(formData: FormData): CreateTimeEntryCommand["fields"] | null {
   const typeValue = formData.get("typeId");
   // Kimi-P3-4: crafted File-Wert → invalid statt still zu null.
@@ -208,6 +227,8 @@ export async function startTimeEntryAction(
     return { status: "invalid" };
   }
   if (!workspace || !projectId) return { status: "invalid" };
+  const gps = parseGps(formData);
+  if (gps === null) return { status: "invalid" };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
       startTimeEntry(tx, ctx, {
@@ -215,6 +236,8 @@ export async function startTimeEntryAction(
         projectId,
         typeId,
         comment,
+        startLat: gps.startLat,
+        startLng: gps.startLng,
       }),
     );
     revalidate(workspace, projectId);
