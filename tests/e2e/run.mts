@@ -138,6 +138,7 @@ type E2EState = Pick<
   m111bProjectId: string;
   f703ProjectId: string;
   f22ProjectId: string;
+  f93ProjectId: string;
   w3WorkspaceId: string;
   m112aProjectId: string;
   m112aWorkspaceId: string;
@@ -879,17 +880,20 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
       );
       // Bestehende Identitäten, keine zweiten Accounts (M1-11b-Muster).
       // Editor spiegelt die Main-Capabilities (Katalog-Vorlagen-Seite
-      // braucht manage_catalog), Viewer ist plain read-only.
+      // braucht manage_catalog), Viewer ist plain read-only. Restricted
+      // ist zweiter Schreiber (F9.3: Fremdnutzer-Einträge).
       await client.query(
         `insert into membership (workspace_id, user_id, role, capabilities)
          values ($1::uuid, $2::uuid, 'editor',
            '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
               "assign_projects":true}'::jsonb),
-                ($1::uuid, $3::uuid, 'viewer', '{}'::jsonb)`,
+                ($1::uuid, $3::uuid, 'viewer', '{}'::jsonb),
+                ($1::uuid, $4::uuid, 'editor', '{}'::jsonb)`,
         [
           data.w3WorkspaceId,
           data.editorIdentityId,
           data.viewerIdentityId,
+          data.restrictedEditorIdentityId,
         ],
       );
     });
@@ -1447,6 +1451,12 @@ async function main(): Promise<number> {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
   });
+  const w3F93Lead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("Frieda W3 Zeiterfassung", `w3-f93-${randomUUID()}`, true),
+  );
   throwIfInterrupted();
 
   writeState(statePath, {
@@ -1459,6 +1469,7 @@ async function main(): Promise<number> {
     m111bWorkspaceId: seedData.m111bWorkspaceId,
     f703ProjectId: w3F703Lead.projectId,
     f22ProjectId: w3F22Seed.projectId,
+    f93ProjectId: w3F93Lead.projectId,
     w3WorkspaceId: seedData.w3WorkspaceId,
     m112aProjectId: m112aSeed.projectId,
     m112aWorkspaceId: seedData.m112aWorkspaceId,
