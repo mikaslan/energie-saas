@@ -187,6 +187,19 @@ WMEE; Push-/Deploy-Regeln unverändert.
 - Nachweise: check 200 Dateien/1917 Tests + 1 Skipped, Build,
   db:generate ohne Drift, E2E M1-15 6/6 + M1-15b 2/2.
 
+## 2026-09-04 — F7.3 Checklisten-Vorlagen REVIEWED/VERIFIED (lokal)
+
+- F7.3 (0053): Lane `codex/f7-03-checklist-templates`, integriert in
+  `codex/m1-wave-02` (`fd2694e`, gepusht). Template-CRUD mit
+  Katalog-Positionseditor (OBSERVED-Item-Form), Anwendung am Projekt
+  als ESTIMATE-Mapping (Block/Segment/Items SKU x quantity),
+  Katalog-Validierung, 1:1-Conflict, Settings-UI + Aus-Vorlage-Sektion.
+- Kimi-K3: NACHBESSERUNG mit P0 (Index-Korrelation bei Komponenten-
+  Zuordnung → ID-Map + LEFT JOIN) + 3 P1 + 4 P2 + P3 — alle geschlossen,
+  inkl. Multi-Komponenten-Regressionstest.
+- Nachweise: check 202 Dateien/1924 Tests + 1 Skipped, Build,
+  db:generate ohne Drift, E2E F7.3 2/2.
+
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
 
 - **M1-11b Cannot Fulfil** (Rebuild, Lizenz-Modus): REVIEWED/VERIFIED (lokal).
