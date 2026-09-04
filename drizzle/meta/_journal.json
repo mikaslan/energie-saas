@@ -435,6 +435,13 @@
       "when": 1788562999519,
       "tag": "0061_f16_03_subsidy_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1788563540736,
+      "tag": "0062_f10_portal_signature_status",
+      "breakpoints": true
     }
   ]
 }

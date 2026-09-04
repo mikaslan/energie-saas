@@ -298,3 +298,23 @@
   liefen grün durch, nur tsx-Testschritt EPERM). CI-Runs 33928409856/774:
   failure nach 2–3 s ohne Steps/Logs = Billing-Block Q6, kein Codebefund.
 - Nächster Schritt: F10.2-B-Spec.
+
+## Turn 19 — 2026-09-04, F10.2 Slice B implementiert (Signatur-Status read-only)
+
+- SPEC `docs/spec/F10-02b-portal-signatur-status.md` (DECIDED: Status
+  wörtlich, 'none' ohne Zeile, nie signer_name/Token/Grund; kein
+  Tab-Umbau — F10.1-E2E bleibt grün). Reviews Exit-3 (kein Key).
+- Migration 0062 (0059-Vollkopie + LEFT JOIN signature_request,
+  Zähler 62, Snapshot/Journal von Hand nach 0059-Muster).
+  Funktions-Pin per Skript-Methode (Kontrolle 0059-Body = 560bd538…
+  MATCH, neuer Pin 6d025bff… — kein Erfinden).
+- Contract: signatureStatus-Enum + signedAt (strict, required),
+  Parser mit Wortlaut-Prüfung (unbekannt/fehlend/defekt → null).
+  UI: Statuszeile je Dokument in Übersicht.
+- Tests: f1003-DB (Issuance-Kette aus M2-04 übernommen: none/
+  pending/signed + Roh-JSON-Privacy), Parser-Unit 2/2 (Temp-Config),
+  F10.2-E2E-02 (Fallback Leerzustand, Positivfall per DB-Test).
+- Lokal grün: eslint (0 Errors), typecheck, depcruise, generate
+  (no drift), E2E --list. DB-/E2E-Ausführung nur Maschine/CI
+  (Billing-Block Q6 unverändert).
+- Nächster Schritt: Slice B pushen, CI-Lage lesen, F16.3-C-Spec.

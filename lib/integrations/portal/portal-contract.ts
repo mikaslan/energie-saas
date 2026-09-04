@@ -86,11 +86,24 @@ export function derivePortalNextStep(phase: string, outcome: string): string {
   return PORTAL_PHASE_NEXT_STEP[phase] ?? "Stand in Klärung";
 }
 
+// F10.2 Slice B: Signatur-Status je Dokument (read-only, wörtlich aus
+// signature_request; 'none' ohne Zeile; NIE signer_name/Token/Grund).
+const portalSignatureStatusSchema = z.enum([
+  "none",
+  "pending",
+  "signed",
+  "expired",
+  "withdrawn",
+  "revoked_by_customer",
+]);
+
 const portalDocumentSchema = z.strictObject({
   id: z.uuid(),
   offerNumber: z.string(),
   documentDate: z.string(),
   issuedAt: z.iso.datetime({ offset: true }),
+  signatureStatus: portalSignatureStatusSchema,
+  signedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 const portalProjectSchema = z.strictObject({
@@ -141,6 +154,8 @@ const portalResolveOkSchema = z.strictObject({
     offerNumber: z.string(),
     documentDate: z.string(),
     issuedAt: z.unknown(),
+    signatureStatus: z.unknown(),
+    signedAt: z.unknown(),
   })),
   appointments: z.array(z.strictObject({
     id: z.uuid(),
@@ -182,9 +197,17 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
   for (const doc of parsed.data.documents) {
     const issuedAt = toInstant(doc.issuedAt);
     if (issuedAt === null) return null;
+    // F10.2 Slice B: Status wörtlich (keine Übergänge erfunden);
+    // signedAt null außer bei gesetztem Zeitstempel.
+    if (typeof doc.signatureStatus !== "string") return null;
+    const signatureStatus = portalSignatureStatusSchema.safeParse(doc.signatureStatus);
+    if (!signatureStatus.success) return null;
+    const signedAt = doc.signedAt === null ? null : toInstant(doc.signedAt);
+    if (doc.signedAt !== null && signedAt === null) return null;
     documents.push({
       id: doc.id, offerNumber: doc.offerNumber,
       documentDate: doc.documentDate, issuedAt,
+      signatureStatus: signatureStatus.data, signedAt,
     });
   }
   // F10.2 Slice A: Termine mit strikter Typprüfung (allDay/location wie

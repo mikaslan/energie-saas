@@ -30,6 +30,22 @@ function formatBerlinRange(startAt: string, endAt: string, allDay: boolean): str
   return `${date} · ${BERLIN_TIME.format(start)}–${BERLIN_TIME.format(new Date(endAt))} Uhr`;
 }
 
+// F10.2 Slice B: Signatur-Status je Dokument (read-only, wörtlich aus der
+// Projektion; keine internen Details — signer_name/Token/Grund nie).
+function formatSignatureStatus(status: string, signedAt: string | null): string {
+  switch (status) {
+    case "pending": return "Signatur: ausstehend";
+    case "signed":
+      return signedAt === null
+        ? "Signatur: signiert"
+        : `Signiert am ${BERLIN_DATE.format(new Date(signedAt))}`;
+    case "expired": return "Signatur: abgelaufen";
+    case "withdrawn": return "Signatur: zurückgezogen";
+    case "revoked_by_customer": return "Signatur: vom Kunden widerrufen";
+    default: return "Signatur: nicht angefragt";
+  }
+}
+
 // F10.1: öffentliche Projektion (read-only). Unbekannt/deformiert/entzogen/
 // abgelaufen -> identischer 404-Endzustand („Link ungültig", kein Orakel).
 // F10.2 Slice A: Tabs (Übersicht | Termine) per ?tab=, Server-Links ohne JS.
@@ -118,6 +134,9 @@ export default async function PortalTokenPage({
                   <li key={doc.id} className="flex items-center justify-between gap-4 px-4 py-3">
                     <span className="text-sm font-medium text-slate-800">
                       Angebot {doc.offerNumber}
+                      <span className="block text-xs font-normal text-slate-500">
+                        {formatSignatureStatus(doc.signatureStatus, doc.signedAt)}
+                      </span>
                     </span>
                     <span className="text-sm text-slate-500">{doc.documentDate}</span>
                   </li>
