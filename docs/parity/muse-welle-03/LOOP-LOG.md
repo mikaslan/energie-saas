@@ -354,3 +354,17 @@
   33929442145: failure nach 4 s ohne Steps/Logs = Billing-Block Q6,
   kein Codebefund.
 - Nächster Schritt: nächste F1–F16-Capability nach Modulkatalog.
+
+## Turn 22 — 2026-09-04, F16.3-D-Spec (Fix-Modell, Snapshot-v2)
+
+- SPEC `docs/spec/F16-03d-fix-modell.md` (DECIDED: `globalFixDiscountCents`
+  siegelgebunden → Snapshot-v2 + Dual-Read im einzigen Engpass
+  `validateOfferVariantSnapshot`; Schreiber immer v2, Historie bleibt v1;
+  Fix nach globalem Prozent, vor Steuer, pro-rata auf Basis-Zeilen;
+  kein Cap-Apply (Slice E); kein `customDeal`-Missbrauch).
+- Bestand vermessen: money.ts (§279/§280 Apply-Reihenfolge),
+  Anzeige-Stellen (pdf-/issuance-template), Editor-Muster (customDeal),
+  Contract-Versionen (snapshot v1, jcs v1).
+- Risikoflag im SPEC: größter Slice der Welle (Versions­sprung) —
+  Review-Schwerpunkt Dual-Read + Rundung.
+- Nächster Schritt: F16.3-D implementieren.
