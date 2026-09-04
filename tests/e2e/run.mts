@@ -140,6 +140,7 @@ type E2EState = Pick<
   f22ProjectId: string;
   f93ProjectId: string;
   f162ProjectId: string;
+  f101ProjectId: string;
   w3WorkspaceId: string;
   m112aProjectId: string;
   m112aWorkspaceId: string;
@@ -1456,6 +1457,12 @@ async function main(): Promise<number> {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
   });
+  const w3F101Lead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("Gisela W3 Portal", `w3-f101-${randomUUID()}`, true),
+  );
   const w3F93Lead = await submitSignedLead(
     server,
     embedded.superuserUrl,
@@ -1476,6 +1483,7 @@ async function main(): Promise<number> {
     f22ProjectId: w3F22Seed.projectId,
     f93ProjectId: w3F93Lead.projectId,
     f162ProjectId: w3F162Seed.projectId,
+    f101ProjectId: w3F101Lead.projectId,
     w3WorkspaceId: seedData.w3WorkspaceId,
     m112aProjectId: m112aSeed.projectId,
     m112aWorkspaceId: seedData.m112aWorkspaceId,
