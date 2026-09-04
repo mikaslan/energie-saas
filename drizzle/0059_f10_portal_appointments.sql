@@ -379,6 +379,14 @@ BEGIN
     -- Neue Projektion-Relation (Termine-Tab) fuer den Definer;
     -- in Strict implizit ueber Tabellen-Ownership.
     GRANT SELECT ON public.project_appointment TO app_owner;
+    -- Die RESTRICTIVE-SELECT-Policy von project_appointment (0043)
+    -- evaluiert die Read-Helfer als abfragende Rolle (app_owner):
+    -- ohne EXECUTE scheitert die Policy-Auswertung mit 42501,
+    -- bevor der app_owner-Escape-Hatch greifen kann (Muster 0056).
+    GRANT EXECUTE ON FUNCTION
+      public._m115_actor_can_read_appointments(uuid),
+      public._m115_actor_appointment_role(uuid)
+      TO app_owner;
   END IF;
 END
 $f1002_grants$;--> statement-breakpoint

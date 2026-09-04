@@ -32,7 +32,8 @@ const M111A_MIGRATION_INDEX = 39;
 // Integrierte Kette: … → M2-04 (0044) → M3-00 (0045) → M3-01 (0046) →
 // F4.6 (0047) → v5-Leadquelle (0048); Gesamtbestand: 49 Migrationen (idx 0..48).
 // wave-02-Integration: 0055 (F2.2) + 0056 (F10.1) => 57 Migrationen (idx 0..56).
-const TOTAL_MIGRATION_COUNT = 60;
+// 0055-0056 + Welle-03-Nachzug 0057-0060 => 61 Migrationen (idx 0..60).
+const TOTAL_MIGRATION_COUNT = 61;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 
