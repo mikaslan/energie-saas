@@ -84,6 +84,7 @@ function inputFixture(lineCount = 3): OfferReleaseCandidateInputV1 {
     },
     commercialTerms: {
       globalDiscountBps: 250,
+      globalFixDiscountCents: null,
       customDealNetCents: null,
     },
     sections: [{

@@ -2,6 +2,10 @@
 
 Status: **IMPLEMENTED (lokal verifiziert 2026-09-04: lint 0 Errors, typecheck, depcruise, generate ohne Drift, catalog-contract-check, E2E --list; DB-/E2E-Ausführung pending CI/Maschine — Billing-Block Q6)**
 
+Supersede-Notiz (Slice D, 2026-09-04): Fix-Vorlagen sind seit Slice D
+global anwendbar (`set_global_fix_discount`); die DB-02-Fix-Abweisung
+wurde aus `f1603c` nach `f1603d` (Erfolgspfad) verschoben.
+
 Lane: `codex/muse-welle-03-e2e` off `origin/codex/m1-wave-02`.
 Vorgänger: F16.3-A/B (Vorlagen-CRUD + reine Arithmetik). Katalog: F16.3
 „Rabatt/Förderung (Fix/Prozent mit Cap)". Das Variantenmodell kennt

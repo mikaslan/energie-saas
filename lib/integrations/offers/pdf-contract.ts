@@ -151,6 +151,8 @@ export const offerPdfDraftInputV1Schema = z.strictObject({
   }),
   commercialTerms: z.strictObject({
     globalDiscountBps: basisPointsSchema,
+    // F16.3 Slice D: globaler Fix-Rabatt (null = keiner).
+    globalFixDiscountCents: moneyCentsSchema.nullable(),
     customDealNetCents: moneyCentsSchema.nullable(),
   }),
   sections: z.array(pdfSectionSchema).min(1).max(25),
@@ -306,6 +308,8 @@ export function buildOfferPdfDraftInput({
     },
     commercialTerms: {
       globalDiscountBps: snapshot.globalDiscountBps,
+      // F16.3 Slice D: Fix-Rabatt aus dem Snapshot übernehmen (null = keiner).
+      globalFixDiscountCents: snapshot.globalFixDiscountCents ?? null,
       customDealNetCents: snapshot.customDealNetCents,
     },
     sections,

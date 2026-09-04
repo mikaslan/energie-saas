@@ -448,6 +448,28 @@ function formatTemplatePercentInput(percentBps: number): string {
   return fraction.length === 0 ? String(whole) : `${whole},${fraction}`;
 }
 
+// F16.3 Slice D: Fix-Betrag ins Draft-Euro-Format (1250 -> "12,50").
+function formatTemplateEurosInput(amountCents: number): string {
+  const whole = Math.floor(amountCents / 100);
+  const fraction = String(amountCents % 100).padStart(2, "0");
+  return `${whole},${fraction}`;
+}
+
+function templateOptionLabel(template: {
+  name: string;
+  source: "discount" | "subsidy";
+  kind: "percent" | "fix";
+  percentBps: number | null;
+  amountCents: number | null;
+}): string {
+  const value = template.kind === "percent" && template.percentBps !== null
+    ? `${formatTemplatePercentInput(template.percentBps)} %`
+    : template.amountCents !== null
+      ? `${formatTemplateEurosInput(template.amountCents)} €`
+      : "–";
+  return `${template.name} (${value} · ${template.source === "subsidy" ? "Förderung" : "Rabatt"})`;
+}
+
 function positionLabel(positionType: string): string {
   if (positionType === "required") return "Erforderlich";
   if (positionType === "additional") return "Zusatzleistung";
@@ -1068,19 +1090,30 @@ export function OfferVariantEditor({
                               <label htmlFor="global-discount-template" className="text-sm font-semibold">Aus Vorlage übernehmen</label>
                               <select id="global-discount-template" value="" onChange={(event) => {
                                 const template = view.discountTemplates?.find((entry) => entry.id === event.target.value);
-                                if (template) {
-                                  setDraft((current) => ({ ...current, globalDiscountPercent: formatTemplatePercentInput(template.percentBps) }));
+                                const percentBps = template?.kind === "percent" ? template.percentBps : null;
+                                const amountCents = template?.kind === "fix" ? template.amountCents : null;
+                                if (percentBps !== null && percentBps !== undefined) {
+                                  const value = formatTemplatePercentInput(percentBps);
+                                  setDraft((current) => ({ ...current, globalDiscountPercent: value }));
+                                } else if (amountCents !== null && amountCents !== undefined) {
+                                  const value = formatTemplateEurosInput(amountCents);
+                                  setDraft((current) => ({ ...current, globalFixDiscountEuros: value }));
                                 }
                               }} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">
                                 <option value="">Vorlage wählen …</option>
                                 {view.discountTemplates?.map((template) => (
                                   <option key={template.id} value={template.id}>
-                                    {template.name} ({formatTemplatePercentInput(template.percentBps)} % · {template.source === "subsidy" ? "Förderung" : "Rabatt"})
+                                    {templateOptionLabel(template)}
                                   </option>
                                 ))}
                               </select>
                             </div>
                           ) : null}
+                          <div>
+                            <label htmlFor="global-fix-discount" className="text-sm font-semibold">Globaler Fix-Rabatt €</label>
+                            <input id="global-fix-discount" inputMode="decimal" placeholder="Keiner" value={draft.globalFixDiscountEuros} aria-invalid={invalidFields.has("global-fix-discount") || undefined} aria-describedby={errorDescription("global-fix-discount")} onChange={(event) => setDraft((current) => ({ ...current, globalFixDiscountEuros: event.target.value }))} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />
+                            {fieldError("global-fix-discount")}
+                          </div>
                           <div>
                             <label htmlFor="custom-deal" className="text-sm font-semibold">Custom Deal netto €</label>
                             <input id="custom-deal" inputMode="decimal" value={draft.customDealNetEuros} aria-invalid={invalidFields.has("custom-deal") || undefined} aria-describedby={errorDescription("custom-deal")} onChange={(event) => setDraft((current) => ({ ...current, customDealNetEuros: event.target.value }))} placeholder="Kein fester Zielpreis" className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />

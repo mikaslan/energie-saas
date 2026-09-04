@@ -28,6 +28,8 @@ export interface OfferPricingInput {
   currency: "EUR";
   priceBasis: "net";
   globalDiscountBps: number;
+  // F16.3 Slice D: globaler Fix-Rabatt (null = keiner), nach Prozent, vor Steuer.
+  globalFixDiscountCents: number | null;
   customDealNetCents: number | null;
   sections: OfferPricingSectionInput[];
 }
@@ -150,6 +152,13 @@ function applyDiscount(lines: WorkingLine[], discountBps: bigint): void {
   allocateTarget(lines, target);
 }
 
+// F16.3 Slice D: Fix-Betrag vom (bereits prozent-rabattierten) Total abziehen,
+// floor 0, exakt-summen Allokation über den bewährten Largest-Remainder.
+function applyFixDiscount(lines: WorkingLine[], fixCents: bigint): void {
+  const sourceTotal = lines.reduce((sum, line) => sum + line.currentNet, ZERO);
+  allocateTarget(lines, sourceTotal - fixCents > ZERO ? sourceTotal - fixCents : ZERO);
+}
+
 function sumPersisted(lines: WorkingLine[], select: (line: WorkingLine) => bigint, field: string) {
   return persisted(lines.reduce((sum, line) => sum + select(line), ZERO), field);
 }
@@ -165,6 +174,7 @@ function validateStructure(input: OfferPricingInput): void {
     throw new TypeError("M2-01 berechnet ausschliesslich EUR netto.");
   }
   basisPoints(input.globalDiscountBps, "globalDiscountBps");
+  if (input.globalFixDiscountCents !== null) money(input.globalFixDiscountCents, "globalFixDiscountCents");
   if (input.customDealNetCents !== null) money(input.customDealNetCents, "customDealNetCents");
   if (!Array.isArray(input.sections) || input.sections.length < 1 || input.sections.length > 25) {
     throw new TypeError("Eine Revision braucht 1 bis 25 Sektionen.");
@@ -277,6 +287,9 @@ export function calculateOfferPricing(input: OfferPricingInput): OfferPricingRes
 
   const basisLines = working.filter((line) => line.positionType !== "optional");
   applyDiscount(basisLines, basisPoints(input.globalDiscountBps, "globalDiscountBps"));
+  if (input.globalFixDiscountCents !== null) {
+    applyFixDiscount(basisLines, money(input.globalFixDiscountCents, "globalFixDiscountCents"));
+  }
   if (input.customDealNetCents !== null) {
     allocateTarget(basisLines, money(input.customDealNetCents, "customDealNetCents"));
   }

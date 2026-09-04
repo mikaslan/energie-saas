@@ -1133,6 +1133,7 @@ function buildResolutionSnapshot(input: {
       currency: "EUR",
       priceBasis: "net",
       globalDiscountBps: 0,
+      globalFixDiscountCents: null,
       customDealNetCents: null,
       sections: sections.map((section) => ({
         sectionDomainId: section.sectionDomainId,
@@ -1176,6 +1177,7 @@ function buildResolutionSnapshot(input: {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: sections.map((section) => ({
       ...section,
@@ -1888,6 +1890,10 @@ function applyRevisionOperation(
       requireOfferAccess(ctx, "discount.apply", "offer_discount");
       snapshot.globalDiscountBps = operation.discountBps;
       return;
+    case "set_global_fix_discount":
+      requireOfferAccess(ctx, "discount.apply", "offer_discount");
+      snapshot.globalFixDiscountCents = operation.fixDiscountCents;
+      return;
     case "set_custom_deal":
       requireOfferAccess(ctx, "discount.apply", "offer_discount");
       snapshot.customDealNetCents = operation.customDealNetCents;
@@ -2081,6 +2087,7 @@ function repriceSnapshot(snapshot: OfferVariantSnapshotV1): void {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: snapshot.globalDiscountBps,
+    globalFixDiscountCents: snapshot.globalFixDiscountCents,
     customDealNetCents: snapshot.customDealNetCents,
     sections: snapshot.sections.map((section) => ({
       sectionDomainId: section.sectionDomainId,
@@ -2140,6 +2147,7 @@ export async function reviseOfferVariant(
         requireOfferAccess(ctx, "price.read_purchase", "offer_purchase_pricing");
         break;
       case "set_global_discount":
+      case "set_global_fix_discount":
       case "set_custom_deal":
       case "set_section_discount":
       case "set_line_discount":

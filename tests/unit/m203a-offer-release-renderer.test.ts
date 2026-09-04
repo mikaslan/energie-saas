@@ -74,6 +74,7 @@ function validInput(): OfferReleaseCandidateInputV1 {
     },
     commercialTerms: {
       globalDiscountBps: 0,
+      globalFixDiscountCents: null,
       customDealNetCents: null,
     },
     sections: [{

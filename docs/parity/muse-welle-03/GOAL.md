@@ -10,10 +10,12 @@ Lane + Mikails Gatefix (`31a61c4`, 4 Root-Causes) + scharfer E2E-Job.
 Seine Gates: check 208/1969+1, Rollen 88/88, PG18 5/5, Build, E2E 90/90.
 Lane auf 258fb8a fast-forwarded. M2-04 damit gates-belegt (Reviews
 Exit-3). CI-Billing weiter dicht (FRAGEN-AN-MIKAIL.md Nr. 6).
-Stand: F9.4 A–D + F10.2-A + F10.2-B + F16.3-A + F16.3-B + F16.3-C
-implementiert, M2-04 als DONE pending CI verifiziert (Won per
-DEC-M204-08 NICHTZIEL). CI pending — Billing-Block Q6.
-Nächstes: F16.3-D implementieren (SPEC liegt, Snapshot-v2-Risikoflag).
+Stand: F9.4 A–D + F10.2-A + F10.2-B + F16.3-A + F16.3-B + F16.3-C +
+F16.3-D implementiert (Snapshot-v2, Fix-Modell, f1603d, E2E-04; lokal
+grün, Goldens belegt; DB-/E2E-Ausführung pending CI/Maschine —
+Billing-Block Q6). M2-04 als DONE pending CI verifiziert (Won per
+DEC-M204-08 NICHTZIEL).
+Nächstes: Slice D pushen + CI lesen, dann F16.3-E (Cap-Prozent).
 
 Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
 Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output

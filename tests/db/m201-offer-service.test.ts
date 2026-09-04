@@ -802,6 +802,7 @@ function pricingInputFromSnapshot(snapshot: OfferVariantSnapshotV1) {
     currency: snapshot.currency,
     priceBasis: snapshot.priceBasis,
     globalDiscountBps: snapshot.globalDiscountBps,
+    globalFixDiscountCents: snapshot.globalFixDiscountCents,
     customDealNetCents: snapshot.customDealNetCents,
     sections: snapshot.sections.map((section) => ({
       sectionDomainId: section.sectionDomainId,

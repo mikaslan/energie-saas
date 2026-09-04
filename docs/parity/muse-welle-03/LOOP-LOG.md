@@ -368,3 +368,23 @@
 - Risikoflag im SPEC: größter Slice der Welle (Versions­sprung) —
   Review-Schwerpunkt Dual-Read + Rundung.
 - Nächster Schritt: F16.3-D implementieren.
+
+## Turn 23 — 2026-09-04, F16.3-D-Implementierung (Fix-Modell, Snapshot-v2)
+
+- Implementiert: `globalFixDiscountCents` siegelgebunden (Snapshot-v2,
+  `OFFER_SCHEMA_SHA256 923a3539…`, Migration 0063), Dual-Read v1→v2,
+  `set_global_fix_discount` (+Cap `discount.apply`), Fix-Zweige in
+  Discount-/Subsidy-Apply, money.ts `applyFixDiscount` (Largest-Remainder,
+  Floor 0), PDF-Builder + Fix-Zeile im Template, Editor-Dropdown +
+  Detail-Anzeige, f1603d (3 DB-Tests), E2E-04 (Fix→Save→Rev2→-1250).
+- Fixture-Migration: 30+ Dateien auf v2-Schlüssel gehoben; PDF-Builder-
+  Lücke (`commercialTerms` ohne Fix-Key) geschlossen.
+- Goldens belegt: kanonisches Delta exakt `,"globalFixDiscountCents":null`
+  (Strip-Beweis per Skript); Pins neu: m202 `cfa07bcc…`, m203a `c33430e3…`,
+  m203b1 `41e46fb9…`.
+- Lokal grün: typecheck, lint (0 Errors, 11 vorbestehende Warnings),
+  depcruise, generate (no drift), catalog-check, E2E-04 --list (1 Test),
+  DB-frei 1015 passed / 21 failed = nur DB-/Browser-Umgebung +
+  f1001-Portal (per Stash auf HEAD belegt vorbestehend).
+- Reviews weiter BLOCKED (kein OPENROUTER_API_KEY) — Exit-3-Pfad per GOAL.
+- Nächster Schritt: Slice D committen + pushen, CI lesen.

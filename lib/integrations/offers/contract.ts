@@ -26,13 +26,17 @@ export const OFFER_VARIANT_BUNDLES_COMMAND_VERSION =
 export const OFFER_CANONICALIZATION_VERSION = "offer-jcs.v1" as const;
 export const OFFER_CREATE_DIGEST_MATERIAL_VERSION =
   "offer-create-digest-material.v1" as const;
-export const OFFER_VARIANT_SNAPSHOT_VERSION = "offer-variant-snapshot.v1" as const;
+export const OFFER_VARIANT_SNAPSHOT_VERSION = "offer-variant-snapshot.v2" as const;
+// F16.3 Slice D: eingefrorene v1-Kennung für siegelgebundene Historie.
+// Schreiber schreiben IMMER v2; Leser akzeptieren v1+v2 (Dual-Read in
+// validateOfferVariantSnapshot, Fix normalisiert auf null).
+export const OFFER_VARIANT_SNAPSHOT_VERSION_V1 = "offer-variant-snapshot.v1" as const;
 
 // Gepinnter Hash des ausschliesslich aus den Runtime-Schemas erzeugten
 // Artefakts. Der Generator und der Contract-Test verhindern eine zweite
 // Vertragswahrheit.
 export const OFFER_SCHEMA_SHA256 =
-  "875117092d0a0e3060a210d1325fbc51e347a60cf87e2b6df98f1ac2fa8f7bfb" as const;
+  "923a3539b94756063f13094837d23480665521486eb1b9812c9ffeee24c4fcfa" as const;
 
 export const OFFER_MAX_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const OFFER_MAX_PATCH_OPERATIONS = 500 as const;
@@ -202,6 +206,11 @@ const reviseOperationSchema = z.union([
   z.strictObject({
     operation: z.literal("set_global_discount"),
     discountBps: basisPointsSchema,
+  }),
+  // F16.3 Slice D: globaler Fix-Rabatt (Cent, null = aufheben).
+  z.strictObject({
+    operation: z.literal("set_global_fix_discount"),
+    fixDiscountCents: moneyCentsSchema.nullable(),
   }),
   z.strictObject({
     operation: z.literal("set_custom_deal"),
@@ -744,6 +753,9 @@ const offerVariantSnapshotBaseSchema = z.strictObject({
   currency: z.literal("EUR"),
   priceBasis: z.literal("net"),
   globalDiscountBps: basisPointsSchema,
+  // F16.3 Slice D: globaler Fix-Rabatt (Cent, null = keiner). Siegelgebunden
+  // (Teil des kanonischen Hashs); v1-Historie liest über Dual-Read mit null.
+  globalFixDiscountCents: moneyCentsSchema.nullable(),
   customDealNetCents: moneyCentsSchema.nullable(),
   sections: z.array(offerVariantSectionSnapshotSchema).min(1).max(25),
   totals: offerTotalsSchema,
@@ -752,7 +764,23 @@ const offerVariantSnapshotBaseSchema = z.strictObject({
 });
 type OfferVariantSnapshotBodyV1 = z.infer<typeof offerVariantSnapshotBaseSchema>;
 
-function semanticSnapshotPaths(value: OfferVariantSnapshotBodyV1): string[] {
+// F16.3 Slice D: struktureller Minimaltyp für die Semantikprüfung —
+// v1- und v2-Bodies teilen alles außer Fix-Key/SchemaVersion-Literal.
+type SemanticSnapshotBody = {
+  workspaceId: string;
+  currency: "EUR";
+  priceBasis: "net";
+  globalDiscountBps: number;
+  customDealNetCents: number | null;
+  sourceBindings: z.infer<typeof offerSourceBindingsV1Schema>;
+  sections: OfferVariantSnapshotBodyV1["sections"];
+  totals: unknown;
+};
+
+function semanticSnapshotPaths(
+  value: SemanticSnapshotBody,
+  globalFixDiscountCents: number | null = null,
+): string[] {
   const paths: string[] = [];
   const sectionIds = new Set<string>();
   const sectionPositions = new Set<number>();
@@ -813,6 +841,7 @@ function semanticSnapshotPaths(value: OfferVariantSnapshotBodyV1): string[] {
         currency: value.currency,
         priceBasis: value.priceBasis,
         globalDiscountBps: value.globalDiscountBps,
+        globalFixDiscountCents,
         customDealNetCents: value.customDealNetCents,
         sections: value.sections.map((section) => ({
           sectionDomainId: section.sectionDomainId,
@@ -862,7 +891,7 @@ function semanticSnapshotPaths(value: OfferVariantSnapshotBodyV1): string[] {
 }
 
 function addSnapshotSemanticIssues(
-  value: OfferVariantSnapshotBodyV1,
+  value: SemanticSnapshotBody,
   context: z.RefinementCtx,
 ): void {
   for (const path of semanticSnapshotPaths(value)) {
@@ -874,12 +903,36 @@ function addSnapshotSemanticIssues(
   }
 }
 
+// F16.3 Slice D: v2-Kette (mit Fix-Key) und eingefrorene v1-Kette (ohne
+// Fix-Key, Literal v1) für siegelgebundene Historie. Der v1-Hash läuft über
+// den v1-Body (ohne Key) — alte Siegel bleiben gültig.
+function addSnapshotSemanticIssuesV2(
+  value: OfferVariantSnapshotBodyV1,
+  context: z.RefinementCtx,
+): void {
+  for (const path of semanticSnapshotPaths(value, value.globalFixDiscountCents)) {
+    context.addIssue({
+      code: "custom",
+      path: path === "/" ? [] : path.slice(1).split("/"),
+      message: "Snapshot und serverautoritatives Preisresultat stimmen nicht ueberein.",
+    });
+  }
+}
+
 const offerVariantSnapshotBodySchema = offerVariantSnapshotBaseSchema
-  .superRefine(addSnapshotSemanticIssues);
+  .superRefine(addSnapshotSemanticIssuesV2);
 export const offerVariantSnapshotV1Schema = offerVariantSnapshotBaseSchema.extend({
   snapshotSha256: sha256Schema,
-}).superRefine(addSnapshotSemanticIssues);
+}).superRefine(addSnapshotSemanticIssuesV2);
 export type OfferVariantSnapshotV1 = z.infer<typeof offerVariantSnapshotV1Schema>;
+
+const offerVariantSnapshotV1BodySchema = offerVariantSnapshotBaseSchema
+  .omit({ globalFixDiscountCents: true })
+  .extend({ schemaVersion: z.literal(OFFER_VARIANT_SNAPSHOT_VERSION_V1) })
+  .superRefine(addSnapshotSemanticIssues);
+const offerVariantSnapshotV1FileSchema = offerVariantSnapshotV1BodySchema.extend({
+  snapshotSha256: sha256Schema,
+}).superRefine(addSnapshotSemanticIssues);
 
 export type OfferContractResult<T> =
   | { ok: true; value: T }
@@ -992,15 +1045,41 @@ export function sealOfferVariantSnapshot(value: unknown): OfferVariantSnapshotV1
   });
 }
 
+function hashOfferVariantSnapshotV1(value: unknown): string {
+  const parsed = offerVariantSnapshotV1BodySchema.safeParse(withoutSnapshotHash(value));
+  if (!parsed.success) {
+    throw new TypeError(`Ungueltiger Offer-Snapshot (v1): ${validationPaths(parsed.error).join(", ")}`);
+  }
+  return sha256(canonicalizeOfferJson(parsed.data));
+}
+
+// F16.3 Slice D: Dual-Read. v2 primär; v1-Historie wird auf v2-Normalform
+// (globalFixDiscountCents: null) gehoben — ein Typ für alle Leser.
 export function validateOfferVariantSnapshot(
   value: unknown,
 ): OfferContractResult<OfferVariantSnapshotV1> {
-  const parsed = offerVariantSnapshotV1Schema.safeParse(value);
-  if (!parsed.success) return { ok: false, paths: validationPaths(parsed.error) };
-  if (hashOfferVariantSnapshot(parsed.data) !== parsed.data.snapshotSha256) {
+  const parsedV2 = offerVariantSnapshotV1Schema.safeParse(value);
+  if (parsedV2.success) {
+    if (hashOfferVariantSnapshot(parsedV2.data) !== parsedV2.data.snapshotSha256) {
+      return { ok: false, paths: ["/snapshotSha256"] };
+    }
+    return { ok: true, value: parsedV2.data };
+  }
+  const parsedV1 = offerVariantSnapshotV1FileSchema.safeParse(value);
+  if (!parsedV1.success) return { ok: false, paths: validationPaths(parsedV2.error) };
+  if (hashOfferVariantSnapshotV1(parsedV1.data) !== parsedV1.data.snapshotSha256) {
     return { ok: false, paths: ["/snapshotSha256"] };
   }
-  return { ok: true, value: parsed.data };
+  const { schemaVersion: _v1, ...v1Rest } = parsedV1.data;
+  void _v1;
+  return {
+    ok: true,
+    value: {
+      ...v1Rest,
+      schemaVersion: OFFER_VARIANT_SNAPSHOT_VERSION,
+      globalFixDiscountCents: null,
+    },
+  };
 }
 
 export interface OfferVariantViewOptions {
@@ -1018,7 +1097,7 @@ const publicOfferViewKeys: ReadonlySet<string> = new Set([
   "schemaVersion", "canonicalizationVersion", "workspaceId", "offerId", "variantId",
   "revision", "variantName", "description", "contactContext", "installationSiteContext",
   "sourceBindings", "priceAudienceDecision", "taxDecision", "currency", "priceBasis",
-  "globalDiscountBps", "customDealNetCents", "sections", "totals", "createdBy", "createdAt",
+  "globalDiscountBps", "globalFixDiscountCents", "customDealNetCents", "sections", "totals", "createdBy", "createdAt",
   "displayName", "emailPrimary", "phoneE164", "addressRevision", "formattedAddress",
   "street", "houseNumber", "postalCode", "city", "country", "projectId", "contactId",
   "siteId", "inboundReceiptId", "requirementId", "requirementRevision",

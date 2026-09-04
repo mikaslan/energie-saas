@@ -49,6 +49,7 @@ function snapshotFixture() {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: sectionId,
@@ -124,6 +125,7 @@ function snapshotFixture() {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: sectionId,

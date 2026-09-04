@@ -79,7 +79,7 @@ export function m203b1CandidateInput(
     },
     installationSite: { formattedAddress: "Solarweg 8, 10115 Berlin" },
     variant: { name: "Komfort", revision: 7 },
-    commercialTerms: { globalDiscountBps: 0, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Photovoltaik",

@@ -40,7 +40,7 @@ function inputFixture(lineCount = 3): OfferPdfDraftInputV1 {
       name: "Komfort & Autarkie",
       revision: 7,
     },
-    commercialTerms: { globalDiscountBps: 250, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 250, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{ position: 1, title: "PV-Anlage & Zubehör", discountBps: 100, lines }],
     totals: {
       basisNetCents: total(basisLines, "finalNetCents"),

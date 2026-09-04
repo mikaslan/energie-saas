@@ -211,9 +211,12 @@ function renderCommercialTerms(input: OfferReleaseCandidateInputV1): string {
   const customDeal = input.commercialTerms.customDealNetCents === null
     ? "Nicht vereinbart"
     : `${formatMoney(input.commercialTerms.customDealNetCents)} netto`;
+  const fixDeal = input.commercialTerms.globalFixDiscountCents === null
+    ? ""
+    : `  <div><dt>Globaler Fix-Rabatt</dt><dd>${formatMoney(input.commercialTerms.globalFixDiscountCents)}</dd></div>\n`;
   return `<dl class="commercial-terms">
   <div><dt>Globaler Rabatt</dt><dd>${formatDiscount(input.commercialTerms.globalDiscountBps)}</dd></div>
-  <div><dt>Individueller Zielpreis</dt><dd>${customDeal}</dd></div>
+${fixDeal}  <div><dt>Individueller Zielpreis</dt><dd>${customDeal}</dd></div>
 </dl>`;
 }
 
