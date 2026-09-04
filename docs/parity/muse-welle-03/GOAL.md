@@ -9,8 +9,11 @@ Stand: E2E-Nachholblock code-fertig auf Lane `codex/muse-welle-03-e2e`:
 f7-03-Isolation, Fehler-Mapping, F2.2-/F9.3-/F16.2-/F10.1-Specs (je
 eigenes W3-Projekt) + State-Push (Actions war aus, Erstlauf beider
 Workflows). Basis `origin/codex/m1-wave-02` = `cf02c26`. M2-04-
-Implementierung vorhanden (0044, Service, UI, Skeleton) — Gap-Check
-läuft.
+Implementierung vorhanden (0044, Service, UI, Skeleton) — wartet auf
+CI-Urteil. CI-Billing seit ca. 21:37 dicht (keine Job-Ausführung,
+FRAGEN-AN-MIKAIL.md Nr. 6, BLOCKED-ON-MIKAIL). Lane-Rot ist vorbestehend
+(Kontrolle clean-cf02c26 ebenfalls rot). Weiter ohne CI: specen+bauen,
+verifizieren nach Billing-Fix.
 
 Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
 Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output

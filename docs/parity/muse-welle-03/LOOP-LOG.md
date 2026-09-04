@@ -48,9 +48,42 @@
 - Befund Mikail: GitHub Actions wurde erst NACH meinen Pushes aktiviert —
   alte Pushes triggern nichts nachträglich. Bisherige in_progress-Runs
   sind Phantome ohne Läufer.
-- State-Dateien (GOAL/LOOP-LOG) committet + gepusht → Erstlauf beider
-  Workflows (`ci` + `codex-lane-gates`). `ci.yml` lief noch nie (enthält
-  Docker-Schritte).
+- State-Dateien (GOAL/LOOP-LOG) committet + gepusht (`75054be`) → beide
+  Workflows laufen (Trigger verifiziert, `ci` + `codex-lane-gates`
+  in_progress). `ci.yml`-Erstlauf enthält Docker-Schritte.
+- M2-04-Selbstreview (Exit-3-Ersatz): Service komplett (create/withdraw/
+  analog/sign/revoke/view/resolve), Guard-Route konservativ korrekt
+  (DEC-M204-04), DEFINER-Funktionen app_owner + Rollenvertrag-Pins
+  vorhanden (Lern-Register #10 erfüllt). Kein Neu-Code nötig — nur Urteil.
 - RUNTIME-BLOCKs: keine.
 - Nächster Schritt: Trigger verifizieren, parallel M2-04-Gap-Check
   (Spec/ADR vs. Implementierung), CI-Urteil am nächsten Turn-Start.
+
+## Turn 5 — 2026-09-04, CI rot, Ursachenjagd ohne Logs
+
+- Urteil: Gates (`npm run test`) + E2E + `ci`/`check` rot auf 75054be.
+  Lint/Typecheck/Contract/Depcruise grün (nur bekannte Warnings).
+- CI-Logs unerreichbar: results-receiver antwortet leer (Sandbox-Limit).
+  Nur Step-Namen via Annotations. Rerun angestoßen (Flake-Test).
+- Kopplungsanalyse: Lane-Delta ist vitest-neutral (kein Test importiert
+  Actions/Specs/Seed/Docs — grep-belegt). Fehler-Mapping exoneriert.
+  Verdacht: vorbestehendes Rot auf cf02c26 (nie gegated) oder CI-Env.
+- Kontrollexperiment: `codex/w3-base-check` (clean cf02c26) gepusht.
+- Seed-Audit (E2E): Caps geprüft (`project.write` Rolle, `manage_catalog`
+  vorhanden) — kein Defekt gefunden.
+- Nächster Schritt: Urteile (Rerun + Kontrolle) lesen, dann gezielt.
+
+## Turn 6 — 2026-09-04, CI-Billing dicht, Observability gebaut
+
+- Kontrolle `codex/w3-base-check` (clean cf02c26): `ci` completed failure
+  (9m54s, echte Ausführung) → Rot ist VORBESTEHEND, nicht Lane-Sache.
+  Gates-Urteil der Kontrolle noch offen.
+- Rerun Lane: E2E 3/3 deterministisch rot; Gates-Urteil offen.
+- Observability-Commit `be81fb6` (Vitest-JSON + Playwright-JSON als
+  Artefakte, best-effort) gepusht — lief nie: Jobs sterben seit ca. 21:37
+  in 3s („payments have failed or spending limit") → FRAGEN-AN-MIKAIL
+  Nr. 6 (BLOCKED-ON-MIKAIL, nur Account-Inhaber).
+- Branch-Löschung remote per Sicherheitsnetz gesperrt (ok, Zweig bleibt).
+- RUNTIME-BLOCKs: keine (Permission-Prompts: keine).
+- Nächster Schritt: ohne CI weiter (folgende Slices specen+bauen,
+  Verifikation nach Billing-Fix); Kontroll-Gates-Urteil mitnehmen.
