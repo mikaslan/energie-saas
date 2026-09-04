@@ -14,8 +14,10 @@ import { authClient } from "@/lib/auth-browser";
 import {
   createVariantFromCurrentResolutionEditorAction,
   duplicateOfferVariantEditorAction,
+  previewOfferHtmlAction,
   saveOfferVariantDraftAction,
   type OfferEditorActionState,
+  type OfferPreviewState,
 } from "../actions";
 import {
   buildOfferRevisionOperations,
@@ -505,6 +507,8 @@ export function OfferVariantEditor({
   const [unappliedRebaseSections, setUnappliedRebaseSections] = useState<readonly OfferEditorDraft["sections"][number][]>([]);
   const [clock, setClock] = useState(() => Date.now());
   const [expectedRevision, setExpectedRevision] = useState(snapshot.revision);
+  const [previewState, setPreviewState] = useState<OfferPreviewState>({ status: "idle" });
+  const [previewOpen, setPreviewOpen] = useState(false);
   const mutationLockRef = useRef(false);
   const expectedRevisionRef = useRef(snapshot.revision);
   const summaryRef = useRef<HTMLDivElement>(null);
@@ -768,6 +772,42 @@ export function OfferVariantEditor({
     }
     router.push(`/w/${view.workspaceId}/angebote/${result.offerId}?variante=${result.variantId}`);
   }
+
+  async function loadPreview() {
+    setPreviewState({ status: "pending" });
+    setPreviewOpen(true);
+    try {
+      setPreviewState(await previewOfferHtmlAction({
+        workspaceId: view.workspaceId,
+        offerId: view.offer.id,
+        variantId: snapshot.variantId,
+        expectedVariantRevision: expectedRevisionRef.current,
+      }));
+    } catch {
+      setPreviewState({ status: "unavailable" });
+    }
+  }
+
+  function previewStatusText(state: OfferPreviewState): string | null {
+    switch (state.status) {
+      case "idle":
+      case "pending":
+      case "success":
+        return null;
+      case "conflict":
+        return "Die gespeicherte Revision hat sich geändert — Seite neu laden und erneut versuchen.";
+      case "invalid":
+        return "Vorschau nicht möglich — Variante ggf. verändert, Seite neu laden.";
+      case "denied":
+        return "Keine Leseberechtigung für diese Angebotsvariante.";
+      case "unauthenticated":
+        return "Sitzung abgelaufen — bitte neu anmelden.";
+      default:
+        return "Vorschau derzeit nicht verfügbar — später erneut versuchen.";
+    }
+  }
+
+  const previewErrorText = previewStatusText(previewState);
 
   async function createNewBasis() {
     const basisInput = view.basisInput;
@@ -1146,6 +1186,7 @@ export function OfferVariantEditor({
               {view.permissions.canDuplicate ? (
                 <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-semibold">Variante duplizieren</h2><p className="mt-1 text-base leading-6 text-slate-600">Erzeugt eine unabhängige Revision-1-Kopie des gespeicherten Stands.</p><label htmlFor="duplicate-name" className="mt-3 block text-xs font-semibold">Name der Kopie</label><div className="mt-1 flex flex-col gap-2 sm:flex-row"><input id="duplicate-name" value={duplicateName} aria-invalid={invalidFields.has("duplicate-name") || undefined} aria-describedby={errorDescription("duplicate-name")} onChange={(event) => setDuplicateName(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-md border border-slate-300 px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" /><button type="button" disabled={mutationDisabled} onClick={() => requestIntent({ label: "Variante duplizieren", execute: duplicateVariant })} className="min-h-11 rounded-md border border-slate-950 px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">Duplizieren</button></div>{fieldError("duplicate-name")}</section>
               ) : null}
+              <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-semibold">PDF-Vorschau</h2><p className="mt-1 text-base leading-6 text-slate-600">Rendert den gespeicherten Stand lesend — ohne Entwurf, Warteschlange oder Datenbank-Spuren.</p><button type="button" disabled={navigationPending || previewState.status === "pending"} onClick={() => void loadPreview()} className="mt-3 min-h-11 rounded-md border border-slate-950 px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">{previewState.status === "pending" ? "Rendert …" : "Vorschau laden"}</button>{previewErrorText ? <p role="alert" className="mt-2 text-sm text-red-700">{previewErrorText}</p> : null}</section>
               {view.permissions.canCreateBasis && view.basisInput ? (
                 <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-semibold">Neue Basis</h2><p className="mt-1 text-base leading-6 text-slate-600">Kopiert eine ausdrücklich geprüfte Projekt-/Kataloggrundlage in eine neue Variante. Es wird keine Steuerwahl aus der aktiven Variante übernommen.</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><div><label htmlFor="basis-name" className="text-xs font-semibold">Variantenname</label><input id="basis-name" value={basisName} aria-invalid={invalidFields.has("basis-name") || undefined} aria-describedby={errorDescription("basis-name")} onChange={(event) => setBasisName(event.target.value)} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError("basis-name")}</div><div><label htmlFor="basis-tax" className="text-xs font-semibold">Steuerentwurf</label><select id="basis-tax" value={basisTaxTreatment} aria-invalid={invalidFields.has("basis-tax") || undefined} aria-describedby={errorDescription("basis-tax")} onChange={(event) => { setBasisTaxTreatment(event.target.value as "" | "standard_19" | "zero_operator_confirmed"); setZeroTaxConfirmed(false); }} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"><option value="">Bitte ausdrücklich auswählen</option><option value="standard_19">19 % USt.</option><option value="zero_operator_confirmed">0 % USt. bewusst bestätigen</option></select>{fieldError("basis-tax")}</div></div><p className="mt-2 text-base leading-6 text-slate-600">Bei 0 % ist „0-%-Steuerentwurf für diese neue Basis bestätigen“ zusätzlich erforderlich.</p>{basisTaxTreatment === "zero_operator_confirmed" ? <label className="mt-3 flex min-h-11 items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 text-base leading-6"><input id="basis-zero-confirmation" type="checkbox" checked={zeroTaxConfirmed} aria-invalid={invalidFields.has("basis-zero-confirmation") || undefined} aria-describedby={errorDescription("basis-zero-confirmation")} onChange={(event) => setZeroTaxConfirmed(event.target.checked)} className="size-5 accent-emerald-700" /> 0-%-Steuerentwurf für diese neue Basis bestätigen</label> : null}{fieldError("basis-zero-confirmation")}<button type="button" disabled={mutationDisabled} onClick={() => requestIntent({ label: "Neue Basis", execute: createNewBasis })} className="mt-3 min-h-11 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2">Neue Basis anlegen</button></section>
               ) : null}
@@ -1179,6 +1220,34 @@ export function OfferVariantEditor({
           >
             {afterEditor}
           </OfferDirtyNavigationProvider>
+        ) : null}
+
+        {previewOpen ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="PDF-Vorschau"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setPreviewOpen(false);
+            }}
+          >
+            <div className="flex h-full max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-white shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                <h2 className="font-semibold">PDF-Vorschau (gespeicherter Stand, unverbindlich)</h2>
+                <button type="button" autoFocus onClick={() => setPreviewOpen(false)} className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">Schließen</button>
+              </div>
+              <div className="min-h-0 flex-1 p-4">
+                {previewState.status === "success" ? (
+                  <iframe title="PDF-Vorschau" srcDoc={previewState.html} sandbox="" className="h-full min-h-[60vh] w-full rounded border border-slate-200 bg-white" />
+                ) : previewState.status === "pending" ? (
+                  <p className="text-sm text-slate-600">Vorschau wird gerendert …</p>
+                ) : (
+                  <p role="alert" className="text-sm text-red-700">{previewStatusText(previewState) ?? "Vorschau derzeit nicht verfügbar."}</p>
+                )}
+              </div>
+            </div>
+          </div>
         ) : null}
 
         <DirtyNavigationDialog
