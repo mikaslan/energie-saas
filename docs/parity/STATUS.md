@@ -142,6 +142,23 @@ WMEE; Push-/Deploy-Regeln unverändert.
   E2E F1.8 2/2, Secret-Scan.
 - Mikail: keine weiteren Localhost-Demos (Demo-Job gestoppt).
 
+## 2026-09-04 — F9.1 Zeiterfassung REVIEWED/VERIFIED (lokal)
+
+- F9.1 Zeiterfassung (0050): Lane `codex/f9-01-time-tracking`, integriert
+  in `codex/m1-wave-02` (`1c8a8ba`, gepusht). Ereignistyp-CRUD (OBSERVED:
+  name/position/textColor/backgroundColor/archivedAt), manuelle
+  Zeiteinträge am Projekt (startAt/endAt/workingTimeMinutes/
+  breakDurationMinutes/comment), Summe aktiver Einträge, Rechte
+  time.read/time.write, RLS M1-CRM-Muster, Einstellungen/Ereignistypen +
+  Projekt-Zeiterfassung (datetime-local mit TZ-Offset), 2 E2E.
+- Kimi-K3: NACHBESSERUNG (P1-1 Action-Namen, P1-2 Zeitzonen-Round-Trip,
+  P2-1..P2-3, P3-1..P3-5) — alle geschlossen; E2E prüft gerenderte
+  Uhrzeit + Typ-Archivierung.
+- Nachweise: check 198 Dateien/1903 Tests + 1 Skipped, Build,
+  db:generate ohne Drift, E2E F9.1 2/2.
+- Infrastruktur: wave-02-node_modules war durch einen Selbst-Symlink
+  korrumpiert → npm install repariert; Gate erneut grün.
+
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
 
 - **M1-11b Cannot Fulfil** (Rebuild, Lizenz-Modus): REVIEWED/VERIFIED (lokal).
