@@ -350,4 +350,7 @@
 - Lokal grün: eslint (0 Errors), typecheck, depcruise, generate
   (no drift), catalog-contract-check, E2E --list. DB-/E2E-Ausführung
   nur Maschine/CI (Billing-Block Q6 unverändert).
-- Nächster Schritt: Slice C pushen, CI-Lage lesen, nächste Capability.
+- Push `25ab372` via ECC_SKIP_PREPUSH=1 (Turn-1-DECIDED). CI-Run
+  33929442145: failure nach 4 s ohne Steps/Logs = Billing-Block Q6,
+  kein Codebefund.
+- Nächster Schritt: nächste F1–F16-Capability nach Modulkatalog.
