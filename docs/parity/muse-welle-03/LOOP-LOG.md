@@ -189,3 +189,27 @@
 - Lokal grün: eslint, typecheck, depcruise, playwright --list.
   DB-/E2E-Ausführung nur Maschine/CI (RUNTIME-BLOCK Sandbox).
 - Nächster Schritt: Slice D committen + pushen, dann F9.4-C-Spec (GPS).
+
+## Turn 13 — 2026-09-04, F9.4 Slice C implementiert (GPS am Start-Event)
+
+- SPEC `docs/spec/F9-04-zeiterfassung-gps.md` (Consent-Konzept DECIDED:
+  Opt-in pro Start, Fail-open ohne Koordinaten, nur Start-Event).
+  Reviews Exit-3 (kein Key, Q1 aktiv).
+- Migration 0058 (start_lat/start_lng double + CHECKs beide-oder-keiner
+  auf entry + revision; 0058 war global frei; Journal-Diff minimal;
+  Zähler 57→58). Keine Vertragsänderung (Spalten sind pin-neutral —
+  verifiziert: kein Column-Inventar im Vertrag).
+- Contract: Start-Command mit Beide-oder-keiner-Refine (eigener
+  WithGps-Schema, Basis unverändert), DTOs um startLat/startLng.
+- Service: Start-Insert mit Koordinaten; Update-CTE kopiert sie ins
+  Vollbild; alle SELECTs/RETURNINGs erweitert. Action parseGps
+  (crafted Files/halbe Paare => invalid, leer => NULL).
+- UI: StartForm (Checkbox ohne Feldname, Klick-Handler statt
+  Submit-Intercept — kein Loop; Timeout 10 s; Fehler => Start ohne
+  Koordinaten), Standort-Zeile „lat, lng" (4 Dezimalen).
+- Tests: `tests/db/f904c-time-entry-gps.test.ts` (3 Fälle),
+  `tests/e2e/f9-04c-…spec.ts` (E2E-04, eigenes f94c-Projekt,
+  Geolocation-Mock, beide Consent-Pfade, Timer aufgeräumt).
+- Lokal grün: eslint, typecheck, depcruise, db:generate (no drift),
+  playwright --list. DB-/E2E-Ausführung nur Maschine/CI.
+- Nächster Schritt: Slice C pushen, CI-Lage lesen, dann F10.2-Spec.
