@@ -234,14 +234,25 @@ describe("F10.1 portal invite service", () => {
       }),
     );
     // Mit Actor (RLS passiert), damit exakt der Guard-Trigger prueft.
-    await expect(withAuthorizedTenantOn(
-      testPool, fixture.editorId, fixture.workspaceId,
-      async (tx) => {
-        await tx.execute(sql`
-          update public.portal_invite set withdraw_reason = 'user_request'
-           where workspace_id = ${fixture.workspaceId}::uuid and id = ${created.inviteId}::uuid
-        `);
-      },
-    )).rejects.toThrow(/terminaler Zustand ist immutable/);
+    // Drizzle wrapt Postgres-Fehler in DrizzleQueryError — die eigentliche
+    // Fehlermeldung steckt in .cause, nicht in .message (Muster tests/db/
+    // events.test.ts, empirisch verifiziert).
+    let caught: unknown;
+    try {
+      await withAuthorizedTenantOn(
+        testPool, fixture.editorId, fixture.workspaceId,
+        async (tx) => {
+          await tx.execute(sql`
+            update public.portal_invite set withdraw_reason = 'user_request'
+             where workspace_id = ${fixture.workspaceId}::uuid and id = ${created.inviteId}::uuid
+          `);
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const cause = (caught as { cause?: unknown }).cause;
+    expect(String(cause)).toMatch(/terminaler Zustand ist immutable/);
   });
 });

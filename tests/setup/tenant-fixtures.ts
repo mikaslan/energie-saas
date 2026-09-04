@@ -2123,6 +2123,39 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   site: async (tx, wsId) => {
     await tx.execute(sql`insert into site (workspace_id, city) values (${wsId}::uuid, 'fixture')`);
   },
+  // F10.1 Kundenportal: Invite braucht Editor-Actor (Create-Guard), Projekt-
+  // Bindung und 32-Byte-Token-Hash; View-Log haengt am Invite (FK).
+  portal_invite: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    await tx.execute(sql`
+      insert into portal_invite (
+        id, workspace_id, project_id, token_hash, expires_at, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, ${projectId}::uuid,
+        decode(md5(random()::text) || md5(random()::text), 'hex'), now() + interval '14 days', ${userId}::uuid
+      )
+    `);
+  },
+  portal_view_log: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const inviteId = randomUUID();
+    await tx.execute(sql`
+      insert into portal_invite (
+        id, workspace_id, project_id, token_hash, expires_at, created_by
+      ) values (
+        ${inviteId}::uuid, ${wsId}::uuid, ${projectId}::uuid,
+        decode(md5(random()::text) || md5(random()::text), 'hex'), now() + interval '14 days', ${userId}::uuid
+      )
+    `);
+    await tx.execute(sql`
+      insert into portal_view_log (workspace_id, portal_invite_id)
+      values (${wsId}::uuid, ${inviteId}::uuid)
+    `);
+  },
   project: async (tx, wsId) => {
     await fixtureProjectGraph(tx, wsId);
   },
@@ -2403,6 +2436,22 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
       values (${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid)
     `);
   },
+  // F10.1: Der BEFORE-Guard prueft den Actor VOR dem RLS-WITH-CHECK und
+  // wuerde mit 23514 statt "row-level security" ablehnen (vacuum-gruen).
+  // Guard aus, damit exakt die RLS-Schranke prueft (Muster project_task).
+  portal_invite: async (tx) => {
+    await tx.execute(sql`
+      alter table portal_invite disable trigger portal_invite_mutation_guard
+    `);
+    await tx.execute(sql`
+      insert into portal_invite (
+        id, workspace_id, project_id, token_hash, expires_at, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        decode(md5(random()::text) || md5(random()::text), 'hex'), now() + interval '14 days', ${randomUUID()}::uuid
+      )
+    `);
+  },
   project: async (tx) => {
     await tx.execute(sql`
       insert into project (
@@ -2637,6 +2686,12 @@ export const TENANT_EXEMPT = new Set<string>([
   // app.workspace_id gesetzt werden kann. Zugriff ausschließlich über die
   // SECURITY-DEFINER-Kapseln in drizzle/0044 (Muster erasure_operation_locator).
   "signature_token_locator",
+  // RLS-FREIER Token-Locator des öffentlichen Kundenportal-Links (F10.1).
+  // Baugleich M2-04: workspace_id nur für FK-Integrität, Token-Hash muss
+  // cross-tenant auflösbar sein, BEVOR app.workspace_id existiert. Zugriff
+  // ausschließlich über SECURITY-DEFINER-Kapseln (resolve_portal_public_view,
+  // Portal-Erzeugung) in drizzle/0056.
+  "portal_token_locator",
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════

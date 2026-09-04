@@ -31,7 +31,10 @@ const PRE_M111A_MIGRATION_INDEX = 38;
 const M111A_MIGRATION_INDEX = 39;
 // Integrierte Kette: … → M2-04 (0044) → M3-00 (0045) → M3-01 (0046) →
 // F4.6 (0047) → v5-Leadquelle (0048); Gesamtbestand: 49 Migrationen (idx 0..48).
-const TOTAL_MIGRATION_COUNT = 55;
+// Lane-Stand (codex/f10-portal-skeleton): wave-02-Bestand (55) + F10.1 (0056)
+// = 56. 0055 ist hier NICHT enthalten (F2.2-Parallel-Lane); bei Integration
+// in wave-02 rueckt F10.1 auf 57 und dieser Wert wird auf 57 angehoben.
+const TOTAL_MIGRATION_COUNT = 56;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 

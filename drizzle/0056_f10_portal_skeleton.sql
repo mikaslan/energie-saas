@@ -663,6 +663,80 @@ END
 $f1001_public_acl$;--> statement-breakpoint
 
 -- ═══════════════════════════════════════════════════════════════════════
+-- F10.1: Owner-Tanz resolve_portal_public_view (NUR Ein-Rollen-Testmodus).
+-- Der oeffentliche Token-Pfad ist actorlos; die RESTRICTIVE-Actor-Policies
+-- lassen ihn ausschliesslich fuer CURRENT_USER = 'app_owner' bei leerem
+-- Actor durch (Muster m110/m113). In Strict laeuft die Migration bereits
+-- als app_owner und die Funktion gehoert ihr von Geburt an — dort tut
+-- dieser Block nichts. In test-legacy-single gehoert sie dagegen der
+-- Migrationsrolle (app_test) und der Escape-Hatch kann nie greifen: jeder
+-- Resolve wuerde als 'not_found' enden (nachgemessen: Locator-Fund ok,
+-- RLS-Filter macht die Invite-Zeile unsichtbar). Deshalb hier exakt das
+-- Muster aus drizzle/0015 (identity_reconciler): Rolle anlegen (idempotent),
+-- kurz SET-Recht, OWNER TO, Rechte als neuer Eigentuemer, Fenster zu.
+-- Zusaetzlich bekommt app_owner die Tabellen-Grants, die sie in Strict als
+-- Tabellen-Eigentuemerin implizit haette.
+-- ═══════════════════════════════════════════════════════════════════════
+DO $f1001_owner_dance$
+DECLARE
+  v_app name := current_user;
+BEGIN
+  IF v_app <> 'app_owner' THEN
+    IF pg_catalog.to_regrole('app_owner') IS NULL THEN
+      CREATE ROLE app_owner nologin noinherit nosuperuser nobypassrls
+        nocreatedb nocreaterole noreplication;
+    END IF;
+    EXECUTE pg_catalog.format(
+      'GRANT app_owner TO %I WITH inherit false, set true', v_app
+    );
+    GRANT CREATE ON SCHEMA public TO app_owner;
+    ALTER FUNCTION public.resolve_portal_public_view(bytea) OWNER TO app_owner;
+    REVOKE CREATE ON SCHEMA public FROM app_owner;
+    SET ROLE app_owner;
+    REVOKE EXECUTE ON FUNCTION public.resolve_portal_public_view(bytea)
+      FROM PUBLIC;
+    EXECUTE pg_catalog.format(
+      'GRANT EXECUTE ON FUNCTION public.resolve_portal_public_view(bytea) TO %I',
+      v_app
+    );
+    RESET ROLE;
+    EXECUTE pg_catalog.format(
+      'GRANT app_owner TO %I WITH inherit false, set false', v_app
+    );
+    GRANT SELECT ON public.portal_token_locator TO app_owner;
+    GRANT SELECT, UPDATE ON public.portal_invite TO app_owner;
+    GRANT SELECT, INSERT ON public.portal_view_log TO app_owner;
+    -- Weitere Relationen, die der actorlose Resolver als Definer-Owner
+    -- anfassen muss (in Strict implizit ueber Tabellen-Ownership):
+    -- Projektion, Dok-Filter und System-Events.
+    GRANT SELECT ON public.project TO app_owner;
+    -- Die RESTRICTIVE-Policy project_external_select_scope (0037) referenziert
+    -- project_assignment und die External-Helfer; ohne SELECT/EXECUTE scheitert
+    -- bereits die Policy-Auswertung (42501), bevor der Escape-Hatch greift.
+    GRANT SELECT ON public.project_assignment TO app_owner;
+    GRANT EXECUTE ON FUNCTION
+      public.app_actor_is_external_only(uuid),
+      public.app_actor_membership_id(uuid)
+      TO app_owner;
+    GRANT INSERT ON public.domain_events TO app_owner;
+    GRANT SELECT ON public.offer_issuance,
+      public.offer_issuance_approval,
+      public.offer_issuance_withdrawal
+      TO app_owner;
+    -- Die RESTRICTIVE-Actor-Policies evaluieren die Helfer als die
+    -- abfragende Rolle (hier: app_owner als Definer-Owner). Ohne EXECUTE
+    -- scheitert schon die Policy-Auswertung (42501), bevor der
+    -- app_owner-Escape-Hatch greifen kann.
+    GRANT EXECUTE ON FUNCTION
+      public._f1001_actor_portal_role(uuid),
+      public._f1001_actor_can_read_portal(uuid),
+      public._f1001_actor_can_write_portal(uuid)
+      TO app_owner;
+  END IF;
+END
+$f1001_owner_dance$;--> statement-breakpoint
+
+-- ═══════════════════════════════════════════════════════════════════════
 -- F10.1 ROLLBACK-DOKUMENTATION (Repo-Konvention: forward-only, keine
 -- Down-Migrationen; Umkehrung bei Bedarf manuell in dieser Reihenfolge):
 --   DROP FUNCTION public.resolve_portal_public_view(bytea);
