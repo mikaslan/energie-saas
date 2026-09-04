@@ -168,6 +168,7 @@ auftreten; bei jedem neuen Slice arbeitest du diese Liste aktiv ab:
 - Dein Loop: **push → CI-Ergebnis lesen → fixen → wieder pushen**,
   bis der Gates-Job grün ist. KEIN Warten auf Mikail für Gate-Läufe;
   Mikail integriert nur noch nach Grün in `codex/m1-wave-02`.
+- **Repo ist seit 2026-09-05 wieder PUBLIC** (Mikail umgestellt): unlimitierte kostenlose CI-Minuten, CI laeuft wieder. Ergebnis lesen bevorzugt per API: `curl -s "https://api.github.com/repos/mikaslan/energie-saas/actions/runs?branch=<lane>&per_page=3" | grep -E '"display_title"|"status"|"conclusion"'` (gh-CLI als Fallback). Reine Doku-/State-Commits (docs/**, *.md) loesen durch paths-ignore KEINE Gate-Laeufe aus — fuer Code-Commits gilt der Loop unveraendert.
 - Ergebnis lesen (gh-CLI falls vorhanden):
   `gh run list --branch <deine-lane>` und
   `gh run view <run-id> --log-failed`.
