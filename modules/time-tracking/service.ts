@@ -9,6 +9,8 @@ import {
   TIME_TRACKING_SCHEMA_VERSION,
   createTimeEntryCommandSchema,
   createTimeEventTypeCommandSchema,
+  startTimeEntryCommandSchema,
+  stopTimeEntryCommandSchema,
   timeEntryDtoSchema,
   timeEntryListDtoSchema,
   timeEventTypeDtoSchema,
@@ -16,6 +18,8 @@ import {
   updateTimeEventTypeCommandSchema,
   type CreateTimeEntryCommand,
   type CreateTimeEventTypeCommand,
+  type StartTimeEntryCommand,
+  type StopTimeEntryCommand,
   type TimeEntryDto,
   type TimeEntryListDto,
   type TimeEventTypeDto,
@@ -292,8 +296,8 @@ type TimeEntryRow = {
   project_id: string;
   type_id: string | null;
   start_at: string;
-  end_at: string;
-  working_time_minutes: number;
+  end_at: string | null;
+  working_time_minutes: number | null;
   break_duration_minutes: number;
   comment: string | null;
   archived_at: string | null;
@@ -311,6 +315,7 @@ function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
     startAt: row.start_at,
     endAt: row.end_at,
     workingTimeMinutes: row.working_time_minutes,
+    running: row.end_at === null && row.archived_at === null,
     breakDurationMinutes: row.break_duration_minutes,
     comment: row.comment,
     archivedAt: row.archived_at,
@@ -338,16 +343,19 @@ export async function listTimeEntries(
     select id, user_id, project_id, type_id, start_at, end_at,
            working_time_minutes, break_duration_minutes, comment, archived_at,
            created_at, updated_at,
+           -- "total" = SUMME der Arbeitsminuten gestoppter Einträge
+           -- (nicht Zeilenzahl; laufende Einträge zählen bewusst nicht).
            (select coalesce(sum(working_time_minutes), 0)::text
               from time_entry total_entries
              where total_entries.workspace_id = ${ctx.workspaceId}::uuid
                and total_entries.project_id = ${query.projectId}::uuid
-               and total_entries.archived_at is null) as total
+               and total_entries.archived_at is null
+               and total_entries.end_at is not null) as total
       from time_entry
      where workspace_id = ${ctx.workspaceId}::uuid
        and project_id = ${query.projectId}::uuid
        ${includeArchived ? sql`` : sql`and archived_at is null`}
-     order by start_at desc, id asc
+     order by (end_at is null) desc, start_at desc, id asc
   `);
   const canWrite = can(ctx, "time.write");
   const entries = result.rows.map((row) => toTimeEntryDto(row, canWrite));
@@ -476,6 +484,7 @@ export async function archiveTimeEntry(
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${id}::uuid
        and archived_at is null
+       and end_at is not null
      returning id, user_id, project_id, type_id, start_at, end_at,
                working_time_minutes, break_duration_minutes, comment,
                archived_at, created_at, updated_at
@@ -489,6 +498,9 @@ export async function archiveTimeEntry(
      limit 1
     `);
     if (!current.rows[0]) throw new TimeTrackingNotFoundError("time_entry", id);
+    // Kimi-P1-1: laufende Einträge sind NICHT archivierbar — sonst belegt
+    // der versteckte Eintrag weiterhin den partiellen Unique (Deadlock).
+    if (current.rows[0].end_at === null) throw new TimeTrackingNotFoundError("time_entry", id);
     return toTimeEntryDto(current.rows[0], true);
   }
 
@@ -503,4 +515,142 @@ export async function archiveTimeEntry(
   await writeAuditFor(tx, ctx, "time.entry.archive", { id });
 
   return toTimeEntryDto(row, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F9.2 Stoppuhr: laufender Eintrag je Nutzer (Spec §2)
+// ═══════════════════════════════════════════════════════════════════════
+
+export async function startTimeEntry(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: StartTimeEntryCommand,
+): Promise<TimeEntryDto> {
+  requireWrite(ctx);
+  const parsed = startTimeEntryCommandSchema.safeParse(input);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const command = parsed.data;
+
+  const projectExists = await tx.execute<{ id: string }>(sql`
+    select id from project
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${command.projectId}::uuid
+     limit 1
+  `);
+  if (!projectExists.rows[0]) throw new TimeTrackingNotFoundError("project", command.projectId);
+
+  let row: TimeEntryRow;
+  try {
+    const inserted = await tx.execute<TimeEntryRow>(sql`
+      insert into time_entry (
+        workspace_id, user_id, project_id, type_id, start_at, comment, created_by
+      ) values (
+        ${ctx.workspaceId}::uuid,
+        ${ctx.actor}::uuid,
+        ${command.projectId}::uuid,
+        ${command.typeId ?? null}::uuid,
+        statement_timestamp(),
+        ${command.comment},
+        ${ctx.actor}::uuid
+      )
+      returning id, user_id, project_id, type_id, start_at, end_at,
+                working_time_minutes, break_duration_minutes, comment,
+                archived_at, created_at, updated_at
+    `);
+    row = inserted.rows[0]!;
+  } catch (error) {
+    const code = postgresErrorCode(error);
+    // 23505 = partieller Unique (bereits laufender Eintrag des Actors).
+    if (code === "23505") throw new TimeTrackingConflictError("running entry exists");
+    if (code === "23503" || code === "23514") throw new TimeTrackingValidationError();
+    throw error;
+  }
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "time_entry",
+    aggregateId: row.id,
+    eventType: "time_entry.started",
+    actor: ctx.actor,
+    payload: { projectId: command.projectId },
+  });
+  await writeAuditFor(tx, ctx, "time.entry.start", { id: row.id, projectId: command.projectId });
+
+  return toTimeEntryDto(row, true);
+}
+
+export async function stopTimeEntry(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: StopTimeEntryCommand,
+): Promise<TimeEntryDto> {
+  requireWrite(ctx);
+  const parsed = stopTimeEntryCommandSchema.safeParse(input);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const command = parsed.data;
+
+  const updated = await tx.execute<TimeEntryRow>(sql`
+    update time_entry
+       set end_at = statement_timestamp(),
+           working_time_minutes = ${command.workingTimeMinutes},
+           break_duration_minutes = ${command.breakDurationMinutes},
+           comment = coalesce(${command.comment}, comment),
+           updated_by = ${ctx.actor}::uuid,
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${command.id}::uuid
+       and user_id = ${ctx.actor}::uuid
+       and end_at is null
+     returning id, user_id, project_id, type_id, start_at, end_at,
+               working_time_minutes, break_duration_minutes, comment,
+               archived_at, created_at, updated_at
+  `);
+  const row = updated.rows[0];
+  if (!row) throw new TimeTrackingNotFoundError("time_entry", command.id);
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "time_entry",
+    aggregateId: command.id,
+    eventType: "time_entry.stopped",
+    actor: ctx.actor,
+    payload: { workingTimeMinutes: command.workingTimeMinutes },
+  });
+  await writeAuditFor(tx, ctx, "time.entry.stop", {
+    id: command.id,
+    workingTimeMinutes: command.workingTimeMinutes,
+  });
+
+  return toTimeEntryDto(row, true);
+}
+
+// Laufenden Eintrag verwerfen (Hard-Delete — DSGVO-konform, da noch keine
+// Inhalts-/Zeitdaten erfasst wurden; nur der eigene Eintrag).
+export async function discardTimeEntry(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  id: string,
+): Promise<void> {
+  requireWrite(ctx);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(id)) {
+    throw new TimeTrackingValidationError();
+  }
+  const deleted = await tx.execute(sql`
+    delete from time_entry
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${id}::uuid
+       and user_id = ${ctx.actor}::uuid
+       and end_at is null
+     returning id
+  `);
+  if (!deleted.rows[0]) throw new TimeTrackingNotFoundError("time_entry", id);
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "time_entry",
+    aggregateId: id,
+    eventType: "time_entry.discarded",
+    actor: ctx.actor,
+    payload: {},
+  });
+  await writeAuditFor(tx, ctx, "time.entry.discard", { id });
 }

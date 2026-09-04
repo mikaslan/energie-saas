@@ -14,6 +14,7 @@ import {
 import {
   archiveTimeEntry,
   createTimeEntry,
+  TimeTrackingConflictError,
   TimeTrackingNotFoundError,
   TimeTrackingValidationError,
   updateTimeEntry,
@@ -25,6 +26,7 @@ const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
 export type TimeEntryActionState =
   | { status: "idle" }
   | { status: "success"; message: string }
+  | { status: "conflict" }
   | { status: "invalid"; message?: string }
   | { status: "not_found" }
   | { status: "denied" }
@@ -178,6 +180,102 @@ export async function archiveTimeEntryAction(
     );
     revalidate(workspace, projectId);
     return { status: "success", message: "Zeiteintrag archiviert." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F9.2 Stoppuhr-Actions
+import {
+  discardTimeEntry,
+  startTimeEntry,
+  stopTimeEntry,
+} from "@/modules/time-tracking";
+
+export async function startTimeEntryAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const typeValue = formData.get("typeId");
+  const typeId = typeValue && typeof typeValue === "string" && typeValue !== ""
+    ? parseId(formData, "typeId")
+    : null;
+  const commentValue = formData.get("comment");
+  const comment = parseComment(commentValue);
+  if (commentValue && typeof commentValue === "string" && commentValue.trim() !== "" && comment === null) {
+    return { status: "invalid" };
+  }
+  if (!workspace || !projectId) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      startTimeEntry(tx, ctx, {
+        schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+        projectId,
+        typeId,
+        comment,
+      }),
+    );
+    revalidate(workspace, projectId);
+    return { status: "success", message: "Stoppuhr gestartet." };
+  } catch (error) {
+    if (error instanceof TimeTrackingConflictError) {
+      return { status: "conflict" };
+    }
+    return mapError(error);
+  }
+}
+
+export async function stopTimeEntryAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const id = parseId(formData, "id");
+  const workingTimeMinutes = parseMinutes(formData.get("workingTimeMinutes"));
+  const breakDurationMinutes = parseMinutes(formData.get("breakDurationMinutes"));
+  const commentValue = formData.get("comment");
+  const comment = parseComment(commentValue);
+  if (
+    !workspace || !projectId || !id
+    || workingTimeMinutes === null || workingTimeMinutes < 1
+    || breakDurationMinutes === null || breakDurationMinutes > workingTimeMinutes
+  ) {
+    return { status: "invalid" };
+  }
+  try {
+    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      stopTimeEntry(tx, ctx, {
+        schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+        id,
+        workingTimeMinutes,
+        breakDurationMinutes,
+        comment,
+      }),
+    );
+    revalidate(workspace, projectId);
+    return { status: "success", message: "Stoppuhr gestoppt." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function discardTimeEntryAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const id = parseId(formData, "id");
+  if (!workspace || !projectId || !id) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      discardTimeEntry(tx, ctx, id),
+    );
+    revalidate(workspace, projectId);
+    return { status: "success", message: "Laufender Eintrag verworfen." };
   } catch (error) {
     return mapError(error);
   }

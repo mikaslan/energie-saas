@@ -63,8 +63,10 @@ export const timeEntryDtoSchema = z.object({
   projectId: z.string().uuid(),
   typeId: z.string().uuid().nullable(),
   startAt: z.string(),
-  endAt: z.string(),
-  workingTimeMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
+  // F9.2: laufende Einträge tragen endAt/workingTimeMinutes = null.
+  endAt: z.string().nullable(),
+  workingTimeMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX).nullable(),
+  running: z.boolean(),
   breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
   comment: z.string().nullable(),
   archivedAt: z.string().nullable(),
@@ -113,3 +115,33 @@ export const updateTimeEntryCommandSchema = z.object({
   fields: timeEntryUpsertFieldsSchema,
 });
 export type UpdateTimeEntryCommand = z.infer<typeof updateTimeEntryCommandSchema>;
+
+// F9.2 Stoppuhr-Commands
+export const startTimeEntryCommandSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  projectId: z.string().uuid(),
+  typeId: z.string().uuid().nullable(),
+  comment: z
+    .string()
+    .transform((v) => v.normalize("NFKC").trim())
+    .refine((v) => v.length <= TIME_COMMENT_MAX, { message: "comment zu lang" })
+    .refine((v) => !/[\p{Cc}\p{Cf}]/u.test(v), { message: "Steuerzeichen" })
+    .nullable(),
+});
+export type StartTimeEntryCommand = z.infer<typeof startTimeEntryCommandSchema>;
+
+export const stopTimeEntryCommandSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  id: z.string().uuid(),
+  workingTimeMinutes: z.number().int().min(1).max(TIME_MINUTES_MAX),
+  breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
+  comment: z
+    .string()
+    .transform((v) => v.normalize("NFKC").trim())
+    .refine((v) => v.length <= TIME_COMMENT_MAX, { message: "comment zu lang" })
+    .refine((v) => !/[\p{Cc}\p{Cf}]/u.test(v), { message: "Steuerzeichen" })
+    .nullable(),
+}).refine((v) => v.breakDurationMinutes <= v.workingTimeMinutes, {
+  message: "Pause darf die Arbeitszeit nicht überschreiten",
+});
+export type StopTimeEntryCommand = z.infer<typeof stopTimeEntryCommandSchema>;

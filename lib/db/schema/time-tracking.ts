@@ -56,8 +56,9 @@ export const timeEntry = pgTable(
     projectId: uuid("project_id").notNull(),
     typeId: uuid("type_id"),
     startAt: timestamp("start_at", { withTimezone: true }).notNull(),
-    endAt: timestamp("end_at", { withTimezone: true }).notNull(),
-    workingTimeMinutes: integer("working_time_minutes").notNull(),
+    // F9.2: laufende Einträge haben end_at = NULL + Minuten = NULL.
+    endAt: timestamp("end_at", { withTimezone: true }),
+    workingTimeMinutes: integer("working_time_minutes"),
     breakDurationMinutes: integer("break_duration_minutes").notNull().default(0),
     comment: text("comment"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -69,9 +70,14 @@ export const timeEntry = pgTable(
   (t) => [
     index("time_entry_ws_project_idx").on(t.workspaceId, t.projectId, t.startAt),
     unique("time_entry_ws_id_uq").on(t.workspaceId, t.id),
-    check("time_entry_interval_ck", sql`${t.endAt} >= ${t.startAt} and pg_catalog.isfinite(${t.startAt}) and pg_catalog.isfinite(${t.endAt})`),
-    check("time_entry_minutes_ck", sql`${t.workingTimeMinutes} between 0 and 1440`),
-    check("time_entry_break_ck", sql`${t.breakDurationMinutes} between 0 and 1440 and ${t.breakDurationMinutes} <= ${t.workingTimeMinutes}`),
+    check("time_entry_running_ck", sql`(${t.endAt} is null and ${t.workingTimeMinutes} is null) or (${t.endAt} is not null and ${t.workingTimeMinutes} is not null)`),
+    check("time_entry_interval_ck", sql`(${t.endAt} is null or ${t.endAt} >= ${t.startAt}) and pg_catalog.isfinite(${t.startAt}) and (${t.endAt} is null or pg_catalog.isfinite(${t.endAt}))`),
+    check("time_entry_minutes_ck", sql`${t.workingTimeMinutes} is null or ${t.workingTimeMinutes} between 0 and 1440`),
+    check("time_entry_break_ck", sql`${t.breakDurationMinutes} between 0 and 1440 and (${t.workingTimeMinutes} is null or ${t.breakDurationMinutes} <= ${t.workingTimeMinutes})`),
+    // F9.2: höchstens EIN laufender Eintrag je Nutzer je Workspace.
+    uniqueIndex("time_entry_ws_user_running_uq")
+      .on(t.workspaceId, t.userId)
+      .where(sql`${t.endAt} is null`),
     check("time_entry_comment_ck", sql`${t.comment} is null or (
       pg_catalog.length(${t.comment}) between 1 and 500
       and ${t.comment} = pg_catalog.btrim(${t.comment})

@@ -9,6 +9,9 @@ import type {
 import {
   archiveTimeEntryAction,
   createTimeEntryAction,
+  discardTimeEntryAction,
+  startTimeEntryAction,
+  stopTimeEntryAction,
   updateTimeEntryAction,
   type TimeEntryActionState,
 } from "./actions";
@@ -56,7 +59,11 @@ function toLocalInput(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function formatRange(startAt: string, endAt: string): string {
+function formatRange(startAt: string, endAt: string | null): string {
+  if (endAt === null) {
+    const start = new Date(startAt);
+    return `${start.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })} · läuft seit ${start.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr`;
+  }
   const start = new Date(startAt);
   const end = new Date(endAt);
   const date = start.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -64,7 +71,8 @@ function formatRange(startAt: string, endAt: string): string {
   return `${date} · ${time(start)}–${time(end)} Uhr`;
 }
 
-function formatDuration(minutes: number): string {
+function formatDuration(minutes: number | null): string {
+  if (minutes === null) return "läuft";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return h > 0 ? `${h} Std. ${m} Min.` : `${m} Min.`;
@@ -86,6 +94,9 @@ export function TimeEntryManager({
   const [createState, createDispatch] = useActionState(createTimeEntryAction, initialState);
   const [updateState, updateDispatch] = useActionState(updateTimeEntryAction, initialState);
   const [archiveState, archiveDispatch] = useActionState(archiveTimeEntryAction, initialState);
+  const [startState, startDispatch] = useActionState(startTimeEntryAction, initialState);
+  const [stopState, stopDispatch] = useActionState(stopTimeEntryAction, initialState);
+  const [discardState, discardDispatch] = useActionState(discardTimeEntryAction, initialState);
 
   // Kimi-P2-2: Anzeige löst gegen ALLE Typen auf (archivierte bleiben
   // historisch referenzierbar); Formular-Optionen nur AKTIVE Typen.
@@ -95,8 +106,86 @@ export function TimeEntryManager({
   const archivedTypeOf = (typeId: string | null) =>
     typeId !== null ? types.find((type) => type.id === typeId && type.archivedAt !== null) : undefined;
 
+  const runningEntry = list.entries.find((entry) => entry.running);
+
   return (
     <div className="space-y-6">
+      {canWrite && runningEntry ? (
+        <section className="min-w-0 rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm sm:p-6">
+          <h2 className="text-base font-semibold text-slate-950">Stoppuhr läuft</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-700">
+            {typeName(runningEntry.typeId) ?? "Ohne Ereignistyp"} ·{" "}
+            {formatRange(runningEntry.startAt, runningEntry.endAt)}
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <form action={stopDispatch} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="workspaceId" value={workspaceId} />
+              <input type="hidden" name="projectId" value={projectId} />
+              <input type="hidden" name="id" value={runningEntry.id} />
+              <label className="block text-sm font-semibold text-slate-800">
+                Arbeitszeit (Minuten)
+                <input
+                  type="number"
+                  name="workingTimeMinutes"
+                  min={1}
+                  max={1440}
+                  step={1}
+                  required
+                  className="mt-1 w-36 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-800">
+                Pause (Minuten)
+                <input
+                  type="number"
+                  name="breakDurationMinutes"
+                  min={0}
+                  max={1440}
+                  step={1}
+                  defaultValue={0}
+                  className="mt-1 w-36 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+                />
+              </label>
+              <button
+                type="submit"
+                className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+              >
+                Stoppen
+              </button>
+            </form>
+            <form action={discardDispatch}>
+              <input type="hidden" name="workspaceId" value={workspaceId} />
+              <input type="hidden" name="projectId" value={projectId} />
+              <input type="hidden" name="id" value={runningEntry.id} />
+              <button
+                type="submit"
+                className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+              >
+                Verwerfen
+              </button>
+            </form>
+          </div>
+        </section>
+      ) : canWrite ? (
+        <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-base font-semibold text-slate-950">Stoppuhr</h2>
+          <form action={startDispatch} className="mt-3">
+            <input type="hidden" name="workspaceId" value={workspaceId} />
+            <input type="hidden" name="projectId" value={projectId} />
+            <input type="hidden" name="typeId" value="" />
+            <input type="hidden" name="comment" value="" />
+            <button
+              type="submit"
+              className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+            >
+              Stoppuhr starten
+            </button>
+          </form>
+        </section>
+      ) : null}
+      {startState.status !== "idle" ? <Feedback state={startState} /> : null}
+      {stopState.status !== "idle" ? <Feedback state={stopState} /> : null}
+      {discardState.status !== "idle" ? <Feedback state={discardState} /> : null}
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-semibold text-slate-950">Zeiteinträge</h2>
@@ -118,8 +207,8 @@ export function TimeEntryManager({
                     {typeName(entry.typeId) ?? "Ohne Ereignistyp"}
                   </span>
                   <span className="block text-xs text-slate-500">
-                    {formatRange(entry.startAt, entry.endAt)} · {formatDuration(entry.workingTimeMinutes)}
-                    {entry.breakDurationMinutes > 0 ? ` · Pause ${formatDuration(entry.breakDurationMinutes)}` : ""}
+                    {formatRange(entry.startAt, entry.endAt)}
+                    {entry.running ? "" : ` · ${formatDuration(entry.workingTimeMinutes)}${entry.breakDurationMinutes > 0 ? ` · Pause ${formatDuration(entry.breakDurationMinutes)}` : ""}`}
                   </span>
                   {entry.comment ? (
                     <span className="block text-xs text-slate-500">{entry.comment}</span>
@@ -264,11 +353,11 @@ function EditForm({
       <input type="datetime-local" name="startAt" required defaultValue={toLocalInput(entry.startAt)}
         aria-label="Beginn"
         className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
-      <input type="datetime-local" name="endAt" required defaultValue={toLocalInput(entry.endAt)}
+      <input type="datetime-local" name="endAt" required defaultValue={entry.endAt !== null ? toLocalInput(entry.endAt) : ""}
         aria-label="Ende"
         className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
       <input type="number" name="workingTimeMinutes" min={0} max={1440} step={1} required
-        defaultValue={entry.workingTimeMinutes} aria-label="Arbeitszeit (Minuten)"
+        defaultValue={entry.workingTimeMinutes ?? ""} aria-label="Arbeitszeit (Minuten)"
         className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
       <input type="number" name="breakDurationMinutes" min={0} max={1440} step={1}
         defaultValue={entry.breakDurationMinutes} aria-label="Pause (Minuten)"

@@ -1342,7 +1342,10 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.time_event_type to app_runtime;
-      grant select, insert, update on public.time_entry to app_runtime
+      grant select, insert, update on public.time_entry to app_runtime;
+      -- F9.2: Verwerfen laufender Stoppuhr-Einträge = Hard-Delete
+      -- (M1-15-Muster: project_appointment trägt DELETE analog).
+      grant delete on public.time_entry to app_runtime
     `);
   }
 
@@ -4274,6 +4277,9 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
+      ...(hasTimeTracking ? [
+        "app_runtime:time_entry:DELETE:app_owner:false",
+      ] : []),
       ...(hasChecklists ? CHECKLIST_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
