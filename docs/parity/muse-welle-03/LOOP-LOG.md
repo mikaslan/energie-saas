@@ -388,3 +388,11 @@
   f1001-Portal (per Stash auf HEAD belegt vorbestehend).
 - Reviews weiter BLOCKED (kein OPENROUTER_API_KEY) — Exit-3-Pfad per GOAL.
 - Nächster Schritt: Slice D committen + pushen, CI lesen.
+
+## Turn 23b — Push + CI (F16.3-D)
+
+- Push `668fee3` auf `codex/muse-welle-03-e2e` (via ECC_SKIP_PREPUSH=1,
+  Turn-1-DECIDED). CI-Runs 33930671005/010: failure nach 4 s, beide Jobs
+  mit 0 Steps — identische Billing-Block-Signatur Q6, kein Codebefund.
+- Slice D damit IMPLEMENTED + lokal belegt, VERIFIED pending CI/Maschine.
+- Nächster Schritt: F16.3-E specen (Cap-Prozent).

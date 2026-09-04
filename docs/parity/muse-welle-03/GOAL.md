@@ -15,7 +15,7 @@ F16.3-D implementiert (Snapshot-v2, Fix-Modell, f1603d, E2E-04; lokal
 grün, Goldens belegt; DB-/E2E-Ausführung pending CI/Maschine —
 Billing-Block Q6). M2-04 als DONE pending CI verifiziert (Won per
 DEC-M204-08 NICHTZIEL).
-Nächstes: Slice D pushen + CI lesen, dann F16.3-E (Cap-Prozent).
+Nächstes: F16.3-E specen (Cap-Prozent). Slice D gepusht (668fee3), CI weiter Billing-blockiert (0 Steps).
 
 Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
 Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output
