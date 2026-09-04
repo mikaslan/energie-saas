@@ -26,7 +26,10 @@ export type ChecklistActionState =
   | { status: "conflict"; currentVersion?: number }
   | { status: "not_found" }
   | { status: "denied" }
-  | { status: "unauthenticated" };
+  | { status: "unauthenticated" }
+  // W3-Härtung (f7-02-Diagnose): unerwartete Fehler nie still `idle`
+  // lassen — sichtbarer Fehlerzustand, Details im Server-Log.
+  | { status: "error" };
 
 export async function saveProjectChecklistAction(
   _previous: ChecklistActionState,
@@ -83,7 +86,8 @@ export async function saveProjectChecklistAction(
     if (error instanceof ChecklistValidationError) return { status: "invalid" };
     if (error instanceof PermissionDeniedError) return { status: "denied" };
     if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
-    throw error;
+    console.error("[checkliste] saveProjectChecklistAction: unerwarteter Fehler", error);
+    return { status: "error" };
   }
 }
 
@@ -128,6 +132,7 @@ export async function applyTemplateAction(
     if (error instanceof ChecklistValidationError) return { status: "invalid" };
     if (error instanceof PermissionDeniedError) return { status: "denied" };
     if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
-    throw error;
+    console.error("[checkliste] applyTemplateAction: unerwarteter Fehler", error);
+    return { status: "error" };
   }
 }

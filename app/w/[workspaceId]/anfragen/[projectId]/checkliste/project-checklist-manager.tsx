@@ -25,6 +25,7 @@ function message(state: ChecklistActionState): { text: string; isError: boolean 
     case "not_found": return { text: "Die Projektakte wurde nicht gefunden.", isError: true };
     case "denied": return { text: "Dir fehlt die Berechtigung für diese Aktion.", isError: true };
     case "unauthenticated": return { text: "Deine Sitzung ist abgelaufen.", isError: true };
+    case "error": return { text: "Beim Speichern ist ein unerwarteter Fehler aufgetreten. Bitte erneut versuchen.", isError: true };
     default: return null;
   }
 }
