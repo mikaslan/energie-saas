@@ -3,7 +3,7 @@
 // falsch-grün. Der JSON-Reporter enthält dagegen zuverlässig success=false.
 // Dieser kleine Runner behält die normale Konsolenausgabe, liest zusätzlich
 // den maschinenlesbaren Abschluss und setzt den Prozessstatus selbst.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,6 +48,15 @@ try {
     (result.numFailedTests ?? 0) > 0 ||
     (result.numFailedTestSuites ?? 0) > 0;
 } finally {
+  try {
+    // CI-Observability (autonomer Loop): stabiler Pfad für das
+    // Artefakt-Upload; test-results/ ist git-ignoriert. Best effort —
+    // darf den Gate-Lauf nie kippen.
+    mkdirSync(join(repoRoot, "test-results"), { recursive: true });
+    copyFileSync(resultFile, join(repoRoot, "test-results", "vitest-result.json"));
+  } catch {
+    // Absichtlich still: der Exit-Status oben bleibt maßgeblich.
+  }
   rmSync(tempDir, { recursive: true, force: true });
 }
 

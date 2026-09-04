@@ -3,8 +3,10 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import {
   chmodSync,
   closeSync,
+  cpSync,
   fsyncSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
@@ -1192,11 +1194,18 @@ async function runPlaywright(
 ): Promise<number> {
   const args = ["test", "--config", resolve(REPO_ROOT, "playwright.config.ts")];
   if (grep) args.push("--grep", grep);
+  // JSON-Report zusätzlich zur Konsolenausgabe: maschinenlesbarer
+  // Abschluss für den CI-Artefakt-Upload (autonomer Loop). Die Datei
+  // landet im privaten Verzeichnis und wird nach dem Lauf weggeräumt.
+  args.push("--reporter", "line,json");
   const child = spawnTracked(
     resolve(REPO_ROOT, "node_modules/.bin/playwright"),
     args,
     {
-      env: playwrightEnvironment(statePath, outputPath, baseURL),
+      env: {
+        ...playwrightEnvironment(statePath, outputPath, baseURL),
+        PLAYWRIGHT_JSON_OUTPUT_NAME: join(outputPath, "results.json"),
+      },
       stdio: ["ignore", "inherit", "inherit"],
     },
   );
@@ -1708,6 +1717,14 @@ async function main(): Promise<number> {
     } catch {
       console.error("[e2e] Das sanitisierte Next-Diagnoseende war nicht lesbar.");
     }
+  }
+  try {
+    // CI-Observability (autonomer Loop): Playwright-Output stabil
+    // ablegen; test-results/ ist git-ignoriert. Best effort.
+    mkdirSync(join(REPO_ROOT, "test-results", "e2e"), { recursive: true });
+    cpSync(playwrightOutputPath, join(REPO_ROOT, "test-results", "e2e"), { recursive: true });
+  } catch {
+    // Absichtlich still: der Exit-Status oben bleibt maßgeblich.
   }
   const geoapifyExercised = geoapifyContractWasExercised(providerStub);
   const geoapifyUntouched = providerStub.violations.length === 0

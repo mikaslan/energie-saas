@@ -79,6 +79,14 @@ jobs:
           # in der Build-Phase) — siehe auth:generate-Script in package.json.
           BETTER_AUTH_SECRET: ci-build-platzhalter-kein-echtes-secret
 
+      - name: Testergebnisse als Artefakt (Loop-Observability)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-result
+          path: test-results/vitest-result.json
+          if-no-files-found: warn
+
   e2e:
     name: Chromium-E2E (bis F7-Fixes nicht blockierend)
     runs-on: ubuntu-latest
@@ -102,3 +110,11 @@ jobs:
         run: npm run test:e2e
         env:
           NODE_ENV: test
+
+      - name: Playwright-Ergebnisse als Artefakt (Loop-Observability)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: test-results/e2e/
+          if-no-files-found: warn
