@@ -6,8 +6,10 @@ import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type {
   TimeEntryListDto,
   TimeEventTypeDto,
+  TimeMemberOption,
 } from "@/lib/integrations/time-tracking/contract";
-import { listTimeEntries, listTimeEventTypes } from "@/modules/time-tracking";
+import { listTimeEntries, listTimeEventTypes, listTimeMemberOptions } from "@/modules/time-tracking";
+import { UserFilterForm } from "./user-filter-form";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { sql } from "drizzle-orm";
 import { DeniedState } from "../_ui";
@@ -22,15 +24,34 @@ const routeParamsSchema = z.object({
   projectId: z.uuid(),
 });
 
+// F9.3: userId als wiederholter oder komma-getrennter Query-Param; nur
+// wohlgeformte UUIDs (max 50) erreichen den Service (UI kann nichts anderes
+// erzeugen; Service-Validation bleibt authoritative).
+const filterParamsSchema = z.object({
+  userId: z.union([z.string(), z.array(z.string())]).optional(),
+});
+
+function parseUserFilter(raw: unknown): string[] {
+  const parsed = filterParamsSchema.safeParse(raw);
+  if (!parsed.success || parsed.data.userId === undefined) return [];
+  const values = Array.isArray(parsed.data.userId) ? parsed.data.userId : [parsed.data.userId];
+  const ids = values
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value) => z.uuid().safeParse(value).success);
+  return [...new Set(ids)].slice(0, 50);
+}
+
 export default async function ProjectTimeTrackingPage(
   props: PageProps<"/w/[workspaceId]/anfragen/[projectId]/zeiterfassung">,
 ) {
   const params = routeParamsSchema.safeParse(await props.params);
   if (!params.success) notFound();
   const { workspaceId, projectId } = params.data;
+  const selectedUserIds = parseUserFilter(await props.searchParams);
 
   let result:
-    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; canWrite: boolean }
+    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; selectedUserIds: string[]; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -43,7 +64,7 @@ export default async function ProjectTimeTrackingPage(
         // Projekt-Lookup wuerde zuvor durch die restriktive M1-09-Policy
         // (project_external_select_scope) leer laufen und faelschlich die
         // 404-Projektseite rendern.
-        const list = await listTimeEntries(tx, ctx, { projectId });
+        const list = await listTimeEntries(tx, ctx, { projectId, userIds: selectedUserIds });
         const projectRow = await tx.execute<{ name: string }>(sql`
           select name from project
            where workspace_id = ${ctx.workspaceId}::uuid
@@ -57,6 +78,8 @@ export default async function ProjectTimeTrackingPage(
           projectName: projectRow.rows[0].name,
           list,
           types: await listTimeEventTypes(tx, ctx, { includeArchived: true }),
+          members: await listTimeMemberOptions(tx, ctx),
+          selectedUserIds,
           canWrite: can(ctx, "time.write"),
         };
       },
@@ -86,6 +109,12 @@ export default async function ProjectTimeTrackingPage(
           Arbeitszeiten am Projekt „{result.projectName}“.
         </p>
       </div>
+
+      <UserFilterForm
+        members={result.members}
+        selectedUserIds={result.selectedUserIds}
+        resetHref={`/w/${workspaceId}/anfragen/${projectId}/zeiterfassung`}
+      />
 
       <TimeEntryManager
         workspaceId={workspaceId}
