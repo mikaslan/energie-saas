@@ -28,7 +28,13 @@ Muse holt sie sich selbst per Git (siehe Teil B).
    `git rev-parse origin/codex/m1-wave-02` → muss `194fb3e…` ergeben.
    Fehlt der Branch: origin-URL prüfen
    (`git remote -v` muss `github.com/mikaslan/energie-saas.git` zeigen).
-3. Handover-Doku in den Vault spiegeln:
+3. Handover-Doku prüfen (Vault ist seit 2026-09-04 synchron):
+   ```
+   ls "/Users/mikailaslan/Documents/ASLAN FINAL/20-Bereiche/D-Wmee/Rechner/Reonic Clone Final/05-Handover-Mac-Studio.md"
+   ls "/Users/mikailaslan/Documents/ASLAN FINAL/20-Bereiche/D-Wmee/Rechner/Reonic Clone Final/30-Prompts/03-Go-Prompt.md"
+   ```
+   Beide müssen existieren. FEHLT etwas (Sync-Lücke): Doku per Git
+   nachziehen —
    ```
    git fetch origin tooling
    git show origin/tooling:docs/handover/05-Handover-Mac-Studio.md > /tmp/05-Handover-Mac-Studio.md
