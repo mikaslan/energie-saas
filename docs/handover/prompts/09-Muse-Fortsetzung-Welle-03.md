@@ -119,10 +119,14 @@ auftreten; bei jedem neuen Slice arbeitest du diese Liste aktiv ab:
   und verwende **`deepseek/deepseek-chat`** (oder die aktuell beste
   verfügbare `deepseek/…`-ID — die verwendete ID exakt im Review-Dokument
   festhalten).
-- Umsetzung: `scripts/kimi-review.mts` nach
+- Umsetzung: `scripts/kimi-review.mts` liegt NICHT auf `codex/m1-wave-02`,
+  sondern auf `origin/tooling`. Einmalig holen:
+  `git show origin/tooling:scripts/kimi-review.mts > scripts/kimi-review.mts`
+  (ebenso `scripts/kimi-review-bundle.sh`). Dann nach
   `scripts/deepseek-review.mts` kopieren und NUR die Modell-Konstante
   tauschen; gleiche CLI (`npx tsx scripts/deepseek-review.mts <prompt.md>
-  <bundle.txt> <out.md>`). Key: `OPENROUTER_API_KEY` aus `.env.local` —
+  <bundle.txt> <out.md>`). Die Skripte sind dev-only — nicht committen.
+  Key: `OPENROUTER_API_KEY` aus `.env.local` —
   NIE ausgeben, NIE committen, NIE in Prompts/Docs kleben.
 - Prozess je Slice: Spec → Kimi-Review UND DeepSeek-Review → FREIGABE nur
   mit beiden Verdikten (bzw. dokumentierter Nachbesserung) → Code →
