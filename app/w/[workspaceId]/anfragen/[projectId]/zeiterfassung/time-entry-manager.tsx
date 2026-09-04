@@ -426,8 +426,8 @@ function StartForm({
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="typeId" value="" />
       <input type="hidden" name="comment" value="" />
-      <input ref={latRef} type="hidden" name="startLat" value="" />
-      <input ref={lngRef} type="hidden" name="startLng" value="" />
+      <input ref={latRef} type="hidden" name="startLat" defaultValue="" />
+      <input ref={lngRef} type="hidden" name="startLng" defaultValue="" />
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input
           type="checkbox"
