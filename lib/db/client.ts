@@ -38,6 +38,17 @@ export function getDb(): AppDb {
   return dbInstance;
 }
 
+// Token-Pfad (F10.1; Bedarf baugleich M2-04b): Singleton-Pool AUSSCHLIESSLICH
+// fuer SECURITY-DEFINER-Token-Kapseln (resolve_portal_public_view u.a.), die
+// ohne Mandantenkontext arbeiten und ihren Actor selbst verwerfen. Einziger
+// legaler Consumer ist lib/db/tenant.ts (runTokenCapsule); jeder andere
+// Import verstoesst gegen die Depcruise-Regel db-client-nur-ueber-tenant.
+// Direkte Tabellen-Queries ueber diesen Pool sind verboten: ohne gesetzte
+// app.workspace_id greift keine Tenant-Policy.
+export function getTokenPool(): Pool {
+  return getPool();
+}
+
 // Für Tests und geordnetes Herunterfahren: schließt den App-Pool, ohne einen
 // rohen Pool als Umgehungspfad an withTenant zu exportieren.
 export async function closeDb(): Promise<void> {

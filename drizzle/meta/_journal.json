@@ -386,6 +386,13 @@
       "when": 1788524901564,
       "tag": "0054_f9_02_timer",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1788541495288,
+      "tag": "0055_f10_portal_skeleton",
+      "breakpoints": true
     }
   ]
 }

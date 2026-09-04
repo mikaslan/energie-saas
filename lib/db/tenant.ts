@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 import { isDeepStrictEqual } from "node:util";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { getDb } from "./client";
+import { getDb, getTokenPool } from "./client";
 import * as schema from "./schema";
 import type { TenantTx } from "./types";
 import { PermissionDeniedError, WORKSPACE_ACCESS, isRole, type ServiceCtx } from "../permissions";
@@ -287,4 +287,15 @@ export function withSessionTenantOn<T>(
   fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
 ): Promise<T> {
   return runSessionTenant(drizzle(p, { schema }), authUserId, workspaceId, fn);
+}
+
+// DEFINER-Token-Kapseln (F10.1; Bedarf baugleich M2-04b): einzige legale
+// Quelle des mandantenlosen App-Pools ausserhalb von withTenant. Der Pool
+// wird NUR an SECURITY-DEFINER-Funktionen durchgereicht, die ohne
+// Mandantenkontext arbeiten und ihren Actor selbst verwerfen
+// (resolve_portal_public_view u.a.). Direkte Tabellen-Queries ueber diesen
+// Pool sind verboten (kein app.workspace_id -> keine Tenant-Policy).
+// Aufrufer: ausschliesslich lib/action.ts (publicTokenCapsule).
+export function runTokenCapsule<T>(fn: (pool: Pool) => Promise<T>): Promise<T> {
+  return fn(getTokenPool());
 }

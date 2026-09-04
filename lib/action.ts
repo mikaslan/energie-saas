@@ -1,5 +1,6 @@
+import type { Pool } from "pg";
 import { writeAudit } from "./audit";
-import { withSessionTenant, withTenant } from "./db/tenant";
+import { runTokenCapsule, withSessionTenant, withTenant } from "./db/tenant";
 import type { TenantTx } from "./db/types";
 import {
   PermissionDeniedError,
@@ -204,4 +205,13 @@ export function authorizedQuery<T>(
   fn: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
 ): Promise<T> {
   return authorizedCall(workspaceId, action, resource, fn);
+}
+
+// Öffentliche Token-Grenze (F10.1): einzige legale Aufrufgrenze für
+// SECURITY-DEFINER-Token-Kapseln ohne Mandantenkontext. Keine Session, keine
+// Capability — die Autorisierung ist allein das hoch-entropische Token.
+// Der Pool wird direkt an die Modul-Funktion durchgereicht; Tabellen-Queries
+// ausserhalb von DEFINER-Kapseln sind dem Aufrufer weiterhin unmoeglich.
+export function publicTokenCapsule<T>(fn: (pool: Pool) => Promise<T>): Promise<T> {
+  return runTokenCapsule(fn);
 }
