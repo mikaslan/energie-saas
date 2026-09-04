@@ -294,4 +294,7 @@
   (no drift), Unit 30/30 (Temp-Config, globalSetup-Listen-EPERM
   umgangen), E2E --list. DB-/E2E-Ausführung nur Maschine/CI
   (Billing-Block Q6 unverändert).
-- Nächster Schritt: Slice B pushen, CI-Lage lesen, dann F10.2-B-Spec.
+- Push `3fa1a34` via ECC_SKIP_PREPUSH=1 (Turn-1-DECIDED, Hook-lint/typcheck
+  liefen grün durch, nur tsx-Testschritt EPERM). CI-Runs 33928409856/774:
+  failure nach 2–3 s ohne Steps/Logs = Billing-Block Q6, kein Codebefund.
+- Nächster Schritt: F10.2-B-Spec.

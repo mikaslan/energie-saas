@@ -13,7 +13,7 @@ Exit-3). CI-Billing weiter dicht (FRAGEN-AN-MIKAIL.md Nr. 6).
 Stand: F9.4 A–D + F10.2-A + F16.3-A + F16.3-B implementiert,
 M2-04 als DONE pending CI verifiziert (Won per DEC-M204-08 NICHTZIEL).
 CI pending — Billing-Block Q6.
-Nächstes: F16.3-B pushen, CI-Lage lesen, dann F10.2-B-Spec.
+Nächstes: F10.2-B-Spec (F16.3-B = 3fa1a34 gepusht, CI Billing-Block Q6).
 
 Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
 Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output
