@@ -317,4 +317,7 @@
 - Lokal grün: eslint (0 Errors), typecheck, depcruise, generate
   (no drift), E2E --list. DB-/E2E-Ausführung nur Maschine/CI
   (Billing-Block Q6 unverändert).
-- Nächster Schritt: Slice B pushen, CI-Lage lesen, F16.3-C-Spec.
+- Push `708d9fe` via ECC_SKIP_PREPUSH=1 (Turn-1-DECIDED). CI-Runs
+  33928799969/039: failure nach 3–4 s ohne Steps/Logs = Billing-Block
+  Q6, kein Codebefund.
+- Nächster Schritt: F16.3-C-Spec (Rabatt-/Förder-Apply im Angebot).
