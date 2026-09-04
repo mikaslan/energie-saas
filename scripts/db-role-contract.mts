@@ -249,6 +249,10 @@ const CHECKLIST_TEMPLATE_RELATIONS = [
   "checklist_template",
 ] as const;
 
+const DISCOUNT_TEMPLATE_RELATIONS = [
+  "discount_template",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -1417,6 +1421,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F16.3 Slice A: Rabatt-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
+  const hasDiscountTemplates = await hasAtomicPublicRelationSet(
+    client,
+    DISCOUNT_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F16-03-Rabatt-Vorlagen",
+  );
+  if (hasDiscountTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.discount_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.discount_template to app_runtime
+    `);
+  }
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2387,6 +2407,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F7-03-Checklisten-Vorlagen",
   );
 
+  const hasDiscountTemplates = await hasAtomicPublicRelationSet(
+    client,
+    DISCOUNT_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F16-03-Rabatt-Vorlagen",
+  );
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2578,6 +2604,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasChecklistTemplates ? CHECKLIST_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasDiscountTemplates ? DISCOUNT_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -3627,6 +3656,9 @@ export async function verifyRoleContract(
       ...(hasChecklistTemplates ? CHECKLIST_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasDiscountTemplates ? DISCOUNT_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -3915,6 +3947,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasChecklistTemplates ? [
           "checklist_template:tenant_isolation:9d1b4ac837189569dedc6d9b4ab8161b3f2952860e0fb3c9fccacc83d0e7606f",
+        ] : []),
+        ...(hasDiscountTemplates ? [
+          "discount_template:tenant_isolation:56e5a88c3d572f54fbdc2e055c2f6eadd5d989ef6dbfbe7b42cafe00cc7d0d6e",
         ] : []),
         ...(hasPortal ? [
           "portal_invite:portal_invite_actor_delete:777085784fec1e8a4f2511b44c00e23fd09f98c13d9f99dded0180f10c4fe702",
@@ -4388,6 +4423,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasChecklistTemplates ? CHECKLIST_TEMPLATE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasDiscountTemplates ? DISCOUNT_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

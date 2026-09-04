@@ -421,6 +421,13 @@
       "when": 1788562309515,
       "tag": "0059_f10_portal_appointments",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1788562579420,
+      "tag": "0060_f16_03_discount_templates",
+      "breakpoints": true
     }
   ]
 }

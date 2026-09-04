@@ -20,6 +20,7 @@ export * from "./checklist-template";
 export * from "./crm";
 export * from "./economics";
 export * from "./customer-notification";
+export * from "./discount-template";
 export * from "./events";
 export * from "./energy";
 export * from "./erasure";

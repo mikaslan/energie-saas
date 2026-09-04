@@ -16,6 +16,7 @@ export type Action =
   | "lead_source.read" | "lead_source.write"
   | "time.read" | "time.write"
   | "checklist.read" | "checklist.write"
+  | "discount_template.read" | "discount_template.write"
   | "calendar.read" | "calendar.write"
   | "appointment.read" | "appointment.write"
   | "invoicing.read" | "invoicing.write" | "invoicing.issuing_details.write"
@@ -85,6 +86,10 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "time.write":          { minRole: "editor", internalOnly: true },
   "checklist.read":      { minRole: "viewer", internalOnly: true },
   "checklist.write":     { minRole: "editor", internalOnly: true },
+  // F16.3 Slice A: Rabatt-Vorlagen — Schreiben braucht die discounts-
+  // Capability (economics.write-Muster), Lesen genügt Viewer.
+  "discount_template.read":  { minRole: "viewer", internalOnly: true },
+  "discount_template.write": { minRole: "editor", capability: "discounts", internalOnly: true },
   "calendar.read":       { minRole: "viewer", internalOnly: true },
   "calendar.write":      { minRole: "admin", internalOnly: true },
   "appointment.read":    { minRole: "viewer", internalOnly: true },
