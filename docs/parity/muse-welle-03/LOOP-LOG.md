@@ -321,3 +321,14 @@
   33928799969/039: failure nach 3–4 s ohne Steps/Logs = Billing-Block
   Q6, kein Codebefund.
 - Nächster Schritt: F16.3-C-Spec (Rabatt-/Förder-Apply im Angebot).
+
+## Turn 20 — 2026-09-04, F16.3-C-Spec (Prozent-Apply global)
+
+- SPEC `docs/spec/F16-03c-template-apply.md` (DECIDED: nur cap-freie
+  Prozent-Vorlagen → `set_global_discount` via `reviseOfferVariant`;
+  Cap-/Fix-Vorlagen → ValidationError statt stiller Verlust; Fix-Modell
+  = Slice D. Subsidy symmetrisch).
+- Bestand: Variantenmodell kennt global nur Bps; `customDeal` ist
+  Zielpreis (kein Rabatt-Ziel); Editor hat Global-Rabatt-Bereich mit
+  `discount.apply`-Gate; m2-01-E2E als möglicher C-Träger.
+- Nächster Schritt: F16.3-C implementieren (Service + UI + Tests).
