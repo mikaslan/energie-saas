@@ -1,0 +1,104 @@
+name: codex-lane-gates
+
+# Gates für jede codex/*-Lane: der Beweis-Loop für autonome Agenten.
+# Muse (Metamuse Spark) pusht auf codex/*, diese Pipeline läuft automatisch,
+# Muse liest das Ergebnis und fixiert bis grün. Integration in
+# codex/m1-wave-02 erfolgt weiterhin manuell durch Mikail.
+#
+# Hinweis E2E-Job: bis die zwei vorbestehenden E2E-Fehler behoben sind
+# (f7-02-E2E-01, f7-03-E2E-01 — identisch rot auf Baseline 194fb3e,
+# nachgemessen 2026-09-04), ist der E2E-Job bewusst NICHT blockierend
+# (continue-on-error). Sein Log bleibt im Run sichtbar; sobald der
+# E2E-Nachholblock (Welle 03) die zwei Fixes liefert, wird
+# continue-on-error entfernt.
+
+on:
+  push:
+    branches:
+      - "codex/**"
+  workflow_dispatch:
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: Statik, DB-Tests, Rollenproben, Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Repo-Konvention: Scripts müssen aktiv sein (sonst EALLOWSCRIPTS);
+      # siehe .npmrc und docs/parity/RUNBOOK.md.
+      - name: Installieren
+        run: env -u npm_config_allow_scripts npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Katalog-Import-Vertrag
+        run: npm run contract:catalog-import
+
+      - name: Dependency-Cruiser
+        run: npm run depcruise
+
+      - name: Testsuite (Vitest mit eingebettetem Postgres)
+        run: npm run test
+        env:
+          NODE_ENV: test
+
+      - name: Rollenproben (88/88 + PG18 5/5)
+        run: npm run db:roles:verify
+        env:
+          NODE_ENV: test
+
+      - name: Schema-Drift
+        run: |
+          printf 'y\n' | npm run db:generate
+          if ! git diff --quiet -- drizzle/; then
+            echo "::error::db:generate hat Schema-Drift erzeugt — Snapshot/Journal nachziehen."
+            git diff --stat -- drizzle/
+            exit 1
+          fi
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PHASE: phase-production-build
+          # Platzhalter ist bewusst KEIN Secret (lib/env.ts erlaubt ihn nur
+          # in der Build-Phase) — siehe auth:generate-Script in package.json.
+          BETTER_AUTH_SECRET: ci-build-platzhalter-kein-echtes-secret
+
+  e2e:
+    name: Chromium-E2E (bis F7-Fixes nicht blockierend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Installieren
+        run: env -u npm_config_allow_scripts npm ci
+
+      - name: Chromium bereitstellen
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E-Suite (isolierte M1-06-Umgebung)
+        run: npm run test:e2e
+        env:
+          NODE_ENV: test
