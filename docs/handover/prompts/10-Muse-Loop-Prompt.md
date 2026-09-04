@@ -84,6 +84,7 @@ das nicht seine Antwort braucht. Bei Widersprüchen gilt dieses Dokument.
   `codex/**` automatisch: Lint, Typecheck, Katalogvertrag, Depcruise,
   Vitest + embedded Postgres, Rollenproben 88/88 + PG18 5/5,
   db:generate-Drift, Build; dazu Chromium-E2E.
+- **Repo ist seit 2026-09-05 wieder PUBLIC** (unlimitierte kostenlose CI-Minuten): Ergebnis bevorzugt per unauthentifiziertem API-Read (`curl -s "https://api.github.com/repos/mikaslan/energie-saas/actions/runs?branch=<lane>&per_page=3" | grep -E '"display_title"|"status"|"conclusion"'`), gh-CLI als Fallback. Reine Doku-/State-Commits (docs/**, *.md) loesen durch paths-ignore KEINE Gate-Laeufe aus.
 - Ergebnis lesen:
   `curl -s "https://api.github.com/repos/mikaslan/energie-saas/actions/runs?branch=<lane>&per_page=3" | grep -E '"display_title"|"status"|"conclusion"'`
   (öffentlich, kein Token) oder `gh run list --branch <lane>` /
