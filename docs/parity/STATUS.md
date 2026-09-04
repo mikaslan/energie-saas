@@ -159,6 +159,21 @@ WMEE; Push-/Deploy-Regeln unverändert.
 - Infrastruktur: wave-02-node_modules war durch einen Selbst-Symlink
   korrumpiert → npm install repariert; Gate erneut grün.
 
+## 2026-09-04 — F7.2 Projekt-Checkliste REVIEWED/VERIFIED (lokal)
+
+- F7.2 (0051): Lane `codex/f7-02-checklists`, integriert in
+  `codex/m1-wave-02` (`5ad30e1`, gepusht). Projekt-Checkliste mit
+  Blocks/Segmenten/Items (OBSERVED-Teilmenge), CAS-Versionen,
+  Fortschritt, Rechte checklist.read/write, RLS M1-CRM-Muster,
+  Projektroute + 2 E2E. Kimi-K3: NACHBESSERUNG (P1-1 Keys/P1-2
+  CAS-Version im Client, P2/P3) — alle geschlossen; E2E deckt
+  Doppel-Save ohne Reload ab.
+- Nachweise: check 199 Dateien/1909 Tests + 1 Skipped, Build,
+  db:generate ohne Drift, E2E F7.2 2/2.
+- M1-15b Kalender-Scopes: Lane muss auf wave-02 rebased + Migration
+  0048→0052 renummeriert werden (0048=v5, 0049=F1.8, 0050=F9.1,
+  0051=F7.2); eigene Runde wegen M1-15-Refactor-Umfang.
+
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
 
 - **M1-11b Cannot Fulfil** (Rebuild, Lizenz-Modus): REVIEWED/VERIFIED (lokal).
