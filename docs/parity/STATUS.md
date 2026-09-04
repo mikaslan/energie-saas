@@ -174,6 +174,19 @@ WMEE; Push-/Deploy-Regeln unverändert.
   0048→0052 renummeriert werden (0048=v5, 0049=F1.8, 0050=F9.1,
   0051=F7.2); eigene Runde wegen M1-15-Refactor-Umfang.
 
+## 2026-09-04 — M1-15b Kalender-Scopes REVIEWED/VERIFIED (lokal)
+
+- M1-15b (0052): Lane `codex/m1-15b-calendar-scopes`, integriert in
+  `codex/m1-wave-02` (`e6ec3ad`, gepusht). calendar-Objekt mit 4 Scopes,
+  Termin-Bindung (calendar_id NOT NULL, category_id entfällt),
+  Scope-RBAC (§7), persönliche Kalender lazy-provisioniert, Workspace-
+  Route /kalender, Kalenderauswahl im Termin-Dialog.
+- Kimi-K3: NACHBESSERUNG (P1-1 Scope-Leak fremde persönliche Kalender
+  in Termin-Items → Join-Sichtbarkeitsfragment + Maskierung, P1-2
+  User-Kalender nicht archivierbar, P2-1..P2-4, P3) — alle geschlossen.
+- Nachweise: check 200 Dateien/1917 Tests + 1 Skipped, Build,
+  db:generate ohne Drift, E2E M1-15 6/6 + M1-15b 2/2.
+
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
 
 - **M1-11b Cannot Fulfil** (Rebuild, Lizenz-Modus): REVIEWED/VERIFIED (lokal).
