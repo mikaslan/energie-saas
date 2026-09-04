@@ -231,6 +231,11 @@ const LEAD_SOURCE_RELATIONS = [
   "lead_source",
 ] as const;
 
+const TIME_TRACKING_RELATIONS = [
+  "time_event_type",
+  "time_entry",
+] as const;
+
 const COMMERCIAL_DOCUMENT_RELATIONS = [
   "commercial_document",
   "commercial_document_group",
@@ -1312,6 +1317,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasTimeTracking = await hasAtomicPublicRelationSet(
+    client,
+    TIME_TRACKING_RELATIONS,
+    "Rollen-ACL-Manifest: F9-01-Zeiterfassung",
+  );
+  if (hasTimeTracking) {
+    await client.query(`
+      revoke all privileges on
+        public.time_event_type,
+        public.time_entry
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.time_event_type to app_runtime;
+      grant select, insert, update on public.time_entry to app_runtime
+    `);
+  }
+
   const hasCommercialDocuments = await hasAtomicPublicRelationSet(
     client,
     COMMERCIAL_DOCUMENT_RELATIONS,
@@ -2243,6 +2265,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F1-08-Lead-Sources",
   );
 
+  const hasTimeTracking = await hasAtomicPublicRelationSet(
+    client,
+    TIME_TRACKING_RELATIONS,
+    "Rollenvertrag: F9-01-Zeiterfassung",
+  );
+
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
            member.rolname as member_role,
@@ -2416,6 +2444,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasLeadSources ? LEAD_SOURCE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasTimeTracking ? TIME_TRACKING_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
@@ -3424,6 +3455,9 @@ export async function verifyRoleContract(
       ...(hasLeadSources ? LEAD_SOURCE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasTimeTracking ? TIME_TRACKING_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -3694,6 +3728,10 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasLeadSources ? [
           "lead_source:tenant_isolation:a9f87b293bf7af190aa1baee3f1ca08c3198ed6accbd6fe1e10482f82817a450",
+        ] : []),
+        ...(hasTimeTracking ? [
+          "time_event_type:tenant_isolation:3e74ed81c41e7311f7725bcc268f1408148780cb500d798998bd9e3c873e45c3",
+          "time_entry:tenant_isolation:c3d1d966d152a34ed5e59bafe19e807ee4c780b8994e67054e18ea93209c2bb2",
         ] : []),
       ] : []),
     ],
@@ -4125,6 +4163,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasLeadSources ? LEAD_SOURCE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasTimeTracking ? TIME_TRACKING_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

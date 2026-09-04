@@ -1,0 +1,115 @@
+import { z } from "zod";
+
+// F9.1 Zeiterfassung — interner DTO-/Command-Vertrag (Slice A).
+// Kein externer Producer: kein SHA-Pin nötig; Schema-Version gepinnt.
+
+export const TIME_TRACKING_SCHEMA_VERSION = 1;
+
+export const TIME_NAME_MAX = 120;
+export const TIME_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/u;
+export const TIME_COMMENT_MAX = 500;
+export const TIME_MINUTES_MAX = 1440;
+
+// Kimi-P2-1: Längen- und Steuerzeichen-Prüfung NACH der NFKC-Transformation
+// (NFKC kann expandieren) — symmetrisch zu den DB-CHECKs.
+const nameSchema = z
+  .string()
+  .min(1)
+  .transform((v) => v.normalize("NFKC").trim())
+  .refine((v) => v.length >= 1, { message: "name darf nicht leer sein" })
+  .refine((v) => v.length <= TIME_NAME_MAX, { message: "name zu lang" })
+  .refine((v) => !/[\p{Cc}\p{Cf}]/u.test(v), { message: "name enthält Steuerzeichen" });
+
+const colorSchema = z.string().regex(TIME_COLOR_PATTERN).nullable();
+const isoDateSchema = z.string().datetime({ offset: true });
+
+export const timeEventTypeDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  id: z.string().uuid(),
+  name: z.string(),
+  position: z.number().int().min(0),
+  textColor: z.string().nullable(),
+  backgroundColor: z.string().nullable(),
+  archivedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  permissions: z.object({ canWrite: z.boolean() }),
+});
+export type TimeEventTypeDto = z.infer<typeof timeEventTypeDtoSchema>;
+
+export const createTimeEventTypeCommandSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  name: nameSchema,
+  position: z.number().int().min(0).optional(),
+  textColor: colorSchema.optional(),
+  backgroundColor: colorSchema.optional(),
+});
+export type CreateTimeEventTypeCommand = z.infer<typeof createTimeEventTypeCommandSchema>;
+
+export const updateTimeEventTypeCommandSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  id: z.string().uuid(),
+  name: nameSchema,
+  position: z.number().int().min(0),
+  textColor: colorSchema.optional(),
+  backgroundColor: colorSchema.optional(),
+});
+export type UpdateTimeEventTypeCommand = z.infer<typeof updateTimeEventTypeCommandSchema>;
+
+export const timeEntryDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  typeId: z.string().uuid().nullable(),
+  startAt: z.string(),
+  endAt: z.string(),
+  workingTimeMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
+  breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
+  comment: z.string().nullable(),
+  archivedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  permissions: z.object({ canWrite: z.boolean() }),
+});
+export type TimeEntryDto = z.infer<typeof timeEntryDtoSchema>;
+
+export const timeEntryListDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  entries: z.array(timeEntryDtoSchema),
+  totalWorkingMinutes: z.number().int().min(0),
+});
+export type TimeEntryListDto = z.infer<typeof timeEntryListDtoSchema>;
+
+export const timeEntryUpsertFieldsSchema = z.object({
+  typeId: z.string().uuid().nullable(),
+  startAt: isoDateSchema,
+  endAt: isoDateSchema,
+  workingTimeMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
+  breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
+  comment: z
+    .string()
+    .transform((v) => v.normalize("NFKC").trim())
+    .refine((v) => v.length >= 1, { message: "comment darf nicht leer sein" })
+    .refine((v) => v.length <= TIME_COMMENT_MAX, { message: "comment zu lang" })
+    .refine((v) => !/[\p{Cc}\p{Cf}]/u.test(v), { message: "comment enthält Steuerzeichen" })
+    .nullable(),
+}).refine((v) => new Date(v.endAt) >= new Date(v.startAt), {
+  message: "endAt muss nach startAt liegen",
+}).refine((v) => v.breakDurationMinutes <= v.workingTimeMinutes, {
+  message: "Pause darf die Arbeitszeit nicht überschreiten",
+});
+
+export const createTimeEntryCommandSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  projectId: z.string().uuid(),
+  fields: timeEntryUpsertFieldsSchema,
+});
+export type CreateTimeEntryCommand = z.infer<typeof createTimeEntryCommandSchema>;
+
+export const updateTimeEntryCommandSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  id: z.string().uuid(),
+  fields: timeEntryUpsertFieldsSchema,
+});
+export type UpdateTimeEntryCommand = z.infer<typeof updateTimeEntryCommandSchema>;

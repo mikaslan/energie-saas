@@ -14,6 +14,7 @@ export type Action =
   | "note.read" | "note.write"
   | "contact.read" | "contact.write"
   | "lead_source.read" | "lead_source.write"
+  | "time.read" | "time.write"
   | "appointment.read" | "appointment.write"
   | "invoicing.read" | "invoicing.write" | "invoicing.issuing_details.write"
   | "economics.read" | "economics.write"
@@ -78,6 +79,8 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "contact.write":       { minRole: "editor", internalOnly: true },
   "lead_source.read":    { minRole: "viewer", internalOnly: true },
   "lead_source.write":   { minRole: "editor", internalOnly: true },
+  "time.read":           { minRole: "viewer", internalOnly: true },
+  "time.write":          { minRole: "editor", internalOnly: true },
   "appointment.read":    { minRole: "viewer", internalOnly: true },
   "appointment.write":   { minRole: "editor", internalOnly: true },
   "invoicing.read":      { minRole: "viewer", internalOnly: true },
