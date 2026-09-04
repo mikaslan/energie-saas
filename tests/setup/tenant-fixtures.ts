@@ -1192,7 +1192,7 @@ async function fixtureOfferPdfDraft(tx: TenantTx, wsId: string): Promise<void> {
       name: "Basis",
       revision: row.revision,
     },
-    commercialTerms: { globalDiscountBps: 0, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Tenant Fixture",

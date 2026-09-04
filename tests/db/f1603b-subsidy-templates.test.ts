@@ -147,6 +147,17 @@ describe("F16.3 Slice B Foerder-Vorlagen (PostgreSQL)", () => {
     );
     expect(recreated.active).toBe(true);
 
+    // Gatefix (Muster f1603): der partielle Unique (active-Name) macht
+    // das Wiederherstellen zum KONFLIKT, solange die re-kreierte aktive
+    // Vorlage denselben Namen traegt — Positivfall nach Archivierung.
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => restoreSubsidyTemplate(tx, ctx, created.id),
+    )).rejects.toBeInstanceOf(SubsidyTemplateConflictError);
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => archiveSubsidyTemplate(tx, ctx, recreated.id),
+    );
     const restored = await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => restoreSubsidyTemplate(tx, ctx, created.id),

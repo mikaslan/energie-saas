@@ -580,7 +580,17 @@ type TimeEntryRevisionRow = {
   created_at: string;
 };
 
+function toInstantIso(raw: string | Date | null): string | null {
+  if (raw === null) return null;
+  const instant = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(instant.getTime())) return null;
+  return instant.toISOString();
+}
+
 function toTimeEntryRevisionDto(row: TimeEntryRevisionRow): TimeEntryRevisionDto {
+  // Gatefix (Mikail-Verifikation): der Test-Pool liefert timestamptz als
+  // PG-Text ('2026-09-04 10:00:00+02', nachgemessen) — das DTO muss den
+  // Instant normalisieren, sonst weicht startAt vom ISO-Vertrag ab.
   return timeEntryRevisionDtoSchema.parse({
     schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
     id: row.id,
@@ -588,16 +598,16 @@ function toTimeEntryRevisionDto(row: TimeEntryRevisionRow): TimeEntryRevisionDto
     userId: row.user_id,
     projectId: row.project_id,
     typeId: row.type_id,
-    startAt: row.start_at,
-    endAt: row.end_at,
+    startAt: toInstantIso(row.start_at),
+    endAt: toInstantIso(row.end_at),
     startLat: row.start_lat,
     startLng: row.start_lng,
     workingTimeMinutes: row.working_time_minutes,
     breakDurationMinutes: row.break_duration_minutes,
     comment: row.comment,
     revisedBy: row.revised_by,
-    revisedAt: row.revised_at,
-    createdAt: row.created_at,
+    revisedAt: toInstantIso(row.revised_at),
+    createdAt: toInstantIso(row.created_at),
   });
 }
 
