@@ -200,6 +200,17 @@ WMEE; Push-/Deploy-Regeln unverändert.
 - Nachweise: check 202 Dateien/1924 Tests + 1 Skipped, Build,
   db:generate ohne Drift, E2E F7.3 2/2.
 
+## 2026-09-04 — F9.2 Stoppuhr REVIEWED/VERIFIED (lokal)
+
+- F9.2 (0054): Lane `codex/f9-02-timer`, integriert in
+  `codex/m1-wave-02` (`194fb3e`, gepusht). Laufender Eintrag je Nutzer
+  (partieller Unique), start/stop/discard, DELETE-Grant im
+  M1-15-Muster, Summe nur gestoppter Einträge, UI Start/Stopp/
+  Verwerfen. Kimi-K3: NACHBESSERUNG (3 P1 + 5 P2 + 3 P3) — alle
+  geschlossen (u. a. Archive-Guard gegen Deadlock).
+- Nachweise: check 203 Dateien/1931 Tests + 1 Skipped, Build,
+  db:generate ohne Drift, E2E F9.2 2/2.
+
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
 
 - **M1-11b Cannot Fulfil** (Rebuild, Lizenz-Modus): REVIEWED/VERIFIED (lokal).
