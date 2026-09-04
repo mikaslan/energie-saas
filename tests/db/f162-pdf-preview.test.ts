@@ -107,7 +107,7 @@ describe("F16.2 zustandslose PDF-Vorschau (PostgreSQL)", () => {
         select updated_at::text from offer_variant
         where workspace_id = ${binding.workspaceId}::uuid and id = ${binding.variantId}::uuid
         union all
-        select updated_at::text from offer_variant_revision
+        select created_at::text from offer_variant_revision
         where workspace_id = ${binding.workspaceId}::uuid
           and offer_id = ${binding.offerId}::uuid
           and variant_id = ${binding.variantId}::uuid
@@ -143,7 +143,7 @@ describe("F16.2 zustandslose PDF-Vorschau (PostgreSQL)", () => {
         select updated_at::text from offer_variant
         where workspace_id = ${binding.workspaceId}::uuid and id = ${binding.variantId}::uuid
         union all
-        select updated_at::text from offer_variant_revision
+        select created_at::text from offer_variant_revision
         where workspace_id = ${binding.workspaceId}::uuid
           and offer_id = ${binding.offerId}::uuid
           and variant_id = ${binding.variantId}::uuid
