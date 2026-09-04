@@ -5,10 +5,12 @@ Basis: Ultra-Prompt 06 (origin/tooling) + Delta 09 (dieses Dokument geht bei
 Widersprüchen vor). Vault bleibt gesperrt — diese Datei + FRAGEN-AN-MIKAIL.md
 leben unter `docs/parity/muse-welle-03/`, Mikail spiegelt in den Vault.
 
-Stand: E2E-Nachholblock in Arbeit. Worktree `~/Projects/energie-saas-wave-02`,
-Branch `codex/m1-wave-02`, HEAD `9fc49eb` (verifiziert). Migrationen 0000–0056
-lückenlos. Ultra-Prompt 06 + Delta 09 vollständig gelesen.
-Diagnosen f7-02/f7-03 von Mikail bestätigt (Details: FRAGEN-AN-MIKAIL.md §B).
+Stand: E2E-Nachholblock code-fertig auf Lane `codex/muse-welle-03-e2e`:
+f7-03-Isolation, Fehler-Mapping, F2.2-/F9.3-/F16.2-/F10.1-Specs (je
+eigenes W3-Projekt) + State-Push (Actions war aus, Erstlauf beider
+Workflows). Basis `origin/codex/m1-wave-02` = `cf02c26`. M2-04-
+Implementierung vorhanden (0044, Service, UI, Skeleton) — Gap-Check
+läuft.
 
 Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
 Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output
