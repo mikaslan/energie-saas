@@ -213,3 +213,25 @@
 - Lokal grün: eslint, typecheck, depcruise, db:generate (no drift),
   playwright --list. DB-/E2E-Ausführung nur Maschine/CI.
 - Nächster Schritt: Slice C pushen, CI-Lage lesen, dann F10.2-Spec.
+
+## Turn 14 — 2026-09-04, F10.2 Slice A implementiert (Termine-Tab)
+
+- SPEC `docs/spec/F10-02-portal-termine.md` (Privacy-DECIDED: nie
+  Description; Version bleibt v1 — gleiche Deployment-Einheit).
+  Reviews Exit-3 (kein Key, Q1 aktiv).
+- Migration 0059 (handgeschrieben, Funktions-Replace aus 0056-Body per
+  Skript kopiert + Termine-Projektion; Journal/Snapshot/Zähler 59 von
+  Hand nach Konvention; generate bleibt „no changes").
+- Funktions-Pin: Methode (sha256 über prosrc-Rohtext) am 0056-Pin mit
+  MATCH bewiesen, neuer Hash aus 0059-Text berechnet.
+- Contract: appointments-Array in View-Schema + Resolve-Parser
+  (strikte Typen); f1001-Contract-Test nachgezogen (Privacy-Aussage).
+- UI `/p/[token]`: Tabs Übersicht/Termine per ?tab= (Server, kein JS;
+  unbekannt → Übersicht). Berlin-Zeiten.
+- Tests: `tests/db/f1002-portal-appointments.test.ts` (Projektion ohne
+  Description, leer, Withdraw-not_found),
+  `tests/e2e/f10-02-…spec.ts` (E2E-01, eigenes f102-Projekt, interner
+  Termin mit interner Notiz → Tab zeigt Titel/Ort, Notiz fehlt).
+- Lokal grün: eslint, typecheck, depcruise, generate, --list.
+  DB-/E2E-Ausführung nur Maschine/CI (Billing-Block Q6 unverändert).
+- Nächster Schritt: Slice A pushen, dann F16.3-Spec.
