@@ -277,3 +277,21 @@
   immer erfüllt), 0060-RLS (0053-identisch), getTimeUtilization
   (bool_or/count-Casts, WYSIWYG-Set), run.mts-Leads (keine Duplikate).
 - Nächster Schritt: Fix pushen, dann F10.2-B-Spec (nächster Portal-Tab).
+
+## Turn 18 — 2026-09-04, F16.3 Slice B implementiert (Förder-Vorlagen)
+
+- SPEC `docs/spec/F16-03-foerder-vorlagen.md` (DECIDED: discounts-Cap
+  wiederverwendet, keine neue Capability; Matrix 45→47). Reviews Exit-3
+  (kein Key, Q1 aktiv; Spiegel-Diffs gegen Slice A ohne Befund).
+- Migration 0061 (db:generate + 0060-RLS-Block gespiegelt, Zähler 61).
+  Rollenvertrag: 7 Stellen gespiegelt, Pin per Orakel-Q (PGlite in /tmp:
+  Methode am Discount-Pin exakt reproduziert, Subsidy-Pin
+  2037cf71…4d0696 abgeleitet — kein Erfinden).
+- Berechtigung: subsidy_template.read/write (discounts-Cap); Unit-Matrix
+  45→47. Service modules/subsidies + UI foerder-vorlagen (Spiegel).
+- Tests: f1603b-DB (3 Fälle), subsidy-apply-Unit, F16.3-E2E-02.
+- Lokal grün: eslint (0 Errors), typecheck, depcruise, generate
+  (no drift), Unit 30/30 (Temp-Config, globalSetup-Listen-EPERM
+  umgangen), E2E --list. DB-/E2E-Ausführung nur Maschine/CI
+  (Billing-Block Q6 unverändert).
+- Nächster Schritt: Slice B pushen, CI-Lage lesen, dann F10.2-B-Spec.

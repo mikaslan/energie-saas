@@ -428,6 +428,13 @@
       "when": 1788562579420,
       "tag": "0060_f16_03_discount_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1788562999519,
+      "tag": "0061_f16_03_subsidy_templates",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ export type Action =
   | "time.read" | "time.write"
   | "checklist.read" | "checklist.write"
   | "discount_template.read" | "discount_template.write"
+  | "subsidy_template.read" | "subsidy_template.write"
   | "calendar.read" | "calendar.write"
   | "appointment.read" | "appointment.write"
   | "invoicing.read" | "invoicing.write" | "invoicing.issuing_details.write"
@@ -90,6 +91,10 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   // Capability (economics.write-Muster), Lesen genügt Viewer.
   "discount_template.read":  { minRole: "viewer", internalOnly: true },
   "discount_template.write": { minRole: "editor", capability: "discounts", internalOnly: true },
+  // F16.3 Slice B: Foerder-Vorlagen — DECIDED keine neue Capability;
+  // Geld-Vorlagen teilen sich "discounts" (SPEC F16-03-foerder-vorlagen).
+  "subsidy_template.read":  { minRole: "viewer", internalOnly: true },
+  "subsidy_template.write": { minRole: "editor", capability: "discounts", internalOnly: true },
   "calendar.read":       { minRole: "viewer", internalOnly: true },
   "calendar.write":      { minRole: "admin", internalOnly: true },
   "appointment.read":    { minRole: "viewer", internalOnly: true },
