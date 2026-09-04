@@ -19,6 +19,7 @@ import {
   timeEntryRevisionListDtoSchema,
   timeEntryRevisionListQuerySchema,
   timeMemberOptionSchema,
+  timeUtilizationDtoSchema,
   timeEventTypeDtoSchema,
   updateTimeEntryCommandSchema,
   updateTimeEventTypeCommandSchema,
@@ -32,6 +33,7 @@ import {
   type TimeEntryRevisionDto,
   type TimeEntryRevisionListDto,
   type TimeMemberOption,
+  type TimeUtilizationDto,
   type TimeEventTypeDto,
   type UpdateTimeEntryCommand,
   type UpdateTimeEventTypeCommand,
@@ -798,6 +800,56 @@ export async function discardTimeEntry(
     payload: {},
   });
   await writeAuditFor(tx, ctx, "time.entry.discard", { id });
+}
+
+// F9.4 Slice D Team-Auslastung: Aggregation je Mitglied, gleiche
+// Filter-Semantik wie listTimeEntries (WYSIWYG), reiner Lese-Pfad
+// (requireRead), keine Migration. Summen ignorieren laufende Einträge
+// (working_time_minutes IS NULL faellt aus sum()), markieren sie aber.
+export async function getTimeUtilization(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null },
+): Promise<TimeUtilizationDto> {
+  requireRead(ctx);
+  const parsed = timeEntryListQuerySchema.safeParse(query);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const includeArchived = parsed.data.includeArchived === true;
+  const userIds = parsed.data.userIds ?? [];
+  const userFilter = userIds.length === 0
+    ? sql``
+    : sql`and e.user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const members = await listTimeMemberOptions(tx, ctx);
+  const labelByUserId = new Map(members.map((member) => [member.userId, member.label]));
+  const result = await tx.execute<{
+    user_id: string;
+    entry_count: number;
+    total_minutes: number;
+    running: boolean;
+  }>(sql`
+    select e.user_id,
+           count(*)::int as entry_count,
+           coalesce(sum(e.working_time_minutes), 0)::int as total_minutes,
+           bool_or(e.end_at is null) as running
+      from time_entry e
+     where e.workspace_id = ${ctx.workspaceId}::uuid
+       and e.project_id = ${parsed.data.projectId}::uuid
+       ${includeArchived ? sql`` : sql`and e.archived_at is null`}
+       ${userFilter}
+     group by e.user_id
+     order by coalesce(sum(e.working_time_minutes), 0) desc, e.user_id asc
+  `);
+  return timeUtilizationDtoSchema.parse({
+    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+    rows: result.rows.map((row) => ({
+      schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+      userId: row.user_id,
+      label: labelByUserId.get(row.user_id) ?? "Unbekannt",
+      entryCount: row.entry_count,
+      totalWorkingMinutes: row.total_minutes,
+      running: row.running,
+    })),
+  });
 }
 
 // F9.4 Slice A CSV-Export: gleiche Filter-Semantik wie listTimeEntries

@@ -131,6 +131,24 @@ export const timeEntryRevisionListQuerySchema = z.object({
 });
 export type TimeEntryRevisionListQuery = z.infer<typeof timeEntryRevisionListQuerySchema>;
 
+// F9.4 Slice D Team-Auslastung: Aggregation je Mitglied, Filter =
+// List-Filter wiederverwendet (timeEntryListQuerySchema, kein Dialekt).
+export const timeUtilizationRowDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  userId: z.string().uuid(),
+  label: z.string(),
+  entryCount: z.number().int().min(0),
+  totalWorkingMinutes: z.number().int().min(0),
+  running: z.boolean(),
+});
+export type TimeUtilizationRowDto = z.infer<typeof timeUtilizationRowDtoSchema>;
+
+export const timeUtilizationDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  rows: z.array(timeUtilizationRowDtoSchema),
+});
+export type TimeUtilizationDto = z.infer<typeof timeUtilizationDtoSchema>;
+
 // F9.4 Slice A CSV-Export: Filter = List-Filter wiederverwendet
 // (timeEntryListQuerySchema, kein neuer Dialekt).
 export const timeEntryExportResultSchema = z.object({

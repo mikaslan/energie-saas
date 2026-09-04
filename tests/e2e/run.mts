@@ -144,6 +144,7 @@ type E2EState = Pick<
   f162ProjectId: string;
   f101ProjectId: string;
   f94ProjectId: string;
+  f94dProjectId: string;
   w3WorkspaceId: string;
   m112aProjectId: string;
   m112aWorkspaceId: string;
@@ -1481,6 +1482,12 @@ async function main(): Promise<number> {
     w3Credential,
     intakePayload("Friedrich W3 Export", `w3-f94-${randomUUID()}`, true),
   );
+  const w3F94dLead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("Franziska W3 Auslastung", `w3-f94d-${randomUUID()}`, true),
+  );
   const w3F93Lead = await submitSignedLead(
     server,
     embedded.superuserUrl,
@@ -1503,6 +1510,7 @@ async function main(): Promise<number> {
     f162ProjectId: w3F162Seed.projectId,
     f101ProjectId: w3F101Lead.projectId,
     f94ProjectId: w3F94Lead.projectId,
+    f94dProjectId: w3F94dLead.projectId,
     w3WorkspaceId: seedData.w3WorkspaceId,
     m112aProjectId: m112aSeed.projectId,
     m112aWorkspaceId: seedData.m112aWorkspaceId,

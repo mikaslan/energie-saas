@@ -7,6 +7,7 @@ import type {
   TimeEntryRevisionDto,
   TimeEventTypeDto,
   TimeMemberOption,
+  TimeUtilizationDto,
 } from "@/lib/integrations/time-tracking/contract";
 import {
   archiveTimeEntryAction,
@@ -114,6 +115,7 @@ export function TimeEntryManager({
   types,
   members,
   revisionsByEntry,
+  utilization,
   canWrite,
 }: {
   workspaceId: string;
@@ -122,6 +124,7 @@ export function TimeEntryManager({
   types: TimeEventTypeDto[];
   members: TimeMemberOption[];
   revisionsByEntry: Record<string, TimeEntryRevisionDto[]>;
+  utilization: TimeUtilizationDto;
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createTimeEntryAction, initialState);
@@ -285,6 +288,36 @@ export function TimeEntryManager({
           </ul>
         )}
         <Feedback state={archiveState} />
+      </section>
+
+      <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <h2 className="text-base font-semibold text-slate-950">Auslastung</h2>
+        {utilization.rows.length === 0 ? (
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Keine Einträge im Filter.
+          </p>
+        ) : (
+          <table className="mt-3 w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <th scope="col" className="py-2 pr-3 font-semibold">Mitglied</th>
+                <th scope="col" className="py-2 pr-3 font-semibold">Einträge</th>
+                <th scope="col" className="py-2 pr-3 font-semibold">Summe</th>
+                <th scope="col" className="py-2 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {utilization.rows.map((row) => (
+                <tr key={row.userId} className="border-b border-slate-100 last:border-0">
+                  <td className="py-2 pr-3 font-semibold text-slate-900">{row.label}</td>
+                  <td className="py-2 pr-3 text-slate-700">{row.entryCount}</td>
+                  <td className="py-2 pr-3 text-slate-700">{formatDuration(row.totalWorkingMinutes)}</td>
+                  <td className="py-2 text-slate-700">{row.running ? "läuft" : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

@@ -8,8 +8,10 @@ import type {
   TimeEntryRevisionDto,
   TimeEventTypeDto,
   TimeMemberOption,
+  TimeUtilizationDto,
 } from "@/lib/integrations/time-tracking/contract";
 import {
+  getTimeUtilization,
   listTimeEntries,
   listTimeEntryRevisions,
   listTimeEventTypes,
@@ -57,7 +59,7 @@ export default async function ProjectTimeTrackingPage(
   const selectedUserIds = parseUserFilter(await props.searchParams);
 
   let result:
-    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; selectedUserIds: string[]; canWrite: boolean }
+    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; utilization: TimeUtilizationDto; selectedUserIds: string[]; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -95,6 +97,8 @@ export default async function ProjectTimeTrackingPage(
           types: await listTimeEventTypes(tx, ctx, { includeArchived: true }),
           members: await listTimeMemberOptions(tx, ctx),
           revisionsByEntry,
+          // F9.4 Slice D: gleicher Filter wie die Liste (WYSIWYG).
+          utilization: await getTimeUtilization(tx, ctx, { projectId, userIds: selectedUserIds }),
           selectedUserIds,
           canWrite: can(ctx, "time.write"),
         };
@@ -152,6 +156,7 @@ export default async function ProjectTimeTrackingPage(
         types={result.types}
         members={result.members}
         revisionsByEntry={result.revisionsByEntry}
+        utilization={result.utilization}
         canWrite={result.canWrite}
       />
 
