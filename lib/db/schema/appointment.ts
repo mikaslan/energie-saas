@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { calendar } from "./calendar";
 import { membership, workspace } from "./core";
 import { project } from "./project";
 
@@ -75,7 +76,9 @@ export const projectAppointment = pgTable(
     appointmentType: text("appointment_type")
       .$type<AppointmentType>()
       .notNull(),
-    categoryId: uuid("category_id"),
+    // M1-15b: Kategorie wandert an den Kalender (Spec §4.2); calendar_id ist
+    // API-treu Pflicht (Appointment.calendarId required).
+    calendarId: uuid("calendar_id").notNull(),
     revision: integer("revision").notNull().default(1),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -96,7 +99,13 @@ export const projectAppointment = pgTable(
       t.startAt.desc().nullsFirst(),
       t.id.asc().nullsLast(),
     ),
-    index("project_appointment_ws_category_idx").on(t.workspaceId, t.categoryId),
+    index("project_appointment_ws_calendar_range_idx").on(
+      t.workspaceId,
+      t.calendarId,
+      t.startAt,
+      t.endAt,
+      t.id,
+    ),
     foreignKey({
       columns: [t.workspaceId],
       foreignColumns: [workspace.id],
@@ -108,10 +117,10 @@ export const projectAppointment = pgTable(
       name: "project_appointment_project_fk",
     }).onDelete("cascade"),
     foreignKey({
-      columns: [t.workspaceId, t.categoryId],
-      foreignColumns: [calendarCategory.workspaceId, calendarCategory.id],
-      name: "project_appointment_category_fk",
-    }).onDelete("set null"),
+      columns: [t.workspaceId, t.calendarId],
+      foreignColumns: [calendar.workspaceId, calendar.id],
+      name: "project_appointment_calendar_fk",
+    }).onDelete("restrict"),
     check(
       "project_appointment_title_ck",
       sql`length(btrim(${t.title})) between 1 and 2000`,
