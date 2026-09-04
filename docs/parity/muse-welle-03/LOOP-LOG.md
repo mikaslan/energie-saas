@@ -112,6 +112,17 @@
 - Nächster Schritt: Slice A implementieren (Contract→Service→Route→UI→
   Tests), lokale Gates, Commit.
 
+## Turn 10 — 2026-09-04, Slice A implementiert
+
+- `9d1e4a6` feat(f9.4): CSV-Export — Contract-Result, Service
+  (IN-Liste, Berlin-Zeiten, BOM, Quoting), Route nach Muster (401/403/
+  400/404), UI-Link mit Filter, DB-Tests (f904, inkl. laufend/Viewer/
+  Extern), E2E f94 (Download up-/gefiltert). Keine Migration.
+- Lokale Gates grün (lint 0 Errors, typecheck, contract, depcruise,
+  generate, --list). DB-/E2E-Gates pending (CI-Billing).
+- RUNTIME-BLOCKs: keine.
+- Nächster Schritt: Slice B Versionshistorie specen (oder CI-Status).
+
 ## Turn 8 — 2026-09-04, Integration erhalten, 4 Lektionen
 
 - Mikail hat Lane + Gatefix integriert (`e728fb5`, `31a61c4`) und den
