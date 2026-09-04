@@ -171,3 +171,21 @@
 - RUNTIME-BLOCKs: Sandbox-listen EPERM (bestehend), CI-Billing dicht (Q6).
 - Nächster Schritt: Slice B committen + pushen (ECC_SKIP_PREPUSH=1, Q5),
   CI-Lage lesen, dann F9.4 C/D.
+
+## Turn 12 — 2026-09-04, F9.4 Slice D implementiert (Team-Auslastung)
+
+- CI-Lage: Slice-B-Runs (33926208078/022) in 2–3s `failure` mit leeren
+  Steps = Billing-Block (Q6) bestätigt. Verifikation BLOCKED-ON-MIKAIL.
+- Scope-Fund: Slice-A-Spec definiert C=GPS (Consent-Konzept) und
+  D=Dashboards. DECIDED: D zuerst (rein lesend, sofort prüffähig).
+- SPEC `docs/spec/F9-04-zeiterfassung-auslastung.md`. Reviews Exit-3.
+- Service `getTimeUtilization` (Listen-Filter WYSIWYG, requireRead, keine
+  Migration; Summe ignoriert laufende, markiert sie; Sort total desc).
+  Contract-DTOs, Auslastungs-Section (Tabelle, „Keine Einträge im
+  Filter."), eigenes f94d-Projekt in run.mts (Summen aggregieren —
+  Teilen mit A/B wäre unscharf; skuSuffix unique).
+- Tests: `tests/db/f904d-time-utilization.test.ts` (3 Fälle inkl.
+  WYSIWYG-Pin Dashboard=Liste), `tests/e2e/f9-04d-…spec.ts` (E2E-03).
+- Lokal grün: eslint, typecheck, depcruise, playwright --list.
+  DB-/E2E-Ausführung nur Maschine/CI (RUNTIME-BLOCK Sandbox).
+- Nächster Schritt: Slice D committen + pushen, dann F9.4-C-Spec (GPS).
