@@ -151,12 +151,16 @@ test("F10.2-E2E-01: Termine-Tab zeigt Termin ohne interne Beschreibung", async (
   await dialog.getByLabel("Typ").selectOption("on_site");
   await dialog.getByLabel("Beginn").fill(`${date}T10:00`);
   await dialog.getByLabel("Ende", { exact: true }).fill(`${date}T11:00`);
-  await dialog.getByLabel("Ort").fill(APPOINTMENT_LOCATION);
+  // Gatefix: der Typ-Select traegt als accname "Typ" + Optionstext
+// ("Typ Vor Ort") — nicht-exaktes "Ort" matcht ihn mit (Strict-
+// Violation, nachgemessen). Exact-Match trifft nur das Ort-Feld.
+  await dialog.getByLabel("Ort", { exact: true }).fill(APPOINTMENT_LOCATION);
   await dialog.getByLabel("Beschreibung").fill(INTERNAL_NOTE);
   await dialog.getByRole("checkbox", { name: data.editorEmail }).check();
   await dialog.getByRole("button", { name: "Speichern" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(section.getByText(APPOINTMENT_TITLE, { exact: true })).toBeVisible();
+  // Gatefix: Titel erscheint zweimal im Abschnitt (Kalender-Event + Listeneintrag) — first() statt Strict-Violation.
+  await expect(section.getByText(APPOINTMENT_TITLE, { exact: true }).first()).toBeVisible();
 
   const portal = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Kundenportal", exact: true }),
@@ -170,7 +174,9 @@ test("F10.2-E2E-01: Termine-Tab zeigt Termin ohne interne Beschreibung", async (
   await expect(page.getByText("Kundenportal", { exact: true }).first()).toBeVisible();
   await page.getByRole("link", { name: /Termine/u }).click();
   await expect(page.getByText(APPOINTMENT_TITLE, { exact: true })).toBeVisible();
-  await expect(page.getByText(APPOINTMENT_LOCATION, { exact: true })).toBeVisible();
+  // Gatefix: der Ort steht inline im Zeitraum-Text ("… · Musterstraße 1"),
+// kein exakter Textknoten.
+  await expect(page.getByText(APPOINTMENT_LOCATION)).toBeVisible();
   await expect(page.getByText(INTERNAL_NOTE, { exact: true })).toHaveCount(0);
 
   expect(errors, "Browser-Konsole und Page-Errors der Portal-Grenze").toEqual([]);

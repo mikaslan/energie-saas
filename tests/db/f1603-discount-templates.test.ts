@@ -147,6 +147,20 @@ describe("F16.3 Slice A Rabatt-Vorlagen (PostgreSQL)", () => {
     );
     expect(recreated.active).toBe(true);
 
+    // Gatefix (Mikail-Verifikation): der partielle Unique
+    // discount_template_ws_active_name_uq (active-Name) macht das
+    // Wiederherstellen zum KONFLIKT, solange die re-kreierte aktive
+    // Vorlage denselben Namen traegt — 23505 -> Conflict ist der
+    // SPEC-Vertrag („23505 -> Conflict" fuer restore). Positivfall
+    // erst nach Archivierung der Re-Kreation.
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => restoreDiscountTemplate(tx, ctx, created.id),
+    )).rejects.toBeInstanceOf(DiscountTemplateConflictError);
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => archiveDiscountTemplate(tx, ctx, recreated.id),
+    );
     const restored = await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => restoreDiscountTemplate(tx, ctx, created.id),
