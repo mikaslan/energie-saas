@@ -1,0 +1,3 @@
+Dauerfreigabe Mikail Aslan (2026-09-04, per Direktauftrag): alle Aktionen je Aufgabe ohne Rueckfrage.
+Erlaubt: commit, push (codex/*), install, run, network, file-write, Kimi-/DeepSeek-Reviews.
+Verboten: main, Deploys, Provider-Aktionen, Reonic-Mutationen, Secrets, --no-verify.
