@@ -1932,6 +1932,14 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${wsId}::uuid, ${contactId}::uuid, 'fixture')
     `);
   },
+  lead_source: async (tx, wsId) => {
+    const id = randomUUID();
+    await tx.execute(sql`
+      insert into lead_source (id, workspace_id, name, name_normalized)
+      values (${id}::uuid, ${wsId}::uuid, ${`Fixture Lead Source ${id}`},
+        ${`fixture lead source ${id}`})
+    `);
+  },
   erasure_tombstone: async (tx, wsId) => {
     const contactId = randomUUID();
     const operationId = randomUUID();

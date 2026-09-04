@@ -227,6 +227,10 @@ const ECONOMICS_FUNCTION_NAMES = [
   ...ECONOMICS_RUNTIME_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 
+const LEAD_SOURCE_RELATIONS = [
+  "lead_source",
+] as const;
+
 const COMMERCIAL_DOCUMENT_RELATIONS = [
   "commercial_document",
   "commercial_document_group",
@@ -1293,6 +1297,21 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasLeadSources = await hasAtomicPublicRelationSet(
+    client,
+    LEAD_SOURCE_RELATIONS,
+    "Rollen-ACL-Manifest: F1-08-Lead-Sources",
+  );
+  if (hasLeadSources) {
+    await client.query(`
+      revoke all privileges on
+        public.lead_source
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.lead_source to app_runtime
+    `);
+  }
+
   const hasCommercialDocuments = await hasAtomicPublicRelationSet(
     client,
     COMMERCIAL_DOCUMENT_RELATIONS,
@@ -2218,6 +2237,11 @@ export async function verifyRoleContract(
     ECONOMICS_RELATIONS,
     "Rollenvertrag: F4-06-Economics-Defaults",
   );
+  const hasLeadSources = await hasAtomicPublicRelationSet(
+    client,
+    LEAD_SOURCE_RELATIONS,
+    "Rollenvertrag: F1-08-Lead-Sources",
+  );
 
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
@@ -2389,6 +2413,9 @@ export async function verifyRoleContract(
         "r:workspace_invoicing_settings",
       ] : []),
       ...(hasEconomicsSettings ? ECONOMICS_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasLeadSources ? LEAD_SOURCE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
@@ -3394,6 +3421,9 @@ export async function verifyRoleContract(
       ...(hasEconomicsSettings ? ECONOMICS_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasLeadSources ? LEAD_SOURCE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -3661,6 +3691,9 @@ export async function verifyRoleContract(
           "workspace_economics_settings:workspace_economics_settings_actor_insert:60f5e6821d3b9748afaf213f6b2e3da5fe095d0e2733273035d84757ee791fdd",
           "workspace_economics_settings:workspace_economics_settings_actor_select:974b3da5aa92a3c7b91b55791ed65b9ff26274846fe8be10b1cb6b1ecb885dee",
           "workspace_economics_settings:workspace_economics_settings_actor_update:3df901b67e8ad033d4d1edd4922dda5c1530464fcfba5410ca739d6eff9d1a4e",
+        ] : []),
+        ...(hasLeadSources ? [
+          "lead_source:tenant_isolation:a9f87b293bf7af190aa1baee3f1ca08c3198ed6accbd6fe1e10482f82817a450",
         ] : []),
       ] : []),
     ],
@@ -4087,6 +4120,11 @@ export async function verifyRoleContract(
         "app_runtime:workspace_invoicing_settings:UPDATE:app_owner:false",
       ] : []),
       ...(hasEconomicsSettings ? ECONOMICS_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasLeadSources ? LEAD_SOURCE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

@@ -2,7 +2,13 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Die Intake-Kette zieht weitere Module mit "server-only"-Import
+// (u. a. Audit-/Event-Bausteine); der Mock hält den Importgraphen
+// test-ladbar — modules/lead-sources selbst trägt bewusst KEIN
+// "server-only" (Build-Importvertrag des Intake-Graphen).
+vi.mock("server-only", () => ({}));
 import { contact } from "@/lib/db/schema";
 import { withTenantOn } from "@/lib/db/tenant";
 import {
@@ -22,6 +28,11 @@ import type {
   RechnerIntakeV1,
 } from "@/lib/integrations/rechner/types";
 import { processRechnerIntake } from "@/modules/intake";
+import {
+  LEAD_SOURCE_SCHEMA_VERSION,
+} from "@/lib/integrations/lead-sources/contract";
+import { createLeadSource } from "@/modules/lead-sources";
+import { withAuthorizedTenantOn } from "@/lib/db/tenant";
 import { testPool } from "../setup/test-db";
 
 const NOW = new Date("2026-08-29T08:30:00.000Z");
@@ -544,3 +555,92 @@ describe("Rechner-Intake-Fachtransaktion", () => {
     expect(graph.snapshots).toBe(0);
     expect(graph.requirements).toBe(0);
   });
+
+describe("F1.8 Lead-Source-Attribution im Intake", () => {
+  async function leadOnlyPayload(): Promise<RechnerIntakeV1> {
+    const value = payload();
+    (value.producer as unknown as { application: string }).application = "wmee-rechner-v5";
+    delete (value as Partial<RechnerIntakeV1>).calculation;
+    value.site = {
+      addressMode: "regional_estimate",
+      formattedAddress: "Deutschland (regional)",
+      street: null,
+      houseNumber: null,
+      postalCode: null,
+      city: null,
+      countryCode: "DE",
+      latitude: 51.1657,
+      longitude: 10.4515,
+      geocodeSource: "regional_default",
+      precision: "region",
+    };
+    return value;
+  }
+
+  // Seed ueber den Service (RLS-konform mit Editor-Actor) — nicht an der
+  // Insert-Policy vorbei.
+  async function seedLeadSource(workspaceId: string, name: string): Promise<string> {
+    const editorId = randomUUID();
+    await withTenantOn(testPool, workspaceId, async (tx) => {
+      await tx.execute(sql`
+        insert into user_identity (id, email)
+        values (${editorId}::uuid, ${`editor-${editorId}@f108.test`})
+      `);
+      await tx.execute(sql`
+        insert into membership (id, workspace_id, user_id, role, capabilities)
+        values (${randomUUID()}::uuid, ${workspaceId}::uuid, ${editorId}::uuid,
+                'editor', '{}'::jsonb)
+      `);
+    });
+    const created = await withAuthorizedTenantOn(
+      testPool, editorId, workspaceId,
+      (tx, ctx) => createLeadSource(tx, ctx, {
+        schemaVersion: LEAD_SOURCE_SCHEMA_VERSION,
+        name,
+        projectDomain: "residential",
+        color: null,
+      }),
+    );
+    return created.id;
+  }
+
+  async function projectLeadSourceId(workspaceId: string): Promise<string | null> {
+    return withTenantOn(testPool, workspaceId, async (tx) => {
+      const result = await tx.execute<{ lead_source_id: string | null }>(sql`
+        select lead_source_id from project limit 1
+      `);
+      return result.rows[0]?.lead_source_id ?? null;
+    });
+  }
+
+  it("F108-INT-01: v5-Lead mit aktiver Quelle wmee-rechner-v5 → project.lead_source_id gesetzt", async () => {
+    const ws = await workspace();
+    const sourceId = await seedLeadSource(ws, "wmee-rechner-v5");
+    const identity = verifiedIdentity(ws);
+
+    await submit(ws, identity, await leadOnlyPayload());
+
+    const attributed = await projectLeadSourceId(ws);
+    expect(attributed).toBe(sourceId);
+  });
+
+  it("F108-INT-02: Intake ohne passende Quelle → lead_source_id bleibt null (Bestandsverhalten)", async () => {
+    const ws = await workspace();
+    const identity = verifiedIdentity(ws);
+
+    await submit(ws, identity, await leadOnlyPayload());
+
+    const attributed = await projectLeadSourceId(ws);
+    expect(attributed).toBeNull();
+  });
+
+  it("F108-DB-05: FK-Integrität — fremde lead_source_id am Projekt wird abgelehnt", async () => {
+    const ws = await workspace();
+    const identity = verifiedIdentity(ws);
+    await submit(ws, identity, await leadOnlyPayload());
+
+    await expect(withTenantOn(testPool, ws, (tx) => tx.execute(sql`
+      update project set lead_source_id = ${randomUUID()}::uuid
+    `))).rejects.toThrow();
+  });
+});

@@ -16,6 +16,7 @@ import { kanbanBoard, kanbanColumn } from "./boards";
 import { workspace } from "./core";
 import { site } from "./site";
 import { projectLossReason } from "./project-loss-reason";
+import { leadSource } from "./lead-source";
 
 export const projectPhases = ["request", "offer", "installation"] as const;
 export const projectOutcomes = ["open", "won", "lost", "cannot_fulfill"] as const;
@@ -40,12 +41,14 @@ export const project = pgTable(
     closedAt: timestamp("closed_at", { withTimezone: true }),
     lossReasonId: uuid("loss_reason_id"),
     lossReasonText: text("loss_reason_text"),
+    leadSourceId: uuid("lead_source_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("project_ws_contact_idx").on(t.workspaceId, t.contactId),
     index("project_ws_site_idx").on(t.workspaceId, t.siteId),
+    index("project_ws_lead_source_idx").on(t.workspaceId, t.leadSourceId),
     index("project_ws_kanban_created_idx").on(
       t.workspaceId,
       t.kanbanColumnId,
@@ -96,6 +99,11 @@ export const project = pgTable(
       columns: [t.workspaceId, t.lossReasonId],
       foreignColumns: [projectLossReason.workspaceId, projectLossReason.id],
       name: "project_loss_reason_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.leadSourceId],
+      foreignColumns: [leadSource.workspaceId, leadSource.id],
+      name: "project_lead_source_fk",
     }),
     check("project_name_ck", sql`length(btrim(${t.name})) between 1 and 200`),
     check("project_phase_ck", sql`${t.phase} in ('request', 'offer', 'installation')`),

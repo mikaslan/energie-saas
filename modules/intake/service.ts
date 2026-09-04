@@ -33,6 +33,7 @@ import {
   type RechnerIntakeReceiptV1,
   type RechnerIntakeV1,
 } from "@/lib/integrations/rechner/types";
+import { resolveLeadSourceForProducer } from "@/modules/lead-sources";
 
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_RECEIPTS = 120;
@@ -630,6 +631,17 @@ export async function processRechnerIntake(
     phase: "request",
     outcome: "open",
     sourceKey: RECHNER_SOURCE_KEY,
+    // F1.8: aktive Lead-Quelle mit Name = Producer-Anwendung (z. B.
+    // "wmee-rechner-v5") zuordnen; ohne Treffer bleibt die Quelle leer.
+    // Kimi-P3-1 (bewusst akzeptiert): Resolve und Insert sind nicht
+    // zeilen-gesperrt — ein exakt dazwischen committetes Archivieren
+    // attribuiert historisch an die gerade archivierte Quelle. Impact
+    // minimal (Quelle bleibt referenzierbar, kein Sicherheitspfad).
+    leadSourceId: await resolveLeadSourceForProducer(
+      tx,
+      ctx,
+      payload.producer.application,
+    ),
     dedupeReviewRequired: contactDecision.reviewRequired,
     catalogResolutionStatus: "pending",
     createdAt: meta.receivedAt,
