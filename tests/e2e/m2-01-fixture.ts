@@ -508,6 +508,9 @@ export async function readM201Offer(state: M201RuntimeState): Promise<M201OfferI
          and variant.ordinal = 1
        where offer.workspace_id = ${state.workspaceId}::uuid
          and offer.project_id = ${state.m201ProjectId}::uuid
+       -- F16.3 Slice C: mehrere E2E-Angebote je Projekt (f16-03c läuft
+       -- alphabetisch vor m2-01) — deterministisch das jüngste lesen.
+       order by offer.created_at desc, offer.id desc
        limit 1
     `);
     const offer = result.rows[0];

@@ -7,6 +7,7 @@ import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   SUBSIDY_KIND_FIX,
+  SUBSIDY_KIND_PERCENT,
   SUBSIDY_TEMPLATE_SCHEMA_VERSION,
   createSubsidyTemplateCommandSchema,
   subsidyTemplateDtoSchema,
@@ -20,6 +21,8 @@ import {
   SubsidyTemplateNotFoundError,
   SubsidyTemplateValidationError,
 } from "./errors";
+import { OFFER_VARIANT_REVISE_COMMAND_VERSION } from "@/lib/integrations/offers/contract";
+import { reviseOfferVariant, type OfferMutationResult } from "@/modules/offers";
 
 function requireRead(ctx: ServiceCtx): void {
   if (!can(ctx, "subsidy_template.read")) {
@@ -280,6 +283,40 @@ export function restoreSubsidyTemplate(
   id: string,
 ): Promise<SubsidyTemplateDto> {
   return setTemplateActive(tx, ctx, id, true);
+}
+
+// F16.3 Slice C: Prozent-Vorlage global aufs Angebot anwenden.
+// Cap-freie Prozent-Vorlagen -> set_global_discount (wörtlich, via
+// reviseOfferVariant). Cap-/Fix-Vorlagen -> ValidationError (nie still
+// verlieren; Fix/Cap brauchen Modellfelder = Slice D).
+export async function applySubsidyTemplateToOfferGlobal(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { templateId: string; offerId: string; variantId: string; expectedRevision: number },
+): Promise<OfferMutationResult> {
+  requireRead(ctx);
+  const found = await tx.execute<TemplateRow>(sql`
+    ${TEMPLATE_SELECT}
+   where workspace_id = ${ctx.workspaceId}::uuid
+     and id = ${input.templateId}::uuid
+     and active = true
+   limit 1
+  `);
+  const row = found.rows[0];
+  if (!row) throw new SubsidyTemplateNotFoundError(input.templateId);
+  if (row.kind !== SUBSIDY_KIND_PERCENT || row.percent_bps === null) {
+    throw new SubsidyTemplateValidationError("nur Prozent-Vorlagen sind global anwendbar");
+  }
+  if (row.cap_cents !== null) {
+    throw new SubsidyTemplateValidationError("gedeckelte Vorlagen sind global nicht anwendbar");
+  }
+  return reviseOfferVariant(tx, ctx, {
+    schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
+    offerId: input.offerId,
+    variantId: input.variantId,
+    expectedRevision: input.expectedRevision,
+    operations: [{ operation: "set_global_discount", discountBps: row.percent_bps }],
+  });
 }
 
 // Reine Apply-Funktion (kein DB-Zugriff, Cent-Integer-Arithmetik, floor):

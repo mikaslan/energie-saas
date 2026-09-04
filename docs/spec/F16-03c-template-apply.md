@@ -1,6 +1,6 @@
 # F16.3 Slice C — Prozent-Vorlage global aufs Angebot anwenden
 
-Status: **SPECIFIED (DISCOVERED abgeschlossen)**
+Status: **IMPLEMENTED (lokal verifiziert 2026-09-04: lint 0 Errors, typecheck, depcruise, generate ohne Drift, catalog-contract-check, E2E --list; DB-/E2E-Ausführung pending CI/Maschine — Billing-Block Q6)**
 
 Lane: `codex/muse-welle-03-e2e` off `origin/codex/m1-wave-02`.
 Vorgänger: F16.3-A/B (Vorlagen-CRUD + reine Arithmetik). Katalog: F16.3

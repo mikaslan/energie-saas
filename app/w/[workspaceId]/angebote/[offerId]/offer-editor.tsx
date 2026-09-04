@@ -440,6 +440,14 @@ function productSubtitle(line: OfferLineView): string {
   return [line.product.manufacturer, line.product.model].filter(Boolean).join(" · ");
 }
 
+// F16.3 Slice C: Vorlagen-Prozent ins Draft-Format (wie formatScaledInteger
+// mit 2 Stellen im Model: 500 -> "5", 550 -> "5,5", 505 -> "5,05").
+function formatTemplatePercentInput(percentBps: number): string {
+  const whole = Math.floor(percentBps / 100);
+  const fraction = String(percentBps % 100).padStart(2, "0").replace(/0+$/u, "");
+  return fraction.length === 0 ? String(whole) : `${whole},${fraction}`;
+}
+
 function positionLabel(positionType: string): string {
   if (positionType === "required") return "Erforderlich";
   if (positionType === "additional") return "Zusatzleistung";
@@ -1055,6 +1063,24 @@ export function OfferVariantEditor({
                             <input id="global-discount" inputMode="decimal" value={draft.globalDiscountPercent} aria-invalid={invalidFields.has("global-discount") || undefined} aria-describedby={errorDescription("global-discount")} onChange={(event) => setDraft((current) => ({ ...current, globalDiscountPercent: event.target.value }))} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />
                             {fieldError("global-discount")}
                           </div>
+                          {(view.discountTemplates?.length ?? 0) > 0 ? (
+                            <div>
+                              <label htmlFor="global-discount-template" className="text-sm font-semibold">Aus Vorlage übernehmen</label>
+                              <select id="global-discount-template" value="" onChange={(event) => {
+                                const template = view.discountTemplates?.find((entry) => entry.id === event.target.value);
+                                if (template) {
+                                  setDraft((current) => ({ ...current, globalDiscountPercent: formatTemplatePercentInput(template.percentBps) }));
+                                }
+                              }} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">
+                                <option value="">Vorlage wählen …</option>
+                                {view.discountTemplates?.map((template) => (
+                                  <option key={template.id} value={template.id}>
+                                    {template.name} ({formatTemplatePercentInput(template.percentBps)} % · {template.source === "subsidy" ? "Förderung" : "Rabatt"})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : null}
                           <div>
                             <label htmlFor="custom-deal" className="text-sm font-semibold">Custom Deal netto €</label>
                             <input id="custom-deal" inputMode="decimal" value={draft.customDealNetEuros} aria-invalid={invalidFields.has("custom-deal") || undefined} aria-describedby={errorDescription("custom-deal")} onChange={(event) => setDraft((current) => ({ ...current, customDealNetEuros: event.target.value }))} placeholder="Kein fester Zielpreis" className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />

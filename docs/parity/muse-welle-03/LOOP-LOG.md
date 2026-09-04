@@ -332,3 +332,22 @@
   Zielpreis (kein Rabatt-Ziel); Editor hat Global-Rabatt-Bereich mit
   `discount.apply`-Gate; m2-01-E2E als möglicher C-Träger.
 - Nächster Schritt: F16.3-C implementieren (Service + UI + Tests).
+
+## Turn 21 — 2026-09-04, F16.3 Slice C implementiert (Prozent-Apply global)
+
+- SPEC `docs/spec/F16-03c-template-apply.md` (DECIDED: nur cap-freie
+  Prozent-Vorlagen → `set_global_discount`; Cap/Fix → ValidationError;
+  Fix-Modell = Slice D). Reviews Exit-3 (kein Key).
+- Service `applyDiscountTemplateToOfferGlobal` (+ Subsidy-Spiegel,
+  Delegation an `reviseOfferVariant`, kein Schema-Eingriff, kein
+  Contract-Sprung). UI: Vorlagen-Dropdown im Global-Rabatt-Bereich
+  (Draft-lokal, bestehender Save-Pfad; de-DE-Prozentformat wie Model).
+- Fixture-Kette aus f202 übernommen (bewährtes Muster, Labels
+  getauscht). DB f1603c (Apply→500bps/Rev2, Cap/Fix/NotFound-Abweisung,
+  Cap-Gates). E2E-03 (Vorlage→Übernehmen→Save→500bps per Snapshot).
+- Schutz-Fix: `readM201Offer` jüngstes zuerst (f16-03c läuft vor m2-01;
+  m2-02 braucht m2-01-Angebot — latest-wins passt allen).
+- Lokal grün: eslint (0 Errors), typecheck, depcruise, generate
+  (no drift), catalog-contract-check, E2E --list. DB-/E2E-Ausführung
+  nur Maschine/CI (Billing-Block Q6 unverändert).
+- Nächster Schritt: Slice C pushen, CI-Lage lesen, nächste Capability.

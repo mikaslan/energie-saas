@@ -197,6 +197,14 @@ export interface OfferDetailSurfaceView {
     approvedCandidates: readonly OfferIssuanceCandidateSurfaceView[];
     issuances: readonly OfferIssuanceSurfaceView[];
   };
+  // F16.3 Slice C: cap-freie Prozent-Vorlagen (Rabatt + Förderung) für den
+  // Global-Rabatt-Dropdown. Nur gesetzt mit discount.apply-Recht.
+  discountTemplates?: readonly {
+    id: string;
+    name: string;
+    percentBps: number;
+    source: "discount" | "subsidy";
+  }[];
 }
 
 export type OfferComponentCategory =

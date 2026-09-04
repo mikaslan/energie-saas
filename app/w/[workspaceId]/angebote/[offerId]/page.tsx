@@ -22,6 +22,9 @@ import {
   type OfferReleaseStatusResult,
 } from "@/modules/offers";
 import { requireAuthSecret } from "@/lib/env";
+
+import { listDiscountTemplates } from "@/modules/discounts";
+import { listSubsidyTemplates } from "@/modules/subsidies";
 import {
   OfferDetailView,
   type OfferDetailSurfaceView,
@@ -216,6 +219,12 @@ function projectOfferDetailView(
   },
   recoveryScope: string,
   pdfDrafts: readonly OfferPdfDraftStatusResult[],
+  discountTemplates: readonly {
+    id: string;
+    name: string;
+    percentBps: number;
+    source: "discount" | "subsidy";
+  }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
     recipient: OfferRecipientRevisionResult | null;
@@ -418,6 +427,7 @@ function projectOfferDetailView(
       approvedCandidates: approvedIssuanceCandidates,
       issuances: issuanceSurfaces,
     },
+    discountTemplates,
   };
 }
 
@@ -446,6 +456,12 @@ export default async function OfferDetailPage(
     offerIssuances: OfferIssuanceStatusResult[];
     releaseValidityWindow: ReleaseValidityWindow | null;
     showReleasePanel: boolean;
+    discountTemplates: {
+      id: string;
+      name: string;
+      percentBps: number;
+      source: "discount" | "subsidy";
+    }[];
     recoveryScope: string;
     editorCapabilities: {
       canEditPrice: boolean;
@@ -474,6 +490,12 @@ export default async function OfferDetailPage(
         let releaseRecipient: OfferRecipientRevisionResult | null = null;
         let releaseCandidates: OfferReleaseStatusResult[] = [];
         let offerIssuances: OfferIssuanceStatusResult[] = [];
+        const discountTemplates: {
+          id: string;
+          name: string;
+          percentBps: number;
+          source: "discount" | "subsidy";
+        }[] = [];
         let releaseValidityWindow: ReleaseValidityWindow | null = null;
         if (view !== null && !externalOnly) {
           // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
@@ -520,6 +542,25 @@ export default async function OfferDetailPage(
           releaseRecipient = recipientResult;
           releaseCandidates = candidateResult;
           offerIssuances = issuanceResult;
+          // F16.3 Slice C: cap-freie Prozent-Vorlagen (Rabatt + Förderung)
+          // für den Global-Rabatt-Dropdown. Nur mit discount.apply-Recht;
+          // Fix/Cap nie listen (Service weist sie ebenfalls ab).
+          if (!externalOnly && can(ctx, "discount.apply")) {
+            if (can(ctx, "discount_template.read")) {
+              for (const template of await listDiscountTemplates(tx, ctx, {})) {
+                if (template.kind === "percent_bps" && template.capCents === null && template.percentBps !== null) {
+                  discountTemplates.push({ id: template.id, name: template.name, percentBps: template.percentBps, source: "discount" });
+                }
+              }
+            }
+            if (can(ctx, "subsidy_template.read")) {
+              for (const template of await listSubsidyTemplates(tx, ctx, {})) {
+                if (template.kind === "percent_bps" && template.capCents === null && template.percentBps !== null) {
+                  discountTemplates.push({ id: template.id, name: template.name, percentBps: template.percentBps, source: "subsidy" });
+                }
+              }
+            }
+          }
           releaseValidityWindow = releaseValidityWindowSchema.parse({
             min: validityResult.rows[0]?.min_valid_through,
             suggested: validityResult.rows[0]?.suggested_valid_through,
@@ -539,6 +580,7 @@ export default async function OfferDetailPage(
           offerIssuances,
           releaseValidityWindow,
           showReleasePanel: !externalOnly,
+          discountTemplates,
           editorCapabilities: {
             canEditPrice: !externalOnly && can(ctx, "price.edit"),
             canApplyDiscount: !externalOnly && can(ctx, "discount.apply"),
@@ -582,6 +624,7 @@ export default async function OfferDetailPage(
           result.editorCapabilities,
           result.recoveryScope,
           result.pdfDrafts,
+          result.discountTemplates,
           {
             profile: result.releaseProfile,
             recipient: result.releaseRecipient,
