@@ -130,14 +130,16 @@ WMEE; Push-/Deploy-Regeln unverändert.
   26 List-Endpunkte mit echten Daten, 23/24 Detail-200er, 12 Detail-
   Strukturen (Key:Typ, keine Werte). Evidenz: `docs/parity/reonic-api-live/`
   (tooling `c517059`). Scope-Lücke: commercialProjects 403.
-- F1.8 Lead-Sources (Lane `codex/m1-18-lead-sources`, Migration 0049):
-  SPECIFIED (OBSERVED-Schema: name, projectDomain, archivedAt; Farbe
-  ESTIMATE). Slice A: Stammdaten-CRUD (Soft-Delete, partieller Unique-
-  Index — Name nach Archivierung frei), Service-Layer-Rechte
-  (lead_source.read/write), Intake-Attribution (producer.name → aktive
-  Quelle), RLS im M1-CRM-Muster (tenant_isolation; DECIDED gegen 0047-
-  Actor-Muster, weil der HMAC-Intake ohne Membership-Actor läuft),
-  Einstellungs-UI + 2 E2E. DB-Tests 20/20 grün; Gate läuft.
+- F1.8 Lead-Sources (0049): REVIEWED/VERIFIED (lokal), integriert in
+  `codex/m1-wave-02` (`e5d1c92`/Wave-02-FF, gepusht). Slice A:
+  Stammdaten-CRUD (Soft-Delete, partieller Unique-Index — Name nach
+  Archivierung frei), Rechte lead_source.read/write, Intake-
+  Attribution (producer.application → aktive Quelle), RLS im
+  M1-CRM-Muster (tenant_isolation; DECIDED: HMAC-Intake läuft ohne
+  Membership-Actor), Einstellungs-UI, 2 E2E. Kimi-K3: NACHBESSERUNG
+  (P1-1/P1-2 + P2/P3) vollständig geschlossen. Nachweise: check
+  197 Dateien/1896 Tests + 1 Skipped, Build, db:generate ohne Drift,
+  E2E F1.8 2/2, Secret-Scan.
 - Mikail: keine weiteren Localhost-Demos (Demo-Job gestoppt).
 
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
