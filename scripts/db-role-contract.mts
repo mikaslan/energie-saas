@@ -234,6 +234,7 @@ const LEAD_SOURCE_RELATIONS = [
 const TIME_TRACKING_RELATIONS = [
   "time_event_type",
   "time_entry",
+  "time_entry_revision",
 ] as const;
 
 const CHECKLIST_RELATIONS = [
@@ -1351,11 +1352,15 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     await client.query(`
       revoke all privileges on
         public.time_event_type,
-        public.time_entry
+        public.time_entry,
+        public.time_entry_revision
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.time_event_type to app_runtime;
       grant select, insert, update on public.time_entry to app_runtime;
+      -- F9.4: Revisionen sind append-only (kein DELETE, kein UPDATE im
+      -- Service) — der Rollenvertrag vergibt bewusst nur select/insert/update.
+      grant select, insert, update on public.time_entry_revision to app_runtime;
       -- F9.2: Verwerfen laufender Stoppuhr-Einträge = Hard-Delete
       -- (M1-15-Muster: project_appointment trägt DELETE analog).
       grant delete on public.time_entry to app_runtime
@@ -3900,6 +3905,7 @@ export async function verifyRoleContract(
         ...(hasTimeTracking ? [
           "time_event_type:tenant_isolation:3e74ed81c41e7311f7725bcc268f1408148780cb500d798998bd9e3c873e45c3",
           "time_entry:tenant_isolation:c3d1d966d152a34ed5e59bafe19e807ee4c780b8994e67054e18ea93209c2bb2",
+          "time_entry_revision:tenant_isolation:f3bc495928f60c9359d9a88f9b5b21644cc3edca53f183988fc676689c8633a1",
         ] : []),
         ...(hasChecklists ? [
           "project_checklist:tenant_isolation:711797a558f37e71658c8adc89f6e18dd7355c16581b4c06ab61baffb68b522d",

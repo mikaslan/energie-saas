@@ -97,6 +97,40 @@ export const timeMemberOptionSchema = z.object({
 });
 export type TimeMemberOption = z.infer<typeof timeMemberOptionSchema>;
 
+// F9.4 Slice B Versionshistorie: Revision = Vollbild des Vor-Update-Stands
+// (immutable, kein updatedAt — Muster offer_variant_revision).
+export const timeEntryRevisionDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  id: z.string().uuid(),
+  entryId: z.string().uuid(),
+  userId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  typeId: z.string().uuid().nullable(),
+  startAt: z.string(),
+  endAt: z.string().nullable(),
+  workingTimeMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX).nullable(),
+  breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
+  comment: z.string().nullable(),
+  revisedBy: z.string().uuid(),
+  revisedAt: z.string(),
+  createdAt: z.string(),
+});
+export type TimeEntryRevisionDto = z.infer<typeof timeEntryRevisionDtoSchema>;
+
+export const timeEntryRevisionListDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  entryId: z.string().uuid(),
+  revisions: z.array(timeEntryRevisionDtoSchema),
+});
+export type TimeEntryRevisionListDto = z.infer<typeof timeEntryRevisionListDtoSchema>;
+
+// Query nur { entryId }: Projekt/Workspace folgen aus dem Eintrag
+// (Eintrag ausserhalb des Workspace => not_found, gleiche Schranke).
+export const timeEntryRevisionListQuerySchema = z.object({
+  entryId: z.string().uuid(),
+});
+export type TimeEntryRevisionListQuery = z.infer<typeof timeEntryRevisionListQuerySchema>;
+
 // F9.4 Slice A CSV-Export: Filter = List-Filter wiederverwendet
 // (timeEntryListQuerySchema, kein neuer Dialekt).
 export const timeEntryExportResultSchema = z.object({

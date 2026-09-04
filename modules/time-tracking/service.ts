@@ -15,6 +15,9 @@ import {
   timeEntryExportResultSchema,
   timeEntryListDtoSchema,
   timeEntryListQuerySchema,
+  timeEntryRevisionDtoSchema,
+  timeEntryRevisionListDtoSchema,
+  timeEntryRevisionListQuerySchema,
   timeMemberOptionSchema,
   timeEventTypeDtoSchema,
   updateTimeEntryCommandSchema,
@@ -26,6 +29,8 @@ import {
   type TimeEntryDto,
   type TimeEntryExportResult,
   type TimeEntryListDto,
+  type TimeEntryRevisionDto,
+  type TimeEntryRevisionListDto,
   type TimeMemberOption,
   type TimeEventTypeDto,
   type UpdateTimeEntryCommand,
@@ -443,21 +448,53 @@ async function upsertTimeEntry(
       rows = inserted.rows;
     } else {
       const update = command as UpdateTimeEntryCommand;
+      // F9.4 Slice B: VOR dem UPDATE das Vorher-Bild als immutable Revision
+      // sichern (gleiche Transaktion, gleicher Statement-Snapshot: old_entry
+      // sieht garantiert den Stand vor dem Update). Kein Diff-Vergleich —
+      // jeder Speichervorgang schreibt genau eine Revision (SPEC §2).
+      // Trifft das UPDATE keine Zeile, sichert der JOIN bewusst nichts.
       const updated = await tx.execute<TimeEntryRow>(sql`
-        update time_entry
-           set type_id = ${fields.typeId ?? null}::uuid,
-               start_at = ${new Date(fields.startAt).toISOString()}::timestamptz,
-               end_at = ${new Date(fields.endAt).toISOString()}::timestamptz,
-               working_time_minutes = ${fields.workingTimeMinutes},
-               break_duration_minutes = ${fields.breakDurationMinutes},
-               comment = ${fields.comment},
-               updated_by = ${ctx.actor}::uuid,
-               updated_at = statement_timestamp()
-         where workspace_id = ${ctx.workspaceId}::uuid
-           and id = ${update.id}::uuid
-         returning id, user_id, project_id, type_id, start_at, end_at,
-                   working_time_minutes, break_duration_minutes, comment,
-                   archived_at, created_at, updated_at
+        with old_entry as (
+          select id, user_id, project_id, type_id, start_at, end_at,
+                 working_time_minutes, break_duration_minutes, comment
+            from time_entry
+           where workspace_id = ${ctx.workspaceId}::uuid
+             and id = ${update.id}::uuid
+        ),
+        updated as (
+          update time_entry
+             set type_id = ${fields.typeId ?? null}::uuid,
+                 start_at = ${new Date(fields.startAt).toISOString()}::timestamptz,
+                 end_at = ${new Date(fields.endAt).toISOString()}::timestamptz,
+                 working_time_minutes = ${fields.workingTimeMinutes},
+                 break_duration_minutes = ${fields.breakDurationMinutes},
+                 comment = ${fields.comment},
+                 updated_by = ${ctx.actor}::uuid,
+                 updated_at = statement_timestamp()
+           where workspace_id = ${ctx.workspaceId}::uuid
+             and id = ${update.id}::uuid
+          returning id, user_id, project_id, type_id, start_at, end_at,
+                    working_time_minutes, break_duration_minutes, comment,
+                    archived_at, created_at, updated_at
+        ),
+        inserted_revision as (
+          insert into time_entry_revision (
+            workspace_id, entry_id, user_id, project_id, type_id, start_at,
+            end_at, working_time_minutes, break_duration_minutes, comment,
+            revised_by, revised_at
+          )
+          select ${ctx.workspaceId}::uuid, old_entry.id, old_entry.user_id,
+                 old_entry.project_id, old_entry.type_id, old_entry.start_at,
+                 old_entry.end_at, old_entry.working_time_minutes,
+                 old_entry.break_duration_minutes, old_entry.comment,
+                 ${ctx.actor}::uuid, statement_timestamp()
+            from old_entry
+            join updated on updated.id = old_entry.id
+        )
+        select id, user_id, project_id, type_id, start_at, end_at,
+               working_time_minutes, break_duration_minutes, comment,
+               archived_at, created_at, updated_at
+          from updated
       `);
       rows = updated.rows;
     }
@@ -505,6 +542,78 @@ export function updateTimeEntry(
   input: UpdateTimeEntryCommand,
 ): Promise<TimeEntryDto> {
   return upsertTimeEntry(tx, ctx, input, "update");
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F9.4 Slice B Versionshistorie: immutable Vorher-Bilder je Eintrag
+// ═══════════════════════════════════════════════════════════════════════
+
+type TimeEntryRevisionRow = {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  project_id: string;
+  type_id: string | null;
+  start_at: string;
+  end_at: string | null;
+  working_time_minutes: number | null;
+  break_duration_minutes: number;
+  comment: string | null;
+  revised_by: string;
+  revised_at: string;
+  created_at: string;
+};
+
+function toTimeEntryRevisionDto(row: TimeEntryRevisionRow): TimeEntryRevisionDto {
+  return timeEntryRevisionDtoSchema.parse({
+    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+    id: row.id,
+    entryId: row.entry_id,
+    userId: row.user_id,
+    projectId: row.project_id,
+    typeId: row.type_id,
+    startAt: row.start_at,
+    endAt: row.end_at,
+    workingTimeMinutes: row.working_time_minutes,
+    breakDurationMinutes: row.break_duration_minutes,
+    comment: row.comment,
+    revisedBy: row.revised_by,
+    revisedAt: row.revised_at,
+    createdAt: row.created_at,
+  });
+}
+
+export async function listTimeEntryRevisions(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { entryId: string },
+): Promise<TimeEntryRevisionListDto> {
+  requireRead(ctx);
+  const parsed = timeEntryRevisionListQuerySchema.safeParse(query);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  // Gleiche Schranke wie Eintraege: fremder Eintrag => not_found
+  // (kein leeres Ergebnis, keine Existenz-Orakel).
+  const entry = await tx.execute<{ id: string }>(sql`
+    select id from time_entry
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${parsed.data.entryId}::uuid
+     limit 1
+  `);
+  if (!entry.rows[0]) throw new TimeTrackingNotFoundError("time_entry", parsed.data.entryId);
+  const result = await tx.execute<TimeEntryRevisionRow>(sql`
+    select id, entry_id, user_id, project_id, type_id, start_at, end_at,
+           working_time_minutes, break_duration_minutes, comment,
+           revised_by, revised_at, created_at
+      from time_entry_revision
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and entry_id = ${parsed.data.entryId}::uuid
+     order by revised_at desc, id asc
+  `);
+  return timeEntryRevisionListDtoSchema.parse({
+    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+    entryId: parsed.data.entryId,
+    revisions: result.rows.map(toTimeEntryRevisionDto),
+  });
 }
 
 export async function archiveTimeEntry(

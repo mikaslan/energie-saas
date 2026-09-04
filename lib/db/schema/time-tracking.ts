@@ -106,3 +106,41 @@ export const timeEntry = pgTable(
     }),
   ],
 );
+
+// F9.4 Slice B: unveränderliche Vorher-Bilder je Edit (Muster
+// offer_variant_revision). Nur created_at, kein updated_at, kein
+// Update-/Delete-Pfad — geschrieben wird ausschließlich vom Service
+// beim Update, in derselben Transaktion.
+export const timeEntryRevision = pgTable(
+  "time_entry_revision",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    entryId: uuid("entry_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    projectId: uuid("project_id").notNull(),
+    typeId: uuid("type_id"),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    endAt: timestamp("end_at", { withTimezone: true }),
+    workingTimeMinutes: integer("working_time_minutes"),
+    breakDurationMinutes: integer("break_duration_minutes").notNull().default(0),
+    comment: text("comment"),
+    revisedBy: uuid("revised_by").notNull(),
+    revisedAt: timestamp("revised_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("time_entry_revision_ws_entry_idx").on(t.workspaceId, t.entryId, t.revisedAt),
+    unique("time_entry_revision_ws_id_uq").on(t.workspaceId, t.id),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "time_entry_revision_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.entryId],
+      foreignColumns: [timeEntry.workspaceId, timeEntry.id],
+      name: "time_entry_revision_entry_fk",
+    }),
+  ],
+);

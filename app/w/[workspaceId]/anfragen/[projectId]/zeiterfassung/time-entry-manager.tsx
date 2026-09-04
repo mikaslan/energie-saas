@@ -4,7 +4,9 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import type {
   TimeEntryDto,
   TimeEntryListDto,
+  TimeEntryRevisionDto,
   TimeEventTypeDto,
+  TimeMemberOption,
 } from "@/lib/integrations/time-tracking/contract";
 import {
   archiveTimeEntryAction,
@@ -78,17 +80,48 @@ function formatDuration(minutes: number | null): string {
   return h > 0 ? `${h} Std. ${m} Min.` : `${m} Min.`;
 }
 
+// F9.4 Slice B: Verlauf zeigt Berlin-Zeiten wie der CSV-Export — explizite
+// Zeitzone statt Browser-Zeitzone (E2E-deterministisch).
+const BERLIN_DATE = new Intl.DateTimeFormat("de-DE", {
+  timeZone: "Europe/Berlin",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+const BERLIN_TIME = new Intl.DateTimeFormat("de-DE", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function formatBerlinRange(startAt: string, endAt: string | null): string {
+  const start = new Date(startAt);
+  const date = BERLIN_DATE.format(start);
+  const from = BERLIN_TIME.format(start);
+  if (endAt === null) return `${date} · ab ${from} Uhr`;
+  return `${date} · ${from}–${BERLIN_TIME.format(new Date(endAt))} Uhr`;
+}
+
+function formatBerlinDateTime(iso: string): string {
+  const date = new Date(iso);
+  return `${BERLIN_DATE.format(date)}, ${BERLIN_TIME.format(date)} Uhr`;
+}
+
 export function TimeEntryManager({
   workspaceId,
   projectId,
   list,
   types,
+  members,
+  revisionsByEntry,
   canWrite,
 }: {
   workspaceId: string;
   projectId: string;
   list: TimeEntryListDto;
   types: TimeEventTypeDto[];
+  members: TimeMemberOption[];
+  revisionsByEntry: Record<string, TimeEntryRevisionDto[]>;
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createTimeEntryAction, initialState);
@@ -107,6 +140,9 @@ export function TimeEntryManager({
     typeId !== null ? types.find((type) => type.id === typeId && type.archivedAt !== null) : undefined;
 
   const runningEntry = list.entries.find((entry) => entry.running);
+
+  const memberLabel = (userId: string): string =>
+    members.find((member) => member.userId === userId)?.label ?? "Unbekannt";
 
   return (
     <div className="space-y-6">
@@ -214,6 +250,12 @@ export function TimeEntryManager({
                     <span className="block text-xs text-slate-500">{entry.comment}</span>
                   ) : null}
                 </span>
+                <RevisionHistory
+                  entryId={entry.id}
+                  revisions={revisionsByEntry[entry.id] ?? []}
+                  typeName={typeName}
+                  memberLabel={memberLabel}
+                />
                 {canWrite ? (
                   <>
                     <EditForm
@@ -302,6 +344,51 @@ export function TimeEntryManager({
         )}
       </section>
     </div>
+  );
+}
+
+// F9.4 Slice B: Aufklapp-Verlauf je Eintrag. Kein toter Link — ohne
+// Revisionen wird nichts gerendert. Natives <details> (ohne JS bedienbar,
+// E2E-stabil).
+function RevisionHistory({
+  entryId,
+  revisions,
+  typeName,
+  memberLabel,
+}: {
+  entryId: string;
+  revisions: TimeEntryRevisionDto[];
+  typeName: (typeId: string | null) => string | null;
+  memberLabel: (userId: string) => string;
+}) {
+  if (revisions.length === 0) return null;
+  return (
+    <details className="w-full rounded-md bg-slate-50 px-3 py-2" data-testid={`verlauf-${entryId}`}>
+      <summary className="cursor-pointer text-xs font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">
+        Verlauf ({revisions.length})
+      </summary>
+      <ul className="mt-2 space-y-2">
+        {revisions.map((revision) => (
+          <li key={revision.id} className="border-t border-slate-200 pt-2 text-xs text-slate-600">
+            <span className="block font-semibold text-slate-800">
+              {typeName(revision.typeId) ?? "Ohne Ereignistyp"}
+            </span>
+            <span className="block">
+              {formatBerlinRange(revision.startAt, revision.endAt)}
+              {revision.workingTimeMinutes === null
+                ? ""
+                : ` · ${formatDuration(revision.workingTimeMinutes)}${revision.breakDurationMinutes > 0 ? ` · Pause ${formatDuration(revision.breakDurationMinutes)}` : ""}`}
+            </span>
+            {revision.comment ? (
+              <span className="block italic">{revision.comment}</span>
+            ) : null}
+            <span className="block text-slate-500">
+              Geändert von {memberLabel(revision.revisedBy)} am {formatBerlinDateTime(revision.revisedAt)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

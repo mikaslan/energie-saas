@@ -5,10 +5,16 @@ import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type {
   TimeEntryListDto,
+  TimeEntryRevisionDto,
   TimeEventTypeDto,
   TimeMemberOption,
 } from "@/lib/integrations/time-tracking/contract";
-import { listTimeEntries, listTimeEventTypes, listTimeMemberOptions } from "@/modules/time-tracking";
+import {
+  listTimeEntries,
+  listTimeEntryRevisions,
+  listTimeEventTypes,
+  listTimeMemberOptions,
+} from "@/modules/time-tracking";
 import { UserFilterForm } from "./user-filter-form";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { sql } from "drizzle-orm";
@@ -51,7 +57,7 @@ export default async function ProjectTimeTrackingPage(
   const selectedUserIds = parseUserFilter(await props.searchParams);
 
   let result:
-    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; selectedUserIds: string[]; canWrite: boolean }
+    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; selectedUserIds: string[]; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -74,11 +80,21 @@ export default async function ProjectTimeTrackingPage(
         if (!projectRow.rows[0]) {
           throw new ProjectNotFound();
         }
+        // F9.4 Slice B: Verlauf je gelistetem Eintrag (Service-Pfad mit
+        // RequireRead + NotFound-Schranke; Eintraege stammen aus derselben
+        // Transaktion, daher existiert jede ID garantiert).
+        const revisionsByEntry: Record<string, TimeEntryRevisionDto[]> = {};
+        for (const entry of list.entries) {
+          revisionsByEntry[entry.id] = (
+            await listTimeEntryRevisions(tx, ctx, { entryId: entry.id })
+          ).revisions;
+        }
         return {
           projectName: projectRow.rows[0].name,
           list,
           types: await listTimeEventTypes(tx, ctx, { includeArchived: true }),
           members: await listTimeMemberOptions(tx, ctx),
+          revisionsByEntry,
           selectedUserIds,
           canWrite: can(ctx, "time.write"),
         };
@@ -134,6 +150,8 @@ export default async function ProjectTimeTrackingPage(
         projectId={projectId}
         list={result.list}
         types={result.types}
+        members={result.members}
+        revisionsByEntry={result.revisionsByEntry}
         canWrite={result.canWrite}
       />
 
