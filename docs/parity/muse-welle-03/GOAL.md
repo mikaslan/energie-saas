@@ -5,15 +5,12 @@ Basis: Ultra-Prompt 06 (origin/tooling) + Delta 09 (dieses Dokument geht bei
 Widersprüchen vor). Vault bleibt gesperrt — diese Datei + FRAGEN-AN-MIKAIL.md
 leben unter `docs/parity/muse-welle-03/`, Mikail spiegelt in den Vault.
 
-Stand: E2E-Nachholblock code-fertig auf Lane `codex/muse-welle-03-e2e`:
-f7-03-Isolation, Fehler-Mapping, F2.2-/F9.3-/F16.2-/F10.1-Specs (je
-eigenes W3-Projekt) + State-Push (Actions war aus, Erstlauf beider
-Workflows). Basis `origin/codex/m1-wave-02` = `cf02c26`. M2-04-
-Implementierung vorhanden (0044, Service, UI, Skeleton) — wartet auf
-CI-Urteil. CI-Billing seit ca. 21:37 dicht (keine Job-Ausführung,
-FRAGEN-AN-MIKAIL.md Nr. 6, BLOCKED-ON-MIKAIL). Lane-Rot ist vorbestehend
-(Kontrolle clean-cf02c26 ebenfalls rot). Weiter ohne CI: specen+bauen,
-verifizieren nach Billing-Fix.
+Stand: Nachholblock INTEGRIERT (`origin/codex/m1-wave-02` = `258fb8a`):
+Lane + Mikails Gatefix (`31a61c4`, 4 Root-Causes) + scharfer E2E-Job.
+Seine Gates: check 208/1969+1, Rollen 88/88, PG18 5/5, Build, E2E 90/90.
+Lane auf 258fb8a fast-forwarded. M2-04 damit gates-belegt (Reviews
+Exit-3). CI-Billing weiter dicht (FRAGEN-AN-MIKAIL.md Nr. 6).
+Nächstes: F9.4-Spec (Katalog-F9.3-Rest).
 
 Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
 Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output

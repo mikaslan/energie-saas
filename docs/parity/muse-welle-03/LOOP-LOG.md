@@ -99,3 +99,24 @@
   Testdefekt auf cf02c26. Klärung erst mit Logs/Artefakten nach
   Billing-Fix (Observability-Commit liegt bereit).
 - Nächster Schritt: F9.4+-Scoping (Modulkatalog), Spec-Arbeit ohne CI.
+
+## Turn 8 — 2026-09-04, Integration erhalten, 4 Lektionen
+
+- Mikail hat Lane + Gatefix integriert (`e728fb5`, `31a61c4`) und den
+  E2E-Job scharf gestellt (`258fb8a`). Seine Gates: alles grün, E2E
+  90/90. Lane auf 258fb8a fast-forwarded.
+- Die 4 Root-Causes (alle E2E-seitig, meine Statik blind):
+  1. f7-02: kein Serverfehler — `key={version}`-Remount fraß den Toast
+     (Server lieferte success). Lehre: bei fehlendem Toast erst
+     Remount-Verdacht prüfen (React-Keys!), dann Server.
+  2. F2.2/F16.2: W3-Caps unvollständig (convert_phase/discounts fehlten,
+     Create-Gate read_only). Lehre: Referenz-Membership EXAKT spiegeln,
+     nie per Pfad-Analyse kürzen.
+  3. F10.1: 404-Navigation loggt Console-Errors (m1-08b-Muster existiert).
+     Lehre: bekannte Konsolen-Muster VORHER aus Nachbar-Specs übernehmen.
+  4. Doppel-Seed kollidierte auf SKU-Unique (skuSuffix nötig). Lehre: bei
+     Seeder-Wiederverwendung Uniqueness-Annahmen prüfen.
+- Vitest-Rot: auf seiner Maschine grün (208/1969) — CI-Rot war
+  Env/ungegatete-Basis, kein Lane-Defekt. Billing weiter sein Part.
+- RUNTIME-BLOCKs: keine.
+- Nächster Schritt: F9.4-Spec (erster Vertiefungs-Slice).
