@@ -159,8 +159,32 @@ auftreten; bei jedem neuen Slice arbeitest du diese Liste aktiv ab:
    FRAGEN-AN-MIKAIL.md — prüfen, ob Mikail sie inzwischen beantwortet
    hat).
 
-## 6. Ende erst, wenn
+## 6. CI-Gate-Loop (gilt ab jetzt — ersetzt Warten auf Mikail)
+
+- `.github/workflows/codex-lane-ci.yml` läuft bei JEDEM Push auf
+  `codex/**` automatisch auf GitHub: Lint, Typecheck, Katalogvertrag,
+  Depcruise, Vitest mit eingebettetem Postgres, Rollenproben (88/88 +
+  PG18 5/5), db:generate-Drift-Gate, Build — plus ein Chromium-E2E-Job.
+- Dein Loop: **push → CI-Ergebnis lesen → fixen → wieder pushen**,
+  bis der Gates-Job grün ist. KEIN Warten auf Mikail für Gate-Läufe;
+  Mikail integriert nur noch nach Grün in `codex/m1-wave-02`.
+- Ergebnis lesen (gh-CLI falls vorhanden):
+  `gh run list --branch <deine-lane>` und
+  `gh run view <run-id> --log-failed`.
+  Ohne gh-CLI per API (öffentlich lesbar, kein Token):
+  `curl -s "https://api.github.com/repos/mikaslan/energie-saas/actions/runs?branch=<deine-lane>&per_page=3" | grep -E '"display_title"|"status"|"conclusion"'`
+- **WICHTIG:** Der E2E-Job ist aktuell bewusst `continue-on-error`, weil
+  die zwei vorbestehenden F7-E2E-Fehler noch offen sind. Sie gehören zu
+  DEINEM E2E-Nachholblock — erst wenn deine zwei Fixes gemergt sind,
+  wird der Job scharf geschaltet. Bis dahin: E2E-Fehlschläge im CI-Log
+  IMMER prüfen und unterscheiden (bekannte F7-Fehler vs. neue).
+- Standbericht je Abschlussblock: `npx tsx scripts/parity-progress.mts`
+  ausführen und die Ausgabe (Quote + letzter Abschnitt + Matrix) in
+  deinen Kurzbericht an Mikail übernehmen. Die Quote bleibt ESTIMATE.
+
+## 7. Ende erst, wenn
 
 Unverändert Ultra-Prompt §8 (Parity Freeze) — plus: das Lern-Register
 §2 ist vollständig abgearbeitet (E2E-Nachholblock VERIFIED, DeepSeek-
-Reviewer aktiv und in den Status-Nachweisen dokumentiert).
+Reviewer aktiv und in den Status-Nachweisen dokumentiert, CI-Loop
+grün inkl. scharf geschaltetem E2E-Job).

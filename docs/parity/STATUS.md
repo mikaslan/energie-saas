@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-09-03 (07:50) · kanonische Abnahmequelle:
+Stand: 2026-09-04 (21:50) · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -239,6 +239,17 @@ WMEE; Push-/Deploy-Regeln unverändert.
   (`docs/handover/prompts/09-Muse-Fortsetzung-Welle-03.md`).
 - Quote: ~36 % (ESTIMATE); Dritter Reviewer (DeepSeek via OpenRouter) für
   Welle 03 beauftragt.
+- **CI-Gate-Loop (22:20):** `.github/workflows/codex-lane-ci.yml` +
+  `scripts/parity-progress.mts` auf Lane `codex/ci-parity-gates` gebaut
+  (nach Freigabe): Jeder Push auf `codex/**` fährt Lint/Typecheck/
+  Katalogvertrag/Depcruise, Vitest mit eingebettetem Postgres,
+  Rollenproben 88/88 + PG18 5/5, db:generate-Drift-Gate und Build
+  automatisch; E2E-Job (Chromium) bis zu den zwei vorbestehenden
+  F7-Fixes als `continue-on-error` sichtbar, danach scharf. Muse arbeitet
+  damit im Push→CI→Fix-Loop ohne manuelles Gaten. Voraussetzung auf
+  Mikails Seite: GitHub Actions in den Repo-Settings aktiviert.
+  Quoten-Auswertung mechanisch per `npx tsx scripts/parity-progress.mts`
+  (Schätzung wörtlich aus STATUS.md, F1–F16-Matrix gezählt — ESTIMATE).
 
 ## 2026-09-02 (spät) — M1-11b + M1-13 REVIEWED/VERIFIED (lokal)
 
