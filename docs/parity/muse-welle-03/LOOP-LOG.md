@@ -75,9 +75,10 @@
 
 ## Turn 6 — 2026-09-04, CI-Billing dicht, Observability gebaut
 
-- Kontrolle `codex/w3-base-check` (clean cf02c26): `ci` completed failure
-  (9m54s, echte Ausführung) → Rot ist VORBESTEHEND, nicht Lane-Sache.
-  Gates-Urteil der Kontrolle noch offen.
+- Kontrolle `codex/w3-base-check` (clean cf02c26): `ci` failure UND
+  Gates-Step „Testsuite (Vitest)" failure → Rot BEWIESEN vorbestehend,
+  Lane exoneriert. Welcher Test: unbekannt (keine Logs) — klärt der
+  Artefakt-Commit nach Billing-Fix.
 - Rerun Lane: E2E 3/3 deterministisch rot; Gates-Urteil offen.
 - Observability-Commit `be81fb6` (Vitest-JSON + Playwright-JSON als
   Artefakte, best-effort) gepusht — lief nie: Jobs sterben seit ca. 21:37
