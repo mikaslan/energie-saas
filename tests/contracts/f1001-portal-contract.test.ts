@@ -98,8 +98,19 @@ describe("F10.1 portal command contracts", () => {
         documentDate: "2026-09-01",
         issuedAt: "2026-09-02T00:00:00.000Z",
       }],
+      appointments: [{
+        id: INVITE,
+        title: "Vor-Ort-Termin",
+        startAt: "2026-09-10T10:00:00.000Z",
+        endAt: "2026-09-10T11:00:00.000Z",
+        allDay: false,
+        appointmentType: "on_site",
+        location: "Musterstraße 1",
+      }],
     });
     expect(view?.schemaVersion).toBe(PORTAL_PUBLIC_VIEW_VERSION);
     expect(view?.documents).toHaveLength(1);
+    expect(view?.appointments).toHaveLength(1);
+    expect(view?.appointments[0]).not.toHaveProperty("description");
   });
 });

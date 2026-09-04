@@ -100,6 +100,19 @@ const portalProjectSchema = z.strictObject({
   outcome: z.string(),
 });
 
+// F10.2 Slice A: Projektermine ohne Freitext-Beschreibung (Privacy:
+// description ist intern und wird nie projiziert).
+const portalAppointmentSchema = z.strictObject({
+  id: z.uuid(),
+  title: z.string(),
+  startAt: z.iso.datetime({ offset: true }),
+  endAt: z.iso.datetime({ offset: true }),
+  allDay: z.boolean(),
+  appointmentType: z.string(),
+  location: z.string().nullable(),
+});
+export type PortalAppointment = z.infer<typeof portalAppointmentSchema>;
+
 export const portalPublicViewV1Schema = z.strictObject({
   schemaVersion: z.literal(PORTAL_PUBLIC_VIEW_VERSION),
   inviteId: z.uuid(),
@@ -107,6 +120,7 @@ export const portalPublicViewV1Schema = z.strictObject({
   viewCount: z.int().safe().min(0),
   project: portalProjectSchema,
   documents: z.array(portalDocumentSchema),
+  appointments: z.array(portalAppointmentSchema),
 });
 
 export type PortalPublicViewV1 = z.infer<typeof portalPublicViewV1Schema>;
@@ -127,6 +141,15 @@ const portalResolveOkSchema = z.strictObject({
     offerNumber: z.string(),
     documentDate: z.string(),
     issuedAt: z.unknown(),
+  })),
+  appointments: z.array(z.strictObject({
+    id: z.uuid(),
+    title: z.string(),
+    startAt: z.unknown(),
+    endAt: z.unknown(),
+    allDay: z.unknown(),
+    appointmentType: z.string(),
+    location: z.unknown(),
   })),
 });
 
@@ -164,6 +187,25 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       documentDate: doc.documentDate, issuedAt,
     });
   }
+  // F10.2 Slice A: Termine mit strikter Typprüfung (allDay/location wie
+  // DEFINER: boolean / text-or-null, keine Description je).
+  const appointments: PortalPublicViewV1["appointments"] = [];
+  for (const appointment of parsed.data.appointments) {
+    const startAt = toInstant(appointment.startAt);
+    const endAt = toInstant(appointment.endAt);
+    if (startAt === null || endAt === null) return null;
+    if (typeof appointment.allDay !== "boolean") return null;
+    if (appointment.location !== null && typeof appointment.location !== "string") return null;
+    appointments.push({
+      id: appointment.id,
+      title: appointment.title,
+      startAt,
+      endAt,
+      allDay: appointment.allDay,
+      appointmentType: appointment.appointmentType,
+      location: appointment.location,
+    });
+  }
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,
     inviteId: parsed.data.inviteId,
@@ -171,5 +213,6 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     viewCount,
     project: parsed.data.project,
     documents,
+    appointments,
   };
 }
