@@ -21,10 +21,11 @@ V="/Users/mikailaslan/Documents/ASLAN FINAL/20-Bereiche/D-Wmee/Rechner/Reonic Cl
 ### B. Repo
 R=~/Projects/reonic-clone-finale-claude
 9.  test -d "$R/.git" && echo OK || echo FEHLT
-10. git -C "$R" remote -v | grep -q "github.com/mikaslan/energie-saas.git" && echo OK || echo FEHLT
+10. git -C "$R" remote -v | grep -q "github.com/mikaslan/energie-saas" && echo OK || echo FEHLT
 11. git -C "$R" fetch origin --dry-run && echo OK || echo FEHLT
 12. git -C "$R" rev-parse origin/codex/m1-wave-02
-    (erwartet: 194fb3e…; fehlt der Branch: git -C "$R" ls-remote origin | grep codex/m1-wave-02)
+    (erwartet: 194fb3e…; liefert ls-remote den Branch, rev-parse aber
+    nicht → einmal git -C "$R" fetch origin (echt) ausführen, dann erneut)
 13. test -f "$R/.env.local" && echo OK || echo FEHLT
     (NUR Existenz prüfen — Inhalt NIE ausgeben)
 14. ls "$R/node_modules/.bin/next" >/dev/null 2>&1 && echo OK || echo FEHLT
