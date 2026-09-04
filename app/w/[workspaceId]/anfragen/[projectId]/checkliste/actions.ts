@@ -76,7 +76,13 @@ export async function saveProjectChecklistAction(
         blocks,
       }),
     );
-    revalidatePath(`/w/${workspace.data}/anfragen/${projectId.data}/checkliste`);
+    // Bewusst KEIN revalidatePath im Save-Pfad: die Page rendert den
+    // Manager mit key={checklist.version} (Remount bei Versionswechsel);
+    // ein revalidatePath wuerde die Serverdaten sofort aktualisieren,
+    // den Manager remounten und damit den Erfolgs-Toast (useActionState)
+    // zerstoeren. Die Client-Ableitung traegt die neue Version
+    // (baseVersion aus dem Action-State), ein Reload liest ohnehin
+    // frische Serverdaten.
     return { status: "success", version: result.version };
   } catch (error) {
     if (error instanceof ChecklistConflictError) {
@@ -124,6 +130,9 @@ export async function applyTemplateAction(
         projectId: projectId.data,
       }),
     );
+    // Apply MUSS revalidieren: die Server-Blocks aendern sich, und der
+    // Manager uebernimmt sie ueber die versions-getaggte Ableitung
+    // (kein Remount noetig — key entfernt, s. Page/Manager).
     revalidatePath(`/w/${workspace.data}/anfragen/${projectId.data}/checkliste`);
     return { status: "success", version: result.version };
   } catch (error) {

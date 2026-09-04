@@ -90,7 +90,6 @@ export default async function ProjectChecklistPage(
       />
 
       <ProjectChecklistManager
-        key={result.checklist.version}
         workspaceId={workspaceId}
         projectId={projectId}
         checklist={result.checklist}

@@ -888,7 +888,7 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
         `insert into membership (workspace_id, user_id, role, capabilities)
          values ($1::uuid, $2::uuid, 'editor',
            '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
-              "assign_projects":true}'::jsonb),
+              "assign_projects":true,"convert_phase":true,"discounts":true}'::jsonb),
                 ($1::uuid, $3::uuid, 'viewer', '{}'::jsonb),
                 ($1::uuid, $4::uuid, 'editor', '{}'::jsonb)`,
         [
@@ -1452,10 +1452,12 @@ async function main(): Promise<number> {
   const w3F22Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
+    skuSuffix: "w3-f22",
   });
   const w3F162Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
+    skuSuffix: "w3-f162",
   });
   const w3F101Lead = await submitSignedLead(
     server,

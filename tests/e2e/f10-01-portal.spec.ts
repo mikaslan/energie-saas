@@ -137,5 +137,16 @@ test("F10.1-E2E-01: Portal-Link Create, Resolve-View, Withdraw", async ({ page }
   await expect(page.getByRole("heading", { name: "Dieser Link ist ungültig.", exact: true }))
     .toBeVisible();
 
+  // Die bewusste 404-Navigation erzeugt Chromium-Konsolenmeldungen
+  // ("Failed to load resource: 404") — das ist der SPEZIFIZIERTE
+  // Endzustand, kein Defekt. Muster m1-08b (injizierte 503): erwartete
+  // Meldungen gezielt konsumieren, alles andere bleibt Fehler.
+  const expected404 = "console: Failed to load resource: the server responded with a status of 404 (Not Found)";
+  const consumed = errors.filter((error) => error === expected404).length;
+  expect(consumed, "Erwartete 404-Konsolenmeldung nach Withdraw").toBeGreaterThan(0);
+  const kept = errors.filter((error) => error !== expected404);
+  errors.length = 0;
+  errors.push(...kept);
+
   expect(errors, "Browser-Konsole und Page-Errors beider Grenzen").toEqual([]);
 });
