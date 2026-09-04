@@ -21,6 +21,7 @@ import type {
   OfferPriceAudienceDecisionV1,
   OfferSourceBindingsV1,
   OfferVariantSnapshotV1,
+  OptionalBundlesV1,
 } from "@/lib/integrations/offers/contract";
 import type { OfferPdfDraftInputV1 } from "@/lib/integrations/offers/pdf-contract";
 import { catalogComponentRevision, projectCatalogResolution } from "./catalog";
@@ -79,6 +80,7 @@ export const offer = pgTable(
     numberYear: integer("number_year").notNull(),
     numberSequence: integer("number_sequence").notNull(),
     forecastValueNetCents: bigint("forecast_value_net_cents", { mode: "number" }),
+    totalPriceOverrideNetCents: bigint("total_price_override_net_cents", { mode: "number" }),
     contactContext: jsonb("contact_context").$type<OfferContactContextV1>().notNull(),
     installationSiteContext: jsonb("installation_site_context")
       .$type<OfferInstallationSiteContextV1>().notNull(),
@@ -194,6 +196,8 @@ export const offer = pgTable(
       and ${t.numberSequence} between 1 and 999999`),
     check("offer_forecast_ck", sql`${t.forecastValueNetCents} is null
       or ${moneyCheck(t.forecastValueNetCents)}`),
+    check("offer_total_override_ck", sql`${t.totalPriceOverrideNetCents} is null
+      or ${moneyCheck(t.totalPriceOverrideNetCents)}`),
     check("offer_hashes_ck", sql`octet_length(${t.inboundPayloadSha256}) = 32
       and octet_length(${t.calculationInputSha256}) = 32
       and octet_length(${t.calculationResultSha256}) = 32
@@ -215,6 +219,8 @@ export const offerVariant = pgTable(
     currentRevision: integer("current_revision").notNull(),
     name: text("name").notNull(),
     description: text("description"),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    optionalBundles: jsonb("optional_bundles").$type<OptionalBundlesV1>().notNull().default([]),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -223,6 +229,9 @@ export const offerVariant = pgTable(
     unique("offer_variant_ws_id_uq").on(t.workspaceId, t.id),
     unique("offer_variant_ws_offer_id_uq").on(t.workspaceId, t.offerId, t.id),
     unique("offer_variant_ws_offer_ordinal_uq").on(t.workspaceId, t.offerId, t.ordinal),
+    uniqueIndex("offer_variant_ws_offer_primary_uq")
+      .on(t.workspaceId, t.offerId)
+      .where(sql`${t.isPrimary} = true`),
     index("offer_variant_ws_offer_idx").on(t.workspaceId, t.offerId, t.ordinal),
     foreignKey({
       columns: [t.workspaceId],
@@ -239,6 +248,7 @@ export const offerVariant = pgTable(
       foreignColumns: [membership.workspaceId, membership.userId],
       name: "offer_variant_created_by_fk",
     }),
+    check("offer_variant_bundles_ck", sql`pg_catalog.jsonb_typeof(${t.optionalBundles}) = 'array'`),
     check("offer_variant_ordinal_ck", sql`${t.ordinal} between 1 and 12`),
     check("offer_variant_revision_ck", sql`${t.currentRevision} > 0`),
     check("offer_variant_name_ck", sql`length(btrim(${t.name})) between 1 and 120`),

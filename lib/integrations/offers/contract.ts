@@ -17,6 +17,12 @@ export const OFFER_VARIANT_DUPLICATE_COMMAND_VERSION =
   "offer-variant-duplicate-command.v1" as const;
 export const OFFER_VARIANT_FROM_RESOLUTION_COMMAND_VERSION =
   "offer-variant-from-resolution-command.v1" as const;
+export const OFFER_VARIANT_SET_PRIMARY_COMMAND_VERSION =
+  "offer-variant-set-primary-command.v1" as const;
+export const OFFER_TOTAL_OVERRIDE_COMMAND_VERSION =
+  "offer-total-override-command.v1" as const;
+export const OFFER_VARIANT_BUNDLES_COMMAND_VERSION =
+  "offer-variant-bundles-command.v1" as const;
 export const OFFER_CANONICALIZATION_VERSION = "offer-jcs.v1" as const;
 export const OFFER_CREATE_DIGEST_MATERIAL_VERSION =
   "offer-create-digest-material.v1" as const;
@@ -26,7 +32,7 @@ export const OFFER_VARIANT_SNAPSHOT_VERSION = "offer-variant-snapshot.v1" as con
 // Artefakts. Der Generator und der Contract-Test verhindern eine zweite
 // Vertragswahrheit.
 export const OFFER_SCHEMA_SHA256 =
-  "b98e8eaf92596e46fca04ad775a82e0147dd5a68a63b800b5fa73c640e785183" as const;
+  "875117092d0a0e3060a210d1325fbc51e347a60cf87e2b6df98f1ac2fa8f7bfb" as const;
 
 export const OFFER_MAX_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const OFFER_MAX_PATCH_OPERATIONS = 500 as const;
@@ -329,6 +335,58 @@ export const duplicateOfferVariantCommandV1Schema = z.strictObject({
 });
 export type DuplicateOfferVariantCommandV1 = z.infer<
   typeof duplicateOfferVariantCommandV1Schema
+>;
+
+export const optionalBundleSchema = z.strictObject({
+  name: normalizedRequiredText(120),
+  position: z.int().safe().min(0).max(999),
+});
+export type OptionalBundleV1 = z.infer<typeof optionalBundleSchema>;
+
+export const optionalBundlesSchema = z
+  .array(optionalBundleSchema)
+  .max(50)
+  .superRefine((bundles, context) => {
+    const seen = new Set<number>();
+    bundles.forEach((bundle, index) => {
+      if (seen.has(bundle.position)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "position"],
+          message: "Bundle-Position ist je Variante nur einmal zulaessig.",
+        });
+      }
+      seen.add(bundle.position);
+    });
+  });
+export type OptionalBundlesV1 = z.infer<typeof optionalBundlesSchema>;
+
+export const setPrimaryVariantCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(OFFER_VARIANT_SET_PRIMARY_COMMAND_VERSION),
+  offerId: uuidSchema,
+  variantId: uuidSchema,
+});
+export type SetPrimaryVariantCommandV1 = z.infer<
+  typeof setPrimaryVariantCommandV1Schema
+>;
+
+export const setTotalPriceOverrideCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(OFFER_TOTAL_OVERRIDE_COMMAND_VERSION),
+  offerId: uuidSchema,
+  totalPriceOverrideNetCents: moneyCentsSchema.nullable(),
+});
+export type SetTotalPriceOverrideCommandV1 = z.infer<
+  typeof setTotalPriceOverrideCommandV1Schema
+>;
+
+export const setOptionalBundlesCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(OFFER_VARIANT_BUNDLES_COMMAND_VERSION),
+  offerId: uuidSchema,
+  variantId: uuidSchema,
+  bundles: optionalBundlesSchema,
+});
+export type SetOptionalBundlesCommandV1 = z.infer<
+  typeof setOptionalBundlesCommandV1Schema
 >;
 
 const fromResolutionBaseSchema = z.strictObject({
@@ -1064,6 +1122,9 @@ export function renderOfferJsonSchema(): string {
       { $ref: "#/$defs/reviseCommand" },
       { $ref: "#/$defs/duplicateCommand" },
       { $ref: "#/$defs/fromResolutionCommand" },
+      { $ref: "#/$defs/setPrimaryCommand" },
+      { $ref: "#/$defs/setTotalOverrideCommand" },
+      { $ref: "#/$defs/setBundlesCommand" },
       { $ref: "#/$defs/contactContext" },
       { $ref: "#/$defs/installationSiteContext" },
       { $ref: "#/$defs/createDigestMaterial" },
@@ -1074,6 +1135,9 @@ export function renderOfferJsonSchema(): string {
       reviseCommand: jsonSchemaFor(reviseOfferVariantCommandV1Schema),
       duplicateCommand: jsonSchemaFor(duplicateOfferVariantCommandV1Schema),
       fromResolutionCommand: jsonSchemaFor(createVariantFromResolutionCommandV1Schema),
+      setPrimaryCommand: jsonSchemaFor(setPrimaryVariantCommandV1Schema),
+      setTotalOverrideCommand: jsonSchemaFor(setTotalPriceOverrideCommandV1Schema),
+      setBundlesCommand: jsonSchemaFor(setOptionalBundlesCommandV1Schema),
       contactContext: jsonSchemaFor(offerContactContextV1Schema),
       installationSiteContext: jsonSchemaFor(offerInstallationSiteContextV1Schema),
       createDigestMaterial: jsonSchemaFor(offerCreateDigestMaterialV1Schema),

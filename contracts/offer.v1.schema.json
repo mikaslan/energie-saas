@@ -16,6 +16,15 @@
       "$ref": "#/$defs/fromResolutionCommand"
     },
     {
+      "$ref": "#/$defs/setPrimaryCommand"
+    },
+    {
+      "$ref": "#/$defs/setTotalOverrideCommand"
+    },
+    {
+      "$ref": "#/$defs/setBundlesCommand"
+    },
+    {
       "$ref": "#/$defs/contactContext"
     },
     {
@@ -999,6 +1008,120 @@
         },
         "__schema3": {
           "type": "string"
+        }
+      }
+    },
+    "setPrimaryCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "offer-variant-set-primary-command.v1"
+        },
+        "offerId": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "variantId": {
+          "$ref": "#/$defs/__schema0"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "offerId",
+        "variantId"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      }
+    },
+    "setTotalOverrideCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "offer-total-override-command.v1"
+        },
+        "offerId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "totalPriceOverrideNetCents": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9000000000000000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "offerId",
+        "totalPriceOverrideNetCents"
+      ],
+      "additionalProperties": false
+    },
+    "setBundlesCommand": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "offer-variant-bundles-command.v1"
+        },
+        "offerId": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "variantId": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "bundles": {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "offerId",
+        "variantId",
+        "bundles"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "__schema1": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "position": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 999
+            }
+          },
+          "required": [
+            "name",
+            "position"
+          ],
+          "additionalProperties": false
         }
       }
     },

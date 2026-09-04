@@ -12,11 +12,17 @@ export {
   getOfferDetail,
   listOffers,
   reviseOfferVariant,
+  setOptionalBundles,
+  setPrimaryVariant,
+  setTotalPriceOverride,
 } from "./service";
 export type {
   OfferDetailViewModel,
   OfferListViewModel,
   OfferMutationResult,
+  SetOptionalBundlesResult,
+  SetPrimaryVariantResult,
+  SetTotalPriceOverrideResult,
 } from "./service";
 export {
   OfferPdfDraftConflictError,

@@ -17,8 +17,12 @@ import {
   offerContactContextV1Schema,
   offerInstallationSiteContextV1Schema,
   offerPriceAudienceDecisionV1Schema,
+  optionalBundlesSchema,
   reviseOfferVariantCommandV1Schema,
   sealOfferVariantSnapshot,
+  setOptionalBundlesCommandV1Schema,
+  setPrimaryVariantCommandV1Schema,
+  setTotalPriceOverrideCommandV1Schema,
   toOfferVariantView,
   validateOfferVariantSnapshot,
   type CreateOfferCommandV1,
@@ -31,6 +35,9 @@ import {
   type OfferVariantViewV1,
   type ReviseOfferVariantCommandV1,
   type ReviseOfferVariantOperationV1,
+  type SetOptionalBundlesCommandV1,
+  type SetPrimaryVariantCommandV1,
+  type SetTotalPriceOverrideCommandV1,
 } from "@/lib/integrations/offers/contract";
 import { calculateOfferPricing } from "@/lib/integrations/offers/money";
 import { OfferRateLimitError } from "@/lib/integrations/offers/admission";
@@ -90,11 +97,17 @@ export type OfferDetailViewModel = {
     status: "draft";
     outdated: boolean;
     forecastValueNetCents: number | null;
+    totalPriceOverrideNetCents: number | null;
   };
+  primaryVariantId: string | null;
+  overrideActive: boolean;
+  displayTotalNetCents: number | null;
+  displayTotalGrossCents: number | null;
   variants: Array<{
     id: string;
     name: string;
     revision: number;
+    isPrimary: boolean;
     active: boolean;
     href: string;
   }>;
@@ -166,6 +179,7 @@ type OfferRow = {
   status: "draft";
   offer_number: string;
   forecast_value_net_cents: number | null;
+  total_price_override_net_cents: number | null;
   contact_context: OfferContactContextV1;
   installation_site_context: OfferInstallationSiteContextV1;
   source_bindings: OfferSourceBindingsV1;
@@ -184,6 +198,8 @@ type VariantRow = {
   current_revision: number;
   name: string;
   description: string | null;
+  is_primary: boolean;
+  optional_bundles: unknown;
   [key: string]: unknown;
 };
 
@@ -489,12 +505,14 @@ export async function getOfferDetail(
     offer_number: string;
     status: "draft";
     forecast_value_net_cents: string | null;
+    total_price_override_net_cents: string | null;
     [key: string]: unknown;
   }>(sql`
     select offer_record.id, offer_record.project_id,
            project_record.outcome as project_outcome,
            offer_record.offer_number, offer_record.status,
-           offer_record.forecast_value_net_cents
+           offer_record.forecast_value_net_cents,
+           offer_record.total_price_override_net_cents
       from offer offer_record
       join project project_record
         on project_record.workspace_id = offer_record.workspace_id
@@ -514,9 +532,18 @@ export async function getOfferDetail(
   ) {
     throw new OfferIntegrityError();
   }
+  const totalPriceOverrideNetCents = offerRecord.total_price_override_net_cents === null
+    ? null
+    : Number(offerRecord.total_price_override_net_cents);
+  if (
+    totalPriceOverrideNetCents !== null
+    && (!Number.isSafeInteger(totalPriceOverrideNetCents) || totalPriceOverrideNetCents < 0)
+  ) {
+    throw new OfferIntegrityError();
+  }
 
   const variantsResult = await tx.execute<VariantRow>(sql`
-    select id, offer_id, ordinal, current_revision, name, description
+    select id, offer_id, ordinal, current_revision, name, description, is_primary
       from offer_variant
      where workspace_id = ${ctx.workspaceId}::uuid
        and offer_id = ${offerRecord.id}::uuid
@@ -588,6 +615,21 @@ export async function getOfferDetail(
     canReadPurchasePrice,
     canReadPrivateHashes: false,
   });
+  const primaryRow = variantsResult.rows.find((variant) => variant.is_primary) ?? null;
+  let primaryBasisNetCents: number | null = null;
+  let primaryBasisGrossCents: number | null = null;
+  if (primaryRow) {
+    const primarySnapshot = await readValidatedRevision(
+      tx,
+      ctx,
+      offerRecord.id,
+      primaryRow.id,
+      primaryRow.current_revision,
+    );
+    primaryBasisNetCents = primarySnapshot.totals.basisNetCents;
+    primaryBasisGrossCents = primarySnapshot.totals.basisGrossCents;
+  }
+  const overrideActive = totalPriceOverrideNetCents !== null;
   return {
     state: outdated ? "outdated" : canEdit ? "loaded" : "read_only",
     workspaceId: ctx.workspaceId,
@@ -599,11 +641,17 @@ export async function getOfferDetail(
       status: offerRecord.status,
       outdated,
       forecastValueNetCents,
+      totalPriceOverrideNetCents,
     },
+    primaryVariantId: primaryRow?.id ?? null,
+    overrideActive,
+    displayTotalNetCents: overrideActive ? totalPriceOverrideNetCents : primaryBasisNetCents,
+    displayTotalGrossCents: overrideActive ? null : primaryBasisGrossCents,
     variants: variantsResult.rows.map((variant) => ({
       id: variant.id,
       name: variant.name,
       revision: variant.current_revision,
+      isPrimary: variant.is_primary,
       active: variant.id === active.id,
       href: `/w/${ctx.workspaceId}/angebote/${offerRecord.id}?variante=${variant.id}`,
     })),
@@ -1423,11 +1471,11 @@ export async function createOfferFromRequest(
     await tx.execute(sql`
       insert into offer_variant (
         id, workspace_id, offer_id, ordinal, current_revision,
-        name, description, created_by, created_at, updated_at
+        name, description, is_primary, created_by, created_at, updated_at
       ) values (
         ${variantId}::uuid, ${ctx.workspaceId}::uuid, ${offerId}::uuid,
         1, 1, ${snapshot.variantName}, ${snapshot.description},
-        ${ctx.actor}::uuid, ${now}::timestamptz, ${now}::timestamptz
+        true, ${ctx.actor}::uuid, ${now}::timestamptz, ${now}::timestamptz
       )
     `);
     await persistRevision(tx, ctx, snapshot);
@@ -1509,7 +1557,8 @@ async function lockOffer(
 ): Promise<OfferRow> {
   const result = await tx.execute<OfferRow>(sql`
     select id, workspace_id, project_id, contact_id, site_id, status,
-           offer_number, forecast_value_net_cents, contact_context,
+           offer_number, forecast_value_net_cents,
+           total_price_override_net_cents, contact_context,
            installation_site_context, source_bindings, price_audience_decision,
            encode(create_digest, 'hex') as create_digest_hex,
            resolution_id, resolution_revision,
@@ -1531,7 +1580,8 @@ async function lockVariant(
   variantId: string,
 ): Promise<VariantRow> {
   const result = await tx.execute<VariantRow>(sql`
-    select id, offer_id, ordinal, current_revision, name, description
+    select id, offer_id, ordinal, current_revision, name, description, is_primary,
+           optional_bundles
       from offer_variant
      where workspace_id = ${ctx.workspaceId}::uuid
        and offer_id = ${offerId}::uuid
@@ -1605,6 +1655,7 @@ async function insertVariant(
     ordinal: number;
     name: string;
     description: string | null;
+    isPrimary: boolean;
     createdAt: string;
   },
 ): Promise<void> {
@@ -1612,17 +1663,20 @@ async function insertVariant(
     await tx.execute(sql`
       insert into offer_variant (
         id, workspace_id, offer_id, ordinal, current_revision,
-        name, description, created_by, created_at, updated_at
+        name, description, is_primary, created_by, created_at, updated_at
       ) values (
         ${input.id}::uuid, ${ctx.workspaceId}::uuid, ${input.offerId}::uuid,
         ${input.ordinal}, 1, ${input.name}, ${input.description},
-        ${ctx.actor}::uuid, ${input.createdAt}::timestamptz,
-        ${input.createdAt}::timestamptz
+        ${input.isPrimary}, ${ctx.actor}::uuid,
+        ${input.createdAt}::timestamptz, ${input.createdAt}::timestamptz
       )
     `);
   } catch (error) {
     if (constraintName(error) === "offer_variant_ws_offer_ordinal_uq") {
       throw new OfferConflictError();
+    }
+    if (constraintName(error) === "offer_variant_ws_offer_primary_uq") {
+      throw new OfferIntegrityError();
     }
     throw new OfferPersistenceError();
   }
@@ -1693,6 +1747,7 @@ export async function duplicateOfferVariant(
     ordinal,
     name: snapshot.variantName,
     description: snapshot.description,
+    isPrimary: false,
     createdAt: now,
   });
   await persistRevision(tx, ctx, snapshot);
@@ -1760,6 +1815,7 @@ export async function createVariantFromCurrentResolution(
     ordinal,
     name: snapshot.variantName,
     description: snapshot.description,
+    isPrimary: false,
     createdAt: now,
   });
   await persistRevision(tx, ctx, snapshot);
@@ -2144,4 +2200,213 @@ export async function reviseOfferVariant(
     action: "project.write",
   });
   return { offerId: offerRecord.id, variantId: variant.id, revision: snapshot.revision };
+}
+
+export type SetPrimaryVariantResult = {
+  offerId: string;
+  variantId: string;
+  alreadyPrimary: boolean;
+};
+
+export async function setPrimaryVariant(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<SetPrimaryVariantResult> {
+  requireOfferAccess(ctx, "project.write", "offer_variant");
+  const parsed = setPrimaryVariantCommandV1Schema.safeParse(value);
+  if (!parsed.success) throw new OfferValidationError(issuePaths(parsed.error));
+  const command: SetPrimaryVariantCommandV1 = parsed.data;
+  const projectId = await readOfferProjectId(tx, ctx, command.offerId);
+  await lockProjectBasis(tx, ctx, projectId);
+  const offerRecord = await lockOffer(tx, ctx, command.offerId);
+  const variant = await lockVariant(tx, ctx, offerRecord.id, command.variantId);
+  if (variant.is_primary) {
+    return { offerId: offerRecord.id, variantId: variant.id, alreadyPrimary: true };
+  }
+  const now = await databaseNow(tx);
+  const previous = await tx.execute<{ id: string }>(sql`
+    select id from offer_variant
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerRecord.id}::uuid
+       and is_primary = true
+     limit 1
+  `);
+  const previousPrimaryVariantId = previous.rows[0]?.id ?? null;
+  try {
+    await tx.execute(sql`
+      update offer_variant
+         set is_primary = false, updated_at = ${now}::timestamptz
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and offer_id = ${offerRecord.id}::uuid
+         and is_primary = true
+    `);
+    await tx.execute(sql`
+      update offer_variant
+         set is_primary = true, updated_at = ${now}::timestamptz
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and offer_id = ${offerRecord.id}::uuid
+         and id = ${variant.id}::uuid
+    `);
+  } catch (error) {
+    if (constraintName(error) === "offer_variant_ws_offer_primary_uq") {
+      throw new OfferIntegrityError();
+    }
+    throw new OfferPersistenceError();
+  }
+  await touchOfferAndProject(tx, ctx, offerRecord, now);
+  const payload = {
+    offerId: offerRecord.id,
+    variantId: variant.id,
+    previousPrimaryVariantId,
+    actor: ctx.actor,
+    at: now,
+  };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "offer",
+    aggregateId: offerRecord.id,
+    eventType: "offer.primary_switched",
+    actor: ctx.actor,
+    payload,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "project.write",
+    resource: "offer",
+    allowed: true,
+    details: payload,
+  });
+  return { offerId: offerRecord.id, variantId: variant.id, alreadyPrimary: false };
+}
+
+export type SetTotalPriceOverrideResult = {
+  offerId: string;
+  totalPriceOverrideNetCents: number | null;
+  changed: boolean;
+};
+
+export async function setTotalPriceOverride(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<SetTotalPriceOverrideResult> {
+  requireOfferAccess(ctx, "project.write", "offer");
+  requireOfferAccess(ctx, "price.edit", "offer_pricing");
+  const parsed = setTotalPriceOverrideCommandV1Schema.safeParse(value);
+  if (!parsed.success) throw new OfferValidationError(issuePaths(parsed.error));
+  const command: SetTotalPriceOverrideCommandV1 = parsed.data;
+  const projectId = await readOfferProjectId(tx, ctx, command.offerId);
+  await lockProjectBasis(tx, ctx, projectId);
+  const offerRecord = await lockOffer(tx, ctx, command.offerId);
+  const stored = offerRecord.total_price_override_net_cents === null
+    ? null
+    : Number(offerRecord.total_price_override_net_cents);
+  if (stored === command.totalPriceOverrideNetCents) {
+    return {
+      offerId: offerRecord.id,
+      totalPriceOverrideNetCents: command.totalPriceOverrideNetCents,
+      changed: false,
+    };
+  }
+  const now = await databaseNow(tx);
+  await tx.execute(sql`
+    update offer
+       set total_price_override_net_cents = ${command.totalPriceOverrideNetCents},
+           updated_at = ${now}::timestamptz
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${offerRecord.id}::uuid
+  `);
+  await touchOfferAndProject(tx, ctx, offerRecord, now);
+  const cleared = command.totalPriceOverrideNetCents === null;
+  const payload = cleared
+    ? { offerId: offerRecord.id, previousValueNetCents: stored, actor: ctx.actor, at: now }
+    : {
+        offerId: offerRecord.id,
+        valueNetCents: command.totalPriceOverrideNetCents,
+        previousValueNetCents: stored,
+        actor: ctx.actor,
+        at: now,
+      };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "offer",
+    aggregateId: offerRecord.id,
+    eventType: cleared ? "offer.total_override_cleared" : "offer.total_override_set",
+    actor: ctx.actor,
+    payload,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "price.edit",
+    resource: "offer",
+    allowed: true,
+    details: payload,
+  });
+  return {
+    offerId: offerRecord.id,
+    totalPriceOverrideNetCents: command.totalPriceOverrideNetCents,
+    changed: true,
+  };
+}
+
+export type SetOptionalBundlesResult = {
+  offerId: string;
+  variantId: string;
+  changed: boolean;
+};
+
+export async function setOptionalBundles(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<SetOptionalBundlesResult> {
+  requireOfferAccess(ctx, "project.write", "offer_variant");
+  const parsed = setOptionalBundlesCommandV1Schema.safeParse(value);
+  if (!parsed.success) throw new OfferValidationError(issuePaths(parsed.error));
+  const command: SetOptionalBundlesCommandV1 = parsed.data;
+  const projectId = await readOfferProjectId(tx, ctx, command.offerId);
+  await lockProjectBasis(tx, ctx, projectId);
+  const offerRecord = await lockOffer(tx, ctx, command.offerId);
+  const variant = await lockVariant(tx, ctx, offerRecord.id, command.variantId);
+  const stored = optionalBundlesSchema.safeParse(variant.optional_bundles);
+  if (!stored.success) throw new OfferIntegrityError();
+  if (canonicalizeOfferJson(stored.data) === canonicalizeOfferJson(command.bundles)) {
+    return { offerId: offerRecord.id, variantId: variant.id, changed: false };
+  }
+  const now = await databaseNow(tx);
+  await tx.execute(sql`
+    update offer_variant
+       set optional_bundles = ${JSON.stringify(command.bundles)}::jsonb,
+           updated_at = ${now}::timestamptz
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerRecord.id}::uuid
+       and id = ${variant.id}::uuid
+  `);
+  const payload = {
+    offerId: offerRecord.id,
+    variantId: variant.id,
+    bundles: command.bundles,
+    actor: ctx.actor,
+    at: now,
+  };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "offer",
+    aggregateId: offerRecord.id,
+    eventType: "offer.variant_bundles_set",
+    actor: ctx.actor,
+    payload,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "project.write",
+    resource: "offer",
+    allowed: true,
+    details: payload,
+  });
+  return { offerId: offerRecord.id, variantId: variant.id, changed: true };
 }
