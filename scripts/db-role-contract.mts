@@ -236,6 +236,10 @@ const TIME_TRACKING_RELATIONS = [
   "time_entry",
 ] as const;
 
+const CHECKLIST_RELATIONS = [
+  "project_checklist",
+] as const;
+
 const COMMERCIAL_DOCUMENT_RELATIONS = [
   "commercial_document",
   "commercial_document_group",
@@ -1334,6 +1338,21 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasChecklists = await hasAtomicPublicRelationSet(
+    client,
+    CHECKLIST_RELATIONS,
+    "Rollen-ACL-Manifest: F7-02-Checklisten",
+  );
+  if (hasChecklists) {
+    await client.query(`
+      revoke all privileges on
+        public.project_checklist
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.project_checklist to app_runtime
+    `);
+  }
+
   const hasCommercialDocuments = await hasAtomicPublicRelationSet(
     client,
     COMMERCIAL_DOCUMENT_RELATIONS,
@@ -2271,6 +2290,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F9-01-Zeiterfassung",
   );
 
+  const hasChecklists = await hasAtomicPublicRelationSet(
+    client,
+    CHECKLIST_RELATIONS,
+    "Rollenvertrag: F7-02-Checklisten",
+  );
+
   const memberships = await client.query<MembershipRow>(`
     select granted.rolname as granted_role,
            member.rolname as member_role,
@@ -2447,6 +2472,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasTimeTracking ? TIME_TRACKING_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasChecklists ? CHECKLIST_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
@@ -3458,6 +3486,9 @@ export async function verifyRoleContract(
       ...(hasTimeTracking ? TIME_TRACKING_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasChecklists ? CHECKLIST_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -3732,6 +3763,9 @@ export async function verifyRoleContract(
         ...(hasTimeTracking ? [
           "time_event_type:tenant_isolation:3e74ed81c41e7311f7725bcc268f1408148780cb500d798998bd9e3c873e45c3",
           "time_entry:tenant_isolation:c3d1d966d152a34ed5e59bafe19e807ee4c780b8994e67054e18ea93209c2bb2",
+        ] : []),
+        ...(hasChecklists ? [
+          "project_checklist:tenant_isolation:711797a558f37e71658c8adc89f6e18dd7355c16581b4c06ab61baffb68b522d",
         ] : []),
       ] : []),
     ],
@@ -4168,6 +4202,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasTimeTracking ? TIME_TRACKING_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasChecklists ? CHECKLIST_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
