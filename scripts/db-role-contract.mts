@@ -3413,7 +3413,7 @@ export async function verifyRoleContract(
       "guard_membership_statement():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:b5d5db39513acce303c62d10a27f8b3bdc0b7ec12b183ae127e59b181dac89b7",
       "guard_offer_erasure_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        "search_path=pg_catalog:db38dd23221bc75af85f494d9374e9eda3b7a2ce0d87f28dabd8e7c71be4c08f",
+        "search_path=pg_catalog:bf712d55bd2fe892dbaddf0c7787eda33fa64a957dc4589864295c037065d5d4",
       ...(hasOfferPdfDraft ? [
         "guard_offer_pdf_draft_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:cbb5173ec8e5c27bf927610795c7c9a2e2b5f2cd4824136e0a20d5288f79a19a",

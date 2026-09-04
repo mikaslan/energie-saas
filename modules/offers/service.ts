@@ -532,9 +532,12 @@ export async function getOfferDetail(
   ) {
     throw new OfferIntegrityError();
   }
-  const totalPriceOverrideNetCents = offerRecord.total_price_override_net_cents === null
+  // Robuster Read: optionale Spalte fehlt in Unit-Fixtures/Alt-Zeilen
+  // (undefined) — wie NULL behandeln, nur echte Werte validieren.
+  const overrideRaw = offerRecord.total_price_override_net_cents;
+  const totalPriceOverrideNetCents = overrideRaw === null || overrideRaw === undefined
     ? null
-    : Number(offerRecord.total_price_override_net_cents);
+    : Number(overrideRaw);
   if (
     totalPriceOverrideNetCents !== null
     && (!Number.isSafeInteger(totalPriceOverrideNetCents) || totalPriceOverrideNetCents < 0)
