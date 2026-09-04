@@ -2131,6 +2131,20 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F16.3 Slice A (0060): Rabatt-Vorlagen — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies, keine Trigger-Guards.
+  discount_template: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into discount_template (
+        id, workspace_id, name, name_normalized, kind, amount_cents,
+        percent_bps, cap_cents, active, position, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Rabatt',
+        'fixture rabatt', 'fix_cents', 500, null, null, true, 0,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
   erasure_tombstone: async (tx, wsId) => {
     const contactId = randomUUID();
     const operationId = randomUUID();
