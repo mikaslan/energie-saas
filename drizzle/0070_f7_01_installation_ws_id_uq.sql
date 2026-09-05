@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "installation_ws_id_uq" ON "installation" USING btree ("workspace_id","id");

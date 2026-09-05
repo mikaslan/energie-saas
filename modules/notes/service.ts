@@ -173,7 +173,7 @@ async function replaceNoteMentions(
               join user_identity identity_record
                 on identity_record.id = membership_record.user_id
              where membership_record.workspace_id = ${ctx.workspaceId}::uuid
-               and lower(identity_record.email) = any(${refs.map((ref) => ref.emailLower)}::text[])
+               and lower(identity_record.email) = any(${refs.map((ref) => ref.emailLower)})
           `)
         ).rows;
   const byEmail = new Map(resolved.map((row) => [row.email_lower, row.identity_id]));
@@ -435,7 +435,7 @@ export async function listProjectNotes(
                    email_lower
               from project_note_mention
              where workspace_id = ${ctx.workspaceId}::uuid
-               and note_id = any(${noteIds}::uuid[])
+               and note_id = any(${noteIds})
              order by email_lower asc
           `)
         ).rows;

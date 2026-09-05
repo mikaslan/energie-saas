@@ -22,8 +22,8 @@ export function parseEuroCentsInput(value: string): number | null {
 export function formatCentsToEuroInput(value: number | null): string {
   if (value === null) return "";
   const whole = Math.floor(value / 100);
-  const fraction = String(value % 100).padStart(2, "0").replace(/0+$/u, "");
-  return fraction.length === 0 ? String(whole) : `${whole},${fraction}`;
+  const fraction = String(value % 100).padStart(2, "0");
+  return fraction === "00" ? String(whole) : `${whole},${fraction}`;
 }
 
 export function parseBundlesJsonInput(value: string): OptionalBundlesV1 | null {

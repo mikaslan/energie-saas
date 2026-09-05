@@ -685,7 +685,8 @@ describe("F16.3 Slice D Fix-Modell global (PostgreSQL)", () => {
     expect(validated.ok).toBe(true);
     if (validated.ok) {
       expect(validated.value.globalFixDiscountCents).toBeNull();
-      expect(validated.value.schemaVersion).toBe("offer-variant-snapshot.v2");
+      // Slice E: Upgrader hebt auf die aktuelle Version (v3).
+      expect(validated.value.schemaVersion).toBe("offer-variant-snapshot.v3");
     }
   });
 });

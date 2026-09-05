@@ -812,3 +812,27 @@
   Non-null-Assertions nur nach FOR-UPDATE-Lock (sicher);
   E2E-Texte exakt/eindeutig; run.mts-State typgeprüft.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 55 — 2026-09-05, Push + CI-Triage 38 Fehler (Run 33950684520)
+
+- Push `2a46943` via ECC_SKIP_PREPUSH=1 ok (bbd9a80..2a46943, 40 Commits).
+  CI-Billing lebt wieder. Gates + E2E rot.
+- Triage Vitest (38): A) tenant-fixtures offer_pdf_draft ohne
+  Cap/Fix-Felder (~13 Folgefehler, FIX); B) Euro-Format strippt "50"→"5"
+  (FIX, lokal bewiesen: 12,50/12/0//12,55); C) mentions required brach
+  M1-13-Vertrag (FIX: optional, Renderer war schon optional-tolerant);
+  D) `= any($arr::text[])` → "cannot cast record to text[]" (FIX: Casts
+  raus, f109+m113); DB-04 neu mit echter Notiz + Cause-Pruefung
+  (Hausmuster rls.test.ts); E) f1603d pinnte v2, Upgrader hebt auf v3
+  (FIX: v3); F) installation ohne UNIQUE(ws,id) → 0070 + Schema (FIX,
+  generate drift-frei); subsidy/payment/installation/mention-Fixtures
+  nachgetragen (FIX); G) Portal-Resolve 42501/UNDERLYING unbekannt —
+  poolRows schluckte den PG-Fehler (FIX: cause angehaengt,
+  typ-/meldungsgleich, kein Orakel); H) Renderer browser_unavailable:
+  chromium.launch wirft in CI (laufender Verdacht: Job-Umgebung, NICHT
+  eigener Code — naechster Run entscheidet).
+- E2E: Migration schlaegt fehl (generische Meldung). Observability-FIX:
+  runMigration druckt jetzt den migration.log-Tail in den Fehler.
+- Lokal: typecheck/lint(0 Errors, 11 fremde Warnings)/depcruise/generate
+  gruen.
+- Naechster Schritt: Fixes pushen, CI lesen (Portal-Cause + E2E-Tail).

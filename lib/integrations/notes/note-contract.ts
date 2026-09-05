@@ -116,7 +116,9 @@ export const projectNoteItemV1Schema = z.strictObject({
   editedByLabel: labelSchema.nullable(),
   pinnedAt: canonicalInstantSchema.nullable(),
   pinnedByLabel: labelSchema.nullable(),
-  mentions: z.array(projectNoteMentionV1Schema),
+  // Optional (statt required): Bestand-Items ohne Mentions bleiben valide
+  // (M1-13-Vertragstest); der Service liefert das Feld immer als Array.
+  mentions: z.array(projectNoteMentionV1Schema).optional(),
 });
 
 export type ProjectNoteItemV1 = z.infer<typeof projectNoteItemV1Schema>;
