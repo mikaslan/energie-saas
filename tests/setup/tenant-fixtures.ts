@@ -999,7 +999,7 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     lines: [lineSnapshot],
   };
   const snapshotBody = {
-    schemaVersion: "offer-variant-snapshot.v1",
+    schemaVersion: "offer-variant-snapshot.v2",
     canonicalizationVersion: "offer-jcs.v1",
     workspaceId: wsId,
     offerId,
@@ -1088,7 +1088,7 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
       created_by, created_at
     ) values (
       ${revisionId}::uuid, ${wsId}::uuid, ${offerId}::uuid, ${variantId}::uuid,
-      ${source.project_id}::uuid, 1, 'offer-variant-snapshot.v1', 'offer-jcs.v1',
+      ${source.project_id}::uuid, 1, 'offer-variant-snapshot.v2', 'offer-jcs.v1',
       ${JSON.stringify(snapshot)}::jsonb, decode(${snapshotSha256}, 'hex'),
       ${source.resolution_id}::uuid, ${source.resolution_revision},
       decode(${source.resolution_sha256}, 'hex'), 100, 19, 119, 0, 0, 0,

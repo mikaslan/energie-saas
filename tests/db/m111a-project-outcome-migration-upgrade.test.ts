@@ -33,7 +33,7 @@ const M111A_MIGRATION_INDEX = 39;
 // F4.6 (0047) → v5-Leadquelle (0048); Gesamtbestand: 49 Migrationen (idx 0..48).
 // wave-02-Integration: 0055 (F2.2) + 0056 (F10.1) => 57 Migrationen (idx 0..56).
 // 0055-0056 + Welle-03-Nachzug bis 0063 => 64 Migrationen (idx 0..63).
-const TOTAL_MIGRATION_COUNT = 64;
+const TOTAL_MIGRATION_COUNT = 65;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 
