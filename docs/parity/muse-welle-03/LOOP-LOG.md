@@ -601,3 +601,13 @@
   Auflösung gegen Membership, Max-20-Schranke, Phantom-Refs nie
   gespeichert. RED/IMPLEMENTED nach CI-Stau (Nr. 5).
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 35 — 2026-09-05, F1-09 Parser + Unit-Tests (lokal bewiesen)
+
+- Implementiert (DB-frei, ohne Migration/Service/UI — folgen nach
+  CI-Stau): lib/integrations/notes/note-mentions.ts
+  (extractNoteMentionRefs: Code-Span-/Link-Ziel-Ausschluss, Dedup,
+  Limit 20 mit Throw statt Cut) + tests/unit/f109-note-mentions.test.ts.
+- Beweis: /tmp/proof-mentions.mts 8/8 PASS (reale Modul-Imports).
+  typecheck grün, eslint beider Dateien sauber.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
