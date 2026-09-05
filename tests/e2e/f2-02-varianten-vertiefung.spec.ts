@@ -101,18 +101,19 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
 
 type VariantRow = {
   id: string;
+  offerId: string;
   ordinal: number;
   isPrimary: boolean;
   bundles: unknown;
   override: number | null;
 };
 
-async function readVariantState(): Promise<VariantRow[]> {
+async function readVariantState(offerId?: string): Promise<VariantRow[]> {
   const data = state();
   const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
   try {
     const result = await pool.query(
-      `select v.id::text as id, v.ordinal as ordinal,
+      `select v.id::text as id, o.id::text as "offerId", v.ordinal as ordinal,
               v.is_primary as "isPrimary", v.optional_bundles as bundles,
               o.total_price_override_net_cents as override
          from offer o
@@ -121,13 +122,23 @@ async function readVariantState(): Promise<VariantRow[]> {
           and v.offer_id = o.id
         where o.workspace_id = $1::uuid
           and o.project_id = $2::uuid
+          ${offerId ? "and o.id = $3::uuid" : ""}
         order by v.ordinal asc`,
-      [data.w3WorkspaceId, data.f22ProjectId],
+      offerId
+        ? [data.w3WorkspaceId, data.f22ProjectId, offerId]
+        : [data.w3WorkspaceId, data.f22ProjectId],
     );
     return result.rows as VariantRow[];
   } finally {
     await pool.end();
   }
+}
+
+function offerIdFromDetailPath(detailPath: string): string {
+  const segments = detailPath.split("/");
+  const offerId = segments[segments.length - 1];
+  if (!offerId) throw new Error("Der Angebots-Pfad enthält keine Offer-ID.");
+  return offerId;
 }
 
 test("F2.2-E2E-01: Varianten-Lifecycle — Create, Duplikat, Primary-Semantik", async ({ page }) => {
@@ -218,6 +229,9 @@ test("F2.2-E2E-02: Editor-Steuerung — Promote, Deal-Override, Bundles", async 
     /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
     && url.searchParams.has("variante"));
   const detailPath = new URL(page.url()).pathname;
+  // Eigener Offer-Scope: E2E-01 hat im selben Projekt bereits ein Offer mit
+  // zwei Varianten angelegt — der Read-back filtert auf dieses Offer.
+  const ownOfferId = offerIdFromDetailPath(detailPath);
   const initialVariantId = new URL(page.url()).searchParams.get("variante");
   const duplicateSection = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Variante duplizieren", exact: true }),
@@ -254,10 +268,10 @@ test("F2.2-E2E-02: Editor-Steuerung — Promote, Deal-Override, Bundles", async 
   // DB-Read-back: Zweitvariante primär, Override 1250 Cent (Offer-Ebene),
   // Bundle an der Zweitvariante.
   await expect.poll(async () => {
-    const rows = await readVariantState();
+    const rows = await readVariantState(ownOfferId);
     return rows.some((row) => row.ordinal === 1 && row.isPrimary);
   }, { message: "Der Promote muss in der DB sichtbar sein.", timeout: 15_000 }).toBe(true);
-  const variants = await readVariantState();
+  const variants = await readVariantState(ownOfferId);
   expect(variants).toHaveLength(2);
   const promoted = variants.find((row) => row.id !== variants[0]?.id);
   expect(promoted?.isPrimary).toBe(true);
