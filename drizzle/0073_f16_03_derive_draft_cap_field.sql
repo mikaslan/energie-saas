@@ -8,10 +8,6 @@
 -- CREATE OR REPLACE ohne Owner-Tanz: Trigger-Funktion, INVOKER, Owner
 -- bleibt erhalten (Migrationsrolle wie 0033).
 -- ═══════════════════════════════════════════════════════════════════════
-CREATE OR REPLACE ohne Owner-Tanz: die Funktion ist kein
--- app_owner-DEFINER (Trigger, INVOKER) und gehoert im Testmodus der
--- Migrationsrolle.
--- ═══════════════════════════════════════════════════════════════════════
 CREATE OR REPLACE FUNCTION public.derive_offer_pdf_draft_input()
 RETURNS trigger
 LANGUAGE plpgsql

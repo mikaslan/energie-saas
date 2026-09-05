@@ -924,3 +924,19 @@
   (No schema changes), catalog-import via node --import-tsx.
 - Naechster Schritt: Push (force-with-lease, ECC_SKIP_PREPUSH=1),
   CI-Orakel lesen (API; Blob-Logs ggf. tot wie Turn 56b).
+
+## Turn 58 — 0073-Syntax-Crash gefunden + gefixt (0-Test-Ursache)
+
+- Baseline-Run 33957805200: Testsuite sammelte 0 Tests (vitest-result
+  364 B, success:false), E2E ohne Artefakt — Setup-Crash in beiden Jobs.
+- Ursache (EIGENER Fehler): 0073-Header per Python-Split auf
+  'CREATE OR REPLACE' gebaut — traf den KOMMENTAR in 0065:8, liess
+  4 Fragment-Zeilen (uncommentiertes SQL) stehen → Migrate-Syntaxfehler.
+  Fix: Fragment entfernt; 0073 = 0065 + Cap-Zeile + Terminator (Diff
+  verifiziert, Pin fbb06d5a unveraendert).
+- Nebenbefund: wave-02-Merge-Run 33957063144 LIEF Tests (2008, nur 5
+  Renderer-Fails m2-02/m203a/m203b1) — Setup dort OK. f42a019-Run mit
+  0 Tests bleibt unerklaert (Flake?); irrelevant nach vorne.
+- E2E-Vorbefund (pre-merge 33930854947, 13 Fails): m2-01/02/03a/04
+  (S1-Cluster), f9-01/02/03/04/04b, f10-02b, m1-15 — Triage folgt nach
+  gruenem Setup.
