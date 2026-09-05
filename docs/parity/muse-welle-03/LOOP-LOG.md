@@ -639,3 +639,11 @@
   → mapNonSuccess (nie still grün). f1003-DB-01 scheitert daher
   laut, falls 0065 je nicht griffe — kein blinder Pass.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 39 — 2026-09-05, Migrationsstruktur (kein Code)
+
+- 0065/0066 strukturell verifiziert: je genau 1 Statement mit
+  `-->`-Terminator, 0066-Kopf CREATE OR REPLACE + Trigger-Signatur
+  intakt, kein Fremdtext aus 0033. Höchste Blast-Radius-Stelle
+  (migrate bricht bei Syntaxfehler total) damit statisch sauber.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
