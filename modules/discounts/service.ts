@@ -344,7 +344,13 @@ export function applyDiscountTemplate(
     return Math.max(0, netCents - template.amountCents);
   }
   if (template.percentBps === null) throw new DiscountTemplateValidationError("percent ohne bps");
-  const raw = Math.floor((netCents * template.percentBps) / 10_000);
+  if (!Number.isInteger(template.percentBps)) {
+    throw new DiscountTemplateValidationError("bps muss Integer sein");
+  }
+  // Review Welle 03 (EINE Geld-Mathematik): exakte BigInt-Floor-Division
+  // wie money.ts statt Float — Float kippt jenseits 2^53 um ganze Cents
+  // (Zeuge: 999000175671·9769 → 975923271613 statt 975923271612).
+  const raw = Number((BigInt(netCents) * BigInt(template.percentBps)) / 10_000n);
   const capped = template.capCents === null ? raw : Math.min(raw, template.capCents);
   return Math.max(0, netCents - capped);
 }

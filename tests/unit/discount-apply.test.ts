@@ -40,5 +40,13 @@ describe("F16.3 applyDiscountTemplate (rein, Cent-Arithmetik)", () => {
       .toThrow(DiscountTemplateValidationError);
     expect(() => applyDiscountTemplate(1_000, percent(null as unknown as number)))
       .toThrow(DiscountTemplateValidationError);
+    expect(() => applyDiscountTemplate(1_000, percent(12.5)))
+      .toThrow(DiscountTemplateValidationError);
+  });
+
+  it("Prozent exakt jenseits 2^53 (Float-Zeuge: 999000175671·9769)", () => {
+    // Exakt: Skonto 975923271612 → Rest 23076904059. Float rechnet
+    // 975923271613 (ein Cent daneben, per Python-Gegenprobe belegt).
+    expect(applyDiscountTemplate(999_000_175_671, percent(9_769))).toBe(23_076_904_059);
   });
 });
