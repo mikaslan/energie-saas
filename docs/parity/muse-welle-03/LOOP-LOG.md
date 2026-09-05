@@ -804,3 +804,11 @@
   Installation-Spalten-Typ); kein Offer-Picker (kommt mit F7.6).
 - Lokal: typecheck/lint(0)/depcruise/generate/--list 2/2 grün.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 54 — 2026-09-05, Eigen-Review F7.1A (ohne Befund)
+
+- Snapshot: installation-Idx/FKs deckungsgleich zum SQL; Audit- und
+  Event-Typen sind freie Strings (keine Allowlist-Risiken);
+  Non-null-Assertions nur nach FOR-UPDATE-Lock (sicher);
+  E2E-Texte exakt/eindeutig; run.mts-State typgeprüft.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
