@@ -44,14 +44,15 @@ function postgresField(error: unknown, field: "code" | "constraint"): string | u
 
 async function expectPostgresCode(
   work: Promise<unknown>,
-  code: string,
+  code: string | readonly string[],
 ): Promise<unknown> {
   const failure = await work.then(
     () => null,
     (error: unknown) => error,
   );
   expect(failure).not.toBeNull();
-  expect(postgresField(failure, "code")).toBe(code);
+  if (Array.isArray(code)) expect(code).toContain(postgresField(failure, "code"));
+  else expect(postgresField(failure, "code")).toBe(code);
   return failure;
 }
 
@@ -513,6 +514,9 @@ describe("M1-09 direkte Project-/Assignment-RLS", () => {
       `),
     ), "42501");
 
+    // ON DELETE RESTRICT meldet je nach PG-Version 23001 (klassisch) oder
+    // 23503 (Embedded-PG18 in CI, 2026-09-05) — der Constraint-Name-Assert
+    // unten pinnt, dass exakt der Offboarding-FK feuerte.
     const membershipFailure = await expectPostgresCode(withTenantOn(
       testPool,
       fixture.workspaceId,
@@ -521,7 +525,7 @@ describe("M1-09 direkte Project-/Assignment-RLS", () => {
          where workspace_id = ${fixture.workspaceId}::uuid
            and id = ${fixture.externalAMembershipId}::uuid
       `),
-    ), "23001");
+    ), ["23001", "23503"]);
     expect(postgresField(membershipFailure, "constraint"))
       .toBe("project_assignment_membership_fk");
   });

@@ -34,7 +34,8 @@ const M111A_MIGRATION_INDEX = 39;
 // wave-02-Integration: 0055 (F2.2) + 0056 (F10.1) => 57 Migrationen (idx 0..56).
 // 0055-0056 + Welle-03-Nachzug 0057-0060 => 61 Migrationen (idx 0..60).
 // 0055-0056 + Welle-03-Nachzug bis 0065 => 66 Migrationen (idx 0..65).
-const TOTAL_MIGRATION_COUNT = 66;
+// + F16.3-E (0066 nach Rebase) => 67 Migrationen (idx 0..66).
+const TOTAL_MIGRATION_COUNT = 67;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 

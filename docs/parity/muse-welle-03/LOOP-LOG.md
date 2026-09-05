@@ -436,3 +436,31 @@
   app_owner → kein Wechsel). Body unberührt, Pin 6d025bff gilt.
 - Prinzipale belegt: app_ci/app_test (CREATEROLE + Schema-Owner),
   Superuser (alles), Strict (Guard-Skip). Keine Drift (generate clean).
+
+## Turn 26 — 2026-09-05, CI-Triage 55/55 + Gatefix-Abgleich
+
+- `ci`-Run 33933856418 (bbd9a80): 55 failed / 1958 passed. Alle 55
+  Fehlerblöcke gelesen, Root-Causes: (1) Fixture-Draft ohne
+  Fix/Cap-Keys (~20 Folgefehler m203/m204/f1003/tenant-B/worker-14),
+  (2) Fixture-Snapshot v1-Literal + Cap-Key (m202, f162, f1603d),
+  (3) Portal-Definer ohne Tabellen-Grant 42501 (f1001/f1002),
+  (4) time_entry_revision ohne Factory/Override (tenant 2x),
+  (5) Renderer-Tests ohne Browser im Check-Job (5x browser_unavailable),
+  (6) Pins (m111a 56→64/60→65, m202-Owner env, m109 23001/23503),
+  (7) f1603-Restore: committete Erwartung widersprach Partial-Unique-
+  Index + F703-Präzedenz → ConflictError + Restore-nach-Archivieren.
+- f1603/f1603b auf volle F703-Parität erweitert (Konflikt, dann Archiv
+  des Belegers, dann Restore grün). m109-Kommentar korrigiert
+  (Constraint-Name bleibt der Pin).
+- Gatefix2/3 (Mikails parallele Verifikation) gesichtet: NICHT mergen
+  (m1-wave-02 enthält D/E nicht — Merge würde Slices revertieren).
+  Nur cherry-pickt: f10-02-E2E-Locators (exakt/first, app-unabhängig).
+  gatefix3-0065 (Derive-Trigger) ist Alternativ-Design zu D/E, bleibt
+  draußen bis Mikail entscheidet (FRAGEN-AN-MIKAIL.md).
+- CI-Reparatur: Chromium-Step in Gates-Job (Renderer brauchen echten
+  Browser, Muster E2E-Job), historisches ci.yml auf main begrenzt,
+  paths-ignore für Doku-State (beides Mikails f42a019-Politik).
+- Lokal grün: typecheck, lint (0 Errors), depcruise, catalog-check
+  (via node --import tsx), generate (no drift). Vitest lokal EPERM
+  (Loopback-Sperre) — DB-/Unit-Nachweise liefert CI.
+- Nächster Schritt: pushen, Gates- + E2E-Log lesen, Rest fixen.

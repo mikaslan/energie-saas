@@ -49,3 +49,14 @@
   Nächster Schritt: E2E-Lauf + Server-Log auswerten, strict ↔
   test-legacy-single differenzieren, echte Ursache fixen + sichtbaren
   Fehlerzustand mappen (nie still `idle`).
+
+## C. Neue Entscheidung (Turn 26, BLOCKED-ON-MIKAIL bei Integration)
+
+7. **F16.3 Fix-Modell: Lane-D/E (Snapshot-v2/v3, app-seitig) vs.
+   gatefix3-0065 (DB-Derive-Trigger `derive_offer_pdf_draft_input`).**
+   Beide Designs koexistieren derzeit auf getrennten Branches und
+   kollidieren bei der Integration (0063/0064 vs. 0065, Builder vs.
+   Trigger). Die Lane bleibt bis zu deiner Entscheidung beim
+   D/E-Design (Slices implementiert, CI-Triage läuft). Bitte
+   entscheiden: (a) D/E behalten, gatefix3-0065 verwerfen, oder
+   (b) auf Trigger-Design umstellen (D/E-Revert auf der Lane).

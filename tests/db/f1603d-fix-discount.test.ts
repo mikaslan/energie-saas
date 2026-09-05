@@ -673,6 +673,8 @@ describe("F16.3 Slice D Fix-Modell global (PostgreSQL)", () => {
     const rev1 = await readRevisionSnapshot(members.workspaceId, variantId, 1);
     const rev1body: Record<string, unknown> = { ...(rev1.snapshot as Record<string, unknown>) };
     delete rev1body.globalFixDiscountCents;
+    // F16.3 Slice E: v3-Cap-Key ebenfalls entfernen (echte v1-Gestalt).
+    delete rev1body.globalDiscountCapCents;
     delete rev1body.snapshotSha256;
     rev1body.schemaVersion = "offer-variant-snapshot.v1";
     const v1sealed = {

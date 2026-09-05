@@ -285,10 +285,9 @@ export function restoreSubsidyTemplate(
   return setTemplateActive(tx, ctx, id, true);
 }
 
-// F16.3 Slice C/D: Vorlage global aufs Angebot anwenden (via
-// reviseOfferVariant, wörtlich). Prozent cap-frei -> set_global_discount;
-// Fix (per CHECK cap-frei) -> set_global_fix_discount (Slice D).
-// Cap-Prozent -> ValidationError (nie still verlieren; Cap = Slice E).
+// F16.3 Slice C/D/E: Vorlage global aufs Angebot anwenden (via
+// reviseOfferVariant, wörtlich). Prozent (+ Cap wörtlich) ->
+// set_global_discount; Fix (per CHECK cap-frei) -> set_global_fix_discount.
 export async function applySubsidyTemplateToOfferGlobal(
   tx: TenantTx,
   ctx: ServiceCtx,

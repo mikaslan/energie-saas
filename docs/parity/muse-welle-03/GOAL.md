@@ -16,6 +16,8 @@ grün, Goldens belegt; DB-/E2E-Ausführung pending CI/Maschine —
 Billing-Block Q6). M2-04 als DONE pending CI verifiziert (Won per
 DEC-M204-08 NICHTZIEL).
 Stand: + F16.3-E implementiert (Snapshot-v3, Cap-Modell, f1603e, E2E-05; lokal grün, Goldens belegt; DB-/E2E-Ausführung pending CI/Maschine).
+Stand Turn 26: CI-Triage 55/55 kartiert (bbd9a80: 55 failed/1958 passed),
+Fixes + Gatefix2-Locators + Gates-Chromium im Arbeitsstand, Push pending.
 Nächstes: Slice E pushen + CI lesen, dann F1–F16-Sweep.
 
 Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener

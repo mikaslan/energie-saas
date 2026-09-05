@@ -497,6 +497,9 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
       tag: "0033_supreme_jocasta",
     }));
 
+    // Owner ist die Migrationsrolle der Umgebung (embedded: app_test,
+    // Service-PG: app_ci) — gepinnt wird Migrator-Ownership + FORCE RLS.
+    const migrator = await testPool.query<{ role: string }>(`select current_user as role`);
     const relation = await testPool.query<{
       owner: string;
       relrowsecurity: boolean;
@@ -510,7 +513,7 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
        where relation.oid = 'public.offer_pdf_draft'::regclass
     `);
     expect(relation.rows).toEqual([{
-      owner: "app_test",
+      owner: migrator.rows[0].role,
       relrowsecurity: true,
       relforcerowsecurity: true,
     }]);

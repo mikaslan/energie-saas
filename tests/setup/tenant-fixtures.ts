@@ -1197,7 +1197,7 @@ async function fixtureOfferPdfDraft(tx: TenantTx, wsId: string): Promise<void> {
       name: "Basis",
       revision: row.revision,
     },
-    commercialTerms: { globalDiscountBps: 0, globalFixDiscountCents: null, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Tenant Fixture",
@@ -2076,63 +2076,25 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
-  // F9.4 Slice B (0057): immutable Vorher-Bilder — RLS nur tenant_isolation,
-  // FK nur auf (workspace, entry). Fixture spiegelt das 0050-Muster.
   time_entry_revision: async (tx, wsId) => {
-    const userId = randomUUID();
-    const projectId = randomUUID();
-    const contactId = randomUUID();
-    const siteId = randomUUID();
-    await tx.execute(sql`
-      insert into user_identity (id, email)
-      values (${userId}::uuid, ${`${userId}@fixture.local`})
-    `);
-    await tx.execute(sql`
-      insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
-      values (${contactId}::uuid, ${wsId}::uuid, 'Revision Fixture', 'Rev', 'Fixture', ${`${contactId}@fixture.local`}, ${`${contactId}@fixture.local`})
-    `);
-    await tx.execute(sql`
-      insert into site (id, workspace_id, contact_id, label)
-      values (${siteId}::uuid, ${wsId}::uuid, ${contactId}::uuid, 'Revision Fixture Site')
-    `);
-    await tx.execute(sql`
-      insert into project (
-        id, workspace_id, contact_id, site_id, kanban_board_id,
-        kanban_column_id, name, source_key
-      )
-      select ${projectId}::uuid, ${wsId}::uuid, ${contactId}::uuid,
-             ${siteId}::uuid, board.id, intake_column.id,
-             'Revision Fixture Projekt', 'fixture'
-      from kanban_board board
-      join kanban_column intake_column
-        on intake_column.workspace_id = board.workspace_id
-        and intake_column.board_id = board.id
-        and intake_column.is_intake = true
-        and intake_column.archived_at is null
-      where board.workspace_id = ${wsId}::uuid
-        and board.scope = 'residential'
-        and board.is_default = true
-        and board.archived_at is null
-    `);
-    const entryId = randomUUID();
-    await tx.execute(sql`
-      insert into time_entry (
-        id, workspace_id, user_id, project_id, start_at, end_at,
-        working_time_minutes, created_by
-      ) values (
-        ${entryId}::uuid, ${wsId}::uuid, ${userId}::uuid, ${projectId}::uuid,
-        now() - interval '3 hours', now() - interval '2 hours',
-        60, ${userId}::uuid
-      )
-    `);
+    // F9.4 Slice B: eigene Entry-Kette (FK time_entry_revision_entry_fk).
+    // Cross-Write-Pfad: crossWriteOverrides.time_entry_revision (die
+    // Factory liest hier per RLS nur eigene Zeilen).
+    await tenantFixtures.time_entry(tx, wsId);
+    const entry = await tx.execute<{
+      id: string; user_id: string; project_id: string;
+    }>(sql`select id, user_id, project_id from time_entry
+             where workspace_id = ${wsId}::uuid limit 1`);
+    const row = entry.rows[0];
+    if (!row) throw new Error("Revision-Fixture braucht einen time_entry.");
     await tx.execute(sql`
       insert into time_entry_revision (
         workspace_id, entry_id, user_id, project_id, start_at, end_at,
-        working_time_minutes, break_duration_minutes, comment, revised_by
+        working_time_minutes, comment, revised_by
       ) values (
-        ${wsId}::uuid, ${entryId}::uuid, ${userId}::uuid, ${projectId}::uuid,
-        now() - interval '4 hours', now() - interval '3 hours',
-        90, 0, 'Vorher-Bild Fixture', ${userId}::uuid
+        ${wsId}::uuid, ${row.id}::uuid, ${row.user_id}::uuid,
+        ${row.project_id}::uuid, now() - interval '2 hours',
+        now() - interval '1 hour', 60, 'Fixture-Revision', ${row.user_id}::uuid
       )
     `);
   },
@@ -2753,6 +2715,18 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
     await tx.execute(sql`
       insert into offer_variant_section (workspace_id)
       values (${randomUUID()}::uuid)
+    `);
+  },
+  time_entry_revision: async (tx) => {
+    // F9.4 Slice B: RLS-WITH-CHECK feuert vor den FK-Checks — die
+    // Zufalls-UUIDs erreichen nie die Entry-FK (Muster offer_variant_*).
+    await tx.execute(sql`
+      insert into time_entry_revision (
+        workspace_id, entry_id, user_id, project_id, start_at, revised_by
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid, now(), ${randomUUID()}::uuid
+      )
     `);
   },
 };
