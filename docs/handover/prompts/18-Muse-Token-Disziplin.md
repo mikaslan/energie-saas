@@ -42,3 +42,15 @@ Kontext geladen wird.
 - Ohne Verdichtung wird bei jedem Turn die GESAMTE Historie erneut als
   Input berechnet — der Input wächst linear mit jedem Turn, egal wie
   diszipliniert die Reads sind.
+
+## 5. STOPP-Regel statt Verstetigungs-Modus (überschreibt 10er §5)
+
+- Wenn `ALS NÄCHSTES` leer ist UND die eigene Lane CI-grün ist: Zustand
+  pushen, 3-Zeilen-Status, **STOP** — keine Full-Gate-Wiederholungen,
+  kein „niemals stillstehen". Weiter erst mit dem nächsten `/loop`.
+- Der Verstetigungs-Modus (10er §5) ist damit AUSGESETZT (Kostengrund:
+  Leerlauf-Turns brennen Input — 519 Turns ≈ 113M Input-Tokens/Tag).
+  Mikail kann ihn jederzeit explizit wieder einschalten.
+- Log-/Blob-Download-Retries: **max 2 Versuche** je Download, dann
+  nächster Schritt oder ein frischer CI-Run als Orakel — keine
+  Endlos-Retries (Turn 56b-Muster).
