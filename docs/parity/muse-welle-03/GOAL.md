@@ -23,6 +23,8 @@ Push + CI ab Mikails Maschine, Quote 25 % ESTIMATE.
 Stand Turn 27: + 0065 Signatur-Definer-Tanz + 0066 Derive-v3-Felder
 (Gatefix3-Ports, dort 0064/0065) + f1003-Echtpfad, committet (676b357,
 lokal). Journal 67, m111a-Pins nachgezogen. Push-Block unverändert.
+Stand Turn 28: + Euro-Kommaparsing (E2E-04 tippt 12,50),
+committet (965407b, lokal). Push-Block unverändert.
 Nächstes: Slice E pushen + CI lesen, dann F1–F16-Sweep.
 
 Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
