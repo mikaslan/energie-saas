@@ -53,3 +53,11 @@ notiert.
 - Kein Push ohne vollständige Gates: Commits lokal, Push erst nach Mikails
   Gate-Lauf. F2.2 hat keine Primary-/Override-/Bundle-UI (Service-only);
   E2E deckt den klickbaren Variantenpfad + DB-Read-back ab (Details je Commit).
+
+## Stand Turn 46 (2026-09-05)
+- Lane enthält Merge df1f444 von origin/codex/m1-wave-02 (6 Commits:
+  fc936ba, 68380d7, 1306548, d50f7c5, e178425, f42a019); 7 Konflikte
+  aufgelöst (0059 + end_at-Guard HEAD aus Ketten-/Schema-Gründen,
+  Fixture + Testkommentare von Basis übernommen).
+- Lokal grün: typecheck, lint (0 errors), depcruise, db:generate.
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
