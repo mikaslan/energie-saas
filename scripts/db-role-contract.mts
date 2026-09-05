@@ -3344,7 +3344,7 @@ export async function verifyRoleContract(
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          "search_path=pg_catalog:6d025bff7eee1e267019a81fe77730c139fc3c7a5e94cf9dd9c54541fbc4be57",
+          "search_path=pg_catalog:847b47cb0dae5429b175e7affa07048ce90c494d0d5590d7da2a4ef079aa1486",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
