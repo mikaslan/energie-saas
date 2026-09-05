@@ -54,7 +54,7 @@ function inputFixture() {
     recipient: { displayName: "Mia Muster" },
     installationSite: { formattedAddress: "Solstraße 8, 10115 Berlin" },
     variant: { name: "Komfort", revision: 7 },
-    commercialTerms: { globalDiscountBps: 0, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalDiscountCapCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Leistungsumfang",

@@ -28,6 +28,8 @@ type SerializedM201State = {
 type PersistedSnapshot = {
   customDealNetCents: number | null;
   globalDiscountBps: number;
+  // F16.3 Slice E: Cap (null = ungedeckelt).
+  globalDiscountCapCents: null,
   sections: Array<{
     category: string;
     discountBps: number;

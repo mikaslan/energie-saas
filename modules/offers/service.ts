@@ -1133,6 +1133,8 @@ function buildResolutionSnapshot(input: {
       currency: "EUR",
       priceBasis: "net",
       globalDiscountBps: 0,
+      // F16.3 Slice E: Cap (null = ungedeckelt).
+      globalDiscountCapCents: null,
       globalFixDiscountCents: null,
       customDealNetCents: null,
       sections: sections.map((section) => ({
@@ -1177,6 +1179,8 @@ function buildResolutionSnapshot(input: {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: sections.map((section) => ({
@@ -1889,6 +1893,8 @@ function applyRevisionOperation(
     case "set_global_discount":
       requireOfferAccess(ctx, "discount.apply", "offer_discount");
       snapshot.globalDiscountBps = operation.discountBps;
+      // F16.3 Slice E: Cap mitführen; weggelassen = bestehenden behalten.
+      if (operation.capCents !== undefined) snapshot.globalDiscountCapCents = operation.capCents;
       return;
     case "set_global_fix_discount":
       requireOfferAccess(ctx, "discount.apply", "offer_discount");
@@ -2087,6 +2093,7 @@ function repriceSnapshot(snapshot: OfferVariantSnapshotV1): void {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: snapshot.globalDiscountBps,
+    globalDiscountCapCents: snapshot.globalDiscountCapCents,
     globalFixDiscountCents: snapshot.globalFixDiscountCents,
     customDealNetCents: snapshot.customDealNetCents,
     sections: snapshot.sections.map((section) => ({

@@ -80,7 +80,7 @@ function candidateInputFixture(lineCount = 3): OfferReleaseCandidateInputV1 {
     },
     installationSite: { formattedAddress: "Solstraße 8, 10115 Berlin" },
     variant: { name: "Komfort & Autarkie <Plus>", revision: 7 },
-    commercialTerms: { globalDiscountBps: 250, globalFixDiscountCents: null, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 250, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{ position: 1, title: "PV-Anlage & Zubehör <Süd>", discountBps: 100, lines }],
     totals: {
       basisNetCents: total(basisLines, "finalNetCents"),

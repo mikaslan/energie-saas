@@ -1016,6 +1016,8 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     customDealNetCents: null,
     contactContext,
     installationSiteContext,

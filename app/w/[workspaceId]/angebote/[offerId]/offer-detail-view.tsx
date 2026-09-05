@@ -122,6 +122,8 @@ export interface OfferVariantSnapshotView {
   variantName: string;
   description: string | null;
   globalDiscountBps: number;
+  // F16.3 Slice E: Cap (null = ungedeckelt).
+  globalDiscountCapCents: number | null;
   globalFixDiscountCents?: number | null;
   customDealNetCents: number | null;
   contactContext: {
@@ -207,6 +209,7 @@ export interface OfferDetailSurfaceView {
     kind: "percent" | "fix";
     percentBps: number | null;
     amountCents: number | null;
+    capCents: number | null;
   }[];
 }
 
@@ -795,7 +798,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                   <p className="mt-2 text-sm leading-6 text-slate-600">{snapshot.description}</p>
                 ) : null}
                 <dl className="mt-4 grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2">
-                  <div><dt className="text-slate-600">Globaler Rabatt</dt><dd className="mt-1 font-semibold">{formatBasisPoints(snapshot.globalDiscountBps)}</dd></div>
+                  <div><dt className="text-slate-600">Globaler Rabatt</dt><dd className="mt-1 font-semibold">{formatBasisPoints(snapshot.globalDiscountBps)}{snapshot.globalDiscountCapCents === null || snapshot.globalDiscountCapCents === undefined ? "" : ` (gedeckelt auf ${formatOfferCents(snapshot.globalDiscountCapCents)})`}</dd></div>
                   <div><dt className="text-slate-600">Globaler Fix-Rabatt</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.globalFixDiscountCents === null || snapshot.globalFixDiscountCents === undefined ? "Kein Fix-Rabatt" : formatOfferCents(snapshot.globalFixDiscountCents)}</dd></div>
                   <div><dt className="text-slate-600">Custom Deal netto</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.customDealNetCents === null ? "Kein Custom Deal" : formatOfferCents(snapshot.customDealNetCents)}</dd></div>
                 </dl>

@@ -1,6 +1,6 @@
 # F16.3 Slice E — Cap-Prozent global (Snapshot-v3, Geld, UI)
 
-Status: **SPECIFIED (DISCOVERED abgeschlossen)**
+Status: **IMPLEMENTED (lokal verifiziert 2026-09-04: lint 0 Errors, typecheck, depcruise, generate ohne Drift, catalog-contract-check, E2E-05 --list, DB-frei 1020 passed/21 nur Umgebung; DB-/E2E-Ausführung pending CI/Maschine — Billing-Block Q6)**
 
 Lane: `codex/muse-welle-03-e2e` off `origin/codex/m1-wave-02`.
 Vorgänger: F16.3-D (Fix-Modell, Snapshot-v2). Katalog: F16.3 „Fix mit

@@ -191,6 +191,7 @@ function snapshotViewSchema(canReadPurchasePrice: boolean) {
     variantName: z.string().trim().min(1).max(120),
     description: z.string().trim().min(1).max(1_000).nullable(),
     globalDiscountBps: basisPointsSchema,
+    globalDiscountCapCents: moneyCentsSchema.nullable(),
     globalFixDiscountCents: moneyCentsSchema.nullable().optional(),
     customDealNetCents: moneyCentsSchema.nullable(),
     contactContext: z.object({
@@ -228,6 +229,7 @@ function projectOfferDetailView(
     kind: "percent" | "fix";
     percentBps: number | null;
     amountCents: number | null;
+    capCents: number | null;
   }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
@@ -467,6 +469,7 @@ export default async function OfferDetailPage(
       kind: "percent" | "fix";
       percentBps: number | null;
       amountCents: number | null;
+      capCents: number | null;
     }[];
     recoveryScope: string;
     editorCapabilities: {
@@ -503,6 +506,7 @@ export default async function OfferDetailPage(
           kind: "percent" | "fix";
           percentBps: number | null;
           amountCents: number | null;
+          capCents: number | null;
         }[] = [];
         let releaseValidityWindow: ReleaseValidityWindow | null = null;
         if (view !== null && !externalOnly) {
@@ -550,25 +554,25 @@ export default async function OfferDetailPage(
           releaseRecipient = recipientResult;
           releaseCandidates = candidateResult;
           offerIssuances = issuanceResult;
-          // F16.3 Slice C/D: Vorlagen für den Global-Rabatt-Dropdown.
-          // Prozent nur cap-frei (Cap nicht global anwendbar); Fix immer
-          // (per CHECK cap-frei). Nur mit discount.apply-Recht.
+          // F16.3 Slice C/D/E: Vorlagen für den Global-Rabatt-Dropdown.
+          // Prozent mit/ohne Cap (Cap wörtlich); Fix immer (per CHECK
+          // cap-frei). Nur mit discount.apply-Recht.
           if (!externalOnly && can(ctx, "discount.apply")) {
             if (can(ctx, "discount_template.read")) {
               for (const template of await listDiscountTemplates(tx, ctx, {})) {
-                if (template.kind === "percent_bps" && template.capCents === null && template.percentBps !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "percent", percentBps: template.percentBps, amountCents: null });
+                if (template.kind === "percent_bps" && template.percentBps !== null) {
+                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "percent", percentBps: template.percentBps, amountCents: null, capCents: template.capCents });
                 } else if (template.kind === "fix_cents" && template.amountCents !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "fix", percentBps: null, amountCents: template.amountCents });
+                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "fix", percentBps: null, amountCents: template.amountCents, capCents: null });
                 }
               }
             }
             if (can(ctx, "subsidy_template.read")) {
               for (const template of await listSubsidyTemplates(tx, ctx, {})) {
-                if (template.kind === "percent_bps" && template.capCents === null && template.percentBps !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "percent", percentBps: template.percentBps, amountCents: null });
+                if (template.kind === "percent_bps" && template.percentBps !== null) {
+                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "percent", percentBps: template.percentBps, amountCents: null, capCents: template.capCents });
                 } else if (template.kind === "fix_cents" && template.amountCents !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "fix", percentBps: null, amountCents: template.amountCents });
+                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "fix", percentBps: null, amountCents: template.amountCents, capCents: null });
                 }
               }
             }

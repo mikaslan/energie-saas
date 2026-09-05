@@ -334,7 +334,7 @@ export const offerVariantRevision = pgTable(
     }),
     check("offer_variant_revision_revision_ck", sql`${t.revision} > 0`),
     // F16.3 Slice D: Snapshot-v2 zugelassen (v1-Historie bleibt gültig).
-    check("offer_variant_revision_version_ck", sql`${t.schemaVersion} in ('offer-variant-snapshot.v1', 'offer-variant-snapshot.v2')
+    check("offer_variant_revision_version_ck", sql`${t.schemaVersion} in ('offer-variant-snapshot.v1', 'offer-variant-snapshot.v2', 'offer-variant-snapshot.v3')
       and ${t.canonicalizationVersion} = 'offer-jcs.v1'`),
     check("offer_variant_revision_hash_ck", sql`octet_length(${t.snapshotSha256}) = 32
       and octet_length(${t.resolutionSha256}) = 32`),

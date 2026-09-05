@@ -320,15 +320,13 @@ export async function applyDiscountTemplateToOfferGlobal(
   if (row.kind !== DISCOUNT_KIND_PERCENT || row.percent_bps === null) {
     throw new DiscountTemplateValidationError("nur Prozent-Vorlagen sind global anwendbar");
   }
-  if (row.cap_cents !== null) {
-    throw new DiscountTemplateValidationError("gedeckelte Vorlagen sind global nicht anwendbar");
-  }
+  // F16.3 Slice E: Cap wörtlich mitführen (null = ungedeckelt).
   return reviseOfferVariant(tx, ctx, {
     schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
     offerId: input.offerId,
     variantId: input.variantId,
     expectedRevision: input.expectedRevision,
-    operations: [{ operation: "set_global_discount", discountBps: row.percent_bps }],
+    operations: [{ operation: "set_global_discount", discountBps: row.percent_bps, capCents: row.cap_cents }],
   });
 }
 
