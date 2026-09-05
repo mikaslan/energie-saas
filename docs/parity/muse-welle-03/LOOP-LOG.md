@@ -501,3 +501,18 @@
   0 Errors (11 vorbestehend), Vertragsbeweis /tmp/proof-v1.mts 6/6.
 - Nächster Schritt: Push ab Mikails Maschine (Hook-Block Nr. 5 gilt),
   Gates-/E2E-Logs lesen.
+
+## Turn 28 — 2026-09-05, Euro-Kommaparsing (E2E-04-Rettung)
+
+- Befund aus Gatefix3-8682718 (Mikail, gemessen): E2E-04 tippt
+  "12,50" (Komma) ins Fix-Vorlagen-Formular — Lane-Parser
+  (parseEuroToCents/parsePercentToBps) wies Komma deterministisch ab
+  → Server-Action-Validation → E2E-04 rot. Port der 4 App-Dateien
+  (foerder-/rabatt-actions + -manager: Komma→Punkt-Normierung,
+  type text/inputMode decimal). Diff enthält exakt nur diese
+  Änderung (Pre-Images identisch). Andere Specs nutzen kein Komma.
+- 0059/0062-Wrapper aus Gatefix3 NICHT portiert: eigene
+  Owner-Fenster-Variante lief in CI durch migrate (bbd9a80 scheiterte
+  erst auf Test-Ebene) — kein Zweitumbau ohne CI-Beleg.
+- Lokal: typecheck grün, lint 0 Errors (11 vorbestehend).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
