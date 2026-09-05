@@ -757,3 +757,14 @@
   rot). Fix: offerId-Scope im Read-back (eigene Offer-ID aus Detailpfad).
 - Lokal: typecheck grün, lint 0 errors, --list 2/2.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 50 — 2026-09-05, F2.5-Slice-A-SPEC + Actions-Review
+
+- variant-actions.ts Zeile-für-Zeile gegen Service-Verträge: ohne
+  Befund (exakte Felder, zod, doppelte Rechte-Gates konsistent).
+- Neu: docs/spec/F2-05-zahlarten.md (SPECIFIED) — Stammdaten +
+  nullable Varianten-Auswahl, providerfrei; Bees&Bears/Raten/Kunden-
+  Auswahl explizit Nichtziel. DECIDED: F2.6 parkt bis Bundle-Preis-
+  Semantik spezifiziert ist (keine Theater-Auswahl ohne Preise).
+- Reviews Kimi/DeepSeek Exit-3 (kein Key).
+- Nächster Schritt: F2.5 RED → IMPLEMENTED (0068 + Service + Tests).
