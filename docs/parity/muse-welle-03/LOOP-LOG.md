@@ -564,3 +564,15 @@
   wörtlicher Body zwischen Dollar-Tags. Offene Anomalie (alter Pin
   ≠ 0033-Body) bleibt CI-Entscheid; eslint der Datei sauber.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 32 — 2026-09-05, Vertragsbeweis 8/8 (Fork-Evidenz)
+
+- /tmp/proof-v1.mts erweitert: (e) v1-Literal+Fix (Gatefix3-Gestalt)
+  wird abgewiesen, (f) echte v2-Gestalt (v2-Literal+Fix) geht per
+  v2-Kette ok. Mit (a–d) aus Turn 26: 8/8 PASS.
+- Folgerung mit Beleg: Gatefix3-Fixturen (340c480) sind im
+  Lane-v3-Vertrag ungültig; reine v1 + echte v2 + v3 decken alle
+  legalen Historien ab (strikte Ketten, sha-passthrough, null-Carry).
+  Stützt FRAGEN-AN-MIKAIL.md Nr. 7 (D/E behalten) mit Messung statt
+  Meinung. 0065-SQL-Body byte-identisch zu f95c106 (nur Header neu).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
