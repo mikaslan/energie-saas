@@ -76,3 +76,7 @@ notiert.
 ## Stand Turn 49 (2026-09-05)
 - E2E-02 gehärtet (Offer-Scope im Read-back); lokal grün.
 - ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 50 (2026-09-05)
+- F2.5 Slice A spezifiziert (Zahlarten-Anzeige, providerfrei).
+- ALS NÄCHSTES: F2.5 RED → IMPLEMENTED (0068 + Service + Tests + UI).
