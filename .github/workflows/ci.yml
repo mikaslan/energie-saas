@@ -1,5 +1,13 @@
 name: ci
-on: [push, pull_request]
+# Kostenoptimierung (2026-09-05): dieser historische Workflow
+# dupliziert die codex-lane-gates und lief nie gruen (Billing).
+# Er bleibt als manuelles Artefakt erhalten; die codex/*-Gates
+# traegt ausschliesslich codex-lane-ci.yml.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 jobs:
   check:
     runs-on: ubuntu-latest

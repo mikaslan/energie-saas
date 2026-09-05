@@ -1016,8 +1016,7 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
-    // F16.3 Slice E: Cap (null = ungedeckelt).
-    globalDiscountCapCents: null,
+    // v1-Gestalt: weder Cap- noch Fix-Key (strikte v1-Kette; Slice D/E).
     customDealNetCents: null,
     contactContext,
     installationSiteContext,
@@ -1194,7 +1193,7 @@ async function fixtureOfferPdfDraft(tx: TenantTx, wsId: string): Promise<void> {
       name: "Basis",
       revision: row.revision,
     },
-    commercialTerms: { globalDiscountBps: 0, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Tenant Fixture",
@@ -2073,6 +2072,28 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  time_entry_revision: async (tx, wsId) => {
+    // F9.4 Slice B: eigene Entry-Kette (FK time_entry_revision_entry_fk).
+    // Cross-Write-Pfad: crossWriteOverrides.time_entry_revision (die
+    // Factory liest hier per RLS nur eigene Zeilen).
+    await tenantFixtures.time_entry(tx, wsId);
+    const entry = await tx.execute<{
+      id: string; user_id: string; project_id: string;
+    }>(sql`select id, user_id, project_id from time_entry
+             where workspace_id = ${wsId}::uuid limit 1`);
+    const row = entry.rows[0];
+    if (!row) throw new Error("Revision-Fixture braucht einen time_entry.");
+    await tx.execute(sql`
+      insert into time_entry_revision (
+        workspace_id, entry_id, user_id, project_id, start_at, end_at,
+        working_time_minutes, comment, revised_by
+      ) values (
+        ${wsId}::uuid, ${row.id}::uuid, ${row.user_id}::uuid,
+        ${row.project_id}::uuid, now() - interval '2 hours',
+        now() - interval '1 hour', 60, 'Fixture-Revision', ${row.user_id}::uuid
+      )
+    `);
+  },
   erasure_tombstone: async (tx, wsId) => {
     const contactId = randomUUID();
     const operationId = randomUUID();
@@ -2662,6 +2683,18 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
     await tx.execute(sql`
       insert into offer_variant_section (workspace_id)
       values (${randomUUID()}::uuid)
+    `);
+  },
+  time_entry_revision: async (tx) => {
+    // F9.4 Slice B: RLS-WITH-CHECK feuert vor den FK-Checks — die
+    // Zufalls-UUIDs erreichen nie die Entry-FK (Muster offer_variant_*).
+    await tx.execute(sql`
+      insert into time_entry_revision (
+        workspace_id, entry_id, user_id, project_id, start_at, revised_by
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid, now(), ${randomUUID()}::uuid
+      )
     `);
   },
 };

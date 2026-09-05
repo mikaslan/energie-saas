@@ -14,6 +14,9 @@ BEGIN
   IF v_app <> 'app_owner' THEN
     EXECUTE pg_catalog.format('GRANT app_owner TO %I WITH inherit false, set true', v_app);
     GRANT CREATE ON SCHEMA public TO app_owner;
+    -- Definer-Rechte für die Termin-Projektion (Review-Fund 2026-09-05:
+    -- ohne Tabellen-Grant scheitert der Resolver mit 42501).
+    GRANT SELECT ON public.project_appointment TO app_owner;
     SET ROLE app_owner;
     v_switched := true;
   END IF;

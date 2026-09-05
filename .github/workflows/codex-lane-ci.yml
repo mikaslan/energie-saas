@@ -14,6 +14,12 @@ on:
   push:
     branches:
       - "codex/**"
+    # Kostenoptimierung: reine Doku-/State-Commits (Muse schreibt je Turn
+    # GOAL/LOOP-LOG) brauchen keine Gate-Laeufe — spart CI-Minuten.
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "**/*.md"
   workflow_dispatch:
 
 concurrency:
@@ -49,6 +55,11 @@ jobs:
 
       - name: Dependency-Cruiser
         run: npm run depcruise
+
+      # Renderer-Einheitenbeweise (m202/m203a/m203b1) brauchen einen echten
+      # Browser (chromium.launch, kein Mock) — Muster E2E-Job unten.
+      - name: Chromium bereitstellen
+        run: npx playwright install --with-deps chromium
 
       - name: Testsuite (Vitest mit eingebettetem Postgres)
         run: npm run test

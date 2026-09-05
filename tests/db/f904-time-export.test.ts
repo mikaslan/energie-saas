@@ -193,7 +193,8 @@ describe("F9.4 CSV-Export (PostgreSQL)", () => {
     expect(lines).toHaveLength(4);
     const running = lines.find((line) => line.includes("Laufend"));
     expect(running).toBeDefined();
-    expect(running!.split(";").slice(1, 4)).toEqual(["", "", ""]);
+    // Spalten: datum(0);beginn(1);ende(2);minuten(3) — Beginn ist nie leer.
+    expect(running!.split(";").slice(2, 4)).toEqual(["", ""]);
 
     await expect(withAuthorizedTenantOn(
       testPool, fixture.externalId, fixture.workspaceId,

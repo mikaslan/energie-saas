@@ -147,6 +147,16 @@ describe("F16.3 Slice B Foerder-Vorlagen (PostgreSQL)", () => {
     );
     expect(recreated.active).toBe(true);
 
+    // Restore auf belegten Namen kollidiert (Konvention F703-DB-02):
+    // erst Beleger archivieren, dann gelingt Restore.
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => restoreSubsidyTemplate(tx, ctx, created.id),
+    )).rejects.toBeInstanceOf(SubsidyTemplateConflictError);
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => archiveSubsidyTemplate(tx, ctx, recreated.id),
+    );
     const restored = await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => restoreSubsidyTemplate(tx, ctx, created.id),

@@ -98,6 +98,12 @@ type EventTypeRow = {
   updated_at: string;
 };
 
+// F9.4-Fix 2026-09-05: DB-Treiber liefern timestamptz je nach Pfad als Date
+// oder PG-Text — die DTO-Grenze normiert immer auf ISO-Instant.
+function toInstantIso(value: Date | string): string {
+  return (value instanceof Date ? value : new Date(value)).toISOString();
+}
+
 function toEventTypeDto(row: EventTypeRow, canWrite: boolean): TimeEventTypeDto {
   return timeEventTypeDtoSchema.parse({
     schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
@@ -106,9 +112,9 @@ function toEventTypeDto(row: EventTypeRow, canWrite: boolean): TimeEventTypeDto 
     position: row.position,
     textColor: row.text_color,
     backgroundColor: row.background_color,
-    archivedAt: row.archived_at,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    archivedAt: row.archived_at === null ? null : toInstantIso(row.archived_at),
+    createdAt: toInstantIso(row.created_at),
+    updatedAt: toInstantIso(row.updated_at),
     permissions: { canWrite },
   });
 }
@@ -326,17 +332,17 @@ function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
     userId: row.user_id,
     projectId: row.project_id,
     typeId: row.type_id,
-    startAt: row.start_at,
-    endAt: row.end_at,
+    startAt: toInstantIso(row.start_at),
+    endAt: row.end_at === null ? null : toInstantIso(row.end_at),
     startLat: row.start_lat,
     startLng: row.start_lng,
     workingTimeMinutes: row.working_time_minutes,
     running: row.end_at === null && row.archived_at === null,
     breakDurationMinutes: row.break_duration_minutes,
     comment: row.comment,
-    archivedAt: row.archived_at,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    archivedAt: row.archived_at === null ? null : toInstantIso(row.archived_at),
+    createdAt: toInstantIso(row.created_at),
+    updatedAt: toInstantIso(row.updated_at),
     permissions: { canWrite },
   });
 }
@@ -588,16 +594,16 @@ function toTimeEntryRevisionDto(row: TimeEntryRevisionRow): TimeEntryRevisionDto
     userId: row.user_id,
     projectId: row.project_id,
     typeId: row.type_id,
-    startAt: row.start_at,
-    endAt: row.end_at,
+    startAt: toInstantIso(row.start_at),
+    endAt: row.end_at === null ? null : toInstantIso(row.end_at),
     startLat: row.start_lat,
     startLng: row.start_lng,
     workingTimeMinutes: row.working_time_minutes,
     breakDurationMinutes: row.break_duration_minutes,
     comment: row.comment,
     revisedBy: row.revised_by,
-    revisedAt: row.revised_at,
-    createdAt: row.created_at,
+    revisedAt: toInstantIso(row.revised_at),
+    createdAt: toInstantIso(row.created_at),
   });
 }
 
