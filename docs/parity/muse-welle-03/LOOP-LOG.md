@@ -592,3 +592,12 @@
   SPEC folgt, sobald der CI-Stau (Nr. 5) abfließt — kein neuer
   Code auf den ungeprüften Stapel.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 34 — 2026-09-05, F1-09-SPEC (@-Mentions)
+
+- SPEC geschrieben: docs/spec/F1-09-notizen-mentions.md (Parsen +
+  Seitentabelle + Auflösung + RLS + Events; ohne Benachrichtigung).
+  Design: Markdown-Roh-Refs bleiben (kein v1-Check-Umbau),
+  Auflösung gegen Membership, Max-20-Schranke, Phantom-Refs nie
+  gespeichert. RED/IMPLEMENTED nach CI-Stau (Nr. 5).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
