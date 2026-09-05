@@ -72,3 +72,7 @@ notiert.
 - Turn-47-Slice gehärtet (Bundle-Read-Toleranz, sonst CI-rot auf
   bestehenden Mocks); lokal typecheck/lint grün.
 - ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 49 (2026-09-05)
+- E2E-02 gehärtet (Offer-Scope im Read-back); lokal grün.
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

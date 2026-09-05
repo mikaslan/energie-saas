@@ -749,3 +749,11 @@
 - Geprüft: keine exakten Shape-Assertions auf variants; Query-Zahl
   unverändert (kein neuer DB-Call); typecheck grün, lint 0 errors.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 49 — 2026-09-05, Self-Review E2E-02 (1 echter Fund, gefixt)
+
+- Fund: E2E-02 erzeugt ein zweites Offer im selben W3-Projekt — der
+  ungescopte DB-Read-back hätte 4 statt 2 Zeilen gefunden (toHaveLength
+  rot). Fix: offerId-Scope im Read-back (eigene Offer-ID aus Detailpfad).
+- Lokal: typecheck grün, lint 0 errors, --list 2/2.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
