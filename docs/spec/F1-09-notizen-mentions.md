@@ -57,8 +57,11 @@ lösen gegen den Workspace-Mitgliederstand auf und rendern als
 - DB-04: RLS — Fremd-Workspace-Insert in Mention-Tabelle scheitert
   an `with check`; Tenant-Invarianten-Zeile ergänzen.
 - DB-05: 21. Mention → NoteValidationError.
-- E2E-06 (eigene Spec-Datei): `@`-Ref tippen, speichern, Reload →
-  Mention-Chip sichtbar; Phantom-Ref rendert als Text.
+- UI: Mention-Chips im Renderer (`data-testid="note-mention-<email>"`,
+  nie in Code-Marks); Section reicht `note.mentions` durch.
+- E2E-06 (eigene Spec-Datei, OFFEN — mit CI-Feedback schreiben, nicht
+  blind): `@`-Ref tippen, speichern, Reload → Mention-Chip sichtbar;
+  Phantom-Ref rendert als Text.
 
 ## 4. Nicht-Ziele
 

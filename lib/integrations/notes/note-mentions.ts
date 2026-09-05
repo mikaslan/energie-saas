@@ -27,36 +27,85 @@ const MENTION_PATTERN = new RegExp(
   "gu",
 );
 
-function stripCodeSpans(markdown: string): string {
-  // Ungerade Segmente liegen in Backticks (inline/fenced) — dort gilt
-  // kein @ als Mention (Muster note-markdown: code ist Inline-Mark).
-  return markdown
-    .split("`")
-    .filter((_, index) => index % 2 === 0)
-    .join(" ");
+export type NoteMentionMatch = {
+  index: number;
+  length: number;
+  emailLower: string;
+};
+
+type ExcludedRange = { start: number; end: number };
+
+function excludedRanges(markdown: string): ExcludedRange[] {
+  // Ungerade Backtick-Segmente sind Code (kein @ gilt dort);
+  // `](...)`-Ziele enthalten oft @ (mailto:/URLs) — nur Link-Text zählt.
+  const ranges: ExcludedRange[] = [];
+  const parts = markdown.split("`");
+  let cursor = 0;
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i] ?? "";
+    if (i % 2 === 1) ranges.push({ start: cursor, end: cursor + part.length });
+    cursor += part.length + 1;
+  }
+  for (const match of markdown.matchAll(/\]\([^()\s]*\)/gu)) {
+    const at = match.index ?? 0;
+    ranges.push({ start: at + 1, end: at + match[0].length });
+  }
+  return ranges;
 }
 
-function stripLinkDestinations(markdown: string): string {
-  // Link-Ziele `](url)` enthalten oft @ (mailto:/URLs) — nur der
-  // Link-Text darf Mentions tragen. Einfache Klammer-Heuristik
-  // (keine Schachtelung in Zielen erwartet).
-  return markdown.replace(/\]\([^()\s]*\)/gu, "]()");
+function inExcluded(ranges: ExcludedRange[], index: number, length: number): boolean {
+  return ranges.some((range) => index < range.end && index + length > range.start);
+}
+
+export function findNoteMentionMatches(markdown: string): NoteMentionMatch[] {
+  const ranges = excludedRanges(markdown);
+  const matches: NoteMentionMatch[] = [];
+  for (const match of markdown.matchAll(MENTION_PATTERN)) {
+    const email = match[2] ?? "";
+    const at = (match.index ?? 0) + (match[1]?.length ?? 0);
+    if (email.length === 0 || email.length > NOTE_MENTION_MAX_EMAIL_LENGTH) continue;
+    if (inExcluded(ranges, at, match[0].length - (match[1]?.length ?? 0))) continue;
+    matches.push({ index: at, length: email.length + 1, emailLower: email.toLowerCase() });
+  }
+  return matches;
 }
 
 export function extractNoteMentionRefs(markdown: string): NoteMentionRef[] {
-  const visible = stripLinkDestinations(stripCodeSpans(markdown));
   const seen = new Set<string>();
   const refs: NoteMentionRef[] = [];
-  for (const match of visible.matchAll(MENTION_PATTERN)) {
-    const email = match[2] ?? "";
-    if (email.length === 0 || email.length > NOTE_MENTION_MAX_EMAIL_LENGTH) continue;
-    const emailLower = email.toLowerCase();
-    if (seen.has(emailLower)) continue;
-    seen.add(emailLower);
-    refs.push({ emailLower });
+  for (const match of findNoteMentionMatches(markdown)) {
+    if (seen.has(match.emailLower)) continue;
+    seen.add(match.emailLower);
+    refs.push({ emailLower: match.emailLower });
   }
   if (refs.length > NOTE_MENTION_MAX_COUNT) {
     throw new NoteMentionLimitError(refs.length);
   }
   return refs;
+}
+
+export type MentionSegment =
+  | { type: "text"; text: string }
+  | { type: "mention"; emailLower: string };
+
+// Render-Pfad (nie werfend): teilt Text an bekannten Refs; Unbekanntes
+// und Ausgeschlossenes bleibt Text. Limit gilt hier nicht (Anzeige).
+export function splitTextByKnownMentions(
+  text: string,
+  known: ReadonlySet<string>,
+): MentionSegment[] {
+  const segments: MentionSegment[] = [];
+  let cursor = 0;
+  for (const match of findNoteMentionMatches(text)) {
+    if (!known.has(match.emailLower)) continue;
+    if (match.index < cursor) continue;
+    if (match.index > cursor) {
+      segments.push({ type: "text", text: text.slice(cursor, match.index) });
+    }
+    segments.push({ type: "mention", emailLower: match.emailLower });
+    cursor = match.index + match.length;
+  }
+  if (cursor < text.length) segments.push({ type: "text", text: text.slice(cursor) });
+  if (segments.length === 0) segments.push({ type: "text", text });
+  return segments;
 }
