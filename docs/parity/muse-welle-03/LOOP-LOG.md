@@ -689,3 +689,11 @@
   /tmp-Beweis 8/8 verifiziert, jetzt dauerhaft im Gate.
 - Lokal: typecheck grün, eslint sauber.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 44 — 2026-09-05, E2E-Fixture-Front + 0067-Naht
+
+- Gatefix-E2E-Diffs: nur Lane-voraus-Artefakte (eigene ORDER-BY- und
+  Cap-Ergänzungen, dort älterer Stand) — nichts zu portieren.
+- 0067-Naht (Scaffold + RLS-Anhang) geprüft: führende
+  `-->`-Zeile hat Präzedenz (0041/0057), Splitter-konform.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
