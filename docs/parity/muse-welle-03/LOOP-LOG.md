@@ -901,3 +901,26 @@
   den unlesbaren Logs. Keine Code-Aenderung ohne Beleg.
 - Naechster Schritt: Run-5-Logs lesen sobald Blob geht (sonst neuer
   Push als frischer Orakel-Lauf).
+
+## Turn 57 — Rebase auf 5641e3a (44/44) + 0073 Derive-Cap
+
+- Kanon bestaetigt: origin/codex/m1-wave-02 = 5641e3a (Gatefix3-Merge).
+  Lane 45 Commits (inkl. READINESS 5fe98e3) replayed, Merge df1f444
+  entfaellt. Backup-Branch: backup/muse-welle-03-pre-rebase (lokal).
+- Migrations-Chirurgie: wave-02-0064/0065 gepinnt; Lane-0064
+  (Snapshot-v3) -> 0066 (Datei + Snapshot + Journal); Lane-Ports
+  0065/0066 gedroppt (Definer-Port kommentaridentisch, Derive-Port
+  als NEUE Migration 0073 mit Cap-Zeile neu aufgelegt).
+- 0073-Pin fbb06d5a: sha256(prosrc-verbatim) lokal berechnet UND
+  identisch zur Lane-CI-Messung (unabhaengige Doppelbelegung).
+  Journal 0..73 lueckenlos, Pins TOTAL 74 / idx 73.
+- 0059/0062: wave-02-Fassung (Konflikte), Lane-Grants additiv
+  erhalten (c3c22c7-Teil, konfliktfrei). Fixtures: v2+Fix (wave),
+  Draft-Terms Fix+Cap (Lane), time_entry_revision lean (Lane) +
+  discount/subsidy-Factories (wave). F1-09-Mention-Dup entfernt.
+- FRAGEN: Nr. 6 (Billing) ERLEDIGT — CI startet; Nr. 7 (D/E vs.
+  Trigger) DECIDED — Union (s. FRAGEN-AN-MIKAIL.md).
+- Lokal gruen: lint (0 errors), typecheck, depcruise, generate
+  (No schema changes), catalog-import via node --import-tsx.
+- Naechster Schritt: Push (force-with-lease, ECC_SKIP_PREPUSH=1),
+  CI-Orakel lesen (API; Blob-Logs ggf. tot wie Turn 56b).

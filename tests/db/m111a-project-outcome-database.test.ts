@@ -188,10 +188,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     expect(migration).toContain("M1-11a kann bestehende Lost-Projects ohne strukturierten Grund nicht migrieren");
     expect(migration).toMatch(/SET closed_at = updated_at[\s\S]+outcome IN \('won', 'cannot_fulfill'\)/u);
     // Journal-Pin folgt dem Wellen-Fortschritt (0066 F16.3-E, 0067 F1-09,
-    // 0068 F2-05, 0069 F7-01, 0070 F7-01-UQ, 0071/0072 M115-Grants).
+    // 0068 F2-05, 0069 F7-01, 0070 F7-01-UQ, 0071/0072 M115-Grants,
+    // 0073 Derive-Cap).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 72,
-      tag: "0072_f10_portal_m115_role_grant",
+      idx: 73,
+      tag: "0073_f16_03_derive_draft_cap_field",
     });
   });
 

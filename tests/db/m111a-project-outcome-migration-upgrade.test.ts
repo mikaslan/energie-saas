@@ -35,8 +35,8 @@ const M111A_MIGRATION_INDEX = 39;
 // 0055-0056 + Welle-03-Nachzug 0057-0060 => 61 Migrationen (idx 0..60).
 // 0055-0056 + Welle-03-Nachzug bis 0065 => 66 Migrationen (idx 0..65).
 // + F16.3-E (0066), F1-09 (0067), F2-05 (0068), F7-01 (0069/0070),
-// M115-Grants (0071/0072) => 73 Migrationen (idx 0..72).
-const TOTAL_MIGRATION_COUNT = 73;
+// M115-Grants (0071/0072), Derive-Cap (0073) => 74 Migrationen (idx 0..73).
+const TOTAL_MIGRATION_COUNT = 74;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 

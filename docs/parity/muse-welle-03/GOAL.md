@@ -27,10 +27,11 @@ Stand Turn 28: + Euro-Kommaparsing (E2E-04 tippt 12,50),
 committet (965407b, lokal). Push-Block unverändert.
 Nächstes: Slice E pushen + CI lesen, dann F1–F16-Sweep.
 
-Als Nächstes (Turn 55): CI-Triage-Fixes verifizieren (Run nach Push:
-Portal-Cause + E2E-Migrationstail lesen) → Restfehler fixen → M2-04.
+Als Nächstes (Turn 57): Rebase-Ergebnis pushen (force-with-lease) →
+CI-Orakel lesen (Slice E + 0066–0073) → Restfehler fixen →
+Review-Auflagen (REVIEW-MUSE-WELLE-03.md) → F16.3-F ff.
 Pipeline: Lane `codex/muse-welle-03-e2e`, Push via ECC_SKIP_PREPUSH=1
-lauffaehig (Turn 55 belegt), CI-Billing lebt wieder.
+lauffaehig (Turn 55 belegt), CI-Billing lebt wieder (Turn 57 belegt).
 
 Offene Mikail-Fragen: siehe FRAGEN-AN-MIKAIL.md (3 aktiv).
 Mission: ~36 % (ESTIMATE) — steigt nur mit VERIFIED-Slices.

@@ -142,32 +142,6 @@ async function fixtureProjectTaskGraph(tx: TenantTx, wsId: string): Promise<void
   `);
 }
 
-async function fixtureProjectNoteMentionGraph(tx: TenantTx, wsId: string): Promise<void> {
-  const { userId } = await fixtureMembership(tx, wsId, "editor");
-  await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
-  const { projectId } = await fixtureProjectGraph(tx, wsId);
-  const noteId = randomUUID();
-  await tx.execute(sql`
-    insert into project_note (
-      id, workspace_id, project_id, parent_type, text_version, text_markdown,
-      revision, created_by
-    ) values (
-      ${noteId}::uuid, ${wsId}::uuid, ${projectId}::uuid,
-      'project', 'note-text.v1', 'Fixture Mention Note', 1, ${userId}::uuid
-    )
-  `);
-  await tx.execute(sql`
-    insert into project_note_mention (
-      workspace_id, project_id, note_id, mentioned_identity_id,
-      email_lower, revision
-    )
-    select ${wsId}::uuid, ${projectId}::uuid, ${noteId}::uuid,
-           ${userId}::uuid, lower(email), 1
-      from user_identity
-     where id = ${userId}::uuid
-  `);
-}
-
 async function fixtureProjectNoteGraph(tx: TenantTx, wsId: string): Promise<void> {
   const { userId } = await fixtureMembership(tx, wsId, "editor");
   await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
@@ -2322,7 +2296,6 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   project_task_checklist_item: fixtureProjectTaskGraph,
   project_task_label: fixtureProjectTaskGraph,
   project_note: fixtureProjectNoteGraph,
-  project_note_mention: fixtureProjectNoteMentionGraph,
   project_appointment: fixtureProjectAppointmentGraph,
   project_appointment_attendee: fixtureProjectAppointmentGraph,
   calendar_category: fixtureCalendarCategoryGraph,

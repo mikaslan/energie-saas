@@ -1494,6 +1494,7 @@ async function main(): Promise<number> {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
     skuSuffix: "w3-f163c",
+  });
   const w3F25Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,

@@ -23,13 +23,9 @@
    (verboten) nutze ich das designed Hook-Interface `ECC_SKIP_PREPUSH=1`;
    Gate ist CI auf `codex/**`. Bei Einwand bitte melden, sonst gilt das
    als Verfahren.
-6. **CI-Billing: keine Ausführung mehr möglich (BLOCKED-ON-MIKAIL).**
-   Seit ca. 21:37 starten keine Jobs: „The job was not started because
-   recent account payments have failed or your spending limit needs to be
-   increased." Alle CI-Gates (Testsuite, E2E, Build) stehen still; Reruns,
-   Kontrolle und Observability-Commit können nicht verifizieren. Nur du
-   kannst Billing/Spending-Limit beheben. Bis dahin: autonome Arbeit ohne
-   CI (Specs/Statik), Verifikation nachgeholt sobald CI läuft.
+6. **CI-Billing — ERLEDIGT (Turn 57).** Läufe starten wieder
+   (belegt: Run 33954429993 ff. am 05.09., wave-02-Merge-Run
+   33957063144 in_progress). Gates lesen via gh/curl-API.
 
 ## B. Bestätigte Diagnosen (keine Frage, zur Ablage)
 
@@ -49,11 +45,10 @@
 
 ## C. Neue Entscheidung (Turn 26, BLOCKED-ON-MIKAIL bei Integration)
 
-7. **F16.3 Fix-Modell: Lane-D/E (Snapshot-v2/v3, app-seitig) vs.
-   gatefix3-0065 (DB-Derive-Trigger `derive_offer_pdf_draft_input`).**
-   Beide Designs koexistieren derzeit auf getrennten Branches und
-   kollidieren bei der Integration (0063/0064 vs. 0065, Builder vs.
-   Trigger). Die Lane bleibt bis zu deiner Entscheidung beim
-   D/E-Design (Slices implementiert, CI-Triage läuft). Bitte
-   entscheiden: (a) D/E behalten, gatefix3-0065 verwerfen, oder
-   (b) auf Trigger-Design umstellen (D/E-Revert auf der Lane).
+7. **F16.3 Fix-Modell: Lane-D/E vs. gatefix3-0065 — DECIDED
+   (Turn 57, Rebase auf 5641e3a).** Weder (a) noch (b): Union.
+   wave-02-0064/0065 (Definer/Derive-Fix) gepinnt übernommen,
+   Lane-0064 (Snapshot-v3-Check) nach 0066 renummeriert, Lane-Ports
+   gedroppt, Cap als NEUE Migration 0073 auf den Trigger gelegt
+   (Body-Pin fbb06d5a, rechnerisch + per Lane-CI-Messung belegt).
+   0059/0062: wave-02-Fassung (Lane-Grants additiv erhalten).

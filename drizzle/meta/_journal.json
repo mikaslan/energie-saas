@@ -512,6 +512,13 @@
       "when": 1788594000000,
       "tag": "0072_f10_portal_m115_role_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1788600048949,
+      "tag": "0073_f16_03_derive_draft_cap_field",
+      "breakpoints": true
     }
   ]
 }
