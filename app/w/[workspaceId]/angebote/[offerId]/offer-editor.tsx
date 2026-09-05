@@ -96,6 +96,7 @@ function sourceFromSnapshot(snapshot: OfferVariantSnapshotView): OfferEditorSour
     variantName: snapshot.variantName,
     description: snapshot.description,
     globalDiscountBps: snapshot.globalDiscountBps,
+    globalDiscountCapCents: snapshot.globalDiscountCapCents ?? null,
     customDealNetCents: snapshot.customDealNetCents,
     sections: snapshot.sections.map((section) => ({
       sectionDomainId: section.sectionDomainId,
@@ -461,9 +462,10 @@ function templateOptionLabel(template: {
   kind: "percent" | "fix";
   percentBps: number | null;
   amountCents: number | null;
+  capCents: number | null;
 }): string {
   const value = template.kind === "percent" && template.percentBps !== null
-    ? `${formatTemplatePercentInput(template.percentBps)} %`
+    ? `${formatTemplatePercentInput(template.percentBps)} %${template.capCents === null || template.capCents === undefined ? "" : ` (max. ${formatTemplateEurosInput(template.capCents)} €)`}`
     : template.amountCents !== null
       ? `${formatTemplateEurosInput(template.amountCents)} €`
       : "–";
@@ -1085,6 +1087,11 @@ export function OfferVariantEditor({
                             <input id="global-discount" inputMode="decimal" value={draft.globalDiscountPercent} aria-invalid={invalidFields.has("global-discount") || undefined} aria-describedby={errorDescription("global-discount")} onChange={(event) => setDraft((current) => ({ ...current, globalDiscountPercent: event.target.value }))} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />
                             {fieldError("global-discount")}
                           </div>
+                          <div>
+                            <label htmlFor="global-discount-cap" className="text-sm font-semibold">Deckel €</label>
+                            <input id="global-discount-cap" inputMode="decimal" placeholder="Ungedeckelt" value={draft.globalDiscountCapEuros} aria-invalid={invalidFields.has("global-discount-cap") || undefined} aria-describedby={errorDescription("global-discount-cap")} onChange={(event) => setDraft((current) => ({ ...current, globalDiscountCapEuros: event.target.value }))} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />
+                            {fieldError("global-discount-cap")}
+                          </div>
                           {(view.discountTemplates?.length ?? 0) > 0 ? (
                             <div>
                               <label htmlFor="global-discount-template" className="text-sm font-semibold">Aus Vorlage übernehmen</label>
@@ -1092,9 +1099,11 @@ export function OfferVariantEditor({
                                 const template = view.discountTemplates?.find((entry) => entry.id === event.target.value);
                                 const percentBps = template?.kind === "percent" ? template.percentBps : null;
                                 const amountCents = template?.kind === "fix" ? template.amountCents : null;
+                                const capCents = template?.kind === "percent" ? template.capCents ?? null : undefined;
                                 if (percentBps !== null && percentBps !== undefined) {
                                   const value = formatTemplatePercentInput(percentBps);
-                                  setDraft((current) => ({ ...current, globalDiscountPercent: value }));
+                                  const capValue = capCents === null || capCents === undefined ? "" : formatTemplateEurosInput(capCents);
+                                  setDraft((current) => ({ ...current, globalDiscountPercent: value, globalDiscountCapEuros: capValue }));
                                 } else if (amountCents !== null && amountCents !== undefined) {
                                   const value = formatTemplateEurosInput(amountCents);
                                   setDraft((current) => ({ ...current, globalFixDiscountEuros: value }));

@@ -396,3 +396,19 @@
   mit 0 Steps — identische Billing-Block-Signatur Q6, kein Codebefund.
 - Slice D damit IMPLEMENTED + lokal belegt, VERIFIED pending CI/Maschine.
 - Nächster Schritt: F16.3-E specen (Cap-Prozent).
+
+## Turn 24 — 2026-09-04, F16.3-E-Implementierung (Cap-Prozent, Snapshot-v3)
+
+- Implementiert: `globalDiscountCapCents` siegelgebunden (Snapshot-v3,
+  `OFFER_SCHEMA_SHA256 a3c1fee4…`, Migration 0064), Triple-Read v3/v2/v1,
+  `set_global_discount` + `capCents` (omit = behalten), Cap-Zweige in
+  Discount-/Subsidy-Apply (Cap-Abweisung aus f1603c entfernt),
+  money.ts `min(Prozent, Cap)`, PDF-/Release-Carry ohne Anzeigezeile,
+  Editor (Cap-Eingabe, Vorlagen-Dropdown mit Cap, Detail-Hinweis),
+  f1603e (4 DB-Tests), E2E-05 (Cap→Save→Rev2→-1000).
+- RED→GREEN: Cap-Matrix 5 Tests (3 rot belegt, dann grün, 15/15 money).
+- Goldens belegt (Strip-Beweis `,"globalDiscountCapCents":null`): m202
+  `93a19ddc…`, m203a `23efebd9…`, m203b1 `cb179188…`, seal `b11fae1d…`.
+- Lokal grün: typecheck, lint (0 Errors, 11 vorbestehend), depcruise,
+  generate (no drift), catalog-check, DB-frei 1020/21 = Umgebung.
+- Nächster Schritt: Slice E committen + pushen, CI lesen.

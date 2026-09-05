@@ -34,6 +34,8 @@ function source(): OfferEditorSourceSnapshot {
     variantName: "Basis",
     description: "Gespeicherter Entwurf",
     globalDiscountBps: 0,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: SECTION_ID,
@@ -349,7 +351,7 @@ describe("M2-01 Offer-Editor-Draft", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("RED: vollständiger Editor-Patch wurde abgewiesen");
     expect(result.operations).toEqual(expect.arrayContaining([
-      { operation: "set_global_discount", discountBps: 350 },
+      { operation: "set_global_discount", discountBps: 350, capCents: null },
       { operation: "set_custom_deal", customDealNetCents: 87_525 },
       { operation: "move_section", sectionDomainId: SECTION_B_ID, position: 1 },
       { operation: "move_line", lineDomainId: LINE_A_ID, sectionDomainId: SECTION_B_ID, position: 2 },

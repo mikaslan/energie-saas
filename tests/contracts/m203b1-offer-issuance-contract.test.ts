@@ -101,7 +101,7 @@ function candidateInputFixture(lineCount = 2): OfferReleaseCandidateInputV1 {
     },
     installationSite: { formattedAddress: "Solarweg 8, 10115 Berlin" },
     variant: { name: "Komfort", revision: 7 },
-    commercialTerms: { globalDiscountBps: 0, globalFixDiscountCents: null, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{ position: 1, title: "PV-Anlage", discountBps: 0, lines }],
     totals: {
       basisNetCents: basisCount * 10_000,
@@ -365,6 +365,6 @@ describe("M2-03b1 offer issuance contracts", () => {
 
   it("pinnt den kanonischen Golden Hash der Ausstellungsfassung", () => {
     expect(hashOfferIssuanceInput(issuanceInputFixture()))
-      .toBe("41e46fb964acc7c6befc0650c2c9ea9e5cb90208780ec04573fa71e73118e1c3");
+      .toBe("cb17918893d845f8ebd409e38e6e406c55c24075d208a7d890b63e9cb8c3b627");
   });
 });

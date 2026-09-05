@@ -1019,6 +1019,8 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     // F16.3 Slice D: Snapshot-Vertrag traegt den globalen Fix-Rabatt
     // (null = keiner) — v1-Strict-Schema verlangt das Feld.
     globalFixDiscountCents: null,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     customDealNetCents: null,
     contactContext,
     installationSiteContext,
