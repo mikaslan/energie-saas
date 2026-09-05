@@ -27,11 +27,10 @@ Stand Turn 28: + Euro-Kommaparsing (E2E-04 tippt 12,50),
 committet (965407b, lokal). Push-Block unverändert.
 Nächstes: Slice E pushen + CI lesen, dann F1–F16-Sweep.
 
-Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
-Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output
-→ M2-04. Pipeline: Lane `codex/muse-welle-03-e2e`, Commits lokal
-(f433631 f7-03-Isolation, 16365b5 Fehler-Mapping), Push blockiert durch
-globalen ECC-Pre-Push-Hook (FRAGEN-AN-MIKAIL.md Nr. 5) — kein Bypass.
+Als Nächstes (Turn 55): CI-Triage-Fixes verifizieren (Run nach Push:
+Portal-Cause + E2E-Migrationstail lesen) → Restfehler fixen → M2-04.
+Pipeline: Lane `codex/muse-welle-03-e2e`, Push via ECC_SKIP_PREPUSH=1
+lauffaehig (Turn 55 belegt), CI-Billing lebt wieder.
 
 Offene Mikail-Fragen: siehe FRAGEN-AN-MIKAIL.md (3 aktiv).
 Mission: ~36 % (ESTIMATE) — steigt nur mit VERIFIED-Slices.

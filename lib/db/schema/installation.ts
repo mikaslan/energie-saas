@@ -30,6 +30,7 @@ export const installation = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    uniqueIndex("installation_ws_id_uq").on(t.workspaceId, t.id),
     uniqueIndex("installation_ws_project_uq").on(t.workspaceId, t.projectId),
     index("installation_ws_status_idx").on(t.workspaceId, t.status),
     check("installation_source_ck", sql`${t.source} in ('direct', 'signature')`),

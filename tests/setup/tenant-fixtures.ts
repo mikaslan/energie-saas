@@ -1223,7 +1223,12 @@ async function fixtureOfferPdfDraft(tx: TenantTx, wsId: string): Promise<void> {
       name: "Basis",
       revision: row.revision,
     },
-    commercialTerms: { globalDiscountBps: 0, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
+    commercialTerms: {
+      globalDiscountBps: 0,
+      globalDiscountCapCents: null,
+      globalFixDiscountCents: null,
+      customDealNetCents: null,
+    },
     sections: [{
       position: 1,
       title: "Tenant Fixture",
@@ -2138,8 +2143,7 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
-  // F16.3 Slice B (0061): Foerder-Vorlagen — Spiegel der Rabatt-Vorlagen,
-  // nur workspace-FK, RLS tenant_isolation, keine Trigger-Guards.
+  // F16.3 Slice B (0061): Foerder-Vorlagen — gleiche Gestalt wie discount_template.
   subsidy_template: async (tx, wsId) => {
     await tx.execute(sql`
       insert into subsidy_template (
@@ -2147,8 +2151,51 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         percent_bps, cap_cents, active, position, created_by
       ) values (
         ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Foerderung',
-        'fixture foerderung', 'fix_cents', 1000, null, null, true, 0,
+        'fixture foerderung', 'fix_cents', 750, null, null, true, 0,
         ${randomUUID()}::uuid
+      )
+    `);
+  },
+  // F2.5 Slice A (0068): Zahlarten-Stammdaten — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies.
+  payment_option: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into payment_option (id, workspace_id, key, label, kind)
+      values (${randomUUID()}::uuid, ${wsId}::uuid, 'purchase', 'Kauf', 'purchase')
+    `);
+  },
+  // F7.1 Slice A (0069): genau eine Ausfuehrungsphase je Projekt.
+  installation: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    await tx.execute(sql`
+      insert into installation (workspace_id, project_id, source, status)
+      values (${wsId}::uuid, ${projectId}::uuid, 'direct', 'active')
+    `);
+  },
+  // F1-09 (0067): Mention-Zeile zu einer echten Notiz mit echter Identitaet.
+  project_note_mention: async (tx, wsId) => {
+    await fixtureProjectNoteGraph(tx, wsId);
+    const note = await tx.execute<{ id: string; project_id: string }>(sql`
+      select id, project_id from project_note where workspace_id = ${wsId}::uuid limit 1
+    `);
+    const identity = await tx.execute<{ id: string; email: string }>(sql`
+      select identity_record.id, identity_record.email
+        from user_identity identity_record
+        join membership membership_record
+          on membership_record.user_id = identity_record.id
+       where membership_record.workspace_id = ${wsId}::uuid
+       limit 1
+    `);
+    const noteRow = note.rows[0];
+    const identityRow = identity.rows[0];
+    if (!noteRow || !identityRow) throw new Error("Mention-Fixture braucht Notiz und Identitaet.");
+    await tx.execute(sql`
+      insert into project_note_mention (
+        workspace_id, project_id, note_id, mentioned_identity_id,
+        email_lower, revision
+      ) values (
+        ${wsId}::uuid, ${noteRow.project_id}::uuid, ${noteRow.id}::uuid,
+        ${identityRow.id}::uuid, ${identityRow.email.toLowerCase()}, 1
       )
     `);
   },

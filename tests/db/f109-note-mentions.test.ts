@@ -160,21 +160,29 @@ describe("F1-09 Projektnotiz-Mentions (PostgreSQL)", () => {
   });
 
   it("DB-04: Cross-Workspace-Insert scheitert an with check", async () => {
+    const created = await createNote(fixture, "Hallo Welt");
     const wsB = randomUUID();
-    await expect(
-      withTenantOn(testPool, wsB, (tx) =>
+    let caught: unknown;
+    try {
+      await withTenantOn(testPool, wsB, (tx) =>
         tx.execute(sql`
           insert into project_note_mention (
             workspace_id, project_id, note_id, mentioned_identity_id,
             email_lower, revision
           ) values (
             ${fixture.workspaceId}::uuid, ${fixture.projectId}::uuid,
-            ${randomUUID()}::uuid, ${fixture.viewerId}::uuid,
+            ${created.noteId}::uuid, ${fixture.viewerId}::uuid,
             ${fixture.viewerEmail.toLowerCase()}, 1
           )
         `),
-      ),
-    ).rejects.toThrow(/row-level security/i);
+      );
+    } catch (error) {
+      caught = error;
+    }
+    // Echte Notiz (FK passiert), falscher Workspace (WITH CHECK scheitert).
+    // Drizzle wrapt den PG-Fehler: Meldung steht in .cause (rls.test.ts-Muster).
+    expect(caught).toBeInstanceOf(Error);
+    expect(String((caught as { cause?: unknown }).cause)).toMatch(/row-level security/i);
   });
 
   it("DB-05: über dem Limit → Validierungsfehler, keine Zeile", async () => {

@@ -704,7 +704,16 @@ async function runMigration(databaseUrl: string, logPath: string): Promise<void>
     const exitCode = await childExit(child);
     throwIfInterrupted();
     if (exitCode !== 0) {
-      throw new Error("Die echten Datenbankmigrationen sind fehlgeschlagen.");
+      // Loop-Observability: Der Migrations-Log liegt sonst im privaten
+      // Temp-Verzeichnis und geht in CI verloren — Tail ausgeben.
+      let tail = "(migrations-log nicht lesbar)";
+      try {
+        const content = readFileSync(logPath, "utf8");
+        tail = content.split("\n").slice(-40).join("\n");
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`Die echten Datenbankmigrationen sind fehlgeschlagen.\n${tail}`);
     }
   } finally {
     closeSync(logFd);
