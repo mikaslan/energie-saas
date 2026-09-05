@@ -576,3 +576,19 @@
   Stützt FRAGEN-AN-MIKAIL.md Nr. 7 (D/E behalten) mit Messung statt
   Meinung. 0065-SQL-Body byte-identisch zu f95c106 (nur Header neu).
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 33 — 2026-09-05, F-Sweep-Vorbereitung (kein Push, keine CI)
+
+- Remote unverändert (Lane remote bbd9a80, 11 lokal voraus).
+  E2E-Diffs beider Gatefix-Branches: nur eigene Zusatz-Specs als
+  Lösch-Artefakt + f10-02-Locators (bereits portiert, identisch zu
+  Gatefix3-Spitze) — nichts weiter zu portieren.
+- F1–F16-Lage (STATUS/CAPABILITY-MATRIX): F1 PARTIAL, F3 PARTIAL,
+  F5/F6/F8/F11–F15 SPECIFIED. Der Reihe nach → F1 als Nächstes.
+  DECIDED Nächster Slice: F1-Notizen @-Mentions (Fundament steht:
+  0041-Tabelle, modules/notes, UI-Actions; Mentions fehlen).
+  Scope-Grenze: Parsen + Speichern + Rendern + RLS; KEINE
+  Benachrichtigung (externer Versand = eigene Beauftragung nötig).
+  SPEC folgt, sobald der CI-Stau (Nr. 5) abfließt — kein neuer
+  Code auf den ungeprüften Stapel.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
