@@ -874,3 +874,19 @@
   in Run 4 erstmals lesbar, Auswertung pending).
 - Stand gesichert: Worktree sauber, alles auf Lane gepusht (4cdb224).
   Naechster Schritt (bei /loop): E2E-Tail + Renderer-Ursache lesen.
+
+## Turn 56 — E2E-Wurzel + Renderer-Observability
+
+- E2E-Tail (Run 4) gelesen: `Relationsinventar weicht ab` —
+  NUR IST: `r:project_note_mention`. F1-09-Tabelle fehlte im
+  Rollenvertrag (6 Stellen gespiegelt: Liste, ACL-Manifest mit
+  SELECT/INSERT/DELETE, has-Check, Inventar, RLS true/true,
+  ACL-Pins; Policy-Pin PENDING-ORAKEL-0067 wie 0068/0069).
+- Naechster E2E-Lauf liefert per Gate-Diff die echten Policy-Hashes
+  (0067/0068/0069) zum Pinnen — designed Orakel-Workflow.
+- Renderer x5: 0065 war nie das Problem; Gates-Job hatte bis c3c22c7
+  gar keinen Browser. Launch wirft weiter — Cause an
+  browser_unavailable gehaengt (typ-/code-/meldungsgleich), naechster
+  Run zeigt den echten Launch-Fehler.
+- Lokal: typecheck/lint/depcruise gruen.
+- Naechster Schritt: Run 5 lesen (E2E-Policy-Diff + Renderer-Cause).
