@@ -516,3 +516,22 @@
   erst auf Test-Ebene) — kein Zweitumbau ohne CI-Beleg.
 - Lokal: typecheck grün, lint 0 Errors (11 vorbestehend).
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 29 — 2026-09-05, Verifikationspass ohne Codeänderung
+
+- Kein Push von Mikail bisher (Lane remote weiter bbd9a80, 7 Commits
+  lokal voraus). Push-Versuch bewusst NICHT wiederholt: Hook scheitert
+  deterministisch an `npm run test` (Sandbox-EPERM, Nr. 5) — kein
+  neuer Informationsgewinn, nur CI-Minuten auf Mikails Rechnung.
+- Alle 55 CI-Fehler gegen konkrete Changes abgeglichen (f1001→m203b1):
+  jeder Block hat mindestens einen gezielten Fix im Stapel c3c22c7 /
+  676b357 / 965407b. Restrisiken: Rollenpin-Verbatim-Hypothese,
+  m109-Code 23503 (Constraint-Name entscheidet), E2E außer
+  f10-02-Locators + Euro-Kommaparsing (alte Logs abgelaufen).
+- f1003-DB-01 verifiziert: signResult status "signed" ∈
+  SIGNATURE_STATUS, click-Modus ohne Artefakt ok, token im
+  Create-Result enthalten. m204/f1003 brauchen 0065 zur Laufzeit
+  (Journal-Reihenfolge 65 vor Tests ✓).
+- Lokal: depcruise sauber (454 Module), typecheck/lint/depcruise/
+  generate/catalog-check/Vertragsbeweis 6/6 aus Turns 26–28 intakt.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
