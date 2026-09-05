@@ -13,13 +13,10 @@
 3. **E2E-Vault-Ergebnis nicht einsehbar.** Vault gesperrt; das Ergebnis der
    E2E-Suite vom integrierten Stand ist unbekannt. Eigene Lauf-Nachweise
    werden je Spec geführt. (Annahme: keine — eigene Messung zählt.)
-4. **F2.2-UI-Gap als eigener Slice einplanen.** `is_primary`,
-   `total_price_override_net_cents`, `optional_bundles` existieren nur im
-   Service-/DB-Layer; im Angebots-Editor gibt es keinen Primary-Switch,
-   kein Override-Feld, keine Bundle-Steuerung (Spec versprach
-   „Primärkennzeichen + Override-Feld", nicht umgesetzt). Vorschlag:
-   eigener UI-Slice nach dem E2E-Nachholblock. Kein Backend-Umbau in
-   diesem Block.
+4. **F2.2-UI-Gap als eigener Slice einplanen — ERLEDIGT (Turn 47).**
+   UI-Slice implementiert (Panel + 3 Server-Actions + E2E-02, kein
+   Backend-Umbau außer additivem Bundle-Read); Verifikation pending
+   CI/Maschine (Billing-Block Nr. 6).
 5. **Push-Transport: `ECC_SKIP_PREPUSH=1` im Einsatz (offengelegt).**
    Globaler Hook (`core.hooksPath`, lint→typecheck→test) kann in dieser
    Sandbox nie grün werden (tsx-EPERM, kein listen()). Statt `--no-verify`

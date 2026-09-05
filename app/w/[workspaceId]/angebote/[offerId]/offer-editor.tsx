@@ -1023,7 +1023,7 @@ export function OfferVariantEditor({
                   onChange={(event) => setSelectedVariantId(event.target.value)}
                   className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
                 >
-                  {(view.variants ?? []).map((variant) => <option key={variant.id} value={variant.id}>{variant.name} · Rev. {variant.revision}</option>)}
+                  {(view.variants ?? []).map((variant) => <option key={variant.id} value={variant.id}>{variant.name} · Rev. {variant.revision}{variant.isPrimary ? " · Primär" : ""}</option>)}
                 </select>
                 <button
                   type="button"
@@ -1054,7 +1054,7 @@ export function OfferVariantEditor({
                         ? "inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
                         : "inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"}
                     >
-                      {variant.name}<span className={variant.active ? "ml-2 text-xs text-white" : "ml-2 text-xs text-slate-700"}>Rev. {variant.revision}</span>
+                      {variant.name}<span className={variant.active ? "ml-2 text-xs text-white" : "ml-2 text-xs text-slate-700"}>Rev. {variant.revision}</span>{variant.isPrimary ? <span className={variant.active ? "ml-2 rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold text-white" : "ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900"}>Primär</span> : null}
                     </GuardedLink>
                   </li>
                 ))}

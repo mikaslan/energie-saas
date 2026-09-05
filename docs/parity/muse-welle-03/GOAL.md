@@ -61,3 +61,9 @@ notiert.
   Fixture + Testkommentare von Basis übernommen).
 - Lokal grün: typecheck, lint (0 errors), depcruise, db:generate.
 - ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 47 (2026-09-05)
+- F2.2-UI-Slice implementiert (FRAGEN-4 erledigt): Panel, Actions,
+  Unit-Tests, E2E-02; lokal grün (typecheck/lint/depcruise/generate,
+  --list 2/2). VERIFIED pending CI/Maschine (Billing-Block).
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

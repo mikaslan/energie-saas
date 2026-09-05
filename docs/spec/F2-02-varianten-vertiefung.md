@@ -1,6 +1,23 @@
 # F2.2 — Varianten-Vertiefung (primäre Variante, Deal-Override, optionale Bundles)
 
-Status: **SPECIFIED (DISCOVERED abgeschlossen)**
+Status: **IMPLEMENTED (UI-Slice inklusive; VERIFIED pending CI/Maschine — Billing-Block Q6)**
+
+## UI-Slice (FRAGEN-AN-MIKAIL.md Nr. 4, geschlossen)
+- `OfferVariantControlsPanel` (`app/w/[workspaceId]/angebote/[offerId]/offer-variant-controls-panel.tsx`):
+  Primär-Badge + Promote-Formulare je nicht-primärer Variante, Deal-Override-Feld
+  (Euro mit Komma/Punkt, "" = Clear) + Zurücksetzen, Bundle-Liste der aktiven
+  Variante (Name/Position, add/remove, max 50). Read-only-Zweig zeigt Werte ohne
+  Formulare. Rechte: Promote/Bundles `project.write`, Override `price.edit`
+  (Service setzt durch, UI blendet nur aus).
+- Server-Actions (`angebote/variant-actions.ts`, exakte Formfelder + zod +
+  `authorizedOfferMutationAction`, Revalidate ohne Redirect) auf den bestehenden
+  Service-Funktionen (`setPrimaryVariant`, `setTotalPriceOverride`,
+  `setOptionalBundles`) — kein Backend-Umbau, nur additiver Read (`bundles` je
+  Variante in `getOfferDetail`).
+- Reine Helfer (`lib/integrations/offers/variant-controls.ts`) + Unit-Tests
+  (`tests/unit/f202-variant-controls.test.ts`); E2E-02 (Promote/Override/Bundles
+  + DB-Read-back) in `tests/e2e/f2-02-varianten-vertiefung.spec.ts`.
+- Reviews: Kimi + DeepSeek Exit-3 (kein OPENROUTER_API_KEY) — Gates entscheiden.
 
 Lane: `codex/f2-02-varianten-vertiefung` off `origin/codex/m1-wave-02` (0055).
 Vorgänger: M2-01 (Varianten, Snapshot-BOM, Custom Deal pro Revision).

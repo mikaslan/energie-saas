@@ -339,6 +339,9 @@ function projectOfferDetailView(
       status: view.offer.status,
       outdated: view.offer.outdated,
       forecastValueNetCents: view.offer.forecastValueNetCents,
+      totalPriceOverrideNetCents: view.offer.totalPriceOverrideNetCents,
+      overrideActive: view.overrideActive,
+      displayTotalNetCents: view.displayTotalNetCents,
     },
     variants: view.variants.map((variant) => ({
       id: variant.id,
@@ -346,6 +349,8 @@ function projectOfferDetailView(
       revision: variant.revision,
       active: variant.active,
       href: variant.href,
+      isPrimary: variant.isPrimary,
+      bundles: variant.bundles,
     })),
     activeVariant: parsedVariant.data,
     permissions: {
