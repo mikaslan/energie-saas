@@ -10,8 +10,9 @@ const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
 const projectIdSchema = z.uuid();
 
 // F9.4 Slice A CSV-Export: userId als wiederholter oder komma-getrennter
-// Query-Param (gleiche Semantik wie die Listenansicht); nur wohlgeformte
-// UUIDs (max 50) erreichen den Service.
+// Query-Param (max 50). Anders als die Listenansicht (tolerant) wirft der
+// Export bei UNGÜLTIGEN UUIDs 400 statt still ALLE Nutzer zu exportieren
+// (Review Welle 03: stiller Export-Filter-Fallback).
 const filterParamsSchema = z.object({
   userId: z.union([z.string(), z.array(z.string())]).optional(),
 });
@@ -20,13 +21,15 @@ function parseUserFilter(raw: URLSearchParams): string[] {
   const values = raw.getAll("userId");
   if (values.length === 0) return [];
   const parsed = filterParamsSchema.safeParse({ userId: values });
-  if (!parsed.success || parsed.data.userId === undefined) return [];
+  if (!parsed.success || parsed.data.userId === undefined) throw new TimeTrackingValidationError();
   const rawValues = Array.isArray(parsed.data.userId) ? parsed.data.userId : [parsed.data.userId];
-  const ids = rawValues
+  const tokens = rawValues
     .flatMap((value) => value.split(","))
-    .map((value) => value.trim())
-    .filter((value) => z.uuid().safeParse(value).success);
-  return [...new Set(ids)].slice(0, 50);
+    .map((value) => value.trim());
+  if (tokens.some((value) => !z.uuid().safeParse(value).success)) {
+    throw new TimeTrackingValidationError();
+  }
+  return [...new Set(tokens)].slice(0, 50);
 }
 
 const PRIVATE_HEADERS = {
@@ -45,9 +48,9 @@ export async function GET(
     return new Response("Nicht gefunden", { status: 404, headers: PRIVATE_HEADERS });
   }
   const { workspaceId, projectId } = route.data;
-  const userIds = parseUserFilter(new URL(request.url).searchParams);
 
   try {
+    const userIds = parseUserFilter(new URL(request.url).searchParams);
     const csv = await authorizedQuery(
       workspaceId,
       "time.read",

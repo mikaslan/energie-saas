@@ -902,7 +902,10 @@ const EXPORT_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
 });
 
 function exportCell(value: string): string {
-  return /[;"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  // Review Welle 03 (CSV-Formel-Injection): Zellen, die (ggf. nach Spaces)
+  // mit = + - @ beginnen, als Text markieren (Excel-Textmarker ').
+  const safe = /^[ \t]*[=+\-@]/.test(value) ? `'${value}` : value;
+  return /[;"\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 type TimeExportRow = {
