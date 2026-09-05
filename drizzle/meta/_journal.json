@@ -456,6 +456,20 @@
       "when": 1788565894444,
       "tag": "0064_f16_03_snapshot_v3_check",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1788571822466,
+      "tag": "0065_f10_02_signature_definer_testmode",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1788571822467,
+      "tag": "0066_f16_03_derive_draft_v3_fields",
+      "breakpoints": true
     }
   ]
 }
