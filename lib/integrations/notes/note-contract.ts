@@ -97,6 +97,13 @@ export type ProjectNoteCommandResult = {
 // Minimiertes DTO (Spec §4.3): verbotene Felder (workspace_id, parent_type,
 // Fremd-IDs, domain_events-/audit_log-Daten, MDCV_2) sind nicht Teil des
 // Schemas und scheitern daher an strictObject.
+export const projectNoteMentionV1Schema = z.strictObject({
+  userIdentityId: canonicalUuidSchema,
+  emailLower: z.string().min(3).max(254),
+});
+
+export type ProjectNoteMentionV1 = z.infer<typeof projectNoteMentionV1Schema>;
+
 export const projectNoteItemV1Schema = z.strictObject({
   id: canonicalUuidSchema,
   revision: revisionSchema,
@@ -109,6 +116,7 @@ export const projectNoteItemV1Schema = z.strictObject({
   editedByLabel: labelSchema.nullable(),
   pinnedAt: canonicalInstantSchema.nullable(),
   pinnedByLabel: labelSchema.nullable(),
+  mentions: z.array(projectNoteMentionV1Schema),
 });
 
 export type ProjectNoteItemV1 = z.infer<typeof projectNoteItemV1Schema>;

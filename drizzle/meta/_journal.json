@@ -470,6 +470,13 @@
       "when": 1788571822467,
       "tag": "0066_f16_03_derive_draft_v3_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1788580545422,
+      "tag": "0067_f1_09_note_mentions",
+      "breakpoints": true
     }
   ]
 }
