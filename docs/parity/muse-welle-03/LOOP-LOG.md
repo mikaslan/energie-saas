@@ -412,3 +412,16 @@
 - Lokal grün: typecheck, lint (0 Errors, 11 vorbestehend), depcruise,
   generate (no drift), catalog-check, DB-frei 1020/21 = Umgebung.
 - Nächster Schritt: Slice E committen + pushen, CI lesen.
+
+## Turn 25 — 2026-09-05, CI-Root-Cause Owner-Dance (0059/0062)
+
+- CI läuft erstmals echt (Billing frei): `ci`-Run rot in `npm run check`
+  bei migrate: `must be owner of function resolve_portal_public_view`.
+- Root-Cause: 0056 überträgt Funktions-Owner an app_owner (Least-Privilege-
+  Dance); 0059/0062 machen CREATE OR REPLACE als app_migrator — auf frischen
+  DBs deterministisch tot (lokal nur per Superuser grün). DECIDED-Fix:
+  SET ROLE app_owner / RESET ROLE um beide Replaces (Body unverändert,
+  Rollen-Pin 6d025bff bleibt). 0059/0062 sind lane-only (nie integriert),
+  kein verifizierter DB-Stand hÄngt an Alt-Bytes; Verifier-Hinweis: Dev-DBs
+  mit Alt-0059/0062 melden Journalposition-Abweichung → frische Test-DB.
+- Nächster Schritt: Fix pushen, CI lesen.
