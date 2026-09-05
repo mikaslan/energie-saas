@@ -35,7 +35,7 @@ const M111A_MIGRATION_INDEX = 39;
 // Wellen-Fortschritt: 0060/0061 (F16.3-A), 0062 (F10.2-B), 0063 (F16.3-D),
 // 0064 (F16.3-E), 0065 (Signatur-Definer), 0066 (Derive-v3-Felder),
 // 0067 (F1-09-Mentions).
-const TOTAL_MIGRATION_COUNT = 72;
+const TOTAL_MIGRATION_COUNT = 73;
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 

@@ -190,10 +190,10 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // Journal-Pin folgt dem Wellen-Fortschritt (0065 Definer-Tanz,
     // 0066 Derive-v3-Felder, 0067 F1-09-Mentions, 0068 F2-05-Zahlarten,
     // 0069 F7-01-Installation, 0070 Installation-ws-id-uq,
-    // 0071 Portal-M115-Owner-Grant).
+    // 0071/0072 Portal-M115-Grants).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 71,
-      tag: "0071_f10_portal_m115_owner_grant",
+      idx: 72,
+      tag: "0072_f10_portal_m115_role_grant",
     });
   });
 

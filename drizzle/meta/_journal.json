@@ -505,6 +505,13 @@
       "when": 1788592400000,
       "tag": "0071_f10_portal_m115_owner_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1788594000000,
+      "tag": "0072_f10_portal_m115_role_grant",
+      "breakpoints": true
     }
   ]
 }

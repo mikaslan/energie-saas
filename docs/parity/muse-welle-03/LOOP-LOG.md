@@ -850,3 +850,17 @@
 - f1003 lag nur noch am Portal-Grant (0071). Renderer x5 + E2E-Migration
   weiter offen (E2E-Blob-Download timeoutet — naechster Run).
 - Naechster Schritt: Run 3 lesen (239e649).
+
+## Turn 55c — CI-Runde 3 (Run 33952703147): 23 → 8 Fehler
+
+- Fix-Bilanz: Portal f1001 x2 + f1003 x2 (0071), Mentions f109 x3 +
+  m113 x3 (sql.join), m111a x4 (Pins), f1002-DB-02 gruen.
+- f1002-DB-01 neu: `_m115_actor_appointment_role` (Lese-Helfer ruft
+  Role-Helfer intern; leere Termine blieben still). FIX: 0072.
+- f162-Wurzel (lokal bewiesen): Upgrade-View mit stale Hash wird in
+  buildOfferPdfDraftInput revalidiert → /snapshotSha256. FIX: rohen
+  Stored-Snapshot uebergeben (Draft- + Preview-Pfad).
+- Pins: Journal 72/0072, TOTAL 73.
+- Offen: Renderer x5 (browser_unavailable, CI-Umgebung?), E2E-Migration
+  (Blob-Download timeoutet).
+- Naechster Schritt: Run 4 lesen (f162, f1002-DB-01, Renderer, E2E-Tail).
