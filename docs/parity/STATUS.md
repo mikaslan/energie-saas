@@ -18,9 +18,9 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 37 % (ESTIMATE) | M1-Welle 01+02 grün; M2-04 + M3-00 VERIFIED; M3-01 Rechnungs-Kern integriert und VERIFIED; Muse-Lanes F2.2/F9.3/F16.2/F10.1 verifiziert und in `codex/m1-wave-02` (`9fc49eb`) integriert |
+| Gesamtmission einschließlich F1–F16 | ca. 38 % (ESTIMATE) | M1-Welle 01+02 grün; M2-04 + M3-00 VERIFIED; M3-01 Rechnungs-Kern integriert und VERIFIED; Muse-Lanes F2.2/F9.3/F16.2/F10.1 verifiziert und in `codex/m1-wave-02` (`9fc49eb`) integriert |
 | Technisches Fundament M0/M1 | ca. 97–98 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog- und geschützte Webgrenzen lokal real; externe Provider-/Pilotgates offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 25 % (ESTIMATE) | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF, Kontakte, Termine, E-Signatur-Vorbereitung, Rechnungs-Stammdaten und der komplette Rechnungs-Kern (F8-Kernsuite) lokal verifiziert |
+| Nutzerseitige F1–F16-Funktionsparität | ca. 26 % (ESTIMATE) | Projektakte, Aufgaben, Outcomes, Notizen, Cannot-Fulfil, Katalog, Varianten/BOM, Angebots-PDF, Kontakte, Termine, E-Signatur-Vorbereitung, Rechnungs-Stammdaten und der komplette Rechnungs-Kern (F8-Kernsuite) lokal verifiziert |
 
 ## 2026-09-02 — API-Gate, Discovery, M1-11b-Lage
 
@@ -257,6 +257,14 @@ WMEE; Push-/Deploy-Regeln unverändert.
   failed or spending limit") — nur der Account-Inhaber kann das in den
   Billing-Settings beheben. Bis dahin laufen die Gates auf Mikails
   Maschine (hier), Muse arbeitet spec-first weiter.
+- **Welle-03-Abschluss (5h-Monitoring, ~04:30):** F9.4 A–D, F10.2-A/B,
+  F16.3-A–E integriert in `codex/m1-wave-02` (`5641e3a`): check
+  221 Dateien/2007 Tests + 1 Skip, Rollen 88/88, PG18 5/5, Build,
+  **E2E 100/100**. Tiefen-Review (REVIEW-MUSE-WELLE-03.md) mit offenem
+  P1 (uncontrolled Vorlagen-Formulare, stilles Ping-Pong) → F16.3 gilt
+  als REVIEWED mit Auflage; F9.4/F10.2 zählen als VERIFIED. Quote
+  ehrlich: +1 Punkt (Tiefe in schon gezählten Bereichen; Bereichsbreite
+  bleibt 8/16).
 - **CI-Gate-Loop (22:20):** `.github/workflows/codex-lane-ci.yml` +
   `scripts/parity-progress.mts` auf Lane `codex/ci-parity-gates` gebaut
   (nach Freigabe): Jeder Push auf `codex/**` fährt Lint/Typecheck/
