@@ -4,6 +4,11 @@
 -- F10.2 Slice B: Signatur-Status je Dokument (read-only) — LEFT JOIN
 -- signature_request (workspace+issuance), wörtlicher Status, 'none' ohne
 -- Zeile. Privacy: NIE signer_name/Token/Grund. Pin nachgezogen.
+-- Owner-Reparatur (CI-Root-Cause 2026-09-05): Die Funktion gehört seit 0056
+-- app_owner; CREATE OR REPLACE als app_migrator schlägt mit "must be owner"
+-- fehl. SET ROLE nutzt den 0056-Grant (SET TRUE). Body unverändert —
+-- Rollen-Pin 6d025bff bleibt gültig.
+SET ROLE app_owner;--> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.resolve_portal_public_view(requested_token_hash bytea)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -179,3 +184,4 @@ BEGIN
   );
 END
 $f1001_resolve_token$;--> statement-breakpoint
+RESET ROLE;--> statement-breakpoint
