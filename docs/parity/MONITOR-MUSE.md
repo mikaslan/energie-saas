@@ -61,3 +61,31 @@ Kanonische Quelle der Befunde; Kurzfassung geht an Mikail, Details hier.
   Action-Integration (Operations-Serialisierung oder revalidate-
   Stream-Bruch in Dev). NÄCHSTE RUNDE: Root-Cause, dann Integration.
 - wave-02 bleibt auf f42a019; Gatefix3 NICHT integriert (E2E nicht grün).
+
+## Runde 4 (≈ 04:00) — m2-Kaskade root-gebunden, Integration
+
+- **Befund F (Kaskaden-Root-Cause):** f16-03c/f16-03d nutzten das
+  GETEILTE M2-01-Browser-Projekt (m201ProjectId) und legten dort
+  Angebote an. Im Gesamtlauf laufen sie vor m2-01 → dessen Ready-Gate
+  bricht → m2-02 („nicht über Browser-Action erzeugt"), m2-03a, m2-04
+  kaskadieren. Muse verletzte seine EIGENE Regel „eigene Projekte je
+  Spec". Fix: eigene W3-Ready-Seeds (w3-f163c/w3-f163d), Login mit dem
+  W3-Editor, DB-Helper-Shim. Danach E2E-Gesamtlauf **100/100 GRÜN**.
+- **CI-Loop wirkt:** Muse las die CI-Fehler („must be owner") und
+  reparierte 0059/0062 selbst (80388d9 → bbd9a80, DO mit temporärem
+  SET-Grant) — konvergierte unabhängig auf das 0056-Muster. Zusätzlich
+  Slice E (Cap-Prozent, Snapshot-v3, 81c447f).
+- **Integration:** gatefix3 (Lane + alle Mikail-Fixes inkl. 0064/0065)
+  in codex/m1-wave-02 gemergt (5641e3a, Konflikte: tenant-fixtures +
+  m111a-Zähler 65/66). Muses neuere Lane-Commits (Slice E, seine
+  0059/0062-Fassung) folgen im nächsten Zyklus; seine 0059/0062 müssen
+  dabei auf die Gatefix3-Fassung gehoben werden (Pin 6d025bff =
+  Gatefix3-Body, DB-Review P1-1).
+- **Tiefen-Review abgeschlossen:** 2 Subagenten + eigener Durchgang →
+  docs/parity/REVIEW-MUSE-WELLE-03.md. Kernbefunde: 1×P1 Service/UI
+  (uncontrolled-Edit-Formulare → stilles Ping-Pong), 2×P1 DB (Pin vs.
+  Lane-Body, Owner-Wrapper), 11×P2 (u. a. CSV-Formel-Injection,
+  floor-vs-roundHalfUp, stiller Export-Filter-Fallback, GPS-Consent-
+  Race, GPS-Sichtbarkeit für alle time.read-Rollen, int4-Grenze vs.
+  Vertrags-Cap, Revisionen ohne 0050-Invarianten + UPDATE-Grant,
+  Geld-Vorlagen ohne Actor-Policies) — 5h-Mission beendet.

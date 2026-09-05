@@ -172,3 +172,48 @@ Teils, aber nicht überall, und nicht kostenlos:
    überschrieben werden.
 5. Owner-Tanz + Vertrags-Spiegel als wiederverwendbare Migrations-Helfer
    (D3/D4).
+
+## 8. Subagent-Befunde (DB-Schicht + Service/UI, unabhängig verifiziert)
+
+### DB-/Vertragsschicht (empirisch verifiziert, inkl. Pin-Hash-Nachbau)
+- **P1** Funktions-Pin resolve_portal_public_view passt nicht zum Lane-
+  Body (0062: Pin 6d025bff = Gatefix3-Body; Lane-Body eingerückt →
+  anderer prosrc-Hash; Header-Behauptung „Pin bleibt gültig" falsch).
+- **P1** Owner-Wrapper 0059/0062 (bereits von mir gefixt, dokumentiert).
+- **P2** time_entry_revision ohne 0050-Invarianten (interval/minutes/
+  break/comment), FK ON DELETE no action vs. Hard-Delete-Pfad, UPDATE-
+  Grant trotz „append-only" ohne Guard-Trigger, Geld-Cap im Vertrag
+  (999.999.999.999) übersteigt int4, geldwirksame Vorlagen ohne
+  Actor-Policies (nicht als DECIDED dokumentiert), falsche
+  v1-Fehlerpfade (validationPaths(parsedV3)), irreführender
+  0062-Header.
+- **P3** doppeltes DROP/ADD (0063/0064), doppeltes statement-breakpoint,
+  jsonb_agg ohne ORDER BY im Aggregat, DTO-Zeiten als z.string(),
+  fehlende FKs an Denormalisierten (unkommentiert).
+- Positiv: alle 3 Policy-Pins byte-exakt reproduziert, kind/CHECK-
+  Symmetrie, Signatur-Join 1:1, Privacy eingehalten, Triple-Read-
+  Siegel korrekt, EXECUTE-ACLs minimal.
+
+### Service/UI-Schicht
+- **P1** Vorlagen-Edit-/Create-Formulare uncontrolled (defaultValue):
+  nach Save bleiben alte Werte im DOM; zweiter Submit schreibt sie
+  zurück (stilles Ping-Pong, Datenverfälschung).
+- **P2** CSV-Formel-Injection (kein =+-@-Schutz), floor-vs-roundHalfUp
+  (zweite Geld-Mathematik), stiller Export-Filter-Fallback (ungültige
+  userId-UUIDs → Export ALLER Nutzer statt 400), N+1-Revisions-Queries,
+  GPS-Consent-Race (Koordinaten trotz abgewähltem Haken), GPS für alle
+  time.read-Rollen sichtbar (Arbeitnehmer-Datenschutz), toter
+  useActionState-State, Komma-Eingabe (bereits gefixt), App/DB-
+  Deployment-Kopplung (signatureStatus).
+- **P3** Fix-Überschreiben Rabatt↔Förderung stumm, generische
+  Fehlermeldung, kein Form-Reset nach Create.
+- Positiv: IN-Listen, GPS-Symmetrie Zod↔CHECK, Portal-Privacy,
+  WYSIWYG-Filter, Fehlermapping, Tests über Happy-Path.
+
+### Empfehlungs-Update (Priorität)
+1. P1-Formulare controlled machen (oder key-Remount nach success).
+2. CSV-Härtung + Export-Filter laut 400.
+3. Nur EINE Geld-Mathematik (roundHalfUp angleichen oder klar
+   nicht-kanonisch kennzeichnen).
+4. GPS: Consent-Race schließen + Sichtbarkeit rollenabhängig prüfen.
+5. Revisionen-Invarianten + Append-only-Guard; int4/Cap vereinheitlichen.
