@@ -21,3 +21,7 @@ test-results/
 
 # Import-Artefakte (Bilder, CSVs, Rohexporte — bewusst NICHT versioniert)
 artifacts/
+
+# Agent-Rule-Dateien (autogeneriert, bewusst entfernt)
+AGENTS.md
+CLAUDE.md
