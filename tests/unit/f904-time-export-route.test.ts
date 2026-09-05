@@ -86,7 +86,9 @@ describe("F9.4 Zeiterfassung CSV-Export-Route", () => {
     expect(response.headers.get("content-type")).toBe("text/csv; charset=utf-8");
     expect(response.headers.get("content-disposition")).toContain("attachment;");
     expect(response.headers.get("cache-control")).toContain("private");
-    expect(await response.text()).toBe(CSV);
+    const responseBytes = new Uint8Array(await response.arrayBuffer());
+    expect(responseBytes).toEqual(new TextEncoder().encode(CSV));
+    expect(Array.from(responseBytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
   });
 
   it.each([

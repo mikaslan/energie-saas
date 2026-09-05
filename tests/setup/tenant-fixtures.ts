@@ -15,7 +15,10 @@ import {
   catalogImportRowPersistenceEnvelope,
   sealCatalogImportRowCommand,
 } from "@/lib/integrations/catalog/import-contract";
-import { canonicalizeOfferJson } from "@/lib/integrations/offers/contract";
+import {
+  OFFER_VARIANT_SNAPSHOT_VERSION,
+  canonicalizeOfferJson,
+} from "@/lib/integrations/offers/contract";
 import { hashOfferPdfDraftInput } from "@/lib/integrations/offers/pdf-contract";
 import type { TenantTx } from "@/lib/db/types";
 
@@ -999,7 +1002,7 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     lines: [lineSnapshot],
   };
   const snapshotBody = {
-    schemaVersion: "offer-variant-snapshot.v2",
+    schemaVersion: OFFER_VARIANT_SNAPSHOT_VERSION,
     canonicalizationVersion: "offer-jcs.v1",
     workspaceId: wsId,
     offerId,
@@ -1090,7 +1093,7 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
       created_by, created_at
     ) values (
       ${revisionId}::uuid, ${wsId}::uuid, ${offerId}::uuid, ${variantId}::uuid,
-      ${source.project_id}::uuid, 1, 'offer-variant-snapshot.v2', 'offer-jcs.v1',
+      ${source.project_id}::uuid, 1, ${OFFER_VARIANT_SNAPSHOT_VERSION}, 'offer-jcs.v1',
       ${JSON.stringify(snapshot)}::jsonb, decode(${snapshotSha256}, 'hex'),
       ${source.resolution_id}::uuid, ${source.resolution_revision},
       decode(${source.resolution_sha256}, 'hex'), 100, 19, 119, 0, 0, 0,
