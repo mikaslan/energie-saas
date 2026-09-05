@@ -193,7 +193,10 @@ describe("F9.4 CSV-Export (PostgreSQL)", () => {
     expect(lines).toHaveLength(4);
     const running = lines.find((line) => line.includes("Laufend"));
     expect(running).toBeDefined();
-    // Spalten: datum(0);beginn(1);ende(2);minuten(3) — Beginn ist nie leer.
+    // Gatefix: beginn ist fuer laufende Eintraege NATUERLICH gesetzt
+// (Startzeitpunkt existiert) — der SPEC-Vertrag fordert nur leeres
+// Ende UND leere Minuten (Testtitel). Spalten: datum, beginn,
+// ende, minuten, … -> slice(2, 4) = [ende, minuten].
     expect(running!.split(";").slice(2, 4)).toEqual(["", ""]);
 
     await expect(withAuthorizedTenantOn(

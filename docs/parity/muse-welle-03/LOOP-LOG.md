@@ -710,3 +710,21 @@
   Default-Board + Intake-Spalte pro Workspace (derselbe Mechanismus,
   der m113 grün hält). contact.first_name existiert seit 0042.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 46 — 2026-09-05, Basis-Integration (Merge origin/codex/m1-wave-02)
+
+- Basis war 6 Commits voraus (fc936ba, 68380d7, 1306548, d50f7c5,
+  e178425, f42a019); Merge in Lane, 7 Konflikte aufgelöst:
+- DECIDED 0059 HEAD: eigene Kette 0062/0065 baut auf $f1001_owner_repair$
+  auf; Base-CI ebenfalls rot — keine überlegene Evidenz für
+  $f1002_replace_resolver$. Bei CI-Gegenbeweis gezielt fixen.
+- DECIDED service.ts HEAD: time_entry_revision.end_at ist NULLABLE
+  (0057 Z.9) — Base-Variante ohne Null-Guard crasht bei laufenden
+  Einträgen; Null-Guard ist Härtung, kein SPEC-Bruch.
+- Base übernommen: f1603/f904-Testkommentare (Mikail-Verifikation),
+  time_entry_revision-Fixture (eigenständig, mit break_duration).
+- HEAD behalten: m111a-Journal-Pin idx 67/0067, TOTAL 68 (nach Merge
+  weiterhin letzter Eintrag).
+- Lokal: typecheck grün, lint 0 errors (11 warnings), depcruise sauber,
+  db:generate drift-frei.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

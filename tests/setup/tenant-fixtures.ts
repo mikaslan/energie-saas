@@ -142,32 +142,6 @@ async function fixtureProjectTaskGraph(tx: TenantTx, wsId: string): Promise<void
   `);
 }
 
-async function fixtureProjectNoteMentionGraph(tx: TenantTx, wsId: string): Promise<void> {
-  const { userId } = await fixtureMembership(tx, wsId, "editor");
-  await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
-  const { projectId } = await fixtureProjectGraph(tx, wsId);
-  const noteId = randomUUID();
-  await tx.execute(sql`
-    insert into project_note (
-      id, workspace_id, project_id, parent_type, text_version, text_markdown,
-      revision, created_by
-    ) values (
-      ${noteId}::uuid, ${wsId}::uuid, ${projectId}::uuid,
-      'project', 'note-text.v1', 'Fixture Mention Note', 1, ${userId}::uuid
-    )
-  `);
-  await tx.execute(sql`
-    insert into project_note_mention (
-      workspace_id, project_id, note_id, mentioned_identity_id,
-      email_lower, revision
-    )
-    select ${wsId}::uuid, ${projectId}::uuid, ${noteId}::uuid,
-           ${userId}::uuid, lower(email), 1
-      from user_identity
-     where id = ${userId}::uuid
-  `);
-}
-
 async function fixtureProjectNoteGraph(tx: TenantTx, wsId: string): Promise<void> {
   const { userId } = await fixtureMembership(tx, wsId, "editor");
   await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
@@ -1042,7 +1016,6 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
-    // v1-Gestalt: weder Cap- noch Fix-Key (strikte v1-Kette; Slice D/E).
     customDealNetCents: null,
     contactContext,
     installationSiteContext,
@@ -1219,7 +1192,7 @@ async function fixtureOfferPdfDraft(tx: TenantTx, wsId: string): Promise<void> {
       name: "Basis",
       revision: row.revision,
     },
-    commercialTerms: { globalDiscountBps: 0, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Tenant Fixture",
@@ -2098,25 +2071,77 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F9.4 Slice B (0057): immutable Vorher-Bilder — RLS nur tenant_isolation,
+  // FK nur auf (workspace, entry). Fixture spiegelt das 0050-Muster.
   time_entry_revision: async (tx, wsId) => {
-    // F9.4 Slice B: eigene Entry-Kette (FK time_entry_revision_entry_fk).
-    // Cross-Write-Pfad: crossWriteOverrides.time_entry_revision (die
-    // Factory liest hier per RLS nur eigene Zeilen).
-    await tenantFixtures.time_entry(tx, wsId);
-    const entry = await tx.execute<{
-      id: string; user_id: string; project_id: string;
-    }>(sql`select id, user_id, project_id from time_entry
-             where workspace_id = ${wsId}::uuid limit 1`);
-    const row = entry.rows[0];
-    if (!row) throw new Error("Revision-Fixture braucht einen time_entry.");
+    const userId = randomUUID();
+    const projectId = randomUUID();
+    const contactId = randomUUID();
+    const siteId = randomUUID();
+    await tx.execute(sql`
+      insert into user_identity (id, email)
+      values (${userId}::uuid, ${`${userId}@fixture.local`})
+    `);
+    await tx.execute(sql`
+      insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+      values (${contactId}::uuid, ${wsId}::uuid, 'Revision Fixture', 'Rev', 'Fixture', ${`${contactId}@fixture.local`}, ${`${contactId}@fixture.local`})
+    `);
+    await tx.execute(sql`
+      insert into site (id, workspace_id, contact_id, label)
+      values (${siteId}::uuid, ${wsId}::uuid, ${contactId}::uuid, 'Revision Fixture Site')
+    `);
+    await tx.execute(sql`
+      insert into project (
+        id, workspace_id, contact_id, site_id, kanban_board_id,
+        kanban_column_id, name, source_key
+      )
+      select ${projectId}::uuid, ${wsId}::uuid, ${contactId}::uuid,
+             ${siteId}::uuid, board.id, intake_column.id,
+             'Revision Fixture Projekt', 'fixture'
+      from kanban_board board
+      join kanban_column intake_column
+        on intake_column.workspace_id = board.workspace_id
+        and intake_column.board_id = board.id
+        and intake_column.is_intake = true
+        and intake_column.archived_at is null
+      where board.workspace_id = ${wsId}::uuid
+        and board.scope = 'residential'
+        and board.is_default = true
+        and board.archived_at is null
+    `);
+    const entryId = randomUUID();
+    await tx.execute(sql`
+      insert into time_entry (
+        id, workspace_id, user_id, project_id, start_at, end_at,
+        working_time_minutes, created_by
+      ) values (
+        ${entryId}::uuid, ${wsId}::uuid, ${userId}::uuid, ${projectId}::uuid,
+        now() - interval '3 hours', now() - interval '2 hours',
+        60, ${userId}::uuid
+      )
+    `);
     await tx.execute(sql`
       insert into time_entry_revision (
         workspace_id, entry_id, user_id, project_id, start_at, end_at,
-        working_time_minutes, comment, revised_by
+        working_time_minutes, break_duration_minutes, comment, revised_by
       ) values (
-        ${wsId}::uuid, ${row.id}::uuid, ${row.user_id}::uuid,
-        ${row.project_id}::uuid, now() - interval '2 hours',
-        now() - interval '1 hour', 60, 'Fixture-Revision', ${row.user_id}::uuid
+        ${wsId}::uuid, ${entryId}::uuid, ${userId}::uuid, ${projectId}::uuid,
+        now() - interval '4 hours', now() - interval '3 hours',
+        90, 0, 'Vorher-Bild Fixture', ${userId}::uuid
+      )
+    `);
+  },
+  // F16.3 Slice A (0060): Rabatt-Vorlagen — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies, keine Trigger-Guards.
+  discount_template: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into discount_template (
+        id, workspace_id, name, name_normalized, kind, amount_cents,
+        percent_bps, cap_cents, active, position, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Rabatt',
+        'fixture rabatt', 'fix_cents', 500, null, null, true, 0,
+        ${randomUUID()}::uuid
       )
     `);
   },
@@ -2243,7 +2268,6 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   project_task_checklist_item: fixtureProjectTaskGraph,
   project_task_label: fixtureProjectTaskGraph,
   project_note: fixtureProjectNoteGraph,
-  project_note_mention: fixtureProjectNoteMentionGraph,
   project_appointment: fixtureProjectAppointmentGraph,
   project_appointment_attendee: fixtureProjectAppointmentGraph,
   calendar_category: fixtureCalendarCategoryGraph,
@@ -2710,30 +2734,6 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
     await tx.execute(sql`
       insert into offer_variant_section (workspace_id)
       values (${randomUUID()}::uuid)
-    `);
-  },
-  time_entry_revision: async (tx) => {
-    // F9.4 Slice B: RLS-WITH-CHECK feuert vor den FK-Checks — die
-    // Zufalls-UUIDs erreichen nie die Entry-FK (Muster offer_variant_*).
-    await tx.execute(sql`
-      insert into time_entry_revision (
-        workspace_id, entry_id, user_id, project_id, start_at, revised_by
-      ) values (
-        ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
-        ${randomUUID()}::uuid, now(), ${randomUUID()}::uuid
-      )
-    `);
-  },
-  project_note_mention: async (tx) => {
-    // F1-09: RLS-WITH-CHECK feuert vor den FK-Checks (Muster oben).
-    await tx.execute(sql`
-      insert into project_note_mention (
-        workspace_id, project_id, note_id, mentioned_identity_id,
-        email_lower, revision
-      ) values (
-        ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid,
-        ${randomUUID()}::uuid, 'fremd@f109.test', 1
-      )
     `);
   },
 };
