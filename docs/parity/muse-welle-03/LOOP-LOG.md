@@ -680,3 +680,12 @@
   repo-fremder Harness-Umbau nur für diese Sandbox wäre Umgehung,
   kein Drumherum. Push-Block (Nr. 5) bleibt Mikails Tor.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 43 — 2026-09-05, Ketten-Semantik als Tests festgenagelt
+
+- Neu: tests/unit/f1603-snapshot-chains.test.ts (DB-frei, 5 Fälle:
+  v1-pur ok + sha/null-Carry, v1+Cap abgewiesen, v1+Fix abgewiesen,
+  echte v2 ok, PDF-Input mit/ohne Fix-Key). Aussagen zuvor per
+  /tmp-Beweis 8/8 verifiziert, jetzt dauerhaft im Gate.
+- Lokal: typecheck grün, eslint sauber.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
