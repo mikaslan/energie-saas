@@ -1,6 +1,20 @@
 # F2.5 — Zahlarten (Slice A: Stammdaten + Varianten-Auswahl, ohne Provider)
 
-Status: **SPECIFIED**
+Status: **IMPLEMENTED (VERIFIED pending CI/Maschine — Billing-Block Q6)**
+
+## Umsetzung (Abweichungen zum SPEC-Entwurf)
+
+- `ON DELETE no action` statt RESTRICT (Hausstil, 0020-Präzedenz;
+  kein Hard-Delete im Code → äquivalenter Schutz).
+- Testpyramide: CRUD/Isolation/Scope-Miss per DB
+  (`tests/db/f205-payment-options.test.ts`); Auswahl-Happy-Path per
+  E2E (`tests/e2e/f2-05-zahlarten.spec.ts`, eigener W3-Seed `w3-f25`,
+  State `f25ProjectId`); F205-DB-05 = Scope-Miss/Validierung/Viewer
+  (leicht, ohne Offer-Fixture).
+- Rollen-Pin `payment_option:tenant_isolation` = PENDING-ORAKEL
+  (Präzedenz 23b3411): aus dem Gate-Diff des ersten Laufs mit
+  migrierter 0068 übernehmen. Offer-Schema-Pin lokal neu berechnet.
+- Reviews: Kimi + DeepSeek Exit-3 (kein OPENROUTER_API_KEY).
 Basis: Modulkatalog F2.5 („Zahlarten pro Komponente: Kauf / Finanzierung
 (Bees&Bears mit Status-Rückmeldung, ‚Classic' als reine Anzeige) / Leasing;
 Reonic wickelt keine Zahlungen ab").

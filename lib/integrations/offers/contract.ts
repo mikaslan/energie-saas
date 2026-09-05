@@ -38,7 +38,7 @@ export const OFFER_VARIANT_SNAPSHOT_VERSION_V1 = "offer-variant-snapshot.v1" as 
 // Artefakts. Der Generator und der Contract-Test verhindern eine zweite
 // Vertragswahrheit.
 export const OFFER_SCHEMA_SHA256 =
-  "a3c1fee473e91a5a5e36f665e4226d226165baca4e155ee32d60a8e9cb978907" as const;
+  "1dc20fa24cca94859978dc57c528b837c3addd33df46f7b9d4c2101b116c6bed" as const;
 
 export const OFFER_MAX_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const OFFER_MAX_PATCH_OPERATIONS = 500 as const;
@@ -400,6 +400,64 @@ export const setOptionalBundlesCommandV1Schema = z.strictObject({
 });
 export type SetOptionalBundlesCommandV1 = z.infer<
   typeof setOptionalBundlesCommandV1Schema
+>;
+
+// F2.5 Slice A: Zahlarten-Stammdaten (reine Anzeige, kein Provider).
+export const OFFER_PAYMENT_OPTION_COMMAND_VERSION =
+  "offer-payment-option-command.v1" as const;
+export const OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION =
+  "offer-variant-payment-option-command.v1" as const;
+export const PAYMENT_OPTION_SCHEMA_VERSION = 1 as const;
+export const PAYMENT_OPTION_KEYS = [
+  "purchase",
+  "financing_classic",
+  "leasing",
+] as const;
+export const PAYMENT_OPTION_KINDS = [
+  "purchase",
+  "financing",
+  "leasing",
+] as const;
+
+export const paymentOptionDtoSchema = z.strictObject({
+  schemaVersion: z.literal(PAYMENT_OPTION_SCHEMA_VERSION),
+  id: uuidSchema,
+  key: z.enum(PAYMENT_OPTION_KEYS),
+  label: z.string(),
+  kind: z.enum(PAYMENT_OPTION_KINDS),
+  archivedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  permissions: z.strictObject({ canWrite: z.boolean() }),
+});
+export type PaymentOptionDto = z.infer<typeof paymentOptionDtoSchema>;
+
+export const createPaymentOptionCommandSchema = z.strictObject({
+  schemaVersion: z.literal(OFFER_PAYMENT_OPTION_COMMAND_VERSION),
+  key: z.enum(PAYMENT_OPTION_KEYS),
+  label: normalizedRequiredText(120),
+});
+export type CreatePaymentOptionCommand = z.infer<
+  typeof createPaymentOptionCommandSchema
+>;
+
+export const updatePaymentOptionCommandSchema = z.strictObject({
+  schemaVersion: z.literal(OFFER_PAYMENT_OPTION_COMMAND_VERSION),
+  id: uuidSchema,
+  label: normalizedRequiredText(120),
+});
+export type UpdatePaymentOptionCommand = z.infer<
+  typeof updatePaymentOptionCommandSchema
+>;
+
+export const setVariantPaymentOptionCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION),
+  offerId: uuidSchema,
+  variantId: uuidSchema,
+  paymentOptionId: uuidSchema.nullable(),
+});
+export type SetVariantPaymentOptionCommandV1 = z.infer<
+  typeof setVariantPaymentOptionCommandV1Schema
 >;
 
 const fromResolutionBaseSchema = z.strictObject({
@@ -1269,6 +1327,8 @@ export function renderOfferJsonSchema(): string {
       { $ref: "#/$defs/setPrimaryCommand" },
       { $ref: "#/$defs/setTotalOverrideCommand" },
       { $ref: "#/$defs/setBundlesCommand" },
+      { $ref: "#/$defs/paymentOptionCommand" },
+      { $ref: "#/$defs/setVariantPaymentOptionCommand" },
       { $ref: "#/$defs/contactContext" },
       { $ref: "#/$defs/installationSiteContext" },
       { $ref: "#/$defs/createDigestMaterial" },
@@ -1282,6 +1342,8 @@ export function renderOfferJsonSchema(): string {
       setPrimaryCommand: jsonSchemaFor(setPrimaryVariantCommandV1Schema),
       setTotalOverrideCommand: jsonSchemaFor(setTotalPriceOverrideCommandV1Schema),
       setBundlesCommand: jsonSchemaFor(setOptionalBundlesCommandV1Schema),
+      paymentOptionCommand: jsonSchemaFor(createPaymentOptionCommandSchema),
+      setVariantPaymentOptionCommand: jsonSchemaFor(setVariantPaymentOptionCommandV1Schema),
       contactContext: jsonSchemaFor(offerContactContextV1Schema),
       installationSiteContext: jsonSchemaFor(offerInstallationSiteContextV1Schema),
       createDigestMaterial: jsonSchemaFor(offerCreateDigestMaterialV1Schema),

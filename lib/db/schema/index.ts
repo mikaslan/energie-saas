@@ -30,6 +30,7 @@ export * from "./lead-source";
 export * from "./subsidy-template";
 export * from "./offers";
 export * from "./offer-release";
+export * from "./payment-option";
 export * from "./offer-issuance";
 export * from "./project";
 export * from "./project-loss-reason";

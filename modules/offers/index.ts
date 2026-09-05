@@ -15,7 +15,18 @@ export {
   setOptionalBundles,
   setPrimaryVariant,
   setTotalPriceOverride,
+  setVariantPaymentOption,
 } from "./service";
+export {
+  archivePaymentOption,
+  createPaymentOption,
+  listPaymentOptions,
+  PaymentOptionConflictError,
+  PaymentOptionNotFoundError,
+  PaymentOptionValidationError,
+  restorePaymentOption,
+  updatePaymentOption,
+} from "./payment-options";
 export type {
   OfferDetailViewModel,
   OfferListViewModel,
@@ -23,6 +34,7 @@ export type {
   SetOptionalBundlesResult,
   SetPrimaryVariantResult,
   SetTotalPriceOverrideResult,
+  SetVariantPaymentOptionResult,
 } from "./service";
 export {
   OfferPdfDraftConflictError,

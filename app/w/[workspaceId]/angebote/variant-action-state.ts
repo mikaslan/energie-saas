@@ -36,3 +36,16 @@ export type SetVariantBundlesEditorState =
 export const SET_VARIANT_BUNDLES_INITIAL_STATE = {
   status: "idle",
 } as const satisfies SetVariantBundlesEditorState;
+
+export type SetVariantPaymentOptionEditorState =
+  | { status: "idle" }
+  | { status: "invalid" }
+  | { status: "unauthenticated" }
+  | { status: "denied" }
+  | { status: "not_found" }
+  | { status: "unavailable" }
+  | { status: "success"; changed: boolean };
+
+export const SET_VARIANT_PAYMENT_OPTION_INITIAL_STATE = {
+  status: "idle",
+} as const satisfies SetVariantPaymentOptionEditorState;

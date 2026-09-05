@@ -257,6 +257,10 @@ const SUBSIDY_TEMPLATE_RELATIONS = [
   "subsidy_template",
 ] as const;
 
+const PAYMENT_OPTION_RELATIONS = [
+  "payment_option",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -1457,6 +1461,24 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F2.5 Slice A: Zahlarten-Stammdaten — Archiv statt Delete (kein
+  // DELETE-Grant). Pin per Orakel (Präzedenz 23b3411): Platzhalter wird aus
+  // dem Gate-Diff des ersten Laufs mit migrierter 0068 übernommen.
+  const hasPaymentOptions = await hasAtomicPublicRelationSet(
+    client,
+    PAYMENT_OPTION_RELATIONS,
+    "Rollen-ACL-Manifest: F2-05-Zahlarten",
+  );
+  if (hasPaymentOptions) {
+    await client.query(`
+      revoke all privileges on
+        public.payment_option
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.payment_option to app_runtime
+    `);
+  }
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2439,6 +2461,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F16-03-Foerder-Vorlagen",
   );
 
+  const hasPaymentOptions = await hasAtomicPublicRelationSet(
+    client,
+    PAYMENT_OPTION_RELATIONS,
+    "Rollenvertrag: F2-05-Zahlarten",
+  );
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2636,6 +2664,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -3694,6 +3725,9 @@ export async function verifyRoleContract(
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -3988,6 +4022,12 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasSubsidyTemplates ? [
           "subsidy_template:tenant_isolation:2037cf711c5df81fe88a76b2b2d003d568f2053c61feebad996e515aec4d0696",
+        ] : []),
+        ...(hasPaymentOptions ? [
+          // PENDING-ORAKEL: aus dem Gate-Diff des ersten Laufs mit 0068
+          // übernehmen (sha256 über tablename|policyname|permissive|roles|
+          // cmd|qual|with_check aus pg_policies).
+          "payment_option:tenant_isolation:PENDING-ORAKEL-0068",
         ] : []),
         ...(hasPortal ? [
           "portal_invite:portal_invite_actor_delete:777085784fec1e8a4f2511b44c00e23fd09f98c13d9f99dded0180f10c4fe702",
@@ -4471,6 +4511,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

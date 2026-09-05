@@ -28,6 +28,7 @@ import { catalogComponentRevision, projectCatalogResolution } from "./catalog";
 import { membership, workspace } from "./core";
 import { projectCalculationRevision } from "./energy";
 import { inboundReceipt, projectRequirement } from "./intake";
+import { paymentOption } from "./payment-option";
 import { project } from "./project";
 import { bytea } from "./types";
 
@@ -221,6 +222,7 @@ export const offerVariant = pgTable(
     description: text("description"),
     isPrimary: boolean("is_primary").notNull().default(false),
     optionalBundles: jsonb("optional_bundles").$type<OptionalBundlesV1>().notNull().default([]),
+    paymentOptionId: uuid("payment_option_id"),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -247,6 +249,12 @@ export const offerVariant = pgTable(
       columns: [t.workspaceId, t.createdBy],
       foreignColumns: [membership.workspaceId, membership.userId],
       name: "offer_variant_created_by_fk",
+    }),
+    index("offer_variant_ws_payment_option_idx").on(t.workspaceId, t.paymentOptionId),
+    foreignKey({
+      columns: [t.workspaceId, t.paymentOptionId],
+      foreignColumns: [paymentOption.workspaceId, paymentOption.id],
+      name: "offer_variant_payment_option_fk",
     }),
     check("offer_variant_bundles_ck", sql`pg_catalog.jsonb_typeof(${t.optionalBundles}) = 'array'`),
     check("offer_variant_ordinal_ck", sql`${t.ordinal} between 1 and 12`),
