@@ -535,3 +535,20 @@
 - Lokal: depcruise sauber (454 Module), typecheck/lint/depcruise/
   generate/catalog-check/Vertragsbeweis 6/6 aus Turns 26–28 intakt.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 30 — 2026-09-05, 0065-Grant-Kohärenz bewiesen (kein Code)
+
+- Risiko geprüft: 0065 erteilt EXECUTE an die Migrationsrolle —
+  potenzieller Bruch des exakten Funktions-ACL-Pins. Entkräftet:
+  (a) 0056-Tanz tut exakt dasselbe für resolve_portal_public_view
+  (GRANT EXECUTE TO v_app) und war CI-grün → ACL-Pins laufen gegen
+  Strict-DBs (Tanz dort per Guard geskippt), nicht gegen Test-DBs.
+  (b) Tests rufen Definer AS Migrationsrolle (kein SET ROLE im
+  Harness) → Grants sind funktional nötig: 0056-Grant erklärt, warum
+  Resolve als app_ci die EXECUTE-Hürde nimmt und erst an den
+  Tabellen-Grants (42501, Fix in 0059/0062) scheiterte; 0065-Grant
+  ist das exakte Gegenstück für sign/revoke/view.
+- Mechanismus damit geschlossen kohärent: Fixture-Keys →
+  Validierung ok; Tabellen-Grants → Definer liest; Migrator-Grants
+  → Tests dürfen rufen; Pins → Strict bleibt exakt.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
