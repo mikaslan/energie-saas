@@ -3487,6 +3487,9 @@ export async function verifyRoleContract(
       "contact_name_split_v1(text):TABLE(first_name text, last_name text):app_owner:sql:f:i:" +
         "false:false:false:u:search_path=pg_catalog:" +
         "0ff6e6a4ca03690a776d797382168024ebf845f3647c4f9a7ecea108ede4fe11",
+      // Body-Pin = sha256(prosrc): prosrc ist der wörtliche Funktions-Body
+      // zwischen den Dollar-Tags der Migration (PG speichert verbatim).
+      // Bei Body-Änderung Pin neu berechnen (0066: fbb06d5a…).
       ...(hasOfferPdfDraft ? [
         "derive_offer_pdf_draft_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:fbb06d5a8625b27436a605918dc257af9eac735116e9e041e822fa7909bc9c70",
