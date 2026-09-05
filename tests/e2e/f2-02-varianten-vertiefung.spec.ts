@@ -10,10 +10,10 @@ import { expect, test, type Page } from "playwright/test";
  * duplizieren (Kopie nie primary), Variantennavigation zeigt beide,
  * DB-Read-back belegt is_primary/Override/Bundles.
  *
- * UI-Gap (FRAGEN-AN-MIKAIL.md Nr. 4): Primary-Switch, Deal-Override-Feld
- * und Bundle-Steuerung existieren nicht im Editor — kein UI erfunden.
- * Service-Semantik (Switch/Override/Bundles inkl. No-ops) decken die
- * Vitest-DB-Tests tests/db/f202-variant-deepening.test.ts ab.
+ * F2.2-E2E-02 deckt die Editor-Steuerung ab (Promote per UI, Override mit
+ * Euro-Kommaschreibweise, Bundle-Liste speichern) inkl. DB-Read-back.
+ * Service-Semantik (Switch/Override/Bundles inkl. No-ops) decken zusätzlich
+ * die Vitest-DB-Tests tests/db/f202-variant-deepening.test.ts ab.
  * Eigenes W3-Projekt: keine Kopplung an andere Specs (f7-03-Lehre).
  */
 
@@ -189,6 +189,81 @@ test("F2.2-E2E-01: Varianten-Lifecycle — Create, Duplikat, Primary-Semantik", 
   expect(variants[1]?.override).toBeNull();
   expect(variants[0]?.bundles).toEqual([]);
   expect(variants[1]?.bundles).toEqual([]);
+
+  expect(errors, "Browser-Konsole und Page-Errors der Editor-Grenze").toEqual([]);
+});
+
+test("F2.2-E2E-02: Editor-Steuerung — Promote, Deal-Override, Bundles", async ({ page }) => {
+  test.setTimeout(180_000);
+  const data = state();
+  const errors: string[] = [];
+  browserErrors.set(page, errors);
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+
+  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f22ProjectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, data.editorEmail, projectPath);
+
+  // Angebot per UI erzeugen, Zweitvariante duplizieren (Muster aus E2E-01).
+  const createEntry = page.locator('[data-offer-create-state="ready"]');
+  await expect(createEntry).toBeVisible();
+  await createEntry.getByLabel("Forecast netto in Euro (optional)").fill("9800");
+  await createEntry.getByLabel("B2C-Preiszielgruppe ausdrücklich bestätigen").check();
+  await createEntry.getByLabel("Steuerentwurf").selectOption("standard_19");
+  await createEntry.getByRole("button", { name: "Angebot erstellen", exact: true }).click();
+  await page.waitForURL((url) =>
+    /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
+    && url.searchParams.has("variante"));
+  const detailPath = new URL(page.url()).pathname;
+  const initialVariantId = new URL(page.url()).searchParams.get("variante");
+  const duplicateSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Variante duplizieren", exact: true }),
+  });
+  await duplicateSection.getByLabel("Name der Kopie").fill("W3-Steuerung");
+  await duplicateSection.getByRole("button", { name: "Duplizieren", exact: true }).click();
+  await page.waitForURL((url) =>
+    url.pathname === detailPath
+    && url.searchParams.get("variante") !== initialVariantId);
+  await expect(page.locator("#variant-name")).toHaveValue("W3-Steuerung");
+
+  const controls = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Primärvariante und Deal-Wert", exact: true }),
+  });
+  await expect(controls).toBeVisible();
+
+  // Zweitvariante per UI zur primären Variante machen.
+  await controls.getByRole("button", { name: /als primär festlegen/ }).click();
+  await expect(controls.getByText("Die primäre Variante wurde umgeschaltet.")).toBeVisible();
+  await expect(controls.getByText(/Primärvariante:/)).toContainText("W3-Steuerung");
+
+  // Deal-Override mit Euro-Kommaschreibweise setzen.
+  await controls.getByLabel("Deal-Override netto in Euro (optional)").fill("12,50");
+  await controls.getByRole("button", { name: "Override speichern", exact: true }).click();
+  await expect(controls.getByText("Der Deal-Override wurde gespeichert.")).toBeVisible();
+  await expect(controls.getByText(/Deal-Override aktiv/)).toBeVisible();
+
+  // Optionale Bundles der aktiven Variante pflegen.
+  await controls.getByRole("button", { name: "Bundle hinzufügen", exact: true }).click();
+  await controls.getByLabel("Bundle-Name 1", { exact: true }).fill("Wallbox-Paket");
+  await controls.getByRole("button", { name: "Bundles speichern", exact: true }).click();
+  await expect(controls.getByText("Die optionalen Bundles wurden gespeichert.")).toBeVisible();
+
+  // DB-Read-back: Zweitvariante primär, Override 1250 Cent (Offer-Ebene),
+  // Bundle an der Zweitvariante.
+  await expect.poll(async () => {
+    const rows = await readVariantState();
+    return rows.some((row) => row.ordinal === 1 && row.isPrimary);
+  }, { message: "Der Promote muss in der DB sichtbar sein.", timeout: 15_000 }).toBe(true);
+  const variants = await readVariantState();
+  expect(variants).toHaveLength(2);
+  const promoted = variants.find((row) => row.id !== variants[0]?.id);
+  expect(promoted?.isPrimary).toBe(true);
+  expect(variants[0]?.override).toBe("1250");
+  expect(variants[1]?.override).toBe("1250");
+  expect(promoted?.bundles).toEqual([{ name: "Wallbox-Paket", position: 0 }]);
 
   expect(errors, "Browser-Konsole und Page-Errors der Editor-Grenze").toEqual([]);
 });

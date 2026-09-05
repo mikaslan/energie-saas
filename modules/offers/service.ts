@@ -24,6 +24,7 @@ import {
   setPrimaryVariantCommandV1Schema,
   setTotalPriceOverrideCommandV1Schema,
   toOfferVariantView,
+  type OptionalBundlesV1,
   validateOfferVariantSnapshot,
   type CreateOfferCommandV1,
   type CreateVariantFromResolutionCommandV1,
@@ -110,6 +111,7 @@ export type OfferDetailViewModel = {
     isPrimary: boolean;
     active: boolean;
     href: string;
+    bundles: OptionalBundlesV1;
   }>;
   activeVariant: OfferVariantViewV1;
   newBasisInput: {
@@ -546,7 +548,8 @@ export async function getOfferDetail(
   }
 
   const variantsResult = await tx.execute<VariantRow>(sql`
-    select id, offer_id, ordinal, current_revision, name, description, is_primary
+    select id, offer_id, ordinal, current_revision, name, description, is_primary,
+           optional_bundles
       from offer_variant
      where workspace_id = ${ctx.workspaceId}::uuid
        and offer_id = ${offerRecord.id}::uuid
@@ -650,14 +653,19 @@ export async function getOfferDetail(
     overrideActive,
     displayTotalNetCents: overrideActive ? totalPriceOverrideNetCents : primaryBasisNetCents,
     displayTotalGrossCents: overrideActive ? null : primaryBasisGrossCents,
-    variants: variantsResult.rows.map((variant) => ({
-      id: variant.id,
-      name: variant.name,
-      revision: variant.current_revision,
-      isPrimary: variant.is_primary,
-      active: variant.id === active.id,
-      href: `/w/${ctx.workspaceId}/angebote/${offerRecord.id}?variante=${variant.id}`,
-    })),
+    variants: variantsResult.rows.map((variant) => {
+      const bundles = optionalBundlesSchema.safeParse(variant.optional_bundles);
+      if (!bundles.success) throw new OfferIntegrityError();
+      return {
+        id: variant.id,
+        name: variant.name,
+        revision: variant.current_revision,
+        isPrimary: variant.is_primary,
+        active: variant.id === active.id,
+        href: `/w/${ctx.workspaceId}/angebote/${offerRecord.id}?variante=${variant.id}`,
+        bundles: bundles.data,
+      };
+    }),
     activeVariant,
     newBasisInput,
     permissions: {

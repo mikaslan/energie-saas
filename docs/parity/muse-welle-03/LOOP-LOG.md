@@ -728,3 +728,13 @@
 - Lokal: typecheck grün, lint 0 errors (11 warnings), depcruise sauber,
   db:generate drift-frei.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 47 — 2026-09-05, F2.2-UI-Slice (FRAGEN-4 geschlossen)
+
+- Panel + 3 Server-Actions (Promote/Override/Bundles) auf bestehendem
+  Service; additiver Bundle-Read in getOfferDetail; Primär-Badges.
+- RED: tests/unit/f202-variant-controls.test.ts (Vitest lokal EPERM —
+  Sandbox-Limit, Ausführung pending CI/Maschine); E2E-02 angehängt.
+- Reviews Kimi/DeepSeek Exit-3 (kein Key). Lokal: typecheck grün, lint
+  0 errors, depcruise sauber, db:generate drift-frei, --list 2/2.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
