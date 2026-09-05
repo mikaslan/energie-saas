@@ -484,6 +484,13 @@
       "when": 1788587860592,
       "tag": "0068_f2_05_payment_options",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1788589602044,
+      "tag": "0069_f7_01_installation",
+      "breakpoints": true
     }
   ]
 }

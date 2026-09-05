@@ -24,6 +24,7 @@ export * from "./discount-template";
 export * from "./events";
 export * from "./energy";
 export * from "./erasure";
+export * from "./installation";
 export * from "./intake";
 export * from "./invoicing";
 export * from "./lead-source";
