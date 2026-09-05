@@ -669,3 +669,14 @@
 - E2E-06 bewusst NICHT blind geschrieben (Seed-Flow braucht
   CI-Feedback); SPEC markiert offen. Lokal: typecheck/lint/depcruise.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 42 — 2026-09-05, Baumintegrität + Infra-Entscheid
+
+- Geprüft: Baum sauber, 20 Commits auf codex/muse-welle-03-e2e,
+  0067-SQL + Snapshot vorhanden, fsck nur harmlose Dangling-Blobs
+  aus Amends. Kein Remote-, kein CI-Fortschritt.
+- DECIDED gegen Sandbox-Testinfra-Hacks (Unix-Socket-PG o.ä.):
+  GOAL.md führt die Limits als entschiedene harte Grenzen; ein
+  repo-fremder Harness-Umbau nur für diese Sandbox wäre Umgehung,
+  kein Drumherum. Push-Block (Nr. 5) bleibt Mikails Tor.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
