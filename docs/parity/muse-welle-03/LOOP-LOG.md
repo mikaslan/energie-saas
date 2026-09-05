@@ -647,3 +647,15 @@
   intakt, kein Fremdtext aus 0033. Höchste Blast-Radius-Stelle
   (migrate bricht bei Syntaxfehler total) damit statisch sauber.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 40 — 2026-09-05, F1-09 DB-Schicht (API-komplett)
+
+- 0067 (generiert + RLS/Policy, tenant_isolation/FORCE): Tabelle
+  project_note_mention; TS-Schema, Contract (mention.v1 + Item-Feld),
+  Service (Replace-im-Schreib-Tx, Phantom-skip, note_mentioned-Event,
+  List-Anreicherung), Fixture + Cross-Write-Override (Invarianten
+  decken die Tabelle generisch ab), f109-DB-Tests 01–05, m111a-Pins
+  (TOTAL 68, idx 67). generate driftfrei.
+- Lokal: typecheck grün, eslint sauber, depcruise-geprüft.
+  Offen (Folge-Inkrement): UI-Chips + E2E-06.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

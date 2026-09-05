@@ -9,13 +9,19 @@ import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   projectNoteCommandV1Schema,
   projectNoteItemV1Schema,
+  projectNoteMentionV1Schema,
   projectNotePageV1Schema,
   type ProjectNoteCommandV1,
   type ProjectNoteCommandResult,
   type ProjectNoteItemV1,
+  type ProjectNoteMentionV1,
   type ProjectNotePageV1,
 } from "@/lib/integrations/notes/note-contract";
 import { markdownToPlainText } from "@/lib/integrations/notes/note-markdown";
+import {
+  extractNoteMentionRefs,
+  NoteMentionLimitError,
+} from "@/lib/integrations/notes/note-mentions";
 import { NoteConflictError, NoteNotFoundError, NoteValidationError } from "./errors";
 
 type NoteRow = {
@@ -129,7 +135,90 @@ type NoteEventType =
   | "project.note_updated"
   | "project.note_deleted"
   | "project.note_pinned"
-  | "project.note_unpinned";
+  | "project.note_unpinned"
+  | "project.note_mentioned";
+
+type MentionRow = {
+  note_id: string;
+  user_identity_id: string;
+  email_lower: string;
+  [key: string]: unknown;
+};
+
+// F1-09: ersetzt die Mention-Menge einer Notiz atomar im Schreib-Tx.
+// Phantom-Refs (keine Membership) bleiben Rohtext und speichern nichts.
+async function replaceNoteMentions(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+  noteId: string,
+  revision: number,
+  textMarkdown: string,
+): Promise<ProjectNoteMentionV1[]> {
+  let refs;
+  try {
+    refs = extractNoteMentionRefs(textMarkdown);
+  } catch (error) {
+    if (error instanceof NoteMentionLimitError) throw new NoteValidationError();
+    throw error;
+  }
+  const resolved =
+    refs.length === 0
+      ? []
+      : (
+          await tx.execute<{ identity_id: string; email_lower: string }>(sql`
+            select identity_record.id as identity_id,
+                   lower(identity_record.email) as email_lower
+              from membership membership_record
+              join user_identity identity_record
+                on identity_record.id = membership_record.user_id
+             where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+               and lower(identity_record.email) = any(${refs.map((ref) => ref.emailLower)}::text[])
+          `)
+        ).rows;
+  const byEmail = new Map(resolved.map((row) => [row.email_lower, row.identity_id]));
+  await tx.execute(sql`
+    delete from project_note_mention
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and note_id = ${noteId}::uuid
+  `);
+  const mentions: ProjectNoteMentionV1[] = [];
+  for (const ref of refs) {
+    const identityId = byEmail.get(ref.emailLower);
+    if (!identityId) continue;
+    await tx.execute(sql`
+      insert into project_note_mention (
+        workspace_id, project_id, note_id, mentioned_identity_id,
+        email_lower, revision
+      ) values (
+        ${ctx.workspaceId}::uuid, ${projectId}::uuid, ${noteId}::uuid,
+        ${identityId}::uuid, ${ref.emailLower}, ${revision}
+      )
+    `);
+    mentions.push(
+      projectNoteMentionV1Schema.parse({
+        userIdentityId: identityId,
+        emailLower: ref.emailLower,
+      }),
+    );
+  }
+  if (mentions.length > 0) {
+    await emitEvent(tx, {
+      workspaceId: ctx.workspaceId,
+      aggregateType: "project",
+      aggregateId: projectId,
+      eventType: "project.note_mentioned",
+      actor: ctx.actor,
+      payload: {
+        projectId,
+        noteId,
+        revision,
+        mentionedIdentityIds: mentions.map((mention) => mention.userIdentityId),
+      },
+    });
+  }
+  return mentions;
+}
 
 async function emitNoteEvidence(
   tx: TenantTx,
@@ -192,6 +281,7 @@ async function createNote(
     kind: command.kind,
     eventType: "project.note_created",
   });
+  await replaceNoteMentions(tx, ctx, command.projectId, noteId, 1, command.textMarkdown);
   return { projectId: command.projectId, noteId, revision: 1, changed: true };
 }
 
@@ -229,6 +319,9 @@ async function mutateNote(
       kind: command.kind,
       eventType,
     });
+    await replaceNoteMentions(
+      tx, ctx, command.projectId, command.noteId, revision, command.textMarkdown,
+    );
     return { projectId: command.projectId, noteId: command.noteId, revision, changed: true };
   }
 
@@ -331,6 +424,32 @@ export async function listProjectNotes(
               note_record.id asc
   `);
 
+  const noteIds = result.rows.map((row) => row.id);
+  const mentionRows =
+    noteIds.length === 0
+      ? []
+      : (
+          await tx.execute<MentionRow>(sql`
+            select note_id,
+                   mentioned_identity_id as user_identity_id,
+                   email_lower
+              from project_note_mention
+             where workspace_id = ${ctx.workspaceId}::uuid
+               and note_id = any(${noteIds}::uuid[])
+             order by email_lower asc
+          `)
+        ).rows;
+  const mentionsByNote = new Map<string, ProjectNoteMentionV1[]>();
+  for (const row of mentionRows) {
+    const parsed = projectNoteMentionV1Schema.parse({
+      userIdentityId: row.user_identity_id,
+      emailLower: row.email_lower,
+    });
+    const list = mentionsByNote.get(row.note_id) ?? [];
+    list.push(parsed);
+    mentionsByNote.set(row.note_id, list);
+  }
+
   const items: ProjectNoteItemV1[] = result.rows.map((row) => ({
     id: row.id,
     revision: row.revision,
@@ -343,6 +462,7 @@ export async function listProjectNotes(
     editedByLabel: row.edited_by_label,
     pinnedAt: row.pinned_at_iso,
     pinnedByLabel: row.pinned_by_label,
+    mentions: mentionsByNote.get(row.id) ?? [],
   }));
 
   return projectNotePageV1Schema.parse({
