@@ -122,6 +122,7 @@ export interface OfferVariantSnapshotView {
   variantName: string;
   description: string | null;
   globalDiscountBps: number;
+  globalFixDiscountCents?: number | null;
   customDealNetCents: number | null;
   contactContext: {
     displayName: string;
@@ -197,13 +198,15 @@ export interface OfferDetailSurfaceView {
     approvedCandidates: readonly OfferIssuanceCandidateSurfaceView[];
     issuances: readonly OfferIssuanceSurfaceView[];
   };
-  // F16.3 Slice C: cap-freie Prozent-Vorlagen (Rabatt + Förderung) für den
-  // Global-Rabatt-Dropdown. Nur gesetzt mit discount.apply-Recht.
+  // F16.3 Slice C/D: Vorlagen für den Global-Rabatt-Dropdown (cap-freie
+  // Prozent- + Fix-Vorlagen aus Rabatt + Förderung). Nur mit discount.apply.
   discountTemplates?: readonly {
     id: string;
     name: string;
-    percentBps: number;
     source: "discount" | "subsidy";
+    kind: "percent" | "fix";
+    percentBps: number | null;
+    amountCents: number | null;
   }[];
 }
 
@@ -793,6 +796,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                 ) : null}
                 <dl className="mt-4 grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2">
                   <div><dt className="text-slate-600">Globaler Rabatt</dt><dd className="mt-1 font-semibold">{formatBasisPoints(snapshot.globalDiscountBps)}</dd></div>
+                  <div><dt className="text-slate-600">Globaler Fix-Rabatt</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.globalFixDiscountCents === null || snapshot.globalFixDiscountCents === undefined ? "Kein Fix-Rabatt" : formatOfferCents(snapshot.globalFixDiscountCents)}</dd></div>
                   <div><dt className="text-slate-600">Custom Deal netto</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.customDealNetCents === null ? "Kein Custom Deal" : formatOfferCents(snapshot.customDealNetCents)}</dd></div>
                 </dl>
               </section>

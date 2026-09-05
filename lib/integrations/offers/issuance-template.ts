@@ -193,6 +193,7 @@ function renderCommercialTerms(document: OfferIssuanceDocumentV1): string {
     : `${formatMoney(document.commercialTerms.customDealNetCents)} netto`;
   return `<dl class="commercial-terms">
   <div><dt>Globaler Rabatt</dt><dd>${formatDiscount(document.commercialTerms.globalDiscountBps)}</dd></div>
+  ${document.commercialTerms.globalFixDiscountCents === null ? "" : `<div><dt>Globaler Fix-Rabatt</dt><dd>${formatMoney(document.commercialTerms.globalFixDiscountCents)}</dd></div>`}
   <div><dt>Individueller Zielpreis</dt><dd>${customDeal}</dd></div>
 </dl>`;
 }

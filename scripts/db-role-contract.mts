@@ -3489,7 +3489,7 @@ export async function verifyRoleContract(
         "0ff6e6a4ca03690a776d797382168024ebf845f3647c4f9a7ecea108ede4fe11",
       ...(hasOfferPdfDraft ? [
         "derive_offer_pdf_draft_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:2ca618a933fba428b34a0860261a28c1e9d5601d2ef058fd8fdaf0b6041414e9",
+          "search_path=pg_catalog:427651acb2160a60f657090c12c7ced2fa31676e2b053879b9d1e5c981fb25f1",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
         `search_path=pg_catalog:${hasSignatures

@@ -999,7 +999,7 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     lines: [lineSnapshot],
   };
   const snapshotBody = {
-    schemaVersion: "offer-variant-snapshot.v1",
+    schemaVersion: "offer-variant-snapshot.v2",
     canonicalizationVersion: "offer-jcs.v1",
     workspaceId: wsId,
     offerId,
@@ -1016,6 +1016,9 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    // F16.3 Slice D: Snapshot-Vertrag traegt den globalen Fix-Rabatt
+    // (null = keiner) — v1-Strict-Schema verlangt das Feld.
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     contactContext,
     installationSiteContext,
@@ -1085,7 +1088,7 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
       created_by, created_at
     ) values (
       ${revisionId}::uuid, ${wsId}::uuid, ${offerId}::uuid, ${variantId}::uuid,
-      ${source.project_id}::uuid, 1, 'offer-variant-snapshot.v1', 'offer-jcs.v1',
+      ${source.project_id}::uuid, 1, 'offer-variant-snapshot.v2', 'offer-jcs.v1',
       ${JSON.stringify(snapshot)}::jsonb, decode(${snapshotSha256}, 'hex'),
       ${source.resolution_id}::uuid, ${source.resolution_revision},
       decode(${source.resolution_sha256}, 'hex'), 100, 19, 119, 0, 0, 0,
@@ -1192,7 +1195,7 @@ async function fixtureOfferPdfDraft(tx: TenantTx, wsId: string): Promise<void> {
       name: "Basis",
       revision: row.revision,
     },
-    commercialTerms: { globalDiscountBps: 0, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Tenant Fixture",
@@ -2141,6 +2144,20 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       ) values (
         ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Rabatt',
         'fixture rabatt', 'fix_cents', 500, null, null, true, 0,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
+  // F16.3 Slice B (0061): Foerder-Vorlagen — Spiegel der Rabatt-Vorlagen,
+  // nur workspace-FK, RLS tenant_isolation, keine Trigger-Guards.
+  subsidy_template: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into subsidy_template (
+        id, workspace_id, name, name_normalized, kind, amount_cents,
+        percent_bps, cap_cents, active, position, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Foerderung',
+        'fixture foerderung', 'fix_cents', 1000, null, null, true, 0,
         ${randomUUID()}::uuid
       )
     `);

@@ -182,7 +182,8 @@ function snapshotViewSchema(canReadPurchasePrice: boolean) {
   const lineSchema = canReadPurchasePrice ? purchaseLineViewSchema : publicLineViewSchema;
 
   return z.object({
-    schemaVersion: z.literal("offer-variant-snapshot.v1"),
+    // F16.3 Slice D: v1+v2 lesen (Dual-Read), Fix-Betrag für den Editor.
+    schemaVersion: z.enum(["offer-variant-snapshot.v1", "offer-variant-snapshot.v2"]),
     workspaceId: snapshotUuidSchema,
     offerId: snapshotUuidSchema,
     variantId: snapshotUuidSchema,
@@ -190,6 +191,7 @@ function snapshotViewSchema(canReadPurchasePrice: boolean) {
     variantName: z.string().trim().min(1).max(120),
     description: z.string().trim().min(1).max(1_000).nullable(),
     globalDiscountBps: basisPointsSchema,
+    globalFixDiscountCents: moneyCentsSchema.nullable().optional(),
     customDealNetCents: moneyCentsSchema.nullable(),
     contactContext: z.object({
       displayName: z.string().trim().min(1).max(200),
@@ -222,8 +224,10 @@ function projectOfferDetailView(
   discountTemplates: readonly {
     id: string;
     name: string;
-    percentBps: number;
     source: "discount" | "subsidy";
+    kind: "percent" | "fix";
+    percentBps: number | null;
+    amountCents: number | null;
   }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
@@ -459,8 +463,10 @@ export default async function OfferDetailPage(
     discountTemplates: {
       id: string;
       name: string;
-      percentBps: number;
       source: "discount" | "subsidy";
+      kind: "percent" | "fix";
+      percentBps: number | null;
+      amountCents: number | null;
     }[];
     recoveryScope: string;
     editorCapabilities: {
@@ -493,8 +499,10 @@ export default async function OfferDetailPage(
         const discountTemplates: {
           id: string;
           name: string;
-          percentBps: number;
           source: "discount" | "subsidy";
+          kind: "percent" | "fix";
+          percentBps: number | null;
+          amountCents: number | null;
         }[] = [];
         let releaseValidityWindow: ReleaseValidityWindow | null = null;
         if (view !== null && !externalOnly) {
@@ -542,21 +550,25 @@ export default async function OfferDetailPage(
           releaseRecipient = recipientResult;
           releaseCandidates = candidateResult;
           offerIssuances = issuanceResult;
-          // F16.3 Slice C: cap-freie Prozent-Vorlagen (Rabatt + Förderung)
-          // für den Global-Rabatt-Dropdown. Nur mit discount.apply-Recht;
-          // Fix/Cap nie listen (Service weist sie ebenfalls ab).
+          // F16.3 Slice C/D: Vorlagen für den Global-Rabatt-Dropdown.
+          // Prozent nur cap-frei (Cap nicht global anwendbar); Fix immer
+          // (per CHECK cap-frei). Nur mit discount.apply-Recht.
           if (!externalOnly && can(ctx, "discount.apply")) {
             if (can(ctx, "discount_template.read")) {
               for (const template of await listDiscountTemplates(tx, ctx, {})) {
                 if (template.kind === "percent_bps" && template.capCents === null && template.percentBps !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, percentBps: template.percentBps, source: "discount" });
+                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "percent", percentBps: template.percentBps, amountCents: null });
+                } else if (template.kind === "fix_cents" && template.amountCents !== null) {
+                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "fix", percentBps: null, amountCents: template.amountCents });
                 }
               }
             }
             if (can(ctx, "subsidy_template.read")) {
               for (const template of await listSubsidyTemplates(tx, ctx, {})) {
                 if (template.kind === "percent_bps" && template.capCents === null && template.percentBps !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, percentBps: template.percentBps, source: "subsidy" });
+                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "percent", percentBps: template.percentBps, amountCents: null });
+                } else if (template.kind === "fix_cents" && template.amountCents !== null) {
+                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "fix", percentBps: null, amountCents: template.amountCents });
                 }
               }
             }

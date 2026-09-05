@@ -285,10 +285,10 @@ export function restoreDiscountTemplate(
   return setTemplateActive(tx, ctx, id, true);
 }
 
-// F16.3 Slice C: Prozent-Vorlage global aufs Angebot anwenden.
-// Cap-freie Prozent-Vorlagen -> set_global_discount (wörtlich, via
-// reviseOfferVariant). Cap-/Fix-Vorlagen -> ValidationError (nie still
-// verlieren; Fix/Cap brauchen Modellfelder = Slice D).
+// F16.3 Slice C/D: Vorlage global aufs Angebot anwenden (via
+// reviseOfferVariant, wörtlich). Prozent cap-frei -> set_global_discount;
+// Fix (per CHECK cap-frei) -> set_global_fix_discount (Slice D).
+// Cap-Prozent -> ValidationError (nie still verlieren; Cap = Slice E).
 export async function applyDiscountTemplateToOfferGlobal(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -304,6 +304,19 @@ export async function applyDiscountTemplateToOfferGlobal(
   `);
   const row = found.rows[0];
   if (!row) throw new DiscountTemplateNotFoundError(input.templateId);
+  // F16.3 Slice D: Fix-Zweig (per CHECK cap-frei, wörtlich).
+  if (row.kind === DISCOUNT_KIND_FIX) {
+    if (row.amount_cents === null) {
+      throw new DiscountTemplateValidationError("Fix-Vorlage ohne Betrag ist nicht anwendbar");
+    }
+    return reviseOfferVariant(tx, ctx, {
+      schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
+      offerId: input.offerId,
+      variantId: input.variantId,
+      expectedRevision: input.expectedRevision,
+      operations: [{ operation: "set_global_fix_discount", fixDiscountCents: row.amount_cents }],
+    });
+  }
   if (row.kind !== DISCOUNT_KIND_PERCENT || row.percent_bps === null) {
     throw new DiscountTemplateValidationError("nur Prozent-Vorlagen sind global anwendbar");
   }

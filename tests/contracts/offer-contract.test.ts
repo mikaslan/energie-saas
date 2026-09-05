@@ -187,6 +187,8 @@ function snapshotBody(lineCount = 1) {
     currency: "EUR" as const,
     priceBasis: "net" as const,
     globalDiscountBps: 0,
+    // F16.3 Slice D: v2-Pflichtfeld (null = kein Fix-Rabatt).
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: ids.section,
@@ -411,8 +413,10 @@ describe("offer.v1 contract", () => {
     const snapshot = sealOfferVariantSnapshot(snapshotBody());
     expect(validateOfferVariantSnapshot(snapshot)).toEqual({ ok: true, value: snapshot });
     expect(snapshot.snapshotSha256).toBe(hashOfferVariantSnapshot(snapshot));
+    // F16.3 Slice D: v2-Siegel (Fix-Key null + v2-Literal) — per Renderer
+    // deterministisch abgeleitet, kein Rateversuch.
     expect(snapshot.snapshotSha256).toBe(
-      "6cd45743d7302a3c1d11c8f84c0290de08b7c7f2350db81542b3933b13792f65",
+      "8dca5c66946d348745d3b4d8a51726c5659ebbb7b8b6139d1c3fa61ad8bf2767",
     );
 
     const manipulated = structuredClone(snapshot);

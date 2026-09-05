@@ -13,7 +13,8 @@ import {
   hashPortalToken,
 } from "@/lib/integrations/portal/portal-contract";
 import { createPortalInvite, resolvePortalByToken } from "@/modules/portal";
-import { createSignatureRequest } from "@/modules/signatures";
+import { createSignatureRequest, signSignatureByToken } from "@/modules/signatures";
+import { hashSignatureToken } from "@/lib/integrations/offers/signature-contract";
 import { tenantFixtures } from "../setup/tenant-fixtures";
 import { testPool } from "../setup/test-db";
 
@@ -175,8 +176,9 @@ describe("F10.2 Slice B Signatur-Status (PostgreSQL)", () => {
     expect(plain.documents[0]!.signatureStatus).toBe("none");
     expect(plain.documents[0]!.signedAt).toBeNull();
 
-    await withAuthorizedTenantOn(testPool, ctx.actorId, workspaceId, (tx, serviceCtx) =>
-      createSignatureRequest(tx, serviceCtx, {
+    const signature = await withAuthorizedTenantOn(
+      testPool, ctx.actorId, workspaceId,
+      (tx, serviceCtx) => createSignatureRequest(tx, serviceCtx, {
         schemaVersion: SIGNATURE_REQUEST_CREATE_VERSION,
         workspaceId,
         offerId: ctx.offerId,
@@ -189,12 +191,20 @@ describe("F10.2 Slice B Signatur-Status (PostgreSQL)", () => {
     expect(pending.documents[0]!.signatureStatus).toBe("pending");
     expect(pending.documents[0]!.signedAt).toBeNull();
 
-    // Signatur direkt auf Zeilenebene (Service-Pfad ist M2-04-geprüft).
-    await tenantQuery(workspaceId, null, `update signature_request set status = 'signed', signer_name = 'F1003 Kundin', signed_variant_id = variant_id, signed_at = '2026-09-03T10:00:00+02:00'::timestamptz where workspace_id = $1::uuid and issuance_id = $2::uuid`, [workspaceId, ctx.issuanceId]);
+    const signedResult = await signSignatureByToken(testPool, {
+      schemaVersion: "signature-request-sign.v1",
+      token: signature.token,
+      mode: "click",
+      artifactMimeType: null,
+      artifactBytes: null,
+    });
+    expect(signedResult.status).toBe("signed");
 
     const signed = await resolvePortalByToken(testPool, { token: invite.token });
     expect(signed.documents[0]!.signatureStatus).toBe("signed");
-    expect(signed.documents[0]!.signedAt).toBe("2026-09-03T08:00:00.000Z");
+    // Gatefix: Signierzeit ist statement_timestamp (kein Hardcoded-
+    // Datum) — Vertrag ist "gesetzt und ISO-normalisiert".
+    expect(signed.documents[0]!.signedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
   });
 
   it("F1003-DB-02: Roh-JSON enthält nie signer_name/Token/Grund", async () => {

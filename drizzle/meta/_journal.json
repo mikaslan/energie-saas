@@ -442,6 +442,27 @@
       "when": 1788563540736,
       "tag": "0062_f10_portal_signature_status",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1788564674574,
+      "tag": "0063_f16_03_snapshot_v2_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1788567255966,
+      "tag": "0064_f10_02_signature_definer_testmode",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1788567623492,
+      "tag": "0065_f16_03_derive_draft_fix_field",
+      "breakpoints": true
     }
   ]
 }

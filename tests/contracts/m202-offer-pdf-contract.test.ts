@@ -52,6 +52,7 @@ function snapshotFixture(lineCount = 4) {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 250,
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: ids.section,
@@ -117,6 +118,7 @@ function snapshotFixture(lineCount = 4) {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 250,
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: ids.section,
@@ -198,7 +200,7 @@ function directInput(lineCount = 1) {
     recipient: { displayName: "Mia Muster" },
     installationSite: { formattedAddress: "Solstraße 8, 10115 Berlin" },
     variant: { name: "Basis", revision: 7 },
-    commercialTerms: { globalDiscountBps: 0, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Leistungsumfang",
@@ -318,7 +320,7 @@ describe("offer-pdf-draft-input.v1 contract", () => {
       recipient: { displayName: "Mia <Muster>" },
       installationSite: { formattedAddress: "Solstraße 8, 10115 Berlin" },
       variant: { name: "Komfort Ä", revision: 7 },
-      commercialTerms: { globalDiscountBps: 250, customDealNetCents: null },
+      commercialTerms: { globalDiscountBps: 250, globalFixDiscountCents: null, customDealNetCents: null },
     });
     expect(built.variant).toEqual({ name: "Komfort Ä", revision: 7 });
     expect(built.sections).toHaveLength(1);
@@ -412,6 +414,6 @@ describe("offer-pdf-draft-input.v1 contract", () => {
 
     expect(hashOfferPdfDraftInput(parsed)).toBe(hashOfferPdfDraftInput(reordered));
     expect(hashOfferPdfDraftInput(parsed))
-      .toBe("0ba696136adfc710bfa903ecdf7d9a5e4021226de5e1670d1bfffcfdac51c871");
+      .toBe("cfa07bcbccffe7c01ee42f6528c9e60483db54a311f17bd792b9caae677868e4");
   });
 });

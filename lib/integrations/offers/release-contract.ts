@@ -535,6 +535,8 @@ export const offerReleaseCandidateInputV1Schema = z.strictObject({
   }),
   commercialTerms: z.strictObject({
     globalDiscountBps: basisPointsSchema,
+    // F16.3 Slice D: globaler Fix-Rabatt (null = keiner).
+    globalFixDiscountCents: moneyCentsSchema.nullable(),
     customDealNetCents: moneyCentsSchema.nullable(),
   }),
   sections: z.array(documentSectionSchema).min(1).max(25),
@@ -747,6 +749,7 @@ export function buildOfferReleaseCandidateInput({
     },
     commercialTerms: {
       globalDiscountBps: variant.value.globalDiscountBps,
+      globalFixDiscountCents: variant.value.globalFixDiscountCents,
       customDealNetCents: variant.value.customDealNetCents,
     },
     sections,

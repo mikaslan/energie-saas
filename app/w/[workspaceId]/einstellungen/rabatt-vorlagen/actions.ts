@@ -42,15 +42,17 @@ function parseWorkspace(formData: FormData): string | null {
 // keine Float-Cents: Math.round auf ganze Einheiten).
 function parseEuroToCents(value: FormDataEntryValue | null): number | null {
   if (typeof value !== "string" || value.trim() === "") return null;
-  if (!/^\d+(\.\d{1,2})?$/u.test(value.trim())) return null;
-  const cents = Math.round(Number(value.trim()) * 100);
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d+(\.\d{1,2})?$/u.test(normalized)) return null;
+  const cents = Math.round(Number(normalized) * 100);
   return Number.isSafeInteger(cents) && cents >= 0 ? cents : null;
 }
 
 function parsePercentToBps(value: FormDataEntryValue | null): number | null {
   if (typeof value !== "string" || value.trim() === "") return null;
-  if (!/^\d+(\.\d{1,2})?$/u.test(value.trim())) return null;
-  const bps = Math.round(Number(value.trim()) * 100);
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d+(\.\d{1,2})?$/u.test(normalized)) return null;
+  const bps = Math.round(Number(normalized) * 100);
   return Number.isSafeInteger(bps) && bps >= 1 && bps <= 10_000 ? bps : null;
 }
 

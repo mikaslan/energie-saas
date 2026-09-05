@@ -7,6 +7,7 @@ import type { TenantTx } from "@/lib/db/types";
 import {
   OFFER_VARIANT_DUPLICATE_COMMAND_VERSION,
   OFFER_VARIANT_REVISE_COMMAND_VERSION,
+  OFFER_VARIANT_SNAPSHOT_VERSION,
   sealOfferVariantSnapshot,
   type OfferVariantSnapshotV1,
   type ReviseOfferVariantOperationV1,
@@ -56,7 +57,7 @@ function context(
 
 function snapshot(): OfferVariantSnapshotV1 {
   return sealOfferVariantSnapshot({
-    schemaVersion: "offer-variant-snapshot.v1",
+    schemaVersion: OFFER_VARIANT_SNAPSHOT_VERSION,
     canonicalizationVersion: "offer-jcs.v1",
     workspaceId: ids.workspace,
     offerId: ids.offer,
@@ -109,6 +110,8 @@ function snapshot(): OfferVariantSnapshotV1 {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    // F16.3 Slice D: v2-Pflichtfeld.
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: ids.section,

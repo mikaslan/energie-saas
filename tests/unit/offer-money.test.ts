@@ -25,6 +25,7 @@ function input(overrides: Partial<OfferPricingInput> = {}): OfferPricingInput {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -288,5 +289,77 @@ describe("M2-01 offer money engine", () => {
         expect(entry.finalSalesNetCents).toBeGreaterThanOrEqual(0);
       }
     }
+  });
+});
+
+describe("F16.3 Slice D globaler Fix-Rabatt (rein)", () => {
+  function threeLines() {
+    return [
+      line({ lineDomainId: "00000000-0000-4000-8000-000000000002", position: 2 }),
+      line({ lineDomainId: "00000000-0000-4000-8000-000000000001", position: 1 }),
+      line({ lineDomainId: "00000000-0000-4000-8000-000000000003", position: 3 }),
+    ];
+  }
+
+  function fixInput(globalFixDiscountCents: number | null, extra: Partial<OfferPricingInput> = {}) {
+    return input({
+      sections: [{
+        sectionDomainId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        position: 1,
+        discountBps: 0,
+        lines: threeLines(),
+      }],
+      globalFixDiscountCents,
+      ...extra,
+    });
+  }
+
+  it("zieht Fix exakt ab und verteilt stabil (Largest-Remainder)", () => {
+    // 3 x 100 = 300, Fix 100 -> 200, Anteile je 66.67 -> [67, 67, 66]
+    // (Positions-/ID-Ordnung wie Prozent-Verteilung).
+    const result = calculateOfferPricing(fixInput(100));
+    expect(result.lines.map((value) => [value.position, value.finalSalesNetCents]))
+      .toEqual([[2, 67], [1, 67], [3, 66]]);
+    expect(result.totals.basisNetCents).toBe(200);
+  });
+
+  it("floort Über-Fix bei 0 und wirkt nach Prozent, vor Custom-Deal", () => {
+    const floored = calculateOfferPricing(fixInput(10_000));
+    expect(floored.totals.basisNetCents).toBe(0);
+    expect(floored.lines.every((value) => value.finalSalesNetCents === 0)).toBe(true);
+
+    // 300 -50% = 150, -Fix 50 = 100, Custom-Deal 80 gewinnt zuletzt.
+    const combined = calculateOfferPricing(fixInput(50, {
+      globalDiscountBps: 5_000,
+      customDealNetCents: 80,
+    }));
+    expect(combined.totals.basisNetCents).toBe(80);
+    const withoutDeal = calculateOfferPricing(fixInput(50, { globalDiscountBps: 5_000 }));
+    expect(withoutDeal.totals.basisNetCents).toBe(100);
+  });
+
+  it("lässt Optionale unberührt und null wirkungslos", () => {
+    const result = calculateOfferPricing(input({
+      sections: [{
+        sectionDomainId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        position: 1,
+        discountBps: 0,
+        lines: [
+          line({ lineDomainId: "00000000-0000-4000-8000-000000000001", position: 1 }),
+          line({
+            lineDomainId: "00000000-0000-4000-8000-000000000002",
+            position: 2,
+            positionType: "optional",
+          }),
+        ],
+      }],
+      globalFixDiscountCents: 100,
+    }));
+    // Basis 100 - Fix 100 = 0; Optional bleibt 100.
+    expect(result.totals.basisNetCents).toBe(0);
+    expect(result.totals.optionalNetCents).toBe(100);
+
+    const untouched = calculateOfferPricing(fixInput(null));
+    expect(untouched.totals.basisNetCents).toBe(300);
   });
 });

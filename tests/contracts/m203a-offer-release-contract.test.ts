@@ -94,6 +94,7 @@ function variantSnapshotFixture({ hidden = false }: { hidden?: boolean } = {}) {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: ids.section,
@@ -159,6 +160,7 @@ function variantSnapshotFixture({ hidden = false }: { hidden?: boolean } = {}) {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
       sectionDomainId: ids.section,
@@ -648,6 +650,6 @@ describe("M2-03a offer release contracts", () => {
     expect(hashOfferRecipientSnapshot(recipientFixture()))
       .toBe("23349d6b19073f6cf8d696983f225533d5f6d18a31349beee7ccacbae6c5c01f");
     expect(hashOfferReleaseCandidateInput(candidateInputFixture()))
-      .toBe("dfa848824147bda97d7d7d55e31592d93c188de7b4d9860d6355db40a14091af");
+      .toBe("c33430e395eaa52e9f5d7bc66f8487941089fc28c3a626b7225e827f9a422d5e");
   });
 });

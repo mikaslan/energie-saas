@@ -92,7 +92,8 @@ function TemplateForm({
         <label className="grid gap-1 text-sm font-semibold text-slate-800">
           Betrag (€)
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             name="amountEuro"
             defaultValue={template?.amountCents !== null && template?.amountCents !== undefined
               ? (template.amountCents / 100).toFixed(2)

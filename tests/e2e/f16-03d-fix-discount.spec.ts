@@ -18,16 +18,16 @@ type SerializedM201State = {
   m201InverterId: string;
   m201ModuleId: string;
   m201ProjectId: string;
-  f163cProjectId: string;
+  f163dProjectId: string;
   w3WorkspaceId: string;
   m201WallboxId: string;
   m201WorkspaceId: string;
   serverLogPath: string;
 };
 
-type F163cState = M201RuntimeState & { f163cProjectId: string; w3WorkspaceId: string };
+type F163dState = M201RuntimeState & { f163dProjectId: string; w3WorkspaceId: string };
 
-function runtimeState(): F163cState {
+function runtimeState(): F163dState {
   const statePath = process.env.M1_05_E2E_STATE;
   if (!statePath) {
     throw new Error("M1_05_E2E_STATE fehlt; bitte über npm run test:e2e starten.");
@@ -42,14 +42,14 @@ function runtimeState(): F163cState {
     "m201InverterId",
     "m201ModuleId",
     "m201ProjectId",
-    "f163cProjectId",
+    "f163dProjectId",
     "w3WorkspaceId",
     "m201WallboxId",
     "m201WorkspaceId",
     "serverLogPath",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
-    throw new Error("Der private F16.3C-E2E-State ist unvollständig.");
+    throw new Error("Der private F16.3D-E2E-State ist unvollständig.");
   }
   const complete = parsed as SerializedM201State;
   return {
@@ -62,7 +62,7 @@ function runtimeState(): F163cState {
     m201InverterId: complete.m201InverterId,
     m201ModuleId: complete.m201ModuleId,
     m201ProjectId: complete.m201ProjectId,
-    f163cProjectId: complete.f163cProjectId,
+    f163dProjectId: complete.f163dProjectId,
     w3WorkspaceId: complete.w3WorkspaceId,
     m201WallboxId: complete.m201WallboxId,
     serverLogPath: complete.serverLogPath,
@@ -131,7 +131,7 @@ async function loginWithRealOtp(page: Page, expectedTarget: string): Promise<voi
 
 function selectedVariantId(page: Page): string {
   const variantId = new URL(page.url()).searchParams.get("variante");
-  if (!variantId) throw new Error("F16.3C-E2E-URL enthält keine aktive Variante.");
+  if (!variantId) throw new Error("F16.3D-E2E-URL enthält keine aktive Variante.");
   return variantId;
 }
 
@@ -145,12 +145,12 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.afterEach(async ({ page }) => {
-  expect(browserErrors.get(page) ?? [], "F16.3C Browser-Konsole und Page-Errors").toEqual([]);
+  expect(browserErrors.get(page) ?? [], "F16.3D Browser-Konsole und Page-Errors").toEqual([]);
 });
 
 
-test.describe("F16.3 Slice C Template-Apply global", () => {
-  test("F16.3-E2E-03: Prozent-Vorlage übernehmen, speichern, Revision trägt 500 bps", async ({ page }) => {
+test.describe("F16.3 Slice D Fix-Modell global", () => {
+  test("F16.3-E2E-04: Fix-Vorlage übernehmen, speichern, Total minus 12,50 €", async ({ page }) => {
     test.setTimeout(180_000);
     const state = runtimeState();
 
@@ -162,16 +162,16 @@ test.describe("F16.3 Slice C Template-Apply global", () => {
     const creator = page.locator("section").filter({
       has: page.getByRole("heading", { name: "Neue Vorlage", exact: true }),
     });
-    await creator.getByLabel("Name").fill("W3-E2E-Prozent");
-    await creator.getByLabel("Art").selectOption("percent_bps");
-    await creator.getByLabel("Prozentsatz").fill("5");
+    await creator.getByLabel("Name").fill("W3-E2E-Fix");
+    await creator.getByLabel("Art").selectOption("fix_cents");
+    await creator.getByLabel("Betrag in Euro").fill("12,50");
     await creator.getByRole("button", { name: "Anlegen", exact: true }).click();
-    await expect(page.getByText("W3-E2E-Prozent", { exact: true })).toBeVisible();
+    await expect(page.getByText("W3-E2E-Fix", { exact: true })).toBeVisible();
 
     // 2) Angebot per Projekt-UI anlegen (M2-01-Muster).
-    // Gatefix: eigenes W3-Projekt (geteiltes M2-01-Projekt brach die
-// m2-01/02/03a/04-Kaskade im Gesamtlauf).
-  const projectPath = `/w/${state.w3WorkspaceId}/anfragen/${state.f163cProjectId}`;
+    // Gatefix: eigenes W3-Projekt (Muse hatte hier das geteilte M2-01-Projekt
+// verwendet — Kaskade auf m2-01/02/03a/04 im Gesamtlauf).
+  const projectPath = `/w/${state.w3WorkspaceId}/anfragen/${state.f163dProjectId}`;
     await page.goto(projectPath);
     // h1 = Kontakt-DisplayName (Projektname steht im Untertitel).
     await expect(page.getByRole("heading", { name: M2_01_E2E_CONTACT, level: 1 })).toBeVisible();
@@ -184,15 +184,18 @@ test.describe("F16.3 Slice C Template-Apply global", () => {
     await page.waitForURL((url) =>
       /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
       && url.searchParams.has("variante"));
-    const w3State = { ...state, workspaceId: state.w3WorkspaceId, m201ProjectId: state.f163cProjectId };
+    const w3State = { ...state, workspaceId: state.w3WorkspaceId, m201ProjectId: state.f163dProjectId };
     const initial = await readM201Offer(w3State);
     const variantId = selectedVariantId(page);
     expect(variantId).toBe(initial.variantId);
 
-    // 3) Vorlage übernehmen -> Draft zeigt 5 -> speichern -> Revision 2 mit 500 bps.
+    // 3) Vorlage übernehmen -> Draft zeigt 12,50 -> speichern -> Total -1250.
     await expect(page.locator('[data-offer-detail-state="loaded"]')).toBeVisible();
-    await page.getByLabel("Aus Vorlage übernehmen").selectOption({ label: "W3-E2E-Prozent (5 % · Rabatt)" });
-    await expect(page.getByLabel("Globaler Rabatt %")).toHaveValue("5");
+    const before = JSON.parse(
+      (await readM201RevisionEvidence(w3State, initial.offerId, variantId)).snapshotText,
+    ) as { totals: { basisNetCents: number } };
+    await page.getByLabel("Aus Vorlage übernehmen").selectOption({ label: "W3-E2E-Fix (12,50 € · Rabatt)" });
+    await expect(page.getByLabel("Globaler Fix-Rabatt €")).toHaveValue("12,50");
     await page.getByRole("button", { name: "Angebotsentwurf speichern" }).click();
     await expect.poll(async () => (
       await readM201RevisionEvidence(w3State, initial.offerId, variantId)
@@ -201,7 +204,11 @@ test.describe("F16.3 Slice C Template-Apply global", () => {
       timeout: 15_000,
     }).toBe(2);
     const evidence = await readM201RevisionEvidence(w3State, initial.offerId, variantId);
-    const snapshot = JSON.parse(evidence.snapshotText) as { globalDiscountBps?: unknown };
-    expect(snapshot.globalDiscountBps).toBe(500);
+    const snapshot = JSON.parse(evidence.snapshotText) as {
+      globalFixDiscountCents?: unknown;
+      totals: { basisNetCents: number };
+    };
+    expect(snapshot.globalFixDiscountCents).toBe(1250);
+    expect(snapshot.totals.basisNetCents).toBe(before.totals.basisNetCents - 1250);
   });
 });

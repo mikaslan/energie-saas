@@ -97,6 +97,9 @@ describe("F10.1 portal command contracts", () => {
         offerNumber: "A-1",
         documentDate: "2026-09-01",
         issuedAt: "2026-09-02T00:00:00.000Z",
+        // F10.2 Slice B: Projektion traegt jetzt Signatur-Status je Dok.
+        signatureStatus: "none",
+        signedAt: null,
       }],
       appointments: [{
         id: INVITE,

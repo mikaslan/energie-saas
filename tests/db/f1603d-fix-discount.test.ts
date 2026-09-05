@@ -40,10 +40,18 @@ import {
 import {
   applyDiscountTemplateToOfferGlobal,
   createDiscountTemplate,
-  DiscountTemplateNotFoundError,
-  DiscountTemplateValidationError,
 } from "@/modules/discounts";
-import { createOfferFromRequest } from "@/modules/offers";
+import {
+  applySubsidyTemplateToOfferGlobal,
+  createSubsidyTemplate,
+} from "@/modules/subsidies";
+import {
+  canonicalizeOfferJson,
+  OFFER_VARIANT_REVISE_COMMAND_VERSION,
+  validateOfferVariantSnapshot,
+} from "@/lib/integrations/offers/contract";
+import { SUBSIDY_TEMPLATE_SCHEMA_VERSION } from "@/lib/integrations/subsidies/contract";
+import { createOfferFromRequest, reviseOfferVariant } from "@/modules/offers";
 import { testPool } from "../setup/test-db";
 
 const GOLDEN_REQUEST = JSON.parse(readFileSync(
@@ -106,7 +114,7 @@ async function createOfferMembers(): Promise<OfferMembers> {
     ]) {
       await tx.execute(sql`
         insert into user_identity (id, email)
-        values (${userId}::uuid, ${`${userId}@f1603c.test`})
+        values (${userId}::uuid, ${`${userId}@f1603d.test`})
       `);
     }
     await tx.execute(sql`
@@ -423,7 +431,7 @@ function productCommand(
   const basePrices = PRODUCT_PRICES[type];
   return {
     schemaVersion: CATALOG_COMPONENT_CREATE_COMMAND_VERSION,
-    internalSku: `F1603C-${type.toUpperCase()}-${index}`,
+    internalSku: `F1603D-${type.toUpperCase()}-${index}`,
     componentType: type as CatalogComponentType,
     presentation: {
       displayName: `Synthetische ${type}-Komponente`,
@@ -442,14 +450,14 @@ function productCommand(
       salesPriceNetCents: basePrices.salesPriceNetCents,
       purchaseProvenance: {
         sourceKind: "supplier_price_list",
-        reference: `PRIVATE-F1603C-PURCHASE-${type}-${index}`,
+        reference: `PRIVATE-F1603D-PURCHASE-${type}-${index}`,
         observedOn: "2026-08-30",
         rightsBasis: "supplier_authorized",
         sourceDocumentSha256: null,
       },
       salesProvenance: {
         sourceKind: "workspace_pricing",
-        reference: `SYNTHETIC-F1603C-SALES-${type}-${index}`,
+        reference: `SYNTHETIC-F1603D-SALES-${type}-${index}`,
         observedOn: "2026-08-30",
         rightsBasis: "workspace_owned",
         sourceDocumentSha256: null,
@@ -457,7 +465,7 @@ function productCommand(
     },
     technicalProvenance: {
       sourceKind: "workspace_manual",
-      reference: `SYNTHETIC-F1603C-TECH-${type}-${index}`,
+      reference: `SYNTHETIC-F1603D-TECH-${type}-${index}`,
       observedOn: "2026-08-30",
       rightsBasis: "workspace_owned",
       sourceDocumentSha256: null,
@@ -528,6 +536,7 @@ function offerCreateCommand(project: PlanningProject): CreateOfferCommandV1 {
 }
 
 
+
 type TemplateOffer = {
   members: OfferMembers;
   offerId: string;
@@ -545,116 +554,136 @@ async function createBasisOffer(): Promise<TemplateOffer> {
   return { members, offerId: created.offerId, variantId: created.variantId };
 }
 
-async function createTemplate(
-  members: OfferMembers,
-  input: {
-    name: string;
-    kind: "fix_cents" | "percent_bps";
-    amountCents: number | null;
-    percentBps: number | null;
-    capCents: number | null;
-  },
-): Promise<string> {
-  const created = await withAuthorizedTenantOn(
-    testPool, members.operatorId, members.workspaceId,
-    (tx, ctx) => createDiscountTemplate(tx, ctx, {
-      schemaVersion: DISCOUNT_TEMPLATE_SCHEMA_VERSION,
-      ...input,
-    }),
-  );
-  return created.id;
-}
-
-async function readGlobalDiscountBps(
+async function readRevisionSnapshot(
   workspaceId: string,
-  offerId: string,
   variantId: string,
   revision: number,
-): Promise<number | null> {
+): Promise<{ snapshot: Record<string, unknown>; totalsBasisNet: number; fix: unknown }> {
   return withTenantOn(testPool, workspaceId, async (tx) => {
-    const result = await tx.execute<{ bps: number | null }>(sql`
-      select (revision_snapshot ->> 'globalDiscountBps')::integer as bps
+    const result = await tx.execute<{ snapshot: Record<string, unknown>; basis: number; fix: unknown }>(sql`
+      select revision_snapshot as snapshot,
+             (revision_snapshot -> 'totals' ->> 'basisNetCents')::integer as basis,
+             (revision_snapshot -> 'globalFixDiscountCents') as fix
         from offer_variant_revision
        where workspace_id = ${workspaceId}::uuid
-         and offer_id = ${offerId}::uuid
          and variant_id = ${variantId}::uuid
          and revision = ${revision}
     `);
-    return result.rows[0]?.bps ?? null;
+    const row = result.rows[0];
+    if (!row) throw new Error("F1603D: Revision fehlt.");
+    return { snapshot: row.snapshot, totalsBasisNet: row.basis, fix: row.fix };
   });
 }
 
-describe("F16.3 Slice C Template-Apply global (PostgreSQL)", () => {
-  it("F1603C-DB-01: cap-freie Prozent-Vorlage landet als globalDiscountBps", async () => {
+describe("F16.3 Slice D Fix-Modell global (PostgreSQL)", () => {
+  it("F1603D-DB-01: Fix-Vorlage zieht Betrag vom Total ab (exakt, siegelgebunden)", async () => {
     const { members, offerId, variantId } = await createBasisOffer();
-    const templateId = await createTemplate(members, {
-      name: "Global-Fuenf",
-      kind: "percent_bps",
-      amountCents: null,
-      percentBps: 500,
-      capCents: null,
-    });
+    const before = await readRevisionSnapshot(members.workspaceId, variantId, 1);
+    expect(before.fix).toBeNull();
+    const created = await withAuthorizedTenantOn(
+      testPool, members.operatorId, members.workspaceId,
+      (tx, ctx) => createDiscountTemplate(tx, ctx, {
+        schemaVersion: DISCOUNT_TEMPLATE_SCHEMA_VERSION,
+        name: "Fix-500",
+        kind: "fix_cents",
+        amountCents: 500,
+        percentBps: null,
+        capCents: null,
+      }),
+    );
     const result = await withAuthorizedTenantOn(
       testPool, members.operatorId, members.workspaceId,
       (tx, ctx) => applyDiscountTemplateToOfferGlobal(tx, ctx, {
-        templateId, offerId, variantId, expectedRevision: 1,
+        templateId: created.id, offerId, variantId, expectedRevision: 1,
       }),
     );
     expect(result.revision).toBe(2);
-    expect(await readGlobalDiscountBps(members.workspaceId, offerId, variantId, 2)).toBe(500);
+    const after = await readRevisionSnapshot(members.workspaceId, variantId, 2);
+    expect(after.fix).toBe(500);
+    expect(after.totalsBasisNet).toBe(before.totalsBasisNet - 500);
+    // Siegel über Fix-Key: Parser akzeptiert, Wert erhalten.
+    const validated = validateOfferVariantSnapshot(after.snapshot);
+    expect(validated.ok).toBe(true);
+    if (validated.ok) expect(validated.value.globalFixDiscountCents).toBe(500);
   });
 
-  it("F1603C-DB-02: Cap-Vorlage und fremde ID werden abgewiesen (Fix: Slice D)", async () => {
+  it("F1603D-DB-02: Fix über Total floort bei 0, Aufheben stellt Total wieder her", async () => {
     const { members, offerId, variantId } = await createBasisOffer();
-    const cappedId = await createTemplate(members, {
-      name: "Gedeckelt",
-      kind: "percent_bps",
-      amountCents: null,
-      percentBps: 500,
-      capCents: 1000,
-    });
-    const apply = (templateId: string) => withAuthorizedTenantOn(
+    const before = await readRevisionSnapshot(members.workspaceId, variantId, 1);
+    const created = await withAuthorizedTenantOn(
       testPool, members.operatorId, members.workspaceId,
-      (tx, ctx) => applyDiscountTemplateToOfferGlobal(tx, ctx, {
-        templateId, offerId, variantId, expectedRevision: 1,
+      (tx, ctx) => createDiscountTemplate(tx, ctx, {
+        schemaVersion: DISCOUNT_TEMPLATE_SCHEMA_VERSION,
+        name: "Fix-Riese",
+        kind: "fix_cents",
+        amountCents: before.totalsBasisNet + 100_000,
+        percentBps: null,
+        capCents: null,
       }),
     );
-    await expect(apply(cappedId)).rejects.toBeInstanceOf(DiscountTemplateValidationError);
-    await expect(apply("00000000-0000-4000-8000-000000000000"))
-      .rejects.toBeInstanceOf(DiscountTemplateNotFoundError);
-    // Keine Revision geschrieben.
-    expect(await readGlobalDiscountBps(members.workspaceId, offerId, variantId, 2)).toBeNull();
+    const apply = (templateId: string, expectedRevision: number) => withAuthorizedTenantOn(
+      testPool, members.operatorId, members.workspaceId,
+      (tx, ctx) => applyDiscountTemplateToOfferGlobal(tx, ctx, {
+        templateId, offerId, variantId, expectedRevision,
+      }),
+    );
+    await apply(created.id, 1);
+    const floored = await readRevisionSnapshot(members.workspaceId, variantId, 2);
+    expect(floored.totalsBasisNet).toBe(0);
+    // Aufheben per direkter Operation (null = kein Fix).
+    await withAuthorizedTenantOn(
+      testPool, members.operatorId, members.workspaceId,
+      (tx, ctx) => reviseOfferVariant(tx, ctx, {
+        schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
+        offerId,
+        variantId,
+        expectedRevision: 2,
+        operations: [{ operation: "set_global_fix_discount", fixDiscountCents: null }],
+      }),
+    );
+    const restored = await readRevisionSnapshot(members.workspaceId, variantId, 3);
+    expect(restored.fix).toBeNull();
+    expect(restored.totalsBasisNet).toBe(before.totalsBasisNet);
   });
 
-  it("F1603C-DB-03: ohne discounts-Cap und als Viewer verweigert", async () => {
+  it("F1603D-DB-03: Förder-Fix symmetrisch + v1-Historie bleibt lesbar", async () => {
     const { members, offerId, variantId } = await createBasisOffer();
-    const templateId = await createTemplate(members, {
-      name: "Global-Fuenf",
-      kind: "percent_bps",
-      amountCents: null,
-      percentBps: 500,
-      capCents: null,
-    });
-    const input = { templateId, offerId, variantId, expectedRevision: 1 };
-    const plainCtx: ServiceCtx = {
-      workspaceId: members.workspaceId,
-      actor: members.plainEditorId,
-      role: "editor",
-      capabilities: {},
-      featureFlags: {},
+    const created = await withAuthorizedTenantOn(
+      testPool, members.operatorId, members.workspaceId,
+      (tx, ctx) => createSubsidyTemplate(tx, ctx, {
+        schemaVersion: SUBSIDY_TEMPLATE_SCHEMA_VERSION,
+        name: "Foerder-Fix",
+        kind: "fix_cents",
+        amountCents: 750,
+        percentBps: null,
+        capCents: null,
+      }),
+    );
+    await withAuthorizedTenantOn(
+      testPool, members.operatorId, members.workspaceId,
+      (tx, ctx) => applySubsidyTemplateToOfferGlobal(tx, ctx, {
+        templateId: created.id, offerId, variantId, expectedRevision: 1,
+      }),
+    );
+    const after = await readRevisionSnapshot(members.workspaceId, variantId, 2);
+    expect(after.fix).toBe(750);
+
+    // v1-Historie: Rev-1-Snapshot (fix null) als v1-Body mit v1-Literal
+    // und v1-kanonischem Hash versiegeln — echte v1-Gestalt:
+    const rev1 = await readRevisionSnapshot(members.workspaceId, variantId, 1);
+    const rev1body: Record<string, unknown> = { ...(rev1.snapshot as Record<string, unknown>) };
+    delete rev1body.globalFixDiscountCents;
+    delete rev1body.snapshotSha256;
+    rev1body.schemaVersion = "offer-variant-snapshot.v1";
+    const v1sealed = {
+      ...rev1body,
+      snapshotSha256: createHash("sha256").update(canonicalizeOfferJson(rev1body), "utf8").digest("hex"),
     };
-    const viewerCtx: ServiceCtx = {
-      workspaceId: members.workspaceId,
-      actor: members.viewerId,
-      role: "viewer",
-      capabilities: {},
-      featureFlags: {},
-    };
-    await expect(withTenantOn(testPool, members.workspaceId, (tx) =>
-      applyDiscountTemplateToOfferGlobal(tx, plainCtx, input),
-    )).rejects.toThrow();
-    await expect(withTenantOn(testPool, members.workspaceId, (tx) =>
-      applyDiscountTemplateToOfferGlobal(tx, viewerCtx, input),
-    )).rejects.toThrow();
+    const validated = validateOfferVariantSnapshot(v1sealed);
+    expect(validated.ok).toBe(true);
+    if (validated.ok) {
+      expect(validated.value.globalFixDiscountCents).toBeNull();
+      expect(validated.value.schemaVersion).toBe("offer-variant-snapshot.v2");
+    }
   });
 });

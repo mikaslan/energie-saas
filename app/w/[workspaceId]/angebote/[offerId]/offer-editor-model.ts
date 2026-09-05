@@ -37,6 +37,7 @@ export interface OfferEditorSourceSnapshot {
   variantName: string;
   description: string | null;
   globalDiscountBps?: number;
+  globalFixDiscountCents?: number | null;
   customDealNetCents?: number | null;
   sections: readonly OfferEditorSourceSection[];
 }
@@ -73,6 +74,8 @@ export interface OfferEditorDraft {
   variantName: string;
   description: string;
   globalDiscountPercent: string;
+  // F16.3 Slice D: globaler Fix-Rabatt in Euro ("" = keiner).
+  globalFixDiscountEuros: string;
   customDealNetEuros: string;
   sections: readonly OfferEditorDraftSection[];
 }
@@ -82,6 +85,7 @@ export type OfferRevisionOperation =
   | { operation: "set_variant_name"; name: string }
   | { operation: "set_variant_description"; description: string | null }
   | { operation: "set_global_discount"; discountBps: number }
+  | { operation: "set_global_fix_discount"; fixDiscountCents: number | null }
   | { operation: "set_custom_deal"; customDealNetCents: number | null }
   | { operation: "set_section_discount"; sectionDomainId: string; discountBps: number }
   | { operation: "move_section"; sectionDomainId: string; position: number }
@@ -187,6 +191,8 @@ export function createOfferEditorDraft(snapshot: OfferEditorSourceSnapshot): Off
     variantName: snapshot.variantName,
     description: snapshot.description ?? "",
     globalDiscountPercent: formatScaledInteger(snapshot.globalDiscountBps ?? 0, 2),
+    globalFixDiscountEuros: snapshot.globalFixDiscountCents === null || snapshot.globalFixDiscountCents === undefined
+      ? "" : formatScaledInteger(snapshot.globalFixDiscountCents, 2),
     customDealNetEuros: snapshot.customDealNetCents === null || snapshot.customDealNetCents === undefined
       ? "" : formatScaledInteger(snapshot.customDealNetCents, 2),
     sections: sourceSections(snapshot).map((section) => ({
@@ -472,6 +478,14 @@ export function buildOfferRevisionOperations(
     if (!capabilities.canApplyDiscount) addError(errors, "custom-deal", "Für den Custom Deal fehlt die Berechtigung.");
     else operations.push({ operation: "set_custom_deal", customDealNetCents });
   }
+  // F16.3 Slice D: globaler Fix-Rabatt ("" = aufheben).
+  const globalFixDiscountCents = draft.globalFixDiscountEuros.trim() === "" ? null
+    : parseScaledInteger(draft.globalFixDiscountEuros, 2, MAX_MONEY_CENTS);
+  if (draft.globalFixDiscountEuros.trim() !== "" && globalFixDiscountCents === null) addError(errors, "global-fix-discount", "Der globale Fix-Rabatt muss ein gültiger Eurobetrag sein.");
+  else if (globalFixDiscountCents !== (snapshot.globalFixDiscountCents ?? null)) {
+    if (!capabilities.canApplyDiscount) addError(errors, "global-fix-discount", "Für globale Rabatte fehlt die Berechtigung.");
+    else operations.push({ operation: "set_global_fix_discount", fixDiscountCents: globalFixDiscountCents });
+  }
 
   const originalSections = sourceSections(snapshot);
   const sourceSectionById = new Map(originalSections.map((section) => [section.sectionDomainId, section]));
@@ -657,7 +671,10 @@ export function calculateOfferEditorPreview(
   const globalDiscountBps = parseScaledInteger(draft.globalDiscountPercent, 2, 10_000);
   const customDealNetCents = draft.customDealNetEuros.trim() === "" ? null
     : parseScaledInteger(draft.customDealNetEuros, 2, MAX_MONEY_CENTS);
-  if (globalDiscountBps === null || (draft.customDealNetEuros.trim() !== "" && customDealNetCents === null)) {
+  const globalFixDiscountCents = draft.globalFixDiscountEuros.trim() === "" ? null
+    : parseScaledInteger(draft.globalFixDiscountEuros, 2, MAX_MONEY_CENTS);
+  if (globalDiscountBps === null || (draft.customDealNetEuros.trim() !== "" && customDealNetCents === null)
+    || (draft.globalFixDiscountEuros.trim() !== "" && globalFixDiscountCents === null)) {
     return null;
   }
   try {
@@ -665,6 +682,7 @@ export function calculateOfferEditorPreview(
       currency: "EUR",
       priceBasis: "net",
       globalDiscountBps,
+      globalFixDiscountCents,
       customDealNetCents,
       sections: draft.sections.map((section, sectionIndex) => {
         const discountBps = parseScaledInteger(section.discountPercent, 2, 10_000);
