@@ -189,10 +189,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     expect(migration).toMatch(/SET closed_at = updated_at[\s\S]+outcome IN \('won', 'cannot_fulfill'\)/u);
     // Journal-Pin folgt dem Wellen-Fortschritt (0065 Definer-Tanz,
     // 0066 Derive-v3-Felder, 0067 F1-09-Mentions, 0068 F2-05-Zahlarten,
-    // 0069 F7-01-Installation).
+    // 0069 F7-01-Installation, 0070 Installation-ws-id-uq,
+    // 0071 Portal-M115-Owner-Grant).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 69,
-      tag: "0069_f7_01_installation",
+      idx: 71,
+      tag: "0071_f10_portal_m115_owner_grant",
     });
   });
 

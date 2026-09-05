@@ -83,8 +83,8 @@ export class OfferPdfDraftNotFoundError extends Error {
 }
 
 export class OfferPdfDraftIntegrityError extends Error {
-  constructor() {
-    super("stored offer PDF draft data failed integrity validation");
+  constructor(options?: { cause?: unknown }) {
+    super("stored offer PDF draft data failed integrity validation", options);
     this.name = "OfferPdfDraftIntegrityError";
   }
 }
@@ -821,8 +821,9 @@ export async function getOfferPreviewHtml(
       preparedAt,
       variantSnapshot: source.snapshot,
     });
-  } catch {
-    throw new OfferPdfDraftIntegrityError();
+  } catch (error) {
+    // Cause bleibt lesbar (rls.test.ts-Muster); Typ/Meldung unveraendert.
+    throw new OfferPdfDraftIntegrityError({ cause: error });
   }
   if (
     input.variant.revision !== source.revision.revision
