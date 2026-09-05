@@ -7,3 +7,7 @@ node_modules/
 .superpowers/pgdata/
 playwright-report/
 test-results/
+
+# Agent-Rule-Dateien (autogeneriert, bewusst entfernt)
+AGENTS.md
+CLAUDE.md
