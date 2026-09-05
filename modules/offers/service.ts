@@ -488,6 +488,12 @@ export async function listOffers(
   };
 }
 
+function readVariantBundles(value: unknown): OptionalBundlesV1 {
+  const bundles = optionalBundlesSchema.safeParse(value);
+  if (!bundles.success) throw new OfferIntegrityError();
+  return bundles.data;
+}
+
 export async function getOfferDetail(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -654,8 +660,12 @@ export async function getOfferDetail(
     displayTotalNetCents: overrideActive ? totalPriceOverrideNetCents : primaryBasisNetCents,
     displayTotalGrossCents: overrideActive ? null : primaryBasisGrossCents,
     variants: variantsResult.rows.map((variant) => {
-      const bundles = optionalBundlesSchema.safeParse(variant.optional_bundles);
-      if (!bundles.success) throw new OfferIntegrityError();
+      // Robuster Read wie beim Override oben: fehlende Spalte in
+      // Unit-Fixtures/Alt-Zeilen (undefined) = leere Liste; nur echte,
+      // korrupte Werte sind ein Integritätsfehler.
+      const bundles = variant.optional_bundles === undefined
+        ? []
+        : readVariantBundles(variant.optional_bundles);
       return {
         id: variant.id,
         name: variant.name,
@@ -663,7 +673,7 @@ export async function getOfferDetail(
         isPrimary: variant.is_primary,
         active: variant.id === active.id,
         href: `/w/${ctx.workspaceId}/angebote/${offerRecord.id}?variante=${variant.id}`,
-        bundles: bundles.data,
+        bundles,
       };
     }),
     activeVariant,

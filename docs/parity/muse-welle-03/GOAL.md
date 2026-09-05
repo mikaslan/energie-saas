@@ -67,3 +67,8 @@ notiert.
   Unit-Tests, E2E-02; lokal grün (typecheck/lint/depcruise/generate,
   --list 2/2). VERIFIED pending CI/Maschine (Billing-Block).
 - ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 48 (2026-09-05)
+- Turn-47-Slice gehärtet (Bundle-Read-Toleranz, sonst CI-rot auf
+  bestehenden Mocks); lokal typecheck/lint grün.
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

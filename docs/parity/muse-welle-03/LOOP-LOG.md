@@ -738,3 +738,14 @@
 - Reviews Kimi/DeepSeek Exit-3 (kein Key). Lokal: typecheck grün, lint
   0 errors, depcruise sauber, db:generate drift-frei, --list 2/2.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 48 — 2026-09-05, Self-Review Turn-47 (1 echter Fund, gefixt)
+
+- Fund: getOfferDetail-Bundle-Read warf bei Mock-Zeilen ohne
+  optional_bundles (zod safeParse(undefined) = false, per node belegt)
+  → m201-Review-Regression + Permission-Matrix wären in CI rot gewesen.
+- Fix: undefined-Toleranz nach Override-Hausmuster (Z.535), korrupte
+  Werte weiter OfferIntegrityError; neuer Helper readVariantBundles.
+- Geprüft: keine exakten Shape-Assertions auf variants; Query-Zahl
+  unverändert (kein neuer DB-Call); typecheck grün, lint 0 errors.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
