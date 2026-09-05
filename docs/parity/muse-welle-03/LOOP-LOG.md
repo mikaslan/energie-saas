@@ -697,3 +697,16 @@
 - 0067-Naht (Scaffold + RLS-Anhang) geprüft: führende
   `-->`-Zeile hat Präzedenz (0041/0057), Splitter-konform.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 45 — 2026-09-05, Adversarialer Re-Read (Fehlalarm, kein Code)
+
+- SPEC-Hypothese (F1-09-Mentions vs. M1-13-Notizen): widerlegt —
+  SPEC nennt explizit project_note_mention (workspace_id, note_id,
+  mentioned_identity_id, email_lower, revision), Service nutzt
+  getNoteMembershipRole + INSERT dort. Kein Drift.
+- Seed-Hypothesen (column_type NOT NULL, project.name NOT NULL):
+  widerlegt — Seed legt keine eigenen Board-Zeilen an;
+  Trigger workspace_default_request_board (0022) provisioniert
+  Default-Board + Intake-Spalte pro Workspace (derselbe Mechanismus,
+  der m113 grün hält). contact.first_name existiert seit 0042.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
