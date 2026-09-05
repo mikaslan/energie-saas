@@ -611,3 +611,14 @@
 - Beweis: /tmp/proof-mentions.mts 8/8 PASS (reale Modul-Imports).
   typecheck grün, eslint beider Dateien sauber.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 36 — 2026-09-05, Strictness-Regressionssweep (kein Code)
+
+- Alle Snapshot-/Draft-Konstruktoren in tests/ gegen strikte Ketten
+  geprüft: einziger v3-Bauer ist f1603e (eigener Slice, Keys ok);
+  v1-Bauer: Fixture (pur, c3c22c7), f1603d (resealt sauber),
+  m201/m107 (inert, nie validiert). Keine weiteren Stolperstellen.
+- Trigger-Semantik verifiziert: `->` auf fehlenden Key = SQL-NULL →
+  jsonb_build_object setzt explizit null = Builder-`?? null` →
+  kanonisch identisch (m202-Hash-Test konsistent).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
