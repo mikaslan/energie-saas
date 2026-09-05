@@ -588,10 +588,13 @@ export async function requestOfferPdfDraft(
   let input: OfferPdfDraftInputV1;
   let inputSha256: string;
   try {
+    // Roh-Snapshot (Siegel-Hash konsistent): source.snapshot ist der
+    // Upgrade-View (v3-Normalform mit stale Hash) und wuerde die
+    // Siegelpruefung in buildOfferPdfDraftInput zu Unrecht werfen (f162).
     input = buildOfferPdfDraftInput({
       offerNumber: source.offer.offer_number,
       preparedAt,
-      variantSnapshot: source.snapshot,
+      variantSnapshot: source.revision.revision_snapshot,
     });
     inputSha256 = hashOfferPdfDraftInput(input);
   } catch {
@@ -816,10 +819,11 @@ export async function getOfferPreviewHtml(
   const preparedAt = await databaseNow(tx);
   let input: OfferPdfDraftInputV1;
   try {
+    // Roh-Snapshot (Siegel-Hash konsistent) — siehe Draft-Pfad oben.
     input = buildOfferPdfDraftInput({
       offerNumber: source.offer.offer_number,
       preparedAt,
-      variantSnapshot: source.snapshot,
+      variantSnapshot: source.revision.revision_snapshot,
     });
   } catch (error) {
     // Cause bleibt lesbar (rls.test.ts-Muster); Typ/Meldung unveraendert.
