@@ -50,12 +50,14 @@ import {
   listProjectAppointments,
   type ProjectAppointmentRangeV1,
 } from "@/modules/calendar";
+import { getInstallation, type InstallationDto } from "@/modules/installations";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
 import { AssignedExternalRequestView } from "./assigned-external-request-view";
 import { ContactSection } from "./contact-section";
 import { EnergyCalculationSection } from "./energy-calculation-section";
 import { EnergyProfileSection } from "./energy-profile-section";
+import { InstallationSection } from "./installation-section";
 import { OfferCreateEntry } from "./offer-create-entry";
 import {
   buildOfferCreateView,
@@ -203,6 +205,36 @@ async function loadPortalStatus(
       async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "project.write"),
     );
     return { kind: "loaded", status: loaded, canWrite: writable };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+type InstallationLoadResult =
+  | { kind: "loaded"; installation: InstallationDto | null; canWrite: boolean }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+async function loadInstallationStatus(
+  workspaceId: string,
+  projectId: string,
+): Promise<InstallationLoadResult> {
+  try {
+    const installation = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation",
+      (tx, ctx) => getInstallation(tx, ctx, { projectId }),
+    );
+    const writable = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation_write_gate",
+      async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
+    );
+    return { kind: "loaded", installation, canWrite: writable };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -596,6 +628,10 @@ export default async function ProjectTriagePage({
   if (portalResult.kind === "unauthenticated") redirectToProjectLogin(detailPath);
   if (portalResult.kind === "denied") return <DeniedState />;
 
+  const installationResult = await loadInstallationStatus(workspaceId, projectId);
+  if (installationResult.kind === "unauthenticated") redirectToProjectLogin(detailPath);
+  if (installationResult.kind === "denied") return <DeniedState />;
+
   const taskPageResult = await loadProjectTaskPage(
     workspaceId,
     projectId,
@@ -823,6 +859,15 @@ export default async function ProjectTriagePage({
 
         <div className="mb-6">
           <OfferCreateEntry view={offerCreateView} />
+        </div>
+
+        <div className="mb-6">
+          <InstallationSection
+            workspaceId={workspaceId}
+            projectId={projectId}
+            installation={installationResult.installation}
+            canWrite={installationResult.canWrite}
+          />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] lg:items-start">

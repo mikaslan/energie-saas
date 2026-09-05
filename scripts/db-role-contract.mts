@@ -257,6 +257,18 @@ const SUBSIDY_TEMPLATE_RELATIONS = [
   "subsidy_template",
 ] as const;
 
+const PAYMENT_OPTION_RELATIONS = [
+  "payment_option",
+] as const;
+
+const INSTALLATION_RELATIONS = [
+  "installation",
+] as const;
+
+const MENTION_RELATIONS = [
+  "project_note_mention",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -1457,6 +1469,58 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F2.5 Slice A: Zahlarten-Stammdaten — Archiv statt Delete (kein
+  // DELETE-Grant). Pin per Orakel (Präzedenz 23b3411): Platzhalter wird aus
+  // dem Gate-Diff des ersten Laufs mit migrierter 0068 übernommen.
+  const hasPaymentOptions = await hasAtomicPublicRelationSet(
+    client,
+    PAYMENT_OPTION_RELATIONS,
+    "Rollen-ACL-Manifest: F2-05-Zahlarten",
+  );
+  if (hasPaymentOptions) {
+    await client.query(`
+      revoke all privileges on
+        public.payment_option
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.payment_option to app_runtime
+    `);
+  }
+
+  // F7.1 Slice A: Ausführungsphase — kein DELETE-Grant (kein Löschen).
+  // Pin per Orakel (Präzedenz 23b3411).
+  const hasInstallations = await hasAtomicPublicRelationSet(
+    client,
+    INSTALLATION_RELATIONS,
+    "Rollen-ACL-Manifest: F7-01-Installation",
+  );
+  if (hasInstallations) {
+    await client.query(`
+      revoke all privileges on
+        public.installation
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.installation to app_runtime
+    `);
+  }
+
+  // F1-09: Mention-Zeilen — atomarer Ersatz (DELETE+INSERT im Schreib-Tx,
+  // kein UPDATE). SELECT/INSERT/DELETE fuer den Service-Pfad.
+  const hasMentions = await hasAtomicPublicRelationSet(
+    client,
+    MENTION_RELATIONS,
+    "Rollen-ACL-Manifest: F1-09-Mentions",
+  );
+  if (hasMentions) {
+    await client.query(`
+      revoke all privileges on
+        public.project_note_mention
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, delete on public.project_note_mention to app_runtime
+    `);
+  }
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2439,6 +2503,24 @@ export async function verifyRoleContract(
     "Rollenvertrag: F16-03-Foerder-Vorlagen",
   );
 
+  const hasPaymentOptions = await hasAtomicPublicRelationSet(
+    client,
+    PAYMENT_OPTION_RELATIONS,
+    "Rollenvertrag: F2-05-Zahlarten",
+  );
+
+  const hasInstallations = await hasAtomicPublicRelationSet(
+    client,
+    INSTALLATION_RELATIONS,
+    "Rollenvertrag: F7-01-Installation",
+  );
+
+  const hasMentions = await hasAtomicPublicRelationSet(
+    client,
+    MENTION_RELATIONS,
+    "Rollenvertrag: F1-09-Mentions",
+  );
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2636,6 +2718,15 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasInstallations ? INSTALLATION_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasMentions ? MENTION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -3253,7 +3344,7 @@ export async function verifyRoleContract(
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          "search_path=pg_catalog:6d025bff7eee1e267019a81fe77730c139fc3c7a5e94cf9dd9c54541fbc4be57",
+          "search_path=pg_catalog:847b47cb0dae5429b175e7affa07048ce90c494d0d5590d7da2a4ef079aa1486",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
@@ -3487,9 +3578,12 @@ export async function verifyRoleContract(
       "contact_name_split_v1(text):TABLE(first_name text, last_name text):app_owner:sql:f:i:" +
         "false:false:false:u:search_path=pg_catalog:" +
         "0ff6e6a4ca03690a776d797382168024ebf845f3647c4f9a7ecea108ede4fe11",
+      // Body-Pin = sha256(prosrc): prosrc ist der wörtliche Funktions-Body
+      // zwischen den Dollar-Tags der Migration (PG speichert verbatim).
+      // Bei Body-Änderung Pin neu berechnen (0073: fbb06d5a…).
       ...(hasOfferPdfDraft ? [
         "derive_offer_pdf_draft_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:427651acb2160a60f657090c12c7ced2fa31676e2b053879b9d1e5c981fb25f1",
+          "search_path=pg_catalog:fbb06d5a8625b27436a605918dc257af9eac735116e9e041e822fa7909bc9c70",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
         `search_path=pg_catalog:${hasSignatures
@@ -3689,6 +3783,15 @@ export async function verifyRoleContract(
         (relation) => `${relation}:true:true`,
       ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasInstallations ? INSTALLATION_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasMentions ? MENTION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -3985,6 +4088,22 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasSubsidyTemplates ? [
           "subsidy_template:tenant_isolation:2037cf711c5df81fe88a76b2b2d003d568f2053c61feebad996e515aec4d0696",
+        ] : []),
+        ...(hasPaymentOptions ? [
+          // PENDING-ORAKEL: aus dem Gate-Diff des ersten Laufs mit 0068
+          // übernehmen (sha256 über tablename|policyname|permissive|roles|
+          // cmd|qual|with_check aus pg_policies).
+          "payment_option:tenant_isolation:PENDING-ORAKEL-0068",
+        ] : []),
+        ...(hasInstallations ? [
+          // PENDING-ORAKEL: aus dem Gate-Diff des ersten Laufs mit 0069
+          // übernehmen (Formel wie oben).
+          "installation:tenant_isolation:PENDING-ORAKEL-0069",
+        ] : []),
+        ...(hasMentions ? [
+          // PENDING-ORAKEL: aus dem Gate-Diff des ersten Laufs mit 0067
+          // übernehmen (Formel wie oben).
+          "project_note_mention:tenant_isolation:PENDING-ORAKEL-0067",
         ] : []),
         ...(hasPortal ? [
           "portal_invite:portal_invite_actor_delete:777085784fec1e8a4f2511b44c00e23fd09f98c13d9f99dded0180f10c4fe702",
@@ -4471,6 +4590,21 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasInstallations ? INSTALLATION_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasMentions ? MENTION_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
       ]) : []),
       ...(hasPortal ? [
         "app_runtime:portal_invite:INSERT:app_owner:false",

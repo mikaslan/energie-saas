@@ -74,6 +74,8 @@ function validInput(): OfferReleaseCandidateInputV1 {
     },
     commercialTerms: {
       globalDiscountBps: 0,
+      // F16.3 Slice E: Cap (null = ungedeckelt).
+      globalDiscountCapCents: null,
       globalFixDiscountCents: null,
       customDealNetCents: null,
     },

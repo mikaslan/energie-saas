@@ -28,6 +28,8 @@ export interface OfferPricingInput {
   currency: "EUR";
   priceBasis: "net";
   globalDiscountBps: number;
+  // F16.3 Slice E: Deckel für den globalen Prozent-Rabatt (null = ungedeckelt).
+  globalDiscountCapCents: number | null;
   // F16.3 Slice D: globaler Fix-Rabatt (null = keiner), nach Prozent, vor Steuer.
   globalFixDiscountCents: number | null;
   customDealNetCents: number | null;
@@ -146,10 +148,13 @@ function allocateTarget(lines: WorkingLine[], target: bigint): void {
   if (remaining !== ZERO) throw new TypeError("Allokationsrest konnte nicht verteilt werden.");
 }
 
-function applyDiscount(lines: WorkingLine[], discountBps: bigint): void {
+// F16.3 Slice E: Prozent-Rabatt mit optionalem Cent-Deckel —
+// Rabattbetrag = min(Prozentbetrag, Cap), Rest über Largest-Remainder.
+function applyDiscount(lines: WorkingLine[], discountBps: bigint, capCents: bigint | null): void {
   const sourceTotal = lines.reduce((sum, line) => sum + line.currentNet, ZERO);
-  const target = roundHalfUp(sourceTotal * (BASIS_POINTS - discountBps), BASIS_POINTS);
-  allocateTarget(lines, target);
+  const uncapped = sourceTotal - roundHalfUp(sourceTotal * (BASIS_POINTS - discountBps), BASIS_POINTS);
+  const discount = capCents !== null && uncapped > capCents ? capCents : uncapped;
+  allocateTarget(lines, sourceTotal - discount);
 }
 
 // F16.3 Slice D: Fix-Betrag vom (bereits prozent-rabattierten) Total abziehen,
@@ -174,6 +179,7 @@ function validateStructure(input: OfferPricingInput): void {
     throw new TypeError("M2-01 berechnet ausschliesslich EUR netto.");
   }
   basisPoints(input.globalDiscountBps, "globalDiscountBps");
+  if (input.globalDiscountCapCents !== null) money(input.globalDiscountCapCents, "globalDiscountCapCents");
   if (input.globalFixDiscountCents !== null) money(input.globalFixDiscountCents, "globalFixDiscountCents");
   if (input.customDealNetCents !== null) money(input.customDealNetCents, "customDealNetCents");
   if (!Array.isArray(input.sections) || input.sections.length < 1 || input.sections.length > 25) {
@@ -278,7 +284,8 @@ export function calculateOfferPricing(input: OfferPricingInput): OfferPricingRes
       const group = working.filter((line) =>
         line.sectionDomainId === section.sectionDomainId
         && (line.positionType === "optional") === optional);
-      if (group.length > 0) applyDiscount(group, discount);
+      // F16.3 Slice E: Sektions-Rabatte bleiben ungedeckelt (Cap nur global).
+      if (group.length > 0) applyDiscount(group, discount, null);
     }
   }
   for (const line of working) {
@@ -286,7 +293,11 @@ export function calculateOfferPricing(input: OfferPricingInput): OfferPricingRes
   }
 
   const basisLines = working.filter((line) => line.positionType !== "optional");
-  applyDiscount(basisLines, basisPoints(input.globalDiscountBps, "globalDiscountBps"));
+  applyDiscount(
+    basisLines,
+    basisPoints(input.globalDiscountBps, "globalDiscountBps"),
+    input.globalDiscountCapCents === null ? null : money(input.globalDiscountCapCents, "globalDiscountCapCents"),
+  );
   if (input.globalFixDiscountCents !== null) {
     applyFixDiscount(basisLines, money(input.globalFixDiscountCents, "globalFixDiscountCents"));
   }

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
+import { OfferVariantControlsPanel } from "./offer-variant-controls-panel";
+import { OfferPaymentOptionPanel } from "./offer-payment-option-panel";
 import {
   OfferIssuancePanel,
   type OfferIssuanceCandidateSurfaceView,
@@ -44,6 +46,12 @@ export interface OfferVariantTabView {
   revision: number;
   active: boolean;
   href: string;
+  // F2.2: Primärkennzeichen + optionale Bundles je Variante (optional, damit
+  // ältere Mocks ohne die Felder weiter typisieren).
+  isPrimary?: boolean;
+  bundles?: readonly { name: string; position: number }[];
+  // F2.5: Zahlart-Auswahl je Variante (nullable).
+  paymentOptionId?: string | null;
 }
 
 export interface OfferPdfDraftSurfaceView {
@@ -122,6 +130,8 @@ export interface OfferVariantSnapshotView {
   variantName: string;
   description: string | null;
   globalDiscountBps: number;
+  // F16.3 Slice E: Cap (null = ungedeckelt).
+  globalDiscountCapCents: number | null;
   globalFixDiscountCents?: number | null;
   customDealNetCents: number | null;
   contactContext: {
@@ -160,6 +170,10 @@ export interface OfferDetailSurfaceView {
     status: string;
     outdated: boolean;
     forecastValueNetCents: number | null;
+    // F2.2: Deal-Override (Offer-Ebene) + Anzeige-Summe.
+    totalPriceOverrideNetCents?: number | null;
+    overrideActive?: boolean;
+    displayTotalNetCents?: number | null;
   };
   variants?: readonly OfferVariantTabView[];
   activeVariant?: OfferVariantViewEnvelope;
@@ -207,6 +221,13 @@ export interface OfferDetailSurfaceView {
     kind: "percent" | "fix";
     percentBps: number | null;
     amountCents: number | null;
+    capCents: number | null;
+  }[];
+  // F2.5: Zahlarten-Stammdaten (aktive Optionen) für die Varianten-Auswahl.
+  paymentOptions?: readonly {
+    id: string;
+    key: "purchase" | "financing_classic" | "leasing";
+    label: string;
   }[];
 }
 
@@ -404,6 +425,7 @@ function VariantNavigation({ variants }: { variants: readonly OfferVariantTabVie
             >
               {variant.name}
               <span className={variant.active ? "ml-2 text-xs text-white" : "ml-2 text-xs text-slate-700"}>Rev. {variant.revision}</span>
+              {variant.isPrimary ? <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-900">Primär</span> : null}
             </Link>
           </li>
         ))}
@@ -708,6 +730,23 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           className={`${offerThemeStyles.offerTheme} bg-slate-50 px-4 pb-8 sm:px-6`}
         >
           <div className="mx-auto grid w-full max-w-[1480px] gap-5">
+            <OfferVariantControlsPanel
+              workspaceId={view.workspaceId}
+              offer={view.offer}
+              variants={view.variants ?? []}
+              activeVariantId={snapshot.variantId}
+              canEdit={canEdit}
+              canEditPrice={view.permissions?.canEditPrice === true}
+            />
+            <OfferPaymentOptionPanel
+              workspaceId={view.workspaceId}
+              offerId={view.offer.id}
+              variantId={snapshot.variantId}
+              variantName={view.variants?.find((variant) => variant.id === snapshot.variantId)?.name ?? "Aktive Variante"}
+              currentOptionId={view.variants?.find((variant) => variant.id === snapshot.variantId)?.paymentOptionId ?? null}
+              options={view.paymentOptions ?? []}
+              canEdit={canEdit}
+            />
             {pdfDraftPanel}
             {offerReleasePanel}
             {offerIssuancePanel}
@@ -777,6 +816,23 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           {pdfDraftPanel}
           <SalesForecast value={view.offer.forecastValueNetCents} />
           <VariantNavigation variants={view.variants ?? []} />
+          <OfferVariantControlsPanel
+            workspaceId={view.workspaceId}
+            offer={view.offer}
+            variants={view.variants ?? []}
+            activeVariantId={snapshot.variantId}
+            canEdit={false}
+            canEditPrice={false}
+          />
+          <OfferPaymentOptionPanel
+            workspaceId={view.workspaceId}
+            offerId={view.offer.id}
+            variantId={snapshot.variantId}
+            variantName={view.variants?.find((variant) => variant.id === snapshot.variantId)?.name ?? "Aktive Variante"}
+            currentOptionId={view.variants?.find((variant) => variant.id === snapshot.variantId)?.paymentOptionId ?? null}
+            options={view.paymentOptions ?? []}
+            canEdit={false}
+          />
         </div>
 
         <fieldset disabled={pending} className="mt-6 min-w-0 border-0 p-0">
@@ -795,7 +851,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                   <p className="mt-2 text-sm leading-6 text-slate-600">{snapshot.description}</p>
                 ) : null}
                 <dl className="mt-4 grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2">
-                  <div><dt className="text-slate-600">Globaler Rabatt</dt><dd className="mt-1 font-semibold">{formatBasisPoints(snapshot.globalDiscountBps)}</dd></div>
+                  <div><dt className="text-slate-600">Globaler Rabatt</dt><dd className="mt-1 font-semibold">{formatBasisPoints(snapshot.globalDiscountBps)}{snapshot.globalDiscountCapCents === null || snapshot.globalDiscountCapCents === undefined ? "" : ` (gedeckelt auf ${formatOfferCents(snapshot.globalDiscountCapCents)})`}</dd></div>
                   <div><dt className="text-slate-600">Globaler Fix-Rabatt</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.globalFixDiscountCents === null || snapshot.globalFixDiscountCents === undefined ? "Kein Fix-Rabatt" : formatOfferCents(snapshot.globalFixDiscountCents)}</dd></div>
                   <div><dt className="text-slate-600">Custom Deal netto</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.customDealNetCents === null ? "Kein Custom Deal" : formatOfferCents(snapshot.customDealNetCents)}</dd></div>
                 </dl>

@@ -26,7 +26,7 @@ function validInput(): OfferPdfDraftInputV1 {
     recipient: { displayName: "Erika Muster" },
     installationSite: { formattedAddress: "Musterweg 42, 10115 Berlin" },
     variant: { name: "PV und Speicher", revision: 7 },
-    commercialTerms: { globalDiscountBps: 0, globalFixDiscountCents: null, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Photovoltaik",

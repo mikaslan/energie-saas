@@ -81,8 +81,8 @@ export class PortalIntegrityError extends Error {
 }
 
 export class PortalPersistenceError extends Error {
-  constructor() {
-    super("portal invite persistence failed");
+  constructor(options?: { cause?: unknown }) {
+    super("portal invite persistence failed", options);
     this.name = "PortalPersistenceError";
   }
 }
@@ -326,8 +326,9 @@ async function poolRows(pool: Pool, text: string, values: unknown[]): Promise<un
   try {
     const result = await pool.query(text, values);
     return result.rows;
-  } catch {
-    throw new PortalPersistenceError();
+  } catch (error) {
+    // Cause bleibt lesbar (rls.test.ts-Muster); Typ/Meldung unveraendert (kein Orakel).
+    throw new PortalPersistenceError({ cause: error });
   }
 }
 

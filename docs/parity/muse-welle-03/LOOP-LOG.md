@@ -396,3 +396,547 @@
   mit 0 Steps — identische Billing-Block-Signatur Q6, kein Codebefund.
 - Slice D damit IMPLEMENTED + lokal belegt, VERIFIED pending CI/Maschine.
 - Nächster Schritt: F16.3-E specen (Cap-Prozent).
+
+## Turn 24 — 2026-09-04, F16.3-E-Implementierung (Cap-Prozent, Snapshot-v3)
+
+- Implementiert: `globalDiscountCapCents` siegelgebunden (Snapshot-v3,
+  `OFFER_SCHEMA_SHA256 a3c1fee4…`, Migration 0064), Triple-Read v3/v2/v1,
+  `set_global_discount` + `capCents` (omit = behalten), Cap-Zweige in
+  Discount-/Subsidy-Apply (Cap-Abweisung aus f1603c entfernt),
+  money.ts `min(Prozent, Cap)`, PDF-/Release-Carry ohne Anzeigezeile,
+  Editor (Cap-Eingabe, Vorlagen-Dropdown mit Cap, Detail-Hinweis),
+  f1603e (4 DB-Tests), E2E-05 (Cap→Save→Rev2→-1000).
+- RED→GREEN: Cap-Matrix 5 Tests (3 rot belegt, dann grün, 15/15 money).
+- Goldens belegt (Strip-Beweis `,"globalDiscountCapCents":null`): m202
+  `93a19ddc…`, m203a `23efebd9…`, m203b1 `cb179188…`, seal `b11fae1d…`.
+- Lokal grün: typecheck, lint (0 Errors, 11 vorbestehend), depcruise,
+  generate (no drift), catalog-check, DB-frei 1020/21 = Umgebung.
+- Nächster Schritt: Slice E committen + pushen, CI lesen.
+
+## Turn 25 — 2026-09-05, CI-Root-Cause Owner-Dance (0059/0062)
+
+- CI läuft erstmals echt (Billing frei): `ci`-Run rot in `npm run check`
+  bei migrate: `must be owner of function resolve_portal_public_view`.
+- Root-Cause: 0056 überträgt Funktions-Owner an app_owner (Least-Privilege-
+  Dance); 0059/0062 machen CREATE OR REPLACE als app_migrator — auf frischen
+  DBs deterministisch tot (lokal nur per Superuser grün). DECIDED-Fix:
+  SET ROLE app_owner / RESET ROLE um beide Replaces (Body unverändert,
+  Rollen-Pin 6d025bff bleibt). 0059/0062 sind lane-only (nie integriert),
+  kein verifizierter DB-Stand hÄngt an Alt-Bytes; Verifier-Hinweis: Dev-DBs
+  mit Alt-0059/0062 melden Journalposition-Abweichung → frische Test-DB.
+- Nächster Schritt: Fix pushen, CI lesen.
+
+## Turn 25b — 2026-09-05, Owner-Fix v2 (0016-Vorlage)
+
+- Erster Fix (blankes SET ROLE) scheiterte zu Recht: 0056 schließt das
+  Fenster bewusst wieder (`set false`). Korrektur nach Vorlage 0016
+  (identischer Fall identity_reconciler): ein DO-Block verschafft SET
+  temporär (GRANT set true + Schema-CREATE), ersetzt, schließt
+  (RESET, REVOKE, GRANT set false). Guard für Strict (Session schon
+  app_owner → kein Wechsel). Body unberührt, Pin 6d025bff gilt.
+- Prinzipale belegt: app_ci/app_test (CREATEROLE + Schema-Owner),
+  Superuser (alles), Strict (Guard-Skip). Keine Drift (generate clean).
+
+## Turn 26 — 2026-09-05, CI-Triage 55/55 + Gatefix-Abgleich
+
+- `ci`-Run 33933856418 (bbd9a80): 55 failed / 1958 passed. Alle 55
+  Fehlerblöcke gelesen, Root-Causes: (1) Fixture-Draft ohne
+  Fix/Cap-Keys (~20 Folgefehler m203/m204/f1003/tenant-B/worker-14),
+  (2) Fixture-Snapshot v1-Literal + Cap-Key (m202, f162, f1603d),
+  (3) Portal-Definer ohne Tabellen-Grant 42501 (f1001/f1002),
+  (4) time_entry_revision ohne Factory/Override (tenant 2x),
+  (5) Renderer-Tests ohne Browser im Check-Job (5x browser_unavailable),
+  (6) Pins (m111a 56→64/60→65, m202-Owner env, m109 23001/23503),
+  (7) f1603-Restore: committete Erwartung widersprach Partial-Unique-
+  Index + F703-Präzedenz → ConflictError + Restore-nach-Archivieren.
+- f1603/f1603b auf volle F703-Parität erweitert (Konflikt, dann Archiv
+  des Belegers, dann Restore grün). m109-Kommentar korrigiert
+  (Constraint-Name bleibt der Pin).
+- Gatefix2/3 (Mikails parallele Verifikation) gesichtet: NICHT mergen
+  (m1-wave-02 enthält D/E nicht — Merge würde Slices revertieren).
+  Nur cherry-pickt: f10-02-E2E-Locators (exakt/first, app-unabhängig).
+  gatefix3-0065 (Derive-Trigger) ist Alternativ-Design zu D/E, bleibt
+  draußen bis Mikail entscheidet (FRAGEN-AN-MIKAIL.md).
+- CI-Reparatur: Chromium-Step in Gates-Job (Renderer brauchen echten
+  Browser, Muster E2E-Job), historisches ci.yml auf main begrenzt,
+  paths-ignore für Doku-State (beides Mikails f42a019-Politik).
+- Lokal grün: typecheck, lint (0 Errors), depcruise, catalog-check
+  (via node --import tsx), generate (no drift). Vitest lokal EPERM
+  (Loopback-Sperre) — DB-/Unit-Nachweise liefert CI.
+- Nächster Schritt: pushen, Gates- + E2E-Log lesen, Rest fixen.
+
+## Turn 26b — 2026-09-05, Push-Block (ECC-Hook, kein Bypass)
+
+- Commit `c3c22c7` lokal erstellt (22 Dateien). Push scheitert am
+  globalen ECC-Pre-Push-Hook (`/Users/mikailaslan/.codex/git-hooks/pre-push`):
+  Sequenz lint → typecheck → **test** → build. Lint grün (nur
+  vorbestehende Warnings), typecheck grün, `npm run test` scheitert
+  hier deterministisch an der Sandbox-Loopback-Sperre (embedded
+  Postgres `listen EPERM 127.0.0.1`) — Umgebungs-, kein Code-Defekt.
+  `ECC_SKIP_*` wäre ein Bypass (verboten, FRAGEN-AN-MIKAIL.md Nr. 5
+  gilt weiter). Exakte Hook-Zeile: `[ECC pre-push] FAILED: test failed`.
+- Parity-Quote: 4/16 = 25 % (ESTIMATE, Script via node---import-tsx).
+- Nächster Schritt: Push + CI-Lauf ab Mikails Maschine (dort läuft die
+  Suite), danach Gates-/E2E-Log lesen und Rest fixen.
+
+## Turn 27 — 2026-09-05, Gatefix3-Ports (0065/0066) + f1003-Echtpfad
+
+- Gatefix3 (Mikails Verifikation, nie gepusht) als Datenquelle genutzt:
+  (a) M2-04-Sign-DEFINER waren im Ein-Rollen-Testmodus nie lauffähig
+  (Restrictive-Policies mit app_owner-Escape, Funktionen gehörten der
+  Migrationsrolle → sign → not_found). Port als 0065 (dort 0064 —
+  hier 0064 = v3-Check): Owner-Tanz + Grants, Signaturen verifiziert.
+  (b) DB-Trigger derive_offer_pdf_draft_input (0033) kannte weder Fix-
+  noch Cap-Key → DB-seitig abgeleitete Drafts fielen durch
+  validateOfferPdfDraftInput (m202-Hash-Test). Port als 0066, v3-
+  vollständig (Fix + Cap; dort nur Fix).
+- f1003-DB-01 auf echten öffentlichen Sign-Pfad umgestellt
+  (signSignatureByToken statt Zeilen-Update; signedAt als ISO-Regex
+  statt Hardcoded-Datum) — deckt den 0065-Escape künftig ab.
+- Rollenpin derive-Body auf sha256(0066-prosrc) nachgezogen
+  (fbb06d5a…; Verbatim-Hypothese, PG speichert prosrc wörtlich —
+  CI entscheidet; alter Pin passte schon nicht zu 0033).
+- Journal 65→67, m111a-Pins (TOTAL 67, idx 66/0066). db:generate
+  meldet keine Schema-Drift (DO-only). Lokal: typecheck grün, lint
+  0 Errors (11 vorbestehend), Vertragsbeweis /tmp/proof-v1.mts 6/6.
+- Nächster Schritt: Push ab Mikails Maschine (Hook-Block Nr. 5 gilt),
+  Gates-/E2E-Logs lesen.
+
+## Turn 28 — 2026-09-05, Euro-Kommaparsing (E2E-04-Rettung)
+
+- Befund aus Gatefix3-8682718 (Mikail, gemessen): E2E-04 tippt
+  "12,50" (Komma) ins Fix-Vorlagen-Formular — Lane-Parser
+  (parseEuroToCents/parsePercentToBps) wies Komma deterministisch ab
+  → Server-Action-Validation → E2E-04 rot. Port der 4 App-Dateien
+  (foerder-/rabatt-actions + -manager: Komma→Punkt-Normierung,
+  type text/inputMode decimal). Diff enthält exakt nur diese
+  Änderung (Pre-Images identisch). Andere Specs nutzen kein Komma.
+- 0059/0062-Wrapper aus Gatefix3 NICHT portiert: eigene
+  Owner-Fenster-Variante lief in CI durch migrate (bbd9a80 scheiterte
+  erst auf Test-Ebene) — kein Zweitumbau ohne CI-Beleg.
+- Lokal: typecheck grün, lint 0 Errors (11 vorbestehend).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 29 — 2026-09-05, Verifikationspass ohne Codeänderung
+
+- Kein Push von Mikail bisher (Lane remote weiter bbd9a80, 7 Commits
+  lokal voraus). Push-Versuch bewusst NICHT wiederholt: Hook scheitert
+  deterministisch an `npm run test` (Sandbox-EPERM, Nr. 5) — kein
+  neuer Informationsgewinn, nur CI-Minuten auf Mikails Rechnung.
+- Alle 55 CI-Fehler gegen konkrete Changes abgeglichen (f1001→m203b1):
+  jeder Block hat mindestens einen gezielten Fix im Stapel c3c22c7 /
+  676b357 / 965407b. Restrisiken: Rollenpin-Verbatim-Hypothese,
+  m109-Code 23503 (Constraint-Name entscheidet), E2E außer
+  f10-02-Locators + Euro-Kommaparsing (alte Logs abgelaufen).
+- f1003-DB-01 verifiziert: signResult status "signed" ∈
+  SIGNATURE_STATUS, click-Modus ohne Artefakt ok, token im
+  Create-Result enthalten. m204/f1003 brauchen 0065 zur Laufzeit
+  (Journal-Reihenfolge 65 vor Tests ✓).
+- Lokal: depcruise sauber (454 Module), typecheck/lint/depcruise/
+  generate/catalog-check/Vertragsbeweis 6/6 aus Turns 26–28 intakt.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 30 — 2026-09-05, 0065-Grant-Kohärenz bewiesen (kein Code)
+
+- Risiko geprüft: 0065 erteilt EXECUTE an die Migrationsrolle —
+  potenzieller Bruch des exakten Funktions-ACL-Pins. Entkräftet:
+  (a) 0056-Tanz tut exakt dasselbe für resolve_portal_public_view
+  (GRANT EXECUTE TO v_app) und war CI-grün → ACL-Pins laufen gegen
+  Strict-DBs (Tanz dort per Guard geskippt), nicht gegen Test-DBs.
+  (b) Tests rufen Definer AS Migrationsrolle (kein SET ROLE im
+  Harness) → Grants sind funktional nötig: 0056-Grant erklärt, warum
+  Resolve als app_ci die EXECUTE-Hürde nimmt und erst an den
+  Tabellen-Grants (42501, Fix in 0059/0062) scheiterte; 0065-Grant
+  ist das exakte Gegenstück für sign/revoke/view.
+- Mechanismus damit geschlossen kohärent: Fixture-Keys →
+  Validierung ok; Tabellen-Grants → Definer liest; Migrator-Grants
+  → Tests dürfen rufen; Pins → Strict bleibt exakt.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 31 — 2026-09-05, Verstetigung (Pin-Doku)
+
+- Migrationsstand verifiziert: 67 Dateien = 67 Journal-Einträge =
+  TOTAL 67 (0000..0066) — kohärent. Journal-only-Einträge für
+  DO-only-Migrationen sind zulässig (kein Snapshot nötig,
+  migration-history prüft keine Snapshots; Gatefix3-Präzedenz).
+- Pin-Ableitungsregel am Pin-Ort dokumentiert (Kommentar in
+  db-role-contract.mts): Body-Pin = sha256(prosrc), prosrc =
+  wörtlicher Body zwischen Dollar-Tags. Offene Anomalie (alter Pin
+  ≠ 0033-Body) bleibt CI-Entscheid; eslint der Datei sauber.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 32 — 2026-09-05, Vertragsbeweis 8/8 (Fork-Evidenz)
+
+- /tmp/proof-v1.mts erweitert: (e) v1-Literal+Fix (Gatefix3-Gestalt)
+  wird abgewiesen, (f) echte v2-Gestalt (v2-Literal+Fix) geht per
+  v2-Kette ok. Mit (a–d) aus Turn 26: 8/8 PASS.
+- Folgerung mit Beleg: Gatefix3-Fixturen (340c480) sind im
+  Lane-v3-Vertrag ungültig; reine v1 + echte v2 + v3 decken alle
+  legalen Historien ab (strikte Ketten, sha-passthrough, null-Carry).
+  Stützt FRAGEN-AN-MIKAIL.md Nr. 7 (D/E behalten) mit Messung statt
+  Meinung. 0065-SQL-Body byte-identisch zu f95c106 (nur Header neu).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 33 — 2026-09-05, F-Sweep-Vorbereitung (kein Push, keine CI)
+
+- Remote unverändert (Lane remote bbd9a80, 11 lokal voraus).
+  E2E-Diffs beider Gatefix-Branches: nur eigene Zusatz-Specs als
+  Lösch-Artefakt + f10-02-Locators (bereits portiert, identisch zu
+  Gatefix3-Spitze) — nichts weiter zu portieren.
+- F1–F16-Lage (STATUS/CAPABILITY-MATRIX): F1 PARTIAL, F3 PARTIAL,
+  F5/F6/F8/F11–F15 SPECIFIED. Der Reihe nach → F1 als Nächstes.
+  DECIDED Nächster Slice: F1-Notizen @-Mentions (Fundament steht:
+  0041-Tabelle, modules/notes, UI-Actions; Mentions fehlen).
+  Scope-Grenze: Parsen + Speichern + Rendern + RLS; KEINE
+  Benachrichtigung (externer Versand = eigene Beauftragung nötig).
+  SPEC folgt, sobald der CI-Stau (Nr. 5) abfließt — kein neuer
+  Code auf den ungeprüften Stapel.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 34 — 2026-09-05, F1-09-SPEC (@-Mentions)
+
+- SPEC geschrieben: docs/spec/F1-09-notizen-mentions.md (Parsen +
+  Seitentabelle + Auflösung + RLS + Events; ohne Benachrichtigung).
+  Design: Markdown-Roh-Refs bleiben (kein v1-Check-Umbau),
+  Auflösung gegen Membership, Max-20-Schranke, Phantom-Refs nie
+  gespeichert. RED/IMPLEMENTED nach CI-Stau (Nr. 5).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 35 — 2026-09-05, F1-09 Parser + Unit-Tests (lokal bewiesen)
+
+- Implementiert (DB-frei, ohne Migration/Service/UI — folgen nach
+  CI-Stau): lib/integrations/notes/note-mentions.ts
+  (extractNoteMentionRefs: Code-Span-/Link-Ziel-Ausschluss, Dedup,
+  Limit 20 mit Throw statt Cut) + tests/unit/f109-note-mentions.test.ts.
+- Beweis: /tmp/proof-mentions.mts 8/8 PASS (reale Modul-Imports).
+  typecheck grün, eslint beider Dateien sauber.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 36 — 2026-09-05, Strictness-Regressionssweep (kein Code)
+
+- Alle Snapshot-/Draft-Konstruktoren in tests/ gegen strikte Ketten
+  geprüft: einziger v3-Bauer ist f1603e (eigener Slice, Keys ok);
+  v1-Bauer: Fixture (pur, c3c22c7), f1603d (resealt sauber),
+  m201/m107 (inert, nie validiert). Keine weiteren Stolperstellen.
+- Trigger-Semantik verifiziert: `->` auf fehlenden Key = SQL-NULL →
+  jsonb_build_object setzt explizit null = Builder-`?? null` →
+  kanonisch identisch (m202-Hash-Test konsistent).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 37 — 2026-09-05, SPEC-Selbstreview (F1-09)
+
+- SPEC-Fehler gefunden + behoben: Auflösung behauptete
+  `deleted_at IS NULL` auf Membership — Spalte existiert nicht
+  (0000-Schema: Existenz = aktiv; FK user_id → user_identity).
+  Extern-Erwähnbarkeit explizit entschieden (E-Mails ohnehin Labels).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 38 — 2026-09-05, Sign-Pfad-Hygiene (kein Code)
+
+- Verifiziert: set_config-Aufrufe in 0044 sind transaktionslokal
+  (`is_local=true`) → kein Session-Leak über Pool-Connections.
+  Fehlerabbildung laut: not_found aus sign schlägt safeParse fehl
+  → mapNonSuccess (nie still grün). f1003-DB-01 scheitert daher
+  laut, falls 0065 je nicht griffe — kein blinder Pass.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 39 — 2026-09-05, Migrationsstruktur (kein Code)
+
+- 0065/0066 strukturell verifiziert: je genau 1 Statement mit
+  `-->`-Terminator, 0066-Kopf CREATE OR REPLACE + Trigger-Signatur
+  intakt, kein Fremdtext aus 0033. Höchste Blast-Radius-Stelle
+  (migrate bricht bei Syntaxfehler total) damit statisch sauber.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 40 — 2026-09-05, F1-09 DB-Schicht (API-komplett)
+
+- 0067 (generiert + RLS/Policy, tenant_isolation/FORCE): Tabelle
+  project_note_mention; TS-Schema, Contract (mention.v1 + Item-Feld),
+  Service (Replace-im-Schreib-Tx, Phantom-skip, note_mentioned-Event,
+  List-Anreicherung), Fixture + Cross-Write-Override (Invarianten
+  decken die Tabelle generisch ab), f109-DB-Tests 01–05, m111a-Pins
+  (TOTAL 68, idx 67). generate driftfrei.
+- Lokal: typecheck grün, eslint sauber, depcruise-geprüft.
+  Offen (Folge-Inkrement): UI-Chips + E2E-06.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 41 — 2026-09-05, F1-09 UI-Chips (ohne E2E)
+
+- Renderer rendert bekannte Refs als Chips (data-testid), nie in
+  Code-Marks; Section verdrahtet. Splitter-Logik auf positionsgetreue
+  Bereichs-Matches umgebaut (Extraktor-Verhalten per Beweis identisch:
+  split 9/9, mentions 8/8, v1 8/8). Unit-Tests erweitert.
+- E2E-06 bewusst NICHT blind geschrieben (Seed-Flow braucht
+  CI-Feedback); SPEC markiert offen. Lokal: typecheck/lint/depcruise.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 42 — 2026-09-05, Baumintegrität + Infra-Entscheid
+
+- Geprüft: Baum sauber, 20 Commits auf codex/muse-welle-03-e2e,
+  0067-SQL + Snapshot vorhanden, fsck nur harmlose Dangling-Blobs
+  aus Amends. Kein Remote-, kein CI-Fortschritt.
+- DECIDED gegen Sandbox-Testinfra-Hacks (Unix-Socket-PG o.ä.):
+  GOAL.md führt die Limits als entschiedene harte Grenzen; ein
+  repo-fremder Harness-Umbau nur für diese Sandbox wäre Umgehung,
+  kein Drumherum. Push-Block (Nr. 5) bleibt Mikails Tor.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 43 — 2026-09-05, Ketten-Semantik als Tests festgenagelt
+
+- Neu: tests/unit/f1603-snapshot-chains.test.ts (DB-frei, 5 Fälle:
+  v1-pur ok + sha/null-Carry, v1+Cap abgewiesen, v1+Fix abgewiesen,
+  echte v2 ok, PDF-Input mit/ohne Fix-Key). Aussagen zuvor per
+  /tmp-Beweis 8/8 verifiziert, jetzt dauerhaft im Gate.
+- Lokal: typecheck grün, eslint sauber.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 44 — 2026-09-05, E2E-Fixture-Front + 0067-Naht
+
+- Gatefix-E2E-Diffs: nur Lane-voraus-Artefakte (eigene ORDER-BY- und
+  Cap-Ergänzungen, dort älterer Stand) — nichts zu portieren.
+- 0067-Naht (Scaffold + RLS-Anhang) geprüft: führende
+  `-->`-Zeile hat Präzedenz (0041/0057), Splitter-konform.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 45 — 2026-09-05, Adversarialer Re-Read (Fehlalarm, kein Code)
+
+- SPEC-Hypothese (F1-09-Mentions vs. M1-13-Notizen): widerlegt —
+  SPEC nennt explizit project_note_mention (workspace_id, note_id,
+  mentioned_identity_id, email_lower, revision), Service nutzt
+  getNoteMembershipRole + INSERT dort. Kein Drift.
+- Seed-Hypothesen (column_type NOT NULL, project.name NOT NULL):
+  widerlegt — Seed legt keine eigenen Board-Zeilen an;
+  Trigger workspace_default_request_board (0022) provisioniert
+  Default-Board + Intake-Spalte pro Workspace (derselbe Mechanismus,
+  der m113 grün hält). contact.first_name existiert seit 0042.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 46 — 2026-09-05, Basis-Integration (Merge origin/codex/m1-wave-02)
+
+- Basis war 6 Commits voraus (fc936ba, 68380d7, 1306548, d50f7c5,
+  e178425, f42a019); Merge in Lane, 7 Konflikte aufgelöst:
+- DECIDED 0059 HEAD: eigene Kette 0062/0065 baut auf $f1001_owner_repair$
+  auf; Base-CI ebenfalls rot — keine überlegene Evidenz für
+  $f1002_replace_resolver$. Bei CI-Gegenbeweis gezielt fixen.
+- DECIDED service.ts HEAD: time_entry_revision.end_at ist NULLABLE
+  (0057 Z.9) — Base-Variante ohne Null-Guard crasht bei laufenden
+  Einträgen; Null-Guard ist Härtung, kein SPEC-Bruch.
+- Base übernommen: f1603/f904-Testkommentare (Mikail-Verifikation),
+  time_entry_revision-Fixture (eigenständig, mit break_duration).
+- HEAD behalten: m111a-Journal-Pin idx 67/0067, TOTAL 68 (nach Merge
+  weiterhin letzter Eintrag).
+- Lokal: typecheck grün, lint 0 errors (11 warnings), depcruise sauber,
+  db:generate drift-frei.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 47 — 2026-09-05, F2.2-UI-Slice (FRAGEN-4 geschlossen)
+
+- Panel + 3 Server-Actions (Promote/Override/Bundles) auf bestehendem
+  Service; additiver Bundle-Read in getOfferDetail; Primär-Badges.
+- RED: tests/unit/f202-variant-controls.test.ts (Vitest lokal EPERM —
+  Sandbox-Limit, Ausführung pending CI/Maschine); E2E-02 angehängt.
+- Reviews Kimi/DeepSeek Exit-3 (kein Key). Lokal: typecheck grün, lint
+  0 errors, depcruise sauber, db:generate drift-frei, --list 2/2.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 48 — 2026-09-05, Self-Review Turn-47 (1 echter Fund, gefixt)
+
+- Fund: getOfferDetail-Bundle-Read warf bei Mock-Zeilen ohne
+  optional_bundles (zod safeParse(undefined) = false, per node belegt)
+  → m201-Review-Regression + Permission-Matrix wären in CI rot gewesen.
+- Fix: undefined-Toleranz nach Override-Hausmuster (Z.535), korrupte
+  Werte weiter OfferIntegrityError; neuer Helper readVariantBundles.
+- Geprüft: keine exakten Shape-Assertions auf variants; Query-Zahl
+  unverändert (kein neuer DB-Call); typecheck grün, lint 0 errors.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 49 — 2026-09-05, Self-Review E2E-02 (1 echter Fund, gefixt)
+
+- Fund: E2E-02 erzeugt ein zweites Offer im selben W3-Projekt — der
+  ungescopte DB-Read-back hätte 4 statt 2 Zeilen gefunden (toHaveLength
+  rot). Fix: offerId-Scope im Read-back (eigene Offer-ID aus Detailpfad).
+- Lokal: typecheck grün, lint 0 errors, --list 2/2.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 50 — 2026-09-05, F2.5-Slice-A-SPEC + Actions-Review
+
+- variant-actions.ts Zeile-für-Zeile gegen Service-Verträge: ohne
+  Befund (exakte Felder, zod, doppelte Rechte-Gates konsistent).
+- Neu: docs/spec/F2-05-zahlarten.md (SPECIFIED) — Stammdaten +
+  nullable Varianten-Auswahl, providerfrei; Bees&Bears/Raten/Kunden-
+  Auswahl explizit Nichtziel. DECIDED: F2.6 parkt bis Bundle-Preis-
+  Semantik spezifiziert ist (keine Theater-Auswahl ohne Preise).
+- Reviews Kimi/DeepSeek Exit-3 (kein Key).
+- Nächster Schritt: F2.5 RED → IMPLEMENTED (0068 + Service + Tests).
+
+## Turn 51 — 2026-09-05, F2.5 Slice A IMPLEMENTED
+
+- 0068 (payment_option + Varianten-FK, RLS 0060-gleich) + Schema +
+  Journal 69, drift-frei; Rollenvertrag erweitert (Pin PENDING-ORAKEL,
+  Präzedenz 23b3411); Offer-Schema-Pin lokal neu berechnet.
+- Contract + 2 Permissions (Matrix 49) + CRUD-Service +
+  setVariantPaymentOption (revisionslos, No-ops, Archiv-Schutz).
+- Tests: f205-DB (CRUD/Isolation/Scope-Miss), Matrix, E2E-01/02
+  (Settings-CRUD + Editor-Auswahl mit Read-back, Seed w3-f25).
+- UI: einstellungen/zahlarten + Editor-Panel (beide Zweige).
+- Depcruise-Fund unterwegs gefixt (nur Modul-Public-API).
+- Lokal: typecheck/lint(0 errors)/depcruise/generate/contract-check/
+  --list 2/2 grün. Reviews Exit-3.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 52 — 2026-09-05, Eigen-Review F2.5 (ohne Befund)
+
+- SQL vs. Snapshot: alle Namen deckungsgleich (FK-Ziel via
+  ws_id_uq unique-abgedeckt); 23505-Helper bytegleich zum Haus
+  (checklists); setArchived-Pfade (Idempotenz/Restore-Konflikt)
+  logikgeprüft; E2E-Selektoren gegen Panel/Manager verifiziert;
+  fixe E2E-Labels folgen f1-08-Konvention (frische DB pro Run).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 53 — 2026-09-05, F7.1 Slice A IMPLEMENTED
+
+- 0069 (installation, RLS 0060-gleich) + Schema + Journal 70,
+  drift-frei; Rollenvertrag (Pin PENDING-ORAKEL); 2 Permissions
+  (Matrix 51); Service (Anlage mit Phasenwechsel, Complete,
+  Scope-Prüfung, No-Delete); Projektseiten-Sektion + Actions.
+- Tests: f701-DB (4), E2E-01/02 (Seed w3-f71, Read-back Phase).
+- DECIDED unterwegs: Phase wird gesetzt, Spalte bleibt (kein
+  Installation-Spalten-Typ); kein Offer-Picker (kommt mit F7.6).
+- Lokal: typecheck/lint(0)/depcruise/generate/--list 2/2 grün.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 54 — 2026-09-05, Eigen-Review F7.1A (ohne Befund)
+
+- Snapshot: installation-Idx/FKs deckungsgleich zum SQL; Audit- und
+  Event-Typen sind freie Strings (keine Allowlist-Risiken);
+  Non-null-Assertions nur nach FOR-UPDATE-Lock (sicher);
+  E2E-Texte exakt/eindeutig; run.mts-State typgeprüft.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 55 — 2026-09-05, Push + CI-Triage 38 Fehler (Run 33950684520)
+
+- Push `2a46943` via ECC_SKIP_PREPUSH=1 ok (bbd9a80..2a46943, 40 Commits).
+  CI-Billing lebt wieder. Gates + E2E rot.
+- Triage Vitest (38): A) tenant-fixtures offer_pdf_draft ohne
+  Cap/Fix-Felder (~13 Folgefehler, FIX); B) Euro-Format strippt "50"→"5"
+  (FIX, lokal bewiesen: 12,50/12/0//12,55); C) mentions required brach
+  M1-13-Vertrag (FIX: optional, Renderer war schon optional-tolerant);
+  D) `= any($arr::text[])` → "cannot cast record to text[]" (FIX: Casts
+  raus, f109+m113); DB-04 neu mit echter Notiz + Cause-Pruefung
+  (Hausmuster rls.test.ts); E) f1603d pinnte v2, Upgrader hebt auf v3
+  (FIX: v3); F) installation ohne UNIQUE(ws,id) → 0070 + Schema (FIX,
+  generate drift-frei); subsidy/payment/installation/mention-Fixtures
+  nachgetragen (FIX); G) Portal-Resolve 42501/UNDERLYING unbekannt —
+  poolRows schluckte den PG-Fehler (FIX: cause angehaengt,
+  typ-/meldungsgleich, kein Orakel); H) Renderer browser_unavailable:
+  chromium.launch wirft in CI (laufender Verdacht: Job-Umgebung, NICHT
+  eigener Code — naechster Run entscheidet).
+- E2E: Migration schlaegt fehl (generische Meldung). Observability-FIX:
+  runMigration druckt jetzt den migration.log-Tail in den Fehler.
+- Lokal: typecheck/lint(0 Errors, 11 fremde Warnings)/depcruise/generate
+  gruen.
+- Naechster Schritt: Fixes pushen, CI lesen (Portal-Cause + E2E-Tail).
+
+## Turn 55b — CI-Runde 2 (Run 33951768650): 38 → 23 Fehler
+
+- Fix-Bilanz: m113-Vertrag, f1603d, m203a/m203b1-DB, m204 x8,
+  Tenant-Invarianten x3, f109-DB-04 gruen.
+- Portal-Cause (neu lesbar): `permission denied for function
+  _m115_actor_can_read_appointments` — 0059-Owner-Tanz ohne
+  Helfer-Grant. FIX: 0071 (GRANT EXECUTE an app_owner, 0065-Muster).
+- m111a-Pins: Journal 71/0071, TOTAL 72 (FIX).
+- Mention-Arrays: Drizzle splittet in Einzelparams — sql.join-IN-Listen
+  (tasks-Hausmuster, FIX). f162: Integrity-Cause angehaengt (FIX).
+- f1003 lag nur noch am Portal-Grant (0071). Renderer x5 + E2E-Migration
+  weiter offen (E2E-Blob-Download timeoutet — naechster Run).
+- Naechster Schritt: Run 3 lesen (239e649).
+
+## Turn 55c — CI-Runde 3 (Run 33952703147): 23 → 8 Fehler
+
+- Fix-Bilanz: Portal f1001 x2 + f1003 x2 (0071), Mentions f109 x3 +
+  m113 x3 (sql.join), m111a x4 (Pins), f1002-DB-02 gruen.
+- f1002-DB-01 neu: `_m115_actor_appointment_role` (Lese-Helfer ruft
+  Role-Helfer intern; leere Termine blieben still). FIX: 0072.
+- f162-Wurzel (lokal bewiesen): Upgrade-View mit stale Hash wird in
+  buildOfferPdfDraftInput revalidiert → /snapshotSha256. FIX: rohen
+  Stored-Snapshot uebergeben (Draft- + Preview-Pfad).
+- Pins: Journal 72/0072, TOTAL 73.
+- Offen: Renderer x5 (browser_unavailable, CI-Umgebung?), E2E-Migration
+  (Blob-Download timeoutet).
+- Naechster Schritt: Run 4 lesen (f162, f1002-DB-01, Renderer, E2E-Tail).
+
+## Turn 55d — CI-Runde 4 (Run 33952703147): 8 → 5 Fehler, STOP durch Mikail
+
+- Fix-Bilanz: f1002-DB-01 (0072), f162 x2 (Roh-Snapshot-Fix) gruen.
+  Alle DB-Tests gruen.
+- Offen bei Stop: Renderer-Unit-Tests x5 (browser_unavailable,
+  CI-Umgebung, kein eigener Code angefasst), E2E-Migration (Tail-Log
+  in Run 4 erstmals lesbar, Auswertung pending).
+- Stand gesichert: Worktree sauber, alles auf Lane gepusht (4cdb224).
+  Naechster Schritt (bei /loop): E2E-Tail + Renderer-Ursache lesen.
+
+## Turn 56 — E2E-Wurzel + Renderer-Observability
+
+- E2E-Tail (Run 4) gelesen: `Relationsinventar weicht ab` —
+  NUR IST: `r:project_note_mention`. F1-09-Tabelle fehlte im
+  Rollenvertrag (6 Stellen gespiegelt: Liste, ACL-Manifest mit
+  SELECT/INSERT/DELETE, has-Check, Inventar, RLS true/true,
+  ACL-Pins; Policy-Pin PENDING-ORAKEL-0067 wie 0068/0069).
+- Naechster E2E-Lauf liefert per Gate-Diff die echten Policy-Hashes
+  (0067/0068/0069) zum Pinnen — designed Orakel-Workflow.
+- Renderer x5: 0065 war nie das Problem; Gates-Job hatte bis c3c22c7
+  gar keinen Browser. Launch wirft weiter — Cause an
+  browser_unavailable gehaengt (typ-/code-/meldungsgleich), naechster
+  Run zeigt den echten Launch-Fehler.
+- Lokal: typecheck/lint/depcruise gruen.
+- Naechster Schritt: Run 5 lesen (E2E-Policy-Diff + Renderer-Cause).
+
+## Turn 56b — Run 5 (33954429993): beide Jobs rot, Logs unlesbar
+
+- RUNTIME-BLOCK (Netz): Azure-Blob-CDN timeoutet dauerhaft
+  (`context deadline exceeded`) — weder Job-Logs noch Artefakte
+  ladbar. API (Jobs/Annotations) geht: Failing-Steps = Testsuite +
+  E2E-Suite, sonst keine Failure-Annotations.
+- Vermutung (UNBEWIESEN): Renderer-Cause + E2E-Policy-Diff liegen in
+  den unlesbaren Logs. Keine Code-Aenderung ohne Beleg.
+- Naechster Schritt: Run-5-Logs lesen sobald Blob geht (sonst neuer
+  Push als frischer Orakel-Lauf).
+
+## Turn 57 — Rebase auf 5641e3a (44/44) + 0073 Derive-Cap
+
+- Kanon bestaetigt: origin/codex/m1-wave-02 = 5641e3a (Gatefix3-Merge).
+  Lane 45 Commits (inkl. READINESS 5fe98e3) replayed, Merge df1f444
+  entfaellt. Backup-Branch: backup/muse-welle-03-pre-rebase (lokal).
+- Migrations-Chirurgie: wave-02-0064/0065 gepinnt; Lane-0064
+  (Snapshot-v3) -> 0066 (Datei + Snapshot + Journal); Lane-Ports
+  0065/0066 gedroppt (Definer-Port kommentaridentisch, Derive-Port
+  als NEUE Migration 0073 mit Cap-Zeile neu aufgelegt).
+- 0073-Pin fbb06d5a: sha256(prosrc-verbatim) lokal berechnet UND
+  identisch zur Lane-CI-Messung (unabhaengige Doppelbelegung).
+  Journal 0..73 lueckenlos, Pins TOTAL 74 / idx 73.
+- 0059/0062: wave-02-Fassung (Konflikte), Lane-Grants additiv
+  erhalten (c3c22c7-Teil, konfliktfrei). Fixtures: v2+Fix (wave),
+  Draft-Terms Fix+Cap (Lane), time_entry_revision lean (Lane) +
+  discount/subsidy-Factories (wave). F1-09-Mention-Dup entfernt.
+- FRAGEN: Nr. 6 (Billing) ERLEDIGT — CI startet; Nr. 7 (D/E vs.
+  Trigger) DECIDED — Union (s. FRAGEN-AN-MIKAIL.md).
+- Lokal gruen: lint (0 errors), typecheck, depcruise, generate
+  (No schema changes), catalog-import via node --import-tsx.
+- Naechster Schritt: Push (force-with-lease, ECC_SKIP_PREPUSH=1),
+  CI-Orakel lesen (API; Blob-Logs ggf. tot wie Turn 56b).
+
+## Turn 58 — 0073-Syntax-Crash gefunden + gefixt (0-Test-Ursache)
+
+- Baseline-Run 33957805200: Testsuite sammelte 0 Tests (vitest-result
+  364 B, success:false), E2E ohne Artefakt — Setup-Crash in beiden Jobs.
+- Ursache (EIGENER Fehler): 0073-Header per Python-Split auf
+  'CREATE OR REPLACE' gebaut — traf den KOMMENTAR in 0065:8, liess
+  4 Fragment-Zeilen (uncommentiertes SQL) stehen → Migrate-Syntaxfehler.
+  Fix: Fragment entfernt; 0073 = 0065 + Cap-Zeile + Terminator (Diff
+  verifiziert, Pin fbb06d5a unveraendert).
+- Nebenbefund: wave-02-Merge-Run 33957063144 LIEF Tests (2008, nur 5
+  Renderer-Fails m2-02/m203a/m203b1) — Setup dort OK. f42a019-Run mit
+  0 Tests bleibt unerklaert (Flake?); irrelevant nach vorne.
+- E2E-Vorbefund (pre-merge 33930854947, 13 Fails): m2-01/02/03a/04
+  (S1-Cluster), f9-01/02/03/04/04b, f10-02b, m1-15 — Triage folgt nach
+  gruenem Setup.

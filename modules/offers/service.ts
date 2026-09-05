@@ -23,7 +23,10 @@ import {
   setOptionalBundlesCommandV1Schema,
   setPrimaryVariantCommandV1Schema,
   setTotalPriceOverrideCommandV1Schema,
+  setVariantPaymentOptionCommandV1Schema,
   toOfferVariantView,
+  type OptionalBundlesV1,
+  type SetVariantPaymentOptionCommandV1,
   validateOfferVariantSnapshot,
   type CreateOfferCommandV1,
   type CreateVariantFromResolutionCommandV1,
@@ -110,6 +113,8 @@ export type OfferDetailViewModel = {
     isPrimary: boolean;
     active: boolean;
     href: string;
+    bundles: OptionalBundlesV1;
+    paymentOptionId: string | null;
   }>;
   activeVariant: OfferVariantViewV1;
   newBasisInput: {
@@ -200,6 +205,7 @@ type VariantRow = {
   description: string | null;
   is_primary: boolean;
   optional_bundles: unknown;
+  payment_option_id: string | null;
   [key: string]: unknown;
 };
 
@@ -486,6 +492,12 @@ export async function listOffers(
   };
 }
 
+function readVariantBundles(value: unknown): OptionalBundlesV1 {
+  const bundles = optionalBundlesSchema.safeParse(value);
+  if (!bundles.success) throw new OfferIntegrityError();
+  return bundles.data;
+}
+
 export async function getOfferDetail(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -546,7 +558,8 @@ export async function getOfferDetail(
   }
 
   const variantsResult = await tx.execute<VariantRow>(sql`
-    select id, offer_id, ordinal, current_revision, name, description, is_primary
+    select id, offer_id, ordinal, current_revision, name, description, is_primary,
+           optional_bundles, payment_option_id
       from offer_variant
      where workspace_id = ${ctx.workspaceId}::uuid
        and offer_id = ${offerRecord.id}::uuid
@@ -650,14 +663,26 @@ export async function getOfferDetail(
     overrideActive,
     displayTotalNetCents: overrideActive ? totalPriceOverrideNetCents : primaryBasisNetCents,
     displayTotalGrossCents: overrideActive ? null : primaryBasisGrossCents,
-    variants: variantsResult.rows.map((variant) => ({
-      id: variant.id,
-      name: variant.name,
-      revision: variant.current_revision,
-      isPrimary: variant.is_primary,
-      active: variant.id === active.id,
-      href: `/w/${ctx.workspaceId}/angebote/${offerRecord.id}?variante=${variant.id}`,
-    })),
+    variants: variantsResult.rows.map((variant) => {
+      // Robuster Read wie beim Override oben: fehlende Spalte in
+      // Unit-Fixtures/Alt-Zeilen (undefined) = leere Liste; nur echte,
+      // korrupte Werte sind ein Integritätsfehler.
+      const bundles = variant.optional_bundles === undefined
+        ? []
+        : readVariantBundles(variant.optional_bundles);
+      return {
+        id: variant.id,
+        name: variant.name,
+        revision: variant.current_revision,
+        isPrimary: variant.is_primary,
+        active: variant.id === active.id,
+        href: `/w/${ctx.workspaceId}/angebote/${offerRecord.id}?variante=${variant.id}`,
+        bundles,
+        // Robuster Read wie bei bundles: Mock-Zeilen ohne die Spalte
+        // (undefined) bedeuten „keine Angabe".
+        paymentOptionId: variant.payment_option_id ?? null,
+      };
+    }),
     activeVariant,
     newBasisInput,
     permissions: {
@@ -1133,6 +1158,8 @@ function buildResolutionSnapshot(input: {
       currency: "EUR",
       priceBasis: "net",
       globalDiscountBps: 0,
+      // F16.3 Slice E: Cap (null = ungedeckelt).
+      globalDiscountCapCents: null,
       globalFixDiscountCents: null,
       customDealNetCents: null,
       sections: sections.map((section) => ({
@@ -1177,6 +1204,8 @@ function buildResolutionSnapshot(input: {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: sections.map((section) => ({
@@ -1586,7 +1615,7 @@ async function lockVariant(
 ): Promise<VariantRow> {
   const result = await tx.execute<VariantRow>(sql`
     select id, offer_id, ordinal, current_revision, name, description, is_primary,
-           optional_bundles
+           optional_bundles, payment_option_id
       from offer_variant
      where workspace_id = ${ctx.workspaceId}::uuid
        and offer_id = ${offerId}::uuid
@@ -1889,6 +1918,8 @@ function applyRevisionOperation(
     case "set_global_discount":
       requireOfferAccess(ctx, "discount.apply", "offer_discount");
       snapshot.globalDiscountBps = operation.discountBps;
+      // F16.3 Slice E: Cap mitführen; weggelassen = bestehenden behalten.
+      if (operation.capCents !== undefined) snapshot.globalDiscountCapCents = operation.capCents;
       return;
     case "set_global_fix_discount":
       requireOfferAccess(ctx, "discount.apply", "offer_discount");
@@ -2087,6 +2118,7 @@ function repriceSnapshot(snapshot: OfferVariantSnapshotV1): void {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: snapshot.globalDiscountBps,
+    globalDiscountCapCents: snapshot.globalDiscountCapCents,
     globalFixDiscountCents: snapshot.globalFixDiscountCents,
     customDealNetCents: snapshot.customDealNetCents,
     sections: snapshot.sections.map((section) => ({
@@ -2408,6 +2440,115 @@ export async function setOptionalBundles(
     aggregateType: "offer",
     aggregateId: offerRecord.id,
     eventType: "offer.variant_bundles_set",
+    actor: ctx.actor,
+    payload,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "project.write",
+    resource: "offer",
+    allowed: true,
+    details: payload,
+  });
+  return { offerId: offerRecord.id, variantId: variant.id, changed: true };
+}
+
+export type SetVariantPaymentOptionResult = {
+  offerId: string;
+  variantId: string;
+  changed: boolean;
+};
+
+// F2.5 Slice A: Zahlart-Auswahl je Variante (nullable, revisionslos —
+// Präzedenz setOptionalBundles). Archivierte Optionen sind nicht wählbar,
+// gesetzte Historie bleibt lesbar.
+export async function setVariantPaymentOption(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<SetVariantPaymentOptionResult> {
+  requireOfferAccess(ctx, "project.write", "offer_variant");
+  const parsed = setVariantPaymentOptionCommandV1Schema.safeParse(value);
+  if (!parsed.success) throw new OfferValidationError(issuePaths(parsed.error));
+  const command: SetVariantPaymentOptionCommandV1 = parsed.data;
+  const projectId = await readOfferProjectId(tx, ctx, command.offerId);
+  await lockProjectBasis(tx, ctx, projectId);
+  const offerRecord = await lockOffer(tx, ctx, command.offerId);
+  const variant = await lockVariant(tx, ctx, offerRecord.id, command.variantId);
+  const stored = variant.payment_option_id ?? null;
+  if (command.paymentOptionId === null) {
+    if (stored === null) {
+      return { offerId: offerRecord.id, variantId: variant.id, changed: false };
+    }
+    const now = await databaseNow(tx);
+    await tx.execute(sql`
+      update offer_variant
+         set payment_option_id = null,
+             updated_at = ${now}::timestamptz
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and offer_id = ${offerRecord.id}::uuid
+         and id = ${variant.id}::uuid
+    `);
+    const payload = {
+      offerId: offerRecord.id,
+      variantId: variant.id,
+      previousPaymentOptionId: stored,
+      actor: ctx.actor,
+      at: now,
+    };
+    await emitEvent(tx, {
+      workspaceId: ctx.workspaceId,
+      aggregateType: "offer",
+      aggregateId: offerRecord.id,
+      eventType: "offer.variant_payment_option_cleared",
+      actor: ctx.actor,
+      payload,
+    });
+    await writeAudit(tx, {
+      workspaceId: ctx.workspaceId,
+      actor: ctx.actor,
+      action: "project.write",
+      resource: "offer",
+      allowed: true,
+      details: payload,
+    });
+    return { offerId: offerRecord.id, variantId: variant.id, changed: true };
+  }
+  const option = await tx.execute<{ id: string; archived_at: unknown }>(sql`
+    select id, archived_at from payment_option
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${command.paymentOptionId}::uuid
+     limit 1
+  `);
+  const optionRow = option.rows[0];
+  if (!optionRow) throw new OfferNotFoundError();
+  if (optionRow.archived_at !== null) throw new OfferValidationError();
+  if (stored === optionRow.id) {
+    return { offerId: offerRecord.id, variantId: variant.id, changed: false };
+  }
+  const now = await databaseNow(tx);
+  await tx.execute(sql`
+    update offer_variant
+       set payment_option_id = ${optionRow.id}::uuid,
+           updated_at = ${now}::timestamptz
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerRecord.id}::uuid
+       and id = ${variant.id}::uuid
+  `);
+  const payload = {
+    offerId: offerRecord.id,
+    variantId: variant.id,
+    paymentOptionId: optionRow.id,
+    previousPaymentOptionId: stored,
+    actor: ctx.actor,
+    at: now,
+  };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "offer",
+    aggregateId: offerRecord.id,
+    eventType: "offer.variant_payment_option_set",
     actor: ctx.actor,
     payload,
   });

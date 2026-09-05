@@ -22,8 +22,9 @@ export class OfferPdfRenderError extends Error {
   constructor(
     public readonly code: OfferPdfRenderFailureCode,
     public readonly retryable: boolean,
+    options?: { cause?: unknown },
   ) {
-    super("offer PDF render failed");
+    super("offer PDF render failed", options);
     this.name = "OfferPdfRenderError";
   }
 }
@@ -202,8 +203,10 @@ export function createSealedPlaywrightOfferPdfRenderer<
             TZ: "Europe/Berlin",
           },
         });
-      } catch {
-        throw new OfferPdfRenderError("browser_unavailable", true);
+      } catch (error) {
+        // Cause bleibt lesbar (rls.test.ts-Muster); Typ/Code/Meldung
+        // unveraendert — nur Observability fuer CI-Launch-Fehler.
+        throw new OfferPdfRenderError("browser_unavailable", true, { cause: error });
       }
 
       try {

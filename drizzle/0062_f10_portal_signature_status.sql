@@ -192,6 +192,9 @@ $f1001_resolve_token$;$ddl$;
       'GRANT app_owner TO %I WITH inherit false, set true', v_app
     );
     GRANT CREATE ON SCHEMA public TO app_owner;
+    -- Definer-Rechte für den Signatur-Join (Review-Fund 2026-09-05:
+    -- ohne Tabellen-Grant scheitert der Resolver mit 42501).
+    GRANT SELECT ON public.signature_request TO app_owner;
     SET ROLE app_owner;
     EXECUTE $ddl$CREATE OR REPLACE FUNCTION public.resolve_portal_public_view(requested_token_hash bytea)
 RETURNS jsonb

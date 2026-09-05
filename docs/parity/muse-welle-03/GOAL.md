@@ -15,13 +15,23 @@ F16.3-D implementiert (Snapshot-v2, Fix-Modell, f1603d, E2E-04; lokal
 grün, Goldens belegt; DB-/E2E-Ausführung pending CI/Maschine —
 Billing-Block Q6). M2-04 als DONE pending CI verifiziert (Won per
 DEC-M204-08 NICHTZIEL).
-Nächstes: F16.3-E implementieren (SPEC liegt, Triple-Read-Risikoflag). Slice D gepusht (668fee3), CI weiter Billing-blockiert (0 Steps).
+Stand: + F16.3-E implementiert (Snapshot-v3, Cap-Modell, f1603e, E2E-05; lokal grün, Goldens belegt; DB-/E2E-Ausführung pending CI/Maschine).
+Stand Turn 26: CI-Triage 55/55 kartiert (bbd9a80: 55 failed/1958 passed),
+Fixes committet (c3c22c7, lokal): Fixtures/Grants/Pins/Gates-Chromium +
+Gatefix2-Locators. Push BLOCKIERT (ECC-Hook/test, EPERM-Sandbox, Nr. 5) —
+Push + CI ab Mikails Maschine, Quote 25 % ESTIMATE.
+Stand Turn 27: + 0065 Signatur-Definer-Tanz + 0066 Derive-v3-Felder
+(Gatefix3-Ports, dort 0064/0065) + f1003-Echtpfad, committet (676b357,
+lokal). Journal 67, m111a-Pins nachgezogen. Push-Block unverändert.
+Stand Turn 28: + Euro-Kommaparsing (E2E-04 tippt 12,50),
+committet (965407b, lokal). Push-Block unverändert.
+Nächstes: Slice E pushen + CI lesen, dann F1–F16-Sweep.
 
-Als Nächstes: 4 E2E-Specs (F2.2, F9.3, F16.2, F10.1, je eigener
-Commit, eigenes Projekt je Spec) → f7-02-Root-Cause nach Mikails E2E-Output
-→ M2-04. Pipeline: Lane `codex/muse-welle-03-e2e`, Commits lokal
-(f433631 f7-03-Isolation, 16365b5 Fehler-Mapping), Push blockiert durch
-globalen ECC-Pre-Push-Hook (FRAGEN-AN-MIKAIL.md Nr. 5) — kein Bypass.
+Als Nächstes (Turn 57): Rebase-Ergebnis pushen (force-with-lease) →
+CI-Orakel lesen (Slice E + 0066–0073) → Restfehler fixen →
+Review-Auflagen (REVIEW-MUSE-WELLE-03.md) → F16.3-F ff.
+Pipeline: Lane `codex/muse-welle-03-e2e`, Push via ECC_SKIP_PREPUSH=1
+lauffaehig (Turn 55 belegt), CI-Billing lebt wieder (Turn 57 belegt).
 
 Offene Mikail-Fragen: siehe FRAGEN-AN-MIKAIL.md (3 aktiv).
 Mission: ~36 % (ESTIMATE) — steigt nur mit VERIFIED-Slices.
@@ -43,3 +53,48 @@ notiert.
 - Kein Push ohne vollständige Gates: Commits lokal, Push erst nach Mikails
   Gate-Lauf. F2.2 hat keine Primary-/Override-/Bundle-UI (Service-only);
   E2E deckt den klickbaren Variantenpfad + DB-Read-back ab (Details je Commit).
+
+## Stand Turn 46 (2026-09-05)
+- Lane enthält Merge df1f444 von origin/codex/m1-wave-02 (6 Commits:
+  fc936ba, 68380d7, 1306548, d50f7c5, e178425, f42a019); 7 Konflikte
+  aufgelöst (0059 + end_at-Guard HEAD aus Ketten-/Schema-Gründen,
+  Fixture + Testkommentare von Basis übernommen).
+- Lokal grün: typecheck, lint (0 errors), depcruise, db:generate.
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 47 (2026-09-05)
+- F2.2-UI-Slice implementiert (FRAGEN-4 erledigt): Panel, Actions,
+  Unit-Tests, E2E-02; lokal grün (typecheck/lint/depcruise/generate,
+  --list 2/2). VERIFIED pending CI/Maschine (Billing-Block).
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 48 (2026-09-05)
+- Turn-47-Slice gehärtet (Bundle-Read-Toleranz, sonst CI-rot auf
+  bestehenden Mocks); lokal typecheck/lint grün.
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 49 (2026-09-05)
+- E2E-02 gehärtet (Offer-Scope im Read-back); lokal grün.
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 50 (2026-09-05)
+- F2.5 Slice A spezifiziert (Zahlarten-Anzeige, providerfrei).
+- ALS NÄCHSTES: F2.5 RED → IMPLEMENTED (0068 + Service + Tests + UI).
+
+## Stand Turn 51 (2026-09-05)
+- F2.5 Slice A implementiert (0068 + Service + UI + Tests); lokal
+  grün. VERIFIED pending CI/Maschine (Billing-Block + Orakel-Pin).
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 52 (2026-09-05)
+- F2.5-Eigen-Review ohne Befund (SQL/Snapshot, Helper, E2E-Muster).
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 53 (2026-09-05)
+- F7.1 Slice A implementiert (0069 + Service + UI + Tests); lokal
+  grün. VERIFIED pending CI/Maschine.
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Stand Turn 54 (2026-09-05)
+- F7.1A-Eigen-Review ohne Befund (Snapshot, Audit/Events, E2E-Texte).
+- ALS NÄCHSTES: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

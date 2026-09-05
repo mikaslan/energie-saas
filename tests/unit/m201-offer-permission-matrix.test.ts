@@ -110,6 +110,8 @@ function snapshot(): OfferVariantSnapshotV1 {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     // F16.3 Slice D: v2-Pflichtfeld.
     globalFixDiscountCents: null,
     customDealNetCents: null,

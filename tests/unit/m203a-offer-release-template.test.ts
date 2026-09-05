@@ -84,6 +84,8 @@ function inputFixture(lineCount = 3): OfferReleaseCandidateInputV1 {
     },
     commercialTerms: {
       globalDiscountBps: 250,
+      // F16.3 Slice E: Cap (null = ungedeckelt).
+      globalDiscountCapCents: null,
       globalFixDiscountCents: null,
       customDealNetCents: null,
     },

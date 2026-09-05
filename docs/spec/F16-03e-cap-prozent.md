@@ -1,6 +1,6 @@
 # F16.3 Slice E — Cap-Prozent global (Snapshot-v3, Geld, UI)
 
-Status: **SPECIFIED (DISCOVERED abgeschlossen)**
+Status: **IMPLEMENTED (lokal verifiziert 2026-09-04: lint 0 Errors, typecheck, depcruise, generate ohne Drift, catalog-contract-check, E2E-05 --list, DB-frei 1020 passed/21 nur Umgebung; DB-/E2E-Ausführung pending CI/Maschine — Billing-Block Q6)**
 
 Lane: `codex/muse-welle-03-e2e` off `origin/codex/m1-wave-02`.
 Vorgänger: F16.3-D (Fix-Modell, Snapshot-v2). Katalog: F16.3 „Fix mit
@@ -43,7 +43,7 @@ gedeckelte Totale nicht reproduzieren. Folglich muss der Cap ins Siegel.
 2. money.ts: `OfferPricingInput.globalDiscountCapCents`, Cap in
    `applyDiscount` (min-Deckel), Service-Threading (Resolution-Build,
    Reprice).
-3. DB: Migration 0064 (CHECK v1/v2/v3), Schema-Check spiegeln.
+3. DB: Migration 0066 (CHECK v1/v2/v3), Schema-Check spiegeln.
 4. PDF/Issuance: keine neue Zeile (Totale sind korrekt); Builder
    übernehmen den Cap-Key (strikte Schemas!).
 5. Editor: Cap-Anzeige neben Prozent (nur wenn gesetzt, „gedeckelt auf

@@ -25,6 +25,7 @@ function input(overrides: Partial<OfferPricingInput> = {}): OfferPricingInput {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 0,
+    globalDiscountCapCents: null,
     globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
@@ -361,5 +362,47 @@ describe("F16.3 Slice D globaler Fix-Rabatt (rein)", () => {
 
     const untouched = calculateOfferPricing(fixInput(null));
     expect(untouched.totals.basisNetCents).toBe(300);
+  });
+});
+
+describe("F16.3 Slice E Cap-Prozent global (rein)", () => {
+  function capInput(globalDiscountCapCents: number | null, extra: Partial<OfferPricingInput> = {}) {
+    return input({
+      sections: [{
+        sectionDomainId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        position: 1,
+        discountBps: 0,
+        lines: [
+          line({ lineDomainId: "00000000-0000-4000-8000-000000000001", position: 1 }),
+          line({ lineDomainId: "00000000-0000-4000-8000-000000000002", position: 2 }),
+          line({ lineDomainId: "00000000-0000-4000-8000-000000000003", position: 3 }),
+        ],
+      }],
+      globalDiscountBps: 5_000,
+      globalDiscountCapCents,
+      ...extra,
+    });
+  }
+
+  it("lässt null ungedeckelt (300 -50% = 150)", () => {
+    expect(calculateOfferPricing(capInput(null)).totals.basisNetCents).toBe(150);
+  });
+
+  it("deckelt bindend (150 -> Cap 100 -> 200)", () => {
+    expect(calculateOfferPricing(capInput(100)).totals.basisNetCents).toBe(200);
+  });
+
+  it("lässt nicht-bindenden Cap wirkungslos (Cap 200 -> 150)", () => {
+    expect(calculateOfferPricing(capInput(200)).totals.basisNetCents).toBe(150);
+  });
+
+  it("behandelt Cap 0 als Null-Rabatt (-> 300) und Cap exakt am Betrag (-> 150)", () => {
+    expect(calculateOfferPricing(capInput(0)).totals.basisNetCents).toBe(300);
+    expect(calculateOfferPricing(capInput(150)).totals.basisNetCents).toBe(150);
+  });
+
+  it("kombiniert Cap vor Fix (200 -Fix 50 = 150)", () => {
+    const result = calculateOfferPricing(capInput(100, { globalFixDiscountCents: 50 }));
+    expect(result.totals.basisNetCents).toBe(150);
   });
 });

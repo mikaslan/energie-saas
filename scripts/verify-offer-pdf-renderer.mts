@@ -72,7 +72,7 @@ function m202Fixture(): OfferPdfDraftInputV1 {
       name: "PV und Speicher",
       revision: 7,
     },
-    commercialTerms: { globalDiscountBps: 250, globalFixDiscountCents: null, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 250, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Photovoltaik",
@@ -169,6 +169,8 @@ function m203aFixture(): OfferReleaseCandidateInputV1 {
     },
     commercialTerms: {
       globalDiscountBps: 0,
+      // F16.3 Slice E: Cap (null = ungedeckelt).
+      globalDiscountCapCents: null,
       globalFixDiscountCents: null,
       customDealNetCents: null,
     },

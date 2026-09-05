@@ -140,6 +140,8 @@ type E2EState = Pick<
   m111bProjectId: string;
   f703ProjectId: string;
   f22ProjectId: string;
+  f25ProjectId: string;
+  f71ProjectId: string;
   f93ProjectId: string;
   f162ProjectId: string;
   f163dProjectId: string;
@@ -702,7 +704,16 @@ async function runMigration(databaseUrl: string, logPath: string): Promise<void>
     const exitCode = await childExit(child);
     throwIfInterrupted();
     if (exitCode !== 0) {
-      throw new Error("Die echten Datenbankmigrationen sind fehlgeschlagen.");
+      // Loop-Observability: Der Migrations-Log liegt sonst im privaten
+      // Temp-Verzeichnis und geht in CI verloren — Tail ausgeben.
+      let tail = "(migrations-log nicht lesbar)";
+      try {
+        const content = readFileSync(logPath, "utf8");
+        tail = content.split("\n").slice(-40).join("\n");
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`Die echten Datenbankmigrationen sind fehlgeschlagen.\n${tail}`);
     }
   } finally {
     closeSync(logFd);
@@ -1484,6 +1495,16 @@ async function main(): Promise<number> {
     editorIdentityId: seedData.editorIdentityId,
     skuSuffix: "w3-f163c",
   });
+  const w3F25Seed = await seedM201ReadyProject(embedded.superuserUrl, {
+    workspaceId: seedData.w3WorkspaceId,
+    editorIdentityId: seedData.editorIdentityId,
+    skuSuffix: "w3-f25",
+  });
+  const w3F71Seed = await seedM201ReadyProject(embedded.superuserUrl, {
+    workspaceId: seedData.w3WorkspaceId,
+    editorIdentityId: seedData.editorIdentityId,
+    skuSuffix: "w3-f71",
+  });
   const w3F101Lead = await submitSignedLead(
     server,
     embedded.superuserUrl,
@@ -1532,6 +1553,8 @@ async function main(): Promise<number> {
     m111bWorkspaceId: seedData.m111bWorkspaceId,
     f703ProjectId: w3F703Lead.projectId,
     f22ProjectId: w3F22Seed.projectId,
+    f25ProjectId: w3F25Seed.projectId,
+    f71ProjectId: w3F71Seed.projectId,
     f93ProjectId: w3F93Lead.projectId,
     f162ProjectId: w3F162Seed.projectId,
     f163dProjectId: w3F163dSeed.projectId,

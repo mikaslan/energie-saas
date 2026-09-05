@@ -37,6 +37,7 @@ export interface OfferEditorSourceSnapshot {
   variantName: string;
   description: string | null;
   globalDiscountBps?: number;
+  globalDiscountCapCents?: number | null;
   globalFixDiscountCents?: number | null;
   customDealNetCents?: number | null;
   sections: readonly OfferEditorSourceSection[];
@@ -74,6 +75,8 @@ export interface OfferEditorDraft {
   variantName: string;
   description: string;
   globalDiscountPercent: string;
+  // F16.3 Slice E: Deckel in Euro ("" = ungedeckelt).
+  globalDiscountCapEuros: string;
   // F16.3 Slice D: globaler Fix-Rabatt in Euro ("" = keiner).
   globalFixDiscountEuros: string;
   customDealNetEuros: string;
@@ -84,7 +87,7 @@ type ZeroConfirmation = { code: "zero_tax_draft_operator_confirmed"; confirmed: 
 export type OfferRevisionOperation =
   | { operation: "set_variant_name"; name: string }
   | { operation: "set_variant_description"; description: string | null }
-  | { operation: "set_global_discount"; discountBps: number }
+  | { operation: "set_global_discount"; discountBps: number; capCents?: number | null }
   | { operation: "set_global_fix_discount"; fixDiscountCents: number | null }
   | { operation: "set_custom_deal"; customDealNetCents: number | null }
   | { operation: "set_section_discount"; sectionDomainId: string; discountBps: number }
@@ -191,6 +194,8 @@ export function createOfferEditorDraft(snapshot: OfferEditorSourceSnapshot): Off
     variantName: snapshot.variantName,
     description: snapshot.description ?? "",
     globalDiscountPercent: formatScaledInteger(snapshot.globalDiscountBps ?? 0, 2),
+    globalDiscountCapEuros: snapshot.globalDiscountCapCents === null || snapshot.globalDiscountCapCents === undefined
+      ? "" : formatScaledInteger(snapshot.globalDiscountCapCents, 2),
     globalFixDiscountEuros: snapshot.globalFixDiscountCents === null || snapshot.globalFixDiscountCents === undefined
       ? "" : formatScaledInteger(snapshot.globalFixDiscountCents, 2),
     customDealNetEuros: snapshot.customDealNetCents === null || snapshot.customDealNetCents === undefined
@@ -466,10 +471,16 @@ export function buildOfferRevisionOperations(
   else if ((normalizedDescription || null) !== snapshot.description) operations.push({ operation: "set_variant_description", description: normalizedDescription || null });
 
   const globalDiscountBps = parseScaledInteger(draft.globalDiscountPercent, 2, 10_000);
+  // F16.3 Slice E: Cap ("" = ungedeckelt); Prozent- oder Cap-Änderung ->
+  // genau eine set_global_discount mit beiden Werten.
+  const globalDiscountCapCents = draft.globalDiscountCapEuros.trim() === "" ? null
+    : parseScaledInteger(draft.globalDiscountCapEuros, 2, MAX_MONEY_CENTS);
   if (globalDiscountBps === null) addError(errors, "global-discount", "Der globale Rabatt muss zwischen 0 und 100 Prozent liegen.");
-  else if (globalDiscountBps !== (snapshot.globalDiscountBps ?? 0)) {
+  else if (draft.globalDiscountCapEuros.trim() !== "" && globalDiscountCapCents === null) addError(errors, "global-discount-cap", "Der Deckel muss ein gültiger Eurobetrag sein.");
+  else if (globalDiscountBps !== (snapshot.globalDiscountBps ?? 0)
+    || globalDiscountCapCents !== (snapshot.globalDiscountCapCents ?? null)) {
     if (!capabilities.canApplyDiscount) addError(errors, "global-discount", "Für globale Rabatte fehlt die Berechtigung.");
-    else operations.push({ operation: "set_global_discount", discountBps: globalDiscountBps });
+    else operations.push({ operation: "set_global_discount", discountBps: globalDiscountBps, capCents: globalDiscountCapCents });
   }
   const customDealNetCents = draft.customDealNetEuros.trim() === "" ? null
     : parseScaledInteger(draft.customDealNetEuros, 2, MAX_MONEY_CENTS);
@@ -671,10 +682,13 @@ export function calculateOfferEditorPreview(
   const globalDiscountBps = parseScaledInteger(draft.globalDiscountPercent, 2, 10_000);
   const customDealNetCents = draft.customDealNetEuros.trim() === "" ? null
     : parseScaledInteger(draft.customDealNetEuros, 2, MAX_MONEY_CENTS);
+  const globalDiscountCapCents = draft.globalDiscountCapEuros.trim() === "" ? null
+    : parseScaledInteger(draft.globalDiscountCapEuros, 2, MAX_MONEY_CENTS);
   const globalFixDiscountCents = draft.globalFixDiscountEuros.trim() === "" ? null
     : parseScaledInteger(draft.globalFixDiscountEuros, 2, MAX_MONEY_CENTS);
   if (globalDiscountBps === null || (draft.customDealNetEuros.trim() !== "" && customDealNetCents === null)
-    || (draft.globalFixDiscountEuros.trim() !== "" && globalFixDiscountCents === null)) {
+    || (draft.globalFixDiscountEuros.trim() !== "" && globalFixDiscountCents === null)
+    || (draft.globalDiscountCapEuros.trim() !== "" && globalDiscountCapCents === null)) {
     return null;
   }
   try {
@@ -682,6 +696,7 @@ export function calculateOfferEditorPreview(
       currency: "EUR",
       priceBasis: "net",
       globalDiscountBps,
+      globalDiscountCapCents,
       globalFixDiscountCents,
       customDealNetCents,
       sections: draft.sections.map((section, sectionIndex) => {

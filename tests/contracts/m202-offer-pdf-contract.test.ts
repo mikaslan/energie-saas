@@ -52,6 +52,8 @@ function snapshotFixture(lineCount = 4) {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 250,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
@@ -118,6 +120,8 @@ function snapshotFixture(lineCount = 4) {
     currency: "EUR",
     priceBasis: "net",
     globalDiscountBps: 250,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     globalFixDiscountCents: null,
     customDealNetCents: null,
     sections: [{
@@ -200,7 +204,7 @@ function directInput(lineCount = 1) {
     recipient: { displayName: "Mia Muster" },
     installationSite: { formattedAddress: "Solstraße 8, 10115 Berlin" },
     variant: { name: "Basis", revision: 7 },
-    commercialTerms: { globalDiscountBps: 0, globalFixDiscountCents: null, customDealNetCents: null },
+    commercialTerms: { globalDiscountBps: 0, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
     sections: [{
       position: 1,
       title: "Leistungsumfang",
@@ -320,7 +324,7 @@ describe("offer-pdf-draft-input.v1 contract", () => {
       recipient: { displayName: "Mia <Muster>" },
       installationSite: { formattedAddress: "Solstraße 8, 10115 Berlin" },
       variant: { name: "Komfort Ä", revision: 7 },
-      commercialTerms: { globalDiscountBps: 250, globalFixDiscountCents: null, customDealNetCents: null },
+      commercialTerms: { globalDiscountBps: 250, globalDiscountCapCents: null, globalFixDiscountCents: null, customDealNetCents: null },
     });
     expect(built.variant).toEqual({ name: "Komfort Ä", revision: 7 });
     expect(built.sections).toHaveLength(1);
@@ -414,6 +418,6 @@ describe("offer-pdf-draft-input.v1 contract", () => {
 
     expect(hashOfferPdfDraftInput(parsed)).toBe(hashOfferPdfDraftInput(reordered));
     expect(hashOfferPdfDraftInput(parsed))
-      .toBe("cfa07bcbccffe7c01ee42f6528c9e60483db54a311f17bd792b9caae677868e4");
+      .toBe("93a19ddc2c7d021f1ff42f814f88c98349b55ff5f050d4542813e16855a3badf");
   });
 });

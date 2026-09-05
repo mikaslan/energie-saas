@@ -13,26 +13,19 @@
 3. **E2E-Vault-Ergebnis nicht einsehbar.** Vault gesperrt; das Ergebnis der
    E2E-Suite vom integrierten Stand ist unbekannt. Eigene Lauf-Nachweise
    werden je Spec geführt. (Annahme: keine — eigene Messung zählt.)
-4. **F2.2-UI-Gap als eigener Slice einplanen.** `is_primary`,
-   `total_price_override_net_cents`, `optional_bundles` existieren nur im
-   Service-/DB-Layer; im Angebots-Editor gibt es keinen Primary-Switch,
-   kein Override-Feld, keine Bundle-Steuerung (Spec versprach
-   „Primärkennzeichen + Override-Feld", nicht umgesetzt). Vorschlag:
-   eigener UI-Slice nach dem E2E-Nachholblock. Kein Backend-Umbau in
-   diesem Block.
+4. **F2.2-UI-Gap als eigener Slice einplanen — ERLEDIGT (Turn 47).**
+   UI-Slice implementiert (Panel + 3 Server-Actions + E2E-02, kein
+   Backend-Umbau außer additivem Bundle-Read); Verifikation pending
+   CI/Maschine (Billing-Block Nr. 6).
 5. **Push-Transport: `ECC_SKIP_PREPUSH=1` im Einsatz (offengelegt).**
    Globaler Hook (`core.hooksPath`, lint→typecheck→test) kann in dieser
    Sandbox nie grün werden (tsx-EPERM, kein listen()). Statt `--no-verify`
    (verboten) nutze ich das designed Hook-Interface `ECC_SKIP_PREPUSH=1`;
    Gate ist CI auf `codex/**`. Bei Einwand bitte melden, sonst gilt das
    als Verfahren.
-6. **CI-Billing: keine Ausführung mehr möglich (BLOCKED-ON-MIKAIL).**
-   Seit ca. 21:37 starten keine Jobs: „The job was not started because
-   recent account payments have failed or your spending limit needs to be
-   increased." Alle CI-Gates (Testsuite, E2E, Build) stehen still; Reruns,
-   Kontrolle und Observability-Commit können nicht verifizieren. Nur du
-   kannst Billing/Spending-Limit beheben. Bis dahin: autonome Arbeit ohne
-   CI (Specs/Statik), Verifikation nachgeholt sobald CI läuft.
+6. **CI-Billing — ERLEDIGT (Turn 57).** Läufe starten wieder
+   (belegt: Run 33954429993 ff. am 05.09., wave-02-Merge-Run
+   33957063144 in_progress). Gates lesen via gh/curl-API.
 
 ## B. Bestätigte Diagnosen (keine Frage, zur Ablage)
 
@@ -49,3 +42,13 @@
   Nächster Schritt: E2E-Lauf + Server-Log auswerten, strict ↔
   test-legacy-single differenzieren, echte Ursache fixen + sichtbaren
   Fehlerzustand mappen (nie still `idle`).
+
+## C. Neue Entscheidung (Turn 26, BLOCKED-ON-MIKAIL bei Integration)
+
+7. **F16.3 Fix-Modell: Lane-D/E vs. gatefix3-0065 — DECIDED
+   (Turn 57, Rebase auf 5641e3a).** Weder (a) noch (b): Union.
+   wave-02-0064/0065 (Definer/Derive-Fix) gepinnt übernommen,
+   Lane-0064 (Snapshot-v3-Check) nach 0066 renummeriert, Lane-Ports
+   gedroppt, Cap als NEUE Migration 0073 auf den Trigger gelegt
+   (Body-Pin fbb06d5a, rechnerisch + per Lane-CI-Messung belegt).
+   0059/0062: wave-02-Fassung (Lane-Grants additiv erhalten).

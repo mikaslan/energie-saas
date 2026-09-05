@@ -41,7 +41,6 @@ import {
   applyDiscountTemplateToOfferGlobal,
   createDiscountTemplate,
   DiscountTemplateNotFoundError,
-  DiscountTemplateValidationError,
 } from "@/modules/discounts";
 import { createOfferFromRequest } from "@/modules/offers";
 import { testPool } from "../setup/test-db";
@@ -604,22 +603,14 @@ describe("F16.3 Slice C Template-Apply global (PostgreSQL)", () => {
     expect(await readGlobalDiscountBps(members.workspaceId, offerId, variantId, 2)).toBe(500);
   });
 
-  it("F1603C-DB-02: Cap-Vorlage und fremde ID werden abgewiesen (Fix: Slice D)", async () => {
+  it("F1603C-DB-02: fremde ID wird abgewiesen (Cap: Slice E, Fix: Slice D)", async () => {
     const { members, offerId, variantId } = await createBasisOffer();
-    const cappedId = await createTemplate(members, {
-      name: "Gedeckelt",
-      kind: "percent_bps",
-      amountCents: null,
-      percentBps: 500,
-      capCents: 1000,
-    });
     const apply = (templateId: string) => withAuthorizedTenantOn(
       testPool, members.operatorId, members.workspaceId,
       (tx, ctx) => applyDiscountTemplateToOfferGlobal(tx, ctx, {
         templateId, offerId, variantId, expectedRevision: 1,
       }),
     );
-    await expect(apply(cappedId)).rejects.toBeInstanceOf(DiscountTemplateValidationError);
     await expect(apply("00000000-0000-4000-8000-000000000000"))
       .rejects.toBeInstanceOf(DiscountTemplateNotFoundError);
     // Keine Revision geschrieben.

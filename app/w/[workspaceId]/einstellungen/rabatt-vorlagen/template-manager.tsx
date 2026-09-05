@@ -59,8 +59,26 @@ function TemplateForm({
 }) {
   const [kind, setKind] = useState<"fix_cents" | "percent_bps">(template?.kind ?? "fix_cents");
   const [state, dispatch] = useActionState(action, initialState);
+  // P1 (Review Welle 03): uncontrolled inputs keep stale DOM values after
+  // save and across edit targets (silent ping-pong). Remount the form on
+  // success and whenever the server record changes (parent revalidates),
+  // and resync the kind switcher with the same key.
+  const [successCount, setSuccessCount] = useState(0);
+  const [prevStatus, setPrevStatus] = useState(state.status);
+  if (prevStatus !== state.status) {
+    setPrevStatus(state.status);
+    if (state.status === "success") setSuccessCount((count) => count + 1);
+  }
+  const formKey = template
+    ? `${template.id}:${template.updatedAt}:${successCount}`
+    : `new:${successCount}`;
+  const [lastKey, setLastKey] = useState(formKey);
+  if (lastKey !== formKey) {
+    setLastKey(formKey);
+    setKind(template?.kind ?? "fix_cents");
+  }
   return (
-    <form action={dispatch} className="grid gap-3">
+    <form action={dispatch} key={formKey} className="grid gap-3">
       <input type="hidden" name="workspaceId" value={workspaceId} />
       {template ? <input type="hidden" name="id" value={template.id} /> : null}
       <label className="grid gap-1 text-sm font-semibold text-slate-800">

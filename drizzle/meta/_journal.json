@@ -463,6 +463,62 @@
       "when": 1788567623492,
       "tag": "0065_f16_03_derive_draft_fix_field",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1788565894444,
+      "tag": "0066_f16_03_snapshot_v3_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1788580545422,
+      "tag": "0067_f1_09_note_mentions",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1788587860592,
+      "tag": "0068_f2_05_payment_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1788589602044,
+      "tag": "0069_f7_01_installation",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1788591864177,
+      "tag": "0070_f7_01_installation_ws_id_uq",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1788592400000,
+      "tag": "0071_f10_portal_m115_owner_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1788594000000,
+      "tag": "0072_f10_portal_m115_role_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1788600048949,
+      "tag": "0073_f16_03_derive_draft_cap_field",
+      "breakpoints": true
     }
   ]
 }

@@ -7,14 +7,13 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
-import { SIGNATURE_REQUEST_CREATE_VERSION } from "@/lib/integrations/offers/signature-contract";
+import { SIGNATURE_REQUEST_CREATE_VERSION, SIGNATURE_REQUEST_SIGN_VERSION } from "@/lib/integrations/offers/signature-contract";
 import {
   PORTAL_INVITE_CREATE_VERSION,
   hashPortalToken,
 } from "@/lib/integrations/portal/portal-contract";
 import { createPortalInvite, resolvePortalByToken } from "@/modules/portal";
 import { createSignatureRequest, signSignatureByToken } from "@/modules/signatures";
-import { hashSignatureToken } from "@/lib/integrations/offers/signature-contract";
 import { tenantFixtures } from "../setup/tenant-fixtures";
 import { testPool } from "../setup/test-db";
 
@@ -176,6 +175,8 @@ describe("F10.2 Slice B Signatur-Status (PostgreSQL)", () => {
     expect(plain.documents[0]!.signatureStatus).toBe("none");
     expect(plain.documents[0]!.signedAt).toBeNull();
 
+    // Echter öffentlicher Sign-Pfad (M2-04-DEFINER, kein Zeilen-Update):
+    // deckt den app_owner-Escape der RESTRICTIVE-Policies ab (Gatefix 0065).
     const signature = await withAuthorizedTenantOn(
       testPool, ctx.actorId, workspaceId,
       (tx, serviceCtx) => createSignatureRequest(tx, serviceCtx, {
@@ -192,7 +193,7 @@ describe("F10.2 Slice B Signatur-Status (PostgreSQL)", () => {
     expect(pending.documents[0]!.signedAt).toBeNull();
 
     const signedResult = await signSignatureByToken(testPool, {
-      schemaVersion: "signature-request-sign.v1",
+      schemaVersion: SIGNATURE_REQUEST_SIGN_VERSION,
       token: signature.token,
       mode: "click",
       artifactMimeType: null,

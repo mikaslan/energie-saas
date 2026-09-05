@@ -6,6 +6,11 @@ Supersede-Notiz (Slice D, 2026-09-04): Fix-Vorlagen sind seit Slice D
 global anwendbar (`set_global_fix_discount`); die DB-02-Fix-Abweisung
 wurde aus `f1603c` nach `f1603d` (Erfolgspfad) verschoben.
 
+Supersede-Notiz (Slice E, 2026-09-04): Gedeckelte Prozent-Vorlagen sind
+seit Slice E global anwendbar (`set_global_discount` mit `capCents`);
+die DB-02-Cap-Abweisung wurde aus `f1603c` nach `f1603e` (Erfolgspfad
+DB-01/DB-04) verschoben.
+
 Lane: `codex/muse-welle-03-e2e` off `origin/codex/m1-wave-02`.
 Vorgänger: F16.3-A/B (Vorlagen-CRUD + reine Arithmetik). Katalog: F16.3
 „Rabatt/Förderung (Fix/Prozent mit Cap)". Das Variantenmodell kennt

@@ -187,6 +187,8 @@ function snapshotBody(lineCount = 1) {
     currency: "EUR" as const,
     priceBasis: "net" as const,
     globalDiscountBps: 0,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     // F16.3 Slice D: v2-Pflichtfeld (null = kein Fix-Rabatt).
     globalFixDiscountCents: null,
     customDealNetCents: null,
@@ -416,7 +418,7 @@ describe("offer.v1 contract", () => {
     // F16.3 Slice D: v2-Siegel (Fix-Key null + v2-Literal) — per Renderer
     // deterministisch abgeleitet, kein Rateversuch.
     expect(snapshot.snapshotSha256).toBe(
-      "8dca5c66946d348745d3b4d8a51726c5659ebbb7b8b6139d1c3fa61ad8bf2767",
+      "b11fae1dd125d560dccce21fdee39c0f5baa33e8a5dff3e76537ab13eebe8f1e",
     );
 
     const manipulated = structuredClone(snapshot);

@@ -10,7 +10,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { workspace } from "./core";
+import { userIdentity, workspace } from "./core";
 import { project } from "./project";
 
 export const PROJECT_NOTE_TEXT_VERSION = "note-text.v1" as const;
@@ -82,5 +82,50 @@ export const projectNote = pgTable(
           and (${t.editedAt} is null or isfinite(${t.editedAt}))
           and (${t.deletedAt} is null or isfinite(${t.deletedAt}))`,
     ),
+  ],
+);
+
+// F1-09 @-Mentions: Seitentabelle zu project_note. Roh-Refs bleiben im
+// Markdown; hier liegen nur aufgelöste Identitäten (Diff pro Revision).
+export const projectNoteMention = pgTable(
+  "project_note_mention",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    projectId: uuid("project_id").notNull(),
+    noteId: uuid("note_id").notNull(),
+    mentionedIdentityId: uuid("mentioned_identity_id").notNull(),
+    emailLower: text("email_lower").notNull(),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("project_note_mention_ws_id_uq").on(t.workspaceId, t.id),
+    unique("project_note_mention_ws_note_identity_uq").on(
+      t.workspaceId,
+      t.noteId,
+      t.mentionedIdentityId,
+    ),
+    index("project_note_mention_ws_note_idx").on(t.workspaceId, t.noteId),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "project_note_mention_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.noteId],
+      foreignColumns: [projectNote.workspaceId, projectNote.id],
+      name: "project_note_mention_note_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.mentionedIdentityId],
+      foreignColumns: [userIdentity.id],
+      name: "project_note_mention_identity_fk",
+    }),
+    check(
+      "project_note_mention_email_ck",
+      sql`length(${t.emailLower}) between 3 and 254`,
+    ),
+    check("project_note_mention_revision_ck", sql`${t.revision} between 1 and 2147483647`),
   ],
 );

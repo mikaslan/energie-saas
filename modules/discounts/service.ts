@@ -285,10 +285,9 @@ export function restoreDiscountTemplate(
   return setTemplateActive(tx, ctx, id, true);
 }
 
-// F16.3 Slice C/D: Vorlage global aufs Angebot anwenden (via
-// reviseOfferVariant, wörtlich). Prozent cap-frei -> set_global_discount;
-// Fix (per CHECK cap-frei) -> set_global_fix_discount (Slice D).
-// Cap-Prozent -> ValidationError (nie still verlieren; Cap = Slice E).
+// F16.3 Slice C/D/E: Vorlage global aufs Angebot anwenden (via
+// reviseOfferVariant, wörtlich). Prozent (+ Cap wörtlich) ->
+// set_global_discount; Fix (per CHECK cap-frei) -> set_global_fix_discount.
 export async function applyDiscountTemplateToOfferGlobal(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -320,15 +319,13 @@ export async function applyDiscountTemplateToOfferGlobal(
   if (row.kind !== DISCOUNT_KIND_PERCENT || row.percent_bps === null) {
     throw new DiscountTemplateValidationError("nur Prozent-Vorlagen sind global anwendbar");
   }
-  if (row.cap_cents !== null) {
-    throw new DiscountTemplateValidationError("gedeckelte Vorlagen sind global nicht anwendbar");
-  }
+  // F16.3 Slice E: Cap wörtlich mitführen (null = ungedeckelt).
   return reviseOfferVariant(tx, ctx, {
     schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
     offerId: input.offerId,
     variantId: input.variantId,
     expectedRevision: input.expectedRevision,
-    operations: [{ operation: "set_global_discount", discountBps: row.percent_bps }],
+    operations: [{ operation: "set_global_discount", discountBps: row.percent_bps, capCents: row.cap_cents }],
   });
 }
 
@@ -347,7 +344,13 @@ export function applyDiscountTemplate(
     return Math.max(0, netCents - template.amountCents);
   }
   if (template.percentBps === null) throw new DiscountTemplateValidationError("percent ohne bps");
-  const raw = Math.floor((netCents * template.percentBps) / 10_000);
+  if (!Number.isInteger(template.percentBps)) {
+    throw new DiscountTemplateValidationError("bps muss Integer sein");
+  }
+  // Review Welle 03 (EINE Geld-Mathematik): exakte BigInt-Floor-Division
+  // wie money.ts statt Float — Float kippt jenseits 2^53 um ganze Cents
+  // (Zeuge: 999000175671·9769 → 975923271613 statt 975923271612).
+  const raw = Number((BigInt(netCents) * BigInt(template.percentBps)) / BigInt(10_000));
   const capped = template.capCents === null ? raw : Math.min(raw, template.capCents);
   return Math.max(0, netCents - capped);
 }

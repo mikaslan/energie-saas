@@ -144,6 +144,8 @@ function variantView(includePrivateValues = false): Record<string, unknown> {
     variantName: "Basis",
     description: "Synthetischer Angebotsentwurf",
     globalDiscountBps: 0,
+    // F16.3 Slice E: Cap (null = ungedeckelt).
+    globalDiscountCapCents: null,
     customDealNetCents: null,
     contactContext: { displayName: "Mia Müller" },
     installationSiteContext: {

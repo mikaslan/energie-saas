@@ -40,5 +40,11 @@ describe("F16.3 applySubsidyTemplate (rein, Cent-Arithmetik)", () => {
       .toThrow(SubsidyTemplateValidationError);
     expect(() => applySubsidyTemplate(1_000, percent(null as unknown as number)))
       .toThrow(SubsidyTemplateValidationError);
+    expect(() => applySubsidyTemplate(1_000, percent(12.5)))
+      .toThrow(SubsidyTemplateValidationError);
+  });
+
+  it("Prozent exakt jenseits 2^53 (Float-Zeuge: 999000175671·9769)", () => {
+    expect(applySubsidyTemplate(999_000_175_671, percent(9_769))).toBe(23_076_904_059);
   });
 });

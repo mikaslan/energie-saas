@@ -204,4 +204,30 @@ describe("F9.4 CSV-Export (PostgreSQL)", () => {
       (tx, ctx) => exportTimeEntries(tx, ctx, { projectId: fixture.projectId }),
     )).rejects.toBeInstanceOf(PermissionDeniedError);
   });
+
+  it("F904-DB-03: Formel-Injection neutralisiert (Excel-Textmarker)", async () => {
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createTimeEntry(
+        tx, ctx, entryCommand(fixture.projectId, 15, 10, "=HYPERLINK(\"https://evil.test\")", fixture.typeId),
+      ),
+    );
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createTimeEntry(
+        tx, ctx, entryCommand(fixture.projectId, 20, 11, "@SUMME(A1:A9)", null),
+      ),
+    );
+    const result = await withAuthorizedTenantOn(
+      testPool, fixture.viewerId, fixture.workspaceId,
+      (tx, ctx) => exportTimeEntries(tx, ctx, { projectId: fixture.projectId }),
+    );
+    const lines = result.content.replace(/^\uFEFF/u, "").split("\r\n").filter((line) => line !== "");
+    const formula = lines.find((line) => line.includes("HYPERLINK"));
+    expect(formula).toBeDefined();
+    expect(formula).toContain("'=HYPERLINK");
+    const atFormula = lines.find((line) => line.includes("SUMME"));
+    expect(atFormula).toBeDefined();
+    expect(atFormula).toContain("'@SUMME");
+  });
 });

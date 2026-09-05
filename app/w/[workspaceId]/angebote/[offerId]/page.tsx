@@ -11,6 +11,7 @@ import {
   listOfferIssuances,
   listOfferPdfDrafts,
   listOfferReleaseCandidates,
+  listPaymentOptions,
   OfferReleaseProfileNotFoundError,
   readCurrentOfferRecipient,
   readCurrentOfferReleaseProfile,
@@ -191,6 +192,7 @@ function snapshotViewSchema(canReadPurchasePrice: boolean) {
     variantName: z.string().trim().min(1).max(120),
     description: z.string().trim().min(1).max(1_000).nullable(),
     globalDiscountBps: basisPointsSchema,
+    globalDiscountCapCents: moneyCentsSchema.nullable(),
     globalFixDiscountCents: moneyCentsSchema.nullable().optional(),
     customDealNetCents: moneyCentsSchema.nullable(),
     contactContext: z.object({
@@ -228,6 +230,12 @@ function projectOfferDetailView(
     kind: "percent" | "fix";
     percentBps: number | null;
     amountCents: number | null;
+    capCents: number | null;
+  }[],
+  paymentOptions: readonly {
+    id: string;
+    key: "purchase" | "financing_classic" | "leasing";
+    label: string;
   }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
@@ -337,6 +345,9 @@ function projectOfferDetailView(
       status: view.offer.status,
       outdated: view.offer.outdated,
       forecastValueNetCents: view.offer.forecastValueNetCents,
+      totalPriceOverrideNetCents: view.offer.totalPriceOverrideNetCents,
+      overrideActive: view.overrideActive,
+      displayTotalNetCents: view.displayTotalNetCents,
     },
     variants: view.variants.map((variant) => ({
       id: variant.id,
@@ -344,6 +355,9 @@ function projectOfferDetailView(
       revision: variant.revision,
       active: variant.active,
       href: variant.href,
+      isPrimary: variant.isPrimary,
+      bundles: variant.bundles,
+      paymentOptionId: variant.paymentOptionId,
     })),
     activeVariant: parsedVariant.data,
     permissions: {
@@ -432,6 +446,7 @@ function projectOfferDetailView(
       issuances: issuanceSurfaces,
     },
     discountTemplates,
+    paymentOptions,
   };
 }
 
@@ -467,6 +482,13 @@ export default async function OfferDetailPage(
       kind: "percent" | "fix";
       percentBps: number | null;
       amountCents: number | null;
+      capCents: number | null;
+    }[];
+    // F2.5 Slice A: aktive Zahlarten für die Varianten-Auswahl.
+    paymentOptions: {
+      id: string;
+      key: "purchase" | "financing_classic" | "leasing";
+      label: string;
     }[];
     recoveryScope: string;
     editorCapabilities: {
@@ -503,8 +525,14 @@ export default async function OfferDetailPage(
           kind: "percent" | "fix";
           percentBps: number | null;
           amountCents: number | null;
+          capCents: number | null;
         }[] = [];
         let releaseValidityWindow: ReleaseValidityWindow | null = null;
+        const paymentOptions: {
+          id: string;
+          key: "purchase" | "financing_classic" | "leasing";
+          label: string;
+        }[] = [];
         if (view !== null && !externalOnly) {
           // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
           // durch. Dessen Queries muessen sequenziell bleiben; pg@9 weist
@@ -550,25 +578,25 @@ export default async function OfferDetailPage(
           releaseRecipient = recipientResult;
           releaseCandidates = candidateResult;
           offerIssuances = issuanceResult;
-          // F16.3 Slice C/D: Vorlagen für den Global-Rabatt-Dropdown.
-          // Prozent nur cap-frei (Cap nicht global anwendbar); Fix immer
-          // (per CHECK cap-frei). Nur mit discount.apply-Recht.
+          // F16.3 Slice C/D/E: Vorlagen für den Global-Rabatt-Dropdown.
+          // Prozent mit/ohne Cap (Cap wörtlich); Fix immer (per CHECK
+          // cap-frei). Nur mit discount.apply-Recht.
           if (!externalOnly && can(ctx, "discount.apply")) {
             if (can(ctx, "discount_template.read")) {
               for (const template of await listDiscountTemplates(tx, ctx, {})) {
-                if (template.kind === "percent_bps" && template.capCents === null && template.percentBps !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "percent", percentBps: template.percentBps, amountCents: null });
+                if (template.kind === "percent_bps" && template.percentBps !== null) {
+                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "percent", percentBps: template.percentBps, amountCents: null, capCents: template.capCents });
                 } else if (template.kind === "fix_cents" && template.amountCents !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "fix", percentBps: null, amountCents: template.amountCents });
+                  discountTemplates.push({ id: template.id, name: template.name, source: "discount", kind: "fix", percentBps: null, amountCents: template.amountCents, capCents: null });
                 }
               }
             }
             if (can(ctx, "subsidy_template.read")) {
               for (const template of await listSubsidyTemplates(tx, ctx, {})) {
-                if (template.kind === "percent_bps" && template.capCents === null && template.percentBps !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "percent", percentBps: template.percentBps, amountCents: null });
+                if (template.kind === "percent_bps" && template.percentBps !== null) {
+                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "percent", percentBps: template.percentBps, amountCents: null, capCents: template.capCents });
                 } else if (template.kind === "fix_cents" && template.amountCents !== null) {
-                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "fix", percentBps: null, amountCents: template.amountCents });
+                  discountTemplates.push({ id: template.id, name: template.name, source: "subsidy", kind: "fix", percentBps: null, amountCents: template.amountCents, capCents: null });
                 }
               }
             }
@@ -578,6 +606,12 @@ export default async function OfferDetailPage(
             suggested: validityResult.rows[0]?.suggested_valid_through,
             max: validityResult.rows[0]?.max_valid_through,
           });
+          // F2.5 Slice A: aktive Zahlarten für die Varianten-Auswahl.
+          if (can(ctx, "payment_option.read")) {
+            for (const option of await listPaymentOptions(tx, ctx, {})) {
+              paymentOptions.push({ id: option.id, key: option.key, label: option.label });
+            }
+          }
         }
         return {
           view,
@@ -593,6 +627,7 @@ export default async function OfferDetailPage(
           releaseValidityWindow,
           showReleasePanel: !externalOnly,
           discountTemplates,
+          paymentOptions,
           editorCapabilities: {
             canEditPrice: !externalOnly && can(ctx, "price.edit"),
             canApplyDiscount: !externalOnly && can(ctx, "discount.apply"),
@@ -637,6 +672,7 @@ export default async function OfferDetailPage(
           result.recoveryScope,
           result.pdfDrafts,
           result.discountTemplates,
+          result.paymentOptions,
           {
             profile: result.releaseProfile,
             recipient: result.releaseRecipient,
