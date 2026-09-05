@@ -864,3 +864,13 @@
 - Offen: Renderer x5 (browser_unavailable, CI-Umgebung?), E2E-Migration
   (Blob-Download timeoutet).
 - Naechster Schritt: Run 4 lesen (f162, f1002-DB-01, Renderer, E2E-Tail).
+
+## Turn 55d — CI-Runde 4 (Run 33952703147): 8 → 5 Fehler, STOP durch Mikail
+
+- Fix-Bilanz: f1002-DB-01 (0072), f162 x2 (Roh-Snapshot-Fix) gruen.
+  Alle DB-Tests gruen.
+- Offen bei Stop: Renderer-Unit-Tests x5 (browser_unavailable,
+  CI-Umgebung, kein eigener Code angefasst), E2E-Migration (Tail-Log
+  in Run 4 erstmals lesbar, Auswertung pending).
+- Stand gesichert: Worktree sauber, alles auf Lane gepusht (4cdb224).
+  Naechster Schritt (bei /loop): E2E-Tail + Renderer-Ursache lesen.
