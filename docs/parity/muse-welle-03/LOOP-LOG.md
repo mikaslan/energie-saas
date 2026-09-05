@@ -890,3 +890,14 @@
   Run zeigt den echten Launch-Fehler.
 - Lokal: typecheck/lint/depcruise gruen.
 - Naechster Schritt: Run 5 lesen (E2E-Policy-Diff + Renderer-Cause).
+
+## Turn 56b — Run 5 (33954429993): beide Jobs rot, Logs unlesbar
+
+- RUNTIME-BLOCK (Netz): Azure-Blob-CDN timeoutet dauerhaft
+  (`context deadline exceeded`) — weder Job-Logs noch Artefakte
+  ladbar. API (Jobs/Annotations) geht: Failing-Steps = Testsuite +
+  E2E-Suite, sonst keine Failure-Annotations.
+- Vermutung (UNBEWIESEN): Renderer-Cause + E2E-Policy-Diff liegen in
+  den unlesbaren Logs. Keine Code-Aenderung ohne Beleg.
+- Naechster Schritt: Run-5-Logs lesen sobald Blob geht (sonst neuer
+  Push als frischer Orakel-Lauf).
