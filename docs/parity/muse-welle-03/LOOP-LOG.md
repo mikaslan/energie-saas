@@ -464,3 +464,17 @@
   (via node --import tsx), generate (no drift). Vitest lokal EPERM
   (Loopback-Sperre) — DB-/Unit-Nachweise liefert CI.
 - Nächster Schritt: pushen, Gates- + E2E-Log lesen, Rest fixen.
+
+## Turn 26b — 2026-09-05, Push-Block (ECC-Hook, kein Bypass)
+
+- Commit `c3c22c7` lokal erstellt (22 Dateien). Push scheitert am
+  globalen ECC-Pre-Push-Hook (`/Users/mikailaslan/.codex/git-hooks/pre-push`):
+  Sequenz lint → typecheck → **test** → build. Lint grün (nur
+  vorbestehende Warnings), typecheck grün, `npm run test` scheitert
+  hier deterministisch an der Sandbox-Loopback-Sperre (embedded
+  Postgres `listen EPERM 127.0.0.1`) — Umgebungs-, kein Code-Defekt.
+  `ECC_SKIP_*` wäre ein Bypass (verboten, FRAGEN-AN-MIKAIL.md Nr. 5
+  gilt weiter). Exakte Hook-Zeile: `[ECC pre-push] FAILED: test failed`.
+- Parity-Quote: 4/16 = 25 % (ESTIMATE, Script via node---import-tsx).
+- Nächster Schritt: Push + CI-Lauf ab Mikails Maschine (dort läuft die
+  Suite), danach Gates-/E2E-Log lesen und Rest fixen.
