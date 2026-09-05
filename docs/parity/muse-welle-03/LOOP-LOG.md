@@ -425,3 +425,14 @@
   kein verifizierter DB-Stand hÄngt an Alt-Bytes; Verifier-Hinweis: Dev-DBs
   mit Alt-0059/0062 melden Journalposition-Abweichung → frische Test-DB.
 - Nächster Schritt: Fix pushen, CI lesen.
+
+## Turn 25b — 2026-09-05, Owner-Fix v2 (0016-Vorlage)
+
+- Erster Fix (blankes SET ROLE) scheiterte zu Recht: 0056 schließt das
+  Fenster bewusst wieder (`set false`). Korrektur nach Vorlage 0016
+  (identischer Fall identity_reconciler): ein DO-Block verschafft SET
+  temporär (GRANT set true + Schema-CREATE), ersetzt, schließt
+  (RESET, REVOKE, GRANT set false). Guard für Strict (Session schon
+  app_owner → kein Wechsel). Body unberührt, Pin 6d025bff gilt.
+- Prinzipale belegt: app_ci/app_test (CREATEROLE + Schema-Owner),
+  Superuser (alles), Strict (Guard-Skip). Keine Drift (generate clean).
