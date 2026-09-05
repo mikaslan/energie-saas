@@ -91,16 +91,30 @@ export default async function ProjectTimeTrackingPage(
             await listTimeEntryRevisions(tx, ctx, { entryId: entry.id })
           ).revisions;
         }
+        const writable = can(ctx, "time.write");
+        // Review Welle 03 (GPS rollenabhängig sichtbar): Koordinaten sind
+        // Mitarbeiter-Standortdaten — ohne time.write serverseitig
+        // entfernen (UI rendert NULL als „keine Zeile").
+        const visibleList = writable ? list : {
+          ...list,
+          entries: list.entries.map((entry) => ({ ...entry, startLat: null, startLng: null })),
+        };
+        const visibleRevisionsByEntry: Record<string, TimeEntryRevisionDto[]> = {};
+        for (const [entryId, revisions] of Object.entries(revisionsByEntry)) {
+          visibleRevisionsByEntry[entryId] = writable
+            ? revisions
+            : revisions.map((revision) => ({ ...revision, startLat: null, startLng: null }));
+        }
         return {
           projectName: projectRow.rows[0].name,
-          list,
+          list: visibleList,
           types: await listTimeEventTypes(tx, ctx, { includeArchived: true }),
           members: await listTimeMemberOptions(tx, ctx),
-          revisionsByEntry,
+          revisionsByEntry: visibleRevisionsByEntry,
           // F9.4 Slice D: gleicher Filter wie die Liste (WYSIWYG).
           utilization: await getTimeUtilization(tx, ctx, { projectId, userIds: selectedUserIds }),
           selectedUserIds,
-          canWrite: can(ctx, "time.write"),
+          canWrite: writable,
         };
       },
     );

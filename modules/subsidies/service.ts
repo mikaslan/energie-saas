@@ -350,7 +350,7 @@ export function applySubsidyTemplate(
   // Review Welle 03 (EINE Geld-Mathematik): exakte BigInt-Floor-Division
   // wie money.ts statt Float — Float kippt jenseits 2^53 um ganze Cents
   // (Zeuge: 999000175671·9769 → 975923271613 statt 975923271612).
-  const raw = Number((BigInt(netCents) * BigInt(template.percentBps)) / 10_000n);
+  const raw = Number((BigInt(netCents) * BigInt(template.percentBps)) / BigInt(10_000));
   const capped = template.capCents === null ? raw : Math.min(raw, template.capCents);
   return Math.max(0, netCents - capped);
 }

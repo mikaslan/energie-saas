@@ -397,6 +397,10 @@ function StartForm({
   const lngRef = useRef<HTMLInputElement | null>(null);
   const [consent, setConsent] = useState(false);
   const [locating, setLocating] = useState(false);
+  // Review Welle 03 (Consent-Race): der Geolocation-Callback prüft das
+  // Consent zum Antwort-Zeitpunkt (Ref, kein stale State) — wer den Haken
+  // während der Ortung entfernt, startet garantiert ohne Koordinaten.
+  const consentRef = useRef(false);
 
   const submit = (): void => {
     setLocating(false);
@@ -411,8 +415,10 @@ function StartForm({
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        if (latRef.current) latRef.current.value = String(position.coords.latitude);
-        if (lngRef.current) lngRef.current.value = String(position.coords.longitude);
+        if (consentRef.current) {
+          if (latRef.current) latRef.current.value = String(position.coords.latitude);
+          if (lngRef.current) lngRef.current.value = String(position.coords.longitude);
+        }
         submit();
       },
       () => submit(),
@@ -432,14 +438,16 @@ function StartForm({
         <input
           type="checkbox"
           checked={consent}
+          disabled={locating}
           onChange={(event) => {
+            consentRef.current = event.target.checked;
             setConsent(event.target.checked);
             if (!event.target.checked) {
               if (latRef.current) latRef.current.value = "";
               if (lngRef.current) lngRef.current.value = "";
             }
           }}
-          className="h-4 w-4 accent-blue-700"
+          className="h-4 w-4 accent-blue-700 disabled:opacity-60"
         />
         Standort beim Start speichern
       </label>
