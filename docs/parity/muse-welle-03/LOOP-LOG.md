@@ -622,3 +622,11 @@
   jsonb_build_object setzt explizit null = Builder-`?? null` →
   kanonisch identisch (m202-Hash-Test konsistent).
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 37 — 2026-09-05, SPEC-Selbstreview (F1-09)
+
+- SPEC-Fehler gefunden + behoben: Auflösung behauptete
+  `deleted_at IS NULL` auf Membership — Spalte existiert nicht
+  (0000-Schema: Existenz = aktiv; FK user_id → user_identity).
+  Extern-Erwähnbarkeit explizit entschieden (E-Mails ohnehin Labels).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

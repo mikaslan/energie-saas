@@ -22,8 +22,11 @@ lösen gegen den Workspace-Mitgliederstand auf und rendern als
   (Backticks) und URLs. Max. 20 Mentions pro Notiz (DoS-Schranke,
   Validierungsfehler darüber).
 - Referenz: `mention.v1` = `{ userIdentityId: uuid, emailLower: string }`.
-  Auflösung beim Schreiben gegen `membership JOIN user_identity`
-  im selben Workspace (aktive Mitgliedschaft, `deleted_at IS NULL`).
+  Auflösung beim Schreiben gegen `membership JOIN user_identity
+  ON user_id = id` im selben Workspace (Mitgliedschaft = Zeilen-
+  existenz; E-Mail ist global eindeutig, Workspace-Filter Pflicht).
+  Externe Mitglieder sind erwähnbar (E-Mails ohnehin als Labels
+  sichtbar).
 - Speicherung: Seitentabelle `project_note_mention`
   (`workspace_id, note_id, project_id, mentioned_identity_id,
   email_lower, revision`, UNIQUE (workspace_id, note_id,
