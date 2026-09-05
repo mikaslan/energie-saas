@@ -836,3 +836,17 @@
 - Lokal: typecheck/lint(0 Errors, 11 fremde Warnings)/depcruise/generate
   gruen.
 - Naechster Schritt: Fixes pushen, CI lesen (Portal-Cause + E2E-Tail).
+
+## Turn 55b — CI-Runde 2 (Run 33951768650): 38 → 23 Fehler
+
+- Fix-Bilanz: m113-Vertrag, f1603d, m203a/m203b1-DB, m204 x8,
+  Tenant-Invarianten x3, f109-DB-04 gruen.
+- Portal-Cause (neu lesbar): `permission denied for function
+  _m115_actor_can_read_appointments` — 0059-Owner-Tanz ohne
+  Helfer-Grant. FIX: 0071 (GRANT EXECUTE an app_owner, 0065-Muster).
+- m111a-Pins: Journal 71/0071, TOTAL 72 (FIX).
+- Mention-Arrays: Drizzle splittet in Einzelparams — sql.join-IN-Listen
+  (tasks-Hausmuster, FIX). f162: Integrity-Cause angehaengt (FIX).
+- f1003 lag nur noch am Portal-Grant (0071). Renderer x5 + E2E-Migration
+  weiter offen (E2E-Blob-Download timeoutet — naechster Run).
+- Naechster Schritt: Run 3 lesen (239e649).
