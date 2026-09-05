@@ -32,3 +32,32 @@ Kanonische Quelle der Befunde; Kurzfassung geht an Mikail, Details hier.
   Drift. Full-Check läuft — erwarteter Bruch an Befund A (0059).
 - Offen: 0059-Wrapper auf Lane-Head wiederherstellen, m111a-Zähler
   prüfen (0061–0063), volle Gates, Integration nach Grün.
+
+## Runde 3 (≈ 03:00) — Verifikation der F10.2-B/F16.3-B–D-Welle
+
+- Muse: Turn 23 + F16.3-E-Spec; Lane `dfece96`. Neue Migrationen 0061
+  (subsidy), 0062 (Signatur-Status), 0063 (Snapshot-v2).
+- **Befund B:** Muse drehte den 0059-Owner-Wrapper zurück (CREATE OR
+  REPLACE bricht test-legacy-single) und 0062 legte einen zweiten
+  ungewrappten Resolver-Ersatz nach. Fix: beide owner-sicher gewrappt
+  (Muster 0056), Grants ergänzt.
+- **Befund C:** Muses Merge verlor meine Pass-2-Fixes (f904/f904b/
+  f1603/f10-02-Spec) — wiederhergestellt.
+- **Befund D (Produkt-Bug):** F16.3-D vergaß den DB-Trigger
+  derive_offer_pdf_draft_input auf den neuen Vertrag zu heben (m202);
+  Fix = Migration 0065. Zusätzlich: Euro-Eingaben waren type=number
+  (Komma unmöglich) — auf text/inputMode + Komma-Parsing umgestellt.
+- **Befund E (echter Infra-Fix):** Migration 0064 — der öffentliche
+  Signatur-DEFINER-Pfad war im Testmodus nie lauffähig (RLS-Escape
+  app_owner griff nicht); sign/revoke/view app_owner-getanzt + Grants.
+- Gates auf Gatefix3: check 221 Dateien/2007 Tests + 1 Skip GRÜN,
+  Rollen 88/88, PG18 5/5, Build GRÜN, db:generate ohne Drift.
+- **E2E: 7 rot** — 2 davon sind Muses verlorene Fixes (f10-02,
+  wiederhergestellt ✓) und der Komma-Bug (f16-03d, behoben ✓).
+  4 bleiben: m2-01 (Offer-Create-Gate nicht ready), m2-02
+  (Variantennavigation weg), m2-03a (Button detacht mid-click),
+  m2-04 ×2 — alle zeigen im Server-Log „destination stream closed
+  early" nach saveOfferVariantDraftAction; Verdacht: F16.3-D-Editor/
+  Action-Integration (Operations-Serialisierung oder revalidate-
+  Stream-Bruch in Dev). NÄCHSTE RUNDE: Root-Cause, dann Integration.
+- wave-02 bleibt auf f42a019; Gatefix3 NICHT integriert (E2E nicht grün).
