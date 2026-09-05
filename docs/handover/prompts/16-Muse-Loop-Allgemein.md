@@ -50,6 +50,10 @@ DECIDED/ESTIMATE dokumentieren. Echte Blocker nur in
   Prüfungen über Dateien + Text-Zusammenfassungen.
 - Lange Briefe/Prompts nur beim Erststart; im Loop nur den
   Mini-Resume. Details gezielt nachlesen statt alles zu laden.
+- Harte Read-Limits: Zustandsdateien klein halten (GOAL.md ersetzen,
+  nie anhängen; LOOP-LOG nur `tail -50`), max 200 Zeilen je Read,
+  große Artefakte (DB-Snapshots, CI-Logs) NIE komplett in den Kontext —
+  nur gefilterte Auszüge. Details: `18-Muse-Token-Disziplin.md`.
 
 ## NETZWERK-GUARD (einmalig je Projekt)
 
