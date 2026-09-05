@@ -783,3 +783,12 @@
 - Lokal: typecheck/lint(0 errors)/depcruise/generate/contract-check/
   --list 2/2 grün. Reviews Exit-3.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 52 — 2026-09-05, Eigen-Review F2.5 (ohne Befund)
+
+- SQL vs. Snapshot: alle Namen deckungsgleich (FK-Ziel via
+  ws_id_uq unique-abgedeckt); 23505-Helper bytegleich zum Haus
+  (checklists); setArchived-Pfade (Idempotenz/Restore-Konflikt)
+  logikgeprüft; E2E-Selektoren gegen Panel/Manager verifiziert;
+  fixe E2E-Labels folgen f1-08-Konvention (frische DB pro Run).
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
