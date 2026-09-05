@@ -51,6 +51,16 @@ DECIDED/ESTIMATE dokumentieren. Echte Blocker nur in
 - Lange Briefe/Prompts nur beim Erststart; im Loop nur den
   Mini-Resume. Details gezielt nachlesen statt alles zu laden.
 
+## NETZWERK-GUARD (einmalig je Projekt)
+
+- Nötige Hosts (GitHub, Actions-Logs/Azure-Blob, npm, Review-API) einmalig
+  in der Laufzeit-Konfiguration freischalten — Musterliste in
+  `docs/handover/prompts/17-Muse-Netzwerk-Autonomie.md`. Ohne Freischaltung
+  fragt der Laufzeit-Guard bei jedem neuen Host und unterbricht den
+  unbeaufsichtigten Loop.
+- Ein RUNTIME-Permission-Prompt ist ein Systemfehler, keine Frage:
+  Aktion überspringen, im LOOP-LOG protokollieren, weiterarbeiten.
+
 ## REVIEWS
 
 - Spec und Code über `/codex-review` prüfen lassen; Befunde selbst
