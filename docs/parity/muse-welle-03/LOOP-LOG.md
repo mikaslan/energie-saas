@@ -659,3 +659,13 @@
 - Lokal: typecheck grün, eslint sauber, depcruise-geprüft.
   Offen (Folge-Inkrement): UI-Chips + E2E-06.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 41 — 2026-09-05, F1-09 UI-Chips (ohne E2E)
+
+- Renderer rendert bekannte Refs als Chips (data-testid), nie in
+  Code-Marks; Section verdrahtet. Splitter-Logik auf positionsgetreue
+  Bereichs-Matches umgebaut (Extraktor-Verhalten per Beweis identisch:
+  split 9/9, mentions 8/8, v1 8/8). Unit-Tests erweitert.
+- E2E-06 bewusst NICHT blind geschrieben (Seed-Flow braucht
+  CI-Feedback); SPEC markiert offen. Lokal: typecheck/lint/depcruise.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

@@ -111,7 +111,7 @@ function NoteCard({
         </span>
       </div>
 
-      <NoteMarkdownRenderer textMarkdown={note.textMarkdown} />
+      <NoteMarkdownRenderer textMarkdown={note.textMarkdown} mentions={note.mentions} />
 
       {(editedAt !== "" || note.pinnedByLabel !== null) ? (
         <p className="mt-2 text-xs leading-5 text-slate-500">
