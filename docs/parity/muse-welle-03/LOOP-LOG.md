@@ -630,3 +630,12 @@
   (0000-Schema: Existenz = aktiv; FK user_id → user_identity).
   Extern-Erwähnbarkeit explizit entschieden (E-Mails ohnehin Labels).
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 38 — 2026-09-05, Sign-Pfad-Hygiene (kein Code)
+
+- Verifiziert: set_config-Aufrufe in 0044 sind transaktionslokal
+  (`is_local=true`) → kein Session-Leak über Pool-Connections.
+  Fehlerabbildung laut: not_found aus sign schlägt safeParse fehl
+  → mapNonSuccess (nie still grün). f1003-DB-01 scheitert daher
+  laut, falls 0065 je nicht griffe — kein blinder Pass.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
