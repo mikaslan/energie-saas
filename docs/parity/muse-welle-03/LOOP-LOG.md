@@ -552,3 +552,15 @@
   Validierung ok; Tabellen-Grants → Definer liest; Migrator-Grants
   → Tests dürfen rufen; Pins → Strict bleibt exakt.
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 31 — 2026-09-05, Verstetigung (Pin-Doku)
+
+- Migrationsstand verifiziert: 67 Dateien = 67 Journal-Einträge =
+  TOTAL 67 (0000..0066) — kohärent. Journal-only-Einträge für
+  DO-only-Migrationen sind zulässig (kein Snapshot nötig,
+  migration-history prüft keine Snapshots; Gatefix3-Präzedenz).
+- Pin-Ableitungsregel am Pin-Ort dokumentiert (Kommentar in
+  db-role-contract.mts): Body-Pin = sha256(prosrc), prosrc =
+  wörtlicher Body zwischen Dollar-Tags. Offene Anomalie (alter Pin
+  ≠ 0033-Body) bleibt CI-Entscheid; eslint der Datei sauber.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
