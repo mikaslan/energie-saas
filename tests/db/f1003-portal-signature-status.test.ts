@@ -202,7 +202,9 @@ describe("F10.2 Slice B Signatur-Status (PostgreSQL)", () => {
 
     const signed = await resolvePortalByToken(testPool, { token: invite.token });
     expect(signed.documents[0]!.signatureStatus).toBe("signed");
-    expect(signed.documents[0]!.signedAt).toBe("2026-09-03T08:00:00.000Z");
+    // Gatefix: Signierzeit ist statement_timestamp (kein Hardcoded-
+    // Datum) — Vertrag ist "gesetzt und ISO-normalisiert".
+    expect(signed.documents[0]!.signedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
   });
 
   it("F1003-DB-02: Roh-JSON enthält nie signer_name/Token/Grund", async () => {

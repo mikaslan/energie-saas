@@ -2074,6 +2074,66 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F9.4 Slice B (0057): immutable Vorher-Bilder — RLS nur tenant_isolation,
+  // FK nur auf (workspace, entry). Fixture spiegelt das 0050-Muster.
+  time_entry_revision: async (tx, wsId) => {
+    const userId = randomUUID();
+    const projectId = randomUUID();
+    const contactId = randomUUID();
+    const siteId = randomUUID();
+    await tx.execute(sql`
+      insert into user_identity (id, email)
+      values (${userId}::uuid, ${`${userId}@fixture.local`})
+    `);
+    await tx.execute(sql`
+      insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
+      values (${contactId}::uuid, ${wsId}::uuid, 'Revision Fixture', 'Rev', 'Fixture', ${`${contactId}@fixture.local`}, ${`${contactId}@fixture.local`})
+    `);
+    await tx.execute(sql`
+      insert into site (id, workspace_id, contact_id, label)
+      values (${siteId}::uuid, ${wsId}::uuid, ${contactId}::uuid, 'Revision Fixture Site')
+    `);
+    await tx.execute(sql`
+      insert into project (
+        id, workspace_id, contact_id, site_id, kanban_board_id,
+        kanban_column_id, name, source_key
+      )
+      select ${projectId}::uuid, ${wsId}::uuid, ${contactId}::uuid,
+             ${siteId}::uuid, board.id, intake_column.id,
+             'Revision Fixture Projekt', 'fixture'
+      from kanban_board board
+      join kanban_column intake_column
+        on intake_column.workspace_id = board.workspace_id
+        and intake_column.board_id = board.id
+        and intake_column.is_intake = true
+        and intake_column.archived_at is null
+      where board.workspace_id = ${wsId}::uuid
+        and board.scope = 'residential'
+        and board.is_default = true
+        and board.archived_at is null
+    `);
+    const entryId = randomUUID();
+    await tx.execute(sql`
+      insert into time_entry (
+        id, workspace_id, user_id, project_id, start_at, end_at,
+        working_time_minutes, created_by
+      ) values (
+        ${entryId}::uuid, ${wsId}::uuid, ${userId}::uuid, ${projectId}::uuid,
+        now() - interval '3 hours', now() - interval '2 hours',
+        60, ${userId}::uuid
+      )
+    `);
+    await tx.execute(sql`
+      insert into time_entry_revision (
+        workspace_id, entry_id, user_id, project_id, start_at, end_at,
+        working_time_minutes, break_duration_minutes, comment, revised_by
+      ) values (
+        ${wsId}::uuid, ${entryId}::uuid, ${userId}::uuid, ${projectId}::uuid,
+        now() - interval '4 hours', now() - interval '3 hours',
+        90, 0, 'Vorher-Bild Fixture', ${userId}::uuid
+      )
+    `);
+  },
   erasure_tombstone: async (tx, wsId) => {
     const contactId = randomUUID();
     const operationId = randomUUID();
