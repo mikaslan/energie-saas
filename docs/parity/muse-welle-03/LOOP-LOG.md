@@ -792,3 +792,15 @@
   logikgeprüft; E2E-Selektoren gegen Panel/Manager verifiziert;
   fixe E2E-Labels folgen f1-08-Konvention (frische DB pro Run).
 - Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.
+
+## Turn 53 — 2026-09-05, F7.1 Slice A IMPLEMENTED
+
+- 0069 (installation, RLS 0060-gleich) + Schema + Journal 70,
+  drift-frei; Rollenvertrag (Pin PENDING-ORAKEL); 2 Permissions
+  (Matrix 51); Service (Anlage mit Phasenwechsel, Complete,
+  Scope-Prüfung, No-Delete); Projektseiten-Sektion + Actions.
+- Tests: f701-DB (4), E2E-01/02 (Seed w3-f71, Read-back Phase).
+- DECIDED unterwegs: Phase wird gesetzt, Spalte bleibt (kein
+  Installation-Spalten-Typ); kein Offer-Picker (kommt mit F7.6).
+- Lokal: typecheck/lint(0)/depcruise/generate/--list 2/2 grün.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

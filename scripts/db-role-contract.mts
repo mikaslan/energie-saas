@@ -261,6 +261,10 @@ const PAYMENT_OPTION_RELATIONS = [
   "payment_option",
 ] as const;
 
+const INSTALLATION_RELATIONS = [
+  "installation",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -1479,6 +1483,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F7.1 Slice A: Ausführungsphase — kein DELETE-Grant (kein Löschen).
+  // Pin per Orakel (Präzedenz 23b3411).
+  const hasInstallations = await hasAtomicPublicRelationSet(
+    client,
+    INSTALLATION_RELATIONS,
+    "Rollen-ACL-Manifest: F7-01-Installation",
+  );
+  if (hasInstallations) {
+    await client.query(`
+      revoke all privileges on
+        public.installation
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.installation to app_runtime
+    `);
+  }
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2467,6 +2488,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F2-05-Zahlarten",
   );
 
+  const hasInstallations = await hasAtomicPublicRelationSet(
+    client,
+    INSTALLATION_RELATIONS,
+    "Rollenvertrag: F7-01-Installation",
+  );
+
   const hasCalendars = await hasAtomicPublicRelationSet(
     client,
     CALENDAR_RELATIONS,
@@ -2667,6 +2694,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasInstallations ? INSTALLATION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -3728,6 +3758,9 @@ export async function verifyRoleContract(
       ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasInstallations ? INSTALLATION_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -4028,6 +4061,11 @@ export async function verifyRoleContract(
           // übernehmen (sha256 über tablename|policyname|permissive|roles|
           // cmd|qual|with_check aus pg_policies).
           "payment_option:tenant_isolation:PENDING-ORAKEL-0068",
+        ] : []),
+        ...(hasInstallations ? [
+          // PENDING-ORAKEL: aus dem Gate-Diff des ersten Laufs mit 0069
+          // übernehmen (Formel wie oben).
+          "installation:tenant_isolation:PENDING-ORAKEL-0069",
         ] : []),
         ...(hasPortal ? [
           "portal_invite:portal_invite_actor_delete:777085784fec1e8a4f2511b44c00e23fd09f98c13d9f99dded0180f10c4fe702",
@@ -4516,6 +4554,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasInstallations ? INSTALLATION_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

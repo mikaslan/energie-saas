@@ -15,6 +15,7 @@ export type Action =
   | "contact.read" | "contact.write"
   | "lead_source.read" | "lead_source.write"
   | "payment_option.read" | "payment_option.write"
+  | "installation.read" | "installation.write"
   | "time.read" | "time.write"
   | "checklist.read" | "checklist.write"
   | "discount_template.read" | "discount_template.write"
@@ -87,6 +88,9 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   // F2.5 Slice A: Zahlarten-Stammdaten — reine Anzeige, keine Capability.
   "payment_option.read":  { minRole: "viewer", internalOnly: true },
   "payment_option.write": { minRole: "editor", internalOnly: true },
+  // F7.1 Slice A: Ausführungsphase — keine Capability.
+  "installation.read":  { minRole: "viewer", internalOnly: true },
+  "installation.write": { minRole: "editor", internalOnly: true },
   "time.read":           { minRole: "viewer", internalOnly: true },
   "time.write":          { minRole: "editor", internalOnly: true },
   "checklist.read":      { minRole: "viewer", internalOnly: true },
