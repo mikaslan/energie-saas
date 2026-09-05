@@ -478,3 +478,26 @@
 - Parity-Quote: 4/16 = 25 % (ESTIMATE, Script via node---import-tsx).
 - Nächster Schritt: Push + CI-Lauf ab Mikails Maschine (dort läuft die
   Suite), danach Gates-/E2E-Log lesen und Rest fixen.
+
+## Turn 27 — 2026-09-05, Gatefix3-Ports (0065/0066) + f1003-Echtpfad
+
+- Gatefix3 (Mikails Verifikation, nie gepusht) als Datenquelle genutzt:
+  (a) M2-04-Sign-DEFINER waren im Ein-Rollen-Testmodus nie lauffähig
+  (Restrictive-Policies mit app_owner-Escape, Funktionen gehörten der
+  Migrationsrolle → sign → not_found). Port als 0065 (dort 0064 —
+  hier 0064 = v3-Check): Owner-Tanz + Grants, Signaturen verifiziert.
+  (b) DB-Trigger derive_offer_pdf_draft_input (0033) kannte weder Fix-
+  noch Cap-Key → DB-seitig abgeleitete Drafts fielen durch
+  validateOfferPdfDraftInput (m202-Hash-Test). Port als 0066, v3-
+  vollständig (Fix + Cap; dort nur Fix).
+- f1003-DB-01 auf echten öffentlichen Sign-Pfad umgestellt
+  (signSignatureByToken statt Zeilen-Update; signedAt als ISO-Regex
+  statt Hardcoded-Datum) — deckt den 0065-Escape künftig ab.
+- Rollenpin derive-Body auf sha256(0066-prosrc) nachgezogen
+  (fbb06d5a…; Verbatim-Hypothese, PG speichert prosrc wörtlich —
+  CI entscheidet; alter Pin passte schon nicht zu 0033).
+- Journal 65→67, m111a-Pins (TOTAL 67, idx 66/0066). db:generate
+  meldet keine Schema-Drift (DO-only). Lokal: typecheck grün, lint
+  0 Errors (11 vorbestehend), Vertragsbeweis /tmp/proof-v1.mts 6/6.
+- Nächster Schritt: Push ab Mikails Maschine (Hook-Block Nr. 5 gilt),
+  Gates-/E2E-Logs lesen.
