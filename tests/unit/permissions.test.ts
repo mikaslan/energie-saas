@@ -104,6 +104,12 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
   "lead_source.write": {
     expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
   },
+  "payment_option.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
+  "payment_option.write": {
+    expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
+  },
   "time.read": {
     expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
   },
@@ -239,7 +245,7 @@ const ROLES: Role[] = ["viewer", "editor", "admin"];
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
   it("deckt exakt die 47 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(47);
+    expect(Object.keys(MATRIX)).toHaveLength(49);
   });
 
   it("47 Actions × 3 Rollen × Capability an/aus", () => {

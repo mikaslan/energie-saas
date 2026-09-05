@@ -2,6 +2,7 @@ import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import { OfferVariantControlsPanel } from "./offer-variant-controls-panel";
+import { OfferPaymentOptionPanel } from "./offer-payment-option-panel";
 import {
   OfferIssuancePanel,
   type OfferIssuanceCandidateSurfaceView,
@@ -49,6 +50,8 @@ export interface OfferVariantTabView {
   // ältere Mocks ohne die Felder weiter typisieren).
   isPrimary?: boolean;
   bundles?: readonly { name: string; position: number }[];
+  // F2.5: Zahlart-Auswahl je Variante (nullable).
+  paymentOptionId?: string | null;
 }
 
 export interface OfferPdfDraftSurfaceView {
@@ -219,6 +222,12 @@ export interface OfferDetailSurfaceView {
     percentBps: number | null;
     amountCents: number | null;
     capCents: number | null;
+  }[];
+  // F2.5: Zahlarten-Stammdaten (aktive Optionen) für die Varianten-Auswahl.
+  paymentOptions?: readonly {
+    id: string;
+    key: "purchase" | "financing_classic" | "leasing";
+    label: string;
   }[];
 }
 
@@ -729,6 +738,15 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
               canEdit={canEdit}
               canEditPrice={view.permissions?.canEditPrice === true}
             />
+            <OfferPaymentOptionPanel
+              workspaceId={view.workspaceId}
+              offerId={view.offer.id}
+              variantId={snapshot.variantId}
+              variantName={view.variants?.find((variant) => variant.id === snapshot.variantId)?.name ?? "Aktive Variante"}
+              currentOptionId={view.variants?.find((variant) => variant.id === snapshot.variantId)?.paymentOptionId ?? null}
+              options={view.paymentOptions ?? []}
+              canEdit={canEdit}
+            />
             {pdfDraftPanel}
             {offerReleasePanel}
             {offerIssuancePanel}
@@ -805,6 +823,15 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
             activeVariantId={snapshot.variantId}
             canEdit={false}
             canEditPrice={false}
+          />
+          <OfferPaymentOptionPanel
+            workspaceId={view.workspaceId}
+            offerId={view.offer.id}
+            variantId={snapshot.variantId}
+            variantName={view.variants?.find((variant) => variant.id === snapshot.variantId)?.name ?? "Aktive Variante"}
+            currentOptionId={view.variants?.find((variant) => variant.id === snapshot.variantId)?.paymentOptionId ?? null}
+            options={view.paymentOptions ?? []}
+            canEdit={false}
           />
         </div>
 

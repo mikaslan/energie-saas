@@ -34,8 +34,8 @@ const M111A_MIGRATION_INDEX = 39;
 // wave-02-Integration: 0055 (F2.2) + 0056 (F10.1) => 57 Migrationen (idx 0..56).
 // 0055-0056 + Welle-03-Nachzug 0057-0060 => 61 Migrationen (idx 0..60).
 // 0055-0056 + Welle-03-Nachzug bis 0065 => 66 Migrationen (idx 0..65).
-// + F16.3-E (0066), F1-09 (0067) => 68 Migrationen (idx 0..67).
-const TOTAL_MIGRATION_COUNT = 68;
+// + F16.3-E (0066), F1-09 (0067), F2-05 (0068) => 69 Migrationen (idx 0..68).
+const TOTAL_MIGRATION_COUNT = 69; (feat(f2.5): Zahlarten Slice A — Stammdaten, Auswahl, UI, Tests (0068))
 const PRE_M111A_HISTORY_SHA256 =
   "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
 

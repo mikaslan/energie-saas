@@ -10,6 +10,7 @@ import {
 import {
   OFFER_TOTAL_OVERRIDE_COMMAND_VERSION,
   OFFER_VARIANT_BUNDLES_COMMAND_VERSION,
+  OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION,
   OFFER_VARIANT_SET_PRIMARY_COMMAND_VERSION,
 } from "@/lib/integrations/offers/contract";
 import {
@@ -21,6 +22,7 @@ import type {
   SetPrimaryVariantEditorState,
   SetTotalOverrideEditorState,
   SetVariantBundlesEditorState,
+  SetVariantPaymentOptionEditorState,
 } from "./variant-action-state";
 
 type OfferServiceModule = typeof import("@/modules/offers");
@@ -32,6 +34,7 @@ const UUID_SCHEMA = z.uuid().transform((value) => value.toLowerCase());
 const PRIMARY_FIELDS = new Set(["workspaceId", "offerId", "variantId"]);
 const OVERRIDE_FIELDS = new Set(["workspaceId", "offerId", "overrideEuros"]);
 const BUNDLES_FIELDS = new Set(["workspaceId", "offerId", "variantId", "bundlesJson"]);
+const PAYMENT_OPTION_FIELDS = new Set(["workspaceId", "offerId", "variantId", "paymentOptionId"]);
 
 function workspaceForAdmission(formData: FormData): string | null {
   const values = formData.getAll("workspaceId");
@@ -148,6 +151,50 @@ export async function setTotalOverrideEditorAction(
       changed: outcome.changed,
       cleared: outcome.totalPriceOverrideNetCents === null,
     };
+  } catch (error) {
+    if (error instanceof offers.OfferValidationError) return { status: "invalid" };
+    const mapped = mapOfferError(error, offers);
+    if (mapped) return mapped;
+    throw error;
+  }
+}
+
+export async function setVariantPaymentOptionEditorAction(
+  _previousState: SetVariantPaymentOptionEditorState,
+  formData: FormData,
+): Promise<SetVariantPaymentOptionEditorState> {
+  const workspaceId = workspaceForAdmission(formData);
+  if (!workspaceId) return { status: "invalid" };
+  const offers = await import("@/modules/offers");
+
+  try {
+    const result = await authorizedOfferMutationAction(
+      workspaceId,
+      ["project.write"],
+      "offer_variant",
+      async (tx, ctx) => {
+        const fields = exactFields(formData, PAYMENT_OPTION_FIELDS);
+        if (!fields) throw new offers.OfferValidationError();
+        const parsedIds = z.strictObject({
+          offerId: UUID_SCHEMA,
+          variantId: UUID_SCHEMA,
+        }).safeParse({ offerId: fields.offerId, variantId: fields.variantId });
+        const rawOption = fields.paymentOptionId.trim();
+        const parsedOption = rawOption === ""
+          ? { success: true as const, data: null }
+          : UUID_SCHEMA.safeParse(rawOption);
+        if (!parsedIds.success || !parsedOption.success) throw new offers.OfferValidationError();
+        return offers.setVariantPaymentOption(tx, ctx, {
+          schemaVersion: OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION,
+          ...parsedIds.data,
+          paymentOptionId: parsedOption.data,
+        });
+      },
+    );
+
+    revalidatePath(`/w/${workspaceId}/angebote/${result.offerId}`);
+    revalidatePath(`/w/${workspaceId}/angebote`);
+    return { status: "success", changed: result.changed };
   } catch (error) {
     if (error instanceof offers.OfferValidationError) return { status: "invalid" };
     const mapped = mapOfferError(error, offers);

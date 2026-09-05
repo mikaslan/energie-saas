@@ -768,3 +768,18 @@
   Semantik spezifiziert ist (keine Theater-Auswahl ohne Preise).
 - Reviews Kimi/DeepSeek Exit-3 (kein Key).
 - Nächster Schritt: F2.5 RED → IMPLEMENTED (0068 + Service + Tests).
+
+## Turn 51 — 2026-09-05, F2.5 Slice A IMPLEMENTED
+
+- 0068 (payment_option + Varianten-FK, RLS 0060-gleich) + Schema +
+  Journal 69, drift-frei; Rollenvertrag erweitert (Pin PENDING-ORAKEL,
+  Präzedenz 23b3411); Offer-Schema-Pin lokal neu berechnet.
+- Contract + 2 Permissions (Matrix 49) + CRUD-Service +
+  setVariantPaymentOption (revisionslos, No-ops, Archiv-Schutz).
+- Tests: f205-DB (CRUD/Isolation/Scope-Miss), Matrix, E2E-01/02
+  (Settings-CRUD + Editor-Auswahl mit Read-back, Seed w3-f25).
+- UI: einstellungen/zahlarten + Editor-Panel (beide Zweige).
+- Depcruise-Fund unterwegs gefixt (nur Modul-Public-API).
+- Lokal: typecheck/lint(0 errors)/depcruise/generate/contract-check/
+  --list 2/2 grün. Reviews Exit-3.
+- Nächster Schritt: Push ab Mikails Maschine, Gates-/E2E-Logs lesen.

@@ -477,6 +477,13 @@
       "when": 1788580545422,
       "tag": "0067_f1_09_note_mentions",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1788587860592,
+      "tag": "0068_f2_05_payment_options",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import {
   listOfferIssuances,
   listOfferPdfDrafts,
   listOfferReleaseCandidates,
+  listPaymentOptions,
   OfferReleaseProfileNotFoundError,
   readCurrentOfferRecipient,
   readCurrentOfferReleaseProfile,
@@ -231,6 +232,11 @@ function projectOfferDetailView(
     amountCents: number | null;
     capCents: number | null;
   }[],
+  paymentOptions: readonly {
+    id: string;
+    key: "purchase" | "financing_classic" | "leasing";
+    label: string;
+  }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
     recipient: OfferRecipientRevisionResult | null;
@@ -351,6 +357,7 @@ function projectOfferDetailView(
       href: variant.href,
       isPrimary: variant.isPrimary,
       bundles: variant.bundles,
+      paymentOptionId: variant.paymentOptionId,
     })),
     activeVariant: parsedVariant.data,
     permissions: {
@@ -439,6 +446,7 @@ function projectOfferDetailView(
       issuances: issuanceSurfaces,
     },
     discountTemplates,
+    paymentOptions,
   };
 }
 
@@ -475,6 +483,12 @@ export default async function OfferDetailPage(
       percentBps: number | null;
       amountCents: number | null;
       capCents: number | null;
+    }[];
+    // F2.5 Slice A: aktive Zahlarten für die Varianten-Auswahl.
+    paymentOptions: {
+      id: string;
+      key: "purchase" | "financing_classic" | "leasing";
+      label: string;
     }[];
     recoveryScope: string;
     editorCapabilities: {
@@ -514,6 +528,11 @@ export default async function OfferDetailPage(
           capCents: number | null;
         }[] = [];
         let releaseValidityWindow: ReleaseValidityWindow | null = null;
+        const paymentOptions: {
+          id: string;
+          key: "purchase" | "financing_classic" | "leasing";
+          label: string;
+        }[] = [];
         if (view !== null && !externalOnly) {
           // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
           // durch. Dessen Queries muessen sequenziell bleiben; pg@9 weist
@@ -587,6 +606,12 @@ export default async function OfferDetailPage(
             suggested: validityResult.rows[0]?.suggested_valid_through,
             max: validityResult.rows[0]?.max_valid_through,
           });
+          // F2.5 Slice A: aktive Zahlarten für die Varianten-Auswahl.
+          if (can(ctx, "payment_option.read")) {
+            for (const option of await listPaymentOptions(tx, ctx, {})) {
+              paymentOptions.push({ id: option.id, key: option.key, label: option.label });
+            }
+          }
         }
         return {
           view,
@@ -602,6 +627,7 @@ export default async function OfferDetailPage(
           releaseValidityWindow,
           showReleasePanel: !externalOnly,
           discountTemplates,
+          paymentOptions,
           editorCapabilities: {
             canEditPrice: !externalOnly && can(ctx, "price.edit"),
             canApplyDiscount: !externalOnly && can(ctx, "discount.apply"),
@@ -646,6 +672,7 @@ export default async function OfferDetailPage(
           result.recoveryScope,
           result.pdfDrafts,
           result.discountTemplates,
+          result.paymentOptions,
           {
             profile: result.releaseProfile,
             recipient: result.releaseRecipient,
