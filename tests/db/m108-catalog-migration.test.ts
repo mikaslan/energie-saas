@@ -14,6 +14,10 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool, type QueryResult } from "pg";
 import { expect, it } from "vitest";
 import { startEmbeddedPostgres } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   version: string;
@@ -107,7 +111,7 @@ it("deklariert M1-08 als additive 0030 und pinnt 0000 bis 0029 bytegenau", () =>
 
 it("migriert einen befuellten 0029-Bestand ohne Produkte, Preise oder Aufloesungen zu erfinden", async () => {
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 2 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
   let prefix: string | undefined;
   const workspaceId = randomUUID();
   try {
@@ -153,15 +157,18 @@ it("migriert einen befuellten 0029-Bestand ohne Produkte, Preise oder Aufloesung
       lines: 0,
     }]);
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M1-08-Katalog-Prefix-Teardown fehlgeschlagen",
+    );
     if (prefix) rmSync(prefix, { recursive: true, force: true });
   }
 }, 120_000);
 
 it("installiert das Fresh-Schema mit Cascades, RLS und idempotenter Historie", async () => {
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 2 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
   try {
     await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
     const relations = await pool.query<{
@@ -211,7 +218,10 @@ it("installiert das Fresh-Schema mit Cascades, RLS und idempotenter Historie", a
     expect(afterRerun.rows).toEqual(beforeRerun.rows);
     expect(afterRerun.rows[0]?.n).toBe(migrationJournal().entries.length);
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M1-08-Katalog-Upgrade-Teardown fehlgeschlagen",
+    );
   }
 }, 120_000);

@@ -223,11 +223,13 @@ export interface OfferDetailSurfaceView {
     amountCents: number | null;
     capCents: number | null;
   }[];
-  // F2.5: Zahlarten-Stammdaten (aktive Optionen) für die Varianten-Auswahl.
+  // F2.5: Zahlarten-Stammdaten; aktive Optionen sind auswählbar, archivierte
+  // bleiben für historische Varianten-Zuordnungen sichtbar.
   paymentOptions?: readonly {
     id: string;
     key: "purchase" | "financing_classic" | "leasing";
     label: string;
+    archivedAt: string | null;
   }[];
 }
 

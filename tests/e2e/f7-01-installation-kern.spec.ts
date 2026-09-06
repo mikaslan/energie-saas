@@ -1,6 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * F7.1 Installation Kern Slice A — Chromium-E2E.
@@ -113,7 +116,7 @@ type InstallationRow = {
 
 async function readInstallation(): Promise<InstallationRow | null> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     const result = await pool.query(
       `select i.status as status, i.source as source,
@@ -128,7 +131,7 @@ async function readInstallation(): Promise<InstallationRow | null> {
     );
     return (result.rows[0] as InstallationRow | undefined) ?? null;
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

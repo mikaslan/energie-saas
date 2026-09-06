@@ -2,8 +2,11 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { sql } from "drizzle-orm";
-import { Pool } from "pg";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 import { withTenantOn } from "../../lib/db/tenant";
 import type { TenantTx } from "../../lib/db/types";
 import {
@@ -104,11 +107,11 @@ async function withEnergyFixtureDatabase<T>(
   callback: (tx: TenantTx) => Promise<T>,
 ): Promise<T> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     return await withTenantOn(pool, data.workspaceId, callback);
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

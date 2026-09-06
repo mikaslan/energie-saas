@@ -144,18 +144,22 @@ function ToolbarButton({
   pressed,
   disabled,
   onClick,
+  buttonRef,
 }: {
   label: string;
   pressed?: boolean;
   disabled: boolean;
   onClick: () => void;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       aria-label={label}
       aria-pressed={pressed}
       disabled={disabled}
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className={`min-h-11 rounded-md border px-3 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400 ${pressed
         ? "border-blue-700 bg-blue-50 text-blue-900"
@@ -173,7 +177,7 @@ function TaskRichTextEditor({
   describedById,
   invalid,
   disabled,
-  onEditorTab,
+  nextFocusRef,
 }: {
   initialBody: TaskRichTextV1;
   onBodyChange: (value: string, valid: boolean) => void;
@@ -181,7 +185,7 @@ function TaskRichTextEditor({
   describedById: string;
   invalid: boolean;
   disabled: boolean;
-  onEditorTab: (backward: boolean) => void;
+  nextFocusRef: RefObject<HTMLInputElement | null>;
 }) {
   // A conflict revalidation may refresh the server task while this dialog is
   // still open. Keep the editor's first document stable so the user's local
@@ -189,6 +193,7 @@ function TaskRichTextEditor({
   const [initialEditorDocument] = useState(() => (
     taskBodyToEditorDocument(initialBody)
   ));
+  const lastToolbarButtonRef = useRef<HTMLButtonElement | null>(null);
   const publish = useCallback((document: unknown) => {
     const result = taskBodyFromEditor(document);
     onBodyChange(JSON.stringify(result.body), result.valid);
@@ -245,6 +250,13 @@ function TaskRichTextEditor({
     }
   }, [describedById, disabled, editor, invalid]);
 
+  const onEditorTab = useCallback((backward: boolean) => {
+    const target = backward
+      ? lastToolbarButtonRef.current
+      : nextFocusRef.current;
+    target?.focus();
+  }, [nextFocusRef]);
+
   return (
     <div className="rounded-md border border-slate-300 bg-white focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600 focus-within:ring-offset-2">
       <div className="flex flex-wrap gap-1 border-b border-slate-200 bg-slate-50 p-2">
@@ -255,7 +267,12 @@ function TaskRichTextEditor({
         <ToolbarButton label="Überschrift 3" pressed={active?.heading3} disabled={!editor || disabled} onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()} />
         <ToolbarButton label="Aufzählung" pressed={active?.bulletList} disabled={!editor || disabled} onClick={() => editor?.chain().focus().toggleBulletList().run()} />
         <ToolbarButton label="Nummerierte Liste" pressed={active?.orderedList} disabled={!editor || disabled} onClick={() => editor?.chain().focus().toggleOrderedList().run()} />
-        <ToolbarButton label="Zeilenumbruch" disabled={!editor || disabled} onClick={() => editor?.chain().focus().setHardBreak().run()} />
+        <ToolbarButton
+          label="Zeilenumbruch"
+          disabled={!editor || disabled}
+          onClick={() => editor?.chain().focus().setHardBreak().run()}
+          buttonRef={lastToolbarButtonRef}
+        />
       </div>
       <EditorContent
         editor={editor}
@@ -290,9 +307,13 @@ export function ProjectTaskEditorDialog({
   const descriptionId = useId();
   const bodyFeedbackId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const submitButtonRef = useRef<HTMLButtonElement | null>(null);
   const titleRef = useRef<HTMLInputElement | null>(null);
   const feedbackRef = useRef<HTMLParagraphElement | null>(null);
   const memberSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const dueDateRef = useRef<HTMLInputElement | null>(null);
   const editorDocumentRef = useRef<(() => unknown) | null>(null);
   const localKey = useRef(0);
   const boundAction = useMemo(
@@ -385,6 +406,21 @@ export function ProjectTaskEditorDialog({
       return;
     }
     if (event.key === "Tab") {
+      const firstBoundary = closeButtonRef.current;
+      const submitBoundary = submitButtonRef.current;
+      const lastBoundary = submitBoundary !== null && !submitBoundary.disabled
+        ? submitBoundary
+        : cancelButtonRef.current;
+      if (event.shiftKey && document.activeElement === firstBoundary) {
+        event.preventDefault();
+        lastBoundary?.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastBoundary) {
+        event.preventDefault();
+        firstBoundary?.focus();
+        return;
+      }
       const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
         DIALOG_FOCUSABLE_SELECTOR,
       ) ?? []);
@@ -401,16 +437,6 @@ export function ProjectTaskEditorDialog({
       }
     }
   }
-
-  const onEditorTab = useCallback((backward: boolean) => {
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
-      DIALOG_FOCUSABLE_SELECTOR,
-    ) ?? []);
-    const activeIndex = focusable.findIndex((element) => element === document.activeElement);
-    if (activeIndex < 0) return;
-    const target = focusable[activeIndex + (backward ? -1 : 1)];
-    target?.focus();
-  }, []);
 
   function toggleAssignee(member: ProjectTaskMemberOptionV1) {
     setSelectedAssignees((current) => current.some(
@@ -482,6 +508,7 @@ export function ProjectTaskEditorDialog({
             </p>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             disabled={pending}
             onClick={onClose}
@@ -530,7 +557,7 @@ export function ProjectTaskEditorDialog({
               describedById={bodyFeedbackId}
               invalid={!bodyValid}
               disabled={pending}
-              onEditorTab={onEditorTab}
+              nextFocusRef={dueDateRef}
             />
             <p
               id={bodyFeedbackId}
@@ -546,6 +573,7 @@ export function ProjectTaskEditorDialog({
           <label className="grid max-w-xs gap-1.5 text-sm font-semibold text-slate-900">
             Fällig am
             <input
+              ref={dueDateRef}
               type="date"
               name="dueDate"
               value={dueDate}
@@ -706,10 +734,10 @@ export function ProjectTaskEditorDialog({
           </p>
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-            <button type="button" disabled={pending} onClick={onClose} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">
+            <button ref={cancelButtonRef} type="button" disabled={pending} onClick={onClose} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">
               Abbrechen
             </button>
-            <button type="submit" disabled={pending || !bodyValid} aria-busy={pending || undefined} className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
+            <button ref={submitButtonRef} type="submit" disabled={pending || !bodyValid} aria-busy={pending || undefined} className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
               {pending ? "Wird gespeichert …" : task ? "Änderungen speichern" : "Aufgabe anlegen"}
             </button>
           </div>

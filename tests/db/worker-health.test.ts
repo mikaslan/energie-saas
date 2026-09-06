@@ -15,8 +15,11 @@
 import { describe, it, expect } from "vitest";
 import { createServer as createTcpServer, type Server as TcpServer, type Socket } from "node:net";
 import type { AddressInfo } from "node:net";
-import { Pool } from "pg";
 import { createHealthProbe, createHealthServer, healthPoolConfig, type HealthProbe } from "@/worker/health";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 const PROBE_MS = 500;
 
@@ -152,7 +155,9 @@ describe("Worker-Health-Probe", () => {
 
 describe("Timeouts sind verifizierte Sessionwerte, kein SET LOCAL", () => {
   it("statement_timeout hängt an der Verbindung selbst", async () => {
-    const pool = new Pool(healthPoolConfig(process.env.POSTGRES_URL_TEST!, PROBE_MS));
+    const pool = createDrainTrackedPool(
+      healthPoolConfig(process.env.POSTGRES_URL_TEST!, PROBE_MS),
+    );
     try {
       const { rows } = await pool.query<{ statement_timeout: string }>(
         "select current_setting('statement_timeout') as statement_timeout",
@@ -161,12 +166,14 @@ describe("Timeouts sind verifizierte Sessionwerte, kein SET LOCAL", () => {
       // Transaktion war zum Zeitpunkt der Folge-Query längst wieder weg.
       expect(rows[0].statement_timeout, "statement_timeout ist nicht gesetzt").not.toBe("0");
     } finally {
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
   });
 
   it("eine zu lange Query wird tatsächlich ABGEBROCHEN", async () => {
-    const pool = new Pool(healthPoolConfig(process.env.POSTGRES_URL_TEST!, PROBE_MS));
+    const pool = createDrainTrackedPool(
+      healthPoolConfig(process.env.POSTGRES_URL_TEST!, PROBE_MS),
+    );
     const start = Date.now();
     let caught: unknown;
     try {
@@ -174,7 +181,7 @@ describe("Timeouts sind verifizierte Sessionwerte, kein SET LOCAL", () => {
     } catch (error) {
       caught = error;
     } finally {
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
     expect(caught, "pg_sleep(5) lief durch — kein wirksamer Timeout").toBeInstanceOf(Error);
     expect(Date.now() - start, "Abbruch kam zu spät").toBeLessThan(PROBE_MS * 8);

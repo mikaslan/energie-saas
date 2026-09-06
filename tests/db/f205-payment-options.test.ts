@@ -28,6 +28,7 @@ import {
   updatePaymentOption,
 } from "@/modules/offers/payment-options";
 import { testPool } from "../setup/test-db";
+import { tenantFixtures } from "../setup/tenant-fixtures";
 
 type Fixture = { workspaceId: string; editorId: string; viewerId: string };
 
@@ -60,6 +61,31 @@ function createCommand(overrides: Partial<CreatePaymentOptionCommand> = {}): Cre
     label: "Kauf",
     ...overrides,
   };
+}
+
+async function seedOfferVariant(workspaceId: string): Promise<{
+  offerId: string;
+  variantId: string;
+}> {
+  return withTenantOn(testPool, workspaceId, async (tx) => {
+    const factory = tenantFixtures.offer;
+    if (!factory) throw new Error("F2.5-Offer-Fixture fehlt.");
+    await factory(tx, workspaceId);
+
+    const result = await tx.execute<{ offerId: string; variantId: string }>(sql`
+      select offer.id as "offerId", variant.id as "variantId"
+        from offer
+        join offer_variant variant
+          on variant.workspace_id = offer.workspace_id
+         and variant.offer_id = offer.id
+       where offer.workspace_id = ${workspaceId}::uuid
+       order by variant.ordinal, variant.id
+       limit 1
+    `);
+    const row = result.rows[0];
+    if (!row) throw new Error("F2.5-Offer-Variante fehlt.");
+    return row;
+  });
 }
 
 describe("F2.5 Zahlarten (PostgreSQL)", () => {
@@ -241,5 +267,79 @@ describe("F2.5 Zahlarten (PostgreSQL)", () => {
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => createPaymentOption(tx, ctx, createCommand({ label: "   " })),
     )).rejects.toBeInstanceOf(PaymentOptionValidationError);
+  });
+
+  it("F205-DB-07: archivierte Zahlart bleibt nur auf ihrer aktuellen Variante idempotent", async () => {
+    const { offerId, variantId } = await seedOfferVariant(fixture.workspaceId);
+    const options = await withAuthorizedTenantOn(
+      testPool,
+      fixture.editorId,
+      fixture.workspaceId,
+      async (tx, ctx) => ({
+        current: await createPaymentOption(tx, ctx, createCommand()),
+        other: await createPaymentOption(tx, ctx, createCommand({
+          key: "leasing",
+          label: "Leasing",
+        })),
+      }),
+    );
+
+    const assigned = await withAuthorizedTenantOn(
+      testPool,
+      fixture.editorId,
+      fixture.workspaceId,
+      (tx, ctx) => setVariantPaymentOption(tx, ctx, {
+        schemaVersion: OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION,
+        offerId,
+        variantId,
+        paymentOptionId: options.current.id,
+      }),
+    );
+    expect(assigned.changed).toBe(true);
+
+    await withAuthorizedTenantOn(
+      testPool,
+      fixture.editorId,
+      fixture.workspaceId,
+      async (tx, ctx) => {
+        await archivePaymentOption(tx, ctx, options.current.id);
+        await archivePaymentOption(tx, ctx, options.other.id);
+      },
+    );
+
+    const unchanged = await withAuthorizedTenantOn(
+      testPool,
+      fixture.editorId,
+      fixture.workspaceId,
+      (tx, ctx) => setVariantPaymentOption(tx, ctx, {
+        schemaVersion: OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION,
+        offerId,
+        variantId,
+        paymentOptionId: options.current.id,
+      }),
+    );
+    expect(unchanged).toEqual({ offerId, variantId, changed: false });
+
+    await expect(withAuthorizedTenantOn(
+      testPool,
+      fixture.editorId,
+      fixture.workspaceId,
+      (tx, ctx) => setVariantPaymentOption(tx, ctx, {
+        schemaVersion: OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION,
+        offerId,
+        variantId,
+        paymentOptionId: options.other.id,
+      }),
+    )).rejects.toBeInstanceOf(OfferValidationError);
+
+    const stored = await withTenantOn(testPool, fixture.workspaceId, (tx) =>
+      tx.execute<{ paymentOptionId: string | null }>(sql`
+        select payment_option_id as "paymentOptionId"
+          from offer_variant
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and offer_id = ${offerId}::uuid
+           and id = ${variantId}::uuid
+      `));
+    expect(stored.rows).toEqual([{ paymentOptionId: options.current.id }]);
   });
 });

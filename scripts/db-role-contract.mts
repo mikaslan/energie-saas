@@ -261,6 +261,21 @@ const PAYMENT_OPTION_RELATIONS = [
   "payment_option",
 ] as const;
 
+const OFFER_VARIANT_DEEPENING_COLUMNS = [
+  "offer.total_price_override_net_cents",
+  "offer_variant.is_primary",
+  "offer_variant.optional_bundles",
+] as const;
+const OFFER_VARIANT_PAYMENT_OPTION_COLUMNS = [
+  "offer_variant.payment_option_id",
+] as const;
+const OFFER_VARIANT_PAYMENT_WRITE_CONTRACT_COMMENT =
+  "F2.5 Varianten-Zahlart-Schreibvertrag v1";
+const OFFER_ERASURE_GUARD_LEGACY_SHA256 =
+  "bf712d55bd2fe892dbaddf0c7787eda33fa64a957dc4589864295c037065d5d4";
+const OFFER_ERASURE_GUARD_PAYMENT_WRITE_SHA256 =
+  "16f5ccf5efd817603406a4fe33a3df634f2e678df34a8cf5e566ebf90c8c96d4";
+
 const INSTALLATION_RELATIONS = [
   "installation",
 ] as const;
@@ -1016,7 +1031,80 @@ async function hasAtomicPublicRelationSet(
   return true;
 }
 
+async function hasAtomicPublicColumnSet(
+  client: PoolClient,
+  columns: readonly string[],
+  label: string,
+): Promise<boolean> {
+  const existing = await client.query<{ column_name: string }>(`
+    select relation.relname || '.' || attribute.attname as column_name
+      from pg_catalog.pg_attribute as attribute
+      join pg_catalog.pg_class as relation
+        on relation.oid = attribute.attrelid
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = relation.relnamespace
+     where namespace.nspname = 'public'
+       and relation.relkind in ('r', 'p')
+       and attribute.attnum > 0
+       and not attribute.attisdropped
+       and relation.relname || '.' || attribute.attname = any($1::text[])
+     order by column_name
+  `, [columns]);
+  if (existing.rows.length === 0) return false;
+
+  const expected = [...columns].sort();
+  const actual = existing.rows.map((row) => row.column_name);
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `${label} sind nur teilweise vorhanden. Erwartet: ${expected.join(", ")}; ` +
+        `gefunden: ${actual.join(", ")}`,
+    );
+  }
+  return true;
+}
+
+async function requireVariantPaymentWriteContractMarker(
+  client: PoolClient,
+  label: string,
+): Promise<boolean> {
+  const markerResult = await client.query<{ marker: string | null }>(`
+    select pg_catalog.col_description(attribute.attrelid, attribute.attnum) as marker
+      from pg_catalog.pg_attribute as attribute
+      join pg_catalog.pg_class as relation
+        on relation.oid = attribute.attrelid
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = relation.relnamespace
+     where namespace.nspname = 'public'
+       and relation.relname = 'offer_variant'
+       and relation.relkind in ('r', 'p')
+       and attribute.attname = 'payment_option_id'
+       and attribute.attnum > 0
+       and not attribute.attisdropped
+  `);
+  if (markerResult.rows.length === 0) return false;
+  if (markerResult.rows.length !== 1) {
+    throw new Error(
+      `${label}: F2-05-Varianten-Zahlartspalte ist nicht eindeutig vorhanden.`,
+    );
+  }
+
+  const marker = markerResult.rows[0]!.marker;
+  if (marker !== OFFER_VARIANT_PAYMENT_WRITE_CONTRACT_COMMENT) {
+    const actual = marker === null ? "NULL" : JSON.stringify(marker);
+    throw new Error(
+      `${label}: F2-05-Schreibvertragsmarker weicht ab. Erwartet: ` +
+        `${JSON.stringify(OFFER_VARIANT_PAYMENT_WRITE_CONTRACT_COMMENT)}; ` +
+        `gefunden: ${actual}.`,
+    );
+  }
+  return true;
+}
+
 export async function applyRoleContract(client: PoolClient): Promise<void> {
+  // Vor jeder ACL-Mutation fail-closed pruefen. Eine 0068-Zwischenstufe mit
+  // Spalte, aber ohne 0074-Marker/Guard darf niemals den Runtime-Grant erhalten.
+  const hasVariantPaymentWriteContract =
+    await requireVariantPaymentWriteContractMarker(client, "Rollen-ACL-Manifest");
   await applyDatabaseAclContract(client);
   await executeContractStatements(client, APPLY_ROLE_CONTRACT_SQL, "Rollen-ACL-Manifest");
 
@@ -1469,14 +1557,27 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
-  // F2.5 Slice A: Zahlarten-Stammdaten — Archiv statt Delete (kein
-  // DELETE-Grant). Pin per Orakel (Präzedenz 23b3411): Platzhalter wird aus
-  // dem Gate-Diff des ersten Laufs mit migrierter 0068 übernommen.
+  // F2.5: Zahlarten-Stammdaten nutzen Archiv statt Delete. Tabelle, Varianten-
+  // Spalte und der 0074-Schreibvertragsmarker muessen atomar vorhanden sein.
   const hasPaymentOptions = await hasAtomicPublicRelationSet(
     client,
     PAYMENT_OPTION_RELATIONS,
     "Rollen-ACL-Manifest: F2-05-Zahlarten",
   );
+  const hasVariantPaymentOptionColumn = await hasAtomicPublicColumnSet(
+    client,
+    OFFER_VARIANT_PAYMENT_OPTION_COLUMNS,
+    "Rollen-ACL-Manifest: F2-05-Varianten-Zahlartspalte",
+  );
+  if (
+    hasPaymentOptions !== hasVariantPaymentOptionColumn
+    || hasVariantPaymentOptionColumn !== hasVariantPaymentWriteContract
+  ) {
+    throw new Error(
+      "Rollen-ACL-Manifest: F2-05-Zahlartentabelle, Varianten-Zahlartspalte und Marker " +
+        "sind nicht atomar vorhanden.",
+    );
+  }
   if (hasPaymentOptions) {
     await client.query(`
       revoke all privileges on
@@ -1718,11 +1819,16 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
 
   // M2-01 fuehrt den Offer-Graphen und dessen separat committende
   // Mutationszaehler atomar ein. Runtime darf den Graphen lesen und neue
-  // Snapshot-Staende anlegen; UPDATE bleibt auf die drei tatsaechlich vom
-  // Service mutierten Zaehler-/Pointerspalten und offer.updated_at begrenzt.
+  // Snapshot-Staende anlegen; UPDATE bleibt auf die tatsaechlich vom Service
+  // mutierten Zaehler-/Pointer-/Anzeigespalten und Zeitstempel begrenzt.
   // Identitaets-, Scope- und Zeitfensterspalten bleiben ohne UPDATE-Recht. Die drei
   // Snapshot-Mirror sind append-only. DELETE/TRUNCATE gehoeren fuer keine
   // Offer-Relation zum Runtime-Vertrag.
+  const hasOfferVariantDeepening = await hasAtomicPublicColumnSet(
+    client,
+    OFFER_VARIANT_DEEPENING_COLUMNS,
+    "Rollen-ACL-Manifest: F2-02-Variantenvertiefung",
+  );
   const offerRelations = [
     "offer",
     "offer_bom_line",
@@ -1790,6 +1896,20 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       revoke execute on function public.build_inactive_lead_erasure_graph(uuid, uuid)
         from public, app_runtime, app_system, app_auth, app_worker, app_erasure
     `);
+    if (hasOfferVariantDeepening) {
+      await client.query(`
+        grant update (total_price_override_net_cents)
+          on public.offer to app_runtime;
+        grant update (is_primary, optional_bundles)
+          on public.offer_variant to app_runtime
+      `);
+    }
+    if (hasVariantPaymentWriteContract) {
+      await client.query(`
+        grant update (payment_option_id)
+          on public.offer_variant to app_runtime
+      `);
+    }
   }
 
   // M2-02 speichert ausschliesslich erasure-faehige interne PDF-Entwuerfe.
@@ -2383,6 +2503,10 @@ export async function verifyRoleContract(
   client: PoolClient,
   topology?: DbRoleProvisioningTopology,
 ): Promise<void> {
+  // Marker vor allen anderen Katalogpruefungen pinnen: fehlender/unbekannter
+  // Marker darf weder ueber den Legacy-Guard noch ueber bestehende ACLs gruen werden.
+  const hasVariantPaymentWriteContract =
+    await requireVariantPaymentWriteContractMarker(client, "Rollenvertrag");
   await verifyDefaultPrivilegeContract(client);
   await verifyRetainedLegacyRole(client, topology);
   await verifyAppRoleCatalogContract(client);
@@ -2508,6 +2632,25 @@ export async function verifyRoleContract(
     PAYMENT_OPTION_RELATIONS,
     "Rollenvertrag: F2-05-Zahlarten",
   );
+  const hasOfferVariantDeepening = await hasAtomicPublicColumnSet(
+    client,
+    OFFER_VARIANT_DEEPENING_COLUMNS,
+    "Rollenvertrag: F2-02-Variantenvertiefung",
+  );
+  const hasVariantPaymentOptionColumn = await hasAtomicPublicColumnSet(
+    client,
+    OFFER_VARIANT_PAYMENT_OPTION_COLUMNS,
+    "Rollenvertrag: F2-05-Varianten-Zahlartspalte",
+  );
+  if (
+    hasPaymentOptions !== hasVariantPaymentOptionColumn
+    || hasVariantPaymentOptionColumn !== hasVariantPaymentWriteContract
+  ) {
+    throw new Error(
+      "Rollenvertrag: F2-05-Zahlartentabelle, Varianten-Zahlartspalte und Marker " +
+        "sind nicht atomar vorhanden.",
+    );
+  }
 
   const hasInstallations = await hasAtomicPublicRelationSet(
     client,
@@ -3344,7 +3487,7 @@ export async function verifyRoleContract(
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          "search_path=pg_catalog:847b47cb0dae5429b175e7affa07048ce90c494d0d5590d7da2a4ef079aa1486",
+          "search_path=pg_catalog:6d025bff7eee1e267019a81fe77730c139fc3c7a5e94cf9dd9c54541fbc4be57",
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
@@ -3580,10 +3723,10 @@ export async function verifyRoleContract(
         "0ff6e6a4ca03690a776d797382168024ebf845f3647c4f9a7ecea108ede4fe11",
       // Body-Pin = sha256(prosrc): prosrc ist der wörtliche Funktions-Body
       // zwischen den Dollar-Tags der Migration (PG speichert verbatim).
-      // Bei Body-Änderung Pin neu berechnen (0073: fbb06d5a…).
+      // Bei Body-Änderung Pin neu berechnen.
       ...(hasOfferPdfDraft ? [
         "derive_offer_pdf_draft_input():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:fbb06d5a8625b27436a605918dc257af9eac735116e9e041e822fa7909bc9c70",
+          "search_path=pg_catalog:e71bd034ffef8e8cde349a200e27e38afd427ed7a11326eea59085fd59485b0e",
       ] : []),
       "erase_inactive_lead(uuid, uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
         `search_path=pg_catalog:${hasSignatures
@@ -3638,7 +3781,9 @@ export async function verifyRoleContract(
       "guard_membership_statement():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:b5d5db39513acce303c62d10a27f8b3bdc0b7ec12b183ae127e59b181dac89b7",
       "guard_offer_erasure_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        "search_path=pg_catalog:bf712d55bd2fe892dbaddf0c7787eda33fa64a957dc4589864295c037065d5d4",
+        `search_path=pg_catalog:${hasVariantPaymentWriteContract
+          ? OFFER_ERASURE_GUARD_PAYMENT_WRITE_SHA256
+          : OFFER_ERASURE_GUARD_LEGACY_SHA256}`,
       ...(hasOfferPdfDraft ? [
         "guard_offer_pdf_draft_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:cbb5173ec8e5c27bf927610795c7c9a2e2b5f2cd4824136e0a20d5288f79a19a",
@@ -4090,20 +4235,13 @@ export async function verifyRoleContract(
           "subsidy_template:tenant_isolation:2037cf711c5df81fe88a76b2b2d003d568f2053c61feebad996e515aec4d0696",
         ] : []),
         ...(hasPaymentOptions ? [
-          // PENDING-ORAKEL: aus dem Gate-Diff des ersten Laufs mit 0068
-          // übernehmen (sha256 über tablename|policyname|permissive|roles|
-          // cmd|qual|with_check aus pg_policies).
-          "payment_option:tenant_isolation:PENDING-ORAKEL-0068",
+          "payment_option:tenant_isolation:854bc07231dd748fe1cadc6fcf55606d413a950abc8c3fac65fc1b405228f13f",
         ] : []),
         ...(hasInstallations ? [
-          // PENDING-ORAKEL: aus dem Gate-Diff des ersten Laufs mit 0069
-          // übernehmen (Formel wie oben).
-          "installation:tenant_isolation:PENDING-ORAKEL-0069",
+          "installation:tenant_isolation:88d62cb531a094ef93117e575b4dff128ba59ad08cf4c30bf6214eeb40269c9c",
         ] : []),
         ...(hasMentions ? [
-          // PENDING-ORAKEL: aus dem Gate-Diff des ersten Laufs mit 0067
-          // übernehmen (Formel wie oben).
-          "project_note_mention:tenant_isolation:PENDING-ORAKEL-0067",
+          "project_note_mention:tenant_isolation:bd49d3632555a1d99e54cf336071e259a1d90892ba02c784661cdb0afcdc8ad5",
         ] : []),
         ...(hasPortal ? [
           "portal_invite:portal_invite_actor_delete:777085784fec1e8a4f2511b44c00e23fd09f98c13d9f99dded0180f10c4fe702",
@@ -4698,6 +4836,9 @@ export async function verifyRoleContract(
         "app_runtime:offer_pdf_draft.variant_snapshot_sha256:INSERT:app_owner:false",
         "app_runtime:offer_pdf_draft.workspace_id:INSERT:app_owner:false",
       ] : []),
+      ...(hasOfferVariantDeepening ? [
+        "app_runtime:offer.total_price_override_net_cents:UPDATE:app_owner:false",
+      ] : []),
       "app_runtime:offer.updated_at:UPDATE:app_owner:false",
       "app_runtime:offer_mutation_rate_window.attempts:UPDATE:app_owner:false",
       "app_runtime:offer_mutation_rate_window.updated_at:UPDATE:app_owner:false",
@@ -4705,7 +4846,16 @@ export async function verifyRoleContract(
       "app_runtime:offer_number_series.updated_at:UPDATE:app_owner:false",
       "app_runtime:offer_variant.current_revision:UPDATE:app_owner:false",
       "app_runtime:offer_variant.description:UPDATE:app_owner:false",
+      ...(hasOfferVariantDeepening ? [
+        "app_runtime:offer_variant.is_primary:UPDATE:app_owner:false",
+      ] : []),
       "app_runtime:offer_variant.name:UPDATE:app_owner:false",
+      ...(hasOfferVariantDeepening ? [
+        "app_runtime:offer_variant.optional_bundles:UPDATE:app_owner:false",
+      ] : []),
+      ...(hasVariantPaymentWriteContract ? [
+        "app_runtime:offer_variant.payment_option_id:UPDATE:app_owner:false",
+      ] : []),
       "app_runtime:offer_variant.updated_at:UPDATE:app_owner:false",
       "app_runtime:inbound_receipt.id:UPDATE:app_owner:false",
       "app_runtime:project_calculation_job.id:UPDATE:app_owner:false",

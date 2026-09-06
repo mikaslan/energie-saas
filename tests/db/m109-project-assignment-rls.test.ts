@@ -9,6 +9,10 @@ import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
 import type { TenantTx } from "@/lib/db/types";
 import { startEmbeddedPostgres } from "../setup/embedded-postgres";
 import { testPool } from "../setup/test-db";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type Fixture = {
   workspaceId: string;
@@ -534,8 +538,8 @@ describe("M1-09 direkte Project-/Assignment-RLS", () => {
 describe.sequential("M1-09 Actor-RLS als echte app_runtime-Loginrolle", () => {
   it("erzwingt die migrierten Rollen-Policies und ACLs funktional als Non-Owner", async () => {
     const embedded = await startEmbeddedPostgres();
-    const admin = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
-    const owner = new Pool({ connectionString: embedded.url, max: 2 });
+    const admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 1 });
+    const owner = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
     let runtime: Pool | undefined;
 
     const workspaceA = randomUUID();
@@ -705,7 +709,7 @@ describe.sequential("M1-09 Actor-RLS als echte app_runtime-Loginrolle", () => {
       const runtimeUrl = new URL(embedded.url);
       runtimeUrl.username = "app_runtime";
       runtimeUrl.password = "m109_runtime_contract";
-      runtime = new Pool({ connectionString: runtimeUrl.toString(), max: 3 });
+      runtime = createDrainTrackedPool({ connectionString: runtimeUrl.toString(), max: 3 });
 
       const catalog = await admin.query<{
         owner: string;
@@ -911,10 +915,11 @@ describe.sequential("M1-09 Actor-RLS als echte app_runtime-Loginrolle", () => {
       );
       expect(crossTenant.rows).toEqual([]);
     } finally {
-      await runtime?.end().catch(() => undefined);
-      await owner.end().catch(() => undefined);
-      await admin.end().catch(() => undefined);
-      await embedded.stop().catch(() => undefined);
+      await endPoolsAndStopEmbeddedPostgres(
+        [runtime, owner, admin],
+        embedded,
+        "M1-09-Zuweisungs-RLS-Teardown fehlgeschlagen",
+      );
     }
   }, 120_000);
 });

@@ -1,7 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * F4.6 Workspace-Simulationsdefaults — Chromium-E2E.
@@ -121,7 +124,7 @@ async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promi
 
 async function grantEconomicsCapability(): Promise<void> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -141,7 +144,7 @@ async function grantEconomicsCapability(): Promise<void> {
     await client.query("commit");
   } finally {
     await client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

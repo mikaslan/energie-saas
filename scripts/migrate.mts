@@ -20,7 +20,10 @@ import {
   verifyMigrationPrincipalBoundary,
   verifyRoleContract,
 } from "./db-role-contract.mjs";
-import { verifyAppliedMigrationHistory } from "./migration-history.mjs";
+import {
+  canonicalizeLegacySnapshotV3MigrationTimestamp,
+  verifyAppliedMigrationHistory,
+} from "./migration-history.mjs";
 import { ensureM110ProjectTaskActivityIndex } from "./concurrent-index-contract.mjs";
 
 function requireMigrationUrl(): string {
@@ -128,7 +131,35 @@ try {
     // zwischen Preflight und Lock eine fremde/neue Journalzeile einschieben,
     // die dieser Lauf anschließend nur anhand des Zeitstempels überspringt.
     await verifyMigrationPrincipalBoundary(client, provisioningTopology);
-    await verifyAppliedMigrationHistory(client);
+    let legacyTimestampCorrection:
+      | Awaited<ReturnType<typeof canonicalizeLegacySnapshotV3MigrationTimestamp>>
+      | undefined;
+    await client.query("begin");
+    try {
+      // Der einzige produktive Einstieg ist `npm run db:migrate` und damit
+      // dieses Script (Package-Script, CI und Runbooks). Die eng gepinnte
+      // Reparatur muss VOR dem strengen Preflight liegen: Ein bloßes 0074
+      // würde bei einem übersprungenen 0066 nie erreicht, weil der Preflight
+      // die Lücke vorher korrekt ablehnt; ohne Preflight würde Drizzle 0066
+      // wegen des bereits höheren 0067+-Zeitstempels weiterhin überspringen.
+      // Unter demselben Advisory Lock und in derselben Transaktion werden
+      // Schema, Marker und Vollvergleich dagegen atomar kanonisiert.
+      legacyTimestampCorrection =
+        await canonicalizeLegacySnapshotV3MigrationTimestamp(client);
+      // Der unverändert strenge Vollvergleich ist Teil derselben Transaktion:
+      // jeder weitere Drift rollt auch die eng gepinnte Korrektur zurück.
+      await verifyAppliedMigrationHistory(client);
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    }
+    if (legacyTimestampCorrection) {
+      console.log(
+        "[migration-history] 0066-Legacyzustand kanonisiert:",
+        JSON.stringify(legacyTimestampCorrection),
+      );
+    }
 
     // Default-ACLs müssen VOR Drizzle sauber sein. Sonst könnte eine spätere
     // Migration ein neues Objekt zunächst mit driftenden Runtime-Rechten

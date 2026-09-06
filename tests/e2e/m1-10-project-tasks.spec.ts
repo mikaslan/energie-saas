@@ -499,7 +499,17 @@ test("M1-10: Dialog hält Fokus, schließt per Escape und fließt bei 320 px um"
   await expect(dialog.getByLabel("Titel")).toBeFocused();
   const richText = dialog.getByLabel("Aufgabenbeschreibung");
   await richText.fill("Listenausgang");
-  await dialog.getByRole("button", { name: "Aufzählung" }).click();
+  await richText.focus();
+  const bulletListButton = dialog.getByRole("button", { name: "Aufzählung" });
+  const bulletListButtonBox = await bulletListButton.boundingBox();
+  if (bulletListButtonBox === null) throw new Error("Aufzählungsbutton ist nicht sichtbar.");
+  await page.mouse.move(
+    bulletListButtonBox.x + bulletListButtonBox.width / 2,
+    bulletListButtonBox.y + bulletListButtonBox.height / 2,
+  );
+  await page.mouse.down();
+  await expect(richText).toBeFocused();
+  await page.mouse.up();
   await expect(richText.locator("ul")).toBeVisible();
   await richText.press("Tab");
   await expect(dialog.getByLabel("Fällig am")).toBeFocused();

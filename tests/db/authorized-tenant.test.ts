@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { Pool } from "pg";
 import { testPool } from "../setup/test-db";
 import { withTenantOn, withAuthorizedTenantOn } from "@/lib/db/tenant";
 import { PermissionDeniedError, can } from "@/lib/permissions";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 // Codex-Review #2: withTenant behandelt JEDE übergebene UUID als autorisierten
 // Mandanten und ServiceCtx war frei konstruierbar. withAuthorizedTenant leitet
@@ -111,7 +114,7 @@ describe("withAuthorizedTenant bindet den Kontext an die Membership", () => {
   });
 
   it("ignoriert gleichnamige pg_temp-Tabellen bei der Autorisierungsauflösung", async () => {
-    const isolatedPool = new Pool({
+    const isolatedPool = createDrainTrackedPool({
       connectionString: process.env.POSTGRES_URL_TEST,
       max: 1,
     });
@@ -146,7 +149,7 @@ describe("withAuthorizedTenant bindet den Kontext an die Membership", () => {
       expect(ctx.role).toBe("viewer");
       expect(ctx.featureFlags).toEqual({ invoicing: false });
     } finally {
-      await isolatedPool.end();
+      await endPoolAndWaitForClientRemoval(isolatedPool);
     }
   });
 });

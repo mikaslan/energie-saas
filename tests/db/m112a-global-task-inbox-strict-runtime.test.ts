@@ -22,6 +22,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 // ═══════════════════════════════════════════════════════════════════════
 // M1-12a unter der echten, nicht besitzenden app_runtime-Rolle.
@@ -269,9 +273,9 @@ describe.sequential("M1-12a Aufgaben-Inbox unter strikter app_runtime-Rolle", ()
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 3 });
+    admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 3 });
     await bootstrapStrictRoles(embedded, admin);
-    migrator = new Pool({
+    migrator = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_migrator", MIGRATOR_PASSWORD),
       options: "-c role=app_owner",
       max: 1,
@@ -283,7 +287,7 @@ describe.sequential("M1-12a Aufgaben-Inbox unter strikter app_runtime-Rolle", ()
     } finally {
       owner.release();
     }
-    runtime = new Pool({
+    runtime = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_runtime", RUNTIME_PASSWORD),
       max: 2,
     });
@@ -292,10 +296,11 @@ describe.sequential("M1-12a Aufgaben-Inbox unter strikter app_runtime-Rolle", ()
   }, 180_000);
 
   afterAll(async () => {
-    await runtime?.end().catch(() => undefined);
-    await migrator?.end().catch(() => undefined);
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [runtime, migrator, admin],
+      embedded,
+      "M1-12a-Task-Inbox-Teardown fehlgeschlagen",
+    );
   });
 
   it("läuft wirklich als nicht besitzende, nicht privilegierte Rolle", async () => {

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
 import { sql } from "drizzle-orm";
 import { testPool } from "../setup/test-db";
 import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
@@ -14,6 +13,10 @@ import {
   WORKSPACE_FK_EXEMPT,
   MATVIEW_ALLOWLIST,
 } from "../setup/tenant-fixtures";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 // workspace_id-gebunden, aber BEWUSST RLS-frei (Definer-only, Muster
 // erasure_operation_locator): der öffentliche Token-Locator muss den
@@ -428,14 +431,17 @@ describe("Schreibseitige Tenant-Invarianten", () => {
     // danach auf den Platzhalter '' zurück (nicht auf NULL) — genau dafür
     // steht nullif(..., '') in den Policies. Eine fabrikfrische Verbindung
     // prüft zusätzlich den Fall "Parameter nie referenziert" (NULL).
-    const fresh = new Pool({ connectionString: process.env.POSTGRES_URL_TEST, max: 1 });
+    const fresh = createDrainTrackedPool({
+      connectionString: process.env.POSTGRES_URL_TEST,
+      max: 1,
+    });
     try {
       for (const t of tables) {
         const { rows } = await fresh.query<CountRow>(`select count(*)::int as n from ${t.name}`);
         expect(rows[0].n, `${t.name}: LECK — ohne app.workspace_id sichtbar`).toBe(0);
       }
     } finally {
-      await fresh.end();
+      await endPoolAndWaitForClientRemoval(fresh);
     }
   });
 

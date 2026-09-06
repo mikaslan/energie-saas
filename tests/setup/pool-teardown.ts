@@ -5,9 +5,28 @@
 import { afterAll } from "vitest";
 import { testPool } from "./test-db";
 import { closeSuperuserPool } from "./superuser-db";
+import { endPoolAndWaitForClientRemoval } from "./pg-pool-drain";
+
+export async function closePerFileTestPools(
+  closeRuntimePool: () => Promise<void>,
+  closeSuperuser: () => Promise<void>,
+): Promise<void> {
+  const results = await Promise.allSettled([
+    Promise.resolve().then(closeRuntimePool),
+    Promise.resolve().then(closeSuperuser),
+  ]);
+  const failures = results.flatMap((result) => (
+    result.status === "rejected" ? [result.reason] : []
+  ));
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Testdatei-Pool-Teardown fehlgeschlagen");
+  }
+}
 
 afterAll(async () => {
-  await testPool.end();
-  // Nur wirksam, wenn die Datei den Superuser-Pool überhaupt angefasst hat.
-  await closeSuperuserPool();
+  await closePerFileTestPools(
+    () => endPoolAndWaitForClientRemoval(testPool),
+    // Nur wirksam, wenn die Datei den Superuser-Pool überhaupt angefasst hat.
+    closeSuperuserPool,
+  );
 });

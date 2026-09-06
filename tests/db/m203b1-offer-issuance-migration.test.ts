@@ -21,6 +21,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 import { superuserPool } from "../setup/superuser-db";
 import { tenantFixtures } from "../setup/tenant-fixtures";
 import { testPool } from "../setup/test-db";
@@ -392,13 +396,13 @@ describe("M2-03b1 offer-issuance migration contract", () => {
 
   it("enqueue't im echten pg-boss-v38-Pfad fuer Running-Attempt 3 genau den :4-Sentinel", async () => {
     const embedded = await startEmbeddedPostgres();
-    const admin = new Pool({ connectionString: embedded.superuserUrl, max: 2 });
+    const admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 2 });
     let owner: Pool | undefined;
     let runtime: Pool | undefined;
     let worker: Pool | undefined;
     try {
       await bootstrapStrictPgBossV38(embedded, admin);
-      owner = new Pool({
+      owner = createDrainTrackedPool({
         connectionString: strictServiceUrl(
           embedded,
           "app_migrator",
@@ -408,7 +412,7 @@ describe("M2-03b1 offer-issuance migration contract", () => {
         max: 2,
       });
       await migrate(drizzle(owner), { migrationsFolder: resolve("drizzle") });
-      runtime = new Pool({
+      runtime = createDrainTrackedPool({
         connectionString: strictServiceUrl(
           embedded,
           "app_runtime",
@@ -416,7 +420,7 @@ describe("M2-03b1 offer-issuance migration contract", () => {
         ),
         max: 2,
       });
-      worker = new Pool({
+      worker = createDrainTrackedPool({
         connectionString: strictServiceUrl(
           embedded,
           "app_worker",
@@ -600,11 +604,11 @@ describe("M2-03b1 offer-issuance migration contract", () => {
         runningRows.rows[0]?.lease_expires_at.toISOString(),
       );
     } finally {
-      await worker?.end().catch(() => undefined);
-      await runtime?.end().catch(() => undefined);
-      await owner?.end().catch(() => undefined);
-      await admin.end().catch(() => undefined);
-      await embedded.stop().catch(() => undefined);
+      await endPoolsAndStopEmbeddedPostgres(
+        [worker, runtime, owner, admin],
+        embedded,
+        "M2-03b1-Ausgabe-Migrations-Teardown fehlgeschlagen",
+      );
     }
   }, 120_000);
 

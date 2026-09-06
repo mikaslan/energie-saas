@@ -80,6 +80,10 @@ describe("M1-10 Task-UI-Core-Vertrag", () => {
     expect(editor).toContain('aria-errormessage');
     expect(editor).toContain('event.key === "Tab"');
     expect(editor).toContain("onEditorTab");
+    expect(editor).toContain("onMouseDown={(event) => event.preventDefault()}");
+    expect(editor).toContain("document.activeElement === firstBoundary");
+    expect(editor).toContain("document.activeElement === lastBoundary");
+    expect(editor).toContain("submitBoundary !== null && !submitBoundary.disabled");
     expect(editor).toContain("input:not([type='hidden']):not([disabled])");
     expect(editor).toContain("returnTarget?.focus()");
     expect(editor).toContain("onSuccess(editorMessage(state))");

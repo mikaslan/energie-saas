@@ -11,9 +11,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Pool } from "pg";
 import { expect, it } from "vitest";
 import { startEmbeddedPostgres } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   version: string;
@@ -48,7 +51,7 @@ function migrationPrefixThrough(maxIndex: number): string {
 
 it("migriert einen befüllten M1-04-Bestand verlustfrei in das Anfrage-Board", async () => {
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 1 });
   let prefix: string | undefined;
   const workspaceId = randomUUID();
   const contactId = randomUUID();
@@ -181,8 +184,11 @@ it("migriert einen befüllten M1-04-Bestand verlustfrei in das Anfrage-Board", a
       insertClient.release();
     }
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M1-05-Migrations-Teardown fehlgeschlagen",
+    );
     if (prefix) rmSync(prefix, { recursive: true, force: true });
   }
 }, 120_000);

@@ -18,6 +18,7 @@ import {
   createTimeEventType,
   listTimeEntries,
   listTimeEventTypes,
+  lockTimeEntryInstantsForUpdate,
   restoreTimeEventType,
   TimeTrackingConflictError,
   TimeTrackingNotFoundError,
@@ -235,6 +236,15 @@ describe("F9.1 Zeiterfassung (PostgreSQL)", () => {
     expect(created.userId).toBe(fixture.editorId);
     expect(created.archivedAt).toBeNull();
 
+    const storedInstants = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => lockTimeEntryInstantsForUpdate(tx, ctx, created.id),
+    );
+    expect(storedInstants).toEqual({
+      startAt: new Date(created.startAt).toISOString(),
+      endAt: created.endAt === null ? null : new Date(created.endAt).toISOString(),
+    });
+
     await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => createTimeEntry(tx, ctx, entryCommand(fixture.projectId, {
@@ -308,6 +318,57 @@ describe("F9.1 Zeiterfassung (PostgreSQL)", () => {
       (tx, ctx) => createTimeEntry(tx, ctx, entryCommand(fixture.projectId, {
         typeId: foreignType.id,
       })),
+    )).rejects.toBeInstanceOf(TimeTrackingValidationError);
+  });
+
+  it("F901-DB-04a: archivierter Typ ist nur für seine bestehende Bindung zulässig", async () => {
+    const firstType = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createTimeEventType(tx, ctx, eventTypeCommand({ name: "Historisch" })),
+    );
+    const entry = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createTimeEntry(tx, ctx, entryCommand(fixture.projectId, { typeId: firstType.id })),
+    );
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => archiveTimeEventType(tx, ctx, firstType.id),
+    );
+
+    const unchanged = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => updateTimeEntry(tx, ctx, {
+        schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+        id: entry.id,
+        fields: entryCommand(fixture.projectId, {
+          typeId: firstType.id,
+          comment: "Historie bleibt",
+        }).fields,
+      }),
+    );
+    expect(unchanged.typeId).toBe(firstType.id);
+    expect(unchanged.comment).toBe("Historie bleibt");
+
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createTimeEntry(tx, ctx, entryCommand(fixture.projectId, { typeId: firstType.id })),
+    )).rejects.toBeInstanceOf(TimeTrackingValidationError);
+
+    const secondType = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createTimeEventType(tx, ctx, eventTypeCommand({ name: "Zweite Historie" })),
+    );
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => archiveTimeEventType(tx, ctx, secondType.id),
+    );
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => updateTimeEntry(tx, ctx, {
+        schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+        id: entry.id,
+        fields: entryCommand(fixture.projectId, { typeId: secondType.id }).fields,
+      }),
     )).rejects.toBeInstanceOf(TimeTrackingValidationError);
   });
 

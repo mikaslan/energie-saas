@@ -1,6 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * M1-15b Kalender-Scopes — Chromium-E2E (Workspace-Kalenderroute).
@@ -88,7 +91,7 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
 
 async function seedTenancyCalendar(): Promise<void> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     await pool.query(
       `insert into calendar (id, workspace_id, name, calendar_type, created_by)
@@ -102,7 +105,7 @@ async function seedTenancyCalendar(): Promise<void> {
       [data.m111bWorkspaceId, data.editorEmail],
     );
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

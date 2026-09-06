@@ -14,6 +14,10 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool, type QueryResult } from "pg";
 import { expect, it } from "vitest";
 import { startEmbeddedPostgres } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   version: string;
@@ -259,7 +263,7 @@ const NOW_ISO = "2026-08-29T12:00:00.000Z";
 
 it("migriert einen befuellten M1-05-Bestand verlustfrei auf revisionsgebundene Pins", async () => {
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 2 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
   let prefix: string | undefined;
   const workspaceId = randomUUID();
 
@@ -355,8 +359,11 @@ it("migriert einen befuellten M1-05-Bestand verlustfrei auf revisionsgebundene P
       column_id: graph.columnId,
     }]);
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M1-06-Migrations-Teardown fehlgeschlagen",
+    );
     if (prefix) rmSync(prefix, { recursive: true, force: true });
   }
 }, 120_000);
@@ -364,7 +371,7 @@ it("migriert einen befuellten M1-05-Bestand verlustfrei auf revisionsgebundene P
 it("installiert das M1-06-Schema frisch mit sicheren Defaults und Constraints", async () => {
   requireM106Migration();
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 2 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
   const workspaceId = randomUUID();
   const contactId = randomUUID();
   const regionalSiteId = randomUUID();
@@ -457,7 +464,10 @@ it("installiert das M1-06-Schema frisch mit sicheren Defaults und Constraints", 
     `);
     expect(rls.rows).toEqual([{ forced: true }]);
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M1-06-Head-Upgrade-Teardown fehlgeschlagen",
+    );
   }
 }, 120_000);

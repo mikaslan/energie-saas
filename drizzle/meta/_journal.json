@@ -467,7 +467,7 @@
     {
       "idx": 66,
       "version": "7",
-      "when": 1788565894444,
+      "when": 1788567623493,
       "tag": "0066_f16_03_snapshot_v3_check",
       "breakpoints": true
     },
@@ -518,6 +518,13 @@
       "version": "7",
       "when": 1788600048949,
       "tag": "0073_f16_03_derive_draft_cap_field",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1788652231722,
+      "tag": "0074_f2_05_variant_payment_write_contract",
       "breakpoints": true
     }
   ]

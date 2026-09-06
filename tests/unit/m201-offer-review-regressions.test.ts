@@ -22,6 +22,7 @@ import {
   OFFER_CANONICALIZATION_VERSION,
   OFFER_VARIANT_SNAPSHOT_VERSION,
   sealOfferVariantSnapshot,
+  toOfferVariantView,
   type OfferVariantSnapshotV1,
 } from "@/lib/integrations/offers/contract";
 import type { ServiceCtx } from "@/lib/permissions";
@@ -55,6 +56,7 @@ const SHA = {
 
 const SERVICE_PATH = "modules/offers/service.ts";
 const CATALOG_OFFER_COPY_PATH = "modules/catalog/offer-copy.ts";
+const OFFER_PAGE_PATH = "app/w/[workspaceId]/angebote/[offerId]/page.tsx";
 
 function sourceSlice(source: string, start: string, end: string): string {
   const from = source.indexOf(start);
@@ -362,6 +364,145 @@ describe("M2-01 Review-Regressionen", () => {
     // fuehrt hier im Test zum absichtlich gemockten notFound().
     expect(sqlCalls).toBe(1);
     expect(routeMocks.authorizedQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("projiziert einen v3-Snapshot mit Prozent-, Cap- und Fix-Rabatt in die Angebotsansicht", async () => {
+    routeMocks.authorizedQuery.mockReset();
+    const snapshot = structuredClone(offerSnapshot());
+    snapshot.globalDiscountBps = 2_500;
+    snapshot.globalDiscountCapCents = 1_000;
+    snapshot.globalFixDiscountCents = 500;
+    Object.assign(snapshot.sections[0]!.lines[0]!.computed, {
+      finalSalesNetCents: 8_500,
+      salesTaxCents: 1_615,
+      salesGrossCents: 10_115,
+    });
+    Object.assign(snapshot.totals, {
+      basisNetCents: 8_500,
+      basisTaxCents: 1_615,
+      basisGrossCents: 10_115,
+    });
+    const sealed = sealOfferVariantSnapshot(snapshot);
+    const activeVariant = toOfferVariantView(sealed, {
+      canReadPurchasePrice: false,
+      canReadPrivateHashes: false,
+    });
+
+    const queryResult = {
+      view: {
+        state: "loaded",
+        workspaceId: IDS.workspace,
+        offer: {
+          id: IDS.offer,
+          projectId: IDS.project,
+          projectOutcome: "open",
+          offerNumber: "ANG-2026-000001",
+          status: "draft",
+          outdated: false,
+          forecastValueNetCents: null,
+          totalPriceOverrideNetCents: null,
+        },
+        primaryVariantId: IDS.firstVariant,
+        overrideActive: false,
+        displayTotalNetCents: 8_500,
+        displayTotalGrossCents: 10_115,
+        variants: [{
+          id: IDS.firstVariant,
+          name: "Basis",
+          revision: 1,
+          isPrimary: true,
+          active: true,
+          href: `/w/${IDS.workspace}/angebote/${IDS.offer}?variante=${IDS.firstVariant}`,
+          bundles: [],
+          paymentOptionId: null,
+        }],
+        activeVariant,
+        newBasisInput: null,
+        permissions: {
+          canEdit: true,
+          canDuplicate: true,
+          canCreateBasis: false,
+          canReadPurchasePrice: false,
+        },
+        actionState: { status: "idle" },
+      },
+      pdfDrafts: [],
+      releaseProfile: null,
+      releaseRecipient: null,
+      releaseCandidates: [],
+      offerIssuances: [],
+      releaseValidityWindow: null,
+      showReleasePanel: false,
+      discountTemplates: [],
+      paymentOptions: [],
+      recoveryScope: "a".repeat(64),
+      editorCapabilities: {
+        canEditPrice: true,
+        canApplyDiscount: true,
+        canEditPurchasePrice: false,
+        canGeneratePdf: false,
+        canPrepareRelease: false,
+        canApproveRelease: false,
+        canPrepareIssuance: false,
+        canApproveIssuance: false,
+        canWithdrawIssuance: false,
+      },
+    };
+    routeMocks.authorizedQuery.mockResolvedValue(queryResult);
+    const { default: OfferDetailPage } = await import(
+      "@/app/w/[workspaceId]/angebote/[offerId]/page"
+    );
+
+    const rendered = await OfferDetailPage({
+      params: Promise.resolve({ workspaceId: IDS.workspace, offerId: IDS.offer }),
+      searchParams: Promise.resolve({}),
+    } as never) as unknown as {
+      props: { children: [{ props: { view: { activeVariant: { snapshot: Record<string, unknown> } } } }] };
+    };
+    const projected = rendered.props.children[0].props.view.activeVariant.snapshot;
+
+    expect(projected).toMatchObject({
+      schemaVersion: OFFER_VARIANT_SNAPSHOT_VERSION,
+      globalDiscountBps: 2_500,
+      globalDiscountCapCents: 1_000,
+      globalFixDiscountCents: 500,
+      totals: {
+        basisNetCents: 8_500,
+        basisTaxCents: 1_615,
+        basisGrossCents: 10_115,
+      },
+    });
+
+    const malformed = structuredClone(queryResult);
+    delete (malformed.view.activeVariant.snapshot as {
+      globalFixDiscountCents?: unknown;
+    }).globalFixDiscountCents;
+    routeMocks.authorizedQuery.mockResolvedValue(malformed);
+    await expect(OfferDetailPage({
+      params: Promise.resolve({ workspaceId: IDS.workspace, offerId: IDS.offer }),
+      searchParams: Promise.resolve({}),
+    } as never)).rejects.toThrow("Angebotsansicht enthält einen ungültigen Datenstand");
+  });
+
+  it("akzeptiert an der Angebotsoberfläche nur den vollständig normalisierten v3-Shape", async () => {
+    const source = await readFile(OFFER_PAGE_PATH, "utf8");
+    const boundary = sourceSlice(
+      source,
+      "function snapshotViewSchema(",
+      "function projectOfferDetailView(",
+    );
+
+    expect(boundary).toContain(
+      "schemaVersion: z.literal(OFFER_VARIANT_SNAPSHOT_VERSION)",
+    );
+    expect(boundary).toContain(
+      "globalFixDiscountCents: moneyCentsSchema.nullable(),",
+    );
+    expect(boundary).not.toContain("OFFER_VARIANT_SNAPSHOT_VERSION_V1");
+    expect(boundary).not.toContain("OFFER_VARIANT_SNAPSHOT_VERSION_V2");
+    expect(boundary).not.toContain(
+      "globalFixDiscountCents: moneyCentsSchema.nullable().optional()",
+    );
   });
 
   it("wertet die Liste bei Project-/Component-Stale als outdated und bei irgendeiner aktuellen neuen Basis wieder als fresh", async () => {

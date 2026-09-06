@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * M3-01 Rechnungs-Kern — UI-/E2E-Schicht (Chromium).
@@ -153,7 +156,7 @@ async function seedIssuedInvoice(
   const workspaceId = target?.workspaceId ?? data.workspaceId;
   const editorEmail = target?.editorEmail ?? data.editorEmail;
   const seedSequence = seedSequenceFor(opts.name);
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -212,13 +215,13 @@ async function seedIssuedInvoice(
     );
   } finally {
     await client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
 async function seedInvoicingSettings(): Promise<void> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -257,7 +260,7 @@ async function seedInvoicingSettings(): Promise<void> {
     await client.query("commit");
   } finally {
     await client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -269,7 +272,7 @@ async function seedIsolatedReportsWorkspace(): Promise<{
 }> {
   const data = state();
   const workspaceId = randomUUID();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -314,14 +317,14 @@ async function seedIsolatedReportsWorkspace(): Promise<{
     await client.query("commit");
   } finally {
     await client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
   return { workspaceId, editorEmail: data.editorEmail };
 }
 
 async function grantInvoicingCapability(): Promise<void> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -341,7 +344,7 @@ async function grantInvoicingCapability(): Promise<void> {
     await client.query("commit");
   } finally {
     await client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

@@ -101,12 +101,23 @@ Rechte; ACL SELECT/INSERT/UPDATE an app_runtime, kein DELETE.
 
 - P1-1: toggleArchived lief auf `lead_source.write`/`lead_source` (Copy-Paste)
   → `time.write`/`time_tracking`.
-- P1-2: datetime-local-Zeitzone — naiver Wert wird als UTC geparst
-  (`…:00Z`) und um den mitgelieferten Browser-Offset korrigiert; E2E
-  prüft die gerenderte Uhrzeit (08:00–10:00 Round-Trip).
+- P1-2: datetime-local-Zeitzone — jede Wandzeit wird serverseitig und
+  hostunabhängig als `Europe/Berlin` interpretiert; Browser-Offsets sind weder
+  Eingabe noch Vertrauensanker. E2E prüft auch ein Intervall über die
+  DST-Grenze. Nicht existente Frühlingszeiten werden serverseitig abgelehnt,
+  Schaltage kalendergetreu akzeptiert.
+  Die öffentlich nicht beobachtbare Reonic-Regel für die doppelte Berliner
+  Herbststunde ist **ESTIMATE**: Neue oder geänderte Wandzeiten pinnen den
+  früheren Instant. Bei unveränderter Berliner Minute bleiben Fold und
+  Sekunden des unter `FOR UPDATE` aus der DB gelesenen Originals exakt
+  erhalten; Client-Originalwerte sind kein Vertrauensanker.
+  Wechselt der UTC-Offset innerhalb eines Eintrags, zeigt die UI beide Offsets
+  ausdrücklich an; dadurch bleibt die rückläufig wirkende Herbstuhr eindeutig.
 - P2-1: Längen-/Steuerzeichen-Refines NACH NFKC-Transform (Zod/DB-symmetrisch).
 - P2-2: Anzeige löst gegen ALLE Typen auf (archivierte bleiben benannt);
-  Edit-Select führt den archivierten Alt-Typ als disabled Option.
+  Edit-Select führt nur den aktuell gebundenen archivierten Alt-Typ als
+  submitbare Option. Der Service erlaubt ihn idempotent für diese Bindung,
+  verweigert aber Create und jede neue Zuweisung archivierter Typen.
 - P2-3: DB-CHECK-Tests (Farbe, Steuerzeichen-Kommentar), Update-Validierung,
   E2E Typ-Archivierung.
 - P3-1: Anführungszeichen korrigiert. P3-2: toter Parameter entfernt.

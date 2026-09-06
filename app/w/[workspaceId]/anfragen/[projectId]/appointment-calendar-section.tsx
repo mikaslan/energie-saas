@@ -12,15 +12,38 @@ import { AppointmentDialog } from "./appointment-dialog";
 const dateTimeFormatter = new Intl.DateTimeFormat("de-DE", {
   dateStyle: "medium",
   timeStyle: "short",
-  timeZone: "Europe/Berlin",
+  // Die Eingabe ist bereits die Berlin-Wanduhr (kein Instant). UTC dient hier
+  // nur als verschiebungsfreie Darstellungsachse für ihre Zahlenbestandteile.
+  timeZone: "UTC",
 });
 
-function formatWallClock(value: string): string {
-  // value ist Berlin-Wanduhr ohne Offset; für die Anzeige als lokale Zeit
-  // wird sie als Offset-lose Zeit interpretiert und formatiert.
-  const normalized = value.length === 16 ? `${value}:00` : value;
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? value : dateTimeFormatter.format(date);
+const WALL_CLOCK_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/u;
+
+export function formatAppointmentWallClock(value: string): string {
+  // value ist eine Berlin-Wanduhr ohne Offset, kein ISO-Instant. Die Teile
+  // werden deshalb nie über den lokalen Date-String-Parser interpretiert.
+  const match = WALL_CLOCK_PATTERN.exec(value);
+  if (!match) return value;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6] ?? "0");
+  const millisecond = Number((match[7] ?? "0").padEnd(3, "0"));
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, millisecond);
+  if (
+    year < 1
+    || date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+    || date.getUTCHours() !== hour
+    || date.getUTCMinutes() !== minute
+    || date.getUTCSeconds() !== second
+  ) return value;
+  return dateTimeFormatter.format(date);
 }
 
 export function AppointmentCalendarSection({
@@ -108,8 +131,8 @@ export function AppointmentCalendarSection({
                   <p className="mt-1 text-xs text-slate-500">
                     {APPOINTMENT_TYPE_LABELS[appointment.type]}
                     {appointment.allDay ? " · ganztägig" : null}
-                    {" · "}{formatWallClock(appointment.start)}
-                    {" – "}{formatWallClock(appointment.end)}
+                    {" · "}{formatAppointmentWallClock(appointment.start)}
+                    {" – "}{formatAppointmentWallClock(appointment.end)}
                   </p>
                   {appointment.location ? (
                     <p className="mt-1 text-xs text-slate-500">Ort: {appointment.location}</p>

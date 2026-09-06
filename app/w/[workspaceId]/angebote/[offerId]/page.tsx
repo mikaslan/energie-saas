@@ -23,6 +23,9 @@ import {
   type OfferReleaseStatusResult,
 } from "@/modules/offers";
 import { requireAuthSecret } from "@/lib/env";
+import {
+  OFFER_VARIANT_SNAPSHOT_VERSION,
+} from "@/lib/integrations/offers/contract";
 
 import { listDiscountTemplates } from "@/modules/discounts";
 import { listSubsidyTemplates } from "@/modules/subsidies";
@@ -183,8 +186,10 @@ function snapshotViewSchema(canReadPurchasePrice: boolean) {
   const lineSchema = canReadPurchasePrice ? purchaseLineViewSchema : publicLineViewSchema;
 
   return z.object({
-    // F16.3 Slice D: v1+v2 lesen (Dual-Read), Fix-Betrag für den Editor.
-    schemaVersion: z.enum(["offer-variant-snapshot.v1", "offer-variant-snapshot.v2"]),
+    // Der Domain-DTO normalisiert gültige v1/v2-Historie bereits auf den
+    // aktuellen v3-Shape. Diese zweite Grenze bleibt deshalb strikt v3 und
+    // darf weder unnormalisierte Altstände noch partielle v3-Werte annehmen.
+    schemaVersion: z.literal(OFFER_VARIANT_SNAPSHOT_VERSION),
     workspaceId: snapshotUuidSchema,
     offerId: snapshotUuidSchema,
     variantId: snapshotUuidSchema,
@@ -193,7 +198,7 @@ function snapshotViewSchema(canReadPurchasePrice: boolean) {
     description: z.string().trim().min(1).max(1_000).nullable(),
     globalDiscountBps: basisPointsSchema,
     globalDiscountCapCents: moneyCentsSchema.nullable(),
-    globalFixDiscountCents: moneyCentsSchema.nullable().optional(),
+    globalFixDiscountCents: moneyCentsSchema.nullable(),
     customDealNetCents: moneyCentsSchema.nullable(),
     contactContext: z.object({
       displayName: z.string().trim().min(1).max(200),
@@ -236,6 +241,7 @@ function projectOfferDetailView(
     id: string;
     key: "purchase" | "financing_classic" | "leasing";
     label: string;
+    archivedAt: string | null;
   }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
@@ -489,6 +495,7 @@ export default async function OfferDetailPage(
       id: string;
       key: "purchase" | "financing_classic" | "leasing";
       label: string;
+      archivedAt: string | null;
     }[];
     recoveryScope: string;
     editorCapabilities: {
@@ -532,6 +539,7 @@ export default async function OfferDetailPage(
           id: string;
           key: "purchase" | "financing_classic" | "leasing";
           label: string;
+          archivedAt: string | null;
         }[] = [];
         if (view !== null && !externalOnly) {
           // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
@@ -606,10 +614,16 @@ export default async function OfferDetailPage(
             suggested: validityResult.rows[0]?.suggested_valid_through,
             max: validityResult.rows[0]?.max_valid_through,
           });
-          // F2.5 Slice A: aktive Zahlarten für die Varianten-Auswahl.
+          // Aktive und historisch referenzierte archivierte Zahlarten laden:
+          // Der Editor filtert aktive Optionen, zeigt aber Altzuordnungen.
           if (can(ctx, "payment_option.read")) {
-            for (const option of await listPaymentOptions(tx, ctx, {})) {
-              paymentOptions.push({ id: option.id, key: option.key, label: option.label });
+            for (const option of await listPaymentOptions(tx, ctx, { includeArchived: true })) {
+              paymentOptions.push({
+                id: option.id,
+                key: option.key,
+                label: option.label,
+                archivedAt: option.archivedAt,
+              });
             }
           }
         }

@@ -1,6 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * F2.5 Zahlarten Slice A — Chromium-E2E.
@@ -107,7 +110,7 @@ function trackErrors(page: Page): string[] {
 
 async function readPaymentOptionId(offerId: string, variantId: string): Promise<string | null> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     const result = await pool.query(
       `select v.payment_option_id::text as "paymentOptionId"
@@ -119,7 +122,7 @@ async function readPaymentOptionId(offerId: string, variantId: string): Promise<
     );
     return (result.rows[0]?.paymentOptionId as string | null) ?? null;
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -139,12 +142,22 @@ test("F2.5-E2E-01: Zahlarten-Stammdaten — CRUD in den Einstellungen", async ({
   await expect(page.getByText("Zahlart angelegt.")).toBeVisible();
   await expect(page.getByText("Kauf E2E", { exact: true })).toBeVisible();
 
-  // Umbenennen.
+  // Zweite Zeile: Update-Feedback muss zeilenlokal bleiben, auch wenn zwei
+  // Editoren zugleich offen sind.
+  await page.getByLabel("Schlüssel").selectOption("leasing");
+  await page.getByLabel("Bezeichnung").fill("Leasing E2E");
+  await page.getByRole("button", { name: "Anlegen", exact: true }).click();
+  await expect(page.getByText("Leasing E2E", { exact: true })).toBeVisible();
+
+  // Umbenennen bei parallel geöffneter zweiter Edit-Zeile.
   const entry = page.locator("li", { hasText: "Kauf E2E" }).first();
+  const secondEntry = page.locator("li", { hasText: "Leasing E2E" }).first();
   await entry.getByRole("button", { name: "Bearbeiten", exact: true }).click();
+  await secondEntry.getByRole("button", { name: "Bearbeiten", exact: true }).click();
   await entry.getByLabel("Bezeichnung").fill("Kauf E2E Umbenannt");
   await entry.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(page.getByText("Zahlart aktualisiert.")).toBeVisible();
+  await expect(page.getByText("Zahlart aktualisiert.", { exact: true })).toHaveCount(1);
+  await expect(secondEntry.getByText("Zahlart aktualisiert.", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Kauf E2E Umbenannt", { exact: true })).toBeVisible();
 
   // Archivieren → wandert in den Archiv-Bereich.
@@ -198,7 +211,8 @@ test("F2.5-E2E-02: Varianten-Auswahl — setzen, Read-back, zurücksetzen", asyn
     has: page.getByRole("heading", { name: /Zahlart/, exact: false }),
   });
   await expect(controls).toBeVisible();
-  await expect(controls.getByText(/Keine Angabe/)).toBeVisible();
+  await expect(controls.getByText(/^Keine Angabe\./)).toBeVisible();
+  await expect(controls.getByLabel("Zahlart wählen")).toHaveValue("");
 
   // Zahlart per UI wählen und speichern.
   await controls.getByLabel("Zahlart wählen").selectOption({ label: "Finanzierung E2E (Finanzierung (Classic, Anzeige))" });
@@ -216,10 +230,32 @@ test("F2.5-E2E-02: Varianten-Auswahl — setzen, Read-back, zurücksetzen", asyn
     timeout: 15_000,
   }).toBe(optionId);
 
+  // Historienkante: Archivieren entfernt die aktive Auswahloption, darf die
+  // bestehende Varianten-Zuordnung aber nicht als „Keine Angabe“ verschlucken.
+  await page.goto(settingsPath);
+  const financingEntry = page.locator("li", { hasText: "Finanzierung E2E" }).first();
+  await financingEntry.getByRole("button", { name: "Archivieren", exact: true }).click();
+  await expect(page.getByText("Zahlart archiviert.")).toBeVisible();
+
+  await page.goto(detailUrl.toString());
+  const historicalControls = page.locator("section").filter({
+    has: page.getByRole("heading", { name: /Zahlart/, exact: false }),
+  });
+  await expect(historicalControls.getByText(/Aktuell:/)).toContainText("Finanzierung E2E");
+  await expect(historicalControls.getByText(/Aktuell:/)).toContainText("archiviert");
+  await expect(historicalControls.getByLabel("Zahlart wählen")).toHaveValue(optionId!);
+  await expect(historicalControls.locator(`option[value="${optionId}"]`)).toBeEnabled();
+
+  // Native FormData muss auch beim unveränderten historischen Wert vollständig
+  // bleiben; Speichern ist idempotent statt `invalid`.
+  await historicalControls.getByRole("button", { name: "Zahlart speichern", exact: true }).click();
+  await expect(historicalControls.getByText("Die Zahlart war bereits aktuell.")).toBeVisible();
+  await expect.poll(async () => readPaymentOptionId(offerId, variantId!)).toBe(optionId);
+
   // Zurücksetzen auf „Keine Angabe".
-  await controls.getByLabel("Zahlart wählen").selectOption("");
-  await controls.getByRole("button", { name: "Zahlart speichern", exact: true }).click();
-  await expect(controls.getByText("Die Zahlart wurde gespeichert.")).toBeVisible();
+  await historicalControls.getByLabel("Zahlart wählen").selectOption("");
+  await historicalControls.getByRole("button", { name: "Zahlart speichern", exact: true }).click();
+  await expect(historicalControls.getByText("Die Zahlart wurde gespeichert.")).toBeVisible();
   await expect.poll(async () => readPaymentOptionId(offerId, variantId!), {
     message: "Das Zurücksetzen muss in der DB sichtbar sein.",
     timeout: 15_000,

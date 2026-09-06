@@ -70,7 +70,6 @@ export function PaymentOptionManager({
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createPaymentOptionAction, initialState);
-  const [updateState, updateDispatch] = useActionState(updatePaymentOptionAction, initialState);
   const [archiveState, archiveDispatch] = useActionState(archivePaymentOptionAction, initialState);
   const [restoreState, restoreDispatch] = useActionState(restorePaymentOptionAction, initialState);
 
@@ -146,8 +145,6 @@ export function PaymentOptionManager({
                       key={`edit-${option.id}`}
                       workspaceId={workspaceId}
                       option={option}
-                      state={updateState}
-                      dispatch={updateDispatch}
                     />
                     <form action={archiveDispatch}>
                       <input type="hidden" name="workspaceId" value={workspaceId} />
@@ -207,16 +204,12 @@ export function PaymentOptionManager({
 function EditForm({
   workspaceId,
   option,
-  state,
-  dispatch,
 }: {
   workspaceId: string;
   option: PaymentOptionDto;
-  state: PaymentOptionActionState;
-  dispatch: (formData: FormData) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  void state;
+  const [state, dispatch] = useActionState(updatePaymentOptionAction, initialState);
   if (!isOpen) {
     return (
       <button
@@ -254,6 +247,9 @@ function EditForm({
       >
         Abbrechen
       </button>
+      <div className="w-full">
+        <Feedback state={state} />
+      </div>
     </form>
   );
 }

@@ -32,6 +32,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 import { tenantFixtures } from "../setup/tenant-fixtures";
 
 type MigrationJournal = {
@@ -628,7 +632,7 @@ async function callErasureAsDedicatedRole(
 describe.sequential("M2-03a Offer-Release-Datenbankvertrag", () => {
   it("migriert eine reale 0..33-Datenbank additiv auf 0034", async () => {
     const embedded = await startEmbeddedPostgres();
-    const pool = new Pool({ connectionString: embedded.url, max: 2 });
+    const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
     let prefix: string | undefined;
     try {
       prefix = migrationPrefixThrough(33);
@@ -664,30 +668,33 @@ describe.sequential("M2-03a Offer-Release-Datenbankvertrag", () => {
       expect(relations.rows.map((row) => row.relname)).toEqual([...RELEASE_TABLES]);
     } finally {
       if (prefix) rmSync(prefix, { recursive: true, force: true });
-      await pool.end().catch(() => undefined);
-      await embedded.stop().catch(() => undefined);
+      await endPoolsAndStopEmbeddedPostgres(
+        [pool],
+        embedded,
+        "M2-03a-Release-Prefix-Teardown fehlgeschlagen",
+      );
     }
   }, 120_000);
 
   it("erzwingt im frischen Strict-Setup Owner, RLS, ACLs und schmale Funktionen", async () => {
     const embedded = await startEmbeddedPostgres();
-    const admin = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
+    const admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 1 });
     let migrator: Pool | undefined;
     let runtime: Pool | undefined;
     let worker: Pool | undefined;
     try {
       await bootstrapStrictRolesAndPgBoss(embedded, admin);
-      migrator = new Pool({
+      migrator = createDrainTrackedPool({
         connectionString: serviceUrl(embedded, "app_migrator", "m203a_migrator"),
         options: "-c role=app_owner",
         max: 2,
       });
       await migrate(drizzle(migrator), { migrationsFolder: resolve("drizzle") });
-      runtime = new Pool({
+      runtime = createDrainTrackedPool({
         connectionString: serviceUrl(embedded, "app_runtime", "m203a_runtime"),
         max: 4,
       });
-      worker = new Pool({
+      worker = createDrainTrackedPool({
         connectionString: serviceUrl(embedded, "app_worker", "m203a_worker"),
         max: 1,
       });
@@ -2260,11 +2267,11 @@ describe.sequential("M2-03a Offer-Release-Datenbankvertrag", () => {
       );
       expect(foreignRead.rows).toEqual([]);
     } finally {
-      await worker?.end().catch(() => undefined);
-      await runtime?.end().catch(() => undefined);
-      await migrator?.end().catch(() => undefined);
-      await admin.end().catch(() => undefined);
-      await embedded.stop().catch(() => undefined);
+      await endPoolsAndStopEmbeddedPostgres(
+        [worker, runtime, migrator, admin],
+        embedded,
+        "M2-03a-Release-Datenbank-Teardown fehlgeschlagen",
+      );
     }
   }, 180_000);
 });

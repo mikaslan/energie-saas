@@ -9,6 +9,7 @@ import type {
   TimeMemberOption,
   TimeUtilizationDto,
 } from "@/lib/integrations/time-tracking/contract";
+import { isoToBerlinLocalInput } from "@/lib/integrations/time-tracking/berlin-wall-clock";
 import {
   archiveTimeEntryAction,
   createTimeEntryAction,
@@ -56,22 +57,15 @@ function Feedback({ state }: { state: TimeEntryActionState }) {
   );
 }
 
-function toLocalInput(iso: string): string {
-  const date = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function formatRange(startAt: string, endAt: string | null): string {
-  if (endAt === null) {
-    const start = new Date(startAt);
-    return `${start.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })} · läuft seit ${start.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr`;
-  }
+export function formatTimeEntryRange(startAt: string, endAt: string | null): string {
   const start = new Date(startAt);
+  const date = BERLIN_DATE.format(start);
+  const from = BERLIN_TIME.format(start);
+  if (endAt === null) {
+    return `${date} · läuft seit ${from} Uhr`;
+  }
   const end = new Date(endAt);
-  const date = start.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const time = (d: Date) => d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  return `${date} · ${time(start)}–${time(end)} Uhr`;
+  return `${date} · ${from}–${BERLIN_TIME.format(end)} Uhr${formatOffsetTransition(start, end)}`;
 }
 
 function formatDuration(minutes: number | null): string {
@@ -94,13 +88,31 @@ const BERLIN_TIME = new Intl.DateTimeFormat("de-DE", {
   hour: "2-digit",
   minute: "2-digit",
 });
+const BERLIN_OFFSET = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Berlin",
+  timeZoneName: "longOffset",
+});
+
+function berlinOffset(date: Date): string {
+  const label = BERLIN_OFFSET.formatToParts(date)
+    .find((part) => part.type === "timeZoneName")?.value;
+  if (!label?.startsWith("GMT")) throw new RangeError("Berliner UTC-Offset fehlt");
+  return label.replace("GMT", "UTC");
+}
+
+function formatOffsetTransition(start: Date, end: Date): string {
+  const startOffset = berlinOffset(start);
+  const endOffset = berlinOffset(end);
+  return startOffset === endOffset ? "" : ` (${startOffset}→${endOffset})`;
+}
 
 function formatBerlinRange(startAt: string, endAt: string | null): string {
   const start = new Date(startAt);
   const date = BERLIN_DATE.format(start);
   const from = BERLIN_TIME.format(start);
   if (endAt === null) return `${date} · ab ${from} Uhr`;
-  return `${date} · ${from}–${BERLIN_TIME.format(new Date(endAt))} Uhr`;
+  const end = new Date(endAt);
+  return `${date} · ${from}–${BERLIN_TIME.format(end)} Uhr${formatOffsetTransition(start, end)}`;
 }
 
 function formatBerlinDateTime(iso: string): string {
@@ -128,7 +140,6 @@ export function TimeEntryManager({
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createTimeEntryAction, initialState);
-  const [updateState, updateDispatch] = useActionState(updateTimeEntryAction, initialState);
   const [archiveState, archiveDispatch] = useActionState(archiveTimeEntryAction, initialState);
   const [startState, startDispatch] = useActionState(startTimeEntryAction, initialState);
   const [stopState, stopDispatch] = useActionState(stopTimeEntryAction, initialState);
@@ -154,7 +165,7 @@ export function TimeEntryManager({
           <h2 className="text-base font-semibold text-slate-950">Stoppuhr läuft</h2>
           <p className="mt-1 text-sm leading-6 text-slate-700">
             {typeName(runningEntry.typeId) ?? "Ohne Ereignistyp"} ·{" "}
-            {formatRange(runningEntry.startAt, runningEntry.endAt)}
+            {formatTimeEntryRange(runningEntry.startAt, runningEntry.endAt)}
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <form action={stopDispatch} className="flex flex-wrap items-end gap-2">
@@ -239,7 +250,7 @@ export function TimeEntryManager({
                     {typeName(entry.typeId) ?? "Ohne Ereignistyp"}
                   </span>
                   <span className="block text-xs text-slate-500">
-                    {formatRange(entry.startAt, entry.endAt)}
+                    {formatTimeEntryRange(entry.startAt, entry.endAt)}
                     {entry.running ? "" : ` · ${formatDuration(entry.workingTimeMinutes)}${entry.breakDurationMinutes > 0 ? ` · Pause ${formatDuration(entry.breakDurationMinutes)}` : ""}`}
                   </span>
                   {entry.comment ? (
@@ -265,8 +276,6 @@ export function TimeEntryManager({
                       entry={entry}
                       types={activeTypes}
                       archivedType={archivedTypeOf(entry.typeId)}
-                      state={updateState}
-                      dispatch={updateDispatch}
                     />
                     <form action={archiveDispatch}>
                       <input type="hidden" name="workspaceId" value={workspaceId} />
@@ -328,7 +337,6 @@ export function TimeEntryManager({
           <form action={createDispatch}>
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <input type="hidden" name="projectId" value={projectId} />
-            <input type="hidden" name="tzOffsetMinutes" value={new Date().getTimezoneOffset()} />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <label className="block">
                 <span className="block text-sm font-semibold text-slate-800">Ereignistyp</span>
@@ -514,18 +522,15 @@ function EditForm({
   entry,
   types,
   archivedType,
-  state,
-  dispatch,
 }: {
   workspaceId: string;
   projectId: string;
   entry: TimeEntryDto;
   types: TimeEventTypeDto[];
   archivedType?: TimeEventTypeDto;
-  state: TimeEntryActionState;
-  dispatch: (formData: FormData) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [state, dispatch] = useActionState(updateTimeEntryAction, initialState);
   if (!isOpen) {
     return (
       <button
@@ -542,21 +547,20 @@ function EditForm({
       <input type="hidden" name="workspaceId" value={workspaceId} />
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="id" value={entry.id} />
-      <input type="hidden" name="tzOffsetMinutes" value={new Date().getTimezoneOffset()} />
       <select name="typeId" defaultValue={entry.typeId ?? ""} aria-label="Ereignistyp"
         className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600">
         <option value="">Ohne Ereignistyp</option>
         {archivedType ? (
-          <option value={archivedType.id} disabled>{archivedType.name} (archiviert)</option>
+          <option value={archivedType.id}>{archivedType.name} (archiviert)</option>
         ) : null}
         {types.map((type) => (
           <option key={type.id} value={type.id}>{type.name}</option>
         ))}
       </select>
-      <input type="datetime-local" name="startAt" required defaultValue={toLocalInput(entry.startAt)}
+      <input type="datetime-local" name="startAt" required defaultValue={isoToBerlinLocalInput(entry.startAt)}
         aria-label="Beginn"
         className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
-      <input type="datetime-local" name="endAt" required defaultValue={entry.endAt !== null ? toLocalInput(entry.endAt) : ""}
+      <input type="datetime-local" name="endAt" required defaultValue={entry.endAt !== null ? isoToBerlinLocalInput(entry.endAt) : ""}
         aria-label="Ende"
         className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
       <input type="number" name="workingTimeMinutes" min={0} max={1440} step={1} required

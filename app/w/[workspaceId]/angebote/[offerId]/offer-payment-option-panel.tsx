@@ -13,6 +13,7 @@ export interface PaymentOptionEntry {
   id: string;
   key: "purchase" | "financing_classic" | "leasing";
   label: string;
+  archivedAt: string | null;
 }
 
 const KEY_LABELS: Record<PaymentOptionEntry["key"], string> = {
@@ -64,6 +65,7 @@ export function OfferPaymentOptionPanel({ workspaceId, offerId, variantId, varia
   const message = feedback(actionState);
   const isError = actionState.status !== "idle" && actionState.status !== "success";
   const current = options.find((option) => option.id === currentOptionId) ?? null;
+  const activeOptions = options.filter((option) => option.archivedAt === null);
 
   return (
     <section aria-labelledby="offer-payment-option-title" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -73,7 +75,7 @@ export function OfferPaymentOptionPanel({ workspaceId, offerId, variantId, varia
       </h2>
       <p className="mt-1 text-sm leading-6 text-slate-600">
         {current ? (
-          <>Aktuell: <strong>{current.label}</strong> ({KEY_LABELS[current.key]}). </>
+          <>Aktuell: <strong>{current.label}</strong> ({KEY_LABELS[current.key]}){current.archivedAt ? " (archiviert)" : ""}. </>
         ) : (
           <>Keine Angabe. </>
         )}
@@ -94,7 +96,12 @@ export function OfferPaymentOptionPanel({ workspaceId, offerId, variantId, varia
               className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
             >
               <option value="">Keine Angabe</option>
-              {options.map((option) => (
+              {current?.archivedAt ? (
+                <option value={current.id}>
+                  {current.label} ({KEY_LABELS[current.key]}) (archiviert)
+                </option>
+              ) : null}
+              {activeOptions.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label} ({KEY_LABELS[option.key]})
                 </option>

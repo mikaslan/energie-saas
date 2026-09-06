@@ -14,6 +14,10 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool, type QueryResult } from "pg";
 import { expect, it } from "vitest";
 import { startEmbeddedPostgres } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   version: string;
@@ -564,7 +568,7 @@ it("deklariert M1-07 als additive 0024 und laesst 0000 bis 0023 bytegenau unvera
 it("migriert einen befuellten M1-06-Bestand additiv und ohne erfundene Profile oder Laeufe", async () => {
   requireM107Migration();
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 2 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
   let prefix: string | undefined;
 
   try {
@@ -644,8 +648,11 @@ it("migriert einen befuellten M1-06-Bestand additiv und ohne erfundene Profile o
       "project_ws_id_site_uq",
     ]);
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M1-07-Energieprofil-Prefix-Teardown fehlgeschlagen",
+    );
     if (prefix) rmSync(prefix, { recursive: true, force: true });
   }
 }, 120_000);
@@ -653,7 +660,7 @@ it("migriert einen befuellten M1-06-Bestand additiv und ohne erfundene Profile o
 it("installiert Fresh-Schema, Tenantgraph, Queuewaechter und immutable Erfolgsrevision", async () => {
   requireM107Migration();
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 2 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
 
   try {
     await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
@@ -1288,7 +1295,10 @@ it("installiert Fresh-Schema, Tenantgraph, Queuewaechter und immutable Erfolgsre
     `);
     expect(foreignTenant.rows).toEqual([{ profiles: 0, jobs: 0, revisions: 0 }]);
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M1-07-Energieprofil-Upgrade-Teardown fehlgeschlagen",
+    );
   }
 }, 120_000);

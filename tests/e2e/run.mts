@@ -19,8 +19,12 @@ import { tmpdir } from "node:os";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Pool, type PoolClient } from "pg";
+import type { PoolClient } from "pg";
 import { startEmbeddedPostgres, type EmbeddedTestDatabase } from "../setup/embedded-postgres.js";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain.js";
 import { bootstrapCalculationQueue } from "../../scripts/pgboss-bootstrap.mjs";
 import { applyRoleContract } from "../../scripts/db-role-contract.mjs";
 import {
@@ -140,12 +144,14 @@ type E2EState = Pick<
   m111bProjectId: string;
   f703ProjectId: string;
   f22ProjectId: string;
+  f22ControlProjectId: string;
   f25ProjectId: string;
   f71ProjectId: string;
   f93ProjectId: string;
   f162ProjectId: string;
   f163dProjectId: string;
   f163cProjectId: string;
+  f163eProjectId: string;
   f101ProjectId: string;
   f102ProjectId: string;
   f94ProjectId: string;
@@ -493,7 +499,7 @@ async function provisionStrictServices(
   if (databaseName !== "energie_saas_test") {
     throw new Error("Der strikte E2E-Rollenaufbau darf nur die ephemere Testdatenbank verändern.");
   }
-  const admin = new Pool({ connectionString: database.superuserUrl, max: 1 });
+  const admin = createDrainTrackedPool({ connectionString: database.superuserUrl, max: 1 });
   try {
     await admin.query(`
       revoke app_membership_writer from app_test;
@@ -535,7 +541,7 @@ async function provisionStrictServices(
       create schema pgboss authorization app_worker;
     `);
   } finally {
-    await admin.end();
+    await endPoolAndWaitForClientRemoval(admin);
   }
   const urls = {
     auth: strictServiceUrl(database.url, "app_auth", passwords.auth),
@@ -568,6 +574,10 @@ function nextEnvironment(
   return {
     ...cleanEnvironment(),
     NODE_ENV: "development",
+    // Hydration-Gate: Der Server läuft absichtlich in UTC, während der
+    // Playwright-Browser Europe/Berlin nutzt. Ungepinnte Laufzeit-Formatter
+    // werden so reproduzierbar als SSR/Client-Abweichung sichtbar.
+    TZ: "UTC",
     DB_ROLE_MODE: "strict",
     POSTGRES_URL: database.runtime,
     POSTGRES_URL_AUTH: database.auth,
@@ -721,7 +731,7 @@ async function runMigration(databaseUrl: string, logPath: string): Promise<void>
 }
 
 async function applyStrictRoleManifest(databaseUrl: string): Promise<void> {
-  const pool = new Pool({
+  const pool = createDrainTrackedPool({
     connectionString: databaseUrl,
     options: "-c role=app_owner",
     max: 1,
@@ -736,7 +746,7 @@ async function applyStrictRoleManifest(databaseUrl: string): Promise<void> {
     throw error;
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -762,7 +772,7 @@ async function withWorkspaceSeed<T>(
 }
 
 async function seedInvitations(databaseUrl: string, data: SeedData): Promise<void> {
-  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await withWorkspaceSeed(client, data.workspaceId, async () => {
@@ -920,7 +930,7 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
     });
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -1179,7 +1189,7 @@ async function submitSignedLead(
     throw new Error("Der signierte Rechner-Endpoint lieferte einen unerwarteten Receipt.");
   }
 
-  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     const projectId = await withWorkspaceSeed(client, credential.workspaceId, async () => {
@@ -1199,7 +1209,7 @@ async function submitSignedLead(
     return { receiptId: receipt.receiptId, projectId };
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -1480,6 +1490,11 @@ async function main(): Promise<number> {
     editorIdentityId: seedData.editorIdentityId,
     skuSuffix: "w3-f22",
   });
+  const w3F22ControlSeed = await seedM201ReadyProject(embedded.superuserUrl, {
+    workspaceId: seedData.w3WorkspaceId,
+    editorIdentityId: seedData.editorIdentityId,
+    skuSuffix: "w3-f22-control",
+  });
   const w3F162Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
@@ -1494,6 +1509,11 @@ async function main(): Promise<number> {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
     skuSuffix: "w3-f163c",
+  });
+  const w3F163eSeed = await seedM201ReadyProject(embedded.superuserUrl, {
+    workspaceId: seedData.w3WorkspaceId,
+    editorIdentityId: seedData.editorIdentityId,
+    skuSuffix: "w3-f163e",
   });
   const w3F25Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
@@ -1553,12 +1573,14 @@ async function main(): Promise<number> {
     m111bWorkspaceId: seedData.m111bWorkspaceId,
     f703ProjectId: w3F703Lead.projectId,
     f22ProjectId: w3F22Seed.projectId,
+    f22ControlProjectId: w3F22ControlSeed.projectId,
     f25ProjectId: w3F25Seed.projectId,
     f71ProjectId: w3F71Seed.projectId,
     f93ProjectId: w3F93Lead.projectId,
     f162ProjectId: w3F162Seed.projectId,
     f163dProjectId: w3F163dSeed.projectId,
     f163cProjectId: w3F163cSeed.projectId,
+    f163eProjectId: w3F163eSeed.projectId,
     f101ProjectId: w3F101Lead.projectId,
     f102ProjectId: w3F102Lead.projectId,
     f94ProjectId: w3F94Lead.projectId,
@@ -1597,7 +1619,10 @@ async function main(): Promise<number> {
     // Rechnungen (Stammdaten + Belege), Wirtschaftlichkeit, Kontakt, Termin.
     // superuserUrl: die Specs nutzen dieselbe URL — RLS/Schema-Härtung der
     // Service-Rollen bleibt wirksam, die Demo-Seeds laufen als Superuser.
-    const previewPool = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
+    const previewPool = createDrainTrackedPool({
+      connectionString: embedded.superuserUrl,
+      max: 1,
+    });
     try {
       await previewPool.query("begin");
       await previewPool.query(
@@ -1748,7 +1773,7 @@ async function main(): Promise<number> {
       );
       await previewPool.query("commit");
     } finally {
-      await previewPool.end();
+      await endPoolAndWaitForClientRemoval(previewPool);
     }
 
     const base = `/w/${seedData.workspaceId}`;

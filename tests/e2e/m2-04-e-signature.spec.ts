@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { Pool } from "pg";
 import { expect, test, type Locator, type Page } from "playwright/test";
 import { seedM204ReleasedOffer } from "./m2-04-fixture";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * M2-04 — E-Signatur (Chromium-E2E)
@@ -288,7 +291,7 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
     // Immutable-Trigger verbietet expires_at-Aenderungen im Normalbetrieb;
     // in session_replication_role=replica sind Trigger deaktiviert, die
     // Shape-Checks bleiben aktiv (pending -> expired ist formkonform).
-    const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+    const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
     const client = await pool.connect();
     try {
       await client.query("begin");
@@ -309,7 +312,7 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
       await client.query("commit");
     } finally {
       await client.release();
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
 
     await page.reload();

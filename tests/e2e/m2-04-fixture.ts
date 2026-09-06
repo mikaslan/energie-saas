@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { Pool, type QueryResultRow } from "pg";
+import type { Pool, QueryResultRow } from "pg";
 import { withTenantOn } from "../../lib/db/tenant";
 import { tenantFixtures } from "../setup/tenant-fixtures";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 import type { M201RuntimeState } from "./m2-01-fixture";
 
 /**
@@ -67,7 +71,7 @@ export async function seedM204ReleasedOffer(
   options: M204ReleasedOfferOptions = {},
 ): Promise<M204ReleasedOffer> {
   const validThroughOffsetDays = options.validThroughOffsetDays ?? 14;
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   try {
     const workspaceId = state.workspaceId;
 
@@ -349,6 +353,6 @@ export async function seedM204ReleasedOffer(
 
     return { offerId: row.offer_id, variantId: row.variant_id, issuanceId };
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }

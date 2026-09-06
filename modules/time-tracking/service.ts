@@ -1,6 +1,7 @@
 // Hinweis: KEIN "server-only"-Import — konsistent mit modules/lead-sources:
 // der Projekt-Seitengraph wird von Build-/Route-Importtests geladen.
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
@@ -429,6 +430,41 @@ async function upsertTimeEntry(
   const command = parsed.data;
   const fields = command.fields;
 
+  let currentTypeId: string | null = null;
+  if (mode === "update") {
+    const update = command as UpdateTimeEntryCommand;
+    const current = await tx.execute<{ type_id: string | null }>(sql`
+      select type_id
+        from time_entry
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${update.id}::uuid
+       for update
+    `);
+    const currentRow = current.rows[0];
+    if (!currentRow) throw new TimeTrackingNotFoundError("time_entry", update.id);
+    currentTypeId = currentRow.type_id;
+  }
+
+  if (fields.typeId !== null) {
+    // FOR SHARE verhindert, dass der Typ zwischen Auswahlprüfung und Write
+    // archiviert wird. Archiviert ist nur die unveränderte historische
+    // Bindung eines bestehenden Eintrags zulässig.
+    const type = await tx.execute<{ id: string; archived_at: unknown }>(sql`
+      select id, archived_at
+        from time_event_type
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${fields.typeId}::uuid
+       for share
+    `);
+    const typeRow = type.rows[0];
+    if (
+      !typeRow
+      || (typeRow.archived_at !== null && (mode === "create" || currentTypeId !== typeRow.id))
+    ) {
+      throw new TimeTrackingValidationError();
+    }
+  }
+
   let rows: TimeEntryRow[];
   try {
     if (mode === "create") {
@@ -540,6 +576,37 @@ async function upsertTimeEntry(
   });
 
   return toTimeEntryDto(row, true);
+}
+
+const timeEntryIdSchema = z.string().uuid();
+
+/**
+ * Bindet eine Editor-Wandzeit an den tatsächlich gespeicherten Instant.
+ * `FOR UPDATE` hält Fold/Sekunden bis zum anschließenden Update stabil und
+ * verhindert, dass der Client einen scheinbaren Originalwert einschleust.
+ */
+export async function lockTimeEntryInstantsForUpdate(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  id: string,
+): Promise<{ startAt: string; endAt: string | null }> {
+  requireWrite(ctx);
+  const parsedId = timeEntryIdSchema.safeParse(id);
+  if (!parsedId.success) throw new TimeTrackingValidationError();
+
+  const result = await tx.execute<{ start_at: string; end_at: string | null }>(sql`
+    select start_at, end_at
+      from time_entry
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${parsedId.data}::uuid
+     for update
+  `);
+  const row = result.rows[0];
+  if (!row) throw new TimeTrackingNotFoundError("time_entry", parsedId.data);
+  return {
+    startAt: new Date(row.start_at).toISOString(),
+    endAt: row.end_at === null ? null : new Date(row.end_at).toISOString(),
+  };
 }
 
 export function createTimeEntry(

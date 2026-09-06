@@ -95,29 +95,22 @@ function FeedbackLine({ message, error }: { message: string | null; error: boole
   );
 }
 
-function PromoteForm({ workspaceId, offerId, variant }: {
+function PromoteForm({ workspaceId, offerId, variant, formAction }: {
   workspaceId: string;
   offerId: string;
   variant: VariantControlEntry;
+  formAction: (formData: FormData) => void;
 }) {
-  const [state, formAction] = useActionState(
-    setPrimaryVariantEditorAction,
-    SET_PRIMARY_VARIANT_INITIAL_STATE,
-  );
-  const feedback = primaryFeedback(state);
   return (
-    <div>
-      <form action={formAction} className="inline">
-        <input type="hidden" name="workspaceId" value={workspaceId} />
-        <input type="hidden" name="offerId" value={offerId} />
-        <input type="hidden" name="variantId" value={variant.id} />
-        <SubmitButton
-          label={`„${variant.name}“ als primär festlegen`}
-          pendingLabel="Wird umgeschaltet …"
-        />
-      </form>
-      <FeedbackLine message={feedback} error={state.status !== "idle" && state.status !== "success"} />
-    </div>
+    <form action={formAction} className="inline">
+      <input type="hidden" name="workspaceId" value={workspaceId} />
+      <input type="hidden" name="offerId" value={offerId} />
+      <input type="hidden" name="variantId" value={variant.id} />
+      <SubmitButton
+        label={`„${variant.name}“ als primär festlegen`}
+        pendingLabel="Wird umgeschaltet …"
+      />
+    </form>
   );
 }
 
@@ -282,6 +275,13 @@ export function OfferVariantControlsPanel({ workspaceId, offer, variants, active
   canEdit: boolean;
   canEditPrice: boolean;
 }) {
+  // Der ausgelöste Promote-Button verschwindet nach Erfolg aus der Liste.
+  // Action-State lebt deshalb auf der stabilen Panel-Grenze und sein Feedback
+  // bleibt auch nach der serverseitigen Revalidation sichtbar.
+  const [primaryState, primaryAction] = useActionState(
+    setPrimaryVariantEditorAction,
+    SET_PRIMARY_VARIANT_INITIAL_STATE,
+  );
   const primary = variants.find((variant) => variant.isPrimary) ?? null;
   const active = variants.find((variant) => variant.id === activeVariantId) ?? null;
   const overrideCents = offer.totalPriceOverrideNetCents ?? null;
@@ -311,11 +311,21 @@ export function OfferVariantControlsPanel({ workspaceId, offer, variants, active
           {canEdit ? (
             <div className="mt-2 grid gap-2">
               {variants.filter((variant) => !variant.isPrimary).map((variant) => (
-                <PromoteForm key={variant.id} workspaceId={workspaceId} offerId={offer.id} variant={variant} />
+                <PromoteForm
+                  key={variant.id}
+                  workspaceId={workspaceId}
+                  offerId={offer.id}
+                  variant={variant}
+                  formAction={primaryAction}
+                />
               ))}
               {variants.every((variant) => variant.isPrimary) ? (
                 <p className="text-sm text-slate-600">Alle Varianten sind primär markiert — ein inkonsistenter Stand, bitte melden.</p>
               ) : null}
+              <FeedbackLine
+                message={primaryFeedback(primaryState)}
+                error={primaryState.status !== "idle" && primaryState.status !== "success"}
+              />
             </div>
           ) : (
             <p className="mt-2 text-sm text-slate-600">Nur Lesezugriff: Die Primärvariante kann nicht umgeschaltet werden.</p>

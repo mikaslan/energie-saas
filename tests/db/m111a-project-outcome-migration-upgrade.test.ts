@@ -11,14 +11,27 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Pool, type QueryResult } from "pg";
+import { Pool, type PoolClient, type QueryResult } from "pg";
 import { describe, expect, it } from "vitest";
+import {
+  canonicalizeLegacySnapshotV3MigrationTimestamp,
+  verifyAppliedMigrationHistory,
+} from "../../scripts/migration-history.mjs";
 import { startEmbeddedPostgres } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   version: string;
   dialect: string;
-  entries: Array<{ idx: number; tag: string; [key: string]: unknown }>;
+  entries: Array<{
+    idx: number;
+    tag: string;
+    when: number;
+    [key: string]: unknown;
+  }>;
 };
 
 type LegacyProject = {
@@ -29,16 +42,23 @@ type LegacyProject = {
 
 const PRE_M111A_MIGRATION_INDEX = 38;
 const M111A_MIGRATION_INDEX = 39;
+const PRE_SNAPSHOT_V3_MIGRATION_INDEX = 65;
+const SNAPSHOT_V3_MIGRATION_INDEX = 66;
+const LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP = 1_788_565_894_444;
+const SNAPSHOT_V3_MIGRATION_TIMESTAMP = 1_788_567_623_493;
+const SNAPSHOT_V3_MIGRATION_SHA256 =
+  "d95c615f131572c12008cc42bcd0d5cce663c3a2a30d255f16fbb3394994e98d";
 // Integrierte Kette: … → M2-04 (0044) → M3-00 (0045) → M3-01 (0046) →
 // F4.6 (0047) → v5-Leadquelle (0048); Gesamtbestand: 49 Migrationen (idx 0..48).
 // wave-02-Integration: 0055 (F2.2) + 0056 (F10.1) => 57 Migrationen (idx 0..56).
 // 0055-0056 + Welle-03-Nachzug 0057-0060 => 61 Migrationen (idx 0..60).
 // 0055-0056 + Welle-03-Nachzug bis 0065 => 66 Migrationen (idx 0..65).
 // + F16.3-E (0066), F1-09 (0067), F2-05 (0068), F7-01 (0069/0070),
-// M115-Grants (0071/0072), Derive-Cap (0073) => 74 Migrationen (idx 0..73).
-const TOTAL_MIGRATION_COUNT = 74;
+// M115-Grants (0071/0072), Derive-Cap (0073), F2.5-Write-Vertrag (0074)
+// => 75 Migrationen (idx 0..74).
+const TOTAL_MIGRATION_COUNT = 75;
 const PRE_M111A_HISTORY_SHA256 =
-  "7b4df321a21420caee21fcc73dcdd2b1aa93fae91d97fe1bb1d979b6d2284d24";
+  "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
 function migrationJournal(): MigrationJournal {
   return JSON.parse(
@@ -50,19 +70,27 @@ function historyHashThrough(maxIndex: number): string {
   const material = migrationJournal().entries
     .filter((entry) => entry.idx <= maxIndex)
     .map((entry) => (
-      `${entry.idx}\0${entry.tag}\0${readFileSync(resolve("drizzle", `${entry.tag}.sql`), "utf8")}`
+      `${entry.idx}\0${entry.when}\0${entry.tag}\0${readFileSync(resolve("drizzle", `${entry.tag}.sql`), "utf8")}`
     ))
     .join("\0");
   return createHash("sha256").update(material).digest("hex");
 }
 
-function migrationPrefixThrough(maxIndex: number): string {
+function migrationPrefixThrough(
+  maxIndex: number,
+  whenOverrides: ReadonlyMap<number, number> = new Map(),
+): string {
   const source = resolve("drizzle");
   const target = mkdtempSync(join(tmpdir(), "energie-saas-m111a-upgrade-"));
   mkdirSync(join(target, "meta"), { recursive: true });
 
   const journal = migrationJournal();
-  const entries = journal.entries.filter((entry) => entry.idx <= maxIndex);
+  const entries = journal.entries
+    .filter((entry) => entry.idx <= maxIndex)
+    .map((entry) => ({
+      ...entry,
+      when: whenOverrides.get(entry.idx) ?? entry.when,
+    }));
   if (entries.length !== maxIndex + 1 || entries.at(-1)?.idx !== maxIndex) {
     rmSync(target, { recursive: true, force: true });
     throw new Error(`Migrationspraefix 0..${maxIndex} ist nicht lueckenlos.`);
@@ -186,6 +214,89 @@ async function migrationCount(pool: Pool): Promise<number> {
   return result.rows[0]!.count;
 }
 
+async function appliedMigrationTimestamps(pool: Pool): Promise<string[]> {
+  const result = await pool.query<{ created_at: string }>(`
+    select created_at::text
+      from drizzle.__drizzle_migrations
+     order by id
+  `);
+  return result.rows.map((row) => row.created_at);
+}
+
+async function migrationMarker(
+  pool: Pool,
+  hash: string,
+): Promise<Array<{ created_at: string; hash: string }>> {
+  const result = await pool.query<{ created_at: string; hash: string }>(`
+    select created_at::text, hash
+      from drizzle.__drizzle_migrations
+     where hash = $1
+     order by id
+  `, [hash]);
+  return result.rows;
+}
+
+async function canonicalizeAndVerifyMigrationHistory(pool: Pool): Promise<{
+  correction: Awaited<
+    ReturnType<typeof canonicalizeLegacySnapshotV3MigrationTimestamp>
+  >;
+  appliedCount: number;
+}> {
+  const client: PoolClient = await pool.connect();
+  let locked = false;
+  try {
+    await client.query("select pg_catalog.pg_advisory_lock(1701734769, 3)");
+    locked = true;
+    await client.query("begin");
+    try {
+      const correction =
+        await canonicalizeLegacySnapshotV3MigrationTimestamp(client);
+      const verified = await verifyAppliedMigrationHistory(client);
+      await client.query("commit");
+      return { correction, appliedCount: verified.appliedCount };
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    }
+  } finally {
+    if (locked) {
+      await client.query(
+        "select pg_catalog.pg_advisory_unlock(1701734769, 3)",
+      );
+    }
+    client.release();
+  }
+}
+
+async function offerVariantRevisionVersionConstraint(pool: Pool): Promise<{
+  definition: string;
+  validated: boolean;
+}> {
+  const result = await pool.query<{ definition: string; validated: boolean }>(`
+    select pg_catalog.pg_get_constraintdef(constraint_row.oid) as definition,
+           constraint_row.convalidated as validated
+      from pg_catalog.pg_constraint constraint_row
+     where constraint_row.conrelid = 'public.offer_variant_revision'::regclass
+       and constraint_row.conname = 'offer_variant_revision_version_ck'
+  `);
+  const constraint = result.rows[0];
+  if (!constraint || result.rows.length !== 1) {
+    throw new Error("offer_variant_revision_version_ck fehlt oder ist mehrdeutig.");
+  }
+  return constraint;
+}
+
+async function closeUpgradeDatabase(
+  pool: Pool,
+  embedded: Awaited<ReturnType<typeof startEmbeddedPostgres>>,
+): Promise<void> {
+  await endPoolsAndStopEmbeddedPostgres(
+    [pool],
+    embedded,
+    "Migrations-Upgrade-Teardown fehlgeschlagen",
+  );
+}
+
 async function projectForceRls(pool: Pool): Promise<boolean> {
   const result = await pool.query<{ forced: boolean }>(`
     select relforcerowsecurity as forced
@@ -244,9 +355,234 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
     );
   });
 
+  it("migriert einen echten 0065-Bestand lueckenlos bis HEAD samt v3-Constraint", async () => {
+    const embedded = await startEmbeddedPostgres();
+    const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
+    let prefix: string | undefined;
+
+    try {
+      const journal = migrationJournal();
+      expect(journal.entries).toHaveLength(TOTAL_MIGRATION_COUNT);
+      expect(journal.entries.map((entry) => entry.idx)).toEqual(
+        Array.from({ length: TOTAL_MIGRATION_COUNT }, (_, index) => index),
+      );
+      expect(journal.entries[SNAPSHOT_V3_MIGRATION_INDEX]).toMatchObject({
+        idx: SNAPSHOT_V3_MIGRATION_INDEX,
+        tag: "0066_f16_03_snapshot_v3_check",
+        when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
+      });
+      expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
+        journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,
+      );
+      for (const [index, entry] of journal.entries.entries()) {
+        if (index === 0) continue;
+        expect(
+          entry.when,
+          `Migration ${entry.idx} muss strikt nach Migration ${index - 1} liegen.`,
+        ).toBeGreaterThan(journal.entries[index - 1]!.when);
+      }
+
+      prefix = migrationPrefixThrough(PRE_SNAPSHOT_V3_MIGRATION_INDEX);
+      await migrate(drizzle(pool), { migrationsFolder: prefix });
+      expect(await migrationCount(pool)).toBe(PRE_SNAPSHOT_V3_MIGRATION_INDEX + 1);
+      expect(await appliedMigrationTimestamps(pool)).toEqual(
+        journal.entries
+          .slice(0, PRE_SNAPSHOT_V3_MIGRATION_INDEX + 1)
+          .map((entry) => String(entry.when)),
+      );
+      expect((await offerVariantRevisionVersionConstraint(pool)).definition)
+        .not.toContain("offer-variant-snapshot.v3");
+
+      const preflight = await canonicalizeAndVerifyMigrationHistory(pool);
+      expect(preflight).toEqual({
+        correction: null,
+        appliedCount: PRE_SNAPSHOT_V3_MIGRATION_INDEX + 1,
+      });
+      await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
+
+      expect(await migrationCount(pool)).toBe(TOTAL_MIGRATION_COUNT);
+      expect(await appliedMigrationTimestamps(pool)).toEqual(
+        journal.entries.map((entry) => String(entry.when)),
+      );
+      const v3Constraint = await offerVariantRevisionVersionConstraint(pool);
+      expect(v3Constraint.validated).toBe(true);
+      expect(v3Constraint.definition).toContain("offer-variant-snapshot.v1");
+      expect(v3Constraint.definition).toContain("offer-variant-snapshot.v2");
+      expect(v3Constraint.definition).toContain("offer-variant-snapshot.v3");
+      expect(v3Constraint.definition).toContain("offer-jcs.v1");
+    } finally {
+      await closeUpgradeDatabase(pool, embedded);
+      if (prefix) rmSync(prefix, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("kanonisiert einen exakt unter altem 0066-Marker beendeten Bestand", async () => {
+    const embedded = await startEmbeddedPostgres();
+    const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
+    let prefix: string | undefined;
+
+    try {
+      prefix = migrationPrefixThrough(
+        SNAPSHOT_V3_MIGRATION_INDEX,
+        new Map([[
+          SNAPSHOT_V3_MIGRATION_INDEX,
+          LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP,
+        ]]),
+      );
+      await migrate(drizzle(pool), { migrationsFolder: prefix });
+      expect(await migrationCount(pool)).toBe(SNAPSHOT_V3_MIGRATION_INDEX + 1);
+      expect(await migrationMarker(pool, SNAPSHOT_V3_MIGRATION_SHA256)).toEqual([{
+        created_at: String(LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+        hash: SNAPSHOT_V3_MIGRATION_SHA256,
+      }]);
+
+      // Selbst am bekannten alten Timestamp darf ein fremder Hash niemals
+      // repariert werden. Der gesamte Preflight rollt ohne Teilkorrektur ab.
+      await pool.query(`
+        update drizzle.__drizzle_migrations
+           set hash = repeat('0', 64)
+         where created_at = $1::bigint
+      `, [LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP]);
+      await expect(canonicalizeAndVerifyMigrationHistory(pool)).rejects.toThrow(
+        "Angewandte Migrationen müssen ein lückenloses, unverändertes Präfix",
+      );
+      const drifted = await pool.query<{ created_at: string; hash: string }>(`
+        select created_at::text, hash
+          from drizzle.__drizzle_migrations
+         where created_at = $1::bigint
+      `, [LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP]);
+      expect(drifted.rows).toEqual([{
+        created_at: String(LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+        hash: "0".repeat(64),
+      }]);
+      await pool.query(`
+        update drizzle.__drizzle_migrations
+           set hash = $1
+         where created_at = $2::bigint
+      `, [SNAPSHOT_V3_MIGRATION_SHA256, LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP]);
+
+      const preflight = await canonicalizeAndVerifyMigrationHistory(pool);
+      expect(preflight).toMatchObject({
+        correction: {
+          action: "timestamp_corrected",
+          migrationIndex: SNAPSHOT_V3_MIGRATION_INDEX,
+          hash: SNAPSHOT_V3_MIGRATION_SHA256,
+          fromCreatedAt: String(LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+          toCreatedAt: String(SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+        },
+        appliedCount: SNAPSHOT_V3_MIGRATION_INDEX + 1,
+      });
+      expect(await migrationMarker(pool, SNAPSHOT_V3_MIGRATION_SHA256)).toEqual([{
+        created_at: String(SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+        hash: SNAPSHOT_V3_MIGRATION_SHA256,
+      }]);
+
+      await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
+      expect(await migrationCount(pool)).toBe(TOTAL_MIGRATION_COUNT);
+      expect((await offerVariantRevisionVersionConstraint(pool)).definition)
+        .toContain("offer-variant-snapshot.v3");
+    } finally {
+      await closeUpgradeDatabase(pool, embedded);
+      if (prefix) rmSync(prefix, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("kanonisiert alten 0066 samt bereits angewendeter spaeterer Historie", async () => {
+    const embedded = await startEmbeddedPostgres();
+    const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
+    let legacyHead: string | undefined;
+
+    try {
+      legacyHead = migrationPrefixThrough(
+        TOTAL_MIGRATION_COUNT - 1,
+        new Map([[
+          SNAPSHOT_V3_MIGRATION_INDEX,
+          LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP,
+        ]]),
+      );
+      // Ohne vorhandenen DB-Marker führt Drizzle den ganzen Ordner aus; damit
+      // wurde der alte 0066-Marker trotz seiner Nicht-Monotonie gespeichert.
+      await migrate(drizzle(pool), { migrationsFolder: legacyHead });
+      expect(await migrationCount(pool)).toBe(TOTAL_MIGRATION_COUNT);
+
+      const preflight = await canonicalizeAndVerifyMigrationHistory(pool);
+      expect(preflight).toMatchObject({
+        correction: {
+          action: "timestamp_corrected",
+          migrationIndex: SNAPSHOT_V3_MIGRATION_INDEX,
+          fromCreatedAt: String(LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+          toCreatedAt: String(SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+        },
+        appliedCount: TOTAL_MIGRATION_COUNT,
+      });
+      expect(await migrationMarker(pool, SNAPSHOT_V3_MIGRATION_SHA256)).toEqual([{
+        created_at: String(SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+        hash: SNAPSHOT_V3_MIGRATION_SHA256,
+      }]);
+    } finally {
+      await closeUpgradeDatabase(pool, embedded);
+      if (legacyHead) rmSync(legacyHead, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("replayt exakt 0066, wenn das alte Journal es vor spaeteren Migrationen uebersprang", async () => {
+    const embedded = await startEmbeddedPostgres();
+    const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
+    const temporaryFolders: string[] = [];
+
+    try {
+      const through65 = migrationPrefixThrough(PRE_SNAPSHOT_V3_MIGRATION_INDEX);
+      temporaryFolders.push(through65);
+      await migrate(drizzle(pool), { migrationsFolder: through65 });
+
+      const legacyHead = migrationPrefixThrough(
+        TOTAL_MIGRATION_COUNT - 1,
+        new Map([[
+          SNAPSHOT_V3_MIGRATION_INDEX,
+          LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP,
+        ]]),
+      );
+      temporaryFolders.push(legacyHead);
+      await migrate(drizzle(pool), { migrationsFolder: legacyHead });
+      expect(await migrationCount(pool)).toBe(TOTAL_MIGRATION_COUNT - 1);
+      expect(await migrationMarker(pool, SNAPSHOT_V3_MIGRATION_SHA256)).toEqual([]);
+      expect((await offerVariantRevisionVersionConstraint(pool)).definition)
+        .not.toContain("offer-variant-snapshot.v3");
+
+      const preflight = await canonicalizeAndVerifyMigrationHistory(pool);
+      expect(preflight).toMatchObject({
+        correction: {
+          action: "skipped_migration_replayed",
+          migrationIndex: SNAPSHOT_V3_MIGRATION_INDEX,
+          hash: SNAPSHOT_V3_MIGRATION_SHA256,
+          toCreatedAt: String(SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+          previousLastMigrationIndex: TOTAL_MIGRATION_COUNT - 1,
+        },
+        appliedCount: TOTAL_MIGRATION_COUNT,
+      });
+      expect(await migrationMarker(pool, SNAPSHOT_V3_MIGRATION_SHA256)).toEqual([{
+        created_at: String(SNAPSHOT_V3_MIGRATION_TIMESTAMP),
+        hash: SNAPSHOT_V3_MIGRATION_SHA256,
+      }]);
+      const v3Constraint = await offerVariantRevisionVersionConstraint(pool);
+      expect(v3Constraint.validated).toBe(true);
+      expect(v3Constraint.definition).toContain("offer-variant-snapshot.v3");
+
+      // Der normale Drizzle-Lauf bleibt danach ein No-op; kein zweiter Marker.
+      await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
+      expect(await migrationCount(pool)).toBe(TOTAL_MIGRATION_COUNT);
+      expect(await migrationMarker(pool, SNAPSHOT_V3_MIGRATION_SHA256)).toHaveLength(1);
+    } finally {
+      await closeUpgradeDatabase(pool, embedded);
+      for (const folder of temporaryFolders) {
+        rmSync(folder, { recursive: true, force: true });
+      }
+    }
+  }, 120_000);
+
   it("backfillt befuellte Won/Cannot-Fulfill-Projekte exakt und stellt FORCE RLS wieder her", async () => {
     const embedded = await startEmbeddedPostgres();
-    const pool = new Pool({ connectionString: embedded.url, max: 2 });
+    const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
     let prefix: string | undefined;
     const wonId = randomUUID();
     const cannotId = randomUUID();
@@ -316,15 +652,14 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
       `);
       expect(reasonRls.rows).toEqual([{ enabled: true, forced: true }]);
     } finally {
-      await pool.end().catch(() => undefined);
-      await embedded.stop().catch(() => undefined);
+      await closeUpgradeDatabase(pool, embedded);
       if (prefix) rmSync(prefix, { recursive: true, force: true });
     }
   }, 120_000);
 
   it("bricht bei bestehendem Lost fail-closed ab und laesst nach Reparatur einen sicheren Retry zu", async () => {
     const embedded = await startEmbeddedPostgres();
-    const pool = new Pool({ connectionString: embedded.url, max: 2 });
+    const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
     let prefix: string | undefined;
     const projectId = randomUUID();
 
@@ -373,15 +708,14 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
       expect(await migrationCount(pool)).toBe(TOTAL_MIGRATION_COUNT);
       expect(await projectForceRls(pool)).toBe(true);
     } finally {
-      await pool.end().catch(() => undefined);
-      await embedded.stop().catch(() => undefined);
+      await closeUpgradeDatabase(pool, embedded);
       if (prefix) rmSync(prefix, { recursive: true, force: true });
     }
   }, 120_000);
 
   it("bricht bei nicht-endlichem updated_at fail-closed ab und backfillt nach Reparatur beim Retry", async () => {
     const embedded = await startEmbeddedPostgres();
-    const pool = new Pool({ connectionString: embedded.url, max: 2 });
+    const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
     let prefix: string | undefined;
     const projectId = randomUUID();
     const repairedAt = "2026-08-24T14:19:34.000Z";
@@ -434,8 +768,7 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
       expect(await migrationCount(pool)).toBe(TOTAL_MIGRATION_COUNT);
       expect(await projectForceRls(pool)).toBe(true);
     } finally {
-      await pool.end().catch(() => undefined);
-      await embedded.stop().catch(() => undefined);
+      await closeUpgradeDatabase(pool, embedded);
       if (prefix) rmSync(prefix, { recursive: true, force: true });
     }
   }, 120_000);

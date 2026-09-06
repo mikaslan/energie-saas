@@ -18,6 +18,11 @@ import { Pool, type PoolClient } from "pg";
 import { PgBoss } from "pg-boss";
 import { startEmbeddedPostgres } from "../tests/setup/embedded-postgres";
 import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../tests/setup/pg-pool-drain";
+import {
   dbRoleProvisioningTopologyFromEnvironment,
   type DbRoleProvisioningTopology,
   verifyDefaultPrivilegeContract,
@@ -31,7 +36,7 @@ import {
 
 const DB = "energie_saas_test";
 const embedded = await startEmbeddedPostgres();
-const superuser = new Pool({ connectionString: embedded.superuserUrl, max: 2 });
+const superuser = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 2 });
 const host = new URL(embedded.url).host;
 
 const urls = {
@@ -373,7 +378,10 @@ async function proveLegacyUpgrade(): Promise<void> {
   await superuser.query(`create database ${upgradeDb} owner app_legacy`);
 
   const legacyMigrationFolder = migrationPrefixThrough(18);
-  const upgradeSuperuser = new Pool({ connectionString: upgradeSuperuserUrl.toString(), max: 2 });
+  const upgradeSuperuser = createDrainTrackedPool({
+    connectionString: upgradeSuperuserUrl.toString(),
+    max: 2,
+  });
   try {
     await upgradeSuperuser.query(`
       alter schema public owner to app_legacy;
@@ -450,7 +458,7 @@ async function proveLegacyUpgrade(): Promise<void> {
       create role cutover_rogue nologin noinherit nosuperuser nobypassrls
         nocreatedb nocreaterole noreplication;
     `);
-    const legacy = new Pool({ connectionString: legacyUrl, max: 1 });
+    const legacy = createDrainTrackedPool({ connectionString: legacyUrl, max: 1 });
     try {
       await inTenant(legacy, workspaceId, [
         { text: "insert into public.workspace(id, name) values ($1::uuid, 'legacy-bestand')", values: [workspaceId] },
@@ -462,20 +470,23 @@ async function proveLegacyUpgrade(): Promise<void> {
       ]);
       await legacy.query("grant select on public.site to cutover_rogue");
     } finally {
-      await legacy.end();
+      await endPoolAndWaitForClientRemoval(legacy);
     }
 
     // Exakt derselbe zweiphasige Cutover: erst Control-Freeze, Drain, zweiter
     // Preflight und clusterweite Rollen-Härtung; danach laufen Owner-/ACL-
     // Wechsel und Daten-Gates atomar. Kein blanket REASSIGN.
     const cutover = await upgradeSuperuser.connect();
-    const cutoverControlPool = new Pool({ connectionString: embedded.superuserUrl, max: 4 });
+    const cutoverControlPool = createDrainTrackedPool({
+      connectionString: embedded.superuserUrl,
+      max: 4,
+    });
     const cutoverControl = await cutoverControlPool.connect();
-    const lingeringLegacyPool = new Pool({ connectionString: legacyUrl, max: 1 });
+    const lingeringLegacyPool = createDrainTrackedPool({ connectionString: legacyUrl, max: 1 });
     const lingeringLegacy = await lingeringLegacyPool.connect();
     // Bereits vor dem Control-Freeze öffnen: datallowconn=false beendet
     // bestehende Sessions absichtlich nicht; genau diese müssen sichtbar drainen.
-    const activeSystemPool = new Pool({ connectionString: upgradeSystemUrl, max: 1 });
+    const activeSystemPool = createDrainTrackedPool({ connectionString: upgradeSystemUrl, max: 1 });
     const activeSystem = await activeSystemPool.connect();
     let lingeringLegacyReleased = false;
     let activeSystemReleased = false;
@@ -697,8 +708,14 @@ async function proveLegacyUpgrade(): Promise<void> {
       );
       await resetOpenAfterFreezeFault();
 
-      const restrictedAdminPool = new Pool({ connectionString: providerCutoverUrl, max: 1 });
-      const restrictedControlPool = new Pool({ connectionString: providerControlUrl, max: 1 });
+      const restrictedAdminPool = createDrainTrackedPool({
+        connectionString: providerCutoverUrl,
+        max: 1,
+      });
+      const restrictedControlPool = createDrainTrackedPool({
+        connectionString: providerControlUrl,
+        max: 1,
+      });
       try {
         const restrictedAdmin = await restrictedAdminPool.connect();
         const restrictedControl = await restrictedControlPool.connect();
@@ -748,7 +765,10 @@ async function proveLegacyUpgrade(): Promise<void> {
           restrictedControl.release();
         }
       } finally {
-        await Promise.allSettled([restrictedAdminPool.end(), restrictedControlPool.end()]);
+        await Promise.allSettled([
+          endPoolAndWaitForClientRemoval(restrictedAdminPool),
+          endPoolAndWaitForClientRemoval(restrictedControlPool),
+        ]);
       }
 
       await lingeringLegacy.query("alter table pgboss.bam drop constraint bam_pkey");
@@ -938,7 +958,7 @@ async function proveLegacyUpgrade(): Promise<void> {
       );
 
       const rejectedByDatabaseFreeze = async (connectionString: string) => {
-        const probePool = new Pool({
+        const probePool = createDrainTrackedPool({
           connectionString,
           max: 1,
           connectionTimeoutMillis: 2_000,
@@ -949,7 +969,7 @@ async function proveLegacyUpgrade(): Promise<void> {
         } catch {
           return true;
         } finally {
-          await probePool.end().catch(() => undefined);
+          await endPoolAndWaitForClientRemoval(probePool).catch(() => undefined);
         }
       };
       const [newWorkerDenied, newSuperuserDenied] = await Promise.all([
@@ -972,10 +992,10 @@ async function proveLegacyUpgrade(): Promise<void> {
       await lingeringLegacy.query("create schema cutover_parallel_drift authorization app_legacy");
       lingeringLegacy.release();
       lingeringLegacyReleased = true;
-      await lingeringLegacyPool.end();
+      await endPoolAndWaitForClientRemoval(lingeringLegacyPool);
       activeSystem.release();
       activeSystemReleased = true;
-      await activeSystemPool.end();
+      await endPoolAndWaitForClientRemoval(activeSystemPool);
 
       let parallelDdlRejected = false;
       let parallelDdlError = "";
@@ -1246,13 +1266,17 @@ async function proveLegacyUpgrade(): Promise<void> {
         JSON.stringify({ databaseAcl: databaseAcl.rows, services: serviceDatabasePrivileges.rows }),
       );
     } finally {
-      if (!lingeringLegacyReleased) lingeringLegacy.release();
-      await lingeringLegacyPool.end().catch(() => undefined);
-      if (!activeSystemReleased) activeSystem.release();
-      await activeSystemPool.end().catch(() => undefined);
+      if (!lingeringLegacyReleased) {
+        lingeringLegacy.release();
+        await endPoolAndWaitForClientRemoval(lingeringLegacyPool).catch(() => undefined);
+      }
+      if (!activeSystemReleased) {
+        activeSystem.release();
+        await endPoolAndWaitForClientRemoval(activeSystemPool).catch(() => undefined);
+      }
       cutover.release();
       cutoverControl.release();
-      await cutoverControlPool.end();
+      await endPoolAndWaitForClientRemoval(cutoverControlPool);
     }
 
     const rogueGrant = await upgradeSuperuser.query<{ allowed: boolean }>(`
@@ -1378,7 +1402,7 @@ async function proveLegacyUpgrade(): Promise<void> {
         preserved.rows[0]?.migration_count === 1,
     );
   } finally {
-    await upgradeSuperuser.end();
+    await endPoolAndWaitForClientRemoval(upgradeSuperuser);
     rmSync(legacyMigrationFolder, { recursive: true, force: true });
   }
 }
@@ -1877,11 +1901,11 @@ try {
       runtimeDefaultSelect.rows[0]?.allowed === false,
   );
 
-  const runtime = new Pool({ connectionString: urls.runtime, max: 2 });
-  const system = new Pool({ connectionString: urls.system, max: 2 });
-  const auth = new Pool({ connectionString: urls.auth, max: 2 });
-  const worker = new Pool({ connectionString: urls.worker, max: 2 });
-  const migrator = new Pool({ connectionString: urls.migrator, max: 1 });
+  const runtime = createDrainTrackedPool({ connectionString: urls.runtime, max: 2 });
+  const system = createDrainTrackedPool({ connectionString: urls.system, max: 2 });
+  const auth = createDrainTrackedPool({ connectionString: urls.auth, max: 2 });
+  const worker = createDrainTrackedPool({ connectionString: urls.worker, max: 2 });
+  const migrator = createDrainTrackedPool({ connectionString: urls.migrator, max: 1 });
   pools.push(runtime, system, auth, worker, migrator);
 
   await allowed(runtime, "Runtime darf Site lesen (unter RLS leer)", "select count(*) from public.site");
@@ -1975,6 +1999,7 @@ try {
   ok(
     "Runtime besitzt exakt die erforderlichen M2-01-Offer-Spaltenupdates",
     JSON.stringify(offerUpdateColumns.rows) === JSON.stringify([
+      { relation_name: "offer", column_name: "total_price_override_net_cents" },
       { relation_name: "offer", column_name: "updated_at" },
       { relation_name: "offer_mutation_rate_window", column_name: "attempts" },
       { relation_name: "offer_mutation_rate_window", column_name: "updated_at" },
@@ -1982,7 +2007,10 @@ try {
       { relation_name: "offer_number_series", column_name: "updated_at" },
       { relation_name: "offer_variant", column_name: "current_revision" },
       { relation_name: "offer_variant", column_name: "description" },
+      { relation_name: "offer_variant", column_name: "is_primary" },
       { relation_name: "offer_variant", column_name: "name" },
+      { relation_name: "offer_variant", column_name: "optional_bundles" },
+      { relation_name: "offer_variant", column_name: "payment_option_id" },
       { relation_name: "offer_variant", column_name: "updated_at" },
     ]),
     JSON.stringify(offerUpdateColumns.rows),
@@ -2031,7 +2059,10 @@ try {
     "Runtime besitzt UPDATE nur auf den vier schmalen Offer-Kopfspaltenmengen",
     `with
        offer_probe as (
-         update public.offer set updated_at = updated_at where false returning id
+         update public.offer
+            set total_price_override_net_cents = total_price_override_net_cents,
+                updated_at = updated_at
+          where false returning id
        ),
        rate_probe as (
          update public.offer_mutation_rate_window
@@ -2041,7 +2072,12 @@ try {
          update public.offer_number_series set updated_at = updated_at where false returning id
        ),
        variant_probe as (
-         update public.offer_variant set updated_at = updated_at where false returning id
+         update public.offer_variant
+            set is_primary = is_primary,
+                optional_bundles = optional_bundles,
+                payment_option_id = payment_option_id,
+                updated_at = updated_at
+          where false returning id
        )
      select 1`,
   );
@@ -2211,9 +2247,11 @@ try {
 
   await proveLegacyUpgrade();
 } finally {
-  await Promise.allSettled(pools.map((pool) => pool.end()));
-  await superuser.end();
-  await embedded.stop();
+  await endPoolsAndStopEmbeddedPostgres(
+    [...pools, superuser],
+    embedded,
+    "ADR-0003-Rollenprobe-Teardown fehlgeschlagen",
+  );
 }
 
 console.log(`\nM1-03 Rollenprobe: ${checks} Prüfungen grün.`);

@@ -32,6 +32,11 @@ import {
   OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
 } from "../../scripts/pgboss-bootstrap.mjs";
 import { tenantFixtures } from "../setup/tenant-fixtures";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 const DB = "energie_saas_test";
 const MIGRATOR_PASSWORD = "m204_migrator";
@@ -209,10 +214,10 @@ describe("M2-04 e-signature strict-mode database", () => {
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 4 });
+    admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 4 });
     await bootstrapStrictRoles(admin);
     await installPgBoss(serviceUrl(embedded, "app_worker", WORKER_PASSWORD));
-    const ownerPool = new Pool({
+    const ownerPool = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_migrator", MIGRATOR_PASSWORD),
       options: "-c role=app_owner",
       max: 1,
@@ -224,14 +229,18 @@ describe("M2-04 e-signature strict-mode database", () => {
     } finally {
       owner.release();
     }
-    await ownerPool.end();
-    runtimePool = new Pool({ connectionString: serviceUrl(embedded, "app_runtime", RUNTIME_PASSWORD) });
+    await endPoolAndWaitForClientRemoval(ownerPool);
+    runtimePool = createDrainTrackedPool({
+      connectionString: serviceUrl(embedded, "app_runtime", RUNTIME_PASSWORD),
+    });
   }, 120_000);
 
   afterAll(async () => {
-    await runtimePool?.end().catch(() => undefined);
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [runtimePool, admin],
+      embedded,
+      "M2-04-E-Signatur-Teardown fehlgeschlagen",
+    );
   });
 
   it("öffentliche Token-Kapseln signieren/widerrufen/zählen als app_runtime", async () => {

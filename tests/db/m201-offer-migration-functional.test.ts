@@ -20,6 +20,11 @@ import {
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
 import { tenantFixtures } from "../setup/tenant-fixtures";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   version: string;
@@ -561,13 +566,16 @@ describe.sequential("M2-01 Offer-Migration funktional auf echtem PostgreSQL", ()
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    pool = new Pool({ connectionString: embedded.url, max: 4 });
+    pool = createDrainTrackedPool({ connectionString: embedded.url, max: 4 });
     await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
   }, 120_000);
 
   afterAll(async () => {
-    await pool?.end().catch(() => undefined);
-    await embedded?.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M2-01-Angebotsmigration-Teardown fehlgeschlagen",
+    );
   });
 
   it("installiert das Fresh-Schema vollständig und migrations-idempotent", async () => {
@@ -634,7 +642,7 @@ describe.sequential("M2-01 Offer-Migration funktional auf echtem PostgreSQL", ()
         [workspaceB, sourceB.actorId],
       );
     });
-    const admin = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
+    const admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 1 });
     try {
       await admin.query(`
         create role app_runtime nologin noinherit nosuperuser nobypassrls
@@ -648,7 +656,7 @@ describe.sequential("M2-01 Offer-Migration funktional auf echtem PostgreSQL", ()
         grant select, insert on public.offer_number_series to app_runtime;
       `);
     } finally {
-      await admin.end();
+      await endPoolAndWaitForClientRemoval(admin);
     }
 
     await transaction(pool, workspaceA, async (client) => {
@@ -1024,7 +1032,7 @@ describe.sequential("M2-01 Offer-Migration funktional auf echtem PostgreSQL", ()
 
 it("migriert einen echten 0031-Bestand additiv auf M2-01", async () => {
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 2 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
   let prefix: string | undefined;
   const workspaceId = randomUUID();
   try {
@@ -1054,8 +1062,11 @@ it("migriert einen echten 0031-Bestand additiv auf M2-01", async () => {
       `));
     expect(empty.rows).toEqual([{ offers: 0, variants: 0, revisions: 0, lines: 0 }]);
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M2-01-Angebots-Prefix-Teardown fehlgeschlagen",
+    );
     if (prefix) rmSync(prefix, { recursive: true, force: true });
   }
 }, 120_000);

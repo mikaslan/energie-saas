@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { Pool } from "pg";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   withAuthorizedTenantOn,
@@ -9,6 +8,10 @@ import {
 } from "@/lib/db/tenant";
 import { PermissionDeniedError } from "@/lib/permissions";
 import { testPool } from "../setup/test-db";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 interface ActorRow {
   actor_id: string | null;
@@ -178,7 +181,10 @@ describe("app.actor_id — verifizierter und transaktionslokaler Kontext", () =>
   });
 
   it("setzt bei fehlgeschlagener Membership-Auflösung keinen Actor", async () => {
-    const pool = new Pool({ connectionString: process.env.POSTGRES_URL_TEST, max: 1 });
+    const pool = createDrainTrackedPool({
+      connectionString: process.env.POSTGRES_URL_TEST,
+      max: 1,
+    });
     try {
       await expect(
         withSessionTenantOn(pool, `auth-missing-${randomUUID()}`, wsA, async () => "unreachable"),
@@ -188,12 +194,15 @@ describe("app.actor_id — verifizierter und transaktionslokaler Kontext", () =>
       );
       expect(result.rows[0].actor_id).toBeNull();
     } finally {
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
   });
 
   it("leckt nach COMMIT nicht über dieselbe Pool-Verbindung", async () => {
-    const pool = new Pool({ connectionString: process.env.POSTGRES_URL_TEST, max: 1 });
+    const pool = createDrainTrackedPool({
+      connectionString: process.env.POSTGRES_URL_TEST,
+      max: 1,
+    });
     try {
       const inside = await withSessionTenantOn(pool, authAdminA, wsA, async (tx) => {
         const result = await tx.execute<ActorRow>(sql`
@@ -208,12 +217,15 @@ describe("app.actor_id — verifizierter und transaktionslokaler Kontext", () =>
       expect(outside.rows[0].backend_pid).toBe(inside.backend_pid);
       expect(outside.rows[0].actor_id).toBeNull();
     } finally {
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
   });
 
   it("leckt nach ROLLBACK nicht über dieselbe Pool-Verbindung", async () => {
-    const pool = new Pool({ connectionString: process.env.POSTGRES_URL_TEST, max: 1 });
+    const pool = createDrainTrackedPool({
+      connectionString: process.env.POSTGRES_URL_TEST,
+      max: 1,
+    });
     let insidePid: number | undefined;
     try {
       await expect(
@@ -232,12 +244,15 @@ describe("app.actor_id — verifizierter und transaktionslokaler Kontext", () =>
       expect(outside.rows[0].backend_pid).toBe(insidePid);
       expect(outside.rows[0].actor_id).toBeNull();
     } finally {
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
   });
 
   it("neutralisiert innerhalb jedes verwalteten Starts einen sessionweit vergifteten Actor", async () => {
-    const pool = new Pool({ connectionString: process.env.POSTGRES_URL_TEST, max: 1 });
+    const pool = createDrainTrackedPool({
+      connectionString: process.env.POSTGRES_URL_TEST,
+      max: 1,
+    });
     const poison = randomUUID();
     try {
       await pool.query("select set_config('app.actor_id', $1, false)", [poison]);
@@ -258,12 +273,15 @@ describe("app.actor_id — verifizierter und transaktionslokaler Kontext", () =>
       expect(verifiedActor).not.toBe(poison);
     } finally {
       await pool.query("reset app.actor_id").catch(() => undefined);
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
   });
 
   it("erzwingt für jeden verwalteten Tenant-Start READ COMMITTED", async () => {
-    const pool = new Pool({ connectionString: process.env.POSTGRES_URL_TEST, max: 1 });
+    const pool = createDrainTrackedPool({
+      connectionString: process.env.POSTGRES_URL_TEST,
+      max: 1,
+    });
     try {
       await pool.query("set default_transaction_isolation = 'repeatable read'");
       const isolation = await withTenantOn(pool, wsA, async (tx) => {
@@ -275,7 +293,7 @@ describe("app.actor_id — verifizierter und transaktionslokaler Kontext", () =>
       expect(isolation).toBe("read committed");
     } finally {
       await pool.query("reset default_transaction_isolation").catch(() => undefined);
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
   });
 });

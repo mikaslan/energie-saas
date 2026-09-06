@@ -2,7 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 import { withTenantOn } from "../../lib/db/tenant";
 import type { TenantTx } from "../../lib/db/types";
 import {
@@ -473,14 +477,14 @@ export async function seedM201ReadyProject(
   databaseUrl: string,
   state: Pick<M201RuntimeState, "editorIdentityId" | "workspaceId" | "skuSuffix">,
 ): Promise<M201Seed> {
-  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: databaseUrl, max: 1 });
   try {
     const projectId = await insertPlanningProject(pool, state);
     const products = await createActiveProducts(pool, state);
     await resolveInitialCatalog(pool, state, projectId, products);
     return { projectId, products };
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -488,12 +492,12 @@ export async function withM201Database<T>(
   state: M201RuntimeState,
   callback: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
 ): Promise<T> {
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   try {
     return await withTenantOn(pool, state.workspaceId, (tx) =>
       asEditor(tx, state, (ctx) => callback(tx, ctx)));
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -588,7 +592,7 @@ export async function expireM201IdentitySessions(
   state: M201RuntimeState,
   email = state.editorEmail,
 ): Promise<void> {
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   try {
     const result = await pool.query(
       `delete from auth_session as session
@@ -601,7 +605,7 @@ export async function expireM201IdentitySessions(
       throw new Error("Für die synthetische M2-01-Identität wurde keine aktive Session gefunden.");
     }
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -610,7 +614,7 @@ export async function createM201RedactedEditor(
 ): Promise<M201RedactedEditor> {
   const identityId = randomUUID();
   const email = `m2-01-redacted-${randomUUID().slice(0, 8)}@example.test`;
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -634,7 +638,7 @@ export async function createM201RedactedEditor(
     throw error;
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
   return { email, identityId };
 }
@@ -644,7 +648,7 @@ export async function createM201RedactedViewer(
 ): Promise<M201RedactedViewer> {
   const identityId = randomUUID();
   const email = `m2-01-viewer-${randomUUID().slice(0, 8)}@example.test`;
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -667,7 +671,7 @@ export async function createM201RedactedViewer(
     throw error;
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
   return { email, identityId };
 }
@@ -675,7 +679,7 @@ export async function createM201RedactedViewer(
 export async function seedM201AdditionalReadyProject(
   state: M201RuntimeState,
 ): Promise<string> {
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   try {
     const projectId = await insertPlanningProject(pool, state);
     await withTenantOn(pool, state.workspaceId, async (tx) => {
@@ -740,7 +744,7 @@ export async function seedM201AdditionalReadyProject(
     });
     return projectId;
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -750,11 +754,11 @@ export async function seedM201CalculationReadyProject(
     "databaseUrl" | "editorIdentityId" | "workspaceId"
   >,
 ): Promise<string> {
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   try {
     return await insertPlanningProject(pool, state);
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

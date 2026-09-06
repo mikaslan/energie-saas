@@ -1,6 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * F2.2 Varianten-Vertiefung — Chromium-E2E (Nachholblock Welle 03).
@@ -22,6 +25,7 @@ type E2EState = {
   serverLogPath: string;
   w3WorkspaceId: string;
   f22ProjectId: string;
+  f22ControlProjectId: string;
   editorEmail: string;
 };
 
@@ -36,6 +40,7 @@ function state(): E2EState {
     "serverLogPath",
     "w3WorkspaceId",
     "f22ProjectId",
+    "f22ControlProjectId",
     "editorEmail",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
@@ -108,9 +113,9 @@ type VariantRow = {
   override: number | null;
 };
 
-async function readVariantState(offerId?: string): Promise<VariantRow[]> {
+async function readVariantState(projectId: string, offerId?: string): Promise<VariantRow[]> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     const result = await pool.query(
       `select v.id::text as id, o.id::text as "offerId", v.ordinal as ordinal,
@@ -125,12 +130,12 @@ async function readVariantState(offerId?: string): Promise<VariantRow[]> {
           ${offerId ? "and o.id = $3::uuid" : ""}
         order by v.ordinal asc`,
       offerId
-        ? [data.w3WorkspaceId, data.f22ProjectId, offerId]
-        : [data.w3WorkspaceId, data.f22ProjectId],
+        ? [data.w3WorkspaceId, projectId, offerId]
+        : [data.w3WorkspaceId, projectId],
     );
     return result.rows as VariantRow[];
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -189,11 +194,11 @@ test("F2.2-E2E-01: Varianten-Lifecycle — Create, Duplikat, Primary-Semantik", 
 
   // F2.2-Semantik als DB-Read-back: Erstvariante primary, Kopie nicht,
   // kein Override, keine Bundles.
-  await expect.poll(async () => (await readVariantState()).length, {
+  await expect.poll(async () => (await readVariantState(data.f22ProjectId)).length, {
     message: "Beide Varianten müssen persistiert sein.",
     timeout: 15_000,
   }).toBe(2);
-  const variants = await readVariantState();
+  const variants = await readVariantState(data.f22ProjectId);
   expect(variants[0]?.isPrimary).toBe(true);
   expect(variants[1]?.isPrimary).toBe(false);
   expect(variants[0]?.override).toBeNull();
@@ -214,7 +219,7 @@ test("F2.2-E2E-02: Editor-Steuerung — Promote, Deal-Override, Bundles", async 
   });
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
 
-  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f22ProjectId}`;
+  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f22ControlProjectId}`;
   await page.goto(projectPath);
   await loginWithRealOtp(page, data.editorEmail, projectPath);
 
@@ -229,8 +234,8 @@ test("F2.2-E2E-02: Editor-Steuerung — Promote, Deal-Override, Bundles", async 
     /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
     && url.searchParams.has("variante"));
   const detailPath = new URL(page.url()).pathname;
-  // Eigener Offer-Scope: E2E-01 hat im selben Projekt bereits ein Offer mit
-  // zwei Varianten angelegt — der Read-back filtert auf dieses Offer.
+  // Eigener Offer-Scope auf eigener Ready-Projekt-Fixture: kein Zustand aus
+  // E2E-01 und damit auch im sequenziellen Gesamtlauf deterministisch.
   const ownOfferId = offerIdFromDetailPath(detailPath);
   const initialVariantId = new URL(page.url()).searchParams.get("variante");
   const duplicateSection = page.locator("section").filter({
@@ -241,6 +246,8 @@ test("F2.2-E2E-02: Editor-Steuerung — Promote, Deal-Override, Bundles", async 
   await page.waitForURL((url) =>
     url.pathname === detailPath
     && url.searchParams.get("variante") !== initialVariantId);
+  const controlVariantId = new URL(page.url()).searchParams.get("variante");
+  expect(controlVariantId).toBeTruthy();
   await expect(page.locator("#variant-name")).toHaveValue("W3-Steuerung");
 
   const controls = page.locator("section").filter({
@@ -268,12 +275,12 @@ test("F2.2-E2E-02: Editor-Steuerung — Promote, Deal-Override, Bundles", async 
   // DB-Read-back: Zweitvariante primär, Override 1250 Cent (Offer-Ebene),
   // Bundle an der Zweitvariante.
   await expect.poll(async () => {
-    const rows = await readVariantState(ownOfferId);
-    return rows.some((row) => row.ordinal === 1 && row.isPrimary);
+    const rows = await readVariantState(data.f22ControlProjectId, ownOfferId);
+    return rows.some((row) => row.id === controlVariantId && row.isPrimary);
   }, { message: "Der Promote muss in der DB sichtbar sein.", timeout: 15_000 }).toBe(true);
-  const variants = await readVariantState(ownOfferId);
+  const variants = await readVariantState(data.f22ControlProjectId, ownOfferId);
   expect(variants).toHaveLength(2);
-  const promoted = variants.find((row) => row.id !== variants[0]?.id);
+  const promoted = variants.find((row) => row.id === controlVariantId);
   expect(promoted?.isPrimary).toBe(true);
   expect(variants[0]?.override).toBe("1250");
   expect(variants[1]?.override).toBe("1250");

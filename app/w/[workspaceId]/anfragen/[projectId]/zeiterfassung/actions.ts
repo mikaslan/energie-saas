@@ -11,9 +11,11 @@ import {
   type CreateTimeEntryCommand,
   type UpdateTimeEntryCommand,
 } from "@/lib/integrations/time-tracking/contract";
+import { berlinWallClockToIso } from "@/lib/integrations/time-tracking/berlin-wall-clock";
 import {
   archiveTimeEntry,
   createTimeEntry,
+  lockTimeEntryInstantsForUpdate,
   TimeTrackingConflictError,
   TimeTrackingNotFoundError,
   TimeTrackingValidationError,
@@ -52,25 +54,6 @@ function parseMinutes(value: FormDataEntryValue | null): number | null {
   return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= TIME_MINUTES_MAX ? parsed : null;
 }
 
-// Kimi-P1-2: datetime-local kommt OHNE Zone aus dem Browser. Der naive Wert
-// wird deshalb explizit als UTC geparst ("…:00Z" — unabhängig von der
-// Server-Zone) und anschließend um den mitgelieferten Browser-Offset
-// (getTimezoneOffset() = UTC − Lokalzeit) korrigiert:
-//   Browser-lokal 08:00 (UTC+2) → 08:00Z + (−120 min) = 06:00Z.
-function parseLocalDateTime(value: FormDataEntryValue | null, tzOffsetMinutes: number): string | null {
-  if (typeof value !== "string" || value.trim() === "") return null;
-  const parsed = new Date(`${value}:00Z`);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const utc = new Date(parsed.getTime() + tzOffsetMinutes * 60_000);
-  return utc.toISOString();
-}
-
-function parseTzOffset(value: FormDataEntryValue | null): number | null {
-  if (typeof value !== "string" || value.trim() === "") return 0;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && Math.abs(parsed) <= 14 * 60 ? parsed : null;
-}
-
 function parseComment(value: FormDataEntryValue | null): string | null {
   if (typeof value !== "string" || value.trim() === "") return null;
   const trimmed = value.normalize("NFKC").trim();
@@ -96,17 +79,25 @@ function parseGps(formData: FormData): { startLat: number | null; startLng: numb
   return { startLat, startLng };
 }
 
-function parseFields(formData: FormData): CreateTimeEntryCommand["fields"] | null {
+function parseFields(
+  formData: FormData,
+  preferredInstants?: { startAt: string; endAt: string | null },
+  validateInstantOrder = true,
+): CreateTimeEntryCommand["fields"] | null {
   const typeValue = formData.get("typeId");
   // Kimi-P3-4: crafted File-Wert → invalid statt still zu null.
   if (typeValue !== null && typeof typeValue !== "string") return null;
   const typeId = typeValue !== "" ? parseId(formData, "typeId") : null;
   if (typeValue !== "" && typeId === null) return null;
 
-  const tzOffsetMinutes = parseTzOffset(formData.get("tzOffsetMinutes"));
-  if (tzOffsetMinutes === null) return null;
-  const startAt = parseLocalDateTime(formData.get("startAt"), tzOffsetMinutes);
-  const endAt = parseLocalDateTime(formData.get("endAt"), tzOffsetMinutes);
+  const startValue = formData.get("startAt");
+  const endValue = formData.get("endAt");
+  const startAt = typeof startValue === "string"
+    ? berlinWallClockToIso(startValue, preferredInstants?.startAt)
+    : null;
+  const endAt = typeof endValue === "string"
+    ? berlinWallClockToIso(endValue, preferredInstants?.endAt)
+    : null;
   const workingTimeMinutes = parseMinutes(formData.get("workingTimeMinutes"));
   const breakDurationMinutes = parseMinutes(formData.get("breakDurationMinutes"));
   const commentValue = formData.get("comment");
@@ -117,7 +108,7 @@ function parseFields(formData: FormData): CreateTimeEntryCommand["fields"] | nul
   if (startAt === null || endAt === null || workingTimeMinutes === null || breakDurationMinutes === null) {
     return null;
   }
-  if (new Date(endAt) < new Date(startAt)) return null;
+  if (validateInstantOrder && new Date(endAt) < new Date(startAt)) return null;
   if (breakDurationMinutes > workingTimeMinutes) return null;
   return { typeId, startAt, endAt, workingTimeMinutes, breakDurationMinutes, comment };
 }
@@ -166,18 +157,25 @@ export async function updateTimeEntryAction(
   const workspace = parseWorkspace(formData);
   const projectId = parseId(formData, "projectId");
   const id = parseId(formData, "id");
-  const fields = parseFields(formData);
-  if (!workspace || !projectId || !id || !fields) return { status: "invalid" };
+  // Vor Autorisierung nur Form/Syntax prüfen. In der doppelten Herbststunde
+  // kann eine legitime End-Wandzeit kleiner als die Start-Wandzeit aussehen.
+  const submittedFields = parseFields(formData, undefined, false);
+  if (!workspace || !projectId || !id || !submittedFields) return { status: "invalid" };
 
-  const command: UpdateTimeEntryCommand = {
-    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
-    id,
-    fields,
-  };
   try {
-    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
-      updateTimeEntry(tx, ctx, command),
-    );
+    await authorizedAction(workspace, "time.write", "time_tracking", async (tx, ctx) => {
+      // Der bevorzugte Fold/Sekundenanteil stammt unter derselben
+      // Transaktionssperre aus der DB, nie aus manipulierbaren Hidden-Feldern.
+      const storedInstants = await lockTimeEntryInstantsForUpdate(tx, ctx, id);
+      const fields = parseFields(formData, storedInstants);
+      if (!fields) throw new TimeTrackingValidationError();
+      const command: UpdateTimeEntryCommand = {
+        schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+        id,
+        fields,
+      };
+      return updateTimeEntry(tx, ctx, command);
+    });
     revalidate(workspace, projectId);
     return { status: "success", message: "Zeiteintrag aktualisiert." };
   } catch (error) {

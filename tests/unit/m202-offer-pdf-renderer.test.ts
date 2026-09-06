@@ -282,6 +282,9 @@ describe("M2-02 Chromium container sandbox contract", () => {
 
     const rendererSource = await readFile("worker/offer-pdf-renderer.ts", "utf8");
     expect(rendererSource).not.toMatch(/\bHOME\s*:/u);
+    expect(rendererSource).toMatch(/chromiumSandbox\s*:\s*true/u);
+    expect(rendererSource).not.toMatch(/chromiumSandbox\s*:\s*false/u);
+    expect(rendererSource).not.toContain("--no-sandbox");
 
     const processIsolationSource = await readFile("worker/process-isolation.c", "utf8");
     expect(processIsolationSource).toContain("PR_SET_DUMPABLE, 0");

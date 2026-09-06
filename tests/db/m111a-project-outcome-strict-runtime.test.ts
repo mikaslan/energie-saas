@@ -12,6 +12,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 const DATABASE_NAME = "energie_saas_test";
 const MIGRATOR_PASSWORD = "m111a_strict_migrator";
@@ -331,9 +335,9 @@ describe.sequential("M1-11a Project-Outcome unter strikter app_runtime-Rolle", (
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 3 });
+    admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 3 });
     await bootstrapStrictRoles(embedded, admin);
-    migrator = new Pool({
+    migrator = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_migrator", MIGRATOR_PASSWORD),
       options: "-c role=app_owner",
       max: 1,
@@ -345,7 +349,7 @@ describe.sequential("M1-11a Project-Outcome unter strikter app_runtime-Rolle", (
     } finally {
       owner.release();
     }
-    runtime = new Pool({
+    runtime = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_runtime", RUNTIME_PASSWORD),
       max: 2,
     });
@@ -353,10 +357,11 @@ describe.sequential("M1-11a Project-Outcome unter strikter app_runtime-Rolle", (
   }, 180_000);
 
   afterAll(async () => {
-    await runtime?.end().catch(() => undefined);
-    await migrator?.end().catch(() => undefined);
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [runtime, migrator, admin],
+      embedded,
+      "M1-11a-Strict-Runtime-Teardown fehlgeschlagen",
+    );
   });
 
   it("erlaubt dem echten non-owner Editor Won, Reopen und Lost mit je exakt einer Evidenz", async () => {

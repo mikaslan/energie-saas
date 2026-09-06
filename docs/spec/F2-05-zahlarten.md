@@ -1,20 +1,19 @@
 # F2.5 — Zahlarten (Slice A: Stammdaten + Varianten-Auswahl, ohne Provider)
 
-Status: **IMPLEMENTED (VERIFIED pending CI/Maschine — Billing-Block Q6)**
+Status: **IMPLEMENTED** · lokaler Gesamt-/CI-Gate noch ausstehend
 
 ## Umsetzung (Abweichungen zum SPEC-Entwurf)
 
 - `ON DELETE no action` statt RESTRICT (Hausstil, 0020-Präzedenz;
   kein Hard-Delete im Code → äquivalenter Schutz).
-- Testpyramide: CRUD/Isolation/Scope-Miss per DB
+- Testpyramide: CRUD/Isolation/Scope-Miss/current-only-Historie per DB
   (`tests/db/f205-payment-options.test.ts`); Auswahl-Happy-Path per
   E2E (`tests/e2e/f2-05-zahlarten.spec.ts`, eigener W3-Seed `w3-f25`,
   State `f25ProjectId`); F205-DB-05 = Scope-Miss/Validierung/Viewer
   (leicht, ohne Offer-Fixture).
-- Rollen-Pin `payment_option:tenant_isolation` = PENDING-ORAKEL
-  (Präzedenz 23b3411): aus dem Gate-Diff des ersten Laufs mit
-  migrierter 0068 übernehmen. Offer-Schema-Pin lokal neu berechnet.
-- Reviews: Kimi + DeepSeek Exit-3 (kein OPENROUTER_API_KEY).
+- Rollenvertrag pinnt Policy, Guard-Body und den exakten 0074-Spaltenmarker
+  `F2.5 Varianten-Zahlart-Schreibvertrag v1` fail-closed. Fehlender oder
+  unbekannter Marker verhindert Apply und Verify vor ACL-Mutationen.
 Basis: Modulkatalog F2.5 („Zahlarten pro Komponente: Kauf / Finanzierung
 (Bees&Bears mit Status-Rückmeldung, ‚Classic' als reine Anzeige) / Leasing;
 Reonic wickelt keine Zahlungen ab").
@@ -33,11 +32,11 @@ Reonic wickelt keine Zahlungen ab").
 - M2-04 bindet genau ein Dokument (eine Variante + optionale Zahlart);
   Mehr-Zahlarten-Auswahl ist dort NICHTZIEL. Slice A bleibt dabei:
   **genau eine Zahlart je Variante**, keine Staffeln, keine Ratenpläne.
-- Ist-Repo: kein Zahlungsmodell vorhanden (Grep über
+- Ist-Repo vor Slice A: kein Zahlungsmodell vorhanden (Grep über
   `lib/integrations/offers`, `modules/offers`, Angebots-UI: keine
   financing/leasing/payment-Treffer). Echter Provider-Verkehr
   (Bees&Bears-Bonität/Status, PSD-Bank) ist in dieser Sandbox weder
-  lesbar noch aufrufbar → PROVDER-Teil ist NICHTZIEL dieses Slices.
+  lesbar noch aufrufbar → PROVIDER-Teil ist NICHTZIEL dieses Slices.
 
 ## 2. Scope Slice A (vertikal)
 
@@ -51,20 +50,24 @@ Reonic wickelt keine Zahlungen ab").
    `PaymentOptionNotFoundError`, Schlüssel-/Namenskollision →
    `PaymentOptionConflictError`.
 3. **Auswahl**: `offer_variant.payment_option_id` (nullable FK,
-   ON DELETE RESTRICT als Schutznetz; kein Hard-Delete möglich).
+   ON DELETE NO ACTION als Schutznetz; kein Hard-Delete möglich).
    `setVariantPaymentOption(offerId, variantId, paymentOptionId|null)` —
    revisionslos auf der stabilen `offer_variant`-Zeile (Präzedenz F2.2
    `setOptionalBundles`: kein Revise-Op, eigenes Audit-Event,
-   `updatedAt`-Touch). Archivierte Option ist nicht mehr wählbar;
-   gesetzte Historie bleibt referenzierbar. Recht: `project.write`
+   `updatedAt`-Touch). Archivierte Option ist nicht mehr neu wählbar;
+   die aktuell gesetzte Historie bleibt lesbar und idempotent submitbar.
+   Die Serviceprüfung hält die Stammdatenzeile bis zum Write per Row-Lock.
+   Recht: `project.write`
    (keine neue Matrix-Action, M2-01-Muster).
 4. **UI**: Editor-Sektion (F2.2-Panel-Muster): Dropdown der aktiven
-   Optionen + „Keine Angabe", Anzeige-Badge an der Variante.
+   Optionen + „Keine Angabe"; eine aktuell gebundene archivierte Option
+   bleibt als klar markierter current-only Wert sichtbar und submitbar.
    Read-only-Zweig zeigt nur die Auswahl. Keine Beträge, keine
    Raten, keine Zinssätze — reine Anzeige (Katalog: „Classic als
    reine Anzeige", auf alle drei Arten verallgemeinert).
-5. Migration **0068** (ein File, additiv; Backfill: keine — alles
-   nullable, keine Defaults mit Zahlungssemantik).
+5. Migration **0068** führt das additive nullable Modell ohne Backfill ein.
+   Migration **0074** ergänzt den minimalen Guard-/ACL-Schreibvertrag für
+   `offer_variant.payment_option_id`.
 
 **Nicht in Slice A** (eigene Slices): Bees&Bears-Status-Rückmeldung und
 Antragstrecke (Provider, F13.4-Nähe), Raten-/Zinsberechnung (keine
@@ -129,8 +132,9 @@ Fehler: `PaymentOptionNotFoundError`, `PaymentOptionConflictError`,
 ### 3.5 Auswahl-Semantik
 
 - `null` = „keine Angabe" (Normalzustand, Live-`null`-Parität).
-- Archivierte Option: nicht wählbar (`ValidationError`); bereits
-  gesetzte Verweise bleiben lesbar (Historie bricht nicht).
+- Archivierte Option: keine neue Zuweisung (`ValidationError`); ist exakt
+  diese ID bereits gebunden, ist erneutes Speichern ein No-op. Die Historie
+  bleibt les- und lösbar, ohne Archivdaten zu reaktivieren.
 - No-op (wertgleich inkl. doppelt-`null`) → Return ohne Event/Audit/Touch.
 - Events (bestehendes `emitEvent`-Muster):
   `offer.variant_payment_option_set` (+ `paymentOptionId`,
@@ -144,13 +148,14 @@ Fehler: `PaymentOptionNotFoundError`, `PaymentOptionConflictError`,
 |---|---|---|
 | F205-DB-01 | create/list/update happy path + Schlüssel-Eindeutigkeit | db |
 | F205-DB-02 | Schlüsselkollision (aktiv) → Conflict; nach Archivierung frei | db |
-| F205-DB-03 | archive/restore; archivierte Option nicht wählbar, Historie lesbar | db |
+| F205-DB-03 | archive/restore; archivierte Option nicht neu wählbar, Historie lesbar | db |
 | F205-DB-04 | Cross-Workspace-Isolation + Viewer darf nicht schreiben | db |
-| F205-DB-05 | Auswahl setzen/clearen/No-op, Scope-Miss → OfferNotFoundError | db |
+| F205-DB-05 | Scope-Miss/Validierung/Viewer-Sperre | db |
+| F205-DB-07 | aktuell gebundene archivierte ID = No-op; andere archivierte ID verweigert | db |
 | F205-PERM-01 | permissions-Matrix wächst um 2 Actions | unit |
-| F205-JRN-01 | m111a-Journal: idx 68 / TOTAL 69 | db |
-| F205-E2E-01 | Editor wählt Zahlart, sieht Badge, clears Auswahl | e2e |
-| F205-E2E-02 | Viewer: Auswahl sichtbar, keine Änderung | e2e |
+| F205-JRN-01 | 0068-Datenmodell + 0074-Schreibvertrag journal-/upgrade-sicher | db |
+| F205-E2E-01 | Stammdaten-CRUD mit zeilenlokalem Feedback | e2e |
+| F205-E2E-02 | Variante setzt, archiviert, speichert Historie idempotent und löst sie | e2e |
 
 ## 5. Nachweise
 
@@ -158,5 +163,4 @@ Fehler: `PaymentOptionNotFoundError`, `PaymentOptionConflictError`,
   `lib/integrations/offers/contract.ts`, Command-Versionen
   `offer-payment-option-command.v1` /
   `offer-variant-payment-option-command.v1`).
-- Reviews: Kimi + DeepSeek (Exit-3 ohne Key → Gates entscheiden).
 - Offene Punkte → FRAGEN-AN-MIKAIL.md (nur echte Blocker).

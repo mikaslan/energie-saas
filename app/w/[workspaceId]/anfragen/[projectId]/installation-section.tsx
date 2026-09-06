@@ -66,6 +66,7 @@ export function InstallationSection({
 }) {
   const [createState, createDispatch] = useActionState(createInstallationAction, initialState);
   const [completeState, completeDispatch] = useActionState(completeInstallationAction, initialState);
+  const feedbackState = completeState.status === "idle" ? createState : completeState;
 
   return (
     <section aria-labelledby="project-installation-title" className="min-w-0">
@@ -94,7 +95,6 @@ export function InstallationSection({
           ) : (
             <p className="mt-3 text-sm text-slate-600">Nur Lesezugriff: Keine Anlage möglich.</p>
           )}
-          <Feedback state={createState} />
         </div>
       ) : (
         <dl className="mt-2 grid gap-2 text-sm leading-6 text-slate-700">
@@ -135,9 +135,10 @@ export function InstallationSection({
           ) : (
             <p className="mt-3 text-sm text-slate-600">Nur Lesezugriff: Kein Abschluss möglich.</p>
           )}
-          <Feedback state={completeState} />
         </div>
       ) : null}
+
+      <Feedback state={feedbackState} />
     </section>
   );
 }

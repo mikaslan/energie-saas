@@ -1,7 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
-import { Pool } from "pg";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * M1-15 — Termine & Kalender (Chromium-E2E)
@@ -237,7 +240,7 @@ test.describe("M1-15: Termine & Kalender in der Projektakte", () => {
 
 async function seedTenancyCalendar(): Promise<void> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     await pool.query(
       `insert into calendar (id, workspace_id, name, calendar_type, created_by)
@@ -251,7 +254,7 @@ async function seedTenancyCalendar(): Promise<void> {
       [data.m111bWorkspaceId, data.editorEmail],
     );
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -314,6 +317,10 @@ test("M1-15: Monatsansicht rendert; Editor legt einen Termin an (persistent)", a
     const article = appointmentArticle(page, APPOINTMENT_TITLE);
     await expect(article).toHaveCount(1);
     await expect(article).toContainText("Vor Ort");
+    const [year, month, day] = date.split("-");
+    await expect(article).toContainText(
+      `${day}.${month}.${year}, 10:00 – ${day}.${month}.${year}, 11:00`,
+    );
 
     await page.setViewportSize({ width: 375, height: 900 });
     await expectNoHorizontalOverflow(page, 375);

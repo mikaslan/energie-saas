@@ -1,6 +1,10 @@
 import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "./tests/setup/pg-pool-drain.js";
 
 const ROOT = "/Users/mikail/Projects/energie-saas-m204-e-signature";
 const { startEmbeddedPostgres } = await import(`${ROOT}/tests/setup/embedded-postgres.ts`);
@@ -13,6 +17,7 @@ function sha256(value: string): string {
 }
 
 const embedded = await startEmbeddedPostgres();
+let pool: Pool | undefined;
 try {
   execSync("npx tsx scripts/migrate.mts", {
     cwd: ROOT,
@@ -28,7 +33,7 @@ try {
     stdio: "inherit",
   });
 
-  const pool = new Pool({ connectionString: embedded.superuserUrl });
+  pool = createDrainTrackedPool({ connectionString: embedded.superuserUrl });
 
   // 1) Function security pins (owner hardcoded to app_owner for strict mode).
   const funcs = await pool.query<Record<string, unknown>>(`
@@ -166,7 +171,10 @@ try {
     null,
     2,
   ));
-  await pool.end();
 } finally {
-  await embedded.stop();
+  await endPoolsAndStopEmbeddedPostgres(
+    [pool],
+    embedded,
+    "M2-04-Pin-Extraktion-Teardown fehlgeschlagen",
+  );
 }

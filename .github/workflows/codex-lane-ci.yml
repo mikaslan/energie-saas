@@ -63,6 +63,91 @@ jobs:
         # weil dort installiert). Deshalb vor der Testsuite installieren.
         run: npx playwright install --with-deps chromium
 
+      - name: Chromium-Userns eng für Renderer-Tests freigeben
+        shell: bash
+        run: |
+          set -euo pipefail
+          # chromium.executablePath() zeigt auf Chrome-for-Testing. Ein
+          # headless:true-Launch ohne channel startet in Playwright 1.62 aber
+          # den separaten chromium-headless-shell. Das AppArmor-Attachment muss
+          # exakt diese tatsächlich gestartete Binärdatei treffen.
+          chromium_headless_path="$(node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const { chromium } = require("playwright");
+
+          const playwrightCoreRoot = path.dirname(
+            require.resolve("playwright-core/package.json"),
+          );
+          const manifest = JSON.parse(
+            fs.readFileSync(path.join(playwrightCoreRoot, "browsers.json"), "utf8"),
+          );
+          const chromiumDescriptor = manifest.browsers.find(
+            (entry) => entry.name === "chromium",
+          );
+          const headlessDescriptor = manifest.browsers.find(
+            (entry) => entry.name === "chromium-headless-shell",
+          );
+          if (!chromiumDescriptor || !headlessDescriptor) {
+            throw new Error("Playwright-Browsermanifest ist unvollständig.");
+          }
+
+          const chromiumPath = chromium.executablePath();
+          const marker = `${path.sep}chromium-${chromiumDescriptor.revision}${path.sep}`;
+          const markerIndex = chromiumPath.indexOf(marker);
+          if (markerIndex < 0) {
+            throw new Error("Playwright-Cachewurzel kann nicht bestimmt werden.");
+          }
+          const cacheRoot = chromiumPath.slice(0, markerIndex);
+          const executableTail = process.arch === "x64"
+            ? ["chrome-headless-shell-linux64", "chrome-headless-shell"]
+            : process.arch === "arm64"
+              ? ["chrome-linux", "headless_shell"]
+              : null;
+          if (process.platform !== "linux" || !executableTail) {
+            throw new Error(`Nicht unterstützte CI-Plattform: ${process.platform}/${process.arch}`);
+          }
+          const executablePath = path.join(
+            cacheRoot,
+            `chromium_headless_shell-${headlessDescriptor.revision}`,
+            ...executableTail,
+          );
+          if (!fs.existsSync(executablePath)) {
+            throw new Error(`Chromium Headless Shell fehlt: ${executablePath}`);
+          }
+          process.stdout.write(executablePath);
+          NODE
+          )"
+          if [[ ! -x "$chromium_headless_path" ]]; then
+            echo "::error::Playwright Chromium Headless Shell ist nicht ausführbar: $chromium_headless_path"
+            exit 1
+          fi
+
+          sudo tee /etc/apparmor.d/playwright-renderer-chromium >/dev/null <<EOF
+          abi <abi/4.0>,
+          include <tunables/global>
+
+          profile playwright-renderer-chromium "$chromium_headless_path" flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/playwright-renderer-chromium
+
+          node <<'NODE'
+          const { chromium } = require("playwright");
+
+          (async () => {
+            const browser = await chromium.launch({
+              headless: true,
+              chromiumSandbox: true,
+            });
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
       - name: Testsuite (Vitest mit eingebettetem Postgres)
         run: npm run test
         env:

@@ -2520,13 +2520,16 @@ export async function setVariantPaymentOption(
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${command.paymentOptionId}::uuid
      limit 1
+     for share
   `);
   const optionRow = option.rows[0];
   if (!optionRow) throw new OfferNotFoundError();
-  if (optionRow.archived_at !== null) throw new OfferValidationError();
   if (stored === optionRow.id) {
     return { offerId: offerRecord.id, variantId: variant.id, changed: false };
   }
+  // Archivierte Stammdaten bleiben für ihre bestehende Historienbindung
+  // idempotent speicherbar, dürfen aber nie neu zugewiesen werden.
+  if (optionRow.archived_at !== null) throw new OfferValidationError();
   const now = await databaseNow(tx);
   await tx.execute(sql`
     update offer_variant

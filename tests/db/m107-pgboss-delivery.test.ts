@@ -18,6 +18,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   entries: Array<{ idx: number; tag: string; [key: string]: unknown }>;
@@ -433,7 +437,11 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
     requireRecoveryMigration();
     requireRuntimeIntegrityMigrations();
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 2 });
+    admin = createDrainTrackedPool({
+      connectionString: embedded.superuserUrl,
+      max: 2,
+      idleTimeoutMillis: 0,
+    });
     await bootstrapStrictRoles(admin);
     await installPgBoss(serviceUrl(embedded, "app_worker", WORKER_PASSWORD));
 
@@ -441,9 +449,10 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
     // selbst verbindet produktionsgleich als app_migrator, startet als
     // app_owner und darf ueber die gepinnte SET-only-Kante ausschliesslich
     // fuer worker-owned pg-boss-DDL zu app_worker wechseln.
-    ownerPool = new Pool({
+    ownerPool = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_migrator", MIGRATOR_PASSWORD),
       max: 1,
+      idleTimeoutMillis: 0,
       options: "-c role=app_owner",
     });
     await migrate(drizzle(ownerPool), { migrationsFolder: resolve("drizzle") });
@@ -461,13 +470,15 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
       ownerClient.release();
     }
 
-    runtime = new Pool({
+    runtime = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_runtime", RUNTIME_PASSWORD),
       max: 4,
+      idleTimeoutMillis: 0,
     });
-    worker = new Pool({
+    worker = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_worker", WORKER_PASSWORD),
       max: 4,
+      idleTimeoutMillis: 0,
     });
     await Promise.all([
       insertDomainJob(admin, accepted),
@@ -481,11 +492,11 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
   }, 180_000);
 
   afterAll(async () => {
-    await worker?.end().catch(() => undefined);
-    await runtime?.end().catch(() => undefined);
-    await ownerPool?.end().catch(() => undefined);
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [worker, runtime, ownerPool, admin],
+      embedded,
+      "M1-07 pg-boss teardown failed",
+    );
   });
 
   it("pinnt Definer-Owner, feste Suchpfadgrenze und einen statischen geschlossenen Funktionskoerper", async () => {

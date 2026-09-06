@@ -5,6 +5,10 @@ import {
   postgresConnectionTarget,
   postgresConnectionTargetKey,
 } from "../../lib/db/postgres-url";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "./pg-pool-drain";
 
 // ═══════════════════════════════════════════════════════════════════════
 // Superuser-Verbindung — NUR für Testaussagen, die sich unter RLS strukturell
@@ -53,12 +57,12 @@ export function superuserPool(): Pool {
     );
   }
 
-  poolInstance ??= new Pool({ connectionString: rawUrl, max: 2 });
+  poolInstance ??= createDrainTrackedPool({ connectionString: rawUrl, max: 2 });
   return poolInstance;
 }
 
 export async function closeSuperuserPool(): Promise<void> {
   const pool = poolInstance;
   poolInstance = undefined;
-  await pool?.end();
+  if (pool) await endPoolAndWaitForClientRemoval(pool);
 }

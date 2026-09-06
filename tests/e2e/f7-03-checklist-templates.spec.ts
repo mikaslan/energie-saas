@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * F7.3 Checklisten-Vorlagen — Chromium-E2E.
@@ -92,7 +95,7 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
 
 async function seedCatalogComponent(): Promise<void> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     await pool.query(
       `insert into catalog_component (id, workspace_id, internal_sku, component_type, created_by)
@@ -101,7 +104,7 @@ async function seedCatalogComponent(): Promise<void> {
       [randomUUID(), data.w3WorkspaceId, data.editorEmail],
     );
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

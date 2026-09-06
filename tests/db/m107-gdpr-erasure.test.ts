@@ -35,6 +35,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 const DATABASE_NAME = "energie_saas_test";
 const MIGRATOR_PASSWORD = "m107_erasure_migrator";
@@ -1446,10 +1450,10 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 4 });
+    admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 4 });
     await bootstrapStrictRoles(admin);
     await installPgBoss(serviceUrl(embedded, "app_worker", WORKER_PASSWORD));
-    ownerPool = new Pool({
+    ownerPool = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_migrator", MIGRATOR_PASSWORD),
       options: "-c role=app_owner",
       max: 1,
@@ -1472,11 +1476,11 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
     } finally {
       owner.release();
     }
-    runtimePool = new Pool({
+    runtimePool = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_runtime", RUNTIME_PASSWORD),
       max: 1,
     });
-    workerPool = new Pool({
+    workerPool = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_worker", WORKER_PASSWORD),
       max: 1,
     });
@@ -1503,11 +1507,11 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
   }, 180_000);
 
   afterAll(async () => {
-    await workerPool?.end().catch(() => undefined);
-    await runtimePool?.end().catch(() => undefined);
-    await ownerPool?.end().catch(() => undefined);
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [workerPool, runtimePool, ownerPool, admin],
+      embedded,
+      "M1-07-DSGVO-Teardown fehlgeschlagen",
+    );
     if (migrationPrefixDir) rmSync(migrationPrefixDir, { recursive: true, force: true });
   });
 

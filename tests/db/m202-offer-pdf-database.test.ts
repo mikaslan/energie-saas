@@ -28,6 +28,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 import { testPool } from "../setup/test-db";
 import { tenantFixtures } from "../setup/tenant-fixtures";
 
@@ -591,13 +595,13 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
 
   it("erlaubt Runtime nur Requestspalten und blockiert terminale INSERT-Umgehungen", async () => {
     const embedded = await startEmbeddedPostgres();
-    const admin = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
+    const admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 1 });
     let migrator: Pool | undefined;
     let runtime: Pool | undefined;
     let worker: Pool | undefined;
     try {
       await bootstrapStrictRolesAndPgBoss(embedded, admin);
-      migrator = new Pool({
+      migrator = createDrainTrackedPool({
         connectionString: serviceUrl(embedded, "app_migrator", "m202_migrator"),
         options: "-c role=app_owner",
         max: 2,
@@ -617,11 +621,11 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
 
       const workspaceId = randomUUID();
       const binding = await strictOfferBinding(migrator, workspaceId);
-      runtime = new Pool({
+      runtime = createDrainTrackedPool({
         connectionString: serviceUrl(embedded, "app_runtime", "m202_runtime"),
         max: 1,
       });
-      worker = new Pool({
+      worker = createDrainTrackedPool({
         connectionString: serviceUrl(embedded, "app_worker", "m202_worker"),
         max: 1,
       });
@@ -982,11 +986,11 @@ describe.sequential("M2-02 Offer-PDF-Datenbankvertrag", () => {
       );
       expect(claimed.rows).toEqual([{ state: "running", attempt_count: 1 }]);
     } finally {
-      await worker?.end().catch(() => undefined);
-      await runtime?.end().catch(() => undefined);
-      await migrator?.end().catch(() => undefined);
-      await admin.end().catch(() => undefined);
-      await embedded.stop().catch(() => undefined);
+      await endPoolsAndStopEmbeddedPostgres(
+        [worker, runtime, migrator, admin],
+        embedded,
+        "M2-02-PDF-Datenbank-Teardown fehlgeschlagen",
+      );
     }
   }, 120_000);
 

@@ -18,6 +18,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 const DATABASE_NAME = "energie_saas_test";
 const MIGRATOR_PASSWORD = "m115_erasure_migrator";
@@ -125,10 +129,10 @@ describe.sequential("M1-15 Appointment-Erasure (funktional)", () => {
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 4 });
+    admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 4 });
     await bootstrapStrictRoles(admin);
     await installPgBoss(serviceUrl(embedded, "app_worker", WORKER_PASSWORD));
-    ownerPool = new Pool({
+    ownerPool = createDrainTrackedPool({
       connectionString: serviceUrl(embedded, "app_migrator", MIGRATOR_PASSWORD),
       options: "-c role=app_owner",
       max: 1,
@@ -143,9 +147,11 @@ describe.sequential("M1-15 Appointment-Erasure (funktional)", () => {
   }, 180_000);
 
   afterAll(async () => {
-    await ownerPool?.end().catch(() => undefined);
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [ownerPool, admin],
+      embedded,
+      "M1-15-Kalender-Loesch-Teardown fehlgeschlagen",
+    );
   });
 
   it("löscht Termine und Teilnehmer bei erase_inactive_lead (kaskadierend)", async () => {

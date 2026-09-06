@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { Pool, type PoolClient } from "pg";
+import type { PoolClient } from "pg";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 // ═══════════════════════════════════════════════════════════════════════
 // M1-12a Inbox-Fixture.
@@ -82,7 +86,7 @@ export async function seedM112aInboxTasks(
   const projectId = randomUUID();
   const contactId = randomUUID();
   const siteId = randomUUID();
-  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: databaseUrl, max: 1 });
   const client = await pool.connect();
 
   try {
@@ -258,7 +262,7 @@ export async function seedM112aInboxTasks(
     );
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 
   return { projectId };

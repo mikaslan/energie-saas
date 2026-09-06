@@ -14,6 +14,10 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool, type QueryResult, type QueryResultRow } from "pg";
 import { expect, it } from "vitest";
 import { startEmbeddedPostgres } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   version: string;
@@ -152,7 +156,7 @@ it("schliesst die fehlende Post-0024-Metadatenstrecke ohne alte SQL-Historie zu 
 
 it("laesst ein echtes 0030-Upgrade fachlich und strukturell unveraendert", async () => {
   const embedded = await startEmbeddedPostgres();
-  const pool = new Pool({ connectionString: embedded.url, max: 2 });
+  const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
   let prefix: string | undefined;
   let baselinePrefix: string | undefined;
   const workspaceId = randomUUID();
@@ -188,8 +192,11 @@ it("laesst ein echtes 0030-Upgrade fachlich und strukturell unveraendert", async
     );
     expect(applied.rows[0]?.n).toBe(BASELINE_INDEX + 1);
   } finally {
-    await pool.end().catch(() => undefined);
-    await embedded.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M2-01-Metadaten-Baseline-Teardown fehlgeschlagen",
+    );
     if (prefix) rmSync(prefix, { recursive: true, force: true });
     if (baselinePrefix) rmSync(baselinePrefix, { recursive: true, force: true });
   }

@@ -1,6 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * F10.2 Slice A Termine-Tab — Chromium-E2E (Welle 03/04).
@@ -57,7 +60,7 @@ function berlinDateToday(): string {
 
 async function seedTenancyCalendar(): Promise<void> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     await pool.query(
       `insert into calendar (id, workspace_id, name, calendar_type, created_by)
@@ -71,7 +74,7 @@ async function seedTenancyCalendar(): Promise<void> {
       [data.w3WorkspaceId, data.editorEmail],
     );
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

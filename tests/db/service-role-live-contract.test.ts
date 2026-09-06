@@ -3,6 +3,11 @@ import { Pool } from "pg";
 import { servicePoolConfig } from "@/lib/db/role-env";
 import { createHealthProbe } from "@/worker/health";
 import { startEmbeddedPostgres, type EmbeddedTestDatabase } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 const ROLE = "app_runtime";
 const PASSWORD = "runtime_live_contract";
@@ -12,11 +17,11 @@ function quoteIdentifier(value: string): string {
 }
 
 async function expectNewPoolRejected(url: string, pattern: RegExp): Promise<void> {
-  const pool = new Pool(servicePoolConfig(url, ROLE));
+  const pool = createDrainTrackedPool(servicePoolConfig(url, ROLE));
   try {
     await expect(pool.query("select 1")).rejects.toThrow(pattern);
   } finally {
-    await pool.end().catch(() => undefined);
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -38,7 +43,7 @@ describe.sequential("Live-Dienstrollenvertrag auf echtem PostgreSQL 18", () => {
     delete process.env.POSTGRES_EXPECTED_NEON_TIMELINE_ID;
 
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
+    admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 1 });
     await admin.query(
       `create role ${quoteIdentifier(ROLE)} login password '${PASSWORD}' ` +
         "noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication",
@@ -73,8 +78,11 @@ describe.sequential("Live-Dienstrollenvertrag auf echtem PostgreSQL 18", () => {
     await admin?.query("drop schema if exists pgboss cascade").catch(() => undefined);
     await admin?.query("drop role if exists app_worker").catch(() => undefined);
     await admin?.query(`drop role if exists ${quoteIdentifier(ROLE)}`).catch(() => undefined);
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop();
+    await endPoolsAndStopEmbeddedPostgres(
+      [admin],
+      embedded,
+      "Dienstrollen-Livevertrag-Teardown fehlgeschlagen",
+    );
 
     if (previousMode === undefined) delete process.env.DB_ROLE_MODE;
     else process.env.DB_ROLE_MODE = previousMode;
@@ -88,7 +96,7 @@ describe.sequential("Live-Dienstrollenvertrag auf echtem PostgreSQL 18", () => {
     const config = servicePoolConfig(runtimeUrl, ROLE);
     expect(config.verify).toBeTypeOf("function");
     expect(config.maxLifetimeSeconds).toBe(300);
-    const pool = new Pool(config);
+    const pool = createDrainTrackedPool(config);
     try {
       const result = await pool.query<{
         session_role: string;
@@ -108,7 +116,7 @@ describe.sequential("Live-Dienstrollenvertrag auf echtem PostgreSQL 18", () => {
         statement_timeout: "15s",
       });
     } finally {
-      await pool.end();
+      await endPoolAndWaitForClientRemoval(pool);
     }
   });
 

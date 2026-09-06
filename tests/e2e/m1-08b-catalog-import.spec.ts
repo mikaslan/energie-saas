@@ -2,8 +2,11 @@ import { readFileSync, statSync } from "node:fs";
 
 import AxeBuilder from "@axe-core/playwright";
 import { sql } from "drizzle-orm";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 import {
   CATALOG_COMPONENT_CREATE_COMMAND_VERSION,
@@ -379,7 +382,7 @@ async function waitForCatalogImportWorker(
   workspaceId: string,
   importId: string,
 ): Promise<CatalogImportTerminalEvidence> {
-  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: databaseUrl, max: 1 });
   try {
     const deadline = Date.now() + 60_000;
     let lastEvidence: Record<string, unknown> | undefined;
@@ -444,7 +447,7 @@ async function waitForCatalogImportWorker(
       `M108B-E2E-Workerhost erreichte keinen belegten Terminalzustand: ${JSON.stringify(lastEvidence)}`,
     );
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

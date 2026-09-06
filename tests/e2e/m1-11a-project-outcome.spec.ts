@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { Pool } from "pg";
 import {
   expect,
   test,
   type Locator,
   type Page,
 } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 type E2EState = {
   databaseUrl: string;
@@ -123,7 +126,7 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
 async function seedAdminMembership(data: E2EState): Promise<string> {
   const identityId = randomUUID();
   const email = `m1-11a-admin-${randomUUID().slice(0, 8)}@example.test`;
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -148,7 +151,7 @@ async function seedAdminMembership(data: E2EState): Promise<string> {
     }
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
   return email;
 }

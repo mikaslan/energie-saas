@@ -1,7 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * F9.1 Zeiterfassung — Chromium-E2E.
@@ -121,7 +124,7 @@ async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promi
 
 async function firstProjectId(): Promise<string> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     const result = await pool.query<{ id: string }>(
       `select id from project
@@ -133,7 +136,7 @@ async function firstProjectId(): Promise<string> {
     if (!result.rows[0]) throw new Error("Kein Projekt im F9.1-E2E-State vorhanden.");
     return result.rows[0].id;
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -159,24 +162,42 @@ test("F9.1-E2E-01: Editor legt Ereignistyp an, erfasst Zeiteintrag, sieht Summe,
   await page.goto(path);
   await expect(page.getByRole("heading", { name: "Zeiterfassung", level: 1 })).toBeVisible();
   await expect(page.getByText("Noch keine Zeiteinträge erfasst.")).toBeVisible();
-
   await page.getByLabel("Ereignistyp").selectOption({ label: "Montage" });
-  await page.getByLabel("Beginn").fill("2026-09-04T08:00");
-  await page.getByLabel("Ende").fill("2026-09-04T10:00");
-  await page.getByLabel("Arbeitszeit (Minuten)").fill("120");
+  await page.getByLabel("Beginn").fill("2026-03-29T02:30");
+  await page.getByLabel("Ende").fill("2026-03-29T03:30");
+  await page.getByLabel("Arbeitszeit (Minuten)").fill("60");
+  await page.getByRole("button", { name: "Erfassen" }).click();
+  await expect(page.getByText("Die Eingabe ist ungültig.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Noch keine Zeiteinträge erfasst.")).toBeVisible();
+
+  // DST-Grenze: Start CET (UTC+1), Ende CEST (UTC+2). Ein heutiger
+  // Einzel-Offset würde den Start um eine Stunde verschieben.
+  await page.getByLabel("Ereignistyp").selectOption({ label: "Montage" });
+  await page.getByLabel("Beginn").fill("2026-03-29T01:30");
+  await page.getByLabel("Ende").fill("2026-03-29T03:30");
+  await page.getByLabel("Arbeitszeit (Minuten)").fill("60");
   await page.getByLabel("Kommentar").fill("Anlage montiert");
   await page.getByRole("button", { name: "Erfassen" }).click();
 
   await expect(page.getByText("Zeiteintrag angelegt.", { exact: true })).toBeVisible();
   await expect(page.getByText("Montage", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Summe: 2 Std. 0 Min.")).toBeVisible();
-  // Kimi-P1-2: konkrete Uhrzeit im Browser-Round-Trip (Lokalzeit → UTC → lokal).
-  await expect(page.getByText(/08:00–10:00 Uhr/u)).toBeVisible();
+  await expect(page.getByText("Summe: 1 Std. 0 Min.")).toBeVisible();
+  await expect(page.getByText(/01:30–03:30 Uhr/u).first()).toBeVisible();
 
   // 3) Persistenz über Reload.
   await page.reload();
-  await expect(page.getByText("Summe: 2 Std. 0 Min.")).toBeVisible();
-  await expect(page.getByText(/08:00–10:00 Uhr/u)).toBeVisible();
+  await expect(page.getByText("Summe: 1 Std. 0 Min.")).toBeVisible();
+  await expect(page.getByText(/01:30–03:30 Uhr/u).first()).toBeVisible();
+
+  // Update-Form nutzt dieselbe Submit-Auflösung und erhält beide Wandzeiten.
+  await page.getByRole("button", { name: "Bearbeiten" }).click();
+  const editForm = page.locator("form").filter({
+    has: page.getByRole("button", { name: "Speichern" }),
+  });
+  await editForm.getByLabel("Kommentar").fill("Anlage montiert und geprüft");
+  await editForm.getByRole("button", { name: "Speichern" }).click();
+  await expect(page.getByText("Zeiteintrag aktualisiert.", { exact: true })).toBeVisible();
+  await expect(page.getByText(/01:30–03:30 Uhr/u).first()).toBeVisible();
 
   // 4) Ereignistyp archivieren → Eintrag behält den historischen Namen
   // (Kimi-P2-2), die Option erscheint im Edit-Select als „(archiviert)".
@@ -188,7 +209,16 @@ test("F9.1-E2E-01: Editor legt Ereignistyp an, erfasst Zeiteintrag, sieht Summe,
   await page.goto(path);
   await expect(page.getByText("Montage", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Bearbeiten" }).click();
-  await expect(page.getByLabel("Ereignistyp", { exact: true })).toContainText("Montage (archiviert)");
+  const archivedEditForm = page.locator("form").filter({
+    has: page.getByRole("button", { name: "Speichern" }),
+  });
+  const archivedTypeOption = archivedEditForm.getByLabel("Ereignistyp", { exact: true })
+    .locator("option", { hasText: "Montage (archiviert)" });
+  await expect(archivedTypeOption).toBeEnabled();
+  await archivedEditForm.getByLabel("Kommentar").fill("Historischer Typ bleibt speicherbar");
+  await archivedEditForm.getByRole("button", { name: "Speichern" }).click();
+  await expect(page.getByText("Zeiteintrag aktualisiert.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Historischer Typ bleibt speicherbar", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Abbrechen" }).click();
 
   // 5) Eintrag archivieren → Summe fällt auf 0, Eintrag verschwindet.

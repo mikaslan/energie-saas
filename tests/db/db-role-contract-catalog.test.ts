@@ -8,6 +8,10 @@ import {
   verifyStandaloneTypeContract,
 } from "../../scripts/db-role-contract.mjs";
 import { startEmbeddedPostgres, type EmbeddedTestDatabase } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 const DATABASE_NAME = "energie_saas_test";
 
@@ -60,7 +64,7 @@ describe.sequential("App-Rollen-/Type-/Datenbank-ACL-Katalogvertrag auf PostgreS
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
+    admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 1 });
     client = await admin.connect();
 
     await client.query(`
@@ -90,8 +94,11 @@ describe.sequential("App-Rollen-/Type-/Datenbank-ACL-Katalogvertrag auf PostgreS
   afterAll(async () => {
     await client?.query("reset role").catch(() => undefined);
     client?.release();
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop();
+    await endPoolsAndStopEmbeddedPostgres(
+      [admin],
+      embedded,
+      "DB-Rollen-Katalog-Teardown fehlgeschlagen",
+    );
   });
 
   it("verwirft Rollenattribute sowie alle wirksamen Setting-Sichten", async () => {

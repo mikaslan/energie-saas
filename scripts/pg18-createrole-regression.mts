@@ -5,6 +5,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { startEmbeddedPostgres } from "../tests/setup/embedded-postgres.js";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../tests/setup/pg-pool-drain.js";
 
 interface MembershipEdge extends QueryResultRow {
   grantor_oid: number | string;
@@ -75,7 +80,7 @@ const createdRole = `pg18_created_${suffix}`;
 const creatorPassword = `local-${suffix}`;
 
 const embedded = await startEmbeddedPostgres();
-const superuser = new Pool({ connectionString: embedded.superuserUrl, max: 1 });
+const superuser = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 1 });
 let creatorPool: Pool | undefined;
 let creatorClient: PoolClient | undefined;
 
@@ -88,7 +93,7 @@ try {
   const creatorUrl = new URL(embedded.url);
   creatorUrl.username = creatorRole;
   creatorUrl.password = creatorPassword;
-  creatorPool = new Pool({ connectionString: creatorUrl.toString(), max: 1 });
+  creatorPool = createDrainTrackedPool({ connectionString: creatorUrl.toString(), max: 1 });
   creatorClient = await creatorPool.connect();
 
   const identity = await creatorClient.query<{
@@ -204,16 +209,33 @@ try {
   await assertSetRoleDenied(creatorClient, createdRole);
   console.log("OK   Eigener Revoke entfernt nur die eigene SET-Kante; Bootstrap bleibt erhalten");
 } finally {
+  const teardownErrors: unknown[] = [];
   creatorClient?.release();
-  await creatorPool?.end().catch(() => undefined);
+  if (creatorPool) {
+    try {
+      await endPoolAndWaitForClientRemoval(creatorPool);
+    } catch (error) {
+      teardownErrors.push(error);
+    }
+  }
   await superuser
     .query(`drop role if exists ${quoteIdentifier(createdRole)}`)
-    .catch(() => undefined);
+    .catch((error: unknown) => teardownErrors.push(error));
   await superuser
     .query(`drop role if exists ${quoteIdentifier(creatorRole)}`)
-    .catch(() => undefined);
-  await superuser.end().catch(() => undefined);
-  await embedded.stop();
+    .catch((error: unknown) => teardownErrors.push(error));
+  try {
+    await endPoolsAndStopEmbeddedPostgres(
+      [superuser],
+      embedded,
+      "PG18-CREATEROLE-Teardown fehlgeschlagen",
+    );
+  } catch (error) {
+    teardownErrors.push(error);
+  }
+  if (teardownErrors.length > 0) {
+    throw new AggregateError(teardownErrors, "PG18-CREATEROLE-Teardown fehlgeschlagen");
+  }
 }
 
 console.log("\nPG18-CREATEROLE-Regressionsprobe: 5 Pruefungen gruen.");

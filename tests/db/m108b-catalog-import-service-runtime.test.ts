@@ -32,6 +32,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 const STRICT_MIGRATOR_PASSWORD = "m108b_service_migrator";
 const STRICT_RUNTIME_PASSWORD = "m108b_service_runtime";
@@ -150,9 +154,9 @@ describe.sequential("M1-08b Katalogimport unter strikten Servicerollen", () => {
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    admin = new Pool({ connectionString: embedded.superuserUrl, max: 2 });
+    admin = createDrainTrackedPool({ connectionString: embedded.superuserUrl, max: 2 });
     await bootstrapStrictRoles(embedded, admin);
-    migrator = new Pool({
+    migrator = createDrainTrackedPool({
       connectionString: strictServiceUrl(
         embedded,
         "app_migrator",
@@ -168,7 +172,7 @@ describe.sequential("M1-08b Katalogimport unter strikten Servicerollen", () => {
     } finally {
       ownerClient.release();
     }
-    runtime = new Pool({
+    runtime = createDrainTrackedPool({
       connectionString: strictServiceUrl(
         embedded,
         "app_runtime",
@@ -176,7 +180,7 @@ describe.sequential("M1-08b Katalogimport unter strikten Servicerollen", () => {
       ),
       max: 2,
     });
-    worker = new Pool({
+    worker = createDrainTrackedPool({
       connectionString: strictServiceUrl(
         embedded,
         "app_worker",
@@ -187,11 +191,11 @@ describe.sequential("M1-08b Katalogimport unter strikten Servicerollen", () => {
   }, 180_000);
 
   afterAll(async () => {
-    await runtime?.end().catch(() => undefined);
-    await worker?.end().catch(() => undefined);
-    await migrator?.end().catch(() => undefined);
-    await admin?.end().catch(() => undefined);
-    await embedded?.stop();
+    await endPoolsAndStopEmbeddedPostgres(
+      [runtime, worker, migrator, admin],
+      embedded,
+      "M1-08b-Katalogimport-Service-Teardown fehlgeschlagen",
+    );
   });
 
   async function createEditorFixture(): Promise<EditorFixture> {

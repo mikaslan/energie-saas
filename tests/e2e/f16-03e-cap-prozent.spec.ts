@@ -13,16 +13,21 @@ type SerializedM201State = {
   databaseUrl: string;
   m201BatteryId: string;
   m201EditorEmail: string;
+  editorEmail: string;
   m201EditorIdentityId: string;
   m201InverterId: string;
   m201ModuleId: string;
   m201ProjectId: string;
+  f163eProjectId: string;
+  w3WorkspaceId: string;
   m201WallboxId: string;
   m201WorkspaceId: string;
   serverLogPath: string;
 };
 
-function runtimeState(): M201RuntimeState {
+type F163eState = M201RuntimeState & { f163eProjectId: string; w3WorkspaceId: string };
+
+function runtimeState(): F163eState {
   const statePath = process.env.M1_05_E2E_STATE;
   if (!statePath) {
     throw new Error("M1_05_E2E_STATE fehlt; bitte über npm run test:e2e starten.");
@@ -32,10 +37,13 @@ function runtimeState(): M201RuntimeState {
     "databaseUrl",
     "m201BatteryId",
     "m201EditorEmail",
+    "editorEmail",
     "m201EditorIdentityId",
     "m201InverterId",
     "m201ModuleId",
     "m201ProjectId",
+    "f163eProjectId",
+    "w3WorkspaceId",
     "m201WallboxId",
     "m201WorkspaceId",
     "serverLogPath",
@@ -46,12 +54,14 @@ function runtimeState(): M201RuntimeState {
   const complete = parsed as SerializedM201State;
   return {
     databaseUrl: complete.databaseUrl,
-    editorEmail: complete.m201EditorEmail,
+    editorEmail: complete.editorEmail,
     editorIdentityId: complete.m201EditorIdentityId,
     m201BatteryId: complete.m201BatteryId,
     m201InverterId: complete.m201InverterId,
     m201ModuleId: complete.m201ModuleId,
     m201ProjectId: complete.m201ProjectId,
+    f163eProjectId: complete.f163eProjectId,
+    w3WorkspaceId: complete.w3WorkspaceId,
     m201WallboxId: complete.m201WallboxId,
     serverLogPath: complete.serverLogPath,
     workspaceId: complete.m201WorkspaceId,
@@ -143,7 +153,7 @@ test.describe("F16.3 Slice E Cap-Prozent global", () => {
     const state = runtimeState();
 
     // 1) Rabatt-Vorlage per Einstellungs-UI anlegen (m201-Editor hat discounts-Cap).
-    const templateUrl = `/w/${state.workspaceId}/einstellungen/rabatt-vorlagen`;
+    const templateUrl = `/w/${state.w3WorkspaceId}/einstellungen/rabatt-vorlagen`;
     await page.goto(templateUrl);
     await loginWithRealOtp(page, templateUrl);
     await expect(page.getByRole("heading", { name: "Rabatt-Vorlagen", exact: true })).toBeVisible();
@@ -158,7 +168,7 @@ test.describe("F16.3 Slice E Cap-Prozent global", () => {
     await expect(page.getByText("W3-E2E-Cap", { exact: true })).toBeVisible();
 
     // 2) Angebot per Projekt-UI anlegen (M2-01-Muster).
-    const projectPath = `/w/${state.workspaceId}/anfragen/${state.m201ProjectId}`;
+    const projectPath = `/w/${state.w3WorkspaceId}/anfragen/${state.f163eProjectId}`;
     await page.goto(projectPath);
     await expect(page.getByRole("heading", { name: M2_01_E2E_CONTACT, level: 1 })).toBeVisible();
     const createEntry = page.locator('[data-offer-create-state="ready"]');
@@ -170,25 +180,30 @@ test.describe("F16.3 Slice E Cap-Prozent global", () => {
     await page.waitForURL((url) =>
       /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
       && url.searchParams.has("variante"));
-    const initial = await readM201Offer(state);
+    const w3State = {
+      ...state,
+      workspaceId: state.w3WorkspaceId,
+      m201ProjectId: state.f163eProjectId,
+    };
+    const initial = await readM201Offer(w3State);
     const variantId = selectedVariantId(page);
     expect(variantId).toBe(initial.variantId);
 
     // 3) Vorlage übernehmen -> Draft zeigt 12,50 -> speichern -> Total -1250.
     await expect(page.locator('[data-offer-detail-state="loaded"]')).toBeVisible();
     const before = JSON.parse(
-      (await readM201RevisionEvidence(state, initial.offerId, variantId)).snapshotText,
+      (await readM201RevisionEvidence(w3State, initial.offerId, variantId)).snapshotText,
     ) as { totals: { basisNetCents: number } };
     await page.getByLabel("Aus Vorlage übernehmen").selectOption({ label: "W3-E2E-Cap (50 % (max. 10,00 €) · Rabatt)" });
     await expect(page.getByLabel("Deckel €")).toHaveValue("10,00");
     await page.getByRole("button", { name: "Angebotsentwurf speichern" }).click();
     await expect.poll(async () => (
-      await readM201RevisionEvidence(state, initial.offerId, variantId)
+      await readM201RevisionEvidence(w3State, initial.offerId, variantId)
     ).revision, {
       message: "Der Vorlagen-Save muss Revision 2 dauerhaft persistieren.",
       timeout: 15_000,
     }).toBe(2);
-    const evidence = await readM201RevisionEvidence(state, initial.offerId, variantId);
+    const evidence = await readM201RevisionEvidence(w3State, initial.offerId, variantId);
     const snapshot = JSON.parse(evidence.snapshotText) as {
       globalDiscountBps?: unknown;
       globalDiscountCapCents?: unknown;

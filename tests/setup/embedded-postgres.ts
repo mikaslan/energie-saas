@@ -5,7 +5,10 @@
 import EmbeddedPostgres from "embedded-postgres";
 import { createServer } from "node:net";
 import path from "node:path";
-import { Pool } from "pg";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "./pg-pool-drain";
 
 const DATABASE_NAME = "energie_saas_test";
 // initdb-Superuser: nur fürs Bootstrapping der Instanz/Datenbank verwendet,
@@ -81,7 +84,7 @@ export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {
 
     // Nicht-superuser App-Rolle anlegen (s. Kommentar oben) und ihr die
     // Rechte geben, in "public" eigene (RLS-fähige) Tabellen anzulegen.
-    const bootstrapPool = new Pool({
+    const bootstrapPool = createDrainTrackedPool({
       connectionString: `postgres://${SUPERUSER}:${SUPERUSER_PASSWORD}@127.0.0.1:${port}/${DATABASE_NAME}`,
     });
     try {
@@ -112,7 +115,7 @@ export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {
       await bootstrapPool.query(`grant all privileges on schema public to ${APP_ROLE}`);
       await bootstrapPool.query(`grant all privileges on database ${DATABASE_NAME} to ${APP_ROLE}`);
     } finally {
-      await bootstrapPool.end();
+      await endPoolAndWaitForClientRemoval(bootstrapPool);
     }
   } catch (err) {
     // Test-Output bleibt im Erfolgsfall leise; bei einem Fehlschlag brauchen

@@ -17,6 +17,10 @@ import {
   startEmbeddedPostgres,
   type EmbeddedTestDatabase,
 } from "../setup/embedded-postgres";
+import {
+  createDrainTrackedPool,
+  endPoolsAndStopEmbeddedPostgres,
+} from "../setup/pg-pool-drain";
 
 type MigrationJournal = {
   version: string;
@@ -158,7 +162,7 @@ describe.sequential("M2-01 Angebotsspalte: Upgrade und Provisionierung", () => {
 
   beforeAll(async () => {
     embedded = await startEmbeddedPostgres();
-    pool = new Pool({ connectionString: embedded.url, max: 1 });
+    pool = createDrainTrackedPool({ connectionString: embedded.url, max: 1 });
     prefix = migrationPrefixThrough(PRE_M2_INDEX);
     await migrate(drizzle(pool), { migrationsFolder: prefix });
 
@@ -267,8 +271,11 @@ describe.sequential("M2-01 Angebotsspalte: Upgrade und Provisionierung", () => {
   }, 120_000);
 
   afterAll(async () => {
-    await pool?.end().catch(() => undefined);
-    await embedded?.stop().catch(() => undefined);
+    await endPoolsAndStopEmbeddedPostgres(
+      [pool],
+      embedded,
+      "M2-01-Angebotsboard-Teardown fehlgeschlagen",
+    );
     if (prefix) rmSync(prefix, { recursive: true, force: true });
   });
 

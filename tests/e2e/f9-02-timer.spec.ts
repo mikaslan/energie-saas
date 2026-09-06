@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
-import { Pool } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 /**
  * F9.2 Stoppuhr — Chromium-E2E.
@@ -87,7 +90,7 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
 
 async function seedRunningEntry(): Promise<void> {
   const data = state();
-  const pool = new Pool({ connectionString: data.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     await pool.query(
       `insert into time_entry (
@@ -98,7 +101,7 @@ async function seedRunningEntry(): Promise<void> {
       [data.workspaceId, data.mainProjectId, data.editorEmail],
     );
   } finally {
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 

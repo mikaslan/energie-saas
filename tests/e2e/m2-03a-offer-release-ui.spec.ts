@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { sql } from "drizzle-orm";
-import { Pool } from "pg";
 import {
   expect,
   test,
@@ -12,6 +11,10 @@ import {
   type Page,
   type Route,
 } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 
 import {
   claimOfferIssuance,
@@ -363,7 +366,7 @@ function dirtyNavigationDialog(page: Page): Locator {
 }
 
 async function setEditorRole(state: M201RuntimeState, role: "admin" | "editor"): Promise<void> {
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -385,14 +388,14 @@ async function setEditorRole(state: M201RuntimeState, role: "admin" | "editor"):
     throw error;
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
 async function createTemporarySecondApproverMembership(
   state: M203b1RuntimeState,
 ): Promise<TemporarySecondApproverMembership> {
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   const client = await pool.connect();
   const membershipId = randomUUID();
   try {
@@ -438,7 +441,7 @@ async function createTemporarySecondApproverMembership(
     throw error;
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
@@ -447,7 +450,7 @@ async function setTemporarySecondApproverRole(
   membership: TemporarySecondApproverMembership,
   role: "viewer" | "admin",
 ): Promise<void> {
-  const pool = new Pool({ connectionString: state.databaseUrl, max: 1 });
+  const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -472,7 +475,7 @@ async function setTemporarySecondApproverRole(
     throw error;
   } finally {
     client.release();
-    await pool.end();
+    await endPoolAndWaitForClientRemoval(pool);
   }
 }
 
