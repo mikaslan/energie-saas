@@ -1,19 +1,20 @@
 // F7.3 Checklisten-Vorlagen — Template-CRUD + Anwendung am Projekt.
 // Kein "server-only" (konsistent mit F7.2-Modul).
+import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
-  checklistBlocksSchema,
-  type ChecklistBlocksV1,
+  CHECKLIST_SCHEMA_VERSION,
+  editableChecklistBlocksSchema,
+  type EditableChecklistBlocksV2,
 } from "@/lib/integrations/checklists/contract";
 import {
   CHECKLIST_TEMPLATE_SCHEMA_VERSION,
   checklistTemplateDtoSchema,
   checklistTemplateItemsSchema,
-  checklistTemplateTargetsSchema,
   createChecklistTemplateCommandSchema,
   updateChecklistTemplateCommandSchema,
   type ChecklistTemplateDto,
@@ -25,6 +26,7 @@ import {
   ChecklistNotFoundError,
   ChecklistValidationError,
 } from "./errors";
+import { saveProjectChecklist } from "./service";
 
 function requireRead(ctx: ServiceCtx): void {
   if (!can(ctx, "checklist.read")) {
@@ -350,59 +352,66 @@ export async function applyChecklistTemplate(
   const nameById = new Map(components.map((component) => [
     component.componentId, component.componentName,
   ]));
-  const blocks: ChecklistBlocksV1 = [{
+  const blocks: EditableChecklistBlocksV2 = [{
+    id: randomUUID(),
     name: row.name,
     position: 0,
+    visible: true,
     segments: [{
+      id: randomUUID(),
       name: "Material",
       position: 0,
+      visible: true,
       items: itemsParsed.map((item) => ({
+        id: randomUUID(),
         title: `${nameById.get(item.componentId) ?? "Komponente"} × ${item.quantity}`,
         done: false,
+        required: false,
+        visible: true,
       })),
     }],
   }];
-  checklistBlocksSchema.parse(blocks);
+  editableChecklistBlocksSchema.parse(blocks);
+
+  // Apply wird pro Projekt serialisiert. Damit gilt auch ohne den alten
+  // 1:1-Unique-Index: Projekt-Lock -> Existing-Check -> Checklist-Insert.
+  // Parallele Apply-Transaktionen sehen nach dem Lock-Warten den Commit des
+  // Gewinners und die zweite Transaktion endet als fachlicher Conflict.
+  const projectExists = await tx.execute<{ id: string }>(sql`
+    select id from project
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${input.projectId}::uuid
+     limit 1
+     for update
+  `);
+  if (!projectExists.rows[0]) throw new ChecklistNotFoundError(input.projectId);
 
   // 1:1: nur anlegen, wenn noch keine Checkliste existiert (F7.2-Semantik).
   const existing = await tx.execute<{ version: number }>(sql`
     select version from project_checklist
      where workspace_id = ${ctx.workspaceId}::uuid
        and project_id = ${input.projectId}::uuid
+       and phase = 'site_documentation'
      limit 1
   `);
   if (existing.rows[0]) throw new ChecklistConflictError(Number(existing.rows[0].version));
 
-  const projectExists = await tx.execute<{ id: string }>(sql`
-    select id from project
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and id = ${input.projectId}::uuid
-     limit 1
-  `);
-  if (!projectExists.rows[0]) throw new ChecklistNotFoundError(input.projectId);
-
-  try {
-    await tx.execute(sql`
-      insert into project_checklist (
-        workspace_id, project_id, version, blocks, created_by
-      ) values (
-        ${ctx.workspaceId}::uuid, ${input.projectId}::uuid, 1,
-        ${JSON.stringify(blocks)}::jsonb, ${ctx.actor}::uuid
-      )
-    `);
-  } catch (error) {
-    // Kimi-P1-1: parallele Applies kollidieren am 1:1-Unique → Conflict.
-    const code = postgresErrorCode(error);
-    if (code === "23505") throw new ChecklistConflictError("concurrent apply");
-    throw error;
-  }
+  const created = await saveProjectChecklist(tx, ctx, {
+    schemaVersion: CHECKLIST_SCHEMA_VERSION,
+    checklistId: null,
+    projectId: input.projectId,
+    phase: "site_documentation",
+    title: "Baustellendokumentation",
+    baseVersion: 0,
+    blocks,
+  });
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
     aggregateType: "project_checklist",
-    aggregateId: input.projectId,
+    aggregateId: created.checklistId!,
     eventType: "checklist.applied_from_template",
     actor: ctx.actor,
-    payload: { templateId: input.templateId },
+    payload: { templateId: input.templateId, checklistId: created.checklistId },
   });
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId,
@@ -410,7 +419,11 @@ export async function applyChecklistTemplate(
     action: "checklist.write",
     resource: "project_checklist",
     allowed: true,
-    details: { templateId: input.templateId, projectId: input.projectId },
+    details: {
+      templateId: input.templateId,
+      projectId: input.projectId,
+      checklistId: created.checklistId,
+    },
   });
-  return { projectId: input.projectId, version: 1 };
+  return { projectId: input.projectId, version: created.version };
 }

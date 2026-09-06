@@ -190,10 +190,10 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // Journal-Pin folgt dem Wellen-Fortschritt (0066 F16.3-E, 0067 F1-09,
     // 0068 F2-05, 0069 F7-01, 0070 F7-01-UQ, 0071/0072 M115-Grants,
     // 0073 Derive-Cap, 0074 F2.5-Write-Vertrag, 0075 F3.1-Planungsmodi,
-    // 0076 F2.8b Signaturakzeptanz -> Won).
+    // 0076 F2.8b Signaturakzeptanz -> Won, 0077 F7.4 Segmentabschluss).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 76,
-      tag: "0076_f2_08b_signature_acceptance_won",
+      idx: 77,
+      tag: "0077_f7_04_segment_completion",
     });
   });
 

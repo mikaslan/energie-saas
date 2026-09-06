@@ -17,7 +17,7 @@ export type Action =
   | "payment_option.read" | "payment_option.write"
   | "installation.read" | "installation.write"
   | "time.read" | "time.write"
-  | "checklist.read" | "checklist.write"
+  | "checklist.read" | "checklist.write" | "checklist.configure" | "checklist.unlock"
   | "discount_template.read" | "discount_template.write"
   | "subsidy_template.read" | "subsidy_template.write"
   | "calendar.read" | "calendar.write"
@@ -96,6 +96,8 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "time.write":          { minRole: "editor", internalOnly: true },
   "checklist.read":      { minRole: "viewer", internalOnly: true },
   "checklist.write":     { minRole: "editor", internalOnly: true },
+  "checklist.configure": { minRole: "admin", internalOnly: true },
+  "checklist.unlock":    { minRole: "admin", internalOnly: true },
   // F16.3 Slice A: Rabatt-Vorlagen — Schreiben braucht die discounts-
   // Capability (economics.write-Muster), Lesen genügt Viewer.
   "discount_template.read":  { minRole: "viewer", internalOnly: true },

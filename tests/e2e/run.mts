@@ -78,11 +78,13 @@ const AMBIENT_DATABASE_VARIABLES = [
 type SeedData = {
   workspaceId: string;
   foreignWorkspaceId: string;
+  adminIdentityId: string;
   editorIdentityId: string;
   viewerIdentityId: string;
   restrictedEditorIdentityId: string;
   externalEditorIdentityId: string;
   externalIdentityId: string;
+  adminEmail: string;
   editorEmail: string;
   viewerEmail: string;
   restrictedEditorEmail: string;
@@ -126,6 +128,7 @@ type E2EState = Pick<
   SeedData,
   | "workspaceId"
   | "foreignWorkspaceId"
+  | "adminEmail"
   | "editorEmail"
   | "viewerEmail"
   | "restrictedEditorEmail"
@@ -143,6 +146,7 @@ type E2EState = Pick<
   mainProjectId: string;
   m111bProjectId: string;
   f703ProjectId: string;
+  f704ProjectId: string;
   f22ProjectId: string;
   f22ControlProjectId: string;
   f25ProjectId: string;
@@ -782,6 +786,14 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
       );
       await client.query(
         "insert into user_identity (id, email) values ($1::uuid, $2)",
+        [data.adminIdentityId, data.adminEmail],
+      );
+      await client.query(
+        "insert into membership (workspace_id, user_id, role) values ($1::uuid, $2::uuid, 'admin')",
+        [data.workspaceId, data.adminIdentityId],
+      );
+      await client.query(
+        "insert into user_identity (id, email) values ($1::uuid, $2)",
         [data.editorIdentityId, data.editorEmail],
       );
       await client.query(
@@ -919,12 +931,14 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
            '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
               "assign_projects":true,"convert_phase":true,"discounts":true}'::jsonb),
                 ($1::uuid, $3::uuid, 'viewer', '{}'::jsonb),
-                ($1::uuid, $4::uuid, 'editor', '{}'::jsonb)`,
+                ($1::uuid, $4::uuid, 'editor', '{}'::jsonb),
+                ($1::uuid, $5::uuid, 'admin', '{}'::jsonb)`,
         [
           data.w3WorkspaceId,
           data.editorIdentityId,
           data.viewerIdentityId,
           data.restrictedEditorIdentityId,
+          data.adminIdentityId,
         ],
       );
     });
@@ -1245,11 +1259,13 @@ function createSeedData(): SeedData {
   return {
     workspaceId: randomUUID(),
     foreignWorkspaceId: randomUUID(),
+    adminIdentityId: randomUUID(),
     editorIdentityId: randomUUID(),
     viewerIdentityId: randomUUID(),
     restrictedEditorIdentityId: randomUUID(),
     externalEditorIdentityId: randomUUID(),
     externalIdentityId: randomUUID(),
+    adminEmail: `f7-admin-${runSuffix}@example.test`,
     editorEmail: `m1-05-editor-${runSuffix}@example.test`,
     viewerEmail: `m1-05-viewer-${runSuffix}@example.test`,
     restrictedEditorEmail: `m108b-editor-ohne-preisrecht-${runSuffix}@example.test`,
@@ -1485,6 +1501,12 @@ async function main(): Promise<number> {
     w3Credential,
     intakePayload("Wilma W3 Nachholblock", `w3-f703-${randomUUID()}`, true),
   );
+  const w3F704Lead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("Klara W3 Segmentabschluss", `w3-f704-${randomUUID()}`, true),
+  );
   const w3F22Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
@@ -1564,6 +1586,7 @@ async function main(): Promise<number> {
   throwIfInterrupted();
 
   writeState(statePath, {
+    adminEmail: seedData.adminEmail,
     baseURL: server.baseURL,
     databaseUrl: embedded.superuserUrl,
     foreignProjectId: foreignLead.projectId,
@@ -1572,6 +1595,7 @@ async function main(): Promise<number> {
     m111bProjectId: m111bLead.projectId,
     m111bWorkspaceId: seedData.m111bWorkspaceId,
     f703ProjectId: w3F703Lead.projectId,
+    f704ProjectId: w3F704Lead.projectId,
     f22ProjectId: w3F22Seed.projectId,
     f22ControlProjectId: w3F22ControlSeed.projectId,
     f25ProjectId: w3F25Seed.projectId,

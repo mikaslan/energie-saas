@@ -259,6 +259,247 @@ const CHECKLIST_RELATIONS = [
   "project_checklist",
 ] as const;
 
+const F704_CHECKLIST_RELATIONS = [
+  "project_checklist",
+  "project_checklist_segment_completion",
+] as const;
+const F704_CHECKLIST_COLUMN_ROWS = [
+  "project_checklist.phase:10:text:true:-:-:true:" +
+    "'site_documentation'::text:pg_catalog.default",
+  "project_checklist.title:11:text:true:-:-:true:" +
+    "'Baustellendokumentation'::text:pg_catalog.default",
+  "project_checklist_segment_completion.id:1:uuid:true:-:-:true:" +
+    "gen_random_uuid():-",
+  "project_checklist_segment_completion.workspace_id:2:uuid:true:-:-:false:-:-",
+  "project_checklist_segment_completion.checklist_id:3:uuid:true:-:-:false:-:-",
+  "project_checklist_segment_completion.segment_id:4:uuid:true:-:-:false:-:-",
+  "project_checklist_segment_completion.completed_at:5:" +
+    "timestamp with time zone:true:-:-:true:now():-",
+  "project_checklist_segment_completion.completed_by:6:uuid:true:-:-:false:-:-",
+] as const;
+const F704_CHECKLIST_COLUMNS = F704_CHECKLIST_COLUMN_ROWS.map(
+  (row) => row.split(":", 1)[0],
+);
+const F704_CHECKLIST_COLUMN_INVENTORY = [
+  "project_checklist.id",
+  "project_checklist.workspace_id",
+  "project_checklist.project_id",
+  "project_checklist.version",
+  "project_checklist.blocks",
+  "project_checklist.created_by",
+  "project_checklist.updated_by",
+  "project_checklist.created_at",
+  "project_checklist.updated_at",
+  "project_checklist.phase",
+  "project_checklist.title",
+  "project_checklist_segment_completion.id",
+  "project_checklist_segment_completion.workspace_id",
+  "project_checklist_segment_completion.checklist_id",
+  "project_checklist_segment_completion.segment_id",
+  "project_checklist_segment_completion.completed_at",
+  "project_checklist_segment_completion.completed_by",
+] as const;
+const F704_CHECKLIST_RUNTIME_ROUTINES = [
+  "public.save_project_checklist_v2(uuid, uuid, uuid, text, text, integer, jsonb)",
+  "public.complete_project_checklist_segment(uuid, uuid, uuid, uuid, integer)",
+  "public.unlock_project_checklist_segment(uuid, uuid, uuid, uuid, integer)",
+] as const;
+const F704_CHECKLIST_PRIVATE_ROUTINES = [
+  "public._f704_valid_clean_text(text, integer)",
+  "public._f704_valid_checklist_blocks(jsonb)",
+  "public._f704_checklist_structure(jsonb)",
+  "public._f704_actor_checklist_role(uuid)",
+  "public._f704_assert_workspace(uuid)",
+] as const;
+const F704_CHECKLIST_ROUTINES = [
+  ...F704_CHECKLIST_RUNTIME_ROUTINES,
+  ...F704_CHECKLIST_PRIVATE_ROUTINES,
+] as const;
+const F704_CHECKLIST_FUNCTION_NAMES = F704_CHECKLIST_ROUTINES.map(
+  (signature) => signature.slice("public.".length, signature.indexOf("(")),
+);
+const F704_CHECKLIST_COMPLETION_POLICY_SHA256 =
+  "eae0d413b07a466bdaf1acb27d6c2fe854f9325e07e069be030155d39fdbb688";
+const F704_CHECKLIST_CONSTRAINT_ROWS = [
+  "project_checklist:project_checklist_blocks_v2_ck:c:true:true:false:false:" +
+    "false:true:0:-:CHECK (_f704_valid_checklist_blocks(blocks))",
+  "project_checklist:project_checklist_phase_ck:c:true:true:false:false:" +
+    "false:true:0:-:CHECK ((phase = ANY (ARRAY['qualification'::text, " +
+    "'consultation'::text, 'site_documentation'::text])))",
+  "project_checklist:project_checklist_title_ck:c:true:true:false:false:" +
+    "false:true:0:-:CHECK (_f704_valid_clean_text(title, 200))",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_checklist_fk:f:true:true:false:false:" +
+    "true:true:0:sac:FOREIGN KEY (workspace_id, checklist_id) REFERENCES " +
+    "project_checklist(workspace_id, id) ON DELETE CASCADE",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_pkey:p:true:true:false:false:" +
+    "true:true:0:-:PRIMARY KEY (id)",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_segment_uq:u:true:true:false:false:" +
+    "true:true:0:-:UNIQUE (workspace_id, checklist_id, segment_id)",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_time_ck:c:true:true:false:false:" +
+    "false:true:0:-:CHECK (isfinite(completed_at))",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_workspace_id_fk:f:true:true:false:false:" +
+    "true:true:0:saa:FOREIGN KEY (workspace_id) REFERENCES workspace(id)",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_ws_id_uq:u:true:true:false:false:" +
+    "true:true:0:-:UNIQUE (workspace_id, id)",
+] as const;
+const F704_CHECKLIST_CONSTRAINT_INVENTORY = [
+  "project_checklist:project_checklist_blocks_ck",
+  "project_checklist:project_checklist_blocks_not_null",
+  "project_checklist:project_checklist_blocks_v2_ck",
+  "project_checklist:project_checklist_created_at_not_null",
+  "project_checklist:project_checklist_created_by_not_null",
+  "project_checklist:project_checklist_id_not_null",
+  "project_checklist:project_checklist_phase_ck",
+  "project_checklist:project_checklist_phase_not_null",
+  "project_checklist:project_checklist_pkey",
+  "project_checklist:project_checklist_project_fk",
+  "project_checklist:project_checklist_project_id_not_null",
+  "project_checklist:project_checklist_timestamps_ck",
+  "project_checklist:project_checklist_title_ck",
+  "project_checklist:project_checklist_title_not_null",
+  "project_checklist:project_checklist_updated_at_not_null",
+  "project_checklist:project_checklist_version_ck",
+  "project_checklist:project_checklist_version_not_null",
+  "project_checklist:project_checklist_workspace_id_fk",
+  "project_checklist:project_checklist_workspace_id_not_null",
+  "project_checklist:project_checklist_ws_id_uq",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_checklist_fk",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_checklist_id_not_null",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_completed_at_not_null",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_completed_by_not_null",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_id_not_null",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_pkey",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_segment_id_not_null",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_segment_uq",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_time_ck",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_workspace_id_fk",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_workspace_id_not_null",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_ws_id_uq",
+] as const;
+const F704_CHECKLIST_INDEX_INDICATORS = [
+  "project_checklist_ws_project_phase_idx",
+  "project_checklist_segment_completion_checklist_idx",
+  "project_checklist_segment_completion_pkey",
+  "project_checklist_segment_completion_segment_uq",
+  "project_checklist_segment_completion_ws_id_uq",
+] as const;
+const F704_CHECKLIST_INDEX_ROWS = [
+  "project_checklist:project_checklist_pkey:true:true:false:true:true:true:" +
+    "false:false:false:true:false:btree:1:1:0:id:pg_catalog.uuid_ops:" +
+    "-:-:-:CREATE UNIQUE INDEX project_checklist_pkey ON " +
+    "public.project_checklist USING btree (id)",
+  "project_checklist:project_checklist_ws_id_uq:true:false:false:true:true:" +
+    "true:false:false:false:true:false:btree:2:2:0 0:" +
+    "workspace_id|id:pg_catalog.uuid_ops|pg_catalog.uuid_ops:" +
+    "-|-:-:-:CREATE UNIQUE INDEX project_checklist_ws_id_uq ON " +
+    "public.project_checklist USING btree (workspace_id, id)",
+  "project_checklist:project_checklist_ws_project_phase_idx:false:false:false:" +
+    "true:true:true:false:false:false:true:false:btree:3:3:0 0 0:" +
+    "workspace_id|project_id|phase:" +
+    "pg_catalog.uuid_ops|pg_catalog.uuid_ops|pg_catalog.text_ops:" +
+    "-|-|pg_catalog.default:-:-:CREATE INDEX " +
+    "project_checklist_ws_project_phase_idx ON public.project_checklist " +
+    "USING btree (workspace_id, project_id, phase)",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_checklist_idx:false:false:false:" +
+    "true:true:true:false:false:false:true:false:btree:3:3:0 0 0:" +
+    "workspace_id|checklist_id|completed_at:" +
+    "pg_catalog.uuid_ops|pg_catalog.uuid_ops|pg_catalog.timestamptz_ops:" +
+    "-|-|-:-:-:CREATE INDEX " +
+    "project_checklist_segment_completion_checklist_idx ON " +
+    "public.project_checklist_segment_completion USING btree " +
+    "(workspace_id, checklist_id, completed_at)",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_pkey:true:true:false:true:true:true:" +
+    "false:false:false:true:false:btree:1:1:0:id:pg_catalog.uuid_ops:" +
+    "-:-:-:CREATE UNIQUE INDEX " +
+    "project_checklist_segment_completion_pkey ON " +
+    "public.project_checklist_segment_completion USING btree (id)",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_segment_uq:true:false:false:true:true:" +
+    "true:false:false:false:true:false:btree:3:3:0 0 0:" +
+    "workspace_id|checklist_id|segment_id:" +
+    "pg_catalog.uuid_ops|pg_catalog.uuid_ops|pg_catalog.uuid_ops:" +
+    "-|-|-:-:-:CREATE UNIQUE INDEX " +
+    "project_checklist_segment_completion_segment_uq ON " +
+    "public.project_checklist_segment_completion USING btree " +
+    "(workspace_id, checklist_id, segment_id)",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_ws_id_uq:true:false:false:true:true:" +
+    "true:false:false:false:true:false:btree:2:2:0 0:" +
+    "workspace_id|id:pg_catalog.uuid_ops|pg_catalog.uuid_ops:" +
+    "-|-:-:-:CREATE UNIQUE INDEX " +
+    "project_checklist_segment_completion_ws_id_uq ON " +
+    "public.project_checklist_segment_completion USING btree (workspace_id, id)",
+] as const;
+const F704_CHECKLIST_FUNCTION_SHA256 = {
+  actorRole: "2327d748e395d0a596c129657a32bfc255e74a681459036f612ddcd5a0e2a050",
+  assertWorkspace: "b726ed4b961b6e583e11179e32a8f34a10e76330352e5fc5c54c86cc6bc9b633",
+  checklistStructure: "de1708bfbcaf0df724181bcae5fa112a3d3505c168745977dd0193816e1ced56",
+  cleanText: "f29466a887843140336a98a1398b916d4d6ec3554f1db864dad1a5b9c5fba345",
+  completeSegment: "76a7a2709c7cb01c2a49ae4ebd859d81db50308d067d4918850cfaab86d35c98",
+  saveChecklist: "8090f3ff4e3a3b79a513147a4cc2d3fd03f2a270757c4a7f6309a4f263aed470",
+  unlockSegment: "328076b50403adaa2a571f9b640058b49122d2bb9978ad969ad0048590588f27",
+  validBlocks: "d989d14f05b07456a37fa5c9393bfc9a1726f245ca3743b7e0387a86e6c8ba92",
+} as const;
+const F704_CHECKLIST_FUNCTION_SECURITY_ROWS = [
+  "_f704_actor_checklist_role(uuid):text:app_owner:plpgsql:f:s:" +
+    "false:false:false:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.actorRole,
+  "_f704_assert_workspace(uuid):void:app_owner:plpgsql:f:s:" +
+    "false:false:false:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.assertWorkspace,
+  "_f704_checklist_structure(jsonb):jsonb:app_owner:sql:f:i:" +
+    "false:false:true:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.checklistStructure,
+  "_f704_valid_checklist_blocks(jsonb):boolean:app_owner:plpgsql:f:i:" +
+    "false:false:true:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.validBlocks,
+  "_f704_valid_clean_text(text, integer):boolean:app_owner:plpgsql:f:i:" +
+    "false:false:true:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.cleanText,
+  "complete_project_checklist_segment(uuid, uuid, uuid, uuid, integer):jsonb:" +
+    "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.completeSegment,
+  "save_project_checklist_v2(uuid, uuid, uuid, text, text, integer, jsonb):jsonb:" +
+    "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.saveChecklist,
+  "unlock_project_checklist_segment(uuid, uuid, uuid, uuid, integer):jsonb:" +
+    "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.unlockSegment,
+] as const;
+const F704_CHECKLIST_POLICY_ROWS = [
+  "project_checklist:tenant_isolation:" +
+    "711797a558f37e71658c8adc89f6e18dd7355c16581b4c06ab61baffb68b522d",
+  "project_checklist_segment_completion:tenant_isolation:" +
+    F704_CHECKLIST_COMPLETION_POLICY_SHA256,
+] as const;
+const F704_CHECKLIST_TRIGGER_ROWS = [
+  "project_checklist:project_checklist_no_truncate:34:O:public:" +
+    "forbid_mutation::-:0",
+  "project_checklist_segment_completion:" +
+    "project_checklist_segment_completion_no_truncate:34:O:public:" +
+    "forbid_mutation::-:0",
+] as const;
+
 const CALENDAR_RELATIONS = [
   "calendar",
 ] as const;
@@ -1120,6 +1361,635 @@ async function hasAtomicSignatureAcceptanceWonContract(
   return true;
 }
 
+async function hasAtomicF704ChecklistContract(
+  client: PoolClient,
+  hasChecklists: boolean,
+  label: string,
+): Promise<boolean> {
+  const presence = await client.query<{
+    completionRelation: boolean;
+    columnCount: number;
+    routineCount: number;
+    constraintCount: number;
+    indexCount: number;
+    triggerCount: number;
+    rowSecurity: boolean;
+    forceRowSecurity: boolean;
+    policyCount: number;
+    legacyIndexRemoved: boolean;
+    legacyConstraintRemoved: boolean;
+  }>(`
+    select
+      pg_catalog.to_regclass(
+        'public.project_checklist_segment_completion'
+      ) is not null as "completionRelation",
+      (
+        select pg_catalog.count(*)::integer
+          from pg_catalog.pg_attribute as attribute
+          join pg_catalog.pg_class as relation
+            on relation.oid = attribute.attrelid
+          join pg_catalog.pg_namespace as namespace
+            on namespace.oid = relation.relnamespace
+         where namespace.nspname = 'public'
+           and attribute.attnum > 0
+           and not attribute.attisdropped
+           and relation.relname || '.' || attribute.attname = any($1::text[])
+      ) as "columnCount",
+      (
+        select pg_catalog.count(*)::integer
+          from pg_catalog.unnest($2::text[]) as expected(signature)
+         where pg_catalog.to_regprocedure(expected.signature) is not null
+      ) as "routineCount",
+      (
+        select pg_catalog.count(*)::integer
+          from pg_catalog.pg_constraint as constraint_record
+         where constraint_record.connamespace = 'public'::pg_catalog.regnamespace
+           and constraint_record.conname = any($3::text[])
+      ) as "constraintCount",
+      (
+        select pg_catalog.count(*)::integer
+          from pg_catalog.pg_class as index_record
+          join pg_catalog.pg_namespace as namespace
+            on namespace.oid = index_record.relnamespace
+         where namespace.nspname = 'public'
+           and index_record.relkind = 'i'
+           and index_record.relname = any($4::text[])
+      ) as "indexCount",
+      (
+        select pg_catalog.count(*)::integer
+          from (values
+            ('project_checklist', 'project_checklist_no_truncate'),
+            ('project_checklist_segment_completion',
+              'project_checklist_segment_completion_no_truncate')
+          ) as expected(relation_name, trigger_name)
+          join pg_catalog.pg_trigger as trigger_record
+            on trigger_record.tgrelid = pg_catalog.to_regclass(
+              'public.' || expected.relation_name
+            )
+           and trigger_record.tgname = expected.trigger_name
+           and not trigger_record.tgisinternal
+           and trigger_record.tgenabled = 'O'
+          join pg_catalog.pg_proc as trigger_function
+            on trigger_function.oid = trigger_record.tgfoid
+          join pg_catalog.pg_namespace as function_schema
+            on function_schema.oid = trigger_function.pronamespace
+           and function_schema.nspname = 'public'
+           and trigger_function.proname = 'forbid_mutation'
+      ) as "triggerCount",
+      coalesce((
+        select relation.relrowsecurity
+          from pg_catalog.pg_class as relation
+         where relation.oid = pg_catalog.to_regclass(
+           'public.project_checklist_segment_completion'
+         )
+      ), false) as "rowSecurity",
+      coalesce((
+        select relation.relforcerowsecurity
+          from pg_catalog.pg_class as relation
+         where relation.oid = pg_catalog.to_regclass(
+           'public.project_checklist_segment_completion'
+         )
+      ), false) as "forceRowSecurity",
+      (
+        select pg_catalog.count(*)::integer
+          from pg_catalog.pg_policies as policy
+         where policy.schemaname = 'public'
+           and policy.tablename = 'project_checklist_segment_completion'
+           and policy.policyname = 'tenant_isolation'
+      ) as "policyCount",
+      pg_catalog.to_regclass(
+        'public.project_checklist_ws_project_idx'
+      ) is null as "legacyIndexRemoved",
+      not exists (
+        select 1
+          from pg_catalog.pg_constraint as constraint_record
+         where constraint_record.conrelid = pg_catalog.to_regclass(
+           'public.project_checklist'
+         )
+           and constraint_record.conname = 'project_checklist_ws_project_uq'
+      ) as "legacyConstraintRemoved"
+  `, [
+    F704_CHECKLIST_COLUMNS,
+    F704_CHECKLIST_ROUTINES,
+    F704_CHECKLIST_CONSTRAINT_ROWS.map((row) => row.split(":", 2)[1]),
+    F704_CHECKLIST_INDEX_INDICATORS,
+  ]);
+  const row = presence.rows[0];
+  const hasAnyF704Indicator = Boolean(
+    row?.completionRelation
+    || (row?.columnCount ?? 0) > 0
+    || (row?.routineCount ?? 0) > 0
+    || (row?.constraintCount ?? 0) > 0
+    || (row?.indexCount ?? 0) > 0
+    || (row?.triggerCount ?? 0) > 0
+    || row?.rowSecurity
+    || row?.forceRowSecurity
+    || (row?.policyCount ?? 0) > 0
+    || (hasChecklists && (row?.legacyIndexRemoved || row?.legacyConstraintRemoved))
+  );
+  if (!hasAnyF704Indicator) return false;
+
+  const columns = await client.query<{
+    columnName: string;
+    attributeNumber: number;
+    dataType: string;
+    notNull: boolean;
+    identity: string;
+    generated: string;
+    hasDefault: boolean;
+    defaultExpression: string;
+    collation: string;
+  }>(`
+    select relation.relname || '.' || attribute.attname as "columnName",
+           attribute.attnum::integer as "attributeNumber",
+           pg_catalog.format_type(
+             attribute.atttypid,
+             attribute.atttypmod
+           ) as "dataType",
+           attribute.attnotnull as "notNull",
+           coalesce(
+             nullif(attribute.attidentity::text, ''),
+             '-'
+           ) as identity,
+           coalesce(
+             nullif(attribute.attgenerated::text, ''),
+             '-'
+           ) as generated,
+           attribute.atthasdef as "hasDefault",
+           coalesce(
+             pg_catalog.pg_get_expr(
+               attribute_default.adbin,
+               attribute_default.adrelid,
+               false
+             ),
+             '-'
+           ) as "defaultExpression",
+           case
+             when attribute.attcollation = 0 then '-'
+             else collation_namespace.nspname || '.' || collation_record.collname
+           end as collation
+      from pg_catalog.pg_attribute as attribute
+      join pg_catalog.pg_class as relation
+        on relation.oid = attribute.attrelid
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = relation.relnamespace
+      left join pg_catalog.pg_attrdef as attribute_default
+        on attribute_default.adrelid = attribute.attrelid
+       and attribute_default.adnum = attribute.attnum
+      left join pg_catalog.pg_collation as collation_record
+        on collation_record.oid = attribute.attcollation
+      left join pg_catalog.pg_namespace as collation_namespace
+        on collation_namespace.oid = collation_record.collnamespace
+     where namespace.nspname = 'public'
+       and attribute.attnum > 0
+       and not attribute.attisdropped
+       and relation.relname = any($1::text[])
+     order by relation.relname, attribute.attnum
+  `, [F704_CHECKLIST_RELATIONS]);
+  const expectedColumnNames = new Set<string>(F704_CHECKLIST_COLUMNS);
+  const columnRows = columns.rows
+    .filter((column) => expectedColumnNames.has(column.columnName))
+    .map((column) => [
+      column.columnName,
+      String(column.attributeNumber),
+      column.dataType,
+      String(column.notNull),
+      column.identity,
+      column.generated,
+      String(column.hasDefault),
+      column.defaultExpression,
+      column.collation,
+    ].join(":"));
+  const columnInventory = columns.rows.map((column) => column.columnName);
+
+  const constraints = await client.query<{
+    relationName: string;
+    constraintName: string;
+    constraintType: string;
+    validated: boolean;
+    enforced: boolean;
+    deferrable: boolean;
+    initiallyDeferred: boolean;
+    noInherit: boolean;
+    isLocal: boolean;
+    inheritCount: number;
+    period: boolean;
+    fkSemantics: string;
+    definition: string;
+  }>(`
+    select relation.relname as "relationName",
+           constraint_record.conname as "constraintName",
+           constraint_record.contype as "constraintType",
+           constraint_record.convalidated as validated,
+           constraint_record.conenforced as enforced,
+           constraint_record.condeferrable as deferrable,
+           constraint_record.condeferred as "initiallyDeferred",
+           constraint_record.connoinherit as "noInherit",
+           constraint_record.conislocal as "isLocal",
+           constraint_record.coninhcount::integer as "inheritCount",
+           constraint_record.conperiod as period,
+           case
+             when constraint_record.contype = 'f' then
+               constraint_record.confmatchtype::text ||
+               constraint_record.confupdtype::text ||
+               constraint_record.confdeltype::text
+             else '-'
+           end as "fkSemantics",
+           pg_catalog.pg_get_constraintdef(
+             constraint_record.oid,
+             false
+           ) as definition
+      from pg_catalog.pg_constraint as constraint_record
+      join pg_catalog.pg_class as relation
+        on relation.oid = constraint_record.conrelid
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = relation.relnamespace
+     where namespace.nspname = 'public'
+       and relation.relname = any($1::text[])
+     order by relation.relname, constraint_record.conname
+  `, [F704_CHECKLIST_RELATIONS]);
+  const expectedConstraintNames = new Set(
+    F704_CHECKLIST_CONSTRAINT_ROWS.map((value) => value.split(":", 2)[1]),
+  );
+  const exactConstraintPeriods = constraints.rows
+    .filter((constraint) => expectedConstraintNames.has(constraint.constraintName))
+    .every((constraint) => !constraint.period);
+  const constraintRows = constraints.rows
+    .filter((constraint) => expectedConstraintNames.has(constraint.constraintName))
+    .map((constraint) => [
+      constraint.relationName,
+      constraint.constraintName,
+      constraint.constraintType,
+      String(constraint.validated),
+      String(constraint.enforced),
+      String(constraint.deferrable),
+      String(constraint.initiallyDeferred),
+      String(constraint.noInherit),
+      String(constraint.isLocal),
+      String(constraint.inheritCount),
+      constraint.fkSemantics,
+      constraint.definition,
+    ].join(":"));
+  const constraintInventory = constraints.rows.map(
+    (constraint) => `${constraint.relationName}:${constraint.constraintName}`,
+  );
+
+  const indexes = await client.query<{
+    relationName: string;
+    indexName: string;
+    unique: boolean;
+    primary: boolean;
+    exclusion: boolean;
+    valid: boolean;
+    ready: boolean;
+    live: boolean;
+    checkXmin: boolean;
+    replicaIdentity: boolean;
+    clustered: boolean;
+    immediate: boolean;
+    nullsNotDistinct: boolean;
+    accessMethod: string;
+    keyAttributeCount: number;
+    attributeCount: number;
+    options: string;
+    keyDefinitions: string[];
+    operatorClasses: string[];
+    collations: string[];
+    predicate: string | null;
+    expressions: string | null;
+    definition: string;
+  }>(`
+    select relation.relname as "relationName",
+           index_relation.relname as "indexName",
+           index_record.indisunique as unique,
+           index_record.indisprimary as primary,
+           index_record.indisexclusion as exclusion,
+           index_record.indisvalid as valid,
+           index_record.indisready as ready,
+           index_record.indislive as live,
+           index_record.indcheckxmin as "checkXmin",
+           index_record.indisreplident as "replicaIdentity",
+           index_record.indisclustered as clustered,
+           index_record.indimmediate as immediate,
+           index_record.indnullsnotdistinct as "nullsNotDistinct",
+           access_method.amname as "accessMethod",
+           index_record.indnkeyatts::integer as "keyAttributeCount",
+           index_record.indnatts::integer as "attributeCount",
+           index_record.indoption::text as options,
+           array(
+             select pg_catalog.pg_get_indexdef(
+               index_record.indexrelid,
+               key_position_record.key_position,
+               false
+             )
+               from pg_catalog.generate_series(
+                 1,
+                 index_record.indnatts
+               ) as key_position_record(key_position)
+              order by key_position_record.key_position
+           ) as "keyDefinitions",
+           array(
+             select opclass_namespace.nspname || '.' || opclass.opcname
+               from pg_catalog.unnest(index_record.indclass::oid[])
+                 with ordinality as key_record(opclass_oid, key_position)
+               join pg_catalog.pg_opclass as opclass
+                 on opclass.oid = key_record.opclass_oid
+               join pg_catalog.pg_namespace as opclass_namespace
+                 on opclass_namespace.oid = opclass.opcnamespace
+              order by key_record.key_position
+           ) as "operatorClasses",
+           array(
+             select case
+                      when key_record.collation_oid = 0 then '-'
+                      else collation_namespace.nspname || '.' ||
+                        collation_record.collname
+                    end
+               from pg_catalog.unnest(index_record.indcollation::oid[])
+                 with ordinality as key_record(collation_oid, key_position)
+               left join pg_catalog.pg_collation as collation_record
+                 on collation_record.oid = key_record.collation_oid
+               left join pg_catalog.pg_namespace as collation_namespace
+                 on collation_namespace.oid = collation_record.collnamespace
+              order by key_record.key_position
+           ) as collations,
+           pg_catalog.pg_get_expr(
+             index_record.indpred,
+             index_record.indrelid,
+             false
+           ) as predicate,
+           pg_catalog.pg_get_expr(
+             index_record.indexprs,
+             index_record.indrelid,
+             false
+           ) as expressions,
+           pg_catalog.pg_get_indexdef(index_record.indexrelid) as definition
+      from pg_catalog.pg_index as index_record
+      join pg_catalog.pg_class as index_relation
+        on index_relation.oid = index_record.indexrelid
+      join pg_catalog.pg_class as relation
+        on relation.oid = index_record.indrelid
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = index_relation.relnamespace
+      join pg_catalog.pg_am as access_method
+        on access_method.oid = index_relation.relam
+     where namespace.nspname = 'public'
+       and index_relation.relkind = 'i'
+       and relation.relname = any($1::text[])
+     order by relation.relname, index_relation.relname
+  `, [F704_CHECKLIST_RELATIONS]);
+  const indexRows = indexes.rows.map((index) => [
+    index.relationName,
+    index.indexName,
+    String(index.unique),
+    String(index.primary),
+    String(index.exclusion),
+    String(index.valid),
+    String(index.ready),
+    String(index.live),
+    String(index.checkXmin),
+    String(index.replicaIdentity),
+    String(index.clustered),
+    String(index.immediate),
+    String(index.nullsNotDistinct),
+    index.accessMethod,
+    String(index.keyAttributeCount),
+    String(index.attributeCount),
+    index.options,
+    index.keyDefinitions.join("|"),
+    index.operatorClasses.join("|"),
+    index.collations.join("|"),
+    index.predicate ?? "-",
+    index.expressions ?? "-",
+    index.definition,
+  ].join(":"));
+
+  const functionSecurity = await client.query<{
+    proname: string;
+    args: string;
+    resultType: string;
+    owner: string;
+    language: string;
+    prokind: string;
+    volatility: string;
+    securityDefiner: boolean;
+    leakproof: boolean;
+    strict: boolean;
+    parallel: string;
+    config: string[] | null;
+    source: string;
+  }>(`
+    select routine.proname,
+           pg_catalog.oidvectortypes(routine.proargtypes) as args,
+           pg_catalog.pg_get_function_result(routine.oid) as "resultType",
+           owner.rolname as owner,
+           language.lanname as language,
+           routine.prokind,
+           routine.provolatile as volatility,
+           routine.prosecdef as "securityDefiner",
+           routine.proleakproof as leakproof,
+           routine.proisstrict as strict,
+           routine.proparallel as parallel,
+           routine.proconfig as config,
+           routine.prosrc as source
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+      join pg_catalog.pg_roles as owner
+        on owner.oid = routine.proowner
+      join pg_catalog.pg_language as language
+        on language.oid = routine.prolang
+     where namespace.nspname = 'public'
+       and routine.proname = any($1::text[])
+     order by routine.proname, routine.oid
+  `, [F704_CHECKLIST_FUNCTION_NAMES]);
+  const functionSecurityRows = functionSecurity.rows.map((routine) => [
+    `${routine.proname}(${routine.args})`,
+    routine.resultType,
+    routine.owner,
+    routine.language,
+    routine.prokind,
+    routine.volatility,
+    String(routine.securityDefiner),
+    String(routine.leakproof),
+    String(routine.strict),
+    routine.parallel,
+    routine.config?.join("|") ?? "-",
+    sha256(routine.source),
+  ].join(":"));
+
+  const policies = await client.query<{
+    tableName: string;
+    policyName: string;
+    permissive: string;
+    roles: string;
+    command: string;
+    qualifier: string;
+    withCheck: string;
+  }>(`
+    select policy.tablename as "tableName",
+           policy.policyname as "policyName",
+           policy.permissive,
+           policy.roles::text as roles,
+           policy.cmd as command,
+           coalesce(policy.qual, '-') as qualifier,
+           coalesce(policy.with_check, '-') as "withCheck"
+      from pg_catalog.pg_policies as policy
+     where policy.schemaname = 'public'
+       and policy.tablename = any($1::text[])
+     order by policy.tablename, policy.policyname
+  `, [F704_CHECKLIST_RELATIONS]);
+  const policyRows = policies.rows.map((policy) => {
+    const value = [
+      policy.tableName,
+      policy.policyName,
+      policy.permissive,
+      policy.roles,
+      policy.command,
+      policy.qualifier,
+      policy.withCheck,
+    ].join("|");
+    return `${policy.tableName}:${policy.policyName}:${sha256(value)}`;
+  });
+
+  const triggers = await client.query<{
+    relationName: string;
+    triggerName: string;
+    type: number;
+    enabled: string;
+    functionSchema: string;
+    functionName: string;
+    args: string;
+    whenExpression: string;
+    constraintOid: string;
+  }>(`
+    select relation.relname as "relationName",
+           trigger_record.tgname as "triggerName",
+           trigger_record.tgtype::integer as type,
+           trigger_record.tgenabled as enabled,
+           function_schema.nspname as "functionSchema",
+           trigger_function.proname as "functionName",
+           pg_catalog.encode(trigger_record.tgargs, 'hex') as args,
+           case
+             when trigger_record.tgqual is null then '-'
+             else pg_catalog.regexp_replace(
+               pg_catalog.pg_get_triggerdef(trigger_record.oid, false),
+               '^.* WHEN \\((.*)\\) EXECUTE FUNCTION .*$',
+               '\\1'
+             )
+           end as "whenExpression",
+           trigger_record.tgconstraint::text as "constraintOid"
+      from pg_catalog.pg_trigger as trigger_record
+      join pg_catalog.pg_class as relation
+        on relation.oid = trigger_record.tgrelid
+      join pg_catalog.pg_namespace as relation_schema
+        on relation_schema.oid = relation.relnamespace
+      join pg_catalog.pg_proc as trigger_function
+        on trigger_function.oid = trigger_record.tgfoid
+      join pg_catalog.pg_namespace as function_schema
+        on function_schema.oid = trigger_function.pronamespace
+     where relation_schema.nspname = 'public'
+       and relation.relname = any($1::text[])
+       and not trigger_record.tgisinternal
+     order by relation.relname, trigger_record.tgname
+  `, [F704_CHECKLIST_RELATIONS]);
+  const triggerRows = triggers.rows.map((trigger) => [
+    trigger.relationName,
+    trigger.triggerName,
+    String(trigger.type),
+    trigger.enabled,
+    trigger.functionSchema,
+    trigger.functionName,
+    trigger.args,
+    trigger.whenExpression,
+    trigger.constraintOid === "0" ? "0" : "constraint",
+  ].join(":"));
+
+  const relationSecurity = await client.query<{
+    relationName: string;
+    rowSecurity: boolean;
+    forceRowSecurity: boolean;
+  }>(`
+    select relation.relname as "relationName",
+           relation.relrowsecurity as "rowSecurity",
+           relation.relforcerowsecurity as "forceRowSecurity"
+      from pg_catalog.pg_class as relation
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = relation.relnamespace
+     where namespace.nspname = 'public'
+       and relation.relname = any($1::text[])
+       and relation.relkind in ('r', 'p')
+     order by relation.relname
+  `, [F704_CHECKLIST_RELATIONS]);
+  const relationSecurityRows = relationSecurity.rows.map((relation) =>
+    `${relation.relationName}:${relation.rowSecurity}:${relation.forceRowSecurity}`
+  );
+
+  const exactConstraints =
+    exactConstraintPeriods
+    && JSON.stringify(constraintRows) === JSON.stringify(F704_CHECKLIST_CONSTRAINT_ROWS);
+  const exactIndexes =
+    JSON.stringify(indexRows) === JSON.stringify(F704_CHECKLIST_INDEX_ROWS);
+  const exactColumns =
+    JSON.stringify(columnRows) === JSON.stringify(F704_CHECKLIST_COLUMN_ROWS);
+  const exactColumnInventory =
+    JSON.stringify(columnInventory) === JSON.stringify(F704_CHECKLIST_COLUMN_INVENTORY);
+  const exactConstraintInventory =
+    JSON.stringify(constraintInventory)
+      === JSON.stringify(F704_CHECKLIST_CONSTRAINT_INVENTORY);
+  const exactFunctionSecurity =
+    JSON.stringify(functionSecurityRows)
+      === JSON.stringify(F704_CHECKLIST_FUNCTION_SECURITY_ROWS);
+  const exactPolicies =
+    JSON.stringify(policyRows) === JSON.stringify(F704_CHECKLIST_POLICY_ROWS);
+  const exactTriggers =
+    JSON.stringify(triggerRows) === JSON.stringify(F704_CHECKLIST_TRIGGER_ROWS);
+  const exactRelationSecurity = JSON.stringify(relationSecurityRows) === JSON.stringify([
+    "project_checklist:true:true",
+    "project_checklist_segment_completion:true:true",
+  ]);
+
+  const complete = Boolean(
+    hasChecklists
+    && row?.completionRelation
+    && row.columnCount === F704_CHECKLIST_COLUMNS.length
+    && exactColumns
+    && exactColumnInventory
+    && row.routineCount === F704_CHECKLIST_ROUTINES.length
+    && row.constraintCount === F704_CHECKLIST_CONSTRAINT_ROWS.length
+    && row.indexCount === F704_CHECKLIST_INDEX_INDICATORS.length
+    && exactConstraints
+    && exactConstraintInventory
+    && exactIndexes
+    && exactFunctionSecurity
+    && exactPolicies
+    && exactTriggers
+    && exactRelationSecurity
+    && row.triggerCount === 2
+    && row.rowSecurity
+    && row.forceRowSecurity
+    && row.policyCount === 1
+    && row.legacyIndexRemoved
+    && row.legacyConstraintRemoved
+  );
+  if (!complete) {
+    throw new Error(
+      `${label} ist nur teilweise vorhanden: ${JSON.stringify({
+        ...row,
+        columnRows,
+        columnInventory,
+        constraintRows,
+        constraintInventory,
+        indexRows,
+        functionSecurityRows,
+        policyRows,
+        triggerRows,
+        relationSecurityRows,
+      })}`,
+    );
+  }
+  return true;
+}
+
 async function hasAtomicPublicColumnSet(
   client: PoolClient,
   columns: readonly string[],
@@ -1194,6 +2064,16 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
   // Spalte, aber ohne 0074-Marker/Guard darf niemals den Runtime-Grant erhalten.
   const hasVariantPaymentWriteContract =
     await requireVariantPaymentWriteContractMarker(client, "Rollen-ACL-Manifest");
+  const hasChecklists = await hasAtomicPublicRelationSet(
+    client,
+    CHECKLIST_RELATIONS,
+    "Rollen-ACL-Manifest: F7-02-Checklisten",
+  );
+  const hasF704ChecklistCompletion = await hasAtomicF704ChecklistContract(
+    client,
+    hasChecklists,
+    "Rollen-ACL-Manifest: F7-04-Segmentabschluss",
+  );
   await applyDatabaseAclContract(client);
   await executeContractStatements(client, APPLY_ROLE_CONTRACT_SQL, "Rollen-ACL-Manifest");
 
@@ -1601,19 +2481,39 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
-  const hasChecklists = await hasAtomicPublicRelationSet(
-    client,
-    CHECKLIST_RELATIONS,
-    "Rollen-ACL-Manifest: F7-02-Checklisten",
-  );
   if (hasChecklists) {
-    await client.query(`
-      revoke all privileges on
-        public.project_checklist
-        from public, app_migrator, app_runtime, app_system, app_auth,
-          app_worker, app_erasure, app_membership_writer, identity_reconciler;
-      grant select, insert, update on public.project_checklist to app_runtime
-    `);
+    if (hasF704ChecklistCompletion) {
+      await client.query(`
+        -- F7.4: direkte Mutationen sind fuer alle Dienstrollen geschlossen.
+        -- app_runtime liest Projektion + Segmentstempel und schreibt nur ueber
+        -- die drei atomaren SECURITY-DEFINER-Kapseln.
+        revoke all privileges on
+          public.project_checklist,
+          public.project_checklist_segment_completion
+          from public, app_migrator, app_runtime, app_system, app_auth,
+            app_worker, app_erasure, app_membership_writer, identity_reconciler;
+        grant select on
+          public.project_checklist,
+          public.project_checklist_segment_completion
+          to app_runtime;
+
+        revoke execute on function
+          ${F704_CHECKLIST_ROUTINES.join(",\n          ")}
+          from public, app_migrator, app_runtime, app_system, app_auth,
+            app_worker, app_erasure, app_membership_writer, identity_reconciler;
+        grant execute on function
+          ${F704_CHECKLIST_RUNTIME_ROUTINES.join(",\n          ")}
+          to app_runtime
+      `);
+    } else {
+      await client.query(`
+        revoke all privileges on
+          public.project_checklist
+          from public, app_migrator, app_runtime, app_system, app_auth,
+            app_worker, app_erasure, app_membership_writer, identity_reconciler;
+        grant select, insert, update on public.project_checklist to app_runtime
+      `);
+    }
   }
 
   const hasPortal = await hasAtomicPublicRelationSet(
@@ -2738,6 +3638,11 @@ export async function verifyRoleContract(
     CHECKLIST_RELATIONS,
     "Rollenvertrag: F7-02-Checklisten",
   );
+  const hasF704ChecklistCompletion = await hasAtomicF704ChecklistContract(
+    client,
+    hasChecklists,
+    "Rollenvertrag: F7-04-Segmentabschluss",
+  );
 
   const hasPortal = await hasAtomicPublicRelationSet(
     client,
@@ -2987,7 +3892,9 @@ export async function verifyRoleContract(
       ...(hasTimeTracking ? TIME_TRACKING_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
-      ...(hasChecklists ? CHECKLIST_RELATIONS.map(
+      ...(hasChecklists ? (
+        hasF704ChecklistCompletion ? F704_CHECKLIST_RELATIONS : CHECKLIST_RELATIONS
+      ).map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCalendars ? CALENDAR_RELATIONS.map(
@@ -3199,6 +4106,9 @@ export async function verifyRoleContract(
         "create_portal_invite:app_owner",
         "resolve_portal_public_view:app_owner",
       ] : []),
+      ...(hasF704ChecklistCompletion ? F704_CHECKLIST_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
       ...(hasOfferRelease ? [
         "_m203a_approved_candidate_result:app_owner",
         "_m203a_authorize_offer_release:app_owner",
@@ -3411,6 +4321,7 @@ export async function verifyRoleContract(
           "true:false:false:u:search_path=pg_catalog:" +
           F208B_TERMINAL_SIGNATURE_INTEGRITY_SHA256,
       ] : []),
+      ...(hasF704ChecklistCompletion ? F704_CHECKLIST_FUNCTION_SECURITY_ROWS : []),
       ...(hasCatalogImport ? [
         "_m108b_authorize_catalog_import_runtime(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:340a6059972954e2866e8042e18c5fb6b2ef96f975f61be36519abe221d3e91a",
         "_m108b_catalog_import_actor_auth_code(uuid, uuid):text:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:fae878a570c7daab47dcf89a1e809eaee16f541b3108bac48c39626718289d37",
@@ -4104,7 +5015,9 @@ export async function verifyRoleContract(
       ...(hasTimeTracking ? TIME_TRACKING_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
-      ...(hasChecklists ? CHECKLIST_RELATIONS.map(
+      ...(hasChecklists ? (
+        hasF704ChecklistCompletion ? F704_CHECKLIST_RELATIONS : CHECKLIST_RELATIONS
+      ).map(
         (relation) => `${relation}:true:true`,
       ) : []),
       ...(hasCalendars ? CALENDAR_RELATIONS.map(
@@ -4415,9 +5328,14 @@ export async function verifyRoleContract(
           "time_entry:tenant_isolation:c3d1d966d152a34ed5e59bafe19e807ee4c780b8994e67054e18ea93209c2bb2",
           "time_entry_revision:tenant_isolation:f3bc495928f60c9359d9a88f9b5b21644cc3edca53f183988fc676689c8633a1",
         ] : []),
-        ...(hasChecklists ? [
-          "project_checklist:tenant_isolation:711797a558f37e71658c8adc89f6e18dd7355c16581b4c06ab61baffb68b522d",
-        ] : []),
+        ...(hasChecklists
+          ? hasF704ChecklistCompletion
+            ? F704_CHECKLIST_POLICY_ROWS
+            : [
+                "project_checklist:tenant_isolation:" +
+                  "711797a558f37e71658c8adc89f6e18dd7355c16581b4c06ab61baffb68b522d",
+              ]
+          : []),
         ...(hasCalendars ? [
           "calendar:tenant_isolation:57296ca13f33ffe335cd1cde9f96a0024470521481da054313e6843d9ca6ce25",
         ] : []),
@@ -4681,6 +5599,7 @@ export async function verifyRoleContract(
         "project_note:project_note_mutation_guard:31:O:public:_m113_guard_project_note::-:0",
         "project_note:project_note_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
+      ...(hasF704ChecklistCompletion ? F704_CHECKLIST_TRIGGER_ROWS : []),
       ...(hasProjectAppointments ? [
         "calendar_category:calendar_category_no_truncate:34:O:public:forbid_mutation::-:0",
         "project_appointment:project_appointment_mutation_guard:31:O:public:_m115_guard_project_appointment::-:0",
@@ -4922,11 +5841,17 @@ export async function verifyRoleContract(
       ...(hasTimeTracking ? [
         "app_runtime:time_entry:DELETE:app_owner:false",
       ] : []),
-      ...(hasChecklists ? CHECKLIST_RELATIONS.flatMap((relation) => [
-        `app_runtime:${relation}:INSERT:app_owner:false`,
-        `app_runtime:${relation}:SELECT:app_owner:false`,
-        `app_runtime:${relation}:UPDATE:app_owner:false`,
-      ]) : []),
+      ...(hasChecklists ? (
+        hasF704ChecklistCompletion
+          ? F704_CHECKLIST_RELATIONS.map(
+            (relation) => `app_runtime:${relation}:SELECT:app_owner:false`,
+          )
+          : CHECKLIST_RELATIONS.flatMap((relation) => [
+            `app_runtime:${relation}:INSERT:app_owner:false`,
+            `app_runtime:${relation}:SELECT:app_owner:false`,
+            `app_runtime:${relation}:UPDATE:app_owner:false`,
+          ])
+      ) : []),
       ...(hasCalendars ? CALENDAR_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
@@ -5204,6 +6129,10 @@ export async function verifyRoleContract(
         "app_runtime:create_portal_invite(uuid, uuid, integer, bytea):EXECUTE:app_owner:false",
         "app_runtime:resolve_portal_public_view(bytea):EXECUTE:app_owner:false",
       ] : []),
+      ...(hasF704ChecklistCompletion ? F704_CHECKLIST_RUNTIME_ROUTINES.map(
+        (signature) =>
+          `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`,
+      ) : []),
       ...(hasCatalogImport ? [
         "app_runtime:cancel_catalog_import_v1(uuid, uuid):EXECUTE:app_owner:false",
         "app_runtime:prepare_catalog_import_v1(uuid, uuid, jsonb):EXECUTE:app_owner:false",
@@ -5499,6 +6428,47 @@ export async function verifyRoleContract(
     ))
   ) {
     throw new Error(`Funktions-ACL weicht vom Rollenvertrag ab: ${JSON.stringify(acl)}`);
+  }
+
+  if (hasF704ChecklistCompletion) {
+    const principals = ["public", ...APP_ROLES] as const;
+    const checklistFunctionAcl = await client.query<{
+      principal: string;
+      routine_signature: string;
+      may_execute: boolean | null;
+    }>(`
+      with principals(principal) as (
+        select * from pg_catalog.unnest($1::text[])
+      ),
+      routines(routine_signature) as (
+        select * from pg_catalog.unnest($2::text[])
+      )
+      select principal.principal,
+             routine.routine_signature,
+             pg_catalog.has_function_privilege(
+               principal.principal,
+               pg_catalog.to_regprocedure(routine.routine_signature),
+               'EXECUTE'
+             ) as may_execute
+        from principals as principal
+        cross join routines as routine
+       order by principal.principal, routine.routine_signature
+    `, [principals, F704_CHECKLIST_ROUTINES]);
+    equalRows(
+      checklistFunctionAcl.rows.map((row) =>
+        `${row.principal}:${row.routine_signature}:` +
+          `${row.may_execute === null ? "NULL" : String(row.may_execute)}`,
+      ),
+      principals.flatMap((principal) => F704_CHECKLIST_ROUTINES.map((routine) => {
+        const isOwner = principal === "app_owner";
+        const isRuntimeGrant = principal === "app_runtime"
+          && F704_CHECKLIST_RUNTIME_ROUTINES.includes(
+            routine as (typeof F704_CHECKLIST_RUNTIME_ROUTINES)[number],
+          );
+        return `${principal}:${routine}:${String(isOwner || isRuntimeGrant)}`;
+      })),
+      "F7-04 effektive Funktions-ACLs",
+    );
   }
 
   if (hasOfferRelease) {

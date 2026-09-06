@@ -23,6 +23,7 @@ import {
   endPoolsAndStopEmbeddedPostgres,
 } from "../tests/setup/pg-pool-drain";
 import {
+  applyRoleContract,
   dbRoleProvisioningTopologyFromEnvironment,
   type DbRoleProvisioningTopology,
   verifyDefaultPrivilegeContract,
@@ -1786,18 +1787,228 @@ try {
   }
   ok("Live-Vertrag lehnt semantischen Policy-Drift ab", policyDriftRejected);
 
-  await superuser.query("alter table public.membership disable trigger membership_dml_guard");
-  const triggerDriftClient = await superuser.connect();
-  let triggerDriftRejected = false;
-  try {
-    await verifyRoleContract(triggerDriftClient);
-  } catch (error) {
-    triggerDriftRejected = String(error).includes("Live-Triggervertrag");
-  } finally {
-    triggerDriftClient.release();
-    await superuser.query("alter table public.membership enable trigger membership_dml_guard");
+  const f704CompletionPresence = await superuser.query<{ present: boolean }>(`
+    select pg_catalog.to_regclass(
+      'public.project_checklist_segment_completion'
+    ) is not null as present
+  `);
+  if (f704CompletionPresence.rows[0]?.present) {
+  async function f704DriftFailsBeforeAclMutation(): Promise<boolean> {
+    const driftClient = await superuser.connect();
+    let rejected = false;
+    let preexistingAclDriftUntouched = false;
+    try {
+      await driftClient.query("set role app_owner");
+      await applyRoleContract(driftClient);
+    } catch (error) {
+      rejected = String(error).includes(
+        "F7-04-Segmentabschluss ist nur teilweise vorhanden",
+      );
+      const privilege = await driftClient.query<{ present: boolean }>(`
+        select pg_catalog.has_table_privilege(
+          'app_runtime', 'public.auth_user', 'SELECT'
+        ) as present
+      `);
+      preexistingAclDriftUntouched = privilege.rows[0]?.present === true;
+    } finally {
+      await driftClient.query("reset role").catch(() => undefined);
+      driftClient.release();
+    }
+    return rejected && preexistingAclDriftUntouched;
   }
-  ok("Live-Vertrag lehnt deaktivierten Schutztrigger ab", triggerDriftRejected);
+
+  const f704FailClosedResults: boolean[] = [];
+  try {
+    await superuser.query(`
+      set role app_owner;
+      grant select on public.auth_user to app_runtime;
+      alter table public.project_checklist_segment_completion disable trigger
+        project_checklist_segment_completion_no_truncate;
+      reset role;
+    `);
+    f704FailClosedResults.push(await f704DriftFailsBeforeAclMutation());
+  } finally {
+    await superuser.query(`
+      set role app_owner;
+      alter table public.project_checklist_segment_completion enable trigger
+        project_checklist_segment_completion_no_truncate;
+      revoke select on public.auth_user from app_runtime;
+      reset role;
+    `);
+  }
+
+  try {
+    await superuser.query(`
+      set role app_owner;
+      grant select on public.auth_user to app_runtime;
+      alter table public.project_checklist
+        alter column phase drop not null,
+        alter column title set default 'Drift',
+        add column f704_drift text;
+      reset role;
+    `);
+    f704FailClosedResults.push(await f704DriftFailsBeforeAclMutation());
+  } finally {
+    await superuser.query(`
+      set role app_owner;
+      alter table public.project_checklist
+        alter column phase set not null,
+        alter column title set default 'Baustellendokumentation',
+        drop column f704_drift;
+      revoke select on public.auth_user from app_runtime;
+      reset role;
+    `);
+  }
+
+  try {
+    await superuser.query(`
+      set role app_owner;
+      grant select on public.auth_user to app_runtime;
+      alter table public.project_checklist
+        drop constraint project_checklist_title_ck,
+        add constraint project_checklist_title_ck check (true) not valid,
+        add constraint project_checklist_f704_drift_ck check (true);
+      alter table public.project_checklist_segment_completion
+        drop constraint project_checklist_segment_completion_checklist_fk,
+        drop constraint project_checklist_segment_completion_segment_uq,
+        add constraint project_checklist_segment_completion_checklist_fk
+          foreign key (workspace_id) references public.workspace(id) not valid,
+        add constraint project_checklist_segment_completion_segment_uq
+          unique (segment_id);
+      reset role;
+    `);
+    f704FailClosedResults.push(await f704DriftFailsBeforeAclMutation());
+  } finally {
+    await superuser.query(`
+      set role app_owner;
+      alter table public.project_checklist
+        drop constraint project_checklist_title_ck,
+        drop constraint project_checklist_f704_drift_ck,
+        add constraint project_checklist_title_ck
+          check (public._f704_valid_clean_text(title, 200));
+      alter table public.project_checklist_segment_completion
+        drop constraint project_checklist_segment_completion_checklist_fk,
+        drop constraint project_checklist_segment_completion_segment_uq,
+        add constraint project_checklist_segment_completion_segment_uq
+          unique (workspace_id, checklist_id, segment_id),
+        add constraint project_checklist_segment_completion_checklist_fk
+          foreign key (workspace_id, checklist_id)
+          references public.project_checklist(workspace_id, id)
+          on delete cascade;
+      revoke select on public.auth_user from app_runtime;
+      reset role;
+    `);
+  }
+
+  try {
+    await superuser.query(`
+      set role app_owner;
+      grant select on public.auth_user to app_runtime;
+      drop index public.project_checklist_segment_completion_checklist_idx;
+      create unique index project_checklist_segment_completion_checklist_idx
+        on public.project_checklist_segment_completion
+          (checklist_id, workspace_id, completed_at desc)
+        where completed_at > '-infinity'::timestamptz;
+      create unique index project_checklist_f704_drift_uq
+        on public.project_checklist (workspace_id, project_id);
+      reset role;
+      -- Test-only Katalogdrift simuliert abgebrochenen CONCURRENTLY-Bau.
+      update pg_catalog.pg_index
+         set indisvalid = false,
+             indisready = false
+       where indexrelid =
+         'public.project_checklist_segment_completion_checklist_idx'::pg_catalog.regclass;
+    `);
+    f704FailClosedResults.push(await f704DriftFailsBeforeAclMutation());
+  } finally {
+    await superuser.query(`
+      set role app_owner;
+      drop index if exists public.project_checklist_f704_drift_uq;
+      drop index if exists public.project_checklist_segment_completion_checklist_idx;
+      create index project_checklist_segment_completion_checklist_idx
+        on public.project_checklist_segment_completion
+          (workspace_id, checklist_id, completed_at);
+      revoke select on public.auth_user from app_runtime;
+      reset role;
+    `);
+  }
+
+  try {
+    await superuser.query(`
+      set role app_owner;
+      grant select on public.auth_user to app_runtime;
+      alter function public.save_project_checklist_v2(
+        uuid, uuid, uuid, text, text, integer, jsonb
+      ) security invoker;
+      reset role;
+    `);
+    f704FailClosedResults.push(await f704DriftFailsBeforeAclMutation());
+  } finally {
+    await superuser.query(`
+      set role app_owner;
+      alter function public.save_project_checklist_v2(
+        uuid, uuid, uuid, text, text, integer, jsonb
+      ) security definer;
+      revoke select on public.auth_user from app_runtime;
+      reset role;
+    `);
+  }
+
+  try {
+    await superuser.query(`
+      set role app_owner;
+      grant select on public.auth_user to app_runtime;
+      alter policy tenant_isolation
+        on public.project_checklist_segment_completion
+        using (true)
+        with check (true);
+      reset role;
+    `);
+    f704FailClosedResults.push(await f704DriftFailsBeforeAclMutation());
+  } finally {
+    await superuser.query(`
+      set role app_owner;
+      alter policy tenant_isolation
+        on public.project_checklist_segment_completion
+        using (
+          workspace_id = nullif(
+            pg_catalog.current_setting('app.workspace_id', true),
+            ''
+          )::uuid
+        )
+        with check (
+          workspace_id = nullif(
+            pg_catalog.current_setting('app.workspace_id', true),
+            ''
+          )::uuid
+        );
+      revoke select on public.auth_user from app_runtime;
+      reset role;
+    `);
+  }
+
+  ok(
+    "F7.4-Schema/Funktions/Policy-Drift scheitert vor ACL-Mutation",
+    f704FailClosedResults.length === 6 && f704FailClosedResults.every(Boolean),
+  );
+  } else {
+    await superuser.query(
+      "alter table public.membership disable trigger membership_dml_guard",
+    );
+    const triggerDriftClient = await superuser.connect();
+    let triggerDriftRejected = false;
+    try {
+      await verifyRoleContract(triggerDriftClient);
+    } catch (error) {
+      triggerDriftRejected = String(error).includes("Live-Triggervertrag");
+    } finally {
+      triggerDriftClient.release();
+      await superuser.query(
+        "alter table public.membership enable trigger membership_dml_guard",
+      );
+    }
+    ok("Live-Vertrag lehnt deaktivierten Schutztrigger ab", triggerDriftRejected);
+  }
 
   await superuser.query(`
     drop trigger membership_dml_guard on public.membership;

@@ -1,8 +1,13 @@
 # F7.2 Checklisten — Slice A: Projekt-Checkliste mit Blocks/Segmenten/Items
 
-Status: **SPECIFIED** · Lane: `codex/f7-02-checklists` · Migration: 0051
+Status: **IMPLEMENTED / DURCH F7.4 TEILWEISE ABGELÖST** · Migrationen: 0051, 0077
 Basis: Modulkatalog F7.2 (aktive Checkliste am Projekt) · **OBSERVED**
 Live-Sweep 2026-09-03 + Direkt-Proben 2026-09-04 (read-only GETs).
+
+> Der historische Slice-A-Vertrag unten dokumentiert den damaligen Stand.
+> Migration 0077 hebt insbesondere 1:1-Identität, caller-schreibbare
+> Abschlussdaten, Direkt-DML und Item-basierten Gesamtfortschritt auf. Der
+> aktuelle Vertrag steht in `F7-04-segment-complete.md` und ADR 0024.
 
 ## 1. Discovery-Quellen (Clean Room)
 
@@ -56,8 +61,8 @@ radio/image/description, Komponenten-Referenzen in Items, Checklist-PDF
 | created_at / updated_at | timestamptz | Standard |
 
 Blocks-Validierung (Service, ESTIMATE-Form): Array 0..50; Block
-`{name 1..200, position ≥ 0, segments 0..100}`; Segment
-`{name 1..200, position ≥ 0, items 0..500}`; Item
+`{name 1..200, position 0..2.147.483.647, segments 0..100}`; Segment
+`{name 1..200, position 0..2.147.483.647, items 0..500}`; Item
 `{title 1..500, done boolean}`. NFKC + keine Steuerzeichen; keine
 erfundenen Inhalte (leere Checkliste startet leer).
 

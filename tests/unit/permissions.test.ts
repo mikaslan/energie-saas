@@ -128,6 +128,12 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
   "checklist.write": {
     expect: { viewer: [false, false], editor: [true, true], admin: [true, true] },
   },
+  "checklist.configure": {
+    expect: { viewer: [false, false], editor: [false, false], admin: [true, true] },
+  },
+  "checklist.unlock": {
+    expect: { viewer: [false, false], editor: [false, false], admin: [true, true] },
+  },
   "discount_template.read": {
     expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
   },
@@ -252,12 +258,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 52 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 54 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(52);
+    expect(Object.keys(MATRIX)).toHaveLength(54);
   });
 
-  it("52 Actions × 3 Rollen × Capability an/aus", () => {
+  it("54 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];

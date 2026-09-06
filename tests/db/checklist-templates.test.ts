@@ -32,6 +32,26 @@ type Fixture = {
   projectId: string;
 };
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function waitForDatabaseLock(pid: number): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const waiting = await testPool.query<{ wait_event_type: string | null }>(`
+      select wait_event_type from pg_stat_activity where pid = $1
+    `, [pid]);
+    if (waiting.rows[0]?.wait_event_type === "Lock") return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Apply-Backend ${pid} wartete nicht auf den Projekt-Lock`);
+}
+
 async function seedWorkspace(label: string): Promise<Fixture> {
   const workspaceId = randomUUID();
   const editorId = randomUUID();
@@ -308,6 +328,125 @@ describe("F7.3 Checklisten-Vorlagen (PostgreSQL)", () => {
     }>;
     const items = blocks[0]!.segments[0]!.items;
     expect(items.map((entry) => entry.title)).toEqual(["WR-10K × 3", "AAA-ZUERST × 1"]);
+  });
+
+  it("F703-DB-04c: paralleles Apply erzeugt genau eine atomare Checkliste", async () => {
+    const template = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createChecklistTemplate(tx, ctx, templateCommand(fixture)),
+    );
+
+    const releaseFirst = deferred<void>();
+    const firstApplied = deferred<void>();
+    const first = withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      async (tx, ctx) => {
+        const result = await applyChecklistTemplate(tx, ctx, {
+          templateId: template.id,
+          projectId: fixture.projectId,
+        });
+        firstApplied.resolve();
+        await releaseFirst.promise;
+        return result;
+      },
+    );
+    await Promise.race([
+      firstApplied.promise,
+      first.then(
+        () => Promise.reject(new Error("Erstes Apply commitete vor der Race-Freigabe")),
+        (error: unknown) => Promise.reject(error),
+      ),
+    ]);
+
+    const secondBackend = deferred<number>();
+    const second = withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      async (tx, ctx) => {
+        const backend = await tx.execute<{ pid: number }>(sql`
+          select pg_backend_pid()::int as pid
+        `);
+        secondBackend.resolve(backend.rows[0]!.pid);
+        return applyChecklistTemplate(tx, ctx, {
+          templateId: template.id,
+          projectId: fixture.projectId,
+        });
+      },
+    );
+    const secondPid = await secondBackend.promise;
+    let lockError: unknown;
+    try {
+      await waitForDatabaseLock(secondPid);
+    } catch (error) {
+      lockError = error;
+    } finally {
+      releaseFirst.resolve();
+    }
+
+    const outcomes = await Promise.allSettled([first, second]);
+    if (lockError) throw lockError;
+    const fulfilled = outcomes.filter(
+      (outcome): outcome is PromiseFulfilledResult<{ projectId: string; version: number }> =>
+        outcome.status === "fulfilled",
+    );
+    const rejected = outcomes.filter(
+      (outcome): outcome is PromiseRejectedResult => outcome.status === "rejected",
+    );
+
+    expect(fulfilled).toHaveLength(1);
+    expect(fulfilled[0]!.value).toEqual({ projectId: fixture.projectId, version: 1 });
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason).toBeInstanceOf(ChecklistConflictError);
+
+    const persisted = await withAuthorizedTenantOn(
+      testPool, fixture.viewerId, fixture.workspaceId,
+      (tx) => tx.execute<{
+        checklist_count: number;
+        created_event_count: number;
+        applied_event_count: number;
+        created_audit_count: number;
+        applied_audit_count: number;
+      }>(sql`
+        select
+          (select count(*)::int
+             from project_checklist checklist_record
+            where checklist_record.workspace_id = ${fixture.workspaceId}::uuid
+              and checklist_record.project_id = ${fixture.projectId}::uuid
+              and checklist_record.phase = 'site_documentation') as checklist_count,
+          (select count(*)::int
+             from domain_events event_record
+            where event_record.workspace_id = ${fixture.workspaceId}::uuid
+              and event_record.aggregate_type = 'project_checklist'
+              and event_record.event_type = 'checklist.created'
+              and event_record.payload->>'projectId' = ${fixture.projectId}) as created_event_count,
+          (select count(*)::int
+             from domain_events event_record
+            where event_record.workspace_id = ${fixture.workspaceId}::uuid
+              and event_record.aggregate_type = 'project_checklist'
+              and event_record.event_type = 'checklist.applied_from_template'
+              and event_record.payload->>'templateId' = ${template.id}) as applied_event_count,
+          (select count(*)::int
+             from audit_log audit_record
+            where audit_record.workspace_id = ${fixture.workspaceId}::uuid
+              and audit_record.action = 'checklist.write'
+              and audit_record.resource = 'project_checklist'
+              and audit_record.details->>'projectId' = ${fixture.projectId}
+              and NOT (audit_record.details ? 'templateId')) as created_audit_count,
+          (select count(*)::int
+             from audit_log audit_record
+            where audit_record.workspace_id = ${fixture.workspaceId}::uuid
+              and audit_record.action = 'checklist.write'
+              and audit_record.resource = 'project_checklist'
+              and audit_record.details->>'projectId' = ${fixture.projectId}
+              and audit_record.details->>'templateId' = ${template.id}) as applied_audit_count
+      `),
+    );
+    expect(persisted.rows).toEqual([{
+      checklist_count: 1,
+      created_event_count: 1,
+      applied_event_count: 1,
+      created_audit_count: 1,
+      applied_audit_count: 1,
+    }]);
   });
 
   it("F703-DB-05: Cross-Workspace-Isolation + Viewer schreib-blockiert", async () => {

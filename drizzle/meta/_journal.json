@@ -540,6 +540,13 @@
       "when": 1788666067871,
       "tag": "0076_f2_08b_signature_acceptance_won",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1788674008656,
+      "tag": "0077_f7_04_segment_completion",
+      "breakpoints": true
     }
   ]
 }

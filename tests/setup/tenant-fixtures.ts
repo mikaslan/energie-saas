@@ -1817,6 +1817,47 @@ async function fixtureSignatureViewLog(tx: TenantTx, wsId: string): Promise<void
   `);
 }
 
+async function fixtureProjectChecklistGraph(
+  tx: TenantTx,
+  wsId: string,
+): Promise<{ checklistId: string; segmentId: string; completedBy: string }> {
+  const { userId } = await fixtureMembership(tx, wsId, "editor");
+  await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+  const { projectId } = await fixtureProjectGraph(tx, wsId);
+  const checklistId = randomUUID();
+  const blockId = randomUUID();
+  const segmentId = randomUUID();
+  const itemId = randomUUID();
+  const blocks = [{
+    id: blockId,
+    name: "Installation",
+    position: 0,
+    visible: true,
+    segments: [{
+      id: segmentId,
+      name: "Montage",
+      position: 0,
+      visible: true,
+      items: [{
+        id: itemId,
+        title: "Dokumentation abgeschlossen",
+        done: true,
+        required: true,
+        visible: true,
+      }],
+    }],
+  }];
+  await tx.execute(sql`
+    insert into project_checklist (
+      id, workspace_id, project_id, version, blocks, created_by
+    ) values (
+      ${checklistId}::uuid, ${wsId}::uuid, ${projectId}::uuid, 1,
+      ${JSON.stringify(blocks)}::jsonb, ${userId}::uuid
+    )
+  `);
+  return { checklistId, segmentId, completedBy: userId };
+}
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -2010,47 +2051,17 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     `);
   },
   project_checklist: async (tx, wsId) => {
-    const contactId = randomUUID();
-    const siteId = randomUUID();
-    const projectId = randomUUID();
-    const userId = randomUUID();
+    await fixtureProjectChecklistGraph(tx, wsId);
+  },
+  project_checklist_segment_completion: async (tx, wsId) => {
+    const { checklistId, segmentId, completedBy } =
+      await fixtureProjectChecklistGraph(tx, wsId);
     await tx.execute(sql`
-      insert into user_identity (id, email)
-      values (${userId}::uuid, ${`${userId}@fixture.local`})
-    `);
-    await tx.execute(sql`
-      insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
-      values (${contactId}::uuid, ${wsId}::uuid, 'Checklist Fixture', 'Check', 'Fixture', ${`${contactId}@fixture.local`}, ${`${contactId}@fixture.local`})
-    `);
-    await tx.execute(sql`
-      insert into site (id, workspace_id, contact_id, label)
-      values (${siteId}::uuid, ${wsId}::uuid, ${contactId}::uuid, 'Checklist Fixture Site')
-    `);
-    await tx.execute(sql`
-      insert into project (
-        id, workspace_id, contact_id, site_id, kanban_board_id,
-        kanban_column_id, name, source_key
-      )
-      select ${projectId}::uuid, ${wsId}::uuid, ${contactId}::uuid,
-             ${siteId}::uuid, board.id, intake_column.id,
-             'Checklist Fixture Projekt', 'fixture'
-      from kanban_board board
-      join kanban_column intake_column
-        on intake_column.workspace_id = board.workspace_id
-        and intake_column.board_id = board.id
-        and intake_column.is_intake = true
-        and intake_column.archived_at is null
-      where board.workspace_id = ${wsId}::uuid
-        and board.scope = 'residential'
-        and board.is_default = true
-        and board.archived_at is null
-    `);
-    await tx.execute(sql`
-      insert into project_checklist (
-        workspace_id, project_id, version, blocks, created_by
+      insert into project_checklist_segment_completion (
+        workspace_id, checklist_id, segment_id, completed_by
       ) values (
-        ${wsId}::uuid, ${projectId}::uuid, 1,
-        '[]'::jsonb, ${userId}::uuid
+        ${wsId}::uuid, ${checklistId}::uuid, ${segmentId}::uuid,
+        ${completedBy}::uuid
       )
     `);
   },

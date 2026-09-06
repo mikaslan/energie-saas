@@ -998,3 +998,30 @@
 - Nächster belegter Slice: F7.4 Segment-Complete/Admin-Unlock, vorher
   F7.2-Modell auf stabile Segment-ID, Required-Gate und phasenfähige
   Checklist-Identität korrigieren.
+
+## Turn 62 — F7.4 Segment-Complete/Admin-Unlock REVIEWED/VERIFIED
+
+- Öffentliche Reonic-Doku und OpenAPI v3.11.0 belegen Segmentabschluss mit
+  Zeit/Actor, sichtbares Required-Gate, segmentbasierten Fortschritt,
+  Admin-only Unlock und Werterhalt. Exakte Write-/Replay-Payload bleibt
+  mangels öffentlichem Endpunkt `ESTIMATE`.
+- Migration 0077: stabile UUIDs für Block/Segment/Item, mehrere Checklisten je
+  Projekt, Phase/Titel, separate Completion-Relation sowie drei atomare
+  SECURITY-DEFINER-Kapseln. Runtime besitzt nur SELECT; Unlock verändert
+  weder Antworten noch Installation/Folgeaggregate.
+- Adversariale Funde geschlossen: Template-Apply-Race, fälschbares `done` auf
+  verborgenen Pfaden, JavaScript/PostgreSQL-Unicode-Drift, quadratische
+  UUID-Prüfung und unvollständige Rollen-Metadatenpins. Einzelne
+  UTF-16-Surrogathälften sind fail-closed. Grenzen: 500 Knoten und 900.000
+  JSON-Bytes bei explizit 1 MiB Action-Body; der echte ~800-KB-Worstcase ist
+  durch den Browsertransport gespeichert worden. Positionen teilen exakt die
+  nichtnegative int32-Grenze in App und DB.
+- Rückwärtskompatibilität: echter 0→0076-Rollenpräfix 88/88 + PG18 5/5;
+  M204-Strict 20/20. Fokussiert 76/76 Vitest, F7.3 1/1 und F7.4 2/2
+  Chromium. Gesamt: `npm run check` Exit 0 mit 240/240 Dateien, 2.179
+  bestanden/1 übersprungen; Build, 90-Tabellen-Generator ohne Drift sowie
+  Chromium 113 bestanden/1 übersprungen. Der Gesamtlauf deckte zusätzlich
+  den verzögerten Apply-Transition-Zustand und eine asynchrone
+  Recovery-Cleanup-Assertion auf; beide Nachweise sind stabilisiert.
+- Unabhängiger Rollenreview ohne P0–P3 und Security-Abschlussreview ohne
+  P0–P2. Kein Push/Deploy.

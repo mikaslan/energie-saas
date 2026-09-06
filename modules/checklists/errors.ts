@@ -18,3 +18,17 @@ export class ChecklistValidationError extends Error {
     this.name = "ChecklistValidationError";
   }
 }
+
+export class ChecklistSegmentIncompleteError extends Error {
+  constructor(public readonly remainingRequired: number) {
+    super(`checklist segment has ${remainingRequired} unfinished required item(s)`);
+    this.name = "ChecklistSegmentIncompleteError";
+  }
+}
+
+export class ChecklistSegmentStateError extends Error {
+  constructor(public readonly state: "completed" | "open" | "hidden") {
+    super(`checklist segment state does not allow this operation: ${state}`);
+    this.name = "ChecklistSegmentStateError";
+  }
+}

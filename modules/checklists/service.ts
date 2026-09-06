@@ -1,22 +1,25 @@
-// Hinweis: KEIN "server-only"-Import (konsistent mit lead-sources/
-// time-tracking): der Projekt-Seitengraph wird build-importierbar gehalten.
+// Kein "server-only"-Import: Der Projekt-Seitengraph bleibt build-importierbar.
 import { sql } from "drizzle-orm";
-import { writeAudit } from "@/lib/audit";
+import { z } from "zod";
 import type { TenantTx } from "@/lib/db/types";
-import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   CHECKLIST_SCHEMA_VERSION,
   checklistBlocksSchema,
+  editableChecklistBlocksSchema,
+  mutateChecklistSegmentCommandSchema,
   projectChecklistDtoSchema,
   saveProjectChecklistCommandSchema,
+  withOpenSegmentMetadata,
   type ChecklistBlocksV1,
+  type MutateChecklistSegmentCommand,
   type ProjectChecklistDto,
   type SaveProjectChecklistCommand,
 } from "@/lib/integrations/checklists/contract";
 import {
   ChecklistConflictError,
   ChecklistNotFoundError,
+  ChecklistSegmentIncompleteError,
   ChecklistValidationError,
 } from "./errors";
 
@@ -32,40 +35,146 @@ function requireWrite(ctx: ServiceCtx): void {
   }
 }
 
-function postgresErrorCode(error: unknown): string | null {
-  const cause = (error as { cause?: unknown }).cause;
-  if (cause && typeof cause === "object" && "code" in cause) {
-    const code = (cause as { code?: unknown }).code;
-    return typeof code === "string" ? code : null;
+function requireUnlock(ctx: ServiceCtx): void {
+  if (!can(ctx, "checklist.unlock")) {
+    throw new PermissionDeniedError("checklist.unlock", "project_checklist", undefined, ctx.actor);
   }
-  return null;
+}
+
+type PgError = { code: string | null; detail: string | null; message: string };
+
+function postgresError(error: unknown): PgError {
+  for (const candidate of [error, (error as { cause?: unknown })?.cause]) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const value = candidate as { code?: unknown; detail?: unknown; message?: unknown };
+    if (typeof value.code === "string") {
+      return {
+        code: value.code,
+        detail: typeof value.detail === "string" ? value.detail : null,
+        message: typeof value.message === "string" ? value.message : "",
+      };
+    }
+  }
+  return { code: null, detail: null, message: "" };
 }
 
 type ChecklistRow = {
+  id: string;
   project_id: string;
+  phase: "qualification" | "consultation" | "site_documentation";
+  title: string;
   version: number;
   blocks: unknown;
-  updated_at: string;
+  updated_at: string | Date;
+  completions: unknown;
 };
+
+const completionRowsSchema = z.array(z.object({
+  segmentId: z.uuid(),
+  completedAt: z.iso.datetime({ offset: true }),
+  completedById: z.uuid(),
+}).strict());
+
+const capsuleResultSchema = z.object({
+  status: z.enum(["created", "updated", "completed", "unlocked", "replayed"]),
+  checklistId: z.uuid(),
+  version: z.number().int().min(1),
+}).passthrough();
+
+function timestamp(value: string | Date): string {
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    throw new ChecklistValidationError("invalid checklist timestamp");
+  }
+  return parsed.toISOString();
+}
+
+function hydrateBlocks(row: ChecklistRow): ChecklistBlocksV1 {
+  const stored = editableChecklistBlocksSchema.parse(row.blocks);
+  const completions = completionRowsSchema.parse(row.completions);
+  const completionBySegment = new Map(completions.map((completion) => [
+    completion.segmentId,
+    completion,
+  ]));
+  return checklistBlocksSchema.parse(stored.map((block) => ({
+    ...block,
+    segments: block.segments.map((segment) => {
+      const completion = completionBySegment.get(segment.id);
+      return {
+        ...segment,
+        completedAt: completion?.completedAt ?? null,
+        completedById: completion?.completedById ?? null,
+      };
+    }),
+  })));
+}
 
 function toDto(
   row: ChecklistRow | undefined,
   projectId: string,
-  canWrite: boolean,
+  ctx: ServiceCtx,
 ): ProjectChecklistDto {
-  const blocks = checklistBlocksSchema.parse(row?.blocks ?? []);
   return projectChecklistDtoSchema.parse({
     schemaVersion: CHECKLIST_SCHEMA_VERSION,
+    checklistId: row?.id ?? null,
     projectId,
-    version: row?.version ?? 0,
-    blocks,
-    updatedAt: row?.updated_at ?? new Date(0).toISOString(),
-    permissions: { canWrite },
+    phase: row?.phase ?? "site_documentation",
+    title: row?.title ?? "Baustellendokumentation",
+    version: Number(row?.version ?? 0),
+    blocks: row ? hydrateBlocks(row) : withOpenSegmentMetadata([]),
+    updatedAt: row ? timestamp(row.updated_at) : new Date(0).toISOString(),
+    permissions: {
+      canWrite: can(ctx, "checklist.write"),
+      canConfigure: can(ctx, "checklist.configure"),
+      canComplete: can(ctx, "checklist.write"),
+      canUnlock: can(ctx, "checklist.unlock"),
+    },
   });
 }
 
-// Read-Semantik (F4.6-Muster): keine Zeile → DTO mit version 0 und leerer
-// Blockliste, KEIN not_found.
+const checklistProjection = sql`
+  checklist_record.id,
+  checklist_record.project_id,
+  checklist_record.phase,
+  checklist_record.title,
+  checklist_record.version,
+  checklist_record.blocks,
+  checklist_record.updated_at,
+  coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'segmentId', completion.segment_id,
+      'completedAt', to_char(
+        completion.completed_at at time zone 'UTC',
+        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+      ),
+      'completedById', completion.completed_by
+    ) order by completion.segment_id)
+      from project_checklist_segment_completion completion
+     where completion.workspace_id = checklist_record.workspace_id
+       and completion.checklist_id = checklist_record.id
+  ), '[]'::jsonb) as completions
+`;
+
+async function readChecklistById(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+  checklistId: string,
+): Promise<ChecklistRow | undefined> {
+  const result = await tx.execute<ChecklistRow>(sql`
+    select ${checklistProjection}
+      from project_checklist checklist_record
+     where checklist_record.workspace_id = ${ctx.workspaceId}::uuid
+       and checklist_record.project_id = ${projectId}::uuid
+       and checklist_record.id = ${checklistId}::uuid
+     limit 1
+  `);
+  return result.rows[0];
+}
+
+// Die aktuelle UI öffnet die erste Baustellendokumentation. Das Datenmodell
+// erlaubt bereits mehrere gleichnamige Checklisten/Subphasen; eine gezielte
+// Auswahl folgt mit dem vollständigen F7.2-Container-Slice.
 export async function getProjectChecklist(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -73,13 +182,41 @@ export async function getProjectChecklist(
 ): Promise<ProjectChecklistDto> {
   requireRead(ctx);
   const result = await tx.execute<ChecklistRow>(sql`
-    select project_id, version, blocks, updated_at
-      from project_checklist
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and project_id = ${projectId}::uuid
+    select ${checklistProjection}
+      from project_checklist checklist_record
+     where checklist_record.workspace_id = ${ctx.workspaceId}::uuid
+       and checklist_record.project_id = ${projectId}::uuid
+       and checklist_record.phase = 'site_documentation'
+     order by checklist_record.created_at, checklist_record.id
      limit 1
   `);
-  return toDto(result.rows[0], projectId, can(ctx, "checklist.write"));
+  return toDto(result.rows[0], projectId, ctx);
+}
+
+function throwCapsuleError(
+  error: unknown,
+  ctx: ServiceCtx,
+  projectId: string,
+  deniedAction: "checklist.configure" | "checklist.write" | "checklist.unlock",
+): never {
+  const pg = postgresError(error);
+  if (pg.code === "P0002" || pg.code === "23503") {
+    throw new ChecklistNotFoundError(projectId);
+  }
+  if (pg.code === "40001") {
+    const currentVersion = pg.detail && /^\d+$/u.test(pg.detail)
+      ? Number(pg.detail)
+      : "concurrent mutation";
+    throw new ChecklistConflictError(currentVersion);
+  }
+  if (pg.code === "42501") {
+    throw new PermissionDeniedError(deniedAction, "project_checklist", undefined, ctx.actor);
+  }
+  if (pg.code === "23505") throw new ChecklistConflictError("duplicate checklist identity");
+  if (pg.code === "22023" || pg.code === "23514" || pg.code === "22003") {
+    throw new ChecklistValidationError();
+  }
+  throw error;
 }
 
 export async function saveProjectChecklist(
@@ -91,85 +228,90 @@ export async function saveProjectChecklist(
   const parsed = saveProjectChecklistCommandSchema.safeParse(input);
   if (!parsed.success) throw new ChecklistValidationError();
   const command = parsed.data;
-  const blocks: ChecklistBlocksV1 = checklistBlocksSchema.parse(command.blocks);
-
-  // Projekt existenzprüfen (FK würde 23503 werfen → ValidationError mappen;
-  // hier zusätzlich sauberer Fehlerpfad + M1-09-External-Scope beachten).
-  const projectExists = await tx.execute<{ id: string }>(sql`
-    select id from project
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and id = ${command.projectId}::uuid
-     limit 1
-  `);
-  if (!projectExists.rows[0]) throw new ChecklistNotFoundError(command.projectId);
-
-  let row: ChecklistRow;
-  try {
-    if (command.baseVersion === 0) {
-      const inserted = await tx.execute<ChecklistRow>(sql`
-        insert into project_checklist (
-          workspace_id, project_id, version, blocks, created_by
-        ) values (
-          ${ctx.workspaceId}::uuid,
-          ${command.projectId}::uuid,
-          1,
-          ${JSON.stringify(blocks)}::jsonb,
-          ${ctx.actor}::uuid
-        )
-        returning project_id, version, blocks, updated_at
-      `);
-      row = inserted.rows[0]!;
-    } else {
-      const updated = await tx.execute<ChecklistRow>(sql`
-        update project_checklist
-           set blocks = ${JSON.stringify(blocks)}::jsonb,
-               version = version + 1,
-               updated_by = ${ctx.actor}::uuid,
-               updated_at = statement_timestamp()
-         where workspace_id = ${ctx.workspaceId}::uuid
-           and project_id = ${command.projectId}::uuid
-           and version = ${command.baseVersion}
-         returning project_id, version, blocks, updated_at
-      `);
-      row = updated.rows[0]!;
-      if (!row) {
-        const current = await tx.execute<{ version: number }>(sql`
-          select version from project_checklist
-           where workspace_id = ${ctx.workspaceId}::uuid
-             and project_id = ${command.projectId}::uuid
-           limit 1
-        `);
-        if (!current.rows[0]) throw new ChecklistNotFoundError(command.projectId);
-        throw new ChecklistConflictError(Number(current.rows[0].version));
-      }
-    }
-  } catch (error) {
-    if (error instanceof ChecklistConflictError || error instanceof ChecklistNotFoundError) {
-      throw error;
-    }
-    const code = postgresErrorCode(error);
-    if (code === "23503") throw new ChecklistNotFoundError(command.projectId);
-    if (code === "23505") throw new ChecklistConflictError("concurrent create");
-    if (code === "23514") throw new ChecklistValidationError();
-    throw error;
+  if ((command.baseVersion === 0) !== (command.checklistId === null)) {
+    throw new ChecklistValidationError("checklist identity does not match base version");
   }
 
-  await emitEvent(tx, {
-    workspaceId: ctx.workspaceId,
-    aggregateType: "project_checklist",
-    aggregateId: command.projectId,
-    eventType: command.baseVersion === 0 ? "checklist.created" : "checklist.updated",
-    actor: ctx.actor,
-    payload: { projectId: command.projectId, version: row.version },
-  });
-  await writeAudit(tx, {
-    workspaceId: ctx.workspaceId,
-    actor: ctx.actor,
-    action: "checklist.write",
-    resource: "project_checklist",
-    allowed: true,
-    details: { projectId: command.projectId, baseVersion: command.baseVersion },
-  });
+  let capsule: z.infer<typeof capsuleResultSchema>;
+  try {
+    const result = await tx.execute<{ result: unknown }>(sql`
+      select public.save_project_checklist_v2(
+        ${ctx.workspaceId}::uuid,
+        ${command.projectId}::uuid,
+        ${command.checklistId}::uuid,
+        ${command.phase},
+        ${command.title},
+        ${command.baseVersion},
+        ${JSON.stringify(command.blocks)}::jsonb
+      ) as result
+    `);
+    capsule = capsuleResultSchema.parse(result.rows[0]?.result);
+  } catch (error) {
+    throwCapsuleError(error, ctx, command.projectId, "checklist.configure");
+  }
+  const row = await readChecklistById(tx, ctx, command.projectId, capsule.checklistId);
+  if (!row) throw new ChecklistNotFoundError(command.projectId);
+  return toDto(row, command.projectId, ctx);
+}
 
-  return toDto(row, command.projectId, true);
+export async function completeChecklistSegment(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: MutateChecklistSegmentCommand,
+): Promise<ProjectChecklistDto> {
+  requireWrite(ctx);
+  const parsed = mutateChecklistSegmentCommandSchema.safeParse(input);
+  if (!parsed.success) throw new ChecklistValidationError();
+  const command = parsed.data;
+  let capsule: z.infer<typeof capsuleResultSchema>;
+  try {
+    const result = await tx.execute<{ result: unknown }>(sql`
+      select public.complete_project_checklist_segment(
+        ${ctx.workspaceId}::uuid,
+        ${command.projectId}::uuid,
+        ${command.checklistId}::uuid,
+        ${command.segmentId}::uuid,
+        ${command.baseVersion}
+      ) as result
+    `);
+    capsule = capsuleResultSchema.parse(result.rows[0]?.result);
+  } catch (error) {
+    const pg = postgresError(error);
+    if (pg.code === "23514" && pg.detail && /^\d+$/u.test(pg.detail)) {
+      throw new ChecklistSegmentIncompleteError(Number(pg.detail));
+    }
+    throwCapsuleError(error, ctx, command.projectId, "checklist.write");
+  }
+  const row = await readChecklistById(tx, ctx, command.projectId, capsule.checklistId);
+  if (!row) throw new ChecklistNotFoundError(command.projectId);
+  return toDto(row, command.projectId, ctx);
+}
+
+export async function unlockChecklistSegment(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: MutateChecklistSegmentCommand,
+): Promise<ProjectChecklistDto> {
+  requireUnlock(ctx);
+  const parsed = mutateChecklistSegmentCommandSchema.safeParse(input);
+  if (!parsed.success) throw new ChecklistValidationError();
+  const command = parsed.data;
+  let capsule: z.infer<typeof capsuleResultSchema>;
+  try {
+    const result = await tx.execute<{ result: unknown }>(sql`
+      select public.unlock_project_checklist_segment(
+        ${ctx.workspaceId}::uuid,
+        ${command.projectId}::uuid,
+        ${command.checklistId}::uuid,
+        ${command.segmentId}::uuid,
+        ${command.baseVersion}
+      ) as result
+    `);
+    capsule = capsuleResultSchema.parse(result.rows[0]?.result);
+  } catch (error) {
+    throwCapsuleError(error, ctx, command.projectId, "checklist.unlock");
+  }
+  const row = await readChecklistById(tx, ctx, command.projectId, capsule.checklistId);
+  if (!row) throw new ChecklistNotFoundError(command.projectId);
+  return toDto(row, command.projectId, ctx);
 }

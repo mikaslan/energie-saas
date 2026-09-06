@@ -6,7 +6,7 @@ import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type { ProjectChecklistDto } from "@/lib/integrations/checklists/contract";
 import { getProjectChecklist, listChecklistTemplates } from "@/modules/checklists";
 import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
-import { can, PermissionDeniedError } from "@/lib/permissions";
+import { PermissionDeniedError } from "@/lib/permissions";
 import { sql } from "drizzle-orm";
 import { DeniedState } from "../_ui";
 import { ApplyTemplateSection, ProjectChecklistManager } from "./project-checklist-manager";
@@ -28,7 +28,7 @@ export default async function ProjectChecklistPage(
   const { workspaceId, projectId } = params.data;
 
   let result:
-    | { projectName: string; checklist: ProjectChecklistDto; templates: ChecklistTemplateDto[]; canWrite: boolean }
+    | { projectName: string; checklist: ProjectChecklistDto; templates: ChecklistTemplateDto[] }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -51,7 +51,6 @@ export default async function ProjectChecklistPage(
           projectName: projectRow.rows[0].name,
           checklist,
           templates: await listChecklistTemplates(tx, ctx),
-          canWrite: can(ctx, "checklist.write"),
         };
       },
     );
@@ -85,7 +84,7 @@ export default async function ProjectChecklistPage(
         workspaceId={workspaceId}
         projectId={projectId}
         templates={result.templates}
-        canWrite={result.canWrite}
+        canWrite={result.checklist.permissions.canWrite}
         checklistVersion={result.checklist.version}
       />
 
@@ -93,8 +92,6 @@ export default async function ProjectChecklistPage(
         workspaceId={workspaceId}
         projectId={projectId}
         checklist={result.checklist}
-        templates={result.templates}
-        canWrite={result.canWrite}
       />
 
       <div className="mt-6">

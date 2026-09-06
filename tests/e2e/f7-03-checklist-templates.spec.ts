@@ -141,12 +141,16 @@ test("F7.3-E2E-01: Editor legt Vorlage an und wendet sie am Projekt an", async (
   await page.getByLabel("Vorlage").selectOption({ label: templateName });
   await page.getByRole("button", { name: "Checkliste erstellen" }).click();
 
-  await expect(page.getByText("Gespeichert (Version 1).", { exact: true })).toBeVisible();
+  await expect(page.getByText("Vorlage angewendet (Version 1).", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Checkliste erstellen" })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Vorlage" })).toHaveCount(0);
   // Die Checkliste wurde aus der Vorlage erzeugt (ESTIMATE-Mapping):
   // Block-Name = Vorlagenname, Segment „Material", Item „SKU × 2".
-  await expect(page.getByLabel("Block-Name 1")).toHaveValue(templateName);
-  await expect(page.getByLabel("Segment-Name 1")).toHaveValue("Material");
-  await expect(page.getByLabel("Punkt-Name 1.1")).toHaveValue(/F7-3-WR × 2/u);
+  // F7.4 trennt Antworten von Strukturkonfiguration: der Editor sieht die
+  // Vorlagenstruktur read-only, darf den sichtbaren Punkt aber beantworten.
+  await expect(page.getByRole("heading", { name: templateName, level: 3 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Material", level: 4 })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /F7-3-WR × 2/u })).toBeEnabled();
 
   expect(errors, "Browser-Konsole und Page-Errors der Editor-Grenze").toEqual([]);
 });

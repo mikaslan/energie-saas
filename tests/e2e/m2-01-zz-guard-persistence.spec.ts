@@ -721,8 +721,10 @@ test.describe("M2-01 Dirty-Guard, Konflikt und F2.3-Persistenz", () => {
       );
     await expect(page.locator(`#line-${customLine.lineDomainId}-editor`)
       .getByLabel("EK je Einheit €", { exact: true })).toHaveValue("430,75");
-    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), recoveryKey))
-      .toBeNull();
+    await expect.poll(
+      () => page.evaluate((key) => window.sessionStorage.getItem(key), recoveryKey),
+      { message: "Recovery-Envelope wird nach der React-Commit-Phase entfernt" },
+    ).toBeNull();
 
     const switchEvidence = await readM201RevisionEvidence(state, offerId, variantId);
     const switchLine = page.locator(`#line-${customLine.lineDomainId}-editor`);
@@ -770,8 +772,10 @@ test.describe("M2-01 Dirty-Guard, Konflikt und F2.3-Persistenz", () => {
       "Lokaler Draft wurde auf den aktuellen Serverstand rebasiert.",
       { exact: true },
     )).toHaveCount(0);
-    expect(await page.evaluate((key) => window.sessionStorage.getItem(key), recoveryKey))
-      .toBeNull();
+    await expect.poll(
+      () => page.evaluate((key) => window.sessionStorage.getItem(key), recoveryKey),
+      { message: "fremder Actor hinterlässt kein Recovery-Envelope" },
+    ).toBeNull();
     expect(await page.locator("input").evaluateAll((inputs) =>
       inputs.some((input) => (input as HTMLInputElement).value === "777,77")))
       .toBe(false);
