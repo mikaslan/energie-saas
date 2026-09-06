@@ -157,6 +157,7 @@ function snapshotBody(lineCount = 1) {
     revision: 1,
     variantName: "Basis",
     description: null,
+    planningMode: "quick" as const,
     contactContext: {
       displayName: "Mia Müller",
       emailPrimary: "mia@example.test",
@@ -305,6 +306,37 @@ describe("offer.v1 contract", () => {
     }).success).toBe(false);
   });
 
+  it("pinnt den Planungsmodus als geschlossene revisionsgebundene Operation", () => {
+    const command = {
+      schemaVersion: "offer-variant-revise-command.v1",
+      offerId: ids.offer,
+      variantId: ids.variant,
+      expectedRevision: 2,
+      operations: [{ operation: "set_planning_mode", planningMode: "2d" }],
+    } as const;
+    expect(reviseOfferVariantCommandV1Schema.safeParse(command).success).toBe(true);
+    expect(reviseOfferVariantCommandV1Schema.safeParse({
+      ...command,
+      operations: [{ operation: "set_planning_mode", planningMode: "3d" }],
+    }).success).toBe(true);
+    expect(reviseOfferVariantCommandV1Schema.safeParse({
+      ...command,
+      operations: [{ operation: "set_planning_mode", planningMode: "quick" }],
+    }).success).toBe(true);
+
+    for (const operation of [
+      { operation: "set_planning_mode" },
+      { operation: "set_planning_mode", planningMode: "4d" },
+      { operation: "set_planning_mode", planningMode: "2d", serverTruth: true },
+      { type: "set_planning_mode", planningMode: "2d" },
+    ]) {
+      expect(reviseOfferVariantCommandV1Schema.safeParse({
+        ...command,
+        operations: [operation],
+      }).success).toBe(false);
+    }
+  });
+
   it("pinnt exakt die erlaubten Kontakt- und Anlagenstandortfelder", () => {
     const contact = offerContactContextV1Schema.parse({
       displayName: "  Mia Mu\u0308ller  ",
@@ -415,16 +447,36 @@ describe("offer.v1 contract", () => {
     const snapshot = sealOfferVariantSnapshot(snapshotBody());
     expect(validateOfferVariantSnapshot(snapshot)).toEqual({ ok: true, value: snapshot });
     expect(snapshot.snapshotSha256).toBe(hashOfferVariantSnapshot(snapshot));
-    // F16.3 Slice D: v2-Siegel (Fix-Key null + v2-Literal) — per Renderer
-    // deterministisch abgeleitet, kein Rateversuch.
+    expect(snapshot.schemaVersion).toBe("offer-variant-snapshot.v4");
+    expect(snapshot.planningMode).toBe("quick");
     expect(snapshot.snapshotSha256).toBe(
-      "b11fae1dd125d560dccce21fdee39c0f5baa33e8a5dff3e76537ab13eebe8f1e",
+      "5b3a16cd97f752c383228d8e0de569dd5d61908fbc4c14ba931d6dbe659f514f",
     );
 
     const manipulated = structuredClone(snapshot);
     manipulated.totals.basisNetCents += 1;
     expect(() => hashOfferVariantSnapshot(manipulated)).toThrow(TypeError);
     expect(validateOfferVariantSnapshot(manipulated)).toMatchObject({ ok: false });
+  });
+
+  it("macht den Pflicht-Planungsmodus zu revisionsgebundenem Hashmaterial", () => {
+    const quick = sealOfferVariantSnapshot({ ...snapshotBody(), planningMode: "quick" });
+    const twoDimensional = sealOfferVariantSnapshot({ ...snapshotBody(), planningMode: "2d" });
+    const threeDimensional = sealOfferVariantSnapshot({ ...snapshotBody(), planningMode: "3d" });
+
+    expect(new Set([
+      quick.snapshotSha256,
+      twoDimensional.snapshotSha256,
+      threeDimensional.snapshotSha256,
+    ])).toHaveLength(3);
+
+    const withoutMode = structuredClone(snapshotBody()) as Record<string, unknown>;
+    delete withoutMode.planningMode;
+    expect(() => sealOfferVariantSnapshot(withoutMode)).toThrow(TypeError);
+    expect(validateOfferVariantSnapshot({
+      ...withoutMode,
+      snapshotSha256: sha("f"),
+    }).ok).toBe(false);
   });
 
   it("akzeptiert 500 Seed-Zeilen ohne Kuerzung und weist 501 atomar ab", () => {
@@ -446,6 +498,7 @@ describe("offer.v1 contract", () => {
     expect(serializedPublic).not.toContain("marginNetCents");
     expect(serializedPublic).not.toContain("Sha256");
     expect(serializedPublic).not.toContain(sha("1"));
+    expect(publicView.snapshot.planningMode).toBe("quick");
 
     const privateView = toOfferVariantView(snapshot, {
       canReadPurchasePrice: true,

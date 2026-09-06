@@ -33,6 +33,7 @@ function source(): OfferEditorSourceSnapshot {
     revision: 3,
     variantName: "Basis",
     description: "Gespeicherter Entwurf",
+    planningMode: "quick",
     globalDiscountBps: 0,
     // F16.3 Slice E: Cap (null = ungedeckelt).
     globalDiscountCapCents: null,
@@ -134,6 +135,26 @@ describe("M2-01 Offer-Editor-Draft", () => {
       ok: true,
       operations: [],
     });
+    expect(draft.planningMode).toBe("quick");
+  });
+
+  it("führt einen echten Planungsmoduswechsel im bestehenden Dirty-/Patch-Vertrag", () => {
+    const snapshot = source();
+    const draft = {
+      ...createOfferEditorDraft(snapshot),
+      planningMode: "2d" as const,
+    };
+
+    expect(isOfferEditorDraftDirty(snapshot, draft)).toBe(true);
+    expect(buildOfferRevisionOperations(snapshot, draft, ALL_CAPABILITIES)).toEqual({
+      ok: true,
+      operations: [{ operation: "set_planning_mode", planningMode: "2d" }],
+    });
+
+    expect(buildOfferRevisionOperations(snapshot, {
+      ...draft,
+      planningMode: "quick",
+    }, ALL_CAPABILITIES)).toEqual({ ok: true, operations: [] });
   });
 
   it("behandelt reine Override-Gründe und kanonisch äquivalente Schreibweisen als fachliches No-op", () => {
@@ -599,6 +620,36 @@ describe("M2-01 Offer-Editor-Draft", () => {
     expect(rebased.draft.sections.flatMap((section) => section.lines)
       .find((line) => line.lineDomainId === LINE_A_ID)?.quantity).toBe("12");
     expect(rebased.notices).toEqual([]);
+  });
+
+  it("rebasiert den Planungsmodus dreiwegig und meldet nur echte Parallelkonflikte", () => {
+    const base = createOfferEditorDraft(source());
+    const serverOnly = rebaseOfferEditorDraft(base, base, {
+      ...base,
+      planningMode: "3d",
+    });
+    expect(serverOnly.draft.planningMode).toBe("3d");
+    expect(serverOnly.notices).toEqual([]);
+
+    const converged = rebaseOfferEditorDraft(base, {
+      ...base,
+      planningMode: "2d",
+    }, {
+      ...base,
+      planningMode: "2d",
+    });
+    expect(converged.draft.planningMode).toBe("2d");
+    expect(converged.notices).toEqual([]);
+
+    const divergent = rebaseOfferEditorDraft(base, {
+      ...base,
+      planningMode: "2d",
+    }, {
+      ...base,
+      planningMode: "3d",
+    });
+    expect(divergent.draft.planningMode).toBe("2d");
+    expect(divergent.notices).toEqual([expect.stringMatching(/Planungsmodus/iu)]);
   });
 
   it("behält lokale Feldedits bei serverseitigem Cross-Section-Move global per Zeilen-ID", () => {

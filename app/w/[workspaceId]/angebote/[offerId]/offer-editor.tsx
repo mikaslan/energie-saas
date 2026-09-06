@@ -95,6 +95,7 @@ function sourceFromSnapshot(snapshot: OfferVariantSnapshotView): OfferEditorSour
     revision: snapshot.revision,
     variantName: snapshot.variantName,
     description: snapshot.description,
+    planningMode: snapshot.planningMode,
     globalDiscountBps: snapshot.globalDiscountBps,
     globalDiscountCapCents: snapshot.globalDiscountCapCents ?? null,
     customDealNetCents: snapshot.customDealNetCents,
@@ -184,12 +185,14 @@ function FeedbackBanner({
   dirty,
   summaryRef,
   onReloadServer,
+  onRefreshServer,
   onLogin,
 }: {
   feedback: Feedback;
   dirty: boolean;
   summaryRef: React.RefObject<HTMLDivElement | null>;
   onReloadServer: () => void;
+  onRefreshServer: () => void;
   onLogin: () => void;
 }) {
   if (feedback.status === "validation") {
@@ -287,13 +290,21 @@ function FeedbackBanner({
       resolution_not_current: "Die Produktauswahl ist nicht mehr aktuell.",
       installation_site_changed: "Der Anlagenstandort wurde geändert.",
       variant_limit: "Die zulässige Anzahl an Varianten ist erreicht.",
+      variant_signature_pending: "Für diese Variante läuft bereits eine Signaturanfrage.",
+      variant_signed: "Diese Variante wurde bereits signiert.",
+      variant_revoked_by_customer: "Diese Variante wurde kundenseitig widerrufen.",
     };
+    const signatureLock = [
+      "variant_signature_pending",
+      "variant_signed",
+      "variant_revoked_by_customer",
+    ].includes(feedback.code);
     return (
       <div ref={summaryRef} role="alert" tabIndex={-1} className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-base leading-6 text-amber-950 outline-none focus-visible:ring-2 focus-visible:ring-amber-700">
         <p className="font-semibold">Diese Angebotsaktion ist serverseitig blockiert.</p>
         <p className="mt-1">{messages[feedback.code] ?? "Die Angebotsgrundlage muss erneut geprüft werden."} Dein lokaler Draft bleibt erhalten.</p>
-        <button type="button" onClick={onReloadServer} className="mt-3 min-h-11 rounded-md border border-amber-800 px-4 font-semibold outline-none focus-visible:ring-2 focus-visible:ring-amber-800 focus-visible:ring-offset-2">
-          Serverstand bewusst neu laden
+        <button type="button" onClick={signatureLock ? onRefreshServer : onReloadServer} className="mt-3 min-h-11 rounded-md border border-amber-800 px-4 font-semibold outline-none focus-visible:ring-2 focus-visible:ring-amber-800 focus-visible:ring-offset-2">
+          {signatureLock ? "Sperrstatus aktualisieren" : "Serverstand bewusst neu laden"}
         </button>
       </div>
     );
@@ -503,6 +514,20 @@ function pricingProvenanceLabel(provenance: { kind: string; reasonCode?: string 
   return "Nicht verfügbar";
 }
 
+const PLANNING_MODE_LABELS = {
+  quick: "Quick-Planung",
+  "2d": "2D-Planung",
+  "3d": "3D-Planung",
+} as const;
+const PLANNING_MODES = ["quick", "2d", "3d"] as const;
+
+function contentLockForBlockedCode(code: string): EditableOfferView["contentLock"] {
+  if (code === "variant_signature_pending") return "pending";
+  if (code === "variant_signed") return "signed";
+  if (code === "variant_revoked_by_customer") return "revoked_by_customer";
+  return null;
+}
+
 export function OfferVariantEditor({
   view,
   afterEditor,
@@ -521,6 +546,7 @@ export function OfferVariantEditor({
   const [draft, setDraft] = useState<OfferEditorDraft>(() => createOfferEditorDraft(incomingSource));
   const [savedDraft, setSavedDraft] = useState<OfferEditorDraft>(() => createOfferEditorDraft(incomingSource));
   const [feedback, setFeedback] = useState<Feedback>(() => initialFeedback(view));
+  const [feedbackView, setFeedbackView] = useState(view);
   const [mutationPending, setMutationPending] = useState(view.state === "pending");
   const [awaitingServerReadmodel, setAwaitingServerReadmodel] = useState(false);
   const [pendingIntent, setPendingIntent] = useState<PendingIntent | null>(null);
@@ -544,21 +570,30 @@ export function OfferVariantEditor({
   const mutationLockRef = useRef(false);
   const expectedRevisionRef = useRef(snapshot.revision);
   const summaryRef = useRef<HTMLDivElement>(null);
+  const renderedFeedback: Feedback = feedback.status === "blocked" && feedbackView !== view
+    ? { status: "idle" }
+    : feedback;
   const dirty = !awaitingServerReadmodel && isOfferEditorDraftDirty(source, draft);
   const preview = useMemo(() => calculateOfferEditorPreview(draft), [draft]);
   const recoveryKey = `wmee:offer-draft:${view.offer.id}:${snapshot.variantId}`;
-  const retryAt = feedback.status === "unavailable"
-    ? Date.parse(feedback.retryAfter)
+  const retryAt = renderedFeedback.status === "unavailable"
+    ? Date.parse(renderedFeedback.retryAfter)
     : Number.NaN;
   const retryBlocked = Number.isFinite(retryAt) && clock < retryAt;
   const pending = mutationPending || view.state === "pending";
   const navigationPending = pending || awaitingServerReadmodel
     || recoveryHydrating;
-  const hardBlocked = feedback.status === "blocked"
-    || feedback.status === "conflict"
-    || feedback.status === "denied"
-    || feedback.status === "unauthenticated";
+  const feedbackContentLock = renderedFeedback.status === "blocked"
+    ? contentLockForBlockedCode(renderedFeedback.code)
+    : null;
+  const contentLock = feedbackContentLock ?? view.contentLock ?? null;
+  const contentLocked = contentLock !== null;
+  const hardBlocked = (renderedFeedback.status === "blocked" && feedbackContentLock === null)
+    || renderedFeedback.status === "conflict"
+    || renderedFeedback.status === "denied"
+    || renderedFeedback.status === "unauthenticated";
   const mutationDisabled = navigationPending || retryBlocked || hardBlocked;
+  const contentMutationDisabled = mutationDisabled || contentLocked;
 
   useEffect(() => {
     if (feedback.status !== "unavailable") return;
@@ -687,6 +722,11 @@ export function OfferVariantEditor({
     setPendingIntent(() => intent);
   }
 
+  function setActionFeedback(result: OfferEditorActionState) {
+    setFeedbackView(view);
+    setFeedback(feedbackFromAction(result));
+  }
+
   function updateDraftLine(
     sectionDomainId: string,
     lineDomainId: string,
@@ -746,6 +786,16 @@ export function OfferVariantEditor({
   }
 
   async function saveDraft(): Promise<boolean> {
+    if (contentLocked) {
+      setFeedbackView(view);
+      setFeedback({
+        status: "blocked",
+        code: contentLock === "pending" ? "variant_signature_pending"
+          : contentLock === "signed" ? "variant_signed"
+            : "variant_revoked_by_customer",
+      });
+      return false;
+    }
     const built = buildOfferRevisionOperations(source, draft, {
       canEditPrice: view.permissions.canEditPrice,
       canApplyDiscount: view.permissions.canApplyDiscount,
@@ -769,7 +819,7 @@ export function OfferVariantEditor({
     const result = await runExclusive(() => saveOfferVariantDraftAction(formData));
     if (!result) return false;
     if (result.status !== "success") {
-      setFeedback(feedbackFromAction(result));
+      setActionFeedback(result);
       return false;
     }
     expectedRevisionRef.current = result.revision;
@@ -799,7 +849,7 @@ export function OfferVariantEditor({
     const result = await runExclusive(() => duplicateOfferVariantEditorAction(formData));
     if (!result) return;
     if (result.status !== "success") {
-      setFeedback(feedbackFromAction(result));
+      setActionFeedback(result);
       return;
     }
     router.push(`/w/${view.workspaceId}/angebote/${result.offerId}?variante=${result.variantId}`);
@@ -880,7 +930,7 @@ export function OfferVariantEditor({
     const result = await runExclusive(() => createVariantFromCurrentResolutionEditorAction(formData));
     if (!result) return;
     if (result.status !== "success") {
-      setFeedback(feedbackFromAction(result));
+      setActionFeedback(result);
       return;
     }
     router.push(`/w/${view.workspaceId}/angebote/${result.offerId}?variante=${result.variantId}`);
@@ -913,7 +963,7 @@ export function OfferVariantEditor({
     window.location.reload();
   }
 
-  const errors = feedback.status === "validation" ? feedback.errors : [];
+  const errors = renderedFeedback.status === "validation" ? renderedFeedback.errors : [];
   const invalidFields = new Set(errors.map((error) => error.field));
   const errorByField = new Map(errors.map((error) => [error.field, error.message]));
   const errorDescription = (field: string) => invalidFields.has(field) ? `${field}-error` : undefined;
@@ -930,7 +980,7 @@ export function OfferVariantEditor({
       save={saveDraft}
       themeClassName={offerThemeStyles.offerTheme}
     >
-      <main data-wmee-scope="offer" data-offer-detail-state={feedback.status === "idle" ? view.state : feedback.status} className={`${offerThemeStyles.offerTheme} min-h-screen bg-slate-50 text-slate-950`}>
+      <main data-wmee-scope="offer" data-offer-detail-state={renderedFeedback.status === "idle" ? view.state : renderedFeedback.status} className={`${offerThemeStyles.offerTheme} min-h-screen bg-slate-50 text-slate-950`}>
         <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <a href="#offer-editor-main" className="sr-only rounded bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-emerald-700">
             Zum Angebotseditor springen
@@ -1003,15 +1053,33 @@ export function OfferVariantEditor({
               </div>
             ) : null}
             <FeedbackBanner
-              feedback={feedback}
+              feedback={renderedFeedback}
               dirty={dirty}
               summaryRef={summaryRef}
               onReloadServer={preserveDraftAndReload}
+              onRefreshServer={() => router.refresh()}
               onLogin={() => requestIntent({
                 label: "Anmeldung",
                 execute: () => window.location.replace("/login"),
               })}
             />
+            {contentLocked ? (
+              <aside
+                data-offer-content-lock={contentLock}
+                role="status"
+                className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-base leading-6 text-amber-950"
+              >
+                <p className="font-semibold">
+                  {contentLock === "pending" ? "Signaturanfrage läuft – Inhalt gesperrt"
+                    : contentLock === "signed" ? "Signierte Variante – Inhalt gesperrt"
+                      : "Vom Kunden widerrufene Variante – Inhalt gesperrt"}
+                </p>
+                <p className="mt-1">
+                  Der revisionsgebundene Inhalt bleibt unverändert. Duplizieren oder eine neue Basis
+                  anlegen bleibt möglich; Primärstatus, Bundles und Zahlart werden separat verwaltet.
+                </p>
+              </aside>
+            ) : null}
             <div className="sm:hidden">
               <label htmlFor="mobile-variant" className="text-sm font-semibold text-slate-800">Angebotsvariante</label>
               <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
@@ -1062,7 +1130,7 @@ export function OfferVariantEditor({
             </nav>
           </div>
 
-          <fieldset id="offer-editor-main" tabIndex={-1} disabled={navigationPending || hardBlocked} className="mt-6 min-w-0 border-0 p-0">
+          <fieldset id="offer-editor-main" tabIndex={-1} disabled={navigationPending || hardBlocked || contentLocked} className="mt-6 min-w-0 border-0 p-0">
             <legend className="sr-only">Angebotsentwurf {snapshot.variantName} bearbeiten</legend>
             <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
               <div className="grid min-w-0 gap-5">
@@ -1078,6 +1146,40 @@ export function OfferVariantEditor({
                       <label htmlFor="variant-description" className="text-sm font-semibold">Beschreibung</label>
                       <textarea id="variant-description" rows={3} value={draft.description} aria-invalid={invalidFields.has("variant-description") || undefined} aria-describedby={errorDescription("variant-description")} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />
                       {fieldError("variant-description")}
+                    </div>
+                    <div>
+                      {contentLocked ? (
+                        <div data-planning-mode-readonly="true">
+                          <p className="text-sm font-semibold">Planungsmodus</p>
+                          <p className="mt-1 text-base">{PLANNING_MODE_LABELS[draft.planningMode]}</p>
+                        </div>
+                      ) : (
+                        <fieldset className="min-w-0 border-0 p-0">
+                          <legend className="text-sm font-semibold">Planungsmodus</legend>
+                          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                            {PLANNING_MODES.map((mode) => (
+                              <label key={mode} className="flex min-h-11 items-center gap-3 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium">
+                                <input
+                                  type="radio"
+                                  name="planning-mode"
+                                  value={mode}
+                                  checked={draft.planningMode === mode}
+                                  onChange={() => setDraft((current) => ({ ...current, planningMode: mode }))}
+                                  className="size-5 accent-emerald-700"
+                                />
+                                {PLANNING_MODE_LABELS[mode]}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      )}
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {draft.planningMode === "quick"
+                          ? "Quick verwaltet Komponenten und Preise; Dach-, Ertrags- und Simulationsausgaben bleiben ausgeblendet."
+                          : draft.planningMode === "2d"
+                            ? "2D verwendet eine vereinfachte Dachplanung und unterstützt Simulationsergebnisse."
+                            : "3D verwendet die vollständige Dachplanung und unterstützt Simulationsergebnisse."}
+                      </p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       {view.permissions.canApplyDiscount ? (
@@ -1249,8 +1351,9 @@ export function OfferVariantEditor({
               <summary className="min-h-11 cursor-pointer py-2 font-semibold">Gespeicherte Preiszusammenfassung</summary>
               <div className="mt-3 border-t border-slate-100 pt-4"><ServerTotals snapshot={snapshot} preview={preview} canReadPurchasePrice={view.permissions.canReadPurchasePrice} /></div>
             </details>
+          </fieldset>
 
-            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
               {view.permissions.canDuplicate ? (
                 <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-semibold">Variante duplizieren</h2><p className="mt-1 text-base leading-6 text-slate-600">Erzeugt eine unabhängige Revision-1-Kopie des gespeicherten Stands.</p><label htmlFor="duplicate-name" className="mt-3 block text-xs font-semibold">Name der Kopie</label><div className="mt-1 flex flex-col gap-2 sm:flex-row"><input id="duplicate-name" value={duplicateName} aria-invalid={invalidFields.has("duplicate-name") || undefined} aria-describedby={errorDescription("duplicate-name")} onChange={(event) => setDuplicateName(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-md border border-slate-300 px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" /><button type="button" disabled={mutationDisabled} onClick={() => requestIntent({ label: "Variante duplizieren", execute: duplicateVariant })} className="min-h-11 rounded-md border border-slate-950 px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">Duplizieren</button></div>{fieldError("duplicate-name")}</section>
               ) : null}
@@ -1258,13 +1361,12 @@ export function OfferVariantEditor({
               {view.permissions.canCreateBasis && view.basisInput ? (
                 <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-semibold">Neue Basis</h2><p className="mt-1 text-base leading-6 text-slate-600">Kopiert eine ausdrücklich geprüfte Projekt-/Kataloggrundlage in eine neue Variante. Es wird keine Steuerwahl aus der aktiven Variante übernommen.</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><div><label htmlFor="basis-name" className="text-xs font-semibold">Variantenname</label><input id="basis-name" value={basisName} aria-invalid={invalidFields.has("basis-name") || undefined} aria-describedby={errorDescription("basis-name")} onChange={(event) => setBasisName(event.target.value)} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError("basis-name")}</div><div><label htmlFor="basis-tax" className="text-xs font-semibold">Steuerentwurf</label><select id="basis-tax" value={basisTaxTreatment} aria-invalid={invalidFields.has("basis-tax") || undefined} aria-describedby={errorDescription("basis-tax")} onChange={(event) => { setBasisTaxTreatment(event.target.value as "" | "standard_19" | "zero_operator_confirmed"); setZeroTaxConfirmed(false); }} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"><option value="">Bitte ausdrücklich auswählen</option><option value="standard_19">19 % USt.</option><option value="zero_operator_confirmed">0 % USt. bewusst bestätigen</option></select>{fieldError("basis-tax")}</div></div><p className="mt-2 text-base leading-6 text-slate-600">Bei 0 % ist „0-%-Steuerentwurf für diese neue Basis bestätigen“ zusätzlich erforderlich.</p>{basisTaxTreatment === "zero_operator_confirmed" ? <label className="mt-3 flex min-h-11 items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 text-base leading-6"><input id="basis-zero-confirmation" type="checkbox" checked={zeroTaxConfirmed} aria-invalid={invalidFields.has("basis-zero-confirmation") || undefined} aria-describedby={errorDescription("basis-zero-confirmation")} onChange={(event) => setZeroTaxConfirmed(event.target.checked)} className="size-5 accent-emerald-700" /> 0-%-Steuerentwurf für diese neue Basis bestätigen</label> : null}{fieldError("basis-zero-confirmation")}<button type="button" disabled={mutationDisabled} onClick={() => requestIntent({ label: "Neue Basis", execute: createNewBasis })} className="mt-3 min-h-11 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2">Neue Basis anlegen</button></section>
               ) : null}
-            </div>
+          </div>
 
-            <div style={{ bottom: "max(0.5rem, env(safe-area-inset-bottom))", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }} className="sticky z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur motion-reduce:backdrop-blur-none">
+          <div style={{ bottom: "max(0.5rem, env(safe-area-inset-bottom))", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }} className="sticky z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur motion-reduce:backdrop-blur-none">
               <p className="text-sm font-medium" aria-live="polite">{dirty ? "Lokaler Draft: ungespeichert" : `Gespeicherte Revision ${expectedRevision}`}</p>
-              <div className="flex flex-wrap gap-2"><button type="button" disabled={!dirty || navigationPending} onClick={() => { setDraft(savedDraft); setFeedback({ status: "idle" }); }} className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">Änderungen verwerfen</button><button type="button" disabled={!dirty || mutationDisabled} onClick={() => void saveDraft()} className="min-h-11 rounded-md bg-emerald-800 px-5 text-sm font-semibold text-white outline-none hover:bg-emerald-900 focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2">{pending ? "Speichert …" : "Angebotsentwurf speichern"}</button></div>
-            </div>
-          </fieldset>
+              <div className="flex flex-wrap gap-2"><button type="button" disabled={!dirty || navigationPending} onClick={() => { setDraft(savedDraft); setFeedback({ status: "idle" }); }} className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">Änderungen verwerfen</button><button type="button" disabled={!dirty || contentMutationDisabled} onClick={() => void saveDraft()} className="min-h-11 rounded-md bg-emerald-800 px-5 text-sm font-semibold text-white outline-none hover:bg-emerald-900 focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2">{pending ? "Speichert …" : "Angebotsentwurf speichern"}</button></div>
+          </div>
           <p role="status" aria-live="polite" className="sr-only">{reorderAnnouncement}</p>
         </div>
 

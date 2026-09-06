@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import {
   CATALOG_CANONICALIZATION_VERSION,
@@ -1029,6 +1029,7 @@ async function fixtureOfferGraph(tx: TenantTx, wsId: string): Promise<void> {
     installationSiteContext,
     variantName: "Basis",
     description: "Vollständige Tenant-Fixture",
+    planningMode: "3d",
     createdBy: source.actor_id,
     createdAt,
     totals: {
@@ -1720,7 +1721,7 @@ async function fixtureSignatureRequest(tx: TenantTx, wsId: string): Promise<stri
   if (existing.rows[0]) return existing.rows[0].id;
 
   const requestId = randomUUID();
-  const tokenHash = Buffer.alloc(32, 0x42);
+  const tokenHash = randomBytes(32);
   await tx.execute(sql`
     insert into public.signature_request (
       id, workspace_id, project_id, offer_id, variant_id, variant_revision_id,
@@ -1890,6 +1891,18 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         escalation_rate_bps, cashflow_horizon_years, revision, created_by
       ) values (
         ${randomUUID()}::uuid, ${wsId}::uuid, 30, 100, 20, 1, ${membershipId}::uuid
+      )
+    `);
+  },
+
+  workspace_planning_settings: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "admin", "{}");
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into workspace_planning_settings (
+        workspace_id, default_planning_mode, revision, updated_by
+      ) values (
+        ${wsId}::uuid, '3d', 1, ${userId}::uuid
       )
     `);
   },
@@ -2435,6 +2448,15 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
   workspace: async (tx) => {
     await tx.execute(sql`insert into workspace (id, name) values (${randomUUID()}::uuid, 'cross-write')`);
   },
+  workspace_planning_settings: async (tx) => {
+    await tx.execute(sql`
+      insert into workspace_planning_settings (
+        workspace_id, default_planning_mode, revision, updated_by
+      ) values (
+        ${randomUUID()}::uuid, '3d', 1, ${randomUUID()}::uuid
+      )
+    `);
+  },
   catalog_import_job: async (tx) => {
     await tx.execute(sql`
       alter table catalog_import_job
@@ -2859,6 +2881,9 @@ export const COMPOSITE_KEY_EXEMPT = new Set<string>([
   // WORM-Receiptblatt: dispatch_id ist die global eindeutige Replay-Identität;
   // kein FK zeigt auf diese technische Zustellquittung.
   "catalog_import_dispatch_receipt",
+  // Singleton-Blatt: workspace_id ist zugleich die vollstaendige Identitaet;
+  // keine andere Tenant-Tabelle referenziert Planungseinstellungen.
+  "workspace_planning_settings",
 ]);
 
 // Regel 3 (FK workspace_id -> workspace.id): koppelt die Löschbarkeit des

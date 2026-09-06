@@ -3,6 +3,7 @@ import {
   listSignatureRequests,
   type SignatureRequestDto,
 } from "@/modules/signatures";
+import { can } from "@/lib/permissions";
 import {
   AnalogSignatureForm,
   CreateSignatureForm,
@@ -33,15 +34,32 @@ export async function OfferSignaturePanel(props: {
   offerId: string;
   variantId: string | null;
 }) {
-  const requests = await authorizedQuery(
+  const access = await authorizedQuery(
     props.workspaceId,
     "offer.signature.read",
     "signature_request",
-    (tx, ctx) => listSignatureRequests(tx, ctx, {
-      workspaceId: props.workspaceId,
-      offerId: props.offerId,
+    async (tx, ctx) => ({
+      requests: await listSignatureRequests(tx, ctx, {
+        workspaceId: props.workspaceId,
+        offerId: props.offerId,
+      }),
+      canCreate: can(ctx, "offer.signature.create"),
+      canWithdraw: can(ctx, "offer.signature.withdraw"),
+      canUploadAnalog: can(ctx, "offer.signature.upload_analog"),
     }),
   );
+  const requests = props.variantId === null
+    ? []
+    : access.requests.filter((request) => request.variantId === props.variantId);
+  const hasContentLock = requests.some((request) => (
+    request.variantId === props.variantId
+    && ["pending", "signed", "revoked_by_customer"].includes(request.status)
+  ));
+  const pendingRequestId = props.variantId === null
+    ? null
+    : requests.find((request) => (
+      request.variantId === props.variantId && request.status === "pending"
+    ))?.requestId ?? null;
 
   return (
     <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -99,10 +117,14 @@ export async function OfferSignaturePanel(props: {
                 </p>
               )}
 
-              {request.status === "pending" ? (
+              {request.status === "pending" && (access.canWithdraw || access.canUploadAnalog) ? (
                 <div className="mt-3 flex flex-wrap gap-3">
-                  <WithdrawSignatureForm workspaceId={props.workspaceId} requestId={request.requestId} />
-                  <AnalogSignatureForm workspaceId={props.workspaceId} requestId={request.requestId} />
+                  {access.canWithdraw ? (
+                    <WithdrawSignatureForm workspaceId={props.workspaceId} requestId={request.requestId} />
+                  ) : null}
+                  {access.canUploadAnalog ? (
+                    <AnalogSignatureForm workspaceId={props.workspaceId} requestId={request.requestId} />
+                  ) : null}
                 </div>
               ) : null}
             </li>
@@ -110,14 +132,21 @@ export async function OfferSignaturePanel(props: {
         </ul>
       )}
 
-      {props.variantId ? (
+      {props.variantId && access.canCreate ? (
         <div className="mt-6 border-t border-slate-100 pt-5">
           <CreateSignatureForm
+            key={props.variantId}
             workspaceId={props.workspaceId}
             offerId={props.offerId}
             variantId={props.variantId}
+            disabled={hasContentLock}
+            pendingRequestId={pendingRequestId}
           />
         </div>
+      ) : props.variantId ? (
+        <p className="mt-6 border-t border-slate-100 pt-5 text-xs text-slate-500">
+          Signaturanforderungen sind für dich nur lesbar.
+        </p>
       ) : (
         <p className="mt-6 border-t border-slate-100 pt-5 text-xs text-slate-500">
           Wähle eine freigegebene Ausstellungsfassung, um einen Signaturlink vorzubereiten.

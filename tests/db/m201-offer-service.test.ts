@@ -6,7 +6,7 @@ import type { PoolClient } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-import { withTenantOn } from "@/lib/db/tenant";
+import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
 import { calculatePlanningEstimate } from "@/lib/integrations/calculation/engine";
 import {
   CALCULATION_CANONICALIZATION_VERSION,
@@ -41,6 +41,7 @@ import {
   type OfferVariantSnapshotV1,
 } from "@/lib/integrations/offers/contract";
 import { calculateOfferPricing } from "@/lib/integrations/offers/money";
+import { WORKSPACE_PLANNING_SETTINGS_COMMAND_VERSION } from "@/lib/integrations/planning/contract";
 import { PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   activateCatalogComponent,
@@ -59,6 +60,9 @@ import {
   OfferValidationError,
   reviseOfferVariant,
 } from "@/modules/offers";
+import { upsertPlanningSettings } from "@/modules/planning";
+import { withdrawSignatureRequest } from "@/modules/signatures";
+import { tenantFixtures } from "../setup/tenant-fixtures";
 import { testPool } from "../setup/test-db";
 
 const GOLDEN_REQUEST = JSON.parse(readFileSync(
@@ -987,6 +991,127 @@ function expectMutationDelta(
 }
 
 describe("M2-01 Angebots-Service", () => {
+  it("projiziert den pending Content-Lock und entsperrt den Offer-Read nach Withdraw", async () => {
+    const workspaceId = randomUUID();
+    const references = await withTenantOn(testPool, workspaceId, async (tx) => {
+      await tx.execute(sql`
+        insert into workspace (id, name)
+        values (${workspaceId}::uuid, 'F3.1 Offer Content Lock')
+      `);
+      await tenantFixtures.signature_request!(tx, workspaceId);
+      const result = await tx.execute<{
+        request_id: string;
+        offer_id: string;
+        variant_id: string;
+        actor_id: string;
+        [key: string]: unknown;
+      }>(sql`
+        select request_record.id as request_id,
+               request_record.offer_id,
+               request_record.variant_id,
+               request_record.created_by as actor_id
+          from signature_request as request_record
+         where request_record.workspace_id = ${workspaceId}::uuid
+           and request_record.status = 'pending'
+         limit 1
+      `);
+      const row = result.rows[0];
+      if (!row) throw new Error("F3.1 Content-Lock-Fixture fehlt.");
+      return row;
+    });
+
+    const pending = await withAuthorizedTenantOn(
+      testPool,
+      references.actor_id,
+      workspaceId,
+      (tx, ctx) => getOfferDetail(tx, ctx, {
+        offerId: references.offer_id,
+        variantId: references.variant_id,
+      }),
+    );
+    expect(pending?.contentLock).toBe("pending");
+
+    await withAuthorizedTenantOn(
+      testPool,
+      references.actor_id,
+      workspaceId,
+      (tx, ctx) => withdrawSignatureRequest(tx, ctx, {
+        schemaVersion: "signature-request-withdraw.v1",
+        workspaceId,
+        requestId: references.request_id,
+        reasonCode: "content_error",
+      }),
+    );
+    const withdrawn = await withAuthorizedTenantOn(
+      testPool,
+      references.actor_id,
+      workspaceId,
+      (tx, ctx) => getOfferDetail(tx, ctx, {
+        offerId: references.offer_id,
+        variantId: references.variant_id,
+      }),
+    );
+    expect(withdrawn?.contentLock).toBeNull();
+  });
+
+  it("bindet den Workspace-Default an die erste Variante und kopiert beim Duplizieren den Quellmodus", async () => {
+    const fixture = await createFixture();
+    await withAuthorizedTenantOn(
+      testPool,
+      fixture.members.adminId,
+      fixture.members.workspaceId,
+      (tx, ctx) => upsertPlanningSettings(tx, ctx, {
+        schemaVersion: WORKSPACE_PLANNING_SETTINGS_COMMAND_VERSION,
+        baseRevision: 0,
+        defaultPlanningMode: "2d",
+      }),
+    );
+    const created = await withAuthorizedTenantOn(
+      testPool,
+      fixture.members.operatorId,
+      fixture.members.workspaceId,
+      (tx, ctx) => createOfferFromRequest(tx, ctx, fixture.createCommand),
+    );
+    expect((await readRevision(
+      fixture.members.workspaceId,
+      created.variantId,
+      1,
+    )).revision_snapshot.planningMode).toBe("2d");
+
+    await withAuthorizedTenantOn(
+      testPool,
+      fixture.members.adminId,
+      fixture.members.workspaceId,
+      (tx, ctx) => upsertPlanningSettings(tx, ctx, {
+        schemaVersion: WORKSPACE_PLANNING_SETTINGS_COMMAND_VERSION,
+        baseRevision: 1,
+        defaultPlanningMode: "quick",
+      }),
+    );
+    const duplicate = await withAuthorizedTenantOn(
+      testPool,
+      fixture.members.operatorId,
+      fixture.members.workspaceId,
+      (tx, ctx) => duplicateOfferVariant(tx, ctx, {
+        schemaVersion: OFFER_VARIANT_DUPLICATE_COMMAND_VERSION,
+        offerId: created.offerId,
+        sourceVariantId: created.variantId,
+        expectedSourceRevision: 1,
+        name: "2D-Kopie nach Default-Wechsel",
+      }),
+    );
+    expect((await readRevision(
+      fixture.members.workspaceId,
+      duplicate.variantId,
+      1,
+    )).revision_snapshot.planningMode).toBe("2d");
+    expect((await readRevision(
+      fixture.members.workspaceId,
+      created.variantId,
+      1,
+    )).revision_snapshot.planningMode).toBe("2d");
+  });
+
   it("kanonisiert Contact und Anlagenstandort genau einmal vor Digest und Persistenz", async () => {
     const fixture = await createFixture();
     const operator = offerCtx(fixture.members, "operator");
@@ -1189,6 +1314,8 @@ describe("M2-01 Angebots-Service", () => {
     });
     expect(validated.ok).toBe(true);
     expect(revision.revision_snapshot).toMatchObject({
+      schemaVersion: "offer-variant-snapshot.v4",
+      planningMode: "3d",
       workspaceId: fixture.members.workspaceId,
       offerId: created.offerId,
       variantId: created.variantId,
@@ -1790,6 +1917,27 @@ describe("M2-01 Angebots-Service", () => {
     const created = await withTenantOn(testPool, fixture.members.workspaceId, (tx) =>
       createOfferFromRequest(tx, operator, fixture.createCommand));
     const basisBefore = await readRevision(fixture.members.workspaceId, created.variantId, 1);
+    expect(basisBefore.revision_snapshot.planningMode).toBe("3d");
+
+    const beforeModeNoop = await readOfferMutationState(
+      fixture.members.workspaceId,
+      created.offerId,
+    );
+    const modeNoop = await withTenantOn(testPool, fixture.members.workspaceId, (tx) =>
+      reviseOfferVariant(tx, operator, {
+        schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
+        offerId: created.offerId,
+        variantId: created.variantId,
+        expectedRevision: 1,
+        operations: [{ operation: "set_planning_mode", planningMode: "3d" }],
+      }));
+    expect(modeNoop).toEqual({
+      offerId: created.offerId,
+      variantId: created.variantId,
+      revision: 1,
+    });
+    expect(await readOfferMutationState(fixture.members.workspaceId, created.offerId))
+      .toEqual(beforeModeNoop);
 
     const duplicate = await withTenantOn(testPool, fixture.members.workspaceId, (tx) =>
       duplicateOfferVariant(tx, plainEditor, {
@@ -1812,6 +1960,7 @@ describe("M2-01 Angebots-Service", () => {
       .toEqual(basisBefore.revision_snapshot.totals);
     expect(duplicateBefore.revision_snapshot.sourceBindings)
       .toEqual(basisBefore.revision_snapshot.sourceBindings);
+    expect(duplicateBefore.revision_snapshot.planningMode).toBe("3d");
 
     const firstSection = basisBefore.revision_snapshot.sections[0]!;
     const firstLine = firstSection.lines[0]!;
@@ -1827,6 +1976,7 @@ describe("M2-01 Angebots-Service", () => {
         variantId: created.variantId,
         expectedRevision: 1,
         operations: [
+          { operation: "set_planning_mode", planningMode: "2d" },
           { operation: "set_global_discount", discountBps: 500 },
           {
             operation: "set_line_discount",
@@ -1884,6 +2034,7 @@ describe("M2-01 Angebots-Service", () => {
       .find((line) => line.lineDomainId === customLineDomainId);
 
     expect(parsed.ok).toBe(true);
+    expect(revisionTwo.revision_snapshot.planningMode).toBe("2d");
     expect(revisionTwo.revision_snapshot.globalDiscountBps).toBe(500);
     expect(revisionTwo.revision_snapshot.totals).toEqual(recalculated.totals);
     expect(revisedFirstLine).toMatchObject({
@@ -1976,6 +2127,7 @@ describe("M2-01 Angebots-Service", () => {
             "set_global_discount",
             "set_line_discount",
             "set_line_tax",
+            "set_planning_mode",
           ],
           previousState: "draft",
           newState: "draft",
@@ -2408,8 +2560,21 @@ describe("M2-01 Angebots-Service", () => {
       battery: 2,
       wallbox: 1,
     });
-    const newBasis = await withTenantOn(testPool, fixture.members.workspaceId, (tx) =>
-      createVariantFromCurrentResolution(tx, operator, {
+    await withAuthorizedTenantOn(
+      testPool,
+      fixture.members.adminId,
+      fixture.members.workspaceId,
+      (tx, ctx) => upsertPlanningSettings(tx, ctx, {
+        schemaVersion: WORKSPACE_PLANNING_SETTINGS_COMMAND_VERSION,
+        baseRevision: 0,
+        defaultPlanningMode: "2d",
+      }),
+    );
+    const newBasis = await withAuthorizedTenantOn(
+      testPool,
+      fixture.members.operatorId,
+      fixture.members.workspaceId,
+      (tx, ctx) => createVariantFromCurrentResolution(tx, ctx, {
         schemaVersion: OFFER_VARIANT_FROM_RESOLUTION_COMMAND_VERSION,
         offerId: created.offerId,
         expectedRequirementRevision: 1,
@@ -2417,7 +2582,8 @@ describe("M2-01 Angebots-Service", () => {
         expectedResolutionRevision: 2,
         name: "Basis aus Katalogrevision 2",
         taxTreatment: "standard_19",
-      }));
+      }),
+    );
     const currentBasis = await readRevision(
       fixture.members.workspaceId,
       newBasis.variantId,
@@ -2432,6 +2598,7 @@ describe("M2-01 Angebots-Service", () => {
     expect(newBasis.variantId).not.toBe(created.variantId);
     expect(currentBasis.revision_snapshot).toMatchObject({
       variantName: "Basis aus Katalogrevision 2",
+      planningMode: "2d",
       sourceBindings: { resolutionRevision: 2 },
     });
     expect(newBattery).toMatchObject({
@@ -2457,6 +2624,7 @@ describe("M2-01 Angebots-Service", () => {
     );
     expect(oldBasisAfterNewVariant.snapshot_text).toBe(oldBasis.snapshot_text);
     expect(oldBasisAfterNewVariant.snapshot_sha256_hex).toBe(oldBasis.snapshot_sha256_hex);
+    expect(oldBasisAfterNewVariant.revision_snapshot.planningMode).toBe("3d");
     const createdEvent = await withTenantOn(
       testPool,
       fixture.members.workspaceId,

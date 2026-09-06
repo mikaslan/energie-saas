@@ -341,8 +341,8 @@ export const offerVariantRevision = pgTable(
       name: "offer_variant_revision_created_by_fk",
     }),
     check("offer_variant_revision_revision_ck", sql`${t.revision} > 0`),
-    // F16.3 Slice D: Snapshot-v2 zugelassen (v1-Historie bleibt gültig).
-    check("offer_variant_revision_version_ck", sql`${t.schemaVersion} in ('offer-variant-snapshot.v1', 'offer-variant-snapshot.v2', 'offer-variant-snapshot.v3')
+    // F3.1: v4 bindet den Planungsmodus; v1-v3-Historie bleibt unveraendert.
+    check("offer_variant_revision_version_ck", sql`${t.schemaVersion} in ('offer-variant-snapshot.v1', 'offer-variant-snapshot.v2', 'offer-variant-snapshot.v3', 'offer-variant-snapshot.v4')
       and ${t.canonicalizationVersion} = 'offer-jcs.v1'`),
     check("offer_variant_revision_hash_ck", sql`octet_length(${t.snapshotSha256}) = 32
       and octet_length(${t.resolutionSha256}) = 32`),
@@ -361,7 +361,16 @@ export const offerVariantRevision = pgTable(
       and (${t.revisionSnapshot}->>'revision')::integer = ${t.revision}
       and ${t.revisionSnapshot}->>'snapshotSha256' = encode(${t.snapshotSha256}, 'hex')
       and jsonb_typeof(${t.revisionSnapshot}->'sections') = 'array'
-      and jsonb_array_length(${t.revisionSnapshot}->'sections') between 1 and 25`),
+      and jsonb_array_length(${t.revisionSnapshot}->'sections') between 1 and 25
+      and (
+        (${t.schemaVersion} = 'offer-variant-snapshot.v4'
+          and ${t.revisionSnapshot} ? 'planningMode'
+          and jsonb_typeof(${t.revisionSnapshot}->'planningMode') = 'string'
+          and ${t.revisionSnapshot}->>'planningMode' in ('quick', '2d', '3d'))
+        or
+        (${t.schemaVersion} in ('offer-variant-snapshot.v1', 'offer-variant-snapshot.v2', 'offer-variant-snapshot.v3')
+          and not (${t.revisionSnapshot} ? 'planningMode'))
+      )`),
   ],
 );
 

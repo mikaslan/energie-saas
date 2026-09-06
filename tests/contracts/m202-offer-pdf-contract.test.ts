@@ -75,6 +75,7 @@ function snapshotFixture(lineCount = 4) {
     revision: 7,
     variantName: "  Komfort A\u0308  ",
     description: "  Geprüfter Leistungsumfang  ",
+    planningMode: "quick",
     contactContext: {
       displayName: "  Mia <Muster>  ",
       emailPrimary: "pdf-private-sentinel@example.test",
@@ -311,7 +312,7 @@ describe("offer-pdf-draft-input.v1 contract", () => {
     });
   });
 
-  it("minimiert einen hashvaliden Snapshot ohne IDs, Hashes, Kontaktkanäle oder EK", () => {
+  it("minimiert einen hashvaliden Quick-Snapshot ohne private oder berechnete Planungswerte", () => {
     const built = buildOfferPdfDraftInput({
       offerNumber: "  ANG-2026-000042  ",
       preparedAt: "2026-08-30T11:22:33.000Z",
@@ -342,7 +343,8 @@ describe("offer-pdf-draft-input.v1 contract", () => {
       "workspaceId", "offerId", "variantId", "lineDomainId", "sectionDomainId",
       "snapshotSha256", "emailPrimary", "phoneE164", "sourceBindings", "source",
       "purchasePricing", "purchaseUnitNetCents", "purchaseNetCents", "marginNetCents",
-      "provenance", "createdBy", "createdAt",
+      "provenance", "createdBy", "createdAt", "planningMode", "roofLayout",
+      "yield", "simulation", "autarky", "economics",
     ]) {
       expect(keys.has(forbidden), forbidden).toBe(false);
     }

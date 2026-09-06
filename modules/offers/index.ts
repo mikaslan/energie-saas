@@ -31,6 +31,7 @@ export type {
   OfferDetailViewModel,
   OfferListViewModel,
   OfferMutationResult,
+  OfferVariantContentLock,
   SetOptionalBundlesResult,
   SetPrimaryVariantResult,
   SetTotalPriceOverrideResult,

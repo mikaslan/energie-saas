@@ -160,6 +160,9 @@ const MATRIX: Record<Action, { capability?: string; expect: Expectation }> = {
   "economics.read": {
     expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
   },
+  "planning.settings.read": {
+    expect: { viewer: [true, true], editor: [true, true], admin: [true, true] },
+  },
   "economics.write": {
     capability: "economics",
     expect: { viewer: [false, false], editor: [false, true], admin: [true, true] },
@@ -249,12 +252,12 @@ const FEATURE_OFF_EXPECTATIONS: { action: Action; feature: string }[] = [
 const ROLES: Role[] = ["viewer", "editor", "admin"];
 
 describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
-  it("deckt exakt die 47 definierten Actions ab (keine still hinzugefügte Action)", () => {
+  it("deckt exakt die 52 definierten Actions ab (keine still hinzugefügte Action)", () => {
     expect(Object.keys(MATRIX).sort()).toEqual(Object.keys(ACTION_REQUIREMENTS).sort());
-    expect(Object.keys(MATRIX)).toHaveLength(51);
+    expect(Object.keys(MATRIX)).toHaveLength(52);
   });
 
-  it("47 Actions × 3 Rollen × Capability an/aus", () => {
+  it("52 Actions × 3 Rollen × Capability an/aus", () => {
     for (const [action, spec] of Object.entries(MATRIX) as [Action, (typeof MATRIX)[Action]][]) {
       for (const role of ROLES) {
         const [withoutCap, withCap] = spec.expect[role];
@@ -270,6 +273,31 @@ describe("Rechte-Matrix gegen unabhängige Erwartungstabelle", () => {
       for (const role of ROLES) {
         expect(can(ctx(role, { [feature]: true }, { [feature]: false }), action), `${action} / ${role}`).toBe(false);
       }
+    }
+  });
+});
+
+describe("F3.1 Planungseinstellungen bleiben eine interne Berechtigungsgrenze", () => {
+  it("lässt interne Mitglieder lesen und nur interne Admins schreiben", () => {
+    expect(can(ctx("viewer"), "planning.settings.read")).toBe(true);
+    expect(can(ctx("editor"), "planning.settings.read")).toBe(true);
+    expect(can(ctx("admin"), "planning.settings.read")).toBe(true);
+    expect(can(ctx("viewer"), "settings.manage")).toBe(false);
+    expect(can(ctx("editor"), "settings.manage")).toBe(false);
+    expect(can(ctx("admin"), "settings.manage")).toBe(true);
+  });
+
+  it("sperrt External einschließlich Admin und malformed Flags fail-closed", () => {
+    for (const action of ["planning.settings.read", "settings.manage"] as const) {
+      expect(can(ctx("admin", { external_only: true }), action), action).toBe(false);
+      expect(can(ctx("admin", { external_only: false }), action), action).toBe(true);
+      const malformed = {
+        role: "admin",
+        capabilities: { external_only: "false" },
+        featureFlags: {},
+      } as unknown as PermissionCtx;
+      expect(can(malformed, action), `${action} / malformed`).toBe(false);
+      expect(ACTION_REQUIREMENTS[action]).toHaveProperty("internalOnly", true);
     }
   });
 });

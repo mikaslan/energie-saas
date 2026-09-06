@@ -87,6 +87,7 @@ function snapshotFixture() {
     revision: 7,
     variantName: "Komfort",
     description: "Interner Entwurf",
+    planningMode: "quick",
     contactContext: {
       displayName: "Mia Muster",
       emailPrimary: "private-pdf-sentinel@example.test",

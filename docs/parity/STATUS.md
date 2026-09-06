@@ -1,6 +1,6 @@
 # Reonic-Parität — belastbarer Liefer- und Fortschrittsstand
 
-Stand: 2026-09-01 · kanonische Abnahmequelle:
+Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
 ## Bedeutung dieses Dokuments
@@ -18,13 +18,21 @@ UI-Bestände, proprietärer Code und geschützte Daten werden nicht übernommen.
 
 | Sicht | Stand | Einordnung |
 |---|---:|---|
-| Gesamtmission einschließlich F1–F16 | ca. 23–24 % | Fundament sowie Rechner→Lead→Adresse→Planung→eigener Katalog einschließlich autorisiertem CSV-Massenweg→Produktauflösung→direkte Projektzuweisung→interne Projektaufgabe/-aktivität→Won/Lost/Reopen mit geschlossener Liste→Angebotsentwurf→interner PDF-Draft→Freigabekandidat→neue finale Ausstellungsfassung mit zwei bytegebundenen Freigaben sind lokal technisch verifiziert. Der Maximalstand heißt ausdrücklich `approved_for_archive_not_issued`; Archivierung, Ausstellung, Versand, Signatur und operative Breite bleiben offen |
-| Technisches Fundament M0/M1 plus lokale M2-Basis | ca. 97–98 % | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog-, Task-/Aktivitäts-, Angebots-, Candidate-, Issuance-Vorbereitungs- und geschützte Webgrenzen sind lokal weitgehend real. Die hohe Zahl beschreibt das Fundament, nicht die Produktbreite; Object Lock, Retention, Provider-Readback und weitere externe Gates bleiben offen |
-| Nutzerseitige F1–F16-Funktionsparität | ca. 16–17 % | Login, Intake-Triage, Projektakte, Adresse, Energieprofil, Planungsschätzung, eigener Katalog mit CSV-Vorschau/-Import, Produktzuordnung, direkte Haupt-/Nutzerzuweisung samt minimierter externer Request-Sicht, interne Project-Tasks mit Aktivität, Projektergebnis Won/Lost/Reopen, administrierbare Verlustgründe und eine geschlossene Liste, Angebotsentwurf mit Varianten/BOM, PDF-Draft, Freigabekandidat sowie private finale Ausstellungsfassung inklusive 0/2→1/2→2/2 und terminaler Rücknahme sind lokal real; sie ist noch nicht ausgestellt. Ausführung, Abrechnung und die meisten F1–F16-Flows bleiben offen |
+| Gesamtmission einschließlich F1–F16 | ca. 38 % **(ESTIMATE)** | Mehrere belastbare vertikale Slices reichen inzwischen von CRM/Lead über Angebot, Planungsmodus und Simulationseinstellungen bis Installation, Zeiterfassung, Rechnungs-Kern, Portal-Skeleton und Vorlagen. Die Schätzung ist keine Abnahmequote: Kein F1–F16-Bereich und erst recht nicht die Gesamtmission ist bereits vollständig 1:1 zu Reonic |
+| Technisches Fundament M0/M1 plus lokale M2/M3-Basis | lokal weit fortgeschritten | Auth-, Tenant-, DB-, Worker-, Intake-, Rechen-, Katalog-, Task-/Aktivitäts-, Angebots-, Signatur- und Rechnungsgrenzen sind in überprüften Teilslices real. Produktbreite, rechtmäßige Live-Referenznachweise sowie Object Lock, Retention, Provider-Readback und weitere externe Gates bleiben davon unberührt |
+| Nutzerseitige F1–F16-Funktionsparität | **PARTIAL** | Die unten aufgeführten Bereiche sind nur capabilityweise eröffnet. Nicht genannte Details aus dem Modulkatalog bleiben offen; Seiten, Skeletons, Specs oder lokale Infrastruktur werden nicht zu vollständiger Bereichsparität hochgerechnet |
 
 Diese Werte steigen nicht durch Seiten, Mocks oder Dokumentation allein, sondern nur
 durch belastbare vertikale Endzustände. Die Schätzung ist insbesondere **keine**
 Behauptung einer Reonic-1:1-Parität.
+
+## Aktuelle lokale Gatebasis
+
+Der Arbeitsstand vom 2026-09-06 ist lokal mit **238/238 Testdateien**
+(**2.149 bestanden, 1 ausdrücklich übersprungen**), **88/88 Rollenproben**,
+**5/5 PG18-Proben**, grünem Production-Build und **110 bestandenen plus 1
+ausdrücklich übersprungenen Chromium-E2E** belegt. Das ist weder ein
+Provider-/Deploy-Nachweis noch eine Aussage über fremde oder noch laufende CI.
 
 ## Verifizierte und laufende Grundlagen
 
@@ -49,6 +57,7 @@ Behauptung einer Reonic-1:1-Parität.
 | M2-02 interner Angebots-PDF-Entwurf | REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE GO | Exakt eine immutable Variantenrevision wird serverseitig in einen minimierten, gehashten Input gebunden; der ID-only-Job durchläuft `queued`/`running`/`retry_wait`/`succeeded`/`failed_final`, wird mit offline/sandboxed Chromium unter einem auf `linux/amd64`, Playwright 1.62.1 und OCI-Digest gepinnten Rezept gerendert, bis 8 MiB tenantgeschützt in Postgres gestaged und nach Reauth privat heruntergeladen. Viewer darf lesen/downloaden, Editor/Admin mit `project.write` anfordern/replayen, External nie und `app_worker` nur least-privilege claimen/finalisieren. 96/96 Vitest-Dateien mit 949 bestandenen Tests, 88/88 Rollen- plus 5/5 PG18-Proben, 16/16 aktive Chromium-E2E, gepinnter Container-Smoke und unabhängiges P0–P2-Review sind grün. Kein Rollout-Flag by design; kein `issued`, Versand, Signatur, öffentlicher Link, Rechnung, WORM oder produktiver Deploy. `M202-VISUAL-01` bleibt menschlich `INCONCLUSIVE` |
 | M2-03a Angebotsprofil/Freigabekandidat | REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE GO | Versionierte und aktivierte Dokumentprofile, append-only Empfänger-/Rechnungsstände, strikte Readiness, versiegelter Candidate-Input, ID-only-Worker, Byte-/Hash-Prüfung, append-only Abschlussfreigabe und privater Download bis zum abgeleiteten Zustand `approved_not_issued` sind lokal real. 111/111 Vitest-Dateien mit 1.078 bestandenen und 1 übersprungenen Test, 17 bestandene plus 1 opt-in übersprungene Chromium-E2E, 88/88 Rollen- plus 5/5 PG18-Proben, Build/Lint/Typecheck/Dependency-Cruiser, gepinnter `linux/amd64`-Container-Smoke mit Status auf 11/11 PDF-Seiten sowie Security-, Regression-, Navigation- und lokaler Claude-Code-Opus-Max-Review sind grün und ohne offene P0–P2. Die E2E-Kette synthetisiert Claim/Finalize in der DB; der echte Renderer ist separat im Container belegt. Menschliches Visual bleibt `INCONCLUSIVE`; Deploy, echte Rechtstexte, WORM/Object Lock, Ausstellung, Versand und Signatur sind `NOT RUN` beziehungsweise offen |
 | M2-03b1 Angebots-Ausstellungsfassung | REVIEWED/VERIFIED (lokal) · TECHNISCHES GATE GO | Aus dem exakt freigegebenen Candidate-Input entstehen neue finale PDF-Bytes; Candidate-Bytes werden nie promotet. Zwei verschiedene aktive interne Personen geben exakt diese Bytes frei, mindestens eine verschieden vom Candidate-Approver. Private Downloads, 0/2→1/2→2/2 und terminale Rücknahme sind real; der Maximalstand bleibt `approved_for_archive_not_issued`. 126/126 Vitest-Dateien mit 1.184 bestandenen und 1 übersprungenen Test, 88/88 Rollen- plus 5/5 PG18-Proben, Chromium 17 bestanden plus 1 opt-in übersprungen, Build/Lint/Typecheck/Dependency-Cruiser sowie deterministischer 11-seitiger Container-Render sind grün. Code-, Security- und Claude-Code-Opus-5-Max-Review: GO ohne offene P0–P2. Human Visual bleibt `INCONCLUSIVE`; Object Lock, Archivevidence, `issued`, Versand und Signatur sind nicht geliefert |
+| F3.1 Planungsmodi je Angebotsvariante | REVIEWED/VERIFIED (lokal) | Migration `0075` liefert Workspace-Default sowie `quick`/`2d`/`3d` im Snapshot-v4; v1/v2/v3 bleiben byte-, JSON- und hashstabil und werden nur im RAM als Quick normalisiert. Settings- und Varianten-CAS, Signatur-Content-Lock samt sicheren Unlock-/Fork-Pfaden sowie Quick-PDF-Unterdrückung sind geprüft. Das fokussierte Browser-Gate ist 4/4, der vollständige aktuelle Chromium-Lauf 110 bestanden plus 1 ausdrücklich übersprungen. Die exakte Moduswechselregel bleibt mangels autorisierter Live-Bestätigung `ESTIMATE` |
 | Rechner V3 | CONTRACTED (Clone) / BLOCKED (Provider) | read-only Baseline `rechner/v3@2b00f6b`; Provider-Wiring erst nach veröffentlichtem korrektem Datenschutzhinweis und Secret-Provisioning |
 
 ## F1–F16-Matrix auf Capability-Ebene
@@ -56,24 +65,24 @@ Behauptung einer Reonic-1:1-Parität.
 Der Modulkatalog ist vollständig spezifiziert. Die folgende Matrix behauptet bewusst
 keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 
-| Bereich | Höchster belastbarer Stand | Nächster echte Slice |
+| Bereich | Höchster belastbarer Stand | Belegter Umfang / nächste Lücke |
 |---|---|---|
-| F1 CRM & Leads | PARTIAL VERIFIED | zusätzlich eine projektübergreifende read-only Aufgaben-Inbox (M1-12a); Rechner-V3-Intake → Kontakt → Standort/Adresskorrektur → Anfrage → Kanban/Projektakte → Energieprofil → direkte Projektzuweisung mit minimierter External-Sicht → interne Projektaufgabe/Aktivität → Won/Lost/Reopen mit Verlustgrund und geschlossener Liste ist lokal real; als Nächstes Teams, Auto-Routing, globale Aufgabenansicht, Notizen, Termine, Funnel-Auswertung und weitere CRM-Capabilities |
-| F2 Angebote | PARTIAL VERIFIED | M1-08 liefert verifizierte Produkt-/Preissnapshots; M1-08b belegt deren CSV-Massenweg bis zu einer neuen immutable Basis-BOM; M2-01 Draft-Offers, Varianten und Snapshot-BOM; M2-02 den geschützten internen PDF-Draft; M2-03a Profil, Empfänger und `approved_not_issued`. M2-03b1 rendert daraus neue finale Bytes, bindet zwei verschiedene Approver und bildet 0/2→1/2→2/2 sowie terminale Rücknahme ab. Der Zustand bleibt `approved_for_archive_not_issued`; menschliches Visual, echte Rechtstexte, Object Lock/Archivevidence, `issued`, Versand und Signatur folgen in getrennten Gates |
-| F3 PV-Planung | PARTIAL VERIFIED | Hausbezogene, serverseitig reproduzierbare Planungsschätzung lokal real; rechtmäßige Dachdatenadapter und tiefere Planungswerkzeuge folgen capabilityweise |
-| F4 Simulation | SPECIFIED | deterministischer Rechenkern mit fachlichem Güte- und Haftungsgate |
+| F1 CRM & Leads | PARTIAL VERIFIED | Rechner-Intake → Kontakt/Standort → Anfrage/Projektakte, Adresskorrektur, Energieprofil, Zuweisung, Aufgaben/Outcomes/Inbox, Projektnotizen, Kontakte und Kalender sind in Teilslices lokal real. F1.8 ergänzt Lead-Source-Stammdaten und Intake-Attribution, F1.09 sichere `@`-Mentions. Teams, vollständiges Auto-Routing, Kommunikations-/Funnelbreite und weitere CRM-Details bleiben offen |
+| F2 Angebote | PARTIAL VERIFIED | Produkt-/Preissnapshots, Draft-Offers, Snapshot-BOM, PDF-/Release-Kette und E-Signaturvertrag sind capabilityweise belegt. F2.2 ergänzt Primärvariante, Deal-Override und optionale Bundles; F2.5 providerfreie Zahlarten-Stammdaten samt Variantenwahl. Vollständige Finanzierungs-/Leasing-Providerflüsse, rechtliche/visuelle Freigaben, Object Lock, Versand und übrige Angebotsdetails bleiben getrennte Gates |
+| F3 PV-Planung | PARTIAL VERIFIED | F3.1 liefert Workspace-Default und je Variante Quick/2D/3D samt Snapshot-/Lock-Vertrag; die bestehende hausbezogene Planungsschätzung ist lokal real. Dachgeometrie, Belegung, Strings, Verschattung, Photogrammetrie und weitere Planungswerkzeuge bleiben offen |
+| F4 Simulation | PARTIAL VERIFIED | F4.6 liefert revisionssichere Workspace-Wirtschaftlichkeitsdefaults mit Länderfallback. Vollständige Simulation, Viertelstundenphysik, Referenzvalidierung und fachliches Güte-/Haftungsgate bleiben offen |
 | F5 Wärmepumpe | SPECIFIED | Schätzverfahren klar von zertifizierter Normrechnung trennen |
 | F6 Schaltplan | SPECIFIED | eigener Editor-/Exportvertrag |
-| F7 Installation | SPECIFIED | Signatur → Installation → Checkliste/Disposition/Handover |
-| F8 Rechnungen | SPECIFIED | unveränderliche Belegkette und Teil-/Schlussrechnung |
-| F9 Zeiterfassung | SPECIFIED | Timer/Eintrag → Audit → Export |
-| F10 Kundenportal | SPECIFIED | geschützter Projektlink → Angebot/Status/Dateien |
+| F7 Installation | PARTIAL VERIFIED | F7.1 eröffnet den Installationskern mit direkter/signaturbezogener Anlage und Basisstatus; F7.2 liefert den ersten Checklisten-Engine-Slice, F7.3 Template-CRUD und Anwendung. Vollständige Typen-/Konditionslogik, Merge/Reset, Disposition, Handover und operative Tabs bleiben offen |
+| F8 Rechnungen | PARTIAL VERIFIED | M3-00/M3-01 liefern Workspace-Grundlagen sowie den lokalen Rechnungs-/Dokumentkern. Vollständige Teil-/Abschlags-/Schlussrechnungs-, Storno-, Zahlungs-, DATEV-/E-Rechnungs- und Versandparität bleibt offen |
+| F9 Zeiterfassung | PARTIAL VERIFIED | F9.1 liefert Kategorien, manuelle Einträge und Liste/Summe; F9.2 ergänzt die fortbestehende Stoppuhr. Pausen-/Idle-Details, vollständige Auswertung, Freigabe, Mobile-/Offline-Verhalten und übrige Parität bleiben offen |
+| F10 Kundenportal | PARTIAL VERIFIED | Das F10.1-Skeleton liefert aktivierbaren Einladungslink, Status und minimierte Dokumentsicht; dies ist keine vollständige Portalabnahme. Weitere Tabs, Dateien/Requests, Uploads, Statusmapping, Sprachen, Commercial-Abweichungen und operative Kundenflüsse bleiben offen |
 | F11 Mobile/PWA | SPECIFIED | schmale Offline-Outbox für Fotos/Checklisten/Zeit |
 | F12 Lead-Funnel | SPECIFIED | Provideradapter erst nach Privacy-Freigabe anbinden; weitere Funnels capabilityweise bauen |
 | F13 Services | SPECIFIED | Filing-Objekt und Statusmaschine, externe Human-Gates ehrlich markieren |
 | F14 KI | SPECIFIED | rechtegebundene Tools erst nach realen Domain-Commands |
 | F15 Gewerbe | SPECIFIED | getrenntes Commercial-Datenmodell |
-| F16 Katalog/Vorlagen | PARTIAL VERIFIED | M1-08a: eigener Katalog, sieben Produkttypen, Preise/Provenienz, Lifecycle und Projektauflösung lokal real. M1-08b ergänzt den autorisierten CSV-Massenweg mit Preview, Mapping, Teilerfolg, Recovery und getrenntem Aktivierungsschritt. M2-03a ergänzt versionierte Dokumentprofile, M2-03b1 eine eigene finale PDF-Informationsarchitektur. Echte WMEE-Produkte, Brand-/Human-Visual-Freigabe, Assets und Lieferantenfeeds folgen getrennt |
+| F16 Katalog/Vorlagen | PARTIAL VERIFIED | Eigener Katalog, sieben Produkttypen, Preise/Provenienz, Lifecycle, Projektauflösung und autorisierter CSV-Massenweg sind lokal real. F16.3 A–E ergänzt Rabatt-/Fördervorlagen sowie Prozent-, Fix- und Cap-Anwendung bis Snapshot/PDF. Weitere Vorlagentypen, echte Produkte, Brand-/Human-Visual-Freigabe, Assets und Lieferantenfeeds folgen getrennt |
 
 ## Lieferform
 

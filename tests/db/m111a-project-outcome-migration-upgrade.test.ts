@@ -44,6 +44,7 @@ const PRE_M111A_MIGRATION_INDEX = 38;
 const M111A_MIGRATION_INDEX = 39;
 const PRE_SNAPSHOT_V3_MIGRATION_INDEX = 65;
 const SNAPSHOT_V3_MIGRATION_INDEX = 66;
+const PRE_F301_MIGRATION_INDEX = 74;
 const LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP = 1_788_565_894_444;
 const SNAPSHOT_V3_MIGRATION_TIMESTAMP = 1_788_567_623_493;
 const SNAPSHOT_V3_MIGRATION_SHA256 =
@@ -54,9 +55,9 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 // 0055-0056 + Welle-03-Nachzug 0057-0060 => 61 Migrationen (idx 0..60).
 // 0055-0056 + Welle-03-Nachzug bis 0065 => 66 Migrationen (idx 0..65).
 // + F16.3-E (0066), F1-09 (0067), F2-05 (0068), F7-01 (0069/0070),
-// M115-Grants (0071/0072), Derive-Cap (0073), F2.5-Write-Vertrag (0074)
-// => 75 Migrationen (idx 0..74).
-const TOTAL_MIGRATION_COUNT = 75;
+// M115-Grants (0071/0072), Derive-Cap (0073), F2.5-Write-Vertrag (0074),
+// F3.1-Planungsmodi (0075) => 76 Migrationen (idx 0..75).
+const TOTAL_MIGRATION_COUNT = 76;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -355,7 +356,7 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
     );
   });
 
-  it("migriert einen echten 0065-Bestand lueckenlos bis HEAD samt v3-Constraint", async () => {
+  it("migriert einen echten 0065-Bestand lueckenlos bis HEAD samt v3/v4-Constraint", async () => {
     const embedded = await startEmbeddedPostgres();
     const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
     let prefix: string | undefined;
@@ -370,6 +371,10 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         idx: SNAPSHOT_V3_MIGRATION_INDEX,
         tag: "0066_f16_03_snapshot_v3_check",
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
+      });
+      expect(journal.entries.at(-1)).toMatchObject({
+        idx: 75,
+        tag: "0075_f3_01_planning_modes",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,
@@ -409,6 +414,7 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
       expect(v3Constraint.definition).toContain("offer-variant-snapshot.v1");
       expect(v3Constraint.definition).toContain("offer-variant-snapshot.v2");
       expect(v3Constraint.definition).toContain("offer-variant-snapshot.v3");
+      expect(v3Constraint.definition).toContain("offer-variant-snapshot.v4");
       expect(v3Constraint.definition).toContain("offer-jcs.v1");
     } finally {
       await closeUpgradeDatabase(pool, embedded);
@@ -536,7 +542,10 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
       await migrate(drizzle(pool), { migrationsFolder: through65 });
 
       const legacyHead = migrationPrefixThrough(
-        TOTAL_MIGRATION_COUNT - 1,
+        // Der historisch mögliche defekte Kopf endet bei 0074. Ein regulärer
+        // 0075-Lauf passiert den Preflight zuerst und kann 0066 daher nicht
+        // mehr überspringen oder den fehlenden v3-Constraint verdecken.
+        PRE_F301_MIGRATION_INDEX,
         new Map([[
           SNAPSHOT_V3_MIGRATION_INDEX,
           LEGACY_SNAPSHOT_V3_MIGRATION_TIMESTAMP,
@@ -544,7 +553,7 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
       );
       temporaryFolders.push(legacyHead);
       await migrate(drizzle(pool), { migrationsFolder: legacyHead });
-      expect(await migrationCount(pool)).toBe(TOTAL_MIGRATION_COUNT - 1);
+      expect(await migrationCount(pool)).toBe(PRE_F301_MIGRATION_INDEX);
       expect(await migrationMarker(pool, SNAPSHOT_V3_MIGRATION_SHA256)).toEqual([]);
       expect((await offerVariantRevisionVersionConstraint(pool)).definition)
         .not.toContain("offer-variant-snapshot.v3");
@@ -556,9 +565,9 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
           migrationIndex: SNAPSHOT_V3_MIGRATION_INDEX,
           hash: SNAPSHOT_V3_MIGRATION_SHA256,
           toCreatedAt: String(SNAPSHOT_V3_MIGRATION_TIMESTAMP),
-          previousLastMigrationIndex: TOTAL_MIGRATION_COUNT - 1,
+          previousLastMigrationIndex: PRE_F301_MIGRATION_INDEX,
         },
-        appliedCount: TOTAL_MIGRATION_COUNT,
+        appliedCount: PRE_F301_MIGRATION_INDEX + 1,
       });
       expect(await migrationMarker(pool, SNAPSHOT_V3_MIGRATION_SHA256)).toEqual([{
         created_at: String(SNAPSHOT_V3_MIGRATION_TIMESTAMP),

@@ -253,6 +253,28 @@
               "properties": {
                 "operation": {
                   "type": "string",
+                  "const": "set_planning_mode"
+                },
+                "planningMode": {
+                  "type": "string",
+                  "enum": [
+                    "quick",
+                    "2d",
+                    "3d"
+                  ]
+                }
+              },
+              "required": [
+                "operation",
+                "planningMode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "string",
                   "const": "set_variant_name"
                 },
                 "name": {
@@ -1645,53 +1667,56 @@
         "description": {
           "$ref": "#/$defs/__schema5"
         },
-        "contactContext": {
+        "planningMode": {
           "$ref": "#/$defs/__schema6"
         },
-        "installationSiteContext": {
+        "contactContext": {
           "$ref": "#/$defs/__schema7"
         },
-        "sourceBindings": {
+        "installationSiteContext": {
           "$ref": "#/$defs/__schema8"
         },
+        "sourceBindings": {
+          "$ref": "#/$defs/__schema9"
+        },
         "priceAudienceDecision": {
-          "$ref": "#/$defs/__schema10"
+          "$ref": "#/$defs/__schema11"
         },
         "taxDecision": {
-          "$ref": "#/$defs/__schema12"
-        },
-        "currency": {
           "$ref": "#/$defs/__schema13"
         },
-        "priceBasis": {
+        "currency": {
           "$ref": "#/$defs/__schema14"
         },
-        "globalDiscountBps": {
+        "priceBasis": {
           "$ref": "#/$defs/__schema15"
         },
-        "globalDiscountCapCents": {
+        "globalDiscountBps": {
           "$ref": "#/$defs/__schema16"
         },
-        "globalFixDiscountCents": {
-          "$ref": "#/$defs/__schema18"
+        "globalDiscountCapCents": {
+          "$ref": "#/$defs/__schema17"
         },
-        "customDealNetCents": {
+        "globalFixDiscountCents": {
           "$ref": "#/$defs/__schema19"
         },
-        "sections": {
+        "customDealNetCents": {
           "$ref": "#/$defs/__schema20"
         },
+        "sections": {
+          "$ref": "#/$defs/__schema21"
+        },
         "totals": {
-          "$ref": "#/$defs/__schema48"
+          "$ref": "#/$defs/__schema49"
         },
         "createdBy": {
           "$ref": "#/$defs/__schema2"
         },
         "createdAt": {
-          "$ref": "#/$defs/__schema11"
+          "$ref": "#/$defs/__schema12"
         },
         "snapshotSha256": {
-          "$ref": "#/$defs/__schema9"
+          "$ref": "#/$defs/__schema10"
         }
       },
       "required": [
@@ -1703,6 +1728,7 @@
         "revision",
         "variantName",
         "description",
+        "planningMode",
         "contactContext",
         "installationSiteContext",
         "sourceBindings",
@@ -1724,7 +1750,7 @@
       "$defs": {
         "__schema0": {
           "type": "string",
-          "const": "offer-variant-snapshot.v3"
+          "const": "offer-variant-snapshot.v4"
         },
         "__schema1": {
           "type": "string",
@@ -1754,6 +1780,14 @@
           ]
         },
         "__schema6": {
+          "type": "string",
+          "enum": [
+            "quick",
+            "2d",
+            "3d"
+          ]
+        },
+        "__schema7": {
           "type": "object",
           "properties": {
             "displayName": {
@@ -1787,7 +1821,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema7": {
+        "__schema8": {
           "type": "object",
           "properties": {
             "addressRevision": {
@@ -1823,7 +1857,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema8": {
+        "__schema9": {
           "type": "object",
           "properties": {
             "projectId": {
@@ -1839,7 +1873,7 @@
               "$ref": "#/$defs/__schema2"
             },
             "inboundPayloadSha256": {
-              "$ref": "#/$defs/__schema9"
+              "$ref": "#/$defs/__schema10"
             },
             "requirementId": {
               "$ref": "#/$defs/__schema2"
@@ -1854,10 +1888,10 @@
               "$ref": "#/$defs/__schema3"
             },
             "calculationInputSha256": {
-              "$ref": "#/$defs/__schema9"
+              "$ref": "#/$defs/__schema10"
             },
             "calculationResultSha256": {
-              "$ref": "#/$defs/__schema9"
+              "$ref": "#/$defs/__schema10"
             },
             "resolutionId": {
               "$ref": "#/$defs/__schema2"
@@ -1866,7 +1900,7 @@
               "$ref": "#/$defs/__schema3"
             },
             "resolutionSha256": {
-              "$ref": "#/$defs/__schema9"
+              "$ref": "#/$defs/__schema10"
             }
           },
           "required": [
@@ -1887,11 +1921,11 @@
           ],
           "additionalProperties": false
         },
-        "__schema9": {
+        "__schema10": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },
-        "__schema10": {
+        "__schema11": {
           "type": "object",
           "properties": {
             "audience": {
@@ -1906,7 +1940,7 @@
               "$ref": "#/$defs/__schema2"
             },
             "confirmedAt": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema12"
             }
           },
           "required": [
@@ -1917,7 +1951,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema11": {
+        "__schema12": {
           "type": "string",
           "allOf": [
             {
@@ -1928,7 +1962,7 @@
             }
           ]
         },
-        "__schema12": {
+        "__schema13": {
           "oneOf": [
             {
               "type": "object",
@@ -1945,7 +1979,7 @@
                   "$ref": "#/$defs/__schema2"
                 },
                 "selectedAt": {
-                  "$ref": "#/$defs/__schema11"
+                  "$ref": "#/$defs/__schema12"
                 }
               },
               "required": [
@@ -1971,7 +2005,7 @@
                   "$ref": "#/$defs/__schema2"
                 },
                 "selectedAt": {
-                  "$ref": "#/$defs/__schema11"
+                  "$ref": "#/$defs/__schema12"
                 },
                 "confirmationCode": {
                   "type": "string",
@@ -1981,7 +2015,7 @@
                   "$ref": "#/$defs/__schema2"
                 },
                 "confirmedAt": {
-                  "$ref": "#/$defs/__schema11"
+                  "$ref": "#/$defs/__schema12"
                 }
               },
               "required": [
@@ -1997,48 +2031,38 @@
             }
           ]
         },
-        "__schema13": {
+        "__schema14": {
           "type": "string",
           "const": "EUR"
         },
-        "__schema14": {
+        "__schema15": {
           "type": "string",
           "const": "net"
         },
-        "__schema15": {
+        "__schema16": {
           "type": "integer",
           "minimum": 0,
           "maximum": 10000
         },
-        "__schema16": {
+        "__schema17": {
           "anyOf": [
             {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             {
               "type": "null"
             }
           ]
         },
-        "__schema17": {
+        "__schema18": {
           "type": "integer",
           "minimum": 0,
           "maximum": 9000000000000000
         },
-        "__schema18": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/__schema17"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "__schema19": {
           "anyOf": [
             {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             {
               "type": "null"
@@ -2046,14 +2070,24 @@
           ]
         },
         "__schema20": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/__schema18"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema21": {
           "minItems": 1,
           "maxItems": 25,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema21"
+            "$ref": "#/$defs/__schema22"
           }
         },
-        "__schema21": {
+        "__schema22": {
           "type": "object",
           "properties": {
             "sectionDomainId": {
@@ -2065,20 +2099,20 @@
               "maximum": 25
             },
             "category": {
-              "$ref": "#/$defs/__schema22"
+              "$ref": "#/$defs/__schema23"
             },
             "title": {
               "type": "string"
             },
             "discountBps": {
-              "$ref": "#/$defs/__schema15"
+              "$ref": "#/$defs/__schema16"
             },
             "lines": {
               "minItems": 1,
               "maxItems": 500,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/__schema23"
+                "$ref": "#/$defs/__schema24"
               }
             }
           },
@@ -2092,7 +2126,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema22": {
+        "__schema23": {
           "type": "string",
           "enum": [
             "module",
@@ -2104,53 +2138,53 @@
             "other"
           ]
         },
-        "__schema23": {
+        "__schema24": {
           "type": "object",
           "properties": {
             "lineDomainId": {
               "$ref": "#/$defs/__schema2"
             },
             "position": {
-              "$ref": "#/$defs/__schema24"
-            },
-            "componentCategory": {
-              "$ref": "#/$defs/__schema22"
-            },
-            "positionType": {
               "$ref": "#/$defs/__schema25"
             },
-            "isHidden": {
+            "componentCategory": {
+              "$ref": "#/$defs/__schema23"
+            },
+            "positionType": {
               "$ref": "#/$defs/__schema26"
             },
-            "quantityMilli": {
+            "isHidden": {
               "$ref": "#/$defs/__schema27"
             },
-            "product": {
+            "quantityMilli": {
               "$ref": "#/$defs/__schema28"
             },
+            "product": {
+              "$ref": "#/$defs/__schema29"
+            },
             "source": {
-              "$ref": "#/$defs/__schema41"
+              "$ref": "#/$defs/__schema42"
             },
             "salesPricing": {
-              "$ref": "#/$defs/__schema42"
+              "$ref": "#/$defs/__schema43"
             },
             "purchasePricing": {
-              "$ref": "#/$defs/__schema42"
+              "$ref": "#/$defs/__schema43"
             },
             "lineDiscountBps": {
-              "$ref": "#/$defs/__schema15"
+              "$ref": "#/$defs/__schema16"
             },
             "taxTreatment": {
-              "$ref": "#/$defs/__schema45"
-            },
-            "taxRateBps": {
               "$ref": "#/$defs/__schema46"
             },
+            "taxRateBps": {
+              "$ref": "#/$defs/__schema47"
+            },
             "taxDecision": {
-              "$ref": "#/$defs/__schema12"
+              "$ref": "#/$defs/__schema13"
             },
             "computed": {
-              "$ref": "#/$defs/__schema47"
+              "$ref": "#/$defs/__schema48"
             }
           },
           "required": [
@@ -2172,12 +2206,12 @@
           ],
           "additionalProperties": false
         },
-        "__schema24": {
+        "__schema25": {
           "type": "integer",
           "minimum": 1,
           "maximum": 500
         },
-        "__schema25": {
+        "__schema26": {
           "type": "string",
           "enum": [
             "required",
@@ -2185,15 +2219,15 @@
             "optional"
           ]
         },
-        "__schema26": {
+        "__schema27": {
           "type": "boolean"
         },
-        "__schema27": {
+        "__schema28": {
           "type": "integer",
           "minimum": 1,
           "maximum": 100000000
         },
-        "__schema28": {
+        "__schema29": {
           "oneOf": [
             {
               "type": "object",
@@ -2216,7 +2250,7 @@
                   "type": "string"
                 },
                 "unit": {
-                  "$ref": "#/$defs/__schema29"
+                  "$ref": "#/$defs/__schema30"
                 },
                 "technicalData": {
                   "oneOf": [
@@ -2281,22 +2315,22 @@
                       "type": "object",
                       "properties": {
                         "schemaVersion": {
-                          "$ref": "#/$defs/__schema30"
-                        },
-                        "nominalCapacityWh": {
                           "$ref": "#/$defs/__schema31"
                         },
-                        "usableCapacityWh": {
+                        "nominalCapacityWh": {
                           "$ref": "#/$defs/__schema32"
                         },
-                        "maxContinuousPowerWatts": {
+                        "usableCapacityWh": {
                           "$ref": "#/$defs/__schema33"
                         },
-                        "roundTripEfficiencyBasisPoints": {
+                        "maxContinuousPowerWatts": {
                           "$ref": "#/$defs/__schema34"
                         },
-                        "backupCapability": {
+                        "roundTripEfficiencyBasisPoints": {
                           "$ref": "#/$defs/__schema35"
+                        },
+                        "backupCapability": {
+                          "$ref": "#/$defs/__schema36"
                         }
                       },
                       "required": [
@@ -2342,7 +2376,7 @@
                           ]
                         },
                         "bidirectionalCapability": {
-                          "$ref": "#/$defs/__schema35"
+                          "$ref": "#/$defs/__schema36"
                         }
                       },
                       "required": [
@@ -2396,7 +2430,7 @@
                           "maxItems": 4,
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema36"
+                            "$ref": "#/$defs/__schema37"
                           }
                         }
                       },
@@ -2418,7 +2452,7 @@
                           "maxItems": 20,
                           "type": "array",
                           "items": {
-                            "$ref": "#/$defs/__schema37"
+                            "$ref": "#/$defs/__schema38"
                           }
                         }
                       },
@@ -2433,7 +2467,7 @@
                 "image": {
                   "anyOf": [
                     {
-                      "$ref": "#/$defs/__schema38"
+                      "$ref": "#/$defs/__schema39"
                     },
                     {
                       "type": "null"
@@ -2443,7 +2477,7 @@
                 "datasheet": {
                   "anyOf": [
                     {
-                      "$ref": "#/$defs/__schema38"
+                      "$ref": "#/$defs/__schema39"
                     },
                     {
                       "type": "null"
@@ -2451,7 +2485,7 @@
                   ]
                 },
                 "technicalProvenance": {
-                  "$ref": "#/$defs/__schema40"
+                  "$ref": "#/$defs/__schema41"
                 }
               },
               "required": [
@@ -2489,7 +2523,7 @@
                   ]
                 },
                 "unit": {
-                  "$ref": "#/$defs/__schema29"
+                  "$ref": "#/$defs/__schema30"
                 }
               },
               "required": [
@@ -2502,7 +2536,7 @@
             }
           ]
         },
-        "__schema29": {
+        "__schema30": {
           "type": "string",
           "enum": [
             "piece",
@@ -2510,14 +2544,9 @@
             "meter"
           ]
         },
-        "__schema30": {
+        "__schema31": {
           "type": "string",
           "const": "battery.v1"
-        },
-        "__schema31": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100000000
         },
         "__schema32": {
           "type": "integer",
@@ -2532,9 +2561,14 @@
         "__schema34": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 10000
+          "maximum": 100000000
         },
         "__schema35": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "__schema36": {
           "type": "string",
           "enum": [
             "known_supported",
@@ -2542,7 +2576,7 @@
             "unknown"
           ]
         },
-        "__schema36": {
+        "__schema37": {
           "type": "string",
           "enum": [
             "pitched",
@@ -2551,7 +2585,7 @@
             "ground"
           ]
         },
-        "__schema37": {
+        "__schema38": {
           "type": "object",
           "properties": {
             "name": {
@@ -2571,7 +2605,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema38": {
+        "__schema39": {
           "type": "object",
           "properties": {
             "role": {
@@ -2587,7 +2621,7 @@
               "maxLength": 360
             },
             "sha256": {
-              "$ref": "#/$defs/__schema39"
+              "$ref": "#/$defs/__schema40"
             },
             "mediaType": {
               "type": "string",
@@ -2613,11 +2647,11 @@
           ],
           "additionalProperties": false
         },
-        "__schema39": {
+        "__schema40": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },
-        "__schema40": {
+        "__schema41": {
           "type": "object",
           "properties": {
             "sourceKind": {
@@ -2654,7 +2688,7 @@
             "sourceDocumentSha256": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/__schema39"
+                  "$ref": "#/$defs/__schema40"
                 },
                 {
                   "type": "null"
@@ -2671,7 +2705,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema41": {
+        "__schema42": {
           "oneOf": [
             {
               "type": "object",
@@ -2687,7 +2721,7 @@
                   "$ref": "#/$defs/__schema3"
                 },
                 "componentSnapshotSha256": {
-                  "$ref": "#/$defs/__schema9"
+                  "$ref": "#/$defs/__schema10"
                 },
                 "resolutionLineId": {
                   "$ref": "#/$defs/__schema2"
@@ -2699,13 +2733,13 @@
                   "$ref": "#/$defs/__schema3"
                 },
                 "resolutionSha256": {
-                  "$ref": "#/$defs/__schema9"
+                  "$ref": "#/$defs/__schema10"
                 },
                 "catalogSalesUnitNetCents": {
-                  "$ref": "#/$defs/__schema17"
+                  "$ref": "#/$defs/__schema18"
                 },
                 "catalogPurchaseUnitNetCents": {
-                  "$ref": "#/$defs/__schema17"
+                  "$ref": "#/$defs/__schema18"
                 }
               },
               "required": [
@@ -2733,7 +2767,7 @@
                   "$ref": "#/$defs/__schema2"
                 },
                 "enteredAt": {
-                  "$ref": "#/$defs/__schema11"
+                  "$ref": "#/$defs/__schema12"
                 }
               },
               "required": [
@@ -2745,19 +2779,19 @@
             }
           ]
         },
-        "__schema42": {
+        "__schema43": {
           "type": "object",
           "properties": {
             "originalUnitNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "effectiveUnitNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "provenance": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/__schema43"
+                  "$ref": "#/$defs/__schema44"
                 },
                 {
                   "type": "object",
@@ -2779,15 +2813,15 @@
                       "$ref": "#/$defs/__schema2"
                     },
                     "overriddenAt": {
-                      "$ref": "#/$defs/__schema11"
+                      "$ref": "#/$defs/__schema12"
                     },
                     "originalProvenance": {
                       "oneOf": [
                         {
-                          "$ref": "#/$defs/__schema43"
+                          "$ref": "#/$defs/__schema44"
                         },
                         {
-                          "$ref": "#/$defs/__schema44"
+                          "$ref": "#/$defs/__schema45"
                         }
                       ]
                     }
@@ -2802,7 +2836,7 @@
                   "additionalProperties": false
                 },
                 {
-                  "$ref": "#/$defs/__schema44"
+                  "$ref": "#/$defs/__schema45"
                 }
               ]
             }
@@ -2814,7 +2848,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema43": {
+        "__schema44": {
           "type": "object",
           "properties": {
             "kind": {
@@ -2822,7 +2856,7 @@
               "const": "catalog_seed"
             },
             "catalogProvenance": {
-              "$ref": "#/$defs/__schema40"
+              "$ref": "#/$defs/__schema41"
             }
           },
           "required": [
@@ -2831,7 +2865,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema44": {
+        "__schema45": {
           "type": "object",
           "properties": {
             "kind": {
@@ -2842,7 +2876,7 @@
               "$ref": "#/$defs/__schema2"
             },
             "enteredAt": {
-              "$ref": "#/$defs/__schema11"
+              "$ref": "#/$defs/__schema12"
             }
           },
           "required": [
@@ -2852,14 +2886,14 @@
           ],
           "additionalProperties": false
         },
-        "__schema45": {
+        "__schema46": {
           "type": "string",
           "enum": [
             "standard_19",
             "zero_operator_confirmed"
           ]
         },
-        "__schema46": {
+        "__schema47": {
           "anyOf": [
             {
               "type": "number",
@@ -2871,29 +2905,29 @@
             }
           ]
         },
-        "__schema47": {
+        "__schema48": {
           "type": "object",
           "properties": {
             "lineBaseNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "lineDiscountedNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "sectionDiscountedNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "finalSalesNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "salesTaxCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "salesGrossCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "purchaseNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             }
           },
           "required": [
@@ -2907,26 +2941,26 @@
           ],
           "additionalProperties": false
         },
-        "__schema48": {
+        "__schema49": {
           "type": "object",
           "properties": {
             "basisNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "basisTaxCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "basisGrossCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "optionalNetCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "optionalTaxCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             },
             "optionalGrossCents": {
-              "$ref": "#/$defs/__schema17"
+              "$ref": "#/$defs/__schema18"
             }
           },
           "required": [
@@ -2948,6 +2982,7 @@
     "zero_operator_confirmed always carries a fresh command-bound structured confirmation",
     "contact and installation-site contexts are NFC-normalized strict allowlists loaded by the server",
     "revision commands contain at most 500 compact operations and never client-computed totals",
+    "offer-variant-snapshot.v4 binds exactly one planningMode (quick, 2d, or 3d) into the immutable snapshot hash",
     "offer-jcs.v1 canonicalizes all strings and object keys to NFC before JCS ordering",
     "UUID values are canonicalized to lowercase and an omitted forecast is canonicalized to null before hashing",
     "variant snapshots contain one to 25 sections and one to 500 total immutable BOM lines",

@@ -39,6 +39,7 @@ export * from "./project-assignment";
 export * from "./project-note";
 export * from "./project-task";
 export * from "./portal";
+export * from "./planning";
 export * from "./signatures";
 export * from "./site";
 export * from "./time-tracking";

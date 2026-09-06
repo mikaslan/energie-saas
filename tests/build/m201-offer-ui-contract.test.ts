@@ -84,6 +84,19 @@ describe("M2-01 Offer-UI-/Build-Vertrag", () => {
     expect(detailPage).toContain("safeParse");
     expect(detailPage.toLowerCase()).toContain("uuid");
     expect(detailPage).toContain("notFound");
+    expect(detailPage).toContain("variantId={projectedView.activeVariant?.snapshot.variantId ?? null}");
+  });
+
+  it("bindet Signaturaktionen an die aktive Variante und den Rollenvertrag", async () => {
+    const panel = await readFile(`${DETAIL_ROUTE}/offer-signature-panel.tsx`, "utf8");
+
+    expect(panel).toContain("request.variantId === props.variantId");
+    expect(panel).toContain('can(ctx, "offer.signature.create")');
+    expect(panel).toContain('can(ctx, "offer.signature.withdraw")');
+    expect(panel).toContain('can(ctx, "offer.signature.upload_analog")');
+    expect(panel).toContain("access.canCreate");
+    expect(panel).toContain("access.canWithdraw");
+    expect(panel).toContain("access.canUploadAnalog");
   });
 
   it("macht Listen- und Detailzustände explizit und rendert keine Zukunfts-Placebos", async () => {
@@ -214,6 +227,24 @@ describe("M2-01 Offer-UI-/Build-Vertrag", () => {
     expect(model).toContain('operation: "set_line_position_type"');
     expect(model).toContain('operation: "set_line_visibility"');
     expect(model).toContain('operation: "move_line"');
+    expect(model).toContain('operation: "set_planning_mode"');
+    expect(editor).toContain('name="planning-mode"');
+    expect(editor).toContain('data-planning-mode-readonly="true"');
+    expect(editor).toContain("contentMutationDisabled");
+    expect(editor).toContain('data-offer-content-lock={contentLock}');
+    expect(editor).toContain("Sperrstatus aktualisieren");
+    expect(editor).toContain("onRefreshServer={() => router.refresh()}");
+    expect(detailView).toContain('data-planning-mode-readonly="true"');
+    for (const status of ["pending", "signed", "revoked_by_customer"]) {
+      expect(editor).toContain(`"${status}"`);
+    }
+    for (const code of [
+      "variant_signature_pending",
+      "variant_signed",
+      "variant_revoked_by_customer",
+    ]) {
+      expect(actions).toContain(`"${code}"`);
+    }
     for (const operation of [
       "set_global_discount",
       "set_custom_deal",

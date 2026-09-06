@@ -77,6 +77,7 @@ function offerSnapshot(): OfferVariantSnapshotV1 {
     revision: 1,
     variantName: "Basis",
     description: null,
+    planningMode: "quick",
     contactContext: {
       displayName: "Synthetischer Reviewkontakt",
       emailPrimary: "review@example.test",
@@ -304,6 +305,7 @@ describe("M2-01 Review-Regressionen", () => {
         expected_calculation_revision: 1,
         expected_resolution_revision: 1,
       }] },
+      { rows: [] },
     ];
     const execute = vi.fn(async () => responses.shift() ?? { rows: [] });
     const tx = { execute } as unknown as TenantTx;
@@ -313,7 +315,7 @@ describe("M2-01 Review-Regressionen", () => {
       variantId: IDS.foreignVariant,
     });
 
-    expect(execute).toHaveBeenCalledTimes(5);
+    expect(execute).toHaveBeenCalledTimes(6);
     expect(detail?.variants.map(({ id, active }) => ({ id, active }))).toEqual([
       { id: IDS.firstVariant, active: true },
       { id: IDS.secondVariant, active: false },
@@ -366,7 +368,7 @@ describe("M2-01 Review-Regressionen", () => {
     expect(routeMocks.authorizedQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("projiziert einen v3-Snapshot mit Prozent-, Cap- und Fix-Rabatt in die Angebotsansicht", async () => {
+  it("projiziert einen v4-Snapshot mit Planungsmodus und Konditionen in die Angebotsansicht", async () => {
     routeMocks.authorizedQuery.mockReset();
     const snapshot = structuredClone(offerSnapshot());
     snapshot.globalDiscountBps = 2_500;
@@ -463,6 +465,7 @@ describe("M2-01 Review-Regressionen", () => {
 
     expect(projected).toMatchObject({
       schemaVersion: OFFER_VARIANT_SNAPSHOT_VERSION,
+      planningMode: "quick",
       globalDiscountBps: 2_500,
       globalDiscountCapCents: 1_000,
       globalFixDiscountCents: 500,
@@ -484,7 +487,7 @@ describe("M2-01 Review-Regressionen", () => {
     } as never)).rejects.toThrow("Angebotsansicht enthält einen ungültigen Datenstand");
   });
 
-  it("akzeptiert an der Angebotsoberfläche nur den vollständig normalisierten v3-Shape", async () => {
+  it("akzeptiert an der Angebotsoberfläche nur den vollständig normalisierten v4-Shape", async () => {
     const source = await readFile(OFFER_PAGE_PATH, "utf8");
     const boundary = sourceSlice(
       source,

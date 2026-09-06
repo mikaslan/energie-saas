@@ -64,7 +64,13 @@ export default async function EconomicsSettingsPage(
 
       <EconomicsSettingsForm workspaceId={workspaceId} settings={settings} />
 
-      <div className="mt-6">
+      <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3">
+        <Link
+          href={`/w/${workspaceId}/einstellungen/planung`}
+          className="text-sm font-semibold text-blue-700 underline-offset-2 hover:underline"
+        >
+          Zur Planung
+        </Link>
         <Link
           href={`/w/${workspaceId}/einstellungen/rechnungsstellung`}
           className="text-sm font-semibold text-blue-700 underline-offset-2 hover:underline"

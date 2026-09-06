@@ -117,6 +117,7 @@ function variantSnapshotFixture({ hidden = false }: { hidden?: boolean } = {}) {
     revision: 7,
     variantName: "  Komfort A\u0308  ",
     description: "  Kundensichtbarer Umfang  ",
+    planningMode: "quick",
     contactContext: {
       displayName: "Quellkontakt darf nicht still gewinnen",
       emailPrimary: "source-private@example.invalid",

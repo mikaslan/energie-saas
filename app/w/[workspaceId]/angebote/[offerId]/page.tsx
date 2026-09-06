@@ -26,6 +26,7 @@ import { requireAuthSecret } from "@/lib/env";
 import {
   OFFER_VARIANT_SNAPSHOT_VERSION,
 } from "@/lib/integrations/offers/contract";
+import { planningModeSchema } from "@/lib/integrations/planning/contract";
 
 import { listDiscountTemplates } from "@/modules/discounts";
 import { listSubsidyTemplates } from "@/modules/subsidies";
@@ -186,9 +187,8 @@ function snapshotViewSchema(canReadPurchasePrice: boolean) {
   const lineSchema = canReadPurchasePrice ? purchaseLineViewSchema : publicLineViewSchema;
 
   return z.object({
-    // Der Domain-DTO normalisiert gültige v1/v2-Historie bereits auf den
-    // aktuellen v3-Shape. Diese zweite Grenze bleibt deshalb strikt v3 und
-    // darf weder unnormalisierte Altstände noch partielle v3-Werte annehmen.
+    // Der Domain-DTO normalisiert gültige v1-v3-Historie bereits auf den
+    // aktuellen v4-Shape. Diese zweite Grenze bleibt deshalb strikt v4.
     schemaVersion: z.literal(OFFER_VARIANT_SNAPSHOT_VERSION),
     workspaceId: snapshotUuidSchema,
     offerId: snapshotUuidSchema,
@@ -196,6 +196,7 @@ function snapshotViewSchema(canReadPurchasePrice: boolean) {
     revision: positiveRevisionSchema,
     variantName: z.string().trim().min(1).max(120),
     description: z.string().trim().min(1).max(1_000).nullable(),
+    planningMode: planningModeSchema,
     globalDiscountBps: basisPointsSchema,
     globalDiscountCapCents: moneyCentsSchema.nullable(),
     globalFixDiscountCents: moneyCentsSchema.nullable(),
@@ -366,6 +367,7 @@ function projectOfferDetailView(
       paymentOptionId: variant.paymentOptionId,
     })),
     activeVariant: parsedVariant.data,
+    contentLock: view.contentLock,
     permissions: {
       canEdit: view.permissions.canEdit,
       canDuplicate: view.permissions.canDuplicate,
@@ -677,30 +679,29 @@ export default async function OfferDetailPage(
   }
 
   if (result.view === null) notFound();
+  const projectedView = projectOfferDetailView(
+    result.view,
+    result.editorCapabilities,
+    result.recoveryScope,
+    result.pdfDrafts,
+    result.discountTemplates,
+    result.paymentOptions,
+    {
+      profile: result.releaseProfile,
+      recipient: result.releaseRecipient,
+      candidates: result.releaseCandidates,
+      issuances: result.offerIssuances,
+      validityWindow: result.releaseValidityWindow,
+      showPanel: result.showReleasePanel,
+    },
+  );
   return (
     <>
-      <OfferDetailView
-        view={projectOfferDetailView(
-          result.view,
-          result.editorCapabilities,
-          result.recoveryScope,
-          result.pdfDrafts,
-          result.discountTemplates,
-          result.paymentOptions,
-          {
-            profile: result.releaseProfile,
-            recipient: result.releaseRecipient,
-            candidates: result.releaseCandidates,
-            issuances: result.offerIssuances,
-            validityWindow: result.releaseValidityWindow,
-            showPanel: result.showReleasePanel,
-          },
-        )}
-      />
+      <OfferDetailView view={projectedView} />
       <OfferSignaturePanel
         workspaceId={workspaceId}
         offerId={offerId}
-        variantId={selectedVariantId}
+        variantId={projectedView.activeVariant?.snapshot.variantId ?? null}
       />
     </>
   );

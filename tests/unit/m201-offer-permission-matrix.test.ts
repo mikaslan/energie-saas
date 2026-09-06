@@ -65,6 +65,7 @@ function snapshot(): OfferVariantSnapshotV1 {
     revision: 1,
     variantName: "Basis",
     description: null,
+    planningMode: "quick",
     contactContext: {
       displayName: "Synthetische Kundin",
       emailPrimary: "permission-matrix@example.test",

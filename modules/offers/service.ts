@@ -44,6 +44,7 @@ import {
 } from "@/lib/integrations/offers/contract";
 import { calculateOfferPricing } from "@/lib/integrations/offers/money";
 import { OfferRateLimitError } from "@/lib/integrations/offers/admission";
+import type { PlanningMode } from "@/lib/integrations/planning/contract";
 import {
   can,
   isExternalOnly,
@@ -58,12 +59,15 @@ import {
   readOfferCatalogFreshness,
   type OfferCatalogResolutionSnapshot,
 } from "@/modules/catalog";
+import { getPlanningModeDefaultForVariantCreation } from "@/modules/planning";
 
 export type OfferMutationResult = {
   offerId: string;
   variantId: string;
   revision: number;
 };
+
+export type OfferVariantContentLock = "pending" | "signed" | "revoked_by_customer";
 
 export type OfferListViewModel = {
   state: "loaded" | "empty" | "blocked" | "read_only";
@@ -117,6 +121,7 @@ export type OfferDetailViewModel = {
     paymentOptionId: string | null;
   }>;
   activeVariant: OfferVariantViewV1;
+  contentLock: OfferVariantContentLock | null;
   newBasisInput: {
     expectedRequirementRevision: number;
     expectedCalculationRevision: number;
@@ -498,6 +503,35 @@ function readVariantBundles(value: unknown): OptionalBundlesV1 {
   return bundles.data;
 }
 
+async function readVariantContentLock(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  offerId: string,
+  variantId: string,
+): Promise<OfferVariantContentLock | null> {
+  const result = await tx.execute<{
+    status: OfferVariantContentLock;
+    [key: string]: unknown;
+  }>(sql`
+    select status
+      from signature_request
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerId}::uuid
+       and variant_id = ${variantId}::uuid
+       and (
+         status in ('signed', 'revoked_by_customer')
+         or (status = 'pending' and expires_at > statement_timestamp())
+       )
+     order by case status
+       when 'revoked_by_customer' then 1
+       when 'signed' then 2
+       else 3
+     end, created_at desc, id
+     limit 1
+  `);
+  return result.rows[0]?.status ?? null;
+}
+
 export async function getOfferDetail(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -631,6 +665,12 @@ export async function getOfferDetail(
     canReadPurchasePrice,
     canReadPrivateHashes: false,
   });
+  const contentLock = await readVariantContentLock(
+    tx,
+    ctx,
+    offerRecord.id,
+    active.id,
+  );
   const primaryRow = variantsResult.rows.find((variant) => variant.is_primary) ?? null;
   let primaryBasisNetCents: number | null = null;
   let primaryBasisGrossCents: number | null = null;
@@ -684,6 +724,7 @@ export async function getOfferDetail(
       };
     }),
     activeVariant,
+    contentLock,
     newBasisInput,
     permissions: {
       canEdit,
@@ -1107,6 +1148,7 @@ function buildResolutionSnapshot(input: {
   revision: number;
   variantName: string;
   description: string | null;
+  planningMode: PlanningMode;
   contactContext: OfferContactContextV1;
   installationSiteContext: OfferInstallationSiteContextV1;
   sourceBindings: OfferSourceBindingsV1;
@@ -1196,6 +1238,7 @@ function buildResolutionSnapshot(input: {
     revision: input.revision,
     variantName: input.variantName,
     description: input.description,
+    planningMode: input.planningMode,
     contactContext: input.contactContext,
     installationSiteContext: input.installationSiteContext,
     sourceBindings: input.sourceBindings,
@@ -1423,22 +1466,6 @@ export async function createOfferFromRequest(
     confirmedBy: ctx.actor,
     confirmedAt: now,
   };
-  const snapshot = buildResolutionSnapshot({
-    workspaceId: ctx.workspaceId,
-    offerId,
-    variantId,
-    revision: 1,
-    variantName: "Basis",
-    description: null,
-    contactContext: basis.contactContext,
-    installationSiteContext: basis.installationSiteContext,
-    sourceBindings: basis.sourceBindings,
-    resolution: basis.resolution,
-    priceAudienceDecision,
-    actor: ctx.actor,
-    createdAt: now,
-    taxTreatment: command.taxTreatment,
-  });
   const yearResult = await tx.execute<{ year: number; [key: string]: unknown }>(sql`
     select extract(year from ${now}::timestamptz at time zone 'Europe/Berlin')::integer as year
   `);
@@ -1470,6 +1497,28 @@ export async function createOfferFromRequest(
   const number = numberResult.rows[0];
   if (!number) throw new OfferBlockedError("offer_number_exhausted");
   const offerNumber = `${number.prefix}-${year}-${String(number.last_sequence).padStart(number.padding, "0")}`;
+  // Die Nummernserie liegt in der kanonischen Offer-Lockordnung vor dem
+  // Workspace-Default. So bleibt der Default transaktionskonsistent, ohne
+  // bestehende Create-vs.-Series-Races durch eine vorgezogene Advisory-Sperre
+  // zu invertieren.
+  const planningMode = await getPlanningModeDefaultForVariantCreation(tx, ctx);
+  const snapshot = buildResolutionSnapshot({
+    workspaceId: ctx.workspaceId,
+    offerId,
+    variantId,
+    revision: 1,
+    variantName: "Basis",
+    description: null,
+    planningMode,
+    contactContext: basis.contactContext,
+    installationSiteContext: basis.installationSiteContext,
+    sourceBindings: basis.sourceBindings,
+    resolution: basis.resolution,
+    priceAudienceDecision,
+    actor: ctx.actor,
+    createdAt: now,
+    taxTreatment: command.taxTreatment,
+  });
 
   try {
     await tx.execute(sql`
@@ -1819,6 +1868,7 @@ export async function createVariantFromCurrentResolution(
     calculationRevision: command.expectedCalculationRevision,
     resolutionRevision: command.expectedResolutionRevision,
   });
+  const planningMode = await getPlanningModeDefaultForVariantCreation(tx, ctx);
   if (canonicalizeOfferJson(offerRecord.installation_site_context)
     !== canonicalizeOfferJson(basis.installationSiteContext)) {
     throw new OfferBlockedError("installation_site_changed");
@@ -1834,6 +1884,7 @@ export async function createVariantFromCurrentResolution(
     revision: 1,
     variantName: command.name,
     description: null,
+    planningMode,
     contactContext: offerRecord.contact_context,
     installationSiteContext: offerRecord.installation_site_context,
     sourceBindings: basis.sourceBindings,
@@ -1909,6 +1960,9 @@ function applyRevisionOperation(
   at: string,
 ): void {
   switch (operation.operation) {
+    case "set_planning_mode":
+      snapshot.planningMode = operation.planningMode;
+      return;
     case "set_variant_name":
       snapshot.variantName = operation.name;
       return;
@@ -2113,6 +2167,28 @@ function applyRevisionOperation(
   }
 }
 
+type SetPlanningModeOperation = Extract<
+  ReviseOfferVariantOperationV1,
+  { operation: "set_planning_mode" }
+>;
+
+function effectiveRevisionOperations(
+  previous: OfferVariantSnapshotV1,
+  operations: readonly ReviseOfferVariantOperationV1[],
+): ReviseOfferVariantOperationV1[] {
+  const effective: ReviseOfferVariantOperationV1[] = operations.filter(
+    (operation) => operation.operation !== "set_planning_mode",
+  );
+  let finalPlanningMode: SetPlanningModeOperation | null = null;
+  for (const operation of operations) {
+    if (operation.operation === "set_planning_mode") finalPlanningMode = operation;
+  }
+  if (finalPlanningMode !== null && finalPlanningMode.planningMode !== previous.planningMode) {
+    effective.push(finalPlanningMode);
+  }
+  return effective;
+}
+
 function repriceSnapshot(snapshot: OfferVariantSnapshotV1): void {
   const pricing = calculateOfferPricing({
     currency: "EUR",
@@ -2196,6 +2272,19 @@ export async function reviseOfferVariant(
   if (variant.current_revision !== command.expectedRevision) {
     throw new OfferConflictError(variant.current_revision);
   }
+  const contentLock = await readVariantContentLock(
+    tx,
+    ctx,
+    offerRecord.id,
+    variant.id,
+  );
+  if (contentLock !== null) {
+    throw new OfferBlockedError(
+      contentLock === "pending" ? "variant_signature_pending"
+        : contentLock === "signed" ? "variant_signed"
+          : "variant_revoked_by_customer",
+    );
+  }
   const previous = await readValidatedRevision(
     tx,
     ctx,
@@ -2203,12 +2292,20 @@ export async function reviseOfferVariant(
     variant.id,
     variant.current_revision,
   );
+  const effectiveOperations = effectiveRevisionOperations(previous, command.operations);
+  if (effectiveOperations.length === 0) {
+    return {
+      offerId: offerRecord.id,
+      variantId: variant.id,
+      revision: previous.revision,
+    };
+  }
   const now = await databaseNow(tx);
   const next = structuredClone(previous);
   next.revision = previous.revision + 1;
   next.createdBy = ctx.actor;
   next.createdAt = now;
-  for (const operation of command.operations) {
+  for (const operation of effectiveOperations) {
     applyRevisionOperation(next, operation, ctx, now);
   }
   let snapshot: OfferVariantSnapshotV1;
@@ -2236,7 +2333,7 @@ export async function reviseOfferVariant(
     variantId: variant.id,
     revision: snapshot.revision,
     previousRevision: command.expectedRevision,
-    changeClasses: command.operations.map((operation) => operation.operation),
+    changeClasses: effectiveOperations.map((operation) => operation.operation),
     previousState: "draft",
     newState: "draft",
     eventType: "offer.variant_revised",

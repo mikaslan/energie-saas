@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Locator, type Page } from "playwright/test";
+import { expect, test, type Page } from "playwright/test";
 import { seedM204ReleasedOffer } from "./m2-04-fixture";
 import {
   createDrainTrackedPool,
@@ -252,6 +252,7 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
     await panel.getByRole("button", { name: "Link widerrufen" }).click();
     await expect(panel.getByText("widerrufen", { exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Link widerrufen" })).toHaveCount(0);
+    await expect(panel.locator("a[href^='/s/']")).toHaveCount(0);
 
     await page.reload();
     await expect(panel.getByText("widerrufen", { exact: true })).toBeVisible();

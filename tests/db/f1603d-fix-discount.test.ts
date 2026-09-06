@@ -47,6 +47,7 @@ import {
 } from "@/modules/subsidies";
 import {
   canonicalizeOfferJson,
+  OFFER_VARIANT_SNAPSHOT_VERSION,
   OFFER_VARIANT_REVISE_COMMAND_VERSION,
   validateOfferVariantSnapshot,
 } from "@/lib/integrations/offers/contract";
@@ -675,6 +676,8 @@ describe("F16.3 Slice D Fix-Modell global (PostgreSQL)", () => {
     delete rev1body.globalFixDiscountCents;
     // F16.3 Slice E: v3-Cap-Key ebenfalls entfernen (echte v1-Gestalt).
     delete rev1body.globalDiscountCapCents;
+    // F3.1: Planungsmodus existierte in v1 noch nicht.
+    delete rev1body.planningMode;
     delete rev1body.snapshotSha256;
     rev1body.schemaVersion = "offer-variant-snapshot.v1";
     const v1sealed = {
@@ -685,8 +688,8 @@ describe("F16.3 Slice D Fix-Modell global (PostgreSQL)", () => {
     expect(validated.ok).toBe(true);
     if (validated.ok) {
       expect(validated.value.globalFixDiscountCents).toBeNull();
-      // Slice E: Upgrader hebt auf die aktuelle Version (v3).
-      expect(validated.value.schemaVersion).toBe("offer-variant-snapshot.v3");
+      expect(validated.value.schemaVersion).toBe(OFFER_VARIANT_SNAPSHOT_VERSION);
+      expect(validated.value.planningMode).toBe("quick");
     }
   });
 });

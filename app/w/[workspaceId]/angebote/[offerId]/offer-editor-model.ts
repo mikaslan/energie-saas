@@ -1,4 +1,5 @@
 import { calculateOfferPricing, type OfferPricingResult } from "@/lib/integrations/offers/money";
+import type { PlanningMode } from "@/lib/integrations/planning/contract";
 
 export type OfferPositionType = "required" | "additional" | "optional";
 export type OfferPriceReason = "customer_specific_pricing" | "negotiated" | "correction" | "other";
@@ -36,6 +37,7 @@ export interface OfferEditorSourceSnapshot {
   revision: number;
   variantName: string;
   description: string | null;
+  planningMode: PlanningMode;
   globalDiscountBps?: number;
   globalDiscountCapCents?: number | null;
   globalFixDiscountCents?: number | null;
@@ -74,6 +76,7 @@ export interface OfferEditorDraftSection {
 export interface OfferEditorDraft {
   variantName: string;
   description: string;
+  planningMode: PlanningMode;
   globalDiscountPercent: string;
   // F16.3 Slice E: Deckel in Euro ("" = ungedeckelt).
   globalDiscountCapEuros: string;
@@ -85,6 +88,7 @@ export interface OfferEditorDraft {
 
 type ZeroConfirmation = { code: "zero_tax_draft_operator_confirmed"; confirmed: true };
 export type OfferRevisionOperation =
+  | { operation: "set_planning_mode"; planningMode: PlanningMode }
   | { operation: "set_variant_name"; name: string }
   | { operation: "set_variant_description"; description: string | null }
   | { operation: "set_global_discount"; discountBps: number; capCents?: number | null }
@@ -193,6 +197,7 @@ export function createOfferEditorDraft(snapshot: OfferEditorSourceSnapshot): Off
   return {
     variantName: snapshot.variantName,
     description: snapshot.description ?? "",
+    planningMode: snapshot.planningMode,
     globalDiscountPercent: formatScaledInteger(snapshot.globalDiscountBps ?? 0, 2),
     globalDiscountCapEuros: snapshot.globalDiscountCapCents === null || snapshot.globalDiscountCapCents === undefined
       ? "" : formatScaledInteger(snapshot.globalDiscountCapCents, 2),
@@ -469,6 +474,9 @@ export function buildOfferRevisionOperations(
   else if (normalizedName !== snapshot.variantName) operations.push({ operation: "set_variant_name", name: normalizedName });
   if (normalizedDescription.length > 1_000) addError(errors, "variant-description", "Die Beschreibung darf höchstens 1.000 Zeichen enthalten.");
   else if ((normalizedDescription || null) !== snapshot.description) operations.push({ operation: "set_variant_description", description: normalizedDescription || null });
+  if (draft.planningMode !== snapshot.planningMode) {
+    operations.push({ operation: "set_planning_mode", planningMode: draft.planningMode });
+  }
 
   const globalDiscountBps = parseScaledInteger(draft.globalDiscountPercent, 2, 10_000);
   // F16.3 Slice E: Cap ("" = ungedeckelt); Prozent- oder Cap-Änderung ->
@@ -771,6 +779,7 @@ export function rebaseOfferEditorDraft(
   const result = structuredClone(currentServerDraft);
   result.variantName = mergeValue("Variantenname parallel geändert", previousBase.variantName, localDraft.variantName, currentServerDraft.variantName);
   result.description = mergeValue("Beschreibung parallel geändert", previousBase.description, localDraft.description, currentServerDraft.description);
+  result.planningMode = mergeValue("Planungsmodus parallel geändert", previousBase.planningMode, localDraft.planningMode, currentServerDraft.planningMode);
   result.globalDiscountPercent = mergeValue("Globaler Rabatt parallel geändert", previousBase.globalDiscountPercent, localDraft.globalDiscountPercent, currentServerDraft.globalDiscountPercent);
   result.customDealNetEuros = mergeValue("Custom Deal parallel geändert", previousBase.customDealNetEuros, localDraft.customDealNetEuros, currentServerDraft.customDealNetEuros);
 

@@ -47,6 +47,7 @@ import {
 } from "@/modules/subsidies";
 import {
   canonicalizeOfferJson,
+  OFFER_VARIANT_SNAPSHOT_VERSION,
   OFFER_VARIANT_REVISE_COMMAND_VERSION,
   validateOfferVariantSnapshot,
 } from "@/lib/integrations/offers/contract";
@@ -684,6 +685,8 @@ describe("F16.3 Slice E Cap-Prozent global (PostgreSQL)", () => {
     const rev1 = await readRevisionSnapshot(members.workspaceId, variantId, 1);
     const rev1body: Record<string, unknown> = { ...(rev1.snapshot as Record<string, unknown>) };
     delete rev1body.globalDiscountCapCents;
+    // F3.1: Planungsmodus existierte in v2 noch nicht.
+    delete rev1body.planningMode;
     delete rev1body.snapshotSha256;
     rev1body.schemaVersion = "offer-variant-snapshot.v2";
     const v2sealed = {
@@ -694,7 +697,8 @@ describe("F16.3 Slice E Cap-Prozent global (PostgreSQL)", () => {
     expect(validated.ok).toBe(true);
     if (validated.ok) {
       expect(validated.value.globalDiscountCapCents).toBeNull();
-      expect(validated.value.schemaVersion).toBe("offer-variant-snapshot.v3");
+      expect(validated.value.schemaVersion).toBe(OFFER_VARIANT_SNAPSHOT_VERSION);
+      expect(validated.value.planningMode).toBe("quick");
     }
   });
 });

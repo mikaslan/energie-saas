@@ -42,6 +42,8 @@ export const SIGNATURE_CONFLICT_CODES = [
   "issuance_not_approved",
   "artifact_missing",
   "signer_missing",
+  "variant_revision_changed",
+  "request_already_exists",
   "transition_conflict",
   "revocation_window_closed",
   "withdrawal_conflict",
@@ -402,7 +404,7 @@ export async function uploadAnalogSignature(
     throw new SignatureValidationError(["/signingDate"]);
   }
   const requestRows = await readRows(tx, sql`
-    select id, offer_id, variant_id, content_sha256
+    select id, offer_id, variant_id, variant_revision_id, content_sha256
       from public.signature_request
      where workspace_id = ${command.workspaceId}::uuid
        and id = ${command.requestId}::uuid
@@ -422,9 +424,33 @@ export async function uploadAnalogSignature(
     id: uuidSchema,
     offer_id: uuidSchema,
     variant_id: uuidSchema,
+    variant_revision_id: uuidSchema,
     content_sha256: z.custom<Buffer>((value) => Buffer.isBuffer(value)),
   }).safeParse(requestRows[0]);
   if (!request.success) throw new SignatureIntegrityError();
+
+  // The pending request and its exact snapshot must still point at the
+  // variant's current revision. Locking the variant closes the analog-signing
+  // race against a concurrent content mutation; the database trigger repeats
+  // this invariant for direct SQL callers.
+  const variantRows = await readRows(tx, sql`
+    select variant_record.id
+      from public.offer_variant as variant_record
+      join public.offer_variant_revision as revision_record
+        on revision_record.workspace_id = variant_record.workspace_id
+       and revision_record.offer_id = variant_record.offer_id
+       and revision_record.variant_id = variant_record.id
+       and revision_record.revision = variant_record.current_revision
+     where variant_record.workspace_id = ${command.workspaceId}::uuid
+       and variant_record.offer_id = ${request.data.offer_id}::uuid
+       and variant_record.id = ${request.data.variant_id}::uuid
+       and revision_record.id = ${request.data.variant_revision_id}::uuid
+     for update of variant_record
+  `);
+  if (variantRows.length === 0) {
+    throw new SignatureConflictError("variant_revision_changed");
+  }
+  if (variantRows.length !== 1) throw new SignatureIntegrityError();
 
   const signerRows = await readRows(tx, sql`
     select contact_record.display_name as display_name
@@ -441,7 +467,7 @@ export async function uploadAnalogSignature(
     : null;
   if (!signer) throw new SignatureConflictError("signer_missing");
 
-  await tx.execute(sql`
+  const transitioned = await readRows(tx, sql`
     update public.signature_request
        set status = 'signed',
            signer_name = ${signer}::text,
@@ -450,7 +476,12 @@ export async function uploadAnalogSignature(
      where workspace_id = ${command.workspaceId}::uuid
        and id = ${command.requestId}::uuid
        and status = 'pending'
+     returning id
   `);
+  if (transitioned.length === 0) {
+    throw new SignatureConflictError("transition_conflict");
+  }
+  if (transitioned.length !== 1) throw new SignatureIntegrityError();
   const attestationId = randomUUID();
   const artifactSha256 = createHash("sha256").update(command.artifactBytes).digest();
   await tx.execute(sql`
@@ -491,7 +522,14 @@ function mapNonSuccess(value: unknown): never {
 
 const REQUEST_SELECT = sql.raw(`
   request_record.id, request_record.offer_id, request_record.variant_id,
-  request_record.issuance_id, request_record.status, request_record.expires_at,
+  request_record.issuance_id,
+  case
+    when request_record.status = 'pending'
+      and request_record.expires_at <= pg_catalog.statement_timestamp()
+      then 'expired'
+    else request_record.status
+  end as status,
+  request_record.expires_at,
   encode(request_record.content_sha256, 'hex') as content_sha256_hex,
   request_record.created_at, request_record.signer_name, request_record.signed_at,
   request_record.withdrawn_at, request_record.withdrawn_by,

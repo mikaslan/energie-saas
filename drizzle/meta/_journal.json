@@ -526,6 +526,13 @@
       "when": 1788652231722,
       "tag": "0074_f2_05_variant_payment_write_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1788658084683,
+      "tag": "0075_f3_01_planning_modes",
+      "breakpoints": true
     }
   ]
 }

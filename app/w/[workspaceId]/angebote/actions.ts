@@ -40,6 +40,9 @@ const OFFER_BLOCKED_CODES = [
   "offer_number_exhausted",
   "variant_limit",
   "installation_site_changed",
+  "variant_signature_pending",
+  "variant_signed",
+  "variant_revoked_by_customer",
 ] as const;
 export type OfferBlockedCode = typeof OFFER_BLOCKED_CODES[number] | "requirements_changed";
 const offerBlockedCodeSet = new Set<string>(OFFER_BLOCKED_CODES);

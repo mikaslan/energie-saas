@@ -9,6 +9,7 @@ import {
   calculateOfferPricing,
   type OfferPricingInput,
 } from "./money";
+import { planningModeSchema } from "@/lib/integrations/planning/contract";
 
 export const OFFER_CREATE_COMMAND_VERSION = "offer-create-command.v1" as const;
 export const OFFER_VARIANT_REVISE_COMMAND_VERSION =
@@ -26,10 +27,12 @@ export const OFFER_VARIANT_BUNDLES_COMMAND_VERSION =
 export const OFFER_CANONICALIZATION_VERSION = "offer-jcs.v1" as const;
 export const OFFER_CREATE_DIGEST_MATERIAL_VERSION =
   "offer-create-digest-material.v1" as const;
-export const OFFER_VARIANT_SNAPSHOT_VERSION = "offer-variant-snapshot.v3" as const;
+export const OFFER_VARIANT_SNAPSHOT_VERSION = "offer-variant-snapshot.v4" as const;
+// F3.1: eingefrorene v3-Kennung fuer siegelgebundene Historie. Schreiber
+// schreiben IMMER v4; Leser akzeptieren v1-v4 und heben alte Bodies nur im
+// Arbeitsspeicher mit planningMode=quick auf die aktuelle Normalform.
+export const OFFER_VARIANT_SNAPSHOT_VERSION_V3 = "offer-variant-snapshot.v3" as const;
 // F16.3 Slice E: eingefrorene v2-Kennung für siegelgebundene Historie.
-// Schreiber schreiben IMMER v3; Leser akzeptieren v1+v2+v3 (Triple-Read in
-// validateOfferVariantSnapshot, Fix/Cap normalisiert auf null).
 export const OFFER_VARIANT_SNAPSHOT_VERSION_V2 = "offer-variant-snapshot.v2" as const;
 // F16.3 Slice D: eingefrorene v1-Kennung für siegelgebundene Historie.
 export const OFFER_VARIANT_SNAPSHOT_VERSION_V1 = "offer-variant-snapshot.v1" as const;
@@ -38,7 +41,7 @@ export const OFFER_VARIANT_SNAPSHOT_VERSION_V1 = "offer-variant-snapshot.v1" as 
 // Artefakts. Der Generator und der Contract-Test verhindern eine zweite
 // Vertragswahrheit.
 export const OFFER_SCHEMA_SHA256 =
-  "1dc20fa24cca94859978dc57c528b837c3addd33df46f7b9d4c2101b116c6bed" as const;
+  "b7dfc9234d7fd5184296183ab9f9c0d149040bc373a55b30f0f92c1632e62457" as const;
 
 export const OFFER_MAX_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const OFFER_MAX_PATCH_OPERATIONS = 500 as const;
@@ -197,6 +200,10 @@ const setLineTaxOperationSchema = z.discriminatedUnion("taxTreatment", [
 ]);
 
 const reviseOperationSchema = z.union([
+  z.strictObject({
+    operation: z.literal("set_planning_mode"),
+    planningMode: planningModeSchema,
+  }),
   z.strictObject({
     operation: z.literal("set_variant_name"),
     name: normalizedRequiredText(120),
@@ -807,6 +814,7 @@ const offerVariantSnapshotBaseSchema = z.strictObject({
   revision: positiveRevisionSchema,
   variantName: normalizedRequiredText(120),
   description: normalizedOptionalText(1_000),
+  planningMode: planningModeSchema,
   contactContext: offerContactContextV1Schema,
   installationSiteContext: offerInstallationSiteContextV1Schema,
   sourceBindings: offerSourceBindingsV1Schema,
@@ -829,8 +837,8 @@ const offerVariantSnapshotBaseSchema = z.strictObject({
 });
 type OfferVariantSnapshotBodyV1 = z.infer<typeof offerVariantSnapshotBaseSchema>;
 
-// F16.3 Slice D: struktureller Minimaltyp für die Semantikprüfung —
-// v1- und v2-Bodies teilen alles außer Fix-Key/SchemaVersion-Literal.
+// Struktureller Minimaltyp für die Semantikprüfung. Historische Bodies teilen
+// die Preisfelder, kennen aber je nach Version weder Mode, Cap noch Fix-Key.
 type SemanticSnapshotBody = {
   workspaceId: string;
   currency: "EUR";
@@ -973,11 +981,10 @@ function addSnapshotSemanticIssues(
   }
 }
 
-// F16.3 Slice E: v3-Kette (mit Cap-Key). v2/v1-Ketten eingefroren.
-// Der v2-Hash läuft über den v2-Body (ohne Cap-Key), der v1-Hash über den
-// v1-Body (ohne Cap-/Fix-Key) — alte Siegel bleiben gültig.
+// Aktuelle v4-Kette (mit planningMode). v1-v3 bleiben eingefroren; jeder
+// historische Hash laeuft ueber exakt seinen gespeicherten Body.
 function addSnapshotSemanticIssuesV3(
-  value: OfferVariantSnapshotBodyV1,
+  value: OfferVariantSnapshotBodyV1 | OfferVariantSnapshotBodyV3,
   context: z.RefinementCtx,
 ): void {
   for (const path of semanticSnapshotPaths(
@@ -1000,9 +1007,23 @@ export const offerVariantSnapshotV1Schema = offerVariantSnapshotBaseSchema.exten
 }).superRefine(addSnapshotSemanticIssuesV3);
 export type OfferVariantSnapshotV1 = z.infer<typeof offerVariantSnapshotV1Schema>;
 
+type OfferVariantSnapshotBodyV3 = Omit<
+  OfferVariantSnapshotBodyV1,
+  "planningMode" | "schemaVersion"
+> & {
+  schemaVersion: typeof OFFER_VARIANT_SNAPSHOT_VERSION_V3;
+};
+const offerVariantSnapshotV3BodySchema = offerVariantSnapshotBaseSchema
+  .omit({ planningMode: true })
+  .extend({ schemaVersion: z.literal(OFFER_VARIANT_SNAPSHOT_VERSION_V3) })
+  .superRefine(addSnapshotSemanticIssuesV3);
+const offerVariantSnapshotV3FileSchema = offerVariantSnapshotV3BodySchema.extend({
+  snapshotSha256: sha256Schema,
+}).superRefine(addSnapshotSemanticIssuesV3);
+
 type OfferVariantSnapshotBodyV2 = Omit<
   OfferVariantSnapshotBodyV1,
-  "globalDiscountCapCents" | "schemaVersion"
+  "planningMode" | "globalDiscountCapCents" | "schemaVersion"
 > & {
   schemaVersion: typeof OFFER_VARIANT_SNAPSHOT_VERSION_V2;
 };
@@ -1016,7 +1037,7 @@ function addSnapshotSemanticIssuesV2(value: OfferVariantSnapshotBodyV2, context:
   }
 }
 const offerVariantSnapshotV2BodySchema = offerVariantSnapshotBaseSchema
-  .omit({ globalDiscountCapCents: true })
+  .omit({ planningMode: true, globalDiscountCapCents: true })
   .extend({ schemaVersion: z.literal(OFFER_VARIANT_SNAPSHOT_VERSION_V2) })
   .superRefine(addSnapshotSemanticIssuesV2);
 const offerVariantSnapshotV2FileSchema = offerVariantSnapshotV2BodySchema.extend({
@@ -1024,7 +1045,7 @@ const offerVariantSnapshotV2FileSchema = offerVariantSnapshotV2BodySchema.extend
 }).superRefine(addSnapshotSemanticIssuesV2);
 
 const offerVariantSnapshotV1BodySchema = offerVariantSnapshotBaseSchema
-  .omit({ globalDiscountCapCents: true, globalFixDiscountCents: true })
+  .omit({ planningMode: true, globalDiscountCapCents: true, globalFixDiscountCents: true })
   .extend({ schemaVersion: z.literal(OFFER_VARIANT_SNAPSHOT_VERSION_V1) })
   .superRefine(addSnapshotSemanticIssues);
 const offerVariantSnapshotV1FileSchema = offerVariantSnapshotV1BodySchema.extend({
@@ -1150,6 +1171,15 @@ function hashOfferVariantSnapshotV1(value: unknown): string {
   return sha256(canonicalizeOfferJson(parsed.data));
 }
 
+// F3.1: eingefrorener v3-Hash (Body ohne planningMode).
+function hashOfferVariantSnapshotV3(value: unknown): string {
+  const parsed = offerVariantSnapshotV3BodySchema.safeParse(withoutSnapshotHash(value));
+  if (!parsed.success) {
+    throw new TypeError(`Ungueltiger Offer-Snapshot (v3): ${validationPaths(parsed.error).join(", ")}`);
+  }
+  return sha256(canonicalizeOfferJson(parsed.data));
+}
+
 // F16.3 Slice E: eingefrorener v2-Hash (Body ohne Cap-Key).
 function hashOfferVariantSnapshotV2(value: unknown): string {
   const parsed = offerVariantSnapshotV2BodySchema.safeParse(withoutSnapshotHash(value));
@@ -1159,17 +1189,33 @@ function hashOfferVariantSnapshotV2(value: unknown): string {
   return sha256(canonicalizeOfferJson(parsed.data));
 }
 
-// F16.3 Slice E: Triple-Read. v3 primär; v2/v1-Historie wird auf
-// v3-Normalform (Cap/Fix null) gehoben — ein Typ für alle Leser.
+// F3.1: Quad-Read. v4 primaer; v1-v3-Historie wird nur im Arbeitsspeicher
+// auf v4 gehoben. Gespeicherte Bytes und historische Hashes bleiben intakt.
 export function validateOfferVariantSnapshot(
   value: unknown,
 ): OfferContractResult<OfferVariantSnapshotV1> {
-  const parsedV3 = offerVariantSnapshotV1Schema.safeParse(value);
-  if (parsedV3.success) {
-    if (hashOfferVariantSnapshot(parsedV3.data) !== parsedV3.data.snapshotSha256) {
+  const parsedV4 = offerVariantSnapshotV1Schema.safeParse(value);
+  if (parsedV4.success) {
+    if (hashOfferVariantSnapshot(parsedV4.data) !== parsedV4.data.snapshotSha256) {
       return { ok: false, paths: ["/snapshotSha256"] };
     }
-    return { ok: true, value: parsedV3.data };
+    return { ok: true, value: parsedV4.data };
+  }
+  const parsedV3 = offerVariantSnapshotV3FileSchema.safeParse(value);
+  if (parsedV3.success) {
+    if (hashOfferVariantSnapshotV3(parsedV3.data) !== parsedV3.data.snapshotSha256) {
+      return { ok: false, paths: ["/snapshotSha256"] };
+    }
+    const { schemaVersion: _v3, ...v3Rest } = parsedV3.data;
+    void _v3;
+    return {
+      ok: true,
+      value: {
+        ...v3Rest,
+        schemaVersion: OFFER_VARIANT_SNAPSHOT_VERSION,
+        planningMode: "quick",
+      },
+    };
   }
   const parsedV2 = offerVariantSnapshotV2FileSchema.safeParse(value);
   if (parsedV2.success) {
@@ -1183,12 +1229,13 @@ export function validateOfferVariantSnapshot(
       value: {
         ...v2Rest,
         schemaVersion: OFFER_VARIANT_SNAPSHOT_VERSION,
+        planningMode: "quick",
         globalDiscountCapCents: null,
       },
     };
   }
   const parsedV1 = offerVariantSnapshotV1FileSchema.safeParse(value);
-  if (!parsedV1.success) return { ok: false, paths: validationPaths(parsedV3.error) };
+  if (!parsedV1.success) return { ok: false, paths: validationPaths(parsedV4.error) };
   if (hashOfferVariantSnapshotV1(parsedV1.data) !== parsedV1.data.snapshotSha256) {
     return { ok: false, paths: ["/snapshotSha256"] };
   }
@@ -1199,6 +1246,7 @@ export function validateOfferVariantSnapshot(
     value: {
       ...v1Rest,
       schemaVersion: OFFER_VARIANT_SNAPSHOT_VERSION,
+      planningMode: "quick",
       globalDiscountCapCents: null,
       globalFixDiscountCents: null,
     },
@@ -1218,7 +1266,7 @@ export interface OfferVariantViewV1 {
 const publicOfferViewKeys: ReadonlySet<string> = new Set([
   // Snapshot, Kontexte und Entscheidungen.
   "schemaVersion", "canonicalizationVersion", "workspaceId", "offerId", "variantId",
-  "revision", "variantName", "description", "contactContext", "installationSiteContext",
+  "revision", "variantName", "description", "planningMode", "contactContext", "installationSiteContext",
   "sourceBindings", "priceAudienceDecision", "taxDecision", "currency", "priceBasis",
   "globalDiscountBps", "globalDiscountCapCents", "globalFixDiscountCents", "customDealNetCents", "sections", "totals", "createdBy", "createdAt",
   "displayName", "emailPrimary", "phoneE164", "addressRevision", "formattedAddress",
@@ -1355,6 +1403,7 @@ export function renderOfferJsonSchema(): string {
       "zero_operator_confirmed always carries a fresh command-bound structured confirmation",
       "contact and installation-site contexts are NFC-normalized strict allowlists loaded by the server",
       "revision commands contain at most 500 compact operations and never client-computed totals",
+      "offer-variant-snapshot.v4 binds exactly one planningMode (quick, 2d, or 3d) into the immutable snapshot hash",
       "offer-jcs.v1 canonicalizes all strings and object keys to NFC before JCS ordering",
       "UUID values are canonicalized to lowercase and an omitted forecast is canonicalized to null before hashing",
       "variant snapshots contain one to 25 sections and one to 500 total immutable BOM lines",

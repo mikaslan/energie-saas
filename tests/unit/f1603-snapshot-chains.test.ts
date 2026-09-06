@@ -1,7 +1,7 @@
-// F16.3 Snapshot-Ketten (DB-frei): strikte v1/v2-Gestalt wird upgegradet,
-// Misch-Gestalten (falsches Literal + artfremde Keys) werden abgewiesen.
-// Schützt den Verlaufskontrakt gegen stille Shape-Drift (Slice D/E).
-import { createHash, randomUUID } from "node:crypto";
+// F16.3/F3.1 Snapshot-Ketten (DB-frei): strikte v1/v2/v3-Gestalten werden
+// nur als Laufzeitwert auf v4 gehoben. Eingabeobjekt, historische Bytes und
+// historischer SHA bleiben unverändert.
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,28 +17,31 @@ const hex64 = (seed: string): string =>
   createHash("sha256").update(seed, "utf8").digest("hex");
 
 function v1Body(): Record<string, unknown> {
-  const actor = randomUUID();
+  let idSequence = 1;
+  const nextUuid = (): string =>
+    `00000000-0000-4000-8000-${String(idSequence++).padStart(12, "0")}`;
+  const actor = nextUuid();
   const createdAt = "2026-08-29T12:00:00.000Z";
   return {
     schemaVersion: "offer-variant-snapshot.v1",
     canonicalizationVersion: "offer-jcs.v1",
-    workspaceId: randomUUID(),
-    offerId: randomUUID(),
-    variantId: randomUUID(),
+    workspaceId: nextUuid(),
+    offerId: nextUuid(),
+    variantId: nextUuid(),
     revision: 1,
     sourceBindings: {
-      projectId: randomUUID(),
-      contactId: randomUUID(),
-      siteId: randomUUID(),
-      inboundReceiptId: randomUUID(),
+      projectId: nextUuid(),
+      contactId: nextUuid(),
+      siteId: nextUuid(),
+      inboundReceiptId: nextUuid(),
       inboundPayloadSha256: hex64("inbound"),
-      requirementId: randomUUID(),
+      requirementId: nextUuid(),
       requirementRevision: 1,
-      calculationRevisionId: randomUUID(),
+      calculationRevisionId: nextUuid(),
       calculationRevision: 1,
       calculationInputSha256: hex64("calc-in"),
       calculationResultSha256: hex64("calc-out"),
-      resolutionId: randomUUID(),
+      resolutionId: nextUuid(),
       resolutionRevision: 1,
       resolutionSha256: hex64("resolution"),
     },
@@ -72,13 +75,13 @@ function v1Body(): Record<string, unknown> {
       optionalNetCents: 0, optionalTaxCents: 0, optionalGrossCents: 0,
     },
     sections: [{
-      sectionDomainId: randomUUID(),
+      sectionDomainId: nextUuid(),
       position: 1,
       category: "other",
       title: "Kette",
       discountBps: 0,
       lines: [{
-        lineDomainId: randomUUID(),
+        lineDomainId: nextUuid(),
         position: 1,
         componentCategory: "other",
         positionType: "required",
@@ -113,15 +116,49 @@ function sealLikeFixture(body: Record<string, unknown>): Record<string, unknown>
   return { ...body, snapshotSha256: sha };
 }
 
+type LegacySnapshotVersion = "offer-variant-snapshot.v1"
+  | "offer-variant-snapshot.v2"
+  | "offer-variant-snapshot.v3";
+
+const expectedLegacySha256: Record<LegacySnapshotVersion, string> = {
+  "offer-variant-snapshot.v1": "f520d80326bfc42084c4ef43be41b33d42fe6f83ac5b68dde963a9556e47cc0f",
+  "offer-variant-snapshot.v2": "c9eda48a1beef21aa8d2f529afb81ae4478f07a9589469848bf4fb65dd1acad1",
+  "offer-variant-snapshot.v3": "aebd8c3f6de3ecaff1ebc25c0667bb9827c0785c9b33fe68e874968625dcfd50",
+};
+
+function legacyBody(version: LegacySnapshotVersion): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...v1Body(), schemaVersion: version };
+  if (version !== "offer-variant-snapshot.v1") {
+    body.globalFixDiscountCents = 0;
+  }
+  if (version === "offer-variant-snapshot.v3") {
+    body.globalDiscountCapCents = null;
+  }
+  return body;
+}
+
 describe("F16.3 Snapshot-Ketten", () => {
-  it("reine v1-Gestalt: ok, sha läuft durch, v3-Normalform mit null-Carry", () => {
-    const sealed = sealLikeFixture(v1Body());
+  it.each([
+    "offer-variant-snapshot.v1",
+    "offer-variant-snapshot.v2",
+    "offer-variant-snapshot.v3",
+  ] as const)("%s liest als Quick-v4, ohne historische Bytes oder SHA zu verändern", (version) => {
+    const sealed = sealLikeFixture(legacyBody(version));
+    const storedBytes = JSON.stringify(sealed);
+    const storedSha256 = sealed.snapshotSha256;
+    expect(storedSha256).toBe(expectedLegacySha256[version]);
+
     const result = validateOfferVariantSnapshot(sealed);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.snapshotSha256).toBe(sealed.snapshotSha256);
-    expect(result.value.schemaVersion).toBe("offer-variant-snapshot.v3");
-    expect(result.value.globalFixDiscountCents).toBeNull();
+    expect(JSON.stringify(sealed)).toBe(storedBytes);
+    expect(sealed.snapshotSha256).toBe(storedSha256);
+    expect(result.value.snapshotSha256).toBe(storedSha256);
+    expect(result.value.schemaVersion).toBe("offer-variant-snapshot.v4");
+    expect(result.value.planningMode).toBe("quick");
+    expect(result.value.globalFixDiscountCents).toBe(
+      version === "offer-variant-snapshot.v1" ? null : 0,
+    );
     expect(result.value.globalDiscountCapCents).toBeNull();
   });
 
@@ -136,12 +173,19 @@ describe("F16.3 Snapshot-Ketten", () => {
   });
 
   it("echte v2-Gestalt: ok per v2-Kette", () => {
-    const sealed = sealLikeFixture({
-      ...v1Body(),
-      schemaVersion: "offer-variant-snapshot.v2",
-      globalFixDiscountCents: 0,
-    });
+    const sealed = sealLikeFixture(legacyBody("offer-variant-snapshot.v2"));
     expect(validateOfferVariantSnapshot(sealed).ok).toBe(true);
+  });
+
+  it("v2-Literal + Cap-Key und v3-Literal + Mode-Key bleiben geschlossene Misch-Gestalten", () => {
+    expect(validateOfferVariantSnapshot(sealLikeFixture({
+      ...legacyBody("offer-variant-snapshot.v2"),
+      globalDiscountCapCents: null,
+    })).ok).toBe(false);
+    expect(validateOfferVariantSnapshot(sealLikeFixture({
+      ...legacyBody("offer-variant-snapshot.v3"),
+      planningMode: "quick",
+    })).ok).toBe(false);
   });
 
   it("PDF-Input: mit Fix-Key ok, ohne Fix-Key abgewiesen", () => {

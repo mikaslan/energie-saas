@@ -940,3 +940,33 @@
 - E2E-Vorbefund (pre-merge 33930854947, 13 Fails): m2-01/02/03a/04
   (S1-Cluster), f9-01/02/03/04/04b, f10-02b, m1-15 — Triage folgt nach
   gruenem Setup.
+
+## Turn 59 — CI-Baseline stabilisiert
+
+- Hydration-/Rollenvertrag-/Renderer-/Embedded-PG-Baustellen geschlossen und
+  als `75718d2` lokal integriert.
+- Lokale Baseline: 233/233 Vitest-Dateien, 2.107 bestanden/1 übersprungen;
+  Chromium 106 bestanden/1 übersprungen; Build, Generator, Rollen 88/88 und
+  PG18 5/5 grün. Kein Push.
+
+## Turn 60 — F3.1 Planungsmodi REVIEWED/VERIFIED
+
+- Migration 0075: Workspace-Default `quick|2d|3d`, Snapshot v4,
+  FORCE-RLS/ACL-/Policy-/Trigger-/Funktionspins. Legacy v1/v2/v3 bleibt
+  persistent byte-/JSON-/hashgleich und normalisiert nur im RAM auf Quick.
+- Angebotseditor: Dirty/Save/Reload/Conflict/Rebase; Quick-PDF ohne berechnete
+  Dach-/Ertrags-/Simulationswerte; Viewer read-only; External fail-closed.
+- Signatur-Lock: Pending vorläufig, Signed/Customer-Revoke dauerhaft;
+  Withdrawn/effektiv Expired entsperrt; Fork bleibt erreichbar. Replay- und
+  Project→Offer→Issuance→Variant-Race-Pfade geschlossen.
+- Browserfund geschlossen: Create-Komponente bleibt nach Pending gemountet,
+  damit der einmalige Token-Link nicht beim Lock verloren geht; Eingaben sind
+  trotzdem verborgen. Analoge Datum-/Dateifelder besitzen echte Labels.
+- Finale lokale Gates: `npm run check` Exit 0 (238/238 Dateien, 2.149
+  bestanden/1 übersprungen; Rollen 88/88 + PG18 5/5), Build Exit 0,
+  Chromium 110 bestanden/1 übersprungen, Generator ohne Drift. Unabhängiges
+  F3.1-Review vor Endreview ohne offene P0–P2.
+- FACT/ESTIMATE sauber getrennt: Moduswechsel bleibt bis zur autorisierten
+  Live-Bestätigung `planning-mode-transition-estimate.v1`. Kein Push.
+- Nächster Slice: F2.8b/M204-I1 Signaturakzeptanz → Won, anschließend weitere
+  F1–F16-Capabilities.

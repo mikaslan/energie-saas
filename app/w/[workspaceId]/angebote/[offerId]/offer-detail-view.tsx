@@ -18,6 +18,8 @@ import {
 } from "./offer-release-candidate-panel";
 import offerThemeStyles from "../offer-theme.module.css";
 import { formatOfferCents, formatOfferCentsTotal, formatOfferRetryDate } from "./offer-format";
+import type { PlanningMode } from "@/lib/integrations/planning/contract";
+import type { OfferVariantContentLock } from "@/modules/offers";
 
 export type OfferDetailState =
   | "loaded"
@@ -129,6 +131,7 @@ export interface OfferVariantSnapshotView {
   revision: number;
   variantName: string;
   description: string | null;
+  planningMode: PlanningMode;
   globalDiscountBps: number;
   // F16.3 Slice E: Cap (null = ungedeckelt).
   globalDiscountCapCents: number | null;
@@ -177,6 +180,7 @@ export interface OfferDetailSurfaceView {
   };
   variants?: readonly OfferVariantTabView[];
   activeVariant?: OfferVariantViewEnvelope;
+  contentLock?: OfferVariantContentLock | null;
   permissions?: {
     canEdit: boolean;
     canDuplicate: boolean;
@@ -815,6 +819,15 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
 
         <div className="grid gap-5">
           <DetailStatus view={view} />
+          {view.contentLock ? (
+            <aside data-offer-content-lock={view.contentLock} role="status" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-base leading-6 text-amber-950">
+              <p className="font-semibold">
+                {view.contentLock === "pending" ? "Signaturanfrage läuft – Inhalt gesperrt"
+                  : view.contentLock === "signed" ? "Signierte Variante – Inhalt gesperrt"
+                    : "Vom Kunden widerrufene Variante – Inhalt gesperrt"}
+              </p>
+            </aside>
+          ) : null}
           {pdfDraftPanel}
           <SalesForecast value={view.offer.forecastValueNetCents} />
           <VariantNavigation variants={view.variants ?? []} />
@@ -853,6 +866,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                   <p className="mt-2 text-sm leading-6 text-slate-600">{snapshot.description}</p>
                 ) : null}
                 <dl className="mt-4 grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2">
+                  <div data-planning-mode-readonly="true"><dt className="text-slate-600">Planungsmodus</dt><dd className="mt-1 font-semibold">{snapshot.planningMode === "quick" ? "Quick-Planung" : snapshot.planningMode === "2d" ? "2D-Planung" : "3D-Planung"}</dd></div>
                   <div><dt className="text-slate-600">Globaler Rabatt</dt><dd className="mt-1 font-semibold">{formatBasisPoints(snapshot.globalDiscountBps)}{snapshot.globalDiscountCapCents === null || snapshot.globalDiscountCapCents === undefined ? "" : ` (gedeckelt auf ${formatOfferCents(snapshot.globalDiscountCapCents)})`}</dd></div>
                   <div><dt className="text-slate-600">Globaler Fix-Rabatt</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.globalFixDiscountCents === null || snapshot.globalFixDiscountCents === undefined ? "Kein Fix-Rabatt" : formatOfferCents(snapshot.globalFixDiscountCents)}</dd></div>
                   <div><dt className="text-slate-600">Custom Deal netto</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.customDealNetCents === null ? "Kein Custom Deal" : formatOfferCents(snapshot.customDealNetCents)}</dd></div>

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -115,6 +115,51 @@ async function adminQuery<Row extends QueryResultRow = QueryResultRow>(
   } finally {
     client.release();
   }
+}
+
+async function runtimeQuery<Row extends QueryResultRow = QueryResultRow>(
+  runtime: Pool,
+  workspaceId: string,
+  actorId: string | null,
+  text: string,
+  values: unknown[] = [],
+) {
+  const client = await runtime.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_catalog.set_config('app.workspace_id', $1, true)", [workspaceId]);
+    await client.query("select pg_catalog.set_config('app.actor_id', $1, true)", [actorId ?? ""]);
+    const result = await client.query<Row>(text, values);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function addMember(
+  admin: Pool,
+  workspaceId: string,
+  role: "editor" | "admin",
+  capabilities: Record<string, boolean>,
+): Promise<string> {
+  const actorId = randomUUID();
+  await admin.query(
+    "insert into public.user_identity (id, email) values ($1::uuid, $2::text)",
+    [actorId, `m204-external-${actorId}@invalid`],
+  );
+  await adminQuery(
+    admin,
+    workspaceId,
+    null,
+    `insert into public.membership (workspace_id, user_id, role, capabilities)
+     values ($1::uuid, $2::uuid, $3::text, $4::jsonb)`,
+    [workspaceId, actorId, role, JSON.stringify(capabilities)],
+  );
+  return actorId;
 }
 
 async function buildApprovedIssuance(admin: Pool, workspaceId: string): Promise<{
@@ -274,6 +319,131 @@ describe("M2-04 e-signature strict-mode database", () => {
     const revoked = await revokeSignatureByCustomer(runtimePool, { token: created.token });
     expect(revoked.status).toBe("revoked_by_customer");
     expect(hashSignatureToken(created.token).length).toBe(32);
+  });
+
+  it("F301 sperrt Varianteninhalt actor-blind auch fuer direkte app_runtime-Writes", async () => {
+    const workspaceId = randomUUID();
+    const ctx = await buildApprovedIssuance(admin, workspaceId);
+    const externalActor = await addMember(admin, workspaceId, "admin", { external_only: true });
+    const created = await withAuthorizedTenantOn(
+      runtimePool,
+      ctx.actorId,
+      workspaceId,
+      (tx, serviceCtx) => createSignatureRequest(tx, serviceCtx, {
+        schemaVersion: SIGNATURE_REQUEST_CREATE_VERSION,
+        workspaceId,
+        offerId: ctx.offerId,
+        variantId: ctx.variantId,
+        ttlDays: 14,
+      }),
+    );
+
+    const directContentWrite = (actorId: string | null, suffix: string) => runtimeQuery(
+      runtimePool,
+      workspaceId,
+      actorId,
+      `update public.offer_variant
+          set name = name || $3::text, updated_at = pg_catalog.clock_timestamp()
+        where workspace_id = $1::uuid and id = $2::uuid`,
+      [workspaceId, ctx.variantId, suffix],
+    );
+    for (const [actorId, suffix] of [
+      [externalActor, " external"],
+      [null, " actor-null"],
+      ["kein-gueltiger-uuid-actor", " malformed"],
+    ] as const) {
+      await expect(directContentWrite(actorId, suffix)).rejects.toMatchObject({
+        code: "23514",
+        message: expect.stringMatching(/signaturgebundener Inhalt ist gesperrt/u),
+      });
+    }
+
+    await signSignatureByToken(runtimePool, {
+      schemaVersion: "signature-request-sign.v1",
+      token: created.token,
+      mode: "click",
+      artifactMimeType: null,
+      artifactBytes: null,
+    });
+    await expect(directContentWrite(externalActor, " signed")).rejects.toMatchObject({
+      code: "23514",
+    });
+
+    await revokeSignatureByCustomer(runtimePool, { token: created.token });
+    await expect(directContentWrite(externalActor, " revoked")).rejects.toMatchObject({
+      code: "23514",
+    });
+  });
+
+  it("F301 autorisiert Signature-Create vor Inputs, Reads und Locks", async () => {
+    const workspaceId = randomUUID();
+    const ctx = await buildApprovedIssuance(admin, workspaceId);
+    const externalActor = await addMember(admin, workspaceId, "admin", { external_only: true });
+    const editorWithoutCapability = await addMember(admin, workspaceId, "editor", {});
+    const foreignWorkspaceId = randomUUID();
+    await admin.query(
+      "insert into public.workspace (id, name) values ($1::uuid, 'M2-04 fremder Workspace')",
+      [foreignWorkspaceId],
+    );
+    const foreignAdmin = await addMember(admin, foreignWorkspaceId, "admin", {});
+    const probes = [
+      {
+        actorId: externalActor,
+        offerId: ctx.offerId,
+        variantId: ctx.variantId,
+        ttlDays: 0,
+        tokenHash: Buffer.alloc(1),
+      },
+      {
+        actorId: externalActor,
+        offerId: randomUUID(),
+        variantId: randomUUID(),
+        ttlDays: 14,
+        tokenHash: randomBytes(32),
+      },
+      {
+        actorId: null,
+        offerId: ctx.offerId,
+        variantId: ctx.variantId,
+        ttlDays: 14,
+        tokenHash: randomBytes(32),
+      },
+      {
+        actorId: editorWithoutCapability,
+        offerId: ctx.offerId,
+        variantId: ctx.variantId,
+        ttlDays: 14,
+        tokenHash: randomBytes(32),
+      },
+      {
+        actorId: foreignAdmin,
+        offerId: ctx.offerId,
+        variantId: ctx.variantId,
+        ttlDays: 14,
+        tokenHash: randomBytes(32),
+      },
+    ] as const;
+
+    for (const probe of probes) {
+      await expect(runtimeQuery(
+        runtimePool,
+        workspaceId,
+        probe.actorId,
+        `select public.create_signature_request(
+           $1::uuid, $2::uuid, $3::uuid, $4::integer, $5::bytea
+         ) as result`,
+        [workspaceId, probe.offerId, probe.variantId, probe.ttlDays, probe.tokenHash],
+      )).rejects.toMatchObject({
+        code: "42501",
+        message: "signature_request verlangt internen Editor oder Admin",
+      });
+    }
+
+    const requests = await admin.query<{ count: number }>(
+      "select pg_catalog.count(*)::integer as count from public.signature_request where workspace_id = $1::uuid",
+      [workspaceId],
+    );
+    expect(requests.rows[0]?.count).toBe(0);
   });
 
   it("Widerruf↔Signatur-Race gewinnt genau einen terminalen Übergang", async () => {

@@ -24,6 +24,7 @@ export type Action =
   | "appointment.read" | "appointment.write"
   | "invoicing.read" | "invoicing.write" | "invoicing.issuing_details.write"
   | "economics.read" | "economics.write"
+  | "planning.settings.read"
   | "price.read_purchase" | "price.edit" | "discount.apply"
   | "invoice.issue" | "offer.release.prepare" | "offer.release.approve"
   | "offer.issue.prepare" | "offer.issue.approve" | "offer.issue.withdraw"
@@ -109,6 +110,7 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "appointment.write":   { minRole: "editor", internalOnly: true },
   "invoicing.read":      { minRole: "viewer", internalOnly: true },
   "economics.read":      { minRole: "viewer", internalOnly: true },
+  "planning.settings.read": { minRole: "viewer", internalOnly: true },
   "invoicing.write":     { minRole: "editor", capability: "invoicing", internalOnly: true },
   "economics.write":     { minRole: "editor", capability: "economics", internalOnly: true },
   "invoicing.issuing_details.write": { minRole: "editor", capability: "invoicing", internalOnly: true },
@@ -128,7 +130,7 @@ export const ACTION_REQUIREMENTS: Record<Action, {
   "offer.signature.upload_analog": { minRole: "editor", capability: "offer_signature", internalOnly: true },
   "catalog.read":        { minRole: "viewer" },
   "catalog.manage":      { minRole: "editor", capability: "manage_catalog" },
-  "settings.manage":     { minRole: "admin" },
+  "settings.manage":     { minRole: "admin", internalOnly: true },
 };
 
 const RANK: Record<Role, number> = { viewer: 0, editor: 1, admin: 2 };

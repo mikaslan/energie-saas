@@ -1618,7 +1618,7 @@ describe.sequential("M1-07/M2-01 DSGVO-Erasure- und Restorevertrag [M201-PRIVACY
       {
         signature: "guard_offer_erasure_mutation()",
         owner: "app_owner",
-        security_definer: false,
+        security_definer: true,
         config: ["search_path=pg_catalog"],
         public_execute: false,
         erasure_execute: false,

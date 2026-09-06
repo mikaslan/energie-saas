@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -78,35 +79,65 @@ function Feedback(props: { state: SignatureActionState }) {
   );
 }
 
+function useRefreshAfterMutation(state: SignatureActionState): void {
+  const router = useRouter();
+  const refreshedMutationRef = useRef<string | null>(null);
+  const mutationKey = state.status === "created"
+    || state.status === "withdrawn"
+    || state.status === "signed"
+    ? `${state.status}:${state.requestId}`
+    : null;
+
+  useEffect(() => {
+    if (mutationKey === null || refreshedMutationRef.current === mutationKey) return;
+    refreshedMutationRef.current = mutationKey;
+    router.refresh();
+  }, [mutationKey, router]);
+}
+
 export function CreateSignatureForm(props: {
   workspaceId: string;
   offerId: string;
   variantId: string;
+  disabled: boolean;
+  pendingRequestId: string | null;
 }) {
   const [state, formAction] = useActionState(createSignatureRequestAction, SIGNATURE_ACTION_INITIAL_STATE);
+  useRefreshAfterMutation(state);
+  const visibleState = state.status === "created" && state.requestId !== props.pendingRequestId
+    ? SIGNATURE_ACTION_INITIAL_STATE
+    : state;
   return (
     <form action={formAction} className="mt-6 grid gap-3 border-t border-slate-100 pt-5 sm:grid-cols-[1fr_auto]">
-      <div className="grid gap-1">
-        <label htmlFor="ttlDays" className="text-xs font-medium text-slate-600">
-          Gültigkeit in Tagen (1–60)
-        </label>
-        <input
-          id="ttlDays"
-          name="ttlDays"
-          type="number"
-          min={1}
-          max={60}
-          defaultValue={14}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-      </div>
-      <input type="hidden" name="workspaceId" value={props.workspaceId} />
-      <input type="hidden" name="offerId" value={props.offerId} />
-      <input type="hidden" name="variantId" value={props.variantId} />
-      <div className="flex items-end">
-        <SubmitButton tone="primary">Signaturlink vorbereiten</SubmitButton>
-      </div>
-      <Feedback state={state} />
+      {props.disabled ? (
+        <p className="text-xs text-slate-500 sm:col-span-2">
+          Für diese Variante besteht bereits eine aktive oder bindende Signaturanforderung.
+        </p>
+      ) : (
+        <>
+          <div className="grid gap-1">
+            <label htmlFor="ttlDays" className="text-xs font-medium text-slate-600">
+              Gültigkeit in Tagen (1–60)
+            </label>
+            <input
+              id="ttlDays"
+              name="ttlDays"
+              type="number"
+              min={1}
+              max={60}
+              defaultValue={14}
+              className="min-h-11 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <input type="hidden" name="workspaceId" value={props.workspaceId} />
+          <input type="hidden" name="offerId" value={props.offerId} />
+          <input type="hidden" name="variantId" value={props.variantId} />
+          <div className="flex items-end">
+            <SubmitButton tone="primary">Signaturlink vorbereiten</SubmitButton>
+          </div>
+        </>
+      )}
+      <Feedback state={visibleState} />
     </form>
   );
 }
@@ -120,6 +151,7 @@ const WITHDRAW_REASONS: Array<{ value: string; label: string }> = [
 
 export function WithdrawSignatureForm(props: { workspaceId: string; requestId: string }) {
   const [state, formAction] = useActionState(withdrawSignatureRequestAction, SIGNATURE_ACTION_INITIAL_STATE);
+  useRefreshAfterMutation(state);
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="workspaceId" value={props.workspaceId} />
@@ -148,12 +180,34 @@ export function WithdrawSignatureForm(props: { workspaceId: string; requestId: s
 
 export function AnalogSignatureForm(props: { workspaceId: string; requestId: string }) {
   const [state, formAction] = useActionState(uploadAnalogSignatureAction, SIGNATURE_ACTION_INITIAL_STATE);
+  useRefreshAfterMutation(state);
   return (
-    <form action={formAction} className="flex flex-wrap items-center gap-2">
+    <form action={formAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="workspaceId" value={props.workspaceId} />
       <input type="hidden" name="requestId" value={props.requestId} />
-      <input type="date" name="signingDate" className="rounded-md border border-slate-300 px-2 py-2 text-sm" />
-      <input type="file" name="artifact" accept="application/pdf,image/jpeg" className="text-sm" />
+      <div className="grid gap-1">
+        <label htmlFor={`analog-signing-date-${props.requestId}`} className="text-xs font-medium text-slate-600">
+          Unterschriftsdatum
+        </label>
+        <input
+          id={`analog-signing-date-${props.requestId}`}
+          type="date"
+          name="signingDate"
+          className="min-h-11 rounded-md border border-slate-300 px-2 py-2 text-sm"
+        />
+      </div>
+      <div className="grid gap-1">
+        <label htmlFor={`analog-artifact-${props.requestId}`} className="text-xs font-medium text-slate-600">
+          Unterschriebenes Dokument
+        </label>
+        <input
+          id={`analog-artifact-${props.requestId}`}
+          type="file"
+          name="artifact"
+          accept="application/pdf,image/jpeg"
+          className="min-h-11 text-sm"
+        />
+      </div>
       <SubmitButton tone="primary">Analog hochladen</SubmitButton>
       <Feedback state={state} />
     </form>

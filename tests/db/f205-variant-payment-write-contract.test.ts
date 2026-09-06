@@ -47,6 +47,8 @@ const LEGACY_GUARD_BODY_SHA256 =
   "bf712d55bd2fe892dbaddf0c7787eda33fa64a957dc4589864295c037065d5d4";
 const WRITE_CONTRACT_BODY_SHA256 =
   "16f5ccf5efd817603406a4fe33a3df634f2e678df34a8cf5e566ebf90c8c96d4";
+const LATEST_GUARD_BODY_SHA256 =
+  "2655f48dfb6839a604edd618e16b69f0f3e3c928bc5575c70bc2c4ac4b683a7f";
 const WRITE_CONTRACT_COMMENT = "F2.5 Varianten-Zahlart-Schreibvertrag v1";
 const FUNCTION_BODY_MARKER = "$m2_01_offer_erasure_guard$";
 
@@ -120,6 +122,25 @@ async function guardBodySha256(client: PoolClient): Promise<string> {
   return hash;
 }
 
+async function replaceGuardAsAppOwner(client: PoolClient, ddl: string): Promise<void> {
+  await client.query(`
+    do $f205_test_role$
+    begin
+      if current_user <> 'app_owner' then
+        execute pg_catalog.format(
+          'grant app_owner to %I with inherit false, set true', current_user
+        );
+      end if;
+    end
+    $f205_test_role$
+  `);
+  await client.query("grant create on schema public to app_owner");
+  await client.query("set role app_owner");
+  await client.query(ddl);
+  await client.query("reset role");
+  await client.query("revoke create on schema public from app_owner");
+}
+
 async function paymentContractState(client: PoolClient): Promise<{
   hasPaymentOptionTable: boolean;
   hasVariantPaymentOptionColumn: boolean;
@@ -185,6 +206,9 @@ async function expectUpdateRejected(
 async function createGuardProbe(client: PoolClient): Promise<void> {
   await client.query(`
     create temporary table offer_variant (
+      id uuid not null,
+      workspace_id uuid not null,
+      offer_id uuid not null,
       current_revision integer not null,
       name text not null,
       description text,
@@ -202,10 +226,18 @@ async function createGuardProbe(client: PoolClient): Promise<void> {
   `);
   await client.query(
     `insert into offer_variant (
+       id, workspace_id, offer_id,
        current_revision, name, description, updated_at, is_primary,
        optional_bundles, payment_option_id, stable_identity
-     ) values (1, 'Variante', null, $1::timestamptz, true, '[]'::jsonb, null, $2)`,
-    ["2026-09-06T10:00:00.000Z", randomUUID()],
+     ) values ($1, $2, $3, 1, 'Variante', null, $4::timestamptz,
+       true, '[]'::jsonb, null, $5)`,
+    [
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      "2026-09-06T10:00:00.000Z",
+      randomUUID(),
+    ],
   );
 }
 
@@ -223,7 +255,7 @@ describe.sequential("F2.5 Varianten-Zahlart Write-Vertrag", () => {
 
     const client = await testPool.connect();
     try {
-      expect(await guardBodySha256(client)).toBe(WRITE_CONTRACT_BODY_SHA256);
+      expect(await guardBodySha256(client)).toBe(LATEST_GUARD_BODY_SHA256);
       expect(await paymentContractState(client)).toEqual({
         hasPaymentOptionTable: true,
         hasVariantPaymentOptionColumn: true,
@@ -238,7 +270,10 @@ describe.sequential("F2.5 Varianten-Zahlart Write-Vertrag", () => {
     const client = await testPool.connect();
     await client.query("begin");
     try {
-      await client.query(guardFunctionDdlFromMigration(LEGACY_GUARD_TAG));
+      await replaceGuardAsAppOwner(
+        client,
+        guardFunctionDdlFromMigration(LEGACY_GUARD_TAG),
+      );
       await client.query(
         "comment on column public.offer_variant.payment_option_id is null",
       );
@@ -303,7 +338,7 @@ describe.sequential("F2.5 Varianten-Zahlart Write-Vertrag", () => {
       );
 
       await migrate(drizzle(client), { migrationsFolder: resolve("drizzle") });
-      expect(await guardBodySha256(client)).toBe(WRITE_CONTRACT_BODY_SHA256);
+      expect(await guardBodySha256(client)).toBe(LATEST_GUARD_BODY_SHA256);
       expect(await paymentContractState(client)).toEqual({
         hasPaymentOptionTable: true,
         hasVariantPaymentOptionColumn: true,
