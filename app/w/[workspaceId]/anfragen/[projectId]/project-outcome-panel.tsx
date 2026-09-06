@@ -108,6 +108,45 @@ export function ProjectOutcomePanel({
   const feedbackRef = useRef<HTMLParagraphElement | null>(null);
   const message = feedback(state);
   const error = state.status !== "idle" && state.status !== "success";
+  const postAcceptanceWon = context.outcome === "won"
+    && (context.phase === "offer" || context.phase === "installation");
+  const lostOutcomeControl = (
+    <details className="rounded-md border border-amber-200 bg-amber-50 p-3">
+      <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-amber-950 outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
+        Als verloren abschließen
+      </summary>
+      {context.activeLossReasons.length === 0 ? (
+        <div className="mt-2 text-sm leading-6 text-amber-950">
+          <p>Vor einem Lost-Abschluss muss ein Admin mindestens einen aktiven Verlustgrund anlegen.</p>
+          {context.permissions.canManageReasons ? (
+            <Link href={`/w/${workspaceId}/einstellungen/verlustgruende`} className="mt-2 inline-flex min-h-11 items-center font-semibold text-blue-800 underline outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+              Verlustgründe verwalten
+            </Link>
+          ) : null}
+        </div>
+      ) : (
+        <form action={action} className="mt-3 grid min-w-0 gap-3">
+          <CommonFields commandVersion={commandVersion} kind="mark_lost" projectId={context.projectId} revision={context.outcomeRevision} />
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-900">
+            Verlustgrund
+            <select name="lossReasonId" required defaultValue="" className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm">
+              <option value="" disabled>Bitte auswählen</option>
+              {context.activeLossReasons.map((reason) => (
+                <option key={reason.id} value={reason.id}>{reason.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-900">
+            Interner Hinweis (optional)
+            <textarea name="lossReasonText" maxLength={500} rows={4} className="min-h-24 min-w-0 resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-base outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm" />
+          </label>
+          <button type="submit" className="min-h-11 justify-self-start rounded-md bg-amber-800 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-amber-900 focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 disabled:cursor-wait">
+            Verloren verbindlich bestätigen
+          </button>
+        </form>
+      )}
+    </details>
+  );
 
   useEffect(() => {
     if (state.status !== "idle") feedbackRef.current?.focus();
@@ -205,41 +244,7 @@ export function ProjectOutcomePanel({
                 </form>
               </details>
 
-              <details className="rounded-md border border-amber-200 bg-amber-50 p-3">
-                <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-amber-950 outline-none focus-visible:ring-2 focus-visible:ring-amber-600">
-                  Als verloren abschließen
-                </summary>
-                {context.activeLossReasons.length === 0 ? (
-                  <div className="mt-2 text-sm leading-6 text-amber-950">
-                    <p>Vor einem Lost-Abschluss muss ein Admin mindestens einen aktiven Verlustgrund anlegen.</p>
-                    {context.permissions.canManageReasons ? (
-                      <Link href={`/w/${workspaceId}/einstellungen/verlustgruende`} className="mt-2 inline-flex min-h-11 items-center font-semibold text-blue-800 underline outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
-                        Verlustgründe verwalten
-                      </Link>
-                    ) : null}
-                  </div>
-                ) : (
-                  <form action={action} className="mt-3 grid min-w-0 gap-3">
-                    <CommonFields commandVersion={commandVersion} kind="mark_lost" projectId={context.projectId} revision={context.outcomeRevision} />
-                    <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-900">
-                      Verlustgrund
-                      <select name="lossReasonId" required defaultValue="" className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm">
-                        <option value="" disabled>Bitte auswählen</option>
-                        {context.activeLossReasons.map((reason) => (
-                          <option key={reason.id} value={reason.id}>{reason.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-900">
-                      Interner Hinweis (optional)
-                      <textarea name="lossReasonText" maxLength={500} rows={4} className="min-h-24 min-w-0 resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-base outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm" />
-                    </label>
-                    <button type="submit" className="min-h-11 justify-self-start rounded-md bg-amber-800 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-amber-900 focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 disabled:cursor-wait">
-                      Verloren verbindlich bestätigen
-                    </button>
-                  </form>
-                )}
-              </details>
+              {lostOutcomeControl}
 
               <details className="rounded-md border border-rose-200 bg-rose-50 p-3">
                 <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-rose-950 outline-none focus-visible:ring-2 focus-visible:ring-rose-600">
@@ -256,6 +261,8 @@ export function ProjectOutcomePanel({
                 </form>
               </details>
             </>
+          ) : postAcceptanceWon ? (
+            lostOutcomeControl
           ) : context.outcome === "won" || context.outcome === "lost" ? (
             <details className="rounded-md border border-blue-200 bg-blue-50 p-3">
               <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-blue-950 outline-none focus-visible:ring-2 focus-visible:ring-blue-600">

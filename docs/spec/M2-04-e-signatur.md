@@ -1,17 +1,20 @@
 # M2-04 — E-Signatur (F2.8)
 
-- Status: DISCOVERED → SPECIFIED
+- Status: DISCOVERED → SPECIFIED; technische Grundlage und
+  F2.8b/M204-I1-Integration im abgegrenzten lokalen Scope
+  **REVIEWED / VERIFIED**
 - Datum: 2026-09-02
-- F-Bezug: F2.8 E-Signatur — PARTIAL (Vorbereitungs-Slice; E-Mail-Versand,
-  `Won`-Automatik, Portal-White-Label und Change Order bewusst NICHTZIEL)
+- F-Bezug: F2.8 E-Signatur — PARTIAL (E-Mail-Versand,
+  Portal-White-Label und Change Order bewusst NICHTZIEL; `Won`-Automatik seit
+  F2.8b/M204-I1 umgesetzt)
 - Architektur: ADR 0022 (E-Signatur) — siehe Nummern-Kollisions-Hinweis im ADR
   (parallel existiert `docs/adr/0021-termine-kalender.md`, M1-15)
-- Basis: Spec-/ADR-Ablage `tooling` HEAD `788d142`; funktionale Hash-/Issuance-Basis
-  M2-03b1 `a06f961` (Worktree `energie-saas-m203b-issuance-archive`, **noch nicht**
-  in `tooling`/`main` integriert — geprüft: `a06f961` ist kein Ancestor von
-  `788d142`, `git merge-base --is-ancestor` = nein)
-- Geplante Migration: additiv, Nummer bei CONTRACTED (nach M2-03b-/M1-wave-01-
-  Integration; Stand heute frühestens `0043`)
+- Outcome-Integration: ADR 0023 und
+  `docs/spec/F2-08b-signaturakzeptanz-won.md`
+- Basis: M2-03b1-Ausstellungsfassung + M2-04-Migration `0044`; nachfolgende
+  Signatur-Härtungen bis `0075`; Outcome-Integration `0076`.
+- Migrationen: `0044_m2_04_e_signature` +
+  `0076_f2_08b_signature_acceptance_won` (beide additiv).
 
 > **Scope-Disziplin.** Dieses Dokument spezifiziert die E-Signatur als
 > **Vorbereitungs-Slice**: Signatur-Request wird intern an einer **freigegebenen
@@ -23,6 +26,12 @@
 > **kein** Portal-White-Label (F10) und **kein** Change-Order-Fork. Die
 > Reonic-OpenAPI ist ausschließlich funktionale Referenz.
 
+> **Integrationsstand 2026-09-06.** Der ursprüngliche M2-04-Vertrag endete
+> bewusst bei `signed`. Folge-Slice F2.8b/M204-I1 konsumiert die Annahme nun
+> atomar und setzt ein offenes Projekt auf `Won`. Er erzeugt keine Installation
+> und verschiebt weder Phase noch Kanban-Spalte; diese Grenze bleibt wegen
+> widersprüchlicher Live-Evidenz als `ESTIMATE` separat dokumentiert.
+
 ## Quellenlegende
 
 - `SRC-API-SPEC` — Reonic OpenAPI v3.11.0, `https://api.reonic.de/rest/v3/openapi`,
@@ -31,15 +40,15 @@
 - `API-MAP:N` — `docs/parity/REONIC-API-CAPABILITY-MAP.md`, Zeile N
 - `MODKAT:F2.8` — `docs/blaupause/01-modulkatalog.md`, Zeile 37 (F2.8)
 - `GOAL:F2` — `REONIC-PARITY-GOAL-PROMPT.md`, §8 F2 (E-Signatur-Punkte)
-- `ADR0021` — `docs/adr/0021-e-signatur.md`
+- `ADR0022` — `docs/adr/0022-e-signatur.md`
 - `ADR0012` — `docs/adr/0012-angebotsausstellung-und-archivgate.md` (M2-03b-Worktree)
 - `M203B1` — Spec `M2-03b1-angebotsausstellungsfassung.md` (M2-03b-Worktree)
 - `ISSUANCE` — `offer_issuance`-Tabellen aus M2-03b1 (Byte-/Hash-Bindung)
 - `M114` — Spec `M1-14-kontaktdatensatz.md` (CAS-/Erasure-/Rollenmuster)
-- `M111A` — Outcome-Slice M1-11a (Projektergebnis Won/Lost/Reopen, Referenz für
-  den späteren `Won`-Übergang)
+- `M111A` — Outcome-Slice M1-11a (Projektergebnis Won/Lost/Reopen, Grundlage
+  des F2.8b-`Won`-Übergangs)
 
-### Öffentliche Reonic-Doku (DOCUMENTED, Zugriff 2026-09-02)
+### Öffentliche Reonic-Doku (DOCUMENTED, Zugriff 2026-09-02; erneut geprüft 2026-09-06)
 
 | ID | URL | Belegte Semantik |
 |---|---|---|
@@ -72,8 +81,8 @@ und über die internen Zustände sichtbar. Status: `pending`, `signed`, `expired
 
 Bis zur Send-/Issued-Freigabe (M2-03b2 + Resend-Slice) bleibt jede Request intern
 ehrlich als „vorbereitet · nicht versendet" gekennzeichnet; es wird **kein**
-`issued`, kein E-Mail-Versand und **kein** automatischer `Won`-Übergang
-behauptet.
+`issued` und kein E-Mail-Versand behauptet. Eine technisch gültige digitale
+oder analoge Annahme setzt seit F2.8b/M204-I1 das Projekt atomar auf `Won`.
 
 ## 2. Clean-Room-Evidenz (API) und Gap-Analyse
 
@@ -129,9 +138,11 @@ behauptet.
   (nicht spezifiziert) und wird bewusst nicht als IP/Geo repliziert.
 - **View-Tracking.** Doku belegt nur einen **View-Count**; M2-04 ergänzt minimal
   Zeitstempel, kein Fingerprinting (ADR 0022, Entscheidung 5).
-- **`Won`-Automatik.** Doku: Signatur → `Won` + Installations-Board
-  (`MODKAT:F2.8`). M2-04 endet bei `signed` und emittiert `signature.signed`;
-  der Outcome-/Installations-Übergang ist NICHTZIEL (eigener Slice, s. §12).
+- **`Won`-Automatik.** Doku belegt digitale und analoge Annahme → `Won`.
+  F2.8b/M204-I1 bindet das atomar an `project.outcome`; Details und
+  FACT/INFERENCE/ESTIMATE-Trennung siehe eigene Spec. Ein automatischer
+  Installationsdatensatz oder Phasen-/Boardwechsel ist dagegen nicht eindeutig
+  belegt und bleibt NICHTZIEL.
 
 ### 2.4 Gap-Analyse Ist-Repo ↔ Referenz
 
@@ -151,7 +162,7 @@ behauptet.
 | Analog-Upload | DOCUMENTED (PDF) | Upload-/Datei-Muster vorhanden (M1-08b) | Typ-/Größen-/Malware-Check; PDF/JPG |
 | Tablet-Signatur | DOCUMENTED (digitale Kundensignatur) | responsive E2E-Basis vorhanden | `draw`-Modus auf Touch-Geräten |
 | E-Mail-Versand (Resend/Notify) | DOCUMENTED | — | NICHTZIEL (Resend-Slice) |
-| `Won`/Installation | DOCUMENTED | M1-11a Outcome vorhanden (`M111A`) | NICHTZIEL; nur `signature.signed`-Event |
+| `Won`/Installation | `Won` FACT; Installationszeitpunkt widersprüchlich | M1-11a Outcome + F7.1 Installation vorhanden | F2.8b setzt atomar `Won`; keine automatische Installation (`ESTIMATE`) |
 
 ## 3. Capability-Sheet (Goal-Prompt §7)
 
@@ -184,7 +195,8 @@ behauptet.
   Quelle und „from where" teils INFERRED/UNKNOWN; interne Ausgestaltung DECIDED
   WMEE.
 - **Owner:** Root; UI-/Test-Lanes mit unabhängigen Abschlussprüfungen.
-- **Letzte Prüfung:** 2026-09-02 (Discovery/Spec; noch nicht implementiert).
+- **Letzte Prüfung:** M2-04-Discovery/Spec 2026-09-02;
+  F2.8b-Live-Evidenz und Integration 2026-09-06.
 
 ### 3.2 Feingranulare Capabilities
 
@@ -196,14 +208,16 @@ behauptet.
 | `M204-04` / F2.8 | gezeichnete Signatur (signature_pad) | Canvas/SVG → PNG, Größenlimit; draw-to-sign aktiv | `signed` + Attestierung (Modus `draw`, PNG-Artefakt + SHA) | öffentlich (Token); `signature.signed` | `M204-CONTRACT-02`, `M204-SVC-03`, `M204-E2E-03` | SPECIFIED |
 | `M204-05` / F2.8 | TTL-Ablauf | `expires_at` serverseitig; kein Client-Setzen | abgelaufener Link → terminal `expired`; kein Signieren/Withdraw mehr | — | `M204-DB-02`, `M204-RACE-01` | SPECIFIED |
 | `M204-06` / F2.8 | interner Widerruf eines Pending-Links | structured reason; nur `pending` | `withdrawn` terminal; Link sofort tot; Variante wieder editierbar (Kopplung NICHTZIEL) | `offer.signature`; `signature.request_withdrawn` | `M204-SVC-04`, `M204-DB-03`, `M204-E2E-04` | SPECIFIED |
-| `M204-07` / F2.8 | Kunden-Widerruf §356a | nur aus `signed`, innerhalb Fenster (Default 14 Tage), einmalig | `revoked_by_customer` terminal; `revoked_by_customer_at`; kein `Won`-Rückgang in M2-04 | öffentlich (Token) ODER intern; `signature.revoked_by_customer` | `M204-CONTRACT-03`, `M204-SVC-05` | SPECIFIED |
+| `M204-07` / F2.8 | Kunden-Widerruf §356a | nur aus `signed`, innerhalb Fenster (Default 14 Tage), einmalig | `revoked_by_customer` terminal; `revoked_by_customer_at`; F2.8b bestätigt: Projekt bleibt `Won` | öffentlich (Token) ODER intern; `signature.revoked_by_customer` | `M204-CONTRACT-03`, `M204-SVC-05` | SPECIFIED |
 | `M204-08` / F2.8 | analoger Upload (PDF/JPG) | MIME-Magic, Größenlimit, Malware-Check; Signierdatum ≤ 1 Tag Zukunft; an `pending` | `signed` + Attestierung (Modus `analog`, Artefakt + SHA) | `offer.signature`; `signature.signed` | `M204-CONTRACT-04`, `M204-SVC-06`, `M204-E2E-05` | SPECIFIED |
 | `M204-09` / F2.8 | Tablet-Signatur | Touch/Pointer-Events; `draw`-Modus | identisch `M204-04`; keine „on behalf of"-Semantik | öffentlich (Token) | `M204-E2E-06` | SPECIFIED |
 | `M204-10` / F2.8 | RLS/RBAC fail-closed | — | External/Worker/Fremdmandant lesen/mutieren nicht; Token-Route nur lesbar/signierbar | RLS/FORCE-RLS + Actions | `M204-RBAC-01/02` | SPECIFIED |
-| `M204-11` / F2.8 | Race/CAS | paralleles Signieren/Withdraw/Ablauf | genau ein terminaler Übergang gewinnt; andere Conflict | Request-Lockreihenfolge Offer→Request | `M204-RACE-01/02/03` | SPECIFIED |
+| `M204-11` / F2.8 | Race/CAS | paralleles Signieren/Withdraw/Ablauf | genau ein terminaler Übergang gewinnt; andere Conflict | Annahme: Project→Request→Variant; andere Request-Aktionen nach bestehendem Vertrag | `M204-RACE-01/02/03` | SPECIFIED |
 | `M204-12` / F2.8 | Erasure | Signaturbild/Analog-PDF/View-Zeitstempel/Signer-Name | DSGVO-Graph erweitert; ID-only-WORM-Tombstone | Erasure/Scrub | `M204-ERASURE-01/02` | SPECIFIED |
 | `M204-13` / F2.8 | Migration + Rollenvertrag | — | additive Migration, `db:generate` ohne Drift, Rollenprobe | Migrator/Runtime/Worker | `M204-MIG-01`, Rollenprobe | SPECIFIED |
 | `M204-14` / F2.8 | UI/A11y | — | öffentliche Signier- + interne Finalise-Sicht, Axe, Tastatur, 375 px, Touch | — | `M204-E2E-01…06`, `M204-A11Y-01` | SPECIFIED |
+| `M204-I1` / F2.8b | digitale/analoge Annahme schließt Deal | Phase `offer|installation`; Outcome `open|won`; gültige Attestierung | `open→won`, Revision +1, `closed_at=signed_at`; keine Installation/Phasen-/Boardmutation | Signatur-Actor; `signature.signed` + ggf. `project.outcome_won`; Kunden-Widerruf bleibt Won | `F208B-DB/SEC/UPG/E2E` | REVIEWED / VERIFIED (lokal) |
+| `M204-I2` / F2.8b | Team stuft widerrufenen Vertrag fachlich ab | `won@offer|installation`; aktiver Verlustgrund; Editor/Admin | manuell `won→lost`, Revision +1; Phase/Board/Signaturakte unverändert | `project.outcome_lost` + Outcome-Audit | `F208B-DB-07`, `F208B-E2E-01` | REVIEWED / VERIFIED (lokal) |
 
 ## 4. Datenmodell und Datenbankvertrag
 
@@ -276,6 +290,15 @@ geschützt.
 SQL-Ebene (RLS/FORCE-RLS) und Action-Ebene bleiben doppelt fail-closed. Kein
 Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
 
+Der Rollenvertrag erkennt Migrations-Prefixe: vor 0076 bleibt das für den alten
+M2-04-Service erforderliche direkte `INSERT` auf `signature_attestation`
+erhalten. Mit vorhandenen F2.8b-Kapseln besitzt `app_runtime` dort nur noch
+`SELECT`; analoge Annahme läuft dann ausschließlich über
+`sign_signature_analog`. 0076 vollzieht diesen INSERT-/EXECUTE-Wechsel atomar
+im Migrationscommit; das Post-Manifest ist nur noch Attestierung/Reparatur.
+Teilstände aus neuen Funktionen und Constraint-Triggern werden nicht als
+Legacy interpretiert, sondern fail-closed abgelehnt.
+
 ## 7. Event-, Audit- und Activity-Vertrag
 
 - `domain_events`: `signature.request_created`, `signature.viewed`,
@@ -284,16 +307,26 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
   keine PII/Preise/Rechtstexte/Vollhashes).
 - `audit_log`: `action ∈ {signature.create, signature.sign, signature.withdraw,
   signature.upload_analog, signature.view}`, `allowed`, Details ID-only.
-- Projektaktivität (redigiert): feste deutsche Labels („Signaturanforderung
-  vorbereitet", „Signiert (digital/analog)", „Signaturlink widerrufen",
-  „Vom Kunden widerrufen"), keine Roh-Payload-/Wertanzeige.
-- `signature.signed` ist der **Integrationspunkt** für den späteren
-  `Won`-/Installations-Übergang; er wird in M2-04 emittiert, aber nicht
-  konsumiert.
+- Projektaktivität (redigiert): keine Roh-Payload-/Wertanzeige. Die
+  Annahme-Events tragen seit F2.8b die unten genannten, quellenbelegten
+  englischen Labels exakt; andere Signaturzustände behalten ihre eigene
+  lokalisierte Darstellung.
+- F2.8b/M204-I1 koppelt die neue Attestierung synchron an den bestehenden
+  Outcome-Vertrag: `open→won` erzeugt genau ein `project.outcome_won` plus
+  `project.outcome.write`; bereits `won` erzeugt keinen zweiten Outcome-Bump.
+- Exakte Reonic-Aktivitätslabels liegen im `signature.signed`-Payload:
+  `Signature request accepted by customer` (digital) oder
+  `Signature request accepted analogously` (analog). Digitaler Actor ist
+  `customer`, analoger Actor die interne UUID.
+- Kunden-Widerruf ändert den Signaturstatus, nicht das Project-Outcome.
+- Installation wird nicht automatisch erzeugt; siehe F2.8b-Spec und ADR 0023.
 
 ## 8. Lock- und Race-Vertrag
 
-- Lock-Reihenfolge fest: Offer → SignatureRequest (wie Erasure-/Issuance-Pfad).
+- Annahme-Lock-Reihenfolge fest:
+  Project → SignatureRequest → OfferVariant. Digitaler Token-Pfad, analoger
+  Service und Erasure-Pfad teilen dieselbe erste Project-Sperre. Andere
+  Request-Aktionen behalten ihre bestehende Offer-/Request-Reihenfolge.
 - Terminale Übergänge sind CAS-geschützt: genau ein `signed`/`expired`/
   `withdrawn`/`revoked_by_customer` gewinnt; parallele konkurrierende Aktionen
   erhalten `conflict` ohne Teilstand.
@@ -305,6 +338,15 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
 - Kreuzung mit Erasure: Erasure sperrt Offer→Request zuerst und gewinnt; ein
   paralleler Signier-/Withdraw-Versuch auf einer gerade gelöschten Zeile erhält
   `denied`/`not_found`.
+- Der 0076-Rollout nimmt das Lockset Project→Request→Attestation per `NOWAIT`
+  und begrenztem Retry. Jeder Versuch ist eine Subtransaktion; Teil-Locks werden
+  bei Konflikt freigegeben. Dadurch kann ein gleichzeitig laufender alter
+  Request→Project-Pfad abschließen, ohne Lock-Upgrade-Deadlock. Inventur und
+  Backfill laufen danach unter dem gehaltenen Lockset, ohne TEMP-Recht.
+- Deferred Integrität hängt an Request, Attestierung und Project. Der finale
+  Transaktionszustand lässt `request→offer→Signatur` atomar zu; ereignisgebundene
+  Sperren für terminal→offen und terminal→Request verhindern zugleich einen
+  vollständigen Phase→Request→Reopen→Won→Offer-Zyklus.
 
 ## 9. UI-Vertrag
 
@@ -343,6 +385,17 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
 - `M204-DB-02`: `expires_at`-Ableitung/Ablaufgrenze (DB-Zeit, kein Client).
 - `M204-DB-03`: terminale Übergänge nicht umkehrbar; Withdraw nur aus `pending`.
 - `M204-DB-04`: Content-Hash-Bindung + Rehash der Ausstellungsbytes.
+- `F208B-DB-01…05`: digitale/analoge Annahme → `Won`, bereits-Won/Replay,
+  mehrere Pending-Requests, Kunden-Widerruf bleibt Won, keine Installation,
+  Konflikte ohne Teilstand.
+- `F208B-DB-06…10`: halbe Direktmutation/Attestierungs-Delete, manueller Lost,
+  mehrere getrennte Ausstellungen, vollständiger Reopen-/Won-Zyklus sowie der
+  legitime atomare Request→Offer→Signatur-Pfad werden geprüft.
+- `F208B-UPG-01`: 0075→0076-Backfill ist chronologisch und fail-closed bei
+  fehlender oder in Signer/Hash/Zeit unpassender Attestierung sowie negativem
+  Project-Outcome; auch ein bereits-Won-Bestand wird vollständig validiert.
+- `F208B-UPG-02`: 0076 konkurriert mit der alten Request→Project-
+  Locksteigerung ohne Deadlock.
 
 ### 10.3 RLS/RBAC (negativ)
 
@@ -350,6 +403,11 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
   (SQL- und Action-Ebene), ohne Event-/Audit-Zeile.
 - `M204-RBAC-02`: Token-Route nur lesend/signierend; kein Zugriff auf fremde
   Requests über erratene Token; Denied ohne Offer-Orakel.
+- `F208B-SEC-01`: direkter Event-/Audit-/GUC-Spoof kann keinen
+  Signatur-Outcome-Nachweis erzeugen (`23514`).
+- `F208B-RBAC-01`: echter strikter 0075-Prefix besteht Apply+Verify; der
+  0076-Commit entzieht direktes Attestierungs-Insert und erteilt Kapsel-EXECUTE
+  vor dem Post-Manifest; partielles F2.8b-Set scheitert fail-closed.
 
 ### 10.4 Race
 
@@ -374,6 +432,8 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
 - `M204-E2E-05`: Analog-Upload (PDF) → `signed` (analog).
 - `M204-E2E-06`: Tablet/Touch-Signatur (Viewport/Pointer) → `signed` (draw).
 - `M204-A11Y-01`: Axe, Tastatur, 375 px, Touchziele, `aria-live`, Reduced-Motion.
+- `F208B-E2E-01`: analoge Annahme zeigt Request `signed` und Projekt `Won`,
+  ohne Installation anzulegen.
 
 ## 11. Abschlussgates
 
@@ -387,8 +447,9 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
   Erasure-Graph).
 - Chromium-E2E inkl. Axe; Visual bleibt bis Mikails Freigabe `INCONCLUSIVE`
   (`M204-VISUAL-01`).
-- **Kein** Push, Deploy, E-Mail-Versand, `issued`/`Won`-Claim oder
-  Provider-Aktion ohne Freigabe.
+- **Kein** Push, Deploy, E-Mail-Versand, `issued`-Claim oder Provider-Aktion
+  ohne Freigabe. `Won` darf nur als lokal getestete F2.8b-Funktion behauptet
+  werden, bis die vollständige Gate-Kette grün ist.
 
 ## 12. Nichtziele (NON-GOALS)
 
@@ -397,8 +458,9 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
   die Attestierung ist eine eigene technische Aufzeichnung, kein Rechtsclaim.
 - Portal-White-Label (F10) — Kundenportal-Signatur ist ein eigener Slice.
 - Change Order / Fork nach Signatur (eigener Slice).
-- Automatischer `Won`-Übergang + Umzug aufs Installations-Board — M2-04 endet
-  bei `signed` und emittiert nur `signature.signed`.
+- Automatische Installation, Installationsphase und Umzug aufs
+  Installations-Board. F2.8b setzt ausschließlich das Projektergebnis auf
+  `Won`; Installations-Timing bleibt `ESTIMATE` und eigener Slice.
 - Mehr-Varianten-/Mehr-Zahlarten-Auswahl in einem Request (`offerDocuments[]`
   mit >1 Dokument) — M2-04 bindet genau eine freigegebene Variante.
 - „from where"-Geolokalisierung/IP-Erfassung (Fingerprinting) — bewusst nicht
@@ -417,15 +479,14 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
 | `DEC-M204-05` | View-Tracking = Zeitstempel + Zähler, kein IP/UA/Referrer | ADR 0022 (E5) |
 | `DEC-M204-06` | Attestierung = Signer + Zeit + Content-Hash + Modus; „from where" nicht repliziert | ADR 0022 (E6) |
 | `DEC-M204-07` | Token nur als `token_hash` (SHA-256, salted) gespeichert | §5 |
-| `DEC-M204-08` | `signed` ist M2-04-Endzustand; `Won`/Installation über `signature.signed`-Event (NICHTZIEL) | §12 |
+| `DEC-M204-08` | Historische M2-04-Grenze: `signed`; F2.8b integriert danach atomar `Won`, ohne automatische Installation | F2.8b-Spec / ADR 0023 |
 | `DEC-M204-09` | Analog akzeptiert PDF **und** JPG (JPG = WMEE-Erweiterung für Scans; Doku belegt nur PDF) | §2/§5 |
+| `DEC-M204-10` | Kunden-Widerruf bleibt Won; Geschwister-Requests werden nicht automatisch widerrufen | F2.8b-Spec / ADR 0023 |
 
-## 14. Verbleibende UNKNOWN (zur Root-Integrator-/Owner-Klärung)
+## 14. Offene und gelöste Discovery-Punkte
 
-1. `UNK-M204-01` (INTEGRATION): M2-03b1 `a06f961` ist nicht in `tooling`/`main`
-   integriert; die `offer_issuance`-Tabellen existieren nur im Worktree. Wann
-   und in welcher Reihenfolge wird M2-03b vor M2-04 integriert? (M2-04 hängt an
-   `issuance_id`/`content_sha256`.)
+1. `UNK-M204-01` ist **GELÖST**: M2-03b1 ist Ancestor des aktuellen
+   `codex/m1-wave-02`; M2-04 bindet real an `offer_issuance`.
 2. `UNK-M204-02` (TTL-DEFAULT): Die öffentliche Doku belegt keinen Einzelwert für
    den Link-Gültigkeits-Default („typisch 14/30/60"). `DEC-M204-02` setzt 14 Tage
    als ESTIMATE-ähnlichen Startwert — Owner-Freigabe erbeten.
@@ -433,20 +494,19 @@ Offer-/Variante-Leak über Fehlermeldungen oder abgelaufene Links.
    M2-03b2-`issued`-Gate „live" erreichbar sein (reine Test-/Preview-Nutzung),
    oder muss auch die Routen-Aktivierung hinter dem Send-/Issued-Gate warten?
    `DEC-M204-04` nimmt die konservative Variante an.
-4. `UNK-M204-04` (WON): Soll der automatische `Won`-Übergang in einem
-   Folge-Slice an `signature.signed` andocken oder — wegen `MODKAT:F2.8`
-   „setzt automatisch Won" — doch noch in M2-04 aufgenommen werden? Scope steht
-   aktuell auf NICHTZIEL.
-5. `UNK-M204-05` (MIGRATIONSNUMMER): exakte Migrationsnummer (frühestens `0043`)
-   hängt von der M2-03b-/M1-wave-01-Integrationsreihenfolge ab — Root-Fix
-   erbeten (Muster `UNK-M114-04`).
+4. `UNK-M204-04` ist **GELÖST**: F2.8b/M204-I1 setzt bei digitaler oder
+   analoger Annahme atomar `project.outcome = won`. Offen bleibt ausschließlich
+   der widersprüchlich belegte Installationszeitpunkt (`ESTIMATE`).
+5. `UNK-M204-05` ist **GELÖST**: M2-04 = Migration `0044`,
+   F2.8b/M204-I1 = Migration `0076`.
 
 ## Root-Entscheidungen (2026-09-02)
 
 - **ADR-Nummer:** `0022` (die M1-15-Lane belegte `0021` bereits; Kollision
   aufgelöst, beide Referenzen aktualisiert).
-- **Won-Übergang:** NICHT in M2-04 (Folge-Slice an `signature.signed`
-  andocken; Scope bleibt schlank).
+- **Won-Übergang:** Die Entscheidung vom 2026-09-02 („Folge-Slice") ist mit
+  F2.8b/M204-I1 umgesetzt. Die Annahme setzt atomar `Won`; automatische
+  Installation bleibt separat und `ESTIMATE`.
 - **Token-Route `/s/[token]`:** nur interne Vorschau/Test erreichbar; kein
   öffentlicher Zugriff vor M2-03b2-`issued` und Resend-Freigabe.
 - **Migration:** `0044` (nach M1-Welle 0040–0042 und M1-15 `0043`);

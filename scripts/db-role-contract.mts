@@ -201,6 +201,12 @@ const SIGNATURE_PRIVATE_ROUTINES = [
   "public._m204_guard_signature_request()",
   "public._m204_guard_signature_view_log()",
 ] as const;
+const F208B_SIGNATURE_RUNTIME_ROUTINES = [
+  "public.sign_signature_analog(uuid,uuid,timestamptz,text,bytea)",
+] as const;
+const F208B_SIGNATURE_PRIVATE_ROUTINES = [
+  "public._f208b_assert_terminal_signature_integrity()",
+] as const;
 
 const INVOICING_RELATIONS = [
   "workspace_invoicing_settings",
@@ -295,6 +301,20 @@ const F301_CREATE_SIGNATURE_REQUEST_SHA256 =
   "540198c44b583349a74a34fa7c90c082d33511313ce3df6c9fd5475c2f9aa91e";
 const F301_SIGN_SIGNATURE_BY_TOKEN_SHA256 =
   "86eb6d38ba6d39dc3e816eb191a5969296f1d8bbbf67520b0fb57e873a84c4f9";
+const F208B_PROJECT_OUTCOME_GUARD_SHA256 =
+  "1906b20c8c673ca5117a0f4273d601c2a74fde39d649a3ce83a0c397bfa8c3ca";
+const F208B_PROJECT_OUTCOME_EVIDENCE_SHA256 =
+  "d38daae55c2026b3ccc832d786ff662f732f456d0bec1e92cb045abee306455d";
+const F208B_PROJECT_OUTCOME_EVIDENCE_GUARD_SHA256 =
+  "02773f58a0670249cbea7df22a28c4283d819f2e096cabaca4b4cbdfe8cbf19c";
+const F208B_SIGNATURE_ATTESTATION_GUARD_SHA256 =
+  "35dfaa0362c96a2e06884729c4d11ab0cffd0d52c06828d0d6e62ee318dc4eb6";
+const F208B_SIGN_SIGNATURE_BY_TOKEN_SHA256 =
+  "a783b07fba479e1ba6c95c868f89978b19be3fb6570e07dc67a2bbd68e95f588";
+const F208B_TERMINAL_SIGNATURE_INTEGRITY_SHA256 =
+  "af9ec0a81660b4771a43d356c91900215d1e19268cc638270f79d0e6a9d8fa7b";
+const F208B_SIGN_SIGNATURE_ANALOG_SHA256 =
+  "4af0ea27ae7fb9c2166b8725d5580f188effc2695cc89af4e5b7f39c02cb8053";
 
 const INSTALLATION_RELATIONS = [
   "installation",
@@ -1051,6 +1071,55 @@ async function hasAtomicPublicRelationSet(
   return true;
 }
 
+async function hasAtomicSignatureAcceptanceWonContract(
+  client: PoolClient,
+  hasSignatures: boolean,
+  label: string,
+): Promise<boolean> {
+  if (!hasSignatures) return false;
+  const presence = await client.query<{
+    analog: boolean;
+    integrity: boolean;
+    triggerCount: number;
+  }>(`
+    select
+      pg_catalog.to_regprocedure(
+        'public.sign_signature_analog(uuid,uuid,timestamptz,text,bytea)'
+      ) is not null as analog,
+      pg_catalog.to_regprocedure(
+        'public._f208b_assert_terminal_signature_integrity()'
+      ) is not null as integrity,
+      (
+        select pg_catalog.count(*)::integer
+          from (values
+            ('signature_request_terminal_integrity', 'public.signature_request'),
+            ('signature_attestation_terminal_integrity', 'public.signature_attestation'),
+            ('project_signature_terminal_integrity', 'public.project')
+          ) as expected(trigger_name, relation_name)
+          join pg_catalog.pg_trigger as trigger_record
+            on trigger_record.tgname = expected.trigger_name
+           and trigger_record.tgrelid = pg_catalog.to_regclass(expected.relation_name)
+           and not trigger_record.tgisinternal
+           and trigger_record.tgenabled = 'O'
+      ) as "triggerCount"
+  `);
+  const row = presence.rows[0];
+  const indicators = [
+    row?.analog === true,
+    row?.integrity === true,
+    row?.triggerCount === 3,
+  ];
+  if (indicators.every((present) => !present)) return false;
+  if (!indicators.every(Boolean)) {
+    throw new Error(
+      `${label} ist nur teilweise vorhanden ` +
+        `(Analog=${String(row?.analog)}, Integritaet=${String(row?.integrity)}, ` +
+        `Trigger=${String(row?.triggerCount ?? 0)}/3).`,
+    );
+  }
+  return true;
+}
+
 async function hasAtomicPublicColumnSet(
   client: PoolClient,
   columns: readonly string[],
@@ -1382,7 +1451,20 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     SIGNATURE_RELATIONS,
     "Rollen-ACL-Manifest: M2-04-E-Signatur",
   );
+  const hasSignatureAcceptanceWon = await hasAtomicSignatureAcceptanceWonContract(
+    client,
+    hasSignatures,
+    "Rollen-ACL-Manifest: F2.8b-Signaturakzeptanz",
+  );
   if (hasSignatures) {
+    const signatureRuntimeRoutines = [
+      ...SIGNATURE_RUNTIME_ROUTINES,
+      ...(hasSignatureAcceptanceWon ? F208B_SIGNATURE_RUNTIME_ROUTINES : []),
+    ];
+    const signaturePrivateRoutines = [
+      ...SIGNATURE_PRIVATE_ROUTINES,
+      ...(hasSignatureAcceptanceWon ? F208B_SIGNATURE_PRIVATE_ROUTINES : []),
+    ];
     await client.query(`
       -- Delete läuft ausschließlich über die Erasure-Definer-Grenze;
       -- app_runtime erhält bewusst keine DELETE-Rechte auf die drei
@@ -1395,15 +1477,16 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.signature_request to app_runtime;
-      grant select, insert on public.signature_attestation to app_runtime;
+      grant select${hasSignatureAcceptanceWon ? "" : ", insert"}
+        on public.signature_attestation to app_runtime;
       grant select, insert on public.signature_view_log to app_runtime;
 
       revoke execute on function
-        ${[...SIGNATURE_RUNTIME_ROUTINES, ...SIGNATURE_PRIVATE_ROUTINES].join(",\n        ")}
+        ${[...signatureRuntimeRoutines, ...signaturePrivateRoutines].join(",\n        ")}
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant execute on function
-        ${SIGNATURE_RUNTIME_ROUTINES.join(",\n        ")}
+        ${signatureRuntimeRoutines.join(",\n        ")}
         to app_runtime
     `);
   }
@@ -2613,6 +2696,11 @@ export async function verifyRoleContract(
     SIGNATURE_RELATIONS,
     "Rollenvertrag: M2-04-E-Signatur",
   );
+  const hasSignatureAcceptanceWon = await hasAtomicSignatureAcceptanceWonContract(
+    client,
+    hasSignatures,
+    "Rollenvertrag: F2.8b-Signaturakzeptanz",
+  );
   const hasWorkspaceInvoicing = await hasAtomicPublicRelationSet(
     client,
     INVOICING_RELATIONS,
@@ -3099,6 +3187,9 @@ export async function verifyRoleContract(
   equalRows(
     functionOwners.rows.map((row) => `${row.proname}:${row.owner}`),
     [
+      ...(hasSignatureAcceptanceWon ? [
+        "_f208b_assert_terminal_signature_integrity:app_owner",
+      ] : []),
       ...(hasPortal ? [
         "_f1001_actor_can_read_portal:app_owner",
         "_f1001_actor_can_write_portal:app_owner",
@@ -3247,6 +3338,7 @@ export async function verifyRoleContract(
         "record_signature_view:app_owner",
         "resolve_signature_public_view:app_owner",
         "revoke_signature_by_customer:app_owner",
+        ...(hasSignatureAcceptanceWon ? ["sign_signature_analog:app_owner"] : []),
         "sign_signature_by_token:app_owner",
       ] : []),
       ...(hasOfferRelease ? [
@@ -3314,6 +3406,11 @@ export async function verifyRoleContract(
       sha256(row.prosrc),
     ].join(":")),
     [
+      ...(hasSignatureAcceptanceWon ? [
+        "_f208b_assert_terminal_signature_integrity():trigger:app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          F208B_TERMINAL_SIGNATURE_INTEGRITY_SHA256,
+      ] : []),
       ...(hasCatalogImport ? [
         "_m108b_authorize_catalog_import_runtime(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:340a6059972954e2866e8042e18c5fb6b2ef96f975f61be36519abe221d3e91a",
         "_m108b_catalog_import_actor_auth_code(uuid, uuid):text:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:fae878a570c7daab47dcf89a1e809eaee16f541b3108bac48c39626718289d37",
@@ -3403,13 +3500,19 @@ export async function verifyRoleContract(
           "b31b2eaad4c5e1beabb07ea2b2bd1cd2e6a8fff3e88d648e7a729770662ff4da",
         "_m111b_guard_outcome_evidence_insert():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
-          "e865e7cb5014b44cc05d377f552329ea92c9e385de20021ab84fe8f9acc5f58c",
+          (hasSignatureAcceptanceWon
+            ? F208B_PROJECT_OUTCOME_EVIDENCE_GUARD_SHA256
+            : "e865e7cb5014b44cc05d377f552329ea92c9e385de20021ab84fe8f9acc5f58c"),
         "_m111b_guard_project_outcome():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
-          "ec8b1e0da4c1a21da65b964c38dafbc3e71788663a1d76e1e0af8cdf83393590",
+          (hasSignatureAcceptanceWon
+            ? F208B_PROJECT_OUTCOME_GUARD_SHA256
+            : "ec8b1e0da4c1a21da65b964c38dafbc3e71788663a1d76e1e0af8cdf83393590"),
         "_m111b_record_project_outcome():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
-          "77198d622ee01484e2f9660e44a2be19c96468aec1ba9fae76ff622b60d2249a",
+          (hasSignatureAcceptanceWon
+            ? F208B_PROJECT_OUTCOME_EVIDENCE_SHA256
+            : "77198d622ee01484e2f9660e44a2be19c96468aec1ba9fae76ff622b60d2249a"),
       ] : []),
       ...(hasCustomerNotification ? [
         "_m111b_customer_notification_dispatch_state(uuid, uuid):TABLE(id uuid, attempt_count integer, next_attempt_at timestamp with time zone):app_owner:plpgsql:f:s:true:false:false:u:" +
@@ -3477,8 +3580,12 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
         "_m204_erasure_scrub_allowed(uuid, uuid):boolean:app_owner:plpgsql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:d2cfff07e81fd845a3079f0e2799c6dd83ad600eea9cc5feb0548eb892b5fc10",
-        "_m204_guard_signature_attestation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:cc0f2b8a08b9de87cc2a939d951ab16670d91fcf59abd8996a16b06b3c565401",
+        "_m204_guard_signature_attestation():trigger:app_owner:plpgsql:f:v:" +
+          `${hasSignatureAcceptanceWon ? "true" : "false"}:false:false:u:` +
+          "search_path=pg_catalog:" +
+          (hasSignatureAcceptanceWon
+            ? F208B_SIGNATURE_ATTESTATION_GUARD_SHA256
+            : "cc0f2b8a08b9de87cc2a939d951ab16670d91fcf59abd8996a16b06b3c565401"),
         "_m204_guard_signature_request():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:" +
           (hasPlanningSettings
@@ -3502,11 +3609,18 @@ export async function verifyRoleContract(
           "1fbf9fddde50cb2d2298f1bd713b5c53922bd9e8179564286f9bce2ffc197040",
         "revoke_signature_by_customer(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:c61869de7b489354884dc81af015d3d47947a7009804fbb48c73e46596cb89b1",
+        ...(hasSignatureAcceptanceWon ? [
+          "sign_signature_analog(uuid, uuid, timestamp with time zone, text, bytea):jsonb:" +
+            "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+            F208B_SIGN_SIGNATURE_ANALOG_SHA256,
+        ] : []),
         "sign_signature_by_token(bytea, text, text, bytea):jsonb:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
-          (hasPlanningSettings
-            ? F301_SIGN_SIGNATURE_BY_TOKEN_SHA256
-            : "4fc6f3a5f1fc65cd0ad98f10a6e13eea5d3922826171ffd2dafd6ee0af20b9f2"),
+          (hasSignatureAcceptanceWon
+            ? F208B_SIGN_SIGNATURE_BY_TOKEN_SHA256
+            : hasPlanningSettings
+              ? F301_SIGN_SIGNATURE_BY_TOKEN_SHA256
+              : "4fc6f3a5f1fc65cd0ad98f10a6e13eea5d3922826171ffd2dafd6ee0af20b9f2"),
       ] : []),
       ...(hasCommercialDocuments ? [
         "_m301_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
@@ -4536,6 +4650,10 @@ export async function verifyRoleContract(
           "(old.closed_at IS DISTINCT FROM new.closed_at) OR " +
           "(old.loss_reason_id IS DISTINCT FROM new.loss_reason_id) OR " +
           "(old.loss_reason_text IS DISTINCT FROM new.loss_reason_text)):0",
+        ...(hasSignatureAcceptanceWon ? [
+          "project:project_signature_terminal_integrity:17:O:public:" +
+            "_f208b_assert_terminal_signature_integrity::-:constraint",
+        ] : []),
         "project_loss_reason:project_loss_reason_mutation_guard:31:O:public:" +
           "_m111a_guard_loss_reason::-:0",
         "project_loss_reason:project_loss_reason_no_truncate:34:O:public:" +
@@ -4594,12 +4712,20 @@ export async function verifyRoleContract(
       "project_catalog_resolution_line:project_catalog_resolution_line_no_truncate:34:O:public:forbid_mutation::-:0",
       "project_requirement:project_requirement_catalog_stale:5:O:public:mark_project_catalog_resolution_stale::-:0",
       ...(hasSignatures ? [
+        ...(hasSignatureAcceptanceWon ? [
+          "signature_attestation:signature_attestation_terminal_integrity:9:O:public:" +
+            "_f208b_assert_terminal_signature_integrity::-:constraint",
+        ] : []),
         "signature_attestation:signature_attestation_mutation_guard:31:O:public:" +
           "_m204_guard_signature_attestation::-:0",
         "signature_attestation:signature_attestation_no_truncate:34:O:public:forbid_mutation::-:0",
         "signature_request:signature_request_mutation_guard:31:O:public:" +
           "_m204_guard_signature_request::-:0",
         "signature_request:signature_request_no_truncate:34:O:public:forbid_mutation::-:0",
+        ...(hasSignatureAcceptanceWon ? [
+          "signature_request:signature_request_terminal_integrity:21:O:public:" +
+            "_f208b_assert_terminal_signature_integrity::-:constraint",
+        ] : []),
         "signature_view_log:signature_view_log_mutation_guard:31:O:public:" +
           "_m204_guard_signature_view_log::-:0",
         "signature_view_log:signature_view_log_no_truncate:34:O:public:forbid_mutation::-:0",
@@ -4746,7 +4872,9 @@ export async function verifyRoleContract(
       "app_runtime:project_requirement:INSERT:app_owner:false",
       "app_runtime:project_requirement:SELECT:app_owner:false",
       ...(hasSignatures ? [
-        "app_runtime:signature_attestation:INSERT:app_owner:false",
+        ...(!hasSignatureAcceptanceWon ? [
+          "app_runtime:signature_attestation:INSERT:app_owner:false",
+        ] : []),
         "app_runtime:signature_attestation:SELECT:app_owner:false",
         "app_runtime:signature_request:INSERT:app_owner:false",
         "app_runtime:signature_request:SELECT:app_owner:false",
@@ -5125,6 +5253,9 @@ export async function verifyRoleContract(
         "app_runtime:record_signature_view(bytea):EXECUTE:app_owner:false",
         "app_runtime:resolve_signature_public_view(bytea):EXECUTE:app_owner:false",
         "app_runtime:revoke_signature_by_customer(bytea):EXECUTE:app_owner:false",
+        ...(hasSignatureAcceptanceWon ? [
+          "app_runtime:sign_signature_analog(uuid, uuid, timestamp with time zone, text, bytea):EXECUTE:app_owner:false",
+        ] : []),
         "app_runtime:sign_signature_by_token(bytea, text, text, bytea):EXECUTE:app_owner:false",
       ] : []),
       ...(hasWorkspaceInvoicing ? INVOICING_RUNTIME_ROUTINES.map((signature) =>

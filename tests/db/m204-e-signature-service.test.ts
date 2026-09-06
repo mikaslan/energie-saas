@@ -28,6 +28,12 @@ import {
   withdrawSignatureRequest,
 } from "@/modules/signatures";
 import { duplicateOfferVariant, reviseOfferVariant } from "@/modules/offers";
+import {
+  changeProjectOutcome,
+  getProjectOutcomeContext,
+  listClosedRequests,
+  PROJECT_OUTCOME_COMMAND_VERSION,
+} from "@/modules/projects";
 import { tenantFixtures } from "../setup/tenant-fixtures";
 import { testPool } from "../setup/test-db";
 
@@ -71,6 +77,7 @@ async function tenantQuery<Row extends QueryResultRow = QueryResultRow>(
 
 async function buildApprovedIssuance(workspaceId: string): Promise<{
   issuanceId: string;
+  projectId: string;
   offerId: string;
   variantId: string;
   actorId: string;
@@ -115,6 +122,10 @@ async function buildApprovedIssuance(workspaceId: string): Promise<{
   );
   const row = source.rows[0];
   if (!row) throw new Error("M2-04: PDF-Entwurf fehlt.");
+
+  // Das rohe Offer-Fixture umgeht absichtlich den Offer-Service. Eine reale
+  // Signaturanfrage existiert erst in der Offer-Phase.
+  await tenantQuery(workspaceId, null, `update project set phase = 'offer' where workspace_id = $1::uuid and id = $2::uuid`, [workspaceId, row.project_id]);
 
   await tenantQuery(workspaceId, null, `update membership set role = 'admin', capabilities = '{}'::jsonb where workspace_id = $1::uuid and user_id = $2::uuid`, [workspaceId, row.actor_id]);
 
@@ -172,6 +183,7 @@ async function buildApprovedIssuance(workspaceId: string): Promise<{
   const contact = await tenantQuery<{ contact_id: string }>(workspaceId, null, `select contact_id from offer where workspace_id = $1::uuid and id = $2::uuid`, [workspaceId, row.offer_id]);
   return {
     issuanceId,
+    projectId: row.project_id,
     offerId: row.offer_id,
     variantId: row.variant_id,
     actorId: row.actor_id,
@@ -259,13 +271,128 @@ describe("M2-04 e-signature service database", () => {
       name: SignatureConflictError.name,
       code: "request_already_exists",
     });
+    const signed = await signSignatureByToken(testPool, {
+      schemaVersion: SIGNATURE_REQUEST_SIGN_VERSION,
+      token: created.token,
+      mode: "click",
+      artifactMimeType: null,
+      artifactBytes: null,
+    });
+    expect(signed).toMatchObject({
+      status: "signed",
+      requestId: created.requestId,
+      projectId: ctx.projectId,
+      offerId: ctx.offerId,
+    });
+
+    const accepted = await tenantQuery<{
+      phase: string;
+      outcome: string;
+      outcome_revision: number;
+      closed_at: Date;
+      installations: number;
+      outcome_events: number;
+      signature_events: number;
+      outcome_audits: number;
+      signature_audits: number;
+      signature_actor: string;
+      signature_payload: Record<string, unknown>;
+      outcome_payload: Record<string, unknown>;
+    }>(
+      workspaceId,
+      ctx.actorId,
+      `select project_record.phase, project_record.outcome,
+              project_record.outcome_revision, project_record.closed_at,
+              (select count(*)::integer from installation
+                where workspace_id = $1::uuid and project_id = $2::uuid) as installations,
+              (select count(*)::integer from domain_events
+                where workspace_id = $1::uuid and aggregate_id = $2::uuid
+                  and event_type = 'project.outcome_won') as outcome_events,
+              (select count(*)::integer from domain_events
+                where workspace_id = $1::uuid and aggregate_id = $3::uuid
+                  and event_type = 'signature.signed') as signature_events,
+              (select count(*)::integer from audit_log
+                where workspace_id = $1::uuid and action = 'project.outcome.write'
+                  and details->>'projectId' = $2::text) as outcome_audits,
+              (select count(*)::integer from audit_log
+                where workspace_id = $1::uuid and action = 'offer.signature.accept_customer'
+                  and details->>'requestId' = $4::text) as signature_audits,
+              (select actor from domain_events
+                where workspace_id = $1::uuid and aggregate_id = $3::uuid
+                  and event_type = 'signature.signed' limit 1) as signature_actor,
+              (select payload from domain_events
+                where workspace_id = $1::uuid and aggregate_id = $3::uuid
+                  and event_type = 'signature.signed' limit 1) as signature_payload,
+              (select payload from domain_events
+                where workspace_id = $1::uuid and aggregate_id = $2::uuid
+                  and event_type = 'project.outcome_won' limit 1) as outcome_payload
+         from project as project_record
+        where project_record.workspace_id = $1::uuid
+          and project_record.id = $2::uuid`,
+      [workspaceId, ctx.projectId, ctx.offerId, created.requestId],
+    );
+    expect(accepted.rows[0]).toMatchObject({
+      phase: "offer",
+      outcome: "won",
+      outcome_revision: 1,
+      installations: 0,
+      outcome_events: 1,
+      signature_events: 1,
+      outcome_audits: 1,
+      signature_audits: 1,
+      signature_actor: "customer",
+      signature_payload: {
+        source: "signature",
+        requestId: created.requestId,
+        projectId: ctx.projectId,
+        offerId: ctx.offerId,
+        variantId: ctx.variantId,
+        mode: "click",
+        activityLabel: "Signature request accepted by customer",
+      },
+      outcome_payload: {
+        source: "signature",
+        signatureRequestId: created.requestId,
+        signatureMode: "click",
+      },
+    });
+    expect(accepted.rows[0]?.closed_at).toBeInstanceOf(Date);
+
+    const closed = await withAuthorizedTenantOn(
+      testPool,
+      ctx.actorId,
+      workspaceId,
+      (tx, serviceCtx) => listClosedRequests(tx, serviceCtx, { filter: "won" }),
+    );
+    expect(closed.records).toContainEqual(expect.objectContaining({
+      projectId: ctx.projectId,
+      outcome: "won",
+      outcomeRevision: 1,
+    }));
+
     await expect(signSignatureByToken(testPool, {
       schemaVersion: SIGNATURE_REQUEST_SIGN_VERSION,
       token: created.token,
       mode: "click",
       artifactMimeType: null,
       artifactBytes: null,
-    })).resolves.toMatchObject({ status: "signed", requestId: created.requestId });
+    })).resolves.toMatchObject({ status: "already_signed", requestId: created.requestId });
+    const replayProof = await tenantQuery<{
+      outcome_revision: number;
+      outcome_events: number;
+      signature_events: number;
+    }>(workspaceId, ctx.actorId, `select project_record.outcome_revision,
+      (select count(*)::integer from domain_events where workspace_id = $1::uuid
+        and aggregate_id = $2::uuid and event_type = 'project.outcome_won') as outcome_events,
+      (select count(*)::integer from domain_events where workspace_id = $1::uuid
+        and aggregate_id = $3::uuid and event_type = 'signature.signed') as signature_events
+      from project as project_record where project_record.workspace_id = $1::uuid
+        and project_record.id = $2::uuid`, [workspaceId, ctx.projectId, ctx.offerId]);
+    expect(replayProof.rows[0]).toEqual({
+      outcome_revision: 1,
+      outcome_events: 1,
+      signature_events: 1,
+    });
   });
 
   it("weist terminale Uebergaenge zurueck und widerruft nur aus pending", async () => {
@@ -289,6 +416,133 @@ describe("M2-04 e-signature service database", () => {
       }),
     );
     expect(withdrawn.status).toBe("withdrawn");
+  });
+
+  it("setzt ein widerrufenes Signatur-Won manuell auf Lost und bewahrt die Signaturakte", async () => {
+    const workspaceId = randomUUID();
+    const ctx = await buildApprovedIssuance(workspaceId);
+    const created = await withAuthorizedTenantOn(
+      testPool,
+      ctx.actorId,
+      workspaceId,
+      (tx, serviceCtx) => createSignatureRequest(tx, serviceCtx, {
+        schemaVersion: SIGNATURE_REQUEST_CREATE_VERSION,
+        workspaceId,
+        offerId: ctx.offerId,
+        variantId: ctx.variantId,
+        ttlDays: 14,
+      }),
+    );
+    const signed = await signSignatureByToken(testPool, {
+      schemaVersion: SIGNATURE_REQUEST_SIGN_VERSION,
+      token: created.token,
+      mode: "click",
+      artifactMimeType: null,
+      artifactBytes: null,
+    });
+    expect(signed.status).toBe("signed");
+    await expect(revokeSignatureByCustomer(testPool, { token: created.token }))
+      .resolves.toMatchObject({ status: "revoked_by_customer" });
+
+    const reason = await tenantQuery<{ id: string }>(
+      workspaceId,
+      ctx.actorId,
+      `insert into public.project_loss_reason (workspace_id, label, position)
+       values ($1::uuid, 'Kundenwiderruf', 1)
+       returning id`,
+      [workspaceId],
+    );
+    const reasonId = reason.rows[0]?.id;
+    if (!reasonId) throw new Error("F2.8b: Verlustgrund fehlt.");
+
+    const before = await withAuthorizedTenantOn(
+      testPool,
+      ctx.actorId,
+      workspaceId,
+      (tx, serviceCtx) => getProjectOutcomeContext(tx, serviceCtx, ctx.projectId),
+    );
+    expect(before).toMatchObject({
+      phase: "offer",
+      outcome: "won",
+      outcomeRevision: 1,
+      permissions: { canChangeOutcome: true },
+    });
+
+    const lost = await withAuthorizedTenantOn(
+      testPool,
+      ctx.actorId,
+      workspaceId,
+      (tx, serviceCtx) => changeProjectOutcome(tx, serviceCtx, {
+        schemaVersion: PROJECT_OUTCOME_COMMAND_VERSION,
+        kind: "mark_lost",
+        projectId: ctx.projectId,
+        expectedOutcomeRevision: 1,
+        lossReasonId: reasonId,
+        lossReasonText: "Vertrag durch Kundin widerrufen",
+        confirmation: "mark_lost",
+      }),
+    );
+    expect(lost).toMatchObject({
+      phase: "offer",
+      outcome: "lost",
+      outcomeRevision: 2,
+      lossReason: { id: reasonId, label: "Kundenwiderruf" },
+      permissions: { canChangeOutcome: false },
+    });
+
+    const proof = await tenantQuery<{
+      phase: string;
+      outcome: string;
+      outcome_revision: number;
+      signature_status: string;
+      attestations: number;
+      installations: number;
+      lost_events: number;
+      lost_audits: number;
+    }>(workspaceId, ctx.actorId, `select
+      project_record.phase,
+      project_record.outcome,
+      project_record.outcome_revision,
+      (select status from public.signature_request
+        where workspace_id = $1::uuid and id = $3::uuid) as signature_status,
+      (select count(*)::integer from public.signature_attestation
+        where workspace_id = $1::uuid and signature_request_id = $3::uuid) as attestations,
+      (select count(*)::integer from public.installation
+        where workspace_id = $1::uuid and project_id = $2::uuid) as installations,
+      (select count(*)::integer from public.domain_events
+        where workspace_id = $1::uuid and aggregate_id = $2::uuid
+          and event_type = 'project.outcome_lost'
+          and payload->>'lossReasonId' = $4::text) as lost_events,
+      (select count(*)::integer from public.audit_log
+        where workspace_id = $1::uuid and resource = 'project'
+          and action = 'project.outcome.write'
+          and details->>'nextOutcome' = 'lost') as lost_audits
+      from public.project as project_record
+      where project_record.workspace_id = $1::uuid and project_record.id = $2::uuid`,
+    [workspaceId, ctx.projectId, created.requestId, reasonId]);
+    expect(proof.rows[0]).toEqual({
+      phase: "offer",
+      outcome: "lost",
+      outcome_revision: 2,
+      signature_status: "revoked_by_customer",
+      attestations: 1,
+      installations: 0,
+      lost_events: 1,
+      lost_audits: 1,
+    });
+
+    const closed = await withAuthorizedTenantOn(
+      testPool,
+      ctx.actorId,
+      workspaceId,
+      (tx, serviceCtx) => listClosedRequests(tx, serviceCtx, { filter: "lost" }),
+    );
+    expect(closed.records).toContainEqual(expect.objectContaining({
+      projectId: ctx.projectId,
+      outcome: "lost",
+      outcomeRevision: 2,
+      lossReasonLabel: "Kundenwiderruf",
+    }));
   });
 
   it("verweigert fremde Mandanten und external_only (RLS negativ)", async () => {
@@ -451,6 +705,9 @@ describe("M2-04 e-signature service database", () => {
       await expiryFixture.query(
         "alter table signature_request disable trigger signature_request_mutation_guard",
       );
+      await expiryFixture.query(
+        "alter table signature_request disable trigger signature_request_terminal_integrity",
+      );
       const expired = await expiryFixture.query(
         `update signature_request
             set created_at = pg_catalog.statement_timestamp() - interval '2 seconds',
@@ -459,6 +716,9 @@ describe("M2-04 e-signature service database", () => {
         [workspaceId, existing.requestId],
       );
       expect(expired.rowCount).toBe(1);
+      await expiryFixture.query(
+        "alter table signature_request enable trigger signature_request_terminal_integrity",
+      );
       await expiryFixture.query(
         "alter table signature_request enable trigger signature_request_mutation_guard",
       );

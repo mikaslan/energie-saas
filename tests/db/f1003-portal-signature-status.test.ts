@@ -92,6 +92,8 @@ async function buildApprovedIssuance(workspaceId: string): Promise<{
   const row = source.rows[0];
   if (!row) throw new Error("F10.2B: PDF-Entwurf fehlt.");
 
+  await tenantQuery(workspaceId, null, `update project set phase = 'offer' where workspace_id = $1::uuid and id = $2::uuid`, [workspaceId, row.project_id]);
+
   await tenantQuery(workspaceId, null, `update membership set role = 'admin', capabilities = '{}'::jsonb where workspace_id = $1::uuid and user_id = $2::uuid`, [workspaceId, row.actor_id]);
 
   const sender = {
@@ -211,7 +213,7 @@ describe("F10.2 Slice B Signatur-Status (PostgreSQL)", () => {
   it("F1003-DB-02: Roh-JSON enthält nie signer_name/Token/Grund", async () => {
     const workspaceId = randomUUID();
     const ctx = await buildApprovedIssuance(workspaceId);
-    await withAuthorizedTenantOn(testPool, ctx.actorId, workspaceId, (tx, serviceCtx) =>
+    const signature = await withAuthorizedTenantOn(testPool, ctx.actorId, workspaceId, (tx, serviceCtx) =>
       createSignatureRequest(tx, serviceCtx, {
         schemaVersion: SIGNATURE_REQUEST_CREATE_VERSION,
         workspaceId,
@@ -220,7 +222,13 @@ describe("F10.2 Slice B Signatur-Status (PostgreSQL)", () => {
         ttlDays: 14,
       }),
     );
-    await tenantQuery(workspaceId, null, `update signature_request set status = 'signed', signer_name = 'F1003 Kundin', signed_variant_id = variant_id, signed_at = clock_timestamp() where workspace_id = $1::uuid and issuance_id = $2::uuid`, [workspaceId, ctx.issuanceId]);
+    await signSignatureByToken(testPool, {
+      schemaVersion: SIGNATURE_REQUEST_SIGN_VERSION,
+      token: signature.token,
+      mode: "click",
+      artifactMimeType: null,
+      artifactBytes: null,
+    });
 
     const invite = await withAuthorizedTenantOn(
       testPool, ctx.actorId, workspaceId,

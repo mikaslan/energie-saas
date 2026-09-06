@@ -356,7 +356,12 @@ export async function getProjectOutcomeContext(
   `);
   const row = result.rows[0];
   if (!row) return null;
-  const canChangeOutcome = row.phase === "request"
+  const outcomePhaseIsMutable = row.phase === "request"
+    || (
+      (row.phase === "offer" || row.phase === "installation")
+      && row.outcome === "won"
+    );
+  const canChangeOutcome = outcomePhaseIsMutable
     && row.contact_deleted_at === null
     && can(ctx, "project.outcome.write")
     && !isExternalOnly(ctx);
@@ -403,9 +408,14 @@ export async function getProjectOutcomeContext(
 }
 
 function transitionPermitted(
+  phase: string,
   current: RequestOutcome,
   command: ProjectOutcomeCommandV1,
 ): boolean {
+  if (phase === "offer" || phase === "installation") {
+    return current === "won" && command.kind === "mark_lost";
+  }
+  if (phase !== "request") return false;
   if (
     command.kind === "mark_won"
     || command.kind === "mark_lost"
@@ -453,7 +463,7 @@ export async function changeProjectOutcome(
   if (current.outcome_revision !== command.expectedOutcomeRevision) {
     throw new ProjectOutcomeConflictError(current.outcome_revision);
   }
-  if (current.phase !== "request" || !transitionPermitted(current.outcome, command)) {
+  if (!transitionPermitted(current.phase, current.outcome, command)) {
     throw new ProjectOutcomeIllegalTransitionError();
   }
 
@@ -503,7 +513,7 @@ export async function changeProjectOutcome(
            updated_at = transaction_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${command.projectId}::uuid
-       and phase = 'request'
+       and phase = ${current.phase}
        and outcome = ${current.outcome}
        and outcome_revision = ${command.expectedOutcomeRevision}
      returning id as project_id, phase, outcome, outcome_revision, closed_at,
@@ -666,7 +676,13 @@ export async function listClosedRequests(
         on reason_record.workspace_id = project_record.workspace_id
        and reason_record.id = project_record.loss_reason_id
      where project_record.workspace_id = ${ctx.workspaceId}::uuid
-       and project_record.phase = 'request'
+       and (
+         project_record.phase = 'request'
+         or (
+           project_record.outcome in ('won', 'lost')
+           and project_record.phase in ('offer', 'installation')
+         )
+       )
        and project_record.outcome in ('won', 'lost', 'cannot_fulfill')
        and project_record.closed_at is not null
        ${filterSql}

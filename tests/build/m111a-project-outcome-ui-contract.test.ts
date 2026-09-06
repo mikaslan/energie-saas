@@ -62,7 +62,8 @@ describe("M1-11a Project-Outcome Portalvertrag", () => {
     expect(panel).toContain(
       "Du kannst das Geschäftsergebnis sehen, aber nicht verändern.",
     );
-    expect(service).toContain('const canChangeOutcome = row.phase === "request"');
+    expect(service).toContain('const outcomePhaseIsMutable = row.phase === "request"');
+    expect(service).toContain('&& row.outcome === "won"');
     expect(service).toContain('&& row.contact_deleted_at === null');
     expect(service).toContain('can(ctx, "project.outcome.write")');
     expect(service).toContain("&& !isExternalOnly(ctx)");

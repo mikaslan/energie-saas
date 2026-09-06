@@ -970,3 +970,31 @@
   Live-Bestätigung `planning-mode-transition-estimate.v1`. Kein Push.
 - Nächster Slice: F2.8b/M204-I1 Signaturakzeptanz → Won, anschließend weitere
   F1–F16-Capabilities.
+
+## Turn 61 — F2.8b Signaturakzeptanz → Won REVIEWED/VERIFIED
+
+- Öffentliche Reonic-Doku und OpenAPI v3.11.0 belegen: digitale/analoge
+  Annahme → `Won`, exakte Activity-Labels, mehrere Pending-Links und
+  Kunden-Widerruf ohne automatisches Lost. Deal, Stage und
+  `installationCreatedAt` sind getrennt; automatische Installation bleibt
+  wegen widersprüchlicher Evidenz ehrlich `ESTIMATE`.
+- Migration 0076: atomarer Request→Attestierung→Won-Pfad für digital/analog,
+  `closed_at=signed_at`, genau ein Outcome-Bump, keine Phase-/Board-/
+  Installationsmutation. Legacy-Backfill verlangt exakte Bindung von Signer,
+  Content-Hash und Signierzeit, auch bei bereits Won.
+- Sicherheit: einheitliche Lockfolge, NOWAIT-Rollout ohne Upgrade-Deadlock,
+  atomarer ACL-Cutover, echter 0075-Rollenprefix, partieller Stand fail-closed,
+  deferred Commit-Integrität und eventgebundene Sperre gegen vollständige
+  Phase→Request→Reopen→Won→Offer-Zyklen. Legitime
+  Request→Offer→Signatur-Transaktion bleibt möglich.
+- Fachfluss: Kundenwiderruf bewahrt `Won`; Editor/Admin kann danach manuell
+  mit aktivem Grund `won→lost` setzen. Signatur/PDF bleiben, Geschwisterlinks
+  bleiben unabhängig, keine Installation wird erfunden.
+- Finale lokale Gates: `npm run check` Exit 0 (239/239 Dateien, 2.170
+  bestanden/1 übersprungen; Rollen 88/88 + PG18 5/5), Dependency-Cruiser
+  481/1.847, Build Exit 0, Generator 89 Tabellen ohne Drift, Chromium
+  111 bestanden/1 übersprungen. Unabhängiges Review: keine offenen P0–P2.
+  Kein Push/Deploy.
+- Nächster belegter Slice: F7.4 Segment-Complete/Admin-Unlock, vorher
+  F7.2-Modell auf stabile Segment-ID, Required-Gate und phasenfähige
+  Checklist-Identität korrigieren.

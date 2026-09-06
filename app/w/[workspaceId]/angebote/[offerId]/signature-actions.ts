@@ -20,6 +20,7 @@ const UUID_SCHEMA = z.uuid().transform((value) => value.toLowerCase());
 const TTL_DAYS_SCHEMA = z.coerce.number().int().min(1).max(60);
 const REASON_SCHEMA = z.enum(["content_error", "recipient_error", "commercial_error", "other"]);
 const ANALOG_MIME = z.enum(["application/pdf", "image/jpeg"]);
+const ANALOG_SIGNING_DATE = z.iso.date();
 
 function workspaceIdFrom(formData: FormData): string | null {
   const value = formData.get("workspaceId");
@@ -147,7 +148,8 @@ export async function uploadAnalogSignatureAction(
       return { status: "invalid" };
     }
     const mimeParsed = ANALOG_MIME.safeParse(file.type);
-    if (!mimeParsed.success) return { status: "invalid" };
+    const signingDateParsed = ANALOG_SIGNING_DATE.safeParse(signingDate);
+    if (!mimeParsed.success || !signingDateParsed.success) return { status: "invalid" };
     const bytes = Buffer.from(await file.arrayBuffer());
     const parsed = z.strictObject({
       schemaVersion: z.literal(SIGNATURE_REQUEST_ANALOG_VERSION),
@@ -161,7 +163,10 @@ export async function uploadAnalogSignatureAction(
       workspaceId,
       requestId,
       mimeType: mimeParsed.data,
-      signingDate,
+      // HTML date inputs liefern bewusst nur ein Kalenderdatum. Der interne
+      // Vertrag bleibt ein offsettragendes Instant; UTC-Mitternacht bewahrt
+      // das deutsche Vertragsdatum deterministisch und SSR-unabhaengig.
+      signingDate: `${signingDateParsed.data}T00:00:00.000Z`,
       artifactBytes: bytes,
     });
     if (!parsed.success) return { status: "invalid" };
@@ -172,6 +177,9 @@ export async function uploadAnalogSignatureAction(
       (tx, ctx) => services.uploadAnalogSignature(tx, ctx, parsed.data),
     );
     revalidatePath(`/w/${workspaceId}/angebote/${result.offerId}`);
+    revalidatePath(`/w/${workspaceId}/anfragen`);
+    revalidatePath(`/w/${workspaceId}/anfragen/abgeschlossen`);
+    revalidatePath(`/w/${workspaceId}/anfragen/${result.projectId}`);
     return { status: "signed", requestId: result.requestId, mode: "analog" };
   } catch (error) {
     const mapped = mapSignatureError(error, services);

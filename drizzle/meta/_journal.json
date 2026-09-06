@@ -533,6 +533,13 @@
       "when": 1788658084683,
       "tag": "0075_f3_01_planning_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1788666067871,
+      "tag": "0076_f2_08b_signature_acceptance_won",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,10 @@ import {
   createDrainTrackedPool,
   endPoolAndWaitForClientRemoval,
 } from "../setup/pg-pool-drain";
-import type { M201RuntimeState } from "./m2-01-fixture";
+import {
+  seedM201ReadyProject,
+  type M201RuntimeState,
+} from "./m2-01-fixture";
 
 /**
  * M2-04 E-Signatur — Freigegebene-Ausstellungsfassung-Fixture.
@@ -24,6 +27,9 @@ import type { M201RuntimeState } from "./m2-01-fixture";
  */
 
 export type M204ReleasedOffer = {
+  workspaceId: string;
+  projectId: string;
+  contactName: string;
   offerId: string;
   variantId: string;
   issuanceId: string;
@@ -64,7 +70,46 @@ export type M204ReleasedOfferOptions = {
    * eine neue, eigenstaendig freizugebende Kette.
    */
   validThroughOffsetDays?: number;
+  /**
+   * Erzeugt einen eigenen Workspace samt Admin-Membership fuer die vorhandene
+   * E2E-Loginidentitaet. So kann ein terminaler Signatur-Flow das Projekt auf
+   * Won setzen, ohne Shared-Fixtures anderer Specs zu veraendern.
+   */
+  isolatedWorkspace?: boolean;
+  /** Aktiver Verlustgrund fuer einen spaeteren manuellen Lost-Abschluss. */
+  lossReasonLabel?: string;
 };
+
+async function seedIsolatedWorkspace(
+  pool: Pool,
+  state: M201RuntimeState,
+): Promise<string> {
+  const workspaceId = randomUUID();
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(
+      "select pg_catalog.set_config('app.workspace_id', $1, true), pg_catalog.set_config('app.actor_id', '', true)",
+      [workspaceId],
+    );
+    await client.query(
+      "insert into public.workspace (id, name) values ($1::uuid, 'M2-04 isolierter Analog-Workspace')",
+      [workspaceId],
+    );
+    await client.query(
+      `insert into public.membership (workspace_id, user_id, role, capabilities)
+       values ($1::uuid, $2::uuid, 'admin', '{}'::jsonb)`,
+      [workspaceId, state.editorIdentityId],
+    );
+    await client.query("commit");
+    return workspaceId;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 export async function seedM204ReleasedOffer(
   state: M201RuntimeState,
@@ -73,7 +118,17 @@ export async function seedM204ReleasedOffer(
   const validThroughOffsetDays = options.validThroughOffsetDays ?? 14;
   const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
   try {
-    const workspaceId = state.workspaceId;
+    const workspaceId = options.isolatedWorkspace
+      ? await seedIsolatedWorkspace(pool, state)
+      : state.workspaceId;
+
+    if (options.isolatedWorkspace) {
+      await seedM201ReadyProject(state.databaseUrl, {
+        workspaceId,
+        editorIdentityId: state.editorIdentityId,
+        skuSuffix: `m204-${workspaceId.slice(0, 8)}`,
+      });
+    }
 
     await withTenantOn(pool, workspaceId, async (tx) => {
       await tenantFixtures.offer?.(tx, workspaceId);
@@ -83,6 +138,8 @@ export async function seedM204ReleasedOffer(
     const source = await tenantFn<{
       source_pdf_draft_id: string;
       source_state: string;
+      project_id: string;
+      contact_name: string;
       offer_id: string;
       variant_id: string;
       variant_revision_id: string;
@@ -92,19 +149,35 @@ export async function seedM204ReleasedOffer(
       pool,
       workspaceId,
       null,
-      `select draft.id as source_pdf_draft_id, draft.state as source_state, draft.offer_id,
+      `select draft.id as source_pdf_draft_id, draft.state as source_state,
+              draft.project_id, contact_record.display_name as contact_name,
+              draft.offer_id,
               draft.variant_id, draft.variant_revision_id, draft.variant_revision,
               offer_record.created_by as actor_id
          from offer_pdf_draft as draft
          join offer as offer_record
            on offer_record.workspace_id = draft.workspace_id
           and offer_record.id = draft.offer_id
+         join contact as contact_record
+           on contact_record.workspace_id = offer_record.workspace_id
+          and contact_record.id = offer_record.contact_id
         where draft.workspace_id = $1::uuid
         order by draft.created_at desc, draft.id desc limit 1`,
       [workspaceId],
     );
     const row = source.rows[0];
     if (!row) throw new Error("M2-04: PDF-Entwurf fehlt im Offer-Fixture.");
+
+    // Das rohe Tenant-Fixture umgeht den Offer-Service. Eine reale
+    // Signaturannahme setzt ein Projekt in der Offer- oder Installationsphase
+    // voraus; der isolierte Graph bildet deshalb die Offer-Phase explizit ab.
+    await tenantFn(
+      pool,
+      workspaceId,
+      null,
+      "update public.project set phase = 'offer' where workspace_id = $1::uuid and id = $2::uuid",
+      [workspaceId, row.project_id],
+    );
 
     await tenantFn(
       pool,
@@ -114,6 +187,17 @@ export async function seedM204ReleasedOffer(
         where workspace_id = $1::uuid and user_id = $2::uuid`,
       [workspaceId, row.actor_id],
     );
+
+    if (options.lossReasonLabel) {
+      await tenantFn(
+        pool,
+        workspaceId,
+        state.editorIdentityId,
+        `insert into public.project_loss_reason (workspace_id, label, position)
+         values ($1::uuid, $2::text, 1)`,
+        [workspaceId, options.lossReasonLabel],
+      );
+    }
 
     const sender = {
       legalName: "M204 Energie GmbH",
@@ -296,7 +380,14 @@ export async function seedM204ReleasedOffer(
     // Replay. Eine erneute Freigabe würde am Approval-Limit scheitern — der
     // vorhandene Stand ist bereits die gewünschte Ausgangslage.
     if (prepared.rows[0]?.result.replayed === true) {
-      return { offerId: row.offer_id, variantId: row.variant_id, issuanceId };
+      return {
+        workspaceId,
+        projectId: row.project_id,
+        contactName: row.contact_name,
+        offerId: row.offer_id,
+        variantId: row.variant_id,
+        issuanceId,
+      };
     }
     const lease = randomUUID();
     await tenantFn(
@@ -351,7 +442,14 @@ export async function seedM204ReleasedOffer(
       throw new Error(`M2-04: zweite Ausstellungs-Freigabe fehlgeschlagen (${JSON.stringify(secondApproval.rows[0]?.result)}).`);
     }
 
-    return { offerId: row.offer_id, variantId: row.variant_id, issuanceId };
+    return {
+      workspaceId,
+      projectId: row.project_id,
+      contactName: row.contact_name,
+      offerId: row.offer_id,
+      variantId: row.variant_id,
+      issuanceId,
+    };
   } finally {
     await endPoolAndWaitForClientRemoval(pool);
   }

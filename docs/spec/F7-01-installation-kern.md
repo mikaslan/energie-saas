@@ -14,19 +14,46 @@ Direkterstellung (Modal, überspringt Signatur); Tabs: Basic, Workbook,
 Order Parts, Grid Registration, Subsidy, Handover, Services, Checklist,
 Files, Kalender").
 
+> **Abgrenzung 2026-09-06:** F2.8b/M204-I1 setzt eine digitale oder analoge
+> Annahme atomar auf `Won`, erzeugt aber bewusst **keine** Installation. Der im
+> Modulkatalog genannte Auto-Weg bleibt wegen widersprüchlicher Live-Evidenz
+> `ESTIMATE` und benötigt einen eigenen Slice; er ist kein Bestandteil von
+> F7.1 Slice A oder F2.8b.
+
 ## 1. Discovery-Quellen (Clean Room)
 
 - Katalog F7.1: Zwei Entstehungswege (Signatur-auto, Direkt-Modal), ein
   Tab-Satz. Alle Tabs außer Basic haben eigene Slices (F7.2 Checklisten
   existiert; Workbook/Plantafel/Handover/Order Parts/Fotos folgen).
-- Ist-Repo: kein `installation`-Modell (Grep über modules, Schema,
+- Ist-Repo **vor Slice A**: kein `installation`-Modell (Grep über modules, Schema,
   Migrationen: nur Worttreffer in Kommentaren). Projektseite
   (`app/w/[workspaceId]/anfragen/[projectId]/`) ist sektionsbasiert
   (Präzedenz Termin-Sektion) — eine Installations-Sektion passt ins
   Muster.
-- `signature.signed`-Event existiert (modules/signatures/service.ts) —
-  der Auto-Weg ist als Slice B anbindbar, ohne die Signaturstrecke zu
-  öffnen.
+- F2.8b/M204-I1 integriert `signature.signed` inzwischen synchron in das
+  Projektergebnis: `open→won`. Der mögliche Auto-Installationsweg ist weiterhin
+  als Slice B anbindbar, darf aber nicht allein aus dem Eventnamen abgeleitet
+  werden.
+
+### FACT / INFERENCE / ESTIMATE zum Signatur-Handoff
+
+- **FACT:** Digitale und analoge Annahme setzen das Angebot auf `Won`
+  ([digitaler Signierfluss](https://docs.reonic.com/docs/en/offers-finalise-cat-preview-variants-legal-texts-offer-link-validity),
+  [analoger Upload](https://docs.reonic.com/docs/en/offers-finalise-cat-upload-manual-signature)).
+- **FACT:** Die [OpenAPI v3.11.0](https://api.reonic.de/rest/v3/openapi)
+  modelliert `deal.state`, Projekt-`stage` und `installationCreatedAt`
+  getrennt. Deal-Abschluss ist daher nicht identisch mit einer belegten
+  Installationserzeugung.
+- **INFERENCE:** Die bestehende `installation.source = signature`-Reserve ist
+  der passende spätere technische Zielpfad, falls Live-Evidenz eine
+  automatische Anlage bestätigt.
+- **ESTIMATE:** Exakter Auslöser und Zeitpunkt bleiben unklar. Öffentliche
+  Texte nennen nachgelagerte Installation/Integrationen, beschreiben den
+  Installationsstart andernorts aber als späteren Handoff mit eigener
+  Variantenwahl
+  ([Widerruf, Fork und Installations-Handoff](https://docs.reonic.com/docs/en/offers-finalise-cat-revoke-offer)).
+  Bis zur Klärung bleiben `installation`, `project.phase` und
+  `kanban_column_id` bei Signaturannahme unverändert.
 
 ## 2. Scope Slice A (vertikal, klein)
 
@@ -56,8 +83,9 @@ Files, Kalender").
    Formulierung), Grants SELECT/INSERT/UPDATE an app_runtime
    (Rollenvertrag + Pin per Orakel, Präzedenz 23b3411).
 
-**Nicht in Slice A**: Auto-Anlage bei Signatur (Slice B, auf
-`signature.signed`), Workbook/Rollups/Stückliste (F7.6),
+**Nicht in Slice A**: Auto-Anlage bei Signatur (Slice B, erst nach belastbarer
+Live-Klärung; `signature.signed` allein ist kein hinreichender Triggerbeleg),
+Workbook/Rollups/Stückliste (F7.6),
 Plantafel/Zuweisung (F7.5), Handover-PDF/Unterschrift (F7.7),
 Order Parts (F7.8), Fotos, alle übrigen Tabs, Storno/Archiv,
 Mehrfach-Installationen je Projekt.
@@ -111,3 +139,6 @@ Audit via writeAudit (Muster lead-sources).
   Schemas leben im Service-Modul wie bei lead-sources. Offer-Schema-
   Doc bleibt unberührt, kein Re-Pin nötig.)
 - Reviews: Kimi + DeepSeek (Exit-3 ohne Key → Gates entscheiden).
+- Signaturgrenze: `docs/spec/F2-08b-signaturakzeptanz-won.md` und ADR 0023;
+  DB-Nachweise müssen nach Annahme `Won` bei weiterhin 0 Installationen sowie
+  unveränderter Phase/Kanban-Spalte belegen.

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { z } from "zod";
@@ -47,6 +47,8 @@ export const SIGNATURE_CONFLICT_CODES = [
   "transition_conflict",
   "revocation_window_closed",
   "withdrawal_conflict",
+  "project_outcome_conflict",
+  "project_outcome_revision_exhausted",
 ] as const;
 
 const createResultSchema = z.strictObject({
@@ -61,6 +63,7 @@ const createResultSchema = z.strictObject({
 const signResultSchema = z.strictObject({
   status: z.enum([...SIGNATURE_STATUS, "already_signed"]),
   requestId: uuidSchema,
+  projectId: uuidSchema.optional(),
   offerId: uuidSchema.optional(),
   attestationId: uuidSchema.optional(),
   signerName: z.string().optional(),
@@ -137,6 +140,7 @@ export type SignatureCreateResult = {
 
 export type SignatureSignResult = {
   requestId: string;
+  projectId: string | null;
   offerId: string | null;
   attestationId: string | null;
   status: SignatureRequestStatus | "already_signed";
@@ -393,7 +397,13 @@ export async function uploadAnalogSignature(
   tx: TenantTx,
   ctx: ServiceCtx,
   value: unknown,
-): Promise<{ requestId: string; offerId: string; status: "signed"; mode: "analog" }> {
+): Promise<{
+  requestId: string;
+  projectId: string;
+  offerId: string;
+  status: "signed";
+  mode: "analog";
+}> {
   requireInternalAccess(ctx, "offer.signature.upload_analog", "signature_request");
   const command = parseCommand(signatureRequestAnalogV1Schema, value);
   requireSameWorkspace(ctx, command.workspaceId);
@@ -403,106 +413,39 @@ export async function uploadAnalogSignature(
   if (Number.isNaN(signingDate.getTime()) || signingDate.getTime() > maxFuture) {
     throw new SignatureValidationError(["/signingDate"]);
   }
-  const requestRows = await readRows(tx, sql`
-    select id, offer_id, variant_id, variant_revision_id, content_sha256
-      from public.signature_request
-     where workspace_id = ${command.workspaceId}::uuid
-       and id = ${command.requestId}::uuid
-       and status = 'pending'
-     for update
-  `);
-  if (requestRows.length === 0) {
-    const existing = await readRows(tx, sql`
-      select id, status from public.signature_request
-       where workspace_id = ${command.workspaceId}::uuid and id = ${command.requestId}::uuid
-    `);
-    if (existing.length === 0) throw new SignatureNotFoundError();
-    throw new SignatureConflictError("transition_conflict");
-  }
-  if (requestRows.length !== 1) throw new SignatureIntegrityError();
-  const request = z.strictObject({
-    id: uuidSchema,
-    offer_id: uuidSchema,
-    variant_id: uuidSchema,
-    variant_revision_id: uuidSchema,
-    content_sha256: z.custom<Buffer>((value) => Buffer.isBuffer(value)),
-  }).safeParse(requestRows[0]);
-  if (!request.success) throw new SignatureIntegrityError();
 
-  // The pending request and its exact snapshot must still point at the
-  // variant's current revision. Locking the variant closes the analog-signing
-  // race against a concurrent content mutation; the database trigger repeats
-  // this invariant for direct SQL callers.
-  const variantRows = await readRows(tx, sql`
-    select variant_record.id
-      from public.offer_variant as variant_record
-      join public.offer_variant_revision as revision_record
-        on revision_record.workspace_id = variant_record.workspace_id
-       and revision_record.offer_id = variant_record.offer_id
-       and revision_record.variant_id = variant_record.id
-       and revision_record.revision = variant_record.current_revision
-     where variant_record.workspace_id = ${command.workspaceId}::uuid
-       and variant_record.offer_id = ${request.data.offer_id}::uuid
-       and variant_record.id = ${request.data.variant_id}::uuid
-       and revision_record.id = ${request.data.variant_revision_id}::uuid
-     for update of variant_record
+  // Die DB-Kapsel ist die einzige analoge Terminalkante. Sie autorisiert und
+  // sperrt Project -> Request -> Variant, schreibt Request + Attestierung und
+  // laesst den Attestation-Trigger Outcome/Event/Audit atomar erzeugen.
+  const rows = await readRows(tx, sql`
+    select public.sign_signature_analog(
+      ${command.workspaceId}::uuid,
+      ${command.requestId}::uuid,
+      ${command.signingDate}::timestamptz,
+      ${command.mimeType}::text,
+      ${command.artifactBytes}::bytea
+    ) as result
   `);
-  if (variantRows.length === 0) {
-    throw new SignatureConflictError("variant_revision_changed");
+  if (rows.length !== 1) throw new SignatureIntegrityError();
+  const envelope = z.strictObject({ result: z.unknown() }).safeParse(rows[0]);
+  if (!envelope.success) throw new SignatureIntegrityError();
+  const parsedResult = signResultSchema.safeParse(envelope.data.result);
+  if (!parsedResult.success) mapNonSuccess(envelope.data.result);
+  if (
+    parsedResult.data.status !== "signed"
+    || !parsedResult.data.projectId
+    || !parsedResult.data.offerId
+    || !parsedResult.data.attestationId
+  ) {
+    throw new SignatureIntegrityError();
   }
-  if (variantRows.length !== 1) throw new SignatureIntegrityError();
-
-  const signerRows = await readRows(tx, sql`
-    select contact_record.display_name as display_name
-      from public.offer as offer_record
-      join public.contact as contact_record
-        on contact_record.workspace_id = offer_record.workspace_id
-       and contact_record.id = offer_record.contact_id
-     where offer_record.workspace_id = ${command.workspaceId}::uuid
-       and offer_record.id = ${request.data.offer_id}::uuid
-     limit 1
-  `);
-  const signer = signerRows.length === 1
-    ? z.strictObject({ display_name: z.string() }).safeParse(signerRows[0]).data?.display_name
-    : null;
-  if (!signer) throw new SignatureConflictError("signer_missing");
-
-  const transitioned = await readRows(tx, sql`
-    update public.signature_request
-       set status = 'signed',
-           signer_name = ${signer}::text,
-           signed_variant_id = variant_id,
-           signed_at = pg_catalog.statement_timestamp()
-     where workspace_id = ${command.workspaceId}::uuid
-       and id = ${command.requestId}::uuid
-       and status = 'pending'
-     returning id
-  `);
-  if (transitioned.length === 0) {
-    throw new SignatureConflictError("transition_conflict");
-  }
-  if (transitioned.length !== 1) throw new SignatureIntegrityError();
-  const attestationId = randomUUID();
-  const artifactSha256 = createHash("sha256").update(command.artifactBytes).digest();
-  await tx.execute(sql`
-    insert into public.signature_attestation (
-      id, workspace_id, signature_request_id, mode, signer_name, content_sha256,
-      signing_date, artifact_mime_type, artifact_sha256, artifact_size_bytes, artifact_bytes
-    ) values (
-      ${attestationId}::uuid, ${command.workspaceId}::uuid, ${command.requestId}::uuid,
-      'analog', ${signer}::text, ${request.data.content_sha256},
-      ${command.signingDate}::timestamptz, ${command.mimeType}::text,
-      ${artifactSha256},
-      ${command.artifactBytes.length}::integer, ${command.artifactBytes}
-    )
-  `);
-  await recordSuccess(tx, ctx, {
-    action: "offer.signature.upload_analog",
-    eventType: "signature.signed",
-    offerId: request.data.offer_id,
-    details: { requestId: request.data.id, offerId: request.data.offer_id, mode: "analog" },
-  });
-  return { requestId: request.data.id, offerId: request.data.offer_id, status: "signed", mode: "analog" };
+  return {
+    requestId: parsedResult.data.requestId,
+    projectId: parsedResult.data.projectId,
+    offerId: parsedResult.data.offerId,
+    status: "signed",
+    mode: "analog",
+  };
 }
 
 async function readRows(tx: TenantTx, statement: ReturnType<typeof sql>): Promise<unknown[]> {
@@ -697,6 +640,7 @@ export async function signSignatureByToken(
   if (!parsed.success) return mapNonSuccess(raw.data.result);
   return {
     requestId: parsed.data.requestId,
+    projectId: parsed.data.projectId ?? null,
     offerId: parsed.data.offerId ?? null,
     attestationId: parsed.data.attestationId ?? null,
     status: parsed.data.status,

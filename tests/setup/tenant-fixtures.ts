@@ -65,24 +65,21 @@ async function fixtureProjectGraph(tx: TenantTx, wsId: string): Promise<{
 }
 
 // M1-11b: erzeugt ein cannot_fulfill-Projekt + eine queued Outbox-Zeile.
-// Die Outcome-Trigger werden fuer das Fixture-Update deaktiviert, weil der
-// direkte UPDATE weder den Transition-Guard (Actor/Rolle) noch die
-// Evidenz-Trigger (nested trigger depth) durchlaufen soll.
+// Der echte Outcome-Pfad vermeidet DDL gegen ausstehende deferred
+// Project-Constraint-Events und hält auch die generische Fixture-Suite auf dem
+// aktuellen Rollen-/Evidenzvertrag.
 async function fixtureCustomerNotificationGraph(
   tx: TenantTx,
   wsId: string,
 ): Promise<{ projectId: string; notificationId: string }> {
   const { projectId } = await fixtureProjectGraph(tx, wsId);
-  await tx.execute(sql`alter table project disable trigger project_outcome_mutation_guard`);
-  await tx.execute(sql`alter table project disable trigger project_outcome_evidence`);
+  const { userId } = await fixtureMembership(tx, wsId, "editor");
+  await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
   await tx.execute(sql`
     update project
-       set outcome = 'cannot_fulfill', outcome_revision = 1,
-           closed_at = now(), updated_at = now()
+       set outcome = 'cannot_fulfill', outcome_revision = 1
      where workspace_id = ${wsId}::uuid and id = ${projectId}::uuid
   `);
-  await tx.execute(sql`alter table project enable trigger project_outcome_mutation_guard`);
-  await tx.execute(sql`alter table project enable trigger project_outcome_evidence`);
   const notificationId = randomUUID();
   await tx.execute(sql`
     insert into customer_notification (id, workspace_id, project_id, idempotency_key)
@@ -1768,6 +1765,21 @@ async function fixtureSignatureAttestation(tx: TenantTx, wsId: string): Promise<
   `);
   const row = req.rows[0];
   if (!row) throw new Error("Signature-Tenant-Fixture: Request/Signer fehlt.");
+
+  // F2.8b koppelt eine gueltige Attestierung atomar an open -> won. Die
+  // historische Roh-Fixture umgeht den echten Offer-Service, also stellt sie
+  // dessen kanonische Projektphase vor der Attestierung explizit her.
+  await tx.execute(sql`
+    update public.project as project_record
+       set phase = 'offer',
+           updated_at = clock_timestamp()
+      from public.signature_request as request_record
+     where request_record.workspace_id = ${wsId}::uuid
+       and request_record.id = ${requestId}::uuid
+       and project_record.workspace_id = request_record.workspace_id
+       and project_record.id = request_record.project_id
+       and project_record.phase = 'request'
+  `);
 
   await tx.execute(sql`
     update public.signature_request
