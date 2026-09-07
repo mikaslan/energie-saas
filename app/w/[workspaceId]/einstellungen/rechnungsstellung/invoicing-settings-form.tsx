@@ -213,7 +213,7 @@ export function InvoicingSettingsForm({
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" aria-label="Textvorlagen (noch nicht verfügbar)">
-          <h2 className="text-lg font-semibold text-slate-400">Textvorlagen</h2>
+          <h2 className="text-lg font-semibold text-slate-500">Textvorlagen</h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">
             Textvorlagen sind in dieser Version noch nicht verfügbar und folgen in einem späteren Schritt.
           </p>
