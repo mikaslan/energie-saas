@@ -44,6 +44,7 @@ import {
   createOfferFromRequest,
   duplicateOfferVariant,
   getOfferDetail,
+  OfferConflictError,
   OfferNotFoundError,
   OfferValidationError,
   setOptionalBundles,
@@ -849,6 +850,113 @@ describe("F2.2 Varianten-Vertiefung", () => {
         `);
       }),
     ).rejects.toThrow(/duplicate|unique|PRIMARY/i);
+  });
+
+  it("serialisiert konkurrierende setPrimaryVariant-Aufrufe auf genau eine Primary", async () => {
+    // Spec-Testplan: „konkurrierende setPrimaryVariant-Aufrufe (Index als
+    // letzte Schranke)". Beide Aufrufe laufen ueber getrennte Pool-Clients;
+    // die kanonische Lockfolge (Projekt → Offer → Variante) serialisiert sie.
+    // Gleiches Ziel: genau ein Switch-Event, keine Doppelt-Primary, kein
+    // Deadlock, kein Fehler.
+    const { members, offerId, secondVariantId } = await createTwoVariantOffer();
+    const operator = offerCtx(members, "operator");
+    const command = {
+      schemaVersion: OFFER_VARIANT_SET_PRIMARY_COMMAND_VERSION,
+      offerId,
+      variantId: secondVariantId,
+    } as const;
+    const attempts = await Promise.allSettled([
+      withTenantOn(testPool, members.workspaceId, (tx) =>
+        setPrimaryVariant(tx, operator, command)),
+      withTenantOn(testPool, members.workspaceId, (tx) =>
+        setPrimaryVariant(tx, operator, command)),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(2);
+    const flags = await readPrimaryFlags(members.workspaceId, offerId);
+    expect(flags.filter((row) => row.is_primary).map((row) => row.id)).toEqual([
+      secondVariantId,
+    ]);
+    expect(await countEvents(members.workspaceId, offerId, "offer.primary_switched")).toBe(1);
+  });
+
+  it("endet bei gegenlaeufigen setPrimaryVariant-Aufrufen mit genau einer Primary", async () => {
+    // Last-Writer-Wins ist das spezifizierte Verhalten unter kanonischen
+    // Locks; die Invariante ist exakt eine Primary, egal welche Seite
+    // zuerst committet.
+    const { members, offerId, basisVariantId, secondVariantId } = await createTwoVariantOffer();
+    const operator = offerCtx(members, "operator");
+    const attempts = await Promise.allSettled([
+      withTenantOn(testPool, members.workspaceId, (tx) =>
+        setPrimaryVariant(tx, operator, {
+          schemaVersion: OFFER_VARIANT_SET_PRIMARY_COMMAND_VERSION,
+          offerId,
+          variantId: secondVariantId,
+        })),
+      withTenantOn(testPool, members.workspaceId, (tx) =>
+        setPrimaryVariant(tx, operator, {
+          schemaVersion: OFFER_VARIANT_SET_PRIMARY_COMMAND_VERSION,
+          offerId,
+          variantId: basisVariantId,
+        })),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(2);
+    const flags = await readPrimaryFlags(members.workspaceId, offerId);
+    expect(flags.filter((row) => row.is_primary)).toHaveLength(1);
+  });
+
+  it("replayt identische konkurrierende Offer-Creates auf dasselbe Offer ohne Duplikat", async () => {
+    // Spec-Testplan: „konkurrierende Erstvarianten-Creates". Auf
+    // Service-Ebene serialisiert der Projekt-Lock; der zweite Aufrufer mit
+    // identischem Material erhaelt per Digest-Replay dasselbe Offer
+    // (kein Fehler, kein Duplikat, keine zweite Primary). Der partielle
+    // Index bleibt letzte Schranke fuer Lock-umgehende Schreiber (separat
+    // per direktem DB-Write belegt).
+    const members = await createOfferMembers();
+    const project = await createPlanningProject(members);
+    const products = await createActiveProducts(members);
+    await resolveCatalog(members, project, products);
+    const operator = offerCtx(members, "operator");
+    const attempts = await Promise.allSettled([
+      withTenantOn(testPool, members.workspaceId, (tx) =>
+        createOfferFromRequest(tx, operator, offerCreateCommand(project))),
+      withTenantOn(testPool, members.workspaceId, (tx) =>
+        createOfferFromRequest(tx, operator, offerCreateCommand(project))),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(2);
+    const offerIds = attempts.flatMap((attempt) =>
+      attempt.status === "fulfilled" ? [attempt.value.offerId] : []);
+    expect(new Set(offerIds).size).toBe(1);
+    const flags = await readPrimaryFlags(members.workspaceId, offerIds[0] as string);
+    expect(flags).toHaveLength(1);
+    expect(flags[0]?.is_primary).toBe(true);
+  });
+
+  it("weist divergierende konkurrierende Offer-Creates mit Conflict ab", async () => {
+    // Gleiches Rennen, anderes Material (Prognosewert): der Digest-Replay
+    // schlaegt fehl, der Verlierer erhaelt OfferConflictError — Fehler an
+    // den Client, kein automatisches Retry, kein Duplikat.
+    const members = await createOfferMembers();
+    const project = await createPlanningProject(members);
+    const products = await createActiveProducts(members);
+    await resolveCatalog(members, project, products);
+    const operator = offerCtx(members, "operator");
+    const divergent = {
+      ...offerCreateCommand(project),
+      forecastValueNetCents: 9_999_999,
+    } as const;
+    const attempts = await Promise.allSettled([
+      withTenantOn(testPool, members.workspaceId, (tx) =>
+        createOfferFromRequest(tx, operator, offerCreateCommand(project))),
+      withTenantOn(testPool, members.workspaceId, (tx) =>
+        createOfferFromRequest(tx, operator, divergent)),
+    ]);
+    const fulfilled = attempts.filter((attempt) => attempt.status === "fulfilled");
+    const rejected = attempts.filter(
+      (attempt): attempt is PromiseRejectedResult => attempt.status === "rejected",
+    );
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(OfferConflictError);
   });
 
   it("unterdrueckt wertgleiche Override-Writes ohne Event", async () => {
