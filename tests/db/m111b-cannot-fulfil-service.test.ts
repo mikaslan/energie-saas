@@ -223,6 +223,37 @@ describe("M1-11b Cannot-Fulfil Service (DB)", () => {
     expect(postgresCode(error)).toBe("23514");
   });
 
+  it("M111B-03: gefaelschter Evidenz-Insert fuer project.outcome_cannot_fulfil scheitert", async () => {
+    const fakePayload = {
+      projectId: f.projectId,
+      previousOutcome: "open",
+      nextOutcome: "cannot_fulfill",
+      outcomeRevision: 1,
+    };
+    const fakeEvent = await rejected(asActor(f.workspaceId, f.editorId, (tx) =>
+      tx.execute(sql`
+        insert into domain_events (
+          workspace_id, aggregate_type, aggregate_id, event_type, actor, payload
+        ) values (
+          ${f.workspaceId}::uuid, 'project', ${f.projectId}::uuid,
+          'project.outcome_cannot_fulfil', ${f.editorId},
+          ${JSON.stringify(fakePayload)}::jsonb
+        )
+      `)));
+    expect(postgresCode(fakeEvent)).toBe("23514");
+    const fakeAudit = await rejected(asActor(f.workspaceId, f.editorId, (tx) =>
+      tx.execute(sql`
+        insert into audit_log (
+          workspace_id, actor, action, resource, allowed, details
+        ) values (
+          ${f.workspaceId}::uuid, ${f.editorId},
+          'project.outcome.write', 'project', true,
+          ${JSON.stringify(fakePayload)}::jsonb
+        )
+      `)));
+    expect(postgresCode(fakeAudit)).toBe("23514");
+  });
+
   it("M111B-11: Freeze-Guard weist Freigabekandidat unter geschlossenem Projekt ab", async () => {
     const error = await rejected(withTenantOn(testPool, f.workspaceId, (tx) =>
       tx.execute(sql`
