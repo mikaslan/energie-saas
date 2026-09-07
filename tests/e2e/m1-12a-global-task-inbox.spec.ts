@@ -279,7 +279,24 @@ test.describe("M1-12a: Projektübergreifende Aufgaben-Inbox", () => {
     await expect(overdue).toContainText(`Projekt: ${M1_12A_PROJECT_NAME}`);
     await expect(overdue).toContainText("Dir zugewiesen · Von dir erstellt");
     await expect(overdue).toContainText("1 zuständige Person");
-    await expect(inboxCard(page, M1_12A_TODAY_TITLE)).toContainText("Heute fällig ·");
+    // Mitternachtsfest (Berlin): „Heute fällig" gilt nur, solange der
+    // Berlin-Kalendertag des Seeds noch läuft. Der Seed legt die Fälligkeit
+    // auf 23:59:59 des Seed-Tages; kreuzt der Suite-Lauf Mitternacht, zeigt
+    // dieselbe Aufgabe korrekt „Überfällig". Die Erwartung folgt deshalb dem
+    // gerenderten Fälligkeitsdatum statt einer starren Zeichenkette.
+    const todayCard = inboxCard(page, M1_12A_TODAY_TITLE);
+    const todayCardText = await todayCard.innerText();
+    const renderedDueDate = /(\d{2}\.\d{2}\.\d{4})/u.exec(todayCardText)?.[1];
+    expect(renderedDueDate, "Fälligkeitsdatum der Heute-Karte lesbar").toBeTruthy();
+    const berlinToday = await page.evaluate(() => new Intl.DateTimeFormat("de-DE", {
+      timeZone: "Europe/Berlin",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date()));
+    await expect(todayCard).toContainText(
+      renderedDueDate === berlinToday ? "Heute fällig ·" : "Überfällig ·",
+    );
     await expect(inboxCard(page, M1_12A_DONE_TITLE)).toHaveCount(0);
     await expect(page.getByText(`${PAGE_LIMIT} auf dieser Seite`, { exact: true }))
       .toBeVisible();

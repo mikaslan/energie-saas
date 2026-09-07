@@ -126,6 +126,10 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
 }
 
 async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promise<void> {
+  // CI-Singletons (leerer <title> bei sonst stabiler Seite): Titel als
+  // explizite Vorbedingung mit Retry — kommt er verspätet, wartet der Pin;
+  // kommt er nie, fällt der Pin mit klarer Meldung statt Axe.
+  await expect(page).toHaveTitle(/.+/u);
   const result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
