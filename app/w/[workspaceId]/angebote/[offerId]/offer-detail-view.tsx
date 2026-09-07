@@ -416,8 +416,8 @@ function DetailStatus({ view }: { view: OfferDetailSurfaceView }) {
 
 function VariantNavigation({ variants }: { variants: readonly OfferVariantTabView[] }) {
   return (
-    <nav aria-label="Angebotsvarianten" className="overflow-x-auto">
-      <ul className="flex min-w-max list-none gap-2 pb-1">
+    <nav aria-label="Angebotsvarianten" className="block">
+      <ul className="flex flex-wrap list-none gap-2 pb-1">
         {variants.map((variant) => (
           <li key={variant.id}>
             <Link
@@ -817,7 +817,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           </div>
         </header>
 
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
+        <div className="grid gap-5">
           <DetailStatus view={view} />
           {view.contentLock ? (
             <aside data-offer-content-lock={view.contentLock} role="status" className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-base leading-6 text-amber-950">

@@ -1032,7 +1032,7 @@ export function OfferVariantEditor({
             </div>
           </header>
 
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+          <div className="grid gap-4">
             {view.offer.outdated ? <PersistentOutdatedWarning /> : null}
             {rebaseRecovered ? (
               <div role="status" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-base leading-6 text-blue-950">
@@ -1106,8 +1106,8 @@ export function OfferVariantEditor({
                 </button>
               </div>
             </div>
-            <nav aria-label="Angebotsvarianten" className="hidden overflow-x-auto sm:block">
-              <ul className="flex min-w-max list-none gap-2 pb-1">
+            <nav aria-label="Angebotsvarianten" className="hidden sm:block">
+              <ul className="flex flex-wrap list-none gap-2 pb-1">
                 {(view.variants ?? []).map((variant) => (
                   <li key={variant.id}>
                     <GuardedLink
