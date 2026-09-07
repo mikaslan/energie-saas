@@ -41,10 +41,11 @@ export function useModalDialog(
       }
     };
 
+    const trigger = triggerRef.current;
     node.addEventListener("keydown", handleKeyDown);
     return () => {
       node.removeEventListener("keydown", handleKeyDown);
-      triggerRef.current?.focus();
+      trigger?.focus();
     };
   }, [onClose, triggerRef]);
 

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { expect, test, type Page } from "playwright/test";
 import {

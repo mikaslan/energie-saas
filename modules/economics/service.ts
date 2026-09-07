@@ -9,7 +9,6 @@ import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   CASHFLOW_HORIZON_DEFAULT_YEARS,
-  WORKSPACE_ECONOMICS_SETTINGS_COMMAND_VERSION,
   WORKSPACE_ECONOMICS_SETTINGS_VERSION,
   economicsSettingsCommandV1Schema,
   economicsSettingsV1Schema,
