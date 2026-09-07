@@ -598,7 +598,13 @@ async function startPreparedCatalogImport(
   }
   await page.getByLabel(CATALOG_IMPORT_RIGHTS_ATTESTATION_TEXT).check();
   await page.getByRole("button", { name: "Import starten", exact: true }).click();
-  await expect(page.locator('[data-catalog-import-detail-state="queued"]')).toBeVisible();
+  // Der Worker kann den Import verarbeiten, bevor das erste UI-Polling den
+  // transienten `queued`-Zustand sieht — dann rendert die UI direkt den
+  // terminalen Zustand. Beweisziel ist der erfolgreiche Start (DB-Evidenz +
+  // terminaler Zustand unten), nicht die Beobachtbarkeit des Transienten.
+  await expect(page.locator(
+    `[data-catalog-import-detail-state="queued"], [data-catalog-import-detail-state="${expectedState}"]`,
+  )).toBeVisible();
   const evidence = await waitForCatalogImportWorker(
     data.databaseUrl,
     data.workspaceId,
@@ -1161,7 +1167,10 @@ test("M108B-E2E-01: 93/7 CSV, Intent-Replay, Worker, Report und Pagination", asy
     startRequest.headers()["next-action"],
     `Importstart muss als Next-Action gesendet werden; Content-Type: ${startRequest.headers()["content-type"] ?? "fehlt"}.`,
   ).toBeDefined();
-  await expect(page.locator('[data-catalog-import-detail-state="queued"]')).toBeVisible();
+  // Wie oben: transienter `queued`-Zustand oder direkt `partial`.
+  await expect(page.locator(
+    '[data-catalog-import-detail-state="queued"], [data-catalog-import-detail-state="partial"]',
+  )).toBeVisible();
   expect(await waitForCatalogImportWorker(
     data.databaseUrl,
     data.workspaceId,

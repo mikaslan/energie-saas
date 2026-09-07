@@ -7,6 +7,7 @@ import {
   test,
   type BrowserContext,
   type Download,
+  type ElementHandle,
   type Locator,
   type Page,
   type Route,
@@ -331,14 +332,35 @@ async function submitWithPendingFocusEvidence(
   await page.route("**/*", routeHandler);
   let actionRequested = false;
   try {
-    const buttonElement = await button.elementHandle();
-    if (buttonElement === null) {
-      throw new Error("Der fokussierbare Submit-Button fehlt vor dem Pending-Beleg.");
-    }
+    // Der Button kann zwischen Finden und Klick durch einen React-Re-Render
+    // ersetzt werden (CI-Last, 2× belegt). Für den Klick wird bounded neu
+    // aufgelöst; alle Folgebeweise laufen danach strikt auf dem GEKLICKTEN
+    // Knoten — Fokus-Identität und Pending-Beweise bleiben unverändert.
+    // Ein Detach VOR dem Klick-Dispatch löst keinen Request aus, daher ist
+    // genau ein Next-Action-Request pro Helper-Aufruf garantiert.
     const actionRequest = page.waitForRequest((request) => (
       request.method() === "POST" && request.headers()["next-action"] !== undefined
     ));
-    await buttonElement.click();
+    let buttonElement: ElementHandle<HTMLElement | SVGElement> | null = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const candidate = await button.elementHandle();
+      if (candidate === null) {
+        throw new Error("Der fokussierbare Submit-Button fehlt vor dem Pending-Beleg.");
+      }
+      try {
+        await candidate.click();
+      } catch (error) {
+        const detached = error instanceof Error
+          && /not attached to the DOM/iu.test(error.message);
+        if (attempt === 3 || !detached) throw error;
+        continue;
+      }
+      buttonElement = candidate;
+      break;
+    }
+    if (buttonElement === null) {
+      throw new Error("Der fokussierbare Submit-Button fehlt vor dem Pending-Beleg.");
+    }
     await actionRequest;
     actionRequested = true;
     await expect.poll(() => buttonElement.getAttribute("aria-disabled")).toBe("true");
