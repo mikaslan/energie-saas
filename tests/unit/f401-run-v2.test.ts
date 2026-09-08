@@ -83,6 +83,29 @@ describe("F4.1 v2 run", () => {
     expect(result.warnings).toContainEqual({ code: "provider_estimate", severity: "info" });
   });
 
+  it("rechnet Defizit (D<0) und Ausgleich (D=0) exakt ohne Speicher", () => {
+    const deficit = runPlanningCalculationV2({
+      request: request(),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 0.2),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: false,
+    });
+    expect(deficit.annual.directConsumptionKwh).toBe(7_008);
+    expect(deficit.annual.gridImportKwh).toBe(10_512);
+    expect(deficit.annual.feedInKwh).toBe(0);
+    expect(deficit.annual.autonomyRate).toBeCloseTo(0.4, 12);
+    const balanced = runPlanningCalculationV2({
+      request: request(),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: false,
+    });
+    expect(balanced.annual.feedInKwh).toBe(0);
+    expect(balanced.annual.gridImportKwh).toBe(0);
+    expect(balanced.annual.selfConsumptionKwh).toBe(17_520);
+    expect(balanced.annual.autonomyRate).toBe(1);
+  });
+
   it("bindet inputSha256 stabil an den Request", () => {
     const req = request() as unknown as PlanningCalculationRequestV2;
     const series = {
