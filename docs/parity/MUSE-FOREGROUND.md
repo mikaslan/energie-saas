@@ -427,3 +427,13 @@ identisch (`983ed67`, 0 unpusht).
   Formgebung gehoert zu den Profilquellen (F4.2+).
 - E2E-Beweis im Test: Profil -> run-v2 -> Finalize exakt ok, Verbrauch
   konsistent. Tests `f401-load-v2` 4/4, eslint/tsc 0.
+
+## v2-Leistungsverteilung (2026-09-08, lokal verifiziert, UNPUSHED)
+- `p-distribute-v2.ts`: `P*_h -> P_q` ueber injizierte Hay-Gewichte
+  (energieerhaltend, Abort-Gate) + `E_pv,q`-Summation ueber 1..4 Daeche.
+  Eigene Schicht validiert vollstaendig in `F401ProviderError`-Taxonomie;
+  eingefrorene Engine nur Defense-in-Depth.
+- Worker-Vormerkung: `f401_engine_invalid_input` (deterministisch) muss
+  spaeter auf nicht-retryable `engine_invalid` mappen, nicht auf
+  `engine_unavailable`.
+- Tests `f401-p-distribute-v2` 4/4, eslint/tsc 0.
