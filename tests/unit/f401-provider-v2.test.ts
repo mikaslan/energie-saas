@@ -133,6 +133,17 @@ describe("F4.1 v2 seriescalc parser", () => {
     expect(snapshot.hours.every((hour) => hour.gr === 0)).toBe(true);
   });
 
+  it("akzeptiert Int=1 (ganzzahlig) fuer die Warnungsbindung", () => {
+    const snapshot = parseSeriescalcSnapshot(syntheticRaw({
+      mutate: (doc) => {
+        doc.outputs.hourly[10]!.Int = 1;
+        doc.outputs.hourly[11]!.Int = 1.0;
+      },
+    }), { tilted: false });
+    expect(snapshot.hours[10]!.int).toBe(1);
+    expect(snapshot.hours[11]!.int).toBe(1);
+  });
+
   it("verlangt geneigt P und akzeptiert ganzzahlige Int-Floats", () => {
     const snapshot = parseSeriescalcSnapshot(syntheticRaw({ tilted: true }), {
       tilted: true,
