@@ -296,3 +296,10 @@ identisch (`983ed67`, 0 unpusht).
   Pin-Test waren ohne Migration rot). Pin-Test liest pg_get_constraintdef
   und schliesst die Kette Migration<->versions-v2<->Engine-Bytes.
 - Regression: m107-Schema/Worker/Contract 49/49, eslint 0, tsc 0.
+
+## CI zu F4.1B (2026-09-08)
+- Run `34224200600` (478f60a) erst SUCCESS nach 2x E2E-Re-run: Versuch 1
+  Reload-Timeout+M2-Kaskade, Versuch 2 Content-Lock-Timeout, Versuch 3
+  gruen. Static/DB/Unit/Contract stets gruen, Adds browser-inert,
+  tests/e2e unberuehrt -> als transiente CI-Flakes dokumentiert, kein
+  Test abgeschwaecht. Kein dritter Re-run noetig gewesen.
