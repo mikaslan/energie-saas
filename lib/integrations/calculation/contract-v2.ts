@@ -1,0 +1,127 @@
+/**
+ * F4.1 v2-Vertragskette (Spec F4-01, Stand SPECIFIED): Request- und
+ * Result-Schemas fuer planning-calculation.v2. Additiv neben contract.ts;
+ * v1-Schemas bleiben unberuehrt. Alle Tupelwerte stammen aus versions-v2.ts.
+ */
+import { z } from "zod";
+
+import {
+  CALCULATION_V2_CONTRACT_VERSION,
+  CALCULATION_V2_MODEL_ID,
+  CALCULATION_V2_MODEL_VERSION,
+  CALCULATION_V2_RESULT_CONTRACT_VERSION,
+  CALCULATION_V2_SOURCE_REVISION,
+} from "./versions-v2";
+
+const finite = () => z.number().finite();
+const nonNegative = (max: number) => finite().min(0).max(max);
+const positiveRevision = z.int().safe().min(1);
+const uuid = () => z.uuid();
+const dateSchema = z.iso.date();
+const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
+
+const storageParamsV2Schema = z.strictObject({
+  capacityKwh: nonNegative(10_000),
+  socMinKwh: nonNegative(10_000),
+  socMaxKwh: nonNegative(10_000),
+  chargeKw: nonNegative(1_000),
+  dischargeKw: nonNegative(1_000),
+  etaCharge: finite().gt(0).max(1),
+  etaDischarge: finite().gt(0).max(1),
+}).refine(
+  (storage) => storage.socMinKwh <= storage.socMaxKwh
+    && storage.socMaxKwh <= storage.capacityKwh,
+  { message: "socMinKwh <= socMaxKwh <= capacityKwh verletzt" },
+);
+
+export const planningCalculationRequestV2Schema = z.strictObject({
+  contractVersion: z.literal(CALCULATION_V2_CONTRACT_VERSION),
+  canonicalizationVersion: z.literal("planning-jcs.v1"),
+  branch: z.enum(["new_installation", "existing_installation"]),
+  asOfDate: dateSchema,
+  commissioningDate: dateSchema,
+  bindings: z.strictObject({
+    workspaceId: uuid(),
+    projectId: uuid(),
+    siteId: uuid(),
+    addressRevision: positiveRevision,
+    pinConfirmedAddressRevision: positiveRevision,
+    energyProfileId: uuid(),
+    energyProfileRevision: positiveRevision,
+    confirmedEnergyProfileRevision: positiveRevision,
+    confirmedEnergyProfileAddressRevision: positiveRevision,
+    projectRequirementId: uuid(),
+    projectRequirementRevision: positiveRevision,
+    sourceCalculatorSnapshotId: uuid().nullable(),
+  }),
+  site: z.strictObject({
+    countryCode: z.literal("DE"),
+    latitude: finite().min(-90).max(90),
+    longitude: finite().min(-180).max(180),
+  }),
+  axis: z.strictObject({
+    slots: z.literal(35_040),
+    resolution: z.literal("quarter_hour"),
+  }),
+  storage: storageParamsV2Schema,
+});
+
+const annualEnergyResultV2Schema = z.strictObject({
+  generationKwh: nonNegative(10_000_000),
+  consumptionKwh: nonNegative(10_000_000),
+  directConsumptionKwh: nonNegative(10_000_000),
+  fromStorageKwh: nonNegative(10_000_000),
+  selfConsumptionKwh: nonNegative(10_000_000),
+  feedInKwh: nonNegative(10_000_000),
+  gridImportKwh: nonNegative(10_000_000),
+  storageLossKwh: nonNegative(10_000_000),
+  selfConsumptionRate: finite().min(0).max(1),
+  autonomyRate: finite().min(0).max(1),
+  storageFullCycles: nonNegative(100_000),
+});
+
+const monthlyEnergyResultV2Schema = z.array(z.strictObject({
+  month: z.int().min(1).max(12),
+  generationKwh: nonNegative(10_000_000),
+  selfConsumptionKwh: nonNegative(10_000_000),
+  gridImportKwh: nonNegative(10_000_000),
+  feedInKwh: nonNegative(10_000_000),
+})).length(12);
+
+const warningsV2Schema = z.array(z.strictObject({
+  code: z.enum([
+    "provider_estimate",
+    "unknown_profile_field",
+    "existing_installation_limited",
+    "bidirectional_charging_not_modeled",
+    "backup_power_not_modeled",
+  ]),
+  severity: z.enum(["info", "warning"]),
+})).max(20);
+
+export const planningCalculationResultV2Schema = z.strictObject({
+  contractVersion: z.literal(CALCULATION_V2_RESULT_CONTRACT_VERSION),
+  canonicalizationVersion: z.literal("planning-jcs.v1"),
+  model: z.strictObject({
+    id: z.literal(CALCULATION_V2_MODEL_ID),
+    version: z.literal(CALCULATION_V2_MODEL_VERSION),
+    sourceRevision: z.literal(CALCULATION_V2_SOURCE_REVISION),
+  }),
+  inputSha256: sha256Schema,
+  quality: z.literal("server_reproduced_public_reference"),
+  validationStatus: z.literal("f4_public_reference_validated"),
+  temporalResolution: z.literal("quarter_hour_35040"),
+  roundingVersion: z.literal("wmee-energy-rounding.v1"),
+  annual: annualEnergyResultV2Schema,
+  monthly: monthlyEnergyResultV2Schema,
+  warnings: warningsV2Schema,
+});
+
+export type PlanningCalculationRequestV2 = z.infer<
+  typeof planningCalculationRequestV2Schema
+>;
+export type PlanningCalculationResultV2 = z.infer<
+  typeof planningCalculationResultV2Schema
+>;
+export const PlanningCalculationRequestV2Schema = planningCalculationRequestV2Schema;
+export const PlanningCalculationResultV2Schema = planningCalculationResultV2Schema;
