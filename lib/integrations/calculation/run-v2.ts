@@ -76,6 +76,15 @@ function roundEnergy(value: number): number {
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
+/**
+ * Kanonische Serienschranke (35040 endliche, nichtnegative kWh/Slot).
+ * Geteilt von Persist- und Finalize-Schicht, damit Claim/Run/Replay
+ * dieselbe Schranke sehen.
+ */
+export function assertSlotSeriesV2(value: unknown, name: string): number[] {
+  return requireSeries(value, name);
+}
+
 function requireSeries(value: unknown, name: string): number[] {
   if (!Array.isArray(value)) runError(`${name} ist kein Array`);
   if (value.length !== QUARTER_HOUR_SLOTS) {

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -8,6 +8,7 @@ import { emitEvent } from "@/lib/events";
 import {
   canonicalizeCalculationJson,
   hashPlanningCalculationInput,
+  PLANNING_CALCULATION_CONTRACT_VERSION,
   validatePlanningCalculationRequest,
   validatePlanningCalculationResult,
   type PlanningCalculationRequestV1,
@@ -19,6 +20,19 @@ import {
   projectCalculationPreparationV1Schema,
   type ProjectCalculationPreparationV1,
 } from "@/lib/integrations/calculation/preparation";
+import {
+  planningCalculationRequestV2Schema,
+  planningCalculationResultV2Schema,
+  type PlanningCalculationRequestV2,
+} from "@/lib/integrations/calculation/contract-v2";
+import { hashPlanningCalculationInputV2 } from "@/lib/integrations/calculation/prepare-v2";
+import { assertSlotSeriesV2 } from "@/lib/integrations/calculation/run-v2";
+import { validatePlanningCalculationResultV2Exactly } from
+  "@/lib/integrations/calculation/validate-result-v2";
+import {
+  CALCULATION_V2_CONTRACT_VERSION,
+  CALCULATION_V2_RESULT_CONTRACT_VERSION,
+} from "@/lib/integrations/calculation/versions-v2";
 
 const LEASE_MS = 15 * 60_000;
 const MAX_ATTEMPTS = 10;
@@ -147,6 +161,19 @@ type StoredCalculationInput = {
   providerSnapshot: PlanningCalculationRequestV1["yieldSnapshots"];
 };
 
+type StoredCalculationInputV2 = {
+  inputSha256: string;
+  inputSnapshot: PlanningCalculationRequestV2;
+  providerSnapshot: ProviderSeriesV2;
+};
+
+function isStoredCalculationInputV1(
+  value: StoredCalculationInput | StoredCalculationInputV2,
+): value is StoredCalculationInput {
+  return value.inputSnapshot.contractVersion
+    === PLANNING_CALCULATION_CONTRACT_VERSION;
+}
+
 type ClaimRow = {
   workspace_id: string;
   id: string;
@@ -211,11 +238,13 @@ export type ProjectCalculationClaim = {
     longitude: number;
     roofs: Array<{ roofId: string; tiltDeg: number; azimuthDeg: number }>;
   } | null;
-  input: StoredCalculationInput | null;
+  input: StoredCalculationInput | StoredCalculationInputV2 | null;
   preparation: ProjectCalculationPreparationV1 | null;
 };
 
-function parseStoredInput(row: ClaimRow): StoredCalculationInput | null {
+function parseStoredInput(
+  row: ClaimRow,
+): StoredCalculationInput | StoredCalculationInputV2 | null {
   if (
     row.input_sha256 === null
     && row.input_snapshot === null
@@ -227,6 +256,25 @@ function parseStoredInput(row: ClaimRow): StoredCalculationInput | null {
     || row.provider_snapshot === null
   ) invalidInput();
 
+  // Versionszweig: v2-Zeilen tragen Request/Serien-Bundle nach contract-v2,
+  // v1-Zeilen Request/yieldSnapshots nach contract-v1. Der v1-Pfad ist
+  // byte-identisch zum bisherigen Verhalten.
+  if (row.contract_version === CALCULATION_V2_CONTRACT_VERSION) {
+    const request = planningCalculationRequestV2Schema.safeParse(
+      row.input_snapshot,
+    );
+    const series = parseStoredSeriesV2(row.provider_snapshot);
+    if (
+      !request.success
+      || series === null
+      || hashPlanningCalculationInputV2(request.data) !== row.input_sha256
+    ) invalidInput();
+    return {
+      inputSha256: row.input_sha256,
+      inputSnapshot: request.data,
+      providerSnapshot: series,
+    };
+  }
   const request = validatePlanningCalculationRequest(row.input_snapshot);
   if (
     !request.ok
@@ -460,6 +508,12 @@ export async function persistProjectCalculationInput(
   ) stale();
   const existing = parseStoredInput(row);
   if (existing !== null) {
+    // Versionsreinheit (symmetrisch zu v2): v1-Persist replayt nur
+    // v1-foermig persistierte Zeilen; alles andere ist invalid_input.
+    // Das Literal-Praedikat engt die Union fuer den Rueckgab spread ein.
+    if (!isStoredCalculationInputV1(existing)) {
+      invalidInput();
+    }
     if (
       existing.inputSha256 !== value.inputSha256
       || !sameJson(existing.inputSnapshot, request.value)
@@ -801,6 +855,339 @@ export async function finalizeProjectCalculationSuccess(
         ${value.attemptCount},
         ${revisionId}::uuid,
         ${JSON.stringify(trustedResult)}::jsonb
+      )
+  `);
+  const finalizedRow = finalized.rows[0];
+  if (!finalizedRow || finalizedRow.outcome === "stale") stale();
+  if (finalizedRow.outcome === "conflict") retryConflict();
+  if (
+    finalizedRow.revision_id === null
+    || finalizedRow.revision_number === null
+  ) invalidInput();
+  if (finalizedRow.outcome === "replayed") {
+    return {
+      revisionId: finalizedRow.revision_id,
+      revision: finalizedRow.revision_number,
+      replayed: true,
+    };
+  }
+  const committedRevisionId = finalizedRow.revision_id;
+  const revision = finalizedRow.revision_number;
+
+  const trace = {
+    projectId: job.project_id,
+    siteId: job.site_id,
+    profileId: job.profile_id,
+    profileRevision: job.profile_revision,
+    addressRevision: job.address_revision,
+    requirementId: job.requirement_id,
+    requirementRevision: job.requirement_revision,
+    jobId: job.id,
+    attemptCount: job.attempt_count,
+    revisionId: committedRevisionId,
+    revision,
+    status: "succeeded",
+    quality: trustedResult.quality,
+    validationStatus: trustedResult.validationStatus,
+  };
+  await emitEvent(tx, {
+    workspaceId: job.workspace_id,
+    aggregateType: "project",
+    aggregateId: job.project_id,
+    eventType: "project.calculation_succeeded",
+    actor: job.created_by,
+    payload: trace,
+  });
+  await writeAudit(tx, {
+    workspaceId: job.workspace_id,
+    actor: job.created_by,
+    action: "project.write",
+    resource: "calculation_result",
+    allowed: true,
+    details: trace,
+  });
+  return { revisionId: committedRevisionId, revision, replayed: false };
+}
+
+// ---------------------------------------------------------------------------
+// v2-Persist/Finalize (planning-calculation.v2, F4.1, additiv neben v1).
+//
+// Gleiche DB-Funktionen und gleiche Sperr-/Idempotenz-Semantik wie v1; die
+// einzige Substanzdifferenz steckt in der Validierung: Request/Result nach
+// contract-v2, Serien nach assertSlotSeriesV2, exakte Paarung nach
+// validatePlanningCalculationResultV2Exactly (Server-Replay aus den
+// persistierten Serien). provider_snapshot traegt dafuer das versionierte
+// Bundle calculation-input-series.v2.
+
+const PROVIDER_SERIES_V2_SCHEMA_VERSION =
+  "calculation-input-series.v2" as const;
+
+const providerSeriesV2Schema = z.strictObject({
+  schemaVersion: z.literal(PROVIDER_SERIES_V2_SCHEMA_VERSION),
+  pvKwh: z.array(z.number()),
+  loadKwh: z.array(z.number()),
+  providerEstimate: z.boolean(),
+});
+
+type ProviderSeriesV2 = z.infer<typeof providerSeriesV2Schema>;
+
+const storedInputV2Schema = workerKeySchema.extend({
+  leaseToken: z.uuid(),
+  attemptCount: z.int().min(1).max(MAX_ATTEMPTS),
+  inputSnapshot: z.unknown(),
+  pvKwh: z.unknown(),
+  loadKwh: z.unknown(),
+  providerEstimate: z.boolean(),
+});
+
+const successInputV2Schema = workerKeySchema.extend({
+  leaseToken: z.uuid(),
+  attemptCount: z.int().min(1).max(MAX_ATTEMPTS),
+  result: z.unknown(),
+});
+
+function providerSeriesV2Bundle(input: {
+  pvKwh: unknown;
+  loadKwh: unknown;
+  providerEstimate: boolean;
+}): ProviderSeriesV2 {
+  let pvKwh: number[];
+  let loadKwh: number[];
+  try {
+    pvKwh = assertSlotSeriesV2(input.pvKwh, "pvKwh");
+    loadKwh = assertSlotSeriesV2(input.loadKwh, "loadKwh");
+  } catch {
+    invalidInput();
+  }
+  return {
+    schemaVersion: PROVIDER_SERIES_V2_SCHEMA_VERSION,
+    pvKwh,
+    loadKwh,
+    providerEstimate: input.providerEstimate,
+  };
+}
+
+function parseStoredSeriesV2(value: unknown): ProviderSeriesV2 | null {
+  const parsed = providerSeriesV2Schema.safeParse(value);
+  if (!parsed.success) return null;
+  try {
+    assertSlotSeriesV2(parsed.data.pvKwh, "pvKwh");
+    assertSlotSeriesV2(parsed.data.loadKwh, "loadKwh");
+  } catch {
+    return null;
+  }
+  return parsed.data;
+}
+
+function inputV2MatchesJob(
+  request: PlanningCalculationRequestV2,
+  job: FinalizationJobRow,
+): boolean {
+  const binding = request.bindings;
+  return binding.workspaceId === job.workspace_id
+    && binding.projectId === job.project_id
+    && binding.siteId === job.site_id
+    && binding.addressRevision === job.address_revision
+    && binding.pinConfirmedAddressRevision === job.pin_confirmed_address_revision
+    && binding.energyProfileId === job.profile_id
+    && binding.energyProfileRevision === job.profile_revision
+    && binding.confirmedEnergyProfileRevision === job.confirmed_profile_revision
+    && binding.confirmedEnergyProfileAddressRevision === job.confirmed_address_revision
+    && binding.projectRequirementId === job.requirement_id
+    && binding.projectRequirementRevision === job.requirement_revision
+    && binding.sourceCalculatorSnapshotId === job.source_snapshot_id
+    && request.contractVersion === job.contract_version;
+}
+
+export type PersistedProjectCalculationInputV2 = {
+  inputSha256: string;
+  inputSnapshot: PlanningCalculationRequestV2;
+  providerSeries: ProviderSeriesV2;
+  replayed: boolean;
+};
+
+export async function persistProjectCalculationInputV2(
+  tx: TenantTx,
+  input: z.input<typeof storedInputV2Schema>,
+): Promise<PersistedProjectCalculationInputV2> {
+  const parsed = storedInputV2Schema.safeParse(input);
+  if (!parsed.success) invalidInput();
+  const value = parsed.data;
+  const requestParsed = planningCalculationRequestV2Schema.safeParse(
+    value.inputSnapshot,
+  );
+  if (!requestParsed.success) invalidInput();
+  const request = requestParsed.data;
+  const bundle = providerSeriesV2Bundle(value);
+  const inputSha256 = hashPlanningCalculationInputV2(request);
+
+  const row = await lockedClaimRow(tx, value.workspaceId, value.jobId);
+  if (
+    row === null
+    || row.state !== "running"
+    || row.lease_token !== value.leaseToken
+    || row.attempt_count !== value.attemptCount
+    || row.lease_expires_at === null
+    || new Date(row.lease_expires_at).getTime()
+      <= claimDatabaseNow(row).getTime()
+  ) stale();
+  if (row.contract_version !== CALCULATION_V2_CONTRACT_VERSION) invalidInput();
+  // Versionsreinheit: v2-Persist auf v1-Zeilen ist invalid_input, kein
+  // stiller Cross-Version-Replay. parseStoredInput verzweigt selbst nach
+  // Zeilenversion; auf v2-Zeilen ist existing v2-foermig.
+  const existing = parseStoredInput(row);
+  if (existing !== null) {
+    const existingRequest = planningCalculationRequestV2Schema.safeParse(
+      existing.inputSnapshot,
+    );
+    const existingSeries = providerSeriesV2Schema.safeParse(
+      existing.providerSnapshot,
+    );
+    if (
+      row.contract_version !== CALCULATION_V2_CONTRACT_VERSION
+      || existing.inputSha256 !== inputSha256
+      || !existingRequest.success
+      || !sameJson(existingRequest.data, request)
+      || !existingSeries.success
+      || !sameJson(existingSeries.data, bundle)
+    ) retryConflict();
+    return {
+      inputSha256,
+      inputSnapshot: request,
+      providerSeries: bundle,
+      replayed: true,
+    };
+  }
+
+  const updated = await tx.execute<{
+    input_sha256: string;
+    input_snapshot: unknown;
+    provider_snapshot: unknown;
+    [key: string]: unknown;
+  }>(sql`
+    update project_calculation_job
+       set input_sha256 = decode(${inputSha256}, 'hex'),
+           input_snapshot = ${JSON.stringify(request)}::jsonb,
+           provider_snapshot = ${JSON.stringify(bundle)}::jsonb
+     where workspace_id = ${value.workspaceId}::uuid
+       and id = ${value.jobId}::uuid
+       and state = 'running'
+       and lease_token = ${value.leaseToken}::uuid
+       and attempt_count = ${value.attemptCount}
+       and lease_expires_at > pg_catalog.clock_timestamp()
+       and input_sha256 is null
+       and input_snapshot is null
+       and provider_snapshot is null
+     returning encode(input_sha256, 'hex') as input_sha256,
+               input_snapshot, provider_snapshot
+  `);
+  const stored = updated.rows[0];
+  if (!stored) stale();
+  return {
+    inputSha256: stored.input_sha256,
+    inputSnapshot: request,
+    providerSeries: bundle,
+    replayed: false,
+  };
+}
+
+export async function finalizeProjectCalculationSuccessV2(
+  tx: TenantTx,
+  input: z.input<typeof successInputV2Schema>,
+): Promise<{ revisionId: string; revision: number; replayed: boolean }> {
+  const parsed = successInputV2Schema.safeParse(input);
+  if (!parsed.success) invalidInput();
+  const value = parsed.data;
+  const resultParsed = planningCalculationResultV2Schema.safeParse(
+    value.result,
+  );
+  if (!resultParsed.success) invalidInput();
+
+  const lockedProjectId = await lockFinalizationProject(
+    tx,
+    value.workspaceId,
+    value.jobId,
+  );
+  if (lockedProjectId === null) stale();
+  const job = await lockFinalizationJob(tx, value.workspaceId, value.jobId);
+  if (job !== null && job.project_id !== lockedProjectId) stale();
+  if (job?.state === "succeeded" && job.result_revision_id !== null) {
+    const existing = await tx.execute<{
+      id: string;
+      revision: number;
+      result: unknown;
+      [key: string]: unknown;
+    }>(sql`
+      select id, revision, result
+        from project_calculation_revision
+       where workspace_id = ${value.workspaceId}::uuid
+         and id = ${job.result_revision_id}::uuid
+         and job_id = ${value.jobId}::uuid
+    `);
+    const revision = existing.rows[0];
+    if (
+      revision === undefined
+      || job.attempt_count !== value.attemptCount
+      || !sameJson(revision.result, resultParsed.data)
+    ) retryConflict();
+    return { revisionId: revision.id, revision: revision.revision, replayed: true };
+  }
+  assertClaim(job, value.leaseToken, value.attemptCount);
+  if (
+    job.input_sha256 === null
+    || job.input_snapshot === null
+    || job.provider_snapshot === null
+  ) invalidInput();
+  const requestParsed = planningCalculationRequestV2Schema.safeParse(
+    job.input_snapshot,
+  );
+  const series = parseStoredSeriesV2(job.provider_snapshot);
+  const pairedResult = requestParsed.success && series !== null
+    ? validatePlanningCalculationResultV2Exactly({
+      request: requestParsed.data,
+      pvKwh: series.pvKwh,
+      loadKwh: series.loadKwh,
+      providerEstimate: series.providerEstimate,
+      result: resultParsed.data,
+    })
+    : null;
+  if (
+    !requestParsed.success
+    || series === null
+    || pairedResult === null
+    || !pairedResult.ok
+    || hashPlanningCalculationInputV2(requestParsed.data) !== job.input_sha256
+    || !inputV2MatchesJob(requestParsed.data, job)
+    || resultParsed.data.inputSha256 !== job.input_sha256
+    || resultParsed.data.contractVersion !== CALCULATION_V2_RESULT_CONTRACT_VERSION
+    || resultParsed.data.model.id !== job.model_id
+    || resultParsed.data.model.version !== job.model_version
+    || resultParsed.data.model.sourceRevision !== job.source_revision
+  ) invalidInput();
+  const trustedResult = pairedResult.value;
+  // v2-Results tragen kein resultSha256-Feld (Spec F4-01): Der SHA-256 ueber
+  // das kanonische exakt validierte Result geht als separater Parameter an
+  // finalize_project_calculation_success_v2 (0079), die nur die Laenge
+  // prueft. Deterministisch ueber trustedResult, kein Worker-Vertrauen.
+  const resultSha256 = createHash("sha256")
+    .update(canonicalizeCalculationJson(trustedResult), "utf8")
+    .digest("hex");
+  const revisionId = randomUUID();
+  const finalized = await tx.execute<{
+    outcome: "created" | "replayed" | "stale" | "conflict";
+    revision_id: string | null;
+    revision_number: number | null;
+    [key: string]: unknown;
+  }>(sql`
+    select outcome, revision_id, revision_number
+      from public.finalize_project_calculation_success_v2(
+        ${job.workspace_id}::uuid,
+        ${job.id}::uuid,
+        ${value.leaseToken}::uuid,
+        ${value.attemptCount},
+        ${revisionId}::uuid,
+        ${JSON.stringify(trustedResult)}::jsonb,
+        decode(${resultSha256}, 'hex')
       )
   `);
   const finalizedRow = finalized.rows[0];

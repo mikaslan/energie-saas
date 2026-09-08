@@ -81,8 +81,16 @@ Live-Gegenproben (/tmp, nicht committet): PVGIS-Abruf byte-identisch
   Regeln (bodenbuendiges SoC-Fenster wie v1, symmetrische Leistung,
   Sqrt-Split Eta; null = No-Storage, ungueltig = cannot_fulfil).
   Tests `f401-catalog-resolution-v2` 3/3.
+- Persist/Finalize-v2 IMPLEMENTIERT (uncommitted): Migration 0079
+  (`finalize_project_calculation_success_v2` + v2-Zweig im Revision-
+  JSON-CHECK), `persistProjectCalculationInputV2` /
+  `finalizeProjectCalculationSuccessV2` in calculation-service.ts,
+  Tests `m111c` 5/5, v1-Suite m107 ohne Regression (14/14 gesamt).
+  Nebenbefund: 0078 hatte den Revision-JSON-CHECK nicht erweitert
+  (v1-Result-Form) — 0079 korrigiert das; parseStoredInput verzweigt
+  jetzt nach Zeilenversion (v1-Pfad byte-identisch).
 - Rest-Epic: Reservation-v2 (bestaetigte Aufloesung lesen), Fetch im
-  Worker, Persist/Finalize-v2, atomare Aktivierung.
+  Worker, atomare Aktivierung.
 - Fetch-Schicht: Redirect/Host/Content-Type/Retry/Offline-Replay
   (Manuell-Curl bisher; keine Worker-Netzpfade).
 - Tilted-Matrix: nur 30°/Sued je Klima; Gate verlangt 0/30/60/90°,
