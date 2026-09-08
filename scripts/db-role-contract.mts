@@ -3029,6 +3029,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     OFFER_RELEASE_RELATIONS,
     "Rollen-ACL-Manifest: M2-03a-Release-Relationen",
   );
+  // F4.1 v2-Dispatch-Routine (Migration 0080): keine eigenen Relationen,
+  // Anwesenheit direkt ueber den Katalog (to_regprocedure braucht USAGE auf
+  // das worker-owned pgboss-Schema, das diese Rolle nicht hat). Prefixe ohne
+  // 0080 bleiben gruen.
+  const dispatchV2Presence = await client.query<{ present: boolean }>(`
+    select exists(
+      select 1
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace
+          on namespace.oid = routine.pronamespace
+       where namespace.nspname = 'pgboss'
+         and routine.proname = 'enqueue_project_calculation_v2'
+         and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+    ) as present
+  `);
+  const hasCalculationDispatchV2 = dispatchV2Presence.rows[0]?.present === true;
   if (hasOfferRelease) {
     await client.query(`
       revoke all privileges on
@@ -3238,6 +3254,10 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     grant usage on schema pgboss to app_runtime;
     grant execute on function pgboss.enqueue_project_calculation(uuid, uuid)
       to app_runtime;
+    ${hasCalculationDispatchV2 ? `
+      grant execute on function pgboss.enqueue_project_calculation_v2(uuid, uuid)
+        to app_runtime;
+    ` : ""}
     ${hasOfferRelease ? `
       grant execute on function pgboss.enqueue_offer_release_candidate(uuid, uuid)
         to app_runtime;
@@ -3654,6 +3674,21 @@ export async function verifyRoleContract(
     ) is not null as present
   `);
   const hasCalculationFinalizeV2 = finalizeV2Presence.rows[0]?.present === true;
+  // F4.1 v2-Dispatch (Migration 0080): eigene pg-boss-Queue plus eigene
+  // Enqueue-Routine; historische Prefixe ohne 0080 bleiben gruen
+  // (Katalog-Direktquery wie in applyRoleContract — kein USAGE noetig).
+  const dispatchV2Presence = await client.query<{ present: boolean }>(`
+    select exists(
+      select 1
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace
+          on namespace.oid = routine.pronamespace
+       where namespace.nspname = 'pgboss'
+         and routine.proname = 'enqueue_project_calculation_v2'
+         and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+    ) as present
+  `);
+  const hasCalculationDispatchV2 = dispatchV2Presence.rows[0]?.present === true;
 
   const hasTimeTracking = await hasAtomicPublicRelationSet(
     client,
@@ -4055,6 +4090,7 @@ export async function verifyRoleContract(
         'enqueue_offer_pdf_draft',
         'enqueue_offer_release_candidate',
         'enqueue_project_calculation',
+        'enqueue_project_calculation_v2',
         'list_catalog_import_cleanup_locator_jobs_v1',
         'list_catalog_import_recovery_locator_jobs_v1',
         'quarantine_catalog_import_locator_job_v1'
@@ -4091,6 +4127,11 @@ export async function verifyRoleContract(
       ] : []),
       "enqueue_project_calculation(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:b4b87f16145bfbe691c2a5ad7db08a212e8254b3545660e0d6b063bb1d5a26f4",
+      // F4.1 v2-Dispatch-Routine (Migration 0080): Body-Pin = sha256(prosrc).
+      ...(hasCalculationDispatchV2 ? [
+        "enqueue_project_calculation_v2(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
+        "search_path=pg_catalog:4e061d7dcd29d49948c5f8e9fdfc76452c2a4b408ab3b335743bd71b6c3ba5cb",
+      ] : []),
       ...(hasOfferPdfDraft ? [
         "enqueue_offer_pdf_draft(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:6c060aa6439626044be7e9e95ed71e4588c71f4d465fd7c2f658e4b556a9107c",
@@ -6300,6 +6341,9 @@ export async function verifyRoleContract(
     ),
     [
       "app_runtime:enqueue_project_calculation(uuid, uuid):EXECUTE:app_worker:false",
+      ...(hasCalculationDispatchV2 ? [
+        "app_runtime:enqueue_project_calculation_v2(uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
       ...(hasCatalogImport ? [
         "app_runtime:enqueue_catalog_import_cleanup_v1(uuid, uuid, uuid):EXECUTE:app_worker:false",
         "app_runtime:enqueue_catalog_import_v1(uuid, uuid, uuid):EXECUTE:app_worker:false",
@@ -6389,6 +6433,9 @@ export async function verifyRoleContract(
     runtime_enqueue: boolean;
     system_enqueue: boolean;
     auth_enqueue: boolean;
+    runtime_v2_enqueue: boolean | null;
+    system_v2_enqueue: boolean | null;
+    auth_v2_enqueue: boolean | null;
     runtime_pdf_enqueue: boolean | null;
     system_pdf_enqueue: boolean | null;
     auth_pdf_enqueue: boolean | null;
@@ -6433,6 +6480,30 @@ export async function verifyRoleContract(
         from pg_catalog.pg_proc routine
         join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
         where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_project_calculation_v2'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as runtime_v2_enqueue,
+      (
+        select pg_catalog.has_function_privilege('app_system', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_project_calculation_v2'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as system_v2_enqueue,
+      (
+        select pg_catalog.has_function_privilege('app_auth', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
+          and routine.proname = 'enqueue_project_calculation_v2'
+          and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+      ) as auth_v2_enqueue,
+      (
+        select pg_catalog.has_function_privilege('app_runtime', routine.oid, 'EXECUTE')
+        from pg_catalog.pg_proc routine
+        join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+        where namespace.nspname = 'pgboss'
           and routine.proname = 'enqueue_offer_pdf_draft'
           and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
       ) as runtime_pdf_enqueue,
@@ -6460,6 +6531,13 @@ export async function verifyRoleContract(
     || acl.runtime_provision || acl.system_provision
     || acl.auth_provision || acl.worker_provision
     || !acl.runtime_enqueue || acl.system_enqueue || acl.auth_enqueue
+    || (hasCalculationDispatchV2 && (
+      !acl.runtime_v2_enqueue || acl.system_v2_enqueue || acl.auth_v2_enqueue
+    ))
+    || (!hasCalculationDispatchV2 && (
+      acl.runtime_v2_enqueue !== null || acl.system_v2_enqueue !== null
+      || acl.auth_v2_enqueue !== null
+    ))
     || (hasOfferPdfDraft && (
       !acl.runtime_pdf_enqueue || acl.system_pdf_enqueue || acl.auth_pdf_enqueue
     ))

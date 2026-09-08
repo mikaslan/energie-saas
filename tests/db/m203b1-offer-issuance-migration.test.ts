@@ -9,6 +9,7 @@ import { Pool, type QueryResult, type QueryResultRow } from "pg";
 import { describe, expect, it } from "vitest";
 import { withTenantOn } from "@/lib/db/tenant";
 import {
+  CALCULATION_V2_QUEUE_OPTIONS,
   CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
   CATALOG_IMPORT_QUEUE_OPTIONS,
   CUSTOMER_NOTIFICATION_QUEUE_OPTIONS,
@@ -133,6 +134,7 @@ async function bootstrapStrictPgBossV38(
       "calculation.execute",
       LEGACY_CALCULATION_QUEUE_OPTIONS,
     );
+    await boss.createQueue("calculation.execute.v2", CALCULATION_V2_QUEUE_OPTIONS);
     await boss.createQueue("catalog.import.v1", CATALOG_IMPORT_QUEUE_OPTIONS);
     await boss.createQueue(
       "catalog.import.cleanup.v1",

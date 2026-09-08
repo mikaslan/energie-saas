@@ -4,12 +4,11 @@
  * worker/calculation.ts; der v1-Handler lehnt v2-Claims bereits ab
  * (fremde contractVersion -> engine_invalid).
  *
- * Bewusst noch kein Execute-Handler: Der braucht die Serien-Persistenz-
- * und Reservierungsentscheidung (eigener Slice mit Migration). Diese
- * reinen Bausteine sind seine exakten kuenftigen Importe. Ketten-
- * Aktivierung (Spec: v2-Runs erst nach atomarer Aktivierung der gesamten
- * Kette) bleibt bis dahin verweigert — es existiert kein Pfad, der einen
- * v2-Job erzeugt oder abarbeitet.
+ * Bewusst noch kein Execute-Handler: Diese reinen Bausteine sind seine
+ * exakten kuenftigen Importe. Reservierung und Dispatch (eigene Queue
+ * `calculation.execute.v2`) existieren bereits; Ketten-Aktivierung (Spec:
+ * v2-Runs erst nach atomarer Aktivierung der gesamten Kette) bleibt bis
+ * zum Handler verweigert — kein Pfad arbeitet v2-Jobs ab.
  */
 import { z } from "zod";
 

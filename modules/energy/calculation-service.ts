@@ -147,6 +147,49 @@ export async function enqueueProjectCalculationDispatch(
   `);
 }
 
+/**
+ * v2-Dispatch (planning-calculation.v2, Migration 0080): stellt v2-Jobs in
+ * die eigene Queue `calculation.execute.v2`. Die v1-Queue bleibt v1-Jobs
+ * vorbehalten (fremde contractVersion -> engine_invalid im v1-Handler).
+ */
+export async function enqueueProjectCalculationDispatchV2(
+  tx: TenantTx,
+  workspaceId: string,
+  jobId: string,
+): Promise<void> {
+  const keys = workerKeySchema.safeParse({ workspaceId, jobId });
+  if (!keys.success) invalidInput();
+  const gate = await tx.execute<{
+    dispatch_signature: string | null;
+    current_role: string;
+    session_role: string;
+    database_name: string;
+    [key: string]: unknown;
+  }>(sql`
+    select pg_catalog.to_regprocedure(
+             'pgboss.enqueue_project_calculation_v2(uuid,uuid)'
+           )::text as dispatch_signature,
+           current_user::text as current_role,
+           session_user::text as session_role,
+           pg_catalog.current_database()::text as database_name
+  `);
+  const row = gate.rows[0];
+  if (!row?.dispatch_signature) {
+    const explicitTestSkip = row !== undefined
+      && row.current_role === row.session_role
+      && (row.current_role === "app_test" || row.current_role === "app_ci")
+      && row.database_name.includes("test");
+    if (explicitTestSkip) return;
+    throw new CalculationServiceError("dispatch_unavailable");
+  }
+  await tx.execute(sql`
+    select pgboss.enqueue_project_calculation_v2(
+      ${workspaceId}::uuid,
+      ${jobId}::uuid
+    )
+  `);
+}
+
 function sameJson(left: unknown, right: unknown): boolean {
   try {
     return canonicalizeCalculationJson(left) === canonicalizeCalculationJson(right);
@@ -474,8 +517,31 @@ export async function claimProjectCalculationJob(
   `);
   const claimed = updated.rows[0];
   if (!claimed) return null;
-  await enqueueProjectCalculationDispatch(tx, value.workspaceId, value.jobId);
+  await enqueueDispatchForContractVersion(
+    tx,
+    value.workspaceId,
+    value.jobId,
+    claimed.contract_version,
+  );
   return claimResult(claimed);
+}
+
+/**
+ * Versionsreines Dispatch-Routing: v2-Jobs in die v2-Queue, alles andere
+ * in die v1-Queue. Verhindert, dass der v1-Handler v2-Jobs als
+ * `engine_invalid` finalisiert (und umgekehrt).
+ */
+async function enqueueDispatchForContractVersion(
+  tx: TenantTx,
+  workspaceId: string,
+  jobId: string,
+  contractVersion: string,
+): Promise<void> {
+  if (contractVersion === CALCULATION_V2_CONTRACT_VERSION) {
+    await enqueueProjectCalculationDispatchV2(tx, workspaceId, jobId);
+  } else {
+    await enqueueProjectCalculationDispatch(tx, workspaceId, jobId);
+  }
 }
 
 export type PersistedProjectCalculationInput = StoredCalculationInput & {
@@ -709,7 +775,12 @@ export async function finalizeProjectCalculationFailure(
   const finalized = updated.rows[0];
   if (!finalized) stale();
   if (willRetry) {
-    await enqueueProjectCalculationDispatch(tx, value.workspaceId, value.jobId);
+    await enqueueDispatchForContractVersion(
+      tx,
+      value.workspaceId,
+      value.jobId,
+      row.contract_version,
+    );
   }
   return {
     state,
@@ -725,7 +796,11 @@ export async function requeueDueProjectCalculationJobs(
   const parsed = requeueInputSchema.safeParse(input);
   if (!parsed.success) invalidInput();
   const value = parsed.data;
-  const result = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+  const result = await tx.execute<{
+    id: string;
+    contract_version: string;
+    [key: string]: unknown;
+  }>(sql`
     with due as (
       select id
         from project_calculation_job
@@ -744,11 +819,16 @@ export async function requeueDueProjectCalculationJobs(
       from due
      where job.workspace_id = ${value.workspaceId}::uuid
        and job.id = due.id
-     returning job.id
+     returning job.id, job.contract_version
   `);
   const jobIds = result.rows.map((row) => row.id).sort();
-  for (const jobId of jobIds) {
-    await enqueueProjectCalculationDispatch(tx, value.workspaceId, jobId);
+  for (const row of result.rows) {
+    await enqueueDispatchForContractVersion(
+      tx,
+      value.workspaceId,
+      row.id,
+      row.contract_version,
+    );
   }
   return jobIds;
 }

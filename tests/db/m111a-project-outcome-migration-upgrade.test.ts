@@ -58,7 +58,7 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 // M115-Grants (0071/0072), Derive-Cap (0073), F2.5-Write-Vertrag (0074),
 // F3.1-Planungsmodi (0075), F2.8b Signatur->Won (0076)
 // => 77 Migrationen (idx 0..76).
-const TOTAL_MIGRATION_COUNT = 80;
+const TOTAL_MIGRATION_COUNT = 81;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -374,8 +374,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 79,
-        tag: "0079_f4_01_calculation_finalize_v2",
+        idx: 80,
+        tag: "0080_f4_01_calculation_dispatch_v2",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

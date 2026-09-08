@@ -42,6 +42,7 @@ import {
   CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
   CATALOG_IMPORT_QUEUE_OPTIONS,
   CUSTOMER_NOTIFICATION_QUEUE_OPTIONS,
+  CALCULATION_V2_QUEUE_OPTIONS,
   OFFER_ISSUANCE_QUEUE_OPTIONS,
   OFFER_PDF_QUEUE_OPTIONS,
   OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
@@ -134,6 +135,7 @@ async function installPgBoss(workerUrl: string): Promise<void> {
   try {
     await boss.start();
     await boss.createQueue("calculation.execute", { policy: "exclusive", retryLimit: 0, expireInSeconds: 900 });
+    await boss.createQueue("calculation.execute.v2", CALCULATION_V2_QUEUE_OPTIONS);
     await boss.createQueue("catalog.import.v1", CATALOG_IMPORT_QUEUE_OPTIONS);
     await boss.createQueue("catalog.import.cleanup.v1", CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS);
     await boss.createQueue("pdf.render", OFFER_PDF_QUEUE_OPTIONS);

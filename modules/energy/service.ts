@@ -61,7 +61,10 @@ import {
   PermissionDeniedError,
   type ServiceCtx,
 } from "@/lib/permissions";
-import { enqueueProjectCalculationDispatch } from "./calculation-service";
+import {
+  enqueueProjectCalculationDispatch,
+  enqueueProjectCalculationDispatchV2,
+} from "./calculation-service";
 
 type ProjectSiteRow = {
   project_id: string;
@@ -1876,10 +1879,9 @@ async function readBatteryResolutionV2(
  * - Die Aufloesung muss zum AKTUELLEN Requirement passen (sonst
  *   `cannot_fulfil`); die v1-Kalkulationsbindung der Aufloesung wird
  *   bewusst ignoriert (v2-Kette erzeugt keine v1-Revisionen).
- * - KEIN pg-boss-Dispatch: Die v2-Queue existiert erst mit dem
- *   Execute-Handler-Epic. Jobs ruhen in `queued`, bis der Handler sie
- *   abholt; Dispatch in die v1-Queue wuerde sie als `engine_invalid`
- *   finalisieren. Replays reparieren deshalb (noch) keine Zustellung.
+ * - Dispatch in die eigene v2-Queue (`calculation.execute.v2`, Migration
+ *   0080): Dispatch in die v1-Queue wuerde Jobs als `engine_invalid`
+ *   finalisieren. Auch Replays reparieren verlorene Zustellung idempotent.
  * - Quota: derselbe Bucket wie v1 (Worker-Last, versionsunabhaengig).
  */
 export async function confirmProjectEnergyProfileV2(
@@ -2094,6 +2096,13 @@ export async function confirmProjectEnergyProfileV2(
     `);
     job = { id: jobId, reservation_key: reservationKeyBytes, state: "queued" };
     jobCreated = true;
+  }
+
+  // Fachliche Reservation und v2-Zustellung teilen dieselbe Transaktion
+  // (wie v1): Auch ein Replay eines noch queued Jobs repariert eine
+  // historisch verlorene Zustellung idempotent.
+  if (job.state === "queued") {
+    await enqueueProjectCalculationDispatchV2(tx, ctx.workspaceId, job.id);
   }
 
   const eventPayload = {

@@ -7,6 +7,7 @@ import { requireServiceDatabaseUrl } from "../lib/db/role-env.js";
 import { createVerifiedPgBossDatabase } from "../worker/pgboss-database.js";
 
 const QUEUE_NAME = "calculation.execute";
+const CALCULATION_V2_QUEUE_NAME = "calculation.execute.v2";
 const OFFER_PDF_QUEUE_NAME = "pdf.render";
 const OFFER_RELEASE_CANDIDATE_QUEUE_NAME = "offer.release-candidate.render";
 const OFFER_ISSUANCE_QUEUE_NAME = "offer-issuance.render.v1";
@@ -16,6 +17,15 @@ const CUSTOMER_NOTIFICATION_QUEUE_NAME = "notification.customer";
 const BOOTSTRAP_LOCK = [1701734769, 7] as const;
 
 export const LEGACY_CALCULATION_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 0,
+  expireInSeconds: 900,
+});
+
+// F4.1 v2-Queue: gleicher technischer Vertrag wie v1 (exklusiv, keine
+// pg-boss-Retries — fachliche Versuche laufen ueber Lease/CAS), eigene
+// Queue, damit der v1-Handler v2-Jobs nie sieht (engine_invalid-Gefahr).
+export const CALCULATION_V2_QUEUE_OPTIONS = Object.freeze({
   policy: "exclusive" as const,
   retryLimit: 0,
   expireInSeconds: 900,
@@ -259,6 +269,26 @@ export async function bootstrapCalculationQueue(
       if (classifyCalculationQueueBootstrap(after) !== "keep_legacy") {
         throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
       }
+    }
+    // F4.1 besitzt keine historische Zwischenmigration: Die v2-Queue kann
+    // von Anfang an mit dem gleichen technischen Vertrag wie v1 angelegt
+    // werden (exklusiv, keine pg-boss-Retries; Versuche per Lease/CAS).
+    // Eigene Queue, damit der v1-Handler v2-Jobs nie sieht.
+    await boss.createQueue(CALCULATION_V2_QUEUE_NAME, CALCULATION_V2_QUEUE_OPTIONS);
+    const calculationV2Queue = await database.executeSql(`
+      select policy::text, retry_limit, expire_seconds, notify
+        from pgboss.queue
+       where name = '${CALCULATION_V2_QUEUE_NAME}'
+    `);
+    const calculationV2 = calculationV2Queue.rows[0] as Record<string, unknown> | undefined;
+    if (
+      calculationV2 === undefined
+      || calculationV2.policy !== "exclusive"
+      || Number(calculationV2.retry_limit) !== 0
+      || Number(calculationV2.expire_seconds) !== 900
+      || calculationV2.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
     }
     // M2-02 besitzt keine historische Zwischenmigration: Die Queue kann von
     // Anfang an mit dem aktuellen technischen Retry-Vertrag angelegt werden.

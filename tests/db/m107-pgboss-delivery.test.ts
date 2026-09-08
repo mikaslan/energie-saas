@@ -725,6 +725,13 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
         privilege_type: "EXECUTE",
         is_grantable: false,
       },
+      {
+        grantee: "app_runtime",
+        grantor: "app_worker",
+        signature: "enqueue_project_calculation_v2(uuid, uuid)",
+        privilege_type: "EXECUTE",
+        is_grantable: false,
+      },
     ]);
 
     const runtimeRelationAcl = await admin.query<{ relation_name: string }>(`

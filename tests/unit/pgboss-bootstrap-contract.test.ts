@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CALCULATION_V2_QUEUE_OPTIONS,
   CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
   CATALOG_IMPORT_QUEUE_OPTIONS,
   CalculationQueueBootstrapError,
@@ -55,6 +56,15 @@ describe("M1-07 pg-boss Fresh-Install-Bootstrap", () => {
     expect(CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS).toEqual(expected);
     expect(Object.isFrozen(CATALOG_IMPORT_QUEUE_OPTIONS)).toBe(true);
     expect(Object.isFrozen(CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS)).toBe(true);
+  });
+
+  it("pinnt den getrennten F4.1-v2-Queue-Vertrag (wie v1, eigene Queue)", () => {
+    expect(CALCULATION_V2_QUEUE_OPTIONS).toEqual({
+      policy: "exclusive",
+      retryLimit: 0,
+      expireInSeconds: 900,
+    });
+    expect(Object.isFrozen(CALCULATION_V2_QUEUE_OPTIONS)).toBe(true);
   });
 
   it("pinnt den getrennten M2-03a-Queue-Vertrag", () => {
