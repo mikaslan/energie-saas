@@ -71,14 +71,18 @@ Live-Gegenproben (/tmp, nicht committet): PVGIS-Abruf byte-identisch
 - Worker-Epic: Serien-Persistenz + Reservation-v2 + Finalize-v2 +
   atomare Ketten-Aktivierung (Handler verweigert v2 bis dahin;
   `supportsClaimPins` im v1-Handler schliesst v2 bereits aus).
-- Designstand Worker-Epic (2026-09-08, unimplementiert): v1 legt bereits
-  8760er-Stundenarrays in `provider_snapshot` (jsonb) ab — v2-Serien
-  (2×35040, ~0.5 MB JSON) passen ins gleiche Spaltenmuster, voraussichtlich
-  KEINE Migration noetig. Kernfrage: Provenienz von `request.storage`
-  (keine stillen Defaults) — Optionen: (a) `catalog-resolution.v2` loest
-  Speicherprodukt auf, (b) Requirements tragen explizite Params
-  (Schema-Eingriff), (c) Reservierungs-Input traegt sie (API-Eingriff).
-  Entscheidung faellt im Epic, nicht vorweggenommen.
+- Designstand Worker-Epic (2026-09-08): v1 legt bereits 8760er-
+  Stundenarrays in `provider_snapshot` (jsonb) ab — v2-Serien (2×35040,
+  ~0.5 MB JSON) passen ins gleiche Spaltenmuster, voraussichtlich KEINE
+  Migration noetig.
+- Storage-Provenienz GEKLAERT (Pfad a, implementiert):
+  `catalog-resolution-v2.ts` loest `battery.v1`-Revision auf
+  (nominal/nutzbar/Max-Dauerleistung/Roundtrip-bps vorhanden) mit stated
+  Regeln (bodenbuendiges SoC-Fenster wie v1, symmetrische Leistung,
+  Sqrt-Split Eta; null = No-Storage, ungueltig = cannot_fulfil).
+  Tests `f401-catalog-resolution-v2` 3/3.
+- Rest-Epic: Reservation-v2 (bestaetigte Aufloesung lesen), Fetch im
+  Worker, Persist/Finalize-v2, atomare Aktivierung.
 - Fetch-Schicht: Redirect/Host/Content-Type/Retry/Offline-Replay
   (Manuell-Curl bisher; keine Worker-Netzpfade).
 - Tilted-Matrix: nur 30°/Sued je Klima; Gate verlangt 0/30/60/90°,
