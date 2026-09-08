@@ -410,3 +410,11 @@ identisch (`983ed67`, 0 unpusht).
   geneigtes Gr≠0. Azimut-Echo `0->0`, `-179->-179`.
 - Hinweis: CI-Runs verdrängen sich per Concurrency (ältere = cancelled);
   maßgeblich ist jeweils der neueste Run.
+
+## v2-AC-Skalierung (2026-09-08, lokal + Fixture-verifiziert)
+- `ac-scale-v2.ts`: Wetterjahr (8760h, nach Achsen-Normalisierung) auf
+  PVcalc-`E_y` skaliert (`s=E_y/(sum(P_h)/1000)`), Gate 0.01 kWh/kWp
+  fail-closed. `P_q`-Verteilung braucht Hay-`G_T,q` (F4.1B/SPA) und ist
+  nicht enthalten.
+- Berlin geneigt 2020: 1041.3 -> E_y=1006.46, s=0.9665 (Wetter sonniger
+  als langjaehrig). Tests `f401-ac-scale-v2` 3/3, eslint/tsc 0.
