@@ -48,7 +48,9 @@ export const loadProfileV2Schema = z.strictObject({
   axisVersion: z.literal(AXIS_VERSION),
   slotEnergyKwh: z.array(finite().min(0)).length(QUARTER_HOUR_SLOTS),
   annualConsumptionKwh: finite().min(0),
-  sources: z.array(loadProfileSourceV2Schema).min(1).max(16),
+  // Keine Obergrenze: Die Spec nennt keine; Duplikat-Schutz und
+  // Basis-Pflicht begrenzen die Form.
+  sources: z.array(loadProfileSourceV2Schema).min(1),
 });
 
 export type LoadProfileV2 = z.infer<typeof loadProfileV2Schema>;
