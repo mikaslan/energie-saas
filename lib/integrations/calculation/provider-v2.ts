@@ -44,8 +44,21 @@ export class F401ProviderError extends Error {
   }
 }
 
+/** Groessenverletzung (Spec: nie truncaten, deterministisch). */
+export class F401SizeError extends Error {
+  readonly code = "contract_size_exceeded" as const;
+
+  constructor(readonly detail: string) {
+    super(`f4.1 provider oversize: ${detail}`);
+  }
+}
+
 function providerError(detail: string): never {
   throw new F401ProviderError(detail);
+}
+
+function sizeError(detail: string): never {
+  throw new F401SizeError(detail);
 }
 
 /**
@@ -257,7 +270,7 @@ export function parseSeriescalcSnapshot(
     providerError("Antwort ist leer");
   }
   if (rawText.length > 2 * 1024 * 1024) {
-    providerError("seriescalc ueberschreitet 2 MiB");
+    sizeError("seriescalc ueberschreitet 2 MiB");
   }
   let parsed: unknown;
   try {

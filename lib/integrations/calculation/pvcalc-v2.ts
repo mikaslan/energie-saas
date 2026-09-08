@@ -18,7 +18,7 @@
  */
 import { createHash } from "node:crypto";
 
-import { F401ProviderError } from "./provider-v2";
+import { F401ProviderError, F401SizeError } from "./provider-v2";
 
 export type PVcalcMonthly = {
   month: number;
@@ -65,7 +65,9 @@ export function parsePVcalcSnapshot(rawText: string): ParsedPVcalcSnapshot {
   if (typeof rawText !== "string" || rawText.length === 0) {
     pvcalcError("PVcalc-Antwort ist leer");
   }
-  if (rawText.length > 256 * 1024) pvcalcError("PVcalc ueberschreitet 256 KiB");
+  if (rawText.length > 256 * 1024) {
+    throw new F401SizeError("PVcalc ueberschreitet 256 KiB");
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);

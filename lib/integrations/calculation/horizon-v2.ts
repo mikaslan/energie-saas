@@ -17,7 +17,7 @@
  */
 import { createHash } from "node:crypto";
 
-import { canonicalDecimal, F401ProviderError } from "./provider-v2";
+import { canonicalDecimal, F401ProviderError, F401SizeError } from "./provider-v2";
 
 const PRINTHORIZON_BASE = "https://re.jrc.ec.europa.eu/api/v5_3/printhorizon";
 const RAW_POINTS = 49;
@@ -47,7 +47,7 @@ export function parsePrinthorizon(rawText: string): CanonicalHorizon {
     throw new F401ProviderError("Horizontantwort ist leer");
   }
   if (rawText.length > 64 * 1024) {
-    throw new F401ProviderError("printhorizon ueberschreitet 64 KiB");
+    throw new F401SizeError("printhorizon ueberschreitet 64 KiB");
   }
   let parsed: unknown;
   try {

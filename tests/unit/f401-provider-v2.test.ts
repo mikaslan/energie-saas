@@ -6,6 +6,7 @@ import {
   buildRoofSeriescalcUrl,
   canonicalDecimal,
   F401ProviderError,
+  F401SizeError,
   parseSeriescalcSnapshot,
   providerAspectDeg,
   PROVIDER_RECIPE_VERSION,
@@ -149,6 +150,9 @@ describe("F4.1 v2 seriescalc parser", () => {
     expect(() => parseSeriescalcSnapshot("kein json", { tilted: false })).toThrow(
       F401ProviderError,
     );
+    expect(() => parseSeriescalcSnapshot("x".repeat(2 * 1024 * 1024 + 1), {
+      tilted: false,
+    })).toThrow(F401SizeError);
     expect(() => parseSeriescalcSnapshot(syntheticRaw({ rows: 8_783 }), {
       tilted: false,
     })).toThrow(F401ProviderError);
