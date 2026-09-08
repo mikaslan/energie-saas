@@ -418,3 +418,12 @@ identisch (`983ed67`, 0 unpusht).
   nicht enthalten.
 - Berlin geneigt 2020: 1041.3 -> E_y=1006.46, s=0.9665 (Wetter sonniger
   als langjaehrig). Tests `f401-ac-scale-v2` 3/3, eslint/tsc 0.
+
+## v2-Lastprofil (2026-09-08, lokal verifiziert)
+- `load-v2.ts`: `quarter-hour-load-profile.v1` (Achse gepinnt, 35040
+  Slots, Neumaier-Jahressumme, Quellenbindung) + Aufloesung der
+  Gesamtlast aus getrennt provenanten Reihen (genau eine Basis, max. 16
+  Quellen, Duplikat-Schutz) + Reihen-Hash. Keine Shape-Erfindung:
+  Formgebung gehoert zu den Profilquellen (F4.2+).
+- E2E-Beweis im Test: Profil -> run-v2 -> Finalize exakt ok, Verbrauch
+  konsistent. Tests `f401-load-v2` 4/4, eslint/tsc 0.
