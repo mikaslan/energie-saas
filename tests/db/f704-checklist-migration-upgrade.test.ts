@@ -304,7 +304,7 @@ describe("F7.4 Checklisten-Migrationsupgrade", () => {
 
       const fixture = await seedLegacyChecklist(pool, LEGACY_BLOCKS);
       await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
-      expect(await migrationCount(pool)).toBe(F704_MIGRATION_INDEX + 1);
+      expect(await migrationCount(pool)).toBe(journal.entries.length);
 
       const upgraded = await tenantTransaction(
         pool,
