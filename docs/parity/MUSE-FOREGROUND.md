@@ -303,3 +303,18 @@ identisch (`983ed67`, 0 unpusht).
   gruen. Static/DB/Unit/Contract stets gruen, Adds browser-inert,
   tests/e2e unberuehrt -> als transiente CI-Flakes dokumentiert, kein
   Test abgeschwaecht. Kein dritter Re-run noetig gewesen.
+
+## CI zu 0078+v2-Vertraegen (2026-09-08)
+- Run `34238937678` (5a74334) = SUCCESS am gleichen HEAD (Statik/DB/
+  Rollen/Build + Chromium-E2E). Pre-Push-Hook hatte zuvor 8
+  Migrations-Pinning-Fehler gefunden (Journal-Count/Last-Tag durch 0078)
+  -> nachgezogen, DB-Slice 133/1138 gruen.
+
+## v2-Vertraege + Preparation (2026-09-08, lokal verifiziert)
+- `contract-v2.ts`: Request (Achse 35040/quarter_hour, Speicherparams mit
+  socMin<=socMax<=cap) + Result (Tupel exakt, temporalResolution
+  quarter_hour_35040, kein not_f4_reference_validated-Warning) strikt.
+  6 Contract-Tests (TDD).
+- `preparation-v2.ts`: Schema (Achse, Provider-Rezept, Geometrie-
+  Surfaces 1-8, v1-Profil/Requirements/Snapshot wiederverwendet) +
+  Builder + JCS-Hash. 3 Contract-Tests (TDD).
