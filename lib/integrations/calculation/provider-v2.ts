@@ -102,6 +102,12 @@ function query(params: Array<[string, string]>): string {
 export type SiteQuery = { latitude: number; longitude: number };
 
 function siteParams(site: SiteQuery): Array<[string, string]> {
+  if (
+    !Number.isFinite(site.latitude) || site.latitude < -90 || site.latitude > 90
+    || !Number.isFinite(site.longitude) || site.longitude < -180 || site.longitude > 180
+  ) {
+    providerError("Standort ausserhalb [-90,90]/[-180,180]");
+  }
   return [
     ["lat", canonicalDecimal(site.latitude)],
     ["lon", canonicalDecimal(site.longitude)],
@@ -144,6 +150,23 @@ export type RoofQuery = SiteQuery & {
 };
 
 function roofParams(roof: RoofQuery): Array<[string, string]> {
+  if (
+    !Number.isFinite(roof.providerTiltDeg)
+    || roof.providerTiltDeg < 0
+    || roof.providerTiltDeg > 90
+  ) {
+    providerError("Dachneigung ausserhalb [0,90]");
+  }
+  if (
+    !Number.isFinite(roof.systemLossPercent)
+    || roof.systemLossPercent < 0
+    || roof.systemLossPercent > 100
+  ) {
+    providerError("Systemverlust ausserhalb [0,100]");
+  }
+  if (roof.pvTechnology.length === 0 || roof.mountingPlace.length === 0) {
+    providerError("Technologie/Montage fehlt");
+  }
   return [
     ["peakpower", "1"],
     ["pvtechchoice", roof.pvTechnology],

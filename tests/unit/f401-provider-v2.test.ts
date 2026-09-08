@@ -97,6 +97,31 @@ describe("F4.1 v2 provider queries", () => {
     expect(pvcalc).not.toContain("startyear");
   });
 
+  it("weist ungueltige Builder-Bereiche fail-fast ab", () => {
+    expect(() => buildHorizontalSeriescalcUrl({ latitude: 91, longitude: 0 })).toThrow(
+      F401ProviderError,
+    );
+    const roof = {
+      latitude: 52.52,
+      longitude: 13.41,
+      pvTechnology: "crystSi",
+      mountingPlace: "building",
+      systemLossPercent: 14,
+      providerTiltDeg: 30,
+      providerAspectDeg: 0,
+      canonicalHorizon: HORIZON_48,
+    };
+    expect(() => buildRoofSeriescalcUrl({ ...roof, providerTiltDeg: 91 })).toThrow(
+      F401ProviderError,
+    );
+    expect(() => buildRoofSeriescalcUrl({ ...roof, systemLossPercent: 101 })).toThrow(
+      F401ProviderError,
+    );
+    expect(() => buildRoofSeriescalcUrl({ ...roof, pvTechnology: "" })).toThrow(
+      F401ProviderError,
+    );
+  });
+
   it("spiegelt ±180 auf -179 und normiert den Kreis", () => {
     expect(providerAspectDeg(180)).toBe(-179);
     expect(providerAspectDeg(-180)).toBe(-179);
