@@ -6,8 +6,13 @@
 -- 'planning-calculation-result.v2' bei Zeilen-Tupel
 -- 'planning-calculation.v2', KEIN resultSha256-Feld im JSON (der SHA-256
 -- ueber das kanonische Result lebt nur in der result_sha256-Spalte).
+-- WICHTIG: kein `... IS TRUE`-Wrapper. Die 0024-Fassung verlaesst sich auf
+-- CHECK-NULL-Semantik (NULL-Vergleiche bestehen); ein Wrapper wuerde
+-- historische v1-Zeilen mit fehlenden JSON-Schluesseln nachtraglich
+-- verletzen. Der v2-Zweig ist fuer v1-Zeilen FALSE (NOT NULL-Spalte),
+-- sodass `(v1 OR v2)` fuer v1-Zeilen exakt die alte Semantik ergibt.
 ALTER TABLE "project_calculation_revision" DROP CONSTRAINT "project_calculation_revision_json_ck";--> statement-breakpoint
-ALTER TABLE "project_calculation_revision" ADD CONSTRAINT "project_calculation_revision_json_ck" CHECK ((
+ALTER TABLE "project_calculation_revision" ADD CONSTRAINT "project_calculation_revision_json_ck" CHECK (
         jsonb_typeof("project_calculation_revision"."input_snapshot") = 'object'
         and jsonb_typeof("project_calculation_revision"."provider_snapshot") in ('object', 'array')
         and jsonb_typeof("project_calculation_revision"."result") = 'object'
@@ -33,7 +38,7 @@ ALTER TABLE "project_calculation_revision" ADD CONSTRAINT "project_calculation_r
             and "project_calculation_revision"."result"#>>'{model,sourceRevision}' = "project_calculation_revision"."source_revision"
           )
         )
-      ) is true);--> statement-breakpoint
+      );--> statement-breakpoint
 --
 -- Teil 2: v2-Finalize-Funktion. Die v1-Funktion lehnt v2-Results
 -- fail-closed ab (contractVersion-, Quality- und resultSha256-Bindung

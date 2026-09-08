@@ -2843,6 +2843,25 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F4.1 v2-Finalize (Migration 0079): gleiche Execute-Semantik wie v1
+  // (app_worker only). Existenzgeprueft, damit Upgrade-Prefixe ohne 0079
+  // gruen bleiben.
+  const finalizeV2Routine = await client.query<{ present: boolean }>(`
+    select pg_catalog.to_regprocedure(
+      'public.finalize_project_calculation_success_v2(uuid, uuid, uuid, integer, uuid, jsonb, bytea)'
+    ) is not null as present
+  `);
+  if (finalizeV2Routine.rows[0]?.present === true) {
+    await client.query(`
+      revoke execute on function public.finalize_project_calculation_success_v2(
+        uuid, uuid, uuid, integer, uuid, jsonb, bytea
+      ) from public, app_runtime, app_system, app_auth, app_worker, app_erasure;
+      grant execute on function public.finalize_project_calculation_success_v2(
+        uuid, uuid, uuid, integer, uuid, jsonb, bytea
+      ) to app_worker
+    `);
+  }
+
   // M2-01 fuehrt den Offer-Graphen und dessen separat committende
   // Mutationszaehler atomar ein. Runtime darf den Graphen lesen und neue
   // Snapshot-Staende anlegen; UPDATE bleibt auf die tatsaechlich vom Service
@@ -3626,6 +3645,15 @@ export async function verifyRoleContract(
     LEAD_SOURCE_RELATIONS,
     "Rollenvertrag: F1-08-Lead-Sources",
   );
+  // F4.1 v2-Finalize (Migration 0079) ist eine einzelne Funktion ohne eigene
+  // Relationen; die Anwesenheit wird direkt ueber die Signatur gepinnt, damit
+  // historische Prefixe ohne 0079 gruen bleiben.
+  const finalizeV2Presence = await client.query<{ present: boolean }>(`
+    select pg_catalog.to_regprocedure(
+      'public.finalize_project_calculation_success_v2(uuid, uuid, uuid, integer, uuid, jsonb, bytea)'
+    ) is not null as present
+  `);
+  const hasCalculationFinalizeV2 = finalizeV2Presence.rows[0]?.present === true;
 
   const hasTimeTracking = await hasAtomicPublicRelationSet(
     client,
@@ -4226,6 +4254,9 @@ export async function verifyRoleContract(
       ...(hasOfferPdfDraft ? ["derive_offer_pdf_draft_input:app_owner"] : []),
       "erase_inactive_lead:app_owner",
       "finalize_project_calculation_success:app_owner",
+      ...(hasCalculationFinalizeV2
+        ? ["finalize_project_calculation_success_v2:app_owner"]
+        : []),
       "forbid_mutation:app_owner",
       "guard_catalog_component_mutation:app_owner",
       "guard_catalog_component_revision:app_owner",
@@ -4848,6 +4879,13 @@ export async function verifyRoleContract(
         "TABLE(outcome text, revision_id uuid, revision_number integer):" +
         "app_owner:plpgsql:f:v:true:false:true:u:search_path=pg_catalog:" +
         "d76a793111515819e26d367daa2ecdf5b894447244e2ae002a51ace05b04cdb9",
+      // F4.1 v2-Schwester (Migration 0079): Body-Pin = sha256(prosrc).
+      ...(hasCalculationFinalizeV2 ? [
+        "finalize_project_calculation_success_v2(uuid, uuid, uuid, integer, uuid, jsonb, bytea):" +
+        "TABLE(outcome text, revision_id uuid, revision_number integer):" +
+        "app_owner:plpgsql:f:v:true:false:true:u:search_path=pg_catalog:" +
+        "b97a1925558bdf9c3b5dd6f9c7f118af2eec05ed8547d581d9d0803908daac2b",
+      ] : []),
       "forbid_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:-:" +
         "df89b0c65f44ffae87695685fca411fb8ad998cff6768bb8a176024d331910f3",
       "guard_catalog_component_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -6231,6 +6269,9 @@ export async function verifyRoleContract(
         "app_worker:recover_offer_issuance_renders(uuid, integer):EXECUTE:app_owner:false",
       ] : []),
       "app_worker:finalize_project_calculation_success(uuid, uuid, uuid, integer, uuid, jsonb):EXECUTE:app_owner:false",
+      ...(hasCalculationFinalizeV2 ? [
+        "app_worker:finalize_project_calculation_success_v2(uuid, uuid, uuid, integer, uuid, jsonb, bytea):EXECUTE:app_owner:false",
+      ] : []),
       "app_worker:lock_project_calculation_finalization(uuid, uuid):EXECUTE:app_owner:false",
     ],
     "Funktions-Grants",

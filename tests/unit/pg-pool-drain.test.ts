@@ -395,6 +395,9 @@ describe("endPoolAndWaitForClientRemoval", () => {
     const allowedNonPoolEnds = new Map<string, ReadonlySet<string>>([
       [resolve("tests", "e2e", "run.mts"), new Set(["response"])],
       [resolve("tests", "e2e", "next-server.mts"), new Set(["response"])],
+      // F4.1-Loopback-Fetch: response.end gehoert zum HTTP-Server-Stub,
+      // nicht zum Pool-Lifecycle (gleiche Ausnahme wie e2e).
+      [resolve("tests", "unit", "f401-fetch-v2.test.ts"), new Set(["response"])],
     ]);
     for (const file of guardedSources) {
       const source = readFileSync(file, "utf8");
