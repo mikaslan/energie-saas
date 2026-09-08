@@ -81,14 +81,16 @@ Live-Gegenproben (/tmp, nicht committet): PVGIS-Abruf byte-identisch
   Regeln (bodenbuendiges SoC-Fenster wie v1, symmetrische Leistung,
   Sqrt-Split Eta; null = No-Storage, ungueltig = cannot_fulfil).
   Tests `f401-catalog-resolution-v2` 3/3.
-- Persist/Finalize-v2 IMPLEMENTIERT (uncommitted): Migration 0079
-  (`finalize_project_calculation_success_v2` + v2-Zweig im Revision-
-  JSON-CHECK), `persistProjectCalculationInputV2` /
-  `finalizeProjectCalculationSuccessV2` in calculation-service.ts,
-  Tests `m111c` 5/5, v1-Suite m107 ohne Regression (14/14 gesamt).
-  Nebenbefund: 0078 hatte den Revision-JSON-CHECK nicht erweitert
-  (v1-Result-Form) — 0079 korrigiert das; parseStoredInput verzweigt
-  jetzt nach Zeilenversion (v1-Pfad byte-identisch).
+- Persist/Finalize-v2 IMPLEMENTIERT (47516ce + Fix-Commit, Push mit Hook-Verifikation laeuft):
+  Migration 0079 (`finalize_project_calculation_success_v2` + v2-Zweig
+  im Revision-JSON-CHECK), `persistProjectCalculationInputV2` /
+  `finalizeProjectCalculationSuccessV2`, Tests `m111c` 5/5, m107 ohne
+  Regression. Nebenbefunde aus Full-Suite (alle behoben, 64/64 gruen):
+  0078 hatte JSON-CHECK uebersehen; `IS TRUE`-Wrapper haette NULL-
+  Semantik gebrochen (jetzt ohne); Rollenvertrag um v2-Funktion
+  erweitert (Ownership/Signatur/ACL, existenzgeprueft); Journal-Pins
+  80/idx 79; Drain-Allowlist fuer Loopback-`response.end`.
+  parseStoredInput verzweigt nach Zeilenversion (v1 byte-identisch).
 - Rest-Epic: Reservation-v2 (bestaetigte Aufloesung lesen), Fetch im
   Worker, atomare Aktivierung.
 - Fetch-Schicht: Redirect/Host/Content-Type/Retry/Offline-Replay
