@@ -18,14 +18,22 @@ const ids = {
 };
 
 describe("F4.1 v2 reservation hash", () => {
-  it("ist deterministisch und bindungssensitiv", () => {
-    const first = reservationHashV2(ids).toString("hex");
+  const battery = {
+    componentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    revision: 3,
+  };
+  it("ist deterministisch und bindungs-/batteriesensitiv", () => {
+    const first = reservationHashV2(ids, battery).toString("hex");
     expect(first).toMatch(/^[0-9a-f]{64}$/);
-    expect(reservationHashV2({ ...ids }).toString("hex")).toBe(first);
-    expect(reservationHashV2({ ...ids, profileRevision: 2 }).toString("hex")).not.toBe(first);
-    expect(reservationHashV2({ ...ids, addressRevision: 2 }).toString("hex")).not.toBe(first);
+    expect(reservationHashV2({ ...ids }, { ...battery }).toString("hex")).toBe(first);
+    expect(reservationHashV2({ ...ids, profileRevision: 2 }, battery).toString("hex")).not.toBe(first);
+    expect(reservationHashV2({ ...ids, addressRevision: 2 }, battery).toString("hex")).not.toBe(first);
     expect(
-      reservationHashV2({ ...ids, requirementId: ids.profileId }).toString("hex"),
+      reservationHashV2({ ...ids, requirementId: ids.profileId }, battery).toString("hex"),
+    ).not.toBe(first);
+    expect(reservationHashV2(ids, null).toString("hex")).not.toBe(first);
+    expect(
+      reservationHashV2(ids, { ...battery, revision: 4 }).toString("hex"),
     ).not.toBe(first);
   });
 });

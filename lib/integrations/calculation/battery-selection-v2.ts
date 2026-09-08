@@ -25,6 +25,7 @@ export type BatteryLineV2Input = {
   componentId: string;
   componentRevision: number;
   componentType: string;
+  quantity: number;
   lineSnapshotSha256Hex: string;
   revisionSnapshot: unknown;
   revisionSnapshotSha256Hex: string;
@@ -58,6 +59,11 @@ export function selectBatteryRevisionV2(
     selectionError("mehrere Batterie-Lines sind mehrdeutig");
   }
   const battery = batteries[0]!;
+  // ESTIMATE: Stack-Skalierung (Menge > 1) ist nicht modelliert; nur exakt
+  // eine Einheit pro aufgeloester Batterie ist reservierbar.
+  if (battery.quantity !== 1) {
+    selectionError("Batterie-Menge ist nicht genau 1");
+  }
   if (
     !hexEqual(battery.lineSnapshotSha256Hex, battery.revisionSnapshotSha256Hex)
   ) {

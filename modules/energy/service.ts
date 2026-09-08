@@ -27,6 +27,19 @@ import {
   hashProjectCalculationPreparation,
 } from "@/lib/integrations/calculation/preparation";
 import {
+  buildProjectCalculationPreparationV2,
+  hashProjectCalculationPreparationV2,
+} from "@/lib/integrations/calculation/preparation-v2";
+import {
+  reservationHashV2,
+  type ReservationBatteryV2,
+} from "@/lib/integrations/calculation/reservation-v2";
+import {
+  selectBatteryRevisionV2,
+  type BatteryLineV2Input,
+} from "@/lib/integrations/calculation/battery-selection-v2";
+import { F401ResolutionError } from "@/lib/integrations/calculation/catalog-resolution-v2";
+import {
   PLANNING_DEFAULTS_VERSION,
   PLANNING_MODEL_ID,
   PLANNING_MODEL_SOURCE_REVISION,
@@ -34,6 +47,14 @@ import {
   PLANNING_PROVIDER_RECIPE_VERSION,
   PLANNING_RESERVATION_VERSION,
 } from "@/lib/integrations/calculation/versions";
+import {
+  CALCULATION_V2_CONTRACT_VERSION,
+  CALCULATION_V2_DEFAULTS_VERSION,
+  CALCULATION_V2_MODEL_ID,
+  CALCULATION_V2_MODEL_VERSION,
+  CALCULATION_V2_PROVIDER_RECIPE_VERSION,
+  CALCULATION_V2_SOURCE_REVISION,
+} from "@/lib/integrations/calculation/versions-v2";
 import type { RechnerCalculationSnapshotV1 } from "@/lib/integrations/rechner/types";
 import {
   can,
@@ -263,7 +284,8 @@ abstract class EnergyProfileServiceError extends Error {
       | "stale"
       | "unsupported_source"
       | "retry_conflict"
-      | "rate_limited",
+      | "rate_limited"
+      | "cannot_fulfil",
     message: string,
   ) {
     super(message);
@@ -332,6 +354,13 @@ export class EnergyProfileRateLimitError extends EnergyProfileServiceError {
     this.retryAfterSeconds = Number.isFinite(retryAfterSeconds)
       ? Math.max(1, Math.ceil(retryAfterSeconds))
       : 1;
+  }
+}
+
+export class EnergyProfileCannotFulfilError extends EnergyProfileServiceError {
+  constructor(reason: string) {
+    super("cannot_fulfil", `project calculation cannot be fulfilled: ${reason}`);
+    this.name = "EnergyProfileCannotFulfilError";
   }
 }
 
@@ -1736,6 +1765,385 @@ export async function confirmProjectEnergyProfile(
     addressRevision: stored.address_revision,
     jobId: job.id,
     reservationKey,
+    replayed: profileAlreadyConfirmed && !jobCreated,
+  };
+}
+
+export type ConfirmProjectEnergyProfileV2Input = {
+  projectId: string;
+  expectedAddressRevision: number;
+  expectedProfileRevision: number;
+};
+
+export type ConfirmProjectEnergyProfileV2Result = {
+  profileId: string;
+  profileRevision: number;
+  addressRevision: number;
+  jobId: string;
+  reservationKey: string;
+  battery: ReservationBatteryV2;
+  replayed: boolean;
+};
+
+type BatteryResolutionV2Row = {
+  resolution_id: string;
+  resolution_revision: number;
+  requirement_id: string;
+  requirement_revision: number;
+  resolution_status: string;
+  component_id: string;
+  component_revision: number;
+  component_type: string;
+  quantity: number;
+  line_sha: string;
+  revision_snapshot: unknown;
+  rev_sha: string;
+  [key: string]: unknown;
+};
+
+/**
+ * Liest die juengste Katalogaufloesung des Projekts mit Batterie-Lines
+ * (FOR SHARE gegen konkurrierende Bestaetigung). Reine Lesefunktion;
+ * die Entscheidung (0/1/N, Bedarf, Integritaet) faellt in
+ * `selectBatteryRevisionV2`.
+ */
+async function readBatteryResolutionV2(
+  tx: TenantTx,
+  workspaceId: string,
+  projectId: string,
+): Promise<{ status: string; rows: BatteryResolutionV2Row[] }> {
+  const head = await tx.execute<{
+    id: string;
+    revision: number;
+    requirement_id: string;
+    requirement_revision: number;
+    resolution_status: string;
+    [key: string]: unknown;
+  }>(sql`
+    select res.id, res.revision, res.requirement_id, res.requirement_revision,
+           project.catalog_resolution_status as resolution_status
+      from project_catalog_resolution res
+      join project
+        on project.workspace_id = res.workspace_id
+       and project.id = res.project_id
+     where res.workspace_id = ${workspaceId}::uuid
+       and res.project_id = ${projectId}::uuid
+     order by res.revision desc
+     limit 1
+     for share of res
+  `);
+  const latest = head.rows[0];
+  if (!latest) return { status: "pending", rows: [] };
+  const rows = await tx.execute<BatteryResolutionV2Row>(sql`
+    select ${latest.id}::uuid as resolution_id,
+           ${latest.revision}::integer as resolution_revision,
+           ${latest.requirement_id}::uuid as requirement_id,
+           ${latest.requirement_revision}::integer as requirement_revision,
+           project.catalog_resolution_status as resolution_status,
+           line.catalog_component_id as component_id,
+           line.catalog_component_revision as component_revision,
+           component.component_type as component_type,
+           line.quantity::integer as quantity,
+           encode(line.component_snapshot_sha256, 'hex') as line_sha,
+           revision.revision_snapshot as revision_snapshot,
+           encode(revision.snapshot_sha256, 'hex') as rev_sha
+      from project_catalog_resolution_line line
+      join catalog_component component
+        on component.workspace_id = line.workspace_id
+       and component.id = line.catalog_component_id
+      join catalog_component_revision revision
+        on revision.workspace_id = line.workspace_id
+       and revision.component_id = line.catalog_component_id
+       and revision.revision = line.catalog_component_revision
+      join project
+        on project.workspace_id = line.workspace_id
+       and project.id = line.project_id
+     where line.workspace_id = ${workspaceId}::uuid
+       and line.resolution_id = ${latest.id}::uuid
+       and line.project_id = ${projectId}::uuid
+  `);
+  return { status: latest.resolution_status, rows: [...rows.rows] };
+}
+
+/**
+ * F4.1 v2-Reservierung (planning-calculation.v2): Bestaetigen +
+ * Reservieren wie v1 (`confirmProjectEnergyProfile`), aber mit v2-Tupel,
+ * eingefrorener Batterie-Provenienz und v2-Preparation.
+ *
+ * Unterschiede zu v1 (alle stated):
+ * - Speicher kommt aus der bestaetigten Batterie-Revision (kein Default);
+ *   Aufloesung fehlend/mehrdeutig/ungueltig -> `cannot_fulfil`.
+ * - Die Aufloesung muss zum AKTUELLEN Requirement passen (sonst
+ *   `cannot_fulfil`); die v1-Kalkulationsbindung der Aufloesung wird
+ *   bewusst ignoriert (v2-Kette erzeugt keine v1-Revisionen).
+ * - KEIN pg-boss-Dispatch: Die v2-Queue existiert erst mit dem
+ *   Execute-Handler-Epic. Jobs ruhen in `queued`, bis der Handler sie
+ *   abholt; Dispatch in die v1-Queue wuerde sie als `engine_invalid`
+ *   finalisieren. Replays reparieren deshalb (noch) keine Zustellung.
+ * - Quota: derselbe Bucket wie v1 (Worker-Last, versionsunabhaengig).
+ */
+export async function confirmProjectEnergyProfileV2(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: ConfirmProjectEnergyProfileV2Input,
+): Promise<ConfirmProjectEnergyProfileV2Result> {
+  requireProjectAccess(ctx, "project.write", "energy_profile");
+  const parsedInput = confirmProjectEnergyProfileInputSchema.safeParse(input);
+  if (!parsedInput.success) throw new EnergyProfileInvalidError();
+  const validatedInput = parsedInput.data;
+
+  const projectSite = await lockProjectSite(tx, ctx.workspaceId, validatedInput.projectId);
+  if (!projectSite) throw new EnergyProfileNotFoundError();
+  assertCurrentHouse(projectSite, validatedInput.expectedAddressRevision);
+  const stored = await lockStoredProfile(tx, ctx.workspaceId, projectSite.site_id);
+  if (!stored) throw new EnergyProfileNotFoundError();
+  if (
+    stored.revision !== validatedInput.expectedProfileRevision
+    || stored.address_revision !== projectSite.address_revision
+  ) {
+    throw new EnergyProfileConflictError();
+  }
+
+  const parsedProfile = siteEnergyProfileV1Schema.safeParse(stored.profile);
+  if (!parsedProfile.success || !sameBytes(stored.profile_sha256, sha256Bytes(parsedProfile.data))) {
+    throw new EnergyProfileInvalidError();
+  }
+  if (parsedProfile.data.roofs.some((roof) => roof.source !== "operator_reviewed")) {
+    throw new EnergyProfileRoofAcknowledgementError();
+  }
+
+  const requirement = await lockLatestRequirement(
+    tx,
+    ctx.workspaceId,
+    validatedInput.projectId,
+  );
+  if (!requirement) throw new EnergyProfilePrerequisitesError("profile_confirmation");
+  const parsedRequirement = assertRequirementMatchesProfile(
+    requirement,
+    parsedProfile.data,
+    projectSite.snapshot_id,
+  );
+  if (!hasConfirmationCalculationInputs(parsedProfile.data, parsedRequirement)) {
+    throw new EnergyProfilePrerequisitesError("profile_confirmation");
+  }
+
+  // Batterie-Provenienz VOR dem Schluessel: Der Schluessel friert die
+  // Batterie-Revision mit ein (Katalog-Drift -> neuer Job, kein Replay).
+  const resolution = await readBatteryResolutionV2(tx, ctx.workspaceId, validatedInput.projectId);
+  if (resolution.status !== "resolved" || resolution.rows.length === 0) {
+    throw new EnergyProfileCannotFulfilError("keine bestaetigte Katalogaufloesung");
+  }
+  const head = resolution.rows[0]!;
+  if (
+    head.requirement_id !== requirement.id
+    || head.requirement_revision !== requirement.revision
+  ) {
+    throw new EnergyProfileCannotFulfilError("Aufloesung passt nicht zum Requirement");
+  }
+  let storageParams: {
+    capacityKwh: number;
+    socMinKwh: number;
+    socMaxKwh: number;
+    chargeKw: number;
+    dischargeKw: number;
+    etaCharge: number;
+    etaDischarge: number;
+  };
+  let batterySource: ReservationBatteryV2;
+  try {
+    const lines: BatteryLineV2Input[] = resolution.rows.map((row) => ({
+      componentId: row.component_id,
+      componentRevision: row.component_revision,
+      componentType: row.component_type,
+      quantity: row.quantity,
+      lineSnapshotSha256Hex: row.line_sha,
+      revisionSnapshot: row.revision_snapshot,
+      revisionSnapshotSha256Hex: row.rev_sha,
+    }));
+    const selected = selectBatteryRevisionV2(
+      lines,
+      parsedRequirement.requestedProducts.targetStorageKwh,
+    );
+    storageParams = selected.storage;
+    batterySource = selected.source;
+  } catch (error) {
+    if (error instanceof F401ResolutionError) {
+      throw new EnergyProfileCannotFulfilError(error.detail);
+    }
+    throw error;
+  }
+
+  let preparationSnapshot;
+  try {
+    preparationSnapshot = buildProjectCalculationPreparationV2({
+      schemaVersion: "project-calculation-preparation.v2",
+      latitude: projectSite.latitude,
+      longitude: projectSite.longitude,
+      axis: { slots: 35_040, resolution: "quarter_hour" },
+      providerRecipe: CALCULATION_V2_PROVIDER_RECIPE_VERSION,
+      geometry: {
+        surfaces: parsedProfile.data.roofs.map((roof) => ({
+          tiltDeg: roof.tiltDeg,
+          azimuthDeg: roof.azimuthDeg,
+        })),
+      },
+      profile: parsedProfile.data,
+      requirements: parsedRequirement,
+      sourceSnapshot: projectSite.snapshot,
+      storage: storageParams,
+    });
+  } catch {
+    throw new EnergyProfileInvalidError();
+  }
+  const preparationSha256 = Buffer.from(
+    hashProjectCalculationPreparationV2(preparationSnapshot),
+    "hex",
+  );
+
+  const reservationKeyBytes = reservationHashV2({
+    workspaceId: ctx.workspaceId,
+    projectId: validatedInput.projectId,
+    siteId: projectSite.site_id,
+    addressRevision: projectSite.address_revision,
+    profileId: stored.id,
+    profileRevision: stored.revision,
+    requirementId: requirement.id,
+    requirementRevision: requirement.revision,
+    sourceSnapshotId: requirement.source_snapshot_id,
+  }, batterySource);
+  const reservationKey = reservationKeyBytes.toString("hex");
+
+  const existingResult = await tx.execute<JobRow>(sql`
+    select id, reservation_key, state
+      from project_calculation_job
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${validatedInput.projectId}::uuid
+       and reservation_key = ${reservationKeyBytes}
+     for update
+  `);
+  let job = existingResult.rows[0] ?? null;
+  const activeResult = await tx.execute<JobRow>(sql`
+    select id, reservation_key, state
+      from project_calculation_job
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${validatedInput.projectId}::uuid
+       and state in ('queued', 'running', 'retry_wait')
+     for update
+  `);
+  const conflicting = activeResult.rows.find(
+    (active) => !sameBytes(active.reservation_key, reservationKeyBytes),
+  );
+  if (conflicting) throw new EnergyProfileRetryConflictError();
+
+  const reservationCreatedAt = job === null
+    ? await enforceNewReservationRateLimit(tx, ctx.workspaceId, ctx.actor)
+    : null;
+
+  const profileAlreadyConfirmed =
+    stored.confirmed_profile_revision === stored.revision
+    && stored.confirmed_address_revision === stored.address_revision
+    && stored.confirmed_by !== null
+    && stored.confirmed_at !== null;
+  if (!profileAlreadyConfirmed) {
+    const confirmed = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+      update site_energy_profile
+         set confirmed_profile_revision = revision,
+             confirmed_address_revision = address_revision,
+             confirmed_by = ${ctx.actor}::uuid,
+             confirmed_at = now(),
+             updated_at = now()
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${stored.id}::uuid
+         and revision = ${stored.revision}
+         and confirmed_profile_revision is null
+         and confirmed_address_revision is null
+         and confirmed_by is null
+         and confirmed_at is null
+       returning id
+    `);
+    if (confirmed.rows.length !== 1) throw new EnergyProfileConflictError();
+  }
+
+  let jobCreated = false;
+  if (!job) {
+    if (reservationCreatedAt === null) throw new EnergyProfileInvalidError();
+    const jobId = randomUUID();
+    await tx.execute(sql`
+      insert into project_calculation_job (
+        id, workspace_id, project_id, site_id,
+        address_revision, pin_confirmed_address_revision,
+        profile_id, profile_revision, confirmed_profile_revision,
+        confirmed_address_revision, requirement_id, requirement_revision,
+        source_snapshot_id, reservation_key, provider_recipe_version,
+        contract_version, model_id, model_version, source_revision,
+        defaults_version, preparation_snapshot, preparation_sha256,
+        state, attempt_count, next_attempt_at, created_by, created_at
+      ) values (
+        ${jobId}::uuid, ${ctx.workspaceId}::uuid, ${validatedInput.projectId}::uuid,
+        ${projectSite.site_id}::uuid, ${projectSite.address_revision},
+        ${projectSite.address_revision}, ${stored.id}::uuid, ${stored.revision},
+        ${stored.revision}, ${stored.address_revision}, ${requirement.id}::uuid,
+        ${requirement.revision}, ${requirement.source_snapshot_id}::uuid,
+        ${reservationKeyBytes}, ${CALCULATION_V2_PROVIDER_RECIPE_VERSION},
+        ${CALCULATION_V2_CONTRACT_VERSION}, ${CALCULATION_V2_MODEL_ID},
+        ${CALCULATION_V2_MODEL_VERSION}, ${CALCULATION_V2_SOURCE_REVISION},
+        ${CALCULATION_V2_DEFAULTS_VERSION}, ${JSON.stringify(preparationSnapshot)}::jsonb,
+        ${preparationSha256}, 'queued', 0, ${reservationCreatedAt}::timestamptz,
+        ${ctx.actor}::uuid, ${reservationCreatedAt}::timestamptz
+      )
+    `);
+    job = { id: jobId, reservation_key: reservationKeyBytes, state: "queued" };
+    jobCreated = true;
+  }
+
+  const eventPayload = {
+    projectId: validatedInput.projectId,
+    siteId: projectSite.site_id,
+    profileId: stored.id,
+    profileRevision: stored.revision,
+    addressRevision: stored.address_revision,
+    jobId: job.id,
+    contractVersion: CALCULATION_V2_CONTRACT_VERSION,
+    battery: batterySource,
+  };
+  if (!profileAlreadyConfirmed) {
+    await emitEvent(tx, {
+      workspaceId: ctx.workspaceId,
+      aggregateType: "site",
+      aggregateId: projectSite.site_id,
+      eventType: "site.energy_profile_confirmed",
+      actor: ctx.actor,
+      payload: eventPayload,
+    });
+  }
+  if (jobCreated) {
+    await emitEvent(tx, {
+      workspaceId: ctx.workspaceId,
+      aggregateType: "project",
+      aggregateId: validatedInput.projectId,
+      eventType: "project.calculation_reserved",
+      actor: ctx.actor,
+      payload: eventPayload,
+    });
+  }
+  if (!profileAlreadyConfirmed || jobCreated) {
+    await writeAudit(tx, {
+      workspaceId: ctx.workspaceId,
+      actor: ctx.actor,
+      action: "project.write",
+      resource: profileAlreadyConfirmed ? "calculation_job" : "energy_profile",
+      allowed: true,
+      details: eventPayload,
+    });
+  }
+
+  return {
+    profileId: stored.id,
+    profileRevision: stored.revision,
+    addressRevision: stored.address_revision,
+    jobId: job.id,
+    reservationKey,
+    battery: batterySource,
     replayed: profileAlreadyConfirmed && !jobCreated,
   };
 }

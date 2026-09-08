@@ -21,6 +21,23 @@ import {
 
 const finite = () => z.number().finite();
 
+// Explizite Speicherparameter des Claims (keine stillen Defaults).
+// Als benannter Export, damit die v2-Preparation dieselbe Form als
+// eingefrorene Reservierungs-Provenienz tragen kann.
+export const claimStorageV2Schema = z.strictObject({
+  capacityKwh: finite().min(0).max(10_000),
+  socMinKwh: finite().min(0).max(10_000),
+  socMaxKwh: finite().min(0).max(10_000),
+  chargeKw: finite().min(0).max(1_000),
+  dischargeKw: finite().min(0).max(1_000),
+  etaCharge: finite().gt(0).max(1),
+  etaDischarge: finite().gt(0).max(1),
+}).refine(
+  (storage) => storage.socMinKwh <= storage.socMaxKwh
+    && storage.socMaxKwh <= storage.capacityKwh,
+  { message: "socMinKwh <= socMaxKwh <= capacityKwh verletzt" },
+);
+
 const claimSchema = z.strictObject({
   workspaceId: z.uuid(),
   projectId: z.uuid(),
@@ -44,19 +61,7 @@ const claimSchema = z.strictObject({
     latitude: finite().min(-90).max(90),
     longitude: finite().min(-180).max(180),
   }),
-  storage: z.strictObject({
-    capacityKwh: finite().min(0).max(10_000),
-    socMinKwh: finite().min(0).max(10_000),
-    socMaxKwh: finite().min(0).max(10_000),
-    chargeKw: finite().min(0).max(1_000),
-    dischargeKw: finite().min(0).max(1_000),
-    etaCharge: finite().gt(0).max(1),
-    etaDischarge: finite().gt(0).max(1),
-  }).refine(
-    (storage) => storage.socMinKwh <= storage.socMaxKwh
-      && storage.socMaxKwh <= storage.capacityKwh,
-    { message: "socMinKwh <= socMaxKwh <= capacityKwh verletzt" },
-  ),
+  storage: claimStorageV2Schema,
   preparation: z.strictObject({
     profile: siteEnergyProfileV1Schema,
     requirements: ProjectRequirementsRechnerV1Schema,

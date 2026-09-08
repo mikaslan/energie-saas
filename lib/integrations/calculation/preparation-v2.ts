@@ -16,6 +16,7 @@ import {
   CALCULATION_V2_PROVIDER_RECIPE_VERSION,
 } from "./versions-v2";
 import { planningSourceSnapshotSchema } from "./preparation";
+import { claimStorageV2Schema } from "./prepare-v2";
 
 export const PROJECT_CALCULATION_PREPARATION_V2_VERSION =
   "project-calculation-preparation.v2" as const;
@@ -43,6 +44,10 @@ export const projectCalculationPreparationV2Schema = z.strictObject({
   profile: siteEnergyProfileV1Schema,
   requirements: ProjectRequirementsRechnerV1Schema,
   sourceSnapshot: planningSourceSnapshotSchema,
+  // Eingefrorene Speicher-Provenienz der Reservierung (aus der
+  // bestaetigten Batterie-Revision aufgeloest, kein Default): Der Worker
+  // baut daraus den Claim, ohne den Katalog erneut zu lesen.
+  storage: claimStorageV2Schema,
 });
 
 export type ProjectCalculationPreparationV2 = z.infer<

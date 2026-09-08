@@ -35,13 +35,28 @@ export type ReservationBindingsV2 = {
   sourceSnapshotId: string;
 };
 
-export function reservationHashV2(bindings: ReservationBindingsV2): Buffer {
+export type ReservationBatteryV2 = {
+  componentId: string;
+  revision: number;
+} | null;
+
+export function reservationHashV2(
+  bindings: ReservationBindingsV2,
+  battery: ReservationBatteryV2,
+): Buffer {
   return createHash("sha256")
     .update(
       canonicalizeCalculationJson({
         reservationVersion: CALCULATION_V2_RESERVATION_VERSION,
         canonicalizationVersion: CALCULATION_CANONICALIZATION_VERSION,
         schemaSha256: CALCULATION_V2_SCHEMA_SHA256,
+        // Die Batterie-Provenienz ist Teil des Schluessels: Aendert sich die
+        // bestaetigte Batterie bei gleichen Bindungen, entsteht ein neuer Job
+        // statt eines stillen Replays mit veraltetem Speicher.
+        battery: battery === null ? null : {
+          componentId: battery.componentId,
+          revision: battery.revision,
+        },
         bindings: {
           workspaceId: bindings.workspaceId,
           projectId: bindings.projectId,

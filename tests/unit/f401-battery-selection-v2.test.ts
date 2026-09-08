@@ -22,6 +22,7 @@ function line(overrides: Record<string, unknown> = {}): BatteryLineV2Input {
     componentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     componentRevision: 3,
     componentType: "battery",
+    quantity: 1,
     lineSnapshotSha256Hex: "ab".repeat(32),
     revisionSnapshot: { technicalData: { ...TECH } },
     revisionSnapshotSha256Hex: "ab".repeat(32),
@@ -65,6 +66,10 @@ describe("F4.1 v2 battery selection", () => {
 
   it("verweigert Mehrdeutigkeit, SHA-Bruch und ungueltige Profile", () => {
     expect(() => selectBatteryRevisionV2([line(), line()], null)).toThrow(F401ResolutionError);
+    expect(() => selectBatteryRevisionV2(
+      [line({ quantity: 2 })],
+      null,
+    )).toThrow(F401ResolutionError);
     expect(() => selectBatteryRevisionV2(
       [line({ revisionSnapshotSha256Hex: "cd".repeat(32) })],
       null,

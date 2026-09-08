@@ -83,6 +83,15 @@ function preparation(overrides: Record<string, unknown> = {}): Record<string, un
       branch: "new_installation",
       inputs: {},
     },
+    storage: {
+      capacityKwh: 10,
+      socMinKwh: 0,
+      socMaxKwh: 9,
+      chargeKw: 5,
+      dischargeKw: 5,
+      etaCharge: 0.95,
+      etaDischarge: 0.95,
+    },
     ...overrides,
   };
 }
@@ -121,6 +130,14 @@ describe("F4.1 v2 preparation", () => {
       projectCalculationPreparationV2Schema.parse(
         preparation({ unknown: 1 }),
       )).toThrow();
+    expect(() =>
+      projectCalculationPreparationV2Schema.parse(
+        preparation({ storage: null }),
+      )).toThrow();
+    const withoutStorage = preparation();
+    delete withoutStorage.storage;
+    expect(() =>
+      projectCalculationPreparationV2Schema.parse(withoutStorage)).toThrow();
   });
 
   it("der Hash aendert sich bei jeder Eingabeaenderung", () => {
