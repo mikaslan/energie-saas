@@ -247,3 +247,26 @@ identisch (`983ed67`, 0 unpusht).
   (Server-Action-Schicht), falls UX-500 unter Race stoert — ausserhalb
   M111B-12-Scope entschieden.
 - Naechster Schritt: F4.1-Sweep (SPECIFIED, Migration 0078+).
+
+## CI zu M111B-12 (2026-09-08)
+- Push `7822c65` (ECC-Pre-Push-Hook = volle lokale Suite gruen).
+- Hinweis: `git push` ueber HTTPS/SSH hing ohne Output — Ursache war der
+  Pre-Push-Hook (lint+typecheck+volles `npm run test`), kein Netzdefekt.
+- CI-Run `34219662731` = SUCCESS (Statik/DB/Rollen/Build + Chromium-E2E
+  90/90) am gleichen HEAD. M111B-12 damit abgenommen.
+
+## F4.1A-Engine (2026-09-08, lokal verifiziert)
+- `lib/integrations/calculation/engine-v2.ts` (neu, additiv; v1 unberuehrt):
+  ordinale Achse 8760h->35040 Slots, Rekonstruktion X_q=4*X_h*w/sum(w) mit
+  Abbruch bei Energie ohne Gewicht, Gewichte max(0,sin α)/α>0-Gate,
+  Dispatch PV->Last->Speicher->Netz mit zyklischem SOC-Fixpunkt,
+  Slot-Bilanz fail-closed (1e-9 kWh), Neumaier-Summen, keine Rundung.
+- `versions-v2.ts` mit Spec-Tupel + echtem Blob-SHA-Freeze; Freeze-Test
+  vergleicht Pin gegen `git hash-object` der Engine-Bytes.
+- Tests `tests/unit/f401-quarter-hour-dispatch.test.ts`: 13/13 gruen
+  (zuerst rot ohne Engine verifiziert). Unit-Slice 83 Dateien/906 Tests
+  gruen, eslint 0, tsc 0.
+- Frage-2 aus Handoff nirgends auffindbar (Skills + Briefkasten leer) —
+  reversibel entschieden: Start direkt ab Spec F4-01.
+- Naechst: F4.1B (Hay-Clean-Room, PVGIS-Fixtures), danach Migration 0078+
+  (v2-Vertragskette, additiv).
