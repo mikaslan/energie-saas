@@ -131,6 +131,50 @@ describe("F4.1A dispatch", () => {
     expect(again).toBeCloseTo(start, 9);
   });
 
+  it("deckt die Spec-Speicherfaelle D<0, D=0, D>0 ab", () => {
+    // D>0 startet oben, D<=0 unten (Spec-Formel s*).
+    expect(cyclicSocStart([0.5], STORAGE)).toBe(STORAGE.socMaxKwh);
+    expect(cyclicSocStart([-0.5], STORAGE)).toBe(STORAGE.socMinKwh);
+    expect(cyclicSocStart([0.5, -0.5], STORAGE)).toBe(STORAGE.socMinKwh);
+    // Volle/leere Grenzen kappen Ladung/Entladung exakt.
+    const full = dispatchQuarterHours({
+      pvKwh: [5],
+      loadKwh: [0],
+      storage: STORAGE,
+      socStartKwh: STORAGE.socMaxKwh,
+    });
+    expect(full.slots[0]?.chargeInKwh).toBe(0);
+    expect(full.slots[0]?.exportKwh).toBe(5);
+    const empty = dispatchQuarterHours({
+      pvKwh: [0],
+      loadKwh: [5],
+      storage: STORAGE,
+      socStartKwh: STORAGE.socMinKwh,
+    });
+    expect(empty.slots[0]?.dischargeOutKwh).toBe(0);
+    expect(empty.slots[0]?.importKwh).toBe(5);
+  });
+
+  it("bilanziert Speicherverluste beidseitig", () => {
+    const result = dispatchQuarterHours({
+      pvKwh: [3, 0],
+      loadKwh: [0, 1],
+      storage: STORAGE,
+      socStartKwh: 1,
+    });
+    const charge = result.slots[0]?.chargeInKwh ?? Number.NaN;
+    const discharge = result.slots[1]?.dischargeOutKwh ?? Number.NaN;
+    expect(charge).toBeGreaterThan(0);
+    expect(discharge).toBeGreaterThan(0);
+    const loss = result.totals.storageLossKwh;
+    expect(loss).toBeCloseTo(
+      charge * (1 - STORAGE.etaCharge)
+        + discharge * (1 / STORAGE.etaDischarge - 1),
+      12,
+    );
+    expect(loss).toBeGreaterThan(0);
+  });
+
   it("weist ungueltige Speicherparameter ab", () => {
     const bad: StorageParams = { ...STORAGE, etaCharge: 0 };
     expect(() => dispatchQuarterHours({

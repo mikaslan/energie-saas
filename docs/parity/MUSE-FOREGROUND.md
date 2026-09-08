@@ -270,3 +270,17 @@ identisch (`983ed67`, 0 unpusht).
   reversibel entschieden: Start direkt ab Spec F4-01.
 - Naechst: F4.1B (Hay-Clean-Room, PVGIS-Fixtures), danach Migration 0078+
   (v2-Vertragskette, additiv).
+
+## F4.1B-Hay-Kern (2026-09-08, lokal verifiziert)
+- `lib/integrations/calculation/hay-v2.ts` (neu): normative Branches 1-5
+  (α<=0, Shade/Rueckseite/Bedeckung, pvgis53-shadow-reflection.v1,
+  Eq.28/30/29 mit exakten Grenzen α=0.1/k_t'=0.3/cosξ=0), Rauschregel,
+  hayClose-Gate-Helfer. Geometrie (α/γ_s/G_0h/AM/Horizont) injiziert.
+- 3 gefrorene Horizontal-Fixtures (Berlin/Madrid/Stockholm, PVGIS
+  seriescalc 2020, je 8784 Stunden, URL/Datum/Query/SHA in Provenienz):
+  `tests/fixtures/f401/`. Gr==0, Int==0 verifiziert.
+- Tests `f401b-hay-transposition.test.ts` (13) + Speicher-Fixtures D<0/
+  D=0/D>0, voll/leer, Verlustbilanz in f401 (15): 28/28 gruen.
+- Offen (ESTIMATE, naechster Slice): geneigte PVGIS-Validierung braucht
+  γ_s-Geometriequelle (pvlib nicht installierbar per Policy) + Migration
+  0078+ (v2-Vertragskette).
