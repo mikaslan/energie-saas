@@ -10,7 +10,12 @@ Gesamt-F1–F16-Uebergabe (diese folgt nach Muses Fertigmeldung).
 ## Audit-Anker (bei Uebergabe zu fuellen)
 
 - Repo: `/Users/mikailaslan/Projects/energie-saas-parity`, Branch `codex/m1-wave-02`
-- Uebergabe-Commit: TBD (derzeit: Stack ab `6b1e559`, unpushed bis `74cbdb8`)
+- Letzter gepushter Stand: `b8bc549` (enthaelt den gesamten F4.1-Stack ab
+  `8313e49`; CI-Run `34253965383` laeuft)
+- Richtigstellung: „UNPUSHED"-Vermerke in Commit-Messages und frueheren
+  Doc-Staenden sind ueberholt — der Sammel-Push `6b1e559..b8bc549` hat den
+  Stack vollstaendig uebertragen. History wird nicht umgeschrieben.
+- Uebergabe-Commit: TBD (separat bei Gesamtuebergabe)
 - CI-Run zum Uebergabe-Commit: TBD
 - Spec: `docs/spec/F4-01-viertelstunden-simulation.md` (SPECIFIED)
 
@@ -50,7 +55,7 @@ Live-Gegenproben (/tmp, nicht committet): PVGIS-Abruf byte-identisch
 5. Keine eigene AC-Paritaet (P bleibt Providerwert); keine
    Tarif-Arbitrage/20-Jahres-Cashflow (F4.2–F4.5).
 
-## v2-Transport/Fetch (2026-09-08, lokal verifiziert, UNPUSHED)
+## v2-Transport/Fetch (2026-09-08, lokal verifiziert, unpushed ab `f0fda9d`)
 - `http-transport.ts`: aus `pvgis.ts` extrahiert (Timeout, 429/529/5xx,
   Content-Type-Pflicht, Byte-Schranken, Retry-After, Loopback-Override).
   v1-Orakel `pvgis-provider` 22/22 weiter gruen = verhaltensidentisch.
