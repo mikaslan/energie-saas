@@ -1,0 +1,249 @@
+# MUSE-FOREGROUND — Vordergrund-Weiterbau (Übergabestand)
+
+Stand: 2026-09-08 ~00:10 UTC · Branch: `codex/m1-wave-02` · HEAD: `983ed67`
+(0 unpusht; CI-Run `34168057655` = SUCCESS auf diesem HEAD). Diese Datei
+bleibt absichtlich untracked (lokaler Handoff, kein Branch-Inhalt).
+Hintergrund-Autopilot: `mode=paused` (kein Konkurrenzschreiber).
+
+## Ziel
+
+F1–F16 aus `docs/blaupause/01-modulkatalog.md` als Vordergrundschreiber
+weiterbauen: untersuchen → ändern → testen → dokumentieren. Kein
+`muse-reonic-start`, keine neue Automatisierung, kein Force-Push.
+
+## Aktuelle Aufgabe (angefangen, nicht committet)
+
+Sechs ESLint-Warnungen (HEAD-Stand) als konkrete Defekte behoben:
+
+1. `app/w/[workspaceId]/einstellungen/rechnungsstellung/actions.ts` —
+   tote Imports `companyCountries` (Zod-Enum prüft bereits) und
+   `InvoicingPreconditionConflictError` entfernt. Geprüft: Der Fehler wird
+   nur von `assertIssuingDetailsComplete` (Dokument-Ausstellung, M3-01)
+   geworfen, nie vom Settings-Upsert — Import war tot, kein Mapping fehlt.
+2. `app/w/[workspaceId]/einstellungen/rechnungsstellung/invoicing-settings-form.tsx:215` —
+   ungültiges `aria-disabled` auf `<section>` (Rolle `region` stützt es
+   nicht) ersetzt durch `aria-label="Textvorlagen (noch nicht verfügbar)"`.
+3. `app/w/[workspaceId]/rechnungen/dialog-focus.ts:47` — stale
+   `triggerRef.current` im Effect-Cleanup; Trigger wird jetzt im Effect
+   gelesen (`const trigger = triggerRef.current`).
+4. `modules/economics/service.ts:12` — toter
+   `WORKSPACE_ECONOMICS_SETTINGS_COMMAND_VERSION`-Import (Version prüft das
+   Zod-Command-Schema; Service nutzt nur `..._VERSION`).
+5. `tests/e2e/f9-02-timer.spec.ts:1` — toter `randomUUID`-Import.
+
+## Erledigt (diese Sitzung, echte Exit-Codes)
+
+- 5 Lint-Fix-Dateien committet als `280df75`
+  (`fix(lint): sechs ESLint-Warnungen als Defekte beheben`).
+- **M111B-03-Test ergänzt** (`tests/db/m111b-cannot-fulfil-service.test.ts`,
+  committet als `04d34db`): gefälschter Evidenz-Insert für
+  `project.outcome_cannot_fulfil` in `domain_events` + `audit_log` scheitert
+  mit 23514 (Whitelist-Guard, Trigger-Tiefe; spiegelt das M1-11a-Forgery-Muster).
+- **M111B-DB-Suite GRÜN (lokal, EXIT=0):** 14/14 in
+  `tests/db/m111b-cannot-fulfil-service.test.ts` — embedded-Postgres UND
+  Docker-Postgres (`energie-test-pg`, 127.0.0.1:5545, CI-Rollen `app_ci`).
+  M111B-03 einzeln: 1 passed / 13 skipped, EXIT=0.
+- **M111B-E2E GRÜN (lokal, EXIT=0):** `M1_05_E2E_GREP="M1-11b:" npm run test:e2e`
+  → 4/4 Chromium (Editor-Abschluss/Freeze, Abgeschlossen-Filter, Viewer
+  read-only, External fail-closed), 12,1 s.
+- **Umgebungsheilung:** embedded-Postgres-Shmlox (`kern.sysv.shmmni=32`,
+  33 verwaiste Segmente, alle NATTCH=0) durch `ipcrm` der eigenen
+  detached Segmente behoben; embedded bootet wieder. Docker DAEMON LÄUFT
+  (Server 29.5.2) — „Docker fehlt“ überholt. Chromium in
+  `~/Library/Caches/ms-playwright` (chromium-1234) vorhanden.
+- **Alte Review-Rückstände verifiziert GESCHLOSSEN (HEAD-Code, kein neuer
+  Commit nötig):** F16-02 (P2-1 try/catch→unavailable; P2-2
+  domain_events=Outbox+audit+stamps; P2-3 Spec=`offer_preview`, `can()`
+  nutzt nur Action+Rolle; SPEC P1-1 `readSource` ohne FOR UPDATE, P1-2
+  Testplan, P2-1 F2.2 gemergt), F2-02 (No-op-Early-Return,
+  `previousValueNetCents`, `bundles`-Payload, `previousPrimaryVariantId`),
+  F9-03 CODE P2-1 (clientseitige Cap-50 mit Disable+Hinweis in
+  `user-filter-form.tsx`).
+- Gates auf HEAD `04d34db` (Exit-Codes direkt am Prozess gemessen, NICHT via
+  Pipe): `npm run lint` → 0 · `npm run typecheck` → 0 ·
+  `contract:catalog-import` → 0 · `npm run depcruise` → 0 ·
+  `git diff --check` OK · `npm run test` → 0 (240/240 Dateien, 2180
+  bestanden/1 übersprungen) · `npm run db:roles:verify` → 0 (88+5) ·
+  `npm run db:generate` + Drift-Check → 0 (no drift) · `npm run build` → 0.
+  Methodik-Lehre: `cmd | tail; echo $?` misst `tail` — Gates immer ohne Pipe
+  oder mit `pipefail` messen.
+
+## Korrigierter Befund: M1-11b ist HIER vorhanden (Annahme unten überholt)
+
+Entgegen der ursprünglichen Annahme („hier NICHT vorhanden“) ist M1-11b auf
+diesem Branch vollständig implementiert: Migration `0040` (1306 Zeilen),
+`outcome-service.ts` (`mark_cannot_fulfill`, FOR-UPDATE-Lock → Binding-Kapsel
+→ Update+Outbox+Dispatch in einer Tx), Worker (`worker/customer-notification.ts`),
+UI (Outcome-Panel, Abgeschlossen-Filter, Freeze-Hinweise), Contract-Tests,
+DB-Tests (M111B-01/02/03/04/05/06/07/09/10/11/18, P0-1-Interleaving, P1-B1/B2),
+E2E-Spec (`tests/e2e/m1-11b-cannot-fulfil.spec.ts`), Rollen-Pins
+(`scripts/db-role-contract.mts`). Alle 6 Kimi-Befunde (2×P1 B-1/B-2, 4×P2
+B-3–B-6, aus `e22102b`, fremder Branch) sind im hiesigen `0040` mit
+Kommentar-Markern + DB-Tests aufgelöst. Nicht im Baum: die beiden Kimi-Review-
+Docs (`REVIEW-KIMI-M1-11B-SPEC.md` aus `f75a309`, `REVIEW-KIMI-M1-11B-CODE.md`
+aus `e22102b` — beide Nicht-Vorfahren) sowie jede M1-11b-Zeile in
+`STATUS.md`/`CAPABILITY-MATRIX.md`/`TEST-EVIDENCE.md` (der alte
+VERIFIED-Vermerk `1bb9951` ist ebenfalls kein Vorfahre — Register-Update steht
+aus, erst nach DB-/E2E-Lauf auf Maschine/CI).
+Bekannte Restlücke ohne Aufrufpfad: `cancelled_manual` (nur Enum + Anzeige +
+Guard; kein Service-/Worker-Pfad — Scope-Entscheid für Root-Integrator, vgl.
+Review-Nachsatz „kein Aufrufpfad“).
+
+## Offene Probleme / Blocker
+
+- Sandbox-EPERM ÜBERHOLT: diese Sitzung läuft unsandboxed; embedded-Postgres,
+  `db:roles:verify`, `test:e2e` und Build laufen lokal (s. Gates oben).
+- Docker DAEMON LÄUFT (Server 29.5.2) — „Docker fehlt“ war falsch.
+  Test-Container `energie-test-pg` nach CI-Grün gestoppt+entfernt (embedded
+  genügt; shm-Leaks bei Bedarf erneut per `ipcrm` räumen, nur NATTCH=0).
+- Lokal Node v26.4.0 vs. CI Node 22/24 — Abweichung kennzeichnen.
+- Netzwerk OK: `git ls-remote origin` + `gh auth` (mikailaslan) grün.
+  Push von 60 Commits läuft/ist erfolgt; CI als Orakel auswerten.
+- Briefkasten `fragen an codex/offen` und `antworten` sind leer (keine Blocker).
+- Live-Reonic-Zugang fehlt weiter → kein 100-%-Paritätsnachweis möglich.
+
+## Exakt nächster Schritt (2026-09-08 ~00:10 UTC)
+
+**M111B-12 Race `mark_cannot_fulfill` ↔ `approve_offer_issuance`
+(Spec §11.3/§12.2 — letzte offene M1-11b-Abnahmehürde neben dem
+unabhängigen Review). Analyse abgeschlossen, Test fehlt:**
+- Beide Seiten nehmen die Project-Zeile `FOR UPDATE`
+  (Transition: `outcome-service.ts`; Approval-Kapsel `0035`: Profil →
+  Project → Offer → Recipient → Variante → Candidate → Issuance).
+- Bindungskapsel `_m111b_…_binding_issuance` ist lock-freies SELECT →
+  kein Deadlock-Vektor (Transition hält nur Project).
+- Approval zuerst → Bindung da → Transition wirft `CannotFulfilLocked` ✓.
+- Transition zuerst → Approval-INSERT in `offer_issuance_approval` läuft
+  in Freeze-Trigger (§5.3, 4 INSERT-Trigger inkl. Approval-Tabelle) ✓.
+- Strukturell SAFE in beiden Ordnungen; der Test muss das belegen, nicht
+  entdecken: `Promise.allSettled` über getrennte Pool-Clients, Disjunktion
+  konsistenter Endzustände (P0-1-Muster) + Invariante „nie cannot_fulfill
+  MIT un-withdrawter Approval". Fixture-Bedarf: M2-03b1-Kette bis
+  `ready_for_approval` (Profil→Recipient→Candidate→Issuance, EIN Approval
+  genügt als Bindung) + M111B-Projektbindung; Vorlage:
+  `tests/db/m203b1-offer-issuance-database.test.ts` (1458 Zeilen, inkl.
+  `waitForBackendLock`-Muster) und `m111b-cannot-fulfil-service.test.ts`.
+- Register-Entscheid: KEIN VERIFIED für M1-11b vor Review + M111B-12
+  (Spec §12 wörtlich). TEST-EVIDENCE-Ergänzung erst mit dem Race-Test.
+- Danach: F4.1 (SPECIFIED, Migration 0078+, Frage-2-Klärung).
+
+Erledigt seit ~22:30: **F2-02-Race-Slice** (`531c2a2`, 4 neue Tests in
+`tests/db/f202-variant-deepening.test.ts`, 19/19 grün): gleiches-Ziel- und
+gegenläufige `setPrimaryVariant`-Races (exakt eine Primary, 1 Event im
+Determinismusfall), identische Offer-Creates → idempotentes Digest-Replay
+(dasselbe Offer, kein Duplikat), divergierende → Verlierer
+`OfferConflictError`. Erster Create-Test war ROT (beide fulfilled statt
+1+Conflict) — Ursache war meine falsche Annahme, nicht der Code: Replay ist
+Design. Spec-Vertrag korrigiert (Z.66/73/88: Replay/Conflict statt
+pauschal IntegrityError; Index = Backstop für Lock-Umgeher).
+
+**CI-Run `34159018025` (Push `04d34db`): Statik/DB/Rollen/Build GRÜN,
+E2E 111+2 (2 rot, beide echte Defekte, aus Artefakt-`error-context.md`):**
+1. M3-00 Axe `color-contrast` serious auf `.text-slate-400`
+   (`invoicing-settings-form.tsx:216`, h2 auf Weiß, Ratio ~2,2) →
+   Fix `text-slate-500` (4,76:1, deterministisch; lokal M3-00-E2E grün).
+2. M2-03a 200-%-Zoom-Reflow bei 640px: Varianten-`ul` (618px `min-w-max`)
+   ragte auf 642 (Viewport 640), weil `div.grid.gap-4` ohne Template den
+   Track auf max-content aufspannte und `overflow-x-auto` der Nav dadurch
+   wirkungslos war (CI-Fonts breiter als lokal — latenter Defekt) →
+   Fix `grid-cols-[minmax(0,1fr)]` in `offer-editor.tsx` UND identisches
+   Muster in `offer-detail-view.tsx` (`grid gap-5`). Lokal M2-01+M2-03a
+   9+1 grün. Fixes committet als `2d231b7`, gepusht; CI-Run `34160823771`:
+Statik/DB/Rollen/Build GRÜN, E2E 110+3. M3-00-Kontrast BEHOBEN ✓.
+M2-03a:986 weiter rot, aber ANDERS: `elementHandle.click: Element is not
+attached to the DOM` im Helper `submitWithPendingFocusEvidence`
+(spec.ts:302, Call-Site fast sicher 1166 Dialog „Speichern und fortfahren").
+Analyse: 3-CSS-Zeilen-Delta kann kein DOM-Replacement verursachen; Run 1
+fiel an späterer Stelle (Reflow), Run 2 früh (Submit) — timing-sensitiv
+unter CI-Last, lokal (M2-01|M2-03a 9+1) grün. M2-04:272/:322
+(`variant_revision_changed`, currentRevision 2) sind KASKADE des frühen
+M2-03a-Abbruchs: M2-03a starb nach Offer-Save (Rev-Bump auf 2), aber vor
+Schritt 1197 (neuer PDF-Draft auf Rev 2) — M2-04-Fixture liest M2-02-Draft
+(Rev 1) gegen aktuelle Rev 2. shared-workspace-Kopplung (vgl. FRAGEN B).
+Entscheid: `gh run rerun --failed` als ehrlicher Diskriminator (kein
+Test-Weakening); bei Wieder-Rot wird der Helper gehärtet (bounded
+Re-Acquire nur für den Klick, gleiche-Node-Fokusbeweise unverändert).
+
+**Rerun-Ergebnis: 112+1 — M2-04-Kaskade GRÜN (Kaskadentheorie bestätigt ✓),
+M2-03a-Reflow weiter rot mit PIXEL-IDENTISCHEN Offendern (ul 24→642).
+Fehldiagnose korrigiert:** `getBoundingClientRect` ist UNCLIPPED — auch
+Inhalt in `overflow-x-auto` zählt als Überlauf. `min-w-max`+Scroll kann
+dieses Gate prinzipiell nie bestehen; mein Grid-Fix war wirkungslos
+(revertiert). Echter Fix (`b640b8f`, gepusht): Varianten-`ul` wrappt
+(`flex-wrap`, kein `min-w-max`/Scroll) in Editor- UND Detailansicht —
+damit passt die Liste konstruktiv in jede Viewportbreite, unabhängig von
+Font-Metriken. Lokal M2-01|M2-03a 9+1 grün, lint/typecheck 0. CI läuft.
+
+**CI-Run `34163851938` (Fix `b640b8f`): M2-03a-Reflow GEHEILT ✓ (112+1).
+Neu rot: F7.4-E2E-01 Axe `document-title` (leerer `<title>`) bei 375px.**
+Analyse: Checklisten-Route hat statische Metadata (`Checkliste |
+Energie-SaaS`), Root-Layout Default/Template, keine dynamischen
+Title-Schreiber, kein Reload/keine Navigation vor dem Axe-Lauf (nur
+Viewport-Resizes nach vielen sichtbaren Assertions). 3/4 CI-Läufe +
+lokal grün → kein deterministischer Defekt ableitbar, als TRANSIENT
+klassifiziert (Erstauftreten, keine Historie). `gh run rerun --failed`
+als Diskriminator; bei Wiederholung wird ein Title-Pin + Head-Analyse
+fällig. CI-Flakiness-Häufung heute (3 verschiedene E2E-Fehlerbilder in
+4 Läufen) im Abschlussbericht vermerken.
+
+**Rerun `34163851938` Versuch 2: 104+2 — F7.4 wieder GRÜN (Transient ✓),
+dafür F1.8-Axe `document-title` + M1-12a `toContainText`. Diagnosen:**
+1. M1-12a ECHT (kein Flake): Suite kreuzte Berliner Mitternacht (Seed
+   ~23:4x, Assert 00:11) → „Heute fällig"-Seed (due 23:59:59) kippte
+   korrekt auf „Überfällig". Fix: Erwartung folgt dem gerenderten
+   Fälligkeitsdatum vs. Berlin-Heute (testet die Bucket-Logik sogar
+   schärfer). Einzige „Heute fällig"-Assertion aller E2E.
+2. `document-title` jetzt 2× (F7.4, F1.8), beide Male Singleton; statisch
+   ist Metadata überall vorhanden, es gibt keine Title-Schreiber →
+   Mechanismus ungeklärt.
+   Fix: `toHaveTitle(/.+/)`-Pin vor Axe in beiden Spec-Helpern (Retry bei
+   Verspätung, klare Meldung bei echtem Fehlen — Verstärkung, kein
+   Weakening). Committet als `efc7a9b` (lint/typecheck 0, 3/3 fokussierte
+   E2E lokal grün), Push läuft; volles CI-Orakel abwarten.
+
+**CI-Run `34166627610`: 105+4 — F1.8/F7.4/M1-12a GRÜN (Härtungen halten ✓).
+Neu: M1-08b-E2E-03 (`queued` nie sichtbar, Worker schneller als UI-Poll)
++ M2-03a-Detach ZUM 2. MAL (Wiederholungstäter) + M2-04-Kaskade.**
+(1) `queued`-Beweis überspezifiziert — terminal ohne Start unerreichbar,
+also „queued ODER terminal" ohne Deckungsverlust (beide Stellen).
+(2) Submit-Helper: bounded Re-Acquire (max 3, nur Detach, ein Waiter,
+Fokusbeweise strikt auf geklicktem Knoten). Lokal 10+1 grün,
+lint/typecheck 0. Committet als `983ed67`, gepusht → **CI-Run
+`34168057655` = SUCCESS (beide Jobs grün).** Push-Stand und CI-Stand sind
+identisch (`983ed67`, 0 unpusht).
+
+## Ältere Planung (überholt — Punkte 1+2 von oben erledigt)
+
+1. ~~5 Fix-Dateien committen~~ → getan (`280df75`).
+2. ~~M1-11b von Null bauen~~ → obsolet (s. korrigierter Befund). Stattdessen
+   M1-11b zur Abnahme führen:
+   a) DB-Suite `tests/db/m111b-cannot-fulfil-service.test.ts` (jetzt 14 Fälle
+      inkl. M111B-03) + E2E `tests/e2e/m1-11b-cannot-fulfil.spec.ts` auf
+      Mikails Maschine/CI laufen lassen (hier Sandbox-EPERM).
+   b) Danach erst Register nachtragen (`STATUS.md`, `CAPABILITY-MATRIX.md`,
+      `TEST-EVIDENCE.md`) — Spec §12 schließt Register vor Review-Abnahme aus.
+   c) Offene Scope-Entscheide an Root-Integrator: `cancelled_manual`-Aufrufpfad
+      (fehlt), Race `mark_cannot_fulfill` ↔ `approve_offer_issuance` (M111B-12,
+      nur Freeze-Interleaving P0-1 belegt), Node-Worker-Tests (Retry-Backoff nur
+      über DB-Kapseln belegt), flakende Fremd-Chromium-Specs.
+   d) Push von 60 Commits + CI als Orakel bleibt ungeklärt (Netzwerkprobe
+      `git ls-remote`/`gh auth` ggf. nachtragen).
+
+## M111B-12 erledigt (2026-09-08, lokal verifiziert)
+- Race Transition↔Approval: 12a (Approval zuerst→LockedError), 12b
+  (Transition zuerst→PersistenceError), 12c (2 gesteuerte Runden per
+  pg_locks-Tupel-Gate auf project + 1 wilde Runde; exakt 1 Gewinner,
+  Endzustand + seiten-genauer Verliererfehler gepinnt).
+- Befund: Unter Interleaving kann PG den Verlierer per 40P01 abbrechen
+  (belegt: T-Insert in customer_notification, T wartet auf Approval-XID am
+  workspace-Tupel, A wartet retour; Ende bleibt gueltig open/a1/n0).
+  Wilde Runde re-tried EINMAL bei belegtem 40P01 (serialer Nachlauf =
+  12a/12b-Pfad); A-seitiges 40P01 faellt bereits ins gepinnte
+  PersistenceError-Bild. Invariante „nie cannot_fulfill MIT Bindung" gilt
+  in allen Ausgaengen.
+- Gates lokal: m111b-Datei 17/17 (4x), DB-Slice 131 Dateien/1127 Tests
+  gruen, eslint 0, tsc 0.
+- Follow-up (Produkt, nicht blockierend): 40P01-Retry globaler denken
+  (Server-Action-Schicht), falls UX-500 unter Race stoert — ausserhalb
+  M111B-12-Scope entschieden.
+- Naechster Schritt: F4.1-Sweep (SPECIFIED, Migration 0078+).
