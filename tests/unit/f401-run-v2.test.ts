@@ -1,0 +1,196 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  planningCalculationResultV2Schema,
+  type PlanningCalculationRequestV2,
+} from "@/lib/integrations/calculation/contract-v2";
+import { QUARTER_HOUR_SLOTS } from "@/lib/integrations/calculation/engine-v2";
+import { hashPlanningCalculationInputV2 } from "@/lib/integrations/calculation/prepare-v2";
+import { runPlanningCalculationV2 } from "@/lib/integrations/calculation/run-v2";
+import { validatePlanningCalculationResultV2Exactly } from "@/lib/integrations/calculation/validate-result-v2";
+
+// F4.1 v2-Run/Finalize: Request + 35040-Slot-Serien -> Dispatch mit
+// zyklischem SoC, Monats-/Jahresaggregation, validiertes Result.
+
+const NO_STORAGE = {
+  capacityKwh: 0,
+  socMinKwh: 0,
+  socMaxKwh: 0,
+  chargeKw: 0,
+  dischargeKw: 0,
+  etaCharge: 1,
+  etaDischarge: 1,
+};
+
+function request(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    contractVersion: "planning-calculation.v2",
+    canonicalizationVersion: "planning-jcs.v1",
+    branch: "new_installation",
+    asOfDate: "2026-08-29",
+    commissioningDate: "2026-08-29",
+    bindings: {
+      workspaceId: "11111111-1111-4111-8111-111111111111",
+      projectId: "22222222-2222-4222-8222-222222222222",
+      siteId: "33333333-3333-4333-8333-333333333333",
+      addressRevision: 1,
+      pinConfirmedAddressRevision: 1,
+      energyProfileId: "44444444-4444-4444-8444-444444444444",
+      energyProfileRevision: 1,
+      confirmedEnergyProfileRevision: 1,
+      confirmedEnergyProfileAddressRevision: 1,
+      projectRequirementId: "55555555-5555-4555-8555-555555555555",
+      projectRequirementRevision: 1,
+      sourceCalculatorSnapshotId: null,
+    },
+    site: { countryCode: "DE", latitude: 52.52, longitude: 13.41 },
+    axis: { slots: 35_040, resolution: "quarter_hour" },
+    storage: { ...NO_STORAGE },
+    ...overrides,
+  };
+}
+
+function constant(slots: number, value: number): number[] {
+  return new Array<number>(slots).fill(value);
+}
+
+describe("F4.1 v2 run", () => {
+  it("rechnet ohne Speicher exakt: direkt=min, Rest Export/Import", () => {
+    const result = runPlanningCalculationV2({
+      request: request(),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 1),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: true,
+    });
+    expect(planningCalculationResultV2Schema.safeParse(result).success).toBe(true);
+    expect(result.annual.generationKwh).toBe(35_040);
+    expect(result.annual.directConsumptionKwh).toBe(17_520);
+    expect(result.annual.selfConsumptionKwh).toBe(17_520);
+    expect(result.annual.feedInKwh).toBe(17_520);
+    expect(result.annual.gridImportKwh).toBe(0);
+    expect(result.annual.consumptionKwh).toBe(17_520);
+    expect(result.annual.storageLossKwh).toBe(0);
+    expect(result.annual.fromStorageKwh).toBe(0);
+    expect(result.annual.storageFullCycles).toBe(0);
+    expect(result.annual.selfConsumptionRate).toBeCloseTo(0.5, 12);
+    expect(result.annual.autonomyRate).toBeCloseTo(1, 12);
+    // Januar: 31 Tage * 96 Slots; Monatssummen decken das Jahr exakt ab.
+    expect(result.monthly).toHaveLength(12);
+    expect(result.monthly[0]).toMatchObject({ month: 1, generationKwh: 2_976 });
+    expect(result.monthly[1]).toMatchObject({ month: 2, generationKwh: 2_688 });
+    const monthlyGen = result.monthly.reduce((sum, m) => sum + m.generationKwh, 0);
+    expect(monthlyGen).toBeCloseTo(result.annual.generationKwh, 6);
+    expect(result.warnings).toContainEqual({ code: "provider_estimate", severity: "info" });
+  });
+
+  it("bindet inputSha256 stabil an den Request", () => {
+    const req = request() as unknown as PlanningCalculationRequestV2;
+    const series = {
+      request: req,
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 0.25),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.25),
+      providerEstimate: false,
+    };
+    const first = runPlanningCalculationV2(series);
+    const second = runPlanningCalculationV2(structuredClone(series));
+    expect(first.inputSha256).toBe(hashPlanningCalculationInputV2(req));
+    expect(second).toEqual(first);
+    expect(first.warnings).toEqual([]);
+  });
+
+  it("haelt den zyklischen SoC mit Speicher ein und speichert Warnung je Branch", () => {
+    const storage = {
+      capacityKwh: 10,
+      socMinKwh: 1,
+      socMaxKwh: 9,
+      chargeKw: 5,
+      dischargeKw: 5,
+      etaCharge: 0.95,
+      etaDischarge: 0.95,
+    };
+    // Tag/Nacht-Wechsel: 48 Slots Last, 48 Slots PV, erzeugt echten
+    // Lade-/Entladezyklus mit Verlust.
+    const pv = new Array<number>(QUARTER_HOUR_SLOTS);
+    const load = new Array<number>(QUARTER_HOUR_SLOTS);
+    for (let i = 0; i < QUARTER_HOUR_SLOTS; i += 1) {
+      const daySlot = i % SLOTS_PER_DAY;
+      pv[i] = daySlot < 48 ? 0 : 2;
+      load[i] = daySlot < 48 ? 1 : 0.2;
+    }
+    const result = runPlanningCalculationV2({
+      request: request({
+        branch: "existing_installation",
+        storage,
+      }),
+      pvKwh: pv,
+      loadKwh: load,
+      providerEstimate: false,
+    });
+    expect(result.annual.fromStorageKwh).toBeGreaterThan(0);
+    expect(result.annual.storageLossKwh).toBeGreaterThan(0);
+    expect(result.annual.storageFullCycles).toBeGreaterThan(0);
+    // Energieerhaltung: Erzeugung = Eigenverbrauch + Einspeisung + Verlust.
+    expect(
+      result.annual.generationKwh
+        - result.annual.selfConsumptionKwh
+        - result.annual.feedInKwh
+        - result.annual.storageLossKwh,
+    ).toBeCloseTo(0, 2);
+    expect(result.warnings).toContainEqual({
+      code: "existing_installation_limited",
+      severity: "info",
+    });
+  });
+
+  it("weist falsche Laengen, negative und nicht-finite Serien fail-closed ab", () => {
+    const base = {
+      request: request(),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: false,
+    };
+    expect(() => runPlanningCalculationV2({
+      ...base,
+      pvKwh: constant(QUARTER_HOUR_SLOTS - 1, 1),
+    })).toThrow();
+    const negative = constant(QUARTER_HOUR_SLOTS, 1);
+    negative[100] = -0.5;
+    expect(() => runPlanningCalculationV2({ ...base, pvKwh: negative })).toThrow();
+    const nan = constant(QUARTER_HOUR_SLOTS, 1);
+    nan[200] = Number.NaN;
+    expect(() => runPlanningCalculationV2({ ...base, pvKwh: nan })).toThrow();
+    expect(() => runPlanningCalculationV2({
+      request: request({ branch: "new_installation", axis: { slots: 35_040, resolution: "hourly" } }),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 1),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 1),
+      providerEstimate: false,
+    })).toThrow();
+  });
+});
+
+const SLOTS_PER_DAY = 96;
+
+describe("F4.1 v2 finalize", () => {
+  it("akzeptiert das Engine-Result exakt und weist Manipulation ab", () => {
+    const input = {
+      request: request(),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 1),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: true,
+    };
+    const result = runPlanningCalculationV2(input);
+    expect(validatePlanningCalculationResultV2Exactly({ ...input, result }).ok).toBe(true);
+    const tampered = structuredClone(result);
+    tampered.annual.feedInKwh += 1;
+    const rejected = validatePlanningCalculationResultV2Exactly({ ...input, result: tampered });
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) {
+      expect(rejected.paths.join(" ")).toContain("/annual/feedInKwh");
+    }
+    const wrongSha = validatePlanningCalculationResultV2Exactly({
+      ...input,
+      request: request({ commissioningDate: "2026-08-30" }),
+      result,
+    });
+    expect(wrongSha).toEqual({ ok: false, paths: ["/inputSha256"] });
+  });
+});
