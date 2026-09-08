@@ -495,6 +495,26 @@ identisch (`983ed67`, 0 unpusht).
   Katalog-/Profil-Slice + F4.2-Last). Horizont-Builder (`buildPrinthorizonUrl`,
   site-level) existiert bereits.
 
+## Weg 2 Kettenschluss (2026-09-09, gepusht c40469c, Hook gruen)
+- `planning-assumptions-v2.ts`: `wmee-planning-assumptions.v1` (Dach-Tech/Montage/
+  Verluste aus v1-Produktionspins = belegt; kWp-Leistung 200 W/m², uniforme Lastform,
+  EV 0,2 kWh/km = begründete ESTIMATE-Midpoints mit Upgrade-Pfaden). Kein stiller
+  Default: Version wandert in Lastquellen-SHA + `provider_estimate`-Warnung.
+- `fetch-compose-v2.ts`: Horizont + tilted seriescalc/PVcalc je Dach, PVcalc-Skalierung
+  (ac-scale), flache Subhour (energieexakt, Hay folgt mit Geometrie-Slice), kWp-Summe;
+  Standort-/Geometrie-Echo-Pruefung gegen Cross-Wiring. `providerEstimate: true`.
+- Azimut-Bug behoben: Reservierung wandelt Profil (Sued-Null) -> Geometrie
+  (Nord-Uhrzeigersinn, Spec); Ostdächer scheitern nicht mehr am 0..360-Schema.
+  Fetch nutzt Profil-Daecher (Sued-Null, f401-gepinnt).
+- Aktivierung: `worker/index.ts` subscribed `calculation.execute.v2` (eigener Pool,
+  exklusive Queue-Defaults); Context liefert `currentV2`/`resultV2` (UI-tsc-sicher,
+  v1-Pfade unberührt, v2-Präferenz bei Doppelbindung dokumentiert).
+- E2E m111f: Reservierung (Batterie 8 kWh) -> Handler (Fixture-Bytes Berlin 2020)
+  -> currentV2, Erzeugung = E_y x kWp (1006,46 x 10,4), Monatssumme = annual,
+  Serien persistiert, Warnung `provider_estimate`. 111/111 Suiten, tsc+eslint 0.
+- Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
+  dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
+
 ## v2-Leistungsverteilung (2026-09-08, lokal verifiziert, UNPUSHED)
 - `p-distribute-v2.ts`: `P*_h -> P_q` ueber injizierte Hay-Gewichte
   (energieerhaltend, Abort-Gate) + `E_pv,q`-Summation ueber 1..4 Daeche.
