@@ -321,3 +321,31 @@ identisch (`983ed67`, 0 unpusht).
 
 ## CI zu v2-Vertraegen+Preparation (2026-09-08)
 - Run `34241865505` (5be5d72) = SUCCESS am gleichen HEAD.
+
+## v2-Prepare (2026-09-08, lokal verifiziert)
+- `prepare-v2.ts`: Claim -> PlanningCalculationRequestV2 mit gepinnter
+  Achse, Speicher-Durchreiche ohne stille Defaults, JCS-Hash. Tests
+  `tests/unit/f401-prepare-v2.test.ts` (TDD, zuerst rot). Commit `a0c9556`,
+  CI-Run `34244812524` laeuft (Stand: in_progress).
+
+## v2-Run/Finalize (2026-09-08, lokal verifiziert)
+- `run-v2.ts` (neu, engine-v2.ts eingefroren unberuehrt): Request +
+  PV-/Last-Serien (je exakt 35040, fail-closed) -> dispatchQuarterHours mit
+  zyklischem SoC (leistungsgeclippte Deltas, Fixpunkt exakt bis Float-Drift
+  1e-6), Monatsaggregation (Tagesschluessel 31/28/..., 96 Slots/Tag),
+  Jahresaggregation, Energieerhaltung fail-closed (0.01 kWh),
+  Entladungs-vs-Ladungs-Schranke, gepinnter Tupel, Schema-Validierung.
+- `validate-result-v2.ts` (neu): modellexakte Re-Run-Grenze (Schema +
+  inputSha-Bindung + exakter Diff, Warnungen sortiert normiert), analog
+  validate-result.ts.
+- Tests `tests/unit/f401-run-v2.test.ts`: 5/5 gruen (exakte
+  No-Storage-Bilanz 35040/17520, Monatsabdeckung Jan 2976/Feb 2688,
+  Hash-Bindung+Determinismus, Tag/Nacht-Zyklus mit Verlust, Fail-closed,
+  Finalize-Akzeptanz+Manipulationsabweisung+Sha-Fehlbindung).
+  Nachbarn (Dispatch/Prepare/Contract) 23/23, eslint 0, tsc 0.
+- ESTIMATE (keine stillen Defaults): Serien muessen kuenftige Slices liefern
+  (F4.1B-Geometrie, Provider-Rezepte, Verbrauchsprofile); Warnungsklassen
+  ohne Datengrundlage (unknown_profile_field, bidirectional/backup) werden
+  nicht behauptet. Commit `ad502d5`, Push mit Pre-Push-Hook laeuft.
+- Naechst: v2-Worker-Verdrahtung (calculation-service, 0078-Tupel
+  wiederverwendet) + geneigte PVGIS-Geometrievalidierung.
