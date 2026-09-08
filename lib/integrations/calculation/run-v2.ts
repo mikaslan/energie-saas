@@ -44,8 +44,13 @@ import {
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 const SLOTS_PER_DAY = 96;
 const SLOT_HOURS = 0.25;
-/** Zyklus-Rest nach 35.040 Slots (Float-Drift, vgl. engine.ts 1e-6). */
-const CYCLIC_SOC_ATOL_KWH = 1e-6;
+/**
+ * Zyklus-Rest nach 35.040 Slots (Spec F4-01, Gate-Tabelle: zyklischer SOC
+ * atol 1e-8 kWh). Die Clamp-Komposition ist nicht-expansiv, daher bleibt
+ * die Float-Drift in der Groessenordnung weniger ulps (empirisch 0 in
+ * Tag/Nacht- und Vollastprofilen); die Schranke ist fail-closed.
+ */
+const CYCLIC_SOC_ATOL_KWH = 1e-8;
 /** Jahresbilanz-Toleranz nach Rundung (Vertrag: Centi-kWh). */
 const ANNUAL_BALANCE_ATOL_KWH = 0.01;
 
