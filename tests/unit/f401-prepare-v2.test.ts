@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 
+import { QUARTER_HOUR_SLOTS } from "@/lib/integrations/calculation/engine-v2";
 import {
   PlanningCalculationInputError,
+  buildPlanningCalculationInputV2,
   buildPreparedPlanningCalculationInputV2,
 } from "@/lib/integrations/calculation/prepare-v2";
+import {
+  CALCULATION_V2_MODEL_ID,
+  CALCULATION_V2_MODEL_VERSION,
+  CALCULATION_V2_PROVIDER_RECIPE_VERSION,
+  CALCULATION_V2_SOURCE_REVISION,
+} from "@/lib/integrations/calculation/versions-v2";
 
 // F4.1 v2-Prepare RED: Claim -> Request mit gepinnter Achse, Speicher-
 // Durchreiche und stabilem Input-Hash. Ohne Implementierung rot.
@@ -126,5 +134,110 @@ describe("F4.1 v2 prepare", () => {
         dischargeKw: 5, etaCharge: 0.95, etaDischarge: 0.95,
       } }),
     )).toThrow(PlanningCalculationInputError);
+  });
+});
+
+function workerClaim(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const base = claim() as unknown as Record<string, Record<string, unknown>>;
+  const preparation = base["preparation"] as unknown as Record<string, unknown>;
+  const profile = preparation["profile"] as unknown as {
+    roofs: Array<{ tiltDeg: number; azimuthDeg: number }>;
+  };
+  return {
+    workspaceId: base["workspaceId"],
+    projectId: base["projectId"],
+    siteId: base["siteId"],
+    startedAt: base["startedAt"],
+    addressRevision: base["addressRevision"],
+    pinConfirmedAddressRevision: base["pinConfirmedAddressRevision"],
+    energyProfileId: base["energyProfileId"],
+    energyProfileRevision: base["energyProfileRevision"],
+    confirmedEnergyProfileRevision: base["confirmedEnergyProfileRevision"],
+    confirmedEnergyProfileAddressRevision: base["confirmedEnergyProfileAddressRevision"],
+    projectRequirementId: base["projectRequirementId"],
+    projectRequirementRevision: base["projectRequirementRevision"],
+    sourceCalculatorSnapshotId: base["sourceCalculatorSnapshotId"],
+    contractVersion: base["contractVersion"],
+    providerRecipeVersion: CALCULATION_V2_PROVIDER_RECIPE_VERSION,
+    modelId: CALCULATION_V2_MODEL_ID,
+    modelVersion: CALCULATION_V2_MODEL_VERSION,
+    sourceRevision: CALCULATION_V2_SOURCE_REVISION,
+    defaultsVersion: base["defaultsVersion"],
+    leaseToken: "33333333-3333-4333-8333-333333333333",
+    leaseExpiresAt: new Date("2026-08-29T13:00:00.000Z"),
+    attemptCount: 1,
+    providerRequest: null,
+    input: null,
+    preparation: null,
+    providerRequestV2: { latitude: 52.52, longitude: 13.41 },
+    preparationV2: {
+      schemaVersion: "project-calculation-preparation.v2",
+      latitude: 52.52,
+      longitude: 13.41,
+      providerRecipe: CALCULATION_V2_PROVIDER_RECIPE_VERSION,
+      geometry: {
+        surfaces: profile.roofs.map((roof) => ({
+          tiltDeg: roof.tiltDeg,
+          azimuthDeg: roof.azimuthDeg,
+        })),
+      },
+      profile: preparation["profile"],
+      requirements: preparation["requirements"],
+      sourceSnapshot: preparation["sourceSnapshot"],
+      storage: base["storage"],
+    },
+    ...overrides,
+  };
+}
+
+function workerSeries(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    pvKwh: new Array<number>(QUARTER_HOUR_SLOTS).fill(1),
+    loadKwh: new Array<number>(QUARTER_HOUR_SLOTS).fill(0.5),
+    providerEstimate: false,
+    ...overrides,
+  };
+}
+
+describe("F4.1 v2 execute input builder", () => {
+  it("baut Persist-Argumente aus Worker-Claim und Serien", () => {
+    const prepared = buildPlanningCalculationInputV2({
+      claim: workerClaim(),
+      providerSeries: workerSeries(),
+    });
+    expect(prepared.inputSnapshot.contractVersion).toBe("planning-calculation.v2");
+    expect(prepared.inputSnapshot.bindings?.projectId).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(prepared.inputSnapshot.storage.capacityKwh).toBe(10);
+    expect(prepared.inputSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(prepared.pvKwh).toHaveLength(QUARTER_HOUR_SLOTS);
+    expect(prepared.loadKwh).toHaveLength(QUARTER_HOUR_SLOTS);
+    expect(prepared.providerEstimate).toBe(false);
+  });
+
+  it("weist fehlende Provenienz, fehlenden Quell-Snapshot und kaputte Serien ab", () => {
+    const failingClaims = [
+      workerClaim({ preparationV2: null, providerRequestV2: null }),
+      workerClaim({ sourceCalculatorSnapshotId: null }),
+      workerClaim({ providerRequestV2: { latitude: 52.52, longitude: 999 } }),
+    ];
+    for (const failingClaim of failingClaims) {
+      expect(() => buildPlanningCalculationInputV2({
+        claim: failingClaim,
+        providerSeries: workerSeries(),
+      })).toThrow(PlanningCalculationInputError);
+    }
+    const failingSeries = [
+      workerSeries({ pvKwh: new Array<number>(8760).fill(1) }),
+      workerSeries({ loadKwh: new Array<number>(QUARTER_HOUR_SLOTS).fill(-0.5) }),
+      workerSeries({ providerEstimate: "false" }),
+    ];
+    for (const series of failingSeries) {
+      expect(() => buildPlanningCalculationInputV2({
+        claim: workerClaim(),
+        providerSeries: series,
+      })).toThrow(PlanningCalculationInputError);
+    }
   });
 });

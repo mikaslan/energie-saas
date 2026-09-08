@@ -18,13 +18,18 @@ export {
   claimProjectCalculationJob,
   finalizeProjectCalculationFailure,
   finalizeProjectCalculationSuccess,
+  finalizeProjectCalculationSuccessV2,
   persistProjectCalculationInput,
+  persistProjectCalculationInputV2,
   requeueDueProjectCalculationJobs,
 } from "./calculation-service";
 
 export type {
   PersistedProjectCalculationInput,
+  PersistedProjectCalculationInputV2,
   ProjectCalculationClaim,
+  ProviderSeriesV2,
+  StoredCalculationInputV2,
 } from "./calculation-service";
 
 export type {

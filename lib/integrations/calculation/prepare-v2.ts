@@ -13,6 +13,7 @@ import {
   siteEnergyProfileV1Schema,
 } from "./contract";
 import { planningCalculationRequestV2Schema, type PlanningCalculationRequestV2 } from "./contract-v2";
+import { QUARTER_HOUR_SLOTS } from "./engine-v2";
 import { planningSourceSnapshotSchema } from "./preparation";
 import {
   CALCULATION_V2_CONTRACT_VERSION,
@@ -142,4 +143,105 @@ export function buildPreparedPlanningCalculationInputV2(
   if (!snapshot.success) inputError(snapshot.error);
   const inputSnapshot = snapshot.data!;
   return { inputSha256: hashPlanningCalculationInputV2(inputSnapshot), inputSnapshot };
+}
+
+export type PlanningCalculationProviderRequestV2 = {
+  latitude: number;
+  longitude: number;
+};
+
+export type PlanningCalculationProviderSeriesV2 = {
+  pvKwh: number[];
+  loadKwh: number[];
+  providerEstimate: boolean;
+};
+
+export type PreparedPlanningCalculationPersistV2 = {
+  inputSha256: string;
+  inputSnapshot: PlanningCalculationRequestV2;
+  pvKwh: number[];
+  loadKwh: number[];
+  providerEstimate: boolean;
+};
+
+// Worker-Claim-Sicht (Spec F4-01): Der Execute-Handler uebergibt den Claim
+// so, wie ihn claimProjectCalculationJob liefert. Ungepruefte Fremdschluessel
+// (Pins, Lease) werden gestrippt; benoetigt werden nur Bindungen, Start,
+// Quell-Snapshot, v2-Provenienz und die daraus abgeleitete Provider-Anfrage.
+// Ein fehlender/ungueltiger Teil (keine v2-Provenienz, kein Quell-Snapshot,
+// keine Serien) ist engine_invalid, nie ein stiller Default.
+const executeClaimV2Schema = z.object({
+  workspaceId: z.uuid(),
+  projectId: z.uuid(),
+  siteId: z.uuid(),
+  startedAt: z.union([z.date(), z.iso.datetime({ offset: true })]),
+  addressRevision: z.int().min(1),
+  pinConfirmedAddressRevision: z.int().min(1),
+  energyProfileId: z.uuid(),
+  energyProfileRevision: z.int().min(1),
+  confirmedEnergyProfileRevision: z.int().min(1),
+  confirmedEnergyProfileAddressRevision: z.int().min(1),
+  projectRequirementId: z.uuid(),
+  projectRequirementRevision: z.int().min(1),
+  sourceCalculatorSnapshotId: z.uuid(),
+  contractVersion: z.literal(CALCULATION_V2_CONTRACT_VERSION),
+  defaultsVersion: z.literal(CALCULATION_V2_DEFAULTS_VERSION),
+  providerRequestV2: z.strictObject({
+    latitude: finite().min(-90).max(90),
+    longitude: finite().min(-180).max(180),
+  }),
+  preparationV2: z.object({
+    storage: claimStorageV2Schema,
+    profile: siteEnergyProfileV1Schema,
+    requirements: ProjectRequirementsRechnerV1Schema,
+    sourceSnapshot: planningSourceSnapshotSchema,
+  }),
+});
+
+const providerSeriesInputV2Schema = z.strictObject({
+  pvKwh: z.array(z.number().finite().nonnegative()).length(QUARTER_HOUR_SLOTS),
+  loadKwh: z.array(z.number().finite().nonnegative()).length(QUARTER_HOUR_SLOTS),
+  providerEstimate: z.boolean(),
+});
+
+export function buildPlanningCalculationInputV2(input: {
+  claim: unknown;
+  providerSeries: unknown;
+}): PreparedPlanningCalculationPersistV2 {
+  const claim = executeClaimV2Schema.safeParse(input.claim);
+  if (!claim.success) inputError(claim.error);
+  const series = providerSeriesInputV2Schema.safeParse(input.providerSeries);
+  if (!series.success) inputError(series.error);
+  const value = claim.data!;
+  const prepared = buildPreparedPlanningCalculationInputV2({
+    workspaceId: value.workspaceId,
+    projectId: value.projectId,
+    siteId: value.siteId,
+    startedAt: value.startedAt,
+    addressRevision: value.addressRevision,
+    pinConfirmedAddressRevision: value.pinConfirmedAddressRevision,
+    energyProfileId: value.energyProfileId,
+    energyProfileRevision: value.energyProfileRevision,
+    confirmedEnergyProfileRevision: value.confirmedEnergyProfileRevision,
+    confirmedEnergyProfileAddressRevision: value.confirmedEnergyProfileAddressRevision,
+    projectRequirementId: value.projectRequirementId,
+    projectRequirementRevision: value.projectRequirementRevision,
+    sourceCalculatorSnapshotId: value.sourceCalculatorSnapshotId,
+    contractVersion: value.contractVersion,
+    defaultsVersion: value.defaultsVersion,
+    providerRequest: value.providerRequestV2,
+    storage: value.preparationV2.storage,
+    preparation: {
+      profile: value.preparationV2.profile,
+      requirements: value.preparationV2.requirements,
+      sourceSnapshot: value.preparationV2.sourceSnapshot,
+    },
+  });
+  return {
+    inputSha256: prepared.inputSha256,
+    inputSnapshot: prepared.inputSnapshot,
+    pvKwh: series.data!.pvKwh,
+    loadKwh: series.data!.loadKwh,
+    providerEstimate: series.data!.providerEstimate,
+  };
 }

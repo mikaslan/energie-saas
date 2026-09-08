@@ -21,6 +21,11 @@ import {
   type ProjectCalculationPreparationV1,
 } from "@/lib/integrations/calculation/preparation";
 import {
+  hashProjectCalculationPreparationV2,
+  projectCalculationPreparationV2Schema,
+  type ProjectCalculationPreparationV2,
+} from "@/lib/integrations/calculation/preparation-v2";
+import {
   planningCalculationRequestV2Schema,
   planningCalculationResultV2Schema,
   type PlanningCalculationRequestV2,
@@ -204,7 +209,7 @@ type StoredCalculationInput = {
   providerSnapshot: PlanningCalculationRequestV1["yieldSnapshots"];
 };
 
-type StoredCalculationInputV2 = {
+export type StoredCalculationInputV2 = {
   inputSha256: string;
   inputSnapshot: PlanningCalculationRequestV2;
   providerSnapshot: ProviderSeriesV2;
@@ -283,6 +288,15 @@ export type ProjectCalculationClaim = {
   } | null;
   input: StoredCalculationInput | StoredCalculationInputV2 | null;
   preparation: ProjectCalculationPreparationV1 | null;
+  // v2-Sicht auf dieselbe Zeile: v1-Zeilen tragen hier grundsaetzlich null
+  // (parsePreparationV2 prueft die Zeilenversion), v2-Zeilen die
+  // hash-gepruefte Reservierungs-Provenienz. Der Worker baut daraus
+  // Request und Provider-Anfrage, ohne den Katalog erneut zu lesen.
+  preparationV2: ProjectCalculationPreparationV2 | null;
+  providerRequestV2: {
+    latitude: number;
+    longitude: number;
+  } | null;
 };
 
 function parseStoredInput(
@@ -344,6 +358,23 @@ function parsePreparation(row: ClaimRow): ProjectCalculationPreparationV1 | null
   return parsed.data;
 }
 
+function parsePreparationV2(row: ClaimRow): ProjectCalculationPreparationV2 | null {
+  // Versionsreinheit: v1-Zeilen tragen nie eine v2-Provenienz, auch wenn ihr
+  // preparation_snapshot zufaellig v2-foermig waere. Umgekehrt gilt eine
+  // v2-Zeile ohne hash-echte v2-Provenienz als unbrauchbar (null -> der
+  // Worker verweigert sie fail-closed als engine_invalid).
+  if (row.contract_version !== CALCULATION_V2_CONTRACT_VERSION) return null;
+  if (row.preparation_snapshot === null || row.preparation_sha256 === null) return null;
+  const parsed = projectCalculationPreparationV2Schema.safeParse(
+    row.preparation_snapshot,
+  );
+  if (
+    !parsed.success
+    || hashProjectCalculationPreparationV2(parsed.data) !== row.preparation_sha256
+  ) return null;
+  return parsed.data;
+}
+
 function claimResult(row: ClaimRow): ProjectCalculationClaim {
   const leaseExpiresAt = new Date(row.lease_expires_at as Date | string);
   const startedAt = new Date(row.started_at as Date | string);
@@ -352,6 +383,7 @@ function claimResult(row: ClaimRow): ProjectCalculationClaim {
   }
   const stored = parseStoredInput(row);
   const preparation = parsePreparation(row);
+  const preparationV2 = parsePreparationV2(row);
   return {
     workspaceId: row.workspace_id,
     jobId: row.id,
@@ -387,6 +419,11 @@ function claimResult(row: ClaimRow): ProjectCalculationClaim {
     },
     input: stored,
     preparation: preparation === null ? null : structuredClone(preparation),
+    preparationV2: preparationV2 === null ? null : structuredClone(preparationV2),
+    providerRequestV2: preparationV2 === null ? null : {
+      latitude: preparationV2.latitude,
+      longitude: preparationV2.longitude,
+    },
   };
 }
 
@@ -1009,7 +1046,7 @@ const providerSeriesV2Schema = z.strictObject({
   providerEstimate: z.boolean(),
 });
 
-type ProviderSeriesV2 = z.infer<typeof providerSeriesV2Schema>;
+export type ProviderSeriesV2 = z.infer<typeof providerSeriesV2Schema>;
 
 const storedInputV2Schema = workerKeySchema.extend({
   leaseToken: z.uuid(),

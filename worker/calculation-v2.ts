@@ -1,17 +1,22 @@
 /**
- * F4.1 v2-Workerbausteine (Spec F4-01): Dispatch-Payload, Claim-Pin-Pruefung
- * und Fehlertaxonomie fuer planning-calculation.v2. Additiv neben
- * worker/calculation.ts; der v1-Handler lehnt v2-Claims bereits ab
- * (fremde contractVersion -> engine_invalid).
+ * F4.1 v2-Execute-Handler (Spec F4-01): arbeitet Jobs der eigenen Queue
+ * `calculation.execute.v2` ab — Claim, Pin-Pruefung, Provider-Serien,
+ * Persist, Engine-Lauf, Finalize. Additiv neben worker/calculation.ts; der
+ * v1-Handler lehnt v2-Claims bereits ab (fremde contractVersion ->
+ * engine_invalid), dieser Handler finalisiert v1-Zeilen nie (Pin-Gate).
  *
- * Bewusst noch kein Execute-Handler: Diese reinen Bausteine sind seine
- * exakten kuenftigen Importe. Reservierung und Dispatch (eigene Queue
- * `calculation.execute.v2`) existieren bereits; Ketten-Aktivierung (Spec:
- * v2-Runs erst nach atomarer Aktivierung der gesamten Kette) bleibt bis
- * zum Handler verweigert — kein Pfad arbeitet v2-Jobs ab.
+ * Noch nicht aktiviert: Die Subscription in worker/index.ts folgt erst mit
+ * dem Fetch-Slice (echter provider.fetch); bis dahin arbeitet kein Pfad
+ * v2-Jobs ab (Spec: atomare Ketten-Aktivierung).
  */
 import { z } from "zod";
 
+import type { PlanningCalculationResultV2 } from "../lib/integrations/calculation/contract-v2";
+import type {
+  PlanningCalculationProviderRequestV2,
+  PlanningCalculationProviderSeriesV2,
+  PreparedPlanningCalculationPersistV2,
+} from "../lib/integrations/calculation/prepare-v2";
 import {
   CALCULATION_V2_CONTRACT_VERSION,
   CALCULATION_V2_DEFAULTS_VERSION,
@@ -20,6 +25,11 @@ import {
   CALCULATION_V2_PROVIDER_RECIPE_VERSION,
   CALCULATION_V2_SOURCE_REVISION,
 } from "../lib/integrations/calculation/versions-v2";
+import type {
+  PersistedProjectCalculationInputV2,
+  ProjectCalculationClaim,
+  StoredCalculationInputV2,
+} from "../modules/energy/calculation-service";
 
 export const CALCULATION_V2_DISPATCH_SCHEMA_VERSION =
   "project-calculation-dispatch.v2" as const;
@@ -148,5 +158,235 @@ export function sanitizeV2EngineFailure(error: unknown): SanitizedV2Failure {
     errorCode: "engine_unavailable",
     retryable: true,
     retryAfterMs: safeRetryAfterMs(error),
+  };
+}
+
+export type CalculationV2Database = {
+  claim(input: {
+    workspaceId: string;
+    jobId: string;
+    leaseToken: string;
+  }): Promise<ProjectCalculationClaim | null>;
+  persistInput(input: {
+    workspaceId: string;
+    jobId: string;
+    leaseToken: string;
+    attemptCount: number;
+    inputSnapshot: PreparedPlanningCalculationPersistV2["inputSnapshot"];
+    pvKwh: unknown;
+    loadKwh: unknown;
+    providerEstimate: boolean;
+  }): Promise<PersistedProjectCalculationInputV2>;
+  finalizeSuccess(input: {
+    workspaceId: string;
+    jobId: string;
+    leaseToken: string;
+    attemptCount: number;
+    result: PlanningCalculationResultV2;
+  }): Promise<{ revisionId: string; revision: number; replayed: boolean }>;
+  finalizeFailure(input: {
+    workspaceId: string;
+    jobId: string;
+    leaseToken: string;
+    attemptCount: number;
+    errorCode: string;
+    retryable: boolean;
+    retryAfterMs: number | undefined;
+  }): Promise<unknown>;
+};
+
+export type CalculationV2ExecuteDependencies = {
+  database: CalculationV2Database;
+  provider: {
+    fetch(
+      request: PlanningCalculationProviderRequestV2,
+    ): Promise<PlanningCalculationProviderSeriesV2>;
+  };
+  engine: {
+    calculate(input: {
+      request: PreparedPlanningCalculationPersistV2["inputSnapshot"];
+      pvKwh: number[];
+      loadKwh: number[];
+      providerEstimate: boolean;
+    }): Promise<PlanningCalculationResultV2>;
+  };
+  buildInput(input: {
+    claim: ProjectCalculationClaim;
+    providerSeries: PlanningCalculationProviderSeriesV2;
+  }): Promise<PreparedPlanningCalculationPersistV2> | PreparedPlanningCalculationPersistV2;
+  createLeaseToken(): string;
+};
+
+/**
+ * Versionsreinheit des gespeicherten Inputs: Ein Claim, der das exakte
+ * v2-Tupel traegt, kann laut parseStoredInput nur null oder v2-foermigen
+ * Input tragen (alles andere wirft dort invalid_input). Traegt er dennoch
+ * v1-foermigen Input, ist das ein unbekannter Zustand -> engine_invalid,
+ * nie ein stiller Cross-Version-Lauf.
+ */
+function storedInputV2(
+  input: StoredCalculationInputV2 | { inputSnapshot: { contractVersion: string } } | null,
+): StoredCalculationInputV2 | null {
+  if (input === null) return null;
+  if (
+    "inputSnapshot" in input
+    && input.inputSnapshot !== null
+    && typeof input.inputSnapshot === "object"
+    && (input.inputSnapshot as { contractVersion?: unknown }).contractVersion
+      === CALCULATION_V2_CONTRACT_VERSION
+  ) {
+    return input as StoredCalculationInputV2;
+  }
+  return null;
+}
+
+function storedInputVersionMismatch(
+  input: ProjectCalculationClaim["input"],
+): boolean {
+  return input !== null && storedInputV2(input) === null;
+}
+
+async function recordV2Failure(
+  database: CalculationV2Database,
+  claim: ProjectCalculationClaim,
+  failure: SanitizedV2Failure,
+): Promise<void> {
+  try {
+    await database.finalizeFailure({
+      workspaceId: claim.workspaceId,
+      jobId: claim.jobId,
+      leaseToken: claim.leaseToken,
+      attemptCount: claim.attemptCount,
+      ...failure,
+    });
+  } catch (error) {
+    // Ist die Lease inzwischen verloren oder der fachliche Abschluss bereits
+    // von einem anderen Worker committed, besitzt dieser Handler nichts mehr,
+    // das er fehlerhaft markieren dürfte. Das ist ein idempotenter No-op und
+    // kein neuer pg-boss-Fehler mit möglicherweise rohen DB-Details.
+    const code = errorCode(error);
+    if (code === "stale" || code === "retry_conflict") return;
+    throw error;
+  }
+}
+
+export function createCalculationExecuteV2Handler(
+  dependencies: CalculationV2ExecuteDependencies,
+): (jobs: unknown[]) => Promise<void> {
+  return async (jobs) => {
+    for (const job of jobs) {
+      // pg-boss metadata is deliberately ignored. Only the closed payload is
+      // allowed to select a tenant/domain job.
+      const dispatch = parseCalculationDispatchV2Payload(
+        job !== null && typeof job === "object" && "data" in job
+          ? (job as { data?: unknown }).data
+          : undefined,
+      );
+      const claim = await dependencies.database.claim({
+        workspaceId: dispatch.workspaceId,
+        jobId: dispatch.jobId,
+        leaseToken: dependencies.createLeaseToken(),
+      });
+      if (claim === null) continue;
+      if (!supportsV2ClaimPins(claim) || storedInputVersionMismatch(claim.input)) {
+        await recordV2Failure(dependencies.database, claim, {
+          errorCode: "engine_invalid",
+          retryable: false,
+          retryAfterMs: undefined,
+        });
+        continue;
+      }
+
+      const claimedInput = storedInputV2(claim.input);
+      let effectiveInput: StoredCalculationInputV2;
+      if (claimedInput !== null) {
+        effectiveInput = claimedInput;
+      } else {
+        // Ohne hash-echte v2-Provenienz gibt es weder eine Provider-Anfrage
+        // noch einen Request: fail-closed, kein Fetch ins Blaue.
+        if (claim.providerRequestV2 === null || claim.preparationV2 === null) {
+          await recordV2Failure(dependencies.database, claim, {
+            errorCode: "engine_invalid",
+            retryable: false,
+            retryAfterMs: undefined,
+          });
+          continue;
+        }
+        let providerSeries: PlanningCalculationProviderSeriesV2;
+        try {
+          providerSeries = await dependencies.provider.fetch(
+            claim.providerRequestV2,
+          );
+        } catch (error) {
+          await recordV2Failure(
+            dependencies.database,
+            claim,
+            sanitizeV2ProviderFailure(error),
+          );
+          continue;
+        }
+
+        try {
+          const prepared = await dependencies.buildInput({ claim, providerSeries });
+          const persisted = await dependencies.database.persistInput({
+            workspaceId: claim.workspaceId,
+            jobId: claim.jobId,
+            leaseToken: claim.leaseToken,
+            attemptCount: claim.attemptCount,
+            inputSnapshot: prepared.inputSnapshot,
+            pvKwh: prepared.pvKwh,
+            loadKwh: prepared.loadKwh,
+            providerEstimate: prepared.providerEstimate,
+          });
+          effectiveInput = {
+            inputSha256: persisted.inputSha256,
+            inputSnapshot: persisted.inputSnapshot,
+            providerSnapshot: persisted.providerSeries,
+          };
+        } catch (error) {
+          await recordV2Failure(
+            dependencies.database,
+            claim,
+            sanitizeV2EngineFailure(error),
+          );
+          continue;
+        }
+      }
+
+      let result: PlanningCalculationResultV2;
+      try {
+        result = await dependencies.engine.calculate({
+          request: effectiveInput.inputSnapshot,
+          pvKwh: effectiveInput.providerSnapshot.pvKwh,
+          loadKwh: effectiveInput.providerSnapshot.loadKwh,
+          providerEstimate: effectiveInput.providerSnapshot.providerEstimate,
+        });
+      } catch (error) {
+        await recordV2Failure(
+          dependencies.database,
+          claim,
+          sanitizeV2EngineFailure(error),
+        );
+        continue;
+      }
+
+      try {
+        await dependencies.database.finalizeSuccess({
+          workspaceId: claim.workspaceId,
+          jobId: claim.jobId,
+          leaseToken: claim.leaseToken,
+          attemptCount: claim.attemptCount,
+          result,
+        });
+      } catch (error) {
+        const code = errorCode(error);
+        if (code === "stale" || code === "retry_conflict") continue;
+        await recordV2Failure(
+          dependencies.database,
+          claim,
+          sanitizeV2EngineFailure(error),
+        );
+      }
+    }
   };
 }
