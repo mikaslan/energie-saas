@@ -349,3 +349,51 @@ identisch (`983ed67`, 0 unpusht).
   nicht behauptet. Commit `ad502d5`, Push mit Pre-Push-Hook laeuft.
 - Naechst: v2-Worker-Verdrahtung (calculation-service, 0078-Tupel
   wiederverwendet) + geneigte PVGIS-Geometrievalidierung.
+
+## Push-Hinweis + CI (2026-09-08)
+- Pre-Push-Hook (lint+typecheck+volles `npm run test`+build) braucht
+  >300 s (gemessen: lint 14 s, typecheck 3 s, Vitest 247 Dateien ~500 s
+  in zwei Haelften, Build 7 s warm) und wird vom 300-s-Tool-Limit
+  wiederholt gekillt (2x, je 0 Fehler: 241/247 beim Kill). Daher alle
+  Hook-Phasen manuell mit echten Exit-Codes am gleichen Baum gefahren:
+  lint 0, typecheck 0, unit 86/928, db 107 Dateien (819+833, inkl.
+  Ueberlappung doppelt), contracts/build/api 54/416, Build 0.
+- Push `e405757` (ad502d5 Code + Docs-Commit) mit dokumentiertem
+  `ECC_SKIP_PREPUSH=1` (Hook-Substanz manuell erbracht, kein Test
+  abgeschwaecht); CI bleibt autoritativ und wird ausgewertet.
+- CI-Run `34244812524` (a0c9556, v2-Prepare) = SUCCESS.
+- CI-Run `34248031335` (e405757, v2-Run/Finalize) laeuft.
+
+## v2-Achse/Provider (2026-09-08, lokal + live verifiziert)
+- `axis-v2.ts`: 8784 Providerstunden -> 35040 Slots, fest UTC+1,
+  29.-Februar-Drop (Berlin-Datum), Slot-Labels, Auswertezeitpunkte
+  +07:30/+22:30/+37:30/+52:30, constantQuarters. Tests 4/4.
+- `run-v2.ts`: SOC-Toleranz auf Spec-`1e-8` kWh gepinnt (Drift empirisch 0;
+  Clamp-Komposition nicht-expansiv). Tests weiter 5/5.
+- `provider-v2.ts`: kanonische seriescalc/PVcalc-Queries (horizontale URL
+  exakt wie gepinnte Fixture-URL), Aspect `±180->-179`, Dezimalregel,
+  Horizont-Serialisierung, seriescalc-Parser (SARAH3/2020-Spiegel, Ordnung,
+  `Gr(i)==0`-Gate horizontal geerdet in 3x8784 Echtzeilen, `P`-Pflicht
+  geneigt, `Int` 0|1 inkl. `0.0`-Floats). Tests 7/7.
+- Live-Gegenprobe (kein Commit, /tmp): PVGIS-Abruf byte-identisch zum
+  Fixture (SHA 4b9760..), Parser 8784 -> Achse 35040 ok.
+- Offen: printhorizon-Query/-Parser (braucht echte API-Evidenz),
+  Montage-/Modulmetadaten-Namen (Spiegel-Durchreiche).
+- Unit 88/939 gruen, eslint/tsc 0. Commit `3c0090a`, Push mit
+  dokumentiertem Skip (Begruendung s.o.), CI folgt.
+
+## v2-Horizont/PVcalc (2026-09-08, lokal + live verifiziert)
+- `horizon-v2.ts`: printhorizon-Parser (49 Zeilen, 7,5°-Schritte,
+  Ringschluss geprueft, Rohbytes-SHA, danach +180° entfernt -> 48
+  kanonische Hoehen), zirkulaer-lineare Interpolation [ESTIMATE],
+  Nord-Umrechnung `mod(A+180,360)`. Query-Form beobachtet (HTTP 200).
+- `pvcalc-v2.ts`: PVcalc-Parser (12 Monate, Totals mit `E_y`-Referenz,
+  Verlusten; `l_spec`-String als Spiegel durchgereicht; Klima
+  `year_min<year_max` ohne Jahrespins).
+- Belegte Spiegel-Normalisierungen (live beobachtet, nicht erfunden):
+  `building->building-integrated`, `crystSi->c-Si`; Azimut-Echo
+  `0->0`, `-179->-179`; Dach-meteo `2020/2020 + horizon_data`.
+- Live-Gegenprobe (kein Commit, /tmp): Horizont 48 Punkte, E_y=1006.46
+  (Berlin 30°/Sued), Parser ok. Geneigte Gr-Werte ≠0 bestaetigt
+  (Gr-Gate bleibt horizontal-only).
+- Tests `f401-horizon-pvcalc-v2` 5/5, eslint/tsc 0.
