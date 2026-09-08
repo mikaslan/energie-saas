@@ -474,6 +474,27 @@ identisch (`983ed67`, 0 unpusht).
 - Wetter-vs-Klima geklaert: April-2020-Rekordsonne erklaert alte
   Abweichungen; Apple-to-Apple-MAE 3.3 Wh/m²/h.
 
+## v2-Execute-Handler Slice A (2026-09-08, gepusht 6f042b5, Hook gruen)
+- `claimResult` liefert hash-gepruefte v2-Provenienz (`preparationV2`,
+  `providerRequestV2 {lat,lon}`; v1-Zeilen null, versionsrein). Neu:
+  `worker/calculation-v2-database.ts` (Gateway), `createCalculationExecuteV2Handler`
+  (Claim->Pin-Gate->Fetch->buildInput->Persist->Run->Finalize, sanitizeV2*-Taxonomie),
+  `buildPlanningCalculationInputV2` (prepare-v2, Tupel-Literale, 35040-Serienprüfung).
+- Tests: Handler-Unit 8 (Fakes: Pin-/Versions-/Provenienz-Gates, Frisch-/Stored-Pfad,
+  Rate-Limit, stale-Lease), Composer 2, DB-Claim-Mapping 2 (m111e, v2-positiv + v1-negativ).
+  76/76 betroffene Suiten, tsc+eslint 0.
+- Dormant-sicher: keine Subscription, keine Prod-Caller von
+  `confirmProjectEnergyProfileV2` (nur Tests) -> keine verwaisten Jobs.
+
+## Fetch-Blocker (Befund, kein Code): Dach-Tech hat keine Quelle
+- Echter `provider.fetch` braucht je Dach `pvTechnology/mountingPlace/systemLossPercent`
+  (RoofQuery, Spec-bindend) + 48er-Horizont + Lastreihen-Form. Profil-Daecher tragen nur
+  Geometrie; `catalog-resolution-v2` loest nur Speicher; Spec pinnt keine Defaults;
+  Lastform gehoert zu F4.2+-Profilquellen. Erfinden verboten -> Fetch + Subscription
+  warten auf Upstream (Dach-Tech-Entscheidung: Spec-Amendment mit Defaults oder
+  Katalog-/Profil-Slice + F4.2-Last). Horizont-Builder (`buildPrinthorizonUrl`,
+  site-level) existiert bereits.
+
 ## v2-Leistungsverteilung (2026-09-08, lokal verifiziert, UNPUSHED)
 - `p-distribute-v2.ts`: `P*_h -> P_q` ueber injizierte Hay-Gewichte
   (energieerhaltend, Abort-Gate) + `E_pv,q`-Summation ueber 1..4 Daeche.
