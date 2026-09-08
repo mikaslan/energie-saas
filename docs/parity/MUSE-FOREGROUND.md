@@ -397,3 +397,16 @@ identisch (`983ed67`, 0 unpusht).
   (Berlin 30°/Sued), Parser ok. Geneigte Gr-Werte ≠0 bestaetigt
   (Gr-Gate bleibt horizontal-only).
 - Tests `f401-horizon-pvcalc-v2` 5/5, eslint/tsc 0.
+
+## v2-Tilted-Fixtures (2026-09-08, live verifiziert)
+- `tests/fixtures/f401/pvgis-tilted30-south-2020-{berlin,madrid,stockholm}.json`:
+  je 8784 Stunden (t/gb/gd/gr/hsun/t2m/int/p), Dach 30°/Sued, crystSi,
+  building, 14 %, peakpower 1, echte printhorizon-Horizonte als
+  userhorizon; Provenienz mit URL/SHA/Bytes. URLs mit eigenem
+  buildRoofSeriescalcUrl erzeugt (Dogfooding).
+- Test `f401-tilted-fixtures` 6/6: Integritaet + Provenienz-URL exakt aus
+  dem Builder reproduzierbar (alle 3 Standorte).
+- Beobachtet: Pmax 810 (Sued) vs 432 (Nord, separates /tmp-Sample),
+  geneigtes Gr≠0. Azimut-Echo `0->0`, `-179->-179`.
+- Hinweis: CI-Runs verdrängen sich per Concurrency (ältere = cancelled);
+  maßgeblich ist jeweils der neueste Run.
