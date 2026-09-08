@@ -431,6 +431,15 @@ identisch (`983ed67`, 0 unpusht).
 - Ergebnis: Re-Run = SUCCESS ohne Codeaenderung → Flake bestaetigt,
   kein App-Eingriff noetig. `6b1e559` damit voll gruen.
 
+## CI-Befund 34253965383 (b8bc549, 2026-09-08)
+- Statik/DB/Rollen/Build = SUCCESS; E2E 3 rot: M2-03a:1008 (12-s-Poll auf
+  PDF-Draft-Readiness) + M2-04:272/:322 (`variant_revision_changed`,
+  currentRevision 2).
+- Einstufung: dokumentierte Kaskade (M2-03a-Abbruch → M2-04-Fixture liest
+  Rev 1 gegen Rev 2; vgl. Run 34159018025). App-Code ohne F4.1-Bezug
+  (nur additive lib/tests/docs/Fixtures). Ein Diskriminator-Re-Run laeuft;
+  bei Wieder-Rot wird der Poll-Pfad untersucht statt neu gestartet.
+
 ## v2-Lastprofil (2026-09-08, lokal verifiziert)
 - `load-v2.ts`: `quarter-hour-load-profile.v1` (Achse gepinnt, 35040
   Slots, Neumaier-Jahressumme, Quellenbindung) + Aufloesung der
