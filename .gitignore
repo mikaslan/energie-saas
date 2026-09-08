@@ -11,3 +11,6 @@ test-results/
 # Agent-Rule-Dateien (autogeneriert, bewusst entfernt)
 AGENTS.md
 CLAUDE.md
+
+# F4.1 Solar-Sidecar (lokal, M4-Deployment separat)
+.venv/

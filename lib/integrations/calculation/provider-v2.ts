@@ -17,6 +17,11 @@
  * reproduziert, SHA 4b9760..berlin). Geneigte Snapshots verlangen
  * zusaetzlich endliches `P` [W/kWp].
  *
+ * Belegt (live, Jan/Mitte 2020): Im geneigten Abruf sind `Gb(i)/Gd(i)/
+ * Gr(i)` bereits in-plane (z. B. Jan-12h: 374 vs. 142 horizontal).
+ * Hay-Eingaenge muessen daher aus dem horizontalen Snapshot stammen;
+ * geneigte Komponenten duerfen nie als B_h/D_h/R_h gelesen werden.
+ *
  * Offen (kein Erfinden): printhorizon-Query/-Parser brauchen erst echte
  * API-Evidenz; Montage-/Modulmetadaten-Namen fuer Dach-Snapshots werden als
  * Spiegel durchgereicht, nicht validiert.

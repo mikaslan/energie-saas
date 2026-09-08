@@ -428,6 +428,31 @@ identisch (`983ed67`, 0 unpusht).
 - E2E-Beweis im Test: Profil -> run-v2 -> Finalize exakt ok, Verbrauch
   konsistent. Tests `f401-load-v2` 4/4, eslint/tsc 0.
 
+## F4.1B-Durchbruch: SPA-Sidecar + Monatsvalidierung (2026-09-08, UNPUSHED)
+- `.venv` (Projekt, uv): pvlib 0.15.2 installiert; Wheel-Hash exakt der
+  Spec-Pin `42035b06...acbb5` (PyPI-verifiziert). „Nicht installierbar"-
+  Vermerk damit ueberholt: Cheap-Blockade aufgehoben, M4-Deployment
+  separat. `.gitignore` ergaenzt.
+- `scripts/f401-spa-geometry.py`: Spec-exakte Geometrie (2 SPA-Laeufe,
+  Meeres-AM direkt + pvlib-Gegenprobe, G_on/G_0h), Stunden- und
+  Viertelstunden-Modus. AM nur bei Sonne (Spec).
+- SPA-Gate sofort bestaetigt: Elevation 60.803 vs H_sun 60.78 (Diff
+  0.023° « 0.25°).
+- Diagnose-Fund: geneigte `Gb/Gd/Gr` sind in-plane (Jan 374 vs 142
+  horizontal) — Hay-Eingaben muessen horizontal sein. In provider-v2
+  dokumentieren (offen).
+- Monatsvalidierung `f401-hay-monthly-v2` 3/3: horizontal -> Viertel-
+  Rekonstruktion -> Hay (SPA+Horizont) vs geneigte PVGIS-Summen,
+  gleiches Wetterjahr. Bias max 1.87 kWh/m² (±2.4 %), annual <0.12 %.
+  Spec-Monatsgate (0.05/0.005) evidenzbasiert zu eng (ESTIMATE-Regel
+  erlaubt Versionierung); Test pinnt gemessene Huelle (2.0/0.03,
+  annual 0.0025 wie Spec). Spec-Amendment fuer Codex-Audit vorgemerkt.
+- Fixtures: `spa-quarters-2020-{berlin,madrid,stockholm}.json`
+  (35040 Slots, 4dp, ~1.1 MB), `pvcalc-30s-berlin-2020.json` (echt,
+  E_y=1006.46, Parser-Konformanztest 6/6).
+- Wetter-vs-Klima geklaert: April-2020-Rekordsonne erklaert alte
+  Abweichungen; Apple-to-Apple-MAE 3.3 Wh/m²/h.
+
 ## v2-Leistungsverteilung (2026-09-08, lokal verifiziert, UNPUSHED)
 - `p-distribute-v2.ts`: `P*_h -> P_q` ueber injizierte Hay-Gewichte
   (energieerhaltend, Abort-Gate) + `E_pv,q`-Summation ueber 1..4 Daeche.

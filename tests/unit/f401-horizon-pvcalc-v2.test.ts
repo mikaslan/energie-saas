@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -147,6 +149,18 @@ describe("F4.1 v2 horizon", () => {
 });
 
 describe("F4.1 v2 pvcalc", () => {
+  it("parst die echte Berlin-Response mit E_y=1006.46", () => {
+    const raw = readFileSync(
+      path.resolve(process.cwd(), "tests/fixtures/f401/pvcalc-30s-berlin-2020.json"),
+      "utf8",
+    );
+    const snapshot = parsePVcalcSnapshot(raw);
+    expect(snapshot.annualReferenceKwhPerKwp).toBe(1006.46);
+    expect(snapshot.monthly).toHaveLength(12);
+    expect(snapshot.mounting).toMatchObject({ tiltDeg: 30, place: "building-integrated" });
+    expect(snapshot.module).toMatchObject({ technology: "c-Si", peakPowerKwp: 1 });
+  });
+
   it("parst die Jahresreferenz E_y mit Monaten und Verlusten", () => {
     const snapshot = parsePVcalcSnapshot(syntheticPVcalc());
     expect(snapshot.annualReferenceKwhPerKwp).toBe(1006.46);
