@@ -284,3 +284,15 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (ESTIMATE, naechster Slice): geneigte PVGIS-Validierung braucht
   γ_s-Geometriequelle (pvlib nicht installierbar per Policy) + Migration
   0078+ (v2-Vertragskette).
+
+## 0078 v2-Tupel-Checks (2026-09-08, lokal verifiziert)
+- `drizzle/0078_f4_01_calculation_v2_tuple.sql` (via db:generate, rename
+  per Konvention; Re-Generate ist No-Op): Job-/Revision-Versionschecks
+  akzeptieren v1-Tupel ODER exaktes v2-Tupel (Provider-Rezept, Modell
+  2.0.0, Blob-SHA-Freeze, Defaults v2, Quality/Validation-Paar auf
+  Revision); Preparation-Check laesst zusaetzlich preparation.v2 zu.
+  v1-Verhalten unveraendert, gemischte/unbekannte Tupel fail-closed.
+- Test `tests/db/f401-calculation-v2-tuple.test.ts` (5/5; v2-Fall und
+  Pin-Test waren ohne Migration rot). Pin-Test liest pg_get_constraintdef
+  und schliesst die Kette Migration<->versions-v2<->Engine-Bytes.
+- Regression: m107-Schema/Worker/Contract 49/49, eslint 0, tsc 0.

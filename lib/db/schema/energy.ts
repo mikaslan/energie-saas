@@ -271,19 +271,27 @@ export const projectCalculationJob = pgTable(
         or (
           jsonb_typeof(${t.preparationSnapshot}) = 'object'
           and ${t.preparationSnapshot}->>'schemaVersion'
-            = 'project-calculation-preparation.v1'
+            in ('project-calculation-preparation.v1', 'project-calculation-preparation.v2')
           and octet_length(${t.preparationSha256}) = 32
         )
       ) is true`,
     ),
     check(
       "project_calculation_job_versions_ck",
-      sql`${t.contractVersion} = 'planning-calculation.v1'
-        and length(btrim(${t.providerRecipeVersion})) between 1 and 100
-        and ${t.modelId} = 'wmee-solar'
-        and ${t.modelVersion} ~ '^[0-9]+\\.[0-9]+\\.[0-9]+([+-][a-z0-9.-]+)?$'
-        and ${t.sourceRevision} ~ '^[0-9a-f]{40}$'
-        and ${t.defaultsVersion} = 'wmee-planning-defaults.v1'`,
+      sql`(
+        (${t.contractVersion} = 'planning-calculation.v1'
+          and length(btrim(${t.providerRecipeVersion})) between 1 and 100
+          and ${t.modelId} = 'wmee-solar'
+          and ${t.modelVersion} ~ '^[0-9]+\\.[0-9]+\\.[0-9]+([+-][a-z0-9.-]+)?$'
+          and ${t.sourceRevision} ~ '^[0-9a-f]{40}$'
+          and ${t.defaultsVersion} = 'wmee-planning-defaults.v1')
+        or (${t.contractVersion} = 'planning-calculation.v2'
+          and ${t.providerRecipeVersion} = 'pvgis-5.3-sarah3-2020-quarter-hour.v2'
+          and ${t.modelId} = 'wmee-solar'
+          and ${t.modelVersion} = '2.0.0'
+          and ${t.sourceRevision} = '6637feab232b265020fc4b257574df76a0b071bd'
+          and ${t.defaultsVersion} = 'wmee-planning-defaults.v2')
+      )`,
     ),
     check(
       "project_calculation_job_state_ck",
@@ -477,13 +485,22 @@ export const projectCalculationRevision = pgTable(
     ),
     check(
       "project_calculation_revision_versions_ck",
-      sql`${t.contractVersion} = 'planning-calculation.v1'
-        and ${t.modelId} = 'wmee-solar'
-        and ${t.modelVersion} ~ '^[0-9]+\\.[0-9]+\\.[0-9]+([+-][a-z0-9.-]+)?$'
-        and ${t.sourceRevision} ~ '^[0-9a-f]{40}$'
-        and ${t.defaultsVersion} = 'wmee-planning-defaults.v1'
-        and ${t.quality} = 'server_reproduced_estimate'
-        and ${t.validationStatus} = 'not_f4_reference_validated'`,
+      sql`(
+        (${t.contractVersion} = 'planning-calculation.v1'
+          and ${t.modelId} = 'wmee-solar'
+          and ${t.modelVersion} ~ '^[0-9]+\\.[0-9]+\\.[0-9]+([+-][a-z0-9.-]+)?$'
+          and ${t.sourceRevision} ~ '^[0-9a-f]{40}$'
+          and ${t.defaultsVersion} = 'wmee-planning-defaults.v1'
+          and ${t.quality} = 'server_reproduced_estimate'
+          and ${t.validationStatus} = 'not_f4_reference_validated')
+        or (${t.contractVersion} = 'planning-calculation.v2'
+          and ${t.modelId} = 'wmee-solar'
+          and ${t.modelVersion} = '2.0.0'
+          and ${t.sourceRevision} = '6637feab232b265020fc4b257574df76a0b071bd'
+          and ${t.defaultsVersion} = 'wmee-planning-defaults.v2'
+          and ${t.quality} = 'server_reproduced_public_reference'
+          and ${t.validationStatus} = 'f4_public_reference_validated')
+      )`,
     ),
     check(
       "project_calculation_revision_hash_ck",
