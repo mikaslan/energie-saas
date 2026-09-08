@@ -21,9 +21,17 @@ import { buildPlanningCalculationInput } from
   "../lib/integrations/calculation/prepare";
 import { fetchPvgisYieldSnapshots } from
   "../lib/integrations/calculation/pvgis";
+import { buildPlanningCalculationInputV2 } from
+  "../lib/integrations/calculation/prepare-v2";
+import { fetchPlanningSeriesV2 } from
+  "../lib/integrations/calculation/fetch-compose-v2";
+import { runPlanningCalculationV2 } from
+  "../lib/integrations/calculation/run-v2";
 import { requireServiceDatabaseUrl } from "../lib/db/role-env";
 import { createCalculationExecuteHandler } from "./calculation";
 import { createCalculationDatabaseGateway } from "./calculation-database";
+import { createCalculationExecuteV2Handler } from "./calculation-v2";
+import { createCalculationV2DatabaseGateway } from "./calculation-v2-database";
 import {
   createCatalogImportCleanupHandler,
   createCatalogImportHandler,
@@ -77,6 +85,7 @@ import { createWorkerStartupGate } from "./startup-gate";
 
 const STARTED = new Date().toISOString();
 const CALCULATION_QUEUE = "calculation.execute";
+const CALCULATION_V2_QUEUE = "calculation.execute.v2";
 const OFFER_PDF_QUEUE = "pdf.render";
 const OFFER_RELEASE_CANDIDATE_QUEUE = "offer.release-candidate.render";
 const OFFER_ISSUANCE_QUEUE = "offer-issuance.render.v1";
@@ -148,6 +157,13 @@ const calculationGateway = createCalculationDatabaseGateway(
   (error) => reportFatalWorkerError("calculation-pool", error),
   2,
 );
+// Eigener Pool fuer die v2-Kette (Spec F4-01): dieselbe Isolation wie v1,
+// damit Provider-Fetch und Engine nie eine pg-boss-Transaktion teilen.
+const calculationV2Gateway = createCalculationV2DatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("calculation-v2-pool", error),
+  2,
+);
 const offerPdfGateway = createOfferPdfDatabaseGateway(
   WORKER_URL,
   (error) => reportFatalWorkerError("offer-pdf-pool", error),
@@ -192,6 +208,35 @@ const calculationHandler = createCalculationExecuteHandler({
   engine: {
     async calculate(input) {
       return calculatePlanningEstimate(input);
+    },
+  },
+  createLeaseToken: randomUUID,
+});
+// F4.1 v2-Kette (aktiviert): Fetch aus Planungstechnik + uniformer Basis,
+// Build aus eingefrorener Provenienz, Run aus engine-v2. Echte Abrufe gegen
+// PVGIS mit Rezept-Pins; provider_estimate markiert die Zunaechst-Naeherungen
+// im Resultat.
+const calculationV2Handler = createCalculationExecuteV2Handler({
+  database: calculationV2Gateway.database,
+  provider: {
+    async fetch(request) {
+      const composed = await fetchPlanningSeriesV2({ request });
+      return {
+        pvKwh: composed.pvKwh,
+        loadKwh: composed.loadKwh,
+        providerEstimate: composed.providerEstimate,
+      };
+    },
+  },
+  buildInput: buildPlanningCalculationInputV2,
+  engine: {
+    async calculate(input) {
+      return runPlanningCalculationV2({
+        request: input.request,
+        pvKwh: input.pvKwh,
+        loadKwh: input.loadKwh,
+        providerEstimate: input.providerEstimate,
+      });
     },
   },
   createLeaseToken: randomUUID,
@@ -289,6 +334,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
         await Promise.all([
           bossDatabase.close(),
           calculationGateway.close(),
+          calculationV2Gateway.close(),
           offerPdfGateway.close(),
           offerReleaseCandidateGateway.close(),
           offerIssuanceGateway.close(),
@@ -334,6 +380,8 @@ async function main() {
   if (!CATALOG_IMPORT_ONLY_FOR_E2E) {
     await calculationGateway.probe();
     startupGate.assertOpen();
+    await calculationV2Gateway.probe();
+    startupGate.assertOpen();
     await offerPdfGateway.probe();
     startupGate.assertOpen();
     await offerReleaseCandidateGateway.probe();
@@ -366,6 +414,16 @@ async function main() {
     });
     startupGate.assertOpen();
     await boss.work(CALCULATION_QUEUE, calculationHandler);
+    startupGate.assertOpen();
+    // v2-Queue mit eigenen Defaults (exclusive, kein Retry auf Queue-Ebene,
+    // 900 s Lease-Fenster wie v1 — CONTRACT: scripts/pgboss-bootstrap).
+    await boss.createQueue(CALCULATION_V2_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 0,
+      expireInSeconds: 900,
+    });
+    startupGate.assertOpen();
+    await boss.work(CALCULATION_V2_QUEUE, calculationV2Handler);
     startupGate.assertOpen();
     await boss.createQueue(OFFER_PDF_QUEUE, {
       policy: "exclusive",

@@ -238,7 +238,14 @@ function v2Claim(
     // Provenienzform pinnt der Composer-Test (f401-prepare-v2).
     preparationV2: { latitude: 52.52, longitude: 13.41 } as unknown as
       ProjectCalculationPreparationV2,
-    providerRequestV2: { latitude: 52.52, longitude: 13.41 },
+    providerRequestV2: {
+      latitude: 52.52,
+      longitude: 13.41,
+      roofs: [{ roofId: "dach-sued", tiltDeg: 30, azimuthDeg: 0, areaM2: 52 }],
+      consumption: {
+        householdKwhPerYear: { status: "known", value: 4200, source: "customer_metered" },
+      },
+    },
     ...overrides,
   };
 }
@@ -330,7 +337,11 @@ function setup(options: HandlerSetup = {}): {
           CalculationV2ExecuteDependencies["provider"]["fetch"]
         >[0],
       ) => {
-        expect(request).toEqual({ latitude: 52.52, longitude: 13.41 });
+        expect(request).toMatchObject({
+          latitude: 52.52,
+          longitude: 13.41,
+          roofs: [{ roofId: "dach-sued", tiltDeg: 30, azimuthDeg: 0, areaM2: 52 }],
+        });
         if (options.fetchError !== undefined) throw options.fetchError;
         return SERIES;
       }),

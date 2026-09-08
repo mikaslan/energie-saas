@@ -456,7 +456,12 @@ describe("F4.1 v2 claim mapping", () => {
       claim(tx, fixture.workspaceId, fixture.jobV2Id));
     expect(claimed.contractVersion).toBe(CALCULATION_V2_CONTRACT_VERSION);
     expect(claimed.preparationV2).toEqual(fixture.preparationV2);
-    expect(claimed.providerRequestV2).toEqual({ latitude: 52.52, longitude: 13.41 });
+    expect(claimed.providerRequestV2).toEqual({
+      latitude: 52.52,
+      longitude: 13.41,
+      roofs: [{ roofId: "dach-sued", tiltDeg: 35, azimuthDeg: 5, areaM2: 52 }],
+      consumption: GOLDEN_REQUEST.energyProfile.consumption,
+    });
     expect(claimed.preparation).toBeNull();
     expect(claimed.providerRequest).toBeNull();
     expect(claimed.input).toBeNull();

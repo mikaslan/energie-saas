@@ -7,6 +7,10 @@ import {
   buildPreparedPlanningCalculationInputV2,
 } from "@/lib/integrations/calculation/prepare-v2";
 import {
+  northClockwiseToSouthZero,
+  southZeroToNorthClockwise,
+} from "@/lib/integrations/calculation/preparation-v2";
+import {
   CALCULATION_V2_MODEL_ID,
   CALCULATION_V2_MODEL_VERSION,
   CALCULATION_V2_PROVIDER_RECIPE_VERSION,
@@ -169,7 +173,14 @@ function workerClaim(overrides: Record<string, unknown> = {}): Record<string, un
     providerRequest: null,
     input: null,
     preparation: null,
-    providerRequestV2: { latitude: 52.52, longitude: 13.41 },
+    providerRequestV2: {
+      latitude: 52.52,
+      longitude: 13.41,
+      roofs: [{ roofId: "dach-1", tiltDeg: 30, azimuthDeg: 180, areaM2: 40 }],
+      consumption: {
+        householdKwhPerYear: { status: "known", value: 4200, source: "customer_metered" },
+      },
+    },
     preparationV2: {
       schemaVersion: "project-calculation-preparation.v2",
       latitude: 52.52,
@@ -198,6 +209,26 @@ function workerSeries(overrides: Record<string, unknown> = {}): Record<string, u
     ...overrides,
   };
 }
+
+describe("F4.1 v2 azimuth conventions", () => {
+  it("wandelt Sued-Null <-> Nord-Uhrzeigersinn richtungstreu", () => {
+    expect(southZeroToNorthClockwise(0)).toBe(180);
+    expect(southZeroToNorthClockwise(5)).toBe(185);
+    expect(southZeroToNorthClockwise(-90)).toBe(90);
+    expect(southZeroToNorthClockwise(90)).toBe(270);
+    expect(southZeroToNorthClockwise(180)).toBe(0);
+    expect(northClockwiseToSouthZero(185)).toBe(5);
+    expect(northClockwiseToSouthZero(90)).toBe(-90);
+    expect(northClockwiseToSouthZero(270)).toBe(90);
+    expect(northClockwiseToSouthZero(180)).toBe(0);
+    // -180 entfaellt: physikalisch identisch mit +180 (Nord), numerisch
+    // normalisiert die Rueckwandlung auf +180.
+    for (const deg of [-90, -5, 0, 5, 90, 135, 180]) {
+      expect(northClockwiseToSouthZero(southZeroToNorthClockwise(deg))).toBe(deg);
+    }
+    expect(() => southZeroToNorthClockwise(Number.NaN)).toThrow();
+  });
+});
 
 describe("F4.1 v2 execute input builder", () => {
   it("baut Persist-Argumente aus Worker-Claim und Serien", () => {

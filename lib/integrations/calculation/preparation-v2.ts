@@ -73,3 +73,32 @@ export function hashProjectCalculationPreparationV2(
     .update(canonicalizeCalculationJson(value), "utf8")
     .digest("hex");
 }
+
+/**
+ * Azimut-Konventionen (Spec F4-01, Horizont-Abschnitt:
+ * `azimuthNorthClockwise = mod(A+180°,360°)`, PVGIS-`A=-180°` = Nord):
+ * - Profil-Daecher (v1-Schema): Sued-Null `[-180,180]`, Ost negativ.
+ * - v2-Geometrie-Surfaces: Nord-Uhrzeigersinn `[0,360)`, exklusiv 360.
+ * - PVGIS-`aspect`: Sued-Null `[-180,180]` mit `±180 -> -179`-Spiegelung
+ *   (provider-v2).
+ * Die Reservierung wandelt Profil -> Geometrie, der Fetch Geometrie ->
+ * PVGIS. Rohkopie waere fuer Ostdächer (negativ) ein Schema-Bruch und
+ * fuer alle anderen ein Richtungs-Flip.
+ */
+function finiteAzimuth(value: number, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`f4.1 ${name} ist nicht endlich`);
+  }
+  return value;
+}
+
+export function southZeroToNorthClockwise(azimuthSouthZeroDeg: number): number {
+  const value = finiteAzimuth(azimuthSouthZeroDeg, "Sued-Null-Azimut");
+  return (((value + 180) % 360) + 360) % 360;
+}
+
+export function northClockwiseToSouthZero(azimuthNorthClockwiseDeg: number): number {
+  const value = finiteAzimuth(azimuthNorthClockwiseDeg, "Nord-Azimut");
+  const modded = (((value + 180) % 360) + 360) % 360;
+  return modded > 180 ? modded - 360 : modded;
+}

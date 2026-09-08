@@ -36,6 +36,7 @@ export type {
   ConfirmProjectEnergyProfileInput,
   ConfirmProjectEnergyProfileResult,
   ProjectEnergyCalculationResult,
+  ProjectEnergyCalculationResultV2,
   ProjectEnergyCalculationState,
   ProjectEnergyContext,
   ProjectEnergyProfileCandidate,

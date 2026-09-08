@@ -29,6 +29,7 @@ import {
 import {
   buildProjectCalculationPreparationV2,
   hashProjectCalculationPreparationV2,
+  southZeroToNorthClockwise,
 } from "@/lib/integrations/calculation/preparation-v2";
 import {
   reservationHashV2,
@@ -56,6 +57,13 @@ import {
   CALCULATION_V2_SOURCE_REVISION,
 } from "@/lib/integrations/calculation/versions-v2";
 import type { RechnerCalculationSnapshotV1 } from "@/lib/integrations/rechner/types";
+import {
+  planningCalculationRequestV2Schema,
+  type PlanningCalculationResultV2,
+} from "@/lib/integrations/calculation/contract-v2";
+import { hashPlanningCalculationInputV2 } from "@/lib/integrations/calculation/prepare-v2";
+import { PLANNING_ASSUMPTIONS_V2_VERSION } from "@/lib/integrations/calculation/planning-assumptions-v2";
+import { validatePlanningCalculationResultV2Exactly } from "@/lib/integrations/calculation/validate-result-v2";
 import {
   can,
   PermissionDeniedError,
@@ -189,6 +197,28 @@ export const CALCULATION_RESERVATION_RATE_LIMIT_POLICY_V1 = Object.freeze({
   workspaceMaxPerRollingHour: 300,
 });
 
+export type ProjectEnergyCalculationResultV2 = {
+  id: string;
+  revision: number;
+  value: PlanningCalculationResultV2;
+  binding: {
+    addressRevision: number;
+    profile: { id: string; revision: number };
+    requirement: { id: string; revision: number };
+  };
+  assumptions: {
+    paramsVersion: typeof PLANNING_ASSUMPTIONS_V2_VERSION;
+  };
+  sources: {
+    providerRecipeVersion: string;
+    contractVersion: string;
+    modelId: string;
+    modelVersion: string;
+    sourceRevision: string;
+    paramsVersion: typeof PLANNING_ASSUMPTIONS_V2_VERSION;
+  };
+};
+
 export type ProjectEnergyCalculationResult = {
   id: string;
   revision: number;
@@ -239,9 +269,15 @@ export type ProjectEnergyCalculationState =
       result: ProjectEnergyCalculationResult;
     }
   | {
+      status: "currentV2";
+      jobId: string;
+      resultV2: ProjectEnergyCalculationResultV2;
+    }
+  | {
       status: "stale";
       jobId: string;
       result: ProjectEnergyCalculationResult | null;
+      resultV2?: ProjectEnergyCalculationResultV2 | null;
     };
 
 export type ProjectEnergyContext = {
@@ -633,6 +669,7 @@ async function readProjectEnergySnapshot(
            job.attempt_count as job_attempt_count_ctx,
            job.input_sha256 as job_input_sha256_ctx,
            job.input_snapshot as job_input_snapshot_ctx,
+           job.provider_snapshot as job_provider_snapshot_ctx,
            job.error_code as job_error_code_ctx,
            job.error_retryable as job_error_retryable_ctx,
            revision.id as calculation_revision_id_ctx,
@@ -723,6 +760,7 @@ async function readProjectEnergySnapshot(
       attempt_count: row.job_attempt_count_ctx as number,
       input_sha256: row.job_input_sha256_ctx,
       input_snapshot: row.job_input_snapshot_ctx,
+      provider_snapshot: row.job_provider_snapshot_ctx,
       error_code: row.job_error_code_ctx,
       error_retryable: row.job_error_retryable_ctx,
       calculation_revision_id: row.calculation_revision_id_ctx,
@@ -1412,6 +1450,121 @@ function calculationResultFromJob(
   };
 }
 
+function jobMatchesCurrentBindingsV2(
+  job: ContextJobRow,
+  projectSite: ProjectSiteRow,
+  profile: StoredProfileRow,
+  requirement: RequirementRow,
+): boolean {
+  // Wie v1, aber v2-Tupel. Der Reservierungsschluessel entfaellt bewusst:
+  // Er bindet die Batterie-Provenienz, die der Context nicht aufloest;
+  // Bindungen plus exaktes Tupel tragen die Anzeige.
+  return job.project_id === projectSite.project_id
+    && job.site_id === projectSite.site_id
+    && job.address_revision === projectSite.address_revision
+    && job.pin_confirmed_address_revision === projectSite.address_revision
+    && job.profile_id === profile.id
+    && job.profile_revision === profile.revision
+    && job.confirmed_profile_revision === profile.revision
+    && job.confirmed_address_revision === profile.address_revision
+    && job.requirement_id === requirement.id
+    && job.requirement_revision === requirement.revision
+    && job.source_snapshot_id === requirement.source_snapshot_id
+    && job.provider_recipe_version === CALCULATION_V2_PROVIDER_RECIPE_VERSION
+    && job.contract_version === CALCULATION_V2_CONTRACT_VERSION
+    && job.model_id === CALCULATION_V2_MODEL_ID
+    && job.model_version === CALCULATION_V2_MODEL_VERSION
+    && job.source_revision === CALCULATION_V2_SOURCE_REVISION
+    && job.defaults_version === CALCULATION_V2_DEFAULTS_VERSION;
+}
+
+function calculationResultV2FromJob(
+  job: ContextJobRow,
+  required: boolean,
+): ProjectEnergyCalculationResultV2 | null {
+  if (
+    job.calculation_revision_id === null
+    || job.calculation_revision === null
+    || job.result === null
+    || job.input_sha256 === null
+    || job.input_snapshot === null
+    || job.provider_snapshot === null
+  ) {
+    if (required) throw new EnergyProfileInvalidError();
+    return null;
+  }
+  const input = planningCalculationRequestV2Schema.safeParse(job.input_snapshot);
+  if (!input.success) {
+    if (required) throw new EnergyProfileInvalidError();
+    return null;
+  }
+  const series = job.provider_snapshot as {
+    pvKwh?: unknown;
+    loadKwh?: unknown;
+    providerEstimate?: unknown;
+  };
+  if (typeof series.providerEstimate !== "boolean") {
+    if (required) throw new EnergyProfileInvalidError();
+    return null;
+  }
+  const validated = validatePlanningCalculationResultV2Exactly({
+    request: input.data,
+    pvKwh: series.pvKwh,
+    loadKwh: series.loadKwh,
+    providerEstimate: series.providerEstimate,
+    result: job.result,
+  });
+  if (!validated.ok) {
+    if (required) throw new EnergyProfileInvalidError();
+    return null;
+  }
+  const inputSha256 = hashPlanningCalculationInputV2(input.data);
+  if (
+    !sameBytes(job.input_sha256, Buffer.from(inputSha256, "hex"))
+    || validated.value.inputSha256 !== inputSha256
+    || input.data.bindings.projectId !== job.project_id
+    || input.data.bindings.siteId !== job.site_id
+    || input.data.bindings.addressRevision !== job.address_revision
+    || input.data.bindings.pinConfirmedAddressRevision
+      !== job.pin_confirmed_address_revision
+    || input.data.bindings.energyProfileId !== job.profile_id
+    || input.data.bindings.energyProfileRevision !== job.profile_revision
+    || input.data.bindings.confirmedEnergyProfileRevision
+      !== job.confirmed_profile_revision
+    || input.data.bindings.confirmedEnergyProfileAddressRevision
+      !== job.confirmed_address_revision
+    || input.data.bindings.projectRequirementId !== job.requirement_id
+    || input.data.bindings.projectRequirementRevision !== job.requirement_revision
+    || input.data.bindings.sourceCalculatorSnapshotId !== job.source_snapshot_id
+    || input.data.contractVersion !== job.contract_version
+    || validated.value.model.id !== job.model_id
+    || validated.value.model.version !== job.model_version
+    || validated.value.model.sourceRevision !== job.source_revision
+  ) {
+    if (required) throw new EnergyProfileInvalidError();
+    return null;
+  }
+  return {
+    id: job.calculation_revision_id,
+    revision: job.calculation_revision,
+    value: validated.value,
+    binding: {
+      addressRevision: job.address_revision,
+      profile: { id: job.profile_id, revision: job.profile_revision },
+      requirement: { id: job.requirement_id, revision: job.requirement_revision },
+    },
+    assumptions: { paramsVersion: PLANNING_ASSUMPTIONS_V2_VERSION },
+    sources: {
+      providerRecipeVersion: job.provider_recipe_version,
+      contractVersion: job.contract_version,
+      modelId: job.model_id,
+      modelVersion: job.model_version,
+      sourceRevision: job.source_revision,
+      paramsVersion: PLANNING_ASSUMPTIONS_V2_VERSION,
+    },
+  };
+}
+
 export async function getProjectEnergyContext(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -1456,6 +1609,9 @@ export async function getProjectEnergyContext(
     && profileConfirmed
     && requirement !== null
     && currentRequirement !== null;
+  // v2 gewinnt bei Doppelbindung (Migrationsrichtung): Die v2-Kette traegt
+  // den exakten Tuple-Pin plus provider_estimate-Kennzeichnung; v1 bleibt
+  // Fallback fuer reine v1-Projekte. Beide Matcher sind versionsrein.
   const currentJob = prerequisitesReady
     ? jobs.find((job) => jobMatchesCurrentBindings(
         job,
@@ -1463,8 +1619,15 @@ export async function getProjectEnergyContext(
         projectSite,
         stored,
         requirement,
+      )) ?? jobs.find((job) => jobMatchesCurrentBindingsV2(
+        job,
+        projectSite,
+        stored,
+        requirement,
       ))
     : undefined;
+  const currentJobIsV2 = currentJob !== undefined
+    && currentJob.contract_version === CALCULATION_V2_CONTRACT_VERSION;
 
   let calculation: ProjectEnergyCalculationState;
   if (currentJob !== undefined) {
@@ -1478,6 +1641,15 @@ export async function getProjectEnergyContext(
         jobId: currentJob.id,
         attemptCount: currentJob.attempt_count,
         result: null,
+      };
+    } else if (currentJob.state === "succeeded" && currentJobIsV2) {
+      calculation = {
+        status: "currentV2",
+        jobId: currentJob.id,
+        resultV2: calculationResultV2FromJob(
+          currentJob,
+          true,
+        ) as ProjectEnergyCalculationResultV2,
       };
     } else if (currentJob.state === "succeeded") {
       calculation = {
@@ -1503,11 +1675,16 @@ export async function getProjectEnergyContext(
     }
   } else if (jobs.length > 0) {
     const historical = jobs.find((job) => job.state === "succeeded") ?? jobs[0];
+    const historicalIsV2 = historical.contract_version === CALCULATION_V2_CONTRACT_VERSION
+      && historical.state === "succeeded";
     calculation = {
       status: "stale",
       jobId: historical.id,
-      result: historical.state === "succeeded"
+      result: historical.state === "succeeded" && !historicalIsV2
         ? calculationResultFromJob(historical, false)
+        : null,
+      resultV2: historicalIsV2
+        ? calculationResultV2FromJob(historical, false)
         : null,
     };
   } else {
@@ -1984,9 +2161,12 @@ export async function confirmProjectEnergyProfileV2(
       axis: { slots: 35_040, resolution: "quarter_hour" },
       providerRecipe: CALCULATION_V2_PROVIDER_RECIPE_VERSION,
       geometry: {
+        // Profil (Sued-Null) -> Geometrie (Nord-Uhrzeigersinn, Spec F4-01):
+        // Rohkopie wuerde Ostdächer am 0..360-Schema scheitern lassen und
+        // alle uebrigen Richtungen flippen.
         surfaces: parsedProfile.data.roofs.map((roof) => ({
           tiltDeg: roof.tiltDeg,
-          azimuthDeg: roof.azimuthDeg,
+          azimuthDeg: southZeroToNorthClockwise(roof.azimuthDeg),
         })),
       },
       profile: parsedProfile.data,

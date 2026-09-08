@@ -38,6 +38,8 @@ describe("worker startup shutdown gate", () => {
     expect(source).toContain("startupGate.requestShutdown()");
     expect(source).toMatch(/boss\.start\(\);\s*startupGate\.assertOpen\(\)/u);
     expect(source).toMatch(/boss\.work\(CALCULATION_QUEUE[\s\S]*startupGate\.assertOpen\(\)/u);
+    expect(source).toMatch(/boss\.work\(CALCULATION_V2_QUEUE[\s\S]*startupGate\.assertOpen\(\)/u);
+    expect(source).toMatch(/createQueue\(CALCULATION_V2_QUEUE[\s\S]*retryLimit: 0/u);
     expect(source).toMatch(/startupGate\.assertOpen\(\);\s*server\.listen/u);
   });
 });

@@ -293,9 +293,19 @@ export type ProjectCalculationClaim = {
   // hash-gepruefte Reservierungs-Provenienz. Der Worker baut daraus
   // Request und Provider-Anfrage, ohne den Katalog erneut zu lesen.
   preparationV2: ProjectCalculationPreparationV2 | null;
+  // Vollstaendige Fetch-Anfrage aus eingefrorener Provenienz: Geokoordinaten
+  // plus Profil-Daecher (Sued-Null, mit Flaeche fuer kWp) plus Verbrauch
+  // fuer die Lastbasis. Der Worker liest keinen Katalog erneut.
   providerRequestV2: {
     latitude: number;
     longitude: number;
+    roofs: Array<{
+      roofId: string;
+      tiltDeg: number;
+      azimuthDeg: number;
+      areaM2: number;
+    }>;
+    consumption: unknown;
   } | null;
 };
 
@@ -423,6 +433,13 @@ function claimResult(row: ClaimRow): ProjectCalculationClaim {
     providerRequestV2: preparationV2 === null ? null : {
       latitude: preparationV2.latitude,
       longitude: preparationV2.longitude,
+      roofs: preparationV2.profile.roofs.map((roof) => ({
+        roofId: roof.id,
+        tiltDeg: roof.tiltDeg,
+        azimuthDeg: roof.azimuthDeg,
+        areaM2: roof.areaM2,
+      })),
+      consumption: structuredClone(preparationV2.profile.consumption),
     },
   };
 }

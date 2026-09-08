@@ -148,6 +148,13 @@ export function buildPreparedPlanningCalculationInputV2(
 export type PlanningCalculationProviderRequestV2 = {
   latitude: number;
   longitude: number;
+  roofs: Array<{
+    roofId: string;
+    tiltDeg: number;
+    azimuthDeg: number;
+    areaM2: number;
+  }>;
+  consumption: unknown;
 };
 
 export type PlanningCalculationProviderSeriesV2 = {
@@ -189,6 +196,13 @@ const executeClaimV2Schema = z.object({
   providerRequestV2: z.strictObject({
     latitude: finite().min(-90).max(90),
     longitude: finite().min(-180).max(180),
+    roofs: z.array(z.strictObject({
+      roofId: z.string().trim().min(1).max(64),
+      tiltDeg: finite().min(0).max(90),
+      azimuthDeg: finite().min(-180).max(180),
+      areaM2: finite().gt(0),
+    })).min(1).max(4),
+    consumption: z.unknown(),
   }),
   preparationV2: z.object({
     storage: claimStorageV2Schema,
@@ -229,7 +243,12 @@ export function buildPlanningCalculationInputV2(input: {
     sourceCalculatorSnapshotId: value.sourceCalculatorSnapshotId,
     contractVersion: value.contractVersion,
     defaultsVersion: value.defaultsVersion,
-    providerRequest: value.providerRequestV2,
+    // Nur Geokoordinaten: Daecher/Verbrauch gehoeren dem Fetch, nicht dem
+    // strikten Request-Claim (Extra-Keys wuerden fail-closed abweisen).
+    providerRequest: {
+      latitude: value.providerRequestV2.latitude,
+      longitude: value.providerRequestV2.longitude,
+    },
     storage: value.preparationV2.storage,
     preparation: {
       profile: value.preparationV2.profile,
