@@ -1,0 +1,492 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/planning-calculation.v2.schema.json",
+  "title": "WMEE planning calculation v2",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/result"
+    }
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "planning-calculation.v2"
+        },
+        "canonicalizationVersion": {
+          "type": "string",
+          "const": "planning-jcs.v1"
+        },
+        "branch": {
+          "type": "string",
+          "enum": [
+            "new_installation",
+            "existing_installation"
+          ]
+        },
+        "asOfDate": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "commissioningDate": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "bindings": {
+          "type": "object",
+          "properties": {
+            "workspaceId": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "projectId": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "siteId": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "addressRevision": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "pinConfirmedAddressRevision": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "energyProfileId": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "energyProfileRevision": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "confirmedEnergyProfileRevision": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "confirmedEnergyProfileAddressRevision": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "projectRequirementId": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "projectRequirementRevision": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "sourceCalculatorSnapshotId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "workspaceId",
+            "projectId",
+            "siteId",
+            "addressRevision",
+            "pinConfirmedAddressRevision",
+            "energyProfileId",
+            "energyProfileRevision",
+            "confirmedEnergyProfileRevision",
+            "confirmedEnergyProfileAddressRevision",
+            "projectRequirementId",
+            "projectRequirementRevision",
+            "sourceCalculatorSnapshotId"
+          ],
+          "additionalProperties": false
+        },
+        "site": {
+          "type": "object",
+          "properties": {
+            "countryCode": {
+              "type": "string",
+              "const": "DE"
+            },
+            "latitude": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "longitude": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          "required": [
+            "countryCode",
+            "latitude",
+            "longitude"
+          ],
+          "additionalProperties": false
+        },
+        "axis": {
+          "type": "object",
+          "properties": {
+            "slots": {
+              "type": "number",
+              "const": 35040
+            },
+            "resolution": {
+              "type": "string",
+              "const": "quarter_hour"
+            }
+          },
+          "required": [
+            "slots",
+            "resolution"
+          ],
+          "additionalProperties": false
+        },
+        "storage": {
+          "type": "object",
+          "properties": {
+            "capacityKwh": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "socMinKwh": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "socMaxKwh": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "chargeKw": {
+              "$ref": "#/$defs/__schema5"
+            },
+            "dischargeKw": {
+              "$ref": "#/$defs/__schema6"
+            },
+            "etaCharge": {
+              "$ref": "#/$defs/__schema7"
+            },
+            "etaDischarge": {
+              "$ref": "#/$defs/__schema8"
+            }
+          },
+          "required": [
+            "capacityKwh",
+            "socMinKwh",
+            "socMaxKwh",
+            "chargeKw",
+            "dischargeKw",
+            "etaCharge",
+            "etaDischarge"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "contractVersion",
+        "canonicalizationVersion",
+        "branch",
+        "asOfDate",
+        "commissioningDate",
+        "bindings",
+        "site",
+        "axis",
+        "storage"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        },
+        "__schema1": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "__schema2": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "__schema3": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "__schema4": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "__schema5": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "__schema6": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "__schema7": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "__schema8": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "planning-calculation-result.v2"
+        },
+        "canonicalizationVersion": {
+          "type": "string",
+          "const": "planning-jcs.v1"
+        },
+        "model": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "const": "wmee-solar"
+            },
+            "version": {
+              "type": "string",
+              "const": "2.0.0"
+            },
+            "sourceRevision": {
+              "type": "string",
+              "const": "6637feab232b265020fc4b257574df76a0b071bd"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "sourceRevision"
+          ],
+          "additionalProperties": false
+        },
+        "inputSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "quality": {
+          "type": "string",
+          "const": "server_reproduced_public_reference"
+        },
+        "validationStatus": {
+          "type": "string",
+          "const": "f4_public_reference_validated"
+        },
+        "temporalResolution": {
+          "type": "string",
+          "const": "quarter_hour_35040"
+        },
+        "roundingVersion": {
+          "type": "string",
+          "const": "wmee-energy-rounding.v1"
+        },
+        "annual": {
+          "type": "object",
+          "properties": {
+            "generationKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "consumptionKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "directConsumptionKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "fromStorageKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "selfConsumptionKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "feedInKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "gridImportKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "storageLossKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "selfConsumptionRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "autonomyRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "storageFullCycles": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          },
+          "required": [
+            "generationKwh",
+            "consumptionKwh",
+            "directConsumptionKwh",
+            "fromStorageKwh",
+            "selfConsumptionKwh",
+            "feedInKwh",
+            "gridImportKwh",
+            "storageLossKwh",
+            "selfConsumptionRate",
+            "autonomyRate",
+            "storageFullCycles"
+          ],
+          "additionalProperties": false
+        },
+        "monthly": {
+          "minItems": 12,
+          "maxItems": 12,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "warnings": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        }
+      },
+      "required": [
+        "contractVersion",
+        "canonicalizationVersion",
+        "model",
+        "inputSha256",
+        "quality",
+        "validationStatus",
+        "temporalResolution",
+        "roundingVersion",
+        "annual",
+        "monthly",
+        "warnings"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "type": "object",
+          "properties": {
+            "month": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12
+            },
+            "generationKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "selfConsumptionKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "gridImportKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "feedInKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            }
+          },
+          "required": [
+            "month",
+            "generationKwh",
+            "selfConsumptionKwh",
+            "gridImportKwh",
+            "feedInKwh"
+          ],
+          "additionalProperties": false
+        },
+        "__schema1": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "provider_estimate",
+                "unknown_profile_field",
+                "existing_installation_limited",
+                "bidirectional_charging_not_modeled",
+                "backup_power_not_modeled"
+              ]
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "info",
+                "warning"
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "severity"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "x-semantic-invariants": [
+    "axis is exactly 35040 quarter-hour slots of weather year 2020 without Feb 29",
+    "pvKwh and loadKwh are 35040 finite non-negative kWh values per slot",
+    "inputSha256 uses planning-jcs.v1 over the request",
+    "storage window is ground-based like v1: socMinKwh is 0, socMaxKwh is usable capacity",
+    "charge and discharge power are symmetric; etaCharge and etaDischarge split roundtrip symmetrically",
+    "dispatch is load-first with cyclic state of charge; null storage is a no-op branch",
+    "result contractVersion is planning-calculation-result.v2; the result carries no resultSha256 field",
+    "quality is server_reproduced_public_reference and validationStatus is f4_public_reference_validated",
+    "monthly rows are January through December; monthly sums cover the year exactly",
+    "warnings carry provider_estimate only when the provider series are estimated"
+  ]
+}

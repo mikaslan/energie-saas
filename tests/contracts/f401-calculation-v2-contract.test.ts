@@ -1,12 +1,17 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
   CALCULATION_V2_CONTRACT_VERSION,
   CALCULATION_V2_RESULT_CONTRACT_VERSION,
+  CALCULATION_V2_SCHEMA_SHA256,
 } from "@/lib/integrations/calculation/versions-v2";
 import {
   planningCalculationRequestV2Schema,
   planningCalculationResultV2Schema,
+  renderPlanningCalculationJsonSchemaV2,
   type PlanningCalculationRequestV2,
   type PlanningCalculationResultV2,
 } from "@/lib/integrations/calculation/contract-v2";
@@ -145,5 +150,19 @@ describe("F4.1 v2 result contract", () => {
     const monthly = (result().monthly as unknown[]).slice(0, 11);
     expect(() =>
       planningCalculationResultV2Schema.parse(result({ monthly }))).toThrow();
+  });
+});
+
+describe("F4.1 v2 schema artefact", () => {
+  it("haelt Runtime-Schema, generiertes Artefakt und gepinnten SHA bytegleich", () => {
+    const schemaPath = resolve(
+      import.meta.dirname,
+      "../../contracts/planning-calculation.v2.schema.json",
+    );
+    const schema = readFileSync(schemaPath, "utf8");
+    expect(schema).toBe(renderPlanningCalculationJsonSchemaV2());
+    expect(createHash("sha256").update(schema).digest("hex")).toBe(
+      CALCULATION_V2_SCHEMA_SHA256,
+    );
   });
 });

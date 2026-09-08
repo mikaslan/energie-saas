@@ -125,3 +125,50 @@ export type PlanningCalculationResultV2 = z.infer<
 >;
 export const PlanningCalculationRequestV2Schema = planningCalculationRequestV2Schema;
 export const PlanningCalculationResultV2Schema = planningCalculationResultV2Schema;
+
+function jsonSchemaForV2(schema: z.ZodType): Record<string, unknown> {
+  const generated = z.toJSONSchema(schema, {
+    target: "draft-2020-12",
+    io: "input",
+    cycles: "ref",
+    reused: "ref",
+  }) as Record<string, unknown>;
+  const body = { ...generated };
+  delete body.$schema;
+  return body;
+}
+
+/**
+ * Rendert das bytegepinnte JSON-Schema-Dokument fuer
+ * planning-calculation.v2 (Spec F4-01). Struktur wie v1
+ * (`renderPlanningCalculationJsonSchema`): $defs request/result plus
+ * maschinenpruefbare semantische Invarianten als Freitext-Anker.
+ */
+export function renderPlanningCalculationJsonSchemaV2(): string {
+  const document = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $id: "https://contracts.wmee.internal/planning-calculation.v2.schema.json",
+    title: "WMEE planning calculation v2",
+    oneOf: [
+      { $ref: "#/$defs/request" },
+      { $ref: "#/$defs/result" },
+    ],
+    $defs: {
+      request: jsonSchemaForV2(planningCalculationRequestV2Schema),
+      result: jsonSchemaForV2(planningCalculationResultV2Schema),
+    },
+    "x-semantic-invariants": [
+      "axis is exactly 35040 quarter-hour slots of weather year 2020 without Feb 29",
+      "pvKwh and loadKwh are 35040 finite non-negative kWh values per slot",
+      "inputSha256 uses planning-jcs.v1 over the request",
+      "storage window is ground-based like v1: socMinKwh is 0, socMaxKwh is usable capacity",
+      "charge and discharge power are symmetric; etaCharge and etaDischarge split roundtrip symmetrically",
+      "dispatch is load-first with cyclic state of charge; null storage is a no-op branch",
+      "result contractVersion is planning-calculation-result.v2; the result carries no resultSha256 field",
+      "quality is server_reproduced_public_reference and validationStatus is f4_public_reference_validated",
+      "monthly rows are January through December; monthly sums cover the year exactly",
+      "warnings carry provider_estimate only when the provider series are estimated",
+    ],
+  };
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
