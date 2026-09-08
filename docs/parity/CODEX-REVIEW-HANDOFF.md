@@ -50,6 +50,17 @@ Live-Gegenproben (/tmp, nicht committet): PVGIS-Abruf byte-identisch
 5. Keine eigene AC-Paritaet (P bleibt Providerwert); keine
    Tarif-Arbitrage/20-Jahres-Cashflow (F4.2–F4.5).
 
+## v2-Transport/Fetch (2026-09-08, lokal verifiziert, UNPUSHED)
+- `http-transport.ts`: aus `pvgis.ts` extrahiert (Timeout, 429/529/5xx,
+  Content-Type-Pflicht, Byte-Schranken, Retry-After, Loopback-Override).
+  v1-Orakel `pvgis-provider` 22/22 weiter gruen = verhaltensidentisch.
+- `fetch-v2.ts`: kanonische URLs, Origin-Override (Query intakt),
+  manuelle Redirects (max 3 Same-Origin-Hops, Cross-Origin-Abbruch
+  deterministisch), Abrufzeiten, Fetch+Parse-Komposition.
+- `f401-fetch-v2` 7/7 gegen echten Loopback-HTTP-Server (keine Mocks).
+- Neue Fehlerklassen: `F401FetchError`, `F401RateLimitedError`,
+  `F401ConfigurationError`; `contract_size_exceeded` eigenstaendig.
+
 ## Offene Gates (kein v2-Produktivlauf bis dahin)
 
 - Worker-Epic: Serien-Persistenz + Reservation-v2 + Finalize-v2 +

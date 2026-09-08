@@ -2,11 +2,15 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import type { PlanningCalculationRequestV1 } from "./contract";
+import {
+  fetchTransportText,
+  HttpTransportError,
+  resolveLoopbackOrigin,
+} from "./http-transport";
 
 const DEFAULT_BASE_URL = "https://re.jrc.ec.europa.eu/api/v5_3";
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
-const MAX_RETRY_AFTER_MS = 60 * 60_000;
 const WEATHER_YEAR = 2020;
 const SOURCE_HOURS = 8_784;
 const TARGET_HOURS = 8_760;
@@ -131,122 +135,65 @@ function roundCoordinate(value: number): number {
 }
 
 function providerBaseUrl(): string {
-  const override = process.env.PVGIS_BASE_URL?.trim();
-  if (!override) return DEFAULT_BASE_URL;
-  if (process.env.NODE_ENV === "production") throw providerError("provider_configuration");
+  if (process.env.PVGIS_BASE_URL?.trim()) {
+    const origin = resolveLoopbackOrigin(
+      "PVGIS_BASE_URL",
+      process.env.PVGIS_BASE_URL,
+      "/api/v5_3",
+    );
+    if (origin === null) throw providerError("provider_configuration");
+    return origin;
+  }
+  return DEFAULT_BASE_URL;
+}
 
-  let parsed: URL;
+function mapTransportError(error: HttpTransportError): PvgisProviderError {
+  switch (error.kind) {
+    case "timeout":
+      return providerError("provider_timeout", true);
+    case "rate_limited":
+      return providerError("provider_rate_limited", true, error.retryAfterMs);
+    case "overloaded":
+      return providerError("provider_overloaded", true, error.retryAfterMs);
+    case "unavailable":
+      return providerError("provider_unavailable", true, error.retryAfterMs);
+    case "http_error":
+      return providerError("provider_http_error");
+    case "invalid_response":
+    case "oversize":
+      return providerError("provider_invalid_response");
+  }
+}
+
+async function readLimitedJson(
+  url: string,
+  signal: AbortSignal,
+  didTimeOut: () => boolean,
+): Promise<RawJson> {
+  let response;
   try {
-    parsed = new URL(override);
-  } catch {
-    throw providerError("provider_configuration");
-  }
-
-  const loopback = parsed.hostname === "localhost"
-    || parsed.hostname === "127.0.0.1"
-    || parsed.hostname === "[::1]";
-  const path = parsed.pathname.replace(/\/$/u, "");
-  if (
-    !loopback
-    || (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-    || parsed.username !== ""
-    || parsed.password !== ""
-    || parsed.search !== ""
-    || parsed.hash !== ""
-    || path !== "/api/v5_3"
-  ) {
-    throw providerError("provider_configuration");
-  }
-  return `${parsed.origin}${path}`;
-}
-
-function discardBody(response: Response): void {
-  if (response.body) void response.body.cancel().catch(() => undefined);
-}
-
-function retryAfterMs(response: Response): number | undefined {
-  const value = response.headers.get("retry-after")?.trim();
-  if (!value) return undefined;
-  let milliseconds: number;
-  if (/^\d+$/u.test(value)) {
-    milliseconds = Number(value) * 1_000;
-  } else {
-    const at = Date.parse(value);
-    if (!Number.isFinite(at)) return undefined;
-    milliseconds = Math.max(0, at - Date.now());
-  }
-  if (!Number.isFinite(milliseconds) || milliseconds < 0) return undefined;
-  return Math.min(Math.round(milliseconds), MAX_RETRY_AFTER_MS);
-}
-
-function assertSuccessfulResponse(response: Response): void {
-  if (response.status === 429) {
-    const retryAfter = retryAfterMs(response);
-    discardBody(response);
-    throw providerError("provider_rate_limited", true, retryAfter);
-  }
-  if (response.status === 529) {
-    const retryAfter = retryAfterMs(response);
-    discardBody(response);
-    throw providerError("provider_overloaded", true, retryAfter);
-  }
-  if (response.status >= 500 && response.status <= 599) {
-    const retryAfter = retryAfterMs(response);
-    discardBody(response);
-    throw providerError("provider_unavailable", true, retryAfter);
-  }
-  if (!response.ok) {
-    discardBody(response);
-    throw providerError("provider_http_error");
-  }
-
-  const contentType = response.headers.get("content-type")
-    ?.split(";", 1)[0]
-    ?.trim()
-    .toLowerCase();
-  if (contentType !== "application/json") {
-    discardBody(response);
-    throw providerError("provider_invalid_response");
-  }
-
-  const contentLength = response.headers.get("content-length")?.trim();
-  if (
-    contentLength !== undefined
-    && (!/^\d+$/u.test(contentLength) || Number(contentLength) > MAX_RESPONSE_BYTES)
-  ) {
-    discardBody(response);
-    throw providerError("provider_invalid_response");
-  }
-}
-
-async function readLimitedJson(response: Response): Promise<RawJson> {
-  assertSuccessfulResponse(response);
-  if (!response.body) throw providerError("provider_invalid_response");
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const next = await reader.read();
-    if (next.done) break;
-    size += next.value.byteLength;
-    if (size > MAX_RESPONSE_BYTES) {
-      void reader.cancel().catch(() => undefined);
-      throw providerError("provider_invalid_response");
+    response = await fetchTransportText(url, {
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      maxBytes: MAX_RESPONSE_BYTES,
+      redirect: "error",
+      signal,
+    });
+  } catch (error) {
+    // Eigener Transport-Timeout ODER geteilter Aufrufer-Timeout (Race beider
+    // 10-s-Timer, Ergebnis identisch); sibling-/externe Abbrueche bleiben
+    // provider_unavailable — exakt wie zuvor.
+    if (error instanceof HttpTransportError) {
+      if (error.kind === "timeout" || didTimeOut()) {
+        throw providerError("provider_timeout", true);
+      }
+      throw mapTransportError(error);
     }
-    chunks.push(next.value);
+    if (didTimeOut()) throw providerError("provider_timeout", true);
+    throw providerError("provider_unavailable", true);
   }
-
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
+  if (response.kind !== "ok") throw providerError("provider_unavailable", true);
   try {
-    const rawText = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    return { rawText, value: JSON.parse(rawText) as unknown };
+    return { rawText: response.text, value: JSON.parse(response.text) as unknown };
   } catch {
     throw providerError("provider_invalid_response");
   }
@@ -292,15 +239,7 @@ async function requestTool(
   for (const [name, value] of Object.entries(parameters)) url.searchParams.set(name, value);
 
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-      credentials: "omit",
-      redirect: "error",
-      signal,
-    });
-    return await readLimitedJson(response);
+    return await readLimitedJson(url.toString(), signal, didTimeOut);
   } catch (error) {
     if (error instanceof PvgisProviderError) throw error;
     if (didTimeOut()) throw providerError("provider_timeout", true);

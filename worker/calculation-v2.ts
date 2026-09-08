@@ -114,7 +114,11 @@ export function sanitizeV2ProviderFailure(error: unknown): SanitizedV2Failure {
       retryAfterMs: safeRetryAfterMs(error),
     };
   }
-  if (code === "provider_invalid_response" || code === "contract_size_exceeded") {
+  if (
+    code === "provider_invalid_response"
+    || code === "contract_size_exceeded"
+    || code === "provider_configuration"
+  ) {
     return { errorCode: "provider_invalid", retryable: false, retryAfterMs: undefined };
   }
   return {

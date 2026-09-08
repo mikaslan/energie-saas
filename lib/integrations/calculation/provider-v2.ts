@@ -53,6 +53,37 @@ export class F401SizeError extends Error {
   }
 }
 
+/** Transport-/Verfuegbarkeitsfehler (retryable via Taxonomie-Default). */
+export class F401FetchError extends Error {
+  readonly code = "provider_unavailable" as const;
+  readonly retryAfterMs: number | undefined;
+
+  constructor(readonly detail: string, retryAfterMs?: number) {
+    super(`f4.1 provider unavailable: ${detail}`);
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+/** 429 mit Retry-After (retryable, gedeckelt). */
+export class F401RateLimitedError extends Error {
+  readonly code = "provider_rate_limited" as const;
+  readonly retryAfterMs: number | undefined;
+
+  constructor(retryAfterMs?: number) {
+    super("f4.1 provider rate limited");
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+/** Fehlkonfiguration (deterministisch, nie retryable). */
+export class F401ConfigurationError extends Error {
+  readonly code = "provider_configuration" as const;
+
+  constructor(readonly detail: string) {
+    super(`f4.1 provider misconfigured: ${detail}`);
+  }
+}
+
 function providerError(detail: string): never {
   throw new F401ProviderError(detail);
 }

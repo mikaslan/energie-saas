@@ -88,7 +88,11 @@ describe("F4.1 v2 failure taxonomy", () => {
         retryable: false,
       });
     }
-    for (const code of ["provider_invalid_response", "contract_size_exceeded"]) {
+    for (const code of [
+      "provider_invalid_response",
+      "contract_size_exceeded",
+      "provider_configuration",
+    ]) {
       const error = new Error("x") as Error & { code: string };
       error.code = code;
       expect(sanitizeV2ProviderFailure(error)).toMatchObject({
