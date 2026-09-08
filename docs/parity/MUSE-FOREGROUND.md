@@ -318,3 +318,6 @@ identisch (`983ed67`, 0 unpusht).
 - `preparation-v2.ts`: Schema (Achse, Provider-Rezept, Geometrie-
   Surfaces 1-8, v1-Profil/Requirements/Snapshot wiederverwendet) +
   Builder + JCS-Hash. 3 Contract-Tests (TDD).
+
+## CI zu v2-Vertraegen+Preparation (2026-09-08)
+- Run `34241865505` (5be5d72) = SUCCESS am gleichen HEAD.
