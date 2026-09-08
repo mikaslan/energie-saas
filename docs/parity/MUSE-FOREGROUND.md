@@ -419,6 +419,18 @@ identisch (`983ed67`, 0 unpusht).
 - Berlin geneigt 2020: 1041.3 -> E_y=1006.46, s=0.9665 (Wetter sonniger
   als langjaehrig). Tests `f401-ac-scale-v2` 3/3, eslint/tsc 0.
 
+## CI-Befund 34249355424 (6b1e559, 2026-09-08)
+- Statik/DB/Rollen/Build = SUCCESS; E2E `F301-E2E-04` rot:
+  `[data-offer-content-lock="pending"]` blieb 1 statt 0 (12-s-Timeout
+  nach „Link widerrufen", Race zweier Sessions).
+- Eigenanalyse: kein Produktionsfile referenziert v2-Module (per Search
+  belegt); App-Code identisch zum grünen Vorlauf 34244812524. Einstufung:
+  transienter Timing-Flake in unberührtem F3.1-Code, kein Gate abgeschwächt.
+- Genau ein Re-Run (`gh run rerun --failed`) zur Bestaetigung; bei
+  Wiederholung wird tiefer untersucht statt neu gestartet.
+- Ergebnis: Re-Run = SUCCESS ohne Codeaenderung → Flake bestaetigt,
+  kein App-Eingriff noetig. `6b1e559` damit voll gruen.
+
 ## v2-Lastprofil (2026-09-08, lokal verifiziert)
 - `load-v2.ts`: `quarter-hour-load-profile.v1` (Achse gepinnt, 35040
   Slots, Neumaier-Jahressumme, Quellenbindung) + Aufloesung der
