@@ -1,6 +1,15 @@
 /**
- * F4.1B Clean-Room-Kern: Hay-Diffus-Transposition auf geneigte Flaechen
+ * F4.1B Clean-Room-Kern: Muneer-Diffus-Transposition auf geneigte Flaechen
  * (Spec F4-01-viertelstunden-simulation, Stand SPECIFIED).
+ *
+ * Implementiert die JRC/Muneer-1990-Gleichungen (K(β), N(k_b), S(β,N),
+ * k_t'-Bedeckungsmass, JRC Eq. 28/29/30, pvgis53-shadow-reflection.v1),
+ * dasselbe Modell, das PVGIS laut JRC-Dokumentation ("Data sources &
+ * calculation methods": "The estimation model implemented in PVGIS is the
+ * one developed by Muneer T. (1990)") fuer geneigte Flaechen nutzt.
+ * Fruehere Code-Revisionen trugen das Label "Hay"; die Numerik war und ist
+ * die normative Branch-Reihenfolge 1-5 der Spec (Hay-Davies ist ein anderes
+ * Modell und wird nicht implementiert).
  *
  * Alle Winkel sind Radiant. Geometrie (α, γ_s, G_0h, AM, Horizont) kommt als
  * Eingabe herein und gehoert zur Geometrie-/Provider-Schicht; dieser Kern
@@ -8,16 +17,16 @@
  * PVGIS-Azimut laeuft nach Nord im Uhrzeigersinn: γ_T = mod(A+180°,360°).
  */
 
-export class F401HayError extends Error {
-  readonly code = "f401_hay_invalid_input" as const;
+export class F401MuneerError extends Error {
+  readonly code = "f401_muneer_invalid_input" as const;
 
   constructor(readonly detail: string) {
-    super(`f4.1 hay rejected input: ${detail}`);
+    super(`f4.1 muneer rejected input: ${detail}`);
   }
 }
 
 function fail(detail: string): never {
-  throw new F401HayError(detail);
+  throw new F401MuneerError(detail);
 }
 
 function requireFinite(value: number, name: string): void {
@@ -27,20 +36,20 @@ function requireFinite(value: number, name: string): void {
 /** Rauschregel der Spec: nur `[-1e-9,0)` darf als Nullrauschen gelten. */
 const NOISE_FLOOR = -1e-9;
 
-export function haySnapNoise(value: number, name: string): number {
+export function muneerSnapNoise(value: number, name: string): number {
   requireFinite(value, name);
   if (value < NOISE_FLOOR) fail(`${name} ist materiell negativ (${value})`);
   return value < 0 ? 0 : value;
 }
 
 /** `close(a,e,atol,rtol)` aus der Spec-Gate-Tabelle. */
-export function hayClose(a: number, e: number, atol: number, rtol: number): boolean {
+export function muneerClose(a: number, e: number, atol: number, rtol: number): boolean {
   requireFinite(a, "a");
   requireFinite(e, "e");
   return Math.abs(a - e) <= Math.max(atol, rtol * Math.max(Math.abs(a), Math.abs(e)));
 }
 
-export type HayHourInput = {
+export type MuneerHourInput = {
   /** Direkte Horizontalkomponente B_h [W/m²]. */
   beamHorizontal: number;
   /** Diffuse Horizontalkomponente D_h [W/m²]. */
@@ -61,7 +70,7 @@ export type HayHourInput = {
   horizonElevationRad: number;
 };
 
-export type HaySurface = {
+export type MuneerSurface = {
   /** Neigung β [rad], 0..π/2. */
   tiltRad: number;
   /** Neigung [°], exakt zur Branchwahl (tiltDeg==0 liegt zuerst). */
@@ -72,7 +81,7 @@ export type HaySurface = {
   albedo: number;
 };
 
-export type HayTiltedResult = {
+export type MuneerTiltedResult = {
   beamTilted: number;
   diffuseTilted: number;
   reflectedTilted: number;
@@ -92,10 +101,10 @@ function sOfBetaN(tiltRad: number, n: number): number {
   return (1 + Math.cos(tiltRad)) / 2 + n * kBeta(tiltRad);
 }
 
-export function hayTiltedIrradiance(
-  hour: HayHourInput,
-  surface: HaySurface,
-): HayTiltedResult {
+export function muneerTiltedIrradiance(
+  hour: MuneerHourInput,
+  surface: MuneerSurface,
+): MuneerTiltedResult {
   for (const [name, value] of [
     ["beamHorizontal", hour.beamHorizontal],
     ["diffuseHorizontal", hour.diffuseHorizontal],
@@ -182,10 +191,10 @@ export function hayTiltedIrradiance(
 
   // Branch 5: G_T = B_T + D_T + R_T, mit Rauschregel.
   return {
-    beamTilted: haySnapNoise(beamTilted, "beamTilted"),
-    diffuseTilted: haySnapNoise(diffuseTilted, "diffuseTilted"),
-    reflectedTilted: haySnapNoise(reflectedTilted, "reflectedTilted"),
-    globalTilted: haySnapNoise(
+    beamTilted: muneerSnapNoise(beamTilted, "beamTilted"),
+    diffuseTilted: muneerSnapNoise(diffuseTilted, "diffuseTilted"),
+    reflectedTilted: muneerSnapNoise(reflectedTilted, "reflectedTilted"),
+    globalTilted: muneerSnapNoise(
       beamTilted + diffuseTilted + reflectedTilted,
       "globalTilted",
     ),

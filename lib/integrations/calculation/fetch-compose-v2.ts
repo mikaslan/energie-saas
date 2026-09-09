@@ -2,14 +2,14 @@
  * F4.1 v2-Fetch-Komposition (Spec F4-01 "Providerabrufe"): Standort-
  * Horizont + standortweiter horizontaler seriescalc (Gb_h/Gd_h) + je Dach
  * geneigter seriescalc (PVGIS-Rezept, Planungstechnik) und
- * PVcalc-Jahresreferenz -> PVcalc-Skalierung -> Hay-Geometriegewichte
+ * PVcalc-Jahresreferenz -> PVcalc-Skalierung -> Muneer-Geometriegewichte
  * `G_T,q` (TS-Sonnengeometrie, keine Laufzeit-Abhaengigkeit) ->
  * kWp-Summation; Last aus belegten Provenienz-Quellen (H0, Heizgrad,
  * EV-Pattern, Kuehlgrad, Warmwasser-Tagesgang).
  *
  * Begruendete Zunaechst-Entscheidungen (alle versioniert + transparent):
- * - Substundenform: Hay-Gewichte aus stündlichem Horizontalwetter und
- *   viertelstündlicher Geometrie (`hay-weights-v2`, Albedo 0.2
+ * - Substundenform: Muneer-Gewichte aus stündlichem Horizontalwetter und
+ *   viertelstündlicher Geometrie (`muneer-weights-v2`, Albedo 0.2
  *   fixture-gepinnt); solare Viertelgewichte sind Spec-ESTIMATE.
  * - Planungstechnik/Montage/Verluste/kWp: planning-assumptions-v2
  *   (v1-Produktionspins + dokumentierte Midpoints).
@@ -43,10 +43,10 @@ import {
   buildHotWaterProfileSourceV2,
 } from "./load-shapes-v2";
 import {
-  HAY_WEIGHTS_V2_VERSION,
-  hayQuarterWeightsV2,
+  MUNEER_WEIGHTS_V2_VERSION,
+  muneerQuarterWeightsV2,
   quarterGeometryForHourV2,
-} from "./hay-weights-v2";
+} from "./muneer-weights-v2";
 import {
   PLANNING_ASSUMPTIONS_V2,
   PLANNING_ASSUMPTIONS_V2_VERSION,
@@ -290,7 +290,7 @@ export type ComposedRoofProvenanceV2 = {
 
 export type ComposedSeriesProvenanceV2 = {
   paramsVersion: typeof PLANNING_ASSUMPTIONS_V2_VERSION;
-  subhourMethod: typeof HAY_WEIGHTS_V2_VERSION;
+  subhourMethod: typeof MUNEER_WEIGHTS_V2_VERSION;
   horizonSha256: string;
   horizontalUrl: string;
   horizontalSha256: string;
@@ -407,7 +407,7 @@ async function composeRoofPower(
     hourly,
     annual.annualReferenceKwhPerKwp,
   );
-  // Hay-Flaeche: Aufgeloeste Daecher tragen Sued-Null-Azimute
+  // Muneer-Flaeche: Aufgeloeste Daecher tragen Sued-Null-Azimute
   // (v1-Profilschema); die Konvention wandelt exakt nach Nord (preparation-v2).
   const surface = {
     tiltDeg: roof.tiltDeg,
@@ -443,7 +443,7 @@ async function composeRoofPower(
       }
       quarters = distributeScaledPowerToQuarters(
         pScaled[position]!,
-        hayQuarterWeightsV2({
+        muneerQuarterWeightsV2({
           beamHourWhPerM2: horizontal.beamWhPerM2,
           diffuseHourWhPerM2: horizontal.diffuseWhPerM2,
           quarterGeometry: quarterGeometryForHourV2({
@@ -609,7 +609,7 @@ export async function fetchPlanningSeriesV2(input: {
     existingPvKwh,
     provenance: {
       paramsVersion: PLANNING_ASSUMPTIONS_V2_VERSION,
-      subhourMethod: HAY_WEIGHTS_V2_VERSION,
+      subhourMethod: MUNEER_WEIGHTS_V2_VERSION,
       horizonSha256: horizon.rawSha256,
       horizontalUrl,
       horizontalSha256: horizontal.rawSha256,

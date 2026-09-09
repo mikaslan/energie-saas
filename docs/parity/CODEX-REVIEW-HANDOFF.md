@@ -24,7 +24,7 @@ Gesamt-F1–F16-Uebergabe (diese folgt nach Muses Fertigmeldung).
 | Stueck | Dateien | Beleg |
 |---|---|---|
 | F4.1A Engine (Achse, Rekonstruktion, Dispatch, zykl. SoC) | `lib/integrations/calculation/engine-v2.ts`, `versions-v2.ts` | `f401-quarter-hour-dispatch` 13/13; Blob-SHA-Freeze-Test |
-| F4.1B Hay-Kern (Branches 1–5, Gates) | `hay-v2.ts` | `f401b-hay-transposition` 13 + f401-Speicher 15 |
+| F4.1B Muneer-Kern (Branches 1–5, Gates; JRC/Muneer-1990-Gleichungen wie PVGIS, Code zuvor `hay-*` benannt) | `muneer-v2.ts` | `f401b-muneer-transposition` 13 + f401-Speicher 15 |
 | 0078 v2-Tupel-Checks | `drizzle/0078_*`, `f401-calculation-v2-tuple` | 5/5 DB |
 | v2-Vertraege + Preparation + Prepare | `contract-v2.ts`, `preparation-v2.ts`, `prepare-v2.ts` | Contract 6 + Prepare-TDD |
 | v2-Run/Finalize | `run-v2.ts`, `validate-result-v2.ts` | `f401-run-v2` 5/5 (Fixpunkt, Bilanzen, Fail-closed, Sha-Bindung) |
@@ -36,8 +36,8 @@ Gesamt-F1–F16-Uebergabe (diese folgt nach Muses Fertigmeldung).
 | v2-Workerbausteine (Payload, Pins, Taxonomie) | `worker/calculation-v2.ts` | `m107-calculation-worker-v2` 5/5 |
 | SPA-Sidecar + Geometrie | `scripts/f401-spa-geometry.py`, `.venv` (pvlib 0.15.2, Wheel-Pin PyPI-verifiziert) | Elevation vs H_sun 0.023° « 0.25° |
 | Tilted Fixtures (3 Klimata, 30°/Sued, Real-Horizont) | `tests/fixtures/f401/pvgis-tilted30-south-2020-*.json` | `f401-tilted-fixtures` 6/6 (URL-Rebuild-Lock) |
-| Hay-Nacht-Branch an Echtdaten | `f401-hay-night-v2` | 3/3 (~13.500 Auswertungen) |
-| Hay-Monatsvalidierung | `f401-hay-monthly-v2` | 3/3 (Bias ≤1.87, annual <0.12 %; s. ESTIMATE) |
+| Muneer-Nacht-Branch an Echtdaten | `f401-muneer-night-v2` | 3/3 (~13.500 Auswertungen) |
+| Muneer-Monatsvalidierung | `f401-muneer-monthly-v2` | 3/3 (Bias ≤1.87, annual <0.12 %; s. ESTIMATE) |
 
 Live-Gegenproben (/tmp, nicht committet): PVGIS-Abruf byte-identisch
 (SHA 4b9760), Parser/Achse/URL-Builder an Echtdaten ok.

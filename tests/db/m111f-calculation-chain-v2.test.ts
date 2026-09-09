@@ -55,7 +55,7 @@ import { testPool } from "../setup/test-db";
 // F4.1 v2-Kette durchgaengig: Eingabe (Reservierung mit
 // Batterie-Provenienz) -> Fetch (echte Fixture-Bytes: Berlin 2020,
 // horizontal + tilted-30-Sued + PVcalc-Referenz + DEM-Horizont; nur
-// Transport gefakt, keine Netzabrufe; Subhour via Hay-Geometriegewichte)
+// Transport gefakt, keine Netzabrufe; Subhour via Muneer-Geometriegewichte)
 // -> Build -> Run -> Persist -> sichtbarer Context (currentV2 mit
 // provider_estimate-Warnung). Keine reinen Bausteine:
 // Jede Stufe nutzt die Produktionsfunktion.

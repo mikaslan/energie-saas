@@ -9,12 +9,12 @@ import {
   neumaierSum,
   reconstructQuarters,
 } from "@/lib/integrations/calculation/engine-v2";
-import { hayTiltedIrradiance } from "@/lib/integrations/calculation/hay-v2";
+import { muneerTiltedIrradiance } from "@/lib/integrations/calculation/muneer-v2";
 import { interpolateHorizonElevation } from "@/lib/integrations/calculation/horizon-v2";
 
 // F4.1B Monatsvalidierung gegen echtes PVGIS-Wetterjahr (Berlin/Madrid/
 // Stockholm, 30°/Sued, Albedo 0.2): horizontale Stundenenergie ->
-// Viertelstunden-Rekonstruktion (solare Gewichte) -> Hay je Slot mit
+// Viertelstunden-Rekonstruktion (solare Gewichte) -> Muneer je Slot mit
 // SPA-Geometrie und Horizont -> Monatssummen gegen die geneigten
 // PVGIS-Stundensummen desselben Wetterjahrs.
 //
@@ -60,8 +60,8 @@ function fixture<T>(name: string): T {
   )) as T;
 }
 
-/** Monatssummen Hay-G_T [kWh/m²] und PVGIS-Referenz ueber 8760 Stunden. */
-function monthlyBias(site: keyof typeof SITES): { hay: number[]; ref: number[] } {
+/** Monatssummen Muneer-G_T [kWh/m²] und PVGIS-Referenz ueber 8760 Stunden. */
+function monthlyBias(site: keyof typeof SITES): { muneer: number[]; ref: number[] } {
   const files = SITES[site];
   const horizontal = fixture<{ hours: Hour[] }>(files.horizontal);
   const tilted = fixture<{
@@ -75,7 +75,7 @@ function monthlyBias(site: keyof typeof SITES): { hay: number[]; ref: number[] }
   const kept = horizontal.hours.filter((hour) => observed.has(hour.t));
   if (kept.length !== 8_760) throw new Error("Achsen-Normalisierung verletzt");
   const tiltedByTime = new Map(tilted.hours.map((hour) => [hour.t, hour]));
-  const hay = new Array<number>(12).fill(0);
+  const muneer = new Array<number>(12).fill(0);
   const ref = new Array<number>(12).fill(0);
   for (let hourIndex = 0; hourIndex < 8_760; hourIndex += 1) {
     const hour = kept[hourIndex]!;
@@ -99,7 +99,7 @@ function monthlyBias(site: keyof typeof SITES): { hay: number[]; ref: number[] }
     for (let quarter = 0; quarter < 4; quarter += 1) {
       const [elev, azim, am, g0h] = geo[quarter]!;
       const azimuthNorth = ((azim % 360) + 360) % 360;
-      const result = hayTiltedIrradiance(
+      const result = muneerTiltedIrradiance(
         {
           beamHorizontal: beam[quarter],
           diffuseHorizontal: diff[quarter],
@@ -117,23 +117,23 @@ function monthlyBias(site: keyof typeof SITES): { hay: number[]; ref: number[] }
       hourGt += 0.25 * result.globalTilted;
     }
     const month = Number(hour.t.slice(4, 6)) - 1;
-    hay[month]! += hourGt / 1000;
+    muneer[month]! += hourGt / 1000;
     const reference = tiltedByTime.get(hour.t)!;
     ref[month]! += (reference.gb + reference.gd + reference.gr) / 1000;
   }
-  return { hay, ref };
+  return { muneer, ref };
 }
 
 describe("F4.1B monthly validation on PVGIS weather year", () => {
   for (const site of Object.keys(SITES) as Array<keyof typeof SITES>) {
     it(`${site}: Monats-Bias in gemessener Huelle, annual in Spec-rtol`, () => {
-      const { hay, ref } = monthlyBias(site);
+      const { muneer, ref } = monthlyBias(site);
       for (let month = 0; month < 12; month += 1) {
-        const bias = Math.abs(hay[month]! - ref[month]!);
+        const bias = Math.abs(muneer[month]! - ref[month]!);
         expect(bias).toBeLessThanOrEqual(2.0);
         expect(bias).toBeLessThanOrEqual(0.03 * ref[month]!);
       }
-      const annualBias = Math.abs(neumaierSum(hay) - neumaierSum(ref));
+      const annualBias = Math.abs(neumaierSum(muneer) - neumaierSum(ref));
       expect(annualBias).toBeLessThanOrEqual(0.0025 * neumaierSum(ref));
     }, 180_000);
   }

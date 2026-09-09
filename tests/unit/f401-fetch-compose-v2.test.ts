@@ -23,7 +23,7 @@ import type {
 
 // Fetch-Composer: printhorizon + horizontaler seriescalc (standortweit)
 // + geneigte seriescalc/PVcalc je Dach (PVGIS-Rezept, Planungstechnik)
-// -> PVcalc-Skalierung -> Hay-Geometriegewichte (TS-Geometrie) ->
+// -> PVcalc-Skalierung -> Muneer-Geometriegewichte (TS-Geometrie) ->
 // kWp-Summation; Last aus belegten Provenienz-Quellen (H0, Heizgrad,
 // EV-Pattern, Kuehlgrad, Warmwasser-Tagesgang).
 // Echte Fixture-Bytes (Berlin 2020, live verifiziert).
@@ -382,11 +382,11 @@ describe("F4.1 v2 fetch compose", () => {
     expect(seriesUrl).toContain("angle=30&aspect=0");
     expect(seriesUrl).toContain("pvtechchoice=crystSi&mountingplace=free&loss=14");
     expect(seriesUrl).toContain("usehorizon=1&userhorizon=");
-    // Standortweiter Horizontalabruf (pvcalculation=0) + Hay-Provenienz.
+    // Standortweiter Horizontalabruf (pvcalculation=0) + Muneer-Provenienz.
     const horizontalUrl = transport.urls.find((url) => url.includes("pvcalculation=0"))!;
     expect(horizontalUrl).toContain("lat=52.52&lon=13.41");
     expect(horizontalUrl).toContain("angle=0&aspect=0");
-    expect(composed.provenance.subhourMethod).toBe("hay-geometry-weights.v1");
+    expect(composed.provenance.subhourMethod).toBe("muneer-geometry-weights.v1");
     expect(composed.provenance.horizontalUrl).toBe(horizontalUrl);
     expect(composed.provenance.horizontalSha256).toBe("2".repeat(64));
   });

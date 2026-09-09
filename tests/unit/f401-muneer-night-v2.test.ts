@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { hayTiltedIrradiance } from "@/lib/integrations/calculation/hay-v2";
+import { muneerTiltedIrradiance } from "@/lib/integrations/calculation/muneer-v2";
 
 // F4.1B Pflichtbranch 1 gegen echte geneigte PVGIS-Daten (Berlin/Madrid/
 // Stockholm, 30°/Sued): Bei α<=0 (H_sun==0, direkt aus PVGIS) ist
@@ -41,7 +41,7 @@ const SURFACES = [
 
 describe("F4.1B night branch on tilted PVGIS data", () => {
   for (const site of SITES) {
-    it(`${site}: H_sun==0 -> Hay-G_T==0 ueber alle Neigungen/Azimute`, () => {
+    it(`${site}: H_sun==0 -> Muneer-G_T==0 ueber alle Neigungen/Azimute`, () => {
       const night = tiltedHours(site).filter((hour) => hour.hsun === 0);
       expect(night.length).toBeGreaterThan(4_000);
       // PVGIS-Konsistenz: nachts keine Einstrahlung, keine AC-Leistung.
@@ -50,7 +50,7 @@ describe("F4.1B night branch on tilted PVGIS data", () => {
       )).toBe(true);
       for (const hour of night) {
         for (const surface of SURFACES) {
-          const result = hayTiltedIrradiance(
+          const result = muneerTiltedIrradiance(
             {
               beamHorizontal: hour.gb,
               diffuseHorizontal: hour.gd,

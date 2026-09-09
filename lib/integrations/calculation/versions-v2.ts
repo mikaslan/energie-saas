@@ -34,7 +34,7 @@ export const CALCULATION_V2_DISPATCH_VERSION = "load_first_cyclic_soc.v1" as con
 export const CALCULATION_V2_GRID_EXPORT_LIMIT = "unbounded.v1" as const;
 export const CALCULATION_V2_SOLAR_GEOMETRY_VERSION =
   "noaa-low-precision_spencer-nrel_sealevel.v1" as const;
-export const CALCULATION_V2_SUBHOUR_VERSION = "hay-geometry-weights.v1" as const;
+export const CALCULATION_V2_SUBHOUR_VERSION = "muneer-geometry-weights.v1" as const;
 export const CALCULATION_V2_H0_LOAD_VERSION = "wmee-bdew-h0-dyn.v1" as const;
 export const CALCULATION_V2_DEGREE_DAY_VERSION = "wmee-degree-day.v1" as const;
 export const CALCULATION_V2_LOAD_SHAPES_VERSION = "wmee-load-shapes.v1" as const;

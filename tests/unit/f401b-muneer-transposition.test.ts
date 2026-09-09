@@ -3,19 +3,19 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  hayClose,
-  haySnapNoise,
-  hayTiltedIrradiance,
-  type HayHourInput,
-  type HaySurface,
-} from "@/lib/integrations/calculation/hay-v2";
+  muneerClose,
+  muneerSnapNoise,
+  muneerTiltedIrradiance,
+  type MuneerHourInput,
+  type MuneerSurface,
+} from "@/lib/integrations/calculation/muneer-v2";
 
-// F4.1B: Hay-Clean-Room-Kern, normative Branch-Reihenfolge 1-5 der Spec.
+// F4.1B: Muneer-Clean-Room-Kern, normative Branch-Reihenfolge 1-5 der Spec.
 // Pflichtbranches inkl. exakter Grenzen (α=0.1, k_t'=0.3, cosξ=0).
 
 const DEG = Math.PI / 180;
 
-function hour(overrides: Partial<HayHourInput> = {}): HayHourInput {
+function hour(overrides: Partial<MuneerHourInput> = {}): MuneerHourInput {
   return {
     beamHorizontal: 400,
     diffuseHorizontal: 200,
@@ -30,7 +30,7 @@ function hour(overrides: Partial<HayHourInput> = {}): HayHourInput {
   };
 }
 
-function surface(overrides: Partial<HaySurface> = {}): HaySurface {
+function surface(overrides: Partial<MuneerSurface> = {}): MuneerSurface {
   return {
     tiltRad: 30 * DEG,
     tiltDeg: 30,
@@ -42,15 +42,15 @@ function surface(overrides: Partial<HaySurface> = {}): HaySurface {
 
 describe("F4.1B branch order", () => {
   it("α<=0 nullt alles trotz positiver Eingaben (Branch 1)", () => {
-    const result = hayTiltedIrradiance(hour({ solarElevationRad: -0.05 }), surface());
+    const result = muneerTiltedIrradiance(hour({ solarElevationRad: -0.05 }), surface());
     expect(result).toEqual({ beamTilted: 0, diffuseTilted: 0, reflectedTilted: 0, globalTilted: 0 });
-    const zero = hayTiltedIrradiance(hour({ solarElevationRad: 0 }), surface());
+    const zero = muneerTiltedIrradiance(hour({ solarElevationRad: 0 }), surface());
     expect(zero.globalTilted).toBe(0);
   });
 
   it("tiltDeg==0 liegt vor dem Niedrigsonnenzweig (D_T=D_h, B_T=B_h, R_T=0)", () => {
     const flat = surface({ tiltRad: 0, tiltDeg: 0 });
-    const result = hayTiltedIrradiance(hour({ solarElevationRad: 0.05 }), flat);
+    const result = muneerTiltedIrradiance(hour({ solarElevationRad: 0.05 }), flat);
     expect(result.diffuseTilted).toBe(200);
     expect(result.beamTilted).toBeCloseTo(400, 9);
     expect(result.reflectedTilted).toBe(0);
@@ -58,7 +58,7 @@ describe("F4.1B branch order", () => {
 
   it("Horizontschatten nullt B_T, Reflexion faellt auf D_h zurueck", () => {
     const shaded = hour({ horizonElevationRad: 0.6 });
-    const result = hayTiltedIrradiance(shaded, surface());
+    const result = muneerTiltedIrradiance(shaded, surface());
     expect(result.beamTilted).toBe(0);
     // R_T = ρ·D_h·(1-cosβ)/2
     const expected = 0.2 * 200 * ((1 - Math.cos(30 * DEG)) / 2);
@@ -68,7 +68,7 @@ describe("F4.1B branch order", () => {
   it("Rueckseite (cosξ<=0) verhaelt sich wie Schatten", () => {
     // Sonne Nord, Flaeche Sued, moderate Hoehe -> cosξ<0.
     const rear = hour({ solarAzimuthRad: 0 });
-    const result = hayTiltedIrradiance(rear, surface());
+    const result = muneerTiltedIrradiance(rear, surface());
     expect(result.beamTilted).toBe(0);
     expect(result.reflectedTilted).toBeCloseTo(
       0.2 * 200 * ((1 - Math.cos(30 * DEG)) / 2),
@@ -77,8 +77,8 @@ describe("F4.1B branch order", () => {
   });
 
   it("G_T = B_T+D_T+R_T innerhalb der Spec-Toleranz", () => {
-    const result = hayTiltedIrradiance(hour(), surface());
-    expect(hayClose(
+    const result = muneerTiltedIrradiance(hour(), surface());
+    expect(muneerClose(
       result.globalTilted,
       result.beamTilted + result.diffuseTilted + result.reflectedTilted,
       1e-7,
@@ -99,7 +99,7 @@ describe("F4.1B exact boundaries", () => {
     const cosXi = Math.sin(alpha) * Math.cos(beta)
       + Math.cos(alpha) * Math.sin(beta) * Math.cos(180 * DEG - 180 * DEG);
     const expected = 200 * (s * (1 - kb) + (kb * cosXi) / Math.sin(alpha));
-    const result = hayTiltedIrradiance(hour({ solarElevationRad: alpha }), surface());
+    const result = muneerTiltedIrradiance(hour({ solarElevationRad: alpha }), surface());
     expect(result.diffuseTilted).toBeCloseTo(expected, 9);
   });
 
@@ -112,7 +112,7 @@ describe("F4.1B exact boundaries", () => {
       solarElevationRad: alpha,
       solarAzimuthRad: 180 * DEG + delta,
     });
-    const result = hayTiltedIrradiance(input, surface({
+    const result = muneerTiltedIrradiance(input, surface({
       tiltRad: beta,
       tiltDeg: beta / DEG,
     }));
@@ -133,11 +133,11 @@ describe("F4.1B exact boundaries", () => {
     };
     const beta = 30 * DEG;
     const diffuseAtProbe = 0.5 * gAtBoundary;
-    const at = hayTiltedIrradiance(
+    const at = muneerTiltedIrradiance(
       hour({ ...base, diffuseHorizontal: diffuseAtProbe, globalHorizontal: gAtBoundary }),
       surface(),
     );
-    const below = hayTiltedIrradiance(
+    const below = muneerTiltedIrradiance(
       hour({ ...base, diffuseHorizontal: diffuseAtProbe, globalHorizontal: gAtBoundary * 0.99 }),
       surface(),
     );
@@ -152,26 +152,26 @@ describe("F4.1B exact boundaries", () => {
 
 describe("F4.1B numeric guards", () => {
   it("Rauschregel: [-1e-9,0) wird null, darunter Abbruch", () => {
-    expect(haySnapNoise(-5e-10, "x")).toBe(0);
-    expect(haySnapNoise(0, "x")).toBe(0);
-    expect(() => haySnapNoise(-2e-9, "x")).toThrow();
-    expect(() => haySnapNoise(Number.NaN, "x")).toThrow();
+    expect(muneerSnapNoise(-5e-10, "x")).toBe(0);
+    expect(muneerSnapNoise(0, "x")).toBe(0);
+    expect(() => muneerSnapNoise(-2e-9, "x")).toThrow();
+    expect(() => muneerSnapNoise(Number.NaN, "x")).toThrow();
   });
 
   it("weist unphysikalische Eingaben ab", () => {
-    expect(() => hayTiltedIrradiance(
+    expect(() => muneerTiltedIrradiance(
       hour({ beamHorizontal: -1 }),
       surface(),
     )).toThrow();
-    expect(() => hayTiltedIrradiance(
+    expect(() => muneerTiltedIrradiance(
       hour(),
       surface({ tiltRad: 100 * DEG }),
     )).toThrow();
-    expect(() => hayTiltedIrradiance(
+    expect(() => muneerTiltedIrradiance(
       hour(),
       surface({ albedo: 1.5 }),
     )).toThrow();
-    expect(() => hayTiltedIrradiance(
+    expect(() => muneerTiltedIrradiance(
       hour({ extraterrestrialHorizontal: 0 }),
       surface(),
     )).toThrow();

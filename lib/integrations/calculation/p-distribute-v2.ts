@@ -1,7 +1,7 @@
 /**
  * F4.1 v2-Leistungsverteilung (Spec F4-01, Abschnitt
  * "AC-Leistungsstrategie"): skalierte Stundenleistung `P*_h` [W/kWp] wird
- * ueber das eigene Hay-`G_T,q` energieerhaltend auf Viertelstunden
+ * ueber das eigene Muneer-`G_T,q` energieerhaltend auf Viertelstunden
  * verteilt; danach Ueberfuehrung in Slotenergie und Summation ueber alle
  * Daeche:
  *
@@ -10,7 +10,7 @@
  * E_pv,q [kWh] = 0.25/1000 · Σ_roof(roofPeakPowerKwp·P_q,roof [W/kWp])
  * ```
  *
- * Bei `P*_h>0 && sum(G_T,q)==0` wird abgebrochen. Hay steuert nur die
+ * Bei `P*_h>0 && sum(G_T,q)==0` wird abgebrochen. Muneer steuert nur die
  * Substundenform. `G_T,q` kommt aus dem Geometrie-Slice (F4.1B,
  * SPA-abhaengig) herein; dieses Modul prueft nur Form und
  * Energieerhaltung. Ein kategorialer `shadingFactor` wird nicht nochmals
@@ -29,7 +29,7 @@ function distributeError(detail: string): never {
 }
 
 /**
- * Eine Stunde `P*_h` [W/kWp] ueber vier Hay-Gewichte `G_T,q` verteilen.
+ * Eine Stunde `P*_h` [W/kWp] ueber vier Muneer-Gewichte `G_T,q` verteilen.
  * Identische Mathematik wie reconstructQuarters, jedoch mit
  * W/kWp-Einheiten im Gate und provider/...-Fehlerklasse fuer die
  * Worker-Schicht.

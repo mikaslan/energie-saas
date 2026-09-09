@@ -1,5 +1,5 @@
 /**
- * F4.1 v2-Hay-Gewichte (Geometrie-Slice, Spec F4-01 "Solarposition" +
+ * F4.1 v2-Muneer-Gewichte (Geometrie-Slice, Spec F4-01 "Solarposition" +
  * "Viertelstunden-Rekonstruktion"): je normalisierter Stunde die vier
  * geneigten Gewichte `G_T,q` [W/m²] aus stündlichen Horizontal-
  * komponenten und viertelstündlicher TS-Geometrie.
@@ -9,7 +9,7 @@
  *    solare Gewichte (`directWeight`/`diffuseWeight`, Spec-ESTIMATE) mit
  *    `reconstructQuarters` energieerhaltend auf Viertel verteilen.
  *    Positive Stundenenergie ohne Gewicht bricht fail-closed ab (Spec).
- * 2. Je Viertel `hayTiltedIrradiance` mit Viertelgeometrie
+ * 2. Je Viertel `muneerTiltedIrradiance` mit Viertelgeometrie
  *    (Elevation/Azimut/AM/G0h aus `solar-geometry-v2`), Bodenreflexion
  *    null (PVGIS-Rezept: `Gr(i)=0` horizontal, Parser-gepinnt) und
  *    Horizont in Sonnenrichtung (`interpolateHorizonElevation`).
@@ -23,7 +23,7 @@
  * bricht die Verteilung fail-closed ab statt flach zu verteilen.
  */
 import { diffuseWeight, directWeight, reconstructQuarters } from "./engine-v2";
-import { hayTiltedIrradiance, type HaySurface } from "./hay-v2";
+import { muneerTiltedIrradiance, type MuneerSurface } from "./muneer-v2";
 import { interpolateHorizonElevation } from "./horizon-v2";
 import { F401ProviderError } from "./provider-v2";
 import {
@@ -32,25 +32,25 @@ import {
 } from "./solar-geometry-v2";
 import { CALCULATION_V2_SUBHOUR_VERSION } from "./versions-v2";
 
-export const HAY_WEIGHTS_V2_VERSION = CALCULATION_V2_SUBHOUR_VERSION;
+export const MUNEER_WEIGHTS_V2_VERSION = CALCULATION_V2_SUBHOUR_VERSION;
 
 /** Fixture-gepinnte Albedo (oeffentliche PVGIS-Fixtures: 0.2). */
-export const HAY_WEIGHTS_ALBEDO = 0.2;
+export const MUNEER_WEIGHTS_ALBEDO = 0.2;
 
 const D2R = Math.PI / 180;
 
 function weightsError(detail: string): never {
-  throw new F401ProviderError(`Hay-Gewichte v2 verletzt: ${detail}`);
+  throw new F401ProviderError(`Muneer-Gewichte v2 verletzt: ${detail}`);
 }
 
-export type HayWeightsSurface = {
+export type MuneerWeightsSurface = {
   /** Dachneigung [°], 0..90. */
   tiltDeg: number;
   /** Dachazimut [°, Nord/Uhrzeigersinn, Spec-Geometrie]. */
   azimuthDegNorth: number;
 };
 
-export type HayWeightsHourInput = {
+export type MuneerWeightsHourInput = {
   /** Horizontale Direktkomponente der Stunde [Wh/m²]. */
   beamHourWhPerM2: number;
   /** Horizontale Diffuskomponente der Stunde [Wh/m²]. */
@@ -64,7 +64,7 @@ export type HayWeightsHourInput = {
   ];
   /** Standort-Horizont (48 Hoehen [°], Nord/Uhrzeigersinn). */
   horizonHeights48: readonly number[];
-  surface: HayWeightsSurface;
+  surface: MuneerWeightsSurface;
 };
 
 function requireHourFinite(value: number, name: string): void {
@@ -73,11 +73,11 @@ function requireHourFinite(value: number, name: string): void {
 }
 
 /**
- * Vier Hay-Gewichte `G_T,q` [W/m²] fuer eine Stunde. Alle Eingaben
+ * Vier Muneer-Gewichte `G_T,q` [W/m²] fuer eine Stunde. Alle Eingaben
  * fail-closed; das Ergebnis ist nichtnegativ und endlich.
  */
-export function hayQuarterWeightsV2(
-  input: HayWeightsHourInput,
+export function muneerQuarterWeightsV2(
+  input: MuneerWeightsHourInput,
 ): [number, number, number, number] {
   requireHourFinite(input.beamHourWhPerM2, "Gb_h");
   requireHourFinite(input.diffuseHourWhPerM2, "Gd_h");
@@ -94,11 +94,11 @@ export function hayQuarterWeightsV2(
   if (!Number.isFinite(azimuthDegNorth) || azimuthDegNorth < 0 || azimuthDegNorth >= 360) {
     weightsError("Dachazimut ausserhalb [0,360)");
   }
-  const surface: HaySurface = {
+  const surface: MuneerSurface = {
     tiltRad: tiltDeg * D2R,
     tiltDeg,
     azimuthRad: azimuthDegNorth * D2R,
-    albedo: HAY_WEIGHTS_ALBEDO,
+    albedo: MUNEER_WEIGHTS_ALBEDO,
   };
   const direct = input.quarterGeometry.map((geo) => directWeight(geo.elevationDeg * D2R)) as [
     number, number, number, number,
@@ -120,7 +120,7 @@ export function hayQuarterWeightsV2(
     const azimuthNorth = ((geo.azimuthDegNorth % 360) + 360) % 360;
     let tilted: { globalTilted: number };
     try {
-      tilted = hayTiltedIrradiance(
+      tilted = muneerTiltedIrradiance(
         {
           beamHorizontal: beamQuarters[quarter]!,
           diffuseHorizontal: diffuseQuarters[quarter]!,
@@ -136,14 +136,14 @@ export function hayQuarterWeightsV2(
         surface,
       );
     } catch {
-      weightsError(`Hay-Ablehnung im Viertel ${quarter}`);
+      weightsError(`Muneer-Ablehnung im Viertel ${quarter}`);
     }
     weights[quarter] = tilted.globalTilted;
   }
   return weights;
 }
 
-export type HayWeightsSiteInput = {
+export type MuneerWeightsSiteInput = {
   latitude: number;
   longitude: number;
   /** ISO-Auswertezeitpunkte der 4 Viertel (Achsenreihenfolge). */
@@ -155,7 +155,7 @@ export type HayWeightsSiteInput = {
  * (duenne Huelle um `solarQuarterGeometryUtc`, Fehlerklasse des Aufrufers).
  */
 export function quarterGeometryForHourV2(
-  input: HayWeightsSiteInput,
+  input: MuneerWeightsSiteInput,
 ): [
   SolarQuarterGeometry,
   SolarQuarterGeometry,

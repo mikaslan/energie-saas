@@ -7,7 +7,7 @@ import {
 } from "@/lib/integrations/calculation/p-distribute-v2";
 import { F401ProviderError } from "@/lib/integrations/calculation/provider-v2";
 
-// F4.1 v2-Leistungsverteilung: P*_h -> P_q (Hay-Gewichte injiziert) ->
+// F4.1 v2-Leistungsverteilung: P*_h -> P_q (Muneer-Gewichte injiziert) ->
 // E_pv,q ueber alle Daeche.
 
 describe("F4.1 v2 power distribution", () => {

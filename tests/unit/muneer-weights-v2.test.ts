@@ -4,14 +4,14 @@ import { describe, expect, it } from "vitest";
 
 import { mapProviderYearToQuarterSlots } from "@/lib/integrations/calculation/axis-v2";
 import {
-  HAY_WEIGHTS_ALBEDO,
-  HAY_WEIGHTS_V2_VERSION,
-  hayQuarterWeightsV2,
+  MUNEER_WEIGHTS_ALBEDO,
+  MUNEER_WEIGHTS_V2_VERSION,
+  muneerQuarterWeightsV2,
   quarterGeometryForHourV2,
-} from "@/lib/integrations/calculation/hay-weights-v2";
+} from "@/lib/integrations/calculation/muneer-weights-v2";
 import { neumaierSum } from "@/lib/integrations/calculation/engine-v2";
 
-// Hay-Gewichtemodul gegen echtes PVGIS-Wetterjahr: horizontale Stunden
+// Muneer-Gewichtemodul gegen echtes PVGIS-Wetterjahr: horizontale Stunden
 // (Gb/Gd) + TS-Geometrie -> G_T,q je Stunde; Jahressumme gegen die
 // geneigten PVGIS-Stundensummen (30°/Sued, Albedo 0.2) desselben Jahrs.
 // Zusaetzlich: kein einziger Fehl-Abbruch auf 3 x 8760 echten Stunden
@@ -40,10 +40,10 @@ function fixture<T>(site: string, kind: string): T {
   )) as T;
 }
 
-describe("hay quarter weights on PVGIS weather year", () => {
+describe("muneer quarter weights on PVGIS weather year", () => {
   it("pins version and albedo", () => {
-    expect(HAY_WEIGHTS_V2_VERSION).toBe("hay-geometry-weights.v1");
-    expect(HAY_WEIGHTS_ALBEDO).toBe(0.2);
+    expect(MUNEER_WEIGHTS_V2_VERSION).toBe("muneer-geometry-weights.v1");
+    expect(MUNEER_WEIGHTS_ALBEDO).toBe(0.2);
   });
 
   for (const [site, coords] of Object.entries(SITES)) {
@@ -57,7 +57,7 @@ describe("hay quarter weights on PVGIS weather year", () => {
       const kept = horizontal.hours.filter((hour) => observed.has(hour.t));
       expect(kept.length).toBe(8_760);
       const tiltedByTime = new Map(tilted.hours.map((hour) => [hour.t, hour]));
-      let hayAnnual = 0;
+      let muneerAnnual = 0;
       let refAnnual = 0;
       let nightHours = 0;
       for (let hourIndex = 0; hourIndex < 8_760; hourIndex += 1) {
@@ -70,8 +70,8 @@ describe("hay quarter weights on PVGIS weather year", () => {
           slots[base + 3]!.evaluationInstantUtc,
         ] as [string, string, string, string];
         // Dachazimut: Tilted-Fixture aspectDeg=0 (PVGIS Sued-Null)
-        // -> 180° Nord/Uhrzeigersinn (Spec-Konvention, hay-v2).
-        const weights = hayQuarterWeightsV2({
+        // -> 180° Nord/Uhrzeigersinn (Spec-Konvention, muneer-v2).
+        const weights = muneerQuarterWeightsV2({
           beamHourWhPerM2: hour.gb,
           diffuseHourWhPerM2: hour.gd,
           quarterGeometry: quarterGeometryForHourV2({
@@ -92,12 +92,12 @@ describe("hay quarter weights on PVGIS weather year", () => {
         } else {
           expect(weights[0]! + weights[1]! + weights[2]! + weights[3]!).toBeGreaterThan(0);
         }
-        hayAnnual += 0.25 * neumaierSum(weights);
+        muneerAnnual += 0.25 * neumaierSum(weights);
         const reference = tiltedByTime.get(hour.t)!;
         refAnnual += reference.gb + reference.gd + reference.gr;
       }
       expect(nightHours).toBeGreaterThan(3_000);
-      expect(Math.abs(hayAnnual - refAnnual)).toBeLessThanOrEqual(0.0025 * refAnnual);
+      expect(Math.abs(muneerAnnual - refAnnual)).toBeLessThanOrEqual(0.0025 * refAnnual);
     }, 240_000);
   }
 
@@ -119,15 +119,15 @@ describe("hay quarter weights on PVGIS weather year", () => {
       horizonHeights48: new Array<number>(48).fill(0),
       surface: { tiltDeg: 30, azimuthDegNorth: 180 },
     };
-    expect(() => hayQuarterWeightsV2(valid).length).not.toThrow();
-    expect(() => hayQuarterWeightsV2({ ...valid, beamHourWhPerM2: -1 })).toThrow();
-    expect(() => hayQuarterWeightsV2({
+    expect(() => muneerQuarterWeightsV2(valid).length).not.toThrow();
+    expect(() => muneerQuarterWeightsV2({ ...valid, beamHourWhPerM2: -1 })).toThrow();
+    expect(() => muneerQuarterWeightsV2({
       ...valid, horizonHeights48: new Array<number>(47).fill(0),
     })).toThrow();
-    expect(() => hayQuarterWeightsV2({
+    expect(() => muneerQuarterWeightsV2({
       ...valid, surface: { tiltDeg: 91, azimuthDegNorth: 180 },
     })).toThrow();
-    expect(() => hayQuarterWeightsV2({
+    expect(() => muneerQuarterWeightsV2({
       ...valid, surface: { tiltDeg: 30, azimuthDegNorth: 360 },
     })).toThrow();
   });

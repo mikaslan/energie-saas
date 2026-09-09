@@ -14,7 +14,7 @@
  * - Meeresspiegel statt Standorthoehe (Berlin 47 m -> ~0.001°).
  * - Standard-Refraktion statt Druck-/Temperaturprofil.
  * Die Fixture-Validierung (`solar-geometry-v2.test.ts`, 3 x 35.040
- * SPA-Viertel) beweist die Huelle; der Hay-Monatsvergleich mit
+ * SPA-Viertel) beweist die Huelle; der Muneer-Monatsvergleich mit
  * TS-Geometrie bleibt in der F4.1B-Huelle.
  */
 import { CALCULATION_V2_SOLAR_GEOMETRY_VERSION } from "./versions-v2";

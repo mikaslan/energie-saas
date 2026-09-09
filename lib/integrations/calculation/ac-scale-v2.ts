@@ -14,7 +14,7 @@
  * fail-closed (faengt u. a. Achsenfehler wie fehlenden Feb29-Drop).
  * Monatsabweichungen Wetterjahr/langjaehrig werden nur berichtet, nicht
  * gegatet. Die Viertelstundenverteilung `P_q` ueber das eigene
- * Hay-`G_T,q` gehoert zum Geometrie-Slice (F4.1B, SPA-abhaengig) und ist
+ * Muneer-`G_T,q` gehoert zum Geometrie-Slice (F4.1B, SPA-abhaengig) und ist
  * hier bewusst nicht enthalten.
  */
 import { neumaierSum } from "./engine-v2";

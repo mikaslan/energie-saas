@@ -6,7 +6,7 @@
  * existing-Branch) auf Viertelstunden-Slots. Je Dach:
  * `kapazitaet_Dach = bestandsKwp x flaeche_Dach / gesamtflaeche`;
  * `jahresertrag_Dach = ertragJeKwp_Dach x kapazitaet_Dach x degradation`;
- * die Dachreihe folgt der Neuanlagen-Dachform (Hay/PVcalc-Pfad),
+ * die Dachreihe folgt der Neuanlagen-Dachform (Muneer/PVcalc-Pfad),
  * normiert auf den Jahresertrag. Degradation
  * `(1 - rate)^max(0, asOfJahr - inbetriebnahmeJahr)`.
  *
@@ -20,7 +20,7 @@
  * Benannte Differenz zu v1: v1 multipliziert zusaetzlich
  * Verschattungsfaktoren je Dach und einen Systemverlust-Relativfaktor;
  * die v2-Dachform traegt die dachspezifische Behandlung bereits im
- * Hay/PVcalc-Pfad (kein Doppelabschlag). Slice B (Run) nutzt die Serie
+ * Muneer/PVcalc-Pfad (kein Doppelabschlag). Slice B (Run) nutzt die Serie
  * fuer baseline/geplant/Delta; bis dahin bleibt das Run-Gate.
  */
 import { QUARTER_HOUR_SLOTS } from "./engine-v2";
@@ -76,7 +76,7 @@ const W_PER_KW_V2 = 1000;
 export type ExistingPvRoofV2 = {
   roofId: string;
   areaM2: number;
-  /** Neuanlagen-Dachleistung (Hay/PVcalc-Pfad, 35040 Viertel-W/kWp). */
+  /** Neuanlagen-Dachleistung (Muneer/PVcalc-Pfad, 35040 Viertel-W/kWp). */
   newPowerWPerKwp: readonly number[];
 };
 

@@ -67,7 +67,7 @@ const profileRoofV2Schema = z.object({
   areaM2: z.number().finite().gt(0),
   tiltDeg: z.number().finite().min(0).max(90),
   // Profil-Konvention: Sued-Null [-180,180], Ost negativ (v1-Schema).
-  // Die Geometrie (Nord-Uhrzeigersinn) bedient spaeter den Hay-Slice.
+  // Die Geometrie (Nord-Uhrzeigersinn) bedient spaeter den Muneer-Slice.
   azimuthDeg: z.number().finite().min(-180).max(180),
 });
 
