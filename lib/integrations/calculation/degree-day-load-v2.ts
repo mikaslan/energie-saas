@@ -15,8 +15,8 @@
  *   Jahres-kWh (Upgrade: COP-Kennlinie aus Katalog, F5).
  * - Warmwasser-Anteil der WP laeuft mit (kein belegter Split;
  *   Upgrade: WW-Split aus Profil, sobald belegt).
- * - Kuehlung bleibt uniform (Kuehlgradtage + Nutzungsverhalten
- *   unbelegt; eigene Form folgt mit F4.2-Nutzungsevidenz).
+ * - Kuehlung hat eine eigene Form (`wmee-cooling-degree.v1`,
+ *   Kuehlgradstunden aus derselben T2m-Serie, v1-Port).
  * - Kein lautloser Uniform-Fallback: positive kWh ohne Heizgradtage
  *   brechen fail-closed ab (unmoegliche Kombination sichtbar).
  */

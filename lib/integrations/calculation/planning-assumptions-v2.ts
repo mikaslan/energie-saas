@@ -18,10 +18,12 @@
  * - specificPowerWPerM2 = 200: typische Wohnbau-Modulklasse ~400-450 Wp
  *   auf ~2 m² (200-225 W/m²), konservativer Midpoint. Upgrade: dach-
  *   gebundene Modul-Peakleistung aus Katalog/Planung ( Modul-Autofill).
- * - basisShape = uniform: nur noch fuer EV/Kaelte/Warmwasser
- *   (formfreie Zunaechst-Form). Die Haushalts-Basis laeuft als BDEW-H0
- *   (`h0-load-v2`), Waermepumpe nach Heizgradstunden
- *   (`degree-day-load-v2`), je eigene Version/Provenienz.
+ * - basisShape = uniform: Zunaechst-Form des generischen
+ *   `buildUniformLoadSourceV2`-Bausteins. Die Haushalts-Basis laeuft als
+ *   BDEW-H0 (`h0-load-v2`), Waermepumpe nach Heizgradstunden
+ *   (`degree-day-load-v2`), EV nach Ladepattern, Kuehlung nach
+ *   Kuehlgradstunden, Warmwasser nach Tagesgang (`load-shapes-v2`,
+ *   v1-Ports), je eigene Version/Provenienz.
  * - evKwhPerKm = 0.2: typische 0.15-0.25 kWh/km, Midpoint. Upgrade:
  *   fahrzeug-/profilspezifische Faktoren (F4.2+).
  */

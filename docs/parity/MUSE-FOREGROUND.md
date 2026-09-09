@@ -515,6 +515,24 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## v2-Lastformen (2026-09-09)
+- `load-shapes-v2.ts` (`wmee-load-shapes.v1`): exakte v1-Ports auf
+  Viertelstunden — EV-Ladepattern (evening/daytime/away, belegtes
+  Intake-Enum), Kuehlgradstunden max(0, T2m-22), WW-Tagesgang
+  (1.4/1.2/0.2). Energieexakt, fail-closed (EV-km ohne Pattern =
+  Abort, keine erfundenen Ladeplaene).
+- Composer: EV/Kuehlung/Warmwasser geformt statt uniform; Kuehlgrad-
+  Fallback uniform bei leerer Form (v1-Semantik). Heizgrad-15 °C bleibt
+  (begruendetes ESTIMATE, EnEV-Praxis; v1 nutzt 18 — benannte Differenz,
+  kein Referenzwechsel ohne Reonic-Beleg).
+- kWp-Befund (kein Bau): v1 nutzt selbst 0,2 kWp/m²
+  (`PEAK_POWER_KWP_PER_ROOF_M2`) — v2 ist dort bereits paritaetisch;
+  F3-Belegung ist Upgrade, keine Luecke.
+- Tests: neu 8/8 (Port-Fenster, ISO-Kalender, Exaktheit, Fail-closed),
+  Composer +2 (Pattern-Pflicht, Kuehlung/WW), unit 1041, db 139 Dateien
+  1160+1skip, lint+typecheck 0, E2E m1-11g 2/2 (Pattern fliesst golden
+  Profil -> Kette -> Browser; fehlendes Pattern wuerfe die Kette um).
+
 ## v2-Crash-Recovery (2026-09-09)
 - 0081 ersetzt die 0080-Routine (CREATE OR REPLACE, additiv): v2-Dispatch
   mit 0026-Semantik — Zustaende queued/running/retry_wait, Key

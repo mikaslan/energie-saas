@@ -37,3 +37,4 @@ export const CALCULATION_V2_SOLAR_GEOMETRY_VERSION =
 export const CALCULATION_V2_SUBHOUR_VERSION = "hay-geometry-weights.v1" as const;
 export const CALCULATION_V2_H0_LOAD_VERSION = "wmee-bdew-h0-dyn.v1" as const;
 export const CALCULATION_V2_DEGREE_DAY_VERSION = "wmee-degree-day.v1" as const;
+export const CALCULATION_V2_LOAD_SHAPES_VERSION = "wmee-load-shapes.v1" as const;

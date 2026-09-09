@@ -4,7 +4,8 @@
  * geneigter seriescalc (PVGIS-Rezept, Planungstechnik) und
  * PVcalc-Jahresreferenz -> PVcalc-Skalierung -> Hay-Geometriegewichte
  * `G_T,q` (TS-Sonnengeometrie, keine Laufzeit-Abhaengigkeit) ->
- * kWp-Summation; Last aus uniformen Provenienz-Quellen.
+ * kWp-Summation; Last aus belegten Provenienz-Quellen (H0, Heizgrad,
+ * EV-Pattern, Kuehlgrad, Warmwasser-Tagesgang).
  *
  * Begruendete Zunaechst-Entscheidungen (alle versioniert + transparent):
  * - Substundenform: Hay-Gewichte aus stündlichem Horizontalwetter und
@@ -12,10 +13,10 @@
  *   fixture-gepinnt); solare Viertelgewichte sind Spec-ESTIMATE.
  * - Planungstechnik/Montage/Verluste/kWp: planning-assumptions-v2
  *   (v1-Produktionspins + dokumentierte Midpoints).
- * - Lastform: Haushalts-Basis als BDEW-H0 (h0-load-v2) und WP-Strom
- *   nach Heizgradstunden (degree-day-load-v2, T2m-Wetterjahr), beide
- *   energieexakt auf belegte kWh normiert; EV/Kaelte/Warmwasser weiter
- *   uniform (F4.2-Formen).
+ * - Lastform: Haushalts-Basis als BDEW-H0 (h0-load-v2), WP-Strom nach
+ *   Heizgradstunden (degree-day-load-v2, T2m-Wetterjahr), EV nach belegtem
+ *   Ladepattern, Kuehlung nach Kuehlgradstunden, Warmwasser nach Tagesgang
+ *   (load-shapes-v2, v1-Ports), alle energieexakt auf belegte kWh normiert.
  * `providerEstimate` ist zunächst immer true -> Resultat-Warnung
  * `provider_estimate` (Haftungskennzeichnung, F4-Goal).
  */
@@ -32,12 +33,16 @@ import {
 import { buildHeatingDegreeSourceV2 } from "./degree-day-load-v2";
 import { buildH0BasisSourceV2 } from "./h0-load-v2";
 import {
+  buildCoolingDegreeSourceV2,
+  buildEvPatternSourceV2,
+  buildHotWaterProfileSourceV2,
+} from "./load-shapes-v2";
+import {
   HAY_WEIGHTS_V2_VERSION,
   hayQuarterWeightsV2,
   quarterGeometryForHourV2,
 } from "./hay-weights-v2";
 import {
-  buildUniformLoadSourceV2,
   PLANNING_ASSUMPTIONS_V2,
   PLANNING_ASSUMPTIONS_V2_VERSION,
   resolveRoofProviderInputsV2,
@@ -101,9 +106,15 @@ const knownValueSchema = z.object({
   value: z.number().nullish(),
 });
 
+const evPatternSchema = z.object({
+  status: z.string(),
+  value: z.string().nullish(),
+});
+
 const consumptionSchema = z.object({
   householdKwhPerYear: knownValueSchema,
   evKmPerYear: knownValueSchema.optional(),
+  evChargingPattern: evPatternSchema.optional(),
   heatPumpKwhPerYear: knownValueSchema.optional(),
   coolingKwhPerYear: knownValueSchema.optional(),
   hotWaterKwhPerYear: knownValueSchema.optional(),
@@ -141,10 +152,13 @@ export type LoadContextV2 = {
 /**
  * Belegtes Verbrauchsprofil -> Provenienz-Quellen: Haushalt als
  * Pflicht-Basis in BDEW-H0-Form; Waermepumpe nach Heizgradstunden
- * (T2m-Wetterjahr); EV (km x Planungsfaktor), Kaelte/Warmwasser als
- * uniforme kWh-Quellen nur bei bekannten Werten > 0 (F4.2-Formen).
+ * (T2m-Wetterjahr); EV nach belegtem Ladepattern (km x Planungsfaktor),
+ * Kuehlung nach Kuehlgradstunden, Warmwasser nach Tagesgang (v1-Ports,
+ * `wmee-load-shapes.v1`). Zusatzlasten nur bei bekannten Werten > 0.
  * Unbekannte Zusatzlasten werden geskippt (sichtbar in sources[]);
  * unbekannte Basis verweigert fail-closed (kein erfundener Verbrauch).
+ * EV-km ohne belegtes Pattern verweigern ebenfalls fail-closed (kein
+ * erfundener Ladeplan).
  */
 export function buildLoadSourcesFromProfileV2(
   profile: unknown,
@@ -161,9 +175,14 @@ export function buildLoadSourcesFromProfileV2(
   ];
   const evKm = knownKwh(consumption.evKmPerYear, "EV", false);
   if (evKm !== null && evKm > 0) {
-    sources.push(buildUniformLoadSourceV2({
-      sourceKind: "ev",
+    const pattern = consumption.evChargingPattern;
+    if (pattern === undefined || pattern.status !== "known" || pattern.value == null) {
+      composeError("EV-Ladepattern ist nicht belegt");
+    }
+    sources.push(buildEvPatternSourceV2({
       annualKwh: evKm * PLANNING_ASSUMPTIONS_V2.load.evKwhPerKm,
+      pattern: pattern.value,
+      slotLabels: loadContext.slotLabels,
     }));
   }
   const heatKwh = knownKwh(consumption.heatPumpKwhPerYear, "Waermepumpe", false);
@@ -174,18 +193,20 @@ export function buildLoadSourcesFromProfileV2(
       hourTimesInOrder: loadContext.hourTimesInOrder,
     }));
   }
-  const extras = [
-    { kind: "cooling", entry: consumption.coolingKwhPerYear, name: "Kuehlung" },
-    { kind: "hot_water", entry: consumption.hotWaterKwhPerYear, name: "Warmwasser" },
-  ] as const;
-  for (const extra of extras) {
-    const annualKwh = knownKwh(extra.entry, extra.name, false);
-    if (annualKwh !== null && annualKwh > 0) {
-      sources.push(buildUniformLoadSourceV2({
-        sourceKind: extra.kind,
-        annualKwh,
-      }));
-    }
+  const coolingKwh = knownKwh(consumption.coolingKwhPerYear, "Kuehlung", false);
+  if (coolingKwh !== null && coolingKwh > 0) {
+    sources.push(buildCoolingDegreeSourceV2({
+      annualKwh: coolingKwh,
+      hourlyTemperatureC: loadContext.hourlyTemperatureC,
+      hourTimesInOrder: loadContext.hourTimesInOrder,
+    }));
+  }
+  const hotWaterKwh = knownKwh(consumption.hotWaterKwhPerYear, "Warmwasser", false);
+  if (hotWaterKwh !== null && hotWaterKwh > 0) {
+    sources.push(buildHotWaterProfileSourceV2({
+      annualKwh: hotWaterKwh,
+      slotLabels: loadContext.slotLabels,
+    }));
   }
   return sources;
 }

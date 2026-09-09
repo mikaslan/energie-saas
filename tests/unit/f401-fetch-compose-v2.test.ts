@@ -24,7 +24,8 @@ import type {
 // Fetch-Composer: printhorizon + horizontaler seriescalc (standortweit)
 // + geneigte seriescalc/PVcalc je Dach (PVGIS-Rezept, Planungstechnik)
 // -> PVcalc-Skalierung -> Hay-Geometriegewichte (TS-Geometrie) ->
-// kWp-Summation; Last aus uniformen Provenienz-Quellen.
+// kWp-Summation; Last aus belegten Provenienz-Quellen (H0, Heizgrad,
+// EV-Pattern, Kuehlgrad, Warmwasser-Tagesgang).
 // Echte Fixture-Bytes (Berlin 2020, live verifiziert).
 
 const SITE = { latitude: 52.52, longitude: 13.41 };
@@ -184,6 +185,7 @@ function consumption(overrides: Record<string, unknown> = {}): Record<string, un
   return {
     householdKwhPerYear: { status: "known", value: 4200, source: "customer_metered" },
     evKmPerYear: { status: "known", value: 12000, source: "customer_input" },
+    evChargingPattern: { status: "known", value: "evening", source: "customer_input" },
     heatPumpKwhPerYear: { status: "known", value: 0, source: "customer_input" },
     coolingKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
     hotWaterKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
@@ -218,7 +220,7 @@ function loadContext(): {
 }
 
 describe("F4.1 v2 load sources from profile", () => {
-  it("bindet belegte kWh als H0-Basis plus uniforme Zusatzquellen", () => {
+  it("bindet belegte kWh als H0-Basis plus geformte Zusatzquellen (v1-Ports)", () => {
     const sources = buildLoadSourcesFromProfileV2(
       { consumption: consumption() },
       loadContext(),
@@ -229,7 +231,18 @@ describe("F4.1 v2 load sources from profile", () => {
     expect(basis.sourceRevision).toBe("wmee-bdew-h0-dyn.v1");
     expect(neumaierSum(basis.slotEnergyKwh)).toBeCloseTo(4200, 6);
     const ev = sources[1]!;
+    expect(ev.sourceId).toBe("wmee-ev-pattern.v1");
+    expect(ev.sourceRevision).toBe("wmee-load-shapes.v1");
     expect(neumaierSum(ev.slotEnergyKwh)).toBeCloseTo(2400, 9);
+    // Abend-Pattern: Nachtviertel tragen mehr als Mittagsviertel.
+    const context = loadContext();
+    const noonQ = ev.slotEnergyKwh[context.slotLabels.findIndex(
+      (label) => label.startsWith("2020-01-06T12:"),
+    )]!;
+    const eveningQ = ev.slotEnergyKwh[context.slotLabels.findIndex(
+      (label) => label.startsWith("2020-01-06T19:"),
+    )]!;
+    expect(eveningQ).toBeGreaterThan(noonQ * 10);
   });
 
   it("verweigert fehlende Basis und skippt Unbekanntes/Nullen", () => {
@@ -249,6 +262,38 @@ describe("F4.1 v2 load sources from profile", () => {
     expect(heat.sourceId).toBe("wmee-degree-day-heat.v1");
     expect(heat.sourceRevision).toBe("wmee-degree-day.v1");
     expect(neumaierSum(heat.slotEnergyKwh)).toBeCloseTo(1500, 6);
+  });
+
+  it("verweigert EV-km ohne belegtes Ladepattern (kein erfundener Ladeplan)", () => {
+    expect(() => buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        evChargingPattern: { status: "unknown", value: null, source: "not_collected" },
+      }),
+    }, loadContext())).toThrow();
+    expect(() => buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        evChargingPattern: { status: "known", value: "night", source: "customer_input" },
+      }),
+    }, loadContext())).toThrow();
+  });
+
+  it("formt Kuehlung nach Kuehlgradstunden und Warmwasser nach Tagesgang", () => {
+    const sources = buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
+        coolingKwhPerYear: { status: "known", value: 500, source: "customer_input" },
+        hotWaterKwhPerYear: { status: "known", value: 1000, source: "customer_input" },
+      }),
+    }, loadContext());
+    expect(sources.map((source) => source.sourceKind)).toEqual(
+      ["basis", "cooling", "hot_water"],
+    );
+    const cooling = sources[1]!;
+    expect(cooling.sourceId).toBe("wmee-cooling-degree.v1");
+    expect(neumaierSum(cooling.slotEnergyKwh)).toBeCloseTo(500, 6);
+    const hotWater = sources[2]!;
+    expect(hotWater.sourceId).toBe("wmee-hot-water-profile.v1");
+    expect(neumaierSum(hotWater.slotEnergyKwh)).toBeCloseTo(1000, 6);
   });
 });
 
