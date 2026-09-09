@@ -530,6 +530,14 @@ identisch (`983ed67`, 0 unpusht).
   standortweiter Horizontal-Fetch + Hay-Gewichte; Provenienz
   `subhourMethod: hay-geometry-weights.v1`. m111f-E2E weiter currentV2.
 - Gates: unit 1020, db/contracts 138 Dateien 1154+1 skip, lint+typecheck 0.
+- Flake-Befund (kein Code-Defekt): Hook-Lauf nach Doc-Commit df89a95 fiel
+  einmal in `rechner-intake` (PII-Assertion `not.toContain '69234'` —
+  eigene Fixture-PLZ in domain_events/audit_log). Isolierter DB-Run gruen,
+  Full-Re-Run `npm run test` 269/269 gruen, Re-Push mit Hook gruen. Intake
+  importiert keine Hay-Dateien; 9621a20-Hook auf identischem Code war
+  gruen. Verdacht: Last-/Timing-Flake unter vollem Parallellauf
+  (Worker-Probe-Timeouts im Hook-Log). Bei Wiederholung: Intake-Outbox-
+  Timing untersuchen statt neu starten.
 - Offen (benannt): H0-Lastform, dachgebundene Modul-kWp, Heizungs-AC.
 
 ## v2-Leistungsverteilung (2026-09-08, lokal verifiziert, UNPUSHED)
