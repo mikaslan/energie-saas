@@ -111,8 +111,22 @@ const evPatternSchema = z.object({
   value: z.string().nullish(),
 });
 
+const loadProfileSchema = z.object({
+  status: z.string(),
+  value: z.string().nullish(),
+});
+
+// Belegte Haushaltsformen (v1-Default und -Enum): H0 ersetzt beide
+// v1-Wohnformen als belegte F4.2-Basis. Gewerbe hat eine eigene v1-Form,
+// fuer die v2 keine BDEW-G0-Quelle besitzt -> fail-closed (s. unten).
+const RESIDENTIAL_LOAD_PROFILES_V2 = [
+  "wmee_household_hourly.v1",
+  "customer_monthly_hourly.v1",
+] as const;
+
 const consumptionSchema = z.object({
   householdKwhPerYear: knownValueSchema,
+  loadProfile: loadProfileSchema.optional(),
   evKmPerYear: knownValueSchema.optional(),
   evChargingPattern: evPatternSchema.optional(),
   heatPumpKwhPerYear: knownValueSchema.optional(),
@@ -168,6 +182,18 @@ export function buildLoadSourcesFromProfileV2(
   const parsed = z.object({ consumption: consumptionSchema }).safeParse(profile);
   if (!parsed.success) composeError("Profil traegt keinen Verbrauch");
   const consumption = parsed.data.consumption;
+  // Gewerbe faellt fail-closed ab: v1 formt `commercial_interval.v1`
+  // werktags 7-19h, v2 besitzt dafuer keine BDEW-G0-Quelle. Unbekannte oder
+  // Wohnformen laufen als H0-Basis (v1-Default ist Haushalt).
+  const loadProfile = consumption.loadProfile;
+  if (
+    loadProfile !== undefined
+    && loadProfile.status === "known"
+    && loadProfile.value != null
+    && !(RESIDENTIAL_LOAD_PROFILES_V2 as readonly string[]).includes(loadProfile.value)
+  ) {
+    composeError("Gewerbe-Lastprofil ist nicht belegt");
+  }
   const sources: LoadProfileSourceV2[] = [
     buildH0BasisSourceV2({
       annualKwh: knownKwh(consumption.householdKwhPerYear, "Haushalt", true) as number,

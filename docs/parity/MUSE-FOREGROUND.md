@@ -515,6 +515,15 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## Gewerbe-Gate (2026-09-09)
+- `loadProfile: commercial_interval.v1` lief in v2 still als H0 (v1 formt
+  Gewerbe werktags 7-19h). Jetzt fail-closed (keine G0-Quelle, benannter
+  Upgrade-Pfad); Wohnformen/unbekannt laufen H0 (v1-Default Haushalt).
+  Tests: Composer +1; unit 1044, db 139 Dateien 1160+1skip, E2E m1-11g
+  2/2, lint+typecheck 0.
+- COP-Kennlinie/WW-Split: kein Katalog-Beleg, kein v1-Vorbild (v1 konstant
+  implizit) — keine Paritaetsluecke, F5-Upgrade mit Katalogdaten.
+
 ## Heizungs-AC (2026-09-09)
 - `heatingAcKwhPerYear` fiel in v2 still unter den Tisch (Schema ohne
   Feld); v1 formt sie mit Heizgradstunden. Jetzt: Composer-Branch auf

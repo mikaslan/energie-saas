@@ -264,6 +264,28 @@ describe("F4.1 v2 load sources from profile", () => {
     expect(neumaierSum(heat.slotEnergyKwh)).toBeCloseTo(1500, 6);
   });
 
+  it("weist Gewerbe-Lastprofile fail-closed ab (keine G0-Quelle), Wohnformen laufen H0", () => {
+    expect(() => buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        loadProfile: { status: "known", value: "commercial_interval.v1", source: "customer_input" },
+      }),
+    }, loadContext())).toThrow();
+    expect(() => buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        loadProfile: { status: "known", value: "gewerbe_phantasie.v9", source: "customer_input" },
+      }),
+    }, loadContext())).toThrow();
+    for (const value of ["wmee_household_hourly.v1", "customer_monthly_hourly.v1", null]) {
+      const sources = buildLoadSourcesFromProfileV2({
+        consumption: consumption({
+          evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
+          loadProfile: { status: value === null ? "unknown" : "known", value, source: "customer_input" },
+        }),
+      }, loadContext());
+      expect(sources[0]!.sourceId).toBe("wmee-bdew-h0-dyn-basis.v1");
+    }
+  });
+
   it("verweigert EV-km ohne belegtes Ladepattern (kein erfundener Ladeplan)", () => {
     expect(() => buildLoadSourcesFromProfileV2({
       consumption: consumption({
