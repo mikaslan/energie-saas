@@ -273,3 +273,76 @@ test("M1-11g: v2-Fehlversuch wird faellig gestellt und heilt per Requeue", async
   ));
   expect(context?.calculation.status).toBe("currentV2");
 });
+
+test("M1-11g: v2-Bestandsergebnis zeigt baseline/geplant/Delta im Browser", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids, { branch: "existing_installation" });
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Bestands-Kette erreichte kein currentV2.");
+  }
+  const result = expected.calculation.resultV2;
+  const existing = result.value.existingInstallation;
+  if (!existing) throw new Error("v2-Bestandsresultat traegt kein existingInstallation.");
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, state().editorEmail, projectPath);
+
+  const section = page.locator('[data-energy-calculation-state="currentV2"]');
+  await expect(section).toBeVisible();
+  const v2result = section.locator('[data-energy-calculation-v2-result="true"]');
+  await expect(v2result).toBeVisible();
+  // Bestandsblock: echte Kettenwerte (8 kWp Anlage, Baseline, Delta).
+  const v2existing = v2result.locator('[data-energy-calculation-v2-existing="true"]');
+  await expect(v2existing).toBeVisible();
+  await expect(v2existing.getByText(`${deNumber.format(8)} kWp`)).toBeVisible();
+  await expect(v2existing.getByText(formatKwh(existing.baseline.annual.selfConsumptionKwh)))
+    .toBeVisible();
+  await expect(v2existing.getByText(
+    formatKwh(existing.delta.additionalSelfConsumptionKwh),
+  )).toBeVisible();
+  // Baseline-Monatstabelle: 12 Zeilen, Januar zuerst, echte Kettenwerte.
+  const rows = v2existing.locator("table tbody tr");
+  await expect(rows).toHaveCount(12);
+  await expect(rows.first().getByRole("rowheader")).toHaveText("Januar");
+  await expect(rows.first().getByText(
+    formatKwh(existing.baseline.monthly[0]!.selfConsumptionKwh),
+  )).toBeVisible();
+
+  const axe = await new AxeBuilder({ page })
+    .include('[data-energy-calculation-v2-existing="true"]')
+    .analyze();
+  expect(
+    axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical"),
+    "Axe serious/critical in der v2-Bestandsansicht",
+  ).toEqual([]);
+});

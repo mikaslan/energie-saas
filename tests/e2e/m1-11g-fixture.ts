@@ -152,7 +152,11 @@ export async function seedIsolatedWorkspace(actorId: string): Promise<string> {
   return workspaceId;
 }
 
-export async function seedProjectGraph(ids: SeedIds): Promise<void> {
+export async function seedProjectGraph(
+  ids: SeedIds,
+  options: { branch?: "new_installation" | "existing_installation" } = {},
+): Promise<void> {
+  const branch = options.branch ?? "new_installation";
   const profile = {
     ...GOLDEN_REQUEST.energyProfile,
     roofs: GOLDEN_REQUEST.energyProfile.roofs.map((roof) => ({
@@ -161,6 +165,21 @@ export async function seedProjectGraph(ids: SeedIds): Promise<void> {
       azimuthDeg: AZIMUTH_DEG,
       source: "operator_reviewed" as const,
     })),
+    // Bestand-Branch: belegte Anlage (8 kWp, Inbetriebnahme 2015),
+    // Speicher bekannt abwesend -> Baseline speicherlos.
+    ...(branch === "existing_installation"
+      ? {
+        existingAssets: {
+          ...GOLDEN_REQUEST.energyProfile.existingAssets,
+          pv: {
+            status: "known_present" as const,
+            source: "rechner_branch" as const,
+            peakPowerKwp: 8,
+            commissioningYear: 2015,
+          },
+        },
+      }
+      : {}),
   };
   await poolOne(async (pool) => withTenantOn(pool, ids.workspaceId, async (tx) => {
     await tx.execute(sql`
@@ -234,12 +253,12 @@ export async function seedProjectGraph(ids: SeedIds): Promise<void> {
         ${JSON.stringify({
           schemaVersion: "wmee-solar-snapshot.v1",
           calculatedAt: NOW.toISOString(),
-          branch: "new_installation",
+          branch,
           questionnaireVariant: "short",
           resultIntegrity: "client_reported_unverified",
           inputs: {},
           provenance: { investment: "market_estimate" },
-          result: { mode: "new_installation" },
+          result: { mode: branch },
         })}::jsonb
       )
     `);
@@ -254,7 +273,7 @@ export async function seedProjectGraph(ids: SeedIds): Promise<void> {
         ${JSON.stringify({
           schemaVersion: "project-requirements.rechner.v1",
           source: "wmee-rechner-v3",
-          branch: "new_installation",
+          branch,
           requestedProducts: {
             targetStorageKwh: 10,
             wallbox: false,
@@ -717,6 +736,9 @@ export async function runChain(
           pvKwh: input.pvKwh,
           loadKwh: input.loadKwh,
           providerEstimate: input.providerEstimate,
+          // Produktions-Paritaet (worker/index.ts): Bestands-Reihe faellt
+          // im Bestand-Branch fail-closed statt still weg.
+          existingPvKwh: input.existingPvKwh ?? null,
         }),
       },
       createLeaseToken: randomUUID,
