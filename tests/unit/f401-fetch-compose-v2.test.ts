@@ -20,10 +20,11 @@ import type {
   SeriesHour,
 } from "@/lib/integrations/calculation/provider-v2";
 
-// Weg-2 Fetch-Composer: printhorizon + geneigte seriescalc/PVcalc je Dach
-// (PVGIS-Rezept, Planungstechnik) -> PVcalc-Skalierung -> flache Subhour
-// (energieexakt, ESTIMATE) -> kWp-Summation; Last aus uniformen
-// Provenienz-Quellen. Echte Fixture-Bytes (Berlin 2020, live verifiziert).
+// Fetch-Composer: printhorizon + horizontaler seriescalc (standortweit)
+// + geneigte seriescalc/PVcalc je Dach (PVGIS-Rezept, Planungstechnik)
+// -> PVcalc-Skalierung -> Hay-Geometriegewichte (TS-Geometrie) ->
+// kWp-Summation; Last aus uniformen Provenienz-Quellen.
+// Echte Fixture-Bytes (Berlin 2020, live verifiziert).
 
 const SITE = { latitude: 52.52, longitude: 13.41 };
 const SOUTH_ROOF = {
@@ -63,6 +64,28 @@ function tiltedEnvelope(): TiltedEnvelope {
     path.resolve(process.cwd(), "tests/fixtures/f401/pvgis-tilted30-south-2020-berlin.json"),
     "utf8",
   )) as TiltedEnvelope;
+}
+
+type HorizontalEnvelope = {
+  hours: Array<{
+    t: string;
+    gb: number;
+    gd: number;
+    gr: number;
+    hsun: number;
+    t2m: number;
+    int: number;
+  }>;
+};
+
+function horizontalEnvelope(): HorizontalEnvelope {
+  return JSON.parse(readFileSync(
+    path.resolve(
+      process.cwd(),
+      "tests/fixtures/f401/pvgis-horizontal-2020-berlin-52-52-13-41.json",
+    ),
+    "utf8",
+  )) as HorizontalEnvelope;
 }
 
 function berlinAnnualKwhPerKwp(): number {
@@ -112,6 +135,35 @@ function fakeTransport(envelope: TiltedEnvelope): SnapshotTransportV2 & {
           yearMin: 2020,
           yearMax: 2020,
           useHorizon: true,
+        },
+        hours,
+      };
+    },
+    async fetchHorizontal(url: string): Promise<ParsedSeriescalcSnapshot> {
+      urls.push(url);
+      const envelope = horizontalEnvelope();
+      const hours: SeriesHour[] = envelope.hours.map((hour) => ({
+        time: hour.t,
+        gb: hour.gb,
+        gd: hour.gd,
+        gr: hour.gr,
+        hSun: hour.hsun,
+        t2m: hour.t2m,
+        ws10m: 0,
+        int: hour.int as 0 | 1,
+        p: null,
+      }));
+      return {
+        recipeVersion: CALCULATION_V2_PROVIDER_RECIPE_VERSION,
+        rawSha256: "2".repeat(64),
+        inputsMirror: {},
+        site: { latitude: SITE.latitude, longitude: SITE.longitude, elevation: 34 },
+        meteo: {
+          radiationDb: "PVGIS-SARAH3",
+          meteoDb: "SARAH3",
+          yearMin: 2020,
+          yearMax: 2020,
+          useHorizon: false,
         },
         hours,
       };
@@ -191,12 +243,19 @@ describe("F4.1 v2 fetch compose", () => {
       annualReferenceKwhPerKwp: berlinAnnualKwhPerKwp(),
     });
     // Kanonische Query-Form wie der verifizierte Abruf (Technik aus Planung).
-    const seriesUrl = transport.urls.find((url) => url.includes("seriescalc"))!;
+    const seriesUrl = transport.urls.find((url) => url.includes("pvcalculation=1"))!;
     expect(seriesUrl).toContain("lat=52.52&lon=13.41");
     expect(seriesUrl).toContain("pvcalculation=1&trackingtype=0&components=1");
     expect(seriesUrl).toContain("angle=30&aspect=0");
     expect(seriesUrl).toContain("pvtechchoice=crystSi&mountingplace=free&loss=14");
     expect(seriesUrl).toContain("usehorizon=1&userhorizon=");
+    // Standortweiter Horizontalabruf (pvcalculation=0) + Hay-Provenienz.
+    const horizontalUrl = transport.urls.find((url) => url.includes("pvcalculation=0"))!;
+    expect(horizontalUrl).toContain("lat=52.52&lon=13.41");
+    expect(horizontalUrl).toContain("angle=0&aspect=0");
+    expect(composed.provenance.subhourMethod).toBe("hay-geometry-weights.v1");
+    expect(composed.provenance.horizontalUrl).toBe(horizontalUrl);
+    expect(composed.provenance.horizontalSha256).toBe("2".repeat(64));
   });
 
   it("verweigert gekreuzte Standort-Echos und fehlende Basis fail-closed", async () => {

@@ -32,3 +32,6 @@ export const CALCULATION_V2_RECONSTRUCTION_VERSION =
   "energy_conserving_solar_weight.v2" as const;
 export const CALCULATION_V2_DISPATCH_VERSION = "load_first_cyclic_soc.v1" as const;
 export const CALCULATION_V2_GRID_EXPORT_LIMIT = "unbounded.v1" as const;
+export const CALCULATION_V2_SOLAR_GEOMETRY_VERSION =
+  "noaa-low-precision_spencer-nrel_sealevel.v1" as const;
+export const CALCULATION_V2_SUBHOUR_VERSION = "hay-geometry-weights.v1" as const;

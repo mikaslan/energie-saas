@@ -35,7 +35,6 @@ import type {
 import { runPlanningCalculationV2 } from "@/lib/integrations/calculation/run-v2";
 import {
   CALCULATION_V2_CONTRACT_VERSION,
-  CALCULATION_V2_MODEL_VERSION,
   CALCULATION_V2_PROVIDER_RECIPE_VERSION,
   CALCULATION_V2_RESULT_CONTRACT_VERSION,
   CALCULATION_V2_SOURCE_REVISION,
@@ -53,11 +52,12 @@ import {
 import { createCalculationExecuteV2Handler } from "@/worker/calculation-v2";
 import { testPool } from "../setup/test-db";
 
-// F4.1 v2-Kette durchgaengig (Weg 2): Eingabe (Reservierung mit
+// F4.1 v2-Kette durchgaengig: Eingabe (Reservierung mit
 // Batterie-Provenienz) -> Fetch (echte Fixture-Bytes: Berlin 2020,
-// tilted-30-Sued + PVcalc-Referenz + DEM-Horizont; nur Transport gefakt,
-// keine Netzabrufe) -> Build -> Run -> Persist -> sichtbarer Context
-// (currentV2 mit provider_estimate-Warnung). Keine reinen Bausteine:
+// horizontal + tilted-30-Sued + PVcalc-Referenz + DEM-Horizont; nur
+// Transport gefakt, keine Netzabrufe; Subhour via Hay-Geometriegewichte)
+// -> Build -> Run -> Persist -> sichtbarer Context (currentV2 mit
+// provider_estimate-Warnung). Keine reinen Bausteine:
 // Jede Stufe nutzt die Produktionsfunktion.
 
 const NOW = new Date("2026-08-29T12:00:00.000Z");
@@ -579,13 +579,60 @@ function berlinAnnualKwhPerKwp(): number {
   )).annualReferenceKwhPerKwp;
 }
 
+type HorizontalEnvelope = {
+  hours: Array<{
+    t: string;
+    gb: number;
+    gd: number;
+    gr: number;
+    hsun: number;
+    t2m: number;
+    int: number;
+  }>;
+};
+
+function horizontalEnvelope(): HorizontalEnvelope {
+  return JSON.parse(readFileSync(
+    resolve(process.cwd(), "tests/fixtures/f401/pvgis-horizontal-2020-berlin-52-52-13-41.json"),
+    "utf8",
+  )) as HorizontalEnvelope;
+}
+
 function fixtureTransport(envelope: TiltedEnvelope) {
+  const horizontal = horizontalEnvelope();
   return {
     async fetchHorizon() {
       return {
         rawSha256: "0".repeat(64),
         heights: [...envelope.horizon.heights48],
         horizonDb: "DEM-calculated",
+      };
+    },
+    async fetchHorizontal(): Promise<ParsedSeriescalcSnapshot> {
+      const hours: SeriesHour[] = horizontal.hours.map((hour) => ({
+        time: hour.t,
+        gb: hour.gb,
+        gd: hour.gd,
+        gr: hour.gr,
+        hSun: hour.hsun,
+        t2m: hour.t2m,
+        ws10m: 0,
+        int: hour.int as 0 | 1,
+        p: null,
+      }));
+      return {
+        recipeVersion: CALCULATION_V2_PROVIDER_RECIPE_VERSION,
+        rawSha256: "2".repeat(64),
+        inputsMirror: {},
+        site: { latitude: 52.52, longitude: 13.41, elevation: 34 },
+        meteo: {
+          radiationDb: "PVGIS-SARAH3",
+          meteoDb: "SARAH3",
+          yearMin: 2020,
+          yearMax: 2020,
+          useHorizon: false,
+        },
+        hours,
       };
     },
     async fetchSeries(): Promise<ParsedSeriescalcSnapshot> {

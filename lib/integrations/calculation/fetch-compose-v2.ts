@@ -1,14 +1,15 @@
 /**
- * F4.1 v2-Fetch-Komposition (Weg-2, Spec F4-01 "Providerabrufe"): Standort-
- * Horizont + je Dach geneigter seriescalc (PVGIS-Rezept, Planungstechnik)
- * und PVcalc-Jahresreferenz -> PVcalc-Skalierung -> flache
- * Viertelstunden (energieexakt, ESTIMATE) -> kWp-Summation; Last aus
- * uniformen Provenienz-Quellen.
+ * F4.1 v2-Fetch-Komposition (Spec F4-01 "Providerabrufe"): Standort-
+ * Horizont + standortweiter horizontaler seriescalc (Gb_h/Gd_h) + je Dach
+ * geneigter seriescalc (PVGIS-Rezept, Planungstechnik) und
+ * PVcalc-Jahresreferenz -> PVcalc-Skalierung -> Hay-Geometriegewichte
+ * `G_T,q` (TS-Sonnengeometrie, keine Laufzeit-Abhaengigkeit) ->
+ * kWp-Summation; Last aus uniformen Provenienz-Quellen.
  *
  * Begruendete Zunaechst-Entscheidungen (alle versioniert + transparent):
- * - Flache Subhour statt Hay-Gewichten: Laufzeit-SPA-Geometrie existiert
- *   nur als Python-Sidecar; tilted-P direkt ist durch F4.1B-Huelle
- *   (±2,4 %) gegen Hay geerdet. Upgrade: Geometrie-Slice -> G_T,q.
+ * - Substundenform: Hay-Gewichte aus stündlichem Horizontalwetter und
+ *   viertelstündlicher Geometrie (`hay-weights-v2`, Albedo 0.2
+ *   fixture-gepinnt); solare Viertelgewichte sind Spec-ESTIMATE.
  * - Planungstechnik/Montage/Verluste/kWp: planning-assumptions-v2
  *   (v1-Produktionspins + dokumentierte Midpoints).
  * - Uniforme Lastform: load-basis aus belegten kWh (F4.2-Upgrade: H0).
@@ -25,6 +26,11 @@ import {
   fetchPVcalcSnapshotV2,
   fetchSeriescalcSnapshotV2,
 } from "./fetch-v2";
+import {
+  HAY_WEIGHTS_V2_VERSION,
+  hayQuarterWeightsV2,
+  quarterGeometryForHourV2,
+} from "./hay-weights-v2";
 import {
   buildUniformLoadSourceV2,
   PLANNING_ASSUMPTIONS_V2,
@@ -44,7 +50,9 @@ import {
   buildPrinthorizonUrl,
   type CanonicalHorizon,
 } from "./horizon-v2";
+import { southZeroToNorthClockwise } from "./preparation-v2";
 import {
+  buildHorizontalSeriescalcUrl,
   buildRoofPVcalcUrl,
   buildRoofSeriescalcUrl,
   F401ProviderError,
@@ -70,6 +78,7 @@ function roundCoordinate(value: number): number {
 export type SnapshotTransportV2 = {
   fetchHorizon(url: string): Promise<CanonicalHorizon>;
   fetchSeries(url: string): Promise<ParsedSeriescalcSnapshot>;
+  fetchHorizontal(url: string): Promise<ParsedSeriescalcSnapshot>;
   fetchAnnual(url: string): Promise<ParsedPVcalcSnapshot>;
 };
 
@@ -77,6 +86,7 @@ export function defaultSnapshotTransportV2(): SnapshotTransportV2 {
   return {
     fetchHorizon: (url) => fetchPrinthorizonV2(url),
     fetchSeries: (url) => fetchSeriescalcSnapshotV2(url, { tilted: true }),
+    fetchHorizontal: (url) => fetchSeriescalcSnapshotV2(url, { tilted: false }),
     fetchAnnual: (url) => fetchPVcalcSnapshotV2(url),
   };
 }
@@ -167,7 +177,10 @@ export type ComposedRoofProvenanceV2 = {
 
 export type ComposedSeriesProvenanceV2 = {
   paramsVersion: typeof PLANNING_ASSUMPTIONS_V2_VERSION;
+  subhourMethod: typeof HAY_WEIGHTS_V2_VERSION;
   horizonSha256: string;
+  horizontalUrl: string;
+  horizontalSha256: string;
   roofs: ComposedRoofProvenanceV2[];
   loadSourceIds: string[];
 };
@@ -178,8 +191,6 @@ export type ComposedPlanningSeriesV2 = {
   providerEstimate: true;
   provenance: ComposedSeriesProvenanceV2;
 };
-
-const FLAT_QUARTER_WEIGHTS = [1, 1, 1, 1] as const;
 
 function roofQuery(
   site: { latitude: number; longitude: number },
@@ -213,10 +224,16 @@ function verifySiteEcho(
   }
 }
 
+export type HorizontalHourV2 = {
+  beamWhPerM2: number;
+  diffuseWhPerM2: number;
+};
+
 async function composeRoofPower(
   site: { latitude: number; longitude: number },
   roof: ResolvedRoofV2,
   horizon: readonly number[],
+  horizontalByTime: ReadonlyMap<string, HorizontalHourV2>,
   transport: SnapshotTransportV2,
 ): Promise<{
   roofId: string;
@@ -253,6 +270,7 @@ async function composeRoofPower(
   }
   const seen = new Set<string>();
   const hourly: number[] = [];
+  const hourIndexOfHour: number[] = [];
   for (const slot of slots) {
     if (seen.has(slot.providerObservedAtUtc)) continue;
     seen.add(slot.providerObservedAtUtc);
@@ -261,6 +279,7 @@ async function composeRoofPower(
       composeError("Stundenleistung fehlt im seriescalc");
     }
     hourly.push(power);
+    hourIndexOfHour.push(slot.hourIndex);
   }
   if (hourly.length !== 8760) {
     composeError(`normalisierte Dachreihe hat ${hourly.length} statt 8760 Stunden`);
@@ -269,16 +288,53 @@ async function composeRoofPower(
     hourly,
     annual.annualReferenceKwhPerKwp,
   );
+  // Hay-Flaeche: Aufgeloeste Daecher tragen Sued-Null-Azimute
+  // (v1-Profilschema); die Konvention wandelt exakt nach Nord (preparation-v2).
+  const surface = {
+    tiltDeg: roof.tiltDeg,
+    azimuthDegNorth: southZeroToNorthClockwise(roof.azimuthDeg),
+  };
+  const hourPosition = new Map<number, number>();
+  hourIndexOfHour.forEach((hourIndex, position) => {
+    hourPosition.set(hourIndex, position);
+  });
+  const hourInstants = new Map<number, [string, string, string, string]>();
+  for (const slot of slots) {
+    let entry = hourInstants.get(slot.hourIndex);
+    if (entry === undefined) {
+      entry = ["", "", "", ""];
+      hourInstants.set(slot.hourIndex, entry);
+    }
+    entry[slot.quarterIndex] = slot.evaluationInstantUtc;
+  }
   const powerWPerKwp = new Array<number>(QUARTER_HOUR_SLOTS);
   const distributed = new Map<number, readonly [number, number, number, number]>();
   for (const slot of slots) {
     let quarters = distributed.get(slot.hourIndex);
     if (quarters === undefined) {
-      // Zunaechst flach (energieexakt, ESTIMATE): Hay-Gewichte folgen mit
-      // dem Geometrie-Slice.
+      const position = hourPosition.get(slot.hourIndex);
+      if (position === undefined) composeError("Stundenindex fehlt in Dachreihe");
+      const horizontal = horizontalByTime.get(slot.providerObservedAtUtc);
+      if (horizontal === undefined) {
+        composeError("horizontale Stunde fehlt im seriescalc");
+      }
+      const instants = hourInstants.get(slot.hourIndex);
+      if (instants === undefined || instants.some((instant) => instant === "")) {
+        composeError("Auswertezeitpunkte der Stunde fehlen");
+      }
       quarters = distributeScaledPowerToQuarters(
-        pScaled[slot.hourIndex]!,
-        [...FLAT_QUARTER_WEIGHTS] as [number, number, number, number],
+        pScaled[position]!,
+        hayQuarterWeightsV2({
+          beamHourWhPerM2: horizontal.beamWhPerM2,
+          diffuseHourWhPerM2: horizontal.diffuseWhPerM2,
+          quarterGeometry: quarterGeometryForHourV2({
+            latitude: site.latitude,
+            longitude: site.longitude,
+            quarterInstantsUtc: instants,
+          }),
+          horizonHeights48: horizon,
+          surface,
+        }),
       );
       distributed.set(slot.hourIndex, quarters);
     }
@@ -344,12 +400,27 @@ export async function fetchPlanningSeriesV2(input: {
     buildLoadSourcesFromProfileV2({ consumption: parsed.data.consumption }),
   );
   const transport = input.transport ?? defaultSnapshotTransportV2();
-  const horizon = await transport.fetchHorizon(buildPrinthorizonUrl(site));
+  const horizontalUrl = buildHorizontalSeriescalcUrl(site);
+  const [horizon, horizontal] = await Promise.all([
+    transport.fetchHorizon(buildPrinthorizonUrl(site)),
+    transport.fetchHorizontal(horizontalUrl),
+  ]);
   if (!Array.isArray(horizon.heights) || horizon.heights.length !== 48) {
     composeError("Horizont hat nicht 48 Hoehen");
   }
+  verifySiteEcho(horizontal, site, "horizontal-seriescalc");
+  if (horizontal.hours.length !== 8784) {
+    composeError(`horizontal-seriescalc liefert ${horizontal.hours.length} statt 8784 Stunden`);
+  }
+  const horizontalByTime = new Map<string, HorizontalHourV2>();
+  for (const hour of horizontal.hours) {
+    horizontalByTime.set(hour.time, {
+      beamWhPerM2: hour.gb,
+      diffuseWhPerM2: hour.gd,
+    });
+  }
   const composed = await Promise.all(
-    roofs.map((roof) => composeRoofPower(site, roof, horizon.heights, transport)),
+    roofs.map((roof) => composeRoofPower(site, roof, horizon.heights, horizontalByTime, transport)),
   );
   const pvKwh = assembleSlotPvEnergy(composed.map((roof) => ({
     roofId: roof.roofId,
@@ -362,7 +433,10 @@ export async function fetchPlanningSeriesV2(input: {
     providerEstimate: true,
     provenance: {
       paramsVersion: PLANNING_ASSUMPTIONS_V2_VERSION,
+      subhourMethod: HAY_WEIGHTS_V2_VERSION,
       horizonSha256: horizon.rawSha256,
+      horizontalUrl,
+      horizontalSha256: horizontal.rawSha256,
       roofs: composed.map((roof) => roof.provenance),
       loadSourceIds: total.sources.map((source) => source.sourceId),
     },
