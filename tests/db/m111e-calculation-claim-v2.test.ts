@@ -461,6 +461,10 @@ describe("F4.1 v2 claim mapping", () => {
       longitude: 13.41,
       roofs: [{ roofId: "dach-sued", tiltDeg: 35, azimuthDeg: 5, areaM2: 52 }],
       consumption: GOLDEN_REQUEST.energyProfile.consumption,
+      // Slice A: Branch/Stichtag/Bestand-Kontext aus eingefrorener Provenienz.
+      branch: "new_installation",
+      asOfDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      existingPv: { status: "known_absent" },
     });
     expect(claimed.preparation).toBeNull();
     expect(claimed.providerRequest).toBeNull();

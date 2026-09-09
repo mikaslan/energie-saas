@@ -737,6 +737,7 @@ describe("F4.1 v2 chain end to end", () => {
             pvKwh: composed.pvKwh,
             loadKwh: composed.loadKwh,
             providerEstimate: composed.providerEstimate,
+            existingPvKwh: composed.existingPvKwh,
           };
         },
       },

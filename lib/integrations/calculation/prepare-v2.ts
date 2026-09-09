@@ -145,6 +145,22 @@ export function buildPreparedPlanningCalculationInputV2(
   return { inputSha256: hashPlanningCalculationInputV2(inputSnapshot), inputSnapshot };
 }
 
+/**
+ * Bestands-PV-Kontext (Slice A: Daten, keine Rechnung): Neuanlage
+ * ignoriert ihn; Bestand verlangt `known_present` (Fetch validiert).
+ */
+export const existingPvContextV2Schema = z.discriminatedUnion("status", [
+  z.strictObject({
+    status: z.literal("known_present"),
+    peakPowerKwp: z.number().finite().positive().max(1_000),
+    commissioningYear: z.int().min(1900).max(2200),
+  }),
+  z.strictObject({ status: z.literal("known_absent") }),
+  z.strictObject({ status: z.literal("unknown") }),
+]);
+
+export type ExistingPvContextV2 = z.infer<typeof existingPvContextV2Schema>;
+
 export type PlanningCalculationProviderRequestV2 = {
   latitude: number;
   longitude: number;
@@ -155,12 +171,18 @@ export type PlanningCalculationProviderRequestV2 = {
     areaM2: number;
   }>;
   consumption: unknown;
+  branch: "new_installation" | "existing_installation";
+  /** UTC-Stichtag (Claim-Start) fuer die Bestands-Degradation. */
+  asOfDate: string;
+  existingPv: ExistingPvContextV2;
 };
 
 export type PlanningCalculationProviderSeriesV2 = {
   pvKwh: number[];
   loadKwh: number[];
   providerEstimate: boolean;
+  /** Slice A: Bestands-Reihe (nur Bestand-Branch; sonst null). */
+  existingPvKwh: number[] | null;
 };
 
 export type PreparedPlanningCalculationPersistV2 = {
@@ -169,6 +191,8 @@ export type PreparedPlanningCalculationPersistV2 = {
   pvKwh: number[];
   loadKwh: number[];
   providerEstimate: boolean;
+  /** Slice A: Bestands-Reihe (nur Bestand-Branch; sonst null). */
+  existingPvKwh: number[] | null;
 };
 
 // Worker-Claim-Sicht (Spec F4-01): Der Execute-Handler uebergibt den Claim
@@ -203,6 +227,11 @@ const executeClaimV2Schema = z.object({
       areaM2: finite().gt(0),
     })).min(1).max(4),
     consumption: z.unknown(),
+    // Slice A: Branch/Stichtag/Bestand-Kontext fuer die Fetch-Serie
+    // (Bestand-Port; Neuanlage ignoriert den Kontext).
+    branch: z.enum(["new_installation", "existing_installation"]),
+    asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    existingPv: existingPvContextV2Schema,
   }),
   preparationV2: z.object({
     storage: claimStorageV2Schema,
@@ -216,6 +245,8 @@ const providerSeriesInputV2Schema = z.strictObject({
   pvKwh: z.array(z.number().finite().nonnegative()).length(QUARTER_HOUR_SLOTS),
   loadKwh: z.array(z.number().finite().nonnegative()).length(QUARTER_HOUR_SLOTS),
   providerEstimate: z.boolean(),
+  // Slice A: Bestands-Reihe (nur Bestand-Branch; sonst null).
+  existingPvKwh: z.array(z.number().finite().nonnegative()).length(QUARTER_HOUR_SLOTS).nullable(),
 });
 
 export function buildPlanningCalculationInputV2(input: {
@@ -262,5 +293,6 @@ export function buildPlanningCalculationInputV2(input: {
     pvKwh: series.data!.pvKwh,
     loadKwh: series.data!.loadKwh,
     providerEstimate: series.data!.providerEstimate,
+    existingPvKwh: series.data!.existingPvKwh,
   };
 }

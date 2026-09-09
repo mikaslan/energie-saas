@@ -176,6 +176,7 @@ export type CalculationV2Database = {
     pvKwh: unknown;
     loadKwh: unknown;
     providerEstimate: boolean;
+    existingPvKwh: PreparedPlanningCalculationPersistV2["existingPvKwh"];
   }): Promise<PersistedProjectCalculationInputV2>;
   finalizeSuccess(input: {
     workspaceId: string;
@@ -337,6 +338,7 @@ export function createCalculationExecuteV2Handler(
             pvKwh: prepared.pvKwh,
             loadKwh: prepared.loadKwh,
             providerEstimate: prepared.providerEstimate,
+            existingPvKwh: prepared.existingPvKwh,
           });
           effectiveInput = {
             inputSha256: persisted.inputSha256,

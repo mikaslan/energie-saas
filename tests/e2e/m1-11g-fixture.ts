@@ -706,6 +706,7 @@ export async function runChain(
             pvKwh: composed.pvKwh,
             loadKwh: composed.loadKwh,
             providerEstimate: composed.providerEstimate,
+            existingPvKwh: composed.existingPvKwh,
           };
         },
       },

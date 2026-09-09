@@ -225,6 +225,7 @@ const calculationV2Handler = createCalculationExecuteV2Handler({
         pvKwh: composed.pvKwh,
         loadKwh: composed.loadKwh,
         providerEstimate: composed.providerEstimate,
+        existingPvKwh: composed.existingPvKwh,
       };
     },
   },

@@ -515,6 +515,20 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## Bestand-Port Slice A (2026-09-09)
+- Bestands-Serie als degradierte Neuanlagen-Form (`existing-pv-v2.ts`,
+  `wmee-existing-pv.v1`): Flaechen-Split x Bestands-kWp x (1-0,5 %)^Jahre
+  (v1-Formel exakt; Verschattungs-Doppelabschlag entfaellt, benannt).
+- Plumbing: Provider-Request +branch/asOfDate/existingPv (Claim aus
+  eingefrorener Provenienz, m111e belegt new/known_absent), Fetch
+  validiert (Bestand verlangt known_present) + rechnet existingPvKwh,
+  Persist/Worker reichen durch (alte Bundles gueltig). Run-Gate bleibt
+  bis Slice B (baseline/geplant/Delta + Schema + UI).
+- Echter Fang (eigener Test, rot): Skala auf kWp-haltige Reihe angewandt
+  (/10,4 daneben) — korrigiert auf v1-Split, Test beweist Ratio exakt.
+- Tests: existing-pv 4/4, Fetch-Bestand, Claim/Frischpfad-Fixtures;
+  unit 1050, db 139 Dateien 1160+1skip, E2E m1-11g 2/2, lint+typecheck 0.
+
 ## Bestand-Gate (2026-09-09)
 - `existing_installation` rechnete in v2 still als Neuanlage (kWp aus
   Dachflaeche statt Bestand-kWp mit Degradation; nur Info-Warnung).

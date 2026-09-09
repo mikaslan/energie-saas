@@ -42,6 +42,10 @@ function request(overrides: Record<string, unknown> = {}): Record<string, unknow
     longitude: SITE.longitude,
     roofs: [SOUTH_ROOF],
     consumption: consumption(),
+    // Slice A: Neuanlagen-Setup (Bestand-Kontext wird ignoriert).
+    branch: "new_installation",
+    asOfDate: "2026-08-29",
+    existingPv: { status: "known_absent" },
     ...overrides,
   };
 }
@@ -350,6 +354,8 @@ describe("F4.1 v2 fetch compose", () => {
     expect(composed.providerEstimate).toBe(true);
     expect(composed.pvKwh).toHaveLength(QUARTER_HOUR_SLOTS);
     expect(composed.loadKwh).toHaveLength(QUARTER_HOUR_SLOTS);
+    // Neuanlage: keine Bestands-Reihe.
+    expect(composed.existingPvKwh).toBeNull();
     for (const value of composed.pvKwh) {
       expect(Number.isFinite(value)).toBe(true);
       expect(value).toBeGreaterThanOrEqual(0);
@@ -404,5 +410,54 @@ describe("F4.1 v2 fetch compose", () => {
       }),
       transport: fakeTransport(envelope),
     })).rejects.toThrow();
+  });
+
+  it("rechnet Bestand als degradierte Neuanlagen-Form und weist unbelegte Anlage ab", async () => {
+    const envelope = tiltedEnvelope();
+    const newRequest = request();
+    const fresh = await fetchPlanningSeriesV2({
+      request: newRequest,
+      transport: fakeTransport(envelope),
+    });
+    // Ein Dach (52 m2 x 0,2 kWp/m2 = 10,4 kWp), Anlage 5,2 kWp aus 2020,
+    // Stichtag 2026 -> (1-0,005)^6.
+    const composed = await fetchPlanningSeriesV2({
+      request: request({
+        branch: "existing_installation",
+        asOfDate: "2026-08-29",
+        existingPv: {
+          status: "known_present",
+          peakPowerKwp: 5.2,
+          commissioningYear: 2020,
+        },
+      }),
+      transport: fakeTransport(envelope),
+    });
+    expect(composed.existingPvKwh).toHaveLength(QUARTER_HOUR_SLOTS);
+    const expectedRatio = 5.2 * 0.995 ** 6 / 10.4;
+    expect(neumaierSum(composed.existingPvKwh!)).toBeCloseTo(
+      neumaierSum(fresh.pvKwh) * expectedRatio,
+      6,
+    );
+    // Gleiche Form wie neu (Slot-proportional, v1-Kapazitaetssplit).
+    for (const slot of [0, 1000, 10_000, 35_039]) {
+      const freshValue = fresh.pvKwh[slot]!;
+      if (freshValue > 0) {
+        expect(composed.existingPvKwh![slot]! / freshValue).toBeCloseTo(expectedRatio, 9);
+      } else {
+        expect(composed.existingPvKwh![slot]!).toBe(0);
+      }
+    }
+    // Unbelegte Anlage im Bestand -> fail-closed (v1 verlangt known_present).
+    for (const existingPv of [
+      { status: "unknown" },
+      { status: "known_absent" },
+      { status: "known_present", peakPowerKwp: 5.2, commissioningYear: 1800 },
+    ]) {
+      await expect(fetchPlanningSeriesV2({
+        request: request({ branch: "existing_installation", existingPv }),
+        transport: fakeTransport(envelope),
+      })).rejects.toThrow();
+    }
   });
 });

@@ -180,6 +180,10 @@ function workerClaim(overrides: Record<string, unknown> = {}): Record<string, un
       consumption: {
         householdKwhPerYear: { status: "known", value: 4200, source: "customer_metered" },
       },
+      // Slice A: Neuanlagen-Setup ohne Bestands-Reihe.
+      branch: "new_installation",
+      asOfDate: "2026-08-29",
+      existingPv: { status: "known_absent" },
     },
     preparationV2: {
       schemaVersion: "project-calculation-preparation.v2",
@@ -206,6 +210,8 @@ function workerSeries(overrides: Record<string, unknown> = {}): Record<string, u
     pvKwh: new Array<number>(QUARTER_HOUR_SLOTS).fill(1),
     loadKwh: new Array<number>(QUARTER_HOUR_SLOTS).fill(0.5),
     providerEstimate: false,
+    // Slice A: Neuanlagen-Setup ohne Bestands-Reihe.
+    existingPvKwh: null,
     ...overrides,
   };
 }

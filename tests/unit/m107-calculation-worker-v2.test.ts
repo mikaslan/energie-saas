@@ -164,6 +164,7 @@ const SERIES = {
   pvKwh: new Array<number>(35_040).fill(1),
   loadKwh: new Array<number>(35_040).fill(0.5),
   providerEstimate: false,
+  // Slice A: Neuanlagen-Setup ohne Bestands-Reihe (Schluessel fehlt).
 };
 
 const REQUEST = {
@@ -245,6 +246,9 @@ function v2Claim(
       consumption: {
         householdKwhPerYear: { status: "known", value: 4200, source: "customer_metered" },
       },
+      branch: "new_installation",
+      asOfDate: "2026-08-29",
+      existingPv: { status: "known_absent" },
     },
     ...overrides,
   };
@@ -343,7 +347,8 @@ function setup(options: HandlerSetup = {}): {
           roofs: [{ roofId: "dach-sued", tiltDeg: 30, azimuthDeg: 0, areaM2: 52 }],
         });
         if (options.fetchError !== undefined) throw options.fetchError;
-        return SERIES;
+        // Slice A: Neuanlagen-Setup, keine Bestands-Reihe.
+        return { ...SERIES, existingPvKwh: null };
       }),
     },
     buildInput: vi.fn(async () => {
@@ -352,6 +357,7 @@ function setup(options: HandlerSetup = {}): {
         inputSha256: INPUT_SHA256,
         inputSnapshot: REQUEST,
         ...SERIES,
+        existingPvKwh: null,
       };
     }),
     engine: {
@@ -427,7 +433,8 @@ describe("F4.1 v2 execute handler", () => {
     expect(dependencies.provider.fetch).toHaveBeenCalledTimes(1);
     expect(dependencies.buildInput).toHaveBeenCalledWith({
       claim: expect.objectContaining({ jobId: JOB_ID }),
-      providerSeries: SERIES,
+      // Slice A: Fetch liefert die Bestands-Reihe (hier null) mit.
+      providerSeries: { ...SERIES, existingPvKwh: null },
     });
     expect(dependencies.database.persistInput).toHaveBeenCalledTimes(1);
     expect(dependencies.engine.calculate).toHaveBeenCalledWith({

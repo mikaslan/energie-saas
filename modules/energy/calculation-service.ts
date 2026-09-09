@@ -30,7 +30,11 @@ import {
   planningCalculationResultV2Schema,
   type PlanningCalculationRequestV2,
 } from "@/lib/integrations/calculation/contract-v2";
-import { hashPlanningCalculationInputV2 } from "@/lib/integrations/calculation/prepare-v2";
+import {
+  existingPvContextV2Schema,
+  hashPlanningCalculationInputV2,
+  type ExistingPvContextV2,
+} from "@/lib/integrations/calculation/prepare-v2";
 import { assertSlotSeriesV2 } from "@/lib/integrations/calculation/run-v2";
 import { validatePlanningCalculationResultV2Exactly } from
   "@/lib/integrations/calculation/validate-result-v2";
@@ -295,7 +299,8 @@ export type ProjectCalculationClaim = {
   preparationV2: ProjectCalculationPreparationV2 | null;
   // Vollstaendige Fetch-Anfrage aus eingefrorener Provenienz: Geokoordinaten
   // plus Profil-Daecher (Sued-Null, mit Flaeche fuer kWp) plus Verbrauch
-  // fuer die Lastbasis. Der Worker liest keinen Katalog erneut.
+  // fuer die Lastbasis plus Branch/Stichtag/Bestand-Kontext (Slice A:
+  // Bestands-Serie). Der Worker liest keinen Katalog erneut.
   providerRequestV2: {
     latitude: number;
     longitude: number;
@@ -306,6 +311,9 @@ export type ProjectCalculationClaim = {
       areaM2: number;
     }>;
     consumption: unknown;
+    branch: "new_installation" | "existing_installation";
+    asOfDate: string;
+    existingPv: ExistingPvContextV2;
   } | null;
 };
 
@@ -385,6 +393,28 @@ function parsePreparationV2(row: ClaimRow): ProjectCalculationPreparationV2 | nu
   return parsed.data;
 }
 
+/**
+ * Slice A: Bestands-PV-Kontext aus eingefrorener Profil-Provenienz
+ * (Quell-Bytes bleiben in der Preparation; der Fetch bekommt nur den
+ * validierten Kontext). Unparsbar -> invalid_input (fail-closed).
+ */
+function parseExistingPvContextV2(asset: unknown): ExistingPvContextV2 {
+  const record = (asset !== null && typeof asset === "object" ? asset : {}) as Record<
+    string,
+    unknown
+  >;
+  const normalized = record.status === "known_present"
+    ? {
+      status: "known_present" as const,
+      peakPowerKwp: record.peakPowerKwp,
+      commissioningYear: record.commissioningYear,
+    }
+    : { status: record.status };
+  const parsed = existingPvContextV2Schema.safeParse(normalized);
+  if (!parsed.success) invalidInput();
+  return parsed.data;
+}
+
 function claimResult(row: ClaimRow): ProjectCalculationClaim {
   const leaseExpiresAt = new Date(row.lease_expires_at as Date | string);
   const startedAt = new Date(row.started_at as Date | string);
@@ -440,6 +470,9 @@ function claimResult(row: ClaimRow): ProjectCalculationClaim {
         areaM2: roof.areaM2,
       })),
       consumption: structuredClone(preparationV2.profile.consumption),
+      branch: preparationV2.requirements.branch,
+      asOfDate: startedAt.toISOString().slice(0, 10),
+      existingPv: parseExistingPvContextV2(preparationV2.profile.existingAssets.pv),
     },
   };
 }
@@ -1069,6 +1102,8 @@ const providerSeriesV2Schema = z.strictObject({
   pvKwh: z.array(z.number()),
   loadKwh: z.array(z.number()),
   providerEstimate: z.boolean(),
+  // Slice A: Bestands-Reihe (optional -> alte Bundles bleiben gueltig).
+  existingPvKwh: z.array(z.number()).optional(),
 });
 
 export type ProviderSeriesV2 = z.infer<typeof providerSeriesV2Schema>;
@@ -1080,6 +1115,8 @@ const storedInputV2Schema = workerKeySchema.extend({
   pvKwh: z.unknown(),
   loadKwh: z.unknown(),
   providerEstimate: z.boolean(),
+  // Slice A: optional -> alte Worker-Payloads bleiben gueltig.
+  existingPvKwh: z.unknown().optional(),
 });
 
 const successInputV2Schema = workerKeySchema.extend({
@@ -1092,6 +1129,7 @@ function providerSeriesV2Bundle(input: {
   pvKwh: unknown;
   loadKwh: unknown;
   providerEstimate: boolean;
+  existingPvKwh?: unknown;
 }): ProviderSeriesV2 {
   let pvKwh: number[];
   let loadKwh: number[];
@@ -1101,11 +1139,20 @@ function providerSeriesV2Bundle(input: {
   } catch {
     invalidInput();
   }
+  let existingPvKwh: number[] | undefined;
+  if (input.existingPvKwh !== undefined && input.existingPvKwh !== null) {
+    try {
+      existingPvKwh = assertSlotSeriesV2(input.existingPvKwh, "existingPvKwh");
+    } catch {
+      invalidInput();
+    }
+  }
   return {
     schemaVersion: PROVIDER_SERIES_V2_SCHEMA_VERSION,
     pvKwh,
     loadKwh,
     providerEstimate: input.providerEstimate,
+    ...(existingPvKwh === undefined ? {} : { existingPvKwh }),
   };
 }
 
@@ -1115,6 +1162,9 @@ function parseStoredSeriesV2(value: unknown): ProviderSeriesV2 | null {
   try {
     assertSlotSeriesV2(parsed.data.pvKwh, "pvKwh");
     assertSlotSeriesV2(parsed.data.loadKwh, "loadKwh");
+    if (parsed.data.existingPvKwh !== undefined) {
+      assertSlotSeriesV2(parsed.data.existingPvKwh, "existingPvKwh");
+    }
   } catch {
     return null;
   }

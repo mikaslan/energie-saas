@@ -31,6 +31,10 @@ import {
   fetchSeriescalcSnapshotV2,
 } from "./fetch-v2";
 import { buildHeatingDegreeSourceV2 } from "./degree-day-load-v2";
+import {
+  buildExistingPvSeriesV2,
+  degradationFactorV2,
+} from "./existing-pv-v2";
 import { buildH0BasisSourceV2 } from "./h0-load-v2";
 import {
   buildCoolingDegreeSourceV2,
@@ -61,6 +65,7 @@ import {
   type CanonicalHorizon,
 } from "./horizon-v2";
 import { southZeroToNorthClockwise } from "./preparation-v2";
+import { existingPvContextV2Schema } from "./prepare-v2";
 import {
   buildHorizontalSeriescalcUrl,
   buildRoofPVcalcUrl,
@@ -277,6 +282,11 @@ export type ComposedPlanningSeriesV2 = {
   pvKwh: number[];
   loadKwh: number[];
   providerEstimate: true;
+  /**
+   * Slice A: Bestands-Reihe (nur Bestand-Branch mit belegter Anlage;
+   * sonst null). Der Run nutzt sie erst ab Slice B (Gate bleibt).
+   */
+  existingPvKwh: number[] | null;
   provenance: ComposedSeriesProvenanceV2;
 };
 
@@ -451,12 +461,16 @@ export async function fetchPlanningSeriesV2(input: {
 }): Promise<ComposedPlanningSeriesV2> {
   // Einzige Fetch-Anfrage ist die eingefrorene Claim-Sicht
   // (PlanningCalculationProviderRequestV2): Geokoordinaten, Profil-Daecher,
-  // Verbrauch. Dach- und Lastaufloesung validieren je fail-closed.
+  // Verbrauch plus Branch/Stichtag/Bestand-Kontext (Slice A). Dach- und
+  // Lastaufloesung validieren je fail-closed.
   const parsed = z.object({
     latitude: z.number(),
     longitude: z.number(),
     roofs: z.unknown(),
     consumption: z.unknown(),
+    branch: z.enum(["new_installation", "existing_installation"]),
+    asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    existingPv: z.unknown(),
   }).safeParse(input.request);
   if (!parsed.success) composeError("Fetch-Anfrage ist ungueltig");
   const parsedSite = siteSchema.safeParse({
@@ -541,10 +555,38 @@ export async function fetchPlanningSeriesV2(input: {
     peakPowerKwp: roof.peakPowerKwp,
     powerWPerKwp: roof.powerWPerKwp,
   })));
+  // Slice A: Bestands-Reihe nur im Bestand-Branch mit belegter Anlage
+  // (v1 verlangt `known_present`, sonst fail-closed); Neuanlage -> null.
+  // Der Run bleibt bis Slice B gegated und nutzt die Reihe noch nicht.
+  let existingPvKwh: number[] | null = null;
+  if (parsed.data.branch === "existing_installation") {
+    const existingParsed = existingPvContextV2Schema.safeParse(parsed.data.existingPv);
+    if (!existingParsed.success) composeError("Bestands-PV ist nicht belegt");
+    const context = existingParsed.data;
+    if (context.status !== "known_present") {
+      composeError("Bestands-PV ist nicht belegt");
+    }
+    const asOfYear = Number(parsed.data.asOfDate.slice(0, 4));
+    if (!Number.isInteger(asOfYear)) composeError("Stichtag ist ungueltig");
+    const built = buildExistingPvSeriesV2({
+      roofs: composed.map((roof, index) => ({
+        roofId: roof.roofId,
+        areaM2: roofs[index]!.areaM2,
+        newPowerWPerKwp: roof.powerWPerKwp,
+      })),
+      existingKwp: context.peakPowerKwp,
+      degradationFactor: degradationFactorV2({
+        commissioningYear: context.commissioningYear,
+        asOfYear,
+      }),
+    });
+    existingPvKwh = built.existingPvKwh;
+  }
   return {
     pvKwh,
     loadKwh: [...total.slotEnergyKwh],
     providerEstimate: true,
+    existingPvKwh,
     provenance: {
       paramsVersion: PLANNING_ASSUMPTIONS_V2_VERSION,
       subhourMethod: HAY_WEIGHTS_V2_VERSION,
