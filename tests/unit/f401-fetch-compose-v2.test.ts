@@ -191,17 +191,37 @@ function consumption(overrides: Record<string, unknown> = {}): Record<string, un
   };
 }
 
-function axisLabels(): string[] {
+function loadContext(): {
+  slotLabels: string[];
+  hourlyTemperatureC: Map<string, number>;
+  hourTimesInOrder: string[];
+} {
   const envelope = horizontalEnvelope();
-  return mapProviderYearToQuarterSlots(envelope.hours.map((hour) => hour.t))
-    .map((slot) => slot.slotLabel);
+  const slots = mapProviderYearToQuarterSlots(envelope.hours.map((hour) => hour.t));
+  const temperatures = new Map(
+    envelope.hours.map((hour) => [hour.t, hour.t2m] as [string, number]),
+  );
+  const seen = new Set<string>();
+  const hourTimesInOrder: string[] = [];
+  for (const slot of slots) {
+    if (seen.has(slot.providerObservedAtUtc)) continue;
+    seen.add(slot.providerObservedAtUtc);
+    hourTimesInOrder.push(slot.providerObservedAtUtc);
+  }
+  return {
+    slotLabels: slots.map((slot) => slot.slotLabel),
+    hourlyTemperatureC: new Map(
+      hourTimesInOrder.map((time) => [time, temperatures.get(time)!]),
+    ),
+    hourTimesInOrder,
+  };
 }
 
 describe("F4.1 v2 load sources from profile", () => {
   it("bindet belegte kWh als H0-Basis plus uniforme Zusatzquellen", () => {
     const sources = buildLoadSourcesFromProfileV2(
       { consumption: consumption() },
-      axisLabels(),
+      loadContext(),
     );
     expect(sources.map((source) => source.sourceKind)).toEqual(["basis", "ev"]);
     const basis = sources[0]!;
@@ -217,14 +237,18 @@ describe("F4.1 v2 load sources from profile", () => {
       consumption: consumption({
         householdKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
       }),
-    }, axisLabels())).toThrow();
+    }, loadContext())).toThrow();
     const sources = buildLoadSourcesFromProfileV2({
       consumption: consumption({
         evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
         heatPumpKwhPerYear: { status: "known", value: 1500, source: "customer_input" },
       }),
-    }, axisLabels());
+    }, loadContext());
     expect(sources.map((source) => source.sourceKind)).toEqual(["basis", "heat_pump"]);
+    const heat = sources[1]!;
+    expect(heat.sourceId).toBe("wmee-degree-day-heat.v1");
+    expect(heat.sourceRevision).toBe("wmee-degree-day.v1");
+    expect(neumaierSum(heat.slotEnergyKwh)).toBeCloseTo(1500, 6);
   });
 });
 

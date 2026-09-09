@@ -12,8 +12,10 @@
  *   fixture-gepinnt); solare Viertelgewichte sind Spec-ESTIMATE.
  * - Planungstechnik/Montage/Verluste/kWp: planning-assumptions-v2
  *   (v1-Produktionspins + dokumentierte Midpoints).
- * - Lastform: Haushalts-Basis als BDEW-H0 (h0-load-v2, energieexakt auf
- *   belegte kWh normiert); EV/Zusatzlasten weiter uniform (F4.2-Formen).
+ * - Lastform: Haushalts-Basis als BDEW-H0 (h0-load-v2) und WP-Strom
+ *   nach Heizgradstunden (degree-day-load-v2, T2m-Wetterjahr), beide
+ *   energieexakt auf belegte kWh normiert; EV/Kaelte/Warmwasser weiter
+ *   uniform (F4.2-Formen).
  * `providerEstimate` ist zunächst immer true -> Resultat-Warnung
  * `provider_estimate` (Haftungskennzeichnung, F4-Goal).
  */
@@ -27,6 +29,7 @@ import {
   fetchPVcalcSnapshotV2,
   fetchSeriescalcSnapshotV2,
 } from "./fetch-v2";
+import { buildHeatingDegreeSourceV2 } from "./degree-day-load-v2";
 import { buildH0BasisSourceV2 } from "./h0-load-v2";
 import {
   HAY_WEIGHTS_V2_VERSION,
@@ -126,17 +129,26 @@ function knownKwh(
   return value;
 }
 
+export type LoadContextV2 = {
+  /** 35.040 Achsen-Slotlabels (H0-Datum/Wochentag). */
+  slotLabels: readonly unknown[];
+  /** Stundentemperaturen des Wetterjahrs (Heizgradstunden). */
+  hourlyTemperatureC: ReadonlyMap<string, number>;
+  /** 8.760 normalisierte Stundenzeiten in Achsenreihenfolge. */
+  hourTimesInOrder: readonly string[];
+};
+
 /**
  * Belegtes Verbrauchsprofil -> Provenienz-Quellen: Haushalt als
- * Pflicht-Basis in BDEW-H0-Form (Achsenlabels tragen Datum/Wochentag);
- * EV (km x Planungsfaktor), Waerme/Kaelte/Warmwasser als uniforme
- * kWh-Quellen nur bei bekannten Werten > 0 (Upgrade: F4.2-Formen).
+ * Pflicht-Basis in BDEW-H0-Form; Waermepumpe nach Heizgradstunden
+ * (T2m-Wetterjahr); EV (km x Planungsfaktor), Kaelte/Warmwasser als
+ * uniforme kWh-Quellen nur bei bekannten Werten > 0 (F4.2-Formen).
  * Unbekannte Zusatzlasten werden geskippt (sichtbar in sources[]);
  * unbekannte Basis verweigert fail-closed (kein erfundener Verbrauch).
  */
 export function buildLoadSourcesFromProfileV2(
   profile: unknown,
-  slotLabels: readonly unknown[],
+  loadContext: LoadContextV2,
 ): LoadProfileSourceV2[] {
   const parsed = z.object({ consumption: consumptionSchema }).safeParse(profile);
   if (!parsed.success) composeError("Profil traegt keinen Verbrauch");
@@ -144,7 +156,7 @@ export function buildLoadSourcesFromProfileV2(
   const sources: LoadProfileSourceV2[] = [
     buildH0BasisSourceV2({
       annualKwh: knownKwh(consumption.householdKwhPerYear, "Haushalt", true) as number,
-      slotLabels,
+      slotLabels: loadContext.slotLabels,
     }),
   ];
   const evKm = knownKwh(consumption.evKmPerYear, "EV", false);
@@ -154,8 +166,15 @@ export function buildLoadSourcesFromProfileV2(
       annualKwh: evKm * PLANNING_ASSUMPTIONS_V2.load.evKwhPerKm,
     }));
   }
+  const heatKwh = knownKwh(consumption.heatPumpKwhPerYear, "Waermepumpe", false);
+  if (heatKwh !== null && heatKwh > 0) {
+    sources.push(buildHeatingDegreeSourceV2({
+      annualKwh: heatKwh,
+      hourlyTemperatureC: loadContext.hourlyTemperatureC,
+      hourTimesInOrder: loadContext.hourTimesInOrder,
+    }));
+  }
   const extras = [
-    { kind: "heat_pump", entry: consumption.heatPumpKwhPerYear, name: "Waermepumpe" },
     { kind: "cooling", entry: consumption.coolingKwhPerYear, name: "Kuehlung" },
     { kind: "hot_water", entry: consumption.hotWaterKwhPerYear, name: "Warmwasser" },
   ] as const;
@@ -233,6 +252,7 @@ function verifySiteEcho(
 export type HorizontalHourV2 = {
   beamWhPerM2: number;
   diffuseWhPerM2: number;
+  temperatureC: number;
 };
 
 async function composeRoofPower(
@@ -420,17 +440,34 @@ export async function fetchPlanningSeriesV2(input: {
     horizontalByTime.set(hour.time, {
       beamWhPerM2: hour.gb,
       diffuseWhPerM2: hour.gd,
+      temperatureC: hour.t2m,
     });
   }
   // H0-Basis folgt den Achsenlabels der standortweiten Horizontalreihe
-  // (Berliner Standardzeit-Daten, gleiche Achse wie die Daecherserien).
+  // (Berliner Standardzeit-Daten, gleiche Achse wie die Daecherserien);
+  // Heizgradstunden nutzen deren T2m in normalisierter Stundenfolge.
   const horizontalSlots = mapProviderYearToQuarterSlots(
     horizontal.hours.map((hour) => hour.time),
   );
+  const seenHours = new Set<string>();
+  const hourTimesInOrder: string[] = [];
+  for (const slot of horizontalSlots) {
+    if (seenHours.has(slot.providerObservedAtUtc)) continue;
+    seenHours.add(slot.providerObservedAtUtc);
+    hourTimesInOrder.push(slot.providerObservedAtUtc);
+  }
+  const hourlyTemperatureC = new Map<string, number>();
+  for (const time of hourTimesInOrder) {
+    hourlyTemperatureC.set(time, horizontalByTime.get(time)!.temperatureC);
+  }
   const total = resolveTotalLoadProfile(
     buildLoadSourcesFromProfileV2(
       { consumption: parsed.data.consumption },
-      horizontalSlots.map((slot) => slot.slotLabel),
+      {
+        slotLabels: horizontalSlots.map((slot) => slot.slotLabel),
+        hourlyTemperatureC,
+        hourTimesInOrder,
+      },
     ),
   );
   const composed = await Promise.all(
