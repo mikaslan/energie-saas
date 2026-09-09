@@ -571,12 +571,19 @@ export async function claimProjectCalculationJob(
   `);
   const claimed = updated.rows[0];
   if (!claimed) return null;
-  await enqueueDispatchForContractVersion(
-    tx,
-    value.workspaceId,
-    value.jobId,
-    claimed.contract_version,
-  );
+  // Crash-Recovery nur v1: Die 0026-Routine pflanzt beim Claim atomar den
+  // Folge-Dispatch `:attempt` (start_after = Lease-Ende). Die v2-Routine
+  // (0080) kennt kein Recovery (queued-only) — dort IST der Claim die
+  // Zustellung; ein Call wuerde fail-closed werfen. Offen: v2-Recovery
+  // analog 0026 (eigener Slice, keine stille Angleichung hier).
+  if (claimed.contract_version !== CALCULATION_V2_CONTRACT_VERSION) {
+    await enqueueDispatchForContractVersion(
+      tx,
+      value.workspaceId,
+      value.jobId,
+      claimed.contract_version,
+    );
+  }
   return claimResult(claimed);
 }
 
@@ -828,7 +835,10 @@ export async function finalizeProjectCalculationFailure(
   `);
   const finalized = updated.rows[0];
   if (!finalized) stale();
-  if (willRetry) {
+  // Retry-Redispatch nur v1 (0026 timt `:attempt` auf next_attempt_at um).
+  // v2: kein Recovery in 0080 — der requeueDue-Sweep stellt faellige
+  // retry_wait-Jobs auf queued und liefert sie dort aus (880, getestet).
+  if (willRetry && row.contract_version !== CALCULATION_V2_CONTRACT_VERSION) {
     await enqueueDispatchForContractVersion(
       tx,
       value.workspaceId,

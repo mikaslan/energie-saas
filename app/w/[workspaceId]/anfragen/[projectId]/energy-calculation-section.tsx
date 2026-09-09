@@ -1,5 +1,6 @@
 import type {
   ProjectEnergyCalculationResult,
+  ProjectEnergyCalculationResultV2,
   ProjectEnergyContext,
 } from "@/modules/energy";
 import { DetailItem, Section } from "./_ui";
@@ -10,6 +11,9 @@ type NewResult = Extract<ResultValue, { branch: "new_installation" }>;
 type ExistingResult = Extract<ResultValue, { branch: "existing_installation" }>;
 type AnnualEnergy = NewResult["calculation"]["annual"];
 type MonthlyEnergy = NewResult["calculation"]["monthly"];
+type AnnualEnergyV2 = ProjectEnergyCalculationResultV2["value"]["annual"];
+type MonthlyEnergyV2 = ProjectEnergyCalculationResultV2["value"]["monthly"];
+type WarningsV2 = ProjectEnergyCalculationResultV2["value"]["warnings"];
 
 const numberFormatter = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 2,
@@ -286,6 +290,182 @@ function PlanningResult({
   );
 }
 
+function warningText(code: WarningsV2[number]["code"]): string {
+  if (code === "provider_estimate") {
+    return "Geschätzte Eingabedaten: Diese Berechnung nutzt versionierte "
+      + "Planungsannahmen (Technik-, Last- und Leistungsannahmen), keine "
+      + "vollständig gemessenen Live-Daten. Details in der Provenienz.";
+  }
+  if (code === "unknown_profile_field") {
+    return "Unbekannte Profilfelder wurden bewusst ignoriert.";
+  }
+  if (code === "existing_installation_limited") {
+    return "Bestehende Anlage nur eingeschränkt modelliert.";
+  }
+  if (code === "bidirectional_charging_not_modeled") {
+    return "Bidirektionales Laden ist nicht modelliert.";
+  }
+  return "Ersatzstrom ist nicht modelliert.";
+}
+
+function V2Warnings({ warnings }: { warnings: WarningsV2 }) {
+  if (warnings.length === 0) return null;
+  return (
+    <div
+      data-energy-calculation-v2-warnings={warnings.map((warning) => warning.code).join(",")}
+      className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+    >
+      <p className="font-semibold">Planungshinweise</p>
+      <ul className="mt-1 list-disc pl-5">
+        {warnings.map((warning, index) => (
+          <li key={`${warning.code}-${index}`}>{warningText(warning.code)}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function V2AnnualDetails({ annual }: { annual: AnnualEnergyV2 }) {
+  return (
+    <dl className="mt-4 grid gap-x-6 sm:grid-cols-2">
+      <DetailItem term="Jahreserzeugung" numeric>
+        {formatNumber(annual.generationKwh, "kWh")}
+      </DetailItem>
+      <DetailItem term="Jahresverbrauch" numeric>
+        {formatNumber(annual.consumptionKwh, "kWh")}
+      </DetailItem>
+      <DetailItem term="Eigenverbrauch" numeric>
+        {formatNumber(annual.selfConsumptionKwh, "kWh")}
+      </DetailItem>
+      <DetailItem term="Einspeisung" numeric>
+        {formatNumber(annual.feedInKwh, "kWh")}
+      </DetailItem>
+      <DetailItem term="Netzbezug" numeric>
+        {formatNumber(annual.gridImportKwh, "kWh")}
+      </DetailItem>
+      <DetailItem term="Speicherverluste" numeric>
+        {formatNumber(annual.storageLossKwh, "kWh")}
+      </DetailItem>
+      <DetailItem term="Autarkiegrad" numeric>{formatRate(annual.autonomyRate)}</DetailItem>
+      <DetailItem term="Eigenverbrauchsquote" numeric>
+        {formatRate(annual.selfConsumptionRate)}
+      </DetailItem>
+    </dl>
+  );
+}
+
+function V2MonthlyTable({ monthly }: { monthly: MonthlyEnergyV2 }) {
+  return (
+    <div
+      className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+      tabIndex={0}
+      role="region"
+      aria-label="Monatsergebnisse der Viertelstunden-Planungsrechnung, horizontal scrollbar"
+    >
+      <table className="min-w-[44rem] w-full border-collapse text-left text-sm tabular-nums">
+        <caption className="px-4 py-3 text-left font-semibold text-slate-950">
+          Monatsergebnisse der Viertelstunden-Planungsrechnung
+        </caption>
+        <thead className="bg-slate-50 text-slate-700">
+          <tr>
+            <th scope="col" className="px-4 py-3 font-semibold">Monat</th>
+            <th scope="col" className="px-4 py-3 text-right font-semibold">Erzeugung</th>
+            <th scope="col" className="px-4 py-3 text-right font-semibold">Eigenverbrauch</th>
+            <th scope="col" className="px-4 py-3 text-right font-semibold">Netzbezug</th>
+            <th scope="col" className="px-4 py-3 text-right font-semibold">Einspeisung</th>
+          </tr>
+        </thead>
+        <tbody>
+          {monthly.map((entry) => (
+            <tr key={entry.month} className="border-t border-slate-200">
+              <th scope="row" className="px-4 py-3 font-medium text-slate-900">
+                {monthLabel(entry.month)}
+              </th>
+              <td className="px-4 py-3 text-right">{formatNumber(entry.generationKwh, "kWh")}</td>
+              <td className="px-4 py-3 text-right">{formatNumber(entry.selfConsumptionKwh, "kWh")}</td>
+              <td className="px-4 py-3 text-right">{formatNumber(entry.gridImportKwh, "kWh")}</td>
+              <td className="px-4 py-3 text-right">{formatNumber(entry.feedInKwh, "kWh")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function V2Provenance({ result }: { result: ProjectEnergyCalculationResultV2 }) {
+  return (
+    <details className="mt-5 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+      <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+        Annahmen und technische Provenienz (v2)
+      </summary>
+      <dl className="mt-2">
+        <DetailItem term="Zeitauflösung" numeric>Viertelstunde (35.040 Slots)</DetailItem>
+        <DetailItem term="Adress-/Profil-/Bedarfsrevision">
+          {result.binding.addressRevision} / {result.binding.profile.revision} / {result.binding.requirement.revision}
+        </DetailItem>
+        <DetailItem term="Engine">
+          {result.sources.modelId} {result.sources.modelVersion}
+        </DetailItem>
+        <DetailItem term="Providerrezept">
+          <code className="break-all font-mono text-xs font-normal">
+            {result.sources.providerRecipeVersion}
+          </code>
+        </DetailItem>
+        <DetailItem term="Vertrag / Annahmen">
+          <code className="break-all font-mono text-xs font-normal">
+            {result.sources.contractVersion} / {result.assumptions.paramsVersion}
+          </code>
+        </DetailItem>
+        <DetailItem term="Quellrevision">
+          <code className="break-all font-mono text-xs font-normal">
+            {result.sources.sourceRevision}
+          </code>
+        </DetailItem>
+        <DetailItem term="Eingabe-Hash">
+          <code className="break-all font-mono text-xs font-normal">
+            {result.value.inputSha256}
+          </code>
+        </DetailItem>
+        <DetailItem term="Qualität">
+          {result.value.quality} / {result.value.validationStatus}
+        </DetailItem>
+      </dl>
+    </details>
+  );
+}
+
+function PlanningResultV2({
+  result,
+  historical = false,
+}: {
+  result: ProjectEnergyCalculationResultV2;
+  historical?: boolean;
+}) {
+  return (
+    <div className="mt-5" data-energy-calculation-v2-result="true">
+      <div
+        role="note"
+        className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+      >
+        <p className="font-semibold">
+          {historical
+            ? "Historische Viertelstunden-Planungsrechnung"
+            : "Viertelstunden-Planungsrechnung (v2)"}
+        </p>
+        <p className="mt-1">
+          Enthält versionierte Planungsannahmen (siehe Hinweise). Diese Werte
+          sind keine Wirtschaftlichkeits-, Preis- oder Angebotsberechnung.
+        </p>
+      </div>
+      <V2Warnings warnings={result.value.warnings} />
+      <V2AnnualDetails annual={result.value.annual} />
+      <V2MonthlyTable monthly={result.value.monthly} />
+      <V2Provenance result={result} />
+    </div>
+  );
+}
+
 function blockerMessage(blocker: Extract<
   ProjectEnergyContext["calculation"],
   { status: "blocked" }
@@ -405,6 +585,15 @@ export function EnergyCalculationSection({
           </>
         ) : null}
 
+        {calculation.status === "currentV2" ? (
+          <>
+            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-950">
+              Ergebnis aktuell (v2)
+            </p>
+            <PlanningResultV2 result={calculation.resultV2} />
+          </>
+        ) : null}
+
         {calculation.status === "stale" ? (
           <>
             <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
@@ -416,6 +605,9 @@ export function EnergyCalculationSection({
             </div>
             {calculation.result ? (
               <PlanningResult result={calculation.result} historical />
+            ) : null}
+            {calculation.resultV2 ? (
+              <PlanningResultV2 result={calculation.resultV2} historical />
             ) : null}
           </>
         ) : null}
