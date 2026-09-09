@@ -391,6 +391,27 @@ describe("F4.1 v2 fetch compose", () => {
     expect(composed.provenance.horizontalSha256).toBe("2".repeat(64));
   });
 
+  it("komponiert commercial_interval.v1 als Intervall-Basis bis loadKwh (energieexakt, Provenienz)", async () => {
+    const envelope = tiltedEnvelope();
+    const composed = await fetchPlanningSeriesV2({
+      request: request({
+        consumption: consumption({
+          evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
+          loadProfile: { status: "known", value: "commercial_interval.v1", source: "customer_input" },
+        }),
+      }),
+      transport: fakeTransport(envelope),
+    });
+    // Nur Basis: Summe exakt Haushalts-kWh; Form traegt v1-Regel
+    // (max/min = Winterfaktor/Grundlast = 1.15/0.18).
+    expect(neumaierSum(composed.loadKwh)).toBeCloseTo(4200, 6);
+    const positive = composed.loadKwh.filter((value) => value > 0);
+    expect(Math.max(...composed.loadKwh) / Math.min(...positive))
+      .toBeCloseTo(1.15 / 0.18, 6);
+    expect(composed.provenance.loadSourceIds).toContain("wmee-commercial-interval.v1");
+    expect(composed.provenance.loadSourceIds).not.toContain("wmee-bdew-h0-dyn-basis.v1");
+  });
+
   it("verweigert gekreuzte Standort-Echos und fehlende Basis fail-closed", async () => {
     const envelope = tiltedEnvelope();
     const crossed = fakeTransport(envelope);
