@@ -515,6 +515,23 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## v2-UI + Claim-Dispatch-Fix (2026-09-09, committet c89bd0a)
+- UI: `energy-calculation-section` rendert `currentV2` (Badge, Jahreswerte,
+  12 Monatszeilen, provider_estimate-Hinweis, Provenienz-Details) und
+  `stale`+resultV2 historisch; v1 unangetastet. Erste beobachtbare
+  v2-Ansicht (Review-`Nicht behauptet` damit adressiert).
+- E2E m1-11g 2/2 (isolierter Workspace, echte Kette mit Fixture-Bytes):
+  Browser zeigt Kettenwerte + Hinweis + Provenienz, axe serious/critical
+  0; Retry-Test: Fehlversuch -> retry_wait -> requeueDue -> currentV2.
+- ECHTER FUND (kritisch, f4e3543): Claim-/Retry-Dispatch lief fuer BEIDE
+  Versionen, aber 0080 (v2) nimmt nur queued — jeder v2-Claim warf
+  dispatch_unavailable, wo pg-boss existiert (E2E/Staging/Prod); in
+  DB-Tests unsichtbar (explicitTestSkip), in v1-E2E nie geclaimt. Fix:
+  versionsabhaengig (v1 behaelt 0026-Recovery `:attempt`, v2 skippt —
+  Claim IST Zustellung, Retry via Sweep). m107 12/12 bestaetigt v1.
+- Offen: v2-Crash-Recovery analog 0026 (eigener Slice).
+- Gates: unit 1031, db 138 Dateien 1154+1 skip, lint+typecheck 0, E2E 2/2.
+
 ## Heizgradlast (2026-09-09, committet 60f781d)
 - `degree-day-load-v2.ts` (`wmee-degree-day.v1`): WP-Strom nach
   Heizgradstunden `max(0, 15 °C - T2m_h)` (Heizgrenztemperatur Bestand,
