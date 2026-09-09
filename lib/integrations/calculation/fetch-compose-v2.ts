@@ -37,6 +37,7 @@ import {
 } from "./existing-pv-v2";
 import { buildH0BasisSourceV2 } from "./h0-load-v2";
 import {
+  buildCommercialIntervalSourceV2,
   buildCoolingDegreeSourceV2,
   buildEvPatternSourceV2,
   buildHotWaterProfileSourceV2,
@@ -122,12 +123,15 @@ const loadProfileSchema = z.object({
 });
 
 // Belegte Haushaltsformen (v1-Default und -Enum): H0 ersetzt beide
-// v1-Wohnformen als belegte F4.2-Basis. Gewerbe hat eine eigene v1-Form,
-// fuer die v2 keine BDEW-G0-Quelle besitzt -> fail-closed (s. unten).
+// v1-Wohnformen als belegte F4.2-Basis. Gewerbe (`commercial_interval.v1`)
+// hat eine eigene v1-exakte Intervallform (kein BDEW-G0-Port noetig:
+// v1 formt werktags 7-19h geschlossen).
 const RESIDENTIAL_LOAD_PROFILES_V2 = [
   "wmee_household_hourly.v1",
   "customer_monthly_hourly.v1",
 ] as const;
+
+const COMMERCIAL_LOAD_PROFILE_V2 = "commercial_interval.v1";
 
 const consumptionSchema = z.object({
   householdKwhPerYear: knownValueSchema,
@@ -171,7 +175,8 @@ export type LoadContextV2 = {
 
 /**
  * Belegtes Verbrauchsprofil -> Provenienz-Quellen: Haushalt als
- * Pflicht-Basis in BDEW-H0-Form; Waermepumpe nach Heizgradstunden
+ * Pflicht-Basis in BDEW-H0-Form, Gewerbe als v1-exakte Intervall-Basis;
+ * Waermepumpe nach Heizgradstunden
  * (T2m-Wetterjahr); EV nach belegtem Ladepattern (km x Planungsfaktor),
  * Kuehlung nach Kuehlgradstunden, Warmwasser nach Tagesgang (v1-Ports,
  * `wmee-load-shapes.v1`). Zusatzlasten nur bei bekannten Werten > 0.
@@ -187,23 +192,38 @@ export function buildLoadSourcesFromProfileV2(
   const parsed = z.object({ consumption: consumptionSchema }).safeParse(profile);
   if (!parsed.success) composeError("Profil traegt keinen Verbrauch");
   const consumption = parsed.data.consumption;
-  // Gewerbe faellt fail-closed ab: v1 formt `commercial_interval.v1`
-  // werktags 7-19h, v2 besitzt dafuer keine BDEW-G0-Quelle. Unbekannte oder
-  // Wohnformen laufen als H0-Basis (v1-Default ist Haushalt).
+  // Gewerbe laeuft als v1-exakte Intervall-Basis (`commercial_interval.v1`,
+  // werktags 7-19h, Winterfaktor); unbekannte oder Wohnformen laufen als
+  // H0-Basis (v1-Default ist Haushalt). Fremde Profilwerte bleiben
+  // fail-closed (keine erfundene Lastform).
   const loadProfile = consumption.loadProfile;
+  const commercial = loadProfile !== undefined
+    && loadProfile.status === "known"
+    && loadProfile.value === COMMERCIAL_LOAD_PROFILE_V2;
   if (
     loadProfile !== undefined
     && loadProfile.status === "known"
     && loadProfile.value != null
     && !(RESIDENTIAL_LOAD_PROFILES_V2 as readonly string[]).includes(loadProfile.value)
+    && loadProfile.value !== COMMERCIAL_LOAD_PROFILE_V2
   ) {
     composeError("Gewerbe-Lastprofil ist nicht belegt");
   }
+  const basisKwh = knownKwh(
+    consumption.householdKwhPerYear,
+    commercial ? "Gewerbe" : "Haushalt",
+    true,
+  ) as number;
   const sources: LoadProfileSourceV2[] = [
-    buildH0BasisSourceV2({
-      annualKwh: knownKwh(consumption.householdKwhPerYear, "Haushalt", true) as number,
-      slotLabels: loadContext.slotLabels,
-    }),
+    commercial
+      ? buildCommercialIntervalSourceV2({
+        annualKwh: basisKwh,
+        slotLabels: loadContext.slotLabels,
+      })
+      : buildH0BasisSourceV2({
+        annualKwh: basisKwh,
+        slotLabels: loadContext.slotLabels,
+      }),
   ];
   const evKm = knownKwh(consumption.evKmPerYear, "EV", false);
   if (evKm !== null && evKm > 0) {

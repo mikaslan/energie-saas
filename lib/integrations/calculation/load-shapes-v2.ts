@@ -1,10 +1,11 @@
 /**
  * F4.1 v2-Lastformen (Spec F4-01, Paritaets-Upgrade): EV-Ladepattern,
- * Kuehlgradtage und Warmwasser-Tagesgang als belegte Formen statt
- * uniformer Verteilung.
+ * Kuehlgradtage, Warmwasser-Tagesgang und Gewerbe-Intervallform als
+ * belegte Formen statt uniformer Verteilung.
  *
  * Methode: exakte Ports der v1-Maschinenraum-Formen (`engine.ts` —
- * `evWeights`, `degreeWeights(..., "cooling")`, `hotWaterWeights`) auf
+ * `evWeights`, `degreeWeights(..., "cooling")`, `hotWaterWeights`,
+ * `householdWeights(..., "commercial_interval.v1")`) auf
  * Viertelstunden-Slots. Eine Stunde traegt in allen vier Vierteln dasselbe
  * Stundengewicht (Last hat keine Solargestalt, energieexakt); die Summe
  * wird auf 1 normiert und mit den belegten Jahres-kWh skaliert.
@@ -16,11 +17,14 @@
  * - Kuehlgradstunden `max(0, T2m_h - 22 °C)` aus der standortweiten
  *   Horizontalserie (echtes Wetterjahr, kein Zusatzabruf).
  * - Warmwasser-Tagesgang (morgens 1.4, abends 1.2, sonst 0.2).
+ * - Gewerbe-Intervall `commercial_interval.v1` aus dem bestaetigten
+ *   Verbrauchsprofil (werktags 7-19h 1, sonst 0.18, Winterfaktor 1.15).
  *
  * Benannte Differenz zu v1: v1 zaehlt abstrakte Wochentage (Jan1 = Montag,
  * Nicht-Schaltjahr); v2 nutzt den belegten ISO-Kalender der 2020-Achse aus
- * den Slotlabels. Die Pattern-Regeln (Stundenfenster, Basis 0.02) sind
- * identisch; nur die Wochenend-Lage folgt dem echten Kalender.
+ * den Slotlabels. Die Pattern-Regeln (Stundenfenster, Basen 0.02/0.18,
+ * Winterfaktor) sind identisch; nur die Wochenend-Lage folgt dem echten
+ * Kalender.
  */
 import { createHash } from "node:crypto";
 
@@ -38,6 +42,7 @@ export const LOAD_SHAPES_V2_VERSION = CALCULATION_V2_LOAD_SHAPES_VERSION;
 export const EV_PATTERN_V2_SOURCE_ID = "wmee-ev-pattern.v1" as const;
 export const COOLING_DEGREE_V2_SOURCE_ID = "wmee-cooling-degree.v1" as const;
 export const HOT_WATER_PROFILE_V2_SOURCE_ID = "wmee-hot-water-profile.v1" as const;
+export const COMMERCIAL_INTERVAL_V2_SOURCE_ID = "wmee-commercial-interval.v1" as const;
 
 /** Belegte EV-Ladepattern (Rechner-Intake-Enum, v1-`chargingPatternSchema`). */
 export const EV_CHARGING_PATTERNS_V2 = ["evening", "daytime", "away"] as const;
@@ -59,6 +64,8 @@ export type LoadShapeSlotV2 = {
   hour: number;
   /** ISO-Wochentag 1=Mo..7=So (echter Achsenkalender, ohne Feiertagslogik). */
   isoWeekday: number;
+  /** Kalendermonat 1..12 (aus Slotlabel; v1-Winterfaktor). */
+  month: number;
 };
 
 /**
@@ -76,7 +83,7 @@ export function parseLoadShapeSlotsV2(slotLabels: readonly unknown[]): LoadShape
     const hour = Math.floor(parsed.quarterOfDay / 4);
     const isoWeekday =
       ((new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day)).getUTCDay() + 6) % 7) + 1;
-    return { hour, isoWeekday };
+    return { hour, isoWeekday, month: parsed.month };
   });
 }
 
@@ -94,6 +101,17 @@ export function evPatternWeightV2(
     return !weekend && slot.hour >= 8 && slot.hour < 18 ? 1 : 0.02;
   }
   return slot.hour >= 18 && slot.hour < 24 ? 1 : 0.02;
+}
+
+/**
+ * Gewerbe-Intervallgewicht (Port von v1-`householdWeights` mit
+ * `commercial_interval.v1`): werktags 7-19h 1, sonst 0.18, jeweils mal
+ * Winterfaktor 1.15 in Jan/Feb/Nov/Dez (v1: 0-indiziert Monat<=1>=10).
+ */
+export function commercialIntervalWeightV2(slot: LoadShapeSlotV2): number {
+  const occupied = slot.isoWeekday <= 5 && slot.hour >= 7 && slot.hour < 19;
+  const winter = slot.month === 1 || slot.month === 2 || slot.month >= 11 ? 1.15 : 1;
+  return (occupied ? 1 : 0.18) * winter;
 }
 
 /**
@@ -263,5 +281,25 @@ export function buildHotWaterProfileSourceV2(input: {
     annualKwh: input.annualKwh,
     weights,
     detail: {},
+  });
+}
+
+/**
+ * Gewerbe-Basis aus Jahres-kWh + 35.040 Achsen-Slotlabels: v1-exakte
+ * Intervallform (werktags 7-19h, Winterfaktor) statt H0 -> exakt
+ * Jahres-kWh. Eigene Quelle/Provenienz, Kind `basis` (genau eine Basis).
+ */
+export function buildCommercialIntervalSourceV2(input: {
+  annualKwh: number;
+  slotLabels: readonly unknown[];
+}): LoadProfileSourceV2 {
+  const slots = parseLoadShapeSlotsV2(input.slotLabels);
+  const weights = slots.map((slot) => commercialIntervalWeightV2(slot));
+  return buildShapeSourceV2({
+    sourceId: COMMERCIAL_INTERVAL_V2_SOURCE_ID,
+    sourceKind: "basis",
+    annualKwh: input.annualKwh,
+    weights,
+    detail: { loadProfile: "commercial_interval.v1" },
   });
 }

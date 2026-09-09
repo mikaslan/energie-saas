@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { neumaierSum, QUARTER_HOUR_SLOTS } from "@/lib/integrations/calculation/engine-v2";
 import {
+  buildCommercialIntervalSourceV2,
   buildCoolingDegreeSourceV2,
   buildEvPatternSourceV2,
   buildHotWaterProfileSourceV2,
+  COMMERCIAL_INTERVAL_V2_SOURCE_ID,
+  commercialIntervalWeightV2,
   COOLING_DEGREE_V2_SOURCE_ID,
   COOLING_LIMIT_DEG_C,
   EV_PATTERN_V2_SOURCE_ID,
@@ -61,10 +64,10 @@ function hourTimesForYear(): string[] {
 
 describe("F4.1 v2 load shapes: EV-Pattern", () => {
   it("portiert die v1-Fenster (evening 18-24h, daytime 9-17h, away werktags 8-18h)", () => {
-    const monday = { hour: 19, isoWeekday: 1 };
-    const mondayMorning = { hour: 10, isoWeekday: 1 };
-    const saturday = { hour: 10, isoWeekday: 6 };
-    const saturdayEvening = { hour: 20, isoWeekday: 6 };
+    const monday = { hour: 19, isoWeekday: 1, month: 1 };
+    const mondayMorning = { hour: 10, isoWeekday: 1, month: 1 };
+    const saturday = { hour: 10, isoWeekday: 6, month: 1 };
+    const saturdayEvening = { hour: 20, isoWeekday: 6, month: 1 };
     expect(evPatternWeightV2("evening", monday)).toBe(1);
     expect(evPatternWeightV2("evening", mondayMorning)).toBe(0.02);
     expect(evPatternWeightV2("evening", saturdayEvening)).toBe(1);
@@ -81,9 +84,9 @@ describe("F4.1 v2 load shapes: EV-Pattern", () => {
       label("2020-01-11", 10),
       label("2020-01-12", 10),
     ].concat(new Array<string>(QUARTER_HOUR_SLOTS - 3).fill(label("2020-01-06", 0))));
-    expect(slots[0]).toEqual({ hour: 19, isoWeekday: 1 });
-    expect(slots[1]).toEqual({ hour: 10, isoWeekday: 6 });
-    expect(slots[2]).toEqual({ hour: 10, isoWeekday: 7 });
+    expect(slots[0]).toEqual({ hour: 19, isoWeekday: 1, month: 1 });
+    expect(slots[1]).toEqual({ hour: 10, isoWeekday: 6, month: 1 });
+    expect(slots[2]).toEqual({ hour: 10, isoWeekday: 7, month: 1 });
   });
 
   it("formt EV-Jahres-kWh energieexakt und weist Nachtlast am Tag ab", () => {
@@ -167,10 +170,10 @@ describe("F4.1 v2 load shapes: Kuehlgradtage", () => {
 
 describe("F4.1 v2 load shapes: Warmwasser-Tagesgang", () => {
   it("portiert morgens 1.4, abends 1.2, sonst 0.2 (v1-Form)", () => {
-    expect(hotWaterWeightV2({ hour: 6, isoWeekday: 3 })).toBe(1.4);
-    expect(hotWaterWeightV2({ hour: 19, isoWeekday: 7 })).toBe(1.2);
-    expect(hotWaterWeightV2({ hour: 12, isoWeekday: 1 })).toBe(0.2);
-    expect(hotWaterWeightV2({ hour: 0, isoWeekday: 6 })).toBe(0.2);
+    expect(hotWaterWeightV2({ hour: 6, isoWeekday: 3, month: 1 })).toBe(1.4);
+    expect(hotWaterWeightV2({ hour: 19, isoWeekday: 7, month: 1 })).toBe(1.2);
+    expect(hotWaterWeightV2({ hour: 12, isoWeekday: 1, month: 1 })).toBe(0.2);
+    expect(hotWaterWeightV2({ hour: 0, isoWeekday: 6, month: 1 })).toBe(0.2);
     const labels = fullYearLabels();
     const source = buildHotWaterProfileSourceV2({ annualKwh: 1000, slotLabels: labels });
     expect(source.sourceId).toBe(HOT_WATER_PROFILE_V2_SOURCE_ID);
@@ -184,5 +187,42 @@ describe("F4.1 v2 load shapes: Warmwasser-Tagesgang", () => {
 
   it("pinnt die Kuehlgrenze 22 °C wie v1", () => {
     expect(COOLING_LIMIT_DEG_C).toBe(22);
+  });
+});
+
+describe("F4.1 v2 load shapes: Gewerbe-Intervall", () => {
+  it("portiert werktags 7-19h 1, sonst 0.18, Winterfaktor 1.15 (v1-Form)", () => {
+    // 2020-01-06 = Montag (Januar = Winter), 2020-07-06 = Montag (Sommer).
+    expect(commercialIntervalWeightV2({ hour: 10, isoWeekday: 1, month: 1 })).toBeCloseTo(1.15, 12);
+    expect(commercialIntervalWeightV2({ hour: 10, isoWeekday: 1, month: 7 })).toBe(1);
+    expect(commercialIntervalWeightV2({ hour: 7, isoWeekday: 5, month: 7 })).toBe(1);
+    expect(commercialIntervalWeightV2({ hour: 19, isoWeekday: 1, month: 7 })).toBe(0.18);
+    expect(commercialIntervalWeightV2({ hour: 10, isoWeekday: 6, month: 1 })).toBeCloseTo(0.18 * 1.15, 12);
+    expect(commercialIntervalWeightV2({ hour: 10, isoWeekday: 7, month: 7 })).toBe(0.18);
+    expect(commercialIntervalWeightV2({ hour: 0, isoWeekday: 3, month: 12 })).toBeCloseTo(0.18 * 1.15, 12);
+    // Wintermonate Jan/Feb/Nov/Dez (v1 0-indiziert <=1, >=10).
+    for (const month of [1, 2, 11, 12]) {
+      expect(commercialIntervalWeightV2({ hour: 10, isoWeekday: 2, month })).toBeCloseTo(1.15, 12);
+    }
+    for (const month of [3, 4, 5, 6, 7, 8, 9, 10]) {
+      expect(commercialIntervalWeightV2({ hour: 10, isoWeekday: 2, month })).toBe(1);
+    }
+  });
+
+  it("formt Gewerbe-Jahres-kWh energieexakt als Basis-Quelle", () => {
+    const labels = fullYearLabels();
+    const source = buildCommercialIntervalSourceV2({ annualKwh: 6000, slotLabels: labels });
+    expect(source.sourceId).toBe(COMMERCIAL_INTERVAL_V2_SOURCE_ID);
+    expect(source.sourceKind).toBe("basis");
+    expect(source.sourceRevision).toBe(LOAD_SHAPES_V2_VERSION);
+    expect(neumaierSum(source.slotEnergyKwh)).toBeCloseTo(6000, 6);
+    const at = (date: string, hour: number): number =>
+      source.slotEnergyKwh[labels.indexOf(label(date, hour))]!;
+    // Werktag vs. Wochenende (Januar, beide Winter): 1/0.18.
+    expect(at("2020-01-06", 10) / at("2020-01-11", 10)).toBeCloseTo(1 / 0.18, 9);
+    // Winter vs. Sommer (werktags 10h): 1.15.
+    expect(at("2020-01-06", 10) / at("2020-07-06", 10)).toBeCloseTo(1.15, 9);
+    // Nacht bleibt Grundlast, kein Null-Slot.
+    expect(Math.min(...source.slotEnergyKwh)).toBeGreaterThan(0);
   });
 });

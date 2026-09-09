@@ -268,12 +268,17 @@ describe("F4.1 v2 load sources from profile", () => {
     expect(neumaierSum(heat.slotEnergyKwh)).toBeCloseTo(1500, 6);
   });
 
-  it("weist Gewerbe-Lastprofile fail-closed ab (keine G0-Quelle), Wohnformen laufen H0", () => {
-    expect(() => buildLoadSourcesFromProfileV2({
+  it("formt commercial_interval.v1 als v1-exakte Intervall-Basis, Fremdwerte fail-closed, Wohnformen H0", () => {
+    const commercial = buildLoadSourcesFromProfileV2({
       consumption: consumption({
+        evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
+        householdKwhPerYear: { status: "known", value: 6000, source: "customer_input" },
         loadProfile: { status: "known", value: "commercial_interval.v1", source: "customer_input" },
       }),
-    }, loadContext())).toThrow();
+    }, loadContext());
+    expect(commercial.map((source) => source.sourceKind)).toEqual(["basis"]);
+    expect(commercial[0]!.sourceId).toBe("wmee-commercial-interval.v1");
+    expect(neumaierSum(commercial[0]!.slotEnergyKwh)).toBeCloseTo(6000, 6);
     expect(() => buildLoadSourcesFromProfileV2({
       consumption: consumption({
         loadProfile: { status: "known", value: "gewerbe_phantasie.v9", source: "customer_input" },
