@@ -515,6 +515,15 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## Bestand-Gate (2026-09-09)
+- `existing_installation` rechnete in v2 still als Neuanlage (kWp aus
+  Dachflaeche statt Bestand-kWp mit Degradation; nur Info-Warnung).
+  Jetzt fail-closed in run (`Bestandsanlagen sind in v2 nicht
+  modelliert` -> Worker mappt auf engine_invalid ohne Retry, belegt
+  durch Sanitizer-Test). Upgrade-Pfad: Bestand-Port baseline/geplant.
+- Tests: Run +1 (Bestand wirft), SoC-Test auf neu umgestellt; unit 1045,
+  db 139 Dateien 1160+1skip, E2E m1-11g 2/2, lint+typecheck 0.
+
 ## Gewerbe-Gate (2026-09-09)
 - `loadProfile: commercial_interval.v1` lief in v2 still als H0 (v1 formt
   Gewerbe werktags 7-19h). Jetzt fail-closed (keine G0-Quelle, benannter

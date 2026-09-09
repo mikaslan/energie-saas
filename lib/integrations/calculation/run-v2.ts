@@ -16,6 +16,8 @@
  * fail-closed ab. Warnungsklassen ohne Datengrundlage im v2-Request
  * (unknown_profile_field, bidirectional/backup) gehoeren zu den Slices, die
  * Profil-/Requirement-Eingaben tragen, und werden hier nicht behauptet.
+ * Branch `existing_installation` ist fail-closed (kein
+ * Bestand-Port baseline/geplant/Delta; Neuanlagen-Rechnung waere falsch).
  */
 import {
   cyclicSocStart,
@@ -180,6 +182,14 @@ export function runPlanningCalculationV2(
   input: RunPlanningCalculationV2Input,
 ): PlanningCalculationResultV2 {
   const request = requireRequest(input.request);
+  // Bestand ist fail-closed: v1 rechnet baseline/geplant/Delta aus
+  // Bestands-kWp (mit Degradation) und Bestands-Speicher; v2 wuerde hier
+  // still Neuanlagen-kWp aus der Dachflaeche einsetzen (falsche
+  // Erzeugung als currentV2). Der Worker mappt das auf engine_invalid
+  // ohne Retry (Upgrade-Pfad: Bestand-Port mit baseline/planned/delta).
+  if (request.branch === "existing_installation") {
+    runError("Bestandsanlagen sind in v2 nicht modelliert");
+  }
   const pvKwh = requireSeries(input.pvKwh, "pvKwh");
   const loadKwh = requireSeries(input.loadKwh, "loadKwh");
   if (typeof input.providerEstimate !== "boolean") {
@@ -235,9 +245,6 @@ export function runPlanningCalculationV2(
   const warnings: PlanningCalculationResultV2["warnings"] = [];
   if (input.providerEstimate) {
     warnings.push({ code: "provider_estimate", severity: "info" });
-  }
-  if (request.branch === "existing_installation") {
-    warnings.push({ code: "existing_installation_limited", severity: "info" });
   }
   const candidate = {
     contractVersion: CALCULATION_V2_RESULT_CONTRACT_VERSION,

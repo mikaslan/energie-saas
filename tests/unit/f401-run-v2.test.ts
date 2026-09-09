@@ -121,7 +121,16 @@ describe("F4.1 v2 run", () => {
     expect(first.warnings).toEqual([]);
   });
 
-  it("haelt den zyklischen SoC mit Speicher ein und speichert Warnung je Branch", () => {
+  it("weist den Bestands-Branch fail-closed ab (kein Bestand-Port)", () => {
+    expect(() => runPlanningCalculationV2({
+      request: request({ branch: "existing_installation" }),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 1),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: false,
+    })).toThrow(/Bestandsanlagen sind in v2 nicht modelliert/);
+  });
+
+  it("haelt den zyklischen SoC mit Speicher ein", () => {
     const storage = {
       capacityKwh: 10,
       socMinKwh: 1,
@@ -141,10 +150,7 @@ describe("F4.1 v2 run", () => {
       load[i] = daySlot < 48 ? 1 : 0.2;
     }
     const result = runPlanningCalculationV2({
-      request: request({
-        branch: "existing_installation",
-        storage,
-      }),
+      request: request({ storage }),
       pvKwh: pv,
       loadKwh: load,
       providerEstimate: false,
@@ -159,10 +165,7 @@ describe("F4.1 v2 run", () => {
         - result.annual.feedInKwh
         - result.annual.storageLossKwh,
     ).toBeCloseTo(0, 2);
-    expect(result.warnings).toContainEqual({
-      code: "existing_installation_limited",
-      severity: "info",
-    });
+    expect(result.warnings).toEqual([]);
   });
 
   it("weist falsche Laengen, negative und nicht-finite Serien fail-closed ab", () => {
