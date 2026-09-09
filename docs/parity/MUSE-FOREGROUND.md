@@ -515,6 +515,22 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## H0-Basislast (2026-09-09, committet 83e2410)
+- `h0-load-v2.ts` (`wmee-bdew-h0-dyn.v1`): Haushalts-Basis als BDEW-H0
+  dyn (statische Viertelstunden-Tabelle x Glaettungspolynom F_t),
+  energieexakt auf belegte kWh normiert. Tabelle aus demandlib 0.2.2
+  (MIT, CSV-SHA gepinnt) via `scripts/f401-bdew-h0-extract.py` (Ordnung
+  positional verifiziert); Feiertage=Bundesfeiertage 2020 wie Sonntag,
+  24./31.12. wie Samstag (BDEW-Anwendungsregel, separat gepinnt).
+- Validierung 6/6: Tabelle exakt, F exakt, Saison-/Wochentag-Kanten an
+  handgeprueften Daten, Volljahr-Form gegen demandlib-Orakel
+  (`f401-bdew-h0-oracle.py`, 35136 Viertel) auf 34.844/34.844 Slots <1 %
+  (Toleranz aus max|F'| hergeleitet, F-Argument = Kalender-Tag per
+  BDEW-Standardtext). Composer-Basis jetzt H0, EV/Extras weiter uniform.
+- Gates: unit 1026, db/contracts 138 Dateien 1154+1 skip, lint+typecheck 0.
+- Offen (benannt): dachgebundene Modul-kWp (blockiert: F3-Belegung),
+  Heizungs-AC-Abbildung, EV-/Zusatzlast-Formen.
+
 ## Hay-Geometrie-Slice (2026-09-09, committet 9621a20)
 - `solar-geometry-v2.ts`: reiner TS-Sun-Position-Port (NOAA-Niedrigpraezision
   + Spencer-Exzentrizitaet S0=1366.1 + Kasten-Young-AM + Espenak/Meeus-Delta-T),
