@@ -346,3 +346,72 @@ test("M1-11g: v2-Bestandsergebnis zeigt baseline/geplant/Delta im Browser", asyn
     "Axe serious/critical in der v2-Bestandsansicht",
   ).toEqual([]);
 });
+
+test("M1-11g: v2-Ergebnis wird nach Bedarfsrevision als historisch gezeigt", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("v2-Kette erreichte kein currentV2.");
+  }
+  const generationKwh = expected.calculation.resultV2.value.annual.generationKwh;
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, state().editorEmail, projectPath);
+  await expect(page.locator('[data-energy-calculation-state="currentV2"]')).toBeVisible();
+
+  // Neue Bedarfsrevision entkoppelt den Job -> stale mit v2-Historie.
+  await poolOne(async (pool) => withTenantOn(pool, workspaceId, async (tx) => {
+    const inserted = await tx.execute(
+      `insert into project_requirement (
+         id, workspace_id, project_id, revision, schema_version,
+         source_snapshot_id, requirements
+       )
+       select gen_random_uuid(), workspace_id, project_id, revision + 1,
+              schema_version, source_snapshot_id, requirements
+       from project_requirement
+       where workspace_id = '${workspaceId}'::uuid
+         and project_id = '${ids.projectId}'::uuid
+       order by revision desc
+       limit 1
+       returning id`,
+    );
+    if (inserted.rows.length !== 1) throw new Error("Bedarfsrevision fehlt.");
+  }));
+  await page.reload();
+  const stale = page.locator('[data-energy-calculation-state="stale"]');
+  await expect(stale).toBeVisible();
+  await expect(stale.getByText("Ergebnis veraltet")).toBeVisible();
+  // Historische v2-Werte bleiben sichtbar, als historisch markiert.
+  await expect(stale.getByText("Historische Viertelstunden-Planungsrechnung")).toBeVisible();
+  await expect(stale.getByText(formatKwh(generationKwh))).toBeVisible();
+});
