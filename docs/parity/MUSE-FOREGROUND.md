@@ -515,6 +515,18 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## Heizgradlast (2026-09-09, committet 60f781d)
+- `degree-day-load-v2.ts` (`wmee-degree-day.v1`): WP-Strom nach
+  Heizgradstunden `max(0, 15 °C - T2m_h)` (Heizgrenztemperatur Bestand,
+  EnEV-Praxis, versioniert) aus der Horizontalserie, Viertel flach,
+  energieexakt; positive kWh ohne Heizgradtage brechen fail-closed ab.
+  Konstant-COP-Annahme + WW-Mitlauf dokumentiert (Upgrade: COP-Kennlinie
+  F5, WW-Split). Test 5/5 (Exaktheit, Berlin-Jan/Jul 40x, Sommer-Nullen).
+- Composer: heat_pump-Quelle jetzt Heizgrad (T2m-Join normalisiert);
+  EV/Kaelte/Warmwasser weiter uniform. Gates: unit 1031, db 1154+1 skip.
+- Offen (benannt): dachgebundene Modul-kWp (blockiert: F3-Belegung),
+  EV-/Kaelte-/Warmwasser-Formen.
+
 ## H0-Basislast (2026-09-09, committet 83e2410)
 - `h0-load-v2.ts` (`wmee-bdew-h0-dyn.v1`): Haushalts-Basis als BDEW-H0
   dyn (statische Viertelstunden-Tabelle x Glaettungspolynom F_t),
