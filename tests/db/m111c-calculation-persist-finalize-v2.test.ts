@@ -81,6 +81,7 @@ type CalculationFixtureV2 = {
   request: PlanningCalculationRequestV2;
   pvKwh: number[];
   loadKwh: number[];
+  existingPvKwh: number[] | null;
   result: PlanningCalculationResultV2;
   inputSha256: string;
 };
@@ -92,11 +93,12 @@ function boundRequest(ids: {
   profileId: string;
   requirementId: string;
   snapshotId: string;
-}): PlanningCalculationRequestV2 {
+}, options: { branch?: "new_installation" | "existing_installation" } = {}): PlanningCalculationRequestV2 {
+  const branch = options.branch ?? "new_installation";
   const parsed = planningCalculationRequestV2Schema.safeParse({
     contractVersion: "planning-calculation.v2",
     canonicalizationVersion: "planning-jcs.v1",
-    branch: "new_installation",
+    branch,
     asOfDate: "2026-08-29",
     commissioningDate: "2026-08-29",
     bindings: {
@@ -116,12 +118,18 @@ function boundRequest(ids: {
     site: { countryCode: "DE", latitude: 52.52, longitude: 13.41 },
     axis: { slots: 35_040, resolution: "quarter_hour" },
     storage: { ...NO_STORAGE },
+    // Slice B: nur Bestand-Branch (Neuanlage laesst den Schluessel weg).
+    ...(branch === "existing_installation"
+      ? { existingInstallation: { systemPeakPowerKwp: 8, storageCapacityKwh: 0 } }
+      : {}),
   });
   if (!parsed.success) throw new Error("invalid v2 request fixture");
   return parsed.data;
 }
 
-async function createFixture(): Promise<CalculationFixtureV2> {
+async function createFixture(
+  options: { branch?: "new_installation" | "existing_installation" } = {},
+): Promise<CalculationFixtureV2> {
   const ids = {
     workspaceId: randomUUID(),
     actorId: randomUUID(),
@@ -134,14 +142,19 @@ async function createFixture(): Promise<CalculationFixtureV2> {
     profileId: randomUUID(),
     jobId: randomUUID(),
   };
-  const request = boundRequest(ids);
+  const request = boundRequest(ids, options);
   const pvKwh = constantSeries(1);
   const loadKwh = constantSeries(0.5);
+  // Slice B: Bestands-Reihe (Neuanlage: null -> Schluessel entfaellt).
+  const existingPvKwh = request.branch === "existing_installation"
+    ? constantSeries(0.8)
+    : null;
   const result = runPlanningCalculationV2({
     request,
     pvKwh,
     loadKwh,
     providerEstimate: false,
+    ...(existingPvKwh === null ? {} : { existingPvKwh }),
   });
   const inputSha256 = hashPlanningCalculationInputV2(request);
   if (result.inputSha256 !== inputSha256) {
@@ -313,7 +326,7 @@ async function createFixture(): Promise<CalculationFixtureV2> {
     `);
   });
 
-  return { ...ids, request, pvKwh, loadKwh, result, inputSha256 };
+  return { ...ids, request, pvKwh, loadKwh, existingPvKwh, result, inputSha256 };
 }
 
 async function claim(fixture: CalculationFixtureV2): Promise<string> {
@@ -340,6 +353,7 @@ async function persist(
     loadKwh?: unknown;
     providerEstimate?: boolean;
     attemptCount?: number;
+    existingPvKwh?: unknown;
   } = {},
 ) {
   return withTenantOn(testPool, fixture.workspaceId, (tx) =>
@@ -352,6 +366,12 @@ async function persist(
       pvKwh: overrides.pvKwh ?? fixture.pvKwh,
       loadKwh: overrides.loadKwh ?? fixture.loadKwh,
       providerEstimate: overrides.providerEstimate ?? false,
+      // Slice B: Bestand (Neuanlage: null -> Bundle ohne Schluessel).
+      ...("existingPvKwh" in overrides
+        ? { existingPvKwh: overrides.existingPvKwh ?? null }
+        : fixture.existingPvKwh === null
+          ? {}
+          : { existingPvKwh: fixture.existingPvKwh }),
     }));
 }
 
@@ -456,6 +476,41 @@ describe("F4.1 v2 persist/finalize service", () => {
     expect(seen.revisions[0]?.result_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(seen.events).toHaveLength(1);
     expect(seen.audits).toHaveLength(1);
+  });
+
+  it("persistiert und finalisiert den Bestands-Branch mit baseline/geplant/Delta", async () => {
+    const fixture = await createFixture({ branch: "existing_installation" });
+    const leaseToken = await claim(fixture);
+
+    const persisted = await persist(fixture, leaseToken);
+    expect(persisted.replayed).toBe(false);
+    expect(persisted.inputSha256).toBe(fixture.inputSha256);
+    expect(persisted.providerSeries.existingPvKwh).toHaveLength(QUARTER_HOUR_SLOTS);
+
+    const finalized = await finalize(fixture, leaseToken);
+    expect(finalized).toMatchObject({ revision: 1, replayed: false });
+
+    const seen = await footprint(fixture);
+    expect(seen.job?.state).toBe("succeeded");
+    expect(seen.revisions).toHaveLength(1);
+    // Server-Replay beweist baseline/geplant/Delta: Bestandserzeugung
+    // (0.8*35040), nicht die Neuanlagen-Reihe (1.0*35040).
+    expect(fixture.result.annual.generationKwh).toBe(28_032);
+    expect(fixture.result.existingInstallation?.existingSystemPeakPowerKwp).toBe(8);
+    expect(fixture.result.existingInstallation?.delta.additionalSelfConsumptionKwh).toBe(0);
+  });
+
+  it("lehnt Bestands-Finalize ohne Bestands-Reihe fail-closed ab", async () => {
+    const fixture = await createFixture({ branch: "existing_installation" });
+    const leaseToken = await claim(fixture);
+    // Persist ohne Bestands-Reihe: Finalize-Replay scheitert exakt
+    // (Bestands-Reihe fehlt), keine Revision.
+    await persist(fixture, leaseToken, { existingPvKwh: null });
+    await expect(finalize(fixture, leaseToken)).rejects.toMatchObject({
+      code: "invalid_input",
+    });
+    const seen = await footprint(fixture);
+    expect(seen.revisions).toHaveLength(0);
   });
 
   it("replayt Persist und Finalize idempotent", async () => {

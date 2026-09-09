@@ -20,6 +20,16 @@ const uuid = () => z.uuid();
 const dateSchema = z.iso.date();
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 
+/**
+ * Slice B: Bestands-Kontext im Request (nur Bestand-Branch; Neuanlage
+ * laesst den Schluessel weg -> Hash-stabil). Kapazitaet des vorhandenen
+ * Speichers; 0 bei bekannter Abwesenheit.
+ */
+const existingInstallationRequestV2Schema = z.strictObject({
+  systemPeakPowerKwp: finite().gt(0).max(1_000),
+  storageCapacityKwh: nonNegative(100_000),
+});
+
 const storageParamsV2Schema = z.strictObject({
   capacityKwh: nonNegative(10_000),
   socMinKwh: nonNegative(10_000),
@@ -64,6 +74,8 @@ export const planningCalculationRequestV2Schema = z.strictObject({
     resolution: z.literal("quarter_hour"),
   }),
   storage: storageParamsV2Schema,
+  // Slice B: nur Bestand-Branch (Neuanlage laesst den Schluessel weg).
+  existingInstallation: existingInstallationRequestV2Schema.optional(),
 });
 
 const annualEnergyResultV2Schema = z.strictObject({
@@ -87,6 +99,25 @@ const monthlyEnergyResultV2Schema = z.array(z.strictObject({
   gridImportKwh: nonNegative(10_000_000),
   feedInKwh: nonNegative(10_000_000),
 })).length(12);
+
+/**
+ * Slice B: Bestands-Ergebnis (nur Bestand-Branch; v1-Port
+ * baseline/geplant/Delta). Top-level annual/monthly tragen den
+ * geplanten Zustand (Angebotszustand, wie v1-planned).
+ */
+const existingInstallationResultV2Schema = z.strictObject({
+  existingSystemPeakPowerKwp: finite().gt(0).max(1_000),
+  existingStorageCapacityKwh: nonNegative(100_000),
+  addedStorageCapacityKwh: nonNegative(100_000),
+  baseline: z.strictObject({
+    annual: annualEnergyResultV2Schema,
+    monthly: monthlyEnergyResultV2Schema,
+  }),
+  delta: z.strictObject({
+    additionalSelfConsumptionKwh: finite().min(-10_000_000).max(10_000_000),
+    autonomyRatePercentagePoints: finite().min(-100).max(100),
+  }),
+});
 
 const warningsV2Schema = z.array(z.strictObject({
   code: z.enum([
@@ -115,6 +146,8 @@ export const planningCalculationResultV2Schema = z.strictObject({
   annual: annualEnergyResultV2Schema,
   monthly: monthlyEnergyResultV2Schema,
   warnings: warningsV2Schema,
+  // Slice B: nur Bestand-Branch (Neuanlage laesst den Schluessel weg).
+  existingInstallation: existingInstallationResultV2Schema.optional(),
 });
 
 export type PlanningCalculationRequestV2 = z.infer<

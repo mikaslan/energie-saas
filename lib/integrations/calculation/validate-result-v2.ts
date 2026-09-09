@@ -110,6 +110,7 @@ export function validatePlanningCalculationResultV2Exactly(
       pvKwh: input.pvKwh,
       loadKwh: input.loadKwh,
       providerEstimate: input.providerEstimate,
+      existingPvKwh: input.existingPvKwh ?? null,
     });
   } catch {
     return { ok: false, paths: ["/"] };

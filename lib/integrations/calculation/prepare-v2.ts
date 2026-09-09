@@ -15,6 +15,7 @@ import {
 import { planningCalculationRequestV2Schema, type PlanningCalculationRequestV2 } from "./contract-v2";
 import { QUARTER_HOUR_SLOTS } from "./engine-v2";
 import { planningSourceSnapshotSchema } from "./preparation";
+import type { ProjectCalculationPreparationV2 } from "./preparation-v2";
 import {
   CALCULATION_V2_CONTRACT_VERSION,
   CALCULATION_V2_DEFAULTS_VERSION,
@@ -105,6 +106,36 @@ export function hashPlanningCalculationInputV2(snapshot: PlanningCalculationRequ
   return createHash("sha256").update(canonicalizeCalculationJson(snapshot), "utf8").digest("hex");
 }
 
+/**
+ * Slice B: Bestands-Kontext aus eingefrorener Profil-Provenienz (nur
+ * Bestand-Branch; v1-Paritaet: PV verlangt `known_present`, Speicher
+ * lehnt `unknown` ab, `known_absent` -> 0).
+ */
+function existingInstallationSnapshot(
+  preparation: Pick<
+    ProjectCalculationPreparationV2,
+    "profile" | "requirements"
+  >,
+): { existingInstallation?: { systemPeakPowerKwp: number; storageCapacityKwh: number } } {
+  if (preparation.requirements.branch !== "existing_installation") return {};
+  const pv = preparation.profile.existingAssets.pv;
+  // Pfade wie v1 (`validatePlanningCalculationRequest`): Bestand ohne
+  // belegte Anlage oder mit unbekanntem Speicher ist kein Input.
+  if (pv.status !== "known_present") {
+    throw new PlanningCalculationInputError(["/energyProfile/existingAssets/pv/status"]);
+  }
+  const storage = preparation.profile.existingAssets.storage;
+  if (storage.status === "unknown") {
+    throw new PlanningCalculationInputError(["/energyProfile/existingAssets/storage/status"]);
+  }
+  return {
+    existingInstallation: {
+      systemPeakPowerKwp: pv.peakPowerKwp,
+      storageCapacityKwh: storage.status === "known_present" ? storage.capacityKwh : 0,
+    },
+  };
+}
+
 export function buildPreparedPlanningCalculationInputV2(
   raw: unknown,
 ): PreparedPlanningCalculationInputV2 {
@@ -139,6 +170,8 @@ export function buildPreparedPlanningCalculationInputV2(
     },
     axis: { slots: 35_040, resolution: "quarter_hour" },
     storage: claim.storage,
+    // Slice B: nur Bestand-Branch (Neuanlage-Hashes bleiben stabil).
+    ...existingInstallationSnapshot(claim.preparation),
   });
   if (!snapshot.success) inputError(snapshot.error);
   const inputSnapshot = snapshot.data!;

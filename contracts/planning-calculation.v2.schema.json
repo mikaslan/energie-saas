@@ -188,6 +188,26 @@
             "etaDischarge"
           ],
           "additionalProperties": false
+        },
+        "existingInstallation": {
+          "type": "object",
+          "properties": {
+            "systemPeakPowerKwp": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000
+            },
+            "storageCapacityKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          },
+          "required": [
+            "systemPeakPowerKwp",
+            "storageCapacityKwh"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -305,6 +325,99 @@
           "const": "wmee-energy-rounding.v1"
         },
         "annual": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "monthly": {
+          "$ref": "#/$defs/__schema1"
+        },
+        "warnings": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          }
+        },
+        "existingInstallation": {
+          "type": "object",
+          "properties": {
+            "existingSystemPeakPowerKwp": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000
+            },
+            "existingStorageCapacityKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "addedStorageCapacityKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "baseline": {
+              "type": "object",
+              "properties": {
+                "annual": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "monthly": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              "required": [
+                "annual",
+                "monthly"
+              ],
+              "additionalProperties": false
+            },
+            "delta": {
+              "type": "object",
+              "properties": {
+                "additionalSelfConsumptionKwh": {
+                  "type": "number",
+                  "minimum": -10000000,
+                  "maximum": 10000000
+                },
+                "autonomyRatePercentagePoints": {
+                  "type": "number",
+                  "minimum": -100,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "additionalSelfConsumptionKwh",
+                "autonomyRatePercentagePoints"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "existingSystemPeakPowerKwp",
+            "existingStorageCapacityKwh",
+            "addedStorageCapacityKwh",
+            "baseline",
+            "delta"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "contractVersion",
+        "canonicalizationVersion",
+        "model",
+        "inputSha256",
+        "quality",
+        "validationStatus",
+        "temporalResolution",
+        "roundingVersion",
+        "annual",
+        "monthly",
+        "warnings"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
           "type": "object",
           "properties": {
             "generationKwh": {
@@ -378,38 +491,15 @@
           ],
           "additionalProperties": false
         },
-        "monthly": {
+        "__schema1": {
           "minItems": 12,
           "maxItems": 12,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema0"
+            "$ref": "#/$defs/__schema2"
           }
         },
-        "warnings": {
-          "maxItems": 20,
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/__schema1"
-          }
-        }
-      },
-      "required": [
-        "contractVersion",
-        "canonicalizationVersion",
-        "model",
-        "inputSha256",
-        "quality",
-        "validationStatus",
-        "temporalResolution",
-        "roundingVersion",
-        "annual",
-        "monthly",
-        "warnings"
-      ],
-      "additionalProperties": false,
-      "$defs": {
-        "__schema0": {
+        "__schema2": {
           "type": "object",
           "properties": {
             "month": {
@@ -447,7 +537,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema1": {
+        "__schema3": {
           "type": "object",
           "properties": {
             "code": {

@@ -393,6 +393,72 @@ function V2MonthlyTable({ monthly }: { monthly: MonthlyEnergyV2 }) {
   );
 }
 
+type ExistingInstallationV2 = NonNullable<
+  ProjectEnergyCalculationResultV2["value"]["existingInstallation"]
+>;
+
+function V2ExistingComparison({ existing }: { existing: ExistingInstallationV2 }) {
+  const baselineMonthly = existing.baseline.monthly;
+  return (
+    <div className="mt-5" data-energy-calculation-v2-existing="true">
+      <dl className="grid gap-x-6 sm:grid-cols-2">
+        <DetailItem term="Bestandsleistung" numeric>
+          {formatNumber(existing.existingSystemPeakPowerKwp, "kWp")}
+        </DetailItem>
+        <DetailItem term="Bestandsspeicher" numeric>
+          {formatNumber(existing.existingStorageCapacityKwh, "kWh")}
+        </DetailItem>
+        <DetailItem term="Zusaetzlicher Speicher (Planung)" numeric>
+          {formatNumber(existing.addedStorageCapacityKwh, "kWh")}
+        </DetailItem>
+        <DetailItem term="Eigenverbrauch Bestand (Jahr)" numeric>
+          {formatNumber(existing.baseline.annual.selfConsumptionKwh, "kWh")}
+        </DetailItem>
+        <DetailItem term="Zusaetzlicher Eigenverbrauch (Planung minus Bestand)" numeric>
+          {formatNumber(existing.delta.additionalSelfConsumptionKwh, "kWh")}
+        </DetailItem>
+        <DetailItem term="Autarkiegewinn (Prozentpunkte)" numeric>
+          {formatNumber(existing.delta.autonomyRatePercentagePoints, "pp")}
+        </DetailItem>
+      </dl>
+      <div
+        className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+        tabIndex={0}
+        role="region"
+        aria-label="Monatsvergleich der Bestandsplanung (v2), horizontal scrollbar"
+      >
+        <table className="min-w-[48rem] w-full border-collapse text-left text-sm tabular-nums">
+          <caption className="px-4 py-3 text-left font-semibold text-slate-950">
+            Monatsvergleich: Bestand und Planung (v2)
+          </caption>
+          <thead className="bg-slate-50 text-slate-700">
+            <tr>
+              <th scope="col" className="px-4 py-3 font-semibold">Monat</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Eigenverbrauch Bestand</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Netzbezug Bestand</th>
+            </tr>
+          </thead>
+          <tbody>
+            {baselineMonthly.map((entry) => (
+              <tr key={entry.month} className="border-t border-slate-200">
+                <th scope="row" className="px-4 py-3 font-medium text-slate-900">
+                  {monthLabel(entry.month)}
+                </th>
+                <td className="px-4 py-3 text-right">
+                  {formatNumber(entry.selfConsumptionKwh, "kWh")}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {formatNumber(entry.gridImportKwh, "kWh")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function V2Provenance({ result }: { result: ProjectEnergyCalculationResultV2 }) {
   return (
     <details className="mt-5 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
@@ -460,6 +526,9 @@ function PlanningResultV2({
       </div>
       <V2Warnings warnings={result.value.warnings} />
       <V2AnnualDetails annual={result.value.annual} />
+      {result.value.existingInstallation ? (
+        <V2ExistingComparison existing={result.value.existingInstallation} />
+      ) : null}
       <V2MonthlyTable monthly={result.value.monthly} />
       <V2Provenance result={result} />
     </div>

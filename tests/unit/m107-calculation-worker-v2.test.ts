@@ -442,6 +442,8 @@ describe("F4.1 v2 execute handler", () => {
       pvKwh: SERIES.pvKwh,
       loadKwh: SERIES.loadKwh,
       providerEstimate: false,
+      // Slice B: Engine erhaelt die Bestands-Reihe (hier null).
+      existingPvKwh: null,
     });
     expect(dependencies.database.finalizeSuccess).toHaveBeenCalledTimes(1);
     expect(dependencies.database.finalizeFailure).not.toHaveBeenCalled();
@@ -457,6 +459,8 @@ describe("F4.1 v2 execute handler", () => {
       pvKwh: SERIES.pvKwh,
       loadKwh: SERIES.loadKwh,
       providerEstimate: false,
+      // Slice B: gespeicherter Input ohne Bestands-Reihe -> null.
+      existingPvKwh: null,
     });
     expect(dependencies.database.finalizeSuccess).toHaveBeenCalledTimes(1);
   });

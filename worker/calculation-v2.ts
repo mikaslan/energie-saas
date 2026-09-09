@@ -209,6 +209,7 @@ export type CalculationV2ExecuteDependencies = {
       pvKwh: number[];
       loadKwh: number[];
       providerEstimate: boolean;
+      existingPvKwh?: number[] | null;
     }): Promise<PlanningCalculationResultV2>;
   };
   buildInput(input: {
@@ -362,6 +363,7 @@ export function createCalculationExecuteV2Handler(
           pvKwh: effectiveInput.providerSnapshot.pvKwh,
           loadKwh: effectiveInput.providerSnapshot.loadKwh,
           providerEstimate: effectiveInput.providerSnapshot.providerEstimate,
+          existingPvKwh: effectiveInput.providerSnapshot.existingPvKwh ?? null,
         });
       } catch (error) {
         await recordV2Failure(

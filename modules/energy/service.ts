@@ -1502,6 +1502,7 @@ function calculationResultV2FromJob(
     pvKwh?: unknown;
     loadKwh?: unknown;
     providerEstimate?: unknown;
+    existingPvKwh?: unknown;
   };
   if (typeof series.providerEstimate !== "boolean") {
     if (required) throw new EnergyProfileInvalidError();
@@ -1512,6 +1513,7 @@ function calculationResultV2FromJob(
     pvKwh: series.pvKwh,
     loadKwh: series.loadKwh,
     providerEstimate: series.providerEstimate,
+    existingPvKwh: series.existingPvKwh ?? null,
     result: job.result,
   });
   if (!validated.ok) {

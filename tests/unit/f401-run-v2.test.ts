@@ -121,13 +121,106 @@ describe("F4.1 v2 run", () => {
     expect(first.warnings).toEqual([]);
   });
 
-  it("weist den Bestands-Branch fail-closed ab (kein Bestand-Port)", () => {
-    expect(() => runPlanningCalculationV2({
-      request: request({ branch: "existing_installation" }),
+  it("rechnet den Bestands-Branch ohne Speicher: baseline == geplant, Delta 0", () => {
+    const result = runPlanningCalculationV2({
+      request: request({
+        branch: "existing_installation",
+        existingInstallation: { systemPeakPowerKwp: 8, storageCapacityKwh: 0 },
+      }),
       pvKwh: constant(QUARTER_HOUR_SLOTS, 1),
       loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
       providerEstimate: false,
-    })).toThrow(/Bestandsanlagen sind in v2 nicht modelliert/);
+      existingPvKwh: constant(QUARTER_HOUR_SLOTS, 0.8),
+    });
+    expect(planningCalculationResultV2Schema.safeParse(result).success).toBe(true);
+    expect(result.existingInstallation).toBeDefined();
+    expect(result.existingInstallation?.existingSystemPeakPowerKwp).toBe(8);
+    expect(result.existingInstallation?.existingStorageCapacityKwh).toBe(0);
+    expect(result.existingInstallation?.addedStorageCapacityKwh).toBe(0);
+    // Bestandserzeugung (0.8*35040), nicht die Neuanlagen-Reihe (1.0*35040).
+    expect(result.annual.generationKwh).toBe(28_032);
+    expect(result.annual).toEqual(result.existingInstallation?.baseline.annual);
+    expect(result.existingInstallation?.delta.additionalSelfConsumptionKwh).toBe(0);
+    expect(result.existingInstallation?.delta.autonomyRatePercentagePoints).toBe(0);
+    expect(result.existingInstallation?.baseline.monthly).toHaveLength(12);
+  });
+
+  it("rechnet den Bestands-Branch mit neuem Speicher: geplant >= baseline", () => {
+    const storage = {
+      capacityKwh: 10,
+      socMinKwh: 1,
+      socMaxKwh: 9,
+      chargeKw: 5,
+      dischargeKw: 5,
+      etaCharge: 0.95,
+      etaDischarge: 0.95,
+    };
+    // Tag/Nacht-Wechsel, damit der neue Speicher echten Mehr-Eigenverbrauch
+    // gegenueber der speicherlosen Baseline erzeugt.
+    const existingPv = new Array<number>(QUARTER_HOUR_SLOTS);
+    const load = new Array<number>(QUARTER_HOUR_SLOTS);
+    for (let i = 0; i < QUARTER_HOUR_SLOTS; i += 1) {
+      const daySlot = i % SLOTS_PER_DAY;
+      existingPv[i] = daySlot < 48 ? 0 : 2;
+      load[i] = daySlot < 48 ? 1 : 0.2;
+    }
+    const result = runPlanningCalculationV2({
+      request: request({
+        branch: "existing_installation",
+        storage,
+        existingInstallation: { systemPeakPowerKwp: 8, storageCapacityKwh: 0 },
+      }),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 0),
+      loadKwh: load,
+      providerEstimate: false,
+      existingPvKwh: existingPv,
+    });
+    const baseline = result.existingInstallation?.baseline.annual;
+    expect(baseline).toBeDefined();
+    expect(result.annual.selfConsumptionKwh)
+      .toBeGreaterThanOrEqual(baseline?.selfConsumptionKwh ?? 0);
+    expect(result.existingInstallation?.delta.additionalSelfConsumptionKwh).toBeCloseTo(
+      result.annual.selfConsumptionKwh - (baseline?.selfConsumptionKwh ?? 0),
+      6,
+    );
+    expect(result.existingInstallation?.delta.autonomyRatePercentagePoints).toBeCloseTo(
+      (result.annual.autonomyRate - (baseline?.autonomyRate ?? 0)) * 100,
+      6,
+    );
+    // Planungszustand traegt Speicher-Nutzung, Baseline bleibt speicherlos.
+    expect(result.annual.fromStorageKwh).toBeGreaterThan(0);
+    expect(baseline?.fromStorageKwh).toBe(0);
+  });
+
+  it("weist unbestimmbaren Bestands-Dispatch fail-closed ab", () => {
+    const base = {
+      request: request({
+        branch: "existing_installation",
+        existingInstallation: { systemPeakPowerKwp: 8, storageCapacityKwh: 0 },
+      }),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 1),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: false,
+    };
+    // Fehlende Bestands-Reihe.
+    expect(() => runPlanningCalculationV2({ ...base })).toThrow(/Bestands-Reihe fehlt/);
+    // Fehlender Bestands-Kontext.
+    expect(() => runPlanningCalculationV2({
+      ...base,
+      request: request({ branch: "existing_installation" }),
+      existingPvKwh: constant(QUARTER_HOUR_SLOTS, 0.8),
+    })).toThrow(/Bestands-Kontext fehlt/);
+    // Bestandsspeicher ohne belegte Batterie-Parameter (C-Rate unbestimmbar).
+    expect(() => runPlanningCalculationV2({
+      request: request({
+        branch: "existing_installation",
+        existingInstallation: { systemPeakPowerKwp: 8, storageCapacityKwh: 5 },
+      }),
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 1),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: false,
+      existingPvKwh: constant(QUARTER_HOUR_SLOTS, 0.8),
+    })).toThrow(/ohne belegte Batterie-Parameter/);
   });
 
   it("haelt den zyklischen SoC mit Speicher ein", () => {

@@ -1340,6 +1340,7 @@ export async function finalizeProjectCalculationSuccessV2(
       pvKwh: series.pvKwh,
       loadKwh: series.loadKwh,
       providerEstimate: series.providerEstimate,
+      existingPvKwh: series.existingPvKwh ?? null,
       result: resultParsed.data,
     })
     : null;

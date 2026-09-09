@@ -66,6 +66,11 @@ export type RunPlanningCalculationV2Input = {
    * raet sie nicht.
    */
   providerEstimate: boolean;
+  /**
+   * Slice B: Bestands-Reihe (nur Bestand-Branch; sonst null/undefined).
+   * Der Run verlangt sie fail-closed, sobald der Branch sie braucht.
+   */
+  existingPvKwh?: unknown;
 };
 
 function runError(detail: string): never {
@@ -178,28 +183,26 @@ function aggregateMonthly(input: {
   return monthly;
 }
 
-export function runPlanningCalculationV2(
-  input: RunPlanningCalculationV2Input,
-): PlanningCalculationResultV2 {
-  const request = requireRequest(input.request);
-  // Bestand ist fail-closed: v1 rechnet baseline/geplant/Delta aus
-  // Bestands-kWp (mit Degradation) und Bestands-Speicher; v2 wuerde hier
-  // still Neuanlagen-kWp aus der Dachflaeche einsetzen (falsche
-  // Erzeugung als currentV2). Der Worker mappt das auf engine_invalid
-  // ohne Retry (Upgrade-Pfad: Bestand-Port mit baseline/planned/delta).
-  if (request.branch === "existing_installation") {
-    runError("Bestandsanlagen sind in v2 nicht modelliert");
-  }
-  const pvKwh = requireSeries(input.pvKwh, "pvKwh");
-  const loadKwh = requireSeries(input.loadKwh, "loadKwh");
-  if (typeof input.providerEstimate !== "boolean") {
-    runError("providerEstimate ist kein Boolean");
-  }
-  const storage: StorageParams = { ...request.storage };
-  const socStartKwh = cyclicSocStart(cyclicDeltas(pvKwh, loadKwh, storage), storage);
+type DispatchedSummary = {
+  annual: PlanningCalculationResultV2["annual"];
+  monthly: PlanningCalculationResultV2["monthly"];
+};
+
+/**
+ * Ein Dispatch-Lauf (Neuanlage oder eine Bestands-Seite): zyklischer
+ * SoC-Dispatch, Guards, Monats-/Jahres-Summary. Byte-identisch zur
+ * bisherigen Neuanlagen-Rechnung (Extraktion ohne Verhaltenswechsel).
+ */
+function dispatchAndSummarize(input: {
+  pvKwh: number[];
+  loadKwh: number[];
+  storage: StorageParams;
+}): DispatchedSummary {
+  const storage: StorageParams = { ...input.storage };
+  const socStartKwh = cyclicSocStart(cyclicDeltas(input.pvKwh, input.loadKwh, storage), storage);
   const { slots, totals } = dispatchQuarterHours({
-    pvKwh,
-    loadKwh,
+    pvKwh: input.pvKwh,
+    loadKwh: input.loadKwh,
     storage,
     socStartKwh,
   });
@@ -218,7 +221,7 @@ export function runPlanningCalculationV2(
   const pick = (select: (slot: (typeof slots)[number]) => number): number[] =>
     slots.map(select);
   const monthly = aggregateMonthly({
-    pvKwh,
+    pvKwh: input.pvKwh,
     directKwh: pick((slot) => slot.directKwh),
     dischargeOutKwh: pick((slot) => slot.dischargeOutKwh),
     importKwh: pick((slot) => slot.importKwh),
@@ -242,23 +245,7 @@ export function runPlanningCalculationV2(
   ) {
     runError("Jahres-Energiebilanz verletzt");
   }
-  const warnings: PlanningCalculationResultV2["warnings"] = [];
-  if (input.providerEstimate) {
-    warnings.push({ code: "provider_estimate", severity: "info" });
-  }
-  const candidate = {
-    contractVersion: CALCULATION_V2_RESULT_CONTRACT_VERSION,
-    canonicalizationVersion: "planning-jcs.v1",
-    model: {
-      id: CALCULATION_V2_MODEL_ID,
-      version: CALCULATION_V2_MODEL_VERSION,
-      sourceRevision: CALCULATION_V2_SOURCE_REVISION,
-    },
-    inputSha256: hashPlanningCalculationInputV2(request),
-    quality: CALCULATION_V2_QUALITY,
-    validationStatus: CALCULATION_V2_VALIDATION_STATUS,
-    temporalResolution: "quarter_hour_35040",
-    roundingVersion: "wmee-energy-rounding.v1",
+  return {
     annual: {
       generationKwh,
       consumptionKwh,
@@ -274,6 +261,147 @@ export function runPlanningCalculationV2(
         ? 0
         : roundEnergy(totals.dischargeOutKwh / usableCapacityKwh),
     },
+    monthly,
+  };
+}
+
+/**
+ * Slice B: Bestands-Seite (v1-Port baseline/geplant/Delta). Baseline:
+ * Bestands-PV + vorhandener Speicher; geplant: Bestands-PV +
+ * vorhandener + neuer Speicher. Leistungs-/Wirkungsgrad-Parameter stammen
+ * aus dem belegten Batterie-Request (v1-Analogie: gleiche Annahmen fuer
+ * alte Kapazitaet); ohne aufgeloeste Batterie ist der Dispatch
+ * unbestimmbar -> fail-closed (keine erfundenen C-Raten).
+ */
+function existingStorageParams(
+  template: StorageParams,
+  capacityKwh: number,
+): StorageParams {
+  if (!(capacityKwh >= 0) || !Number.isFinite(capacityKwh)) {
+    runError("Bestandsspeicher ist ungueltig");
+  }
+  if (capacityKwh > 0 && !(template.capacityKwh > 0)) {
+    // Positive alte Kapazitaet ohne belegte Batterie-Parameter:
+    // C-Rate/Wirkungsgrad sind unbestimmbar -> fail-closed.
+    runError("Bestands-Dispatch ohne belegte Batterie-Parameter");
+  }
+  // Bodenbasiert wie v1 (nutzbar ab 0): DoD-Verhaeltnis der belegten
+  // Batterie auf die alte Kapazitaet uebertragen. Kapazitaet 0 ist
+  // natuerliches No-op (kein Laden/Entladen moeglich).
+  const usableRatio = template.capacityKwh > 0
+    ? template.socMaxKwh / template.capacityKwh
+    : 0;
+  return {
+    ...template,
+    capacityKwh,
+    socMinKwh: 0,
+    socMaxKwh: capacityKwh * usableRatio,
+  };
+}
+
+export function runPlanningCalculationV2(
+  input: RunPlanningCalculationV2Input,
+): PlanningCalculationResultV2 {
+  const request = requireRequest(input.request);
+  const pvKwh = requireSeries(input.pvKwh, "pvKwh");
+  const loadKwh = requireSeries(input.loadKwh, "loadKwh");
+  if (typeof input.providerEstimate !== "boolean") {
+    runError("providerEstimate ist kein Boolean");
+  }
+  if (request.branch === "existing_installation") {
+    return runExistingInstallationV2(request, loadKwh, input);
+  }
+  const { annual, monthly } = dispatchAndSummarize({
+    pvKwh,
+    loadKwh,
+    storage: { ...request.storage },
+  });
+  return assembleResultV2(request, annual, monthly, input.providerEstimate);
+}
+
+function runExistingInstallationV2(
+  request: PlanningCalculationRequestV2,
+  loadKwh: number[],
+  input: RunPlanningCalculationV2Input,
+): PlanningCalculationResultV2 {
+  const context = request.existingInstallation;
+  if (context === undefined) {
+    runError("Bestands-Kontext fehlt im Request");
+  }
+  if (input.existingPvKwh === undefined || input.existingPvKwh === null) {
+    runError("Bestands-Reihe fehlt im Provider-Input");
+  }
+  const existingPvKwh = requireSeries(input.existingPvKwh, "existingPvKwh");
+  const addedStorageCapacityKwh = request.storage.capacityKwh;
+  const baselineStorage = existingStorageParams(
+    request.storage,
+    context.storageCapacityKwh,
+  );
+  const plannedStorage = existingStorageParams(
+    request.storage,
+    context.storageCapacityKwh + addedStorageCapacityKwh,
+  );
+  const baseline = dispatchAndSummarize({
+    pvKwh: existingPvKwh,
+    loadKwh,
+    storage: baselineStorage,
+  });
+  const planned = dispatchAndSummarize({
+    pvKwh: existingPvKwh,
+    loadKwh,
+    storage: plannedStorage,
+  });
+  const additionalSelfConsumptionKwh = roundEnergy(
+    planned.annual.selfConsumptionKwh - baseline.annual.selfConsumptionKwh,
+  );
+  const autonomyRatePercentagePoints = roundEnergy(
+    (planned.annual.autonomyRate - baseline.annual.autonomyRate) * 100,
+  );
+  const candidate = {
+    ...assembleResultV2(request, planned.annual, planned.monthly, input.providerEstimate),
+    existingInstallation: {
+      existingSystemPeakPowerKwp: context.systemPeakPowerKwp,
+      existingStorageCapacityKwh: context.storageCapacityKwh,
+      addedStorageCapacityKwh,
+      baseline: {
+        annual: baseline.annual,
+        monthly: baseline.monthly,
+      },
+      delta: {
+        additionalSelfConsumptionKwh,
+        autonomyRatePercentagePoints,
+      },
+    },
+  };
+  const parsed = planningCalculationResultV2Schema.safeParse(candidate);
+  if (!parsed.success) runError("Bestands-Result verletzt planning-calculation-result.v2");
+  return parsed.data;
+}
+
+function assembleResultV2(
+  request: PlanningCalculationRequestV2,
+  annual: DispatchedSummary["annual"],
+  monthly: DispatchedSummary["monthly"],
+  providerEstimate: boolean,
+): Omit<PlanningCalculationResultV2, "existingInstallation"> {
+  const warnings: PlanningCalculationResultV2["warnings"] = [];
+  if (providerEstimate) {
+    warnings.push({ code: "provider_estimate", severity: "info" });
+  }
+  const candidate = {
+    contractVersion: CALCULATION_V2_RESULT_CONTRACT_VERSION,
+    canonicalizationVersion: "planning-jcs.v1",
+    model: {
+      id: CALCULATION_V2_MODEL_ID,
+      version: CALCULATION_V2_MODEL_VERSION,
+      sourceRevision: CALCULATION_V2_SOURCE_REVISION,
+    },
+    inputSha256: hashPlanningCalculationInputV2(request),
+    quality: CALCULATION_V2_QUALITY,
+    validationStatus: CALCULATION_V2_VALIDATION_STATUS,
+    temporalResolution: "quarter_hour_35040",
+    roundingVersion: "wmee-energy-rounding.v1",
+    annual,
     monthly,
     warnings,
   };
