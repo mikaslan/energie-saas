@@ -12,7 +12,8 @@
  *   fixture-gepinnt); solare Viertelgewichte sind Spec-ESTIMATE.
  * - Planungstechnik/Montage/Verluste/kWp: planning-assumptions-v2
  *   (v1-Produktionspins + dokumentierte Midpoints).
- * - Uniforme Lastform: load-basis aus belegten kWh (F4.2-Upgrade: H0).
+ * - Lastform: Haushalts-Basis als BDEW-H0 (h0-load-v2, energieexakt auf
+ *   belegte kWh normiert); EV/Zusatzlasten weiter uniform (F4.2-Formen).
  * `providerEstimate` ist zunächst immer true -> Resultat-Warnung
  * `provider_estimate` (Haftungskennzeichnung, F4-Goal).
  */
@@ -26,6 +27,7 @@ import {
   fetchPVcalcSnapshotV2,
   fetchSeriescalcSnapshotV2,
 } from "./fetch-v2";
+import { buildH0BasisSourceV2 } from "./h0-load-v2";
 import {
   HAY_WEIGHTS_V2_VERSION,
   hayQuarterWeightsV2,
@@ -125,20 +127,24 @@ function knownKwh(
 }
 
 /**
- * Belegtes Verbrauchsprofil -> uniforme Provenienz-Quellen: Haushalt als
- * Pflicht-Basis; EV (km x Planungsfaktor), Waerme/Kaelte/Warmwasser als
- * kWh-Quellen nur bei bekannten Werten > 0. Unbekannte Zusatzlasten werden
- * geskippt (sichtbar in sources[], Upgrade: F4.2-Formen); unbekannte
- * Basis verweigert fail-closed (kein erfundener Verbrauch).
+ * Belegtes Verbrauchsprofil -> Provenienz-Quellen: Haushalt als
+ * Pflicht-Basis in BDEW-H0-Form (Achsenlabels tragen Datum/Wochentag);
+ * EV (km x Planungsfaktor), Waerme/Kaelte/Warmwasser als uniforme
+ * kWh-Quellen nur bei bekannten Werten > 0 (Upgrade: F4.2-Formen).
+ * Unbekannte Zusatzlasten werden geskippt (sichtbar in sources[]);
+ * unbekannte Basis verweigert fail-closed (kein erfundener Verbrauch).
  */
-export function buildLoadSourcesFromProfileV2(profile: unknown): LoadProfileSourceV2[] {
+export function buildLoadSourcesFromProfileV2(
+  profile: unknown,
+  slotLabels: readonly unknown[],
+): LoadProfileSourceV2[] {
   const parsed = z.object({ consumption: consumptionSchema }).safeParse(profile);
   if (!parsed.success) composeError("Profil traegt keinen Verbrauch");
   const consumption = parsed.data.consumption;
   const sources: LoadProfileSourceV2[] = [
-    buildUniformLoadSourceV2({
-      sourceKind: "basis",
+    buildH0BasisSourceV2({
       annualKwh: knownKwh(consumption.householdKwhPerYear, "Haushalt", true) as number,
+      slotLabels,
     }),
   ];
   const evKm = knownKwh(consumption.evKmPerYear, "EV", false);
@@ -396,9 +402,6 @@ export async function fetchPlanningSeriesV2(input: {
       };
     }),
   });
-  const total = resolveTotalLoadProfile(
-    buildLoadSourcesFromProfileV2({ consumption: parsed.data.consumption }),
-  );
   const transport = input.transport ?? defaultSnapshotTransportV2();
   const horizontalUrl = buildHorizontalSeriescalcUrl(site);
   const [horizon, horizontal] = await Promise.all([
@@ -419,6 +422,17 @@ export async function fetchPlanningSeriesV2(input: {
       diffuseWhPerM2: hour.gd,
     });
   }
+  // H0-Basis folgt den Achsenlabels der standortweiten Horizontalreihe
+  // (Berliner Standardzeit-Daten, gleiche Achse wie die Daecherserien).
+  const horizontalSlots = mapProviderYearToQuarterSlots(
+    horizontal.hours.map((hour) => hour.time),
+  );
+  const total = resolveTotalLoadProfile(
+    buildLoadSourcesFromProfileV2(
+      { consumption: parsed.data.consumption },
+      horizontalSlots.map((slot) => slot.slotLabel),
+    ),
+  );
   const composed = await Promise.all(
     roofs.map((roof) => composeRoofPower(site, roof, horizon.heights, horizontalByTime, transport)),
   );

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { mapProviderYearToQuarterSlots } from "@/lib/integrations/calculation/axis-v2";
 import { neumaierSum, QUARTER_HOUR_SLOTS } from "@/lib/integrations/calculation/engine-v2";
 import {
   buildLoadSourcesFromProfileV2,
@@ -190,13 +191,23 @@ function consumption(overrides: Record<string, unknown> = {}): Record<string, un
   };
 }
 
+function axisLabels(): string[] {
+  const envelope = horizontalEnvelope();
+  return mapProviderYearToQuarterSlots(envelope.hours.map((hour) => hour.t))
+    .map((slot) => slot.slotLabel);
+}
+
 describe("F4.1 v2 load sources from profile", () => {
-  it("bindet belegte kWh als uniforme Provenienz-Quellen", () => {
-    const sources = buildLoadSourcesFromProfileV2({ consumption: consumption() });
+  it("bindet belegte kWh als H0-Basis plus uniforme Zusatzquellen", () => {
+    const sources = buildLoadSourcesFromProfileV2(
+      { consumption: consumption() },
+      axisLabels(),
+    );
     expect(sources.map((source) => source.sourceKind)).toEqual(["basis", "ev"]);
     const basis = sources[0]!;
-    expect(basis.sourceRevision).toBe(PLANNING_ASSUMPTIONS_V2_VERSION);
-    expect(neumaierSum(basis.slotEnergyKwh)).toBeCloseTo(4200, 9);
+    expect(basis.sourceId).toBe("wmee-bdew-h0-dyn-basis.v1");
+    expect(basis.sourceRevision).toBe("wmee-bdew-h0-dyn.v1");
+    expect(neumaierSum(basis.slotEnergyKwh)).toBeCloseTo(4200, 6);
     const ev = sources[1]!;
     expect(neumaierSum(ev.slotEnergyKwh)).toBeCloseTo(2400, 9);
   });
@@ -206,13 +217,13 @@ describe("F4.1 v2 load sources from profile", () => {
       consumption: consumption({
         householdKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
       }),
-    })).toThrow();
+    }, axisLabels())).toThrow();
     const sources = buildLoadSourcesFromProfileV2({
       consumption: consumption({
         evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
         heatPumpKwhPerYear: { status: "known", value: 1500, source: "customer_input" },
       }),
-    });
+    }, axisLabels());
     expect(sources.map((source) => source.sourceKind)).toEqual(["basis", "heat_pump"]);
   });
 });

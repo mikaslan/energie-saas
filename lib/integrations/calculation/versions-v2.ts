@@ -35,3 +35,4 @@ export const CALCULATION_V2_GRID_EXPORT_LIMIT = "unbounded.v1" as const;
 export const CALCULATION_V2_SOLAR_GEOMETRY_VERSION =
   "noaa-low-precision_spencer-nrel_sealevel.v1" as const;
 export const CALCULATION_V2_SUBHOUR_VERSION = "hay-geometry-weights.v1" as const;
+export const CALCULATION_V2_H0_LOAD_VERSION = "wmee-bdew-h0-dyn.v1" as const;
