@@ -116,6 +116,7 @@ const consumptionSchema = z.object({
   evKmPerYear: knownValueSchema.optional(),
   evChargingPattern: evPatternSchema.optional(),
   heatPumpKwhPerYear: knownValueSchema.optional(),
+  heatingAcKwhPerYear: knownValueSchema.optional(),
   coolingKwhPerYear: knownValueSchema.optional(),
   hotWaterKwhPerYear: knownValueSchema.optional(),
 });
@@ -191,6 +192,21 @@ export function buildLoadSourcesFromProfileV2(
       annualKwh: heatKwh,
       hourlyTemperatureC: loadContext.hourlyTemperatureC,
       hourTimesInOrder: loadContext.hourTimesInOrder,
+    }));
+  }
+  // Heizungs-Klimatisierung: v1 formt sie mit denselben Heizgradstunden
+  // (eigene Quelle/Provenienz, kein stilles Fallenlassen belegter kWh).
+  const heatingAcKwh = knownKwh(
+    consumption.heatingAcKwhPerYear,
+    "Heizungs-Klimatisierung",
+    false,
+  );
+  if (heatingAcKwh !== null && heatingAcKwh > 0) {
+    sources.push(buildHeatingDegreeSourceV2({
+      annualKwh: heatingAcKwh,
+      hourlyTemperatureC: loadContext.hourlyTemperatureC,
+      hourTimesInOrder: loadContext.hourTimesInOrder,
+      variant: "heating_ac",
     }));
   }
   const coolingKwh = knownKwh(consumption.coolingKwhPerYear, "Kuehlung", false);

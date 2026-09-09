@@ -515,6 +515,19 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## Heizungs-AC (2026-09-09)
+- `heatingAcKwhPerYear` fiel in v2 still unter den Tisch (Schema ohne
+  Feld); v1 formt sie mit Heizgradstunden. Jetzt: Composer-Branch auf
+  `buildHeatingDegreeSourceV2({variant: "heating_ac"})` — eigene sourceId
+  `wmee-degree-day-heating-ac.v1`, WP-SHA byte-stabil (konditionaler
+  SHA-Anteil). Tests: Variante (Form=WP, SHA distinct) + Composer-Kinds;
+  unit 1043, db 139 Dateien 1160+1skip, E2E m1-11g 2/2, lint+typecheck 0.
+- CI-Befund (111b43a): codex-lane-gates rot NUR in m2-01-Reload-Timeout
+  (30 s) + m2-02-Kaskade; Delta seit Gruen (20276a9) enthaelt null
+  Offer/v1/UI-Code; beide Specs lokal auf identischem HEAD gruen.
+  Bewertung: CI-Umgebungs-Flake, kein Code-Defekt; Re-Run --failed
+  angestossen (Run 34340011294, laeuft).
+
 ## v2-Lastformen (2026-09-09)
 - `load-shapes-v2.ts` (`wmee-load-shapes.v1`): exakte v1-Ports auf
   Viertelstunden — EV-Ladepattern (evening/daytime/away, belegtes

@@ -277,6 +277,26 @@ describe("F4.1 v2 load sources from profile", () => {
     }, loadContext())).toThrow();
   });
 
+  it("bindet Heizungs-Klimatisierung als eigene Heizgrad-Quelle (v1-gleich)", () => {
+    const sources = buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
+        heatPumpKwhPerYear: { status: "known", value: 1500, source: "customer_input" },
+        heatingAcKwhPerYear: { status: "known", value: 800, source: "customer_input" },
+      }),
+    }, loadContext());
+    expect(sources.map((source) => source.sourceKind)).toEqual(
+      ["basis", "heat_pump", "heat_pump"],
+    );
+    expect(sources.map((source) => source.sourceId)).toEqual([
+      "wmee-bdew-h0-dyn-basis.v1",
+      "wmee-degree-day-heat.v1",
+      "wmee-degree-day-heating-ac.v1",
+    ]);
+    expect(neumaierSum(sources[1]!.slotEnergyKwh)).toBeCloseTo(1500, 6);
+    expect(neumaierSum(sources[2]!.slotEnergyKwh)).toBeCloseTo(800, 6);
+  });
+
   it("formt Kuehlung nach Kuehlgradstunden und Warmwasser nach Tagesgang", () => {
     const sources = buildLoadSourcesFromProfileV2({
       consumption: consumption({

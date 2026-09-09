@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { neumaierSum } from "@/lib/integrations/calculation/engine-v2";
 import {
   buildHeatingDegreeSourceV2,
+  DEGREE_DAY_V2_HEATING_AC_SOURCE_ID,
   DEGREE_DAY_V2_SOURCE_ID,
   DEGREE_DAY_V2_VERSION,
   HEATING_LIMIT_DEG_C,
@@ -43,7 +44,35 @@ describe("heating degree load", () => {
   it("pins version, source id and heating limit", () => {
     expect(DEGREE_DAY_V2_VERSION).toBe("wmee-degree-day.v1");
     expect(DEGREE_DAY_V2_SOURCE_ID).toBe("wmee-degree-day-heat.v1");
+    expect(DEGREE_DAY_V2_HEATING_AC_SOURCE_ID).toBe("wmee-degree-day-heating-ac.v1");
     expect(HEATING_LIMIT_DEG_C).toBe(15);
+  });
+
+  it("formt Heizungs-Klimatisierung v1-gleich mit eigener Provenienz (WP-SHA stabil)", () => {
+    const times = Array.from({ length: 8_760 }, (_, index) => `hour-${index}`);
+    const temperatures = new Map<string, number>(
+      times.map((time) => [time, 20]),
+    );
+    temperatures.set("hour-100", 5);
+    const ac = buildHeatingDegreeSourceV2({
+      annualKwh: 100,
+      hourlyTemperatureC: temperatures,
+      hourTimesInOrder: times,
+      variant: "heating_ac",
+    });
+    expect(ac.sourceKind).toBe("heat_pump");
+    expect(ac.sourceId).toBe(DEGREE_DAY_V2_HEATING_AC_SOURCE_ID);
+    expect(ac.sourceRevision).toBe(DEGREE_DAY_V2_VERSION);
+    expect(neumaierSum(ac.slotEnergyKwh)).toBeCloseTo(100, 9);
+    // Gleiche Form wie WP (v1: dieselben Heizgradstunden).
+    const pump = buildHeatingDegreeSourceV2({
+      annualKwh: 100,
+      hourlyTemperatureC: temperatures,
+      hourTimesInOrder: times,
+    });
+    expect(pump.sourceId).toBe(DEGREE_DAY_V2_SOURCE_ID);
+    expect(ac.slotEnergyKwh).toEqual(pump.slotEnergyKwh);
+    expect(ac.sourceSha256).not.toBe(pump.sourceSha256);
   });
 
   it("computes degree hours exactly", () => {

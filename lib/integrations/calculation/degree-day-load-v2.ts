@@ -33,6 +33,16 @@ import { CALCULATION_V2_DEGREE_DAY_VERSION } from "./versions-v2";
 
 export const DEGREE_DAY_V2_VERSION = CALCULATION_V2_DEGREE_DAY_VERSION;
 export const DEGREE_DAY_V2_SOURCE_ID = "wmee-degree-day-heat.v1" as const;
+export const DEGREE_DAY_V2_HEATING_AC_SOURCE_ID =
+  "wmee-degree-day-heating-ac.v1" as const;
+
+/**
+ * Heizgrad-Quellvariante: `heat_pump` (Waermepumpe) oder `heating_ac`
+ * (Heizungs-Klimatisierung — v1 formt sie mit denselben Heizgradstunden).
+ * Eigene sourceId + SHA-Anteil je Variante; Default ist die belegte
+ * WP-Form (bestehende SHAs unveraendert).
+ */
+export type DegreeDayVariantV2 = "heat_pump" | "heating_ac";
 
 /** Heizgrenztemperatur [°C] (Bestand, EnEV-Praxis, versioniert). */
 export const HEATING_LIMIT_DEG_C = 15;
@@ -49,13 +59,16 @@ export function heatingDegreeHour(temperatureC: number): number {
   return Math.max(0, HEATING_LIMIT_DEG_C - temperatureC);
 }
 
-function degreeDaySha256(annualKwh: number): string {
+function degreeDaySha256(annualKwh: number, variant: DegreeDayVariantV2): string {
   return createHash("sha256")
     .update(
       canonicalizeCalculationJson({
         loadMethod: DEGREE_DAY_V2_VERSION,
         heatingLimitDegC: HEATING_LIMIT_DEG_C,
         sourceKind: "heat_pump",
+        // Nur die AC-Variante traegt einen Anteil: Die belegte WP-Form
+        // behaelt byte-identische SHAs (kein stiller Provenienzwechsel).
+        ...(variant === "heating_ac" ? { variant } : {}),
         annualKwh,
       }),
       "utf8",
@@ -67,12 +80,14 @@ function degreeDaySha256(annualKwh: number): string {
  * WP-Stromquelle aus Jahres-kWh + 8.760 Stundentemperaturen
  * (Beobachtungszeit -> T2m [°C], Achsenreihenfolge beliebig):
  * Heizgradstunden -> flache Viertel -> exakt Jahres-kWh.
- * `annualKwh = 0` liefert Nullreihe.
+ * `annualKwh = 0` liefert Nullreihe. Variante `heating_ac` fuer
+ * Heizungs-Klimatisierung (eigene sourceId, v1-gleiche Form).
  */
 export function buildHeatingDegreeSourceV2(input: {
   annualKwh: number;
   hourlyTemperatureC: ReadonlyMap<string, number>;
   hourTimesInOrder: readonly string[];
+  variant?: DegreeDayVariantV2;
 }): LoadProfileSourceV2 {
   const annualKwh = input.annualKwh;
   if (typeof annualKwh !== "number" || !Number.isFinite(annualKwh) || annualKwh < 0) {
@@ -107,13 +122,22 @@ export function buildHeatingDegreeSourceV2(input: {
     const scale = annualKwh / total;
     slotEnergyKwh = weights.map((weight) => weight * scale);
   }
+  const variant: DegreeDayVariantV2 = input.variant ?? "heat_pump";
   const parsed = loadProfileSourceV2Schema.safeParse({
     sourceKind: "heat_pump",
-    sourceId: DEGREE_DAY_V2_SOURCE_ID,
+    sourceId: variant === "heating_ac"
+      ? DEGREE_DAY_V2_HEATING_AC_SOURCE_ID
+      : DEGREE_DAY_V2_SOURCE_ID,
     sourceRevision: DEGREE_DAY_V2_VERSION,
-    sourceSha256: degreeDaySha256(annualKwh),
+    sourceSha256: degreeDaySha256(annualKwh, variant),
     slotEnergyKwh,
   });
-  if (!parsed.success) degreeDayError("Waermepumpe verletzt das Quellschema");
+  if (!parsed.success) {
+    degreeDayError(
+      variant === "heating_ac"
+        ? "Heizungs-Klimatisierung verletzt das Quellschema"
+        : "Waermepumpe verletzt das Quellschema",
+    );
+  }
   return parsed.data;
 }
