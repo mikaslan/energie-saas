@@ -192,10 +192,10 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0073 Derive-Cap, 0074 F2.5-Write-Vertrag, 0075 F3.1-Planungsmodi,
     // 0076 F2.8b Signaturakzeptanz -> Won, 0077 F7.4 Segmentabschluss,
     // 0078 F4.1 v2-Vertragstupel, 0079 F4.1 v2-Finalize,
-    // 0080 F4.1 v2-Dispatch).
+    // 0080 F4.1 v2-Dispatch, 0081 F4.1 v2-Recovery).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 80,
-      tag: "0080_f4_01_calculation_dispatch_v2",
+      idx: 81,
+      tag: "0081_f4_01_calculation_recovery_v2",
     });
   });
 

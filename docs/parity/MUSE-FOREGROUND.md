@@ -515,6 +515,25 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## v2-Crash-Recovery (2026-09-09)
+- 0081 ersetzt die 0080-Routine (CREATE OR REPLACE, additiv): v2-Dispatch
+  mit 0026-Semantik — Zustaende queued/running/retry_wait, Key
+  `<job>:<versuch>`, start_after = Lease-Ende bei running (Watchdog),
+  sonst next_attempt_at, Re-Time statt Duplikat. v1-Routine unangetastet.
+- Service: Claim pflanzt Watchdog jetzt auch fuer v2, Retry timt `:attempt`
+  um (vorher v2-Skip); Sweep bleibt Backup. v1-Verhalten unveraendert
+  (m107 12/12).
+- Tests: m111g 6/6 (Watchdog-Pflanzung exakt auf Lease-Ende, Retry-Re-Time
+  ohne Duplikat, Crash Re-Claim attempt 2 + `:3`, Ablehnungsmatrix inkl.
+  v1-Vertrag, Routine-Pins). Journal-Pins 0080->0081 nachgezogen (m111a x2).
+- ECHTER FUND (eigener Slice, rot-zu-gruen): Rollenvertrag pinnt
+  sha256(prosrc) — m204 schlug nach 0081 fehl (4e061d.. vs 151355..).
+  Pin in db-role-contract.mts nachgezogen, m204 20/20 verifiziert.
+- Gates: unit 1031, db 139 Dateien 1160+1skip 0 Fehler, lint+typecheck 0,
+  E2E m1-11g 2/2 (live Worker pflanzt Watchdog, Kette sichtbar).
+- F4.1-Laufzeitkette damit geschlossen: Eingabe -> Fetch -> Berechnung ->
+  Persistenz -> sichtbares Ergebnis + Crash-Recovery + Retry.
+
 ## v2-UI + Claim-Dispatch-Fix (2026-09-09, committet c89bd0a)
 - UI: `energy-calculation-section` rendert `currentV2` (Badge, Jahreswerte,
   12 Monatszeilen, provider_estimate-Hinweis, Provenienz-Details) und

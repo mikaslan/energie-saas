@@ -4127,10 +4127,11 @@ export async function verifyRoleContract(
       ] : []),
       "enqueue_project_calculation(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:b4b87f16145bfbe691c2a5ad7db08a212e8254b3545660e0d6b063bb1d5a26f4",
-      // F4.1 v2-Dispatch-Routine (Migration 0080): Body-Pin = sha256(prosrc).
+      // F4.1 v2-Dispatch-Routine (Migration 0080, Recovery 0081):
+      // Body-Pin = sha256(prosrc).
       ...(hasCalculationDispatchV2 ? [
         "enqueue_project_calculation_v2(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
-        "search_path=pg_catalog:4e061d7dcd29d49948c5f8e9fdfc76452c2a4b408ab3b335743bd71b6c3ba5cb",
+        "search_path=pg_catalog:151355f13e04e0ab5696d1c3537c55ba32da4d6ddd47a91ebb05907fae97e4f0",
       ] : []),
       ...(hasOfferPdfDraft ? [
         "enqueue_offer_pdf_draft(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
