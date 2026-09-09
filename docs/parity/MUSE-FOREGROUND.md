@@ -515,6 +515,23 @@ identisch (`983ed67`, 0 unpusht).
 - Offen (benannt, kein Erfinden): Hay-Gewichte (TS-Geometrie), H0-Lastform,
   dachgebundene Modul-kWp, Heizungs-AC-Abbildung.
 
+## Hay-Geometrie-Slice (2026-09-09, committet 9621a20)
+- `solar-geometry-v2.ts`: reiner TS-Sun-Position-Port (NOAA-Niedrigpraezision
+  + Spencer-Exzentrizitaet S0=1366.1 + Kasten-Young-AM + Espenak/Meeus-Delta-T),
+  validiert gegen 105.120 unabhaengige SPA-Viertel (Berlin/Madrid/Stockholm):
+  elev <= 0.05°, Azimut <= 0.1°, AM/G0h <= 0.5 %. Zwei echte
+  Transkriptionsfehler dabei gefunden/behoben (rad->deg-Faktor in der
+  Zeitgleichung, 35999 statt 36999 in der Anomalie); Fixture fuehrt
+  geometrische Elevation (H_sun-Konvention, keine Refraktion).
+- `hay-weights-v2.ts`: G_T,q je Stunde aus Horizontalwetter + Viertel-
+  geometrie (Monatsrezept, Albedo 0.2 fixture-gepinnt); Volljahr-Test
+  5/5 (Annual-Huelle 0.0025, kein Spurious-Abort, Nacht-Nullen).
+- Composer: flache Subhour ENTFERNT (kein stiller Fallback), stattdessen
+  standortweiter Horizontal-Fetch + Hay-Gewichte; Provenienz
+  `subhourMethod: hay-geometry-weights.v1`. m111f-E2E weiter currentV2.
+- Gates: unit 1020, db/contracts 138 Dateien 1154+1 skip, lint+typecheck 0.
+- Offen (benannt): H0-Lastform, dachgebundene Modul-kWp, Heizungs-AC.
+
 ## v2-Leistungsverteilung (2026-09-08, lokal verifiziert, UNPUSHED)
 - `p-distribute-v2.ts`: `P*_h -> P_q` ueber injizierte Hay-Gewichte
   (energieerhaltend, Abort-Gate) + `E_pv,q`-Summation ueber 1..4 Daeche.
