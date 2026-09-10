@@ -551,12 +551,25 @@ test("M3-01-E2E-04: Viewer read-only, External fail-closed", async ({ page }) =>
   await seedInvoicingSettings();
   await seedIssuedInvoice({ name: "Sichtbarkeitstest", grossCents: 1000 });
 
-  // Viewer: Liste sichtbar, keine Schreibflächen
+  // Viewer: Liste sichtbar, keine Schreibflächen (F5-01: auch kein Skonto)
+  await page.goto(invoicesPath());
+  await loginWithRealOtp(page, data.editorEmail, invoicesPath());
+  await page.getByRole("button", { name: "Rechnung anlegen" }).click();
+  const draftDialog = page.getByRole("dialog", { name: "Rechnung anlegen" });
+  await draftDialog.getByLabel("Name").fill("Viewer-Skonto-Entwurf");
+  await draftDialog.getByLabel("Fällig am").fill("2026-12-31");
+  await draftDialog.getByRole("button", { name: "Als Entwurf anlegen" }).click();
+  const draftRow = page.getByRole("row").filter({ hasText: "Viewer-Skonto-Entwurf" });
+  await expect(draftRow).toBeVisible();
+  await page.context().clearCookies();
+
   await page.goto(invoicesPath());
   await loginWithRealOtp(page, data.viewerEmail, invoicesPath());
   await expect(page.getByRole("row").filter({ hasText: "Sichtbarkeitstest" })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "Viewer-Skonto-Entwurf" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rechnung anlegen" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ausstellen" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Skonto" })).toHaveCount(0);
 
   // External: fail-closed
   await page.context().clearCookies();
