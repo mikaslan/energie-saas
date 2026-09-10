@@ -81,6 +81,12 @@ export {
   ProjectAssignmentTargetError,
   ProjectAssignmentValidationError,
 } from "./assignment-service";
+export {
+  createManualLead,
+  ManualLeadLaneError,
+  ManualLeadValidationError,
+  type ManualLeadResult,
+} from "./manual-lead-service";
 export type {
   AssignedExternalRequestDetail,
   ProjectAssignmentContext,

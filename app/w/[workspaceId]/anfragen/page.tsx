@@ -11,6 +11,9 @@ import {
   type RequestBoardColumn,
   type RequestBoardScope,
 } from "@/modules/boards";
+import { listLeadSources } from "@/modules/lead-sources";
+import { can } from "@/lib/permissions";
+import { ManualLeadForm } from "./manual-lead-form";
 import {
   RequestBoardCard as RequestBoardCardClient,
   RequestBoardClient,
@@ -105,15 +108,31 @@ export default async function RequestsPage({
   }
 
   let board: Awaited<ReturnType<typeof getRequestBoard>> | undefined;
+  let canCreateManualLead = false;
+  let leadSourceOptions: Array<{ id: string; name: string }> = [];
   let unauthenticated = false;
   let denied = false;
   try {
-    board = await authorizedQuery(
+    const loaded = await authorizedQuery(
       validWorkspaceId,
       "project.read",
       "kanban_board",
-      (tx, ctx) => getRequestBoard(tx, ctx, { scope }),
+      async (tx, ctx) => ({
+        board: await getRequestBoard(tx, ctx, { scope }),
+        canCreate: can(ctx, "project.write"),
+        // F1-11: Quellen-Dropdown (gleiche Leseschranke wie die
+        // Verwaltung; ohne Recht leere Liste, Formular bleibt nutzbar).
+        sources: await listLeadSources(tx, ctx, { includeArchived: false }).catch(
+          (error: unknown) => {
+            if (error instanceof PermissionDeniedError) return [];
+            throw error;
+          },
+        ),
+      }),
     );
+    board = loaded.board;
+    canCreateManualLead = loaded.canCreate;
+    leadSourceOptions = loaded.sources.map((source) => ({ id: source.id, name: source.name }));
   } catch (error) {
     if (error instanceof NotAuthenticatedError) unauthenticated = true;
     else if (error instanceof PermissionDeniedError) denied = true;
@@ -218,6 +237,16 @@ export default async function RequestsPage({
             {board.scope === "commercial" ? "Gewerbe-Bereich" : "Wohnbau-Bereich"}
           </span>
         </div>
+        {canCreateManualLead ? (
+          <div className="mb-6">
+            <ManualLeadForm
+              workspaceId={validWorkspaceId}
+              scope={scope}
+              scopeLabel={scope === "commercial" ? "Gewerbe" : "Wohnbau"}
+              sources={leadSourceOptions}
+            />
+          </div>
+        ) : null}
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Rechner-Leads</p>
