@@ -11,11 +11,14 @@ import type {
   TimeUtilizationDto,
 } from "@/lib/integrations/time-tracking/contract";
 import {
+  breakMinutesTotal,
   getTimeUtilization,
+  listBreaks,
   listTimeEntries,
   listTimeEntryRevisions,
   listTimeEventTypes,
   listTimeMemberOptions,
+  type BreakSegmentDto,
 } from "@/modules/time-tracking";
 import { UserFilterForm } from "./user-filter-form";
 import { can, PermissionDeniedError } from "@/lib/permissions";
@@ -59,7 +62,7 @@ export default async function ProjectTimeTrackingPage(
   const selectedUserIds = parseUserFilter(await props.searchParams);
 
   let result:
-    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; utilization: TimeUtilizationDto; selectedUserIds: string[]; canWrite: boolean }
+    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; breaksByEntry: Record<string, BreakSegmentDto[]>; breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }>; utilization: TimeUtilizationDto; selectedUserIds: string[]; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -91,6 +94,17 @@ export default async function ProjectTimeTrackingPage(
             await listTimeEntryRevisions(tx, ctx, { entryId: entry.id })
           ).revisions;
         }
+        // F9-06 Pausen-Segmente je gelistetem Eintrag (gleicher Read-Pfad).
+        const breaksByEntry: Record<string, BreakSegmentDto[]> = {};
+        const breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }> = {};
+        for (const entry of list.entries) {
+          breaksByEntry[entry.id] = await listBreaks(tx, ctx, { entryId: entry.id });
+          const total = await breakMinutesTotal(tx, ctx, { entryId: entry.id });
+          breakTotalsByEntry[entry.id] = {
+            breakMinutes: total.breakMinutes,
+            openBreak: total.openBreak,
+          };
+        }
         const writable = can(ctx, "time.write");
         // Review Welle 03 (GPS rollenabhängig sichtbar): Koordinaten sind
         // Mitarbeiter-Standortdaten — ohne time.write serverseitig
@@ -108,6 +122,8 @@ export default async function ProjectTimeTrackingPage(
         return {
           projectName: projectRow.rows[0].name,
           list: visibleList,
+          breaksByEntry,
+          breakTotalsByEntry,
           types: await listTimeEventTypes(tx, ctx, { includeArchived: true }),
           members: await listTimeMemberOptions(tx, ctx),
           revisionsByEntry: visibleRevisionsByEntry,
@@ -167,6 +183,8 @@ export default async function ProjectTimeTrackingPage(
         workspaceId={workspaceId}
         projectId={projectId}
         list={result.list}
+        breaksByEntry={result.breaksByEntry}
+        breakTotalsByEntry={result.breakTotalsByEntry}
         types={result.types}
         members={result.members}
         revisionsByEntry={result.revisionsByEntry}

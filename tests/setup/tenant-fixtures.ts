@@ -2110,6 +2110,26 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         ${`fixture event type ${id}`})
     `);
   },
+  // F9-06 (0089): abgeschlossenes Segment zu frischem Eintrag.
+  time_break_segment: async (tx, wsId) => {
+    await tenantFixtures.time_entry(tx, wsId);
+    const entry = await tx.execute<{
+      id: string; user_id: string;
+    }>(sql`select id, user_id from time_entry
+            where workspace_id = ${wsId}::uuid
+            order by created_at desc limit 1`);
+    const row = entry.rows[0];
+    if (!row) throw new Error("Break-Fixture braucht einen time_entry.");
+    await tx.execute(sql`
+      insert into time_break_segment (
+        workspace_id, entry_id, started_at, ended_at, created_by
+      ) values (
+        ${wsId}::uuid, ${row.id}::uuid,
+        now() - interval '30 minutes', now() - interval '20 minutes',
+        ${row.user_id}::uuid
+      )
+    `);
+  },
   time_entry: async (tx, wsId) => {
     const userId = randomUUID();
     const projectId = randomUUID();

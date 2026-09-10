@@ -569,6 +569,12 @@ const LEAD_ROUTING_RELATIONS = [
   "project_lead_routing_rule",
 ] as const;
 
+// F9-06 (0089): eigene Menge (nicht in TIME_TRACKING_RELATIONS — die wird
+// atomar auch auf historischen Ständen geprüft, die die Tabelle fehlt).
+const TIME_BREAK_RELATIONS = [
+  "time_break_segment",
+] as const;
+
 const MENTION_RELATIONS = [
   "project_note_mention",
 ] as const;
@@ -2677,6 +2683,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F9-06 (0089): eigene ACL-Menge — append-only plus Schließen
+  // (select/insert/update, bewusst kein DELETE).
+  const hasTimeBreaksForAcl = await hasAtomicPublicRelationSet(
+    client,
+    TIME_BREAK_RELATIONS,
+    "Rollen-ACL-Manifest: F9-06-Pausen-Segmente",
+  );
+  if (hasTimeBreaksForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.time_break_segment
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.time_break_segment to app_runtime
+    `);
+  }
+
   // F1-09: Mention-Zeilen — atomarer Ersatz (DELETE+INSERT im Schreib-Tx,
   // kein UPDATE). SELECT/INSERT/DELETE fuer den Service-Pfad.
   const hasMentions = await hasAtomicPublicRelationSet(
@@ -3870,6 +3893,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F1-10-Lead-Routing",
   );
 
+  const hasTimeBreaks = await hasAtomicPublicRelationSet(
+    client,
+    TIME_BREAK_RELATIONS,
+    "Rollenvertrag: F9-06-Pausen-Segmente",
+  );
+
   const hasMentions = await hasAtomicPublicRelationSet(
     client,
     MENTION_RELATIONS,
@@ -4090,6 +4119,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasTimeBreaks ? TIME_BREAK_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasMentions ? MENTION_RELATIONS.map(
@@ -5252,6 +5284,9 @@ export async function verifyRoleContract(
       ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasTimeBreaks ? TIME_BREAK_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasMentions ? MENTION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -5588,6 +5623,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasLeadRouting ? [
           "project_lead_routing_rule:tenant_isolation:5e65ec9d858477d79085ae976979f4e4349773895b49b57c1cd32ae1101dd48d",
+        ] : []),
+        ...(hasTimeBreaks ? [
+          "time_break_segment:tenant_isolation:c4160ae18dacc29b5484e0fd2e06cc6ccc62c31c5f7bb491c3d3512b10f73f76",
         ] : []),
         ...(hasMentions ? [
           "project_note_mention:tenant_isolation:bd49d3632555a1d99e54cf336071e259a1d90892ba02c784661cdb0afcdc8ad5",
@@ -6130,6 +6168,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
         `app_runtime:${relation}:DELETE:app_owner:false`,
+      ]) : []),
+      // F9-06: Segmente sind append-only plus Schließen (kein DELETE).
+      ...(hasTimeBreaks ? TIME_BREAK_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasMentions ? MENTION_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,

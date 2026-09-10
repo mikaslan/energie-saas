@@ -16,7 +16,9 @@ import {
   approveTimeEntry,
   archiveTimeEntry,
   createTimeEntry,
+  endBreak,
   lockTimeEntryInstantsForUpdate,
+  startBreak,
   TimeTrackingConflictError,
   TimeTrackingNotFoundError,
   TimeTrackingValidationError,
@@ -341,6 +343,48 @@ export async function discardTimeEntryAction(
     revalidate(workspace, projectId);
     return { status: "success", message: "Laufender Eintrag verworfen." };
   } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F9-06 Pausen-Segmente: Start/Ende je Eintrag (gleiche Schranke und
+// Zustände wie alle Zeit-Aktionen, Konflikt = offene/fehlende Pause).
+export async function startBreakAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const id = parseId(formData, "id");
+  if (!workspace || !projectId || !id) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      startBreak(tx, ctx, { entryId: id }),
+    );
+    revalidate(workspace, projectId);
+    return { status: "success", message: "Pause gestartet." };
+  } catch (error) {
+    if (error instanceof TimeTrackingConflictError) return { status: "conflict" };
+    return mapError(error);
+  }
+}
+
+export async function endBreakAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const id = parseId(formData, "id");
+  if (!workspace || !projectId || !id) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      endBreak(tx, ctx, { entryId: id }),
+    );
+    revalidate(workspace, projectId);
+    return { status: "success", message: "Pause beendet." };
+  } catch (error) {
+    if (error instanceof TimeTrackingConflictError) return { status: "conflict" };
     return mapError(error);
   }
 }

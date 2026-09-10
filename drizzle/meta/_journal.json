@@ -624,6 +624,13 @@
       "when": 1789066368179,
       "tag": "0088_f15_01_gewerbe_board",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1789069843265,
+      "tag": "0089_f9_06_break_segments",
+      "breakpoints": true
     }
   ]
 }

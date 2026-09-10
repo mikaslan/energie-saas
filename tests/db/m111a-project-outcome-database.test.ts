@@ -196,10 +196,10 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0082 F5-01 Skonto, 0083 F8-01 Anzahlung-Link,
     // 0084 F9-05 Zeitfreigabe, 0085 F7-05 Abnahme,
     // 0086 F13-01 Serviceauftrag, 0087 F1-10 Lead-Routing,
-    // 0088 F15-01 Gewerbe-Board).
+    // 0088 F15-01 Gewerbe-Board, 0089 F9-06 Pausen-Segmente).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 88,
-      tag: "0088_f15_01_gewerbe_board",
+      idx: 89,
+      tag: "0089_f9_06_break_segments",
     });
   });
 

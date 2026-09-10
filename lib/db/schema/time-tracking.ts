@@ -121,6 +121,41 @@ export const timeEntry = pgTable(
   ],
 );
 
+// F9-06 Pausen-Segmente: Start/Ende-Protokoll je Zeiteintrag (offen =
+// ended_at NULL, max. eins je Eintrag via Partial-Unique). Keine
+// automatische Verrechnung mit den Minutensummen des Eintrags.
+export const timeBreakSegment = pgTable(
+  "time_break_segment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    entryId: uuid("entry_id").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdBy: uuid("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("time_break_segment_ws_id_uq").on(t.workspaceId, t.id),
+    index("time_break_segment_ws_entry_idx").on(t.workspaceId, t.entryId),
+    // Max. eine offene Pause je Eintrag.
+    uniqueIndex("time_break_segment_ws_entry_open_uq")
+      .on(t.workspaceId, t.entryId)
+      .where(sql`${t.endedAt} is null`),
+    check("time_break_segment_order_ck", sql`${t.endedAt} is null or ${t.endedAt} >= ${t.startedAt}`),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "time_break_segment_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.entryId],
+      foreignColumns: [timeEntry.workspaceId, timeEntry.id],
+      name: "time_break_segment_entry_fk",
+    }).onDelete("cascade"),
+  ],
+);
+
 // F9.4 Slice B: unveränderliche Vorher-Bilder je Edit (Muster
 // offer_variant_revision). Nur created_at, kein updated_at, kein
 // Update-/Delete-Pfad — geschrieben wird ausschließlich vom Service

@@ -9,6 +9,8 @@ vi.mock(
     archiveTimeEntryAction: vi.fn(),
     createTimeEntryAction: vi.fn(),
     discardTimeEntryAction: vi.fn(),
+    endBreakAction: vi.fn(),
+    startBreakAction: vi.fn(),
     startTimeEntryAction: vi.fn(),
     stopTimeEntryAction: vi.fn(),
     unapproveTimeEntryAction: vi.fn(),
@@ -138,6 +140,8 @@ describe("SSR-stabile Zeitdarstellung", () => {
       types: [],
       members: [],
       revisionsByEntry: {},
+      breaksByEntry: {},
+      breakTotalsByEntry: {},
       utilization: { schemaVersion: 1, rows: [] },
       canWrite: true,
     }));
@@ -188,6 +192,8 @@ describe("SSR-stabile Zeitdarstellung", () => {
       types: [],
       members: [],
       revisionsByEntry: {},
+      breaksByEntry: {},
+      breakTotalsByEntry: {},
       utilization: { schemaVersion: 1, rows: [] },
       canWrite: true,
     }));

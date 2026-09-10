@@ -15,12 +15,15 @@ import {
   archiveTimeEntryAction,
   createTimeEntryAction,
   discardTimeEntryAction,
+  endBreakAction,
+  startBreakAction,
   startTimeEntryAction,
   stopTimeEntryAction,
   unapproveTimeEntryAction,
   updateTimeEntryAction,
   type TimeEntryActionState,
 } from "./actions";
+import type { BreakSegmentDto } from "@/modules/time-tracking";
 
 const initialState: TimeEntryActionState = { status: "idle" };
 
@@ -34,6 +37,7 @@ function message(state: TimeEntryActionState): { text: string; isError: boolean 
     case "not_found": return { text: "Der Zeiteintrag wurde nicht gefunden.", isError: true };
     case "denied": return { text: "Dir fehlt die Berechtigung für diese Aktion.", isError: true };
     case "unauthenticated": return { text: "Deine Sitzung ist abgelaufen.", isError: true };
+    case "conflict": return { text: "Aktion nicht möglich (z. B. Pause bereits offen oder beendet).", isError: true };
     default: return null;
   }
 }
@@ -129,6 +133,8 @@ export function TimeEntryManager({
   types,
   members,
   revisionsByEntry,
+  breaksByEntry,
+  breakTotalsByEntry,
   utilization,
   canWrite,
 }: {
@@ -138,10 +144,14 @@ export function TimeEntryManager({
   types: TimeEventTypeDto[];
   members: TimeMemberOption[];
   revisionsByEntry: Record<string, TimeEntryRevisionDto[]>;
+  breaksByEntry: Record<string, BreakSegmentDto[]>;
+  breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }>;
   utilization: TimeUtilizationDto;
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createTimeEntryAction, initialState);
+  const [breakStartState, breakStartDispatch] = useActionState(startBreakAction, initialState);
+  const [breakEndState, breakEndDispatch] = useActionState(endBreakAction, initialState);
   const [archiveState, archiveDispatch] = useActionState(archiveTimeEntryAction, initialState);
   const [approveState, approveDispatch] = useActionState(approveTimeEntryAction, initialState);
   const [unapproveState, unapproveDispatch] = useActionState(unapproveTimeEntryAction, initialState);
@@ -276,6 +286,19 @@ export function TimeEntryManager({
                   revisions={revisionsByEntry[entry.id] ?? []}
                   typeName={typeName}
                   memberLabel={memberLabel}
+                />
+                <BreakControls
+                  workspaceId={workspaceId}
+                  projectId={projectId}
+                  entryId={entry.id}
+                  approved={entry.approvedAt !== null}
+                  canWrite={canWrite}
+                  segments={breaksByEntry[entry.id] ?? []}
+                  total={breakTotalsByEntry[entry.id] ?? { breakMinutes: 0, openBreak: false }}
+                  startState={breakStartState}
+                  startDispatch={breakStartDispatch}
+                  endState={breakEndState}
+                  endDispatch={breakEndDispatch}
                 />
                 {canWrite ? (
                   <>
@@ -553,6 +576,95 @@ function RevisionHistory({
         ))}
       </ul>
     </details>
+  );
+}
+
+// F9-06: Pausen-Segmente je Eintrag. Offene Pause -> „Pause beenden",
+// sonst „Pause starten" (nach Freigabe und ohne Schreibrecht nur Anzeige).
+// Natives <details> fuer die Segmentliste (ohne JS bedienbar, E2E-stabil).
+function BreakControls({
+  workspaceId,
+  projectId,
+  entryId,
+  approved,
+  canWrite,
+  segments,
+  total,
+  startState,
+  startDispatch,
+  endState,
+  endDispatch,
+}: {
+  workspaceId: string;
+  projectId: string;
+  entryId: string;
+  approved: boolean;
+  canWrite: boolean;
+  segments: BreakSegmentDto[];
+  total: { breakMinutes: number; openBreak: boolean };
+  startState: TimeEntryActionState;
+  startDispatch: (formData: FormData) => void;
+  endState: TimeEntryActionState;
+  endDispatch: (formData: FormData) => void;
+}) {
+  const feedback = message(total.openBreak ? endState : startState);
+  return (
+    <div className="w-full" data-testid={`pausen-${entryId}`}>
+      <span className="block text-xs text-slate-500">
+        {total.openBreak
+          ? `Pause läuft · bisher ${formatDuration(total.breakMinutes)}`
+          : segments.length === 0
+            ? "Noch keine Pause erfasst."
+            : `Pausen gesamt ${formatDuration(total.breakMinutes)}`}
+      </span>
+      {canWrite && !approved ? (
+        total.openBreak ? (
+          <form action={endDispatch} className="mt-1">
+            <input type="hidden" name="workspaceId" value={workspaceId} />
+            <input type="hidden" name="projectId" value={projectId} />
+            <input type="hidden" name="id" value={entryId} />
+            <button
+              type="submit"
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+            >
+              Pause beenden
+            </button>
+          </form>
+        ) : (
+          <form action={startDispatch} className="mt-1">
+            <input type="hidden" name="workspaceId" value={workspaceId} />
+            <input type="hidden" name="projectId" value={projectId} />
+            <input type="hidden" name="id" value={entryId} />
+            <button
+              type="submit"
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+            >
+              Pause starten
+            </button>
+          </form>
+        )
+      ) : null}
+      {feedback ? (
+        <p role={feedback.isError ? "alert" : "status"} aria-live="polite" className={`mt-1 text-xs font-semibold ${feedback.isError ? "text-red-700" : "text-green-700"}`}>
+          {feedback.text}
+        </p>
+      ) : null}
+      {segments.length > 0 ? (
+        <details className="mt-1 rounded-md bg-slate-50 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">
+            Pausen ({segments.length})
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {segments.map((segment) => (
+              <li key={segment.id} className="border-t border-slate-200 pt-1 text-xs text-slate-600">
+                {formatBerlinRange(segment.startedAt, segment.endedAt)}
+                {segment.endedAt === null ? " · läuft" : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
