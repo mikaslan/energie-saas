@@ -15,3 +15,5 @@ Ziel: Skonto (Prozent + Frist) je Rechnung, durchgängig Entwurf -> Ausstellung 
    Fälligkeits-Spalte („2 % Skonto / 10 Tage").
 3. F5-01b: optionales Skonto-Paar schon im Anlage-Input (invoice-only,
    gleiche Paar-Regel; fehlende Keys = kein Skonto).
+4. F5-01c: Skonto-Spalten („Skonto (%)", „Skonto-Tage") im Berichts-CSV
+   hinter Fälligkeitsdatum; leer ohne Kondition.

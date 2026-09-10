@@ -1829,6 +1829,8 @@ type CsvExportRow = {
   payment_status: string | null;
   issued_date: string | null;
   due_date: string | null;
+  skonto_percent_bps: number | null;
+  skonto_days: number | null;
   net_cents: number;
   tax_cents: number;
   gross_cents: number;
@@ -1844,6 +1846,8 @@ const CSV_HEADER = [
   "Zahlungsstatus",
   "Ausstellungsdatum",
   "Fälligkeitsdatum",
+  "Skonto (%)",
+  "Skonto-Tage",
   "Netto (EUR)",
   "Steuer (EUR)",
   "Brutto (EUR)",
@@ -1865,7 +1869,8 @@ export async function exportInvoicingReport(
   const result = await tx.execute<CsvExportRow>(sql`
     select type, number, name, status, payment_status,
            (issued_at at time zone 'Europe/Berlin')::date as issued_date,
-           due_date, net_cents, tax_cents, gross_cents, paid_cents
+           due_date, skonto_percent_bps, skonto_days,
+           net_cents, tax_cents, gross_cents, paid_cents
       from commercial_document
      where workspace_id = ${ctx.workspaceId}::uuid
        and status = 'issued'
@@ -1884,6 +1889,10 @@ export async function exportInvoicingReport(
       row.payment_status ?? "",
       row.issued_date ?? "",
       row.due_date ?? "",
+      row.skonto_percent_bps === null
+        ? ""
+        : `${(Number(row.skonto_percent_bps) / 100).toLocaleString("de-DE", { maximumFractionDigits: 2 })} %`,
+      row.skonto_days === null ? "" : String(Number(row.skonto_days)),
       eurosFromCents(Number(row.net_cents)),
       eurosFromCents(Number(row.tax_cents)),
       eurosFromCents(Number(row.gross_cents)),

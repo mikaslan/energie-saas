@@ -59,6 +59,8 @@ type SeedDoc = {
   paymentUpdatedAt?: string;
   dueDate?: string | null;
   dueOffsetDays?: number;
+  skontoPercentBps?: number | null;
+  skontoDays?: number | null;
   deliveryDate?: string | null;
   validityDate?: string | null;
   sequence?: number;
@@ -113,7 +115,8 @@ async function seedDocument(fixture: Fixture, doc: SeedDoc): Promise<string> {
         issued_at, issued_snapshot, snapshot_sha256, issued_by,
         goebd_retention_until, number, number_year, number_sequence,
         net_cents, tax_cents, gross_cents, payment_status, paid_cents,
-        payment_updated_at, due_date, delivery_date, validity_date,
+        payment_updated_at, due_date, skonto_percent_bps, skonto_days,
+        delivery_date, validity_date,
         credit_note_type, archived_at, sent_at, voided_at, void_reason
       ) values (
         ${id}::uuid, ${fixture.workspaceId}::uuid, ${doc.type}, ${doc.status ?? "draft"},
@@ -130,6 +133,7 @@ async function seedDocument(fixture: Fixture, doc: SeedDoc): Promise<string> {
         ${doc.paidCents ?? 0},
         ${doc.paymentUpdatedAt === undefined ? sql`null` : sql`${doc.paymentUpdatedAt}::timestamptz`},
         ${doc.dueOffsetDays !== undefined ? sql`${berlinDateDaysAgo(doc.dueOffsetDays)}::date` : doc.dueDate === undefined ? sql`null` : doc.dueDate === null ? sql`null` : sql`${doc.dueDate}::date`},
+        ${doc.skontoPercentBps ?? null}, ${doc.skontoDays ?? null},
         ${doc.deliveryDate === undefined ? sql`null` : doc.deliveryDate === null ? sql`null` : sql`${doc.deliveryDate}::date`},
         ${doc.validityDate === undefined ? sql`null` : doc.validityDate === null ? sql`null` : sql`${doc.validityDate}::date`},
         ${doc.creditNoteType ?? null},
@@ -589,18 +593,19 @@ describe("M3-01 A4 — Liste/Filter je Typ + Berichte (PostgreSQL)", () => {
       expect(csv.contentType).toBe("text/csv; charset=utf-8");
       const lines = csv.content.split("\r\n");
       expect(lines[0]).toBe(
-        "Typ;Nummer;Name;Status;Zahlungsstatus;Ausstellungsdatum;Fälligkeitsdatum;Netto (EUR);Steuer (EUR);Brutto (EUR);Bezahlt (EUR)",
+        "Typ;Nummer;Name;Status;Zahlungsstatus;Ausstellungsdatum;Fälligkeitsdatum;Skonto (%);Skonto-Tage;Netto (EUR);Steuer (EUR);Brutto (EUR);Bezahlt (EUR)",
       );
       // Issued-Dokumente im September: PV-Anlage (05.), PV;Anlage (15.),
       // Ankündigung (16.), Minderleistung (17.) — voided ist ausgeschlossen.
+      // Ohne Skonto bleiben beide Skonto-Spalten leer (;;).
       const rows = lines.slice(1, -1);
       expect(rows).toHaveLength(4);
-      expect(rows[0].startsWith("invoice;Rechnung-2026-09-1;PV-Anlage;issued;unpaid;2026-09-05;2026-10-01;100.00;19.00;119.00;0.00")).toBe(true);
+      expect(rows[0].startsWith("invoice;Rechnung-2026-09-1;PV-Anlage;issued;unpaid;2026-09-05;2026-10-01;;;100.00;19.00;119.00;0.00")).toBe(true);
       expect(rows[1].startsWith(
-        `invoice;Rechnung-2026-09-3;"PV;Anlage";issued;overdue;2026-09-15;${berlinDateDaysAgo(5)};67.23;12.77;80.00;30.00`,
+        `invoice;Rechnung-2026-09-3;"PV;Anlage";issued;overdue;2026-09-15;${berlinDateDaysAgo(5)};;;67.23;12.77;80.00;30.00`,
       )).toBe(true);
-      expect(rows[2].startsWith("letter;LE-2026-09-16-1;Ankündigung;issued;;2026-09-16;;0.00;0.00;0.00;0.00")).toBe(true);
-      expect(rows[3].startsWith("credit_note;CRN-2026-09-17-1;Minderleistung;issued;unpaid;2026-09-17;;16.81;3.19;20.00;0.00")).toBe(true);
+      expect(rows[2].startsWith("letter;LE-2026-09-16-1;Ankündigung;issued;;2026-09-16;;;;0.00;0.00;0.00;0.00")).toBe(true);
+      expect(rows[3].startsWith("credit_note;CRN-2026-09-17-1;Minderleistung;issued;unpaid;2026-09-17;;;;16.81;3.19;20.00;0.00")).toBe(true);
       // Datei endet mit CRLF.
       expect(csv.content.endsWith("\r\n")).toBe(true);
     });
@@ -646,6 +651,42 @@ describe("M3-01 A4 — Liste/Filter je Typ + Berichte (PostgreSQL)", () => {
       expect(lines[1].includes('"Heizung ""Pro""\nZeile zwei"')).toBe(true);
       // Formula-Guard: führendes = wird mit ' neutralisiert.
       expect(lines[2].includes("'=SUM(A1:A2)")).toBe(true);
+    });
+
+    it("M301-CSV-04: Skonto-Spalten bei gesetzter Kondition", async () => {
+      const skontoWorkspace = randomUUID();
+      const skontoEditor = randomUUID();
+      await withTenantOn(testPool, skontoWorkspace, async (tx) => {
+        await tx.execute(sql`insert into workspace (id, name) values (${skontoWorkspace}::uuid, 'CSV-Skonto')`);
+        await tx.execute(sql`
+          insert into user_identity (id, email) values (${skontoEditor}::uuid, ${`csv-${skontoEditor}@m301a4.test`})
+        `);
+        await tx.execute(sql`
+          insert into membership (id, workspace_id, user_id, role, capabilities)
+          values (${randomUUID()}::uuid, ${skontoWorkspace}::uuid, ${skontoEditor}::uuid,
+                  'editor', '{"invoicing":true}'::jsonb)
+        `);
+      });
+      const skontoFixture = { workspaceId: skontoWorkspace, editorId: skontoEditor, viewerId: skontoEditor };
+      await seedDocument(skontoFixture, {
+        type: "invoice", name: "Skonto-Rechnung", status: "issued",
+        createdAt: berlinIsoMinutesAgo(30), issuedAt: "2026-09-10T10:00:00+02:00",
+        grossCents: 11900, netCents: 10000, taxCents: 1900,
+        paymentStatus: "unpaid", dueDate: "2026-10-01",
+        skontoPercentBps: 200, skontoDays: 10,
+        number: "Rechnung-2026-09-20", sequence: 20,
+      });
+      const csv = await withAuthorizedTenantOn(
+        testPool, skontoEditor, skontoWorkspace,
+        (tx, ctx) => exportInvoicingReport(tx, ctx, {
+          schemaVersion: INVOICING_REPORT_COMMAND_VERSION, month: "2026-09",
+        }),
+      );
+      const rows = csv.content.split("\r\n").slice(1, -1);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toBe(
+        "invoice;Rechnung-2026-09-20;Skonto-Rechnung;issued;unpaid;2026-09-10;2026-10-01;2 %;10;100.00;19.00;119.00;0.00",
+      );
     });
 
     it("M301-CSV-02: leerer Monat liefert nur den Header", async () => {
