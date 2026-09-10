@@ -182,6 +182,11 @@ test.describe("M2-01 Angebotsvarianten und Snapshot-BOM", () => {
 
     const detailPath = `/w/${state.workspaceId}/angebote/${initial.offerId}`;
     await expect(page.locator('[data-offer-detail-state="loaded"]')).toBeVisible();
+    // F6-01 Schaltplan: Einlinienbild aus den Variantensektionen.
+    const schematic = page.locator('[data-offer-schematic="true"]');
+    await expect(schematic).toBeVisible();
+    await expect(schematic.getByRole("heading", { name: "Einphasige Übersicht" })).toBeVisible();
+    await expect(schematic.getByRole("img")).toBeVisible();
     await expect(page.getByRole("heading", { name: M2_01_E2E_CONTACT, level: 1 }))
       .toBeVisible();
     await expect(page.getByText(M2_01_E2E_ADDRESS, { exact: true })).toBeVisible();
