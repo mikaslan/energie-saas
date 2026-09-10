@@ -3650,6 +3650,18 @@ export async function verifyRoleContract(
     COMMERCIAL_DOCUMENT_RELATIONS,
     "Rollenvertrag: M3-01-Rechnungs-Kern",
   );
+  // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
+  // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
+  // (Spaltenpaar atomar je Migration — Spaltenvertrag wie Relationen).
+  const hasInvoiceSkontoTerms = hasCommercialDocuments
+    && await hasAtomicPublicColumnSet(
+      client,
+      [
+        "commercial_document.skonto_days",
+        "commercial_document.skonto_percent_bps",
+      ],
+      "Rollenvertrag: F5-01-Skonto",
+    );
   const hasEconomicsSettings = await hasAtomicPublicRelationSet(
     client,
     ECONOMICS_RELATIONS,
@@ -4613,8 +4625,13 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:27e89399412f45b63938cba8ca6442d81456a8039a9ce2f3294781544d2016c7",
         "_m301_actor_invoicing_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+        // F5-01 (0082): Guard friert zusaetzlich skonto_* ein — Pin
+        // versionsbedingt (historische Prefixe ohne 0082 behalten v1-Pin).
         "_m301_guard_issued_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:b3d5ec893a41767ec5afe0be70c21ca81343985f55bce9a29b5beb838cc51f32",
+          "search_path=pg_catalog:" +
+          (hasInvoiceSkontoTerms
+            ? "518f9c93a0e72f65ea9b7f96b1d08754073bd8844b20e82fb3f08553331a571a"
+            : "b3d5ec893a41767ec5afe0be70c21ca81343985f55bce9a29b5beb838cc51f32"),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
         "_m300_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +

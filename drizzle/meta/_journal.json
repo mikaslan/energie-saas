@@ -575,6 +575,13 @@
       "when": 1788942547066,
       "tag": "0081_f4_01_calculation_recovery_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1789050786455,
+      "tag": "0082_f5_01_invoice_skonto",
+      "breakpoints": true
     }
   ]
 }

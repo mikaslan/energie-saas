@@ -333,6 +333,9 @@ describe("M3-01 Ausstellen + Nummernkreis (PostgreSQL)", () => {
       taxCents: stored?.taxCents,
       grossCents: stored?.grossCents,
       dueDate: stored?.dueDate,
+      // F5-01: Service siegelt Skonto mit (v2) — Spiegel der kanonischen Form.
+      skontoPercentBps: stored?.skontoPercentBps ?? null,
+      skontoDays: stored?.skontoDays ?? null,
       deliveryDate: stored?.deliveryDate,
       validityDate: stored?.validityDate,
       plannedDeliveryDate: stored?.plannedDeliveryDate,

@@ -315,6 +315,8 @@ export const commercialDocument = pgTable(
     paidCents: bigint("paid_cents", { mode: "number" }).notNull().default(0),
     paymentUpdatedAt: timestamp("payment_updated_at", { withTimezone: true }),
     dueDate: date("due_date"),
+    skontoPercentBps: integer("skonto_percent_bps"),
+    skontoDays: integer("skonto_days"),
     deliveryDate: date("delivery_date"),
     validityDate: date("validity_date"),
     plannedDeliveryDate: date("planned_delivery_date"),

@@ -394,6 +394,14 @@ test("M3-01-E2E-01: Gruppe anlegen → Rechnung anlegen → Ausstellen → Verse
   await expect(row).toBeVisible();
   await expect(row.getByText("Entwurf")).toBeVisible();
 
+  // F5-01 Skonto: Entwurf → Kondition setzen → Anzeige in der Zeile
+  await row.getByRole("button", { name: "Skonto" }).click();
+  const skontoDialog = page.getByRole("dialog", { name: "Skonto festlegen" });
+  await skontoDialog.getByLabel("Skonto in %").fill("2");
+  await skontoDialog.getByLabel("Frist in Tagen").fill("10");
+  await skontoDialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(row.getByText("2 % Skonto / 10 Tage")).toBeVisible();
+
   // Ausstellen → Status wechselt, Nummer erscheint
   await row.getByRole("button", { name: "Ausstellen" }).click();
   await expect(row.getByText("Ausgestellt")).toBeVisible();

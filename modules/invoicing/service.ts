@@ -30,6 +30,7 @@ import {
   commercialDocumentPaymentCommandV1Schema,
   commercialDocumentPaymentStatusCommandV1Schema,
   commercialDocumentSentCommandV1Schema,
+  commercialDocumentTermsCommandV1Schema,
   commercialDocumentV1Schema,
   commercialDocumentVoidCommandV1Schema,
   commercialDocumentGroupV1Schema,
@@ -54,6 +55,7 @@ import {
   type CommercialDocumentPaymentCommandV1,
   type CommercialDocumentPaymentStatusCommandV1,
   type CommercialDocumentSentCommandV1,
+  type CommercialDocumentTermsCommandV1,
   type CommercialDocumentV1,
   type CommercialDocumentVoidCommandV1,
   type CommercialDocumentGroupV1,
@@ -471,6 +473,8 @@ type DocumentDtoRow = {
   tax_cents: number;
   gross_cents: number;
   due_date: string | null;
+  skonto_percent_bps: number | null;
+  skonto_days: number | null;
   delivery_date: string | null;
   validity_date: string | null;
   planned_delivery_date: string | null;
@@ -492,6 +496,7 @@ type DocumentDtoRow = {
 const DOCUMENT_DTO_SELECT = sql`
   select id, type, status, name, group_id, project_id, contact_id,
          archived_at, currency, net_cents, tax_cents, gross_cents, due_date,
+         skonto_percent_bps, skonto_days,
          delivery_date, validity_date, planned_delivery_date,
          planned_service_date, credit_note_type, payment_status, number,
          number_year, number_sequence, issued_at, sent_at, voided_at,
@@ -533,6 +538,8 @@ function toDocumentV1(row: DocumentDtoRow, canWrite: boolean): CommercialDocumen
     grossCents: Number(row.gross_cents),
     paymentStatus: row.payment_status,
     dueDate: row.due_date,
+    skontoPercentBps: row.skonto_percent_bps === null ? null : Number(row.skonto_percent_bps),
+    skontoDays: row.skonto_days === null ? null : Number(row.skonto_days),
     deliveryDate: row.delivery_date,
     validityDate: row.validity_date,
     plannedDeliveryDate: row.planned_delivery_date,
@@ -563,6 +570,8 @@ type IssueDocumentRow = {
   tax_cents: number;
   gross_cents: number;
   due_date: string | null;
+  skonto_percent_bps: number | null;
+  skonto_days: number | null;
   delivery_date: string | null;
   validity_date: string | null;
   planned_delivery_date: string | null;
@@ -889,6 +898,7 @@ export async function issueDocument(
   const doc = await tx.execute<IssueDocumentRow>(sql`
     select id, type, status, name, group_id, project_id, contact_id,
            currency, net_cents, tax_cents, gross_cents, due_date,
+           skonto_percent_bps, skonto_days,
            delivery_date, validity_date, planned_delivery_date,
            planned_service_date, credit_note_type, recipient_snapshot,
            created_by
@@ -957,6 +967,8 @@ export async function issueDocument(
     taxCents: Number(document.tax_cents),
     grossCents: Number(document.gross_cents),
     dueDate: document.due_date,
+    skontoPercentBps: document.skonto_percent_bps === null ? null : Number(document.skonto_percent_bps),
+    skontoDays: document.skonto_days === null ? null : Number(document.skonto_days),
     deliveryDate: document.delivery_date,
     validityDate: document.validity_date,
     plannedDeliveryDate: document.planned_delivery_date,
@@ -1017,6 +1029,7 @@ export async function issueDocument(
   const row = await tx.execute<DocumentRow>(sql`
     select id, type, status, name, group_id, project_id, contact_id,
            currency, net_cents, tax_cents, gross_cents, due_date,
+           skonto_percent_bps, skonto_days,
            delivery_date, validity_date, planned_delivery_date,
            planned_service_date, credit_note_type, payment_status, number,
            number_year, number_sequence, issued_at, sent_at, voided_at,
@@ -1042,6 +1055,8 @@ export async function issueDocument(
     grossCents: Number(issuedRow.gross_cents),
     paymentStatus: issuedRow.payment_status,
     dueDate: issuedRow.due_date,
+    skontoPercentBps: issuedRow.skonto_percent_bps === null ? null : Number(issuedRow.skonto_percent_bps),
+    skontoDays: issuedRow.skonto_days === null ? null : Number(issuedRow.skonto_days),
     deliveryDate: issuedRow.delivery_date,
     validityDate: issuedRow.validity_date,
     plannedDeliveryDate: issuedRow.planned_delivery_date,
@@ -1263,6 +1278,73 @@ export async function setPaymentStatus(
     resource: "commercial_document",
     allowed: true,
     details: { documentId, paymentStatus: parsed.data.status },
+  });
+  return readDocument(tx, ctx, documentId);
+}
+
+// F5-01 · Skonto-Konditionen (ESTIMATE, reversibel). Reine Zahlungskondition:
+// keine Summenwirkung, nur im Entwurf (invoice) editierbar; ab Ausstellung
+// friert der M301-Guard sie ein und der Snapshot haelt sie fest.
+export async function setDocumentTerms(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentTermsCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentTermsCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const documentId = parsed.data.documentId;
+
+  const document = await tx.execute<{ type: string; status: string }>(sql`
+    select type, status
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+     for update
+  `);
+  const row = document.rows[0];
+  if (!row) throw new InvoicingNotFoundError();
+  if (row.type !== "invoice") throw new InvoicingValidationError();
+  if (row.status !== "draft") throw new InvoicingConflictError();
+
+  try {
+    await tx.execute(sql`
+      update commercial_document
+         set skonto_percent_bps = ${parsed.data.skontoPercentBps},
+             skonto_days = ${parsed.data.skontoDays},
+             updated_at = statement_timestamp()
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${documentId}::uuid
+         and status = 'draft'
+    `);
+  } catch (error) {
+    if (postgresErrorCode(error) === "23514") throw new InvoicingValidationError();
+    throw error;
+  }
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.terms_updated",
+    actor: ctx.actor,
+    payload: {
+      documentId,
+      skontoPercentBps: parsed.data.skontoPercentBps,
+      skontoDays: parsed.data.skontoDays,
+    },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.terms.write",
+    resource: "commercial_document",
+    allowed: true,
+    details: {
+      documentId,
+      skontoPercentBps: parsed.data.skontoPercentBps,
+      skontoDays: parsed.data.skontoDays,
+    },
   });
   return readDocument(tx, ctx, documentId);
 }

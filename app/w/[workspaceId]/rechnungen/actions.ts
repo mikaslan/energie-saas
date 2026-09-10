@@ -10,9 +10,11 @@ import {
   COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION,
   commercialDocumentCommandV1Schema,
   commercialDocumentGroupCommandV1Schema,
+  commercialDocumentTermsCommandV1Schema,
   commercialVoidReasons,
   type CommercialVoidReason,
 } from "@/lib/integrations/invoicing/contract";
@@ -24,6 +26,7 @@ import {
   markSentDocument,
   setDocumentArchived,
   setDocumentGroupArchived,
+  setDocumentTerms,
   voidDocument,
   InvoicingConflictError,
   InvoicingNotFoundError,
@@ -208,6 +211,51 @@ export async function sendDocumentAction(
         schemaVersion: COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION,
         documentId,
       }),
+    );
+  } catch (error) {
+    return mapError(error);
+  }
+  revalidatePath(`/w/${workspaceId}/rechnungen`);
+  return { status: "success" };
+}
+
+export async function setDocumentTermsAction(
+  _previous: InvoicingUiActionState,
+  formData: FormData,
+): Promise<InvoicingUiActionState> {
+  const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
+  const documentId = parseUuid(formData.get("documentId"));
+  if (!workspaceId || !documentId) return { status: "invalid" };
+  // Prozent mit einer Nachkommastelle („2,5" / „2.5") -> Basispunkte;
+  // leere Felder = Skonto entfernen (beide null).
+  const parsePercent = (value: FormDataEntryValue | null): number | null | undefined => {
+    if (typeof value !== "string" || value.trim() === "") return null;
+    const normalized = value.trim().replace(",", ".");
+    if (!/^\d{1,3}(\.\d)?$/u.test(normalized)) return undefined;
+    const bps = Math.round(Number(normalized) * 100);
+    return Number.isFinite(bps) ? bps : undefined;
+  };
+  const parseDays = (value: FormDataEntryValue | null): number | null | undefined => {
+    if (typeof value !== "string" || value.trim() === "") return null;
+    if (!/^\d{1,3}$/u.test(value.trim())) return undefined;
+    return Number(value.trim());
+  };
+  const skontoPercentBps = parsePercent(formData.get("skontoPercent"));
+  const skontoDays = parseDays(formData.get("skontoDays"));
+  if (skontoPercentBps === undefined || skontoDays === undefined) return { status: "invalid" };
+  const parsed = commercialDocumentTermsCommandV1Schema.safeParse({
+    schemaVersion: COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION,
+    documentId,
+    skontoPercentBps,
+    skontoDays,
+  });
+  if (!parsed.success) return { status: "invalid" };
+  try {
+    await authorizedAction(
+      workspaceId,
+      "invoicing.write",
+      "commercial_document",
+      (tx, ctx) => setDocumentTerms(tx, ctx, parsed.data),
     );
   } catch (error) {
     return mapError(error);

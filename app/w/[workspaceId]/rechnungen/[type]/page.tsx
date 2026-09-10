@@ -386,6 +386,14 @@ export default async function InvoicingDocumentListPage(
                       </td>
                       <td className="px-3 py-3 text-sm tabular-nums text-slate-700">
                         {field.value !== null ? formatDateOnly(field.value) : "—"}
+                        {type === "invoice"
+                          && document.skontoPercentBps !== null
+                          && document.skontoDays !== null ? (
+                          <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                            {(document.skontoPercentBps / 100).toLocaleString("de-DE", { maximumFractionDigits: 2 })}
+                            {` % Skonto / ${document.skontoDays} Tage`}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-3 py-3">
                         <DocumentRowActions

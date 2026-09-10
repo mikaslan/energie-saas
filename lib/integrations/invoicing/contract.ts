@@ -234,6 +234,8 @@ export const COMMERCIAL_DOCUMENT_PAYMENT_STATUS_COMMAND_VERSION =
   "commercial-document-payment-status-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION =
   "commercial-document-issue-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION =
+  "commercial-document-terms-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION =
   "commercial-document-archive-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION =
@@ -256,7 +258,10 @@ export const MAX_DOCUMENT_LINE_POSITION = 500 as const;
 export const DOCUMENT_LIST_DEFAULT_LIMIT = 25 as const;
 export const DOCUMENT_LIST_MAX_LIMIT = 100 as const;
 export const INVOICING_REPORT_LATEST_DOCUMENTS = 10 as const;
-export const GOEBD_SNAPSHOT_SCHEMA_VERSION = "document-snapshot.v1" as const;
+// F5-01: v2 versiegelt zusaetzlich die Skonto-Konditionen (Paar
+// skontoPercentBps/skontoDays, null = kein Skonto). v1-Snapshots bleiben
+// lesbar (Seeds/History), neue Ausstellungen siegeln v2.
+export const GOEBD_SNAPSHOT_SCHEMA_VERSION = "document-snapshot.v2" as const;
 export const GOEBD_SNAPSHOT_CANONICALIZATION_VERSION = "document-jcs.v1" as const;
 
 // 6 Dokumenttypen (Spec §2/§4, ADR 0023). Der Diskriminator ist genau dieser
@@ -412,6 +417,33 @@ export const commercialDocumentSentCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION),
   documentId: z.string().uuid(),
 });
+
+// F5-01 · Skonto-Konditionen (ESTIMATE, reversibel). Prozent in Basispunkten
+// (200 = 2 %), Frist in Tagen ab Ausstellung. Beide Felder nur gemeinsam:
+// gesetzt = Kondition, beide null = kein Skonto. Exakte Reonic-Skonto-
+// Semantik UNKNOWN (Q-TARIFE-EEG-REFERENZ-Nachbarschaft: Referenzfrage offen).
+const skontoPercentBpsSchema = z.number().int().min(0).max(10000).nullable();
+const skontoDaysSchema = z.number().int().min(0).max(365).nullable();
+
+export const commercialDocumentTermsCommandV1Schema = z
+  .strictObject({
+    schemaVersion: z.literal(COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION),
+    documentId: z.string().uuid(),
+    skontoPercentBps: skontoPercentBpsSchema,
+    skontoDays: skontoDaysSchema,
+  })
+  .superRefine((value, ctx) => {
+    if ((value.skontoPercentBps === null) !== (value.skontoDays === null)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["skontoDays"],
+        message: "skontoPercentBps and skontoDays must be set together or both null",
+      });
+    }
+  });
+export type CommercialDocumentTermsCommandV1 = z.infer<
+  typeof commercialDocumentTermsCommandV1Schema
+>;
 export type CommercialDocumentSentCommandV1 = z.infer<
   typeof commercialDocumentSentCommandV1Schema
 >;
@@ -549,6 +581,8 @@ export const commercialDocumentV1Schema = z.strictObject({
   grossCents: moneyCentsSchema,
   paymentStatus: commercialPaymentStatusSchema.nullable(),
   dueDate: z.string().nullable(),
+  skontoPercentBps: skontoPercentBpsSchema,
+  skontoDays: skontoDaysSchema,
   deliveryDate: z.string().nullable(),
   validityDate: z.string().nullable(),
   plannedDeliveryDate: z.string().nullable(),

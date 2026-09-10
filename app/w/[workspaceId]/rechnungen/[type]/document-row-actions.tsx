@@ -6,6 +6,7 @@ import {
   issueDocumentAction,
   sendDocumentAction,
   setDocumentArchivedAction,
+  setDocumentTermsAction,
   voidDocumentAction,
   type InvoicingUiActionState,
 } from "../actions";
@@ -102,6 +103,87 @@ function VoidDocumentDialog({
   );
 }
 
+function SkontoTermsDialog({
+  workspaceId,
+  document,
+  onClose,
+  triggerRef,
+}: {
+  workspaceId: string;
+  document: CommercialDocumentV1;
+  onClose: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const [state, dispatch] = useActionState(setDocumentTermsAction, initialState);
+  const dialogRef = useModalDialog(onClose, triggerRef);
+  // Schließen über Server-Wahrheit: bei Erfolg rendert der Dialog nichts mehr.
+  if (state.status === "success") return null;
+  const error = errorText(state);
+  const percentDefault = document.skontoPercentBps === null
+    ? ""
+    : (document.skontoPercentBps / 100).toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  return (
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="skonto-dialog-title"
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4"
+    >
+      <form action={dispatch} className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-lg">
+        <h2 id="skonto-dialog-title" className="text-lg font-semibold text-slate-950">
+          Skonto festlegen
+        </h2>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          Nur im Entwurf änderbar; ab Ausstellung eingefroren. Leer lassen = kein Skonto.
+        </p>
+        <input type="hidden" name="workspaceId" value={workspaceId} />
+        <input type="hidden" name="documentId" value={document.id} />
+        <label className="mt-4 block">
+          <span className="block text-sm font-semibold text-slate-800">Skonto in %</span>
+          <input
+            name="skontoPercent"
+            inputMode="decimal"
+            placeholder="z. B. 2 oder 2,5"
+            defaultValue={percentDefault}
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+          />
+        </label>
+        <label className="mt-3 block">
+          <span className="block text-sm font-semibold text-slate-800">Frist in Tagen</span>
+          <input
+            name="skontoDays"
+            inputMode="numeric"
+            placeholder="z. B. 10"
+            defaultValue={document.skontoDays === null ? "" : String(document.skontoDays)}
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+          />
+        </label>
+        {error ? (
+          <p role="alert" className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {error}
+          </p>
+        ) : null}
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className={buttonClass}
+          >
+            Abbrechen
+          </button>
+          <button
+            type="submit"
+            className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          >
+            Speichern
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function DocumentRowActions({
   workspaceId,
   document,
@@ -117,6 +199,9 @@ export function DocumentRowActions({
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidKey, setVoidKey] = useState(0);
   const voidTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [skontoOpen, setSkontoOpen] = useState(false);
+  const [skontoKey, setSkontoKey] = useState(0);
+  const skontoTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const anyError = errorText(issueState) ?? errorText(sendState)
     ?? errorText(archiveState);
@@ -131,6 +216,20 @@ export function DocumentRowActions({
         <span role="alert" className="text-xs font-semibold text-red-700">
           {anyError}
         </span>
+      ) : null}
+
+      {document.status === "draft" && document.type === "invoice" ? (
+        <button
+          ref={skontoTriggerRef}
+          type="button"
+          onClick={() => {
+            setSkontoOpen(true);
+            setSkontoKey((key) => key + 1);
+          }}
+          className={buttonClass}
+        >
+          Skonto
+        </button>
       ) : null}
 
       {document.status === "draft" ? (
@@ -176,11 +275,21 @@ export function DocumentRowActions({
 
       {voidOpen ? (
         <VoidDocumentDialog
-          key={voidKey}
+          key={`void-${voidKey}`}
           workspaceId={workspaceId}
           documentId={document.id}
           onClose={() => setVoidOpen(false)}
           triggerRef={voidTriggerRef}
+        />
+      ) : null}
+
+      {skontoOpen ? (
+        <SkontoTermsDialog
+          key={`skonto-${skontoKey}`}
+          workspaceId={workspaceId}
+          document={document}
+          onClose={() => setSkontoOpen(false)}
+          triggerRef={skontoTriggerRef}
         />
       ) : null}
     </div>
