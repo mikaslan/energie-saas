@@ -347,6 +347,46 @@ function formatUpdatedAt(value: Date | string): string {
   }).format(parsed);
 }
 
+/**
+ * DASH-05 Angebotswerte je Projekt: jeweils juengstes Angebot
+ * (updated_at), effektiv = Override sonst Forecast, sonst null.
+ * Gleiche Sichtbarkeit wie die Angebotsliste (project.read). Rein lesend.
+ */
+export async function getProjectOfferValues(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectIds: readonly string[],
+): Promise<Record<string, number | null>> {
+  requireOfferAccess(ctx, "project.read", "offer_values");
+  const ids = [...new Set(projectIds)];
+  if (ids.length === 0) return {};
+  if (ids.length > 200) throw new OfferValidationError(["projectIds"]);
+  for (const id of ids) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(id)) {
+      throw new OfferValidationError(["projectId"]);
+    }
+  }
+  const result = await tx.execute<{ project_id: string; cents: number | null }>(sql`
+    select distinct on (offer_record.project_id)
+           offer_record.project_id,
+           coalesce(
+             offer_record.total_price_override_net_cents,
+             offer_record.forecast_value_net_cents
+           )::integer as cents
+      from offer offer_record
+      join project project_record
+        on project_record.workspace_id = offer_record.workspace_id
+       and project_record.id = offer_record.project_id
+     where offer_record.workspace_id = ${ctx.workspaceId}::uuid
+       and offer_record.project_id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+     order by offer_record.project_id, offer_record.updated_at desc, offer_record.id desc
+  `);
+  const values: Record<string, number | null> = {};
+  for (const id of ids) values[id] = null;
+  for (const row of result.rows) values[row.project_id] = row.cents;
+  return values;
+}
+
 export async function listOffers(
   tx: TenantTx,
   ctx: ServiceCtx,

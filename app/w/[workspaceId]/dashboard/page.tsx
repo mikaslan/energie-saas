@@ -6,6 +6,7 @@ import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import { SignOutButton } from "@/app/_components/sign-out-button";
 import { getDefaultRequestBoard } from "@/modules/boards";
+import { getProjectOfferValues } from "@/modules/offers";
 import {
   getGlobalTaskInboxPage,
   type GlobalTaskInboxPageV1,
@@ -84,27 +85,65 @@ function AccessDenied() {
   );
 }
 
+/**
+ * DASH-05 Phasengewichte fuer die gewichtete Pipeline [ESTIMATE: keine
+ * Reonic-Referenz, Q-DASHBOARD-REFERENZ offen; won/lost stehen nicht auf
+ * dem offenen Board und sind nur der Vollstaendigkeit halber gefuehrt].
+ */
+const PIPELINE_STAGE_WEIGHTS: Record<string, number> = {
+  lead: 0.1,
+  offer: 0.5,
+  won: 1,
+  lost: 0,
+};
+
 async function loadPipeline(workspaceId: string): Promise<
-  | { kind: "loaded"; columns: Array<{ name: string; count: number }>; total: number }
+  | {
+    kind: "loaded";
+    columns: Array<{ name: string; count: number }>;
+    total: number;
+    openValueCents: number;
+    weightedValueCents: number;
+    valuesCapped: boolean;
+  }
   | { kind: "unauthenticated" }
   | { kind: "denied" }
 > {
   try {
-    const board = await authorizedQuery(
+    return await authorizedQuery(
       workspaceId,
       "project.read",
       "kanban_board",
-      (tx, ctx) => getDefaultRequestBoard(tx, ctx),
+      async (tx, ctx) => {
+        const board = await getDefaultRequestBoard(tx, ctx);
+        const columns = board.columns.map((column) => ({
+          name: column.name,
+          count: column.cards.length,
+        }));
+        const projectIds = board.columns.flatMap((column) => column.cards.map((card) => card.id));
+        const capped = projectIds.length > 200;
+        const values = await getProjectOfferValues(tx, ctx, projectIds.slice(0, 200));
+        let openValueCents = 0;
+        let weightedValueCents = 0;
+        for (const column of board.columns) {
+          const weight = PIPELINE_STAGE_WEIGHTS[column.type] ?? 0;
+          for (const card of column.cards) {
+            const cents = values[card.id] ?? null;
+            if (cents === null) continue;
+            openValueCents += cents;
+            weightedValueCents += Math.round(cents * weight);
+          }
+        }
+        return {
+          kind: "loaded" as const,
+          columns,
+          total: columns.reduce((sum, column) => sum + column.count, 0),
+          openValueCents,
+          weightedValueCents,
+          valuesCapped: capped,
+        };
+      },
     );
-    const columns = board.columns.map((column) => ({
-      name: column.name,
-      count: column.cards.length,
-    }));
-    return {
-      kind: "loaded",
-      columns,
-      total: columns.reduce((sum, column) => sum + column.count, 0),
-    };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -379,7 +418,8 @@ export default async function DashboardPage({
               <h2 className="text-base font-semibold">Anfragen je Phase</h2>
               {pipeline.total === 0 ? (
                 <p className="mt-2 text-sm leading-6 text-slate-600">Keine offenen Anfragen.</p>
-              ) : (
+              ) : null}
+              {(
                 <dl className="mt-3 space-y-2">
                   {pipeline.columns.map((column) => (
                     <div key={column.name} className="flex items-baseline justify-between gap-4 text-sm">
@@ -391,8 +431,23 @@ export default async function DashboardPage({
                     <dt className="font-semibold">Gesamt</dt>
                     <dd className="font-semibold tabular-nums">{countFormatter.format(pipeline.total)}</dd>
                   </div>
+                  <div className="flex items-baseline justify-between gap-4 text-sm">
+                    <dt className="text-slate-600">Offen (Angebotswert)</dt>
+                    <dd className="font-semibold tabular-nums">
+                      {`${euroFromCents(pipeline.openValueCents)}${pipeline.valuesCapped ? "+" : ""}`}
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-4 text-sm">
+                    <dt className="text-slate-600">Gewichtet (ESTIMATE)</dt>
+                    <dd className="font-semibold tabular-nums">
+                      {`${euroFromCents(pipeline.weightedValueCents)}${pipeline.valuesCapped ? "+" : ""}`}
+                    </dd>
+                  </div>
                 </dl>
               )}
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Gewichte lead 10 %, offer 50 % (ESTIMATE, Referenzfrage offen).
+              </p>
               <Link
                 href={`/w/${validWorkspaceId}/anfragen`}
                 className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"

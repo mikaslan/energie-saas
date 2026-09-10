@@ -10,6 +10,7 @@ export {
   createVariantFromCurrentResolution,
   duplicateOfferVariant,
   getOfferDetail,
+  getProjectOfferValues,
   listOffers,
   reviseOfferVariant,
   setOptionalBundles,

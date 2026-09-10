@@ -69,6 +69,9 @@ test("DASH-01: leere Workspace-Übersicht rendert ehrliche Leerzustände", async
   const pipeline = dashboard.locator('[data-dashboard-pipeline="true"]');
   await expect(pipeline).toBeVisible();
   await expect(pipeline.getByText("Keine offenen Anfragen.")).toBeVisible();
+  await expect(pipeline.getByText("Offen (Angebotswert)")).toBeVisible();
+  await expect(pipeline.getByText("Gewichtet (ESTIMATE)")).toBeVisible();
+  await expect(pipeline.getByText("Gewichte lead 10 %, offer 50 % (ESTIMATE, Referenzfrage offen).")).toBeVisible();
   const overdue = dashboard.locator('[data-dashboard-overdue="true"]');
   await expect(overdue).toBeVisible();
   await expect(overdue.getByText("Nichts überfällig.")).toBeVisible();
