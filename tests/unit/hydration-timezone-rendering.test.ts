@@ -5,11 +5,13 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock(
   "@/app/w/[workspaceId]/anfragen/[projectId]/zeiterfassung/actions",
   () => ({
+    approveTimeEntryAction: vi.fn(),
     archiveTimeEntryAction: vi.fn(),
     createTimeEntryAction: vi.fn(),
     discardTimeEntryAction: vi.fn(),
     startTimeEntryAction: vi.fn(),
     stopTimeEntryAction: vi.fn(),
+    unapproveTimeEntryAction: vi.fn(),
     updateTimeEntryAction: vi.fn(),
   }),
 );

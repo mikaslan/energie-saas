@@ -51,6 +51,7 @@ import {
   type ProjectAppointmentRangeV1,
 } from "@/modules/calendar";
 import { getInstallation, type InstallationDto } from "@/modules/installations";
+import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
 import { AssignedExternalRequestView } from "./assigned-external-request-view";
@@ -58,6 +59,7 @@ import { ContactSection } from "./contact-section";
 import { EnergyCalculationSection } from "./energy-calculation-section";
 import { EnergyProfileSection } from "./energy-profile-section";
 import { InstallationSection } from "./installation-section";
+import { ServiceCaseSection } from "./service-case-section";
 import { OfferCreateEntry } from "./offer-create-entry";
 import {
   buildOfferCreateView,
@@ -216,6 +218,36 @@ type InstallationLoadResult =
   | { kind: "loaded"; installation: InstallationDto | null; canWrite: boolean }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
+
+type ServiceCaseLoadResult =
+  | { kind: "loaded"; cases: ServiceCaseDto[]; canWrite: boolean }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+async function loadServiceCases(
+  workspaceId: string,
+  projectId: string,
+): Promise<ServiceCaseLoadResult> {
+  try {
+    const cases = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "service_case",
+      (tx, ctx) => listServiceCases(tx, ctx, { projectId }),
+    );
+    const writable = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "service_case_write_gate",
+      async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
+    );
+    return { kind: "loaded", cases, canWrite: writable };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
 
 async function loadInstallationStatus(
   workspaceId: string,
@@ -631,6 +663,11 @@ export default async function ProjectTriagePage({
   const installationResult = await loadInstallationStatus(workspaceId, projectId);
   if (installationResult.kind === "unauthenticated") redirectToProjectLogin(detailPath);
   if (installationResult.kind === "denied") return <DeniedState />;
+  // F13-01: Service-Sektion entkoppelt (eigene Sichtbarkeit, blockiert
+  // die Installation-Sektion bei fehlendem Recht nicht).
+  const serviceCaseResult = installationResult.kind === "loaded"
+    ? await loadServiceCases(workspaceId, projectId)
+    : { kind: "denied" } as const;
 
   const taskPageResult = await loadProjectTaskPage(
     workspaceId,
@@ -869,6 +906,17 @@ export default async function ProjectTriagePage({
             canWrite={installationResult.canWrite}
           />
         </div>
+
+        {serviceCaseResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <ServiceCaseSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              cases={serviceCaseResult.cases}
+              canWrite={serviceCaseResult.canWrite}
+            />
+          </div>
+        ) : null}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] lg:items-start">
           <div className="grid min-w-0 gap-6">

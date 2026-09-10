@@ -228,3 +228,30 @@ test("F7-05-E2E-01: Abnahme — Wer/Wann/Notiz sichtbar", async ({ page }) => {
 
   expect(errors, "Browser-Konsole und Page-Errors der Abnahme-Grenze").toEqual([]);
 });
+
+test("F13-01-E2E-01: Servicevorgang anlegen → starten → erledigen", async ({ page }) => {
+  test.setTimeout(150_000);
+  const data = state();
+  const errors = trackErrors(page);
+
+  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f71ProjectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, data.editorEmail, projectPath);
+
+  const section = page.locator('[data-service-cases="true"]');
+  await expect(section).toBeVisible();
+  await section.getByLabel("Titel").fill("F1301-Wechselrichter prüfen");
+  await section.getByRole("button", { name: "Vorgang anlegen", exact: true }).click();
+  await expect(section.getByText("Servicevorgang angelegt.")).toBeVisible();
+  await expect(section.getByText("F1301-Wechselrichter prüfen")).toBeVisible();
+  await expect(section.getByText("Offen", { exact: true })).toBeVisible();
+
+  await section.getByRole("button", { name: "Starten", exact: true }).click();
+  await expect(section.getByText("Status geändert.")).toBeVisible();
+  await expect(section.getByText("In Arbeit", { exact: true })).toBeVisible();
+
+  await section.getByRole("button", { name: "Erledigen", exact: true }).click();
+  await expect(section.getByText("Erledigt", { exact: true })).toBeVisible();
+
+  expect(errors, "Browser-Konsole und Page-Errors der Service-Grenze").toEqual([]);
+});

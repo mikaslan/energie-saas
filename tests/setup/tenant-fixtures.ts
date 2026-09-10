@@ -1935,6 +1935,26 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F8-01 (0083): Link-Zeile zwischen zwei echten Rechnungen (final + deposit).
+  commercial_document_link: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const finalId = randomUUID();
+    const depositId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, status, name, created_by, due_date, payment_status
+      ) values
+        (${finalId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+         'F8-01 Schluss (Link-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid'),
+        (${depositId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+         'F8-01 Anzahlung (Link-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid')
+    `);
+    await tx.execute(sql`
+      insert into commercial_document_link (workspace_id, final_id, deposit_id, created_by)
+      values (${wsId}::uuid, ${finalId}::uuid, ${depositId}::uuid, ${userId}::uuid)
+    `);
+  },
   workspace_economics_settings: async (tx, wsId) => {
     const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor", '{"economics":true}');
     await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
@@ -2183,6 +2203,15 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     await tx.execute(sql`
       insert into installation (workspace_id, project_id, source, status)
       values (${wsId}::uuid, ${projectId}::uuid, 'direct', 'active')
+    `);
+  },
+  // F13-01 (0086): Servicevorgang zu einem echten Projektgraphen.
+  service_case: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"installation":true}');
+    await tx.execute(sql`
+      insert into service_case (workspace_id, project_id, title, status, created_by)
+      values (${wsId}::uuid, ${projectId}::uuid, 'F13-01 Fixture', 'open', ${userId}::uuid)
     `);
   },
   // F1-09 (0067): Mention-Zeile zu einer echten Notiz mit echter Identitaet.

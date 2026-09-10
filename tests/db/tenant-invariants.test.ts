@@ -102,6 +102,7 @@ const ACTOR_SCOPED_TABLES = new Set([
   "commercial_document_group",
   "commercial_document_line",
   "commercial_document_number_series",
+  "commercial_document_link",
 ]);
 const actorByWorkspace = new Map<string, string>();
 

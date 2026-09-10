@@ -561,6 +561,10 @@ const INSTALLATION_RELATIONS = [
   "installation",
 ] as const;
 
+const SERVICE_CASE_RELATIONS = [
+  "service_case",
+] as const;
+
 const MENTION_RELATIONS = [
   "project_note_mention",
 ] as const;
@@ -582,8 +586,13 @@ const COMMERCIAL_DOCUMENT_RELATIONS = [
   "commercial_document",
   "commercial_document_group",
   "commercial_document_line",
-  "commercial_document_link",
   "commercial_document_number_series",
+] as const;
+
+// F8-01 (0083): eigene Menge — alte Prefixe (z. B. m204-Test mit 0..75)
+// kennen die Link-Tabelle nicht; die M3-01-Kernmenge bleibt stabil.
+const COMMERCIAL_DOCUMENT_LINK_RELATIONS = [
+  "commercial_document_link",
 ] as const;
 const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
   "public._m301_actor_invoicing_role(uuid)",
@@ -2632,6 +2641,21 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasServiceCasesForAcl = await hasAtomicPublicRelationSet(
+    client,
+    SERVICE_CASE_RELATIONS,
+    "Rollen-ACL-Manifest: F13-01-Serviceauftrag",
+  );
+  if (hasServiceCasesForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.service_case
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.service_case to app_runtime
+    `);
+  }
+
   // F1-09: Mention-Zeilen — atomarer Ersatz (DELETE+INSERT im Schreib-Tx,
   // kein UPDATE). SELECT/INSERT/DELETE fuer den Service-Pfad.
   const hasMentions = await hasAtomicPublicRelationSet(
@@ -2675,14 +2699,12 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         public.commercial_document,
         public.commercial_document_group,
         public.commercial_document_line,
-        public.commercial_document_link,
         public.commercial_document_number_series
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.commercial_document to app_runtime;
       grant select, insert, update on public.commercial_document_group to app_runtime;
       grant select, insert, update on public.commercial_document_line to app_runtime;
-      grant select, insert, update, delete on public.commercial_document_link to app_runtime;
       grant select, insert, update on public.commercial_document_number_series to app_runtime;
 
       revoke execute on function
@@ -2692,6 +2714,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       grant execute on function
         ${COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES.join(",\n        ")}
         to app_runtime
+    `);
+  }
+
+  // F8-01 (0083): eigene ACL-Menge — alte Prefixe kennen die Tabelle nicht.
+  const hasCommercialDocumentLinksForAcl = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_LINK_RELATIONS,
+    "Rollen-ACL-Manifest: F8-01-Anzahlung-Link",
+  );
+  if (hasCommercialDocumentLinksForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.commercial_document_link
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update, delete on public.commercial_document_link to app_runtime
     `);
   }
 
@@ -3653,6 +3691,13 @@ export async function verifyRoleContract(
     COMMERCIAL_DOCUMENT_RELATIONS,
     "Rollenvertrag: M3-01-Rechnungs-Kern",
   );
+  // F8-01 (0083): eigene Gate-Menge — alte Prefixe (m204-Test mit 0..75)
+  // duerfen die Link-Tabelle nicht kennen.
+  const hasCommercialDocumentLinks = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_LINK_RELATIONS,
+    "Rollenvertrag: F8-01-Anzahlung-Link",
+  );
   // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
   // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
   // (Spaltenpaar atomar je Migration — Spaltenvertrag wie Relationen).
@@ -3775,6 +3820,12 @@ export async function verifyRoleContract(
     client,
     INSTALLATION_RELATIONS,
     "Rollenvertrag: F7-01-Installation",
+  );
+
+  const hasServiceCases = await hasAtomicPublicRelationSet(
+    client,
+    SERVICE_CASE_RELATIONS,
+    "Rollenvertrag: F13-01-Serviceauftrag",
   );
 
   const hasMentions = await hasAtomicPublicRelationSet(
@@ -3993,6 +4044,9 @@ export async function verifyRoleContract(
       ...(hasInstallations ? INSTALLATION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
+      ...(hasServiceCases ? SERVICE_CASE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
       ...(hasMentions ? MENTION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
@@ -4001,6 +4055,9 @@ export async function verifyRoleContract(
       ) : []),
       ...(hasPortal ? [`r:${PORTAL_LOCATOR_RELATION}`] : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasCommercialDocumentLinks ? COMMERCIAL_DOCUMENT_LINK_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
     ],
@@ -5138,6 +5195,9 @@ export async function verifyRoleContract(
       ...(hasInstallations ? INSTALLATION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasServiceCases ? SERVICE_CASE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasMentions ? MENTION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -5146,6 +5206,9 @@ export async function verifyRoleContract(
       ) : []),
       ...(hasPortal ? [`${PORTAL_LOCATOR_RELATION}:false:false`] : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasCommercialDocumentLinks ? COMMERCIAL_DOCUMENT_LINK_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
     ],
@@ -5394,6 +5457,7 @@ export async function verifyRoleContract(
           "bc2952cca8739e571d7a37f09a8976411247c65a460e74b90830de7d6fd46176",
         "commercial_document_line:commercial_document_line_actor_delete:" +
           "900aaadff384ed863a72e8386bafa2f428d4d4e35a251009386b63834e274c7a",
+        ...(hasCommercialDocumentLinks ? [
         "commercial_document_link:tenant_isolation:" +
           "5cbe5421ddf236c3f21de4e22a685e84affebda0f6e55cc08533a1120d74c2f9",
         "commercial_document_link:commercial_document_link_actor_select:" +
@@ -5404,6 +5468,7 @@ export async function verifyRoleContract(
           "da3cf5aef3e9a24a54bc6968cafd2cb1223fa3016b43c1f23130c1e0804c558c",
         "commercial_document_link:commercial_document_link_actor_delete:" +
           "1f843ce07ab6698c0ad211390f9fb870c674cf5d00dd201393f9cc867c4432e0",
+        ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
         "workspace_document_number_format:tenant_isolation:6ba5999f7354596580df93d3463b8bd635c37085bfe034e0881641f6954c7c22",
@@ -5463,6 +5528,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasInstallations ? [
           "installation:tenant_isolation:88d62cb531a094ef93117e575b4dff128ba59ad08cf4c30bf6214eeb40269c9c",
+        ] : []),
+        ...(hasServiceCases ? [
+          "service_case:tenant_isolation:9885f0875ae33019b13b34440e67a8cae20548ab3be350bbdc29cd6b3c836423",
         ] : []),
         ...(hasMentions ? [
           "project_note_mention:tenant_isolation:bd49d3632555a1d99e54cf336071e259a1d90892ba02c784661cdb0afcdc8ad5",
@@ -5778,8 +5846,10 @@ export async function verifyRoleContract(
         "commercial_document:commercial_document_no_truncate:34:O:public:forbid_mutation::-:0",
         "commercial_document_group:commercial_document_group_no_truncate:34:O:public:forbid_mutation::-:0",
         "commercial_document_line:commercial_document_line_no_truncate:34:O:public:forbid_mutation::-:0",
-        "commercial_document_link:commercial_document_link_no_truncate:34:O:public:forbid_mutation::-:0",
         "commercial_document_number_series:commercial_document_number_series_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
+      ...(hasCommercialDocumentLinks ? [
+        "commercial_document_link:commercial_document_link_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
     ],
     "Live-Triggervertrag",
@@ -5993,6 +6063,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
+      ...(hasServiceCases ? SERVICE_CASE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
       ...(hasMentions ? MENTION_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
@@ -6008,10 +6083,13 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
-        // F8-01: Links sind operativ loeschbar (kein GoBD-Beleg).
-        ...(relation === "commercial_document_link"
-          ? [`app_runtime:${relation}:DELETE:app_owner:false`]
-          : []),
+      ]) : []),
+      // F8-01: Links sind operativ loeschbar (kein GoBD-Beleg).
+      ...(hasCommercialDocumentLinks ? COMMERCIAL_DOCUMENT_LINK_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
       ]) : []),
       "app_system:audit_log:INSERT:app_owner:false",
       "app_system:audit_log:SELECT:app_owner:false",
