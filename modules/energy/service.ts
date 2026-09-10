@@ -1072,6 +1072,19 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["groundAlbedo"],
+      // F4.4a Neutarif (optional; fehlt in Altzeilen).
+      alternativeImportPriceCtPerKwh: normalizeKnownField(
+        submitted.consumption.alternativeImportPriceCtPerKwh ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.alternativeImportPriceCtPerKwh ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["alternativeImportPriceCtPerKwh"],
     },
     existingAssets: {
       pv: normalizeAsset(submitted.existingAssets.pv, candidate.existingAssets.pv) as SiteEnergyProfileV1["existingAssets"]["pv"],

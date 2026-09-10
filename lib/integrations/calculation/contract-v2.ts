@@ -54,6 +54,7 @@ const economicsInputV2Schema = z.strictObject({
   feedInTariffCtPerKwh: finite().min(0).max(100),
   feedInTariffSource: z.enum(["override", "eeg_default", "post_eeg"]),
   investmentEuro: finite().min(0).max(10_000_000),
+  alternativeImportPriceCtPerKwh: finite().min(1).max(200).nullable(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -69,6 +70,7 @@ const economicsResultV2Schema = z.strictObject({
   feedInTariffCtPerKwh: finite().min(0).max(100),
   feedInTariffSource: z.enum(["override", "eeg_default", "post_eeg"]),
   investmentEuro: finite().min(0).max(10_000_000),
+  alternativeImportPriceCtPerKwh: finite().min(1).max(200).nullable(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -76,6 +78,11 @@ const economicsResultV2Schema = z.strictObject({
   cumulativeCashflowEuro: z.array(finite()).min(1).max(50),
   amortizationYears: z.int().min(0).max(50).nullable(),
   irr: finite().nullable(),
+  annualBillsEuro: z.strictObject({
+    noPvEuro: finite().min(0),
+    currentEuro: finite().min(0),
+    newTariffEuro: finite().min(0).nullable(),
+  }),
 });
 
 export const planningCalculationRequestV2Schema = z.strictObject({

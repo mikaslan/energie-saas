@@ -162,6 +162,7 @@ function validProfileForm(): FormData {
     feedInTariffCtPerKwh: "",
     feedInCommissioningYear: "",
     groundAlbedo: "",
+    alternativeImportPriceCtPerKwh: "",
     coolingKwhPerYear: "",
     heatingAcKwhPerYear: "",
     hotWaterKwhPerYear: "",
@@ -430,6 +431,34 @@ describe("M1-07 Energieprofil-Actions", () => {
     ] as const) {
       const form = validProfileForm();
       form.set(name, bad);
+      await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
+        .resolves.toEqual({ status: "invalid" });
+    }
+  });
+
+  it("speichert F4.4a-Neutarif und weist Bereichsbrueche ab", async () => {
+    const tariff = validProfileForm();
+    tariff.set("alternativeImportPriceCtPerKwh", "28");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, tariff))
+      .resolves.toMatchObject({ status: "success" });
+    expect(deps.saveProfile).toHaveBeenCalledWith(
+      {},
+      { workspaceId: WORKSPACE_ID, actor: "member-1" },
+      expect.objectContaining({
+        profile: expect.objectContaining({
+          consumption: expect.objectContaining({
+            alternativeImportPriceCtPerKwh: {
+              status: "known",
+              value: 28,
+              source: "operator_reviewed",
+            },
+          }),
+        }),
+      }),
+    );
+    for (const bad of ["0.5", "201"]) {
+      const form = validProfileForm();
+      form.set("alternativeImportPriceCtPerKwh", bad);
       await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
         .resolves.toEqual({ status: "invalid" });
     }

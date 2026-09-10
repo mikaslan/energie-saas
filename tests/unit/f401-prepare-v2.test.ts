@@ -142,6 +142,7 @@ describe("F4.1 v2 prepare", () => {
       feedInTariffCtPerKwh: 8,
       feedInTariffSource: "override",
       investmentEuro: 20_000,
+      alternativeImportPriceCtPerKwh: null,
       horizonYears: 20,
       priceSource: "profile",
       settingsRevision: 0,

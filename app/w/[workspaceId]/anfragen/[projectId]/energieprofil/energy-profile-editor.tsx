@@ -351,6 +351,10 @@ export function EnergyProfileEditor({
             Boden-Albedo (0–1, leer = 0,2)
             <input id="energy-albedo" name="groundAlbedo" type="number" inputMode="decimal" min="0" max="1" step="any" defaultValue={fieldValue(profile.consumption.groundAlbedo ?? { status: "unknown" })} className={inputClass} />
           </label>
+          <label htmlFor="energy-alt-tariff" className={labelClass}>
+            Neutarif Vergleich (Ct/kWh, leer = kein Vergleich)
+            <input id="energy-alt-tariff" name="alternativeImportPriceCtPerKwh" type="number" inputMode="decimal" min="1" max="200" step="any" defaultValue={fieldValue(profile.consumption.alternativeImportPriceCtPerKwh ?? { status: "unknown" })} className={inputClass} />
+          </label>
         </div>
       </fieldset>
 

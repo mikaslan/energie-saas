@@ -149,6 +149,8 @@ const profileFormSchema = z.strictObject({
   feedInCommissioningYear: optionalNumber(1990, 2100, true).optional(),
   // Boden-Albedo (Muneer-Reflexion; leer = fixture-gepinnt 0.2).
   groundAlbedo: optionalNumber(0, 1).optional(),
+  // F4.4a Tarifvergleich: optionaler Neutarif (leer = kein Vergleich).
+  alternativeImportPriceCtPerKwh: optionalNumber(1, 200).optional(),
   coolingKwhPerYear: optionalNumber(0, 100_000),
   heatingAcKwhPerYear: optionalNumber(0, 100_000),
   hotWaterKwhPerYear: optionalNumber(0, 20_000),
@@ -247,6 +249,7 @@ const baseProfileFields = [
   "feedInTariffCtPerKwh",
   "feedInCommissioningYear",
   "groundAlbedo",
+  "alternativeImportPriceCtPerKwh",
   "coolingKwhPerYear",
   "heatingAcKwhPerYear",
   "hotWaterKwhPerYear",
@@ -428,6 +431,7 @@ function buildSubmittedProfile(
     feedInTariffCtPerKwh: knownOrUnknown(input.feedInTariffCtPerKwh ?? null),
     feedInCommissioningYear: knownOrUnknown(input.feedInCommissioningYear ?? null),
     groundAlbedo: knownOrUnknown(input.groundAlbedo ?? null),
+    alternativeImportPriceCtPerKwh: knownOrUnknown(input.alternativeImportPriceCtPerKwh ?? null),
     coolingKwhPerYear: knownOrUnknown(input.coolingKwhPerYear),
     heatingAcKwhPerYear: knownOrUnknown(input.heatingAcKwhPerYear),
     hotWaterKwhPerYear: knownOrUnknown(input.hotWaterKwhPerYear),

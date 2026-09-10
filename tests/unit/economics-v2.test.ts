@@ -137,13 +137,20 @@ describe("economics workspace fallback (F4.5b)", () => {
 });
 
 describe("economics computation", () => {
-  const annual = { generationKwh: 10_000, selfConsumptionKwh: 4_000, feedInKwh: 6_000 };
+  const annual = {
+    generationKwh: 10_000,
+    selfConsumptionKwh: 4_000,
+    feedInKwh: 6_000,
+    consumptionKwh: 7_000,
+    gridImportKwh: 3_000,
+  };
   const input = {
     importPriceCtPerKwh: 36,
     priceEscalationRate: 0,
     feedInTariffCtPerKwh: 8,
     feedInTariffSource: "eeg_default" as const,
     investmentEuro: 20_000,
+    alternativeImportPriceCtPerKwh: null,
     horizonYears: 20,
     priceSource: "profile" as const,
     settingsRevision: 0,
@@ -165,6 +172,45 @@ describe("economics computation", () => {
     const year = result.amortizationYears!;
     expect(result.cumulativeCashflowEuro[year - 1]).toBeGreaterThanOrEqual(0);
     expect(result.cumulativeCashflowEuro[year - 2]).toBeLessThan(0);
+    // F4.4a Konsistenz (exakt): noPv − current = self × Preis;
+    // Ersparnis liegt darüber um feed × Vergütung.
+    expect(result.annualBillsEuro).toEqual({
+      noPvEuro: 2_520,
+      currentEuro: 1_080,
+      newTariffEuro: null,
+    });
+    expect(
+      result.annualBillsEuro.noPvEuro - result.annualBillsEuro.currentEuro,
+    ).toBe(1_440);
+    expect(result.annualSavingsEuro - 1_440).toBe(480);
+  });
+
+  it("rechnet F4.4a-Neutarif-Rechnung (null ohne Neutarif)", () => {
+    const plain = computeEconomics(
+      {
+        generationKwh: 10_000,
+        selfConsumptionKwh: 4_000,
+        feedInKwh: 6_000,
+        consumptionKwh: 7_000,
+        gridImportKwh: 3_000,
+      },
+      {
+        importPriceCtPerKwh: 36,
+        priceEscalationRate: 0,
+        feedInTariffCtPerKwh: 8,
+        feedInTariffSource: "override",
+        investmentEuro: 20_000,
+        alternativeImportPriceCtPerKwh: 28,
+        horizonYears: 20,
+        priceSource: "profile",
+        settingsRevision: 0,
+      },
+    );
+    expect(plain.annualBillsEuro).toEqual({
+      noPvEuro: 2_520,
+      currentEuro: 1_080,
+      newTariffEuro: 840,
+    });
   });
 
   it("meldet nie-Amortisation; negativer IRR ist ein ehrlicher Wert", () => {
@@ -175,13 +221,25 @@ describe("economics computation", () => {
     expect(expensive.irr!).toBeLessThan(0);
     // Wirklich undefiniert nur ohne jeden Zahlungsfluss.
     const flat = computeEconomics(
-      { generationKwh: 0, selfConsumptionKwh: 0, feedInKwh: 0 },
+      {
+      generationKwh: 0,
+      selfConsumptionKwh: 0,
+      feedInKwh: 0,
+      consumptionKwh: 0,
+      gridImportKwh: 0,
+    },
       { ...input, investmentEuro: 0 },
     );
     expect(flat.irr).toBeNull();
     // Kein Ertrag: keine Ersparnis, keine Amortisation.
     const idle = computeEconomics(
-      { generationKwh: 0, selfConsumptionKwh: 0, feedInKwh: 0 },
+      {
+      generationKwh: 0,
+      selfConsumptionKwh: 0,
+      feedInKwh: 0,
+      consumptionKwh: 0,
+      gridImportKwh: 0,
+    },
       input,
     );
     expect(idle.annualSavingsEuro).toBe(0);
@@ -192,13 +250,20 @@ describe("economics computation", () => {
   it("loest IRR gegen den geschlossenen Einjahres-Fall", () => {
     // -1000 + 1100 in Jahr 1, Rest 0: IRR = 10 %.
     const one = computeEconomics(
-      { generationKwh: 1_100, selfConsumptionKwh: 1_100, feedInKwh: 0 },
+      {
+      generationKwh: 1_100,
+      selfConsumptionKwh: 1_100,
+      feedInKwh: 0,
+      consumptionKwh: 1_100,
+      gridImportKwh: 0,
+    },
       {
         importPriceCtPerKwh: 100,
         priceEscalationRate: -1,
         feedInTariffCtPerKwh: 0,
         feedInTariffSource: "override",
         investmentEuro: 1_000,
+        alternativeImportPriceCtPerKwh: null,
         horizonYears: 20,
         priceSource: "profile",
         settingsRevision: 0,
@@ -226,7 +291,13 @@ describe("economics computation", () => {
     expect(Object.is(roundMoney(-0.001), -0)).toBe(false);
     expect(() => roundMoney(Number.NaN)).toThrow();
     expect(() => computeEconomics(
-      { generationKwh: -1, selfConsumptionKwh: 0, feedInKwh: 0 },
+      {
+      generationKwh: -1,
+      selfConsumptionKwh: 0,
+      feedInKwh: 0,
+      consumptionKwh: 0,
+      gridImportKwh: 0,
+    },
       input,
     )).toThrow();
     expect(() => computeEconomics(annual, { ...input, horizonYears: 0 })).toThrow();
@@ -241,7 +312,13 @@ describe("economics computation", () => {
     // Kumuliert Jahr 20 klar hoeher (Bezugspreis-Anteil waechst).
     expect(esc.cumulativeCashflowEuro[19]).toBeGreaterThan(flat.cumulativeCashflowEuro[19]);
     // Reine Einspeisung ohne Eigenverbrauch: Eskalation wirkungslos.
-    const feedOnly = { generationKwh: 6_000, selfConsumptionKwh: 0, feedInKwh: 6_000 };
+    const feedOnly = {
+    generationKwh: 6_000,
+    selfConsumptionKwh: 0,
+    feedInKwh: 6_000,
+    consumptionKwh: 4_200,
+    gridImportKwh: 4_200,
+  };
     const a = computeEconomics(feedOnly, input);
     const b = computeEconomics(feedOnly, { ...input, priceEscalationRate: 0.05 });
     expect(b.cumulativeCashflowEuro[19]).toBeCloseTo(a.cumulativeCashflowEuro[19], 6);

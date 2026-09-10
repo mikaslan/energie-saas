@@ -240,6 +240,18 @@
               "minimum": 0,
               "maximum": 10000000
             },
+            "alternativeImportPriceCtPerKwh": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -264,6 +276,7 @@
             "feedInTariffCtPerKwh",
             "feedInTariffSource",
             "investmentEuro",
+            "alternativeImportPriceCtPerKwh",
             "horizonYears",
             "priceSource",
             "settingsRevision"
@@ -493,6 +506,18 @@
               "minimum": 0,
               "maximum": 10000000
             },
+            "alternativeImportPriceCtPerKwh": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -543,6 +568,36 @@
                   "type": "null"
                 }
               ]
+            },
+            "annualBillsEuro": {
+              "type": "object",
+              "properties": {
+                "noPvEuro": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "currentEuro": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "newTariffEuro": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "noPvEuro",
+                "currentEuro",
+                "newTariffEuro"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -551,13 +606,15 @@
             "feedInTariffCtPerKwh",
             "feedInTariffSource",
             "investmentEuro",
+            "alternativeImportPriceCtPerKwh",
             "horizonYears",
             "priceSource",
             "settingsRevision",
             "annualSavingsEuro",
             "cumulativeCashflowEuro",
             "amortizationYears",
-            "irr"
+            "irr",
+            "annualBillsEuro"
           ],
           "additionalProperties": false
         }

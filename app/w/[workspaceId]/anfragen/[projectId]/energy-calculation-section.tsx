@@ -555,6 +555,22 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
           {`${centFormatter.format(economics.feedInTariffCtPerKwh)} Ct/kWh (${feedInSourceLabel(economics.feedInTariffSource)})`}
         </DetailItem>
       </dl>
+      <h4 className="mt-4 px-1 text-sm font-semibold text-slate-950">
+        Stromrechnung (Jahr 1)
+      </h4>
+      <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
+        <DetailItem term="Ohne PV" numeric>
+          {euroFormatter.format(economics.annualBillsEuro.noPvEuro)}
+        </DetailItem>
+        <DetailItem term="Mit PV (aktueller Tarif)" numeric>
+          {euroFormatter.format(economics.annualBillsEuro.currentEuro)}
+        </DetailItem>
+        <DetailItem term="Mit PV (Neutarif)" numeric>
+          {economics.annualBillsEuro.newTariffEuro === null
+            ? "—"
+            : euroFormatter.format(economics.annualBillsEuro.newTariffEuro)}
+        </DetailItem>
+      </dl>
       <div
         className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
         tabIndex={0}

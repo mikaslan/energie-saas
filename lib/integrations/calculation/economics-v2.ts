@@ -69,6 +69,8 @@ export type EconomicsInputV2 = {
   feedInTariffCtPerKwh: number;
   feedInTariffSource: FeedInTariffSource;
   investmentEuro: number;
+  /** Optionaler Neutarif [Ct/kWh] für den Jahr-1-Vergleich (F4.4a). */
+  alternativeImportPriceCtPerKwh: number | null;
   horizonYears: number;
   /** Herkunft des Bezugspreises (F4.5b Workspace-Fallback). */
   priceSource: EconomicsPriceSource;
@@ -148,6 +150,10 @@ export function resolveEconomics(
   if (!Number.isInteger(horizonYears) || horizonYears < 1 || horizonYears > 50) {
     economicsError("Horizont ausserhalb 1..50 Jahre");
   }
+  const alternativeCt = knownNumber(holder.alternativeImportPriceCtPerKwh);
+  if (alternativeCt !== null && (alternativeCt < 1 || alternativeCt > 200)) {
+    economicsError("Neutarif ausserhalb 1..200 Ct/kWh");
+  }
   const overrideCt = knownNumber(holder.feedInTariffCtPerKwh);
   const commissioningYear = knownNumber(holder.feedInCommissioningYear);
   let feedInTariffCtPerKwh: number;
@@ -176,17 +182,28 @@ export function resolveEconomics(
     feedInTariffCtPerKwh,
     feedInTariffSource,
     investmentEuro,
+    alternativeImportPriceCtPerKwh: alternativeCt,
     horizonYears,
     priceSource: profilePrice !== null ? "profile" : "workspace_default",
     settingsRevision: fallback?.settingsRevision ?? 0,
   };
 }
 
+export type AnnualBillsV2 = {
+  /** Jahr-1-Rechnung ohne PV (Verbrauch × Tarif). */
+  noPvEuro: number;
+  /** Jahr-1-Rechnung mit PV (Netzbezug × Tarif). */
+  currentEuro: number;
+  /** Jahr-1-Rechnung mit PV zum Neutarif (null ohne Neutarif). */
+  newTariffEuro: number | null;
+};
+
 export type EconomicsResultV2 = {
   annualSavingsEuro: number;
   cumulativeCashflowEuro: number[];
   amortizationYears: number | null;
   irr: number | null;
+  annualBillsEuro: AnnualBillsV2;
 };
 
 /** Kapitalwert einer Zahlungsreihe (t=0..n) bei Zinssatz. */
@@ -200,10 +217,17 @@ function npv(cashflows: readonly number[], rate: number): number {
 
 /**
  * Geldrechnung aus Engine-Jahreswerten (Jahr 1) + Tarifinput.
- * `annual`: { generationKwh, selfConsumptionKwh, feedInKwh }.
+ * `annual`: { generationKwh, selfConsumptionKwh, feedInKwh, consumptionKwh,
+ * gridImportKwh } (Kette: consumption = self + gridImport).
  */
 export function computeEconomics(
-  annual: { generationKwh: number; selfConsumptionKwh: number; feedInKwh: number },
+  annual: {
+    generationKwh: number;
+    selfConsumptionKwh: number;
+    feedInKwh: number;
+    consumptionKwh: number;
+    gridImportKwh: number;
+  },
   input: EconomicsInputV2,
 ): EconomicsResultV2 {
   for (const [name, value] of Object.entries(annual)) {
@@ -252,5 +276,13 @@ export function computeEconomics(
       irr = (low + high) / 2;
     }
   }
-  return { annualSavingsEuro, cumulativeCashflowEuro, amortizationYears, irr };
+  // F4.4a Jahr-1-Tarifvergleich (gleiche physikalische Fluesse).
+  const annualBillsEuro: AnnualBillsV2 = {
+    noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro),
+    currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro),
+    newTariffEuro: input.alternativeImportPriceCtPerKwh === null
+      ? null
+      : roundMoney(annual.gridImportKwh * (input.alternativeImportPriceCtPerKwh / 100)),
+  };
+  return { annualSavingsEuro, cumulativeCashflowEuro, amortizationYears, irr, annualBillsEuro };
 }

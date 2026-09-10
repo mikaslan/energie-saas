@@ -332,6 +332,7 @@ describe("F4.1 v2 finalize", () => {
           feedInTariffCtPerKwh: 8,
           feedInTariffSource: "override",
           investmentEuro: 20_000,
+          alternativeImportPriceCtPerKwh: null,
           horizonYears: 20,
           priceSource: "profile",
           settingsRevision: 0,
@@ -348,6 +349,9 @@ describe("F4.1 v2 finalize", () => {
       horizonYears: 20,
       annualSavingsEuro: 7_708.8,
       amortizationYears: 3,
+      // F4.4a: 17520 × 0,36 ohne PV; mit PV Netzbezug 0 (kein Speicher
+      // noetig, PV deckt Last); kein Neutarif.
+      annualBillsEuro: { noPvEuro: 6_307.2, currentEuro: 0, newTariffEuro: null },
     });
     expect(money.economics!.cumulativeCashflowEuro).toHaveLength(20);
     expect(money.economics!.irr).not.toBeNull();
