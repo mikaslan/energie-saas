@@ -689,7 +689,10 @@ export function fixtureTransport() {
   };
 }
 
-export async function reserve(ids: SeedIds): Promise<{ jobId: string }> {
+export async function reserve(
+  ids: SeedIds,
+  expectedProfileRevision = 1,
+): Promise<{ jobId: string }> {
   return poolOne(async (pool) => withAuthorizedTenantOn(
     pool,
     ids.actorId,
@@ -697,7 +700,7 @@ export async function reserve(ids: SeedIds): Promise<{ jobId: string }> {
     (tx, ctx: ServiceCtx) => confirmProjectEnergyProfileV2(tx, ctx, {
       projectId: ids.projectId,
       expectedAddressRevision: 1,
-      expectedProfileRevision: 1,
+      expectedProfileRevision,
     }),
   ));
 }
