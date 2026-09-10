@@ -304,8 +304,24 @@ export function EnergyProfileEditor({
             </select>
           </label>
           <label htmlFor="energy-heat-pump" className={labelClass}>
-            Wärmepumpe (kWh/Jahr)
+            Wärmepumpe Strom (kWh/Jahr, ohne COP-Kennlinie)
             <input id="energy-heat-pump" name="heatPumpKwhPerYear" type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={fieldValue(profile.consumption.heatPumpKwhPerYear)} className={inputClass} />
+          </label>
+          <label htmlFor="energy-heat-pump-thermal" className={labelClass}>
+            Wärmepumpe Wärmebedarf (kWh/Jahr, thermisch, mit COP-Kennlinie)
+            <input id="energy-heat-pump-thermal" name="heatPumpThermalKwhPerYear" type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={fieldValue(profile.consumption.heatPumpThermalKwhPerYear ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-heat-pump-cop" className={labelClass}>
+            WP-COP Nennwert bei 7 °C (1–8, Default 4,0)
+            <input id="energy-heat-pump-cop" name="heatPumpCopNominal" type="number" inputMode="decimal" min="1" max="8" step="any" defaultValue={fieldValue(profile.consumption.heatPumpCopNominal ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-heat-pump-bivalence" className={labelClass}>
+            WP-Bivalenzpunkt (°C, Default −6)
+            <input id="energy-heat-pump-bivalence" name="heatPumpBivalenceTempC" type="number" inputMode="decimal" min="-25" max="15" step="any" defaultValue={fieldValue(profile.consumption.heatPumpBivalenceTempC ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-heat-pump-ww" className={labelClass}>
+            WP-Warmwasseranteil (0–1, Default 0)
+            <input id="energy-heat-pump-ww" name="heatPumpHotWaterShare" type="number" inputMode="decimal" min="0" max="1" step="any" defaultValue={fieldValue(profile.consumption.heatPumpHotWaterShare ?? { status: "unknown" })} className={inputClass} />
           </label>
           <label htmlFor="energy-cooling" className={labelClass}>
             Klimakühlung (kWh/Jahr)

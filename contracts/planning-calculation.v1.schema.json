@@ -607,6 +607,126 @@
                       "$ref": "#/$defs/__schema3"
                     }
                   ]
+                },
+                "heatPumpThermalKwhPerYear": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "known"
+                        },
+                        "value": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "source": {
+                          "$ref": "#/$defs/__schema2"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "value",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  ]
+                },
+                "heatPumpCopNominal": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "known"
+                        },
+                        "value": {
+                          "type": "number",
+                          "minimum": 1,
+                          "maximum": 8
+                        },
+                        "source": {
+                          "$ref": "#/$defs/__schema2"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "value",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  ]
+                },
+                "heatPumpBivalenceTempC": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "known"
+                        },
+                        "value": {
+                          "type": "number",
+                          "minimum": -25,
+                          "maximum": 15
+                        },
+                        "source": {
+                          "$ref": "#/$defs/__schema2"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "value",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  ]
+                },
+                "heatPumpHotWaterShare": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "known"
+                        },
+                        "value": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "source": {
+                          "$ref": "#/$defs/__schema2"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "value",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  ]
                 }
               },
               "required": [

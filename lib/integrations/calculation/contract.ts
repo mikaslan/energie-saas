@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "96347c0d4e94fa047bec59d834f6fbb402543c37587d80181cdb5a607c54e4c7" as const;
+  "4f3c4a031b878fab9e7789b03f6bea1da932ebef9756d88d1bc0eefcf501e1c4" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -180,6 +180,14 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     // ohne Feld bleiben gueltig. Summen-/Vollstaendigkeitsregeln s.
     // customLoadProfileValueSchema (kein stilles H0 ohne Werte).
     customLoadProfile: knownOrUnknown(customLoadProfileValueSchema).optional(),
+    // F4.3 Waermepumpe (Katalog: COP, Bivalenzpunkt). Thermischer Bedarf
+    // statt elektrischer Pauschale; Kennlinie/Bivalenz/WW-Split s.
+    // heat-pump-cop-v2.ts (ESTIMATE, versioniert). Additiv-optional:
+    // Altzeilen ohne Felder bleiben gueltig und rechnen legacy.
+    heatPumpThermalKwhPerYear: knownOrUnknown(nonNegative(100_000)).optional(),
+    heatPumpCopNominal: knownOrUnknown(finite().min(1).max(8)).optional(),
+    heatPumpBivalenceTempC: knownOrUnknown(finite().min(-25).max(15)).optional(),
+    heatPumpHotWaterShare: knownOrUnknown(finite().min(0).max(1)).optional(),
   }),
   existingAssets: z.strictObject({
     pv: pvAssetSchema,

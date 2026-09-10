@@ -154,6 +154,10 @@ function validProfileForm(): FormData {
     evKmPerYear: "",
     evChargingPattern: "",
     heatPumpKwhPerYear: "",
+    heatPumpThermalKwhPerYear: "",
+    heatPumpCopNominal: "",
+    heatPumpBivalenceTempC: "",
+    heatPumpHotWaterShare: "",
     coolingKwhPerYear: "",
     heatingAcKwhPerYear: "",
     hotWaterKwhPerYear: "",
@@ -337,6 +341,60 @@ describe("M1-07 Energieprofil-Actions", () => {
     partial.set("customWeekday.0", "1");
     await expect(saveProjectEnergyProfileAction({ status: "idle" }, partial))
       .resolves.toEqual({ status: "invalid" });
+  });
+
+  it("speichert F4.3-WP-Thermie mit COP-Parametern und weist Widersprueche ab", async () => {
+    const thermal = validProfileForm();
+    thermal.set("heatPumpThermalKwhPerYear", "12000");
+    thermal.set("heatPumpCopNominal", "4.5");
+    thermal.set("heatPumpBivalenceTempC", "-6");
+    thermal.set("heatPumpHotWaterShare", "0.2");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, thermal))
+      .resolves.toMatchObject({ status: "success" });
+    expect(deps.saveProfile).toHaveBeenCalledWith(
+      {},
+      { workspaceId: WORKSPACE_ID, actor: "member-1" },
+      expect.objectContaining({
+        profile: expect.objectContaining({
+          consumption: expect.objectContaining({
+            heatPumpThermalKwhPerYear: {
+              status: "known",
+              value: 12000,
+              source: "operator_reviewed",
+            },
+            heatPumpCopNominal: { status: "known", value: 4.5, source: "operator_reviewed" },
+            heatPumpBivalenceTempC: { status: "known", value: -6, source: "operator_reviewed" },
+            heatPumpHotWaterShare: { status: "known", value: 0.2, source: "operator_reviewed" },
+          }),
+        }),
+      }),
+    );
+
+    // Thermisch + elektrisch zugleich: invalid (keine stille Praezedenz).
+    const conflict = validProfileForm();
+    conflict.set("heatPumpThermalKwhPerYear", "12000");
+    conflict.set("heatPumpKwhPerYear", "3000");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, conflict))
+      .resolves.toEqual({ status: "invalid" });
+
+    // COP-Parameter ohne Thermalbedarf: invalid.
+    const orphan = validProfileForm();
+    orphan.set("heatPumpCopNominal", "4.5");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, orphan))
+      .resolves.toEqual({ status: "invalid" });
+
+    // Bereichsverletzungen: invalid (COP, Bivalenz, WW-Anteil).
+    for (const [name, bad] of [
+      ["heatPumpCopNominal", "0.5"],
+      ["heatPumpBivalenceTempC", "-30"],
+      ["heatPumpHotWaterShare", "1.5"],
+    ] as const) {
+      const form = validProfileForm();
+      form.set("heatPumpThermalKwhPerYear", "12000");
+      form.set(name, bad);
+      await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
+        .resolves.toEqual({ status: "invalid" });
+    }
   });
 
   it("weist zusätzliche, fehlende und wiederholte Fachfelder vor jeder Abhängigkeit zurück", async () => {

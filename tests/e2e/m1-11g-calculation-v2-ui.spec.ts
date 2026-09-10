@@ -678,3 +678,82 @@ test("M1-11g: F4.2-Monatsprofil treibt currentV2-Monatsform", async ({ page }) =
     "Axe serious/critical in der v2-Monatsprofilansicht",
   ).toEqual([]);
 });
+
+test("M1-11g: F4.3-WP-Thermie treibt currentV2-WP-Strom", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  // Thermischer WP-Bedarf 12.000 kWh + Kennlinienparameter (legacy
+  // WP-Strom bleibt 0 aus dem Kandidaten-Snapshot: kein Widerspruch).
+  await page.getByLabel(/Wärmebedarf/).fill("12000");
+  await page.getByLabel(/COP Nennwert/).fill("4");
+  await page.getByLabel(/Bivalenzpunkt/).fill("-6");
+  await page.getByLabel(/Warmwasseranteil/).fill("0.2");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  // Gespeichert: Thermalwerte stehen als known-Profil im Kontext.
+  const saved = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  const consumption = (saved?.profile as unknown as {
+    value?: { consumption?: Record<string, { status?: unknown; value?: unknown }> };
+  } | null)?.value?.consumption;
+  expect(consumption?.heatPumpThermalKwhPerYear?.status).toBe("known");
+  expect(consumption?.heatPumpThermalKwhPerYear?.value).toBe(12000);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("WP-COP-Kette erreichte kein currentV2.");
+  }
+  // COP-Effekt: WP-Strom (annual minus Haushalt 4200 minus EV 2400) liegt
+  // echt zwischen 0 und der Thermie 12.000 (keine Pauschal-1:1-Form).
+  const annual = expected.calculation.resultV2.value.annual.consumptionKwh;
+  const wpElectrical = annual - (4200 + 12000 * 0.2);
+  expect(wpElectrical).toBeGreaterThan(0);
+  expect(wpElectrical).toBeLessThan(12000);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  await expect(page.locator('[data-energy-calculation-state="currentV2"]')).toBeVisible();
+  await expect(page.locator('[data-energy-calculation-v2-result="true"]')).toBeVisible();
+});

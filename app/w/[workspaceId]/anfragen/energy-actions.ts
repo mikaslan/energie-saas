@@ -137,6 +137,12 @@ const profileFormSchema = z.strictObject({
   evKmPerYear: optionalNumber(0, 200_000),
   evChargingPattern: optionalEnum(["evening", "daytime", "away"]),
   heatPumpKwhPerYear: optionalNumber(0, 100_000),
+  // F4.3 WP-COP: thermischer Bedarf + optionale Kennlinienparameter.
+  // .optional() wie Custom-Felder: fehlende Keys zählen als leer.
+  heatPumpThermalKwhPerYear: optionalNumber(0, 100_000).optional(),
+  heatPumpCopNominal: optionalNumber(1, 8).optional(),
+  heatPumpBivalenceTempC: optionalNumber(-25, 15).optional(),
+  heatPumpHotWaterShare: optionalNumber(0, 1).optional(),
   coolingKwhPerYear: optionalNumber(0, 100_000),
   heatingAcKwhPerYear: optionalNumber(0, 100_000),
   hotWaterKwhPerYear: optionalNumber(0, 20_000),
@@ -179,6 +185,25 @@ const profileFormSchema = z.strictObject({
   } else if ([...monthly, ...weekday, ...weekend].some((kwh) => kwh !== null)) {
     ctx.addIssue({ code: "custom", path: ["loadProfile"], message: "custom values without monthly option" });
   }
+  // F4.3: thermischer und legacy-elektrischer WP-Bedarf zugleich ist ein
+  // Widerspruch (keine stille Praezedenz). Kennlinienparameter ohne
+  // Thermalbedarf sind unbelegt (kein COP-Pfad).
+  // .optional()-Felder: fehlende Keys (undefined) zählen wie leere ("").
+  const thermalKwh = value.heatPumpThermalKwhPerYear ?? null;
+  const thermalFilled = thermalKwh !== null && thermalKwh > 0;
+  if (thermalFilled && value.heatPumpKwhPerYear !== null && value.heatPumpKwhPerYear > 0) {
+    ctx.addIssue({ code: "custom", path: ["heatPumpThermalKwhPerYear"], message: "thermal and electrical heat pump conflict" });
+  }
+  if (
+    !thermalFilled
+    && (
+      (value.heatPumpCopNominal ?? null) !== null
+      || (value.heatPumpBivalenceTempC ?? null) !== null
+      || (value.heatPumpHotWaterShare ?? null) !== null
+    )
+  ) {
+    ctx.addIssue({ code: "custom", path: ["heatPumpThermalKwhPerYear"], message: "COP parameters without thermal demand" });
+  }
 });
 
 const roofFormSchema = z.strictObject({
@@ -208,6 +233,10 @@ const baseProfileFields = [
   "evKmPerYear",
   "evChargingPattern",
   "heatPumpKwhPerYear",
+  "heatPumpThermalKwhPerYear",
+  "heatPumpCopNominal",
+  "heatPumpBivalenceTempC",
+  "heatPumpHotWaterShare",
   "coolingKwhPerYear",
   "heatingAcKwhPerYear",
   "hotWaterKwhPerYear",
@@ -381,6 +410,10 @@ function buildSubmittedProfile(
     evKmPerYear: knownOrUnknown(input.evKmPerYear),
     evChargingPattern: knownOrUnknown(input.evChargingPattern),
     heatPumpKwhPerYear: knownOrUnknown(input.heatPumpKwhPerYear),
+    heatPumpThermalKwhPerYear: knownOrUnknown(input.heatPumpThermalKwhPerYear ?? null),
+    heatPumpCopNominal: knownOrUnknown(input.heatPumpCopNominal ?? null),
+    heatPumpBivalenceTempC: knownOrUnknown(input.heatPumpBivalenceTempC ?? null),
+    heatPumpHotWaterShare: knownOrUnknown(input.heatPumpHotWaterShare ?? null),
     coolingKwhPerYear: knownOrUnknown(input.coolingKwhPerYear),
     heatingAcKwhPerYear: knownOrUnknown(input.heatingAcKwhPerYear),
     hotWaterKwhPerYear: knownOrUnknown(input.hotWaterKwhPerYear),

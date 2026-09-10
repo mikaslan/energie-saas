@@ -972,6 +972,55 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["customLoadProfile"],
+      // F4.3 WP-COP-Parameter (optional; fehlt in Altzeilen).
+      heatPumpThermalKwhPerYear: normalizeKnownField(
+        submitted.consumption.heatPumpThermalKwhPerYear ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.heatPumpThermalKwhPerYear ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["heatPumpThermalKwhPerYear"],
+      heatPumpCopNominal: normalizeKnownField(
+        submitted.consumption.heatPumpCopNominal ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.heatPumpCopNominal ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["heatPumpCopNominal"],
+      heatPumpBivalenceTempC: normalizeKnownField(
+        submitted.consumption.heatPumpBivalenceTempC ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.heatPumpBivalenceTempC ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["heatPumpBivalenceTempC"],
+      heatPumpHotWaterShare: normalizeKnownField(
+        submitted.consumption.heatPumpHotWaterShare ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.heatPumpHotWaterShare ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["heatPumpHotWaterShare"],
     },
     existingAssets: {
       pv: normalizeAsset(submitted.existingAssets.pv, candidate.existingAssets.pv) as SiteEnergyProfileV1["existingAssets"]["pv"],

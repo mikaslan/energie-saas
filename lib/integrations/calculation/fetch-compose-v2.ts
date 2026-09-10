@@ -31,6 +31,7 @@ import {
   fetchSeriescalcSnapshotV2,
 } from "./fetch-v2";
 import { buildHeatingDegreeSourceV2 } from "./degree-day-load-v2";
+import { buildHeatPumpCopSourceV2 } from "./heat-pump-cop-v2";
 import {
   buildExistingPvSeriesV2,
   degradationFactorV2,
@@ -136,6 +137,40 @@ const RESIDENTIAL_LOAD_PROFILES_V2 = [
 const COMMERCIAL_LOAD_PROFILE_V2 = "commercial_interval.v1";
 const MONTHLY_LOAD_PROFILE_V2 = "customer_monthly_hourly.v1";
 
+// F4.3: belegter thermischer WP-Bedarf mit optionalen Kennlinienparametern
+// oder null (nicht belegt). Unbekannt/fehlend ist kein Fehler — erst der
+// COP-Pfad ohne Thermalwerte bzw. belegte Werte ausserhalb der
+// Vertragsbereiche brechen fail-closed ab.
+function parseHeatPumpThermal(consumption: unknown): {
+  thermalKwh: number;
+  copNominal?: number;
+  bivalenceTempC?: number;
+  hotWaterShare?: number;
+} | null {
+  const holder = (consumption ?? {}) as Record<string, unknown>;
+  const thermal = holder.heatPumpThermalKwhPerYear as
+    | { status?: unknown; value?: unknown }
+    | undefined;
+  if (thermal === undefined || thermal.status !== "known") return null;
+  if (typeof thermal.value !== "number" || !Number.isFinite(thermal.value) || thermal.value < 0) {
+    composeError("Waermepumpe hat ungueltige thermische kWh");
+  }
+  const optionalParam = (key: string, name: string): number | undefined => {
+    const entry = holder[key] as { status?: unknown; value?: unknown } | undefined;
+    if (entry === undefined || entry.status !== "known") return undefined;
+    if (typeof entry.value !== "number" || !Number.isFinite(entry.value)) {
+      composeError(`${name} ist ungueltig`);
+    }
+    return entry.value;
+  };
+  return {
+    thermalKwh: thermal.value,
+    copNominal: optionalParam("heatPumpCopNominal", "COP-Nennwert"),
+    bivalenceTempC: optionalParam("heatPumpBivalenceTempC", "Bivalenzpunkt"),
+    hotWaterShare: optionalParam("heatPumpHotWaterShare", "Warmwasser-Anteil"),
+  };
+}
+
 // F4.2: belegtes Custom-Lastprofil (12 Monats-kWh + optionale Tagesgänge)
 // oder null (nicht belegt). Unbekannt/fehlend ist kein Fehler an sich —
 // erst die Monatsprofil-Option ohne Werte bricht fail-closed ab.
@@ -162,6 +197,13 @@ const consumptionSchema = z.object({
   evKmPerYear: knownValueSchema.optional(),
   evChargingPattern: evPatternSchema.optional(),
   heatPumpKwhPerYear: knownValueSchema.optional(),
+  // F4.3 Waermepumpe mit COP-Kennlinie (thermischer Bedarf + optionale
+  // Kennlinienparameter; Detailpruefung in parseHeatPumpCop gegen den
+  // strikten Vertrag).
+  heatPumpThermalKwhPerYear: knownValueSchema.optional(),
+  heatPumpCopNominal: knownValueSchema.optional(),
+  heatPumpBivalenceTempC: knownValueSchema.optional(),
+  heatPumpHotWaterShare: knownValueSchema.optional(),
   heatingAcKwhPerYear: knownValueSchema.optional(),
   coolingKwhPerYear: knownValueSchema.optional(),
   hotWaterKwhPerYear: knownValueSchema.optional(),
@@ -290,8 +332,28 @@ export function buildLoadSourcesFromProfileV2(
       slotLabels: loadContext.slotLabels,
     }));
   }
+  // F4.3: belegter thermischer WP-Bedarf laeuft ueber die COP-Kennlinie;
+  // legacy-elektrische kWh daneben sind ein Widerspruch (keine stille
+  // Praezedenz). Ohne Thermalwerte rechnet die legacy Gradquelle weiter
+  // (byte-identische SHAs).
+  const heatThermal = parseHeatPumpThermal(consumption);
   const heatKwh = knownKwh(consumption.heatPumpKwhPerYear, "Waermepumpe", false);
-  if (heatKwh !== null && heatKwh > 0) {
+  // Legacy-Null (explizit 0 kWh) zaehlt nicht als Belegung.
+  if (heatThermal !== null && heatKwh !== null && heatKwh > 0) {
+    composeError("Waermepumpe thermisch und elektrisch zugleich belegt");
+  }
+  if (heatThermal !== null) {
+    if (heatThermal.thermalKwh > 0) {
+      sources.push(buildHeatPumpCopSourceV2({
+        thermalKwh: heatThermal.thermalKwh,
+        copNominal: heatThermal.copNominal,
+        bivalenceTempC: heatThermal.bivalenceTempC,
+        hotWaterShare: heatThermal.hotWaterShare,
+        hourlyTemperatureC: loadContext.hourlyTemperatureC,
+        hourTimesInOrder: loadContext.hourTimesInOrder,
+      }));
+    }
+  } else if (heatKwh !== null && heatKwh > 0) {
     sources.push(buildHeatingDegreeSourceV2({
       annualKwh: heatKwh,
       hourlyTemperatureC: loadContext.hourlyTemperatureC,

@@ -9,6 +9,7 @@ import {
   fetchPlanningSeriesV2,
   type SnapshotTransportV2,
 } from "@/lib/integrations/calculation/fetch-compose-v2";
+import type { LoadProfileSourceV2 } from "@/lib/integrations/calculation/load-v2";
 import { parsePVcalcSnapshot } from "@/lib/integrations/calculation/pvcalc-v2";
 import {
   PLANNING_ASSUMPTIONS_V2_VERSION,
@@ -542,5 +543,67 @@ describe("F4.1 v2 fetch compose", () => {
         transport: fakeTransport(envelope),
       })).rejects.toThrow();
     }
+  });
+
+  it("formt WP-Thermie ueber COP-Kennlinie, Legacy weiter byte-identisch", () => {
+    const known = (value: number) => ({ status: "known" as const, value, source: "customer_input" as const });
+    const base = {
+      evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
+      householdKwhPerYear: { status: "known", value: 4200, source: "customer_metered" },
+      heatPumpKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
+    };
+    const wpSource = (sources: LoadProfileSourceV2[]): LoadProfileSourceV2 => {
+      const found = sources.filter((source) => source.sourceKind === "heat_pump");
+      expect(found).toHaveLength(1);
+      return found[0]!;
+    };
+    const thermal = known(12_000);
+    // COP-Pfad: Stromquelle mit Kennlinien-Provenienz, Summe unter Thermie.
+    const sources = buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        ...base,
+        heatPumpThermalKwhPerYear: thermal,
+        heatPumpCopNominal: known(4),
+        heatPumpBivalenceTempC: known(-6),
+        heatPumpHotWaterShare: known(0.2),
+      }),
+    }, loadContext());
+    const wp = sources.filter((source) => source.sourceKind === "heat_pump");
+    expect(wp).toHaveLength(1);
+    expect(wp[0]!.sourceId).toBe("wmee-heat-pump-cop.v1");
+    const electrical = neumaierSum(wp[0]!.slotEnergyKwh);
+    expect(electrical).toBeGreaterThan(0);
+    expect(electrical).toBeLessThan(12_000);
+    // Defaults (nackter Thermalwert): gleiche Form wie explizite Defaults.
+    const defaulted = wpSource(buildLoadSourcesFromProfileV2({
+      consumption: consumption({ ...base, heatPumpThermalKwhPerYear: thermal }),
+    }, loadContext()));
+    const explicit = wpSource(buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        ...base,
+        heatPumpThermalKwhPerYear: thermal,
+        heatPumpCopNominal: known(4.0),
+        heatPumpBivalenceTempC: known(-6),
+        heatPumpHotWaterShare: known(0),
+      }),
+    }, loadContext()));
+    expect(defaulted.sourceSha256).toBe(explicit.sourceSha256);
+    // Widerspruch thermisch + elektrisch: fail-closed.
+    expect(() => buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        ...base,
+        heatPumpThermalKwhPerYear: thermal,
+        heatPumpKwhPerYear: known(3_000),
+      }),
+    }, loadContext())).toThrow();
+    // Legacy-Null daneben zaehlt nicht als Belegung.
+    const withZero = wpSource(buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        ...base,
+        heatPumpThermalKwhPerYear: thermal,
+        heatPumpKwhPerYear: known(0),
+      }),
+    }, loadContext()));
+    expect(withZero.sourceId).toBe("wmee-heat-pump-cop.v1");
   });
 });
