@@ -659,5 +659,22 @@ test("M1-11g: F4.2-Monatsprofil treibt currentV2-Monatsform", async ({ page }) =
   const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
   await page.goto(projectPath);
   await expect(page.locator('[data-energy-calculation-state="currentV2"]')).toBeVisible();
-  await expect(page.locator('[data-energy-calculation-v2-result="true"]')).toBeVisible();
+  const v2result = page.locator('[data-energy-calculation-v2-result="true"]');
+  await expect(v2result).toBeVisible();
+  // Monatstabelle spiegelt die Monatsform: 12 Zeilen, Dezember-Netzbezug
+  // als formatierter Kettenwert in der Dezember-Zeile.
+  const rows = v2result.locator("table tbody tr");
+  await expect(rows).toHaveCount(12);
+  await expect(rows.first().getByRole("rowheader")).toHaveText("Januar");
+  const decemberRow = rows.nth(11);
+  await expect(decemberRow.getByRole("rowheader")).toHaveText("Dezember");
+  await expect(decemberRow.getByText(formatKwh(december.gridImportKwh))).toBeVisible();
+
+  const axe = await new AxeBuilder({ page })
+    .include('[data-energy-calculation-v2-result="true"]')
+    .analyze();
+  expect(
+    axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical"),
+    "Axe serious/critical in der v2-Monatsprofilansicht",
+  ).toEqual([]);
 });
