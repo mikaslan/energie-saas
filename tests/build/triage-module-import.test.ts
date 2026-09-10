@@ -13,6 +13,8 @@ describe("M1-05 Modulgrenzen", () => {
       "moveProjectCard",
     ]);
     expect(Object.keys(projects).sort()).toEqual([
+      "ManualLeadLaneError",
+      "ManualLeadValidationError",
       "PROJECT_ASSIGNMENT_COMMAND_VERSION",
       "PROJECT_ASSIGNMENT_MAX_USERS",
       "PROJECT_CLOSED_REQUEST_CURSOR_MAX_LENGTH",
@@ -49,6 +51,7 @@ describe("M1-05 Modulgrenzen", () => {
       "changeProjectOutcome",
       "confirmProjectSitePin",
       "correctProjectSiteAddress",
+      "createManualLead",
       "getClosureTrendStats",
       "getProjectAddressCorrectionContext",
       "getProjectAssignmentContext",

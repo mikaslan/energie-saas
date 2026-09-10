@@ -4,12 +4,16 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
-import { LeadSourceNotFoundError } from "@/modules/lead-sources/errors";
+import { LeadSourceNotFoundError } from "@/modules/lead-sources";
 import {
   createManualLead,
   ManualLeadLaneError,
   ManualLeadValidationError,
 } from "@/modules/projects";
+import {
+  executeProjectNoteCommand,
+  PROJECT_NOTE_COMMAND_VERSION,
+} from "@/modules/notes";
 
 const uuidSchema = z.uuid();
 
@@ -30,6 +34,7 @@ const manualLeadFormSchema = z.strictObject({
 export type ManualLeadActionState =
   | { status: "idle" }
   | { status: "success"; projectId: string; contactReused: boolean }
+  | { status: "note-failed"; projectId: string }
   | { status: "invalid" }
   | { status: "unauthenticated" }
   | { status: "denied" }
@@ -80,6 +85,28 @@ export async function createManualLeadAction(
         note: input.note,
       }),
     );
+    // Notiz nachgelagert in eigener Transaktion (Modulgrenze: der Service
+    // schreibt keine Notizen). Vorabprüfung im Service macht diesen Pfad
+    // zum reinen Restrisiko (Perm-Entzug/Zeilenkonflikt zwischen den Calls).
+    if (input.note !== undefined) {
+      try {
+        await authorizedAction(
+          input.workspaceId,
+          "note.write",
+          "project_note",
+          (tx, ctx) => executeProjectNoteCommand(tx, ctx, {
+            schemaVersion: PROJECT_NOTE_COMMAND_VERSION,
+            kind: "create_note",
+            projectId: result.projectId,
+            textMarkdown: input.note as string,
+            pinned: false,
+          }),
+        );
+      } catch {
+        revalidatePath(`/w/${input.workspaceId}/anfragen`);
+        return { status: "note-failed", projectId: result.projectId };
+      }
+    }
     revalidatePath(`/w/${input.workspaceId}/anfragen`);
     return {
       status: "success",

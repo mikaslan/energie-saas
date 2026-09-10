@@ -103,7 +103,17 @@ describe("F1-11 Manuelle Anfrage (PostgreSQL)", () => {
       dedupe: false,
       contact_name: "Manu Lead",
     });
-    expect(rows.notes).toBe(1);
+    // Modulgrenze: die Notiz schreibt die Server Action nachgelagert —
+    // der Service legt nur an und prüft vor (hier: 0 Notizen).
+    expect(rows.notes).toBe(0);
+
+    // Ungültiges Notiz-Markdown bricht die ganze Anlage fail-closed ab.
+    await expect(asEditor(fixture, (tx, ctx) => createManualLead(tx, ctx, {
+      scope: "residential",
+      displayName: "Markdown Lead",
+      email: "md@f111.test",
+      note: "<img src=x>",
+    }))).rejects.toBeInstanceOf(ManualLeadValidationError);
   });
 
   it("F111-DB-02: Telefon genügt, Gewerbe landet auf dem Gewerbe-Board", async () => {

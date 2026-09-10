@@ -1,7 +1,13 @@
 // F1-11 Manuelle Anfrage-Erfassung: Kontakt + Standort + Projekt auf der
 // Intake-Spalte des gewählten Bereichs — ohne Rechner-Payload.
-// Berechtigung: bestehendes project.write (KEIN neuer Key). Optionale Notiz
-// erfordert note.write (kein stilles Verschlucken).
+// Berechtigung: bestehendes project.write (KEIN neuer Key).
+//
+// Architektur: Modulgrenzen (depcruise) + server-only-Kette — die optionale
+// Notiz schreibt NICHT dieser Service, sondern die Server Action nach
+// erfolgreicher Anlage in deren eigener Transaktion.
+// Der Service prüft note.write und das Markdown VOR allen Writes, sodass
+// eine unzulässige Notiz die ganze Anlage fail-closed abbricht statt das
+// Projekt ohne Notiz stehen zu lassen.
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
@@ -9,11 +15,10 @@ import { writeAudit } from "@/lib/audit";
 import { contactNameSplitV1 } from "@/lib/db/schema/contact-name-split";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
-import { PROJECT_NOTE_COMMAND_VERSION } from "@/lib/integrations/notes/note-contract";
+import { validateNoteMarkdown } from "@/lib/integrations/notes/note-markdown";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
-import { normalizeRechnerPhone } from "@/modules/intake/service";
-import { LeadSourceNotFoundError } from "@/modules/lead-sources/errors";
-import { executeProjectNoteCommand } from "@/modules/notes/service";
+import { normalizeRechnerPhone } from "@/modules/intake";
+import { LeadSourceNotFoundError } from "@/modules/lead-sources";
 
 export class ManualLeadValidationError extends Error {
   constructor(message = "manual lead validation failed") {
@@ -114,8 +119,13 @@ export async function createManualLead(
   }
   const emailForRow = emailNormalized === null ? null : command.email!.normalize("NFKC").trim();
 
-  if (command.note !== undefined && !can(ctx, "note.write")) {
-    throw new PermissionDeniedError("note.write", "project_note", undefined, ctx.actor);
+  if (command.note !== undefined) {
+    if (!can(ctx, "note.write")) {
+      throw new PermissionDeniedError("note.write", "project_note", undefined, ctx.actor);
+    }
+    if (!validateNoteMarkdown(command.note).ok) {
+      throw new ManualLeadValidationError("note markdown invalid");
+    }
   }
 
   let leadSourceId: string | null = null;
@@ -216,16 +226,8 @@ export async function createManualLead(
     )
   `);
 
-  if (command.note !== undefined) {
-    await executeProjectNoteCommand(tx, ctx, {
-      schemaVersion: PROJECT_NOTE_COMMAND_VERSION,
-      kind: "create_note",
-      projectId,
-      textMarkdown: command.note,
-      pinned: false,
-    });
-  }
-
+  // Hinweis: die Notiz hängt die Server Action nachgelagert an (siehe
+  // Dateikopf) — hier wird nur vorgültig geprüft, nie geschrieben.
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
     aggregateType: "project",

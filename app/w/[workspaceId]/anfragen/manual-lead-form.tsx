@@ -13,9 +13,22 @@ const inputClass =
   "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-600";
 const labelClass = "grid gap-1 text-sm font-medium text-slate-700";
 
-function Feedback({ state }: { state: ManualLeadActionState }) {
+function Feedback({ state, workspaceId }: { state: ManualLeadActionState; workspaceId: string }) {
   if (state.status === "idle") return null;
   if (state.status === "success") return null;
+  if (state.status === "note-failed") {
+    return (
+      <p role="status" data-testid="manual-lead-note-failed" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        Anfrage angelegt, Notiz nicht gespeichert —{" "}
+        <Link
+          href={`/w/${workspaceId}/anfragen/${state.projectId}`}
+          className="font-semibold underline underline-offset-2"
+        >
+          Projektakte öffnen
+        </Link>
+      </p>
+    );
+  }
   const tone = "border-amber-300 bg-amber-50 text-amber-900";
   const message =
     state.status === "invalid"
@@ -156,7 +169,7 @@ export function ManualLeadForm({
           Abbrechen
         </button>
       </div>
-      <Feedback state={state} />
+      <Feedback state={state} workspaceId={workspaceId} />
     </form>
   );
 }

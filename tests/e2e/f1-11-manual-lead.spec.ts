@@ -111,6 +111,7 @@ test("F1-11-E2E-01: Manuelle Anfrage landet als Karte auf dem Board", async ({ p
   await form.getByLabel("Telefon").fill("0151 23456789");
   await form.getByLabel("PLZ").fill("10115");
   await form.getByLabel("Ort").fill("Berlin");
+  await form.getByLabel(/Notiz/).fill("Rückruf ab 18 Uhr");
   await form.getByRole("button", { name: "Anfrage anlegen" }).click();
 
   const success = page.getByTestId("manual-lead-success");
