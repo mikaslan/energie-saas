@@ -75,6 +75,9 @@ test("DASH-01: leere Workspace-Übersicht rendert ehrliche Leerzustände", async
   const offerLead = dashboard.locator('[data-dashboard-offer-leadtime="true"]');
   await expect(offerLead).toBeVisible();
   await expect(offerLead.getByText("Noch keine Angebote.")).toBeVisible();
+  const trend = dashboard.locator('[data-dashboard-trend="true"]');
+  await expect(trend).toBeVisible();
+  await expect(trend.getByText("Noch keine Abschlüsse im Zeitraum.")).toBeVisible();
   const overdue = dashboard.locator('[data-dashboard-overdue="true"]');
   await expect(overdue).toBeVisible();
   await expect(overdue.getByText("Nichts überfällig.")).toBeVisible();

@@ -47,6 +47,7 @@ describe("M1-05 Modulgrenzen", () => {
       "changeProjectOutcome",
       "confirmProjectSitePin",
       "correctProjectSiteAddress",
+      "getClosureTrendStats",
       "getProjectAddressCorrectionContext",
       "getProjectAssignmentContext",
       "getProjectOutcomeContext",

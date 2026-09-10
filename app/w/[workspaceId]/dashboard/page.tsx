@@ -12,7 +12,9 @@ import {
   type GlobalTaskInboxPageV1,
 } from "@/modules/tasks";
 import {
+  getClosureTrendStats,
   listClosedRequests,
+  type ClosureTrendStats,
   type ProjectClosedRequestPage,
 } from "@/modules/projects";
 import {
@@ -31,6 +33,7 @@ import {
   listUpcomingAppointments,
   type UpcomingAppointmentV1,
 } from "@/modules/calendar";
+import { monthLabel } from "@/lib/integrations/dashboard/closure-trend-v1";
 import { INVOICING_REPORT_COMMAND_VERSION } from "@/lib/integrations/invoicing/contract";
 import { parseGlobalTaskInboxRouteQuery } from "../aufgaben/query";
 
@@ -306,6 +309,26 @@ async function loadOfferLeadTime(workspaceId: string): Promise<
   }
 }
 
+async function loadClosureTrend(workspaceId: string): Promise<
+  | { kind: "loaded"; stats: ClosureTrendStats }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const stats = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "closure_trend",
+      (tx, ctx) => getClosureTrendStats(tx, ctx),
+    );
+    return { kind: "loaded", stats };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
 async function loadAppointments(workspaceId: string): Promise<
   | { kind: "loaded"; items: UpcomingAppointmentV1[] }
   | { kind: "unauthenticated" }
@@ -361,11 +384,12 @@ export default async function DashboardPage({
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  const [pipeline, overdue, today, closures, invoices, leadTime, offerLeadTime, appointments] = await Promise.all([
+  const [pipeline, overdue, today, closures, trend, invoices, leadTime, offerLeadTime, appointments] = await Promise.all([
     loadPipeline(validWorkspaceId),
     loadTasks(validWorkspaceId, "overdue"),
     loadTasks(validWorkspaceId, "today"),
     loadClosures(validWorkspaceId),
+    loadClosureTrend(validWorkspaceId),
     loadInvoiceKpis(validWorkspaceId),
     loadLeadTime(validWorkspaceId),
     loadOfferLeadTime(validWorkspaceId),
@@ -376,6 +400,7 @@ export default async function DashboardPage({
     || overdue.kind === "unauthenticated"
     || today.kind === "unauthenticated"
     || closures.kind === "unauthenticated"
+    || trend.kind === "unauthenticated"
     || invoices.kind === "unauthenticated"
     || leadTime.kind === "unauthenticated"
     || offerLeadTime.kind === "unauthenticated"
@@ -389,6 +414,7 @@ export default async function DashboardPage({
     && overdue.kind === "denied"
     && today.kind === "denied"
     && closures.kind === "denied"
+    && trend.kind === "denied"
     && invoices.kind === "denied"
     && leadTime.kind === "denied"
     && offerLeadTime.kind === "denied"
@@ -585,6 +611,45 @@ export default async function DashboardPage({
               >
                 Zu den Abschlüssen
               </Link>
+            </section>
+          ) : null}
+
+          {trend.kind === "loaded" ? (
+            <section
+              aria-label="Abschlusstrend"
+              data-dashboard-trend="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Abschlusstrend (12 Monate, ESTIMATE)</h2>
+              {trend.stats.wonTotal + trend.stats.lostTotal === 0 ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">Noch keine Abschlüsse im Zeitraum.</p>
+              ) : (
+                <ul className="mt-3 space-y-1.5">
+                  {trend.stats.months.map((item) => {
+                    const max = Math.max(1, ...trend.stats.months.map((entry) => entry.total));
+                    return (
+                      <li key={item.month} className="flex items-center gap-2 text-xs">
+                        <span className="w-16 shrink-0 tabular-nums text-slate-500">
+                          {monthLabel(item.month)}
+                        </span>
+                        <span
+                          className="h-3 rounded-sm bg-emerald-500"
+                          style={{ width: `${Math.max(item.won > 0 ? 4 : 0, (item.won / max) * 100)}%` }}
+                          title={`${item.won} gewonnen`}
+                        />
+                        <span
+                          className="h-3 rounded-sm bg-slate-300"
+                          style={{ width: `${Math.max(item.lost > 0 ? 4 : 0, (item.lost / max) * 100)}%` }}
+                          title={`${item.lost} verloren`}
+                        />
+                        <span className="shrink-0 tabular-nums text-slate-600">
+                          {`${item.won} / ${item.lost}`}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </section>
           ) : null}
 

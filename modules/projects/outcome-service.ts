@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
+import { fillClosureTrendMonths } from "@/lib/integrations/dashboard/closure-trend-v1";
 import type { TenantTx } from "@/lib/db/types";
 import {
   can,
@@ -634,6 +635,71 @@ export async function changeProjectLossReason(
     },
   });
   return record;
+}
+
+export type ClosureTrendStats = {
+  /** Fensterende als Berliner Monats-Key „YYYY-MM". */
+  endMonth: string;
+  /** 12 Monate, aeltester zuerst, lueckenlos. */
+  months: Array<{ month: string; won: number; lost: number; total: number }>;
+  /** Summe won ueber das Fenster. */
+  wonTotal: number;
+  /** Summe lost ueber das Fenster. */
+  lostTotal: number;
+};
+
+/** Trendfenster in Monaten (ESTIMATE, reversibel). */
+const CLOSURE_TREND_MONTHS = 12;
+
+/**
+ * DASH-07 Abschlusstrend: won/lost je Berliner Kalendermonat ueber die
+ * letzten 12 Monate (gleiche Abschlussmenge und Sichtbarkeit wie die
+ * Abschlussliste: project.read, kein External). Rein lesend, aggregiert.
+ */
+export async function getClosureTrendStats(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<ClosureTrendStats> {
+  requireInternalProjectRead(ctx, "closure_trend");
+  const result = await tx.execute<{ month: string; outcome: string; count: number }>(sql`
+    select to_char(project_record.closed_at at time zone 'Europe/Berlin', 'YYYY-MM') as month,
+           project_record.outcome,
+           count(*)::int as count
+      from project project_record
+     where project_record.workspace_id = ${ctx.workspaceId}::uuid
+       and project_record.closed_at is not null
+       and project_record.closed_at >= date_trunc(
+             'month',
+             ((statement_timestamp() at time zone 'Europe/Berlin')::date - ${CLOSURE_TREND_MONTHS - 1}::integer * interval '1 month')::timestamptz
+           )
+       and (
+         project_record.phase = 'request'
+         or (
+           project_record.outcome in ('won', 'lost')
+           and project_record.phase in ('offer', 'installation')
+         )
+       )
+       and project_record.outcome in ('won', 'lost', 'cannot_fulfill')
+     group by month, project_record.outcome
+  `);
+  const counts: Record<string, { won: number; lost: number }> = {};
+  for (const row of result.rows) {
+    const bucket = counts[row.month] ?? { won: 0, lost: 0 };
+    if (row.outcome === "won") bucket.won += Number(row.count);
+    else if (row.outcome === "lost") bucket.lost += Number(row.count);
+    counts[row.month] = bucket;
+  }
+  const endMonthResult = await tx.execute<{ month: string }>(sql`
+    select to_char((statement_timestamp() at time zone 'Europe/Berlin')::date, 'YYYY-MM') as month
+  `);
+  const endMonth = endMonthResult.rows[0]?.month ?? "2026-01";
+  const months = fillClosureTrendMonths(counts, endMonth, CLOSURE_TREND_MONTHS);
+  return {
+    endMonth,
+    months,
+    wonTotal: months.reduce((sum, item) => sum + item.won, 0),
+    lostTotal: months.reduce((sum, item) => sum + item.lost, 0),
+  };
 }
 
 export async function listClosedRequests(
