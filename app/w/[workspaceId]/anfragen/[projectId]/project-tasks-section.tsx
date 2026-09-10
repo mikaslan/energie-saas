@@ -19,9 +19,12 @@ import {
   type TaskLabelColor,
 } from "@/lib/integrations/tasks/contract";
 import {
+  applyTaskTemplateAction,
+  type ApplyTaskTemplateActionState,
   changeProjectTask,
   type ProjectTaskActionState,
 } from "./task-actions";
+import type { TaskTemplateDto } from "@/lib/integrations/tasks/template-contract";
 import { TaskRichTextRenderer } from "./task-rich-text-renderer";
 import { ProjectTaskEditorDialog } from "./project-task-editor-dialog";
 
@@ -60,6 +63,17 @@ function actionMessage(state: ProjectTaskActionState): string {
     case "archived": return "Archivierte Aufgaben können nicht mehr geändert werden.";
     case "limit_reached": return "Für diese Aufgabe wurde eine zulässige Obergrenze erreicht.";
     case "not_found": return "Die Aufgabe oder das Projekt ist nicht mehr verfügbar.";
+    case "denied": return "Für diese Aufgabenänderung fehlt dir die Berechtigung.";
+    case "unauthenticated": return "Deine Sitzung ist abgelaufen. Bitte lade die Seite neu.";
+  }
+}
+
+function applyTemplateMessage(state: ApplyTaskTemplateActionState): string {
+  switch (state.status) {
+    case "idle": return "";
+    case "success": return "Die Aufgabe wurde aus der Vorlage erstellt.";
+    case "invalid": return "Die Vorlage ist unvollständig oder ungültig.";
+    case "not_found": return "Die Vorlage oder das Projekt ist nicht mehr verfügbar.";
     case "denied": return "Für diese Aufgabenänderung fehlt dir die Berechtigung.";
     case "unauthenticated": return "Deine Sitzung ist abgelaufen. Bitte lade die Seite neu.";
   }
@@ -115,6 +129,66 @@ function TaskCommandFields({
         <input type="hidden" name="archiveConfirmation" value="archive" />
       ) : null}
     </>
+  );
+}
+
+const INITIAL_APPLY_TEMPLATE_STATE: ApplyTaskTemplateActionState = { status: "idle" };
+
+function ApplyTemplateForm({
+  workspaceId,
+  projectId,
+  templates,
+}: {
+  workspaceId: string;
+  projectId: string;
+  templates: TaskTemplateDto[];
+}) {
+  const boundApply = useMemo(
+    () => applyTaskTemplateAction.bind(null, workspaceId, projectId),
+    [projectId, workspaceId],
+  );
+  const [state, applyAction] = useActionState(boundApply, INITIAL_APPLY_TEMPLATE_STATE);
+  const applyMessage = applyTemplateMessage(state);
+  const applyIsError = state.status !== "idle" && state.status !== "success";
+
+  return (
+    <form action={applyAction} className="mt-4 grid min-w-0 gap-2 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+      <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-slate-900">
+        Aufgabe aus Vorlage anlegen
+        <select
+          name="templateId"
+          aria-label="Aufgabenvorlage"
+          required
+          defaultValue=""
+          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+        >
+          <option value="" disabled>Vorlage wählen …</option>
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name} – {template.title}
+            </option>
+          ))}
+        </select>
+      </label>
+      <LocalSubmitButton
+        pendingLabel="Wird angelegt …"
+        className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-100"
+      >
+        Vorlage anwenden
+      </LocalSubmitButton>
+      {applyMessage ? (
+        <p
+          role={applyIsError ? "alert" : "status"}
+          aria-live={applyIsError ? "assertive" : "polite"}
+          aria-atomic="true"
+          className={applyIsError
+            ? "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:col-span-2"
+            : "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950 sm:col-span-2"}
+        >
+          {applyMessage}
+        </p>
+      ) : null}
+    </form>
   );
 }
 
@@ -270,6 +344,7 @@ export function ProjectTasksSection({
   showingArchived,
   nextTaskHref,
   latestTaskHref,
+  templates,
 }: {
   workspaceId: string;
   projectId: string;
@@ -277,6 +352,7 @@ export function ProjectTasksSection({
   showingArchived: boolean;
   nextTaskHref: string | null;
   latestTaskHref: string | null;
+  templates: TaskTemplateDto[];
 }) {
   const boundAction = useMemo(
     () => changeProjectTask.bind(null, workspaceId, projectId),
@@ -394,6 +470,14 @@ export function ProjectTasksSection({
         <p className="mt-5 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
           Du kannst Aufgaben und Checklisten sehen, aber nicht verändern.
         </p>
+      ) : null}
+
+      {workspace.permissions.canWrite && !showingArchived && templates.length > 0 ? (
+        <ApplyTemplateForm
+          workspaceId={workspaceId}
+          projectId={projectId}
+          templates={templates}
+        />
       ) : null}
 
       <p

@@ -46,9 +46,11 @@ import {
 } from "@/modules/portal";
 import {
   getProjectTaskPage,
+  listTaskTemplates,
   projectTaskCursorTokenSchema,
   type ProjectActivityCursor,
   type ProjectTaskPageV1,
+  type TaskTemplateDto,
 } from "@/modules/tasks";
 import {
   listProjectAppointments,
@@ -173,7 +175,7 @@ type OfferCreationLoadResult =
   | { kind: "denied" };
 
 type TaskPageLoadResult =
-  | { kind: "loaded"; page: ProjectTaskPageV1 | null }
+  | { kind: "loaded"; page: ProjectTaskPageV1 | null; templates: TaskTemplateDto[] }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
@@ -361,17 +363,22 @@ async function loadProjectTaskPage(
   activityCursor: ProjectActivityCursor | null,
 ): Promise<TaskPageLoadResult> {
   try {
-    const page = await authorizedQuery(
+    const loaded = await authorizedQuery(
       workspaceId,
       "task.read",
       "project_task_page",
-      (tx, ctx) => getProjectTaskPage(tx, ctx, projectId, {
-        archived: showingArchived,
-        taskCursor,
-        activityCursor,
+      async (tx, ctx) => ({
+        page: await getProjectTaskPage(tx, ctx, projectId, {
+          archived: showingArchived,
+          taskCursor,
+          activityCursor,
+        }),
+        // F16-04: aktive Vorlagen für „Aus Vorlage anlegen" (gleiche
+        // Read-Permission, kein eigener Gate).
+        templates: await listTaskTemplates(tx, ctx),
       }),
     );
-    return { kind: "loaded", page };
+    return { kind: "loaded", page: loaded.page, templates: loaded.templates };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -878,6 +885,7 @@ export default async function ProjectTriagePage({
             showingArchived={showingArchived}
             nextTaskHref={nextTaskHref}
             latestTaskHref={latestTaskHref}
+            templates={taskPageResult.templates}
           />
           <ProjectActivityPanel
             activity={projectActivity}

@@ -2213,6 +2213,20 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F16-04 (0092): Aufgaben-Vorlagen — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies.
+  task_template: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into task_template (
+        id, workspace_id, name, name_normalized, title,
+        due_offset_days, active, position, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Aufgabe',
+        'fixture aufgabe', 'Fixture-Titel', 7, true, 0,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
   // F16.3 Slice B (0061): Foerder-Vorlagen — gleiche Gestalt wie discount_template.
   subsidy_template: async (tx, wsId) => {
     await tx.execute(sql`

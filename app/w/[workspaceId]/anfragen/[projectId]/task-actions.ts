@@ -5,6 +5,7 @@ import { z } from "zod";
 import { authorizedAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
+  applyTaskTemplate,
   executeProjectTaskCommand,
   PROJECT_TASK_MAX_CHECKLIST_ITEMS,
   PROJECT_TASK_MAX_CHECKLIST_TEXT_LENGTH,
@@ -17,6 +18,10 @@ import {
   ProjectTaskLimitError,
   ProjectTaskNotFoundError,
   ProjectTaskValidationError,
+  TaskTemplateConflictError,
+  TaskTemplateNotFoundError,
+  TaskTemplateValidationError,
+  TASK_TEMPLATE_SCHEMA_VERSION,
   TASK_RICH_TEXT_MAX_BYTES,
   TASK_RICH_TEXT_MAX_DEPTH,
   TASK_RICH_TEXT_MAX_NODES,
@@ -398,5 +403,60 @@ export async function changeProjectTask(
       revalidateTaskPaths(route.data.workspaceId, route.data.projectId);
     }
     return mapped ?? { status: "invalid" };
+  }
+}
+
+export type ApplyTaskTemplateActionState =
+  | { status: "idle" }
+  | { status: "success"; taskId: string }
+  | { status: "invalid" }
+  | { status: "not_found" }
+  | { status: "denied" }
+  | { status: "unauthenticated" };
+
+// F16-04: Vorlage im Projekt anwenden (eigene Action: nur Template-ID,
+// kein Aufgaben-Body über das Formular).
+export async function applyTaskTemplateAction(
+  rawWorkspaceId: string,
+  rawBoundProjectId: string,
+  _previousState: ApplyTaskTemplateActionState,
+  formData: FormData,
+): Promise<ApplyTaskTemplateActionState> {
+  const route = z.strictObject({
+    workspaceId: UUID_SCHEMA,
+    projectId: UUID_SCHEMA,
+    templateId: UUID_SCHEMA,
+  }).safeParse({
+    workspaceId: rawWorkspaceId,
+    projectId: rawBoundProjectId,
+    templateId: formData.get("templateId"),
+  });
+  if (!route.success) return { status: "invalid" };
+  try {
+    const result = await authorizedAction(
+      route.data.workspaceId,
+      "task.write",
+      "project_task",
+      (tx, ctx) => applyTaskTemplate(tx, ctx, {
+        schemaVersion: TASK_TEMPLATE_SCHEMA_VERSION,
+        templateId: route.data.templateId,
+        projectId: route.data.projectId,
+      }),
+    );
+    revalidateTaskPaths(route.data.workspaceId, route.data.projectId);
+    return { status: "success", taskId: result.taskId };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (
+      error instanceof TaskTemplateNotFoundError
+      || error instanceof ProjectTaskNotFoundError
+    ) return { status: "not_found" };
+    if (
+      error instanceof TaskTemplateValidationError
+      || error instanceof TaskTemplateConflictError
+      || error instanceof ProjectTaskValidationError
+    ) return { status: "invalid" };
+    throw error;
   }
 }

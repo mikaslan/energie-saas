@@ -44,4 +44,5 @@ export * from "./planning";
 export * from "./service-case";
 export * from "./signatures";
 export * from "./site";
+export * from "./task-template";
 export * from "./time-tracking";

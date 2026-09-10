@@ -516,6 +516,10 @@ const SUBSIDY_TEMPLATE_RELATIONS = [
   "subsidy_template",
 ] as const;
 
+const TASK_TEMPLATE_RELATIONS = [
+  "task_template",
+] as const;
+
 const PAYMENT_OPTION_RELATIONS = [
   "payment_option",
 ] as const;
@@ -2603,6 +2607,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F16-04: Aufgaben-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
+  const hasTaskTemplates = await hasAtomicPublicRelationSet(
+    client,
+    TASK_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F16-04-Aufgaben-Vorlagen",
+  );
+  if (hasTaskTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.task_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.task_template to app_runtime
+    `);
+  }
+
   // F2.5: Zahlarten-Stammdaten nutzen Archiv statt Delete. Tabelle, Varianten-
   // Spalte und der 0074-Schreibvertragsmarker muessen atomar vorhanden sein.
   const hasPaymentOptions = await hasAtomicPublicRelationSet(
@@ -3864,6 +3884,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F16-03-Foerder-Vorlagen",
   );
 
+  const hasTaskTemplates = await hasAtomicPublicRelationSet(
+    client,
+    TASK_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F16-04-Aufgaben-Vorlagen",
+  );
+
   const hasPaymentOptions = await hasAtomicPublicRelationSet(
     client,
     PAYMENT_OPTION_RELATIONS,
@@ -4118,6 +4144,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasDiscountTemplates ? DISCOUNT_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasTaskTemplates ? TASK_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
@@ -5288,6 +5317,9 @@ export async function verifyRoleContract(
       ...(hasDiscountTemplates ? DISCOUNT_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasTaskTemplates ? TASK_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -5630,6 +5662,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasSubsidyTemplates ? [
           "subsidy_template:tenant_isolation:2037cf711c5df81fe88a76b2b2d003d568f2053c61feebad996e515aec4d0696",
+        ] : []),
+        ...(hasTaskTemplates ? [
+          "task_template:tenant_isolation:6be1776faa99ac6f570cc500b7f5c4314ab650a31484700cd4a77b0269206097",
         ] : []),
         ...(hasPaymentOptions ? [
           "payment_option:tenant_isolation:854bc07231dd748fe1cadc6fcf55606d413a950abc8c3fac65fc1b405228f13f",
@@ -6158,6 +6193,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasDiscountTemplates ? DISCOUNT_TEMPLATE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasTaskTemplates ? TASK_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

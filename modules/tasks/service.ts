@@ -494,7 +494,7 @@ async function validateInternalMembershipsUnderWorkspaceLock(
   if (result.rows.length !== expected.length) throw new ProjectTaskNotFoundError();
 }
 
-async function actorMembershipId(
+export async function actorMembershipId(
   tx: TenantTx,
   ctx: ServiceCtx,
 ): Promise<string> {

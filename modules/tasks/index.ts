@@ -88,6 +88,22 @@ export {
   ProjectTaskValidationError,
 } from "./errors";
 export {
+  TASK_TEMPLATE_SCHEMA_VERSION,
+  applyTaskTemplateCommandSchema,
+  archiveTaskTemplateCommandSchema,
+  createTaskTemplateCommandSchema,
+  taskTemplateDtoSchema,
+  updateTaskTemplateCommandSchema,
+} from "@/lib/integrations/tasks/template-contract";
+export type {
+  ApplyTaskTemplateCommand,
+  ArchiveTaskTemplateCommand,
+  CreateTaskTemplateCommand,
+  TaskTemplateDto,
+  UpdateTaskTemplateCommand,
+} from "@/lib/integrations/tasks/template-contract";
+export {
+  actorMembershipId,
   executeProjectTaskCommand,
   getGlobalTaskInboxPage,
   getProjectActivityPage,
@@ -95,3 +111,18 @@ export {
   getProjectTaskWorkspace,
   searchProjectTaskMembers,
 } from "./service";
+export {
+  applyTaskTemplate,
+  archiveTaskTemplate,
+  berlinDatePlusDays,
+  createTaskTemplate,
+  listTaskTemplates,
+  normalizeTaskTemplateName,
+  restoreTaskTemplate,
+  updateTaskTemplate,
+} from "./templates";
+export {
+  TaskTemplateConflictError,
+  TaskTemplateNotFoundError,
+  TaskTemplateValidationError,
+} from "./errors";
