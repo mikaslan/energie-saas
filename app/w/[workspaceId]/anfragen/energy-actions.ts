@@ -90,6 +90,28 @@ const nonNegativeRevision = z.string().regex(INTEGER_PATTERN).transform(Number).
 const optionalEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.union([z.literal(""), z.enum(values)]).transform((value) => value === "" ? null : value);
 
+// F4.2 Custom-Lastprofil: 12 Monats-kWh + je 24 Werktags-/Wochenendstunden.
+// Nur bei Monatsprofil-Option erlaubt (branchabhängige Allowlist unten);
+// halb belegte Tage verweigert die Schema-Refine.
+const customMonthlyFieldNames = Array.from(
+  { length: 12 },
+  (_, month) => `customMonthly.${month}`,
+);
+const customWeekdayFieldNames = Array.from(
+  { length: 24 },
+  (_, hour) => `customWeekday.${hour}`,
+);
+const customWeekendFieldNames = Array.from(
+  { length: 24 },
+  (_, hour) => `customWeekend.${hour}`,
+);
+const customProfileFieldNames = [
+  ...customMonthlyFieldNames,
+  ...customWeekdayFieldNames,
+  ...customWeekendFieldNames,
+];
+const MONTHLY_LOAD_PROFILE_FORM_VALUE = "customer_monthly_hourly.v1";
+
 const profileFormSchema = z.strictObject({
   workspaceId: z.uuid(),
   projectId: z.uuid(),
@@ -125,6 +147,11 @@ const profileFormSchema = z.strictObject({
   storageCapacityKwh: optionalNumber(0.000_001, 1_000),
   wallboxStatus: z.enum(["unknown", "known_absent", "known_present"]),
   evStatus: z.enum(["unknown", "known_absent", "known_present"]),
+  // Optional (Pflicht nur per Allowlist+Refine im Monats-Branch);
+  // fehlende Keys sind undefined und zählen als leer.
+  ...Object.fromEntries(
+    customProfileFieldNames.map((name) => [name, optionalNumber(0, 100_000).optional()]),
+  ),
 }).superRefine((value, ctx) => {
   if (
     value.pvStatus === "known_present"
@@ -134,6 +161,23 @@ const profileFormSchema = z.strictObject({
   }
   if (value.storageStatus === "known_present" && value.storageCapacityKwh === null) {
     ctx.addIssue({ code: "custom", path: ["storageStatus"], message: "missing storage" });
+  }
+  const record = value as unknown as Record<string, number | null>;
+  const monthly = customMonthlyFieldNames.map((name) => record[name] ?? null);
+  const weekday = customWeekdayFieldNames.map((name) => record[name] ?? null);
+  const weekend = customWeekendFieldNames.map((name) => record[name] ?? null);
+  if (value.loadProfile === MONTHLY_LOAD_PROFILE_FORM_VALUE) {
+    if (monthly.some((kwh) => kwh === null)) {
+      ctx.addIssue({ code: "custom", path: ["loadProfile"], message: "missing monthly kWh" });
+    }
+    for (const [dayName, day] of [["weekday", weekday], ["weekend", weekend]] as const) {
+      const filled = day.filter((kwh) => kwh !== null);
+      if (filled.length > 0 && filled.length < 24) {
+        ctx.addIssue({ code: "custom", path: ["loadProfile"], message: `partial ${dayName} hours` });
+      }
+    }
+  } else if ([...monthly, ...weekday, ...weekend].some((kwh) => kwh !== null)) {
+    ctx.addIssue({ code: "custom", path: ["loadProfile"], message: "custom values without monthly option" });
   }
 });
 
@@ -206,6 +250,12 @@ function parseProfileForm(formData: FormData): ParsedProfileForm | null {
   for (let index = 0; index < parsedRoofCount.data; index += 1) {
     for (const suffix of roofFieldSuffixes) allowed.add(`roof.${index}.${suffix}`);
   }
+  // F4.2: Custom-Felder nur bei Monatsprofil-Option (exakt, branchabhängig).
+  const rawLoadProfile = exactFormValue(formData, "loadProfile");
+  const monthlyBranch = rawLoadProfile === MONTHLY_LOAD_PROFILE_FORM_VALUE;
+  if (monthlyBranch) {
+    for (const name of customProfileFieldNames) allowed.add(name);
+  }
 
   const seen = new Set<string>();
   for (const name of formData.keys()) {
@@ -218,7 +268,9 @@ function parseProfileForm(formData: FormData): ParsedProfileForm | null {
   if (seen.size !== allowed.size) return null;
 
   const rawBase = Object.fromEntries(
-    baseProfileFields.map((name) => [name, exactFormValue(formData, name)]),
+    [...baseProfileFields, ...(monthlyBranch ? customProfileFieldNames : [])].map(
+      (name) => [name, exactFormValue(formData, name)],
+    ),
   );
   const parsedBase = profileFormSchema.safeParse(rawBase);
   if (!parsedBase.success || parsedBase.data.roofCount !== parsedRoofCount.data) return null;
@@ -287,6 +339,30 @@ function replacementRoofId(addressRevision: number, index: number): string {
   return `manual-roof-a${addressRevision}-r${index + 1}`;
 }
 
+// F4.2: Monats-/Tageswerte aus dem Formular (Refine garantiert
+// Vollständigkeit je Branch); null ohne Monats-Option.
+function customLoadProfileFromForm(input: ParsedProfileForm): {
+  monthlyKwh: number[];
+  weekdayHourlyKwh: number[] | null;
+  weekendHourlyKwh: number[] | null;
+} | null {
+  if (input.loadProfile !== MONTHLY_LOAD_PROFILE_FORM_VALUE) return null;
+  const record = input as unknown as Record<string, number | null | undefined>;
+  const monthlyKwh = customMonthlyFieldNames.map((name) => record[name] ?? null);
+  if (monthlyKwh.some((kwh) => kwh === null)) return null;
+  const day = (names: string[]): number[] | null => {
+    const values = names.map((name) => record[name] ?? null);
+    if (values.every((kwh) => kwh === null)) return null;
+    if (values.some((kwh) => kwh === null)) return null;
+    return values as number[];
+  };
+  return {
+    monthlyKwh: monthlyKwh as number[],
+    weekdayHourlyKwh: day(customWeekdayFieldNames),
+    weekendHourlyKwh: day(customWeekendFieldNames),
+  };
+}
+
 function buildSubmittedProfile(
   candidate: ProjectEnergyProfileCandidate,
   input: ParsedProfileForm,
@@ -308,6 +384,7 @@ function buildSubmittedProfile(
     coolingKwhPerYear: knownOrUnknown(input.coolingKwhPerYear),
     heatingAcKwhPerYear: knownOrUnknown(input.heatingAcKwhPerYear),
     hotWaterKwhPerYear: knownOrUnknown(input.hotWaterKwhPerYear),
+    customLoadProfile: knownOrUnknown(customLoadProfileFromForm(input)),
   } as EnergyProfile["consumption"];
 
   if (

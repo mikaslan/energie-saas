@@ -30,7 +30,12 @@ import { createHash } from "node:crypto";
 
 import { canonicalizeCalculationJson } from "./contract";
 import { neumaierSum, QUARTER_HOUR_SLOTS } from "./engine-v2";
-import { parseH0SlotLabel } from "./h0-load-v2";
+import {
+  h0DynamicFactor,
+  h0Season,
+  h0StaticValue,
+  parseH0SlotLabel,
+} from "./h0-load-v2";
 import {
   F401LoadError,
   loadProfileSourceV2Schema,
@@ -43,6 +48,7 @@ export const EV_PATTERN_V2_SOURCE_ID = "wmee-ev-pattern.v1" as const;
 export const COOLING_DEGREE_V2_SOURCE_ID = "wmee-cooling-degree.v1" as const;
 export const HOT_WATER_PROFILE_V2_SOURCE_ID = "wmee-hot-water-profile.v1" as const;
 export const COMMERCIAL_INTERVAL_V2_SOURCE_ID = "wmee-commercial-interval.v1" as const;
+export const MONTHLY_PROFILE_V2_SOURCE_ID = "wmee-monthly-profile.v1" as const;
 
 /** Belegte EV-Ladepattern (Rechner-Intake-Enum, v1-`chargingPatternSchema`). */
 export const EV_CHARGING_PATTERNS_V2 = ["evening", "daytime", "away"] as const;
@@ -281,6 +287,81 @@ export function buildHotWaterProfileSourceV2(input: {
     annualKwh: input.annualKwh,
     weights,
     detail: {},
+  });
+}
+
+/**
+ * Monats-Basis aus 12 Monats-kWh + 35.040 Achsen-Slotlabels (F4.2,
+ * Reonic Custom-Load-Profile): Monatswerte geben die Inter-Monats-Skala,
+ * Tagesgänge (belegt: Werktag/Wochenende; sonst H0-Tagesform als
+ * versioniertes ESTIMATE) die Intra-Monats-Form. Energieexakt auf die
+ * Monatssumme (nicht auf householdKwhPerYear). Kind `basis`.
+ */
+export function buildMonthlyProfileSourceV2(input: {
+  monthlyKwh: readonly number[];
+  weekdayHourlyKwh: readonly number[] | null;
+  weekendHourlyKwh: readonly number[] | null;
+  slotLabels: readonly unknown[];
+}): LoadProfileSourceV2 {
+  const monthlyKwh = input.monthlyKwh;
+  if (monthlyKwh.length !== 12 || monthlyKwh.some((v) => typeof v !== "number" || !Number.isFinite(v) || v < 0)) {
+    loadShapesError("Monatsprofil braucht 12 endliche Monats-kWh ≥ 0");
+  }
+  const annualKwh = neumaierSum([...monthlyKwh]);
+  if (annualKwh <= 0) loadShapesError("Monatsprofil-Summe ist 0");
+  for (const [name, day] of [
+    ["Werktag", input.weekdayHourlyKwh],
+    ["Wochenende", input.weekendHourlyKwh],
+  ] as const) {
+    if (day !== null && (day.length !== 24 || day.some((v) => typeof v !== "number" || !Number.isFinite(v) || v < 0))) {
+      loadShapesError(`Monatsprofil-Tagesgang ${name} braucht 24 endliche Stunden-kWh ≥ 0`);
+    }
+  }
+  if (!Array.isArray(input.slotLabels) || input.slotLabels.length !== QUARTER_HOUR_SLOTS) {
+    loadShapesError(`Monatsprofil braucht ${QUARTER_HOUR_SLOTS} Slotlabels`);
+  }
+  // Zwei Gaenge: Roh-Form je Slot, dann Monatssummen, dann Gewichte als
+  // Monatswert × Roh/Monatsroh (Monate exakt, Form aus Tagesgang/H0).
+  const raw = new Array<number>(QUARTER_HOUR_SLOTS);
+  const monthRaw = new Array<number>(12).fill(0);
+  for (let slot = 0; slot < QUARTER_HOUR_SLOTS; slot += 1) {
+    const date = parseH0SlotLabel(input.slotLabels[slot]);
+    const hour = Math.floor(date.quarterOfDay / 4);
+    const day = (date.weekday17 === 7 ? input.weekendHourlyKwh : input.weekdayHourlyKwh)
+      // [ESTIMATE] ohne belegten Tagesgang: H0-Tagesform statt flach —
+      // Reonic erlaubt Monats-only; Tag/Nacht-Struktur bleibt erhalten.
+      ?? null;
+    const value = day !== null
+      ? day[hour]!
+      : h0StaticValue(
+        h0Season(date.month, date.day),
+        date.weekday17,
+        date.quarterOfDay,
+      ) * h0DynamicFactor(date.dayOfYear + date.quarterOfDay / 96);
+    raw[slot] = value;
+    monthRaw[date.month - 1]! += value;
+  }
+  const weights = new Array<number>(QUARTER_HOUR_SLOTS);
+  for (let slot = 0; slot < QUARTER_HOUR_SLOTS; slot += 1) {
+    const date = parseH0SlotLabel(input.slotLabels[slot]);
+    const monthSum = monthRaw[date.month - 1]!;
+    // Roh-Summe 0 (z. B. Tagesgang überall 0 — Schema verweigert das, Gurt
+    // und Hosentraeger): Monat gleichmäßig auf seine Slots verteilen.
+    weights[slot] = monthSum > 0
+      ? monthlyKwh[date.month - 1]! * (raw[slot]! / monthSum)
+      : monthlyKwh[date.month - 1]! / QUARTER_HOUR_SLOTS * 12;
+  }
+  return buildShapeSourceV2({
+    sourceId: MONTHLY_PROFILE_V2_SOURCE_ID,
+    sourceKind: "basis",
+    annualKwh,
+    weights,
+    detail: {
+      loadProfile: "customer_monthly_hourly.v1",
+      monthlyKwh: [...monthlyKwh],
+      weekdayHourly: input.weekdayHourlyKwh !== null,
+      weekendHourly: input.weekendHourlyKwh !== null,
+    },
   });
 }
 

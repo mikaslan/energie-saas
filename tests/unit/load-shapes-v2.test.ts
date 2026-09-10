@@ -6,8 +6,10 @@ import {
   buildCoolingDegreeSourceV2,
   buildEvPatternSourceV2,
   buildHotWaterProfileSourceV2,
+  buildMonthlyProfileSourceV2,
   COMMERCIAL_INTERVAL_V2_SOURCE_ID,
   commercialIntervalWeightV2,
+  MONTHLY_PROFILE_V2_SOURCE_ID,
   COOLING_DEGREE_V2_SOURCE_ID,
   COOLING_LIMIT_DEG_C,
   EV_PATTERN_V2_SOURCE_ID,
@@ -187,6 +189,78 @@ describe("F4.1 v2 load shapes: Warmwasser-Tagesgang", () => {
 
   it("pinnt die Kuehlgrenze 22 °C wie v1", () => {
     expect(COOLING_LIMIT_DEG_C).toBe(22);
+  });
+});
+
+describe("F4.2 v2 load shapes: Monatsprofil", () => {
+  const monthly = [400, 350, 300, 250, 200, 180, 180, 200, 250, 300, 350, 400];
+  const annual = monthly.reduce((sum, kwh) => sum + kwh, 0);
+
+  it("verteilt Monate exakt, Tagesgang formt innen (belegte Profile)", () => {
+    const weekday = new Array(24).fill(1);
+    weekday[19] = 3;
+    const weekend = new Array(24).fill(0.5);
+    const labels = fullYearLabels();
+    const source = buildMonthlyProfileSourceV2({
+      monthlyKwh: monthly,
+      weekdayHourlyKwh: weekday,
+      weekendHourlyKwh: weekend,
+      slotLabels: labels,
+    });
+    expect(source.sourceId).toBe(MONTHLY_PROFILE_V2_SOURCE_ID);
+    expect(source.sourceKind).toBe("basis");
+    expect(neumaierSum(source.slotEnergyKwh)).toBeCloseTo(annual, 6);
+    // Monatssummen exakt: Januar (31 Tage) vs. Juli (31 Tage) im
+    // Verhältnis der Monatswerte.
+    const monthSum = (month: number): number => {
+      const prefix = `2020-${String(month).padStart(2, "0")}-`;
+      return source.slotEnergyKwh
+        .filter((_, slot) => labels[slot]!.startsWith(prefix))
+        .reduce((sum, kwh) => sum + kwh, 0);
+    };
+    expect(monthSum(1)).toBeCloseTo(400, 6);
+    expect(monthSum(7)).toBeCloseTo(180, 6);
+    // Tagesform: 19h trägt 3× einer Flachstunde am selben Wochentag.
+    const at = (date: string, hour: number): number =>
+      source.slotEnergyKwh[labels.indexOf(label(date, hour))]!;
+    expect(at("2020-01-06", 19) / at("2020-01-06", 10)).toBeCloseTo(3, 9);
+  });
+
+  it("fällt ohne Tagesgänge auf H0-Tagesform (ESTIMATE), Summe bleibt exakt", () => {
+    const labels = fullYearLabels();
+    const source = buildMonthlyProfileSourceV2({
+      monthlyKwh: monthly,
+      weekdayHourlyKwh: null,
+      weekendHourlyKwh: null,
+      slotLabels: labels,
+    });
+    expect(neumaierSum(source.slotEnergyKwh)).toBeCloseTo(annual, 6);
+    // H0-Nachtstruktur: 3h deutlich unter 19h am selben Januartag.
+    const at = (date: string, hour: number): number =>
+      source.slotEnergyKwh[labels.indexOf(label(date, hour))]!;
+    expect(at("2020-01-06", 19)).toBeGreaterThan(at("2020-01-06", 3) * 1.5);
+  });
+
+  it("weist leere Summen und falsche Längen fail-closed ab", () => {
+    const labels = fullYearLabels();
+    expect(() => buildMonthlyProfileSourceV2({
+      monthlyKwh: new Array(12).fill(0),
+      weekdayHourlyKwh: null,
+      weekendHourlyKwh: null,
+      slotLabels: labels,
+    })).toThrow();
+    expect(() => buildMonthlyProfileSourceV2({
+      monthlyKwh: monthly.slice(0, 11),
+      weekdayHourlyKwh: null,
+      weekendHourlyKwh: null,
+      slotLabels: labels,
+    })).toThrow();
+    expect(() => buildMonthlyProfileSourceV2({
+      monthlyKwh: monthly,
+      weekdayHourlyKwh: new Array(23).fill(1),
+      weekendHourlyKwh: null,
+      slotLabels: labels,
+    })).toThrow();
   });
 });
 

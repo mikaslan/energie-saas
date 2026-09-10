@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, type FormEvent } from "react";
+import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import type { ProjectEnergyProfileCandidate } from "@/modules/energy";
 import {
   saveProjectEnergyProfileAction,
@@ -18,6 +18,29 @@ function fieldValue(field: KnownOrUnknown): string | number {
   return field.status === "known" && (
     typeof field.value === "string" || typeof field.value === "number"
   ) ? field.value : "";
+}
+
+const MONTH_NAMES_DE = [
+  "Januar", "Februar", "März", "April", "Mai", "Juni",
+  "Juli", "August", "September", "Oktober", "November", "Dezember",
+];
+const HOUR_LABELS = Array.from({ length: 24 }, (_, hour) => `${hour} Uhr`);
+
+type CustomLoadProfileField = {
+  status: "known";
+  value: {
+    monthlyKwh: readonly unknown[];
+    weekdayHourlyKwh: readonly unknown[] | null;
+    weekendHourlyKwh: readonly unknown[] | null;
+  };
+} | { status: string; value?: unknown };
+
+function customArrayValue(field: CustomLoadProfileField, key: "monthlyKwh" | "weekdayHourlyKwh" | "weekendHourlyKwh", index: number): string | number {
+  if (field.status !== "known" || field.value === undefined) return "";
+  const list: unknown = (field.value as Record<string, unknown>)[key];
+  if (!Array.isArray(list)) return "";
+  const entry = list[index];
+  return typeof entry === "number" ? entry : "";
 }
 
 function assetStatusLabel(value: string): string {
@@ -104,6 +127,15 @@ export function EnergyProfileEditor({
     initialState,
   );
   const formRef = useRef<HTMLFormElement | null>(null);
+  const [loadProfile, setLoadProfile] = useState(() =>
+    profile.consumption.loadProfile.status === "known"
+      ? String(profile.consumption.loadProfile.value)
+      : "",
+  );
+  const customProfile = (profile.consumption.customLoadProfile ?? {
+    status: "unknown",
+  }) as CustomLoadProfileField;
+  const monthlySelected = loadProfile === "customer_monthly_hourly.v1";
   const statusRef = useRef<HTMLParagraphElement | null>(null);
   const message = messageFor(state);
   const failed = state.status !== "idle" && state.status !== "success";
@@ -251,7 +283,7 @@ export function EnergyProfileEditor({
           </label>
           <label htmlFor="energy-load-profile" className={labelClass}>
             Lastprofil
-            <select id="energy-load-profile" name="loadProfile" defaultValue={fieldValue(profile.consumption.loadProfile)} className={inputClass}>
+            <select id="energy-load-profile" name="loadProfile" defaultValue={fieldValue(profile.consumption.loadProfile)} onChange={(event) => setLoadProfile(event.currentTarget.value)} className={inputClass}>
               <option value="">Unbekannt</option>
               <option value="wmee_household_hourly.v1">Standard-Haushalt stündlich</option>
               <option value="customer_monthly_hourly.v1">Kunden-Monatsprofil stündlich</option>
@@ -289,6 +321,44 @@ export function EnergyProfileEditor({
           </label>
         </div>
       </fieldset>
+
+      {monthlySelected ? (
+        <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5" data-energy-custom-profile="true">
+          <legend className="px-1 text-base font-semibold text-slate-950">Custom-Lastprofil (Monatswerte)</legend>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Zwölf Monatsverbräuche in kWh (Pflicht, Summe &gt; 0). Optional je
+            ein Tagesgang für Werktage und Wochenenden (je 24 Stunden, nur
+            vollständig oder leer); ohne Tagesgang trägt die Stunde die
+            H0-Tagesform.
+          </p>
+          <div className="mt-4 grid min-w-0 grid-cols-2 gap-4 sm:grid-cols-4" role="group" aria-label="Monatsverbräuche in kWh">
+            {MONTH_NAMES_DE.map((month, index) => (
+              <label key={month} className={labelClass}>
+                {month}
+                <input name={`customMonthly.${index}`} type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={customArrayValue(customProfile, "monthlyKwh", index)} className={inputClass} />
+              </label>
+            ))}
+          </div>
+          <div className="mt-5 grid min-w-0 gap-5">
+            {([
+              ["customWeekday", "weekdayHourlyKwh", "Typischer Werktag (kWh je Stunde, optional)"],
+              ["customWeekend", "weekendHourlyKwh", "Typisches Wochenende (kWh je Stunde, optional)"],
+            ] as const).map(([prefix, key, legend]) => (
+              <div key={prefix} className="min-w-0">
+                <p className="text-sm font-medium text-slate-800">{legend}</p>
+                <div className="mt-2 grid min-w-0 grid-cols-4 gap-2 sm:grid-cols-8" role="group" aria-label={legend}>
+                  {HOUR_LABELS.map((hourLabel, hour) => (
+                    <label key={hour} className="grid min-w-0 gap-1 text-xs font-medium text-slate-700">
+                      {hourLabel}
+                      <input name={`${prefix}.${hour}`} type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={customArrayValue(customProfile, key, hour)} className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1" />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
 
       <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5">
         <legend className="px-1 text-base font-semibold text-slate-950">Bestandsanlagen</legend>

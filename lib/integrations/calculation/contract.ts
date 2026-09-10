@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "858dce4cc80af6591deb8a80f8fc7143cd8a74defa3430c906b705eabbf29b39" as const;
+  "96347c0d4e94fa047bec59d834f6fbb402543c37587d80181cdb5a607c54e4c7" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -117,6 +117,30 @@ const roofTypeSchema = z.enum(["pitched", "flat"]);
 const shadingSchema = z.enum(["none", "light", "medium", "strong"]);
 const chargingPatternSchema = z.enum(["evening", "daytime", "away"]);
 
+// F4.2 Custom-Lastprofil: 12 Monats-kWh (Pflicht) + je optional ein
+// Tagesgang Werktag/Wochenende (24 Stunden, Reonic-Semantik). Monatswerte
+// sind absolut (rechnungnah); Tagesgänge werden energieexakt normiert.
+// Leere Monatssummen und leere Tagesgänge verweigert das Schema
+// (fail-closed statt stiller H0-Form); halb belegte Tage verweigert die
+// Formularebene (Felder nur vollständig oder leer).
+export const customLoadProfileValueSchema = z.strictObject({
+  monthlyKwh: z.array(nonNegative(100_000)).length(12),
+  weekdayHourlyKwh: z.array(nonNegative(100_000)).length(24).nullable(),
+  weekendHourlyKwh: z.array(nonNegative(100_000)).length(24).nullable(),
+}).superRefine((value, ctx) => {
+  if (value.monthlyKwh.every((kwh) => kwh === 0)) {
+    ctx.addIssue({ code: "custom", message: "Monatssumme ist 0" });
+  }
+  for (const [index, day] of [
+    value.weekdayHourlyKwh,
+    value.weekendHourlyKwh,
+  ].entries()) {
+    if (day !== null && day.every((kwh) => kwh === 0)) {
+      ctx.addIssue({ code: "custom", message: `Tagesgang ${index} ist 0` });
+    }
+  }
+});
+
 export const siteEnergyProfileV1Schema = z.strictObject({
   schemaVersion: z.literal(SITE_ENERGY_PROFILE_SCHEMA_VERSION),
   // property/roomwise/manual erhalten je einen eigenen Contract-Slice. Ein
@@ -151,6 +175,11 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     coolingKwhPerYear: knownOrUnknown(nonNegative(100_000)),
     heatingAcKwhPerYear: knownOrUnknown(nonNegative(100_000)),
     hotWaterKwhPerYear: knownOrUnknown(nonNegative(20_000)),
+    // F4.2 Custom-Lastprofil (Reonic: Monatsverteilung + optionaler
+    // Stundenverteilung Werktag/Wochenende). Additiv-optional: Altzeilen
+    // ohne Feld bleiben gueltig. Summen-/Vollstaendigkeitsregeln s.
+    // customLoadProfileValueSchema (kein stilles H0 ohne Werte).
+    customLoadProfile: knownOrUnknown(customLoadProfileValueSchema).optional(),
   }),
   existingAssets: z.strictObject({
     pv: pvAssetSchema,

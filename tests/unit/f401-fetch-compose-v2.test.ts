@@ -284,7 +284,9 @@ describe("F4.1 v2 load sources from profile", () => {
         loadProfile: { status: "known", value: "gewerbe_phantasie.v9", source: "customer_input" },
       }),
     }, loadContext())).toThrow();
-    for (const value of ["wmee_household_hourly.v1", "customer_monthly_hourly.v1", null]) {
+    // F4.2: customer_monthly_hourly.v1 ohne Monatswerte ist kein H0-Fall
+    // mehr, sondern fail-closed (eigener Test oben).
+    for (const value of ["wmee_household_hourly.v1", null]) {
       const sources = buildLoadSourcesFromProfileV2({
         consumption: consumption({
           evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
@@ -410,6 +412,61 @@ describe("F4.1 v2 fetch compose", () => {
       .toBeCloseTo(1.15 / 0.18, 6);
     expect(composed.provenance.loadSourceIds).toContain("wmee-commercial-interval.v1");
     expect(composed.provenance.loadSourceIds).not.toContain("wmee-bdew-h0-dyn-basis.v1");
+  });
+
+  it("formt Monatsprofil aus Monatswerten als Basis, sonst fail-closed", () => {
+    const monthly = {
+      status: "known" as const,
+      value: {
+        monthlyKwh: [400, 350, 300, 250, 200, 180, 180, 200, 250, 300, 350, 400],
+        weekdayHourlyKwh: null,
+        weekendHourlyKwh: null,
+      },
+      source: "customer_input" as const,
+    };
+    const monthlyOption = {
+      status: "known" as const,
+      value: "customer_monthly_hourly.v1",
+      source: "customer_input" as const,
+    };
+    const base = {
+      evKmPerYear: { status: "unknown", value: null, source: "not_collected" },
+      householdKwhPerYear: { status: "unknown", value: null, source: "not_collected" },
+    };
+    // Belegt: Monats-Basis mit Monatssumme, ohne H0-Quelle.
+    const sources = buildLoadSourcesFromProfileV2({
+      consumption: consumption({ ...base, loadProfile: monthlyOption, customLoadProfile: monthly }),
+    }, loadContext());
+    expect(sources.map((source) => source.sourceKind)).toEqual(["basis"]);
+    expect(sources[0]!.sourceId).toBe("wmee-monthly-profile.v1");
+    expect(neumaierSum(sources[0]!.slotEnergyKwh)).toBeCloseTo(3360, 6);
+    // Option ohne Werte: bislang still H0, jetzt fail-closed.
+    expect(() => buildLoadSourcesFromProfileV2({
+      consumption: consumption({ ...base, loadProfile: monthlyOption }),
+    }, loadContext())).toThrow();
+    // Werte ohne Option: keine doppelte Basisdefinition.
+    expect(() => buildLoadSourcesFromProfileV2({
+      consumption: consumption({ ...base, customLoadProfile: monthly }),
+    }, loadContext())).toThrow();
+    // Widerspruch Jahres-kWh vs. Monatssumme (3360): fail-closed.
+    expect(() => buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        ...base,
+        householdKwhPerYear: { status: "known", value: 4200, source: "customer_metered" },
+        loadProfile: monthlyOption,
+        customLoadProfile: monthly,
+      }),
+    }, loadContext())).toThrow();
+    // Rundungsband (±0,06): 3360,05 passt, Haushalt unbekannt sowieso.
+    const rounded = buildLoadSourcesFromProfileV2({
+      consumption: consumption({
+        ...base,
+        householdKwhPerYear: { status: "known", value: 3360.05, source: "customer_metered" },
+        loadProfile: monthlyOption,
+        customLoadProfile: monthly,
+      }),
+    }, loadContext());
+    expect(rounded[0]!.sourceId).toBe("wmee-monthly-profile.v1");
   });
 
   it("verweigert gekreuzte Standort-Echos und fehlende Basis fail-closed", async () => {

@@ -36,11 +36,13 @@ import {
   degradationFactorV2,
 } from "./existing-pv-v2";
 import { buildH0BasisSourceV2 } from "./h0-load-v2";
+import { customLoadProfileValueSchema } from "./contract";
 import {
   buildCommercialIntervalSourceV2,
   buildCoolingDegreeSourceV2,
   buildEvPatternSourceV2,
   buildHotWaterProfileSourceV2,
+  buildMonthlyProfileSourceV2,
 } from "./load-shapes-v2";
 import {
   MUNEER_WEIGHTS_V2_VERSION,
@@ -132,10 +134,31 @@ const RESIDENTIAL_LOAD_PROFILES_V2 = [
 ] as const;
 
 const COMMERCIAL_LOAD_PROFILE_V2 = "commercial_interval.v1";
+const MONTHLY_LOAD_PROFILE_V2 = "customer_monthly_hourly.v1";
+
+// F4.2: belegtes Custom-Lastprofil (12 Monats-kWh + optionale Tagesgänge)
+// oder null (nicht belegt). Unbekannt/fehlend ist kein Fehler an sich —
+// erst die Monatsprofil-Option ohne Werte bricht fail-closed ab.
+function parseCustomLoadProfile(consumption: unknown): z.infer<typeof customLoadProfileValueSchema> | null {
+  const holder = (consumption ?? {}) as { customLoadProfile?: unknown };
+  const entry = holder.customLoadProfile as
+    | { status?: unknown; value?: unknown }
+    | undefined;
+  if (entry === undefined || entry.status !== "known") return null;
+  const parsed = customLoadProfileValueSchema.safeParse(entry.value);
+  if (!parsed.success) composeError("Custom-Lastprofil ist ungueltig");
+  return parsed.data;
+}
 
 const consumptionSchema = z.object({
   householdKwhPerYear: knownValueSchema,
   loadProfile: loadProfileSchema.optional(),
+  // F4.2 Custom-Lastprofil (known/unknown-Hülle; Detailprüfung in
+  // parseCustomLoadProfile gegen das strikte Vertragsschema).
+  customLoadProfile: z.object({
+    status: z.string(),
+    value: z.unknown().optional(),
+  }).optional(),
   evKmPerYear: knownValueSchema.optional(),
   evChargingPattern: evPatternSchema.optional(),
   heatPumpKwhPerYear: knownValueSchema.optional(),
@@ -175,7 +198,8 @@ export type LoadContextV2 = {
 
 /**
  * Belegtes Verbrauchsprofil -> Provenienz-Quellen: Haushalt als
- * Pflicht-Basis in BDEW-H0-Form, Gewerbe als v1-exakte Intervall-Basis;
+ * Pflicht-Basis in BDEW-H0-Form, Gewerbe als v1-exakte Intervall-Basis,
+ * Monatsprofil-Option als Monats-Basis aus belegten Monatswerten (F4.2);
  * Waermepumpe nach Heizgradstunden
  * (T2m-Wetterjahr); EV nach belegtem Ladepattern (km x Planungsfaktor),
  * Kuehlung nach Kuehlgradstunden, Warmwasser nach Tagesgang (v1-Ports,
@@ -200,6 +224,19 @@ export function buildLoadSourcesFromProfileV2(
   const commercial = loadProfile !== undefined
     && loadProfile.status === "known"
     && loadProfile.value === COMMERCIAL_LOAD_PROFILE_V2;
+  // F4.2: Monatsprofil-Option verlangt belegte Monatswerte (bislang lief
+  // sie still als H0 — erfundene Form). Monatswerte ohne Option ebenfalls
+  // fail-closed (keine doppelte Basisdefinition).
+  const monthlyOption = loadProfile !== undefined
+    && loadProfile.status === "known"
+    && loadProfile.value === MONTHLY_LOAD_PROFILE_V2;
+  const monthly = parseCustomLoadProfile(consumption);
+  if (monthlyOption && monthly === null) {
+    composeError("Monatsprofil ohne Monatswerte ist nicht belegt");
+  }
+  if (!monthlyOption && monthly !== null) {
+    composeError("Monatswerte ohne Monatsprofil-Option sind nicht belegt");
+  }
   if (
     loadProfile !== undefined
     && loadProfile.status === "known"
@@ -212,18 +249,34 @@ export function buildLoadSourcesFromProfileV2(
   const basisKwh = knownKwh(
     consumption.householdKwhPerYear,
     commercial ? "Gewerbe" : "Haushalt",
-    true,
-  ) as number;
+    // F4.2: Monatssumme ist die Jahres-Basis (Reonic: Summe separat);
+    // householdKwhPerYear muss dann unbekannt sein oder im Rundungsband
+    // (±0,06 kWh = 12 × halber Cent) liegen — sonst Widerspruch.
+    monthly !== null ? false : true,
+  ) as number | null;
+  if (monthly !== null) {
+    const monthlySum = monthly.monthlyKwh.reduce((sum, kwh) => sum + kwh, 0);
+    if (basisKwh !== null && Math.abs(monthlySum - basisKwh) > 0.06) {
+      composeError("Monatssumme widerspricht der Jahres-kWh");
+    }
+  }
   const sources: LoadProfileSourceV2[] = [
-    commercial
-      ? buildCommercialIntervalSourceV2({
-        annualKwh: basisKwh,
+    monthly !== null
+      ? buildMonthlyProfileSourceV2({
+        monthlyKwh: monthly.monthlyKwh,
+        weekdayHourlyKwh: monthly.weekdayHourlyKwh,
+        weekendHourlyKwh: monthly.weekendHourlyKwh,
         slotLabels: loadContext.slotLabels,
       })
-      : buildH0BasisSourceV2({
-        annualKwh: basisKwh,
-        slotLabels: loadContext.slotLabels,
-      }),
+      : commercial
+        ? buildCommercialIntervalSourceV2({
+          annualKwh: basisKwh as number,
+          slotLabels: loadContext.slotLabels,
+        })
+        : buildH0BasisSourceV2({
+          annualKwh: basisKwh as number,
+          slotLabels: loadContext.slotLabels,
+        }),
   ];
   const evKm = knownKwh(consumption.evKmPerYear, "EV", false);
   if (evKm !== null && evKm > 0) {

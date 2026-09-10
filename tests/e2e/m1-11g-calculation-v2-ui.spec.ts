@@ -415,3 +415,172 @@ test("M1-11g: v2-Ergebnis wird nach Bedarfsrevision als historisch gezeigt", asy
   await expect(stale.getByText("Historische Viertelstunden-Planungsrechnung")).toBeVisible();
   await expect(stale.getByText(formatKwh(generationKwh))).toBeVisible();
 });
+
+test("M1-11g: F4.2-Monatsprofil formt die v2-Last nach Monatswerten", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  // Monatssumme 4200 == Haushalts-kWh (konsistent), Januar-Spitze 450,
+  // Juli-Senke 230, ohne Tagesgänge (H0-Fallback).
+  const monthlyKwh = [450, 400, 350, 300, 250, 230, 230, 280, 330, 380, 450, 550];
+  await seedProjectGraph(ids, {
+    customLoadProfile: {
+      monthlyKwh,
+      weekdayHourlyKwh: null,
+      weekendHourlyKwh: null,
+    },
+  });
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Monatsprofil-Kette erreichte kein currentV2.");
+  }
+  const result = expected.calculation.resultV2;
+  const january = result.value.monthly[0]!;
+  const july = result.value.monthly[6]!;
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, state().editorEmail, projectPath);
+
+  const section = page.locator('[data-energy-calculation-state="currentV2"]');
+  await expect(section).toBeVisible();
+  // Monatsform sichtbar: Januar-Netzbezug deutlich über Juli (wenig PV,
+  // viel Last im Januar; viel PV, wenig Last im Juli).
+  await expect(section.getByText(formatKwh(january.gridImportKwh))).toBeVisible();
+  expect(january.gridImportKwh).toBeGreaterThan(july.gridImportKwh * 1.5);
+
+  const axe = await new AxeBuilder({ page })
+    .include('[data-energy-calculation-v2-result="true"]')
+    .analyze();
+  expect(
+    axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical"),
+    "Axe serious/critical in der v2-Monatsprofilansicht",
+  ).toEqual([]);
+});
+
+test("M1-11g: F4.2-Monatsformular speichert Monatswerte als known-Profil", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  // Kandidaturfähiger Snapshot (Projektion braucht echte Rechner-Inputs;
+  // Minimal-Snapshot des Ketten-Fixtures projiziert nicht).
+  await poolOne(async (pool) => withTenantOn(pool, workspaceId, async (tx) => {
+    const snapshot = {
+      schemaVersion: "wmee-solar-snapshot.v1",
+      calculatedAt: new Date().toISOString(),
+      branch: "new_installation",
+      questionnaireVariant: "short",
+      resultIntegrity: "client_reported_unverified",
+      inputs: {
+        roofs: [{
+          id: "dach-sued",
+          areaM2: 52,
+          azimuthDeg: 5,
+          tiltDeg: 35,
+          type: "pitched",
+          shading: "light",
+        }],
+        consumption: {
+          householdKwhPerYear: 4200,
+          electricityPriceCentsPerKwh: 36,
+          annualPriceIncreasePercent: 3,
+          evKmPerYear: 12000,
+          evChargingPattern: "evening",
+          heatPumpKwhPerYear: 0,
+          coolingKwhPerYear: 0,
+          heatingAcKwhPerYear: 0,
+          hotWaterKwhPerYear: null,
+          buildingType: null,
+          buildingYear: null,
+          heatedAreaM2: null,
+        },
+        existingInstallation: null,
+        answeredFieldIds: ["stromverbrauch", "eauto", "ladeort", "waermepumpe", "klimaKuehlen", "klimaHeizen", "warmwasser", "verschattung"],
+      },
+      provenance: {
+        roof: "user_drawn",
+        consumption: "metered_kwh",
+        electricityPrice: "customer",
+        annualPriceIncrease: "customer",
+        investment: "market_estimate",
+      },
+      result: { mode: "new_installation" },
+    };
+    await tx.execute(
+      `update calculator_snapshot set snapshot = '${JSON.stringify(snapshot)}'::jsonb
+       where workspace_id = '${workspaceId}'::uuid and project_id = '${ids.projectId}'::uuid`,
+    );
+  }));
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+
+  const customBlock = page.locator('[data-energy-custom-profile="true"]');
+  await expect(customBlock).toHaveCount(0);
+  await page.getByLabel("Lastprofil").selectOption("customer_monthly_hourly.v1");
+  await expect(customBlock).toBeVisible();
+  // 12 Monate + 24 Werktag + 24 Wochenende.
+  await expect(customBlock.locator('input[type="number"]')).toHaveCount(60);
+  // Monatssumme 4200 == Haushalts-kWh (konsistent).
+  const monthlyKwh = [450, 400, 350, 300, 250, 230, 230, 280, 330, 380, 450, 550];
+  for (const [index, kwh] of monthlyKwh.entries()) {
+    await customBlock.locator(`input[name="customMonthly.${index}"]`).fill(String(kwh));
+  }
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  await expect(page.getByText(/Profilrevision \d+ wurde gespeichert/)).toBeVisible();
+
+  // Gespeichert: Monatswerte stehen als known-Profil im Kontext.
+  const saved = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  const custom = (saved?.profile as unknown as {
+    value?: { consumption?: { customLoadProfile?: { status?: unknown; value?: unknown } } };
+  } | null)?.value?.consumption?.customLoadProfile;
+  expect(custom?.status).toBe("known");
+  expect((custom?.value as { monthlyKwh?: unknown })?.monthlyKwh).toEqual(monthlyKwh);
+});

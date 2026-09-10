@@ -959,6 +959,19 @@ function normalizeProfile(
         submitted.consumption.hotWaterKwhPerYear,
         candidate.consumption.hotWaterKwhPerYear,
       ) as SiteEnergyProfileV1["consumption"]["hotWaterKwhPerYear"],
+      // F4.2 Custom-Lastprofil (optional; fehlt in Altzeilen).
+      customLoadProfile: normalizeKnownField(
+        submitted.consumption.customLoadProfile ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.customLoadProfile ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["customLoadProfile"],
     },
     existingAssets: {
       pv: normalizeAsset(submitted.existingAssets.pv, candidate.existingAssets.pv) as SiteEnergyProfileV1["existingAssets"]["pv"],

@@ -287,6 +287,58 @@ describe("M1-07 Energieprofil-Actions", () => {
     );
   });
 
+  it("speichert das F4.2-Monatsprofil mit 60 Feldern und weist Branch-Brüche ab", async () => {
+    const monthly = validProfileForm();
+    monthly.set("loadProfile", "customer_monthly_hourly.v1");
+    const months = [400, 350, 300, 250, 200, 180, 180, 200, 250, 300, 350, 400];
+    months.forEach((kwh, index) => monthly.set(`customMonthly.${index}`, String(kwh)));
+    for (let hour = 0; hour < 24; hour += 1) {
+      monthly.set(`customWeekday.${hour}`, "1");
+      monthly.set(`customWeekend.${hour}`, "0.5");
+    }
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, monthly))
+      .resolves.toMatchObject({ status: "success" });
+    expect(deps.saveProfile).toHaveBeenCalledWith(
+      {},
+      { workspaceId: WORKSPACE_ID, actor: "member-1" },
+      expect.objectContaining({
+        profile: expect.objectContaining({
+          consumption: expect.objectContaining({
+            customLoadProfile: {
+              status: "known",
+              value: {
+                monthlyKwh: months,
+                weekdayHourlyKwh: new Array(24).fill(1),
+                weekendHourlyKwh: new Array(24).fill(0.5),
+              },
+              source: "operator_reviewed",
+            },
+          }),
+        }),
+      }),
+    );
+
+    // Monats-Option ohne Monatsfelder: invalid (kein stilles H0).
+    const missing = validProfileForm();
+    missing.set("loadProfile", "customer_monthly_hourly.v1");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, missing))
+      .resolves.toEqual({ status: "invalid" });
+
+    // Monatsfelder ohne Monats-Option: invalid (keine Doppelbasis).
+    const stray = validProfileForm();
+    stray.set("customMonthly.0", "400");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, stray))
+      .resolves.toEqual({ status: "invalid" });
+
+    // Halb belegter Tagesgang: invalid.
+    const partial = validProfileForm();
+    partial.set("loadProfile", "customer_monthly_hourly.v1");
+    months.forEach((kwh, index) => partial.set(`customMonthly.${index}`, String(kwh)));
+    partial.set("customWeekday.0", "1");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, partial))
+      .resolves.toEqual({ status: "invalid" });
+  });
+
   it("weist zusätzliche, fehlende und wiederholte Fachfelder vor jeder Abhängigkeit zurück", async () => {
     const additional = validProfileForm();
     additional.set("unexpected", "browser-trust");

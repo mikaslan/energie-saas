@@ -154,7 +154,15 @@ export async function seedIsolatedWorkspace(actorId: string): Promise<string> {
 
 export async function seedProjectGraph(
   ids: SeedIds,
-  options: { branch?: "new_installation" | "existing_installation" } = {},
+  options: {
+    branch?: "new_installation" | "existing_installation";
+    // F4.2: belegtes Custom-Lastprofil (Monats-Option + Monatswerte).
+    customLoadProfile?: {
+      monthlyKwh: number[];
+      weekdayHourlyKwh: number[] | null;
+      weekendHourlyKwh: number[] | null;
+    };
+  } = {},
 ): Promise<void> {
   const branch = options.branch ?? "new_installation";
   const profile = {
@@ -176,6 +184,24 @@ export async function seedProjectGraph(
             source: "rechner_branch" as const,
             peakPowerKwp: 8,
             commissioningYear: 2015,
+          },
+        },
+      }
+      : {}),
+    // F4.2: Monatsprofil-Option mit belegten Monatswerten.
+    ...(options.customLoadProfile !== undefined
+      ? {
+        consumption: {
+          ...GOLDEN_REQUEST.energyProfile.consumption,
+          loadProfile: {
+            status: "known" as const,
+            value: "customer_monthly_hourly.v1",
+            source: "customer_input" as const,
+          },
+          customLoadProfile: {
+            status: "known" as const,
+            value: options.customLoadProfile,
+            source: "customer_input" as const,
           },
         },
       }
