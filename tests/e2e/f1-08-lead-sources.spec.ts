@@ -156,7 +156,7 @@ test("F1.8-E2E-01: Editor legt Quelle an, lädt sie persistiert, archiviert und 
   await row.getByRole("button", { name: "Bearbeiten" }).click();
   await expect(row.getByLabel("Name")).toHaveValue("wmee-rechner-v5");
   await row.getByLabel("Bereich").selectOption("commercial");
-  await row.getByRole("button", { name: "Speichern" }).click();
+  await row.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.getByText("Lead-Quelle aktualisiert.", { exact: true })).toBeVisible();
   // Der Domain-Badge im Listeneintrag (nicht die Select-Optionen).
   await expect(row.locator("span").filter({ hasText: /^Gewerbe$/ })).toBeVisible();

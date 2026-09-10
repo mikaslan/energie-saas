@@ -142,8 +142,8 @@ test("F1-10-E2E-01: Regel setzen → Vorschlag → als Key Account übernehmen",
   await loginWithRealOtp(page, data.editorEmail, settingsPath);
   await expect(page.getByRole("heading", { name: "Lead-Quellen", level: 1 })).toBeVisible();
   const row = page.getByRole("listitem").filter({ hasText: "F110 Routing" });
-  await row.getByLabel("Standard-Betreuer für F110 Routing").selectOption({ label: data.editorEmail });
-  await row.getByRole("button", { name: "Speichern", exact: true }).click();
+  await row.getByLabel("Standard-Betreuer für F110 Routing", { exact: true }).selectOption({ label: data.editorEmail });
+  await row.getByRole("button", { name: "Standard-Betreuer für F110 Routing speichern" }).click();
   await expect(page.getByText("Standard-Betreuer gespeichert.", { exact: true })).toBeVisible();
   await expect(row.getByText(`Aktuell: ${data.editorEmail}`)).toBeVisible();
 

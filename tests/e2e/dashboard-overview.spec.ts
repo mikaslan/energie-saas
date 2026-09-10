@@ -115,7 +115,7 @@ test("DASH-08: angelegte Lead-Quelle erscheint als Dashboard-Quellenkarte", asyn
 
   await page.getByLabel("Name").fill("Messe-Portal");
   await page.getByRole("button", { name: "Anlegen" }).click();
-  await expect(page.getByText("Messe-Portal")).toBeVisible();
+  await expect(page.getByText("Messe-Portal", { exact: true })).toBeVisible();
 
   await page.goto(dashboardPath);
   const sources = page.locator('[data-dashboard-sources="true"]');
