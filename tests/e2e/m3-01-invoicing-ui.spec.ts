@@ -427,6 +427,43 @@ test("M3-01-E2E-01: Gruppe anlegen → Rechnung anlegen → Ausstellen → Verse
   expect(errors, "Browser-Konsole und Page-Errors der Editor-Journey").toEqual([]);
 });
 
+test("F5-02-E2E-01: Entwurf anlegen → Detail öffnen → Kopf, Skonto, Positionen-Leerzustand", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  const data = state();
+  const errors = trackBrowserErrors(page);
+
+  await grantInvoicingCapability();
+  await seedInvoicingSettings();
+
+  await page.goto(invoicesPath());
+  await loginWithRealOtp(page, data.editorEmail, invoicesPath());
+
+  await page.getByRole("button", { name: "Rechnung anlegen" }).click();
+  const createDialog = page.getByRole("dialog", { name: "Rechnung anlegen" });
+  await createDialog.getByLabel("Name").fill("F502-Detailanlage");
+  await createDialog.getByLabel("Fällig am").fill("2026-12-31");
+  await createDialog.getByRole("button", { name: "Als Entwurf anlegen" }).click();
+
+  const row = page.getByRole("row").filter({ hasText: "F502-Detailanlage" });
+  await expect(row).toBeVisible();
+  await row.getByRole("link", { name: "F502-Detailanlage" }).click();
+
+  const detail = page.locator("main");
+  await expect(detail.getByText("Rechnung · Entwurf")).toBeVisible();
+  await expect(detail.getByText("F502-Detailanlage")).toBeVisible();
+  const amounts = detail.locator('[data-invoice-detail="amounts"]');
+  await expect(amounts.getByText("Kein Skonto vereinbart.")).toBeVisible();
+  const lines = detail.locator('[data-invoice-detail="lines"]');
+  await expect(lines.getByText("Noch keine Positionen erfasst.")).toBeVisible();
+  await expect(
+    detail.getByRole("link", { name: "← Zurück zu Rechnungen" }),
+  ).toBeVisible();
+
+  expect(errors, "Browser-Konsole und Page-Errors der Detail-Journey").toEqual([]);
+});
+
 test("M3-01-E2E-02: Statusfilter, Suche und Archiv-Achse", async ({ page }) => {
   test.setTimeout(150_000);
   const data = state();

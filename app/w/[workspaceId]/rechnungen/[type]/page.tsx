@@ -354,7 +354,12 @@ export default async function InvoicingDocumentListPage(
                   return (
                     <tr key={document.id} className="border-b border-slate-100 last:border-b-0">
                       <td className="px-3 py-3 text-sm font-medium text-slate-900">
-                        {document.name}
+                        <Link
+                          href={`/w/${workspaceId}/rechnungen/${type}/${document.id}`}
+                          className="text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600"
+                        >
+                          {document.name}
+                        </Link>
                         {document.number !== null ? (
                           <span className="mt-0.5 block text-xs font-normal text-slate-500">{document.number}</span>
                         ) : null}

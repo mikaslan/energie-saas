@@ -248,6 +248,11 @@ export const COMMERCIAL_DOCUMENT_LIST_COMMAND_VERSION =
   "commercial-document-list-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_LIST_VERSION =
   "commercial-document-list.v1" as const;
+// F5-02: Belegdetail (Dokument + positionsgeordnete Zeilen), rein lesend.
+export const COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION =
+  "commercial-document-detail-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_DETAIL_VERSION =
+  "commercial-document-detail.v1" as const;
 export const INVOICING_REPORT_COMMAND_VERSION = "invoicing-report-command.v1" as const;
 export const INVOICING_REPORT_VERSION = "invoicing-report.v1" as const;
 export const INVOICING_REPORT_CSV_VERSION = "invoicing-report-csv.v1" as const;
@@ -622,6 +627,24 @@ export const commercialDocumentV1Schema = z.strictObject({
   permissions: z.strictObject({ canWrite: z.boolean() }),
 });
 export type CommercialDocumentV1 = z.infer<typeof commercialDocumentV1Schema>;
+
+export const commercialDocumentDetailCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION),
+  type: commercialDocumentTypeSchema,
+  documentId: z.string().uuid(),
+});
+export type CommercialDocumentDetailCommandV1 = z.infer<
+  typeof commercialDocumentDetailCommandV1Schema
+>;
+
+export const commercialDocumentDetailV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_DETAIL_VERSION),
+  document: commercialDocumentV1Schema,
+  lines: z.array(commercialDocumentLineV1Schema),
+});
+export type CommercialDocumentDetailV1 = z.infer<
+  typeof commercialDocumentDetailV1Schema
+>;
 
 // ═══════════════════════════════════════════════════════════════════════
 // M301-06 · Liste + Filter je Typ (Spec §7). Keyset-Cursor, Archiv-Achse,

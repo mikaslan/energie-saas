@@ -9,6 +9,7 @@ import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { createHash } from "node:crypto";
 import {
+  COMMERCIAL_DOCUMENT_DETAIL_VERSION,
   COMMERCIAL_DOCUMENT_GROUP_VERSION,
   COMMERCIAL_DOCUMENT_LINE_VERSION,
   COMMERCIAL_DOCUMENT_LIST_VERSION,
@@ -35,6 +36,8 @@ import {
   commercialDocumentVoidCommandV1Schema,
   commercialDocumentGroupV1Schema,
   commercialDocumentGroupArchiveCommandV1Schema,
+  commercialDocumentDetailCommandV1Schema,
+  commercialDocumentDetailV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineV1Schema,
   invoicingReportCommandV1Schema,
@@ -47,6 +50,8 @@ import {
   WORKSPACE_DOCUMENT_NUMBER_FORMAT_LIST_VERSION,
   WORKSPACE_INVOICING_SETTINGS_VERSION,
   type CommercialDocumentCommandV1,
+  type CommercialDocumentDetailCommandV1,
+  type CommercialDocumentDetailV1,
   type CommercialDocumentGroupCommandV1,
   type CommercialDocumentIssueCommandV1,
   type CommercialDocumentArchiveCommandV1,
@@ -1603,6 +1608,74 @@ export async function listDocuments(
     totalCount,
     nextCursor,
     permissions: { canWrite },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F5-02 · Belegdetail (Dokument + Zeilen), rein lesend.
+// Fail-closed ohne Typ-Orakel: fehlendes Dokument, Typ-Mismatch und
+// Fremd-Workspace antworten identisch mit NotFound.
+// ═══════════════════════════════════════════════════════════════════════
+
+type DetailLineRow = {
+  id: string;
+  document_id: string;
+  position: number;
+  name: string;
+  quantity_milli: number;
+  unit: string;
+  net_cents: number;
+  tax_cents: number;
+  gross_cents: number;
+  tax_rate_bps: number;
+  [key: string]: unknown;
+};
+
+export async function getDocumentDetail(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentDetailCommandV1,
+): Promise<CommercialDocumentDetailV1> {
+  requireInvoicingRead(ctx);
+  const parsed = commercialDocumentDetailCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const command = parsed.data;
+
+  const doc = await tx.execute<DocumentDtoRow>(sql`
+    ${DOCUMENT_DTO_SELECT}
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${command.documentId}::uuid
+     limit 1
+  `);
+  const row = doc.rows[0];
+  if (!row || row.type !== command.type) throw new InvoicingNotFoundError();
+  const canWrite = can(ctx, "invoicing.write");
+  const document = toDocumentV1(row, canWrite);
+
+  const lines = await tx.execute<DetailLineRow>(sql`
+    select id, document_id, position, name, quantity_milli, unit,
+           net_cents, tax_cents, gross_cents, tax_rate_bps
+      from commercial_document_line
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and document_id = ${command.documentId}::uuid
+     order by position asc, id asc
+  `);
+
+  return commercialDocumentDetailV1Schema.parse({
+    schemaVersion: COMMERCIAL_DOCUMENT_DETAIL_VERSION,
+    document,
+    lines: lines.rows.map((line) => ({
+      schemaVersion: COMMERCIAL_DOCUMENT_LINE_VERSION,
+      id: line.id,
+      documentId: line.document_id,
+      position: Number(line.position),
+      name: line.name,
+      quantityMilli: Number(line.quantity_milli),
+      unit: line.unit,
+      netCents: Number(line.net_cents),
+      taxCents: Number(line.tax_cents),
+      grossCents: Number(line.gross_cents),
+      taxRateBps: Number(line.tax_rate_bps),
+    })),
   });
 }
 
