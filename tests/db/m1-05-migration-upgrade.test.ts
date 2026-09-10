@@ -174,10 +174,11 @@ it("migriert einen befüllten M1-04-Bestand verlustfrei in das Anfrage-Board", a
          and column_row.board_id = board_row.id
         where board_row.workspace_id = $1::uuid
       `, [newWorkspaceId]);
+      // F15-01 (0088): neuer Workspace erhält Wohnbau- und Gewerbe-Board.
       expect(provisioned.rows[0]).toEqual({
-        boards: 1,
-        columns: 4,
-        intake_columns: 1,
+        boards: 2,
+        columns: 8,
+        intake_columns: 2,
       });
       await insertClient.query("rollback");
     } finally {

@@ -138,7 +138,8 @@ async function submit(workspaceId: string, value = payload()): Promise<{
 }
 
 describe("M1-05 Default-Request-Kanban", () => {
-  it("provisioniert je neuem Workspace genau ein physisches Default-Board", async () => {
+  // F15-01 (0088): je Scope genau ein Default-Board (Wohnbau + Gewerbe).
+  it("provisioniert je neuem Workspace je Scope genau ein physisches Default-Board", async () => {
     const workspaceId = await createWorkspace();
     const result = await withTenantOn(testPool, workspaceId, (tx) => tx.execute<{
       board_name: string;
@@ -155,46 +156,30 @@ describe("M1-05 Default-Request-Kanban", () => {
       from kanban_board b
       join kanban_column c
         on c.workspace_id = b.workspace_id and c.board_id = b.id
-      order by c.position
+      order by b.scope, c.position
     `));
 
+    const columns = ["Eingang", "In Prüfung", "Qualifiziert", "Angebote"];
+    const types = ["lead", "lead", "lead", "offer"];
     expect(result.rows).toEqual([
-      {
+      ...columns.map((column_name, index) => ({
+        board_name: "Anfragen Gewerbe",
+        scope: "commercial",
+        is_default: true,
+        column_name,
+        column_type: types[index],
+        position: index + 1,
+        is_intake: index === 0,
+      })),
+      ...columns.map((column_name, index) => ({
         board_name: "Anfragen",
         scope: "residential",
         is_default: true,
-        column_name: "Eingang",
-        column_type: "lead",
-        position: 1,
-        is_intake: true,
-      },
-      {
-        board_name: "Anfragen",
-        scope: "residential",
-        is_default: true,
-        column_name: "In Prüfung",
-        column_type: "lead",
-        position: 2,
-        is_intake: false,
-      },
-      {
-        board_name: "Anfragen",
-        scope: "residential",
-        is_default: true,
-        column_name: "Qualifiziert",
-        column_type: "lead",
-        position: 3,
-        is_intake: false,
-      },
-      {
-        board_name: "Anfragen",
-        scope: "residential",
-        is_default: true,
-        column_name: "Angebote",
-        column_type: "offer",
-        position: 4,
-        is_intake: false,
-      },
+        column_name,
+        column_type: types[index],
+        position: index + 1,
+        is_intake: index === 0,
+      })),
     ]);
   });
 

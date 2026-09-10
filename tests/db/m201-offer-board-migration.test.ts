@@ -333,7 +333,9 @@ describe.sequential("M2-01 Angebotsspalte: Upgrade und Provisionierung", () => {
     }
   });
 
-  it("provisioniert neue Workspaces mit exakt vier geordneten Residential-Spalten", async () => {
+  // F15-01 (0088): je Scope vier geordnete Spalten (Gewerbe zuerst,
+  // alphabetischer Scope — board.id ist zufällig und nicht sortierbar).
+  it("provisioniert neue Workspaces mit je vier geordneten Spalten je Bereich", async () => {
     const workspaceId = randomUUID();
     const provisioned = await tenantTransaction(pool, workspaceId, async (client) => {
       await client.query(
@@ -360,10 +362,53 @@ describe.sequential("M2-01 Angebotsspalte: Upgrade und Provisionierung", () => {
          where board.workspace_id = $1::uuid
            and board.archived_at is null
            and column_row.archived_at is null
-         order by board.id, column_row.position
+         order by board.scope, column_row.position
       `, [workspaceId]);
     });
+    const commercialColumns = [
+      {
+        board_name: "Anfragen Gewerbe",
+        scope: "commercial",
+        is_default: true,
+        column_name: "Eingang",
+        column_type: "lead",
+        position: 1,
+        color: "blue",
+        is_intake: true,
+      },
+      {
+        board_name: "Anfragen Gewerbe",
+        scope: "commercial",
+        is_default: true,
+        column_name: "In Prüfung",
+        column_type: "lead",
+        position: 2,
+        color: "amber",
+        is_intake: false,
+      },
+      {
+        board_name: "Anfragen Gewerbe",
+        scope: "commercial",
+        is_default: true,
+        column_name: "Qualifiziert",
+        column_type: "lead",
+        position: 3,
+        color: "green",
+        is_intake: false,
+      },
+      {
+        board_name: "Anfragen Gewerbe",
+        scope: "commercial",
+        is_default: true,
+        column_name: "Angebote",
+        column_type: "offer",
+        position: 4,
+        color: "blue",
+        is_intake: false,
+      },
+    ];
     expect(provisioned.rows).toEqual([
+      ...commercialColumns,
       {
         board_name: "Anfragen",
         scope: "residential",

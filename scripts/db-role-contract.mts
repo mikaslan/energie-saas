@@ -3648,6 +3648,21 @@ export async function verifyRoleContract(
     select pg_catalog.to_regclass('public.offer_pdf_draft') is not null as present
   `);
   const hasOfferPdfDraft = offerPdfPresence.rows[0]?.present === true;
+  // F15-01 (0088): Stufenmarker für den Provisionierungs-Rumpf (eigene
+  // Sonde: die Funktionsliste weiter unten ist namensbegrenzt). Nur der
+  // exakte Marker wählt den neuen Pin — ein dritter Rumpf bricht
+  // fail-closed über den Hashvergleich.
+  const gewerbeProvisioningProbe = await client.query<{ source: string | null }>(`
+    select routine.prosrc as source
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'public'
+       and routine.proname = 'provision_default_request_board'
+  `);
+  const hasGewerbeBoardProvisioning = gewerbeProvisioningProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("Anfragen Gewerbe"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -5084,8 +5099,14 @@ export async function verifyRoleContract(
         "search_path=pg_catalog:692ce6d2faf94fefeb5e6c4b574c350da93d9032d092ab5a6faf984b95e4ab68",
       "mark_project_catalog_resolution_stale():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:7c6bd9b9f83040ae9d697aaa6b81012a7a9101d388f9ef1e107564410de1edd0",
+      // F15-01 (0088): Rumpf provisioniert das Commercial-Board mit.
+      // Historische Stände (m204 prüft 0076) tragen den alten Rumpf —
+      // Stufenauswahl wie guard_erasure_tombstone_worm (feste Pins,
+      // kein Selbstabgleich: der Hash muss exakt einer der beiden sein).
       "provision_default_request_board():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
-        "search_path=pg_catalog:082280a4f4e35fb42979e6ffba65c5e0a1438b3ebc7eeb55079c271234352a42",
+        `search_path=pg_catalog:${hasGewerbeBoardProvisioning
+          ? "082280a4f4e35fb42979e6ffba65c5e0a1438b3ebc7eeb55079c271234352a42"
+          : "c226d08f9a70eb36bd1eb7ef25e1afcc4fadae383cebef03bcc08b55de663138"}`,
       "reconcile_user_identity(text, text):uuid:identity_reconciler:plpgsql:f:v:true:false:false:u:" +
         "search_path=public, pg_temp:ae576295ddea09162013c29d5828512764cecbe3c39bbcaa0cdd5d45307f2ac3",
       "replay_erasure_tombstone(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +

@@ -7,7 +7,9 @@ describe("M1-05 Modulgrenzen", () => {
 
     expect(Object.keys(boards).sort()).toEqual([
       "ProjectMoveConflictError",
+      "REQUEST_BOARD_SCOPES",
       "getDefaultRequestBoard",
+      "getRequestBoard",
       "moveProjectCard",
     ]);
     expect(Object.keys(projects).sort()).toEqual([
