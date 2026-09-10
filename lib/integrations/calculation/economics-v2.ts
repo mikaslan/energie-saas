@@ -189,6 +189,56 @@ export function resolveEconomics(
   };
 }
 
+/**
+ * F4.4b TOU-Aufloesung aus belegtem Profil: exakt 24 endliche Preise
+ * 0..200 Ct/kWh -> Kopie; sonst null (kein TOU-Block, kein Fehler).
+ */
+export function resolveTouImportPrices(consumption: unknown): number[] | null {
+  const holder = (consumption ?? {}) as Record<string, unknown>;
+  const entry = holder.touImportPricesCtPerKwh as
+    | { status?: unknown; value?: unknown }
+    | undefined;
+  if (entry === undefined || entry === null || entry.status !== "known") return null;
+  if (!Array.isArray(entry.value) || entry.value.length !== 24) return null;
+  const prices: number[] = [];
+  for (const price of entry.value) {
+    if (typeof price !== "number" || !Number.isFinite(price)) return null;
+    if (price < 0 || price > 200) return null;
+    prices.push(price);
+  }
+  return prices;
+}
+
+/**
+ * F4.4b TOU-Jahr-1-Rechnung: Summe Slot-Netzbezug x TOU-Stundenpreis
+ * (gleiche Bezugskosten-Semantik wie F4.4a-Bills, ohne Einspeiseabloesung).
+ * `slotImportKwh` deckt ganze Tage ab (Laenge % 96 == 0).
+ */
+export function computeTouBillEuro(
+  slotImportKwh: ArrayLike<number>,
+  touPricesCtPerKwh: ArrayLike<number>,
+): number {
+  if (slotImportKwh.length === 0 || slotImportKwh.length % 96 !== 0) {
+    economicsError("TOU-Bezugsreihe deckt keine ganzen Tage ab");
+  }
+  if (touPricesCtPerKwh.length !== 24) {
+    economicsError("TOU-Profil hat nicht 24 Stundenpreise");
+  }
+  let totalCt = 0;
+  for (let index = 0; index < slotImportKwh.length; index += 1) {
+    const energy = slotImportKwh[index]!;
+    const price = touPricesCtPerKwh[Math.floor((index % 96) / 4)]!;
+    if (typeof energy !== "number" || !Number.isFinite(energy) || energy < 0) {
+      economicsError(`TOU-Bezug[${index}] ist ungueltig`);
+    }
+    if (typeof price !== "number" || !Number.isFinite(price) || price < 0) {
+      economicsError("TOU-Preis ist ungueltig");
+    }
+    totalCt += energy * price;
+  }
+  return roundMoney(totalCt / 100);
+}
+
 export type AnnualBillsV2 = {
   /** Jahr-1-Rechnung ohne PV (Verbrauch × Tarif). */
   noPvEuro: number;

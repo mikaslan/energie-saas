@@ -33,8 +33,13 @@ import {
   type PlanningCalculationRequestV2,
   type PlanningCalculationResultV2,
 } from "./contract-v2";
-import { computeEconomics } from "./economics-v2";
+import { computeEconomics, computeTouBillEuro, roundMoney } from "./economics-v2";
 import { hashPlanningCalculationInputV2 } from "./prepare-v2";
+import {
+  averageDailySchedule,
+  cyclicSocStartTou,
+  dispatchQuarterHoursTou,
+} from "./tou-dispatch-v2";
 import {
   CALCULATION_V2_MODEL_ID,
   CALCULATION_V2_MODEL_VERSION,
@@ -317,7 +322,86 @@ export function runPlanningCalculationV2(
     loadKwh,
     storage: { ...request.storage },
   });
-  return assembleResultV2(request, annual, monthly, input.providerEstimate);
+  const tou = touDispatchSection({
+    pvKwh,
+    loadKwh,
+    storage: { ...request.storage },
+    request,
+  });
+  return assembleResultV2(request, annual, monthly, input.providerEstimate, tou);
+}
+
+/** F4.4b TOU-Zweitdispatch ohne Ersparnis (Assembly ergaenzt sie). */
+type TouDispatchPreSavings = {
+  billEuro: number;
+  gridChargeKwh: number;
+  schedule24h: Array<{
+    hour: number;
+    chargeKw: number;
+    dischargeKw: number;
+    gridChargeKw: number;
+    socKwh: number;
+  }>;
+};
+
+/**
+ * F4.4b TOU-Zweitdispatch (Neuanlage und geplante Bestands-Seite teilen
+ * die Funktion): zyklischer preisgefuehrter Dispatch, Guards, Bill und
+ * Ladefahrplan. Nur bei request.tou + request.economics; sonst undefined
+ * (kein TOU-Block, kein Fehler).
+ */
+function touDispatchSection(input: {
+  pvKwh: number[];
+  loadKwh: number[];
+  storage: StorageParams;
+  request: PlanningCalculationRequestV2;
+}): TouDispatchPreSavings | undefined {
+  const { request } = input;
+  if (request.tou === undefined || request.economics === undefined) return undefined;
+  const prices = [...request.tou.importPricesCtPerKwh];
+  const storage = { ...input.storage };
+  const socStartKwh = cyclicSocStartTou({
+    pvKwh: input.pvKwh,
+    loadKwh: input.loadKwh,
+    storage,
+    touPricesCt: prices,
+  });
+  const { slots, totals } = dispatchQuarterHoursTou({
+    pvKwh: input.pvKwh,
+    loadKwh: input.loadKwh,
+    storage,
+    socStartKwh,
+    touPricesCt: prices,
+  });
+  if (Math.abs(totals.socEndKwh - totals.socStartKwh) > CYCLIC_SOC_ATOL_KWH) {
+    runError("zyklische TOU-SoC-Randbedingung verletzt");
+  }
+  // Entladung (zyklisch) nur aus gespeicherter Energie: PV- plus
+  // Netzladung, wirkungsgradbereinigt.
+  if (
+    totals.dischargeOutKwh
+    > (totals.pvChargeInKwh + totals.gridChargeInKwh)
+      * storage.etaCharge * storage.etaDischarge + ANNUAL_BALANCE_ATOL_KWH
+  ) {
+    runError("TOU-Entladung uebersteigt wirkungsgradbereinigte Ladung");
+  }
+  const billEuro = computeTouBillEuro(
+    slots.map((slot) => slot.importKwh),
+    prices,
+  );
+  const schedule24h = averageDailySchedule(slots).map((row) => ({
+    hour: row.hour,
+    chargeKw: roundEnergy(row.chargeKw),
+    dischargeKw: roundEnergy(row.dischargeKw),
+    gridChargeKw: roundEnergy(row.gridChargeKw),
+    socKwh: roundEnergy(row.socKwh),
+  }));
+  if (schedule24h.length !== 24) runError("TOU-Fahrplan hat nicht 24 Stunden");
+  return {
+    billEuro,
+    gridChargeKwh: roundEnergy(totals.gridChargeInKwh),
+    schedule24h,
+  };
 }
 
 function runExistingInstallationV2(
@@ -359,7 +443,18 @@ function runExistingInstallationV2(
     (planned.annual.autonomyRate - baseline.annual.autonomyRate) * 100,
   );
   const candidate = {
-    ...assembleResultV2(request, planned.annual, planned.monthly, input.providerEstimate),
+    ...assembleResultV2(
+      request,
+      planned.annual,
+      planned.monthly,
+      input.providerEstimate,
+      touDispatchSection({
+        pvKwh: existingPvKwh,
+        loadKwh,
+        storage: plannedStorage,
+        request,
+      }),
+    ),
     existingInstallation: {
       existingSystemPeakPowerKwp: context.systemPeakPowerKwp,
       existingStorageCapacityKwh: context.storageCapacityKwh,
@@ -384,6 +479,7 @@ function assembleResultV2(
   annual: DispatchedSummary["annual"],
   monthly: DispatchedSummary["monthly"],
   providerEstimate: boolean,
+  touDispatch?: TouDispatchPreSavings,
 ): Omit<PlanningCalculationResultV2, "existingInstallation"> {
   const warnings: PlanningCalculationResultV2["warnings"] = [];
   if (providerEstimate) {
@@ -392,27 +488,59 @@ function assembleResultV2(
   // F4.5: Geldrechnung nur bei belegtem economics-Input (Neuanlage und
   // Bestand teilen die Assembly; Bestand traegt bislang keinen Input und
   // bleibt ohne Geldschluessel).
-  const economics = request.economics === undefined ? undefined : {
-    importPriceCtPerKwh: request.economics.importPriceCtPerKwh,
-    priceEscalationRate: request.economics.priceEscalationRate,
-    feedInTariffCtPerKwh: request.economics.feedInTariffCtPerKwh,
-    feedInTariffSource: request.economics.feedInTariffSource,
-    investmentEuro: request.economics.investmentEuro,
-    alternativeImportPriceCtPerKwh: request.economics.alternativeImportPriceCtPerKwh,
-    horizonYears: request.economics.horizonYears,
-    priceSource: request.economics.priceSource,
-    settingsRevision: request.economics.settingsRevision,
-    ...computeEconomics(
-      {
-        generationKwh: annual.generationKwh,
-        selfConsumptionKwh: annual.selfConsumptionKwh,
-        feedInKwh: annual.feedInKwh,
-        consumptionKwh: annual.consumptionKwh,
-        gridImportKwh: annual.gridImportKwh,
-      },
-      request.economics,
-    ),
+  if (request.economics === undefined) {
+    return baseResultV2(request, annual, monthly, warnings, undefined);
+  }
+  const economicsInput = request.economics;
+  const money = computeEconomics(
+    {
+      generationKwh: annual.generationKwh,
+      selfConsumptionKwh: annual.selfConsumptionKwh,
+      feedInKwh: annual.feedInKwh,
+      consumptionKwh: annual.consumptionKwh,
+      gridImportKwh: annual.gridImportKwh,
+    },
+    economicsInput,
+  );
+  const economics = {
+    importPriceCtPerKwh: economicsInput.importPriceCtPerKwh,
+    priceEscalationRate: economicsInput.priceEscalationRate,
+    feedInTariffCtPerKwh: economicsInput.feedInTariffCtPerKwh,
+    feedInTariffSource: economicsInput.feedInTariffSource,
+    investmentEuro: economicsInput.investmentEuro,
+    alternativeImportPriceCtPerKwh: economicsInput.alternativeImportPriceCtPerKwh,
+    horizonYears: economicsInput.horizonYears,
+    priceSource: economicsInput.priceSource,
+    settingsRevision: economicsInput.settingsRevision,
+    ...money,
+    // F4.4b: TOU-Block nur bei Zweitdispatch (Ersparnis gegen die
+    // Flattarif-Rechnung mit PV aus derselben Geldrechnung).
+    ...(touDispatch === undefined
+      ? {}
+      : {
+        tou: {
+          ...touDispatch,
+          savingsVsFlatEuro: roundMoney(
+            money.annualBillsEuro.currentEuro - touDispatch.billEuro,
+          ),
+        },
+      }),
   };
+  return baseResultV2(request, annual, monthly, warnings, economics);
+}
+
+/**
+ * Ergebnis-Huelle (Warnungen + optionaler Geldschluessel -> Schema-Gate).
+ * Extrahiert, damit Neuanlage/Bestand und Geld-/TOU-Pfade dieselbe
+ * Huelle teilen (kein Verhaltenswechsel ausserhalb F4.4b).
+ */
+function baseResultV2(
+  request: PlanningCalculationRequestV2,
+  annual: DispatchedSummary["annual"],
+  monthly: DispatchedSummary["monthly"],
+  warnings: PlanningCalculationResultV2["warnings"],
+  economics: PlanningCalculationResultV2["economics"],
+): Omit<PlanningCalculationResultV2, "existingInstallation"> {
   const candidate = {
     contractVersion: CALCULATION_V2_RESULT_CONTRACT_VERSION,
     canonicalizationVersion: "planning-jcs.v1",

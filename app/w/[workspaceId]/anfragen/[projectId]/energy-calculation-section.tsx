@@ -5,6 +5,7 @@ import type {
 } from "@/modules/energy";
 import { DetailItem, Section } from "./_ui";
 import { EnergyStatusRefresh } from "./energy-status-refresh";
+import { TouScheduleChart } from "./tou-schedule-chart";
 
 type ResultValue = ProjectEnergyCalculationResult["value"];
 type NewResult = Extract<ResultValue, { branch: "new_installation" }>;
@@ -571,6 +572,7 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
             : euroFormatter.format(economics.annualBillsEuro.newTariffEuro)}
         </DetailItem>
       </dl>
+      {economics.tou ? <V2Tou tou={economics.tou} /> : null}
       <div
         className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
         tabIndex={0}
@@ -601,6 +603,34 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function V2Tou({ tou }: { tou: NonNullable<EconomicsV2["tou"]> }) {
+  const savings = tou.savingsVsFlatEuro;
+  return (
+    <div className="mt-5" data-energy-calculation-v2-tou="true">
+      <h4 className="px-1 text-sm font-semibold text-slate-950">
+        Zeitvariabler Tarif &amp; Ladefahrplan (Jahr 1)
+      </h4>
+      <p className="mt-1 px-1 text-sm leading-6 text-slate-600">
+        Preisgeführte Speicherfahrweise zum 24-h-Tarif (ESTIMATE: statischer
+        Tagestarif, täglich wiederholt). Positive Ersparnis heißt günstiger
+        als der Flattarif mit PV.
+      </p>
+      <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
+        <DetailItem term="Mit PV (Zeittarif)" numeric>
+          {euroFormatter.format(tou.billEuro)}
+        </DetailItem>
+        <DetailItem term="Ersparnis vs. Flattarif" numeric>
+          {`${savings >= 0 ? "+" : "−"}${euroFormatter.format(Math.abs(savings))}`}
+        </DetailItem>
+        <DetailItem term="Arbitrage-Volumen (Netzladung)" numeric>
+          {`${tou.gridChargeKwh.toLocaleString("de-DE", { maximumFractionDigits: 3 })} kWh`}
+        </DetailItem>
+      </dl>
+      <TouScheduleChart schedule={tou.schedule24h} />
     </div>
   );
 }

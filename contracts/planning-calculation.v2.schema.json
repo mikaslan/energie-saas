@@ -282,6 +282,23 @@
             "settingsRevision"
           ],
           "additionalProperties": false
+        },
+        "tou": {
+          "type": "object",
+          "properties": {
+            "importPricesCtPerKwh": {
+              "minItems": 24,
+              "maxItems": 24,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema9"
+              }
+            }
+          },
+          "required": [
+            "importPricesCtPerKwh"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -341,6 +358,11 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 1
+        },
+        "__schema9": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
         }
       }
     },
@@ -598,6 +620,38 @@
                 "newTariffEuro"
               ],
               "additionalProperties": false
+            },
+            "tou": {
+              "type": "object",
+              "properties": {
+                "billEuro": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "savingsVsFlatEuro": {
+                  "type": "number"
+                },
+                "gridChargeKwh": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000000
+                },
+                "schedule24h": {
+                  "minItems": 24,
+                  "maxItems": 24,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema5"
+                  }
+                }
+              },
+              "required": [
+                "billEuro",
+                "savingsVsFlatEuro",
+                "gridChargeKwh",
+                "schedule24h"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -783,6 +837,40 @@
         },
         "__schema4": {
           "type": "number"
+        },
+        "__schema5": {
+          "type": "object",
+          "properties": {
+            "hour": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 23
+            },
+            "chargeKw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "dischargeKw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "gridChargeKw": {
+              "type": "number",
+              "minimum": 0
+            },
+            "socKwh": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "hour",
+            "chargeKw",
+            "dischargeKw",
+            "gridChargeKw",
+            "socKwh"
+          ],
+          "additionalProperties": false
         }
       }
     }

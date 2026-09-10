@@ -151,6 +151,8 @@ const profileFormSchema = z.strictObject({
   groundAlbedo: optionalNumber(0, 1).optional(),
   // F4.4a Tarifvergleich: optionaler Neutarif (leer = kein Vergleich).
   alternativeImportPriceCtPerKwh: optionalNumber(1, 200).optional(),
+  // F4.4b TOU: 24 Stundenpreise Komma-getrennt (leer = kein TOU).
+  touImportPricesCt: touPriceListField().optional(),
   coolingKwhPerYear: optionalNumber(0, 100_000),
   heatingAcKwhPerYear: optionalNumber(0, 100_000),
   hotWaterKwhPerYear: optionalNumber(0, 20_000),
@@ -250,6 +252,7 @@ const baseProfileFields = [
   "feedInCommissioningYear",
   "groundAlbedo",
   "alternativeImportPriceCtPerKwh",
+  "touImportPricesCt",
   "coolingKwhPerYear",
   "heatingAcKwhPerYear",
   "hotWaterKwhPerYear",
@@ -362,6 +365,25 @@ function parseConfirmForm(formData: FormData): z.infer<typeof confirmFormSchema>
   return parsed.success ? parsed.data : null;
 }
 
+// F4.4b: TOU-Textfeld -> 24 Preise (0..200 Ct/kWh) oder null (leer).
+// Ungueltig -> Formfehler, kein Speichern (fail-closed).
+function touPriceListField() {
+  return z.string().max(1000).refine((value) => value === value.trim()).transform((value, ctx) => {
+    if (value === "") return null;
+    const parts = value.split(",").map((part) => part.trim());
+    if (parts.length !== 24 || parts.some((part) => !DECIMAL_PATTERN.test(part))) {
+      ctx.addIssue({ code: "custom", message: "tou needs 24 comma-separated prices" });
+      return z.NEVER;
+    }
+    const numbers = parts.map(Number);
+    if (numbers.some((price) => !Number.isFinite(price) || price < 0 || price > 200)) {
+      ctx.addIssue({ code: "custom", message: "tou prices out of range 0..200" });
+      return z.NEVER;
+    }
+    return numbers;
+  });
+}
+
 function knownOrUnknown<T>(value: T | null):
   | { status: "known"; value: T; source: "operator_reviewed" }
   | { status: "unknown"; value: null; source: "not_collected" } {
@@ -432,6 +454,7 @@ function buildSubmittedProfile(
     feedInCommissioningYear: knownOrUnknown(input.feedInCommissioningYear ?? null),
     groundAlbedo: knownOrUnknown(input.groundAlbedo ?? null),
     alternativeImportPriceCtPerKwh: knownOrUnknown(input.alternativeImportPriceCtPerKwh ?? null),
+    touImportPricesCtPerKwh: knownOrUnknown(input.touImportPricesCt ?? null),
     coolingKwhPerYear: knownOrUnknown(input.coolingKwhPerYear),
     heatingAcKwhPerYear: knownOrUnknown(input.heatingAcKwhPerYear),
     hotWaterKwhPerYear: knownOrUnknown(input.hotWaterKwhPerYear),

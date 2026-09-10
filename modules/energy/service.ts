@@ -810,6 +810,19 @@ function normalizeKnownField(
   ) {
     return structuredClone(candidate);
   }
+  // F4.4b TOU-Array: elementweiser Vergleich (Referenz-=== waere bei
+  // gleichen Werten immer "geaendert").
+  const submittedValue = submitted.value;
+  const candidateValue = candidate.value;
+  if (
+    submitted.status === candidate.status
+    && Array.isArray(submittedValue)
+    && Array.isArray(candidateValue)
+    && submittedValue.length === candidateValue.length
+    && submittedValue.every((entry, index) => entry === candidateValue[index])
+  ) {
+    return structuredClone(candidate);
+  }
   if (submitted.status === "unknown") {
     return { status: "unknown", value: null, source: "not_collected" };
   }
@@ -1085,6 +1098,19 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["alternativeImportPriceCtPerKwh"],
+      // F4.4b TOU-Stundenpreise (optional; fehlt in Altzeilen).
+      touImportPricesCtPerKwh: normalizeKnownField(
+        submitted.consumption.touImportPricesCtPerKwh ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.touImportPricesCtPerKwh ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["touImportPricesCtPerKwh"],
     },
     existingAssets: {
       pv: normalizeAsset(submitted.existingAssets.pv, candidate.existingAssets.pv) as SiteEnergyProfileV1["existingAssets"]["pv"],

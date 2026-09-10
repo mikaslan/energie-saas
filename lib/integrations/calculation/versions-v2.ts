@@ -23,7 +23,7 @@ export const CALCULATION_V2_DEFAULTS_VERSION = "wmee-planning-defaults.v2" as co
 // (contracts/planning-calculation.v2.schema.json). Jede absichtliche
 // Aenderung verlangt einen neuen Review und Hash.
 export const CALCULATION_V2_SCHEMA_SHA256 =
-  "dce0a2733decbbab399d82c0d39f948a7e57b767be0d01fb279bc014fbe28881" as const;
+  "cc7b350b7bad3f41566ecadc79b5139455037ba642a5172dce8830cb9edf50a8" as const;
 export const CALCULATION_V2_QUALITY = "server_reproduced_public_reference" as const;
 export const CALCULATION_V2_VALIDATION_STATUS = "f4_public_reference_validated" as const;
 export const CALCULATION_V2_AXIS_VERSION =
@@ -40,3 +40,4 @@ export const CALCULATION_V2_DEGREE_DAY_VERSION = "wmee-degree-day.v1" as const;
 export const CALCULATION_V2_HEAT_PUMP_COP_VERSION = "wmee-heat-pump-cop.v1" as const;
 export const CALCULATION_V2_LOAD_SHAPES_VERSION = "wmee-load-shapes.v1" as const;
 export const CALCULATION_V2_EXISTING_PV_VERSION = "wmee-existing-pv.v1" as const;
+export const CALCULATION_V2_TOU_DISPATCH_VERSION = "tou_price_gated_grid_charge.v1" as const;

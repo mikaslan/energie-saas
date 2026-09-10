@@ -20,6 +20,14 @@ function fieldValue(field: KnownOrUnknown): string | number {
   ) ? field.value : "";
 }
 
+// F4.4b TOU: bekanntes 24-Preise-Array -> Komma-Text, sonst leer.
+function touPriceListValue(field: KnownOrUnknown): string {
+  if (field.status !== "known" || !Array.isArray(field.value)) return "";
+  return field.value.every((entry) => typeof entry === "number")
+    ? (field.value as number[]).join(", ")
+    : "";
+}
+
 const MONTH_NAMES_DE = [
   "Januar", "Februar", "März", "April", "Mai", "Juni",
   "Juli", "August", "September", "Oktober", "November", "Dezember",
@@ -354,6 +362,10 @@ export function EnergyProfileEditor({
           <label htmlFor="energy-alt-tariff" className={labelClass}>
             Neutarif Vergleich (Ct/kWh, leer = kein Vergleich)
             <input id="energy-alt-tariff" name="alternativeImportPriceCtPerKwh" type="number" inputMode="decimal" min="1" max="200" step="any" defaultValue={fieldValue(profile.consumption.alternativeImportPriceCtPerKwh ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-tou-prices" className={labelClass}>
+            TOU-Stundenpreise (24 Werte Komma-getrennt, leer = kein TOU)
+            <input id="energy-tou-prices" name="touImportPricesCt" type="text" inputMode="decimal" defaultValue={touPriceListValue(profile.consumption.touImportPricesCtPerKwh ?? { status: "unknown" })} className={inputClass} />
           </label>
         </div>
       </fieldset>

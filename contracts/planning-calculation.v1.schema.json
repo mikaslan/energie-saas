@@ -877,6 +877,39 @@
                       "$ref": "#/$defs/__schema3"
                     }
                   ]
+                },
+                "touImportPricesCtPerKwh": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "known"
+                        },
+                        "value": {
+                          "minItems": 24,
+                          "maxItems": 24,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema12"
+                          }
+                        },
+                        "source": {
+                          "$ref": "#/$defs/__schema2"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "value",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  ]
                 }
               },
               "required": [
@@ -906,7 +939,7 @@
                           "const": "known_present"
                         },
                         "source": {
-                          "$ref": "#/$defs/__schema12"
+                          "$ref": "#/$defs/__schema13"
                         },
                         "peakPowerKwp": {
                           "type": "number",
@@ -935,7 +968,7 @@
                           "const": "known_absent"
                         },
                         "source": {
-                          "$ref": "#/$defs/__schema12"
+                          "$ref": "#/$defs/__schema13"
                         }
                       },
                       "required": [
@@ -974,7 +1007,7 @@
                           "const": "known_present"
                         },
                         "source": {
-                          "$ref": "#/$defs/__schema12"
+                          "$ref": "#/$defs/__schema13"
                         },
                         "capacityKwh": {
                           "type": "number",
@@ -997,7 +1030,7 @@
                           "const": "known_absent"
                         },
                         "source": {
-                          "$ref": "#/$defs/__schema12"
+                          "$ref": "#/$defs/__schema13"
                         }
                       },
                       "required": [
@@ -1027,10 +1060,10 @@
                   ]
                 },
                 "wallbox": {
-                  "$ref": "#/$defs/__schema13"
+                  "$ref": "#/$defs/__schema14"
                 },
                 "ev": {
-                  "$ref": "#/$defs/__schema13"
+                  "$ref": "#/$defs/__schema14"
                 }
               },
               "required": [
@@ -1202,7 +1235,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema14"
+                      "$ref": "#/$defs/__schema15"
                     },
                     "profileField": {
                       "type": "string",
@@ -1224,14 +1257,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema14"
+                      "$ref": "#/$defs/__schema15"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "loadProfile"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1254,7 +1287,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema16"
+                      "$ref": "#/$defs/__schema17"
                     },
                     "profileField": {
                       "type": "string",
@@ -1276,14 +1309,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema16"
+                      "$ref": "#/$defs/__schema17"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "evKmPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1335,7 +1368,7 @@
                       "const": "evChargingPattern"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1358,7 +1391,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema17"
+                      "$ref": "#/$defs/__schema18"
                     },
                     "profileField": {
                       "type": "string",
@@ -1380,14 +1413,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema17"
+                      "$ref": "#/$defs/__schema18"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "heatPumpKwhPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1410,7 +1443,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema19"
                     },
                     "profileField": {
                       "type": "string",
@@ -1432,14 +1465,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema19"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "coolingKwhPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1462,7 +1495,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema19"
+                      "$ref": "#/$defs/__schema20"
                     },
                     "profileField": {
                       "type": "string",
@@ -1484,14 +1517,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema19"
+                      "$ref": "#/$defs/__schema20"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "heatingAcKwhPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1514,7 +1547,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema20"
+                      "$ref": "#/$defs/__schema21"
                     },
                     "profileField": {
                       "type": "string",
@@ -1536,14 +1569,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema20"
+                      "$ref": "#/$defs/__schema21"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "hotWaterKwhPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1614,7 +1647,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema21"
+                      "$ref": "#/$defs/__schema22"
                     },
                     "source": {
                       "type": "string",
@@ -1641,14 +1674,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema21"
+                      "$ref": "#/$defs/__schema22"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "systemLossPercent"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1671,7 +1704,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema22"
+                      "$ref": "#/$defs/__schema23"
                     },
                     "source": {
                       "type": "string",
@@ -1698,14 +1731,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema22"
+                      "$ref": "#/$defs/__schema23"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "storageRoundtripEfficiency"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1728,7 +1761,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema23"
+                      "$ref": "#/$defs/__schema24"
                     },
                     "source": {
                       "type": "string",
@@ -1755,14 +1788,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema23"
+                      "$ref": "#/$defs/__schema24"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "storageDepthOfDischarge"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1785,7 +1818,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema24"
+                      "$ref": "#/$defs/__schema25"
                     },
                     "source": {
                       "type": "string",
@@ -1812,14 +1845,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema24"
+                      "$ref": "#/$defs/__schema25"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "moduleDegradationPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1842,7 +1875,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema25"
+                      "$ref": "#/$defs/__schema26"
                     },
                     "source": {
                       "type": "string",
@@ -1869,14 +1902,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema25"
+                      "$ref": "#/$defs/__schema26"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "horizonYears"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1933,7 +1966,7 @@
                       "const": "commissioningDate"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema15"
+                      "$ref": "#/$defs/__schema16"
                     }
                   },
                   "required": [
@@ -1962,7 +1995,7 @@
           "maxItems": 4,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema26"
+            "$ref": "#/$defs/__schema27"
           }
         }
       },
@@ -2172,6 +2205,11 @@
           "maximum": 100000
         },
         "__schema12": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "__schema13": {
           "type": "string",
           "enum": [
             "operator_reviewed",
@@ -2180,7 +2218,7 @@
             "rechner_consumption"
           ]
         },
-        "__schema13": {
+        "__schema14": {
           "oneOf": [
             {
               "type": "object",
@@ -2190,7 +2228,7 @@
                   "const": "known_present"
                 },
                 "source": {
-                  "$ref": "#/$defs/__schema12"
+                  "$ref": "#/$defs/__schema13"
                 }
               },
               "required": [
@@ -2207,7 +2245,7 @@
                   "const": "known_absent"
                 },
                 "source": {
-                  "$ref": "#/$defs/__schema12"
+                  "$ref": "#/$defs/__schema13"
                 }
               },
               "required": [
@@ -2236,7 +2274,7 @@
             }
           ]
         },
-        "__schema14": {
+        "__schema15": {
           "type": "string",
           "enum": [
             "wmee_household_hourly.v1",
@@ -2244,19 +2282,14 @@
             "commercial_interval.v1"
           ]
         },
-        "__schema15": {
+        "__schema16": {
           "type": "string",
           "const": "wmee-planning-defaults.v1"
-        },
-        "__schema16": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 200000
         },
         "__schema17": {
           "type": "number",
           "minimum": 0,
-          "maximum": 100000
+          "maximum": 200000
         },
         "__schema18": {
           "type": "number",
@@ -2271,17 +2304,17 @@
         "__schema20": {
           "type": "number",
           "minimum": 0,
-          "maximum": 20000
+          "maximum": 100000
         },
         "__schema21": {
           "type": "number",
           "minimum": 0,
-          "maximum": 60
+          "maximum": 20000
         },
         "__schema22": {
           "type": "number",
-          "minimum": 0.01,
-          "maximum": 1
+          "minimum": 0,
+          "maximum": 60
         },
         "__schema23": {
           "type": "number",
@@ -2290,15 +2323,20 @@
         },
         "__schema24": {
           "type": "number",
+          "minimum": 0.01,
+          "maximum": 1
+        },
+        "__schema25": {
+          "type": "number",
           "minimum": 0,
           "maximum": 0.2
         },
-        "__schema25": {
+        "__schema26": {
           "type": "integer",
           "minimum": 1,
           "maximum": 40
         },
-        "__schema26": {
+        "__schema27": {
           "type": "object",
           "properties": {
             "roofId": {
@@ -2413,10 +2451,10 @@
                   "const": "PVcalc"
                 },
                 "fetchedAt": {
-                  "$ref": "#/$defs/__schema27"
+                  "$ref": "#/$defs/__schema28"
                 },
                 "rawResponseSha256": {
-                  "$ref": "#/$defs/__schema28"
+                  "$ref": "#/$defs/__schema29"
                 },
                 "annualYieldKwhPerKwp": {
                   "type": "number",
@@ -2428,7 +2466,7 @@
                   "maxItems": 12,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema29"
+                    "$ref": "#/$defs/__schema30"
                   }
                 }
               },
@@ -2461,10 +2499,10 @@
                   "const": 2020
                 },
                 "fetchedAt": {
-                  "$ref": "#/$defs/__schema27"
+                  "$ref": "#/$defs/__schema28"
                 },
                 "rawResponseSha256": {
-                  "$ref": "#/$defs/__schema28"
+                  "$ref": "#/$defs/__schema29"
                 },
                 "sourceLength": {
                   "type": "number",
@@ -2479,7 +2517,7 @@
                   "maxItems": 8784,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema27"
+                    "$ref": "#/$defs/__schema28"
                   }
                 },
                 "normalization": {
@@ -2503,7 +2541,7 @@
                   "maxItems": 8760,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema30"
+                    "$ref": "#/$defs/__schema31"
                   }
                 },
                 "hourlyTemperatureC": {
@@ -2511,7 +2549,7 @@
                   "maxItems": 8760,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema31"
+                    "$ref": "#/$defs/__schema32"
                   }
                 }
               },
@@ -2546,7 +2584,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema27": {
+        "__schema28": {
           "type": "string",
           "allOf": [
             {
@@ -2557,21 +2595,21 @@
             }
           ]
         },
-        "__schema28": {
+        "__schema29": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
-        },
-        "__schema29": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 2000
         },
         "__schema30": {
           "type": "number",
           "minimum": 0,
-          "maximum": 10000
+          "maximum": 2000
         },
         "__schema31": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "__schema32": {
           "type": "number",
           "minimum": -100,
           "maximum": 100

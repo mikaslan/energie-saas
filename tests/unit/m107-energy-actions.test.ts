@@ -163,6 +163,7 @@ function validProfileForm(): FormData {
     feedInCommissioningYear: "",
     groundAlbedo: "",
     alternativeImportPriceCtPerKwh: "",
+    touImportPricesCt: "",
     coolingKwhPerYear: "",
     heatingAcKwhPerYear: "",
     hotWaterKwhPerYear: "",
@@ -459,6 +460,35 @@ describe("M1-07 Energieprofil-Actions", () => {
     for (const bad of ["0.5", "201"]) {
       const form = validProfileForm();
       form.set("alternativeImportPriceCtPerKwh", bad);
+      await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
+        .resolves.toEqual({ status: "invalid" });
+    }
+  });
+
+  it("speichert F4.4b-TOU-Preise und weist Formbrueche ab", async () => {
+    const tou = validProfileForm();
+    const prices = [...new Array(6).fill("20"), ...new Array(18).fill("38")].join(", ");
+    tou.set("touImportPricesCt", prices);
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, tou))
+      .resolves.toMatchObject({ status: "success" });
+    expect(deps.saveProfile).toHaveBeenCalledWith(
+      {},
+      { workspaceId: WORKSPACE_ID, actor: "member-1" },
+      expect.objectContaining({
+        profile: expect.objectContaining({
+          consumption: expect.objectContaining({
+            touImportPricesCtPerKwh: {
+              status: "known",
+              value: [...new Array(6).fill(20), ...new Array(18).fill(38)],
+              source: "operator_reviewed",
+            },
+          }),
+        }),
+      }),
+    );
+    for (const bad of ["20, 38", "abc", new Array(24).fill("201").join(",")]) {
+      const form = validProfileForm();
+      form.set("touImportPricesCt", bad);
       await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
         .resolves.toEqual({ status: "invalid" });
     }

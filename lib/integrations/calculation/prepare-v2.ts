@@ -13,7 +13,7 @@ import {
   siteEnergyProfileV1Schema,
 } from "./contract";
 import { planningCalculationRequestV2Schema, type PlanningCalculationRequestV2 } from "./contract-v2";
-import { resolveEconomics } from "./economics-v2";
+import { resolveEconomics, resolveTouImportPrices } from "./economics-v2";
 import { QUARTER_HOUR_SLOTS } from "./engine-v2";
 import { planningSourceSnapshotSchema } from "./preparation";
 import type { ProjectCalculationPreparationV2 } from "./preparation-v2";
@@ -183,6 +183,18 @@ function economicsSnapshot(
   return { economics: resolved };
 }
 
+/**
+ * F4.4b TOU-Tarif aus belegtem Profil (nur bei exakt 24 Preisen; sonst
+ * fehlt der Schluessel und Althashes bleiben stabil).
+ */
+function touSnapshot(
+  preparation: Pick<ProjectCalculationPreparationV2, "profile">,
+): { tou?: PlanningCalculationRequestV2["tou"] } {
+  const prices = resolveTouImportPrices(preparation.profile.consumption);
+  if (prices === null) return {};
+  return { tou: { importPricesCtPerKwh: prices } };
+}
+
 export function buildPreparedPlanningCalculationInputV2(
   raw: unknown,
 ): PreparedPlanningCalculationInputV2 {
@@ -222,6 +234,9 @@ export function buildPreparedPlanningCalculationInputV2(
     // F4.5: belegte Wirtschaftlichkeit laeuft in den Request (inputSha
     // deckt Tarife); unbelegt fehlt der Schluessel (Hashes stabil).
     ...economicsSnapshot(claim.preparation),
+    // F4.4b: belegter TOU-Tarif laeuft in den Request (inputSha deckt
+    // Stundenpreise); unbelegt fehlt der Schluessel (Hashes stabil).
+    ...touSnapshot(claim.preparation),
   });
   if (!snapshot.success) inputError(snapshot.error);
   const inputSnapshot = snapshot.data!;

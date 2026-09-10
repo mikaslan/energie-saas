@@ -61,6 +61,32 @@ const economicsInputV2Schema = z.strictObject({
 });
 
 /**
+ * F4.4b TOU-Eingabe im Request (24 Stundenpreise Ct/kWh, taeglich
+ * wiederholt; nur bei belegtem Profilfeld, sonst fehlt der Schluessel).
+ */
+const touInputV2Schema = z.strictObject({
+  importPricesCtPerKwh: z.array(finite().min(0).max(200)).length(24),
+});
+
+/**
+ * F4.4b TOU-Ergebnis: Jahr-1-Rechnung zum Zeittarif, Ersparnis gegen den
+ * Flattarif (gleiche Physik, andere Fahrweise + Preise), Arbitrage-Volumen
+ * und mittlerer 24-h-Ladefahrplan. Nur bei request.tou + economics.
+ */
+const touResultV2Schema = z.strictObject({
+  billEuro: finite().min(0),
+  savingsVsFlatEuro: finite(),
+  gridChargeKwh: nonNegative(10_000_000),
+  schedule24h: z.array(z.strictObject({
+    hour: z.int().min(0).max(23),
+    chargeKw: finite().min(0),
+    dischargeKw: finite().min(0),
+    gridChargeKw: finite().min(0),
+    socKwh: finite().min(0),
+  })).length(24),
+});
+
+/**
  * F4.5 Wirtschaftlichkeits-Ergebnis (Geld auf Cent; Amortisation/IRR null,
  * wenn nie bzw. undefiniert).
  */
@@ -83,6 +109,8 @@ const economicsResultV2Schema = z.strictObject({
     currentEuro: finite().min(0),
     newTariffEuro: finite().min(0).nullable(),
   }),
+  // F4.4b: nur bei request.tou + economics (sonst fehlt der Schluessel).
+  tou: touResultV2Schema.optional(),
 });
 
 export const planningCalculationRequestV2Schema = z.strictObject({
@@ -120,6 +148,9 @@ export const planningCalculationRequestV2Schema = z.strictObject({
   // F4.5: aufgeloeste Wirtschaftlichkeits-Eingaben (nur bei belegtem Preis
   // + Investition; sonst fehlt der Schluessel und Geld bleibt unbelegt).
   economics: economicsInputV2Schema.optional(),
+  // F4.4b: aufgeloester TOU-Tarif (nur bei belegtem Profilfeld; sonst
+  // fehlt der Schluessel und Althashes bleiben stabil).
+  tou: touInputV2Schema.optional(),
 });
 
 const annualEnergyResultV2Schema = z.strictObject({

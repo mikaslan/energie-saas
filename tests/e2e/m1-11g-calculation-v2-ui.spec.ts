@@ -997,6 +997,80 @@ test("M1-11g: F4.4a-Neutarif traegt currentV2-Bills", async ({ page }) => {
   await expect(block.getByText("Mit PV (Neutarif)")).toBeVisible();
 });
 
+test("M1-11g: F4.4b-TOU traegt currentV2-Bill und Ladefahrplan", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await page.getByLabel("Investition netto (€)").fill("20000");
+  await page.getByLabel("Einspeisevergütung Override (Ct/kWh, leer = EEG-Default)").fill("8");
+  await page.getByLabel("EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)").fill("2024");
+  const touPrices = [...new Array(6).fill("20"), ...new Array(18).fill("38")].join(", ");
+  await page.getByLabel("TOU-Stundenpreise (24 Werte Komma-getrennt, leer = kein TOU)").fill(touPrices);
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("TOU-Kette erreichte kein currentV2.");
+  }
+  const economics = expected.calculation.resultV2.value.economics;
+  if (!economics) throw new Error("currentV2 traegt kein economics.");
+  const tou = economics.tou;
+  if (!tou) throw new Error("currentV2 traegt keinen TOU-Block.");
+  // Konsistenz: Ersparnis = Flattarif-Rechnung mit PV minus TOU-Rechnung.
+  expect(tou.billEuro).toBeGreaterThan(0);
+  expect(tou.savingsVsFlatEuro).toBeCloseTo(
+    economics.annualBillsEuro.currentEuro - tou.billEuro,
+    2,
+  );
+  expect(tou.gridChargeKwh).toBeGreaterThanOrEqual(0);
+  expect(tou.schedule24h).toHaveLength(24);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  const block = page.locator('[data-energy-calculation-v2-tou="true"]');
+  await expect(block).toBeVisible();
+  await expect(block.getByText("Zeitvariabler Tarif")).toBeVisible();
+  await expect(block.getByText("Mit PV (Zeittarif)")).toBeVisible();
+  await expect(page.locator('[data-energy-tou-schedule-chart="true"]')).toBeVisible();
+});
+
 test("M1-11g: Boden-Albedo speichert als known-Profil", async ({ page }) => {
   const actorId = await resolveEditorId();
   const workspaceId = await seedIsolatedWorkspace(actorId);
