@@ -106,6 +106,24 @@ async function seedRunningEntry(): Promise<void> {
 
 const path = (): string => `/w/${state().workspaceId}/anfragen/${state().mainProjectId}/zeiterfassung`;
 
+// Die Zeiterfassungs-Seite teilen sich parallel laufende Specs
+// (F9-05 hinterlässt z. B. einen 120-Minuten-Eintrag) — die Summe ist
+// deshalb nur als exaktes Delta belastbar, nicht als Absolutwert.
+async function readTotalMinutes(page: Page): Promise<number> {
+  const text = await page.getByText(/^Summe: \d/u).textContent();
+  const match = /^(?:(\d+) Std\.)?\s*(\d+) Min\./u.exec(
+    (text ?? "").replace(/^Summe:\s*/u, ""),
+  );
+  if (!match) throw new Error(`Unerwartetes Summenformat: ${text}`);
+  return Number(match[1] ?? 0) * 60 + Number(match[2]);
+}
+
+function formatExpectation(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return h > 0 ? `Summe: ${h} Std. ${m} Min.` : `Summe: ${m} Min.`;
+}
+
 test("F9.2-E2E-01: Editor startet, stoppt und sieht die Summe; zweite Stoppuhr blockiert", async ({ page }) => {
   test.setTimeout(150_000);
   const data = state();
@@ -121,6 +139,7 @@ test("F9.2-E2E-01: Editor startet, stoppt und sieht die Summe; zweite Stoppuhr b
   await expect(page.getByText("Stoppuhr gestartet.", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Stoppuhr läuft" })).toBeVisible();
   await expect(page.getByText(/läuft seit/u).first()).toBeVisible();
+  const baseline = await readTotalMinutes(page);
 
   // Zweite Stoppuhr: Button ist weg, Banner bleibt.
   await expect(page.getByRole("button", { name: "Stoppuhr starten" })).toHaveCount(0);
@@ -130,17 +149,18 @@ test("F9.2-E2E-01: Editor startet, stoppt und sieht die Summe; zweite Stoppuhr b
   await runningSection.getByLabel("Arbeitszeit (Minuten)").fill("90");
   await page.getByRole("button", { name: "Stoppen" }).click();
   await expect(page.getByText("Stoppuhr gestoppt.", { exact: true })).toBeVisible();
-  await expect(page.getByText("Summe: 1 Std. 30 Min.")).toBeVisible();
+  // Stoppen mit 90 Minuten → Summe steigt exakt um 90.
+  await expect(page.getByText(formatExpectation(baseline + 90), { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stoppuhr starten" })).toBeVisible();
 
-  // Verwerfen-Pfad: starten → verwerfen → leer.
+  // Verwerfen-Pfad: starten → verwerfen → Summe unverändert.
   await page.getByRole("button", { name: "Stoppuhr starten" }).click();
   await expect(page.getByRole("heading", { name: "Stoppuhr läuft" })).toBeVisible();
   await page.getByRole("button", { name: "Verwerfen" }).click();
   await expect(page.getByText("Laufender Eintrag verworfen.", { exact: true })).toBeVisible();
-  // Der laufende Eintrag ist weg; der gestoppte 90-Minuten-Eintrag bleibt.
+  // Der laufende Eintrag ist weg; die Summe bleibt beim Stop-Stand.
   await expect(page.getByRole("heading", { name: "Stoppuhr läuft" })).toHaveCount(0);
-  await expect(page.getByText("Summe: 1 Std. 30 Min.")).toBeVisible();
+  await expect(page.getByText(formatExpectation(baseline + 90), { exact: true })).toBeVisible();
 
   expect(errors, "Browser-Konsole und Page-Errors der Editor-Grenze").toEqual([]);
 });

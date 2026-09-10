@@ -1783,9 +1783,14 @@ async function assertLinkable(
   }
   if (final.status === "voided") throw new InvoicingConflictError();
   if (deposit.status !== "issued") throw new InvoicingConflictError();
-  // F8-02: Teilbetrag im Intervall [1, Brutto(Anzahlung)].
+  // F8-02: Teilbetrag im Intervall [0, Brutto(Anzahlung)]; 0 nur
+  // bei 0-Brutto-Anzahlung (positionslose Entwürfe verlinken, kein
+  // wirkungsloser Null-Link auf echte Beträge).
   const depositGross = Number(deposit.gross_cents);
-  if (!Number.isInteger(appliedCents) || appliedCents < 1 || appliedCents > depositGross) {
+  if (!Number.isInteger(appliedCents) || appliedCents < 0 || appliedCents > depositGross) {
+    throw new InvoicingValidationError();
+  }
+  if (appliedCents === 0 && depositGross > 0) {
     throw new InvoicingValidationError();
   }
   // F8-02: keine Über-Anrechnung der Schlussrechnung (fail-closed

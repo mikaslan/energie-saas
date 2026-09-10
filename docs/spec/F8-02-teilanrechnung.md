@@ -16,11 +16,13 @@ Nummernserien-/Filter-/CSV-Umbauten). Folgt auf F8-01 (dort als
 - Anrechenbar: nur `invoice` mit Status `issued` (Entwürfe und
   Stornierte nie), gleicher Workspace, X ≠ Y, genau eine Stufe
   (keine Ketten, wie F8-01).
-- Betrag: 1 ≤ applied ≤ Brutto(Anzahlung); Σ applied auf der
-  Schlussrechnung ≤ Brutto(Schlussrechnung), sonst Conflict
-  (fail-closed statt stiller 0-Clamp). Restbetrag = Brutto(X) −
-  Σ applied, reine Anzeige, keine Umbuchung. Legacy-Überdeckung
-  (F8-01-Bestand) zeigt weiter max(…, 0).
+- Betrag: 0 ≤ applied ≤ Brutto(Anzahlung), wobei 0 nur bei
+  0-Brutto-Anzahlung gilt (positionslose Belege bleiben
+  verlinkbar; kein wirkungsloser Null-Link auf echte Beträge);
+  Σ applied auf der Schlussrechnung ≤ Brutto(Schlussrechnung),
+  sonst Conflict (fail-closed statt stiller 0-Clamp). Restbetrag
+  = Brutto(X) − Σ applied, reine Anzeige, keine Umbuchung.
+  Legacy-Überdeckung (F8-01-Bestand) zeigt weiter max(…, 0).
 - Exakte Reonic-Darstellung UNKNOWN; Layout ESTIMATE, nur
   gespeicherte Werte.
 

@@ -181,11 +181,21 @@ describe("F8-02 Teilanrechnung (PostgreSQL)", () => {
     const depositId = await seedIssued(fixture, "Anzahlung", 100_00);
     const finalId = await seedDraft(fixture, "Schlussrechnung", 100_00);
 
-    // 0 und negativ → Validation.
+    // 0 auf echte 119,00 → Validation (wirkungsloser Null-Link).
     await expect(withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => linkDeposit(tx, ctx, linkCommand(finalId, depositId, 0)),
     )).rejects.toBeInstanceOf(InvoicingValidationError);
+
+    // 0 auf 0-Brutto-Anzahlung → ok (positionslose Belege, F8-01-Pfad).
+    const zeroDeposit = await seedIssued(fixture, "Null-Anzahlung", 0);
+    const zeroFinal = await seedDraft(fixture, "Null-Schluss", 0);
+    const zeroLinked = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => linkDeposit(tx, ctx, linkCommand(zeroFinal, zeroDeposit, 0)),
+    );
+    expect(zeroLinked.linkedDeposits[0]).toMatchObject({ id: zeroDeposit, appliedCents: 0 });
+    expect(zeroLinked.remainingCents).toBe(0);
 
     // Mehr als das Anzahlungs-Brutto (119,00) → Validation.
     await expect(withAuthorizedTenantOn(
