@@ -16,8 +16,9 @@
  * fail-closed ab. Warnungsklassen ohne Datengrundlage im v2-Request
  * (unknown_profile_field, bidirectional/backup) gehoeren zu den Slices, die
  * Profil-/Requirement-Eingaben tragen, und werden hier nicht behauptet.
- * Branch `existing_installation` ist fail-closed (kein
- * Bestand-Port baseline/geplant/Delta; Neuanlagen-Rechnung waere falsch).
+ * Branch `existing_installation` rechnet Bestand-Port baseline/geplant/Delta
+ * (runExistingInstallationV2); fail-closed bleibt nur bei fehlendem
+ * Bestands-Kontext oder fehlender Bestands-Reihe (keine erfundene Anlage).
  */
 import {
   cyclicSocStart,
