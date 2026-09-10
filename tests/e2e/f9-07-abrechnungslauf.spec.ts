@@ -158,12 +158,16 @@ test("F9-07-E2E-01: Editor legt Lauf an, schließt ihn, Eintrag ist gesperrt", a
   await expect(page.getByText("Ereignistyp angelegt.", { exact: true })).toBeVisible();
 
   await page.goto(path);
-  await page.getByLabel("Ereignistyp").selectOption({ label: "Abrechnung-Montage" });
-  await page.getByLabel("Beginn").fill("2026-09-04T08:00");
-  await page.getByLabel("Ende").fill("2026-09-04T10:00");
-  await page.getByLabel("Arbeitszeit (Minuten)").fill("120");
-  await page.getByLabel("Kommentar").fill(ENTRY_COMMENT);
-  await page.getByRole("button", { name: "Erfassen" }).click();
+  // Gegen Eintrags-Editformulare anderer Specs abgrenzen (gleiche Labels).
+  const createForm = page.locator("section", {
+    has: page.getByRole("heading", { name: "Neuer Zeiteintrag" }),
+  });
+  await createForm.getByLabel("Ereignistyp").selectOption({ label: "Abrechnung-Montage" });
+  await createForm.getByLabel("Beginn").fill("2026-09-04T08:00");
+  await createForm.getByLabel("Ende").fill("2026-09-04T10:00");
+  await createForm.getByLabel("Arbeitszeit (Minuten)").fill("120");
+  await createForm.getByLabel("Kommentar").fill(ENTRY_COMMENT);
+  await createForm.getByRole("button", { name: "Erfassen" }).click();
   await expect(page.getByText("Zeiteintrag angelegt.", { exact: true })).toBeVisible();
 
   await entryItem(page).getByRole("button", { name: "Freigeben" }).click();
