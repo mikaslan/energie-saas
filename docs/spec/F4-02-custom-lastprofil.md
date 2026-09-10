@@ -1,6 +1,8 @@
 # F4-02 — Custom-Lastprofil (Monatswerte + Stundenprofil)
 
-Status: **SPECIFIED** · Lane: `codex/m1-wave-02` · Stand 2026-09-09
+Status: **IMPLEMENTIERT/LOKAL VERIFIZIERT** · Lane: `codex/m1-wave-02` · Stand 2026-09-10
+Nachweis: Commit 40a675d (typecheck+lint 0, unit 40/40, m1-11g-e2e 6/6
+lokal beobachtet); CI 34502966689 success (90/90 E2E).
 
 ## Ziel und Abgrenzung
 
