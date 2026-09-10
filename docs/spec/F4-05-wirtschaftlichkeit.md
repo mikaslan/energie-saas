@@ -107,9 +107,23 @@ Tabelle (Jahr, Ersparnis, kumuliert). E2E-Sichtbarkeit wie F4.2/F4.3.
 - Gates: lint/typecheck/test/build + CI grün; v2-Artefakt-Regen
   (Request+Result) + SHA-Pin + Goldens prüfen.
 
-## Bewusst offen
+## F4.5b — Workspace-Default-Fallback (geliefert)
 
-- F4.5b: Workspace-Default-Fallback (F4.6-Preis/Eskalation/Horizont).
+- Confirm friert F4.6-Defaults in die Preparation ein (`workspaceEconomics`
+  mit Settings-Revision, Preis, Eskalation-bps, Horizont); Profil gewinnt
+  immer, Workspace füllt nur Profil-Lücken (Preis, Eskalation, Horizont).
+- Ohne Preis überall bleibt Geld unbelegt (kein erfundenes Geld);
+  unbrauchbarer Fallback-Preis (0/>200 Ct) zählt als unbelegt, bricht nie
+  den Confirm ab.
+- Resultat-Echo trägt `priceSource` (profile/workspace_default) und
+  `settingsRevision`; UI zeigt die Preis-Herkunft.
+- Berechtigung: economics.read (ab Viewer) prüft der Confirm explizit;
+  Settings-Read liegt in `lib/integrations/economics/settings-read.ts`
+  ohne `server-only`-Marker (E2E/tsx-tauglich).
+- E2E: Settings-Zeile (30 Ct, 200 bps, Horizont 15, Rev 1) + preisloses
+  Profil → economics mit Quelle workspace_default, 15 Cashflow-Zeilen.
+
+## Bewusst offen
 - F4.4: TOU-Tarife, Tarifvergleich alt/neu, Arbitrage/Ladefahrplan
   (Dispatch-Umbau, eigener Slice).
 - F4.5b: Sankey-Energiefluss, Bestands-Delta-Geld, Öl-/Gas-Substitution.

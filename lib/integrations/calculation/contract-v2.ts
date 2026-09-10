@@ -55,6 +55,8 @@ const economicsInputV2Schema = z.strictObject({
   feedInTariffSource: z.enum(["override", "eeg_default", "post_eeg"]),
   investmentEuro: finite().min(0).max(10_000_000),
   horizonYears: z.int().min(1).max(50),
+  priceSource: z.enum(["profile", "workspace_default"]),
+  settingsRevision: z.int().min(0),
 });
 
 /**
@@ -68,6 +70,8 @@ const economicsResultV2Schema = z.strictObject({
   feedInTariffSource: z.enum(["override", "eeg_default", "post_eeg"]),
   investmentEuro: finite().min(0).max(10_000_000),
   horizonYears: z.int().min(1).max(50),
+  priceSource: z.enum(["profile", "workspace_default"]),
+  settingsRevision: z.int().min(0),
   annualSavingsEuro: finite().min(0),
   cumulativeCashflowEuro: z.array(finite()).min(1).max(50),
   amortizationYears: z.int().min(0).max(50).nullable(),

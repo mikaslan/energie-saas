@@ -16,7 +16,7 @@ import {
   CALCULATION_V2_PROVIDER_RECIPE_VERSION,
 } from "./versions-v2";
 import { planningSourceSnapshotSchema } from "./preparation";
-import { claimStorageV2Schema } from "./prepare-v2";
+import { claimStorageV2Schema, workspaceEconomicsV2Schema } from "./prepare-v2";
 
 export const PROJECT_CALCULATION_PREPARATION_V2_VERSION =
   "project-calculation-preparation.v2" as const;
@@ -48,6 +48,11 @@ export const projectCalculationPreparationV2Schema = z.strictObject({
   // bestaetigten Batterie-Revision aufgeloest, kein Default): Der Worker
   // baut daraus den Claim, ohne den Katalog erneut zu lesen.
   storage: claimStorageV2Schema,
+  // F4.5b: eingefrorene Workspace-Wirtschaftlichkeits-Defaults (F4.6) als
+  // Fallback, wenn das Profil Preis/Eskalation/Horizont nicht belegt.
+  // Optional (Altzeilen ohne Schluessel bleiben gueltig); effektiv
+  // verwendete Werte stehen mit Quelle im economics-Input (inputSha).
+  workspaceEconomics: workspaceEconomicsV2Schema.optional(),
 });
 
 export type ProjectCalculationPreparationV2 = z.infer<

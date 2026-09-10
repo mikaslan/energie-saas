@@ -143,8 +143,41 @@ describe("F4.1 v2 prepare", () => {
       feedInTariffSource: "override",
       investmentEuro: 20_000,
       horizonYears: 20,
+      priceSource: "profile",
+      settingsRevision: 0,
     });
     expect(resolved.inputSha256).not.toBe(bare.inputSha256);
+  });
+
+  it("fuellt F4.5b-Preis/Horizont aus eingefrorenem Workspace-Fallback", () => {
+    const seeded = structuredClone(claim()) as unknown as {
+      preparation: {
+        profile: { consumption: unknown };
+        workspaceEconomics?: Record<string, unknown>;
+      };
+    };
+    // Preis-Luecke im Profil, Investition belegt (Rest bleibt Standard).
+    const seededConsumption = seeded.preparation.profile.consumption as Record<string, unknown>;
+    seededConsumption.electricityPriceCentsPerKwh = { status: "unknown", value: null, source: "not_collected" };
+    seededConsumption.annualPriceIncreasePercent = { status: "unknown", value: null, source: "not_collected" };
+    seededConsumption.investmentEuro = { status: "known", value: 20_000, source: "operator_reviewed" };
+    seededConsumption.feedInTariffCtPerKwh = { status: "known", value: 8, source: "operator_reviewed" };
+    seeded.preparation.workspaceEconomics = {
+      settingsRevision: 2,
+      electricityPriceNetCentsPerKwh: 30,
+      escalationRateBps: 200,
+      cashflowHorizonYears: 15,
+    };
+    const resolved = buildPreparedPlanningCalculationInputV2(seeded);
+    expect(resolved.inputSnapshot.economics).toMatchObject({
+      importPriceCtPerKwh: 30,
+      priceEscalationRate: 0.02,
+      priceSource: "workspace_default",
+      settingsRevision: 2,
+      horizonYears: 15,
+    });
+    // Horizont 15 steckt im Input (Engine rechnet 15 Zeilen; s. Run-Test).
+    expect(resolved.inputSnapshot.economics!.horizonYears).toBe(15);
   });
 
   it("weist v1-Vertrag, falsche Defaults und ungueltigen Speicher als InputError ab", () => {

@@ -549,7 +549,7 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
           {euroFormatter.format(economics.investmentEuro)}
         </DetailItem>
         <DetailItem term="Bezugspreis (Jahr 1)" numeric>
-          {`${centFormatter.format(economics.importPriceCtPerKwh)} Ct/kWh`}
+          {`${centFormatter.format(economics.importPriceCtPerKwh)} Ct/kWh (${economics.priceSource === "profile" ? "Profil" : "Workspace-Default"})`}
         </DetailItem>
         <DetailItem term="Einspeisevergütung" numeric>
           {`${centFormatter.format(economics.feedInTariffCtPerKwh)} Ct/kWh (${feedInSourceLabel(economics.feedInTariffSource)})`}

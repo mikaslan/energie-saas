@@ -333,6 +333,8 @@ describe("F4.1 v2 finalize", () => {
           feedInTariffSource: "override",
           investmentEuro: 20_000,
           horizonYears: 20,
+          priceSource: "profile",
+          settingsRevision: 0,
         },
       }),
       ...base,

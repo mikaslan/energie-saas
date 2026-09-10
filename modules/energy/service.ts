@@ -31,6 +31,7 @@ import {
   hashProjectCalculationPreparationV2,
   southZeroToNorthClockwise,
 } from "@/lib/integrations/calculation/preparation-v2";
+import { readWorkspaceEconomicsRow } from "@/lib/integrations/economics/settings-read";
 import {
   reservationHashV2,
   type ReservationBatteryV2,
@@ -2253,6 +2254,20 @@ export async function confirmProjectEnergyProfileV2(
     throw error;
   }
 
+  // F4.5b: Workspace-Wirtschaftlichkeits-Defaults einfrieren (F4.6).
+  // economics.read steht jeder Rolle ab Viewer zu; ohne das Recht bleibt
+  // der Fallback aus (defensiv — project.write traegt es immer).
+  // Keine Zeile -> Revision 0 mit Defaults; Fallback wirkt nur bei
+  // Profil-Luecken (Aufloesung in economics-v2).
+  const economicsRow = can(ctx, "economics.read")
+    ? await readWorkspaceEconomicsRow(tx, ctx.workspaceId)
+    : null;
+  const economicsSettings = {
+    revision: economicsRow?.revision ?? 0,
+    electricityPriceNetCentsPerKwh: economicsRow?.electricityPriceNetCentsPerKwh ?? null,
+    escalationRateBps: economicsRow?.escalationRateBps ?? null,
+    cashflowHorizonYears: economicsRow?.cashflowHorizonYears ?? 20,
+  };
   let preparationSnapshot;
   try {
     preparationSnapshot = buildProjectCalculationPreparationV2({
@@ -2274,6 +2289,12 @@ export async function confirmProjectEnergyProfileV2(
       requirements: parsedRequirement,
       sourceSnapshot: projectSite.snapshot,
       storage: storageParams,
+      workspaceEconomics: {
+        settingsRevision: economicsSettings.revision,
+        electricityPriceNetCentsPerKwh: economicsSettings.electricityPriceNetCentsPerKwh,
+        escalationRateBps: economicsSettings.escalationRateBps,
+        cashflowHorizonYears: economicsSettings.cashflowHorizonYears,
+      },
     });
   } catch {
     throw new EnergyProfileInvalidError();

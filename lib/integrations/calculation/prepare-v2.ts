@@ -41,6 +41,24 @@ export const claimStorageV2Schema = z.strictObject({
   { message: "socMinKwh <= socMaxKwh <= capacityKwh verletzt" },
 );
 
+/**
+ * F4.5b Workspace-Fallback (F4.6-Defaults, Bereiche dort gepinnt):
+ * Preis/Eskalation nullable (null = unbelegt), Horizont immer belegt.
+ * Definiert neben claimStorageV2Schema, damit preparation-v2 dieselbe
+ * Importrichtung nutzt (kein Laufzeit-Zirkel mit preparation-v2).
+ */
+export const workspaceEconomicsV2Schema = z.strictObject({
+  settingsRevision: z.int().min(0).max(2_147_483_647),
+  // F4.6-Bereiche (0..1.000.000 Ct): Request-Tauglichkeit (1..200) prueft
+  // die Aufloesung; unbrauchbarer Fallback zaehlt als unbelegt, bricht
+  // aber nie den Confirm ab.
+  electricityPriceNetCentsPerKwh: finite().min(0).max(1_000_000).nullable(),
+  escalationRateBps: z.int().min(0).max(2000).nullable(),
+  cashflowHorizonYears: z.int().min(1).max(50),
+});
+
+export type WorkspaceEconomicsV2 = z.infer<typeof workspaceEconomicsV2Schema>;
+
 const claimSchema = z.strictObject({
   workspaceId: z.uuid(),
   projectId: z.uuid(),
@@ -69,6 +87,9 @@ const claimSchema = z.strictObject({
     profile: siteEnergyProfileV1Schema,
     requirements: ProjectRequirementsRechnerV1Schema,
     sourceSnapshot: planningSourceSnapshotSchema,
+    // F4.5b: eingefrorener Workspace-Fallback (optional; Alt-Claims ohne
+    // Schluessel bleiben gueltig).
+    workspaceEconomics: workspaceEconomicsV2Schema.optional(),
   }),
 });
 
@@ -142,12 +163,22 @@ function existingInstallationSnapshot(
  * Investition; sonst fehlt der Schluessel und Geld bleibt unbelegt).
  */
 function economicsSnapshot(
-  preparation: Pick<
-    ProjectCalculationPreparationV2,
-    "profile"
-  >,
+  preparation: Pick<ProjectCalculationPreparationV2, "profile"> & {
+    workspaceEconomics?: ProjectCalculationPreparationV2["workspaceEconomics"];
+  },
 ): { economics?: PlanningCalculationRequestV2["economics"] } {
-  const resolved = resolveEconomics(preparation.profile.consumption);
+  // F4.5b: Profil gewinnt; Workspace füllt nur Profil-Lücken. workspace
+  // ist null ohne eingefrorene Defaults (Alt-Claims).
+  const workspace = preparation.workspaceEconomics === undefined
+    ? null
+    : {
+      settingsRevision: preparation.workspaceEconomics.settingsRevision,
+      electricityPriceNetCentsPerKwh:
+        preparation.workspaceEconomics.electricityPriceNetCentsPerKwh,
+      escalationRateBps: preparation.workspaceEconomics.escalationRateBps,
+      cashflowHorizonYears: preparation.workspaceEconomics.cashflowHorizonYears,
+    };
+  const resolved = resolveEconomics(preparation.profile.consumption, workspace);
   if (resolved === null) return {};
   return { economics: resolved };
 }
@@ -290,6 +321,9 @@ const executeClaimV2Schema = z.object({
     profile: siteEnergyProfileV1Schema,
     requirements: ProjectRequirementsRechnerV1Schema,
     sourceSnapshot: planningSourceSnapshotSchema,
+    // F4.5b: eingefrorener Workspace-Fallback (optional; Alt-Claims ohne
+    // Schluessel bleiben gueltig; z.object laesst den Key durch).
+    workspaceEconomics: workspaceEconomicsV2Schema.optional(),
   }),
 });
 
@@ -337,6 +371,10 @@ export function buildPlanningCalculationInputV2(input: {
       profile: value.preparationV2.profile,
       requirements: value.preparationV2.requirements,
       sourceSnapshot: value.preparationV2.sourceSnapshot,
+      // F4.5b: eingefrorener Workspace-Fallback laeuft mit (optional).
+      ...(value.preparationV2.workspaceEconomics === undefined
+        ? {}
+        : { workspaceEconomics: value.preparationV2.workspaceEconomics }),
     },
   });
   return {

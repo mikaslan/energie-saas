@@ -399,20 +399,15 @@ function assembleResultV2(
     feedInTariffSource: request.economics.feedInTariffSource,
     investmentEuro: request.economics.investmentEuro,
     horizonYears: request.economics.horizonYears,
+    priceSource: request.economics.priceSource,
+    settingsRevision: request.economics.settingsRevision,
     ...computeEconomics(
       {
         generationKwh: annual.generationKwh,
         selfConsumptionKwh: annual.selfConsumptionKwh,
         feedInKwh: annual.feedInKwh,
       },
-      {
-        importPriceCtPerKwh: request.economics.importPriceCtPerKwh,
-        priceEscalationRate: request.economics.priceEscalationRate,
-        feedInTariffCtPerKwh: request.economics.feedInTariffCtPerKwh,
-        feedInTariffSource: request.economics.feedInTariffSource,
-        investmentEuro: request.economics.investmentEuro,
-        horizonYears: request.economics.horizonYears,
-      },
+      request.economics,
     ),
   };
   const candidate = {

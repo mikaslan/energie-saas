@@ -85,6 +85,57 @@ describe("economics resolution", () => {
   });
 });
 
+describe("economics workspace fallback (F4.5b)", () => {
+  const workspace = {
+    settingsRevision: 3,
+    electricityPriceNetCentsPerKwh: 30,
+    escalationRateBps: 200,
+    cashflowHorizonYears: 15,
+  };
+
+  it("fuellt Profil-Luecken aus Workspace-Defaults (Profil gewinnt)", () => {
+    // Preis fehlt im Profil -> Workspace 30 Ct, Quelle workspace_default.
+    const filled = resolveEconomics(
+      consumption({ electricityPriceCentsPerKwh: unknown() }),
+      workspace,
+    )!;
+    expect(filled.importPriceCtPerKwh).toBe(30);
+    expect(filled.priceSource).toBe("workspace_default");
+    expect(filled.settingsRevision).toBe(3);
+    // Eskalation 200 bps = 2 % (Profil unbekannt).
+    expect(filled.priceEscalationRate).toBeCloseTo(0.02, 12);
+    // Horizont aus Workspace.
+    expect(filled.horizonYears).toBe(15);
+    // Profilpreis gewinnt ueber Workspace; Eskalations-Luecke fuellt der
+    // Fallback trotzdem (Profil-Eskalation ist unknown).
+    const profile = resolveEconomics(consumption(), workspace)!;
+    expect(profile.importPriceCtPerKwh).toBe(36);
+    expect(profile.priceSource).toBe("profile");
+    expect(profile.settingsRevision).toBe(3);
+    expect(profile.priceEscalationRate).toBeCloseTo(0.02, 12);
+    expect(profile.horizonYears).toBe(15);
+  });
+
+  it("bleibt ohne Preis ueberall unbelegt; Muell-Fallback zaehlt nicht", () => {
+    expect(resolveEconomics(
+      consumption({ electricityPriceCentsPerKwh: unknown() }),
+      null,
+    )).toBeNull();
+    // Fallback-Preis 0 oder >200: unbelegt statt Fehler.
+    for (const bad of [0, 500]) {
+      expect(resolveEconomics(
+        consumption({ electricityPriceCentsPerKwh: unknown() }),
+        { ...workspace, electricityPriceNetCentsPerKwh: bad },
+      )).toBeNull();
+    }
+    // Unbrauchbarer Horizont: fail-closed.
+    expect(() => resolveEconomics(consumption(), {
+      ...workspace,
+      cashflowHorizonYears: 99,
+    })).toThrow();
+  });
+});
+
 describe("economics computation", () => {
   const annual = { generationKwh: 10_000, selfConsumptionKwh: 4_000, feedInKwh: 6_000 };
   const input = {
@@ -94,6 +145,8 @@ describe("economics computation", () => {
     feedInTariffSource: "eeg_default" as const,
     investmentEuro: 20_000,
     horizonYears: 20,
+    priceSource: "profile" as const,
+    settingsRevision: 0,
   };
 
   it("rechnet Jahresersparnis, Cashflow und Amortisation exakt", () => {
@@ -147,6 +200,8 @@ describe("economics computation", () => {
         feedInTariffSource: "override",
         investmentEuro: 1_000,
         horizonYears: 20,
+        priceSource: "profile",
+        settingsRevision: 0,
       },
     );
     // Eskalation -100 %: nur Jahr 1 zahlt (1100 × 1,00), Rest 0.

@@ -486,7 +486,11 @@ test("M1-11g: F4.2-Monatsprofil formt die v2-Last nach Monatswerten", async ({ p
 
 // Kandidaturfähiger Snapshot (Projektion braucht echte Rechner-Inputs;
 // Minimal-Snapshot des Ketten-Fixtures projiziert nicht).
-async function writeCandidateSnapshot(workspaceId: string, projectId: string): Promise<void> {
+async function writeCandidateSnapshot(
+  workspaceId: string,
+  projectId: string,
+  provenancePatch: Record<string, string> = {},
+): Promise<void> {
   await poolOne(async (pool) => withTenantOn(pool, workspaceId, async (tx) => {
     const snapshot = {
       schemaVersion: "wmee-solar-snapshot.v1",
@@ -526,6 +530,7 @@ async function writeCandidateSnapshot(workspaceId: string, projectId: string): P
         electricityPrice: "customer",
         annualPriceIncrease: "customer",
         investment: "market_estimate",
+        ...provenancePatch,
       },
       result: { mode: "new_installation" },
     };
@@ -838,4 +843,87 @@ test("M1-11g: F4.5-Investition/Verguetung treibt currentV2-economics", async ({ 
     axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical"),
     "Axe serious/critical in der v2-Wirtschaftlichkeitsansicht",
   ).toEqual([]);
+});
+
+test("M1-11g: F4.5b-Workspace-Default traegt currentV2-economics", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  // Preis/Eskalation unbelegt (Provenienz default); Investition/Verguetung
+  // kommen aus dem Editor, Preis/Horizont aus Workspace-Defaults.
+  await writeCandidateSnapshot(workspaceId, ids.projectId, {
+    electricityPrice: "default",
+    annualPriceIncrease: "default",
+  });
+  await poolOne(async (pool) => withTenantOn(pool, workspaceId, async (tx) => {
+    await tx.execute(
+      `insert into workspace_economics_settings
+         (id, workspace_id, revision, electricity_price_net_cents_per_kwh,
+          escalation_rate_bps, cashflow_horizon_years, created_by)
+       values ('${randomUUID()}', '${workspaceId}'::uuid, 1, 30, 200, 15, '${actorId}'::uuid)`,
+    );
+  }));
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await page.getByLabel("Investition netto (€)").fill("20000");
+  await page.getByLabel("Einspeisevergütung Override (Ct/kWh, leer = EEG-Default)").fill("8");
+  await page.getByLabel("EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)").fill("2024");
+  // Preis/Eskalation leeren: Profil-Luecke faellt auf Workspace-Defaults.
+  await page.getByLabel("Kundentarif (ct/kWh)").fill("");
+  await page.getByLabel("Angegebene Preisänderung (%/Jahr)").fill("");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Workspace-Default-Kette erreichte kein currentV2.");
+  }
+  const economics = expected.calculation.resultV2.value.economics;
+  if (!economics) throw new Error("currentV2 traegt kein economics.");
+  expect(economics.priceSource).toBe("workspace_default");
+  expect(economics.importPriceCtPerKwh).toBe(30);
+  expect(economics.priceEscalationRate).toBeCloseTo(0.02, 12);
+  expect(economics.settingsRevision).toBe(1);
+  expect(economics.horizonYears).toBe(15);
+  expect(economics.cumulativeCashflowEuro).toHaveLength(15);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  const block = page.locator('[data-energy-calculation-v2-economics="true"]');
+  await expect(block).toBeVisible();
+  await expect(block.getByText(/Workspace-Default/)).toBeVisible();
+  await expect(block.locator("table tbody tr")).toHaveCount(15);
 });

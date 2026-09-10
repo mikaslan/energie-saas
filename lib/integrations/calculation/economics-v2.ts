@@ -61,6 +61,8 @@ export function roundMoney(value: number): number {
 
 export type FeedInTariffSource = "override" | "eeg_default" | "post_eeg";
 
+export type EconomicsPriceSource = "profile" | "workspace_default";
+
 export type EconomicsInputV2 = {
   importPriceCtPerKwh: number;
   priceEscalationRate: number;
@@ -68,6 +70,21 @@ export type EconomicsInputV2 = {
   feedInTariffSource: FeedInTariffSource;
   investmentEuro: number;
   horizonYears: number;
+  /** Herkunft des Bezugspreises (F4.5b Workspace-Fallback). */
+  priceSource: EconomicsPriceSource;
+  /** Workspace-Settings-Revision (0 = Profil-allein, kein Fallback). */
+  settingsRevision: number;
+};
+
+/**
+ * F4.5b Workspace-Fallback (eingefrorene F4.6-Defaults aus der
+ * Preparation; Bereiche s. workspaceEconomicsV2Schema).
+ */
+export type EconomicsWorkspaceFallbackV2 = {
+  settingsRevision: number;
+  electricityPriceNetCentsPerKwh: number | null;
+  escalationRateBps: number | null;
+  cashflowHorizonYears: number;
 };
 
 function knownNumber(entry: unknown): number | null {
@@ -89,23 +106,47 @@ export function eegDefaultForYear(year: number): number {
 }
 
 /**
- * Tarifauflösung aus belegtem Verbrauchsprofil (Request-Baustein).
- * Gibt null zurück, wenn Preis oder Investition unbelegt sind.
+ * Tarifauflösung aus belegtem Verbrauchsprofil + optionalem
+ * Workspace-Fallback (F4.5b) als Request-Baustein. Profil gewinnt immer;
+ * Fallback füllt nur Profil-Lücken (Preis, Eskalation, Horizont).
+ * Gibt null zurück, wenn Preis oder Investition unbelegt bleiben.
  */
-export function resolveEconomics(consumption: unknown): EconomicsInputV2 | null {
+export function resolveEconomics(
+  consumption: unknown,
+  workspace?: EconomicsWorkspaceFallbackV2 | null,
+): EconomicsInputV2 | null {
   const holder = (consumption ?? {}) as Record<string, unknown>;
-  const importPriceCt = knownNumber(holder.electricityPriceCentsPerKwh);
+  const fallback = workspace ?? null;
+  const fallbackPrice = fallback?.electricityPriceNetCentsPerKwh ?? null;
+  const usableFallbackPrice = fallbackPrice !== null
+    && Number.isFinite(fallbackPrice)
+    && fallbackPrice >= 1
+    && fallbackPrice <= 200
+    ? fallbackPrice
+    : null;
+  const profilePrice = knownNumber(holder.electricityPriceCentsPerKwh);
+  const importPriceCt = profilePrice ?? usableFallbackPrice;
   const investmentEuro = knownNumber(holder.investmentEuro);
   if (importPriceCt === null || investmentEuro === null) return null;
-  if (importPriceCt < 1 || importPriceCt > 200) {
+  if (profilePrice !== null && (profilePrice < 1 || profilePrice > 200)) {
     economicsError("Bezugspreis ausserhalb 1..200 Ct/kWh");
   }
   if (investmentEuro < 0 || investmentEuro > 10_000_000) {
     economicsError("Investition ausserhalb 0..10.000.000 €");
   }
-  const escalationPct = knownNumber(holder.annualPriceIncreasePercent) ?? 0;
+  const profileEscalationPct = knownNumber(holder.annualPriceIncreasePercent);
+  // Basispunkte -> Prozent (200 bps = 2 %); Rate (/100) erst im Return.
+  const fallbackEscalationPct = fallback?.escalationRateBps == null
+    ? null
+    : fallback.escalationRateBps / 100;
+  const escalationPct = profileEscalationPct ?? fallbackEscalationPct ?? 0;
   if (escalationPct < -10 || escalationPct > 25) {
     economicsError("Preiseskalation ausserhalb -10..25 %");
+  }
+  const horizonYears = fallback?.cashflowHorizonYears
+    ?? ECONOMICS_HORIZON_YEARS;
+  if (!Number.isInteger(horizonYears) || horizonYears < 1 || horizonYears > 50) {
+    economicsError("Horizont ausserhalb 1..50 Jahre");
   }
   const overrideCt = knownNumber(holder.feedInTariffCtPerKwh);
   const commissioningYear = knownNumber(holder.feedInCommissioningYear);
@@ -135,7 +176,9 @@ export function resolveEconomics(consumption: unknown): EconomicsInputV2 | null 
     feedInTariffCtPerKwh,
     feedInTariffSource,
     investmentEuro,
-    horizonYears: ECONOMICS_HORIZON_YEARS,
+    horizonYears,
+    priceSource: profilePrice !== null ? "profile" : "workspace_default",
+    settingsRevision: fallback?.settingsRevision ?? 0,
   };
 }
 
