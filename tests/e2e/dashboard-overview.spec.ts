@@ -75,4 +75,6 @@ test("DASH-01: leere Workspace-Übersicht rendert ehrliche Leerzustände", async
   const today = dashboard.locator('[data-dashboard-today="true"]');
   await expect(today).toBeVisible();
   await expect(today.getByText("Heute nichts fällig.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Anfragen" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Aufgaben" })).toBeVisible();
 });
