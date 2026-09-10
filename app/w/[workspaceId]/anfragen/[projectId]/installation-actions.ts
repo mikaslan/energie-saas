@@ -10,6 +10,7 @@ import {
   InstallationConflictError,
   InstallationNotFoundError,
   InstallationValidationError,
+  recordHandover,
 } from "@/modules/installations";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -72,6 +73,29 @@ export async function completeInstallationAction(
     );
     revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
     return { status: "success", message: "Installation abgeschlossen." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F7-05 Abnahme: Wer/Wann/Bemerkung an abgeschlossener Installation.
+export async function recordHandoverAction(
+  _previous: InstallationActionState,
+  formData: FormData,
+): Promise<InstallationActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const byNameValue = formData.get("byName");
+  const noteValue = formData.get("note");
+  const byName = typeof byNameValue === "string" ? byNameValue : "";
+  const note = typeof noteValue === "string" && noteValue.trim() !== "" ? noteValue : null;
+  if (byName.trim() === "") return { status: "invalid" };
+  try {
+    await authorizedAction(ids.workspaceId, "installation.write", "installation", (tx, ctx) =>
+      recordHandover(tx, ctx, { projectId: ids.projectId, byName, note }),
+    );
+    revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
+    return { status: "success", message: "Abnahme festgehalten." };
   } catch (error) {
     return mapError(error);
   }

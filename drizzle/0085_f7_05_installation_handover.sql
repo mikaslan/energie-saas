@@ -1,0 +1,4 @@
+ALTER TABLE "installation" ADD COLUMN "handover_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "installation" ADD COLUMN "handover_by_name" text;--> statement-breakpoint
+ALTER TABLE "installation" ADD COLUMN "handover_note" text;--> statement-breakpoint
+ALTER TABLE "installation" ADD CONSTRAINT "installation_handover_ck" CHECK (("installation"."handover_at" is null and "installation"."handover_by_name" is null and "installation"."handover_note" is null) or ("installation"."status" = 'completed' and "installation"."handover_at" is not null and pg_catalog.length(pg_catalog.btrim("installation"."handover_by_name")) between 1 and 160 and ("installation"."handover_note" is null or (pg_catalog.length("installation"."handover_note") between 1 and 500 and "installation"."handover_note" = pg_catalog.btrim("installation"."handover_note")))));

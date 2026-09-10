@@ -26,6 +26,11 @@ export const installation = pgTable(
     offerId: uuid("offer_id"),
     variantId: uuid("variant_id"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    // F7-05 Abnahme: NULL = nicht abgenommen; nur bei completed belegbar
+    // (Service-Guard), korrigierbar via erneuter Abnahme.
+    handoverAt: timestamp("handover_at", { withTimezone: true }),
+    handoverByName: text("handover_by_name"),
+    handoverNote: text("handover_note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -38,6 +43,10 @@ export const installation = pgTable(
     check(
       "installation_completed_ck",
       sql`(${t.status} = 'completed' and ${t.completedAt} is not null) or (${t.status} = 'active' and ${t.completedAt} is null)`,
+    ),
+    check(
+      "installation_handover_ck",
+      sql`(${t.handoverAt} is null and ${t.handoverByName} is null and ${t.handoverNote} is null) or (${t.status} = 'completed' and ${t.handoverAt} is not null and pg_catalog.length(pg_catalog.btrim(${t.handoverByName})) between 1 and 160 and (${t.handoverNote} is null or (pg_catalog.length(${t.handoverNote}) between 1 and 500 and ${t.handoverNote} = pg_catalog.btrim(${t.handoverNote}))))`,
     ),
     check(
       "installation_variant_needs_offer_ck",

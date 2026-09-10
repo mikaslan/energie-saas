@@ -53,6 +53,10 @@ export type InstallationDto = {
   offerId: string | null;
   variantId: string | null;
   completedAt: string | null;
+  // F7-05 Abnahme: NULL = nicht abgenommen.
+  handoverAt: string | null;
+  handoverByName: string | null;
+  handoverNote: string | null;
   createdAt: string;
   updatedAt: string;
   permissions: { canWrite: boolean };
@@ -66,6 +70,9 @@ type InstallationRow = {
   offer_id: string | null;
   variant_id: string | null;
   completed_at: string | null;
+  handover_at: string | null;
+  handover_by_name: string | null;
+  handover_note: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -85,6 +92,9 @@ function toDto(row: InstallationRow, canWrite: boolean): InstallationDto {
     offerId: row.offer_id,
     variantId: row.variant_id,
     completedAt: row.completed_at,
+    handoverAt: row.handover_at,
+    handoverByName: row.handover_by_name,
+    handoverNote: row.handover_note,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     permissions: { canWrite },
@@ -103,7 +113,7 @@ function requireWrite(ctx: ServiceCtx): void {
   }
 }
 
-const ROW_COLUMNS = sql`id, project_id, source, status, offer_id, variant_id, completed_at, created_at, updated_at`;
+const ROW_COLUMNS = sql`id, project_id, source, status, offer_id, variant_id, completed_at, handover_at, handover_by_name, handover_note, created_at, updated_at`;
 
 export async function getInstallation(
   tx: TenantTx,
@@ -279,6 +289,77 @@ export async function completeInstallation(
     resource: "installation",
     allowed: true,
     details: { projectId: parsed.data.projectId },
+  });
+
+  return toDto(updated.rows[0]!, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F7-05 Abnahme: abgeschlossene Installation intern abnehmen (Wer/Wann/
+// Bemerkung). Nur completed; korrigierbar via erneuter Abnahme (neuer
+// Zeitstempel, auditiert). Fail-closed ohne Orakel.
+// ═══════════════════════════════════════════════════════════════════════
+
+const recordHandoverCommandSchema = z.strictObject({
+  projectId: uuidSchema,
+  byName: z.string().trim().min(1).max(160),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+export async function recordHandover(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string; byName: string; note?: string | null },
+): Promise<InstallationDto> {
+  requireWrite(ctx);
+  const parsed = recordHandoverCommandSchema.safeParse({
+    projectId: input.projectId,
+    byName: input.byName,
+    note: input.note ?? null,
+  });
+  if (!parsed.success) throw new InstallationValidationError();
+  const command = parsed.data;
+  // Leere/whitespace-only Notiz gilt als fehlend (Formulare senden "").
+  const note = command.note !== null && command.note !== undefined && command.note.trim() === ""
+    ? null
+    : (command.note ?? null);
+
+  const current = await tx.execute<InstallationRow>(sql`
+    select ${ROW_COLUMNS} from installation
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${command.projectId}::uuid
+     for update
+  `);
+  const row = current.rows[0];
+  if (!row) throw new InstallationNotFoundError(command.projectId);
+  if (row.status !== "completed") throw new InstallationValidationError("handover requires completed installation");
+
+  const updated = await tx.execute<InstallationRow>(sql`
+    update installation
+       set handover_at = statement_timestamp(),
+           handover_by_name = ${command.byName},
+           handover_note = ${note},
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${command.projectId}::uuid
+    returning ${ROW_COLUMNS}
+  `);
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "installation",
+    aggregateId: row.id,
+    eventType: "installation.handover_recorded",
+    actor: ctx.actor,
+    payload: { projectId: command.projectId },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "installation.handover.record",
+    resource: "installation",
+    allowed: true,
+    details: { projectId: command.projectId },
   });
 
   return toDto(updated.rows[0]!, true);

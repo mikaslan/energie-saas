@@ -5,5 +5,6 @@ export {
   InstallationConflictError,
   InstallationNotFoundError,
   InstallationValidationError,
+  recordHandover,
   type InstallationDto,
 } from "./service";

@@ -120,7 +120,8 @@ async function readInstallation(): Promise<InstallationRow | null> {
   try {
     const result = await pool.query(
       `select i.status as status, i.source as source,
-              i.completed_at as "completedAt", p.phase as phase
+              i.completed_at as "completedAt",
+              i.handover_by_name as "handoverByName", p.phase as phase
          from installation i
          join project p
            on p.workspace_id = i.workspace_id
@@ -188,4 +189,42 @@ test("F7.1-E2E-02: Abschluss — Status und Datum sichtbar", async ({ page }) =>
   expect(row?.completedAt).not.toBeNull();
 
   expect(errors, "Browser-Konsole und Page-Errors der Projekt-Grenze").toEqual([]);
+});
+
+test("F7-05-E2E-01: Abnahme — Wer/Wann/Notiz sichtbar", async ({ page }) => {
+  test.setTimeout(150_000);
+  const data = state();
+  const errors = trackErrors(page);
+
+  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f71ProjectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, data.editorEmail, projectPath);
+
+  const section = installationSection(page);
+  await expect(section).toBeVisible();
+  // Eigenständig: Anlage + Abschluss falls noch nicht geschehen
+  // (Vollsuite teilt sich die frische DB in Datei-Reihenfolge).
+  const createButton = section.getByRole("button", { name: "Installation direkt anlegen", exact: true });
+  if (await createButton.count() > 0) {
+    await createButton.click();
+    await expect(section.getByText("Installation angelegt")).toBeVisible();
+  }
+  const completeButton = section.getByRole("button", { name: "Installation abschließen", exact: true });
+  if (await completeButton.count() > 0) {
+    await completeButton.click();
+    await expect(section.getByText("Installation abgeschlossen.")).toBeVisible();
+  }
+  await section.getByLabel("Abgenommen durch").fill("Familie Berger");
+  await section.getByLabel("Notiz (optional)").fill("Zähler läuft.");
+  await section.getByRole("button", { name: "Abnahme speichern", exact: true }).click();
+  await expect(section.getByText("Abnahme festgehalten.")).toBeVisible();
+  await expect(section.getByText("Familie Berger")).toBeVisible();
+  await expect(section.getByText("Zähler läuft.")).toBeVisible();
+
+  await expect.poll(async () => readInstallation(), {
+    message: "Die Abnahme muss in der DB sichtbar sein.",
+    timeout: 15_000,
+  }).toMatchObject({ handoverByName: "Familie Berger" });
+
+  expect(errors, "Browser-Konsole und Page-Errors der Abnahme-Grenze").toEqual([]);
 });
