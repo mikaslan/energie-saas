@@ -3,6 +3,10 @@
 import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import type { ProjectEnergyProfileCandidate } from "@/modules/energy";
 import {
+  estimateHeatingLoadV1,
+  SIZING_ESTIMATE_DISCLAIMER_V1,
+} from "@/lib/integrations/heat-pump/sizing-estimate-v1";
+import {
   saveProjectEnergyProfileAction,
   type SaveProjectEnergyProfileState,
 } from "../../energy-actions";
@@ -34,6 +38,46 @@ function touPriceListValue(field: KnownOrUnknown): string {
   return field.value.every((entry) => typeof entry === "number")
     ? (field.value as number[]).join(", ")
     : "";
+}
+
+// F5-01 WP-Schätzung: rein lesende Orientierungsbox aus dem GESPEICHERTEN
+// thermischen Bedarf. Keine Klasse im Profil -> beide Klassen nebeneinander;
+// unbelegter Bedarf -> Hinweis statt Zahl (fail-closed, keine 0-kW-Zahl).
+function HpSizingEstimateBox({ thermalField }: { thermalField: KnownOrUnknown }) {
+  const annualThermalKwh =
+    thermalField.status === "known" && typeof thermalField.value === "number"
+      ? thermalField.value
+      : null;
+  let bestand: string | null = null;
+  let neubau: string | null = null;
+  if (annualThermalKwh !== null) {
+    try {
+      const b = estimateHeatingLoadV1({ annualThermalKwh, buildingClass: "bestand" });
+      bestand = `${b.heatingLoadKw.toLocaleString("de-DE")} kW (Empfehlung ca. ${b.recommendedNominalKw.toLocaleString("de-DE")} kW)`;
+    } catch {
+      bestand = null;
+    }
+    try {
+      const n = estimateHeatingLoadV1({ annualThermalKwh, buildingClass: "neubau" });
+      neubau = `${n.heatingLoadKw.toLocaleString("de-DE")} kW (Empfehlung ca. ${n.recommendedNominalKw.toLocaleString("de-DE")} kW)`;
+    } catch {
+      neubau = null;
+    }
+  }
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800" data-testid="hp-sizing-estimate">
+      <p className="font-medium">Wärmepumpen-Heizlast (Schätzung)</p>
+      {bestand !== null && neubau !== null ? (
+        <ul className="mt-1 list-disc pl-5">
+          <li>Bestand: {bestand}</li>
+          <li>Neubau: {neubau}</li>
+        </ul>
+      ) : (
+        <p className="mt-1">Kein belegter thermischer Wärmebedarf — keine Schätzung.</p>
+      )}
+      <p className="mt-1 text-xs text-slate-600">{SIZING_ESTIMATE_DISCLAIMER_V1}</p>
+    </div>
+  );
 }
 
 const MONTH_NAMES_DE = [
@@ -341,6 +385,7 @@ export function EnergyProfileEditor({
             WP-Warmwasseranteil (0–1, Default 0)
             <input id="energy-heat-pump-ww" name="heatPumpHotWaterShare" type="number" inputMode="decimal" min="0" max="1" step="any" defaultValue={fieldValue(profile.consumption.heatPumpHotWaterShare ?? { status: "unknown" })} className={inputClass} />
           </label>
+          <HpSizingEstimateBox thermalField={profile.consumption.heatPumpThermalKwhPerYear ?? { status: "unknown" }} />
           <label htmlFor="energy-cooling" className={labelClass}>
             Klimakühlung (kWh/Jahr)
             <input id="energy-cooling" name="coolingKwhPerYear" type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={fieldValue(profile.consumption.coolingKwhPerYear)} className={inputClass} />

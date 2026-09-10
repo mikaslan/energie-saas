@@ -745,6 +745,14 @@ test("M1-11g: F4.3-WP-Thermie treibt currentV2-WP-Strom", async ({ page }) => {
   expect(consumption?.heatPumpThermalKwhPerYear?.status).toBe("known");
   expect(consumption?.heatPumpThermalKwhPerYear?.value).toBe(12000);
 
+  // F5-01 WP-Schätzung: gespeicherte 12.000 kWh -> Bestand 6 kW,
+  // Neubau 7,06 kW, Norm-Hinweis direkt an der Zahl.
+  await page.reload();
+  const sizingBox = page.getByTestId("hp-sizing-estimate");
+  await expect(sizingBox).toContainText("Bestand: 6 kW");
+  await expect(sizingBox).toContainText("Neubau: 7,06 kW");
+  await expect(sizingBox).toContainText("DIN EN 12831");
+
   await addResolution(
     ids,
     createHash("sha256").update("m111g-v1-input").digest("hex"),
