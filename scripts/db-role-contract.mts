@@ -3686,6 +3686,20 @@ export async function verifyRoleContract(
   const hasGewerbeBoardProvisioning = gewerbeProvisioningProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("Anfragen Gewerbe"),
   );
+  // F10-03 (0091): Stufenmarker für die Installation-Projektion im
+  // Portal-Resolver (Muster 0088: Marker wählt den exakten Pin, kein
+  // Selbstabgleich — historische Prefixe ≤0075 tragen den 0062-Rumpf).
+  const portalResolverProbe = await client.query<{ source: string | null }>(`
+    select routine.prosrc as source
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'public'
+       and routine.proname = 'resolve_portal_public_view'
+  `);
+  const hasPortalInstallationProjection = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("installation_entry"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -4807,8 +4821,13 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
+        // F10-03: Stufenauswahl 0062/0091 per Marker (Prefix ≤0075
+        // trägt den alten Rumpf; ein dritter Rumpf bricht fail-closed
+        // über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          "search_path=pg_catalog:6d025bff7eee1e267019a81fe77730c139fc3c7a5e94cf9dd9c54541fbc4be57",
+          `search_path=pg_catalog:${hasPortalInstallationProjection
+            ? "af8c1ae0aaa03b4a875f98cc1deba12f58ed1505439d80d1fa81da7c8bb675e6"
+            : "6d025bff7eee1e267019a81fe77730c139fc3c7a5e94cf9dd9c54541fbc4be57"}`,
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",

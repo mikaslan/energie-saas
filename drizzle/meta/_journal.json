@@ -638,6 +638,13 @@
       "when": 1789072296641,
       "tag": "0090_f8_02_teilanrechnung",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1789074157090,
+      "tag": "0091_f10_03_installation_tab",
+      "breakpoints": true
     }
   ]
 }

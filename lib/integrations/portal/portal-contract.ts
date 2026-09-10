@@ -126,6 +126,14 @@ const portalAppointmentSchema = z.strictObject({
 });
 export type PortalAppointment = z.infer<typeof portalAppointmentSchema>;
 
+// F10-03: Installationsstand (nur Stand + Daten, nie Namen/Notizen).
+const portalInstallationSchema = z.strictObject({
+  status: z.enum(["active", "completed"]),
+  completedAt: z.iso.datetime({ offset: true }).nullable(),
+  handoverAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type PortalInstallation = z.infer<typeof portalInstallationSchema>;
+
 export const portalPublicViewV1Schema = z.strictObject({
   schemaVersion: z.literal(PORTAL_PUBLIC_VIEW_VERSION),
   inviteId: z.uuid(),
@@ -134,6 +142,7 @@ export const portalPublicViewV1Schema = z.strictObject({
   project: portalProjectSchema,
   documents: z.array(portalDocumentSchema),
   appointments: z.array(portalAppointmentSchema),
+  installation: portalInstallationSchema.nullable(),
 });
 
 export type PortalPublicViewV1 = z.infer<typeof portalPublicViewV1Schema>;
@@ -166,6 +175,8 @@ const portalResolveOkSchema = z.strictObject({
     appointmentType: z.string(),
     location: z.unknown(),
   })),
+  // F10-03: optional — alte Projektionen ohne Schlüssel parsen wie null.
+  installation: z.unknown().optional(),
 });
 
 // Parst das DEFINER-Resultat; 'not_found' (unbekannt/deformiert/entzogen/
@@ -229,6 +240,26 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       location: appointment.location,
     });
   }
+  // F10-03: Installation null ohne Zeile; sonst strikter Stand
+  // (Status-Wortschatz + Zeitstempel, keine Namen/Notizen je).
+  let installation: PortalPublicViewV1["installation"] = null;
+  // undefined = altes Projektionsformat ohne Schlüssel (wie null).
+  if (parsed.data.installation !== null && parsed.data.installation !== undefined) {
+    const raw = parsed.data.installation;
+    if (typeof raw !== "object" || raw === null) return null;
+    const record = raw as Record<string, unknown>;
+    // Nur der DEFINER-Wortschatz; fremde Schlüssel = deformiert.
+    for (const key of Object.keys(record)) {
+      if (key !== "status" && key !== "completedAt" && key !== "handoverAt") return null;
+    }
+    const status = portalInstallationSchema.shape.status.safeParse(record.status);
+    if (!status.success) return null;
+    const completedAt = record.completedAt === null ? null : toInstant(record.completedAt);
+    if (record.completedAt !== null && completedAt === null) return null;
+    const handoverAt = record.handoverAt === null ? null : toInstant(record.handoverAt);
+    if (record.handoverAt !== null && handoverAt === null) return null;
+    installation = { status: status.data, completedAt, handoverAt };
+  }
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,
     inviteId: parsed.data.inviteId,
@@ -237,5 +268,6 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     project: parsed.data.project,
     documents,
     appointments,
+    installation,
   };
 }

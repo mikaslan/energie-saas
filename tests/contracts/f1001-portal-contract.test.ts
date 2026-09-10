@@ -115,5 +115,43 @@ describe("F10.1 portal command contracts", () => {
     expect(view?.documents).toHaveLength(1);
     expect(view?.appointments).toHaveLength(1);
     expect(view?.appointments[0]).not.toHaveProperty("description");
+    // F10-03: fehlender Schlüssel = altes Format → null.
+    expect(view?.installation).toBeNull();
+  });
+
+  it("parst Installation-Stand, lehnt fremde Schlüssel ab", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open" },
+      documents: [],
+      appointments: [],
+    };
+    const completed = parsePortalPublicView({
+      ...base,
+      installation: {
+        status: "completed",
+        completedAt: "2026-09-08T10:00:00.000Z",
+        handoverAt: null,
+      },
+    });
+    expect(completed?.installation).toEqual({
+      status: "completed",
+      completedAt: "2026-09-08T10:00:00.000Z",
+      handoverAt: null,
+    });
+    // Namen/Notizen gehören nicht in die Projektion.
+    expect(parsePortalPublicView({
+      ...base,
+      installation: {
+        status: "active", completedAt: null, handoverAt: null,
+        handoverByName: "Intern", handoverNote: "Intern",
+      },
+    })).toBeNull();
+    expect(parsePortalPublicView({
+      ...base, installation: { status: "flying", completedAt: null, handoverAt: null },
+    })).toBeNull();
   });
 });

@@ -197,10 +197,10 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0084 F9-05 Zeitfreigabe, 0085 F7-05 Abnahme,
     // 0086 F13-01 Serviceauftrag, 0087 F1-10 Lead-Routing,
     // 0088 F15-01 Gewerbe-Board, 0089 F9-06 Pausen-Segmente,
-    // 0090 F8-02 Teilanrechnung).
+    // 0090 F8-02 Teilanrechnung, 0091 F10-03 Installation-Tab).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 90,
-      tag: "0090_f8_02_teilanrechnung",
+      idx: 91,
+      tag: "0091_f10_03_installation_tab",
     });
   });
 

@@ -30,6 +30,24 @@ function formatBerlinRange(startAt: string, endAt: string, allDay: boolean): str
   return `${date} · ${BERLIN_TIME.format(start)}–${BERLIN_TIME.format(new Date(endAt))} Uhr`;
 }
 
+// F10-03: Installationsstand (festes Anzeige-Mapping, ESTIMATE;
+// Admin-Mapping je Status bleibt offen). Nur Stand + Daten.
+function formatInstallationStatus(
+  status: "active" | "completed",
+  completedAt: string | null,
+  handoverAt: string | null,
+): string {
+  if (status === "completed" && handoverAt !== null) {
+    return `Abgenommen am ${BERLIN_DATE.format(new Date(handoverAt))}`;
+  }
+  if (status === "completed") {
+    return completedAt === null
+      ? "Abgeschlossen"
+      : `Abgeschlossen am ${BERLIN_DATE.format(new Date(completedAt))}`;
+  }
+  return "In Ausführung";
+}
+
 // F10.2 Slice B: Signatur-Status je Dokument (read-only, wörtlich aus der
 // Projektion; keine internen Details — signer_name/Token/Grund nie).
 function formatSignatureStatus(status: string, signedAt: string | null): string {
@@ -49,6 +67,7 @@ function formatSignatureStatus(status: string, signedAt: string | null): string 
 // F10.1: öffentliche Projektion (read-only). Unbekannt/deformiert/entzogen/
 // abgelaufen -> identischer 404-Endzustand („Link ungültig", kein Orakel).
 // F10.2 Slice A: Tabs (Übersicht | Termine) per ?tab=, Server-Links ohne JS.
+// F10-03: Tab „Installation" dazu (Stand oder ehrlicher Leerzustand).
 // Unbekannter tab-Wert fällt auf Übersicht zurück (kein 404, kein Orakel).
 export default async function PortalTokenPage({
   params,
@@ -67,7 +86,11 @@ export default async function PortalTokenPage({
     if (error instanceof PortalNotFoundError) notFound();
     throw error;
   }
-  const activeTab = rawTab === "termine" ? "termine" : "uebersicht";
+  const activeTab = rawTab === "termine"
+    ? "termine"
+    : rawTab === "installation"
+      ? "installation"
+      : "uebersicht";
   const nextStep = derivePortalNextStep(view.project.phase, view.project.outcome);
   const tabClass = (active: boolean): string =>
     `rounded-md px-3 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
@@ -91,8 +114,34 @@ export default async function PortalTokenPage({
           >
             Termine{view.appointments.length > 0 ? ` (${view.appointments.length})` : ""}
           </Link>
+          <Link
+            href={`/p/${token}?tab=installation`}
+            className={tabClass(activeTab === "installation")}
+          >
+            Installation
+          </Link>
         </nav>
-        {activeTab === "termine" ? (
+        {activeTab === "installation" ? (
+          <div className="mt-4">
+            <h2 className="text-lg font-semibold text-slate-950">Installation</h2>
+            {view.installation === null ? (
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Noch keine Installation hinterlegt.
+              </p>
+            ) : (
+              <dl className="mt-2 space-y-2 text-sm leading-6 text-slate-600">
+                <div className="flex gap-2">
+                  <dt className="font-semibold text-slate-800">Stand:</dt>
+                  <dd>{formatInstallationStatus(
+                    view.installation.status,
+                    view.installation.completedAt,
+                    view.installation.handoverAt,
+                  )}</dd>
+                </div>
+              </dl>
+            )}
+          </div>
+        ) : activeTab === "termine" ? (
           <div className="mt-4">
             <h2 className="text-lg font-semibold text-slate-950">Termine</h2>
             {view.appointments.length === 0 ? (
