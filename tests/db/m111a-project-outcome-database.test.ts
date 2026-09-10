@@ -195,10 +195,10 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0080 F4.1 v2-Dispatch, 0081 F4.1 v2-Recovery,
     // 0082 F5-01 Skonto, 0083 F8-01 Anzahlung-Link,
     // 0084 F9-05 Zeitfreigabe, 0085 F7-05 Abnahme,
-    // 0086 F13-01 Serviceauftrag).
+    // 0086 F13-01 Serviceauftrag, 0087 F1-10 Lead-Routing).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 86,
-      tag: "0086_f13_01_service_case",
+      idx: 87,
+      tag: "0087_f1_10_lead_routing",
     });
   });
 
