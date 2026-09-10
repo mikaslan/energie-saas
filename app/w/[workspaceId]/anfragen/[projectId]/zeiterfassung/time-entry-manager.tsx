@@ -280,6 +280,11 @@ export function TimeEntryManager({
                       Freigegeben
                     </span>
                   ) : null}
+                  {entry.billed ? (
+                    <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                      Abgerechnet
+                    </span>
+                  ) : null}
                 </span>
                 <RevisionHistory
                   entryId={entry.id}
@@ -322,7 +327,7 @@ export function TimeEntryManager({
                         Archivieren
                       </button>
                     </form>
-                    {!entry.running && entry.archivedAt === null ? (
+                    {!entry.running && entry.archivedAt === null && !entry.billed ? (
                       entry.approvedAt !== null ? (
                         <form action={unapproveDispatch}>
                           <input type="hidden" name="workspaceId" value={workspaceId} />

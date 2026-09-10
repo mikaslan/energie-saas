@@ -320,7 +320,23 @@ type TimeEntryRow = {
   approved_by: string | null;
   created_at: string;
   updated_at: string;
+  billed: boolean;
 };
+
+// F9-07: Abrechnungs-Sperrkennzeichen je Zeile — Eintrag liegt in einem
+// GESCHLOSSENEN Lauf. In RETURNING- und SELECT-Kontexten auf time_entry
+// korreliert (Zieltabelle bzw. äußeres FROM).
+function billedExistsClause(workspaceId: string) {
+  return sql`exists (
+    select 1
+      from billing_run_entry b
+      join billing_run r
+        on r.workspace_id = b.workspace_id and r.id = b.run_id
+     where b.workspace_id = ${workspaceId}::uuid
+       and b.time_entry_id = time_entry.id
+       and r.status = 'closed'
+  ) as billed`;
+}
 
 function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
   return timeEntryDtoSchema.parse({
@@ -340,6 +356,7 @@ function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
     archivedAt: row.archived_at,
     approvedAt: row.approved_at,
     approvedBy: row.approved_by,
+    billed: row.billed,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     permissions: { canWrite },
@@ -351,7 +368,6 @@ const ENTRY_SELECT = sql`
          start_lat, start_lng,
          working_time_minutes, break_duration_minutes, comment, archived_at, approved_at, approved_by,
          created_at, updated_at
-    from time_entry
 `;
 
 export async function listTimeMemberOptions(
@@ -400,6 +416,7 @@ export async function listTimeEntries(
            start_lat, start_lng,
            working_time_minutes, break_duration_minutes, comment, archived_at, approved_at, approved_by,
            created_at, updated_at,
+           ${billedExistsClause(ctx.workspaceId)},
            -- "total" = SUMME der Arbeitsminuten gestoppter Einträge
            -- (nicht Zeilenzahl; laufende Einträge zählen bewusst nicht;
            --  F9.3: Summe folgt dem userIds-Filter).
@@ -503,7 +520,8 @@ async function upsertTimeEntry(
         returning id, user_id, project_id, type_id, start_at, end_at,
                   start_lat, start_lng,
                   working_time_minutes, break_duration_minutes, comment,
-                  archived_at, approved_at, approved_by, created_at, updated_at
+                  archived_at, approved_at, approved_by, created_at, updated_at,
+                  ${billedExistsClause(ctx.workspaceId)}
       `);
       rows = inserted.rows;
     } else {
@@ -537,7 +555,8 @@ async function upsertTimeEntry(
           returning id, user_id, project_id, type_id, start_at, end_at,
                     start_lat, start_lng,
                     working_time_minutes, break_duration_minutes, comment,
-                    archived_at, approved_at, approved_by, created_at, updated_at
+                    archived_at, approved_at, approved_by, created_at, updated_at,
+                    ${billedExistsClause(ctx.workspaceId)}
         ),
         inserted_revision as (
           insert into time_entry_revision (
@@ -555,10 +574,21 @@ async function upsertTimeEntry(
             from old_entry
             join updated on updated.id = old_entry.id
         )
-        select id, user_id, project_id, type_id, start_at, end_at,
-               start_lat, start_lng,
-               working_time_minutes, break_duration_minutes, comment,
-               archived_at, approved_at, approved_by, created_at, updated_at
+        select updated.id, updated.user_id, updated.project_id, updated.type_id,
+               updated.start_at, updated.end_at,
+               updated.start_lat, updated.start_lng,
+               updated.working_time_minutes, updated.break_duration_minutes, updated.comment,
+               updated.archived_at, updated.approved_at, updated.approved_by,
+               updated.created_at, updated.updated_at,
+               exists (
+                 select 1
+                   from billing_run_entry b
+                   join billing_run r
+                     on r.workspace_id = b.workspace_id and r.id = b.run_id
+                  where b.workspace_id = ${ctx.workspaceId}::uuid
+                    and b.time_entry_id = updated.id
+                    and r.status = 'closed'
+               ) as billed
           from updated
       `);
       rows = updated.rows;
@@ -745,15 +775,18 @@ export async function archiveTimeEntry(
      returning id, user_id, project_id, type_id, start_at, end_at,
                start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
-               archived_at, approved_at, approved_by, created_at, updated_at
+               archived_at, approved_at, approved_by, created_at, updated_at,
+               ${billedExistsClause(ctx.workspaceId)}
   `);
   const row = updated.rows[0];
   if (!row) {
     const current = await tx.execute<TimeEntryRow>(sql`
-      ${ENTRY_SELECT}
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and id = ${id}::uuid
-     limit 1
+      ${ENTRY_SELECT},
+             ${billedExistsClause(ctx.workspaceId)}
+        from time_entry
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${id}::uuid
+       limit 1
     `);
     if (!current.rows[0]) throw new TimeTrackingNotFoundError("time_entry", id);
     // Kimi-P1-1: laufende Einträge sind NICHT archivierbar — sonst belegt
@@ -804,15 +837,18 @@ export async function approveTimeEntry(
      returning id, user_id, project_id, type_id, start_at, end_at,
                start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
-               archived_at, approved_at, approved_by, created_at, updated_at
+               archived_at, approved_at, approved_by, created_at, updated_at,
+               ${billedExistsClause(ctx.workspaceId)}
   `);
   const row = updated.rows[0];
   if (!row) {
     const current = await tx.execute<TimeEntryRow>(sql`
-      ${ENTRY_SELECT}
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and id = ${id}::uuid
-     limit 1
+      ${ENTRY_SELECT},
+             ${billedExistsClause(ctx.workspaceId)}
+        from time_entry
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${id}::uuid
+       limit 1
     `);
     if (!current.rows[0]) throw new TimeTrackingNotFoundError("time_entry", id);
     throw new TimeTrackingConflictError("entry not approvable");
@@ -845,20 +881,42 @@ export async function unapproveTimeEntry(
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${id}::uuid
        and approved_at is not null
+       -- F9-07: Einträge in geschlossenem Abrechnungslauf bleiben gesperrt.
+       and not exists (
+         select 1
+           from billing_run_entry b
+           join billing_run r
+             on r.workspace_id = b.workspace_id and r.id = b.run_id
+          where b.workspace_id = ${ctx.workspaceId}::uuid
+            and b.time_entry_id = time_entry.id
+            and r.status = 'closed'
+       )
      returning id, user_id, project_id, type_id, start_at, end_at,
                start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
-               archived_at, approved_at, approved_by, created_at, updated_at
+               archived_at, approved_at, approved_by, created_at, updated_at,
+               ${billedExistsClause(ctx.workspaceId)}
   `);
   const row = updated.rows[0];
   if (!row) {
-    const current = await tx.execute<TimeEntryRow>(sql`
-      ${ENTRY_SELECT}
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and id = ${id}::uuid
-     limit 1
+    const current = await tx.execute<{ id: string; billed: boolean }>(sql`
+      select time_entry.id as id,
+      exists (
+        select 1
+          from billing_run_entry b
+          join billing_run r
+            on r.workspace_id = b.workspace_id and r.id = b.run_id
+         where b.workspace_id = ${ctx.workspaceId}::uuid
+           and b.time_entry_id = time_entry.id
+           and r.status = 'closed'
+      ) as billed
+        from time_entry
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${id}::uuid
+       limit 1
     `);
     if (!current.rows[0]) throw new TimeTrackingNotFoundError("time_entry", id);
+    if (current.rows[0].billed) throw new TimeTrackingConflictError("entry billed");
     throw new TimeTrackingConflictError("entry not approved");
   }
 
@@ -918,7 +976,8 @@ export async function startTimeEntry(
       returning id, user_id, project_id, type_id, start_at, end_at,
                 start_lat, start_lng,
                 working_time_minutes, break_duration_minutes, comment,
-                archived_at, approved_at, approved_by, created_at, updated_at
+                archived_at, approved_at, approved_by, created_at, updated_at,
+                ${billedExistsClause(ctx.workspaceId)}
     `);
     row = inserted.rows[0]!;
   } catch (error) {
@@ -967,7 +1026,8 @@ export async function stopTimeEntry(
      returning id, user_id, project_id, type_id, start_at, end_at,
                start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
-               archived_at, approved_at, approved_by, created_at, updated_at
+               archived_at, approved_at, approved_by, created_at, updated_at,
+               ${billedExistsClause(ctx.workspaceId)}
   `);
   const row = updated.rows[0];
   if (!row) throw new TimeTrackingNotFoundError("time_entry", command.id);

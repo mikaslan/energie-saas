@@ -76,6 +76,8 @@ export const timeEntryDtoSchema = z.object({
   // F9-05 Zeitfreigabe: NULL = offen; freigegeben = unveränderlich.
   approvedAt: z.string().nullable(),
   approvedBy: z.string().uuid().nullable(),
+  // F9-07 Abrechnungslauf: true = in GESCHLOSSENEM Lauf (gesperrt).
+  billed: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
   permissions: z.object({ canWrite: z.boolean() }),

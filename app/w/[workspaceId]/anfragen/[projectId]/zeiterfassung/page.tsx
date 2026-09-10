@@ -10,9 +10,11 @@ import type {
   TimeMemberOption,
   TimeUtilizationDto,
 } from "@/lib/integrations/time-tracking/contract";
+import type { BillingRunDto } from "@/lib/integrations/time-tracking/billing-contract";
 import {
   breakMinutesTotal,
   getTimeUtilization,
+  listBillingRuns,
   listBreaks,
   listTimeEntries,
   listTimeEntryRevisions,
@@ -24,6 +26,7 @@ import { UserFilterForm } from "./user-filter-form";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { sql } from "drizzle-orm";
 import { DeniedState } from "../_ui";
+import { BillingRunSection } from "./billing-run-section";
 import { TimeEntryManager } from "./time-entry-manager";
 
 export const metadata: Metadata = {
@@ -62,7 +65,7 @@ export default async function ProjectTimeTrackingPage(
   const selectedUserIds = parseUserFilter(await props.searchParams);
 
   let result:
-    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; breaksByEntry: Record<string, BreakSegmentDto[]>; breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }>; utilization: TimeUtilizationDto; selectedUserIds: string[]; canWrite: boolean }
+    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; breaksByEntry: Record<string, BreakSegmentDto[]>; breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }>; utilization: TimeUtilizationDto; runs: BillingRunDto[]; selectedUserIds: string[]; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -129,6 +132,8 @@ export default async function ProjectTimeTrackingPage(
           revisionsByEntry: visibleRevisionsByEntry,
           // F9.4 Slice D: gleicher Filter wie die Liste (WYSIWYG).
           utilization: await getTimeUtilization(tx, ctx, { projectId, userIds: selectedUserIds }),
+          // F9-07: Abrechnungsläufe (gleiche Read-Permission, kein eigener Gate).
+          runs: await listBillingRuns(tx, ctx),
           selectedUserIds,
           canWrite: writable,
         };
@@ -189,6 +194,13 @@ export default async function ProjectTimeTrackingPage(
         members={result.members}
         revisionsByEntry={result.revisionsByEntry}
         utilization={result.utilization}
+        canWrite={result.canWrite}
+      />
+
+      <BillingRunSection
+        workspaceId={workspaceId}
+        projectId={projectId}
+        runs={result.runs}
         canWrite={result.canWrite}
       />
 

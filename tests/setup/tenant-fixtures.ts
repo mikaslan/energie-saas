@@ -2227,6 +2227,41 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F9-07 (0093): Abrechnungslauf — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies, kein Delete.
+  billing_run: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into billing_run (
+        id, workspace_id, label, period_start, period_end, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Abrechnungslauf',
+        '2026-09-01', '2026-09-30', ${randomUUID()}::uuid
+      )
+    `);
+  },
+  billing_run_entry: async (tx, wsId) => {
+    const runId = randomUUID();
+    await tx.execute(sql`
+      insert into billing_run (
+        id, workspace_id, label, period_start, period_end, created_by
+      ) values (
+        ${runId}::uuid, ${wsId}::uuid, 'Fixture Abrechnungslauf',
+        '2026-09-01', '2026-09-30', ${randomUUID()}::uuid
+      )
+    `);
+    await tenantFixtures.time_entry(tx, wsId);
+    const entry = await tx.execute<{ id: string }>(sql`
+      select id from time_entry
+       where workspace_id = ${wsId}::uuid
+       order by created_at desc limit 1
+    `);
+    const row = entry.rows[0];
+    if (!row) throw new Error("Billing-Fixture braucht einen time_entry.");
+    await tx.execute(sql`
+      insert into billing_run_entry (run_id, workspace_id, time_entry_id)
+      values (${runId}::uuid, ${wsId}::uuid, ${row.id}::uuid)
+    `);
+  },
   // F16.3 Slice B (0061): Foerder-Vorlagen — gleiche Gestalt wie discount_template.
   subsidy_template: async (tx, wsId) => {
     await tx.execute(sql`

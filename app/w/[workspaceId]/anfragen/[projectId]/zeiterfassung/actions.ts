@@ -13,8 +13,13 @@ import {
 } from "@/lib/integrations/time-tracking/contract";
 import { berlinWallClockToIso } from "@/lib/integrations/time-tracking/berlin-wall-clock";
 import {
+  BILLING_RUN_SCHEMA_VERSION,
+} from "@/lib/integrations/time-tracking/billing-contract";
+import {
   approveTimeEntry,
   archiveTimeEntry,
+  closeBillingRun,
+  createBillingRun,
   createTimeEntry,
   endBreak,
   lockTimeEntryInstantsForUpdate,
@@ -383,6 +388,66 @@ export async function endBreakAction(
     );
     revalidate(workspace, projectId);
     return { status: "success", message: "Pause beendet." };
+  } catch (error) {
+    if (error instanceof TimeTrackingConflictError) return { status: "conflict" };
+    return mapError(error);
+  }
+}
+
+// F9-07 Abrechnungslauf: Zeitraum-Lauf anlegen und schließen (Snapshot).
+function parseDay(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string") return null;
+  return /^\d{4}-\d{2}-\d{2}$/u.test(value) ? value : null;
+}
+
+export async function createBillingRunAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const labelValue = formData.get("label");
+  const label = typeof labelValue === "string" ? labelValue : "";
+  const periodStart = parseDay(formData.get("periodStart"));
+  const periodEnd = parseDay(formData.get("periodEnd"));
+  if (!workspace || !projectId || !periodStart || !periodEnd) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      createBillingRun(tx, ctx, {
+        schemaVersion: BILLING_RUN_SCHEMA_VERSION,
+        label,
+        periodStart,
+        periodEnd,
+      }),
+    );
+    revalidate(workspace, projectId);
+    return { status: "success", message: "Abrechnungslauf angelegt." };
+  } catch (error) {
+    if (error instanceof TimeTrackingConflictError) return { status: "conflict" };
+    return mapError(error);
+  }
+}
+
+export async function closeBillingRunAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const id = parseId(formData, "id");
+  if (!workspace || !projectId || !id) return { status: "invalid" };
+  try {
+    const run = await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      closeBillingRun(tx, ctx, {
+        schemaVersion: BILLING_RUN_SCHEMA_VERSION,
+        id,
+      }),
+    );
+    revalidate(workspace, projectId);
+    return {
+      status: "success",
+      message: `Abrechnungslauf geschlossen: ${run.entryCount} ${run.entryCount === 1 ? "Eintrag" : "Einträge"}.`,
+    };
   } catch (error) {
     if (error instanceof TimeTrackingConflictError) return { status: "conflict" };
     return mapError(error);
