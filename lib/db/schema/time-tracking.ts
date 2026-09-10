@@ -12,7 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { workspace, userIdentity } from "./core";
+import { membership, workspace, userIdentity } from "./core";
 import { project } from "./project";
 
 export const timeEventType = pgTable(
@@ -66,6 +66,10 @@ export const timeEntry = pgTable(
     startLat: doublePrecision("start_lat"),
     startLng: doublePrecision("start_lng"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    // F9-05 Zeitfreigabe: NULL = offen; freigegebene Einträge sind
+    // unveränderlich (Service-Guard), Entsperren nur via Unapprove.
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvedBy: uuid("approved_by"),
     createdBy: uuid("created_by").notNull(),
     updatedBy: uuid("updated_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -108,6 +112,11 @@ export const timeEntry = pgTable(
       columns: [t.workspaceId, t.typeId],
       foreignColumns: [timeEventType.workspaceId, timeEventType.id],
       name: "time_entry_type_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.approvedBy],
+      foreignColumns: [membership.workspaceId, membership.userId],
+      name: "time_entry_approved_by_fk",
     }),
   ],
 );

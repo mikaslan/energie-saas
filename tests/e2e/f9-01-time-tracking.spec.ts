@@ -231,6 +231,43 @@ test("F9.1-E2E-01: Editor legt Ereignistyp an, erfasst Zeiteintrag, sieht Summe,
   expect(errors, "Browser-Konsole und Page-Errors der Editor-Grenze").toEqual([]);
 });
 
+test("F9-05-E2E-01: Eintrag freigeben → Badge + Sperre → Entsperren", async ({ page }) => {
+  test.setTimeout(150_000);
+  const data = state();
+  const errors = trackBrowserErrors(page);
+  const projectId = await firstProjectId();
+  const path = `/w/${data.workspaceId}/anfragen/${projectId}/zeiterfassung`;
+
+  await page.goto(settingsPath());
+  await loginWithRealOtp(page, data.editorEmail, settingsPath());
+  await page.getByLabel("Name").fill("Freigabe-Montage");
+  await page.getByLabel("Hintergrundfarbe").fill("#16A34A");
+  await page.getByRole("button", { name: "Anlegen" }).click();
+  await expect(page.getByText("Ereignistyp angelegt.", { exact: true })).toBeVisible();
+
+  await page.goto(path);
+  await page.getByLabel("Ereignistyp").selectOption({ label: "Freigabe-Montage" });
+  await page.getByLabel("Beginn").fill("2026-04-07T08:00");
+  await page.getByLabel("Ende").fill("2026-04-07T10:00");
+  await page.getByLabel("Arbeitszeit (Minuten)").fill("120");
+  await page.getByLabel("Kommentar").fill("Freigabe-Kandidat");
+  await page.getByRole("button", { name: "Erfassen" }).click();
+  await expect(page.getByText("Zeiteintrag angelegt.", { exact: true })).toBeVisible();
+
+  // Freigeben → Badge, Bearbeiten verschwindet (Sperre schon in der UI).
+  await page.getByRole("button", { name: "Freigeben" }).click();
+  await expect(page.getByText("Zeiteintrag freigegeben.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Freigegeben", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bearbeiten" })).toHaveCount(0);
+
+  // Entsperren → Bearbeiten wieder da.
+  await page.getByRole("button", { name: "Entsperren" }).click();
+  await expect(page.getByText("Freigabe aufgehoben.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bearbeiten" })).toBeVisible();
+
+  expect(errors, "Browser-Konsole und Page-Errors der Freigabe-Journey").toEqual([]);
+});
+
 test("F9.1-E2E-02: Viewer read-only, External fail-closed", async ({ page }) => {
   test.setTimeout(150_000);
   const data = state();

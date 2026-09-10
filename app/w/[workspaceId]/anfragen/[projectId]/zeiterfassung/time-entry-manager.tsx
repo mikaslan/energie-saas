@@ -11,11 +11,13 @@ import type {
 } from "@/lib/integrations/time-tracking/contract";
 import { isoToBerlinLocalInput } from "@/lib/integrations/time-tracking/berlin-wall-clock";
 import {
+  approveTimeEntryAction,
   archiveTimeEntryAction,
   createTimeEntryAction,
   discardTimeEntryAction,
   startTimeEntryAction,
   stopTimeEntryAction,
+  unapproveTimeEntryAction,
   updateTimeEntryAction,
   type TimeEntryActionState,
 } from "./actions";
@@ -141,6 +143,8 @@ export function TimeEntryManager({
 }) {
   const [createState, createDispatch] = useActionState(createTimeEntryAction, initialState);
   const [archiveState, archiveDispatch] = useActionState(archiveTimeEntryAction, initialState);
+  const [approveState, approveDispatch] = useActionState(approveTimeEntryAction, initialState);
+  const [unapproveState, unapproveDispatch] = useActionState(unapproveTimeEntryAction, initialState);
   const [startState, startDispatch] = useActionState(startTimeEntryAction, initialState);
   const [stopState, stopDispatch] = useActionState(stopTimeEntryAction, initialState);
   const [discardState, discardDispatch] = useActionState(discardTimeEntryAction, initialState);
@@ -261,6 +265,11 @@ export function TimeEntryManager({
                       Standort: {entry.startLat.toFixed(4)}, {entry.startLng.toFixed(4)}
                     </span>
                   ) : null}
+                  {entry.approvedAt !== null ? (
+                    <span className="mt-1 inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                      Freigegeben
+                    </span>
+                  ) : null}
                 </span>
                 <RevisionHistory
                   entryId={entry.id}
@@ -270,13 +279,15 @@ export function TimeEntryManager({
                 />
                 {canWrite ? (
                   <>
-                    <EditForm
-                      workspaceId={workspaceId}
-                      projectId={projectId}
-                      entry={entry}
-                      types={activeTypes}
-                      archivedType={archivedTypeOf(entry.typeId)}
-                    />
+                    {entry.approvedAt === null ? (
+                      <EditForm
+                        workspaceId={workspaceId}
+                        projectId={projectId}
+                        entry={entry}
+                        types={activeTypes}
+                        archivedType={archivedTypeOf(entry.typeId)}
+                      />
+                    ) : null}
                     <form action={archiveDispatch}>
                       <input type="hidden" name="workspaceId" value={workspaceId} />
                       <input type="hidden" name="projectId" value={projectId} />
@@ -288,6 +299,33 @@ export function TimeEntryManager({
                         Archivieren
                       </button>
                     </form>
+                    {!entry.running && entry.archivedAt === null ? (
+                      entry.approvedAt !== null ? (
+                        <form action={unapproveDispatch}>
+                          <input type="hidden" name="workspaceId" value={workspaceId} />
+                          <input type="hidden" name="projectId" value={projectId} />
+                          <input type="hidden" name="id" value={entry.id} />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                          >
+                            Entsperren
+                          </button>
+                        </form>
+                      ) : (
+                        <form action={approveDispatch}>
+                          <input type="hidden" name="workspaceId" value={workspaceId} />
+                          <input type="hidden" name="projectId" value={projectId} />
+                          <input type="hidden" name="id" value={entry.id} />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                          >
+                            Freigeben
+                          </button>
+                        </form>
+                      )
+                    ) : null}
                   </>
                 ) : null}
               </li>
@@ -295,6 +333,8 @@ export function TimeEntryManager({
           </ul>
         )}
         <Feedback state={archiveState} />
+        <Feedback state={approveState} />
+        <Feedback state={unapproveState} />
       </section>
 
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

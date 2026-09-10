@@ -73,6 +73,9 @@ export const timeEntryDtoSchema = z.object({
   breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
   comment: z.string().nullable(),
   archivedAt: z.string().nullable(),
+  // F9-05 Zeitfreigabe: NULL = offen; freigegeben = unveränderlich.
+  approvedAt: z.string().nullable(),
+  approvedBy: z.string().uuid().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   permissions: z.object({ canWrite: z.boolean() }),
@@ -91,6 +94,8 @@ export const timeEntryListQuerySchema = z.object({
   projectId: z.string().uuid(),
   includeArchived: z.boolean().optional(),
   userIds: z.array(z.string().uuid()).max(50).nullish(),
+  // F9-05 Freigabe-Filter: open = nur offene, approved = nur freigegebene.
+  approval: z.enum(["open", "approved"]).optional(),
 });
 export type TimeEntryListQuery = z.infer<typeof timeEntryListQuerySchema>;
 

@@ -316,6 +316,8 @@ type TimeEntryRow = {
   break_duration_minutes: number;
   comment: string | null;
   archived_at: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -336,6 +338,8 @@ function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
     breakDurationMinutes: row.break_duration_minutes,
     comment: row.comment,
     archivedAt: row.archived_at,
+    approvedAt: row.approved_at,
+    approvedBy: row.approved_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     permissions: { canWrite },
@@ -345,7 +349,7 @@ function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
 const ENTRY_SELECT = sql`
   select id, user_id, project_id, type_id, start_at, end_at,
          start_lat, start_lng,
-         working_time_minutes, break_duration_minutes, comment, archived_at,
+         working_time_minutes, break_duration_minutes, comment, archived_at, approved_at, approved_by,
          created_at, updated_at
     from time_entry
 `;
@@ -372,13 +376,19 @@ export async function listTimeMemberOptions(
 export async function listTimeEntries(
   tx: TenantTx,
   ctx: ServiceCtx,
-  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null },
+  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null; approval?: "open" | "approved" },
 ): Promise<TimeEntryListDto> {
   requireRead(ctx);
   const parsed = timeEntryListQuerySchema.safeParse(query);
   if (!parsed.success) throw new TimeTrackingValidationError();
   const includeArchived = parsed.data.includeArchived === true;
   const userIds = parsed.data.userIds ?? [];
+  // F9-05 Freigabe-Filter (reine Lesesicht, keine Statusaenderung).
+  const approvalFilter = parsed.data.approval === "approved"
+    ? sql`and approved_at is not null`
+    : parsed.data.approval === "open"
+      ? sql`and approved_at is null`
+      : sql``;
   // F9.3-Fix: JS-Arrays werden hier NICHT als Postgres-Array serialisiert
   // (malformed array literal) — explizit als IN-Liste bauen (Muster
   // validateAttendeeMemberships).
@@ -388,7 +398,7 @@ export async function listTimeEntries(
   const result = await tx.execute<TimeEntryRow & { total: string }>(sql`
     select id, user_id, project_id, type_id, start_at, end_at,
            start_lat, start_lng,
-           working_time_minutes, break_duration_minutes, comment, archived_at,
+           working_time_minutes, break_duration_minutes, comment, archived_at, approved_at, approved_by,
            created_at, updated_at,
            -- "total" = SUMME der Arbeitsminuten gestoppter Einträge
            -- (nicht Zeilenzahl; laufende Einträge zählen bewusst nicht;
@@ -405,6 +415,7 @@ export async function listTimeEntries(
        and project_id = ${parsed.data.projectId}::uuid
        ${includeArchived ? sql`` : sql`and archived_at is null`}
        ${userFilter}
+       ${approvalFilter}
      order by (end_at is null) desc, start_at desc, id asc
   `);
   const canWrite = can(ctx, "time.write");
@@ -433,8 +444,8 @@ async function upsertTimeEntry(
   let currentTypeId: string | null = null;
   if (mode === "update") {
     const update = command as UpdateTimeEntryCommand;
-    const current = await tx.execute<{ type_id: string | null }>(sql`
-      select type_id
+    const current = await tx.execute<{ type_id: string | null; approved_at: unknown }>(sql`
+      select type_id, approved_at
         from time_entry
        where workspace_id = ${ctx.workspaceId}::uuid
          and id = ${update.id}::uuid
@@ -442,6 +453,10 @@ async function upsertTimeEntry(
     `);
     const currentRow = current.rows[0];
     if (!currentRow) throw new TimeTrackingNotFoundError("time_entry", update.id);
+    // F9-05: freigegebene Einträge sind unveränderlich (nur via Unapprove).
+    if (currentRow.approved_at !== null) {
+      throw new TimeTrackingConflictError("entry approved");
+    }
     currentTypeId = currentRow.type_id;
   }
 
@@ -488,7 +503,7 @@ async function upsertTimeEntry(
         returning id, user_id, project_id, type_id, start_at, end_at,
                   start_lat, start_lng,
                   working_time_minutes, break_duration_minutes, comment,
-                  archived_at, created_at, updated_at
+                  archived_at, approved_at, approved_by, created_at, updated_at
       `);
       rows = inserted.rows;
     } else {
@@ -522,7 +537,7 @@ async function upsertTimeEntry(
           returning id, user_id, project_id, type_id, start_at, end_at,
                     start_lat, start_lng,
                     working_time_minutes, break_duration_minutes, comment,
-                    archived_at, created_at, updated_at
+                    archived_at, approved_at, approved_by, created_at, updated_at
         ),
         inserted_revision as (
           insert into time_entry_revision (
@@ -543,7 +558,7 @@ async function upsertTimeEntry(
         select id, user_id, project_id, type_id, start_at, end_at,
                start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
-               archived_at, created_at, updated_at
+               archived_at, approved_at, approved_by, created_at, updated_at
           from updated
       `);
       rows = updated.rows;
@@ -726,10 +741,11 @@ export async function archiveTimeEntry(
        and id = ${id}::uuid
        and archived_at is null
        and end_at is not null
+       and approved_at is null
      returning id, user_id, project_id, type_id, start_at, end_at,
                start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
-               archived_at, created_at, updated_at
+               archived_at, approved_at, approved_by, created_at, updated_at
   `);
   const row = updated.rows[0];
   if (!row) {
@@ -743,6 +759,10 @@ export async function archiveTimeEntry(
     // Kimi-P1-1: laufende Einträge sind NICHT archivierbar — sonst belegt
     // der versteckte Eintrag weiterhin den partiellen Unique (Deadlock).
     if (current.rows[0].end_at === null) throw new TimeTrackingNotFoundError("time_entry", id);
+    // F9-05: freigegebene Einträge sind NICHT archivierbar (nur via Unapprove).
+    if (current.rows[0].approved_at !== null) {
+      throw new TimeTrackingConflictError("entry approved");
+    }
     return toTimeEntryDto(current.rows[0], true);
   }
 
@@ -755,6 +775,102 @@ export async function archiveTimeEntry(
     payload: {},
   });
   await writeAuditFor(tx, ctx, "time.entry.archive", { id });
+
+  return toTimeEntryDto(row, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F9-05 Zeitfreigabe: beendete Einträge freigeben/entsperren. Freigegeben
+// = unveränderlich (Update-/Archiv-Guards oben); Entsperren nur explizit.
+// Fail-closed: laufend/archiviert/bereits freigegeben → Conflict/NotFound.
+// ═══════════════════════════════════════════════════════════════════════
+
+export async function approveTimeEntry(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  id: string,
+): Promise<TimeEntryDto> {
+  requireWrite(ctx);
+  const updated = await tx.execute<TimeEntryRow>(sql`
+    update time_entry
+       set approved_at = statement_timestamp(),
+           approved_by = ${ctx.actor}::uuid,
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${id}::uuid
+       and end_at is not null
+       and archived_at is null
+       and approved_at is null
+     returning id, user_id, project_id, type_id, start_at, end_at,
+               start_lat, start_lng,
+               working_time_minutes, break_duration_minutes, comment,
+               archived_at, approved_at, approved_by, created_at, updated_at
+  `);
+  const row = updated.rows[0];
+  if (!row) {
+    const current = await tx.execute<TimeEntryRow>(sql`
+      ${ENTRY_SELECT}
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${id}::uuid
+     limit 1
+    `);
+    if (!current.rows[0]) throw new TimeTrackingNotFoundError("time_entry", id);
+    throw new TimeTrackingConflictError("entry not approvable");
+  }
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "time_entry",
+    aggregateId: id,
+    eventType: "time_entry.approved",
+    actor: ctx.actor,
+    payload: {},
+  });
+  await writeAuditFor(tx, ctx, "time.entry.approve", { id });
+
+  return toTimeEntryDto(row, true);
+}
+
+export async function unapproveTimeEntry(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  id: string,
+): Promise<TimeEntryDto> {
+  requireWrite(ctx);
+  const updated = await tx.execute<TimeEntryRow>(sql`
+    update time_entry
+       set approved_at = null,
+           approved_by = null,
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${id}::uuid
+       and approved_at is not null
+     returning id, user_id, project_id, type_id, start_at, end_at,
+               start_lat, start_lng,
+               working_time_minutes, break_duration_minutes, comment,
+               archived_at, approved_at, approved_by, created_at, updated_at
+  `);
+  const row = updated.rows[0];
+  if (!row) {
+    const current = await tx.execute<TimeEntryRow>(sql`
+      ${ENTRY_SELECT}
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${id}::uuid
+     limit 1
+    `);
+    if (!current.rows[0]) throw new TimeTrackingNotFoundError("time_entry", id);
+    throw new TimeTrackingConflictError("entry not approved");
+  }
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "time_entry",
+    aggregateId: id,
+    eventType: "time_entry.unapproved",
+    actor: ctx.actor,
+    payload: {},
+  });
+  await writeAuditFor(tx, ctx, "time.entry.unapprove", { id });
 
   return toTimeEntryDto(row, true);
 }
@@ -802,7 +918,7 @@ export async function startTimeEntry(
       returning id, user_id, project_id, type_id, start_at, end_at,
                 start_lat, start_lng,
                 working_time_minutes, break_duration_minutes, comment,
-                archived_at, created_at, updated_at
+                archived_at, approved_at, approved_by, created_at, updated_at
     `);
     row = inserted.rows[0]!;
   } catch (error) {
@@ -851,7 +967,7 @@ export async function stopTimeEntry(
      returning id, user_id, project_id, type_id, start_at, end_at,
                start_lat, start_lng,
                working_time_minutes, break_duration_minutes, comment,
-               archived_at, created_at, updated_at
+               archived_at, approved_at, approved_by, created_at, updated_at
   `);
   const row = updated.rows[0];
   if (!row) throw new TimeTrackingNotFoundError("time_entry", command.id);

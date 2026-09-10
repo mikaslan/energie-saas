@@ -13,12 +13,14 @@ import {
 } from "@/lib/integrations/time-tracking/contract";
 import { berlinWallClockToIso } from "@/lib/integrations/time-tracking/berlin-wall-clock";
 import {
+  approveTimeEntry,
   archiveTimeEntry,
   createTimeEntry,
   lockTimeEntryInstantsForUpdate,
   TimeTrackingConflictError,
   TimeTrackingNotFoundError,
   TimeTrackingValidationError,
+  unapproveTimeEntry,
   updateTimeEntry,
 } from "@/modules/time-tracking";
 
@@ -198,6 +200,47 @@ export async function archiveTimeEntryAction(
     revalidate(workspace, projectId);
     return { status: "success", message: "Zeiteintrag archiviert." };
   } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F9-05 Zeitfreigabe: freigeben = unveränderlich, entsperren = explizit.
+export async function approveTimeEntryAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const id = parseId(formData, "id");
+  if (!workspace || !projectId || !id) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      approveTimeEntry(tx, ctx, id),
+    );
+    revalidate(workspace, projectId);
+    return { status: "success", message: "Zeiteintrag freigegeben." };
+  } catch (error) {
+    if (error instanceof TimeTrackingConflictError) return { status: "conflict" };
+    return mapError(error);
+  }
+}
+
+export async function unapproveTimeEntryAction(
+  _previous: TimeEntryActionState,
+  formData: FormData,
+): Promise<TimeEntryActionState> {
+  const workspace = parseWorkspace(formData);
+  const projectId = parseId(formData, "projectId");
+  const id = parseId(formData, "id");
+  if (!workspace || !projectId || !id) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
+      unapproveTimeEntry(tx, ctx, id),
+    );
+    revalidate(workspace, projectId);
+    return { status: "success", message: "Freigabe aufgehoben." };
+  } catch (error) {
+    if (error instanceof TimeTrackingConflictError) return { status: "conflict" };
     return mapError(error);
   }
 }
