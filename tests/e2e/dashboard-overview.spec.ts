@@ -72,6 +72,8 @@ test("DASH-01: leere Workspace-Übersicht rendert ehrliche Leerzustände", async
   await expect(pipeline.getByText("Offen (Angebotswert)")).toBeVisible();
   await expect(pipeline.getByText("Gewichtet (ESTIMATE)")).toBeVisible();
   await expect(pipeline.getByText("Gewichte lead 10 %, offer 50 % (ESTIMATE, Referenzfrage offen).")).toBeVisible();
+  // DASH-08: ohne Quellen und ohne Board-Karten keine Quellenkarte.
+  await expect(dashboard.locator('[data-dashboard-sources="true"]')).toHaveCount(0);
   const offerLead = dashboard.locator('[data-dashboard-offer-leadtime="true"]');
   await expect(offerLead).toBeVisible();
   await expect(offerLead.getByText("Noch keine Angebote.")).toBeVisible();
@@ -99,4 +101,25 @@ test("DASH-01: leere Workspace-Übersicht rendert ehrliche Leerzustände", async
   await expect(appointments.getByRole("link", { name: "Zum Kalender" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Anfragen" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Aufgaben" })).toBeVisible();
+});
+
+test("DASH-08: angelegte Lead-Quelle erscheint als Dashboard-Quellenkarte", async ({
+  page,
+}) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const settingsPath = `/w/${workspaceId}/einstellungen/lead-quellen`;
+  const dashboardPath = `/w/${workspaceId}/dashboard`;
+  await page.goto(settingsPath);
+  await loginWithRealOtp(page, state().editorEmail, settingsPath);
+
+  await page.getByLabel("Name").fill("Messe-Portal");
+  await page.getByRole("button", { name: "Anlegen" }).click();
+  await expect(page.getByText("Messe-Portal")).toBeVisible();
+
+  await page.goto(dashboardPath);
+  const sources = page.locator('[data-dashboard-sources="true"]');
+  await expect(sources).toBeVisible();
+  await expect(sources.getByText("Pipeline nach Quelle (ESTIMATE)")).toBeVisible();
+  await expect(sources.getByText("Messe-Portal")).toBeVisible();
 });

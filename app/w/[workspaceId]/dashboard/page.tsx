@@ -8,6 +8,10 @@ import { SignOutButton } from "@/app/_components/sign-out-button";
 import { getDefaultRequestBoard } from "@/modules/boards";
 import { getProjectOfferValues } from "@/modules/offers";
 import {
+  getLeadSourcePipelineStats,
+  type LeadSourcePipelineSlice,
+} from "@/modules/lead-sources";
+import {
   getGlobalTaskInboxPage,
   type GlobalTaskInboxPageV1,
 } from "@/modules/tasks";
@@ -112,6 +116,7 @@ async function loadPipeline(workspaceId: string): Promise<
     openValueCents: number;
     weightedValueCents: number;
     valuesCapped: boolean;
+    projectIds: string[];
   }
   | { kind: "unauthenticated" }
   | { kind: "denied" }
@@ -148,6 +153,7 @@ async function loadPipeline(workspaceId: string): Promise<
           openValueCents,
           weightedValueCents,
           valuesCapped: capped,
+          projectIds,
         };
       },
     );
@@ -309,6 +315,29 @@ async function loadOfferLeadTime(workspaceId: string): Promise<
   }
 }
 
+async function loadSourceBreakdown(
+  workspaceId: string,
+  projectIds: string[],
+): Promise<
+  | { kind: "loaded"; slices: LeadSourcePipelineSlice[] }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const slices = await authorizedQuery(
+      workspaceId,
+      "lead_source.read",
+      "lead_source_pipeline",
+      (tx, ctx) => getLeadSourcePipelineStats(tx, ctx, projectIds),
+    );
+    return { kind: "loaded", slices };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
 async function loadClosureTrend(workspaceId: string): Promise<
   | { kind: "loaded"; stats: ClosureTrendStats }
   | { kind: "unauthenticated" }
@@ -406,6 +435,15 @@ export default async function DashboardPage({
     || offerLeadTime.kind === "unauthenticated"
     || appointments.kind === "unauthenticated"
   ) {
+    const nextPath = `/w/${validWorkspaceId}/dashboard`;
+    redirect(`/login?${new URLSearchParams({ next: nextPath }).toString()}`);
+  }
+  // Quellen-Breakdown entkoppelt nachladen (eigene Sichtbarkeit,
+  // blockiert die Pipeline-Karte bei fehlendem lead_source.read nicht).
+  const sources = pipeline.kind === "loaded"
+    ? await loadSourceBreakdown(validWorkspaceId, pipeline.projectIds)
+    : { kind: "denied" } as const;
+  if (sources.kind === "unauthenticated") {
     const nextPath = `/w/${validWorkspaceId}/dashboard`;
     redirect(`/login?${new URLSearchParams({ next: nextPath }).toString()}`);
   }
@@ -507,6 +545,26 @@ export default async function DashboardPage({
               >
                 Zum Board
               </Link>
+            </section>
+          ) : null}
+
+          {sources.kind === "loaded" && sources.slices.length > 0 ? (
+            <section
+              aria-label="Pipeline nach Quelle"
+              data-dashboard-sources="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Pipeline nach Quelle (ESTIMATE)</h2>
+              <dl className="mt-3 space-y-2 text-sm">
+                {sources.slices.map((slice) => (
+                  <div key={slice.sourceName} className="flex items-baseline justify-between gap-4">
+                    <dt className="text-slate-600">{slice.sourceName}</dt>
+                    <dd className="font-semibold tabular-nums">
+                      {countFormatter.format(slice.count)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             </section>
           ) : null}
 

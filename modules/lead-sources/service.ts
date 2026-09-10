@@ -76,6 +76,74 @@ const ROW_SELECT = sql`
     from lead_source
 `;
 
+export type LeadSourcePipelineSlice = {
+  /** Quellname oder „Ohne Quelle" (null-Bucket, ESTIMATE-Label). */
+  sourceName: string;
+  /** true nur für den Ohne-Quelle-Bucket. */
+  unassigned: boolean;
+  count: number;
+};
+
+/**
+ * DASH-08 Pipeline nach Quelle: übergebene Projekte (Board-Menge, gedeckelt
+ * wie Angebotswerte auf 200) nach Lead-Quelle gruppieren. Archivierte
+ * Quellen erscheinen mit Namen (Historie bleibt lesbar); ohne Quelle faellt
+ * in den „Ohne Quelle"-Bucket. Rein lesend, keine neue Permission
+ * (lead_source.read wie die Quellenliste).
+ */
+export async function getLeadSourcePipelineStats(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectIds: readonly string[],
+): Promise<LeadSourcePipelineSlice[]> {
+  requireRead(ctx);
+  const ids = [...new Set(projectIds)];
+  if (ids.length > 200) {
+    throw new LeadSourceValidationError();
+  }
+  for (const id of ids) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(id)) {
+      throw new LeadSourceValidationError();
+    }
+  }
+  const result = ids.length === 0
+    ? { rows: [] as { source_name: string | null; count: number }[] }
+    : await tx.execute<{ source_name: string | null; count: number }>(sql`
+    select source.name as source_name, count(*)::int as count
+      from project project_record
+      left join lead_source source
+        on source.workspace_id = project_record.workspace_id
+       and source.id = project_record.lead_source_id
+     where project_record.workspace_id = ${ctx.workspaceId}::uuid
+       and project_record.id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+     group by source.name
+     order by count(*) desc, source.name nulls last
+  `);
+  const slices: LeadSourcePipelineSlice[] = result.rows.map((row) => ({
+    sourceName: row.source_name ?? "Ohne Quelle",
+    unassigned: row.source_name === null,
+    count: Number(row.count),
+  }));
+  // DASH-08: aktive Quellen ohne Pipeline-Karten erscheinen ehrlich mit 0
+  // (eigene Quelle ist Bauarbeit, keine Referenzbehauptung).
+  const known = new Set(
+    slices.filter((slice) => !slice.unassigned).map((slice) => slice.sourceName),
+  );
+  const actives = await tx.execute<{ name: string }>(sql`
+    select name from lead_source
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and archived_at is null
+     order by name asc, id asc
+  `);
+  for (const active of actives.rows) {
+    if (!known.has(active.name)) {
+      known.add(active.name);
+      slices.push({ sourceName: active.name, unassigned: false, count: 0 });
+    }
+  }
+  return slices;
+}
+
 export async function listLeadSources(
   tx: TenantTx,
   ctx: ServiceCtx,
