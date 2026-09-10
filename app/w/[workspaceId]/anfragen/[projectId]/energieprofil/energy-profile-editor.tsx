@@ -20,6 +20,14 @@ function fieldValue(field: KnownOrUnknown): string | number {
   ) ? field.value : "";
 }
 
+// F4.2c CSV: bekannte kWh-Reihe -> Zeilentext (vollstaendig, damit
+// Speichern ein Roundtrip bleibt), sonst leer.
+function csvDefaultValue(field: KnownOrUnknown): string {
+  if (field.status !== "known" || !Array.isArray(field.value)) return "";
+  if (!field.value.every((entry) => typeof entry === "number")) return "";
+  return (field.value as number[]).join("\n");
+}
+
 // F4.4b TOU: bekanntes 24-Preise-Array -> Komma-Text, sonst leer.
 function touPriceListValue(field: KnownOrUnknown): string {
   if (field.status !== "known" || !Array.isArray(field.value)) return "";
@@ -144,6 +152,7 @@ export function EnergyProfileEditor({
     status: "unknown",
   }) as CustomLoadProfileField;
   const monthlySelected = loadProfile === "customer_monthly_hourly.v1";
+  const csvSelected = loadProfile === "customer_csv.v1";
   const statusRef = useRef<HTMLParagraphElement | null>(null);
   const message = messageFor(state);
   const failed = state.status !== "idle" && state.status !== "success";
@@ -296,6 +305,7 @@ export function EnergyProfileEditor({
               <option value="wmee_household_hourly.v1">Standard-Haushalt stündlich</option>
               <option value="customer_monthly_hourly.v1">Kunden-Monatsprofil stündlich</option>
               <option value="commercial_interval.v1">Gewerbliches Intervallprofil</option>
+              <option value="customer_csv.v1">Lastgang-CSV (8760/35040 Werte)</option>
             </select>
           </label>
           <label htmlFor="energy-ev-km" className={labelClass}>
@@ -405,6 +415,20 @@ export function EnergyProfileEditor({
               </div>
             ))}
           </div>
+        </fieldset>
+      ) : null}
+
+      {csvSelected ? (
+        <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5" data-energy-csv-profile="true">
+          <legend className="px-1 text-base font-semibold text-slate-950">Lastgang-CSV</legend>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Eine Zahl pro Zeile: 8.760 Stunden- oder 35.040
+            Viertelstundenwerte in kWh (Pflicht, Summe &gt; 0).
+          </p>
+          <label htmlFor="energy-csv" className={labelClass}>
+            Lastgang-Reihe (kWh je Zeile)
+            <textarea id="energy-csv" name="loadProfileCsv" rows={6} className={inputClass} defaultValue={csvDefaultValue(profile.consumption.customCsvKwh ?? { status: "unknown" })} />
+          </label>
         </fieldset>
       ) : null}
 

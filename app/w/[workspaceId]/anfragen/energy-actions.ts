@@ -111,6 +111,7 @@ const customProfileFieldNames = [
   ...customWeekendFieldNames,
 ];
 const MONTHLY_LOAD_PROFILE_FORM_VALUE = "customer_monthly_hourly.v1";
+const CSV_LOAD_PROFILE_FORM_VALUE = "customer_csv.v1";
 
 const profileFormSchema = z.strictObject({
   workspaceId: z.uuid(),
@@ -133,7 +134,10 @@ const profileFormSchema = z.strictObject({
     "wmee_household_hourly.v1",
     "customer_monthly_hourly.v1",
     "commercial_interval.v1",
+    "customer_csv.v1",
   ]),
+  // F4.2c Lastgang-CSV: eine Zahl pro Zeile (8760/35040, leer = kein CSV).
+  loadProfileCsv: csvValueListField().optional(),
   evKmPerYear: optionalNumber(0, 200_000),
   evChargingPattern: optionalEnum(["evening", "daytime", "away"]),
   heatPumpKwhPerYear: optionalNumber(0, 100_000),
@@ -194,6 +198,15 @@ const profileFormSchema = z.strictObject({
     }
   } else if ([...monthly, ...weekday, ...weekend].some((kwh) => kwh !== null)) {
     ctx.addIssue({ code: "custom", path: ["loadProfile"], message: "custom values without monthly option" });
+  }
+  // F4.2c: CSV-Option verlangt die Reihe (und umgekehrt).
+  const csvValues = (value as unknown as Record<string, number[] | null | undefined>).loadProfileCsv ?? null;
+  if (value.loadProfile === CSV_LOAD_PROFILE_FORM_VALUE) {
+    if (csvValues === null) {
+      ctx.addIssue({ code: "custom", path: ["loadProfile"], message: "missing csv series" });
+    }
+  } else if (csvValues !== null) {
+    ctx.addIssue({ code: "custom", path: ["loadProfile"], message: "csv series without csv option" });
   }
   // F4.3: thermischer und legacy-elektrischer WP-Bedarf zugleich ist ein
   // Widerspruch (keine stille Praezedenz). Kennlinienparameter ohne
@@ -301,6 +314,11 @@ function parseProfileForm(formData: FormData): ParsedProfileForm | null {
   if (monthlyBranch) {
     for (const name of customProfileFieldNames) allowed.add(name);
   }
+  // F4.2c: CSV-Feld nur bei CSV-Option (exakt, branchabhängig).
+  const csvBranch = rawLoadProfile === CSV_LOAD_PROFILE_FORM_VALUE;
+  if (csvBranch) {
+    allowed.add("loadProfileCsv");
+  }
 
   const seen = new Set<string>();
   for (const name of formData.keys()) {
@@ -313,7 +331,11 @@ function parseProfileForm(formData: FormData): ParsedProfileForm | null {
   if (seen.size !== allowed.size) return null;
 
   const rawBase = Object.fromEntries(
-    [...baseProfileFields, ...(monthlyBranch ? customProfileFieldNames : [])].map(
+    [
+      ...baseProfileFields,
+      ...(monthlyBranch ? customProfileFieldNames : []),
+      ...(csvBranch ? ["loadProfileCsv"] : []),
+    ].map(
       (name) => [name, exactFormValue(formData, name)],
     ),
   );
@@ -363,6 +385,37 @@ function parseConfirmForm(formData: FormData): z.infer<typeof confirmFormSchema>
     expectedProfileRevision: exactFormValue(formData, "expectedProfileRevision"),
   });
   return parsed.success ? parsed.data : null;
+}
+
+// F4.2c: CSV-Textfeld -> kWh-Reihe (8760/35040) oder null (leer).
+// Ungueltig -> Formfehler, kein Speichern (fail-closed). Dezimalpunkt
+// oder -komma; Tausendertrennzeichen verboten (kein Raten).
+function csvValueListField() {
+  return z.string().max(1_000_000).refine((value) => value === value.trim()).transform((value, ctx) => {
+    if (value === "") return null;
+    const lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "");
+    if (lines.length !== 8_760 && lines.length !== 35_040) {
+      ctx.addIssue({ code: "custom", message: "csv needs 8760 or 35040 lines" });
+      return z.NEVER;
+    }
+    const numbers: number[] = [];
+    for (const line of lines) {
+      const normalized = line.includes(",") && !line.includes(".")
+        ? line.replace(",", ".")
+        : line;
+      if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/u.test(normalized)) {
+        ctx.addIssue({ code: "custom", message: "csv line is not a number" });
+        return z.NEVER;
+      }
+      const number = Number(normalized);
+      if (!Number.isFinite(number) || number < 0 || number > 1_000_000) {
+        ctx.addIssue({ code: "custom", message: "csv value out of range 0..1000000" });
+        return z.NEVER;
+      }
+      numbers.push(number);
+    }
+    return numbers;
+  });
 }
 
 // F4.4b: TOU-Textfeld -> 24 Preise (0..200 Ct/kWh) oder null (leer).
@@ -459,6 +512,9 @@ function buildSubmittedProfile(
     heatingAcKwhPerYear: knownOrUnknown(input.heatingAcKwhPerYear),
     hotWaterKwhPerYear: knownOrUnknown(input.hotWaterKwhPerYear),
     customLoadProfile: knownOrUnknown(customLoadProfileFromForm(input)),
+    customCsvKwh: knownOrUnknown(
+      (input as unknown as Record<string, number[] | null | undefined>).loadProfileCsv ?? null,
+    ),
   } as EnergyProfile["consumption"];
 
   if (

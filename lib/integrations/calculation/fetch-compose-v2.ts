@@ -41,6 +41,7 @@ import { customLoadProfileValueSchema } from "./contract";
 import {
   buildCommercialIntervalSourceV2,
   buildCoolingDegreeSourceV2,
+  buildCsvProfileSourceV2,
   buildEvPatternSourceV2,
   buildHotWaterProfileSourceV2,
   buildMonthlyProfileSourceV2,
@@ -137,6 +138,7 @@ const RESIDENTIAL_LOAD_PROFILES_V2 = [
 
 const COMMERCIAL_LOAD_PROFILE_V2 = "commercial_interval.v1";
 const MONTHLY_LOAD_PROFILE_V2 = "customer_monthly_hourly.v1";
+const CSV_LOAD_PROFILE_V2 = "customer_csv.v1";
 
 // F4.3: belegter thermischer WP-Bedarf mit optionalen Kennlinienparametern
 // oder null (nicht belegt). Unbekannt/fehlend ist kein Fehler — erst der
@@ -201,12 +203,45 @@ function parseCustomLoadProfile(consumption: unknown): z.infer<typeof customLoad
   return parsed.data;
 }
 
+// F4.2c: belegte Lastgang-CSV (exakt 8.760/35.040 endliche kWh >= 0,
+// Summe > 0) oder null (nicht belegt). Unbekannt/fehlend ist kein Fehler
+// an sich — erst die CSV-Option ohne Reihe bricht fail-closed ab.
+function parseCustomCsv(consumption: unknown): number[] | null {
+  const holder = (consumption ?? {}) as { customCsvKwh?: unknown };
+  const entry = holder.customCsvKwh as
+    | { status?: unknown; value?: unknown }
+    | undefined;
+  if (entry === undefined || entry.status !== "known") return null;
+  if (!Array.isArray(entry.value)) composeError("Lastgang-CSV ist kein Array");
+  const values = entry.value as unknown[];
+  if (values.length !== 8_760 && values.length !== 35_040) {
+    composeError(`Lastgang-CSV braucht 8760 oder 35040 Werte, gefunden: ${values.length}`);
+  }
+  const numbers: number[] = [];
+  for (const value of values) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      composeError("Lastgang-CSV enthaelt ungueltige kWh");
+    }
+    numbers.push(value);
+  }
+  let sum = 0;
+  for (const value of numbers) sum += value;
+  if (!(sum > 0)) composeError("Lastgang-CSV hat keine positive Summe");
+  return numbers;
+}
+
 const consumptionSchema = z.object({
   householdKwhPerYear: knownValueSchema,
   loadProfile: loadProfileSchema.optional(),
   // F4.2 Custom-Lastprofil (known/unknown-Hülle; Detailprüfung in
   // parseCustomLoadProfile gegen das strikte Vertragsschema).
   customLoadProfile: z.object({
+    status: z.string(),
+    value: z.unknown().optional(),
+  }).optional(),
+  // F4.2c Lastgang-CSV (known/unknown-Huelle; Detailpruefung in
+  // parseCustomCsv).
+  customCsvKwh: z.object({
     status: z.string(),
     value: z.unknown().optional(),
   }).optional(),
@@ -297,12 +332,25 @@ export function buildLoadSourcesFromProfileV2(
   if (!monthlyOption && monthly !== null) {
     composeError("Monatswerte ohne Monatsprofil-Option sind nicht belegt");
   }
+  // F4.2c: CSV-Option verlangt die belegte Reihe (und umgekehrt) —
+  // sonst fail-closed wie Monatswerte.
+  const csvOption = loadProfile !== undefined
+    && loadProfile.status === "known"
+    && loadProfile.value === CSV_LOAD_PROFILE_V2;
+  const csv = parseCustomCsv(consumption);
+  if (csvOption && csv === null) {
+    composeError("CSV-Profil ohne Lastgang-Reihe ist nicht belegt");
+  }
+  if (!csvOption && csv !== null) {
+    composeError("Lastgang-Reihe ohne CSV-Profil-Option ist nicht belegt");
+  }
   if (
     loadProfile !== undefined
     && loadProfile.status === "known"
     && loadProfile.value != null
     && !(RESIDENTIAL_LOAD_PROFILES_V2 as readonly string[]).includes(loadProfile.value)
     && loadProfile.value !== COMMERCIAL_LOAD_PROFILE_V2
+    && loadProfile.value !== CSV_LOAD_PROFILE_V2
   ) {
     composeError("Gewerbe-Lastprofil ist nicht belegt");
   }
@@ -311,13 +359,20 @@ export function buildLoadSourcesFromProfileV2(
     commercial ? "Gewerbe" : "Haushalt",
     // F4.2: Monatssumme ist die Jahres-Basis (Reonic: Summe separat);
     // householdKwhPerYear muss dann unbekannt sein oder im Rundungsband
-    // (±0,06 kWh = 12 × halber Cent) liegen — sonst Widerspruch.
-    monthly !== null ? false : true,
+    // (±0,06 kWh = 12 × halber Cent) liegen — sonst Widerspruch. F4.2c:
+    // CSV-Summe ist die Jahres-Basis (gleiches Band).
+    monthly !== null || csv !== null ? false : true,
   ) as number | null;
   if (monthly !== null) {
     const monthlySum = monthly.monthlyKwh.reduce((sum, kwh) => sum + kwh, 0);
     if (basisKwh !== null && Math.abs(monthlySum - basisKwh) > 0.06) {
       composeError("Monatssumme widerspricht der Jahres-kWh");
+    }
+  }
+  if (csv !== null) {
+    const csvSum = csv.reduce((sum, kwh) => sum + kwh, 0);
+    if (basisKwh !== null && Math.abs(csvSum - basisKwh) > 0.06) {
+      composeError("CSV-Summe widerspricht der Jahres-kWh");
     }
   }
   const sources: LoadProfileSourceV2[] = [
@@ -328,7 +383,9 @@ export function buildLoadSourcesFromProfileV2(
         weekendHourlyKwh: monthly.weekendHourlyKwh,
         slotLabels: loadContext.slotLabels,
       })
-      : commercial
+      : csv !== null
+        ? buildCsvProfileSourceV2({ values: csv })
+        : commercial
         ? buildCommercialIntervalSourceV2({
           annualKwh: basisKwh as number,
           slotLabels: loadContext.slotLabels,

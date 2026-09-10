@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "85d97fac233fa35e4dff562f2c4d279e9318995a139a6938b6a85323b36412d7" as const;
+  "da15e707eccd2ca7f867f266f577c32f2fe7c9a36b7ab99da376306d9ae0d7c0" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -168,6 +168,8 @@ export const siteEnergyProfileV1Schema = z.strictObject({
       "wmee_household_hourly.v1",
       "customer_monthly_hourly.v1",
       "commercial_interval.v1",
+      // F4.2c Lastgang-CSV (belegte Reihe in customCsvKwh).
+      "customer_csv.v1",
     ])),
     evKmPerYear: knownOrUnknown(nonNegative(200_000)),
     evChargingPattern: knownOrUnknown(chargingPatternSchema),
@@ -180,6 +182,11 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     // ohne Feld bleiben gueltig. Summen-/Vollstaendigkeitsregeln s.
     // customLoadProfileValueSchema (kein stilles H0 ohne Werte).
     customLoadProfile: knownOrUnknown(customLoadProfileValueSchema).optional(),
+    // F4.2c Lastgang-CSV (exakt 8.760 Stunden- oder 35.040
+    // Viertelstunden-kWh; Detailpruefung in fetch-compose). Additiv-optional.
+    customCsvKwh: knownOrUnknown(
+      z.array(finite().min(0).max(1_000_000)).min(8_760).max(35_040),
+    ).optional(),
     // Boden-Albedo ρ (Muneer-Reflexion; Default fixture-gepinnt 0.2,
     // unbelegt rechnet byte-identisch weiter).
     groundAlbedo: knownOrUnknown(finite().min(0).max(1)).optional(),

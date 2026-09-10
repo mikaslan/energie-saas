@@ -494,6 +494,50 @@ describe("M1-07 Energieprofil-Actions", () => {
     }
   });
 
+  it("speichert F4.2c-Lastgang-CSV und weist Formbrueche ab", async () => {
+    const csv = validProfileForm();
+    csv.set("loadProfile", "customer_csv.v1");
+    csv.set("loadProfileCsv", new Array(8_760).fill("1").join("\n"));
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, csv))
+      .resolves.toMatchObject({ status: "success" });
+    expect(deps.saveProfile).toHaveBeenCalledWith(
+      {},
+      { workspaceId: WORKSPACE_ID, actor: "member-1" },
+      expect.objectContaining({
+        profile: expect.objectContaining({
+          consumption: expect.objectContaining({
+            customCsvKwh: {
+              status: "known",
+              value: new Array(8_760).fill(1),
+              source: "operator_reviewed",
+            },
+          }),
+        }),
+      }),
+    );
+    // Option ohne Reihe / Reihe ohne Option / falsche Zeilenzahl /
+    // nicht-numerisch / negativ.
+    const badOption = validProfileForm();
+    badOption.set("loadProfile", "customer_csv.v1");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, badOption))
+      .resolves.toEqual({ status: "invalid" });
+    const badOrphan = validProfileForm();
+    badOrphan.set("loadProfileCsv", new Array(8_760).fill("1").join("\n"));
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, badOrphan))
+      .resolves.toEqual({ status: "invalid" });
+    for (const bad of [
+      new Array(100).fill("1").join("\n"),
+      [...new Array(8_759).fill("1"), "abc"].join("\n"),
+      [...new Array(8_759).fill("1"), "-2"].join("\n"),
+    ]) {
+      const form = validProfileForm();
+      form.set("loadProfile", "customer_csv.v1");
+      form.set("loadProfileCsv", bad);
+      await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
+        .resolves.toEqual({ status: "invalid" });
+    }
+  });
+
   it("speichert Boden-Albedo und weist Bereichsbrueche ab", async () => {
     const albedo = validProfileForm();
     albedo.set("groundAlbedo", "0.5");

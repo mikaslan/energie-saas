@@ -164,6 +164,8 @@ export async function seedProjectGraph(
     };
     // F4.5b: belegte Investition (EUR netto) im Verbrauchsprofil.
     investmentEuro?: number;
+    // F4.2c: Lastgang-CSV (8760 Stundenwerte je kWh, customer_csv.v1).
+    csvKwhPerHour?: number;
   } = {},
 ): Promise<void> {
   const branch = options.branch ?? "new_installation";
@@ -232,6 +234,38 @@ export async function seedProjectGraph(
             value: options.investmentEuro,
             source: "operator_reviewed" as const,
           },
+        },
+      }
+      : {}),
+    // F4.2c: CSV-Reihe als bekanntes Profilfeld (Compose-Basis).
+    ...(options.csvKwhPerHour !== undefined
+      ? {
+        consumption: {
+          ...GOLDEN_REQUEST.energyProfile.consumption,
+          householdKwhPerYear: {
+            status: "unknown" as const,
+            value: null,
+            source: "not_collected" as const,
+          },
+          loadProfile: {
+            status: "known" as const,
+            value: "customer_csv.v1",
+            source: "operator_reviewed" as const,
+          },
+          customCsvKwh: {
+            status: "known" as const,
+            value: new Array(8_760).fill(options.csvKwhPerHour),
+            source: "operator_reviewed" as const,
+          },
+          ...(options.investmentEuro !== undefined
+            ? {
+              investmentEuro: {
+                status: "known" as const,
+                value: options.investmentEuro,
+                source: "operator_reviewed" as const,
+              },
+            }
+            : {}),
         },
       }
       : {}),

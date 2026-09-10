@@ -49,6 +49,9 @@ export const COOLING_DEGREE_V2_SOURCE_ID = "wmee-cooling-degree.v1" as const;
 export const HOT_WATER_PROFILE_V2_SOURCE_ID = "wmee-hot-water-profile.v1" as const;
 export const COMMERCIAL_INTERVAL_V2_SOURCE_ID = "wmee-commercial-interval.v1" as const;
 export const MONTHLY_PROFILE_V2_SOURCE_ID = "wmee-monthly-profile.v1" as const;
+export const CSV_PROFILE_V2_SOURCE_ID = "wmee-customer-csv.v1" as const;
+/** CSV-Stundenwerte je Jahr (Viertelstunden: 35.040). */
+export const CSV_HOURLY_VALUES = 8_760;
 
 /** Belegte EV-Ladepattern (Rechner-Intake-Enum, v1-`chargingPatternSchema`). */
 export const EV_CHARGING_PATTERNS_V2 = ["evening", "daytime", "away"] as const;
@@ -370,6 +373,55 @@ export function buildMonthlyProfileSourceV2(input: {
  * Intervallform (werktags 7-19h, Winterfaktor) statt H0 -> exakt
  * Jahres-kWh. Eigene Quelle/Provenienz, Kind `basis` (genau eine Basis).
  */
+/**
+ * F4.2c Lastgang-CSV als Basis: 8.760 Stunden-kWh (gleichmaessig
+ * geviertelt [ESTIMATE: keine Intra-Stunden-Form]) oder 35.040
+ * Viertelstunden-kWh direkt. Summe > 0 fail-closed.
+ */
+export function buildCsvProfileSourceV2(input: {
+  values: readonly number[];
+}): LoadProfileSourceV2 {
+  const values = input.values;
+  const hourly = values.length === CSV_HOURLY_VALUES;
+  const quarterHourly = values.length === QUARTER_HOUR_SLOTS;
+  if (!hourly && !quarterHourly) {
+    loadShapesError(`CSV-Lastgang braucht 8760 oder 35040 Werte, gefunden: ${values.length}`);
+  }
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index]!;
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      loadShapesError(`CSV-Lastgang[${index}] ist nicht endlich`);
+    }
+    if (value < 0) loadShapesError(`CSV-Lastgang[${index}] ist negativ`);
+  }
+  const annualKwh = neumaierSum(values);
+  if (!(annualKwh > 0)) loadShapesError("CSV-Lastgang hat keine positive Summe");
+  const weights = new Array<number>(QUARTER_HOUR_SLOTS);
+  if (hourly) {
+    for (let hour = 0; hour < CSV_HOURLY_VALUES; hour += 1) {
+      const quarter = values[hour]! / 4;
+      weights[hour * 4] = quarter;
+      weights[hour * 4 + 1] = quarter;
+      weights[hour * 4 + 2] = quarter;
+      weights[hour * 4 + 3] = quarter;
+    }
+  } else {
+    for (let slot = 0; slot < QUARTER_HOUR_SLOTS; slot += 1) {
+      weights[slot] = values[slot]!;
+    }
+  }
+  return buildShapeSourceV2({
+    sourceId: CSV_PROFILE_V2_SOURCE_ID,
+    sourceKind: "basis",
+    annualKwh,
+    weights,
+    detail: {
+      loadProfile: "customer_csv.v1",
+      granularity: hourly ? "hourly_8760" : "quarter_hour_35040",
+    },
+  });
+}
+
 export function buildCommercialIntervalSourceV2(input: {
   annualKwh: number;
   slotLabels: readonly unknown[];

@@ -1084,6 +1084,84 @@ test("M1-11g: F4.4b-TOU traegt currentV2-Bill und Ladefahrplan", async ({ page }
   await expect(page.locator('[data-energy-sankey-chart="true"]')).toBeVisible();
 });
 
+test("M1-11g: F4.2c-Lastgang-CSV treibt currentV2-Jahreslast", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  // Konstante Stundenlast mit Summe 4200 = Haushalts-kWh (Band ±0,06).
+  const csvValue = 4200 / 8_760;
+  const csvText = new Array(8_760).fill(String(csvValue)).join("\n");
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await page.getByLabel("Lastprofil").selectOption("customer_csv.v1");
+  const csvBlock = page.locator('[data-energy-csv-profile="true"]');
+  await expect(csvBlock).toBeVisible();
+  // 8.760 Zeilen per fill() haengen (Aktions-Budget); die Textarea ist
+  // unkontrolliert — FormData liest .value beim Submit.
+  await csvBlock.getByLabel("Lastgang-Reihe (kWh je Zeile)").evaluate((element, text) => {
+    const area = element as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    if (setter) setter.call(area, text);
+    else area.value = text;
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+  }, csvText);
+  await expect(csvBlock.getByLabel("Lastgang-Reihe (kWh je Zeile)")).toHaveValue(/0\.479/);
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("CSV-Kette erreichte kein currentV2.");
+  }
+  const result = expected.calculation.resultV2.value;
+  // Jahressumme = CSV-Basis (4200) + EV (12000 km x 0,2 kWh/km).
+  expect(Math.abs(result.annual.consumptionKwh - (4_200 + 12000 * 0.2))).toBeLessThan(5);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  await expect(page.locator('[data-energy-calculation-state="currentV2"]')).toBeVisible();
+  const v2result = page.locator('[data-energy-calculation-v2-result="true"]');
+  await expect(v2result).toBeVisible();
+  await expect(page.locator('[data-energy-sankey-chart="true"]')).toBeVisible();
+});
+
 test("M1-11g: Boden-Albedo speichert als known-Profil", async ({ page }) => {
   const actorId = await resolveEditorId();
   const workspaceId = await seedIsolatedWorkspace(actorId);
