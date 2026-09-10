@@ -253,6 +253,11 @@ export const COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION =
   "commercial-document-detail-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_DETAIL_VERSION =
   "commercial-document-detail.v1" as const;
+// F8-01: Anzahlung → Schlussrechnung (Link, genau eine Stufe).
+export const COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION =
+  "commercial-document-link-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION =
+  "commercial-document-unlink-command.v1" as const;
 export const INVOICING_REPORT_COMMAND_VERSION = "invoicing-report-command.v1" as const;
 export const INVOICING_REPORT_VERSION = "invoicing-report.v1" as const;
 export const INVOICING_REPORT_CSV_VERSION = "invoicing-report-csv.v1" as const;
@@ -637,13 +642,46 @@ export type CommercialDocumentDetailCommandV1 = z.infer<
   typeof commercialDocumentDetailCommandV1Schema
 >;
 
+export const commercialDocumentLinkedDepositV1Schema = z.strictObject({
+  id: z.string().uuid(),
+  number: z.string().nullable(),
+  name: z.string().min(1).max(160),
+  grossCents: moneyCentsSchema,
+  issuedAt: z.string().nullable(),
+});
+export type CommercialDocumentLinkedDepositV1 = z.infer<
+  typeof commercialDocumentLinkedDepositV1Schema
+>;
+
 export const commercialDocumentDetailV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_DETAIL_VERSION),
   document: commercialDocumentV1Schema,
   lines: z.array(commercialDocumentLineV1Schema),
+  // F8-01: angerechnete Anzahlungen + offener Restbetrag (nur Typ
+  // `invoice`; andere Typen liefern leere Liste / null).
+  linkedDeposits: z.array(commercialDocumentLinkedDepositV1Schema),
+  remainingCents: moneyCentsSchema.nullable(),
 });
 export type CommercialDocumentDetailV1 = z.infer<
   typeof commercialDocumentDetailV1Schema
+>;
+
+export const commercialDocumentLinkCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION),
+  finalId: z.string().uuid(),
+  depositId: z.string().uuid(),
+});
+export type CommercialDocumentLinkCommandV1 = z.infer<
+  typeof commercialDocumentLinkCommandV1Schema
+>;
+
+export const commercialDocumentUnlinkCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION),
+  finalId: z.string().uuid(),
+  depositId: z.string().uuid(),
+});
+export type CommercialDocumentUnlinkCommandV1 = z.infer<
+  typeof commercialDocumentUnlinkCommandV1Schema
 >;
 
 // ═══════════════════════════════════════════════════════════════════════

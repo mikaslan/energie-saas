@@ -9,7 +9,9 @@ import {
   COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION,
   commercialDocumentCommandV1Schema,
@@ -23,7 +25,9 @@ import {
   createDocument,
   createDocumentGroup,
   issueDocument,
+  linkDeposit,
   markSentDocument,
+  unlinkDeposit,
   setDocumentArchived,
   setDocumentGroupArchived,
   setDocumentTerms,
@@ -325,5 +329,58 @@ export async function setDocumentArchivedAction(
     return mapError(error);
   }
   revalidatePath(`/w/${workspaceId}/rechnungen`);
+  return { status: "success" };
+}
+
+// F8-01 · Anzahlung verlinken/entfernen (Schlussrechnung-Detail).
+export async function linkDepositAction(
+  _previous: InvoicingUiActionState,
+  formData: FormData,
+): Promise<InvoicingUiActionState> {
+  const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
+  const finalId = parseUuid(formData.get("finalId"));
+  const depositId = parseUuid(formData.get("depositId"));
+  if (!workspaceId || !finalId || !depositId) return { status: "invalid" };
+  try {
+    await authorizedAction(
+      workspaceId,
+      "invoicing.write",
+      "commercial_document_deposit_link",
+      (tx, ctx) => linkDeposit(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION,
+        finalId,
+        depositId,
+      }),
+    );
+  } catch (error) {
+    return mapError(error);
+  }
+  revalidatePath(`/w/${workspaceId}/rechnungen/invoice/${finalId}`);
+  return { status: "success" };
+}
+
+export async function unlinkDepositAction(
+  _previous: InvoicingUiActionState,
+  formData: FormData,
+): Promise<InvoicingUiActionState> {
+  const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
+  const finalId = parseUuid(formData.get("finalId"));
+  const depositId = parseUuid(formData.get("depositId"));
+  if (!workspaceId || !finalId || !depositId) return { status: "invalid" };
+  try {
+    await authorizedAction(
+      workspaceId,
+      "invoicing.write",
+      "commercial_document_deposit_link",
+      (tx, ctx) => unlinkDeposit(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION,
+        finalId,
+        depositId,
+      }),
+    );
+  } catch (error) {
+    return mapError(error);
+  }
+  revalidatePath(`/w/${workspaceId}/rechnungen/invoice/${finalId}`);
   return { status: "success" };
 }

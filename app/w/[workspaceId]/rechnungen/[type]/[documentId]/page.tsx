@@ -20,8 +20,10 @@ import { PermissionDeniedError } from "@/lib/permissions";
 import {
   InvoicingNotFoundError,
   getDocumentDetail,
+  listDepositCandidates,
 } from "@/modules/invoicing";
 import { DeniedState } from "../../../_ui";
+import { DepositLinkPanel } from "./deposit-link-panel";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
 const typeSchema = z.enum(commercialDocumentTypes);
@@ -74,7 +76,29 @@ export default async function InvoicingDocumentDetailPage(
     return <DeniedState title={`Dieses ${DOCUMENT_TYPE_SINGULAR_LABELS[type]} ist für dich nicht freigegeben.`} />;
   }
 
+  const candidates = type === "invoice" && detail.document.permissions.canWrite
+    ? await (async () => {
+      try {
+        return await authorizedQuery(
+          workspaceId,
+          "invoicing.read",
+          "commercial_document_deposit_candidates",
+          (tx, ctx) => listDepositCandidates(tx, ctx, {
+            schemaVersion: COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION,
+            type,
+            documentId,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof PermissionDeniedError) return [];
+        throw error;
+      }
+    })()
+    : [];
+
   const { document, lines } = detail;
+  const showDeposits = type === "invoice"
+    && (document.permissions.canWrite || detail.linkedDeposits.length > 0);
   const paidCents = document.paidCents ?? 0;
   const openCents = Math.max(document.grossCents - paidCents, 0);
   const skontoText = document.skontoPercentBps !== null && document.skontoDays !== null
@@ -198,6 +222,10 @@ export default async function InvoicingDocumentDetailPage(
           </ul>
         )}
       </section>
+
+      {showDeposits ? (
+        <DepositLinkPanel workspaceId={workspaceId} detail={detail} candidates={candidates} />
+      ) : null}
 
       {document.status === "voided" ? (
         <section

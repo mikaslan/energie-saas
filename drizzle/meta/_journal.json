@@ -582,6 +582,13 @@
       "when": 1789050786455,
       "tag": "0082_f5_01_invoice_skonto",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1789060034532,
+      "tag": "0083_f8_01_deposit_link",
+      "breakpoints": true
     }
   ]
 }

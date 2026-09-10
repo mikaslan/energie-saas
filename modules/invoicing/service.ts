@@ -9,6 +9,7 @@ import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { createHash } from "node:crypto";
 import {
+  COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_DETAIL_VERSION,
   COMMERCIAL_DOCUMENT_GROUP_VERSION,
   COMMERCIAL_DOCUMENT_LINE_VERSION,
@@ -38,6 +39,8 @@ import {
   commercialDocumentGroupArchiveCommandV1Schema,
   commercialDocumentDetailCommandV1Schema,
   commercialDocumentDetailV1Schema,
+  commercialDocumentLinkCommandV1Schema,
+  commercialDocumentUnlinkCommandV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineV1Schema,
   invoicingReportCommandV1Schema,
@@ -52,6 +55,9 @@ import {
   type CommercialDocumentCommandV1,
   type CommercialDocumentDetailCommandV1,
   type CommercialDocumentDetailV1,
+  type CommercialDocumentLinkCommandV1,
+  type CommercialDocumentLinkedDepositV1,
+  type CommercialDocumentUnlinkCommandV1,
   type CommercialDocumentGroupCommandV1,
   type CommercialDocumentIssueCommandV1,
   type CommercialDocumentArchiveCommandV1,
@@ -1660,6 +1666,16 @@ export async function getDocumentDetail(
      order by position asc, id asc
   `);
 
+  const linked = document.type === "invoice"
+    ? await readLinkedDeposits(tx, ctx, command.documentId)
+    : [];
+  const remainingCents = document.type === "invoice"
+    ? Math.max(
+      document.grossCents - linked.reduce((sum, deposit) => sum + deposit.grossCents, 0),
+      0,
+    )
+    : null;
+
   return commercialDocumentDetailV1Schema.parse({
     schemaVersion: COMMERCIAL_DOCUMENT_DETAIL_VERSION,
     document,
@@ -1676,6 +1692,229 @@ export async function getDocumentDetail(
       grossCents: Number(line.gross_cents),
       taxRateBps: Number(line.tax_rate_bps),
     })),
+    linkedDeposits: linked,
+    remainingCents,
+  });
+}
+
+type LinkedDepositRow = {
+  id: string;
+  number: string | null;
+  name: string;
+  gross_cents: number;
+  issued_at: Date | string | null;
+  [key: string]: unknown;
+};
+
+async function readLinkedDeposits(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  finalId: string,
+): Promise<CommercialDocumentLinkedDepositV1[]> {
+  const result = await tx.execute<LinkedDepositRow>(sql`
+    select doc.id, doc.number, doc.name, doc.gross_cents, doc.issued_at
+      from commercial_document_link link_row
+      join commercial_document doc
+        on doc.workspace_id = link_row.workspace_id
+       and doc.id = link_row.deposit_id
+     where link_row.workspace_id = ${ctx.workspaceId}::uuid
+       and link_row.final_id = ${finalId}::uuid
+     order by link_row.created_at asc, link_row.id asc
+  `);
+  return result.rows.map((row) => ({
+    id: row.id,
+    number: row.number,
+    name: row.name,
+    grossCents: Number(row.gross_cents),
+    issuedAt: toIso(row.issued_at),
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F8-01 · Anzahlung verlinken/entfernen (genau eine Stufe, Voll-Brutto).
+// Fail-closed: fehlende Belege → NotFound ohne Orakel; falscher Typ,
+// Selbst-Link, Entwurf/Storno als Anzahlung, stornierte Schlussrechnung,
+// Ketten (Anzahlung mit eigenen Links) und Doppel-Verlinkung →
+// Validation/Conflict. Eine Anzahlung gehört zu höchstens einer
+// Schlussrechnung (keine Doppel-Anrechnung).
+// ═══════════════════════════════════════════════════════════════════════
+
+type LinkDocumentRow = {
+  id: string;
+  type: string;
+  status: string;
+  [key: string]: unknown;
+};
+
+async function readLinkDocument(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  documentId: string,
+): Promise<LinkDocumentRow> {
+  const result = await tx.execute<LinkDocumentRow>(sql`
+    select id, type, status
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+  `);
+  const row = result.rows[0];
+  if (!row) throw new InvoicingNotFoundError();
+  return row;
+}
+
+async function assertLinkable(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  finalId: string,
+  depositId: string,
+): Promise<void> {
+  if (finalId === depositId) throw new InvoicingValidationError();
+  const [final, deposit] = await Promise.all([
+    readLinkDocument(tx, ctx, finalId),
+    readLinkDocument(tx, ctx, depositId),
+  ]);
+  if (final.type !== "invoice" || deposit.type !== "invoice") {
+    throw new InvoicingConflictError();
+  }
+  if (final.status === "voided") throw new InvoicingConflictError();
+  if (deposit.status !== "issued") throw new InvoicingConflictError();
+  // Keine Ketten: eine Anzahlung mit eigenen Links ist selbst
+  // Schlussrechnung und kann nicht angerechnet werden.
+  const outgoing = await tx.execute<{ c: number }>(sql`
+    select count(*)::int as c from commercial_document_link
+     where workspace_id = ${ctx.workspaceId}::uuid and final_id = ${depositId}::uuid
+  `);
+  if (Number(outgoing.rows[0]?.c ?? 0) > 0) throw new InvoicingConflictError();
+  // Exklusivität: eine Anzahlung gehört zu höchstens einer
+  // Schlussrechnung (keine Doppel-Anrechnung).
+  const incoming = await tx.execute<{ other: string | null }>(sql`
+    select final_id as other from commercial_document_link
+     where workspace_id = ${ctx.workspaceId}::uuid and deposit_id = ${depositId}::uuid
+     limit 1
+  `);
+  const other = incoming.rows[0]?.other ?? null;
+  if (other !== null && other !== finalId) throw new InvoicingConflictError();
+}
+
+export async function listDepositCandidates(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentDetailCommandV1,
+): Promise<CommercialDocumentLinkedDepositV1[]> {
+  requireInvoicingRead(ctx);
+  const parsed = commercialDocumentDetailCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const command = parsed.data;
+  if (command.type !== "invoice") throw new InvoicingValidationError();
+  const result = await tx.execute<LinkedDepositRow>(sql`
+    select doc.id, doc.number, doc.name, doc.gross_cents, doc.issued_at
+      from commercial_document doc
+     where doc.workspace_id = ${ctx.workspaceId}::uuid
+       and doc.type = 'invoice'
+       and doc.status = 'issued'
+       and doc.id <> ${command.documentId}::uuid
+       and not exists (
+         select 1 from commercial_document_link link_row
+          where link_row.workspace_id = doc.workspace_id
+            and link_row.deposit_id = doc.id
+       )
+       and not exists (
+         select 1 from commercial_document_link chain_row
+          where chain_row.workspace_id = doc.workspace_id
+            and chain_row.final_id = doc.id
+       )
+     order by doc.issued_at desc nulls last, doc.created_at desc, doc.id desc
+     limit 50
+  `);
+  return result.rows.map((row) => ({
+    id: row.id,
+    number: row.number,
+    name: row.name,
+    grossCents: Number(row.gross_cents),
+    issuedAt: toIso(row.issued_at),
+  }));
+}
+
+export async function linkDeposit(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentLinkCommandV1,
+): Promise<CommercialDocumentDetailV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentLinkCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const command = parsed.data;
+  await assertLinkable(tx, ctx, command.finalId, command.depositId);
+  try {
+    await tx.execute(sql`
+      insert into commercial_document_link (workspace_id, final_id, deposit_id, created_by)
+      values (${ctx.workspaceId}::uuid, ${command.finalId}::uuid, ${command.depositId}::uuid, ${ctx.actor}::uuid)
+    `);
+  } catch (error) {
+    const code = postgresErrorCode(error);
+    if (code === "23505") throw new InvoicingConflictError();
+    throw error;
+  }
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: command.finalId,
+    eventType: "commercial_document.deposit_linked",
+    actor: ctx.actor,
+    payload: { finalId: command.finalId, depositId: command.depositId },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.deposit.link",
+    resource: "commercial_document",
+    allowed: true,
+    details: { finalId: command.finalId, depositId: command.depositId },
+  });
+  return getDocumentDetail(tx, ctx, {
+    schemaVersion: COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION,
+    type: "invoice",
+    documentId: command.finalId,
+  });
+}
+
+export async function unlinkDeposit(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentUnlinkCommandV1,
+): Promise<CommercialDocumentDetailV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentUnlinkCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const command = parsed.data;
+  const deleted = await tx.execute<{ id: string }>(sql`
+    delete from commercial_document_link
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and final_id = ${command.finalId}::uuid
+       and deposit_id = ${command.depositId}::uuid
+     returning id
+  `);
+  if ((deleted.rowCount ?? 0) !== 1) throw new InvoicingNotFoundError();
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: command.finalId,
+    eventType: "commercial_document.deposit_unlinked",
+    actor: ctx.actor,
+    payload: { finalId: command.finalId, depositId: command.depositId },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.deposit.unlink",
+    resource: "commercial_document",
+    allowed: true,
+    details: { finalId: command.finalId, depositId: command.depositId },
+  });
+  return getDocumentDetail(tx, ctx, {
+    schemaVersion: COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION,
+    type: "invoice",
+    documentId: command.finalId,
   });
 }
 

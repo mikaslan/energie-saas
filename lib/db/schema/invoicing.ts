@@ -568,3 +568,57 @@ export const commercialDocumentLine = pgTable(
     ),
   ],
 );
+
+// F8-01 · Anzahlung → Schlussrechnung (Anrechnung als Link, genau eine
+// Stufe). Beide Seiten bleiben normale `invoice`-Dokumente; Ketten,
+// Selbst-Links und Doppel-Verlinkungen verweigert der Service, UNIQUE
+// und Selbst-Link-CHECK sichern die Tabellen-Invarianten.
+export const commercialDocumentLink = pgTable(
+  "commercial_document_link",
+  {
+    id: uuid("id").notNull().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    finalId: uuid("final_id").notNull(),
+    depositId: uuid("deposit_id").notNull(),
+    createdBy: uuid("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("commercial_document_link_ws_id_uq").on(t.workspaceId, t.id),
+    unique("commercial_document_link_ws_pair_uq").on(
+      t.workspaceId,
+      t.finalId,
+      t.depositId,
+    ),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "commercial_document_link_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.finalId],
+      foreignColumns: [commercialDocument.workspaceId, commercialDocument.id],
+      name: "commercial_document_link_final_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.depositId],
+      foreignColumns: [commercialDocument.workspaceId, commercialDocument.id],
+      name: "commercial_document_link_deposit_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.createdBy],
+      foreignColumns: [membership.workspaceId, membership.userId],
+      name: "commercial_document_link_created_by_fk",
+    }),
+    check(
+      "commercial_document_link_no_self_ck",
+      sql`${t.finalId} <> ${t.depositId}`,
+    ),
+    index("commercial_document_link_ws_final_idx").on(
+      t.workspaceId,
+      t.finalId,
+      t.createdAt,
+      t.id,
+    ),
+  ],
+);

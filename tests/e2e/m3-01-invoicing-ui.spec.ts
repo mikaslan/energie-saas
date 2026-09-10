@@ -464,6 +464,48 @@ test("F5-02-E2E-01: Entwurf anlegen → Detail öffnen → Kopf, Skonto, Positio
   expect(errors, "Browser-Konsole und Page-Errors der Detail-Journey").toEqual([]);
 });
 
+test("F8-01-E2E-01: Anzahlung ausstellen → Schlussrechnung verlinken → Restbetrag sichtbar", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  const data = state();
+  const errors = trackBrowserErrors(page);
+
+  await grantInvoicingCapability();
+  await seedInvoicingSettings();
+
+  await page.goto(invoicesPath());
+  await loginWithRealOtp(page, data.editorEmail, invoicesPath());
+
+  async function createDraft(name: string): Promise<void> {
+    await page.getByRole("button", { name: "Rechnung anlegen" }).click();
+    const dialog = page.getByRole("dialog", { name: "Rechnung anlegen" });
+    await dialog.getByLabel("Name").fill(name);
+    await dialog.getByLabel("Fällig am").fill("2026-12-31");
+    await dialog.getByRole("button", { name: "Als Entwurf anlegen" }).click();
+    await expect(page.getByRole("row").filter({ hasText: name })).toBeVisible();
+  }
+
+  await createDraft("F801-Anzahlung");
+  await createDraft("F801-Schluss");
+
+  const depositRow = page.getByRole("row").filter({ hasText: "F801-Anzahlung" });
+  await depositRow.getByRole("button", { name: "Ausstellen" }).click();
+  await expect(depositRow.getByText("Ausgestellt")).toBeVisible();
+
+  const finalRow = page.getByRole("row").filter({ hasText: "F801-Schluss" });
+  await finalRow.getByRole("link", { name: "F801-Schluss" }).click();
+
+  const deposits = page.locator('[data-invoice-detail="deposits"]');
+  await expect(deposits.getByText("Keine Anzahlungen angerechnet.")).toBeVisible();
+  await deposits.getByLabel("Anzahlung").selectOption({ index: 0 });
+  await deposits.getByRole("button", { name: "Anrechnen" }).click();
+  await expect(deposits.getByText("Offener Restbetrag")).toBeVisible();
+  await expect(deposits.getByText("Keine Anzahlungen angerechnet.")).toHaveCount(0);
+
+  expect(errors, "Browser-Konsole und Page-Errors der Anrechnungs-Journey").toEqual([]);
+});
+
 test("M3-01-E2E-02: Statusfilter, Suche und Archiv-Achse", async ({ page }) => {
   test.setTimeout(150_000);
   const data = state();
