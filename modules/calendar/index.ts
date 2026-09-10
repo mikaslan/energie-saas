@@ -25,6 +25,7 @@ export type {
   ProjectAppointmentItemV1,
   ProjectAppointmentRangeV1,
 } from "@/lib/integrations/calendar/contract";
+export type { UpcomingAppointmentV1 } from "./service";
 export {
   AppointmentConflictError,
   AppointmentNotFoundError,
@@ -36,5 +37,6 @@ export {
   ensurePersonalCalendar,
   executeProjectAppointmentCommand,
   listProjectAppointments,
+  listUpcomingAppointments,
   listVisibleCalendars,
 } from "./service";

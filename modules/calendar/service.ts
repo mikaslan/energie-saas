@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
@@ -433,6 +434,82 @@ export async function executeProjectAppointmentCommand(
   if (command.kind === "create_appointment") return createAppointment(tx, ctx, command);
   if (command.kind === "update_appointment") return updateAppointment(tx, ctx, command);
   return deleteAppointment(tx, ctx, command);
+}
+
+const upcomingAppointmentV1Schema = z.strictObject({
+  id: z.uuid(),
+  title: z.string(),
+  start: z.string(),
+  end: z.string(),
+  allDay: z.boolean(),
+  projectId: z.uuid(),
+  calendarName: z.string().nullable(),
+});
+
+export type UpcomingAppointmentV1 = z.infer<typeof upcomingAppointmentV1Schema>;
+
+/**
+ * DASH-04 Naechste Termine workspace-weit: gleiche Sichtbarkeit wie die
+ * Projektliste (appointment.read + Actor-Praedikat + sichtbare Kalender),
+ * sortiert nach Beginn, gedeckelt. Keine neue Permission.
+ */
+export async function listUpcomingAppointments(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  options: { limit?: number } = {},
+): Promise<UpcomingAppointmentV1[]> {
+  requireAppointmentRead(ctx);
+  const limit = options.limit === undefined ? 5 : options.limit;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+    throw new AppointmentValidationError();
+  }
+  const rows = await tx.execute<{
+    id: string;
+    title: string;
+    start_iso: string;
+    end_iso: string;
+    all_day: boolean;
+    project_id: string;
+    calendar_name: string | null;
+  }>(sql`
+    select appointment_record.id,
+           appointment_record.title,
+           to_char(
+             appointment_record.start_at at time zone 'Europe/Berlin',
+             ${BERLIN_TIMESTAMP}
+           ) as start_iso,
+           to_char(
+             appointment_record.end_at at time zone 'Europe/Berlin',
+             ${BERLIN_TIMESTAMP}
+           ) as end_iso,
+           appointment_record.all_day,
+           appointment_record.project_id,
+           calendar_record.name as calendar_name
+      from project_appointment appointment_record
+      join project project_record
+        on project_record.workspace_id = appointment_record.workspace_id
+       and project_record.id = appointment_record.project_id
+      left join calendar calendar_record
+        on calendar_record.workspace_id = appointment_record.workspace_id
+       and calendar_record.id = appointment_record.calendar_id
+       and ${calendarVisibleFragment(ctx)}
+     where appointment_record.workspace_id = ${ctx.workspaceId}::uuid
+       and public._m115_actor_can_read_appointments(appointment_record.workspace_id)
+       and appointment_record.end_at >= now()
+     order by appointment_record.start_at asc,
+              appointment_record.end_at asc,
+              appointment_record.id asc
+     limit ${limit}
+  `);
+  return rows.rows.map((row) => upcomingAppointmentV1Schema.parse({
+    id: row.id,
+    title: row.title,
+    start: row.start_iso,
+    end: row.end_iso,
+    allDay: row.all_day,
+    projectId: row.project_id,
+    calendarName: row.calendar_name,
+  }));
 }
 
 export async function listProjectAppointments(

@@ -22,6 +22,10 @@ import {
   getSignatureLeadTimeStats,
   type SignatureLeadTimeStats,
 } from "@/modules/signatures";
+import {
+  listUpcomingAppointments,
+  type UpcomingAppointmentV1,
+} from "@/modules/calendar";
 import { INVOICING_REPORT_COMMAND_VERSION } from "@/lib/integrations/invoicing/contract";
 import { parseGlobalTaskInboxRouteQuery } from "../aufgaben/query";
 
@@ -239,6 +243,35 @@ async function loadLeadTime(workspaceId: string): Promise<
   }
 }
 
+async function loadAppointments(workspaceId: string): Promise<
+  | { kind: "loaded"; items: UpcomingAppointmentV1[] }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const items = await authorizedQuery(
+      workspaceId,
+      "appointment.read",
+      "project_appointment",
+      (tx, ctx) => listUpcomingAppointments(tx, ctx, { limit: 5 }),
+    );
+    return { kind: "loaded", items };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+/** Berlin-Wandzeit „YYYY-MM-DDTHH:MM:…" -> „10.09.2026, 14:00" (ohne TZ-Raten). */
+function formatBerlinWall(wall: string): { date: string; time: string } {
+  const date = wall.slice(0, 10).split("-");
+  return {
+    date: `${date[2]}.${date[1]}.${date[0]}`,
+    time: wall.slice(11, 16),
+  };
+}
+
 function TaskList({ page }: { page: GlobalTaskInboxPageV1 }) {
   const items = page.items.slice(0, 5);
   if (items.length === 0) return null;
@@ -265,13 +298,14 @@ export default async function DashboardPage({
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  const [pipeline, overdue, today, closures, invoices, leadTime] = await Promise.all([
+  const [pipeline, overdue, today, closures, invoices, leadTime, appointments] = await Promise.all([
     loadPipeline(validWorkspaceId),
     loadTasks(validWorkspaceId, "overdue"),
     loadTasks(validWorkspaceId, "today"),
     loadClosures(validWorkspaceId),
     loadInvoiceKpis(validWorkspaceId),
     loadLeadTime(validWorkspaceId),
+    loadAppointments(validWorkspaceId),
   ]);
   if (
     pipeline.kind === "unauthenticated"
@@ -280,6 +314,7 @@ export default async function DashboardPage({
     || closures.kind === "unauthenticated"
     || invoices.kind === "unauthenticated"
     || leadTime.kind === "unauthenticated"
+    || appointments.kind === "unauthenticated"
   ) {
     const nextPath = `/w/${validWorkspaceId}/dashboard`;
     redirect(`/login?${new URLSearchParams({ next: nextPath }).toString()}`);
@@ -291,6 +326,7 @@ export default async function DashboardPage({
     && closures.kind === "denied"
     && invoices.kind === "denied"
     && leadTime.kind === "denied"
+    && appointments.kind === "denied"
   ) {
     return <AccessDenied />;
   }
@@ -532,6 +568,45 @@ export default async function DashboardPage({
               {leadTime.stats.medianDays === null ? (
                 <p className="mt-2 text-sm leading-6 text-slate-600">Noch keine Unterschriften.</p>
               ) : null}
+            </section>
+          ) : null}
+
+          {appointments.kind === "loaded" ? (
+            <section
+              aria-label="Nächste Termine"
+              data-dashboard-appointments="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Nächste Termine</h2>
+              {appointments.items.length === 0 ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">Keine anstehenden Termine.</p>
+              ) : (
+                <ul className="mt-3 divide-y divide-slate-200">
+                  {appointments.items.map((item) => {
+                    const start = formatBerlinWall(item.start);
+                    return (
+                      <li key={item.id} className="py-2 text-sm leading-6">
+                        <Link
+                          href={`/w/${validWorkspaceId}/anfragen/${item.projectId}`}
+                          className="font-medium text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                        >
+                          {item.title}
+                        </Link>
+                        <span className="text-slate-500">
+                          {` — ${start.date}, ${item.allDay ? "ganztägig" : `${start.time} Uhr`}`}
+                          {item.calendarName ? ` (${item.calendarName})` : ""}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <Link
+                href={`/w/${validWorkspaceId}/kalender`}
+                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              >
+                Zum Kalender
+              </Link>
             </section>
           ) : null}
         </div>
