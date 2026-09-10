@@ -187,6 +187,19 @@ test.describe("M2-01 Angebotsvarianten und Snapshot-BOM", () => {
     await expect(schematic).toBeVisible();
     await expect(schematic.getByRole("heading", { name: "Einphasige Übersicht" })).toBeVisible();
     await expect(schematic.getByRole("img")).toBeVisible();
+    // F6-02 Schaltplan-Export: SVG-Download mit deterministischem Namen.
+    const [schematicDownload] = await Promise.all([
+      page.waitForEvent("download"),
+      schematic.getByTestId("schematic-export-download").click(),
+    ]);
+    const suggestedName = schematicDownload.suggestedFilename();
+    expect(suggestedName).toMatch(/^schaltplan-.*\.svg$/u);
+    const schematicPath = await schematicDownload.path();
+    if (!schematicPath) throw new Error("Der Schaltplan-Download lieferte keine Datei.");
+    const schematicFile = readFileSync(schematicPath, "utf8");
+    expect(schematicFile.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
+    expect(schematicFile).toContain("<svg");
+    expect(schematicFile).toContain("ESTIMATE");
     await expect(page.getByRole("heading", { name: M2_01_E2E_CONTACT, level: 1 }))
       .toBeVisible();
     await expect(page.getByText(M2_01_E2E_ADDRESS, { exact: true })).toBeVisible();

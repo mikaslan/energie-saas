@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
 import { SingleLineDiagram } from "./single-line-diagram";
+import { SchematicExport } from "./schematic-export";
 import { buildSingleLineSchematic } from "@/lib/integrations/schematic/single-line-v1";
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import { OfferVariantControlsPanel } from "./offer-variant-controls-panel";
@@ -540,7 +541,13 @@ function OfferLineCard({
   );
 }
 
-function SchematicCard({ snapshot }: { snapshot: OfferVariantSnapshotView }) {
+function SchematicCard({
+  snapshot,
+  offerNumber,
+}: {
+  snapshot: OfferVariantSnapshotView;
+  offerNumber: string;
+}) {
   const inputs = snapshot.sections.flatMap((section) => {
     const visible = section.lines.filter((line) => !line.isHidden);
     if (visible.length === 0) return [];
@@ -566,7 +573,9 @@ function SchematicCard({ snapshot }: { snapshot: OfferVariantSnapshotView }) {
       </p>
       <h2 className="mt-1 text-lg font-semibold text-slate-950">Einphasige Übersicht</h2>
       <div className="mt-3">
-        <SingleLineDiagram schematic={schematic} />
+        <SchematicExport offerNumber={offerNumber} variantName={snapshot.variantName}>
+          <SingleLineDiagram schematic={schematic} />
+        </SchematicExport>
       </div>
     </section>
   );
@@ -787,7 +796,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
               options={view.paymentOptions ?? []}
               canEdit={canEdit}
             />
-            <SchematicCard snapshot={snapshot} />
+            <SchematicCard snapshot={snapshot} offerNumber={view.offer.offerNumber} />
             {pdfDraftPanel}
             {offerReleasePanel}
             {offerIssuancePanel}
@@ -907,7 +916,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                   <div><dt className="text-slate-600">Custom Deal netto</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.customDealNetCents === null ? "Kein Custom Deal" : formatOfferCents(snapshot.customDealNetCents)}</dd></div>
                 </dl>
               </section>
-              <SchematicCard snapshot={snapshot} />
+              <SchematicCard snapshot={snapshot} offerNumber={view.offer.offerNumber} />
               {snapshot.sections.map((section) => (
                 <OfferSectionCard
                   key={section.sectionDomainId}
