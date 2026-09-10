@@ -24,6 +24,10 @@ import {
   type SignatureLeadTimeStats,
 } from "@/modules/signatures";
 import {
+  getOfferLeadTimeStats,
+  type OfferLeadTimeStats,
+} from "@/modules/offers";
+import {
   listUpcomingAppointments,
   type UpcomingAppointmentV1,
 } from "@/modules/calendar";
@@ -282,6 +286,26 @@ async function loadLeadTime(workspaceId: string): Promise<
   }
 }
 
+async function loadOfferLeadTime(workspaceId: string): Promise<
+  | { kind: "loaded"; stats: OfferLeadTimeStats }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const stats = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "offer_lead_time",
+      (tx, ctx) => getOfferLeadTimeStats(tx, ctx),
+    );
+    return { kind: "loaded", stats };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
 async function loadAppointments(workspaceId: string): Promise<
   | { kind: "loaded"; items: UpcomingAppointmentV1[] }
   | { kind: "unauthenticated" }
@@ -337,13 +361,14 @@ export default async function DashboardPage({
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  const [pipeline, overdue, today, closures, invoices, leadTime, appointments] = await Promise.all([
+  const [pipeline, overdue, today, closures, invoices, leadTime, offerLeadTime, appointments] = await Promise.all([
     loadPipeline(validWorkspaceId),
     loadTasks(validWorkspaceId, "overdue"),
     loadTasks(validWorkspaceId, "today"),
     loadClosures(validWorkspaceId),
     loadInvoiceKpis(validWorkspaceId),
     loadLeadTime(validWorkspaceId),
+    loadOfferLeadTime(validWorkspaceId),
     loadAppointments(validWorkspaceId),
   ]);
   if (
@@ -353,6 +378,7 @@ export default async function DashboardPage({
     || closures.kind === "unauthenticated"
     || invoices.kind === "unauthenticated"
     || leadTime.kind === "unauthenticated"
+    || offerLeadTime.kind === "unauthenticated"
     || appointments.kind === "unauthenticated"
   ) {
     const nextPath = `/w/${validWorkspaceId}/dashboard`;
@@ -365,6 +391,7 @@ export default async function DashboardPage({
     && closures.kind === "denied"
     && invoices.kind === "denied"
     && leadTime.kind === "denied"
+    && offerLeadTime.kind === "denied"
     && appointments.kind === "denied"
   ) {
     return <AccessDenied />;
@@ -622,6 +649,35 @@ export default async function DashboardPage({
               </dl>
               {leadTime.stats.medianDays === null ? (
                 <p className="mt-2 text-sm leading-6 text-slate-600">Noch keine Unterschriften.</p>
+              ) : null}
+            </section>
+          ) : null}
+
+          {offerLeadTime.kind === "loaded" ? (
+            <section
+              aria-label="Angebotsdauer"
+              data-dashboard-offer-leadtime="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Angebotsdauer</h2>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-slate-600">Median Anlage → erstes Angebot</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {offerLeadTime.stats.medianDays === null
+                      ? "—"
+                      : `${countFormatter.format(offerLeadTime.stats.medianDays)} Tage`}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-slate-600">Projekte mit Angebot</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {`${countFormatter.format(offerLeadTime.stats.projectCount)}${offerLeadTime.stats.capped ? "+" : ""}`}
+                  </dd>
+                </div>
+              </dl>
+              {offerLeadTime.stats.medianDays === null ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">Noch keine Angebote.</p>
               ) : null}
             </section>
           ) : null}

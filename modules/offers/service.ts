@@ -387,6 +387,61 @@ export async function getProjectOfferValues(
   return values;
 }
 
+export type OfferLeadTimeStats = {
+  /** Anzahl Projekte mit Angebot (gedeckelt, s. capped). */
+  projectCount: number;
+  /** true, wenn mehr als das Auswertungslimit Projekte Angebote haben. */
+  capped: boolean;
+  /** Median Projektanlage -> erstes Angebot in Tagen (null ohne Werte). */
+  medianDays: number | null;
+};
+
+/** Auswertungslimit fuer die Angebotsdauer (ehrliches „+"). */
+const OFFER_LEAD_TIME_LIMIT = 500;
+
+/**
+ * DASH-06 Angebotsdauer: Median (erstes Angebot - Projektanlage) ueber
+ * Projekte mit Angebot (aeltestes zuerst, gedeckelt). Rein lesend;
+ * gleiche Sichtbarkeit wie die Angebotsliste (project.read).
+ */
+export async function getOfferLeadTimeStats(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<OfferLeadTimeStats> {
+  requireOfferAccess(ctx, "project.read", "offer_lead_time");
+  const result = await tx.execute<{ lead_seconds: string | number }>(sql`
+    select extract(epoch from (first_offer.created_at - project_record.created_at)) as lead_seconds
+      from project project_record
+      join lateral (
+        select offer_record.created_at
+          from offer offer_record
+         where offer_record.workspace_id = project_record.workspace_id
+           and offer_record.project_id = project_record.id
+         order by offer_record.created_at asc, offer_record.id asc
+         limit 1
+      ) as first_offer on true
+     where project_record.workspace_id = ${ctx.workspaceId}::uuid
+     order by first_offer.created_at desc
+     limit ${OFFER_LEAD_TIME_LIMIT + 1}
+  `);
+  const capped = result.rows.length > OFFER_LEAD_TIME_LIMIT;
+  const leads = result.rows
+    .slice(0, OFFER_LEAD_TIME_LIMIT)
+    .map((row) => Number(row.lead_seconds))
+    .filter((seconds) => Number.isFinite(seconds) && seconds >= 0)
+    .sort((a, b) => a - b);
+  if (leads.length === 0) return { projectCount: 0, capped: false, medianDays: null };
+  const middle = Math.floor(leads.length / 2);
+  const medianSeconds = leads.length % 2 === 1
+    ? leads[middle]!
+    : (leads[middle - 1]! + leads[middle]!) / 2;
+  return {
+    projectCount: leads.length,
+    capped,
+    medianDays: Math.round((medianSeconds / 86_400) * 10) / 10,
+  };
+}
+
 export async function listOffers(
   tx: TenantTx,
   ctx: ServiceCtx,

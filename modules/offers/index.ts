@@ -10,6 +10,7 @@ export {
   createVariantFromCurrentResolution,
   duplicateOfferVariant,
   getOfferDetail,
+  getOfferLeadTimeStats,
   getProjectOfferValues,
   listOffers,
   reviseOfferVariant,
@@ -30,6 +31,7 @@ export {
 } from "./payment-options";
 export type {
   OfferDetailViewModel,
+  OfferLeadTimeStats,
   OfferListViewModel,
   OfferMutationResult,
   OfferVariantContentLock,
