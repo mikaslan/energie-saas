@@ -4,6 +4,7 @@ import type {
   ProjectEnergyContext,
 } from "@/modules/energy";
 import { DetailItem, Section } from "./_ui";
+import { EnergySankeyChart } from "./energy-sankey-chart";
 import { EnergyStatusRefresh } from "./energy-status-refresh";
 import { TouScheduleChart } from "./tou-schedule-chart";
 
@@ -421,6 +422,19 @@ function V2ExistingComparison({ existing }: { existing: ExistingInstallationV2 }
         <DetailItem term="Autarkiegewinn (Prozentpunkte)" numeric>
           {formatNumber(existing.delta.autonomyRatePercentagePoints, "pp")}
         </DetailItem>
+        {existing.delta.bills ? (
+          <>
+            <DetailItem term="Stromrechnung Bestand (Jahr 1)" numeric>
+              {euroFormatter.format(existing.delta.bills.baselineEuro)}
+            </DetailItem>
+            <DetailItem term="Stromrechnung Planung (Jahr 1)" numeric>
+              {euroFormatter.format(existing.delta.bills.plannedEuro)}
+            </DetailItem>
+            <DetailItem term="Ersparnis Planung vs. Bestand" numeric>
+              {euroFormatter.format(existing.delta.bills.savingsEuro)}
+            </DetailItem>
+          </>
+        ) : null}
       </dl>
       <div
         className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
@@ -635,6 +649,17 @@ function V2Tou({ tou }: { tou: NonNullable<EconomicsV2["tou"]> }) {
   );
 }
 
+function V2Sankey({ annual }: { annual: ProjectEnergyCalculationResultV2["value"]["annual"] }) {
+  return (
+    <div className="mt-5" data-energy-calculation-v2-sankey="true">
+      <h3 className="px-1 text-base font-semibold text-slate-950">
+        Energiefluss (Jahr)
+      </h3>
+      <EnergySankeyChart annual={annual} />
+    </div>
+  );
+}
+
 function PlanningResultV2({
   result,
   historical = false,
@@ -667,6 +692,7 @@ function PlanningResultV2({
         <V2ExistingComparison existing={result.value.existingInstallation} />
       ) : null}
       {economics ? <V2Economics economics={economics} /> : null}
+      <V2Sankey annual={result.value.annual} />
       <V2MonthlyTable monthly={result.value.monthly} />
       <V2Provenance result={result} />
     </div>

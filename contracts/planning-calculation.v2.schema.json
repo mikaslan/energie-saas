@@ -479,6 +479,28 @@
                   "type": "number",
                   "minimum": -100,
                   "maximum": 100
+                },
+                "bills": {
+                  "type": "object",
+                  "properties": {
+                    "baselineEuro": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "plannedEuro": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "savingsEuro": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "baselineEuro",
+                    "plannedEuro",
+                    "savingsEuro"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [

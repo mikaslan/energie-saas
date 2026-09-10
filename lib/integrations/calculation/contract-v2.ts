@@ -191,6 +191,13 @@ const existingInstallationResultV2Schema = z.strictObject({
   delta: z.strictObject({
     additionalSelfConsumptionKwh: finite().min(-10_000_000).max(10_000_000),
     autonomyRatePercentagePoints: finite().min(-100).max(100),
+    // F4.5b: Jahr-1-Rechnungsvergleich (nur bei belegtem Importpreis;
+    // sonst fehlt der Schluessel).
+    bills: z.strictObject({
+      baselineEuro: finite().min(0),
+      plannedEuro: finite().min(0),
+      savingsEuro: finite(),
+    }).optional(),
   }),
 });
 

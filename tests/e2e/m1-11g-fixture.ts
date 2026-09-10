@@ -162,6 +162,8 @@ export async function seedProjectGraph(
       weekdayHourlyKwh: number[] | null;
       weekendHourlyKwh: number[] | null;
     };
+    // F4.5b: belegte Investition (EUR netto) im Verbrauchsprofil.
+    investmentEuro?: number;
   } = {},
 ): Promise<void> {
   const branch = options.branch ?? "new_installation";
@@ -202,6 +204,33 @@ export async function seedProjectGraph(
             status: "known" as const,
             value: options.customLoadProfile,
             source: "customer_input" as const,
+          },
+        },
+      }
+      : {}),
+    // F4.5b: Investition als bekanntes Profilfeld (economics-Aufloesung).
+    ...(options.investmentEuro !== undefined
+      ? {
+        consumption: {
+          ...GOLDEN_REQUEST.energyProfile.consumption,
+          ...(options.customLoadProfile !== undefined
+            ? {
+              loadProfile: {
+                status: "known" as const,
+                value: "customer_monthly_hourly.v1",
+                source: "customer_input" as const,
+              },
+              customLoadProfile: {
+                status: "known" as const,
+                value: options.customLoadProfile,
+                source: "customer_input" as const,
+              },
+            }
+            : {}),
+          investmentEuro: {
+            status: "known" as const,
+            value: options.investmentEuro,
+            source: "operator_reviewed" as const,
           },
         },
       }

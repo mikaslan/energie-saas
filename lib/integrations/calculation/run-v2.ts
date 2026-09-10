@@ -33,7 +33,12 @@ import {
   type PlanningCalculationRequestV2,
   type PlanningCalculationResultV2,
 } from "./contract-v2";
-import { computeEconomics, computeTouBillEuro, roundMoney } from "./economics-v2";
+import {
+  computeEconomics,
+  computeExistingBillDelta,
+  computeTouBillEuro,
+  roundMoney,
+} from "./economics-v2";
 import { hashPlanningCalculationInputV2 } from "./prepare-v2";
 import {
   averageDailySchedule,
@@ -466,6 +471,17 @@ function runExistingInstallationV2(
       delta: {
         additionalSelfConsumptionKwh,
         autonomyRatePercentagePoints,
+        // F4.5b: Geldvergleich nur bei belegtem Importpreis (sonst fehlt
+        // der Schluessel und Altketten bleiben unveraendert lesbar).
+        ...(request.economics === undefined
+          ? {}
+          : {
+            bills: computeExistingBillDelta(
+              baseline.annual.gridImportKwh,
+              planned.annual.gridImportKwh,
+              request.economics.importPriceCtPerKwh,
+            ),
+          }),
       },
     },
   };

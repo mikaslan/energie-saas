@@ -239,6 +239,46 @@ export function computeTouBillEuro(
   return roundMoney(totalCt / 100);
 }
 
+export type ExistingBillDeltaV2 = {
+  /** Jahr-1-Bezugskosten Bestand (Netzbezug x Tarif, F4.4a-Semantik). */
+  baselineEuro: number;
+  /** Jahr-1-Bezugskosten Planung (identisch zu currentEuro). */
+  plannedEuro: number;
+  /** Ersparnis Planung gegen Bestand (kann negativ sein). */
+  savingsEuro: number;
+};
+
+/**
+ * F4.5b Bestands-Geldvergleich aus den Jahres-Netzbezuegen beider Seiten
+ * und dem belegten Importpreis. Importpreis ausserhalb 1..200 Ct/kWh ist
+ * fail-closed (gleiche Schranke wie die Tarifaufloesung).
+ */
+export function computeExistingBillDelta(
+  baselineGridImportKwh: number,
+  plannedGridImportKwh: number,
+  importPriceCtPerKwh: number,
+): ExistingBillDeltaV2 {
+  for (const [name, value] of [
+    ["baselineGridImportKwh", baselineGridImportKwh],
+    ["plannedGridImportKwh", plannedGridImportKwh],
+  ] as const) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      economicsError(`Jahreswert ${name} ist ungueltig`);
+    }
+  }
+  if (
+    typeof importPriceCtPerKwh !== "number"
+    || !Number.isFinite(importPriceCtPerKwh)
+    || importPriceCtPerKwh < 1
+    || importPriceCtPerKwh > 200
+  ) {
+    economicsError("Bestands-Vergleichspreis ausserhalb 1..200 Ct/kWh");
+  }
+  const baselineEuro = roundMoney(baselineGridImportKwh * (importPriceCtPerKwh / 100));
+  const plannedEuro = roundMoney(plannedGridImportKwh * (importPriceCtPerKwh / 100));
+  return { baselineEuro, plannedEuro, savingsEuro: roundMoney(baselineEuro - plannedEuro) };
+}
+
 export type AnnualBillsV2 = {
   /** Jahr-1-Rechnung ohne PV (Verbrauch × Tarif). */
   noPvEuro: number;

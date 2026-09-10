@@ -291,7 +291,8 @@ test("M1-11g: v2-Bestandsergebnis zeigt baseline/geplant/Delta im Browser", asyn
     revisionV1Id: randomUUID(),
     batteryId: randomUUID(),
   };
-  await seedProjectGraph(ids, { branch: "existing_installation" });
+  // F4.5b: Investition belegt, damit die Kette economics + Delta-Bills traegt.
+  await seedProjectGraph(ids, { branch: "existing_installation", investmentEuro: 20000 });
   await addResolution(
     ids,
     createHash("sha256").update("m111g-v1-input").digest("hex"),
@@ -312,6 +313,13 @@ test("M1-11g: v2-Bestandsergebnis zeigt baseline/geplant/Delta im Browser", asyn
   const result = expected.calculation.resultV2;
   const existing = result.value.existingInstallation;
   if (!existing) throw new Error("v2-Bestandsresultat traegt kein existingInstallation.");
+  // F4.5b: Delta-Bills gegen die Planungs-Bills gepinnt.
+  const bills = existing.delta.bills;
+  if (!bills) throw new Error("Bestand-Delta traegt keine Bills.");
+  const economics = result.value.economics;
+  if (!economics) throw new Error("Bestand-Kette traegt kein economics.");
+  expect(bills.savingsEuro).toBeCloseTo(bills.baselineEuro - bills.plannedEuro, 2);
+  expect(bills.plannedEuro).toBeCloseTo(economics.annualBillsEuro.currentEuro, 2);
 
   const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
   await page.goto(projectPath);
@@ -337,6 +345,10 @@ test("M1-11g: v2-Bestandsergebnis zeigt baseline/geplant/Delta im Browser", asyn
   await expect(rows.first().getByText(
     formatKwh(existing.baseline.monthly[0]!.selfConsumptionKwh),
   )).toBeVisible();
+  // F4.5b: Geldvergleich und Sankey sind beobachtbar.
+  await expect(v2existing.getByText("Stromrechnung Bestand (Jahr 1)")).toBeVisible();
+  await expect(v2existing.getByText("Ersparnis Planung vs. Bestand")).toBeVisible();
+  await expect(page.locator('[data-energy-sankey-chart="true"]')).toBeVisible();
 
   const axe = await new AxeBuilder({ page })
     .include('[data-energy-calculation-v2-existing="true"]')
@@ -1069,6 +1081,7 @@ test("M1-11g: F4.4b-TOU traegt currentV2-Bill und Ladefahrplan", async ({ page }
   await expect(block.getByText("Zeitvariabler Tarif")).toBeVisible();
   await expect(block.getByText("Mit PV (Zeittarif)")).toBeVisible();
   await expect(page.locator('[data-energy-tou-schedule-chart="true"]')).toBeVisible();
+  await expect(page.locator('[data-energy-sankey-chart="true"]')).toBeVisible();
 });
 
 test("M1-11g: Boden-Albedo speichert als known-Profil", async ({ page }) => {
