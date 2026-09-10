@@ -88,6 +88,16 @@ function parseSkontoDays(value: FormDataEntryValue | null): number | null | unde
   return Number(value.trim());
 }
 
+// F8-02 · EUR-Betrag („119,00" / „119.00") -> Cent; leeres Feld =
+// undefined (Default = volles Brutto). null = ungueltig.
+function parseEuroCents(value: FormDataEntryValue | null): number | null | undefined {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d{1,9}(\.\d{1,2})?$/u.test(normalized)) return null;
+  const cents = Math.round(Number(normalized) * 100);
+  return Number.isFinite(cents) ? cents : null;
+}
+
 export async function createInvoicingGroupAction(
   _previous: InvoicingUiActionState,
   formData: FormData,
@@ -340,7 +350,8 @@ export async function linkDepositAction(
   const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
   const finalId = parseUuid(formData.get("finalId"));
   const depositId = parseUuid(formData.get("depositId"));
-  if (!workspaceId || !finalId || !depositId) return { status: "invalid" };
+  const appliedCents = parseEuroCents(formData.get("appliedEur"));
+  if (!workspaceId || !finalId || !depositId || appliedCents === null) return { status: "invalid" };
   try {
     await authorizedAction(
       workspaceId,
@@ -350,6 +361,7 @@ export async function linkDepositAction(
         schemaVersion: COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION,
         finalId,
         depositId,
+        ...(appliedCents === undefined ? {} : { appliedCents }),
       }),
     );
   } catch (error) {

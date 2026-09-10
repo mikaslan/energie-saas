@@ -647,6 +647,8 @@ export const commercialDocumentLinkedDepositV1Schema = z.strictObject({
   number: z.string().nullable(),
   name: z.string().min(1).max(160),
   grossCents: moneyCentsSchema,
+  // F8-02: tatsächlich angerechneter Teilbetrag (≤ grossCents).
+  appliedCents: moneyCentsSchema,
   issuedAt: z.string().nullable(),
 });
 export type CommercialDocumentLinkedDepositV1 = z.infer<
@@ -670,6 +672,9 @@ export const commercialDocumentLinkCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION),
   finalId: z.string().uuid(),
   depositId: z.string().uuid(),
+  // F8-02: optionaler Teilbetrag in Cent; ohne Angabe = volles Brutto
+  // (F8-01-Pfad, rückwärtskompatibel).
+  appliedCents: moneyCentsSchema.optional(),
 });
 export type CommercialDocumentLinkCommandV1 = z.infer<
   typeof commercialDocumentLinkCommandV1Schema

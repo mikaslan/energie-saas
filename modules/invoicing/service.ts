@@ -1671,7 +1671,7 @@ export async function getDocumentDetail(
     : [];
   const remainingCents = document.type === "invoice"
     ? Math.max(
-      document.grossCents - linked.reduce((sum, deposit) => sum + deposit.grossCents, 0),
+      document.grossCents - linked.reduce((sum, deposit) => sum + deposit.appliedCents, 0),
       0,
     )
     : null;
@@ -1712,7 +1712,7 @@ async function readLinkedDeposits(
   finalId: string,
 ): Promise<CommercialDocumentLinkedDepositV1[]> {
   const result = await tx.execute<LinkedDepositRow>(sql`
-    select doc.id, doc.number, doc.name, doc.gross_cents, doc.issued_at
+    select doc.id, doc.number, doc.name, doc.gross_cents, link_row.applied_cents, doc.issued_at
       from commercial_document_link link_row
       join commercial_document doc
         on doc.workspace_id = link_row.workspace_id
@@ -1726,12 +1726,15 @@ async function readLinkedDeposits(
     number: row.number,
     name: row.name,
     grossCents: Number(row.gross_cents),
+    appliedCents: Number(row.applied_cents),
     issuedAt: toIso(row.issued_at),
   }));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // F8-01 · Anzahlung verlinken/entfernen (genau eine Stufe, Voll-Brutto).
+// F8-02 · optionaler Teilbetrag (`appliedCents`, Default = volles Brutto)
+// mit Über-Anrechnungs-Guard (fail-closed statt stiller 0-Clamp).
 // Fail-closed: fehlende Belege → NotFound ohne Orakel; falscher Typ,
 // Selbst-Link, Entwurf/Storno als Anzahlung, stornierte Schlussrechnung,
 // Ketten (Anzahlung mit eigenen Links) und Doppel-Verlinkung →
@@ -1743,6 +1746,7 @@ type LinkDocumentRow = {
   id: string;
   type: string;
   status: string;
+  gross_cents: number;
   [key: string]: unknown;
 };
 
@@ -1752,7 +1756,7 @@ async function readLinkDocument(
   documentId: string,
 ): Promise<LinkDocumentRow> {
   const result = await tx.execute<LinkDocumentRow>(sql`
-    select id, type, status
+    select id, type, status, gross_cents
       from commercial_document
      where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
      limit 1
@@ -1767,6 +1771,7 @@ async function assertLinkable(
   ctx: ServiceCtx,
   finalId: string,
   depositId: string,
+  appliedCents: number,
 ): Promise<void> {
   if (finalId === depositId) throw new InvoicingValidationError();
   const [final, deposit] = await Promise.all([
@@ -1778,6 +1783,22 @@ async function assertLinkable(
   }
   if (final.status === "voided") throw new InvoicingConflictError();
   if (deposit.status !== "issued") throw new InvoicingConflictError();
+  // F8-02: Teilbetrag im Intervall [1, Brutto(Anzahlung)].
+  const depositGross = Number(deposit.gross_cents);
+  if (!Number.isInteger(appliedCents) || appliedCents < 1 || appliedCents > depositGross) {
+    throw new InvoicingValidationError();
+  }
+  // F8-02: keine Über-Anrechnung der Schlussrechnung (fail-closed
+  // statt stiller 0-Clamp in der Anzeige).
+  const applied = await tx.execute<{ total: string }>(sql`
+    select coalesce(sum(applied_cents), 0)::text as total
+      from commercial_document_link
+     where workspace_id = ${ctx.workspaceId}::uuid and final_id = ${finalId}::uuid
+  `);
+  const appliedTotal = Number(applied.rows[0]?.total ?? 0);
+  if (!Number.isFinite(appliedTotal) || appliedTotal + appliedCents > Number(final.gross_cents)) {
+    throw new InvoicingConflictError();
+  }
   // Keine Ketten: eine Anzahlung mit eigenen Links ist selbst
   // Schlussrechnung und kann nicht angerechnet werden.
   const outgoing = await tx.execute<{ c: number }>(sql`
@@ -1831,6 +1852,8 @@ export async function listDepositCandidates(
     number: row.number,
     name: row.name,
     grossCents: Number(row.gross_cents),
+    // F8-02: Kandidat noch unverlinkt — volles Brutto verfügbar.
+    appliedCents: Number(row.gross_cents),
     issuedAt: toIso(row.issued_at),
   }));
 }
@@ -1844,11 +1867,15 @@ export async function linkDeposit(
   const parsed = commercialDocumentLinkCommandV1Schema.safeParse(input);
   if (!parsed.success) throw new InvoicingValidationError();
   const command = parsed.data;
-  await assertLinkable(tx, ctx, command.finalId, command.depositId);
+  // F8-02: ohne expliziten Betrag = volles Brutto (liest den Beleg;
+  // NotFound ohne Orakel wie bisher).
+  const deposit = await readLinkDocument(tx, ctx, command.depositId);
+  const appliedCents = command.appliedCents ?? Number(deposit.gross_cents);
+  await assertLinkable(tx, ctx, command.finalId, command.depositId, appliedCents);
   try {
     await tx.execute(sql`
-      insert into commercial_document_link (workspace_id, final_id, deposit_id, created_by)
-      values (${ctx.workspaceId}::uuid, ${command.finalId}::uuid, ${command.depositId}::uuid, ${ctx.actor}::uuid)
+      insert into commercial_document_link (workspace_id, final_id, deposit_id, applied_cents, created_by)
+      values (${ctx.workspaceId}::uuid, ${command.finalId}::uuid, ${command.depositId}::uuid, ${appliedCents}, ${ctx.actor}::uuid)
     `);
   } catch (error) {
     const code = postgresErrorCode(error);
@@ -1861,7 +1888,7 @@ export async function linkDeposit(
     aggregateId: command.finalId,
     eventType: "commercial_document.deposit_linked",
     actor: ctx.actor,
-    payload: { finalId: command.finalId, depositId: command.depositId },
+    payload: { finalId: command.finalId, depositId: command.depositId, appliedCents },
   });
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId,
@@ -1869,7 +1896,7 @@ export async function linkDeposit(
     action: "document.deposit.link",
     resource: "commercial_document",
     allowed: true,
-    details: { finalId: command.finalId, depositId: command.depositId },
+    details: { finalId: command.finalId, depositId: command.depositId, appliedCents },
   });
   return getDocumentDetail(tx, ctx, {
     schemaVersion: COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION,

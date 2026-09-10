@@ -1951,8 +1951,8 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
          'F8-01 Anzahlung (Link-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid')
     `);
     await tx.execute(sql`
-      insert into commercial_document_link (workspace_id, final_id, deposit_id, created_by)
-      values (${wsId}::uuid, ${finalId}::uuid, ${depositId}::uuid, ${userId}::uuid)
+      insert into commercial_document_link (workspace_id, final_id, deposit_id, applied_cents, created_by)
+      values (${wsId}::uuid, ${finalId}::uuid, ${depositId}::uuid, 0, ${userId}::uuid)
     `);
   },
   workspace_economics_settings: async (tx, wsId) => {

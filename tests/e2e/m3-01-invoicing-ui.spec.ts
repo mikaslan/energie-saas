@@ -506,6 +506,42 @@ test("F8-01-E2E-01: Anzahlung ausstellen → Schlussrechnung verlinken → Restb
   expect(errors, "Browser-Konsole und Page-Errors der Anrechnungs-Journey").toEqual([]);
 });
 
+test("F8-02-E2E-01: Teilanrechnung per UI → Restbetrag centgenau sichtbar", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  const data = state();
+  const errors = trackBrowserErrors(page);
+
+  await grantInvoicingCapability();
+  await seedInvoicingSettings();
+  // Anzahlung brutto 238,00 €, Schluss brutto 357,00 €.
+  await seedIssuedInvoice({ name: "F802-Anzahlung", grossCents: 238_00 });
+  await seedIssuedInvoice({ name: "F802-Schluss", grossCents: 357_00 });
+
+  await page.goto(invoicesPath());
+  await loginWithRealOtp(page, data.editorEmail, invoicesPath());
+
+  const finalRow = page.getByRole("row").filter({ hasText: "F802-Schluss" });
+  await finalRow.getByRole("link", { name: "F802-Schluss" }).click();
+
+  const deposits = page.locator('[data-invoice-detail="deposits"]');
+  await expect(deposits.getByText("Keine Anzahlungen angerechnet.")).toBeVisible();
+  await deposits.getByLabel("Anzahlung").selectOption({
+    label: `Rechnung-E2E-${seedSequenceFor("F802-Anzahlung")} · 238,00 €`,
+  });
+  await deposits.getByLabel("Betrag in EUR (optional)").fill("119,00");
+  await deposits.getByRole("button", { name: "Anrechnen" }).click();
+
+  // 357,00 − 119,00 = 238,00 Rest; Zeile zeigt Teilbetrag.
+  await expect(deposits.getByText("Offener Restbetrag")).toBeVisible();
+  await expect(deposits.locator("dd", { hasText: "238,00 €" })).toBeVisible();
+  await expect(deposits.getByText("119,00 € von 238,00 €")).toBeVisible();
+  await expect(deposits.getByText("Keine Anzahlungen angerechnet.")).toHaveCount(0);
+
+  expect(errors, "Browser-Konsole und Page-Errors der Teilanrechnungs-Journey").toEqual([]);
+});
+
 test("M3-01-E2E-02: Statusfilter, Suche und Archiv-Achse", async ({ page }) => {
   test.setTimeout(150_000);
   const data = state();

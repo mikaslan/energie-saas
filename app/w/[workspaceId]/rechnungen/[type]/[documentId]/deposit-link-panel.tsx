@@ -18,7 +18,7 @@ function errorText(state: InvoicingUiActionState): string | null {
   switch (state.status) {
     case "invalid": return "Die Eingabe ist ungültig.";
     case "not_found": return "Der Beleg wurde nicht gefunden.";
-    case "conflict": return "Diese Anrechnung ist nicht möglich (Status, Kette oder bereits angerechnet).";
+    case "conflict": return "Diese Anrechnung ist nicht möglich (Status, Kette, Betrag oder bereits angerechnet).";
     case "precondition": return "Vorbedingungen sind nicht erfüllt.";
     case "denied": return "Dir fehlt die Berechtigung für diese Aktion.";
     case "unauthenticated": return "Deine Sitzung ist abgelaufen.";
@@ -26,8 +26,9 @@ function errorText(state: InvoicingUiActionState): string | null {
   }
 }
 
-// F8-01 · Anrechnung ausgestellter Anzahlungen (Voll-Brutto, genau eine
-// Stufe). Server-renderte Liste + Restbetrag; Formulare nur mit
+// F8-01 · Anrechnung ausgestellter Anzahlungen (genau eine Stufe).
+// F8-02 · optionaler Teilbetrag je Link (Default = volles Brutto).
+// Server-renderte Liste + Restbetrag; Formulare nur mit
 // Schreibrecht (Server-Action bleibt die Sicherheitsgrenze).
 export function DepositLinkPanel({
   workspaceId,
@@ -67,12 +68,15 @@ export function DepositLinkPanel({
               <span className="text-slate-800">
                 {deposit.number ?? deposit.name}
                 <span className="block text-xs text-slate-500">
-                  {deposit.number ? `${deposit.name} · ` : ""}{formatEuro(deposit.grossCents)}
+                  {deposit.number ? `${deposit.name} · ` : ""}
+                  {deposit.appliedCents === deposit.grossCents
+                    ? formatEuro(deposit.grossCents)
+                    : `${formatEuro(deposit.appliedCents)} von ${formatEuro(deposit.grossCents)}`}
                 </span>
               </span>
               <span className="flex items-center gap-3">
                 <span className="font-semibold tabular-nums text-slate-900">
-                  −{formatEuro(deposit.grossCents)}
+                  −{formatEuro(deposit.appliedCents)}
                 </span>
                 {canWrite ? (
                   <form action={unlinkDispatch} className="inline">
@@ -123,6 +127,16 @@ export function DepositLinkPanel({
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="block">
+              <span className="block text-sm font-semibold text-slate-800">Betrag in EUR (optional)</span>
+              <input
+                name="appliedEur"
+                type="text"
+                inputMode="decimal"
+                placeholder="volles Brutto"
+                className="mt-1 min-h-11 w-36 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              />
             </label>
             <button
               type="submit"

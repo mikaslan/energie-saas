@@ -573,6 +573,8 @@ export const commercialDocumentLine = pgTable(
 // Stufe). Beide Seiten bleiben normale `invoice`-Dokumente; Ketten,
 // Selbst-Links und Doppel-Verlinkungen verweigert der Service, UNIQUE
 // und Selbst-Link-CHECK sichern die Tabellen-Invarianten.
+// F8-02 · `appliedCents`: angerechneter Teilbetrag (Default-Pfad =
+// volles Brutto); CHECK sichert das Geld-Intervall.
 export const commercialDocumentLink = pgTable(
   "commercial_document_link",
   {
@@ -580,6 +582,7 @@ export const commercialDocumentLink = pgTable(
     workspaceId: uuid("workspace_id").notNull(),
     finalId: uuid("final_id").notNull(),
     depositId: uuid("deposit_id").notNull(),
+    appliedCents: bigint("applied_cents", { mode: "number" }).notNull(),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -613,6 +616,10 @@ export const commercialDocumentLink = pgTable(
     check(
       "commercial_document_link_no_self_ck",
       sql`${t.finalId} <> ${t.depositId}`,
+    ),
+    check(
+      "commercial_document_link_applied_ck",
+      sql`${t.appliedCents} between 0 and 9000000000000000`,
     ),
     index("commercial_document_link_ws_final_idx").on(
       t.workspaceId,
