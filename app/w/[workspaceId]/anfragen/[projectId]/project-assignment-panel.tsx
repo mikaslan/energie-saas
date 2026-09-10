@@ -12,6 +12,7 @@ import {
   type ProjectAssignmentActionState,
   type ProjectAssignmentSearchState,
 } from "./assignment-actions";
+import type { LeadRoutingSuggestion } from "@/modules/lead-sources";
 
 type AssignmentMember = {
   membershipId: string;
@@ -175,11 +176,13 @@ export function ProjectAssignmentPanel({
   projectId,
   commandVersion,
   assignment,
+  routingSuggestion,
 }: {
   workspaceId: string;
   projectId: string;
   commandVersion: string;
   assignment: AssignmentContext;
+  routingSuggestion: LeadRoutingSuggestion | null;
 }) {
   const boundMutation = useMemo(
     () => changeProjectAssignment.bind(null, workspaceId),
@@ -222,6 +225,34 @@ export function ProjectAssignmentPanel({
           Stand {assignment.assignmentRevision}
         </span>
       </div>
+
+      {assignment.canAssign && routingSuggestion ? (
+        <div
+          className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5"
+          data-testid="routing-suggestion"
+        >
+          <p className="text-sm font-semibold text-blue-950">
+            {`Routing-Vorschlag (Quelle „${routingSuggestion.sourceName}“): ${routingSuggestion.label}`}
+          </p>
+          <form action={mutationAction} className="mt-2">
+            <CommandFields
+              commandVersion={commandVersion}
+              kind="set_key_account"
+              projectId={projectId}
+              expectedAssignmentRevision={assignment.assignmentRevision}
+              membershipId={routingSuggestion.membershipId}
+            />
+            <button
+              type="submit"
+              disabled={mutationPending}
+              aria-label={`${routingSuggestion.label} aus dem Routing-Vorschlag als Key Account festlegen`}
+              className="min-h-11 rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              Als Key Account festlegen
+            </button>
+          </form>
+        </div>
+      ) : null}
 
       <div className="mt-5 grid min-w-0 gap-4">
         <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-3">

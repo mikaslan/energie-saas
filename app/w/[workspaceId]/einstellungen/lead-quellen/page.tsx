@@ -4,7 +4,13 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type { LeadSourceDto } from "@/lib/integrations/lead-sources/contract";
-import { listLeadSources } from "@/modules/lead-sources";
+import {
+  listLeadSources,
+  listRoutableMembers,
+  listRoutingRules,
+  type LeadRoutingRuleDto,
+  type RoutableMember,
+} from "@/modules/lead-sources";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { DeniedState } from "../../_ui";
 import { LeadSourceManager } from "./lead-source-manager";
@@ -22,7 +28,14 @@ export default async function LeadSourcesPage(
   if (!parsedWorkspace.success) notFound();
   const workspaceId = parsedWorkspace.data;
 
-  let result: { sources: LeadSourceDto[]; canWrite: boolean } | undefined;
+  let result:
+    | {
+      sources: LeadSourceDto[];
+      canWrite: boolean;
+      rules: LeadRoutingRuleDto[];
+      members: RoutableMember[];
+    }
+    | undefined;
   try {
     result = await authorizedQuery(
       workspaceId,
@@ -33,6 +46,10 @@ export default async function LeadSourcesPage(
         // Explizit vom Server: eine leere Liste trägt sonst keine
         // Schreibrechts-Auskunft in sich.
         canWrite: can(ctx, "lead_source.write"),
+        // F1-10: Regeln + Mitglieder für das Routing-Dropdown (gleiche
+        // Leseschranke, keine neuen Permissions).
+        rules: await listRoutingRules(tx, ctx),
+        members: await listRoutableMembers(tx, ctx),
       }),
     );
   } catch (error) {
@@ -65,6 +82,8 @@ export default async function LeadSourcesPage(
         workspaceId={workspaceId}
         sources={result.sources}
         canWrite={result.canWrite}
+        rules={result.rules}
+        members={result.members}
       />
 
       <div className="mt-6">

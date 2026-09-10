@@ -14,11 +14,13 @@ import {
 } from "@/lib/integrations/lead-sources/contract";
 import {
   archiveLeadSource,
+  clearRoutingRule,
   createLeadSource,
   LeadSourceConflictError,
   LeadSourceNotFoundError,
   LeadSourceValidationError,
   restoreLeadSource,
+  setRoutingRule,
   updateLeadSource,
 } from "@/modules/lead-sources";
 
@@ -181,4 +183,57 @@ export async function restoreLeadSourceAction(
   const id = typeof idValue === "string" ? idSchema.safeParse(idValue) : null;
   if (!workspace || !id?.success) return { status: "invalid" };
   return toggleArchived(workspace, id.data, false);
+}
+
+// F1-10 Lead-Routing: Standard-Betreuer je Quelle setzen/entfernen.
+// Gleiche Schranke (lead_source.write) wie alle Quellen-Aktionen.
+export async function setRoutingRuleAction(
+  _previous: LeadSourceActionState,
+  formData: FormData,
+): Promise<LeadSourceActionState> {
+  const workspace = parseWorkspace(formData);
+  const sourceValue = formData.get("leadSourceId");
+  const memberValue = formData.get("assigneeMembershipId");
+  const sourceId = typeof sourceValue === "string" ? idSchema.safeParse(sourceValue) : null;
+  const membershipId = typeof memberValue === "string" ? idSchema.safeParse(memberValue) : null;
+  if (!workspace || !sourceId?.success || !membershipId?.success) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "lead_source.write", "lead_source", (tx, ctx) =>
+      setRoutingRule(tx, ctx, {
+        leadSourceId: sourceId.data,
+        assigneeMembershipId: membershipId.data,
+      }),
+    );
+    revalidatePath(`/w/${workspace}/einstellungen/lead-quellen`);
+    return { status: "success", message: "Standard-Betreuer gespeichert." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function clearRoutingRuleAction(
+  _previous: LeadSourceActionState,
+  formData: FormData,
+): Promise<LeadSourceActionState> {
+  const workspace = parseWorkspace(formData);
+  const sourceValue = formData.get("leadSourceId");
+  const sourceId = typeof sourceValue === "string" ? idSchema.safeParse(sourceValue) : null;
+  if (!workspace || !sourceId?.success) return { status: "invalid" };
+  try {
+    const result = await authorizedAction(
+      workspace,
+      "lead_source.write",
+      "lead_source",
+      (tx, ctx) => clearRoutingRule(tx, ctx, { leadSourceId: sourceId.data }),
+    );
+    revalidatePath(`/w/${workspace}/einstellungen/lead-quellen`);
+    return {
+      status: "success",
+      message: result.deleted
+        ? "Standard-Betreuer entfernt."
+        : "Für diese Quelle war kein Standard-Betreuer hinterlegt.",
+    };
+  } catch (error) {
+    return mapError(error);
+  }
 }

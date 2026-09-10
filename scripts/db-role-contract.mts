@@ -565,6 +565,10 @@ const SERVICE_CASE_RELATIONS = [
   "service_case",
 ] as const;
 
+const LEAD_ROUTING_RELATIONS = [
+  "project_lead_routing_rule",
+] as const;
+
 const MENTION_RELATIONS = [
   "project_note_mention",
 ] as const;
@@ -2656,6 +2660,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
+  // daher zusaetzlich DELETE (Muster commercial_document_link).
+  const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
+    client,
+    LEAD_ROUTING_RELATIONS,
+    "Rollen-ACL-Manifest: F1-10-Lead-Routing",
+  );
+  if (hasLeadRoutingForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.project_lead_routing_rule
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update, delete on public.project_lead_routing_rule to app_runtime
+    `);
+  }
+
   // F1-09: Mention-Zeilen — atomarer Ersatz (DELETE+INSERT im Schreib-Tx,
   // kein UPDATE). SELECT/INSERT/DELETE fuer den Service-Pfad.
   const hasMentions = await hasAtomicPublicRelationSet(
@@ -3828,6 +3849,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F13-01-Serviceauftrag",
   );
 
+  const hasLeadRouting = await hasAtomicPublicRelationSet(
+    client,
+    LEAD_ROUTING_RELATIONS,
+    "Rollenvertrag: F1-10-Lead-Routing",
+  );
+
   const hasMentions = await hasAtomicPublicRelationSet(
     client,
     MENTION_RELATIONS,
@@ -4045,6 +4072,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasServiceCases ? SERVICE_CASE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasMentions ? MENTION_RELATIONS.map(
@@ -5198,6 +5228,9 @@ export async function verifyRoleContract(
       ...(hasServiceCases ? SERVICE_CASE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasMentions ? MENTION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -5531,6 +5564,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasServiceCases ? [
           "service_case:tenant_isolation:9885f0875ae33019b13b34440e67a8cae20548ab3be350bbdc29cd6b3c836423",
+        ] : []),
+        ...(hasLeadRouting ? [
+          "project_lead_routing_rule:tenant_isolation:5e65ec9d858477d79085ae976979f4e4349773895b49b57c1cd32ae1101dd48d",
         ] : []),
         ...(hasMentions ? [
           "project_note_mention:tenant_isolation:bd49d3632555a1d99e54cf336071e259a1d90892ba02c784661cdb0afcdc8ad5",
@@ -6067,6 +6103,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
       ]) : []),
       ...(hasMentions ? MENTION_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,

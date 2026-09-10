@@ -2,10 +2,16 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { LeadSourceDto } from "@/lib/integrations/lead-sources/contract";
+import type {
+  LeadRoutingRuleDto,
+  RoutableMember,
+} from "@/modules/lead-sources";
 import {
   archiveLeadSourceAction,
+  clearRoutingRuleAction,
   createLeadSourceAction,
   restoreLeadSourceAction,
+  setRoutingRuleAction,
   updateLeadSourceAction,
   type LeadSourceActionState,
 } from "./actions";
@@ -60,15 +66,22 @@ export function LeadSourceManager({
   workspaceId,
   sources,
   canWrite,
+  rules,
+  members,
 }: {
   workspaceId: string;
   sources: LeadSourceDto[];
   canWrite: boolean;
+  rules: LeadRoutingRuleDto[];
+  members: RoutableMember[];
 }) {
   const [createState, createDispatch] = useActionState(createLeadSourceAction, initialState);
   const [updateState, updateDispatch] = useActionState(updateLeadSourceAction, initialState);
   const [archiveState, archiveDispatch] = useActionState(archiveLeadSourceAction, initialState);
   const [restoreState, restoreDispatch] = useActionState(restoreLeadSourceAction, initialState);
+  const [routingState, routingDispatch] = useActionState(setRoutingRuleAction, initialState);
+  const [routingClearState, routingClearDispatch] = useActionState(clearRoutingRuleAction, initialState);
+  const ruleBySource = new Map(rules.map((rule) => [rule.leadSourceId, rule]));
 
   const active = sources.filter((source) => source.archivedAt === null);
   const archived = sources.filter((source) => source.archivedAt !== null);
@@ -139,39 +152,53 @@ export function LeadSourceManager({
         ) : (
           <ul className="mt-3 divide-y divide-slate-100">
             {active.map((source) => (
-              <li key={source.id} className="flex flex-wrap items-center gap-3 py-3">
-                <span
-                  aria-hidden
-                  className="inline-block h-3 w-3 rounded-full ring-1 ring-black/10"
-                  style={{ backgroundColor: source.color ?? "#94A3B8" }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-slate-900">{source.name}</span>
-                  <span className="block text-xs text-slate-500">
-                    {source.projectDomain === "residential" ? "Wohnbau" : source.projectDomain === "commercial" ? "Gewerbe" : "Ohne Zuordnung"}
+              <li key={source.id} className="grid gap-2 py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span
+                    aria-hidden
+                    className="inline-block h-3 w-3 rounded-full ring-1 ring-black/10"
+                    style={{ backgroundColor: source.color ?? "#94A3B8" }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-slate-900">{source.name}</span>
+                    <span className="block text-xs text-slate-500">
+                      {source.projectDomain === "residential" ? "Wohnbau" : source.projectDomain === "commercial" ? "Gewerbe" : "Ohne Zuordnung"}
+                    </span>
                   </span>
-                </span>
-                {canWrite ? (
-                  <>
-                    <EditForm
-                      key={`edit-${source.id}`}
-                      workspaceId={workspaceId}
-                      source={source}
-                      state={updateState}
-                      dispatch={updateDispatch}
-                    />
-                    <form action={archiveDispatch}>
-                      <input type="hidden" name="workspaceId" value={workspaceId} />
-                      <input type="hidden" name="id" value={source.id} />
-                      <button
-                        type="submit"
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
-                      >
-                        Archivieren
-                      </button>
-                    </form>
-                  </>
-                ) : null}
+                  {canWrite ? (
+                    <>
+                      <EditForm
+                        key={`edit-${source.id}`}
+                        workspaceId={workspaceId}
+                        source={source}
+                        state={updateState}
+                        dispatch={updateDispatch}
+                      />
+                      <form action={archiveDispatch}>
+                        <input type="hidden" name="workspaceId" value={workspaceId} />
+                        <input type="hidden" name="id" value={source.id} />
+                        <button
+                          type="submit"
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                        >
+                          Archivieren
+                        </button>
+                      </form>
+                    </>
+                  ) : null}
+                </div>
+                <RoutingForm
+                  workspaceId={workspaceId}
+                  sourceId={source.id}
+                  sourceName={source.name}
+                  rule={ruleBySource.get(source.id) ?? null}
+                  members={members}
+                  canWrite={canWrite}
+                  setState={routingState}
+                  setDispatch={routingDispatch}
+                  clearState={routingClearState}
+                  clearDispatch={routingClearDispatch}
+                />
               </li>
             ))}
           </ul>
@@ -286,5 +313,92 @@ function EditForm({
         <Feedback state={state} />
       </div>
     </form>
+  );
+}
+
+// F1-10 Lead-Routing: Standard-Betreuer je Quelle. Leser sehen die Regel,
+// Schreiber pflegen sie über das Mitglieder-Dropdown.
+function RoutingForm({
+  workspaceId,
+  sourceId,
+  sourceName,
+  rule,
+  members,
+  canWrite,
+  setState,
+  setDispatch,
+  clearState,
+  clearDispatch,
+}: {
+  workspaceId: string;
+  sourceId: string;
+  sourceName: string;
+  rule: LeadRoutingRuleDto | null;
+  members: RoutableMember[];
+  canWrite: boolean;
+  setState: LeadSourceActionState;
+  setDispatch: (formData: FormData) => void;
+  clearState: LeadSourceActionState;
+  clearDispatch: (formData: FormData) => void;
+}) {
+  if (!canWrite) {
+    return (
+      <p className="text-xs leading-5 text-slate-500" data-testid={`routing-readonly-${sourceId}`}>
+        {rule
+          ? `Standard-Betreuer: ${rule.assigneeLabel}`
+          : "Kein Standard-Betreuer hinterlegt."}
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-md bg-slate-50 px-3 py-2" data-testid={`routing-form-${sourceId}`}>
+      <form action={setDispatch} className="flex flex-wrap items-center gap-2">
+        <input type="hidden" name="workspaceId" value={workspaceId} />
+        <input type="hidden" name="leadSourceId" value={sourceId} />
+        <label className="grid min-w-0 flex-1 gap-1 text-xs font-medium text-slate-700">
+          {`Standard-Betreuer für „${sourceName}“`}
+          <select
+            name="assigneeMembershipId"
+            defaultValue={rule?.assigneeMembershipId ?? ""}
+            required
+            aria-label={`Standard-Betreuer für ${sourceName}`}
+            className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+          >
+            <option value="">Bitte wählen</option>
+            {members.map((member) => (
+              <option key={member.membershipId} value={member.membershipId}>
+                {member.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="submit"
+          className="min-h-11 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+        >
+          Speichern
+        </button>
+        {rule ? (
+          <span className="text-xs text-slate-600">
+            {`Aktuell: ${rule.assigneeLabel}`}
+          </span>
+        ) : null}
+      </form>
+      {rule ? (
+        <form action={clearDispatch} className="mt-2">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="leadSourceId" value={sourceId} />
+          <button
+            type="submit"
+            aria-label={`Standard-Betreuer für ${sourceName} entfernen`}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600"
+          >
+            Standard-Betreuer entfernen
+          </button>
+        </form>
+      ) : null}
+      <Feedback state={setState} />
+      <Feedback state={clearState} />
+    </div>
   );
 }

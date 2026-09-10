@@ -2044,6 +2044,23 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         ${`fixture lead source ${id}`})
     `);
   },
+  // F1-10 (0087): Routing-Regel zu echter Quelle + echter Mitgliedschaft.
+  project_lead_routing_rule: async (tx, wsId) => {
+    const sourceId = randomUUID();
+    await tx.execute(sql`
+      insert into lead_source (id, workspace_id, name, name_normalized)
+      values (${sourceId}::uuid, ${wsId}::uuid, ${`Fixture Routing Source ${sourceId}`},
+        ${`fixture routing source ${sourceId}`})
+    `);
+    const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`
+      insert into project_lead_routing_rule (
+        workspace_id, lead_source_id, assignee_membership_id, created_by
+      ) values (
+        ${wsId}::uuid, ${sourceId}::uuid, ${membershipId}::uuid, ${userId}::uuid
+      )
+    `);
+  },
   checklist_template: async (tx, wsId) => {
     const userId = randomUUID();
     await tx.execute(sql`
