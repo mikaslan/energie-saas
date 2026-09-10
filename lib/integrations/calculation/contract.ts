@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "4f3c4a031b878fab9e7789b03f6bea1da932ebef9756d88d1bc0eefcf501e1c4" as const;
+  "253d1757114906056cff967163ed269634fc9b477a6e6b21d278aa58dccba352" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -188,6 +188,13 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     heatPumpCopNominal: knownOrUnknown(finite().min(1).max(8)).optional(),
     heatPumpBivalenceTempC: knownOrUnknown(finite().min(-25).max(15)).optional(),
     heatPumpHotWaterShare: knownOrUnknown(finite().min(0).max(1)).optional(),
+    // F4.5 Wirtschaftlichkeit (additiv-optional; ohne Preis/Investition
+    // bleibt Geld unbelegt). Bereiche s. economics-v2.ts.
+    investmentEuro: knownOrUnknown(nonNegative(10_000_000)).optional(),
+    feedInTariffCtPerKwh: knownOrUnknown(nonNegative(100)).optional(),
+    feedInCommissioningYear: knownOrUnknown(
+      z.number().int().min(1990).max(2100),
+    ).optional(),
   }),
   existingAssets: z.strictObject({
     pv: pvAssetSchema,

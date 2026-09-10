@@ -125,6 +125,28 @@ describe("F4.1 v2 prepare", () => {
     expect(second.inputSha256).toBe(first.inputSha256);
   });
 
+  it("traegt F4.5-economics nur bei belegtem Preis + Investition", () => {
+    const bare = buildPreparedPlanningCalculationInputV2(claim());
+    expect("economics" in bare.inputSnapshot).toBe(false);
+    const withMoney = structuredClone(claim()) as unknown as {
+      preparation: { profile: { consumption: Record<string, unknown> } };
+    };
+    const consumption = withMoney.preparation.profile.consumption;
+    consumption.electricityPriceCentsPerKwh = { status: "known", value: 36, source: "customer_metered" };
+    consumption.investmentEuro = { status: "known", value: 20_000, source: "operator_reviewed" };
+    consumption.feedInTariffCtPerKwh = { status: "known", value: 8, source: "operator_reviewed" };
+    const resolved = buildPreparedPlanningCalculationInputV2(withMoney);
+    expect(resolved.inputSnapshot.economics).toEqual({
+      importPriceCtPerKwh: 36,
+      priceEscalationRate: 0,
+      feedInTariffCtPerKwh: 8,
+      feedInTariffSource: "override",
+      investmentEuro: 20_000,
+      horizonYears: 20,
+    });
+    expect(resolved.inputSha256).not.toBe(bare.inputSha256);
+  });
+
   it("weist v1-Vertrag, falsche Defaults und ungueltigen Speicher als InputError ab", () => {
     expect(() => buildPreparedPlanningCalculationInputV2(
       claim({ contractVersion: "planning-calculation.v1" }),

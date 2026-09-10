@@ -33,6 +33,7 @@ import {
   type PlanningCalculationRequestV2,
   type PlanningCalculationResultV2,
 } from "./contract-v2";
+import { computeEconomics } from "./economics-v2";
 import { hashPlanningCalculationInputV2 } from "./prepare-v2";
 import {
   CALCULATION_V2_MODEL_ID,
@@ -388,6 +389,32 @@ function assembleResultV2(
   if (providerEstimate) {
     warnings.push({ code: "provider_estimate", severity: "info" });
   }
+  // F4.5: Geldrechnung nur bei belegtem economics-Input (Neuanlage und
+  // Bestand teilen die Assembly; Bestand traegt bislang keinen Input und
+  // bleibt ohne Geldschluessel).
+  const economics = request.economics === undefined ? undefined : {
+    importPriceCtPerKwh: request.economics.importPriceCtPerKwh,
+    priceEscalationRate: request.economics.priceEscalationRate,
+    feedInTariffCtPerKwh: request.economics.feedInTariffCtPerKwh,
+    feedInTariffSource: request.economics.feedInTariffSource,
+    investmentEuro: request.economics.investmentEuro,
+    horizonYears: request.economics.horizonYears,
+    ...computeEconomics(
+      {
+        generationKwh: annual.generationKwh,
+        selfConsumptionKwh: annual.selfConsumptionKwh,
+        feedInKwh: annual.feedInKwh,
+      },
+      {
+        importPriceCtPerKwh: request.economics.importPriceCtPerKwh,
+        priceEscalationRate: request.economics.priceEscalationRate,
+        feedInTariffCtPerKwh: request.economics.feedInTariffCtPerKwh,
+        feedInTariffSource: request.economics.feedInTariffSource,
+        investmentEuro: request.economics.investmentEuro,
+        horizonYears: request.economics.horizonYears,
+      },
+    ),
+  };
   const candidate = {
     contractVersion: CALCULATION_V2_RESULT_CONTRACT_VERSION,
     canonicalizationVersion: "planning-jcs.v1",
@@ -404,6 +431,7 @@ function assembleResultV2(
     annual,
     monthly,
     warnings,
+    ...(economics === undefined ? {} : { economics }),
   };
   const parsed = planningCalculationResultV2Schema.safeParse(candidate);
   if (!parsed.success) runError("Result verletzt planning-calculation-result.v2");

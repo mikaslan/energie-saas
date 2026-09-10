@@ -208,6 +208,53 @@
             "storageCapacityKwh"
           ],
           "additionalProperties": false
+        },
+        "economics": {
+          "type": "object",
+          "properties": {
+            "importPriceCtPerKwh": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "priceEscalationRate": {
+              "type": "number",
+              "minimum": -0.1,
+              "maximum": 0.25
+            },
+            "feedInTariffCtPerKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "feedInTariffSource": {
+              "type": "string",
+              "enum": [
+                "override",
+                "eeg_default",
+                "post_eeg"
+              ]
+            },
+            "investmentEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "horizonYears": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "importPriceCtPerKwh",
+            "priceEscalationRate",
+            "feedInTariffCtPerKwh",
+            "feedInTariffSource",
+            "investmentEuro",
+            "horizonYears"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -400,6 +447,91 @@
             "delta"
           ],
           "additionalProperties": false
+        },
+        "economics": {
+          "type": "object",
+          "properties": {
+            "importPriceCtPerKwh": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "priceEscalationRate": {
+              "type": "number",
+              "minimum": -0.1,
+              "maximum": 0.25
+            },
+            "feedInTariffCtPerKwh": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "feedInTariffSource": {
+              "type": "string",
+              "enum": [
+                "override",
+                "eeg_default",
+                "post_eeg"
+              ]
+            },
+            "investmentEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "horizonYears": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "annualSavingsEuro": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cumulativeCashflowEuro": {
+              "minItems": 1,
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema4"
+              }
+            },
+            "amortizationYears": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 50
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "irr": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "importPriceCtPerKwh",
+            "priceEscalationRate",
+            "feedInTariffCtPerKwh",
+            "feedInTariffSource",
+            "investmentEuro",
+            "horizonYears",
+            "annualSavingsEuro",
+            "cumulativeCashflowEuro",
+            "amortizationYears",
+            "irr"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -563,6 +695,9 @@
             "severity"
           ],
           "additionalProperties": false
+        },
+        "__schema4": {
+          "type": "number"
         }
       }
     }

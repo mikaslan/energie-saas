@@ -312,4 +312,44 @@ describe("F4.1 v2 finalize", () => {
     });
     expect(wrongSha).toEqual({ ok: false, paths: ["/inputSha256"] });
   });
+
+  it("rechnet F4.5-Geld nur bei belegtem economics-Input", () => {
+    const base = {
+      pvKwh: constant(QUARTER_HOUR_SLOTS, 1),
+      loadKwh: constant(QUARTER_HOUR_SLOTS, 0.5),
+      providerEstimate: false,
+    };
+    // Ohne economics-Schluessel: kein Geldschluessel (Altresultate stabil).
+    const plain = runPlanningCalculationV2({ request: request(), ...base });
+    expect("economics" in plain).toBe(false);
+    expect(planningCalculationResultV2Schema.safeParse(plain).success).toBe(true);
+    // Mit Input: 17520 selbst × 0,36 + 17520 feed × 0,08 = 7708,80 Jahr 1.
+    const money = runPlanningCalculationV2({
+      request: request({
+        economics: {
+          importPriceCtPerKwh: 36,
+          priceEscalationRate: 0,
+          feedInTariffCtPerKwh: 8,
+          feedInTariffSource: "override",
+          investmentEuro: 20_000,
+          horizonYears: 20,
+        },
+      }),
+      ...base,
+    });
+    expect(planningCalculationResultV2Schema.safeParse(money).success).toBe(true);
+    expect(money.economics).toMatchObject({
+      importPriceCtPerKwh: 36,
+      feedInTariffCtPerKwh: 8,
+      feedInTariffSource: "override",
+      investmentEuro: 20_000,
+      horizonYears: 20,
+      annualSavingsEuro: 7_708.8,
+      amortizationYears: 3,
+    });
+    expect(money.economics!.cumulativeCashflowEuro).toHaveLength(20);
+    expect(money.economics!.irr).not.toBeNull();
+    // Geld aendert den Input-SHA (Tarife sind Reproduktionsinput).
+    expect(money.inputSha256).not.toBe(plain.inputSha256);
+  });
 });

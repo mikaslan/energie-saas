@@ -1021,6 +1021,43 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["heatPumpHotWaterShare"],
+      // F4.5 Wirtschaftlichkeit (optional; fehlt in Altzeilen).
+      investmentEuro: normalizeKnownField(
+        submitted.consumption.investmentEuro ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.investmentEuro ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["investmentEuro"],
+      feedInTariffCtPerKwh: normalizeKnownField(
+        submitted.consumption.feedInTariffCtPerKwh ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.feedInTariffCtPerKwh ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["feedInTariffCtPerKwh"],
+      feedInCommissioningYear: normalizeKnownField(
+        submitted.consumption.feedInCommissioningYear ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.feedInCommissioningYear ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["feedInCommissioningYear"],
     },
     existingAssets: {
       pv: normalizeAsset(submitted.existingAssets.pv, candidate.existingAssets.pv) as SiteEnergyProfileV1["existingAssets"]["pv"],

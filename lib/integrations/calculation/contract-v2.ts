@@ -44,6 +44,36 @@ const storageParamsV2Schema = z.strictObject({
   { message: "socMinKwh <= socMaxKwh <= capacityKwh verletzt" },
 );
 
+/**
+ * F4.5 Wirtschaftlichkeits-Eingaben im Request (aufgeloeste Zahlen aus
+ * resolveEconomics; inputSha deckt Tarife -> Ergebnis reproduzierbar).
+ */
+const economicsInputV2Schema = z.strictObject({
+  importPriceCtPerKwh: finite().min(1).max(200),
+  priceEscalationRate: finite().min(-0.1).max(0.25),
+  feedInTariffCtPerKwh: finite().min(0).max(100),
+  feedInTariffSource: z.enum(["override", "eeg_default", "post_eeg"]),
+  investmentEuro: finite().min(0).max(10_000_000),
+  horizonYears: z.int().min(1).max(50),
+});
+
+/**
+ * F4.5 Wirtschaftlichkeits-Ergebnis (Geld auf Cent; Amortisation/IRR null,
+ * wenn nie bzw. undefiniert).
+ */
+const economicsResultV2Schema = z.strictObject({
+  importPriceCtPerKwh: finite().min(1).max(200),
+  priceEscalationRate: finite().min(-0.1).max(0.25),
+  feedInTariffCtPerKwh: finite().min(0).max(100),
+  feedInTariffSource: z.enum(["override", "eeg_default", "post_eeg"]),
+  investmentEuro: finite().min(0).max(10_000_000),
+  horizonYears: z.int().min(1).max(50),
+  annualSavingsEuro: finite().min(0),
+  cumulativeCashflowEuro: z.array(finite()).min(1).max(50),
+  amortizationYears: z.int().min(0).max(50).nullable(),
+  irr: finite().nullable(),
+});
+
 export const planningCalculationRequestV2Schema = z.strictObject({
   contractVersion: z.literal(CALCULATION_V2_CONTRACT_VERSION),
   canonicalizationVersion: z.literal("planning-jcs.v1"),
@@ -76,6 +106,9 @@ export const planningCalculationRequestV2Schema = z.strictObject({
   storage: storageParamsV2Schema,
   // Slice B: nur Bestand-Branch (Neuanlage laesst den Schluessel weg).
   existingInstallation: existingInstallationRequestV2Schema.optional(),
+  // F4.5: aufgeloeste Wirtschaftlichkeits-Eingaben (nur bei belegtem Preis
+  // + Investition; sonst fehlt der Schluessel und Geld bleibt unbelegt).
+  economics: economicsInputV2Schema.optional(),
 });
 
 const annualEnergyResultV2Schema = z.strictObject({
@@ -148,6 +181,9 @@ export const planningCalculationResultV2Schema = z.strictObject({
   warnings: warningsV2Schema,
   // Slice B: nur Bestand-Branch (Neuanlage laesst den Schluessel weg).
   existingInstallation: existingInstallationResultV2Schema.optional(),
+  // F4.5: Geldrechnung (nur bei belegtem economics-Input; sonst fehlt der
+  // Schluessel und Altresultate bleiben unveraendert lesbar).
+  economics: economicsResultV2Schema.optional(),
 });
 
 export type PlanningCalculationRequestV2 = z.infer<

@@ -13,6 +13,7 @@ import {
   siteEnergyProfileV1Schema,
 } from "./contract";
 import { planningCalculationRequestV2Schema, type PlanningCalculationRequestV2 } from "./contract-v2";
+import { resolveEconomics } from "./economics-v2";
 import { QUARTER_HOUR_SLOTS } from "./engine-v2";
 import { planningSourceSnapshotSchema } from "./preparation";
 import type { ProjectCalculationPreparationV2 } from "./preparation-v2";
@@ -136,6 +137,21 @@ function existingInstallationSnapshot(
   };
 }
 
+/**
+ * F4.5 Wirtschaftlichkeits-Input aus belegtem Profil (nur bei Preis +
+ * Investition; sonst fehlt der Schluessel und Geld bleibt unbelegt).
+ */
+function economicsSnapshot(
+  preparation: Pick<
+    ProjectCalculationPreparationV2,
+    "profile"
+  >,
+): { economics?: PlanningCalculationRequestV2["economics"] } {
+  const resolved = resolveEconomics(preparation.profile.consumption);
+  if (resolved === null) return {};
+  return { economics: resolved };
+}
+
 export function buildPreparedPlanningCalculationInputV2(
   raw: unknown,
 ): PreparedPlanningCalculationInputV2 {
@@ -172,6 +188,9 @@ export function buildPreparedPlanningCalculationInputV2(
     storage: claim.storage,
     // Slice B: nur Bestand-Branch (Neuanlage-Hashes bleiben stabil).
     ...existingInstallationSnapshot(claim.preparation),
+    // F4.5: belegte Wirtschaftlichkeit laeuft in den Request (inputSha
+    // deckt Tarife); unbelegt fehlt der Schluessel (Hashes stabil).
+    ...economicsSnapshot(claim.preparation),
   });
   if (!snapshot.success) inputError(snapshot.error);
   const inputSnapshot = snapshot.data!;

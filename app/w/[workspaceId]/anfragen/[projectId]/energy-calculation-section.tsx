@@ -501,6 +501,94 @@ function V2Provenance({ result }: { result: ProjectEnergyCalculationResultV2 }) 
   );
 }
 
+type EconomicsV2 = NonNullable<ProjectEnergyCalculationResultV2["value"]["economics"]>;
+
+const euroFormatter = new Intl.NumberFormat("de-DE", {
+  style: "currency",
+  currency: "EUR",
+});
+
+const centFormatter = new Intl.NumberFormat("de-DE", {
+  maximumFractionDigits: 2,
+});
+
+function feedInSourceLabel(source: EconomicsV2["feedInTariffSource"]): string {
+  if (source === "override") return "Override (Projekt)";
+  if (source === "post_eeg") return "Post-EEG-Marktwert (ESTIMATE)";
+  return "EEG-Default (ESTIMATE)";
+}
+
+function V2Economics({ economics }: { economics: EconomicsV2 }) {
+  // kumuliert[0] enthaelt -Investition: Jahr-1-Basis ist -Investition.
+  const yearly = economics.cumulativeCashflowEuro.map((cumulative, index) => {
+    const previous = index === 0
+      ? -economics.investmentEuro
+      : economics.cumulativeCashflowEuro[index - 1]!;
+    return { year: index + 1, savings: cumulative - previous, cumulative };
+  });
+  return (
+    <div className="mt-5" data-energy-calculation-v2-economics="true">
+      <h3 className="px-1 text-base font-semibold text-slate-950">
+        Wirtschaftlichkeit ({economics.horizonYears}-Jahres-Cashflow)
+      </h3>
+      <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
+        <DetailItem term="Jahresersparnis (Jahr 1)" numeric>
+          {euroFormatter.format(economics.annualSavingsEuro)}
+        </DetailItem>
+        <DetailItem term="Amortisation" numeric>
+          {economics.amortizationYears === null
+            ? `nicht im Horizont (${economics.horizonYears} Jahre)`
+            : economics.amortizationYears === 0
+              ? "sofort (keine Investition)"
+              : `Jahr ${economics.amortizationYears}`}
+        </DetailItem>
+        <DetailItem term="Interner Zinsfuß (IRR)" numeric>
+          {economics.irr === null ? "—" : percentFormatter.format(economics.irr)}
+        </DetailItem>
+        <DetailItem term="Investition" numeric>
+          {euroFormatter.format(economics.investmentEuro)}
+        </DetailItem>
+        <DetailItem term="Bezugspreis (Jahr 1)" numeric>
+          {`${centFormatter.format(economics.importPriceCtPerKwh)} Ct/kWh`}
+        </DetailItem>
+        <DetailItem term="Einspeisevergütung" numeric>
+          {`${centFormatter.format(economics.feedInTariffCtPerKwh)} Ct/kWh (${feedInSourceLabel(economics.feedInTariffSource)})`}
+        </DetailItem>
+      </dl>
+      <div
+        className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+        tabIndex={0}
+        role="region"
+        aria-label="Jahres-Cashflow der Wirtschaftlichkeitsrechnung, horizontal scrollbar"
+      >
+        <table className="min-w-[32rem] w-full border-collapse text-left text-sm tabular-nums">
+          <caption className="px-4 py-3 text-left font-semibold text-slate-950">
+            Cashflow je Jahr
+          </caption>
+          <thead className="bg-slate-50 text-slate-700">
+            <tr>
+              <th scope="col" className="px-4 py-3 font-semibold">Jahr</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Ersparnis</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Kumuliert</th>
+            </tr>
+          </thead>
+          <tbody>
+            {yearly.map((entry) => (
+              <tr key={entry.year} className="border-t border-slate-200">
+                <th scope="row" className="px-4 py-3 font-medium text-slate-900">
+                  {entry.year}
+                </th>
+                <td className="px-4 py-3 text-right">{euroFormatter.format(entry.savings)}</td>
+                <td className="px-4 py-3 text-right">{euroFormatter.format(entry.cumulative)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function PlanningResultV2({
   result,
   historical = false,
@@ -508,6 +596,7 @@ function PlanningResultV2({
   result: ProjectEnergyCalculationResultV2;
   historical?: boolean;
 }) {
+  const economics = result.value.economics;
   return (
     <div className="mt-5" data-energy-calculation-v2-result="true">
       <div
@@ -520,8 +609,10 @@ function PlanningResultV2({
             : "Viertelstunden-Planungsrechnung (v2)"}
         </p>
         <p className="mt-1">
-          Enthält versionierte Planungsannahmen (siehe Hinweise). Diese Werte
-          sind keine Wirtschaftlichkeits-, Preis- oder Angebotsberechnung.
+          Enthält versionierte Planungsannahmen (siehe Hinweise).
+          {economics
+            ? " Die Wirtschaftlichkeit ist eine belegte Näherung (EEG-Sätze und Marktwert als ESTIMATE), keine Angebotsberechnung."
+            : " Diese Werte sind keine Wirtschaftlichkeits-, Preis- oder Angebotsberechnung."}
         </p>
       </div>
       <V2Warnings warnings={result.value.warnings} />
@@ -529,6 +620,7 @@ function PlanningResultV2({
       {result.value.existingInstallation ? (
         <V2ExistingComparison existing={result.value.existingInstallation} />
       ) : null}
+      {economics ? <V2Economics economics={economics} /> : null}
       <V2MonthlyTable monthly={result.value.monthly} />
       <V2Provenance result={result} />
     </div>

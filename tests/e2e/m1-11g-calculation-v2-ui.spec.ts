@@ -757,3 +757,85 @@ test("M1-11g: F4.3-WP-Thermie treibt currentV2-WP-Strom", async ({ page }) => {
   await expect(page.locator('[data-energy-calculation-state="currentV2"]')).toBeVisible();
   await expect(page.locator('[data-energy-calculation-v2-result="true"]')).toBeVisible();
 });
+
+test("M1-11g: F4.5-Investition/Verguetung treibt currentV2-economics", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  // Kandidat liefert Preis 36 Ct + 3 % Eskalation; hier Investition und
+  // Verguetungs-Override dazu (EEG-Tabelle bleibt unbenutzt).
+  await page.getByLabel("Investition netto (€)").fill("20000");
+  await page.getByLabel("Einspeisevergütung Override (Ct/kWh, leer = EEG-Default)").fill("8");
+  await page.getByLabel("EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)").fill("2024");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Wirtschaftlichkeits-Kette erreichte kein currentV2.");
+  }
+  const economics = expected.calculation.resultV2.value.economics;
+  if (!economics) throw new Error("currentV2 traegt kein economics.");
+  // Override-Quelle, 20 Zeilen, Amortisation im Horizont.
+  expect(economics.feedInTariffSource).toBe("override");
+  expect(economics.feedInTariffCtPerKwh).toBe(8);
+  expect(economics.investmentEuro).toBe(20000);
+  expect(economics.cumulativeCashflowEuro).toHaveLength(20);
+  expect(economics.annualSavingsEuro).toBeGreaterThan(0);
+  expect(economics.amortizationYears).not.toBeNull();
+  const amortized = economics.amortizationYears!;
+  expect(economics.cumulativeCashflowEuro[amortized - 1]).toBeGreaterThanOrEqual(0);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  const block = page.locator('[data-energy-calculation-v2-economics="true"]');
+  await expect(block).toBeVisible();
+  // KPI-Zeilen als formatierte Kettenwerte (Jahresersparnis, Amortisationsjahr).
+  await expect(block.getByText(`Jahr ${amortized}`)).toBeVisible();
+  const rows = block.locator("table tbody tr");
+  await expect(rows).toHaveCount(20);
+
+  const axe = await new AxeBuilder({ page })
+    .include('[data-energy-calculation-v2-economics="true"]')
+    .analyze();
+  expect(
+    axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical"),
+    "Axe serious/critical in der v2-Wirtschaftlichkeitsansicht",
+  ).toEqual([]);
+});

@@ -17,7 +17,7 @@ describe("M1-07 Energie-UI-/Build-Vertrag", () => {
     expect(page).toContain("Importierte Rechner-Schätzung (ungeprüft)");
   });
 
-  it("hält alle fachlichen Zustände explizit und erfindet keine Retry- oder Economics-Funktion", async () => {
+  it("hält alle fachlichen Zustände explizit und belegt Economics aus der Kette", async () => {
     const calculation = await readFile(`${ROUTE}/energy-calculation-section.tsx`, "utf8");
     const refresh = await readFile(`${ROUTE}/energy-status-refresh.tsx`, "utf8");
     for (const state of [
@@ -36,9 +36,12 @@ describe("M1-07 Energie-UI-/Build-Vertrag", () => {
       calculation.includes("canRetry: false")
       || calculation.includes("keine öffentliche Retry-Aktion"),
     ).toBe(true);
+    // F4.5: Economics ist belegte Kette (Spec F4-05), keine erfundene
+    // Funktion — der Guard verlangt Kettenfelder statt Abwesenheit.
     expect(calculation).not.toContain("market_estimate");
-    expect(calculation).not.toContain("amortization");
-    expect(calculation).not.toContain("cashflow");
+    expect(calculation).toContain("data-energy-calculation-v2-economics");
+    expect(calculation).toContain("amortizationYears");
+    expect(calculation).toContain("cumulativeCashflowEuro");
   });
 
   it("nutzt im Client nur Energy-Typen und keine node:crypto-Vertragsruntime", async () => {

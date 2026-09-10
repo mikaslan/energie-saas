@@ -158,6 +158,9 @@ function validProfileForm(): FormData {
     heatPumpCopNominal: "",
     heatPumpBivalenceTempC: "",
     heatPumpHotWaterShare: "",
+    investmentEuro: "",
+    feedInTariffCtPerKwh: "",
+    feedInCommissioningYear: "",
     coolingKwhPerYear: "",
     heatingAcKwhPerYear: "",
     hotWaterKwhPerYear: "",
@@ -391,6 +394,40 @@ describe("M1-07 Energieprofil-Actions", () => {
     ] as const) {
       const form = validProfileForm();
       form.set("heatPumpThermalKwhPerYear", "12000");
+      form.set(name, bad);
+      await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
+        .resolves.toEqual({ status: "invalid" });
+    }
+  });
+
+  it("speichert F4.5-Investition/Verguetung und weist Bereichsbrueche ab", async () => {
+    const money = validProfileForm();
+    money.set("investmentEuro", "20000");
+    money.set("feedInTariffCtPerKwh", "8.2");
+    money.set("feedInCommissioningYear", "2024");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, money))
+      .resolves.toMatchObject({ status: "success" });
+    expect(deps.saveProfile).toHaveBeenCalledWith(
+      {},
+      { workspaceId: WORKSPACE_ID, actor: "member-1" },
+      expect.objectContaining({
+        profile: expect.objectContaining({
+          consumption: expect.objectContaining({
+            investmentEuro: { status: "known", value: 20000, source: "operator_reviewed" },
+            feedInTariffCtPerKwh: { status: "known", value: 8.2, source: "operator_reviewed" },
+            feedInCommissioningYear: { status: "known", value: 2024, source: "operator_reviewed" },
+          }),
+        }),
+      }),
+    );
+
+    for (const [name, bad] of [
+      ["investmentEuro", "-1"],
+      ["feedInTariffCtPerKwh", "101"],
+      ["feedInCommissioningYear", "1989"],
+      ["feedInCommissioningYear", "2024.5"],
+    ] as const) {
+      const form = validProfileForm();
       form.set(name, bad);
       await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
         .resolves.toEqual({ status: "invalid" });

@@ -335,6 +335,18 @@ export function EnergyProfileEditor({
             Elektrisches Warmwasser (kWh/Jahr)
             <input id="energy-hot-water" name="hotWaterKwhPerYear" type="number" inputMode="decimal" min="0" max="20000" step="any" defaultValue={fieldValue(profile.consumption.hotWaterKwhPerYear)} className={inputClass} />
           </label>
+          <label htmlFor="energy-investment" className={labelClass}>
+            Investition netto (€)
+            <input id="energy-investment" name="investmentEuro" type="number" inputMode="decimal" min="0" max="10000000" step="any" defaultValue={fieldValue(profile.consumption.investmentEuro ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-feedin-tariff" className={labelClass}>
+            Einspeisevergütung Override (Ct/kWh, leer = EEG-Default)
+            <input id="energy-feedin-tariff" name="feedInTariffCtPerKwh" type="number" inputMode="decimal" min="0" max="100" step="any" defaultValue={fieldValue(profile.consumption.feedInTariffCtPerKwh ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-feedin-year" className={labelClass}>
+            EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)
+            <input id="energy-feedin-year" name="feedInCommissioningYear" type="number" inputMode="numeric" min="1990" max="2100" step="1" defaultValue={fieldValue(profile.consumption.feedInCommissioningYear ?? { status: "unknown" })} className={inputClass} />
+          </label>
         </div>
       </fieldset>
 
