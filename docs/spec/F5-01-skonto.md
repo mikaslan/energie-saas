@@ -13,3 +13,5 @@ Ziel: Skonto (Prozent + Frist) je Rechnung, durchgängig Entwurf -> Ausstellung 
    0..10000 bps, 0..365 Tage). Neue Permission: keine (invoicing.write).
 2. Skonto-Dialog in den Rechnungs-Zeilenaktionen (Entwurf) + Anzeige in der
    Fälligkeits-Spalte („2 % Skonto / 10 Tage").
+3. F5-01b: optionales Skonto-Paar schon im Anlage-Input (invoice-only,
+   gleiche Paar-Regel; fehlende Keys = kein Skonto).

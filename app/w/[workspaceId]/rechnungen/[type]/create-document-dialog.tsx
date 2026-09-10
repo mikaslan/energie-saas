@@ -84,10 +84,22 @@ function CreateDocumentForm({
         </label>
 
         {type === "invoice" ? (
-          <label className="mt-4 block">
-            <span className="block text-sm font-semibold text-slate-800">Fällig am</span>
-            <input type="date" name="dueDate" required className={inputClass} />
-          </label>
+          <>
+            <label className="mt-4 block">
+              <span className="block text-sm font-semibold text-slate-800">Fällig am</span>
+              <input type="date" name="dueDate" required className={inputClass} />
+            </label>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="block text-sm font-semibold text-slate-800">Skonto in % (optional)</span>
+                <input name="skontoPercent" inputMode="decimal" placeholder="z. B. 2" className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-semibold text-slate-800">Frist in Tagen</span>
+                <input name="skontoDays" inputMode="numeric" placeholder="z. B. 10" className={inputClass} />
+              </label>
+            </div>
+          </>
         ) : null}
 
         {type === "credit_note" ? (

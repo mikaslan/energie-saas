@@ -348,6 +348,11 @@ const taxRateBpsSchema = z.union([z.literal(0), z.literal(1900)]);
 const optionalUuid = z.string().uuid().nullable();
 const optionalDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).nullable();
 
+// F5-01 · Skonto-Konditionen (ESTIMATE, reversibel). Prozent in Basispunkten
+// (200 = 2 %), Frist in Tagen ab Ausstellung.
+const skontoPercentBpsSchema = z.number().int().min(0).max(10000).nullable();
+const skontoDaysSchema = z.number().int().min(0).max(365).nullable();
+
 const documentDraftInputFields = {
   type: commercialDocumentTypeSchema,
   name: documentNameSchema,
@@ -355,6 +360,9 @@ const documentDraftInputFields = {
   projectId: optionalUuid,
   contactId: optionalUuid,
   dueDate: optionalDate,
+  // F5-01b · Skonto schon bei Anlage (optional, nur invoice, nur als Paar).
+  skontoPercentBps: skontoPercentBpsSchema.optional(),
+  skontoDays: skontoDaysSchema.optional(),
   deliveryDate: optionalDate,
   validityDate: optionalDate,
   plannedDeliveryDate: optionalDate,
@@ -402,6 +410,26 @@ export const commercialDocumentDraftInputV1Schema = z
         message: "creditNoteType is only valid for credit_note",
       });
     }
+    // F5-01b: Skonto nur als Paar und nur fuer Rechnungen (fehlende Keys
+    // zaehlen wie null — bestehende Aufrufer ohne Skonto bleiben gueltig).
+    const skontoPercent = value.skontoPercentBps ?? null;
+    const skontoDays = value.skontoDays ?? null;
+    if (skontoPercent !== null || skontoDays !== null) {
+      if (skontoPercent === null || skontoDays === null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["skontoDays"],
+          message: "skontoPercentBps and skontoDays must be set together or both null",
+        });
+      }
+      if (value.type !== "invoice") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["skontoPercentBps"],
+          message: "skonto is only valid for invoice",
+        });
+      }
+    }
   });
 export type CommercialDocumentDraftInputV1 = z.infer<
   typeof commercialDocumentDraftInputV1Schema
@@ -418,13 +446,8 @@ export const commercialDocumentSentCommandV1Schema = z.strictObject({
   documentId: z.string().uuid(),
 });
 
-// F5-01 · Skonto-Konditionen (ESTIMATE, reversibel). Prozent in Basispunkten
-// (200 = 2 %), Frist in Tagen ab Ausstellung. Beide Felder nur gemeinsam:
-// gesetzt = Kondition, beide null = kein Skonto. Exakte Reonic-Skonto-
-// Semantik UNKNOWN (Q-TARIFE-EEG-REFERENZ-Nachbarschaft: Referenzfrage offen).
-const skontoPercentBpsSchema = z.number().int().min(0).max(10000).nullable();
-const skontoDaysSchema = z.number().int().min(0).max(365).nullable();
-
+// F5-01 · Terms-Kommando (Paar-Regel s. Draft-Input; exakte Reonic-Skonto-
+// Semantik UNKNOWN, Referenzfrage offen).
 export const commercialDocumentTermsCommandV1Schema = z
   .strictObject({
     schemaVersion: z.literal(COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION),

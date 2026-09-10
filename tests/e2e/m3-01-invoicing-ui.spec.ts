@@ -381,20 +381,23 @@ test("M3-01-E2E-01: Gruppe anlegen → Rechnung anlegen → Ausstellen → Verse
   await dialog.getByRole("button", { name: "Anlegen" }).click();
   await expect(page.getByText("Solarprojekte 2026")).toBeVisible();
 
-  // Rechnung als Entwurf anlegen (mit Gruppe)
+  // Rechnung als Entwurf anlegen (mit Gruppe, Skonto schon bei Anlage)
   await page.goto(invoicesPath());
   await page.getByRole("button", { name: "Rechnung anlegen" }).click();
   const createDialog = page.getByRole("dialog", { name: "Rechnung anlegen" });
   await createDialog.getByLabel("Name").fill("E2E-Anlage 10 kWp");
   await createDialog.getByLabel("Fällig am").fill("2026-12-31");
+  await createDialog.getByLabel("Skonto in % (optional)").fill("1");
+  await createDialog.getByLabel("Frist in Tagen").fill("7");
   await createDialog.getByLabel("Gruppe").selectOption({ label: "Solarprojekte 2026" });
   await createDialog.getByRole("button", { name: "Als Entwurf anlegen" }).click();
 
   const row = page.getByRole("row").filter({ hasText: "E2E-Anlage 10 kWp" });
   await expect(row).toBeVisible();
   await expect(row.getByText("Entwurf")).toBeVisible();
+  await expect(row.getByText("1 % Skonto / 7 Tage")).toBeVisible();
 
-  // F5-01 Skonto: Entwurf → Kondition setzen → Anzeige in der Zeile
+  // F5-01 Skonto: Entwurf → Kondition ändern → Anzeige in der Zeile
   await row.getByRole("button", { name: "Skonto" }).click();
   const skontoDialog = page.getByRole("dialog", { name: "Skonto festlegen" });
   await skontoDialog.getByLabel("Skonto in %").fill("2");

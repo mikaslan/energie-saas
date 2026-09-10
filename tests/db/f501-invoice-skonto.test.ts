@@ -10,6 +10,7 @@ import {
   COMMERCIAL_DOCUMENT_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_LIST_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION,
   WORKSPACE_INVOICING_SETTINGS_COMMAND_VERSION,
 } from "@/lib/integrations/invoicing/contract";
@@ -17,6 +18,7 @@ import {
   createDocument,
   createDocumentLine,
   issueDocument,
+  listDocuments,
   setDocumentTerms,
   upsertInvoicingSettings,
   InvoicingConflictError,
@@ -73,7 +75,11 @@ function settingsCommand(baseRevision: number): InvoicingSettingsCommandV1 {
   };
 }
 
-async function seedInvoiceDraft(fixture: Fixture, name = "Skonto-Entwurf"): Promise<string> {
+async function seedInvoiceDraft(
+  fixture: Fixture,
+  name = "Skonto-Entwurf",
+  terms?: { skontoPercentBps?: number | null; skontoDays?: number | null },
+): Promise<string> {
   // O4: Geld-Dokumente brauchen Issuing-Details schon bei Anlage.
   await withAuthorizedTenantOn(
     testPool, fixture.editorId, fixture.workspaceId,
@@ -85,7 +91,9 @@ async function seedInvoiceDraft(fixture: Fixture, name = "Skonto-Entwurf"): Prom
       schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
       input: {
         type: "invoice" as const, name, groupId: null, projectId: null,
-        contactId: null, dueDate: "2026-12-31", deliveryDate: null,
+        contactId: null, dueDate: "2026-12-31",
+        ...(terms ?? {}),
+        deliveryDate: null,
         validityDate: null, plannedDeliveryDate: null, plannedServiceDate: null,
         creditNoteType: null,
       },
@@ -131,6 +139,40 @@ describe("F5-01 Skonto-Konditionen (PostgreSQL)", () => {
       testPool, fixture.viewerId, fixture.workspaceId,
       (tx, ctx) => setDocumentTerms(tx, ctx, termsCommand(documentId, 200, 10)),
     )).rejects.toBeInstanceOf(PermissionDeniedError);
+  });
+
+  it("F501-DB-01b: Skonto schon bei Anlage; Halbpaar und Fremdtyp abgewiesen", async () => {
+    await seedInvoiceDraft(fixture, "Mit Skonto", {
+      skontoPercentBps: 150,
+      skontoDays: 7,
+    });
+    // Ruecklesen ohne Schreiben: Anlegewerte stehen.
+    const listed = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => listDocuments(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_LIST_COMMAND_VERSION,
+        type: "invoice",
+        filters: { search: "Mit Skonto" },
+      }),
+    );
+    expect(listed.items).toHaveLength(1);
+    expect(listed.items[0]?.skontoPercentBps).toBe(150);
+    expect(listed.items[0]?.skontoDays).toBe(7);
+
+    // Halbpaar bei Anlage -> Validierung (Settings seedet seedInvoiceDraft).
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => createDocument(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+        input: {
+          type: "invoice" as const, name: "Halbpaar", groupId: null, projectId: null,
+          contactId: null, dueDate: "2026-12-31", skontoPercentBps: 200,
+          deliveryDate: null,
+          validityDate: null, plannedDeliveryDate: null, plannedServiceDate: null,
+          creditNoteType: null,
+        },
+      }),
+    )).rejects.toBeInstanceOf(InvoicingValidationError);
   });
 
   it("F501-DB-02: Paar-Regel, Typ- und Status-Gate; Snapshot friert ein", async () => {

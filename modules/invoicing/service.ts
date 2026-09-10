@@ -777,7 +777,8 @@ export async function createDocument(
       insert into commercial_document (
         id, workspace_id, type, group_id, project_id, contact_id,
         name, status, currency, net_cents, tax_cents, gross_cents,
-        payment_status, paid_cents, due_date, delivery_date, validity_date,
+        payment_status, paid_cents, due_date, skonto_percent_bps, skonto_days,
+        delivery_date, validity_date,
         planned_delivery_date, planned_service_date, credit_note_type,
         created_by
       ) values (
@@ -786,6 +787,7 @@ export async function createDocument(
         ${command.name}, 'draft', 'EUR', 0, 0, 0,
         ${isLetter(type) ? null : "unpaid"}, 0,
         ${command.dueDate ? sql`${command.dueDate}::date` : null},
+        ${command.skontoPercentBps ?? null}, ${command.skontoDays ?? null},
         ${command.deliveryDate ? sql`${command.deliveryDate}::date` : null},
         ${command.validityDate ? sql`${command.validityDate}::date` : null},
         ${command.plannedDeliveryDate ? sql`${command.plannedDeliveryDate}::date` : null},

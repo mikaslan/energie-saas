@@ -68,6 +68,22 @@ function parseUuid(value: FormDataEntryValue | null): string | null {
   return parsed.success ? parsed.data : null;
 }
 
+// F5-01 · Prozent mit einer Nachkommastelle („2,5" / „2.5") -> Basispunkte;
+// leere Felder = kein Skonto (null). undefined = ungueltig.
+function parseSkontoPercent(value: FormDataEntryValue | null): number | null | undefined {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d{1,3}(\.\d)?$/u.test(normalized)) return undefined;
+  const bps = Math.round(Number(normalized) * 100);
+  return Number.isFinite(bps) ? bps : undefined;
+}
+
+function parseSkontoDays(value: FormDataEntryValue | null): number | null | undefined {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  if (!/^\d{1,3}$/u.test(value.trim())) return undefined;
+  return Number(value.trim());
+}
+
 export async function createInvoicingGroupAction(
   _previous: InvoicingUiActionState,
   formData: FormData,
@@ -139,6 +155,10 @@ export async function createDocumentAction(
   const creditNoteTypeValue = formData.get("creditNoteType");
   const optionalDate = (value: FormDataEntryValue | null): string | null =>
     typeof value === "string" && value !== "" ? value : null;
+  // F5-01b · Skonto schon bei Anlage (nur invoice; Felder nur dort gerendert).
+  const skontoPercentBps = parseSkontoPercent(formData.get("skontoPercent"));
+  const skontoDays = parseSkontoDays(formData.get("skontoDays"));
+  if (skontoPercentBps === undefined || skontoDays === undefined) return { status: "invalid" };
   const parsed = commercialDocumentCommandV1Schema.safeParse({
     schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
     input: {
@@ -148,6 +168,8 @@ export async function createDocumentAction(
       projectId: null,
       contactId: null,
       dueDate: optionalDate(dueDateValue),
+      skontoPercentBps: skontoPercentBps ?? undefined,
+      skontoDays: skontoDays ?? undefined,
       deliveryDate: optionalDate(deliveryDateValue),
       validityDate: optionalDate(validityDateValue),
       plannedDeliveryDate: optionalDate(plannedDeliveryDateValue),
@@ -226,22 +248,8 @@ export async function setDocumentTermsAction(
   const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
   const documentId = parseUuid(formData.get("documentId"));
   if (!workspaceId || !documentId) return { status: "invalid" };
-  // Prozent mit einer Nachkommastelle („2,5" / „2.5") -> Basispunkte;
-  // leere Felder = Skonto entfernen (beide null).
-  const parsePercent = (value: FormDataEntryValue | null): number | null | undefined => {
-    if (typeof value !== "string" || value.trim() === "") return null;
-    const normalized = value.trim().replace(",", ".");
-    if (!/^\d{1,3}(\.\d)?$/u.test(normalized)) return undefined;
-    const bps = Math.round(Number(normalized) * 100);
-    return Number.isFinite(bps) ? bps : undefined;
-  };
-  const parseDays = (value: FormDataEntryValue | null): number | null | undefined => {
-    if (typeof value !== "string" || value.trim() === "") return null;
-    if (!/^\d{1,3}$/u.test(value.trim())) return undefined;
-    return Number(value.trim());
-  };
-  const skontoPercentBps = parsePercent(formData.get("skontoPercent"));
-  const skontoDays = parseDays(formData.get("skontoDays"));
+  const skontoPercentBps = parseSkontoPercent(formData.get("skontoPercent"));
+  const skontoDays = parseSkontoDays(formData.get("skontoDays"));
   if (skontoPercentBps === undefined || skontoDays === undefined) return { status: "invalid" };
   const parsed = commercialDocumentTermsCommandV1Schema.safeParse({
     schemaVersion: COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION,
