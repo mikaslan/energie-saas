@@ -6,9 +6,10 @@ import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import { SignOutButton } from "@/app/_components/sign-out-button";
 import {
-  getDefaultRequestBoard,
+  getRequestBoard,
   type RequestBoardCard,
   type RequestBoardColumn,
+  type RequestBoardScope,
 } from "@/modules/boards";
 import {
   RequestBoardCard as RequestBoardCardClient,
@@ -85,13 +86,25 @@ function AccessDenied() {
 
 export default async function RequestsPage({
   params,
+  searchParams,
 }: PageProps<"/w/[workspaceId]/anfragen">) {
   const { workspaceId } = await params;
   const parsedWorkspaceId = workspaceIdSchema.safeParse(workspaceId);
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  let board: Awaited<ReturnType<typeof getDefaultRequestBoard>> | undefined;
+  // F15-01: Bereichs-Umschalter (?bereich=gewerbe). Unbekannte Werte
+  // brechen fail-closed ab — kein stiller Default.
+  const rawScope = (await searchParams)?.bereich;
+  const scopeValue = Array.isArray(rawScope) ? rawScope[0] : rawScope;
+  let scope: RequestBoardScope = "residential";
+  if (scopeValue !== undefined) {
+    if (scopeValue === "gewerbe") scope = "commercial";
+    else if (scopeValue === "wohnbau") scope = "residential";
+    else notFound();
+  }
+
+  let board: Awaited<ReturnType<typeof getRequestBoard>> | undefined;
   let unauthenticated = false;
   let denied = false;
   try {
@@ -99,7 +112,7 @@ export default async function RequestsPage({
       validWorkspaceId,
       "project.read",
       "kanban_board",
-      (tx, ctx) => getDefaultRequestBoard(tx, ctx),
+      (tx, ctx) => getRequestBoard(tx, ctx, { scope }),
     );
   } catch (error) {
     if (error instanceof NotAuthenticatedError) unauthenticated = true;
@@ -108,7 +121,9 @@ export default async function RequestsPage({
   }
 
   if (unauthenticated) {
-    const nextPath = `/w/${validWorkspaceId}/anfragen`;
+    const nextPath = scope === "commercial"
+      ? `/w/${validWorkspaceId}/anfragen?bereich=gewerbe`
+      : `/w/${validWorkspaceId}/anfragen`;
     redirect(`/login?${new URLSearchParams({ next: nextPath }).toString()}`);
   }
   if (denied) return <AccessDenied />;
@@ -184,6 +199,25 @@ export default async function RequestsPage({
             Abgeschlossen
           </Link>
         </nav>
+        <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-scope-toggle">
+          <Link
+            aria-current={scope === "residential" ? "page" : undefined}
+            href={`/w/${validWorkspaceId}/anfragen`}
+            className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scope === "residential" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+          >
+            Wohnbau
+          </Link>
+          <Link
+            aria-current={scope === "commercial" ? "page" : undefined}
+            href={`/w/${validWorkspaceId}/anfragen?bereich=gewerbe`}
+            className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scope === "commercial" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+          >
+            Gewerbe
+          </Link>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+            {board.scope === "commercial" ? "Gewerbe-Bereich" : "Wohnbau-Bereich"}
+          </span>
+        </div>
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Rechner-Leads</p>

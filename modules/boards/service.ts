@@ -151,11 +151,29 @@ function locationLabel(row: CardRow): string {
   return "Standort offen";
 }
 
+// F15-01: Board-Scope ist explizit (kein hartcodierter Residential-Pfad
+// mehr). Ungültiger Scope und fehlendes Board brechen fail-closed ab —
+// kein stiller Scope-Fallback.
+export const REQUEST_BOARD_SCOPES = ["residential", "commercial"] as const;
+export type RequestBoardScope = (typeof REQUEST_BOARD_SCOPES)[number];
+
 export async function getDefaultRequestBoard(
   tx: TenantTx,
   ctx: ServiceCtx,
 ): Promise<RequestBoard> {
+  return getRequestBoard(tx, ctx, { scope: "residential" });
+}
+
+export async function getRequestBoard(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { scope: RequestBoardScope },
+): Promise<RequestBoard> {
   requireProjectAccess(ctx, "project.read", "kanban_board");
+  const scope = input.scope;
+  if (scope !== "residential" && scope !== "commercial") {
+    throw new RequestBoardConfigurationError(`unknown board scope ${JSON.stringify(scope)}`);
+  }
   const external = isExternalOnly(ctx);
 
   const boardResult = await tx.execute<BoardRow>(sql`
@@ -167,18 +185,18 @@ export async function getDefaultRequestBoard(
     join kanban_column c
       on c.workspace_id = b.workspace_id and c.board_id = b.id
     where b.workspace_id = ${ctx.workspaceId}::uuid
-      and b.scope = 'residential'
+      and b.scope = ${scope}
       and b.is_default = true
       and b.archived_at is null
       and c.archived_at is null
     order by c.position, c.id
   `);
   if (boardResult.rows.length === 0) {
-    throw new RequestBoardConfigurationError("default residential request board is missing");
+    throw new RequestBoardConfigurationError(`default ${scope} request board is missing`);
   }
   const boardId = boardResult.rows[0].board_id;
   if (boardResult.rows.some((row) => row.board_id !== boardId)) {
-    throw new RequestBoardConfigurationError("multiple default residential request boards found");
+    throw new RequestBoardConfigurationError(`multiple default ${scope} request boards found`);
   }
 
   const cardResult = await tx.execute<CardRow>(sql`

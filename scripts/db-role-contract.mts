@@ -5085,7 +5085,7 @@ export async function verifyRoleContract(
       "mark_project_catalog_resolution_stale():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:7c6bd9b9f83040ae9d697aaa6b81012a7a9101d388f9ef1e107564410de1edd0",
       "provision_default_request_board():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
-        "search_path=pg_catalog:c226d08f9a70eb36bd1eb7ef25e1afcc4fadae383cebef03bcc08b55de663138",
+        "search_path=pg_catalog:082280a4f4e35fb42979e6ffba65c5e0a1438b3ebc7eeb55079c271234352a42",
       "reconcile_user_identity(text, text):uuid:identity_reconciler:plpgsql:f:v:true:false:false:u:" +
         "search_path=public, pg_temp:ae576295ddea09162013c29d5828512764cecbe3c39bbcaa0cdd5d45307f2ac3",
       "replay_erasure_tombstone(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +

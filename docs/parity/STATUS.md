@@ -83,7 +83,7 @@ keine Implementierung aufgrund bloßer Infrastrukturarbeit.
 | F12 Lead-Funnel | SPECIFIED | Provideradapter erst nach Privacy-Freigabe anbinden; weitere Funnels capabilityweise bauen |
 | F13 Services | PARTIAL VERIFIED (lokal) | F13-01 liefert das Filing-Objekt je Projekt mit Statusmaschine (open → in_progress → done, cancelled; Guards, completed_at, Events/Audit) unter wiederverwendeten installation-Permissions: DB 2/2, E2E F13-01-E2E-01 (anlegen → starten → erledigen, lokal beobachtet 2026-09-10). Externe Human-Gates bleiben ehrlich offen |
 | F14 KI | SPECIFIED | rechtegebundene Tools erst nach realen Domain-Commands |
-| F15 Gewerbe | SPECIFIED | getrenntes Commercial-Datenmodell |
+| F15 Gewerbe | PARTIAL VERIFIED (lokal) | F15-01 macht das Commercial-Board erreichbar: Trigger provisioniert Default-Gewerbe-Board mit Backfill (Migration 0088), `getRequestBoard` mit validiertem Scope (fail-closed ohne Fallback), Bereichs-Umschalter Wohnbau/Gewerbe auf `/anfragen`; DB 4/4, E2E F15-01-E2E-01 1/1 lokal beobachtet 2026-09-10. Gewerbe-Workflow-Stufen = Wohnbau-Kopie (ESTIMATE); eigene Gewerbe-Regeln/Preise bleiben offen |
 | F16 Katalog/Vorlagen | PARTIAL VERIFIED | Eigener Katalog, sieben Produkttypen, Preise/Provenienz, Lifecycle, Projektauflösung und autorisierter CSV-Massenweg sind lokal real. F16.3 A–E ergänzt Rabatt-/Fördervorlagen sowie Prozent-, Fix- und Cap-Anwendung bis Snapshot/PDF. Weitere Vorlagentypen, echte Produkte, Brand-/Human-Visual-Freigabe, Assets und Lieferantenfeeds folgen getrennt |
 
 ## Lieferform
