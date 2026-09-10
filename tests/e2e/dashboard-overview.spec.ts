@@ -81,6 +81,9 @@ test("DASH-01: leere Workspace-Übersicht rendert ehrliche Leerzustände", async
   const invoices = dashboard.locator('[data-dashboard-invoices="true"]');
   await expect(invoices).toBeVisible();
   await expect(invoices.getByText("0,00 €").first()).toBeVisible();
+  const leadTime = dashboard.locator('[data-dashboard-leadtime="true"]');
+  await expect(leadTime).toBeVisible();
+  await expect(leadTime.getByText("Noch keine Unterschriften.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Anfragen" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Aufgaben" })).toBeVisible();
 });

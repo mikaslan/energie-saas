@@ -576,6 +576,54 @@ export async function listSignatureRequests(
   return rows.map(requestDto);
 }
 
+export type SignatureLeadTimeStats = {
+  /** Anzahl signierter Vorgaenge (gedeckelt, s. capped). */
+  signedCount: number;
+  /** true, wenn mehr als das Auswertungslimit signiert sind. */
+  capped: boolean;
+  /** Median Erzeugung -> Unterschrift in Tagen (null ohne Signierte). */
+  medianDays: number | null;
+};
+
+/** Auswertungslimit fuer die Signaturdauer (ehrliches „+"). */
+const SIGNATURE_LEAD_TIME_LIMIT = 500;
+
+/**
+ * DASH-03 Signaturdauer: Median (signed_at - created_at) ueber signierte
+ * Vorgaenge des Workspaces (neueste zuerst, gedeckelt). Rein lesend;
+ * keine neue Permission (offer.signature.read, viewer+, internal).
+ */
+export async function getSignatureLeadTimeStats(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<SignatureLeadTimeStats> {
+  requireInternalAccess(ctx, "offer.signature.read", "signature_request");
+  const rows = await readRows(tx, sql`
+    select extract(epoch from (request_record.signed_at - request_record.created_at)) as lead_seconds
+      from public.signature_request as request_record
+     where request_record.workspace_id = ${ctx.workspaceId}::uuid
+       and request_record.signed_at is not null
+     order by request_record.signed_at desc, request_record.id desc
+     limit ${SIGNATURE_LEAD_TIME_LIMIT + 1}
+  `) as Array<{ lead_seconds: string | number }>;
+  const capped = rows.length > SIGNATURE_LEAD_TIME_LIMIT;
+  const leads = rows
+    .slice(0, SIGNATURE_LEAD_TIME_LIMIT)
+    .map((row) => Number(row.lead_seconds))
+    .filter((seconds) => Number.isFinite(seconds) && seconds >= 0)
+    .sort((a, b) => a - b);
+  if (leads.length === 0) return { signedCount: 0, capped: false, medianDays: null };
+  const middle = Math.floor(leads.length / 2);
+  const medianSeconds = leads.length % 2 === 1
+    ? leads[middle]!
+    : (leads[middle - 1]! + leads[middle]!) / 2;
+  return {
+    signedCount: leads.length,
+    capped,
+    medianDays: Math.round((medianSeconds / 86_400) * 10) / 10,
+  };
+}
+
 export async function getSignatureRequest(
   tx: TenantTx,
   ctx: ServiceCtx,

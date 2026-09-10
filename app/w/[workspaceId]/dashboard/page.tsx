@@ -18,6 +18,10 @@ import {
   getInvoicingReport,
   type InvoicingReportV1,
 } from "@/modules/invoicing";
+import {
+  getSignatureLeadTimeStats,
+  type SignatureLeadTimeStats,
+} from "@/modules/signatures";
 import { INVOICING_REPORT_COMMAND_VERSION } from "@/lib/integrations/invoicing/contract";
 import { parseGlobalTaskInboxRouteQuery } from "../aufgaben/query";
 
@@ -215,6 +219,26 @@ async function loadInvoiceKpis(workspaceId: string): Promise<
   }
 }
 
+async function loadLeadTime(workspaceId: string): Promise<
+  | { kind: "loaded"; stats: SignatureLeadTimeStats }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const stats = await authorizedQuery(
+      workspaceId,
+      "offer.signature.read",
+      "signature_request",
+      (tx, ctx) => getSignatureLeadTimeStats(tx, ctx),
+    );
+    return { kind: "loaded", stats };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
 function TaskList({ page }: { page: GlobalTaskInboxPageV1 }) {
   const items = page.items.slice(0, 5);
   if (items.length === 0) return null;
@@ -241,12 +265,13 @@ export default async function DashboardPage({
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  const [pipeline, overdue, today, closures, invoices] = await Promise.all([
+  const [pipeline, overdue, today, closures, invoices, leadTime] = await Promise.all([
     loadPipeline(validWorkspaceId),
     loadTasks(validWorkspaceId, "overdue"),
     loadTasks(validWorkspaceId, "today"),
     loadClosures(validWorkspaceId),
     loadInvoiceKpis(validWorkspaceId),
+    loadLeadTime(validWorkspaceId),
   ]);
   if (
     pipeline.kind === "unauthenticated"
@@ -254,6 +279,7 @@ export default async function DashboardPage({
     || today.kind === "unauthenticated"
     || closures.kind === "unauthenticated"
     || invoices.kind === "unauthenticated"
+    || leadTime.kind === "unauthenticated"
   ) {
     const nextPath = `/w/${validWorkspaceId}/dashboard`;
     redirect(`/login?${new URLSearchParams({ next: nextPath }).toString()}`);
@@ -264,6 +290,7 @@ export default async function DashboardPage({
     && today.kind === "denied"
     && closures.kind === "denied"
     && invoices.kind === "denied"
+    && leadTime.kind === "denied"
   ) {
     return <AccessDenied />;
   }
@@ -476,6 +503,35 @@ export default async function DashboardPage({
               >
                 Zu den Berichten
               </Link>
+            </section>
+          ) : null}
+
+          {leadTime.kind === "loaded" ? (
+            <section
+              aria-label="Unterschriftsdauer"
+              data-dashboard-leadtime="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Unterschriftsdauer</h2>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-slate-600">Median Erzeugung → Unterschrift</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {leadTime.stats.medianDays === null
+                      ? "—"
+                      : `${countFormatter.format(leadTime.stats.medianDays)} Tage`}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-slate-600">Signierte Vorgänge</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {`${countFormatter.format(leadTime.stats.signedCount)}${leadTime.stats.capped ? "+" : ""}`}
+                  </dd>
+                </div>
+              </dl>
+              {leadTime.stats.medianDays === null ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">Noch keine Unterschriften.</p>
+              ) : null}
             </section>
           ) : null}
         </div>

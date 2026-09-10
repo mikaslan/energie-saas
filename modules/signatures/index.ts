@@ -6,6 +6,7 @@ export {
   SignaturePersistenceError,
   SignatureValidationError,
   createSignatureRequest,
+  getSignatureLeadTimeStats,
   getSignatureRequest,
   listSignatureRequests,
   recordSignatureView,
@@ -18,6 +19,7 @@ export {
 export type {
   SignatureAttestationDto,
   SignatureCreateResult,
+  SignatureLeadTimeStats,
   SignaturePublicView,
   SignatureRequestDto,
   SignatureRevokeResult,
