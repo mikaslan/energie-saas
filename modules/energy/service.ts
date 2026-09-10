@@ -1059,6 +1059,19 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["feedInCommissioningYear"],
+      // Boden-Albedo (optional; fehlt in Altzeilen).
+      groundAlbedo: normalizeKnownField(
+        submitted.consumption.groundAlbedo ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.groundAlbedo ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["groundAlbedo"],
     },
     existingAssets: {
       pv: normalizeAsset(submitted.existingAssets.pv, candidate.existingAssets.pv) as SiteEnergyProfileV1["existingAssets"]["pv"],

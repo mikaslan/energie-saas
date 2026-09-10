@@ -394,6 +394,32 @@ describe("F4.1 v2 fetch compose", () => {
     expect(composed.provenance.horizontalSha256).toBe("2".repeat(64));
   });
 
+  it("traegt Profil-Albedo in Muneer-Gewichte (Default 0.2 unveraendert)", async () => {
+    const envelope = tiltedEnvelope();
+    const known = (value: number) => ({ status: "known" as const, value, source: "customer_input" as const });
+    const plain = await fetchPlanningSeriesV2({
+      request: request(),
+      transport: fakeTransport(envelope),
+    });
+    const bright = await fetchPlanningSeriesV2({
+      request: request({
+        consumption: consumption({ groundAlbedo: known(0.5) }),
+      }),
+      transport: fakeTransport(envelope),
+    });
+    // Fetch skaliert auf die PVcalc-Jahresreferenz: Die Jahressumme bleibt
+    // gepinnt, die Albedo formt die unterjährige Verteilung (Muneer).
+    expect(neumaierSum(bright.pvKwh)).toBeCloseTo(neumaierSum(plain.pvKwh), 9);
+    const maxDiff = Math.max(
+      ...bright.pvKwh.map((value, index) => Math.abs(value - plain.pvKwh[index]!)),
+    );
+    expect(maxDiff).toBeGreaterThan(0);
+    expect(plain.provenance.roofs[0]).toMatchObject({ roofId: "dach-sued", albedo: 0.2 });
+    expect(bright.provenance.roofs[0]).toMatchObject({ roofId: "dach-sued", albedo: 0.5 });
+    // Lastseite unberuehrt von der Albedo.
+    expect(neumaierSum(bright.loadKwh)).toBeCloseTo(neumaierSum(plain.loadKwh), 9);
+  });
+
   it("komponiert commercial_interval.v1 als Intervall-Basis bis loadKwh (energieexakt, Provenienz)", async () => {
     const envelope = tiltedEnvelope();
     const composed = await fetchPlanningSeriesV2({

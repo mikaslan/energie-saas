@@ -161,6 +161,7 @@ function validProfileForm(): FormData {
     investmentEuro: "",
     feedInTariffCtPerKwh: "",
     feedInCommissioningYear: "",
+    groundAlbedo: "",
     coolingKwhPerYear: "",
     heatingAcKwhPerYear: "",
     hotWaterKwhPerYear: "",
@@ -429,6 +430,30 @@ describe("M1-07 Energieprofil-Actions", () => {
     ] as const) {
       const form = validProfileForm();
       form.set(name, bad);
+      await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
+        .resolves.toEqual({ status: "invalid" });
+    }
+  });
+
+  it("speichert Boden-Albedo und weist Bereichsbrueche ab", async () => {
+    const albedo = validProfileForm();
+    albedo.set("groundAlbedo", "0.5");
+    await expect(saveProjectEnergyProfileAction({ status: "idle" }, albedo))
+      .resolves.toMatchObject({ status: "success" });
+    expect(deps.saveProfile).toHaveBeenCalledWith(
+      {},
+      { workspaceId: WORKSPACE_ID, actor: "member-1" },
+      expect.objectContaining({
+        profile: expect.objectContaining({
+          consumption: expect.objectContaining({
+            groundAlbedo: { status: "known", value: 0.5, source: "operator_reviewed" },
+          }),
+        }),
+      }),
+    );
+    for (const bad of ["-0.1", "1.1"]) {
+      const form = validProfileForm();
+      form.set("groundAlbedo", bad);
       await expect(saveProjectEnergyProfileAction({ status: "idle" }, form))
         .resolves.toEqual({ status: "invalid" });
     }

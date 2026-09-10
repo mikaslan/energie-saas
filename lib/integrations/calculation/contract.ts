@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "253d1757114906056cff967163ed269634fc9b477a6e6b21d278aa58dccba352" as const;
+  "e78c4dd66976fd04bf105a888b6c56bcf73780ac4abff50cd0ea6371addf8e39" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -180,6 +180,9 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     // ohne Feld bleiben gueltig. Summen-/Vollstaendigkeitsregeln s.
     // customLoadProfileValueSchema (kein stilles H0 ohne Werte).
     customLoadProfile: knownOrUnknown(customLoadProfileValueSchema).optional(),
+    // Boden-Albedo ρ (Muneer-Reflexion; Default fixture-gepinnt 0.2,
+    // unbelegt rechnet byte-identisch weiter).
+    groundAlbedo: knownOrUnknown(finite().min(0).max(1)).optional(),
     // F4.3 Waermepumpe (Katalog: COP, Bivalenzpunkt). Thermischer Bedarf
     // statt elektrischer Pauschale; Kennlinie/Bivalenz/WW-Split s.
     // heat-pump-cop-v2.ts (ESTIMATE, versioniert). Additiv-optional:

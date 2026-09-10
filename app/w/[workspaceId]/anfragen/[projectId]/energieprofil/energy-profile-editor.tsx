@@ -347,6 +347,10 @@ export function EnergyProfileEditor({
             EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)
             <input id="energy-feedin-year" name="feedInCommissioningYear" type="number" inputMode="numeric" min="1990" max="2100" step="1" defaultValue={fieldValue(profile.consumption.feedInCommissioningYear ?? { status: "unknown" })} className={inputClass} />
           </label>
+          <label htmlFor="energy-albedo" className={labelClass}>
+            Boden-Albedo (0–1, leer = 0,2)
+            <input id="energy-albedo" name="groundAlbedo" type="number" inputMode="decimal" min="0" max="1" step="any" defaultValue={fieldValue(profile.consumption.groundAlbedo ?? { status: "unknown" })} className={inputClass} />
+          </label>
         </div>
       </fieldset>
 

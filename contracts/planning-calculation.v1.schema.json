@@ -608,6 +608,36 @@
                     }
                   ]
                 },
+                "groundAlbedo": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "const": "known"
+                        },
+                        "value": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "source": {
+                          "$ref": "#/$defs/__schema2"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "value",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  ]
+                },
                 "heatPumpThermalKwhPerYear": {
                   "oneOf": [
                     {

@@ -46,6 +46,7 @@ import {
   buildMonthlyProfileSourceV2,
 } from "./load-shapes-v2";
 import {
+  MUNEER_WEIGHTS_ALBEDO,
   MUNEER_WEIGHTS_V2_VERSION,
   muneerQuarterWeightsV2,
   quarterGeometryForHourV2,
@@ -171,6 +172,21 @@ function parseHeatPumpThermal(consumption: unknown): {
   };
 }
 
+// Boden-Albedo aus belegtem Profil (0..1) oder fixture-gepinnter Default.
+// Unbekannt/fehlend ist kein Fehler; ausserhalb [0,1] bricht der
+// Muneer-Builder fail-closed ab (kein stiller Ersatzwert).
+function parseAlbedo(consumption: unknown): number {
+  const holder = (consumption ?? {}) as Record<string, unknown>;
+  const entry = holder.groundAlbedo as
+    | { status?: unknown; value?: unknown }
+    | undefined;
+  if (entry === undefined || entry.status !== "known") return MUNEER_WEIGHTS_ALBEDO;
+  if (typeof entry.value !== "number" || !Number.isFinite(entry.value)) {
+    composeError("Boden-Albedo ist ungueltig");
+  }
+  return entry.value;
+}
+
 // F4.2: belegtes Custom-Lastprofil (12 Monats-kWh + optionale Tagesgänge)
 // oder null (nicht belegt). Unbekannt/fehlend ist kein Fehler an sich —
 // erst die Monatsprofil-Option ohne Werte bricht fail-closed ab.
@@ -204,6 +220,8 @@ const consumptionSchema = z.object({
   heatPumpCopNominal: knownValueSchema.optional(),
   heatPumpBivalenceTempC: knownValueSchema.optional(),
   heatPumpHotWaterShare: knownValueSchema.optional(),
+  // Boden-Albedo (Muneer-Reflexion; unbelegt = fixture-gepinnt 0.2).
+  groundAlbedo: knownValueSchema.optional(),
   heatingAcKwhPerYear: knownValueSchema.optional(),
   coolingKwhPerYear: knownValueSchema.optional(),
   hotWaterKwhPerYear: knownValueSchema.optional(),
@@ -401,6 +419,8 @@ export type ComposedRoofProvenanceV2 = {
   annualSha256: string;
   annualReferenceKwhPerKwp: number;
   scaleFactor: number;
+  /** Effektive Boden-Albedo (Profil oder fixture-gepinnt 0.2). */
+  albedo: number;
 };
 
 export type ComposedSeriesProvenanceV2 = {
@@ -469,6 +489,7 @@ async function composeRoofPower(
   horizon: readonly number[],
   horizontalByTime: ReadonlyMap<string, HorizontalHourV2>,
   transport: SnapshotTransportV2,
+  albedo: number,
 ): Promise<{
   roofId: string;
   peakPowerKwp: number;
@@ -524,9 +545,11 @@ async function composeRoofPower(
   );
   // Muneer-Flaeche: Aufgeloeste Daecher tragen Sued-Null-Azimute
   // (v1-Profilschema); die Konvention wandelt exakt nach Nord (preparation-v2).
+  // Albedo kommt aus dem Profil (Default 0.2); der Builder validiert 0..1.
   const surface = {
     tiltDeg: roof.tiltDeg,
     azimuthDegNorth: southZeroToNorthClockwise(roof.azimuthDeg),
+    albedo,
   };
   const hourPosition = new Map<number, number>();
   hourIndexOfHour.forEach((hourIndex, position) => {
@@ -586,6 +609,7 @@ async function composeRoofPower(
       annualSha256: annual.rawSha256,
       annualReferenceKwhPerKwp: annual.annualReferenceKwhPerKwp,
       scaleFactor,
+      albedo,
     },
   };
 }
@@ -682,8 +706,9 @@ export async function fetchPlanningSeriesV2(input: {
       },
     ),
   );
+  const albedo = parseAlbedo(parsed.data.consumption);
   const composed = await Promise.all(
-    roofs.map((roof) => composeRoofPower(site, roof, horizon.heights, horizontalByTime, transport)),
+    roofs.map((roof) => composeRoofPower(site, roof, horizon.heights, horizontalByTime, transport, albedo)),
   );
   const pvKwh = assembleSlotPvEnergy(composed.map((roof) => ({
     roofId: roof.roofId,

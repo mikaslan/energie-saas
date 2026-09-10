@@ -120,6 +120,27 @@ describe("muneer quarter weights on PVGIS weather year", () => {
       surface: { tiltDeg: 30, azimuthDegNorth: 180 },
     };
     expect(() => muneerQuarterWeightsV2(valid).length).not.toThrow();
+    // Albedo: explizit 0.2 == Default (byte-identisch), Sweep monoton auf
+    // geneigter Flaeche, ausserhalb [0,1] fail-closed.
+    const albedoSum = (albedo?: number): number => {
+      const weights = muneerQuarterWeightsV2({
+        ...valid,
+        surface: albedo === undefined
+          ? { tiltDeg: 30, azimuthDegNorth: 180 }
+          : { tiltDeg: 30, azimuthDegNorth: 180, albedo },
+      });
+      return weights[0]! + weights[1]! + weights[2]! + weights[3]!;
+    };
+    expect(albedoSum(0.2)).toBe(albedoSum());
+    expect(albedoSum(0)).toBeLessThan(albedoSum(0.2));
+    expect(albedoSum(0.2)).toBeLessThan(albedoSum(0.5));
+    expect(albedoSum(0.5)).toBeLessThan(albedoSum(1));
+    expect(() => muneerQuarterWeightsV2({
+      ...valid, surface: { tiltDeg: 30, azimuthDegNorth: 180, albedo: -0.1 },
+    })).toThrow();
+    expect(() => muneerQuarterWeightsV2({
+      ...valid, surface: { tiltDeg: 30, azimuthDegNorth: 180, albedo: 1.1 },
+    })).toThrow();
     expect(() => muneerQuarterWeightsV2({ ...valid, beamHourWhPerM2: -1 })).toThrow();
     expect(() => muneerQuarterWeightsV2({
       ...valid, horizonHeights48: new Array<number>(47).fill(0),

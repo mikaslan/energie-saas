@@ -48,6 +48,11 @@ export type MuneerWeightsSurface = {
   tiltDeg: number;
   /** Dachazimut [°, Nord/Uhrzeigersinn, Spec-Geometrie]. */
   azimuthDegNorth: number;
+  /**
+   * Boden-Albedo ρ [0,1], optional (Default fixture-gepinnt 0.2;
+   * Profilfeld `groundAlbedo` überschreibt je Berechnung).
+   */
+  albedo?: number;
 };
 
 export type MuneerWeightsHourInput = {
@@ -94,11 +99,15 @@ export function muneerQuarterWeightsV2(
   if (!Number.isFinite(azimuthDegNorth) || azimuthDegNorth < 0 || azimuthDegNorth >= 360) {
     weightsError("Dachazimut ausserhalb [0,360)");
   }
+  const albedo = input.surface.albedo ?? MUNEER_WEIGHTS_ALBEDO;
+  if (!Number.isFinite(albedo) || albedo < 0 || albedo > 1) {
+    weightsError("Albedo ausserhalb [0,1]");
+  }
   const surface: MuneerSurface = {
     tiltRad: tiltDeg * D2R,
     tiltDeg,
     azimuthRad: azimuthDegNorth * D2R,
-    albedo: MUNEER_WEIGHTS_ALBEDO,
+    albedo,
   };
   const direct = input.quarterGeometry.map((geo) => directWeight(geo.elevationDeg * D2R)) as [
     number, number, number, number,

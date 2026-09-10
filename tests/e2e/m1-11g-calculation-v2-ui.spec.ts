@@ -927,3 +927,44 @@ test("M1-11g: F4.5b-Workspace-Default traegt currentV2-economics", async ({ page
   await expect(block.getByText(/Workspace-Default/)).toBeVisible();
   await expect(block.locator("table tbody tr")).toHaveCount(15);
 });
+
+test("M1-11g: Boden-Albedo speichert als known-Profil", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await page.getByLabel("Boden-Albedo (0–1, leer = 0,2)").fill("0.5");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  await expect(page.getByText(/Profilrevision \d+ wurde gespeichert/)).toBeVisible();
+
+  const saved = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  const albedo = (saved?.profile as unknown as {
+    value?: { consumption?: { groundAlbedo?: { status?: unknown; value?: unknown } } };
+  } | null)?.value?.consumption?.groundAlbedo;
+  expect(albedo?.status).toBe("known");
+  expect(albedo?.value).toBe(0.5);
+});
