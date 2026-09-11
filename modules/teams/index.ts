@@ -4,11 +4,13 @@ export {
   TeamValidationError,
   createTeam,
   listTeamMemberOptions,
+  listTeamMemberships,
   listTeamOptions,
   listTeams,
   renameTeam,
   setTeamActive,
   setTeamMembers,
   type TeamDto,
+  type TeamMembership,
   type TeamOption,
 } from "./service";

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { Fragment } from "react";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { can, PermissionDeniedError } from "@/lib/permissions";
@@ -13,7 +14,7 @@ import {
   type PlanningBoardProjectOption,
 } from "@/modules/calendar";
 import { AppointmentValidationError } from "@/modules/calendar";
-import { listTeamOptions, type TeamOption } from "@/modules/teams";
+import { listTeamMemberships, listTeamOptions, type TeamMembership, type TeamOption } from "@/modules/teams";
 import { DeniedState } from "../_ui";
 import { PlanningBoardAssignForm } from "./planning-board-assign-form";
 import { PlanningBoardCreateForm } from "./planning-board-create-form";
@@ -21,6 +22,57 @@ import { PlanningBoardCreateForm } from "./planning-board-create-form";
 export const metadata: Metadata = {
   title: "Plantafel",
 };
+
+type BoardSection = {
+  key: string;
+  title: string;
+  rows: PlanningBoardDto["rows"];
+};
+
+// F7-07: Spaltengruppierung je Primär-Team (erster Teamname alphabetisch —
+// der Service liefert nach Teamname sortiert; Mehrfach-Mitglieder erscheinen
+// einmal). null = ohne Leserecht → flache Ansicht wie bisher (kein
+// vorgetäuschtes Wissen). Leere Zuordnung → ebenfalls flach (kein Rauschen).
+function groupBoardRows(
+  rows: PlanningBoardDto["rows"],
+  memberships: TeamMembership[] | null,
+): BoardSection[] | null {
+  if (memberships === null || memberships.length === 0) return null;
+  const primary = new Map<string, { teamId: string; teamName: string }>();
+  for (const membership of memberships) {
+    if (!primary.has(membership.membershipId)) {
+      primary.set(membership.membershipId, {
+        teamId: membership.teamId,
+        teamName: membership.teamName,
+      });
+    }
+  }
+  const sections = new Map<string, BoardSection>();
+  const unassigned: PlanningBoardDto["rows"] = [];
+  for (const row of rows) {
+    if (row.membershipId === null) {
+      unassigned.push(row);
+      continue;
+    }
+    const team = primary.get(row.membershipId);
+    const key = team ? `team:${team.teamId}` : "noteam";
+    const title = team ? team.teamName : "Ohne Team";
+    const section = sections.get(key) ?? { key, title, rows: [] };
+    section.rows.push(row);
+    sections.set(key, section);
+  }
+  const ordered = [...sections.values()].sort((a, b) =>
+    a.title === "Ohne Team"
+      ? 1
+      : b.title === "Ohne Team"
+        ? -1
+        : a.title.localeCompare(b.title, "de"),
+  );
+  if (unassigned.length > 0) {
+    ordered.push({ key: "unassigned", title: "Nicht zugeordnet", rows: unassigned });
+  }
+  return ordered;
+}
 
 const workspaceIdSchema = z.uuid();
 const eventIdSchema = z.uuid();
@@ -130,6 +182,7 @@ export default async function PlanningBoardPage(
   let calendars: CalendarItemV1[];
   let projectOptions: PlanningBoardProjectOption[];
   let teams: TeamOption[];
+  let memberships: TeamMembership[] | null;
   let canWrite = false;
   try {
     const loaded = await authorizedQuery(
@@ -152,11 +205,18 @@ export default async function PlanningBoardPage(
           if (error instanceof PermissionDeniedError) return [];
           throw error;
         });
+        // F7-07: Zugehörigkeit für die Spaltengruppierung; ohne Grant ehrlich
+        // flach (null), nicht geraten.
+        const loadedMemberships = await listTeamMemberships(tx, ctx).catch((error: unknown) => {
+          if (error instanceof PermissionDeniedError) return null;
+          throw error;
+        });
         return {
           board: loadedBoard,
           calendars: loadedCalendars,
           projectOptions: loadedOptions,
           teams: loadedTeams,
+          memberships: loadedMemberships,
           canWrite: can(ctx, "appointment.write"),
         };
       },
@@ -165,6 +225,7 @@ export default async function PlanningBoardPage(
     calendars = loaded.calendars;
     projectOptions = loaded.projectOptions;
     teams = loaded.teams;
+    memberships = loaded.memberships;
     canWrite = loaded.canWrite;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
@@ -188,6 +249,9 @@ export default async function PlanningBoardPage(
   const prevWeek = addDays(board.weekStart, -7);
   const nextWeek = addDays(board.weekStart, 7);
 
+  // F7-07: Zeilengruppierung je Primär-Team (null = flach wie bisher).
+  const sections = groupBoardRows(board.rows, memberships);
+
   // F7-05 Slice 2: Anlageziel nur aus sichtbaren Zeilen/Tagen (kein Orakel,
   // keine wochenfremden Daten) — sonst kein Formular.
   const createRow = createMemberId === null
@@ -204,9 +268,8 @@ export default async function PlanningBoardPage(
         <p className="text-sm text-slate-500">Ressourcen-Übersicht</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Plantafel</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Termine der Woche je Mitglied. Einträge tragen ihr Team als Chip;
-          Zuweisung im Detail oder bei Anlage. Team-Zeilengruppierung folgt
-          mit F7-07.
+          Termine der Woche je Mitglied, gruppiert nach Team. Einträge tragen
+          ihr Team als Chip; Zuweisung im Detail oder bei Anlage.
         </p>
 
         <nav aria-label="Woche wählen" className="mt-4 flex flex-wrap items-center gap-3">
@@ -253,8 +316,25 @@ export default async function PlanningBoardPage(
                 </tr>
               </thead>
               <tbody>
-                {board.rows.map((row) => (
-                  <tr key={row.membershipId ?? "unassigned"} className="border-b border-slate-100 last:border-0">
+                {(sections === null
+                  ? [{ key: "flat", title: null as string | null, rows: board.rows }]
+                  : sections
+                ).map((section) => (
+                  <Fragment key={section.key}>
+                    {section.title !== null && (
+                      <tr className="border-b border-slate-200 bg-emerald-50">
+                        <th
+                          scope="rowgroup"
+                          colSpan={board.rows[0]!.days.length + 1}
+                          data-testid={`planning-board-team-section-${section.key}`}
+                          className="px-3 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-emerald-900"
+                        >
+                          {section.title}
+                        </th>
+                      </tr>
+                    )}
+                    {section.rows.map((row) => (
+                    <tr key={row.membershipId ?? "unassigned"} className="border-b border-slate-100 last:border-0">
                     <th scope="row" className="px-3 py-2 text-left font-medium text-slate-900">
                       {row.label}
                     </th>
@@ -301,7 +381,9 @@ export default async function PlanningBoardPage(
                         )}
                       </td>
                     ))}
-                  </tr>
+                    </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

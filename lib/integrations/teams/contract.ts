@@ -42,6 +42,15 @@ export const teamOptionSchema = z.strictObject({
 });
 export type TeamOption = z.infer<typeof teamOptionSchema>;
 
+// F7-07: Team-Zugehörigkeit je Membership (nur aktive Teams; keine PII —
+// Labels löst die Tafel aus dem eigenen Member-Lesepfad auf).
+export const teamMembershipSchema = z.strictObject({
+  teamId: z.uuid(),
+  teamName: z.string().min(1).max(TEAM_NAME_MAX),
+  membershipId: z.uuid(),
+});
+export type TeamMembership = z.infer<typeof teamMembershipSchema>;
+
 export const createTeamCommandSchema = z.strictObject({
   schemaVersion: z.literal(TEAM_SCHEMA_VERSION),
   name: teamNameSchema,

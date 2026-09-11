@@ -16,12 +16,14 @@ import {
   setTeamActiveCommandSchema,
   setTeamMembersCommandSchema,
   teamDtoSchema,
+  teamMembershipSchema,
   teamOptionSchema,
   type TeamDto,
+  type TeamMembership,
   type TeamOption,
 } from "@/lib/integrations/teams/contract";
 
-export type { TeamDto, TeamOption } from "@/lib/integrations/teams/contract";
+export type { TeamDto, TeamMembership, TeamOption } from "@/lib/integrations/teams/contract";
 
 export class TeamValidationError extends Error {
   constructor(message = "team input invalid") {
@@ -173,6 +175,34 @@ export async function listTeamOptions(tx: TenantTx, ctx: ServiceCtx): Promise<Te
      limit ${TEAM_LIST_MAX}
   `);
   return teamOptionSchema.array().parse(result.rows);
+}
+
+// F7-07: Zugehörigkeit je Membership über aktive Teams (Lesekontext,
+// calendar.read wie listTeamOptions; keine PII — nur UUIDs, Labels kommen
+// aus dem Board-Member-Lesepfad). Deterministisch nach Teamname/IDs.
+export async function listTeamMemberships(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<TeamMembership[]> {
+  requireRead(ctx);
+  const result = await tx.execute<{ team_id: string; team_name: string; membership_id: string }>(sql`
+    select team_record.id as team_id,
+           team_record.name as team_name,
+           member_record.membership_id as membership_id
+      from team team_record
+      join team_member member_record
+        on member_record.workspace_id = team_record.workspace_id
+       and member_record.team_id = team_record.id
+     where team_record.workspace_id = ${ctx.workspaceId}::uuid
+       and team_record.active = true
+     order by lower(team_record.name), team_record.id, member_record.membership_id
+     limit ${TEAM_LIST_MAX}
+  `);
+  return teamMembershipSchema.array().parse(result.rows.map((row) => ({
+    teamId: row.team_id,
+    teamName: row.team_name,
+    membershipId: row.membership_id,
+  })));
 }
 
 // Interne Memberships für die Mitglieder-Checkboxen (Verwaltungs-Kontext).
