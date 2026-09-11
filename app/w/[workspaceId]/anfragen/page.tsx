@@ -16,6 +16,11 @@ import {
   type RequestBoardScope,
 } from "@/modules/boards";
 import { listLeadSources } from "@/modules/lead-sources";
+import {
+  LEAD_SCORE_BAND_LABEL,
+  LEAD_SCORE_SIGNAL_LABEL,
+  type LeadScoreBand,
+} from "@/lib/lead-score";
 import { can } from "@/lib/permissions";
 import { ManualLeadForm } from "./manual-lead-form";
 import { ManualLeadBulkForm } from "./manual-lead-bulk-form";
@@ -61,6 +66,19 @@ function productLabels(card: RequestBoardCard): string[] {
   if (card.requestedProducts.bidirectionalCharging) labels.push("Bidirektionales Laden");
   if (card.requestedProducts.backupPower) labels.push("Ersatzstrom");
   return labels;
+}
+
+// F1-07: Ampel-Farbe des Score-Badges (Regel-Score v1, ESTIMATE).
+function scoreBadgeClass(band: LeadScoreBand): string {
+  if (band === "hot") return "bg-green-100 text-green-900";
+  if (band === "warm") return "bg-amber-100 text-amber-900";
+  return "bg-slate-200 text-slate-700";
+}
+
+function scoreSignalsTitle(card: RequestBoardCard): string {
+  if (!card.score) return "";
+  const met = card.score.signals.map((signal) => LEAD_SCORE_SIGNAL_LABEL[signal]);
+  return `Lead-Score ${card.score.value} von 100 (${LEAD_SCORE_BAND_LABEL[card.score.band]})${met.length > 0 ? `: ${met.join(", ")}` : ""}`;
 }
 
 function blockerLabels(card: RequestBoardCard): string[] {
@@ -119,6 +137,30 @@ export default async function RequestsPage({
     else notFound();
   }
 
+  // F1-07: Score-Preset (?score=heiss|warm|kalt). Unbekannte Werte
+  // brechen fail-closed ab — kein stiller Alle-Fallback.
+  const rawScore = (await searchParams)?.score;
+  const scoreValue = Array.isArray(rawScore) ? rawScore[0] : rawScore;
+  let scoreBand: LeadScoreBand | undefined;
+  if (scoreValue !== undefined) {
+    if (scoreValue === "heiss") scoreBand = "hot";
+    else if (scoreValue === "warm") scoreBand = "warm";
+    else if (scoreValue === "kalt") scoreBand = "cold";
+    else notFound();
+  }
+  const boardHref = (
+    targetScope: RequestBoardScope,
+    band: LeadScoreBand | undefined,
+  ): string => {
+    const params = new URLSearchParams();
+    if (targetScope === "commercial") params.set("bereich", "gewerbe");
+    if (band === "hot") params.set("score", "heiss");
+    else if (band === "warm") params.set("score", "warm");
+    else if (band === "cold") params.set("score", "kalt");
+    const query = params.toString();
+    return `/w/${validWorkspaceId}/anfragen${query ? `?${query}` : ""}`;
+  };
+
   let board: Awaited<ReturnType<typeof getRequestBoard>> | undefined;
   let canCreateManualLead = false;
   let leadSourceOptions: Array<{ id: string; name: string }> = [];
@@ -132,7 +174,7 @@ export default async function RequestsPage({
       "project.read",
       "kanban_board",
       async (tx, ctx) => {
-        const board = await getRequestBoard(tx, ctx, { scope });
+        const board = await getRequestBoard(tx, ctx, { scope, scoreBand });
         const canCreate = can(ctx, "project.write");
         // F1-05a: Spaltenverwaltung (nur Editoren; gleiche Schranke wie
         // die Anlage; ohne Recht leere Liste, Board bleibt nutzbar).
@@ -167,10 +209,7 @@ export default async function RequestsPage({
   }
 
   if (unauthenticated) {
-    const nextPath = scope === "commercial"
-      ? `/w/${validWorkspaceId}/anfragen?bereich=gewerbe`
-      : `/w/${validWorkspaceId}/anfragen`;
-    redirect(`/login?${new URLSearchParams({ next: nextPath }).toString()}`);
+    redirect(`/login?${new URLSearchParams({ next: boardHref(scope, scoreBand) }).toString()}`);
   }
   if (denied) return <AccessDenied />;
   if (!board) throw new Error("Anfrage-Board konnte nicht geladen werden");
@@ -234,7 +273,7 @@ export default async function RequestsPage({
         <nav aria-label="Anfrageansichten" className="mb-6 flex flex-wrap gap-2 border-b border-slate-300">
           <Link
             aria-current="page"
-            href={`/w/${validWorkspaceId}/anfragen`}
+            href={boardHref(scope, scoreBand)}
             className="inline-flex min-h-11 items-center border-b-2 border-blue-700 px-3 text-sm font-semibold text-blue-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
           >
             Offen
@@ -249,14 +288,14 @@ export default async function RequestsPage({
         <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-scope-toggle">
           <Link
             aria-current={scope === "residential" ? "page" : undefined}
-            href={`/w/${validWorkspaceId}/anfragen`}
+            href={boardHref("residential", scoreBand)}
             className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scope === "residential" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
           >
             Wohnbau
           </Link>
           <Link
             aria-current={scope === "commercial" ? "page" : undefined}
-            href={`/w/${validWorkspaceId}/anfragen?bereich=gewerbe`}
+            href={boardHref("commercial", scoreBand)}
             className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scope === "commercial" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
           >
             Gewerbe
@@ -265,6 +304,35 @@ export default async function RequestsPage({
             {board.scope === "commercial" ? "Gewerbe-Bereich" : "Wohnbau-Bereich"}
           </span>
         </div>
+        {board.audience === "internal" ? (
+          <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-score-presets">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+              Lead-Score
+            </span>
+            {(
+              [
+                { band: undefined, label: "Alle" },
+                { band: "hot", label: "Heiß" },
+                { band: "warm", label: "Warm" },
+                { band: "cold", label: "Kalt" },
+              ] as Array<{ band: LeadScoreBand | undefined; label: string }>
+            ).map((preset) => (
+              <Link
+                key={preset.label}
+                aria-current={scoreBand === preset.band ? "page" : undefined}
+                href={boardHref(scope, preset.band)}
+                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scoreBand === preset.band ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+              >
+                {preset.label}
+              </Link>
+            ))}
+            {scoreBand !== undefined ? (
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800">
+                Filter aktiv: {LEAD_SCORE_BAND_LABEL[scoreBand]}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {canCreateManualLead ? (
           <div className="mb-6 flex flex-wrap items-start gap-3">
             <ManualLeadForm
@@ -357,6 +425,18 @@ export default async function RequestsPage({
                               {card.contactName}
                             </h3>
                             <p className="mt-0.5 truncate text-xs text-slate-500">{card.name}</p>
+                            {card.score ? (
+                              <p className="mt-2">
+                                <span
+                                  data-testid={`score-${card.id}`}
+                                  title={scoreSignalsTitle(card)}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${scoreBadgeClass(card.score.band)}`}
+                                >
+                                  <span aria-hidden="true">●</span>
+                                  Score {card.score.value} · {LEAD_SCORE_BAND_LABEL[card.score.band]}
+                                </span>
+                              </p>
+                            ) : null}
                           </div>
                           <p className="mt-3 flex items-center gap-1.5 text-sm text-slate-700">
                             <span aria-hidden="true">⌖</span>

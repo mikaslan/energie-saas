@@ -6,6 +6,11 @@ import { writeAudit } from "@/lib/audit";
 import { kanbanColumnColors, kanbanColumnTypes } from "@/lib/db/schema/boards";
 import { getProjectOfferValues } from "@/modules/offers";
 import {
+  computeLeadScore,
+  type LeadScore,
+  type LeadScoreBand,
+} from "@/lib/lead-score";
+import {
   can,
   isExternalOnly,
   PermissionDeniedError,
@@ -36,6 +41,9 @@ export type RequestBoardCard = {
     assignmentRevision: number;
     keyAccountLabel: string | null;
   } | null;
+  // F1-07 Lead-Score (Regel-Score v1, ESTIMATE): null für externe
+  // Leser — internes Qualifizierungssignal, kein Kunden-Datum.
+  score: LeadScore | null;
 };
 
 export type RequestBoardColumn = {
@@ -85,6 +93,14 @@ type CardRow = {
   wallbox: boolean | null;
   bidirectional_charging: boolean | null;
   backup_power: boolean | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  site_lat: number | string | null;
+  site_lng: number | string | null;
+  lead_source_id: string | null;
+  profile_id: string | null;
+  profile_confirmed: boolean | null;
+  has_requirements: boolean;
   dedupe_review_required: boolean;
   address_follow_up_required: boolean;
   pin_confirmed: boolean;
@@ -161,6 +177,10 @@ function numberOrNull(value: number | string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function isNonEmpty(value: string | null): boolean {
+  return value !== null && value.trim() !== "";
+}
+
 function locationLabel(row: CardRow): string {
   const locality = [row.postal_code, row.city].filter(Boolean).join(" ");
   if (locality) return locality;
@@ -184,14 +204,23 @@ export async function getDefaultRequestBoard(
 export async function getRequestBoard(
   tx: TenantTx,
   ctx: ServiceCtx,
-  input: { scope: RequestBoardScope },
+  input: { scope: RequestBoardScope; scoreBand?: LeadScoreBand },
 ): Promise<RequestBoard> {
   requireProjectAccess(ctx, "project.read", "kanban_board");
   const scope = input.scope;
   if (scope !== "residential" && scope !== "commercial") {
     throw new RequestBoardConfigurationError(`unknown board scope ${JSON.stringify(scope)}`);
   }
+  // F1-07 Filter-Preset: unbekannte Bänder fail-closed, kein stiller
+  // Alle-Fallback. Externe Leser haben keinen Score (internes Signal).
+  const scoreBand = input.scoreBand;
+  if (scoreBand !== undefined && scoreBand !== "hot" && scoreBand !== "warm" && scoreBand !== "cold") {
+    throw new RequestBoardConfigurationError(`unknown score band ${JSON.stringify(scoreBand)}`);
+  }
   const external = isExternalOnly(ctx);
+  if (external && scoreBand !== undefined) {
+    throw new RequestBoardConfigurationError("score filter is not available for external readers");
+  }
 
   const boardResult = await tx.execute<BoardRow>(sql`
     select b.id as board_id, b.name as board_name, b.scope as board_scope,
@@ -223,6 +252,16 @@ export async function getRequestBoard(
            p.created_at,
            c.display_name as contact_name,
            s.postal_code, s.city, s.formatted_address, s.address_mode,
+           case when ${external} then null else c.email_primary end as contact_email,
+           case when ${external} then null
+             else coalesce(c.phone_e164, c.phone_mobile, c.phone_raw)
+           end as contact_phone,
+           case when ${external} then null else s.lat end as site_lat,
+           case when ${external} then null else s.lng end as site_lng,
+           case when ${external} then null else p.lead_source_id end as lead_source_id,
+           prof.profile_id as profile_id,
+           (prof.confirmed_at is not null) as profile_confirmed,
+           pr.requirements is not null as has_requirements,
            coalesce(p.dedupe_review_required, false)
              or coalesce(c.dedupe_review_required, false) as dedupe_review_required,
            s.address_follow_up_required, s.pin_confirmed,
@@ -263,6 +302,15 @@ export async function getRequestBoard(
         and ${!external}
       limit 1
     ) key_account on true
+    left join lateral (
+      -- F1-07: id als Existenz-Marker (IS NOT NULL wäre auch ohne Zeile
+      -- FALSE statt NULL und damit als Marker unbrauchbar).
+      select energy_profile.id as profile_id, energy_profile.confirmed_at
+      from site_energy_profile energy_profile
+      where energy_profile.workspace_id = p.workspace_id
+        and energy_profile.site_id = p.site_id
+      limit 1
+    ) prof on true
     where p.workspace_id = ${ctx.workspaceId}::uuid
       and p.kanban_board_id = ${boardId}::uuid
       and p.phase = 'request'
@@ -319,6 +367,17 @@ export async function getRequestBoard(
         assignmentRevision: row.assignment_revision,
         keyAccountLabel: row.key_account_label,
       },
+      score: external ? null : computeLeadScore({
+        hasEmail: isNonEmpty(row.contact_email),
+        hasPhone: isNonEmpty(row.contact_phone),
+        hasAddress: isNonEmpty(row.postal_code) && isNonEmpty(row.city),
+        hasGeo: row.site_lat !== null && row.site_lng !== null,
+        hasProfile: row.profile_id !== null,
+        profileConfirmed: row.profile_id !== null && row.profile_confirmed === true,
+        hasRequirements: row.has_requirements === true,
+        hasKeyAccount: row.key_account_label !== null,
+        hasSource: row.lead_source_id !== null,
+      }),
     });
     cardsByColumn.set(row.column_id, cards);
   }
@@ -336,7 +395,11 @@ export async function getRequestBoard(
       position: row.column_position,
       color: row.column_color,
       isIntake: row.is_intake,
-      cards: cardsByColumn.get(row.column_id) ?? [],
+      // F1-07 Filter-Preset: Ansichtslinse über Bänder; leere Spalten
+      // bleiben stehen (stabile Struktur, keine Definitionsänderung).
+      cards: (cardsByColumn.get(row.column_id) ?? []).filter(
+        (card) => scoreBand === undefined || card.score?.band === scoreBand,
+      ),
     })),
     permissions: external
       ? { canMoveCards: false, canOpenCatalog: false }
