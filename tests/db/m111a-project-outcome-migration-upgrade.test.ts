@@ -81,9 +81,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   Snapshot-Baseline (0115, No-Op: friert den Schema-Stand nach dem
 //   verspaeteten Snapshot-Nachzug 0106-0114 als neue Generate-Basis ein),
 //   F10-07 Portal-Dokument-Download (0116, nur Funktion),
-//   F10-08 Portal-Link-Automatik (0117, nur Funktionen/Kapseln)
-// => 118 Migrationen (idx 0..117).
-const TOTAL_MIGRATION_COUNT = 118;
+//   F10-08 Portal-Link-Automatik (0117, nur Funktionen/Kapseln),
+//   F10-09 Portal-FAQ (0118, Tabelle + Resolver-Projektion)
+// => 119 Migrationen (idx 0..118).
+const TOTAL_MIGRATION_COUNT = 119;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -399,8 +400,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 117,
-        tag: "0117_f10_08_portal_link_notification",
+        idx: 118,
+        tag: "0118_f10_09_portal_status_faq",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

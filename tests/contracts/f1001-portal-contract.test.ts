@@ -145,6 +145,7 @@ describe("F10.1 portal command contracts", () => {
       handoverAt: null,
       timeline: [],
       statusLabels: {},
+      statusFaq: {},
     });
     // Namen/Notizen gehören nicht in die Projektion.
     expect(parsePortalPublicView({
@@ -182,6 +183,7 @@ describe("F10.1 portal command contracts", () => {
       handoverAt: null,
       timeline: [],
       statusLabels: { active: "Wird montiert" },
+      statusFaq: {},
     });
     // Deformiert (fremder Schlüssel, Leertext, Kontrollzeichen) = null.
     for (const statusLabels of [
@@ -194,6 +196,47 @@ describe("F10.1 portal command contracts", () => {
       expect(parsePortalPublicView({
         ...base,
         installation: { status: "active", completedAt: null, handoverAt: null, statusLabels },
+      })).toBeNull();
+    }
+  });
+
+  it("parst StatusFaq-Overrides, fehlend = leer, deformiert = null", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
+      documents: [],
+      appointments: [],
+    };
+    // F10-09: fehlende statusFaq = Alt-Projektion → ehrlich leer.
+    const mapped = parsePortalPublicView({
+      ...base,
+      installation: {
+        status: "active", completedAt: null, handoverAt: null,
+        statusFaq: { active: "Die Montage läuft planmäßig." },
+      },
+    });
+    expect(mapped?.installation).toEqual({
+      status: "active",
+      completedAt: null,
+      handoverAt: null,
+      timeline: [],
+      statusLabels: {},
+      statusFaq: { active: "Die Montage läuft planmäßig." },
+    });
+    // Deformiert (fremder Schlüssel, Leertext, zu lang, Kontrollzeichen) = null.
+    for (const statusFaq of [
+      { flying: "X" },
+      { active: "" },
+      { active: "A".repeat(2001) },
+      { active: "Bau\tmorgen" },
+      "Frag uns",
+    ]) {
+      expect(parsePortalPublicView({
+        ...base,
+        installation: { status: "active", completedAt: null, handoverAt: null, statusFaq },
       })).toBeNull();
     }
   });

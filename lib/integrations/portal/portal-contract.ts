@@ -166,6 +166,21 @@ export const portalInstallationStatusLabelsSchema = z.strictObject({
 });
 export type PortalInstallationStatusLabels = z.infer<typeof portalInstallationStatusLabelsSchema>;
 
+// F10-09: Admin-FAQ je Anzeigestand. Overrides je Schlüssel; fehlende
+// Schlüssel = kein FAQ-Block (kein Default-Text). Spiegel des DB-CHECKs
+// (getrimmt, 1–2000, keine Controls, einzeilig wie Labels).
+const portalInstallationStatusFaqSchema = z.string()
+  .refine((value) => value === value.trim(), { message: "faq ungetrimmt" })
+  .refine((value) => value.length >= 1 && value.length <= 2000, { message: "faq-Laenge" })
+  .refine((value) => !/[\p{Cc}]/u.test(value), { message: "faq-Steuerzeichen" });
+
+export const portalInstallationStatusFaqsSchema = z.strictObject({
+  active: portalInstallationStatusFaqSchema.optional(),
+  completed: portalInstallationStatusFaqSchema.optional(),
+  handover: portalInstallationStatusFaqSchema.optional(),
+});
+export type PortalInstallationStatusFaqs = z.infer<typeof portalInstallationStatusFaqsSchema>;
+
 const portalInstallationSchema = z.strictObject({
   status: z.enum(["active", "completed"]),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
@@ -174,6 +189,8 @@ const portalInstallationSchema = z.strictObject({
   timeline: z.array(portalInstallationTimelineEntrySchema),
   // F10-05 Admin-Overrides (Resolver projiziert nur gesetzte Schlüssel).
   statusLabels: portalInstallationStatusLabelsSchema,
+  // F10-09 Admin-FAQ (Resolver projiziert nur gesetzte Schlüssel).
+  statusFaq: portalInstallationStatusFaqsSchema,
 });
 export type PortalInstallation = z.infer<typeof portalInstallationSchema>;
 
@@ -357,7 +374,7 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     const record = raw as Record<string, unknown>;
     // Nur der DEFINER-Wortschatz; fremde Schlüssel = deformiert.
     for (const key of Object.keys(record)) {
-      if (key !== "status" && key !== "completedAt" && key !== "handoverAt" && key !== "timeline" && key !== "statusLabels") {
+      if (key !== "status" && key !== "completedAt" && key !== "handoverAt" && key !== "timeline" && key !== "statusLabels" && key !== "statusFaq") {
         return null;
       }
     }
@@ -382,7 +399,15 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
         ? (record.statusLabels as PortalInstallationStatusLabels)
         : null;
     if (statusLabels === null) return null;
-    installation = { status: status.data, completedAt, handoverAt, timeline, statusLabels };
+    // F10-09: fehlend = Alt-Projektion ohne FAQ → ehrlich leer
+    // (kein Block); deformiert bricht fail-closed ab.
+    const statusFaq = record.statusFaq === undefined
+      ? {}
+      : portalInstallationStatusFaqsSchema.safeParse(record.statusFaq).success
+        ? (record.statusFaq as PortalInstallationStatusFaqs)
+        : null;
+    if (statusFaq === null) return null;
+    installation = { status: status.data, completedAt, handoverAt, timeline, statusLabels, statusFaq };
   }
   // F10-03c: Katalog F10.3 — kein Preis-/Signatur-Bereich im
   // Commercial-Portal. Strip nach striktem Parse (deformierte Dokumente

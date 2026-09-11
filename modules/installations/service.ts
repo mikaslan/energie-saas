@@ -498,6 +498,23 @@ import {
   installationStatusLabelKeySchema,
   type InstallationStatusLabels,
 } from "@/lib/integrations/installations/status-label-contract";
+// F10-09: Konstanten/Zod aus dem client-sicheren FAQ-Vertrag (gleiche
+// Quelle für Service, UI und Validierung).
+export {
+  INSTALLATION_STATUS_FAQ_KEYS,
+  INSTALLATION_STATUS_FAQ_MAX,
+  INSTALLATION_STATUS_FAQ_SCOPE,
+  installationStatusFaqCommandSchema as statusFaqCommandSchema,
+  installationStatusFaqKeySchema as statusFaqKeySchema,
+  type InstallationStatusFaq,
+  type InstallationStatusFaqKey,
+} from "@/lib/integrations/installations/status-faq-contract";
+import {
+  INSTALLATION_STATUS_FAQ_SCOPE,
+  installationStatusFaqCommandSchema,
+  installationStatusFaqKeySchema,
+  type InstallationStatusFaq,
+} from "@/lib/integrations/installations/status-faq-contract";
 
 export async function listInstallationStatusLabels(
   tx: TenantTx,
@@ -578,4 +595,91 @@ export async function resetInstallationStatusLabel(
     details: { key: parsed.data.key },
   });
   return listInstallationStatusLabels(tx, ctx);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F10-09: Portal-FAQ je Installationsstand (Muster Statusmapping).
+// Gleiche Schlüssel, gleiche Seite, gleiche Rechte
+// (installation.read/installation.write, keine neue Permission).
+// Fehlende Zeile = kein FAQ-Block (kein Default-Text).
+// ═══════════════════════════════════════════════════════════════════════
+export async function listInstallationStatusFaq(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<InstallationStatusFaq> {
+  requireRead(ctx);
+  const result = await tx.execute<{ source_key: string; faq: string }>(sql`
+    select source_key, faq
+      from portal_status_faq
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and scope = ${INSTALLATION_STATUS_FAQ_SCOPE}
+  `);
+  const faqs: InstallationStatusFaq = { active: null, completed: null, handover: null };
+  for (const row of result.rows) {
+    if (row.source_key === "active") faqs.active = row.faq;
+    else if (row.source_key === "completed") faqs.completed = row.faq;
+    else if (row.source_key === "handover") faqs.handover = row.faq;
+  }
+  return faqs;
+}
+
+export async function upsertInstallationStatusFaq(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { key: string; faq: string },
+): Promise<InstallationStatusFaq> {
+  requireWrite(ctx);
+  const parsed = installationStatusFaqCommandSchema.safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+  const command = parsed.data;
+  await tx.execute(sql`
+    insert into portal_status_faq (
+      workspace_id, scope, source_key, faq, created_by, updated_by
+    ) values (
+      ${ctx.workspaceId}::uuid,
+      ${INSTALLATION_STATUS_FAQ_SCOPE},
+      ${command.key},
+      ${command.faq},
+      ${ctx.actor}::uuid,
+      ${ctx.actor}::uuid
+    )
+    on conflict (workspace_id, scope, source_key) do update set
+      faq = excluded.faq,
+      updated_by = excluded.updated_by,
+      updated_at = statement_timestamp()
+  `);
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "installation.set_status_faq",
+    resource: "portal_status_faq",
+    allowed: true,
+    details: { key: command.key },
+  });
+  return listInstallationStatusFaq(tx, ctx);
+}
+
+export async function resetInstallationStatusFaq(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { key: string },
+): Promise<InstallationStatusFaq> {
+  requireWrite(ctx);
+  const parsed = installationStatusFaqKeySchema.safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+  await tx.execute(sql`
+    delete from portal_status_faq
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and scope = ${INSTALLATION_STATUS_FAQ_SCOPE}
+       and source_key = ${parsed.data.key}
+  `);
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "installation.reset_status_faq",
+    resource: "portal_status_faq",
+    allowed: true,
+    details: { key: parsed.data.key },
+  });
+  return listInstallationStatusFaq(tx, ctx);
 }

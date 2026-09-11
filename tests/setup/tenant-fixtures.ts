@@ -2063,6 +2063,15 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${wsId}::uuid, 'installation', 'active', 'Aktiv', ${userId}::uuid)
     `);
   },
+  // F10-09 (0118): Portal-FAQ (Installation-Umfang).
+  portal_status_faq: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"installation":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into portal_status_faq (workspace_id, scope, source_key, faq, created_by)
+      values (${wsId}::uuid, 'installation', 'active', 'Fixture-FAQ.', ${userId}::uuid)
+    `);
+  },
   // F13-02 (0103): Netzanmeldung (Projekt inline, damit der
   // Cross-Write-Pfad zuerst an der RLS der Eltern scheitert).
   grid_registration: async (tx, wsId) => {

@@ -2,26 +2,26 @@
 
 import { useActionState, useState } from "react";
 import {
-  INSTALLATION_STATUS_LABEL_DEFAULTS,
-  INSTALLATION_STATUS_LABEL_KEYS,
-  type InstallationStatusLabelKey,
-  type InstallationStatusLabels,
-} from "@/lib/integrations/installations/status-label-contract";
+  INSTALLATION_STATUS_FAQ_KEYS,
+  INSTALLATION_STATUS_FAQ_MAX,
+  type InstallationStatusFaq,
+  type InstallationStatusFaqKey,
+} from "@/lib/integrations/installations/status-faq-contract";
 import {
-  resetStatusLabelAction,
-  upsertStatusLabelAction,
-  type StatusLabelActionState,
+  resetStatusFaqAction,
+  upsertStatusFaqAction,
+  type StatusFaqActionState,
 } from "./actions";
 
-const initialState: StatusLabelActionState = { status: "idle" };
+const initialState: StatusFaqActionState = { status: "idle" };
 
-const ROW_TITLES: Record<InstallationStatusLabelKey, string> = {
+const ROW_TITLES: Record<InstallationStatusFaqKey, string> = {
   active: "Laufende Installation",
   completed: "Abgeschlossene Installation",
   handover: "Abgenommene Installation",
 };
 
-function Feedback({ state }: { state: StatusLabelActionState }) {
+function Feedback({ state }: { state: StatusFaqActionState }) {
   if (state.status === "idle") return null;
   if (state.status === "success") {
     return <p role="status" className="mt-2 text-sm font-medium text-green-700">{state.message}</p>;
@@ -31,25 +31,25 @@ function Feedback({ state }: { state: StatusLabelActionState }) {
       ? "Dafür fehlt dir die Installations-Freigabe."
       : state.status === "unauthenticated"
         ? "Bitte erneut anmelden."
-        : "Eingaben prüfen (Bezeichnung 1–80 Zeichen, kein Leertext).";
+        : `Eingaben prüfen (FAQ 1–${INSTALLATION_STATUS_FAQ_MAX} Zeichen, kein Leertext).`;
   return <p role="alert" className="mt-2 text-sm font-medium text-red-700">{message}</p>;
 }
 
-// F10-05: eine Zeile je Anzeigestand (Speichern + Zurücksetzen auf
-// Standard). Remount bei Erfolg (stale-DOM, Muster Aufgaben-Vorlagen).
-function StatusLabelRow({
+// F10-09: eine FAQ-Zeile je Anzeigestand (Speichern + Entfernen).
+// Remount bei Erfolg (stale-DOM, Muster Aufgaben-Vorlagen).
+function StatusFaqRow({
   workspaceId,
   stateKey,
   current,
   canWrite,
 }: {
   workspaceId: string;
-  stateKey: InstallationStatusLabelKey;
+  stateKey: InstallationStatusFaqKey;
   current: string | null;
   canWrite: boolean;
 }) {
-  const [upsertState, upsertDispatch] = useActionState(upsertStatusLabelAction, initialState);
-  const [resetState, resetDispatch] = useActionState(resetStatusLabelAction, initialState);
+  const [upsertState, upsertDispatch] = useActionState(upsertStatusFaqAction, initialState);
+  const [resetState, resetDispatch] = useActionState(resetStatusFaqAction, initialState);
   // Remount bei Erfolg/Datensatzwechsel (stale-DOM, Muster Aufgaben-Vorlagen).
   const [successCount, setSuccessCount] = useState(0);
   const [prevStatuses, setPrevStatuses] = useState(
@@ -62,12 +62,13 @@ function StatusLabelRow({
       setSuccessCount((count) => count + 1);
     }
   }
-  const standard = INSTALLATION_STATUS_LABEL_DEFAULTS[stateKey];
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-base font-semibold text-slate-950">{ROW_TITLES[stateKey]}</h2>
       <p className="mt-1 text-sm leading-6 text-slate-600">
-        Aktuell: {current ?? `Standard („${standard}“)`}
+        {current === null
+          ? "Keine FAQ hinterlegt — im Portal erscheint kein FAQ-Block."
+          : `Aktuell: „${current}“`}
       </p>
       {canWrite ? (
         <div className="mt-3 grid gap-3">
@@ -75,14 +76,14 @@ function StatusLabelRow({
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <input type="hidden" name="key" value={stateKey} />
             <label className="grid min-w-52 flex-1 gap-1 text-sm font-semibold text-slate-800">
-              Bezeichnung für {ROW_TITLES[stateKey].toLowerCase()}
-              <input
-                type="text"
-                name="label"
+              FAQ für {ROW_TITLES[stateKey].toLowerCase()}
+              <textarea
+                name="faq"
                 defaultValue={current ?? ""}
                 required
-                maxLength={80}
-                placeholder={standard}
+                maxLength={INSTALLATION_STATUS_FAQ_MAX}
+                rows={3}
+                placeholder="z. B. Die Anlage läuft, die Abnahme folgt in Kürze."
                 className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
               />
             </label>
@@ -101,7 +102,7 @@ function StatusLabelRow({
                 type="submit"
                 className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
               >
-                Auf Standard zurücksetzen
+                FAQ entfernen
               </button>
             </form>
           ) : null}
@@ -117,23 +118,23 @@ function StatusLabelRow({
   );
 }
 
-export function StatusLabelManager({
+export function StatusFaqManager({
   workspaceId,
-  labels,
+  faqs,
   canWrite,
 }: {
   workspaceId: string;
-  labels: InstallationStatusLabels;
+  faqs: InstallationStatusFaq;
   canWrite: boolean;
 }) {
   return (
-    <div className="grid gap-4" data-testid="portal-status-labels">
-      {INSTALLATION_STATUS_LABEL_KEYS.map((stateKey) => (
-        <StatusLabelRow
+    <div className="grid gap-4" data-testid="portal-status-faqs">
+      {INSTALLATION_STATUS_FAQ_KEYS.map((stateKey) => (
+        <StatusFaqRow
           key={stateKey}
           workspaceId={workspaceId}
           stateKey={stateKey}
-          current={labels[stateKey]}
+          current={faqs[stateKey]}
           canWrite={canWrite}
         />
       ))}

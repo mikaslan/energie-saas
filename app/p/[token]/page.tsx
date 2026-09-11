@@ -3,7 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { publicTokenCapsule } from "@/lib/action";
-import type { PortalInstallationStatusLabels } from "@/lib/integrations/portal/portal-contract";
+import type {
+  PortalInstallationStatusFaqs,
+  PortalInstallationStatusLabels,
+} from "@/lib/integrations/portal/portal-contract";
 import {
   formatPortalDate,
   formatPortalInstallationStatus,
@@ -17,6 +20,7 @@ import {
   PORTAL_STRINGS,
   PORTAL_SUBSIDY_PROGRAM_WORD,
   PORTAL_SUBSIDY_STATUS_WORD,
+  resolvePortalInstallationFaqKey,
   resolvePortalNextStep,
 } from "@/lib/integrations/portal/portal-language";
 import { PortalNotFoundError, resolvePortalByToken } from "@/modules/portal";
@@ -97,6 +101,13 @@ export default async function PortalTokenPage({
         ? t.confirmGone
         : null;
   const nextStep = resolvePortalNextStep(view.project.phase, view.project.outcome, lang);
+  // F10-09: FAQ genau des aktuellen Installationsstands (Abnahme >
+  // Abschluss > laufend); ohne Eintrag kein Block.
+  const installationFaq = view.installation === null
+    ? null
+    : (view.installation.statusFaq as PortalInstallationStatusFaqs)[
+      resolvePortalInstallationFaqKey(view.installation.status, view.installation.handoverAt)
+    ] ?? null;
   // F10-06: Sprache immer explizit weitergeben (stateless, kein JS nötig).
   const langQuery = `lang=${lang}`;
   const tabClass = (active: boolean): string =>
@@ -156,6 +167,12 @@ export default async function PortalTokenPage({
                   )}</dd>
                 </div>
               </dl>
+              {installationFaq === null ? null : (
+                <>
+                  <h3 className="mt-4 text-sm font-semibold text-slate-950">{t.faqHeading}</h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{installationFaq}</p>
+                </>
+              )}
               <h3 className="mt-4 text-sm font-semibold text-slate-950">{t.historyHeading}</h3>
               {view.installation.timeline.length === 0 ? (
                 <p className="mt-1 text-sm leading-6 text-slate-600">

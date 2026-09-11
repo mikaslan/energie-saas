@@ -44,6 +44,7 @@ export * from "./planning";
 export * from "./service-case";
 export * from "./team";
 export * from "./portal-status-label";
+export * from "./portal-status-faq";
 export * from "./grid-registration";
 export * from "./file-request";
 export * from "./subsidy-case";

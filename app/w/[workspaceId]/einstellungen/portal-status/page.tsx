@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
-import { listInstallationStatusLabels } from "@/modules/installations";
-import type { InstallationStatusLabels } from "@/modules/installations";
+import { listInstallationStatusFaq, listInstallationStatusLabels } from "@/modules/installations";
+import type { InstallationStatusFaq, InstallationStatusLabels } from "@/modules/installations";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { DeniedState } from "../../_ui";
+import { StatusFaqManager } from "./status-faq-manager";
 import { StatusLabelManager } from "./status-label-manager";
 
 export const metadata: Metadata = {
@@ -22,7 +23,7 @@ export default async function PortalStatusPage(
   const workspaceId = parsedWorkspace.data;
 
   let result:
-    | { labels: InstallationStatusLabels; canWrite: boolean }
+    | { labels: InstallationStatusLabels; faqs: InstallationStatusFaq; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -31,6 +32,7 @@ export default async function PortalStatusPage(
       "portal_status_label",
       async (tx, ctx) => ({
         labels: await listInstallationStatusLabels(tx, ctx),
+        faqs: await listInstallationStatusFaq(tx, ctx),
         canWrite: can(ctx, "installation.write"),
       }),
     );
@@ -63,6 +65,20 @@ export default async function PortalStatusPage(
       <StatusLabelManager
         workspaceId={workspaceId}
         labels={result.labels}
+        canWrite={result.canWrite}
+      />
+
+      <div className="mb-6 mt-10">
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight">Portal-FAQ</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+          Kunden-FAQ je Installationsstand im Kundenportal — ohne Eintrag
+          erscheint kein FAQ-Block, Entfernen löscht die Zeile.
+        </p>
+      </div>
+
+      <StatusFaqManager
+        workspaceId={workspaceId}
+        faqs={result.faqs}
         canWrite={result.canWrite}
       />
     </main>

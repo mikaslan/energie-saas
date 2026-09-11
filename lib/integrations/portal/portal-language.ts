@@ -38,6 +38,7 @@ export interface PortalStrings {
   statusTerm: string;
   installationHeading: string;
   installationEmpty: string;
+  faqHeading: string;
   historyHeading: string;
   historyEmpty: string;
   appointmentsHeading: string;
@@ -220,6 +221,17 @@ export const PORTAL_INSTALLATION_FALLBACK_WORD: Record<
   en: { active: "In progress", completed: "Completed", handover: "Accepted" },
 };
 
+// F10-09: Anzeigeschlüssel für die FAQ (gleiche Ableitung wie das
+// Statuswort: Abnahme schlägt Abschluss schlägt laufend).
+export function resolvePortalInstallationFaqKey(
+  status: "active" | "completed",
+  handoverAt: string | null,
+): "active" | "completed" | "handover" {
+  if (status === "completed" && handoverAt !== null) return "handover";
+  if (status === "completed") return "completed";
+  return "active";
+}
+
 export function formatPortalInstallationStatus(
   lang: PortalLang,
   status: "active" | "completed",
@@ -318,6 +330,7 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     statusTerm: "Stand:",
     installationHeading: "Installation",
     installationEmpty: "Noch keine Installation hinterlegt.",
+    faqHeading: "Gut zu wissen",
     historyHeading: "Verlauf",
     historyEmpty: "Noch keine Ereignisse.",
     appointmentsHeading: "Termine",
@@ -360,6 +373,7 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     statusTerm: "Status:",
     installationHeading: "Installation",
     installationEmpty: "No installation recorded yet.",
+    faqHeading: "Good to know",
     historyHeading: "History",
     historyEmpty: "No events yet.",
     appointmentsHeading: "Appointments",

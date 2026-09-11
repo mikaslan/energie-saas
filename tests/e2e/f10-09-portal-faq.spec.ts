@@ -11,11 +11,10 @@ import {
 } from "../setup/pg-pool-drain";
 
 /**
- * F10-05 Portal-Statusmapping — Chromium-E2E (isolierter Workspace).
- * Editor setzt die Bezeichnung für laufende Installationen in den
- * Einstellungen → Portal-Installation-Tab zeigt sie; Zurücksetzen
- * stellt den Standardtext wieder her. Keine Workspace-Lecks (eigener
- * Workspace, Mapping wird zurückgesetzt).
+ * F10-09 Portal-FAQ je Installationsstand — Chromium-E2E (isolierter
+ * Workspace). Editor setzt die FAQ für laufende Installationen in den
+ * Einstellungen → Portal-Installation-Tab zeigt sie unter dem Stand;
+ * Entfernen blendet den FAQ-Block wieder aus.
  */
 
 type E2EState = {
@@ -29,7 +28,7 @@ function state(): E2EState {
   const full = fixtureState();
   for (const key of ["baseURL", "databaseUrl", "serverLogPath", "editorEmail"] as const) {
     if (typeof full[key] !== "string" || full[key] === "") {
-      throw new Error(`Der private F10-05-E2E-State ist unvollständig (${key}).`);
+      throw new Error(`Der private F10-09-E2E-State ist unvollständig (${key}).`);
     }
   }
   return full as unknown as E2EState;
@@ -96,7 +95,7 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
   await page.waitForURL((url) => url.pathname === expectedPath);
 }
 
-test("F10-05-E2E-01: Statusmapping erreicht das Portal und fällt zurück", async ({ page }) => {
+test("F10-09-E2E-01: FAQ erreicht das Portal und blendet sich aus", async ({ page }) => {
   test.setTimeout(240_000);
   const data = state();
   const errors: string[] = [];
@@ -113,8 +112,8 @@ test("F10-05-E2E-01: Statusmapping erreicht das Portal und fällt zurück", asyn
 
   await page.getByTestId("manual-lead-open").click();
   const leadForm = page.getByTestId("manual-lead-form");
-  await leadForm.getByLabel("Name *").fill("E2E Statusmapping");
-  await leadForm.getByLabel("Telefon").fill("0151 45678907");
+  await leadForm.getByLabel("Name *").fill("E2E Portal-FAQ");
+  await leadForm.getByLabel("Telefon").fill("0151 45678909");
   await leadForm.getByRole("button", { name: "Anfrage anlegen" }).click();
   const success = page.getByTestId("manual-lead-success");
   await expect(success).toContainText("Anfrage angelegt");
@@ -126,15 +125,15 @@ test("F10-05-E2E-01: Statusmapping erreicht das Portal und fällt zurück", asyn
   await seedActiveInstallation(workspaceId, projectId);
 
   const stamp = Date.now();
-  const customLabel = `Wird montiert ${stamp}`;
+  const customFaq = `Die Montage läuft planmäßig ${stamp}.`;
   const settingsPath = `/w/${workspaceId}/einstellungen/portal-status`;
   await page.goto(settingsPath);
-  const activeRow = page.getByTestId("portal-status-labels").locator("section").filter({
+  const faqRow = page.getByTestId("portal-status-faqs").locator("section").filter({
     has: page.getByRole("heading", { name: "Laufende Installation", exact: true }),
   });
-  await activeRow.getByLabel(/Bezeichnung für laufende installation/i).fill(customLabel);
-  await activeRow.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(activeRow.getByText("Bezeichnung gespeichert.")).toBeVisible();
+  await faqRow.getByLabel(/FAQ für laufende installation/i).fill(customFaq);
+  await faqRow.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(faqRow.getByText("FAQ gespeichert.")).toBeVisible();
 
   await page.goto(projectPath);
   const portal = page.locator("section").filter({
@@ -147,18 +146,19 @@ test("F10-05-E2E-01: Statusmapping erreicht das Portal und fällt zurück", asyn
 
   await page.goto(`${tokenPath}?tab=installation`);
   await expect(page.getByText("Kundenportal", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(customLabel, { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Gut zu wissen", exact: true })).toBeVisible();
+  await expect(page.getByText(customFaq, { exact: true })).toBeVisible();
 
   await page.goto(settingsPath);
-  const resetRow = page.getByTestId("portal-status-labels").locator("section").filter({
+  const resetRow = page.getByTestId("portal-status-faqs").locator("section").filter({
     has: page.getByRole("heading", { name: "Laufende Installation", exact: true }),
   });
-  await resetRow.getByRole("button", { name: "Auf Standard zurücksetzen", exact: true }).click();
-  await expect(resetRow.getByText("Auf Standard zurückgesetzt.")).toBeVisible();
+  await resetRow.getByRole("button", { name: "FAQ entfernen", exact: true }).click();
+  await expect(resetRow.getByText("FAQ entfernt.")).toBeVisible();
 
   await page.goto(`${tokenPath}?tab=installation`);
-  await expect(page.getByText("In Ausführung", { exact: true })).toBeVisible();
-  expect(await page.getByText(customLabel, { exact: true }).count()).toBe(0);
+  await expect(page.getByRole("heading", { name: "Gut zu wissen", exact: true })).toHaveCount(0);
+  expect(await page.getByText(customFaq, { exact: true }).count()).toBe(0);
 
   expect(errors, "Browser-Konsole und Page-Errors der Portal-Grenze").toEqual([]);
 });
