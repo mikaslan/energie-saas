@@ -16,7 +16,7 @@ import { expect, test, type Page } from "playwright/test";
 type E2EState = {
   serverLogPath: string;
   w3WorkspaceId: string;
-  f93ProjectId: string;
+  f909ProjectId: string;
   editorEmail: string;
 };
 
@@ -32,7 +32,7 @@ function state(): E2EState {
   const required: Array<keyof E2EState> = [
     "serverLogPath",
     "w3WorkspaceId",
-    "f93ProjectId",
+    "f909ProjectId",
     "editorEmail",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
@@ -105,7 +105,7 @@ function trackErrors(page: Page): string[] {
   return errors;
 }
 
-const path = (): string => `/w/${state().w3WorkspaceId}/anfragen/${state().f93ProjectId}/zeiterfassung`;
+const path = (): string => `/w/${state().w3WorkspaceId}/anfragen/${state().f909ProjectId}/zeiterfassung`;
 
 async function createEntry(
   page: Page,

@@ -152,6 +152,9 @@ type E2EState = Pick<
   f25ProjectId: string;
   f71ProjectId: string;
   f93ProjectId: string;
+  f902bProjectId: string;
+  f903ProjectId: string;
+  f909ProjectId: string;
   f162ProjectId: string;
   f163dProjectId: string;
   f163cProjectId: string;
@@ -1482,6 +1485,24 @@ async function main(): Promise<number> {
   const server = await waitForNext(nextChild, readyFile, readyToken, serverLogPath);
   throwIfInterrupted();
 
+  // M3-00-Flake (CI 34600738237): Die Rechnungsstellungs-Seite wird im Lauf
+  // erst spät erstmals getroffen; der Dev-Kaltstart genau dieser Route ließ
+  // page.goto ins 30-s-Timeout laufen, der Zweitbesuch (Test 2) war grün.
+  // Route vorab kompilieren (Redirect nicht folgen) — der Test selbst bleibt
+  // die harte Prüfung, Aufwärmen ist nur Timing-Determinismus.
+  for (const warmPath of [`/w/${seedData.workspaceId}/einstellungen/rechnungsstellung`]) {
+    try {
+      const warmResponse = await fetch(`${server.baseURL}${warmPath}`, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(120_000),
+      });
+      await warmResponse.arrayBuffer();
+    } catch (error) {
+      console.log(`[e2e] Routen-Warmup übersprungen (${warmPath}): ${safeMessage(error)}`);
+    }
+  }
+  throwIfInterrupted();
+
   const mainLead = await submitSignedLead(
     server,
     embedded.superuserUrl,
@@ -1595,6 +1616,27 @@ async function main(): Promise<number> {
     w3Credential,
     intakePayload("Frieda W3 Zeiterfassung", `w3-f93-${randomUUID()}`, true),
   );
+  // F9-Schreiber je eigenes Projekt (F9-02b/03/09 teilten f93 und
+  // verschoben einander exakte Summen — CI-Flake mit derselben
+  // toBeVisible-Signatur; Muster f94/f94c/f94d).
+  const w3F902bLead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("F902B W3 Bereich", `w3-f902b-${randomUUID()}`, true),
+  );
+  const w3F903Lead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("F903 W3 Fremdfilter", `w3-f903-${randomUUID()}`, true),
+  );
+  const w3F909Lead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("F909 W3 Listenfilter", `w3-f909-${randomUUID()}`, true),
+  );
   throwIfInterrupted();
 
   writeState(statePath, {
@@ -1613,6 +1655,9 @@ async function main(): Promise<number> {
     f25ProjectId: w3F25Seed.projectId,
     f71ProjectId: w3F71Seed.projectId,
     f93ProjectId: w3F93Lead.projectId,
+    f902bProjectId: w3F902bLead.projectId,
+    f903ProjectId: w3F903Lead.projectId,
+    f909ProjectId: w3F909Lead.projectId,
     f162ProjectId: w3F162Seed.projectId,
     f163dProjectId: w3F163dSeed.projectId,
     f163cProjectId: w3F163cSeed.projectId,

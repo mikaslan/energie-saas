@@ -943,11 +943,16 @@ export async function getBoardPipelineSummary(
      where workspace_id = ${ctx.workspaceId}::uuid
        and kanban_board_id = ${input.boardId}::uuid
   `);
-  const values = await getProjectOfferValues(
-    tx,
-    ctx,
-    projects.rows.map((row) => row.id),
-  );
+  // Externe Leser sehen keine Angebotswerte (Maskierung wie Karten);
+  // Summen bleiben 0, Zähler intakt — fail-closed statt Board-Denial
+  // (F1-05b-Regression: getProjectOfferValues lehnt Externe ab).
+  const values: Record<string, number | null> = isExternalOnly(ctx)
+    ? {}
+    : await getProjectOfferValues(
+      tx,
+      ctx,
+      projects.rows.map((row) => row.id),
+    );
   const byColumn = new Map<string, { count: number; total: number }>();
   for (const project of projects.rows) {
     const entry = byColumn.get(project.column_id) ?? { count: 0, total: 0 };

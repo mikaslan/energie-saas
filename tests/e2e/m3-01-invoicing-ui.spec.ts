@@ -219,6 +219,71 @@ async function seedIssuedInvoice(
   }
 }
 
+// F8-01: UI-Drafts tragen keine Positionen; ohne Brutto filtert F8-03
+// sie aus den Anrechnungskandidaten. Zeile + Summen spiegeln exakt den
+// Service-Pfad (Summen-Update wie addCommercialDocumentLine).
+async function seedDraftLine(documentName: string, netCents: number, taxCents: number): Promise<void> {
+  const data = state();
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_catalog.set_config('app.workspace_id', $1, true)", [data.workspaceId]);
+    await client.query(
+      `select pg_catalog.set_config('app.actor_id', u.id::text, true)
+         from user_identity u where u.email = $1 limit 1`,
+      [data.editorEmail],
+    );
+    await client.query(
+      `insert into commercial_document_line (
+         workspace_id, document_id, position, name, quantity_milli, unit,
+         net_cents, tax_cents, gross_cents, tax_rate_bps
+       ) values (
+         $1::uuid,
+         (select id from commercial_document
+           where workspace_id = $1::uuid and name = $2 and status = 'draft' limit 1),
+         1, 'E2E-Position', 1000, 'piece', $3::bigint, $4::bigint,
+         $3::bigint + $4::bigint, 1900
+       )`,
+      [data.workspaceId, documentName, netCents, taxCents],
+    );
+    await client.query(
+      `update commercial_document
+          set net_cents = (
+                select coalesce(sum(line_row.net_cents), 0)
+                  from commercial_document_line line_row
+                 where line_row.workspace_id = commercial_document.workspace_id
+                   and line_row.document_id = commercial_document.id
+              ),
+              tax_cents = (
+                select coalesce(sum(line_row.tax_cents), 0)
+                  from commercial_document_line line_row
+                 where line_row.workspace_id = commercial_document.workspace_id
+                   and line_row.document_id = commercial_document.id
+              ),
+              gross_cents = (
+                select coalesce(sum(line_row.gross_cents), 0)
+                  from commercial_document_line line_row
+                 where line_row.workspace_id = commercial_document.workspace_id
+                   and line_row.document_id = commercial_document.id
+              ),
+              updated_at = statement_timestamp()
+        where workspace_id = $1::uuid and name = $2 and status = 'draft'`,
+      [data.workspaceId, documentName],
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    const pgError = error as { message?: unknown };
+    throw new Error(
+      `seedDraftLine fehlgeschlagen (name=${documentName}): ${String(pgError.message)}`,
+    );
+  } finally {
+    await client.release();
+    await endPoolAndWaitForClientRemoval(pool);
+  }
+}
+
 async function seedInvoicingSettings(): Promise<void> {
   const data = state();
   const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
@@ -488,19 +553,31 @@ test("F8-01-E2E-01: Anzahlung ausstellen → Schlussrechnung verlinken → Restb
 
   await createDraft("F801-Anzahlung");
   await createDraft("F801-Schluss");
+  // Beträge je Beleg (Anzahlung 119,00 €, Schluss 238,00 €) — ohne
+  // Positionen filtert F8-03 beide aus den Kandidaten.
+  await seedDraftLine("F801-Anzahlung", 10000, 1900);
+  await seedDraftLine("F801-Schluss", 20000, 3800);
 
   const depositRow = page.getByRole("row").filter({ hasText: "F801-Anzahlung" });
   await depositRow.getByRole("button", { name: "Ausstellen" }).click();
   await expect(depositRow.getByText("Ausgestellt")).toBeVisible();
+  const depositNumber = /RE-2026-\S+/.exec(
+    (await depositRow.getByText(/RE-2026-/u).textContent()) ?? "",
+  )?.[0] ?? "";
+  expect(depositNumber).toMatch(/^RE-2026-/u);
 
   const finalRow = page.getByRole("row").filter({ hasText: "F801-Schluss" });
   await finalRow.getByRole("link", { name: "F801-Schluss" }).click();
 
   const deposits = page.locator('[data-invoice-detail="deposits"]');
   await expect(deposits.getByText("Keine Anzahlungen angerechnet.")).toBeVisible();
-  await deposits.getByLabel("Anzahlung").selectOption({ index: 0 });
+  await deposits.getByLabel("Anzahlung").selectOption({
+    label: `${depositNumber} · 119,00 €`,
+  });
   await deposits.getByRole("button", { name: "Anrechnen" }).click();
+  // 238,00 − 119,00 = 119,00 Rest.
   await expect(deposits.getByText("Offener Restbetrag")).toBeVisible();
+  await expect(deposits.locator("dd", { hasText: "119,00 €" })).toBeVisible();
   await expect(deposits.getByText("Keine Anzahlungen angerechnet.")).toHaveCount(0);
 
   expect(errors, "Browser-Konsole und Page-Errors der Anrechnungs-Journey").toEqual([]);

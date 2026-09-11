@@ -1,10 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "playwright/test";
-import {
-  createDrainTrackedPool,
-  endPoolAndWaitForClientRemoval,
-} from "../setup/pg-pool-drain";
+import { poolOne, seedIsolatedWorkspace } from "./m1-11g-fixture";
 
 /**
  * M3-00 Workspace-Stammdaten (Rechnungsstellung) — Chromium-E2E.
@@ -22,8 +19,15 @@ import {
  *
  * Rollenmodell (0045): read = viewer/editor/admin; write = Admin ODER Editor
  * mit Invoicing-Capability (`invoicing` = true); external_only-Mitgliedschaften
- * sind in beiden Fällen ausgeschlossen. Der Seed-Editor trägt die Capability
- * nicht — die Fixture `grantInvoicingCapability` rüstet sie gemäß Spec nach.
+ * sind in beiden Fällen ausgeschlossen.
+ *
+ * Isolation (CI 34600738237): Die Suite läuft auf einem eigenen Workspace
+ * (Muster m1-11g/f9-02b/03/09) — f8-04b/f8-05 schreiben im Haupt-Workspace
+ * `workspace_invoicing_settings` per Upsert (`F804B GmbH`), sodass der
+ * Empty-State („Noch keine Stammdaten hinterlegt.“) dort deterministisch
+ * verloren ist. Mitgliedschaften spiegeln den Haupt-Seed 1:1 (Editor mit
+ * Katalog-Caps + `invoicing`, Viewer lesend, External `external_only`);
+ * isoliert ist nur der Datenstand, nicht der Rollenpfad.
  */
 
 type E2EState = {
@@ -67,43 +71,82 @@ function state(): E2EState {
   return parsed as E2EState;
 }
 
-/**
- * Spec M3-00 §5: Schreibrecht = Admin ODER Editor mit Invoicing-Recht.
- * Der M1-05-Seed-Editor hat die Capability nicht — die Fixture rüstet sie
- * nach (Produktweg wäre die Mitgliederpflege, die es in M3-00 noch nicht
- * gibt).
- */
-async function grantInvoicingCapability(): Promise<void> {
+test.describe.configure({ mode: "serial" });
+
+let isolatedWorkspaceId = "";
+
+async function resolveIdentityIds(): Promise<{ editorId: string; viewerId: string; externalId: string }> {
   const data = state();
-  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
-    await client.query(
-      "select pg_catalog.set_config('app.workspace_id', $1, true)",
-      [data.workspaceId],
+  return poolOne(async (pool) => {
+    const result = await pool.query(
+      `select id, lower(email) as email from user_identity
+        where lower(email) in (lower($1), lower($2), lower($3))`,
+      [data.editorEmail, data.viewerEmail, data.externalEmail],
     );
-    await client.query(
-      `update membership
-          set capabilities = pg_catalog.jsonb_set(
-            coalesce(capabilities, '{}'::jsonb),
-            '{invoicing}',
-            'true'::jsonb,
-            true
-          )
-        where workspace_id = $1::uuid
-          and user_id = (select id from user_identity where email = $2 limit 1)`,
-      [data.workspaceId, data.editorEmail],
+    const byEmail = new Map(
+      (result.rows as Array<{ id: string; email: string }>).map((row) => [row.email, row.id]),
     );
-    await client.query("commit");
-  } finally {
-    await client.release();
-    await endPoolAndWaitForClientRemoval(pool);
-  }
+    const editorId = byEmail.get(data.editorEmail.toLowerCase());
+    const viewerId = byEmail.get(data.viewerEmail.toLowerCase());
+    const externalId = byEmail.get(data.externalEmail.toLowerCase());
+    if (!editorId || !viewerId || !externalId) {
+      throw new Error("M3-00-E2E-Identitäten fehlen im Seed.");
+    }
+    return { editorId, viewerId, externalId };
+  });
 }
 
+// Suite-Setup: eigener Workspace mit Haupt-Seed-paritätischen
+// Mitgliedschaften; der Seed-Editor trägt `invoicing` nicht — hier wird sie
+// nachgerüstet (Produktweg wäre die Mitgliederpflege, die es in M3-00 noch
+// nicht gibt). Bisheriges `grantInvoicingCapability` auf Haupt-Workspace.
+test.beforeAll(async () => {
+  const { editorId, viewerId, externalId } = await resolveIdentityIds();
+  const workspaceId = await seedIsolatedWorkspace(editorId);
+  await poolOne(async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `select pg_catalog.set_config('app.workspace_id', $1, true),
+                pg_catalog.set_config('app.actor_id', '', true)`,
+        [workspaceId],
+      );
+      // seedIsolatedWorkspace vergibt Admin — M3-00 prüft den Editor-Pfad:
+      // Rolle + Katalog-Caps wie Haupt-Seed, plus Invoicing-Schreibrecht.
+      await client.query(
+        `update membership
+            set role = 'editor',
+                capabilities = '{"manage_catalog":true,"edit_prices":true,
+                  "see_purchase_prices":true,"assign_projects":true,
+                  "invoicing":true}'::jsonb
+          where workspace_id = $1::uuid and user_id = $2::uuid`,
+        [workspaceId, editorId],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role)
+         values ($1::uuid, $2::uuid, 'viewer')`,
+        [workspaceId, viewerId],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'viewer', '{"external_only":true}'::jsonb)`,
+        [workspaceId, externalId],
+      );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+  isolatedWorkspaceId = workspaceId;
+});
+
 function settingsPath(): string {
-  return `/w/${state().workspaceId}/einstellungen/rechnungsstellung`;
+  if (!isolatedWorkspaceId) throw new Error("M3-00-Isolations-Workspace fehlt (beforeAll).");
+  return `/w/${isolatedWorkspaceId}/einstellungen/rechnungsstellung`;
 }
 
 function escapeRegExp(value: string): string {
@@ -178,7 +221,6 @@ test("M3-00: Editor legt Stammdaten an und lädt sie persistiert erneut", async 
   const errors = trackBrowserErrors(page);
   const path = settingsPath();
 
-  await grantInvoicingCapability();
   await page.goto(path);
   await loginWithRealOtp(page, data.editorEmail, path);
 
@@ -215,7 +257,6 @@ test("M3-00: Zahlenkreis-Template validiert und speichert ohne Zähler-Reset", a
   const errors = trackBrowserErrors(page);
   const path = settingsPath();
 
-  await grantInvoicingCapability();
   await page.goto(path);
   await loginWithRealOtp(page, data.editorEmail, path);
 

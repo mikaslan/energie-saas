@@ -337,7 +337,7 @@ export default async function RequestsPage({
         {board.audience === "internal" ? (
           <>
           <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-score-presets">
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
               Lead-Score
             </span>
             {(
@@ -364,7 +364,7 @@ export default async function RequestsPage({
             ) : null}
           </div>
           <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-followup-presets">
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
               Wiedervorlage
             </span>
             {(

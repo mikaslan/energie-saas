@@ -13,7 +13,7 @@ import { expect, test, type Page } from "playwright/test";
 type E2EState = {
   serverLogPath: string;
   w3WorkspaceId: string;
-  f93ProjectId: string;
+  f902bProjectId: string;
   editorEmail: string;
 };
 
@@ -26,7 +26,7 @@ function state(): E2EState {
   const required: Array<keyof E2EState> = [
     "serverLogPath",
     "w3WorkspaceId",
-    "f93ProjectId",
+    "f902bProjectId",
     "editorEmail",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
@@ -103,7 +103,7 @@ test("F9.02b-E2E-01: Eintrag zeigt Bereichs-Chip Residential", async ({ page }) 
   test.setTimeout(150_000);
   const data = state();
   const errors = trackErrors(page);
-  const url = `/w/${data.w3WorkspaceId}/anfragen/${data.f93ProjectId}/zeiterfassung`;
+  const url = `/w/${data.w3WorkspaceId}/anfragen/${data.f902bProjectId}/zeiterfassung`;
 
   await page.goto(url);
   await loginWithRealOtp(page, data.editorEmail, url);
