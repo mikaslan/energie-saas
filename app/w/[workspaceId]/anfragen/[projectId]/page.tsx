@@ -13,6 +13,7 @@ import {
   getProjectCatalogResolutionContext,
   type ProjectCatalogResolutionContext,
 } from "@/modules/catalog";
+import { getGridRegistration } from "@/modules/grid-registration";
 import {
   getProjectAssignmentContext,
   getProjectFollowUp,
@@ -79,6 +80,7 @@ import { PortalSection } from "./portal-section";
 import { ProductResolutionSection } from "./product-resolution-section";
 import { ProjectActivityPanel } from "./project-activity-panel";
 import { FollowUpSection } from "./follow-up-section";
+import { GridRegistrationSection } from "./grid-registration-section";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import { ProjectNotesSection } from "./project-notes-section";
 import { ProjectOutcomePanel } from "./project-outcome-panel";
@@ -748,6 +750,37 @@ export default async function ProjectTriagePage({
     redirectToProjectLogin(detailPath);
   }
 
+  // F13-02: Netzanmeldung entkoppelt (eigene Sichtbarkeit, interne Sicht
+  // endet vorher bei externer Leserschaft — siehe Audience-Branch).
+  const gridRegistrationResult = await (async (): Promise<
+    | { kind: "loaded"; registration: Awaited<ReturnType<typeof getGridRegistration>>; canWrite: boolean }
+    | { kind: "unauthenticated" }
+    | { kind: "denied" }
+  > => {
+    try {
+      const registration = await authorizedQuery(
+        workspaceId,
+        "installation.read",
+        "grid_registration",
+        (tx, ctx) => getGridRegistration(tx, ctx, projectId),
+      );
+      const writable = await authorizedQuery(
+        workspaceId,
+        "installation.read",
+        "grid_registration_write_gate",
+        async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
+      );
+      return { kind: "loaded", registration, canWrite: writable };
+    } catch (error) {
+      if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+      if (error instanceof PermissionDeniedError) return { kind: "denied" };
+      throw error;
+    }
+  })();
+  if (gridRegistrationResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+
   const taskPageResult = await loadProjectTaskPage(
     workspaceId,
     projectId,
@@ -997,6 +1030,17 @@ export default async function ProjectTriagePage({
               projectId={projectId}
               followUpAt={followUpResult.followUpAt}
               canWrite={followUpResult.canWrite}
+            />
+          </div>
+        ) : null}
+
+        {gridRegistrationResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <GridRegistrationSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              registration={gridRegistrationResult.registration}
+              canWrite={gridRegistrationResult.canWrite}
             />
           </div>
         ) : null}

@@ -628,6 +628,11 @@ const COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS = [
   "commercial_document_partial",
   "commercial_document_partial_line",
 ] as const;
+
+// F13-01 (0103): eigene Menge — Netzanmeldung je Projekt (Statusmaschine).
+const GRID_REGISTRATION_RELATIONS = [
+  "grid_registration",
+] as const;
 const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
   "public._m301_actor_invoicing_role(uuid)",
   "public._m301_actor_can_read_invoicing(uuid)",
@@ -2897,6 +2902,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F13-01 (0103): eigene ACL-Menge — Anlage/Lesen/Schreiben, nie Löschen
+  // (Storno logisch über Status; Muster appointment_template).
+  const hasGridRegistrationsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    GRID_REGISTRATION_RELATIONS,
+    "Rollen-ACL-Manifest: F13-02-Netzanmeldung",
+  );
+  if (hasGridRegistrationsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.grid_registration
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.grid_registration to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -3909,6 +3931,12 @@ export async function verifyRoleContract(
     COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS,
     "Rollenvertrag: F8-05-Teilrechnung-Kette",
   );
+  // F13-01 (0103): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben grün.
+  const hasGridRegistrations = await hasAtomicPublicRelationSet(
+    client,
+    GRID_REGISTRATION_RELATIONS,
+    "Rollenvertrag: F13-02-Netzanmeldung",
+  );
   // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
   // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
   // (Spaltenpaar atomar je Migration — Spaltenvertrag wie Relationen).
@@ -4323,6 +4351,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
     ],
@@ -5512,6 +5543,9 @@ export async function verifyRoleContract(
       ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -5775,6 +5809,10 @@ export async function verifyRoleContract(
           "f3a73abc00f11c80fd5e5ef7b60d4ad853e562217ae6bcffedbfab9d1ccfd0c2",
         "commercial_document_partial_line:tenant_isolation:" +
           "2c5b808091a8f0ae804196556f451525a893b1d27fd60954c8eca3b2a4ccdb71",
+        ] : []),
+        ...(hasGridRegistrations ? [
+        "grid_registration:tenant_isolation:" +
+          "61ba8c5455dac838af1647c9dc2aca8b8ec7333ce330e1950156272ccf3aad17",
         ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
@@ -6453,6 +6491,12 @@ export async function verifyRoleContract(
       ]) : []),
       // F8-05: Kette ohne DELETE (Storno logisch über Belegstatus).
       ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      // F13-01: Anlage/Lesen/Schreiben, nie Löschen.
+      ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

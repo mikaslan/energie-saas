@@ -722,6 +722,13 @@
       "when": 1789100857836,
       "tag": "0102_f8_05_teilrechnung",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1789101590172,
+      "tag": "0103_f13_02_netzanmeldung",
+      "breakpoints": true
     }
   ]
 }
