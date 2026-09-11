@@ -87,6 +87,18 @@ export {
   ManualLeadValidationError,
   type ManualLeadResult,
 } from "./manual-lead-service";
+export {
+  importManualLeadBulk,
+  MANUAL_LEAD_BULK_MAX_ROWS,
+  MANUAL_LEAD_BULK_REPORT_VERSION,
+  MANUAL_LEAD_BULK_VERSION,
+  manualLeadBulkReportSchema,
+  ManualLeadBulkFileError,
+  type ManualLeadBulkReport,
+  type ManualLeadBulkRow,
+  type ManualLeadBulkRowError,
+  type ManualLeadBulkRowStatus,
+} from "./lead-bulk-import";
 export type {
   AssignedExternalRequestDetail,
   ProjectAssignmentContext,

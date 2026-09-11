@@ -14,6 +14,7 @@ import {
 import { listLeadSources } from "@/modules/lead-sources";
 import { can } from "@/lib/permissions";
 import { ManualLeadForm } from "./manual-lead-form";
+import { ManualLeadBulkForm } from "./manual-lead-bulk-form";
 import {
   RequestBoardCard as RequestBoardCardClient,
   RequestBoardClient,
@@ -238,12 +239,17 @@ export default async function RequestsPage({
           </span>
         </div>
         {canCreateManualLead ? (
-          <div className="mb-6">
+          <div className="mb-6 flex flex-wrap items-start gap-3">
             <ManualLeadForm
               workspaceId={validWorkspaceId}
               scope={scope}
               scopeLabel={scope === "commercial" ? "Gewerbe" : "Wohnbau"}
               sources={leadSourceOptions}
+            />
+            <ManualLeadBulkForm
+              workspaceId={validWorkspaceId}
+              scope={scope}
+              scopeLabel={scope === "commercial" ? "Gewerbe" : "Wohnbau"}
             />
           </div>
         ) : null}
