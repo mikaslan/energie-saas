@@ -271,6 +271,7 @@ describe("F10.1 portal command contracts", () => {
       bzaApprovedAt: "2026-09-05T10:00:00.000Z",
       bndSubmittedAt: null,
       completedAt: null,
+      messages: [],
     });
     // BzA-Nummer ist interne Referenz und bricht fail-closed ab.
     expect(parsePortalPublicView({
@@ -285,6 +286,60 @@ describe("F10.1 portal command contracts", () => {
     expect(parsePortalPublicView({
       ...base, subsidy: { status: "bewilligt", program: null },
     })).toBeNull();
+  });
+
+  it("parst Chat-Nachrichten, fehlend = leer, deformiert = null", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
+      documents: [],
+      appointments: [],
+    };
+    // F13-10: Nachrichten mit Seite/Text/Zeit; IDs/Akteure brechen ab.
+    const shown = parsePortalPublicView({
+      ...base,
+      subsidy: {
+        status: "bza_bewilligt", program: "kfw",
+        bzaSubmittedAt: null, bzaApprovedAt: null,
+        bndSubmittedAt: null, completedAt: null,
+        messages: [
+          { side: "internal", body: "BzA ist raus.", at: "2026-09-06T10:00:00.000Z" },
+          { side: "customer", body: "Danke!", at: "2026-09-06T11:00:00.000Z" },
+        ],
+      },
+    });
+    expect(shown?.subsidy).toEqual({
+      status: "bza_bewilligt",
+      program: "kfw",
+      bzaSubmittedAt: null,
+      bzaApprovedAt: null,
+      bndSubmittedAt: null,
+      completedAt: null,
+      messages: [
+        { side: "internal", body: "BzA ist raus.", at: "2026-09-06T10:00:00.000Z" },
+        { side: "customer", body: "Danke!", at: "2026-09-06T11:00:00.000Z" },
+      ],
+    });
+    for (const messages of [
+      [{ side: "flying", body: "X", at: "2026-09-06T10:00:00.000Z" }],
+      [{ side: "internal", body: "", at: "2026-09-06T10:00:00.000Z" }],
+      [{ side: "internal", body: "X", at: "kein-datum" }],
+      [{ side: "internal", body: "X", at: "2026-09-06T10:00:00.000Z", id: "1" }],
+      "Hallo",
+    ]) {
+      expect(parsePortalPublicView({
+        ...base,
+        subsidy: {
+          status: "bza_bewilligt", program: "kfw",
+          bzaSubmittedAt: null, bzaApprovedAt: null,
+          bndSubmittedAt: null, completedAt: null,
+          messages,
+        },
+      })).toBeNull();
+    }
   });
 
   it("parst Servicevorgänge, fehlend = leer, description/cancelled/fremd = null", () => {

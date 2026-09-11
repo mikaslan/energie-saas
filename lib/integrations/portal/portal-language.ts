@@ -41,6 +41,13 @@ export interface PortalStrings {
   faqHeading: string;
   historyHeading: string;
   historyEmpty: string;
+  chatHeading: string;
+  chatEmpty: string;
+  chatSend: string;
+  chatOk: string;
+  chatGone: string;
+  chatSideInternal: string;
+  chatSideCustomer: string;
   appointmentsHeading: string;
   appointmentsEmpty: string;
   allDayWord: string;
@@ -331,6 +338,13 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     installationHeading: "Installation",
     installationEmpty: "Noch keine Installation hinterlegt.",
     faqHeading: "Gut zu wissen",
+    chatHeading: "Nachrichten zur Förderung",
+    chatEmpty: "Noch keine Nachrichten.",
+    chatSend: "Senden",
+    chatOk: "Nachricht gesendet.",
+    chatGone: "Nachricht konnte nicht gesendet werden.",
+    chatSideInternal: "Energieberatung",
+    chatSideCustomer: "Sie",
     historyHeading: "Verlauf",
     historyEmpty: "Noch keine Ereignisse.",
     appointmentsHeading: "Termine",
@@ -374,6 +388,13 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     installationHeading: "Installation",
     installationEmpty: "No installation recorded yet.",
     faqHeading: "Good to know",
+    chatHeading: "Subsidy messages",
+    chatEmpty: "No messages yet.",
+    chatSend: "Send",
+    chatOk: "Message sent.",
+    chatGone: "Message could not be sent.",
+    chatSideInternal: "Energy advisor",
+    chatSideCustomer: "You",
     historyHeading: "History",
     historyEmpty: "No events yet.",
     appointmentsHeading: "Appointments",

@@ -57,6 +57,7 @@ export default async function PortalTokenPage({
     tab?: string | string[];
     upload?: string | string[];
     confirm?: string | string[];
+    chat?: string | string[];
     lang?: string | string[];
   }>;
 }) {
@@ -100,6 +101,12 @@ export default async function PortalTokenPage({
       : rawConfirm === "fehler"
         ? t.confirmGone
         : null;
+  const rawChat = Array.isArray(query.chat) ? query.chat[0] : query.chat;
+  const chatHint = rawChat === "ok"
+    ? t.chatOk
+    : rawChat === "fehler"
+      ? t.chatGone
+      : null;
   const nextStep = resolvePortalNextStep(view.project.phase, view.project.outcome, lang);
   // F10-09: FAQ genau des aktuellen Installationsstands (Abnahme >
   // Abschluss > laufend); ohne Eintrag kein Block.
@@ -297,6 +304,53 @@ export default async function PortalTokenPage({
                     </dd>
                   </div>
                 </dl>
+                <h3 className="mt-4 text-sm font-semibold text-slate-950">{t.chatHeading}</h3>
+                {chatHint ? (
+                  <p
+                    role={rawChat === "ok" ? "status" : "alert"}
+                    data-testid="portal-chat-feedback"
+                    className={`mt-2 text-sm font-semibold ${
+                      rawChat === "fehler" ? "text-red-700" : "text-emerald-700"
+                    }`}
+                  >
+                    {chatHint}
+                  </p>
+                ) : null}
+                {view.subsidy.messages.length === 0 ? (
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{t.chatEmpty}</p>
+                ) : (
+                  <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
+                    {view.subsidy.messages.map((message, index) => (
+                      <li key={`${message.at}-${index}`} className="px-4 py-3">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {message.side === "customer" ? t.chatSideCustomer : t.chatSideInternal}
+                        </span>
+                        <span className="block text-sm leading-6 text-slate-800">{message.body}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <form action={`/p/${token}/subsidy-chat`} method="post" className="mt-2 flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="lang" value={lang} />
+                  <label className="grid min-w-52 flex-1 gap-1 text-sm font-medium text-slate-700">
+                    {t.chatHeading}
+                    <textarea
+                      name="body"
+                      required
+                      maxLength={2000}
+                      rows={2}
+                      data-testid="portal-chat-body"
+                      className="min-h-11 rounded-md border border-slate-300 bg-white px-2 py-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    data-testid="portal-chat-send"
+                    className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  >
+                    {t.chatSend}
+                  </button>
+                </form>
               </div>
             )}
             {view.gridRegistration === null ? null : (

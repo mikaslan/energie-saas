@@ -15,7 +15,7 @@ import {
 } from "@/modules/catalog";
 import { listFileRequests, listFileRequestTemplates } from "@/modules/file-requests";
 import { getGridRegistration } from "@/modules/grid-registration";
-import { getSubsidyCase, getSubsidyProgramSuggestion } from "@/modules/subsidy-cases";
+import { getSubsidyCase, getSubsidyProgramSuggestion, listSubsidyMessages } from "@/modules/subsidy-cases";
 import { isSubsidyCaseBelegState } from "@/lib/subsidy-case";
 import {
   getProjectAssignmentContext,
@@ -794,6 +794,7 @@ export default async function ProjectTriagePage({
         canWrite: boolean;
         belege: Awaited<ReturnType<typeof listFileRequests>>;
         suggestion: Awaited<ReturnType<typeof getSubsidyProgramSuggestion>>;
+        messages: Awaited<ReturnType<typeof listSubsidyMessages>>;
       }
     | { kind: "unauthenticated" }
     | { kind: "denied" }
@@ -835,7 +836,14 @@ export default async function ProjectTriagePage({
         "subsidy_case",
         (tx, ctx) => getSubsidyProgramSuggestion(tx, ctx, projectId),
       );
-      return { kind: "loaded", subsidyCase, canWrite: writable, belege, suggestion };
+      // F13-10: Chat-Verlauf der Akte (gleiche Sicht wie die Akte).
+      const messages = await authorizedQuery(
+        workspaceId,
+        "installation.read",
+        "subsidy_case",
+        (tx, ctx) => listSubsidyMessages(tx, ctx, projectId),
+      );
+      return { kind: "loaded", subsidyCase, canWrite: writable, belege, suggestion, messages };
     } catch (error) {
       if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
       if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1162,6 +1170,7 @@ export default async function ProjectTriagePage({
               canWrite={subsidyCaseResult.canWrite}
               belege={subsidyCaseResult.belege}
               suggestion={subsidyCaseResult.suggestion}
+              messages={subsidyCaseResult.messages}
             />
           </div>
         ) : null}

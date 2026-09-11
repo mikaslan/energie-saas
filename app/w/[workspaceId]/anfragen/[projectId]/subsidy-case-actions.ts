@@ -7,6 +7,7 @@ import { PermissionDeniedError } from "@/lib/permissions";
 import {
   ensureSubsidyCase,
   getSubsidyCase,
+  postSubsidyMessage,
   SubsidyCaseNotFoundError,
   subsidyCasePrograms,
   subsidyCaseStatuses,
@@ -181,6 +182,31 @@ export async function createSubsidyBelegAction(
     );
     revalidatePath(detailPath(ids.workspaceId, ids.projectId));
     return { status: "success", message: "Beleg angefordert." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F13-10 Chat-Nachricht an die Förderakte (interne Seite).
+// Recht installation.write (Akten-Kontext wie Geschwister); die
+// Textprüfung liegt im Service (Zod + DB-CHECK).
+export async function postSubsidyMessageAction(
+  _previous: SubsidyCaseActionState,
+  formData: FormData,
+): Promise<SubsidyCaseActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const caseValue = formData.get("caseId");
+  const bodyValue = formData.get("body");
+  if (typeof caseValue !== "string" || typeof bodyValue !== "string") {
+    return { status: "invalid" };
+  }
+  try {
+    await authorizedAction(ids.workspaceId, "installation.write", "subsidy_case", (tx, ctx) =>
+      postSubsidyMessage(tx, ctx, { caseId: caseValue, body: bodyValue }),
+    );
+    revalidatePath(detailPath(ids.workspaceId, ids.projectId));
+    return { status: "success", message: "Nachricht gesendet." };
   } catch (error) {
     return mapError(error);
   }

@@ -211,6 +211,16 @@ export const portalSubsidySchema = z.strictObject({
   bzaApprovedAt: z.iso.datetime({ offset: true }).nullable(),
   bndSubmittedAt: z.iso.datetime({ offset: true }).nullable(),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
+  // F13-10 Kundenchat (nur Seite/Text/Zeit — nie IDs/Akteure;
+  // Textspiegel des DB-CHECKs: getrimmt, 1–2000, keine Controls).
+  messages: z.array(z.strictObject({
+    side: z.enum(["internal", "customer"]),
+    body: z.string()
+      .refine((value) => value === value.trim(), { message: "chat ungetrimmt" })
+      .refine((value) => value.length >= 1 && value.length <= 2000, { message: "chat-Laenge" })
+      .refine((value) => !/[\p{Cc}]/u.test(value), { message: "chat-Steuerzeichen" }),
+    at: z.iso.datetime({ offset: true }),
+  })),
 });
 export type PortalSubsidy = z.infer<typeof portalSubsidySchema>;
 
@@ -464,7 +474,8 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       if (
         key !== "status" && key !== "program" &&
         key !== "bzaSubmittedAt" && key !== "bzaApprovedAt" &&
-        key !== "bndSubmittedAt" && key !== "completedAt"
+        key !== "bndSubmittedAt" && key !== "completedAt" &&
+        key !== "messages"
       ) {
         return null;
       }
@@ -486,6 +497,14 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       if (instant === null) return null;
       stamps[key] = instant;
     }
+    // F13-10: fehlend = Alt-Projektion ohne Chat → ehrlich leer;
+    // deformiert bricht fail-closed ab.
+    const messages = record.messages === undefined
+      ? []
+      : portalSubsidySchema.shape.messages.safeParse(record.messages).success
+        ? (record.messages as PortalSubsidy["messages"])
+        : null;
+    if (messages === null) return null;
     subsidy = {
       status: status.data,
       program: record.program as PortalSubsidy["program"],
@@ -493,6 +512,7 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       bzaApprovedAt: stamps.bzaApprovedAt,
       bndSubmittedAt: stamps.bndSubmittedAt,
       completedAt: stamps.completedAt,
+      messages,
     };
   }
   // F13-06: Servicevorgaenge — strikter Stand-Wortschatz (cancelled

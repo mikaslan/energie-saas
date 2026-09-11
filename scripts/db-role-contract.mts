@@ -675,6 +675,12 @@ const FILE_REQUEST_RELATIONS = [
 const SUBSIDY_CASE_RELATIONS = [
   "subsidy_case",
 ] as const;
+
+// F13-10: Chat-Nachrichten sind unveränderlich (nur Anlage + Lesen;
+// kein Update/Delete — kein Editieren/Löschen im Vertrag).
+const SUBSIDY_CASE_MESSAGE_RELATIONS = [
+  "subsidy_case_message",
+] as const;
 const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
   "public._m301_actor_invoicing_role(uuid)",
   "public._m301_actor_can_read_invoicing(uuid)",
@@ -3130,6 +3136,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F13-10: Chat unveränderlich — app_runtime liest und stellt zu
+  // (Kunde schreibt nur über die DEFINER-Kapsel als Owner).
+  const hasSubsidyCaseMessagesForAcl = await hasAtomicPublicRelationSet(
+    client,
+    SUBSIDY_CASE_MESSAGE_RELATIONS,
+    "Rollen-ACL-Manifest: F13-10-Subsidy-Chat",
+  );
+  if (hasSubsidyCaseMessagesForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.subsidy_case_message
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert on public.subsidy_case_message to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -4094,6 +4117,11 @@ export async function verifyRoleContract(
   const hasPortalStatusFaqProjection = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("status_faq_map"),
   );
+  // F13-10 (0119): Stufenmarker für subsidy.messages im Portal-Resolver
+  // (Muster 0118).
+  const hasPortalSubsidyMessagesProjection = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("subsidy_messages"),
+  );
   // F10-07 (0116): Stufenmarker für den Portal-Dokument-Download
   // (eigene DEFINER-Funktion, Muster 0104).
   const portalDocumentDownloadProbe = await client.query<{ name: string | null }>(`
@@ -4206,6 +4234,11 @@ export async function verifyRoleContract(
     client,
     SUBSIDY_CASE_RELATIONS,
     "Rollenvertrag: F13-03-Foerderakte",
+  );
+  const hasSubsidyCaseMessages = await hasAtomicPublicRelationSet(
+    client,
+    SUBSIDY_CASE_MESSAGE_RELATIONS,
+    "Rollenvertrag: F13-10-Subsidy-Chat",
   );
   // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
   // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
@@ -4672,6 +4705,9 @@ export async function verifyRoleContract(
       ...(hasSubsidyCases ? SUBSIDY_CASE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
+      ...(hasSubsidyCaseMessages ? SUBSIDY_CASE_MESSAGE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
     ],
     "Relationsinventar",
   );
@@ -4868,6 +4904,10 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasPortalService ? [
         "confirm_service_case:app_owner",
+      ] : []),
+      // F13-10 (0119): Chat-Kapsel (gleiche Migration wie die Tabelle).
+      ...(hasSubsidyCaseMessages ? [
+        "post_subsidy_message:app_owner",
       ] : []),
       ...(hasF704ChecklistCompletion ? F704_CHECKLIST_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
@@ -5373,7 +5413,9 @@ export async function verifyRoleContract(
         // Marker (Prefix ≤0075 trägt den alten Rumpf; ein elfter Rumpf
         // bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          `search_path=pg_catalog:${hasPortalStatusFaqProjection
+          `search_path=pg_catalog:${hasPortalSubsidyMessagesProjection
+            ? "9ab5cd5a0652e402752eec9c14d31a3defe4e2130bf33ca6a41e07318ed7dc53"
+            : hasPortalStatusFaqProjection
             ? "f3fc8366698cb5f4fc7ab873bca79fb63cbe1b69d3a6032746795ec09180c9de"
             : hasPortalStatusLabelProjection
             ? "1e8da42f38674cc9bd2e9ac6f4b073776ef5bd22ecb1ce9ffd7b5b904ad86029"
@@ -5411,6 +5453,13 @@ export async function verifyRoleContract(
         "confirm_service_case(bytea, uuid):text:" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
           "8e1371f38039d2728336ae40d656f9a70b2207121b969bd434befde4c877956f",
+        ] : []),
+        // F13-10 (0119): Chat-Kapsel (Marker hasSubsidyCaseMessages —
+        // gleiche Migration wie die Tabelle).
+        ...(hasSubsidyCaseMessages ? [
+        "post_subsidy_message(bytea, uuid, text):text:" +
+          "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "e091f6bc53f651aa48349bdc7731c6da5984befb76fc9e490c1d60ef895eab02",
         ] : []),
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -5942,6 +5991,9 @@ export async function verifyRoleContract(
       ...(hasSubsidyCases ? SUBSIDY_CASE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasSubsidyCaseMessages ? SUBSIDY_CASE_MESSAGE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -6217,6 +6269,9 @@ export async function verifyRoleContract(
         ...(hasSubsidyCases ? [
         "subsidy_case:tenant_isolation:" +
           "976746c20c04861d368c8d243dad70fed153a2869cd44aded2ea4a4a6f9dc4ef",
+        ] : []),
+        ...(hasSubsidyCaseMessages ? [
+          "subsidy_case_message:tenant_isolation:609abf25fb1cb093df1e5a7cadc198d9f7dc0536fd187f41973ac3d1059c3c26",
         ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
@@ -6960,6 +7015,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
+      // F13-10: Anlage/Lesen, nie Ändern/Löschen (unveränderlicher Chat).
+      ...(hasSubsidyCaseMessages ? SUBSIDY_CASE_MESSAGE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+      ]) : []),
       "app_system:audit_log:INSERT:app_owner:false",
       "app_system:audit_log:SELECT:app_owner:false",
       "app_system:domain_events:INSERT:app_owner:false",
@@ -7199,6 +7259,9 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasPortalService ? [
         "app_runtime:confirm_service_case(bytea, uuid):EXECUTE:app_owner:false",
+      ] : []),
+      ...(hasSubsidyCaseMessages ? [
+        "app_runtime:post_subsidy_message(bytea, uuid, text):EXECUTE:app_owner:false",
       ] : []),
       ...(hasF704ChecklistCompletion ? F704_CHECKLIST_RUNTIME_ROUTINES.map(
         (signature) =>

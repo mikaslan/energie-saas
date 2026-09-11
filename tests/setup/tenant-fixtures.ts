@@ -2496,6 +2496,31 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${wsId}::uuid, ${projectId}::uuid, ${userId}::uuid)
     `);
   },
+  // F13-10 (0119): Chat-Nachricht zur echten Förderakte (interne Seite).
+  subsidy_case_message: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`
+      insert into subsidy_case (workspace_id, project_id, created_by)
+      values (${wsId}::uuid, ${projectId}::uuid, ${userId}::uuid)
+      on conflict (workspace_id, project_id) do nothing
+    `);
+    const cases = await tx.execute<{ id: string }>(sql`
+      select id from subsidy_case
+       where workspace_id = ${wsId}::uuid and project_id = ${projectId}::uuid
+       limit 1
+    `);
+    const caseRow = cases.rows[0];
+    if (!caseRow) throw new Error("Chat-Fixture braucht eine Förderakte.");
+    await tx.execute(sql`
+      insert into subsidy_case_message (
+        workspace_id, project_id, subsidy_case_id, author_side, body, created_by
+      ) values (
+        ${wsId}::uuid, ${projectId}::uuid, ${caseRow.id}::uuid,
+        'internal', 'Fixture-Chat.', ${userId}::uuid
+      )
+    `);
+  },
   // F1-09 (0067): Mention-Zeile zu einer echten Notiz mit echter Identitaet.
   project_note_mention: async (tx, wsId) => {
     await fixtureProjectNoteGraph(tx, wsId);

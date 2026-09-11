@@ -4,10 +4,17 @@
 // (+ korrektur mit Wiedereinstieg je Phase, storniert terminal).
 // Berechtigung: installation.read/write (KEINE neuen Keys — Mandat).
 import { sql } from "drizzle-orm";
+import type { Pool } from "pg";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
+import { hashPortalToken } from "@/lib/integrations/portal/portal-contract";
+import {
+  subsidyChatBodySchema,
+  type SubsidyChatMessage,
+} from "@/lib/integrations/subsidies/chat-contract";
+import { PortalNotFoundError, resolvePortalByToken } from "@/modules/portal";
 import { can, isExternalOnly, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   createPortalInvite,
@@ -458,4 +465,131 @@ export async function transitionSubsidyCase(
     details: { projectId: input.projectId, from, to: input.status },
   });
   return { ...toDto(next, ctx), portalActivation };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F13-10: Kundenchat zur Förderakte (Katalog F10.2 „KfW mit Chat“).
+// Nachrichten je Projekt-Akte, beide Richtungen; unveränderlich (kein
+// Editieren/Löschen). Intern installation.read/write (keine neue
+// Permission); Kunde ausschließlich über die DEFINER-Token-Kapsel.
+// ═══════════════════════════════════════════════════════════════════════
+export type { SubsidyChatMessage };
+
+export async function listSubsidyMessages(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+): Promise<SubsidyChatMessage[]> {
+  requireRead(ctx, projectId);
+  if (!uuidSchema.safeParse(projectId).success) throw new SubsidyCaseValidationError();
+  const rows = await tx.execute<{ side: string; body: string; at: Date | string }>(sql`
+    select chat.author_side as side, chat.body,
+           chat.created_at as at
+      from subsidy_case_message as chat
+      join subsidy_case as scase
+        on scase.workspace_id = chat.workspace_id
+       and scase.id = chat.subsidy_case_id
+     where chat.workspace_id = ${ctx.workspaceId}::uuid
+       and chat.project_id = ${projectId}::uuid
+     order by chat.created_at, chat.id
+  `);
+  return rows.rows.map((row) => ({
+    side: row.side === "customer" ? "customer" : "internal",
+    body: row.body,
+    at: row.at instanceof Date ? row.at.toISOString() : String(row.at),
+  }));
+}
+
+export async function postSubsidyMessage(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { caseId: string; body: string },
+): Promise<SubsidyChatMessage> {
+  const parsed = z.strictObject({
+    caseId: uuidSchema,
+    body: subsidyChatBodySchema,
+  }).safeParse(input);
+  if (!parsed.success) throw new SubsidyCaseValidationError();
+  const cases = await tx.execute<{ id: string; project_id: string }>(sql`
+    select id, project_id from subsidy_case
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${parsed.data.caseId}::uuid
+     limit 1
+  `);
+  const found = cases.rows[0];
+  if (!found) throw new SubsidyCaseNotFoundError(parsed.data.caseId);
+  requireWrite(ctx, found.project_id);
+  const inserted = await tx.execute<{ side: string; body: string; at: Date | string }>(sql`
+    insert into subsidy_case_message (
+      workspace_id, project_id, subsidy_case_id, author_side, body, created_by
+    ) values (
+      ${ctx.workspaceId}::uuid, ${found.project_id}::uuid, ${found.id}::uuid,
+      'internal', ${parsed.data.body}, ${ctx.actor}::uuid
+    )
+    returning author_side as side, body, created_at as at
+  `);
+  const row = inserted.rows[0];
+  if (!row) throw new SubsidyCaseNotFoundError(parsed.data.caseId);
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "project",
+    aggregateId: found.project_id,
+    eventType: "subsidy_case.message_posted",
+    actor: ctx.actor,
+    payload: { caseId: found.id, side: "internal" },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "subsidy_case.post_message",
+    resource: "project",
+    allowed: true,
+    details: { projectId: found.project_id, caseId: found.id, side: "internal" },
+  });
+  return {
+    side: "internal",
+    body: row.body,
+    at: row.at instanceof Date ? row.at.toISOString() : String(row.at),
+  };
+}
+
+export type SubsidyMessagePostOutcome = "ok" | "invalid";
+
+export async function postSubsidyMessageByToken(
+  pool: Pool,
+  input: { token: string; caseId: string | null; body: string },
+): Promise<{ outcome: SubsidyMessagePostOutcome }> {
+  const parsed = z.strictObject({
+    token: z.string().min(1),
+    // NULL = die eine Akte des Projekts (Portal kennt keine IDs).
+    caseId: uuidSchema.nullable(),
+    body: subsidyChatBodySchema,
+  }).safeParse(input);
+  if (!parsed.success) {
+    if (!parsed.error.issues.some((issue) => issue.path.join(".") === "body")) {
+      throw new SubsidyCaseNotFoundError("portal");
+    }
+    return { outcome: "invalid" };
+  }
+  const { token, caseId, body } = parsed.data;
+  let view;
+  try {
+    view = await resolvePortalByToken(pool, { token });
+  } catch (error) {
+    if (error instanceof PortalNotFoundError) {
+      throw new SubsidyCaseNotFoundError(caseId ?? "portal");
+    }
+    throw error;
+  }
+  const tokenHash = hashPortalToken(token);
+  if (tokenHash === null) throw new SubsidyCaseValidationError("token rejected");
+  const outcome = await pool.query(
+    `select public.post_subsidy_message($1::bytea, $2::uuid, $3::text) as result`,
+    [tokenHash, caseId, body],
+  );
+  const result = z.strictObject({ result: z.string() }).safeParse(outcome.rows[0]);
+  const status = result.success ? result.data.result : null;
+  if (status === "ok") return { outcome: "ok" };
+  if (status === "invalid") return { outcome: "invalid" };
+  throw new SubsidyCaseNotFoundError(view.project.id);
 }

@@ -11,6 +11,7 @@ import {
 } from "@/lib/subsidy-case";
 import type { SubsidyProgramSuggestion } from "@/lib/subsidy-case";
 import { FILE_REQUEST_STATUS_LABEL, type FileRequestDto } from "@/lib/file-request";
+import type { SubsidyChatMessage } from "@/modules/subsidy-cases";
 import {
   createSubsidyBelegAction,
   ensureSubsidyCaseAction,
@@ -18,6 +19,7 @@ import {
   transitionSubsidyCaseAction,
   type SubsidyCaseActionState,
 } from "./subsidy-case-actions";
+import { SubsidyChatBlock } from "./subsidy-chat-block";
 
 const initialState: SubsidyCaseActionState = { status: "idle" };
 
@@ -56,6 +58,7 @@ export function SubsidyCaseSection({
   canWrite,
   belege,
   suggestion,
+  messages,
 }: {
   workspaceId: string;
   projectId: string;
@@ -63,6 +66,7 @@ export function SubsidyCaseSection({
   canWrite: boolean;
   belege: FileRequestDto[];
   suggestion: SubsidyProgramSuggestion;
+  messages: SubsidyChatMessage[];
 }) {
   const [ensureState, ensureDispatch] = useActionState(ensureSubsidyCaseAction, initialState);
   const [detailsState, detailsDispatch] = useActionState(setSubsidyCaseDetailsAction, initialState);
@@ -255,6 +259,13 @@ export function SubsidyCaseSection({
               <Feedback state={belegState} testId="subsidy-beleg-feedback" />
             </div>
           ) : null}
+          <SubsidyChatBlock
+            workspaceId={workspaceId}
+            projectId={projectId}
+            caseId={subsidyCase.id}
+            messages={messages}
+            canWrite={canWrite}
+          />
         </div>
       )}
     </section>
