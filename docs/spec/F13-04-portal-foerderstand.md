@@ -28,8 +28,7 @@ Bauarbeit, kein Referenzbeleg.
   Übersicht zeigt „BzA eingereicht (BAFA)", Nummer nirgends.
 
 ## Bewusst offen
-- Kundenportal-Aktivierung als Versand-Nebeneffekt (Katalog
-  F13.2: Invite-Erzeugung bei BzA-Einreichung — implizite
-  Token-Erzeugung, eigene Entscheidung).
+- Kundenportal-Aktivierung als Versand-Nebeneffekt: umgesetzt in
+  F13-05 (`docs/spec/F13-05-portal-aktivierung.md`).
 - Kunden-Rückmeldung, BnD-Beleg-Upload, Angebotsbindung,
   AI-Vorschlag.

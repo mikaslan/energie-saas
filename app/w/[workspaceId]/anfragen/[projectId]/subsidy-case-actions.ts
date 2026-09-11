@@ -115,13 +115,31 @@ export async function transitionSubsidyCaseAction(
     return { status: "invalid" };
   }
   try {
-    await authorizedAction(ids.workspaceId, "installation.write", "subsidy_case", (tx, ctx) =>
+    const changed = await authorizedAction(ids.workspaceId, "installation.write", "subsidy_case", (tx, ctx) =>
       transitionSubsidyCase(tx, ctx, {
         projectId: ids.projectId,
         status: status as SubsidyCaseStatus,
       }),
     );
     revalidatePath(detailPath(ids.workspaceId, ids.projectId));
+    // F13-05: Versand-Nebeneffekt ehrlich melden; das Token erscheint
+    // genau einmal hier (Muster F10-01-Einmalanzeige).
+    const activation = changed.portalActivation;
+    if (activation.outcome === "created" && activation.token !== null) {
+      return {
+        status: "success",
+        message: `Status geändert. Kundenportal-Link erstellt: /p/${activation.token} — jetzt kopieren, er wird nicht erneut angezeigt.`,
+      };
+    }
+    if (activation.outcome === "already_active") {
+      return { status: "success", message: "Status geändert. Kundenportal-Link bereits aktiv." };
+    }
+    if (activation.outcome === "not_permitted") {
+      return {
+        status: "success",
+        message: "Status geändert. Portal-Link nicht erstellt (fehlende Portal-Berechtigung).",
+      };
+    }
     return { status: "success", message: "Status geändert." };
   } catch (error) {
     if (error instanceof SubsidyCaseValidationError) return { status: "conflict" };

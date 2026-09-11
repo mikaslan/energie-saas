@@ -8,7 +8,13 @@ import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
-import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
+import { can, isExternalOnly, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
+import {
+  createPortalInvite,
+  getPortalStatus,
+  PORTAL_INVITE_CREATE_VERSION,
+  PORTAL_TTL_DAYS_DEFAULT,
+} from "@/modules/portal";
 
 export class SubsidyCaseNotFoundError extends Error {
   constructor(public readonly projectId: string) {
@@ -24,49 +30,16 @@ export class SubsidyCaseValidationError extends Error {
   }
 }
 
-export const subsidyCaseStatuses = [
-  "vorbereitung",
-  "bza_eingereicht",
-  "korrektur",
-  "bza_bewilligt",
-  "bnd_eingereicht",
-  "abgeschlossen",
-  "storniert",
-] as const;
-export type SubsidyCaseStatus = (typeof subsidyCaseStatuses)[number];
-
-export const SUBSIDY_CASE_STATUS_LABEL: Record<SubsidyCaseStatus, string> = {
-  vorbereitung: "In Vorbereitung",
-  bza_eingereicht: "BzA eingereicht",
-  korrektur: "Korrektur",
-  bza_bewilligt: "BzA bewilligt",
-  bnd_eingereicht: "BnD eingereicht",
-  abgeschlossen: "Abgeschlossen",
-  storniert: "Storniert",
-};
-
-export const subsidyCasePrograms = ["kfw", "bafa", "sonstige"] as const;
-export type SubsidyCaseProgram = (typeof subsidyCasePrograms)[number];
-
-export const SUBSIDY_CASE_PROGRAM_LABEL: Record<SubsidyCaseProgram, string> = {
-  kfw: "KfW",
-  bafa: "BAFA",
-  sonstige: "Sonstige",
-};
-
-const allowedTransitions: Record<SubsidyCaseStatus, SubsidyCaseStatus[]> = {
-  vorbereitung: ["bza_eingereicht", "storniert"],
-  bza_eingereicht: ["bza_bewilligt", "korrektur", "storniert"],
-  korrektur: ["bza_eingereicht", "bnd_eingereicht", "storniert"],
-  bza_bewilligt: ["bnd_eingereicht", "storniert"],
-  bnd_eingereicht: ["abgeschlossen", "korrektur", "storniert"],
-  abgeschlossen: [],
-  storniert: [],
-};
-
-export function nextSubsidyCaseStatuses(from: SubsidyCaseStatus): SubsidyCaseStatus[] {
-  return allowedTransitions[from];
-}
+import {
+  isAllowedSubsidyCaseTransition,
+  isPortalInviteUsable,
+  subsidyCasePrograms,
+  subsidyCaseStatuses,
+  type SubsidyCaseDto,
+  type SubsidyCasePortalActivation,
+  type SubsidyCaseProgram,
+  type SubsidyCaseStatus,
+} from "@/lib/subsidy-case";
 
 const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
 
@@ -74,21 +47,6 @@ const detailsSchema = z.strictObject({
   program: z.enum(subsidyCasePrograms).nullable(),
   bzaNumber: z.string().trim().min(1).max(64).nullable(),
 });
-
-export type SubsidyCaseDto = {
-  id: string;
-  projectId: string;
-  status: SubsidyCaseStatus;
-  program: SubsidyCaseProgram | null;
-  bzaNumber: string | null;
-  bzaSubmittedAt: string | null;
-  bzaApprovedAt: string | null;
-  bndSubmittedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  permissions: { canWrite: boolean };
-};
 
 type SubsidyCaseRow = {
   id: string;
@@ -129,7 +87,53 @@ function toDto(row: SubsidyCaseRow, ctx: ServiceCtx): SubsidyCaseDto {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     permissions: { canWrite: can(ctx, "installation.write") },
+    // Lese-/Anlagepfade lösen keine Transition aus.
+    portalActivation: { outcome: "not_applicable", token: null },
   };
+}
+
+// F13-05 Portal-Aktivierung als Versand-Nebeneffekt: jede Transition mit
+// Ziel bza_eingereicht erzeugt genau dann ein Portal-Invite, wenn kein
+// noch gültiges aktives Invite besteht. Bestandsschutz vor Neuerzeugung;
+// abgelaufene active-Zeilen zählen als fehlend (atomarer Supersede,
+// F10.1). Keine neuen Rechte: Vorprüfung spiegelt requireInternalAccess
+// (portal), ohne zu werfen — der Förderübergang bleibt Hauptfluss.
+// Nur PermissionDenied wird zu "not_permitted" (fail-closed für künftige
+// Capability-Trennung); Persistenz-/Integritätsfehler rollen den Versand
+// in derselben Transaktion zurück statt halb zu aktivieren.
+async function activatePortalOnDispatch(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+  status: SubsidyCaseStatus,
+): Promise<SubsidyCasePortalActivation> {
+  if (status !== "bza_eingereicht") {
+    return { outcome: "not_applicable", token: null };
+  }
+  if (!can(ctx, "project.write") || isExternalOnly(ctx)) {
+    return { outcome: "not_permitted", token: null };
+  }
+  try {
+    const portal = await getPortalStatus(tx, ctx, {
+      workspaceId: ctx.workspaceId,
+      projectId,
+    });
+    if (isPortalInviteUsable(portal.active)) {
+      return { outcome: "already_active", token: null };
+    }
+    const created = await createPortalInvite(tx, ctx, {
+      schemaVersion: PORTAL_INVITE_CREATE_VERSION,
+      workspaceId: ctx.workspaceId,
+      projectId,
+      ttlDays: PORTAL_TTL_DAYS_DEFAULT,
+    });
+    return { outcome: "created", token: created.token };
+  } catch (error) {
+    if (error instanceof PermissionDeniedError) {
+      return { outcome: "not_permitted", token: null };
+    }
+    throw error;
+  }
 }
 
 function requireRead(ctx: ServiceCtx, projectId: string): void {
@@ -282,7 +286,7 @@ export async function transitionSubsidyCase(
   const row = current.rows[0];
   if (!row) throw new SubsidyCaseNotFoundError(input.projectId);
   const from = row.status as SubsidyCaseStatus;
-  if (!allowedTransitions[from].includes(input.status)) {
+  if (!isAllowedSubsidyCaseTransition(from, input.status)) {
     throw new SubsidyCaseValidationError(`illegal transition ${from} -> ${input.status}`);
   }
 
@@ -308,13 +312,16 @@ export async function transitionSubsidyCase(
   `);
   const next = updated.rows[0];
   if (!next) throw new SubsidyCaseNotFoundError(input.projectId);
+  // F13-05: Versand-Nebeneffekt in derselben Transaktion (kein Token in
+  // Payload/Audit — nur das Outcome ist beobachtbar).
+  const portalActivation = await activatePortalOnDispatch(tx, ctx, input.projectId, input.status);
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
     aggregateType: "project",
     aggregateId: input.projectId,
     eventType: "subsidy_case.status_changed",
     actor: ctx.actor,
-    payload: { from, to: input.status },
+    payload: { from, to: input.status, portalActivation: portalActivation.outcome },
   });
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId,
@@ -324,5 +331,5 @@ export async function transitionSubsidyCase(
     allowed: true,
     details: { projectId: input.projectId, from, to: input.status },
   });
-  return toDto(next, ctx);
+  return { ...toDto(next, ctx), portalActivation };
 }

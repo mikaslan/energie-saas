@@ -7,7 +7,7 @@ import {
   nextSubsidyCaseStatuses,
   subsidyCasePrograms,
   type SubsidyCaseDto,
-} from "@/modules/subsidy-cases";
+} from "@/lib/subsidy-case";
 import {
   ensureSubsidyCaseAction,
   setSubsidyCaseDetailsAction,
