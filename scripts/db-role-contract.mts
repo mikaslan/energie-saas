@@ -2195,6 +2195,18 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       from public, app_runtime, app_system, app_auth, app_worker, app_erasure
   `);
 
+  // F1-05a Spaltenverwaltung: kanban_column erhält zusätzlich
+  // INSERT/UPDATE (Archiv statt DELETE — kein Delete-Recht).
+  // kanban_board bleibt bewusst Read-only für Runtime.
+  if (triageExisting.rows.length === triageRelations.length) {
+    await client.query(`
+      revoke all privileges on public.kanban_column
+        from public, app_migrator, app_runtime, app_system, app_auth, app_worker,
+          app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.kanban_column to app_runtime;
+    `);
+  }
+
   const projectAssignmentExisting = await client.query<{ present: boolean }>(`
     select pg_catalog.to_regclass('public.project_assignment') is not null as present
   `);
@@ -6165,7 +6177,9 @@ export async function verifyRoleContract(
       "app_runtime:inbound_receipt:INSERT:app_owner:false",
       "app_runtime:inbound_receipt:SELECT:app_owner:false",
       "app_runtime:kanban_board:SELECT:app_owner:false",
+      "app_runtime:kanban_column:INSERT:app_owner:false",
       "app_runtime:kanban_column:SELECT:app_owner:false",
+      "app_runtime:kanban_column:UPDATE:app_owner:false",
       "app_runtime:membership:SELECT:app_owner:false",
       "app_runtime:offer:INSERT:app_owner:false",
       "app_runtime:offer:SELECT:app_owner:false",

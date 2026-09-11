@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { writeAudit } from "@/lib/audit";
+import { kanbanColumnColors, kanbanColumnTypes } from "@/lib/db/schema/boards";
 import {
   can,
   isExternalOnly,
@@ -104,6 +106,20 @@ export class ProjectMoveConflictError extends Error {
   constructor() {
     super("project card changed since it was loaded");
     this.name = "ProjectMoveConflictError";
+  }
+}
+
+export class BoardColumnValidationError extends Error {
+  constructor(message = "board column input invalid") {
+    super(message);
+    this.name = "BoardColumnValidationError";
+  }
+}
+
+export class BoardColumnConflictError extends Error {
+  constructor(message = "board column state conflict") {
+    super(message);
+    this.name = "BoardColumnConflictError";
   }
 }
 
@@ -406,4 +422,321 @@ export async function moveProjectCard(
   });
 
   return { projectId: input.projectId, columnId: input.targetColumnId, changed: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F1-05a · Spaltenverwaltung (frei definierbare Spalten, Katalog F1.5)
+// ═══════════════════════════════════════════════════════════════════════
+
+export type BoardColumnType = (typeof kanbanColumnTypes)[number];
+export type BoardColumnColor = (typeof kanbanColumnColors)[number];
+
+type BoardColumnRow = {
+  id: string;
+  board_id: string;
+  name: string;
+  column_type: BoardColumnType;
+  position: number;
+  color: BoardColumnColor;
+  is_intake: boolean;
+  archived_at: string | null;
+};
+
+function validatedColumnName(value: unknown): string {
+  if (typeof value !== "string") throw new BoardColumnValidationError("name required");
+  const name = value.trim();
+  if (name.length < 1 || name.length > 120) {
+    throw new BoardColumnValidationError("name must be 1..120 chars");
+  }
+  return name;
+}
+
+function validatedColumnType(value: unknown): BoardColumnType {
+  if (typeof value !== "string" || !(kanbanColumnTypes as readonly string[]).includes(value)) {
+    throw new BoardColumnValidationError("unknown column type");
+  }
+  return value as BoardColumnType;
+}
+
+function validatedColumnColor(value: unknown): BoardColumnColor {
+  if (value === undefined) return "neutral";
+  if (typeof value !== "string" || !(kanbanColumnColors as readonly string[]).includes(value)) {
+    throw new BoardColumnValidationError("unknown column color");
+  }
+  return value as BoardColumnColor;
+}
+
+async function loadColumnForUpdate(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  columnId: string,
+): Promise<BoardColumnRow> {
+  const found = await tx.execute<BoardColumnRow>(sql`
+    select id, board_id, name, column_type, position, color, is_intake, archived_at
+      from kanban_column
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${columnId}::uuid
+     for update
+  `);
+  const row = found.rows[0];
+  if (!row) throw new BoardColumnConflictError("column not found");
+  return row;
+}
+
+async function emitColumnEvent(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  eventType: string,
+  columnId: string,
+  boardId: string,
+  details: Record<string, unknown>,
+): Promise<void> {
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "kanban_column",
+    aggregateId: columnId,
+    eventType,
+    actor: ctx.actor,
+    payload: { columnId, boardId, ...details },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "project.write",
+    resource: "kanban_column",
+    allowed: true,
+    details: { columnId, boardId, ...details },
+  });
+}
+
+/**
+ * Neue Spalte am Ende des Boards (Typ frei wählbar — F1.5
+ * Spalten-Typen; Automatik je Typ bleibt Folgeslice).
+ */
+export type BoardColumnAdminEntry = {
+  id: string;
+  name: string;
+  type: BoardColumnType;
+  position: number;
+  color: BoardColumnColor;
+  isIntake: boolean;
+  archived: boolean;
+  cardCount: number;
+};
+
+/**
+ * Alle Spalten eines Boards inkl. archivierter (Verwaltung; Karten
+ * zählen für das Archiv-Guard-Feedback).
+ */
+export async function listBoardColumnsForAdmin(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { boardId: string },
+): Promise<BoardColumnAdminEntry[]> {
+  requireProjectAccess(ctx, "project.write", "kanban_column");
+  const found = await tx.execute<BoardColumnRow & { card_count: string }>(sql`
+    select c.id, c.board_id, c.name, c.column_type, c.position, c.color,
+           c.is_intake, c.archived_at,
+           count(p.id)::text as card_count
+      from kanban_column c
+      left join project p
+        on p.workspace_id = c.workspace_id
+       and p.kanban_column_id = c.id
+     where c.workspace_id = ${ctx.workspaceId}::uuid
+       and c.board_id = ${input.boardId}::uuid
+     group by c.id
+     order by c.archived_at nulls first, c.position asc, c.id asc
+  `);
+  return found.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    type: row.column_type,
+    position: Number(row.position),
+    color: row.color,
+    isIntake: row.is_intake,
+    archived: row.archived_at !== null,
+    cardCount: Number(row.card_count ?? 0),
+  }));
+}
+
+export async function createBoardColumn(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { boardId: string; name: string; columnType: string; color?: string },
+): Promise<{ id: string; position: number }> {
+  requireProjectAccess(ctx, "project.write", "kanban_column");
+  const name = validatedColumnName(input.name);
+  const columnType = validatedColumnType(input.columnType);
+  const color = validatedColumnColor(input.color);
+
+  const board = await tx.execute<{ id: string }>(sql`
+    select id from kanban_board
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${input.boardId}::uuid
+       and archived_at is null
+     limit 1
+  `);
+  if (!board.rows[0]) throw new BoardColumnConflictError("board not found");
+
+  const maxPosition = await tx.execute<{ position: number }>(sql`
+    select coalesce(max(position), 0)::integer as position
+      from kanban_column
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and board_id = ${input.boardId}::uuid
+       and archived_at is null
+  `);
+  const position = Number(maxPosition.rows[0]?.position ?? 0) + 1;
+  const id = randomUUID();
+  await tx.execute(sql`
+    insert into kanban_column (
+      id, workspace_id, board_id, name, column_type, position, color, is_intake
+    ) values (
+      ${id}::uuid, ${ctx.workspaceId}::uuid, ${input.boardId}::uuid,
+      ${name}, ${columnType}, ${position}, ${color}, false
+    )
+  `);
+  await emitColumnEvent(tx, ctx, "kanban_column.created", id, input.boardId, {
+    name, columnType, color, position,
+  });
+  return { id, position };
+}
+
+export async function renameBoardColumn(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { columnId: string; name: string },
+): Promise<{ id: string; name: string }> {
+  requireProjectAccess(ctx, "project.write", "kanban_column");
+  const name = validatedColumnName(input.name);
+  const column = await loadColumnForUpdate(tx, ctx, input.columnId);
+  if (column.archived_at !== null) throw new BoardColumnConflictError("column archived");
+  await tx.execute(sql`
+    update kanban_column
+       set name = ${name}, updated_at = now()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${input.columnId}::uuid
+  `);
+  await emitColumnEvent(tx, ctx, "kanban_column.renamed", column.id, column.board_id, {
+    name,
+  });
+  return { id: column.id, name };
+}
+
+export async function moveBoardColumn(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { columnId: string; direction: "left" | "right" },
+): Promise<{ id: string; position: number; changed: boolean }> {
+  requireProjectAccess(ctx, "project.write", "kanban_column");
+  if (input.direction !== "left" && input.direction !== "right") {
+    throw new BoardColumnValidationError("direction must be left or right");
+  }
+  const column = await loadColumnForUpdate(tx, ctx, input.columnId);
+  if (column.archived_at !== null) throw new BoardColumnConflictError("column archived");
+  const siblings = await tx.execute<BoardColumnRow>(sql`
+    select id, board_id, name, column_type, position, color, is_intake, archived_at
+      from kanban_column
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and board_id = ${column.board_id}::uuid
+       and archived_at is null
+     order by position asc, id asc
+  `);
+  const index = siblings.rows.findIndex((row) => row.id === column.id);
+  const neighbor = input.direction === "left"
+    ? siblings.rows[index - 1]
+    : siblings.rows[index + 1];
+  if (!neighbor) return { id: column.id, position: column.position, changed: false };
+  // Tausch über temporäre Position (Partial-Unique-Index bleibt gültig).
+  const ceiling = await tx.execute<{ position: number }>(sql`
+    select coalesce(max(position), 0)::integer as position
+      from kanban_column
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and board_id = ${column.board_id}::uuid
+  `);
+  const temp = Number(ceiling.rows[0]?.position ?? 0) + 1;
+  await tx.execute(sql`
+    update kanban_column set position = ${temp}, updated_at = now()
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${column.id}::uuid
+  `);
+  await tx.execute(sql`
+    update kanban_column set position = ${column.position}, updated_at = now()
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${neighbor.id}::uuid
+  `);
+  await tx.execute(sql`
+    update kanban_column set position = ${neighbor.position}, updated_at = now()
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${column.id}::uuid
+  `);
+  await emitColumnEvent(tx, ctx, "kanban_column.moved", column.id, column.board_id, {
+    fromPosition: column.position, toPosition: neighbor.position,
+  });
+  return { id: column.id, position: neighbor.position, changed: true };
+}
+
+export async function archiveBoardColumn(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { columnId: string },
+): Promise<{ id: string; changed: boolean }> {
+  requireProjectAccess(ctx, "project.write", "kanban_column");
+  const column = await loadColumnForUpdate(tx, ctx, input.columnId);
+  if (column.archived_at !== null) return { id: column.id, changed: false };
+  // Intake-Spalte trägt die Anfrage-Lane (fail-closed, kein stiller
+  // Verlust des genau-einen Intake-Pfads).
+  if (column.is_intake) throw new BoardColumnValidationError("intake column cannot be archived");
+  const cards = await tx.execute<{ count: string }>(sql`
+    select count(*)::text as count from project
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and kanban_column_id = ${column.id}::uuid
+  `);
+  if (Number(cards.rows[0]?.count ?? 0) > 0) {
+    throw new BoardColumnConflictError("column still holds cards");
+  }
+  await tx.execute(sql`
+    update kanban_column
+       set archived_at = now(), updated_at = now()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${column.id}::uuid
+  `);
+  await emitColumnEvent(tx, ctx, "kanban_column.archived", column.id, column.board_id, {});
+  return { id: column.id, changed: true };
+}
+
+export async function restoreBoardColumn(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { columnId: string },
+): Promise<{ id: string; position: number; changed: boolean }> {
+  requireProjectAccess(ctx, "project.write", "kanban_column");
+  const column = await loadColumnForUpdate(tx, ctx, input.columnId);
+  if (column.archived_at === null) {
+    return { id: column.id, position: column.position, changed: false };
+  }
+  const taken = await tx.execute<{ id: string }>(sql`
+    select id from kanban_column
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and board_id = ${column.board_id}::uuid
+       and archived_at is null
+       and position = ${column.position}
+     limit 1
+  `);
+  let position = column.position;
+  if (taken.rows[0]) {
+    const ceiling = await tx.execute<{ position: number }>(sql`
+      select coalesce(max(position), 0)::integer as position
+        from kanban_column
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and board_id = ${column.board_id}::uuid
+    `);
+    position = Number(ceiling.rows[0]?.position ?? 0) + 1;
+  }
+  await tx.execute(sql`
+    update kanban_column
+       set archived_at = null, position = ${position}, updated_at = now()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${column.id}::uuid
+  `);
+  await emitColumnEvent(tx, ctx, "kanban_column.restored", column.id, column.board_id, {
+    position,
+  });
+  return { id: column.id, position, changed: true };
 }

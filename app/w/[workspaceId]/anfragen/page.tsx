@@ -7,6 +7,8 @@ import { PermissionDeniedError } from "@/lib/permissions";
 import { SignOutButton } from "@/app/_components/sign-out-button";
 import {
   getRequestBoard,
+  listBoardColumnsForAdmin,
+  type BoardColumnAdminEntry,
   type RequestBoardCard,
   type RequestBoardColumn,
   type RequestBoardScope,
@@ -15,6 +17,7 @@ import { listLeadSources } from "@/modules/lead-sources";
 import { can } from "@/lib/permissions";
 import { ManualLeadForm } from "./manual-lead-form";
 import { ManualLeadBulkForm } from "./manual-lead-bulk-form";
+import { BoardColumnAdmin } from "./board-column-admin";
 import {
   RequestBoardCard as RequestBoardCardClient,
   RequestBoardClient,
@@ -111,6 +114,7 @@ export default async function RequestsPage({
   let board: Awaited<ReturnType<typeof getRequestBoard>> | undefined;
   let canCreateManualLead = false;
   let leadSourceOptions: Array<{ id: string; name: string }> = [];
+  let adminColumns: BoardColumnAdminEntry[] = [];
   let unauthenticated = false;
   let denied = false;
   try {
@@ -118,21 +122,32 @@ export default async function RequestsPage({
       validWorkspaceId,
       "project.read",
       "kanban_board",
-      async (tx, ctx) => ({
-        board: await getRequestBoard(tx, ctx, { scope }),
-        canCreate: can(ctx, "project.write"),
-        // F1-11: Quellen-Dropdown (gleiche Leseschranke wie die
-        // Verwaltung; ohne Recht leere Liste, Formular bleibt nutzbar).
-        sources: await listLeadSources(tx, ctx, { includeArchived: false }).catch(
-          (error: unknown) => {
-            if (error instanceof PermissionDeniedError) return [];
-            throw error;
-          },
-        ),
-      }),
+      async (tx, ctx) => {
+        const board = await getRequestBoard(tx, ctx, { scope });
+        const canCreate = can(ctx, "project.write");
+        // F1-05a: Spaltenverwaltung (nur Editoren; gleiche Schranke wie
+        // die Anlage; ohne Recht leere Liste, Board bleibt nutzbar).
+        const adminColumns = canCreate
+          ? await listBoardColumnsForAdmin(tx, ctx, { boardId: board.id })
+          : [];
+        return {
+          board,
+          canCreate,
+          adminColumns,
+          // F1-11: Quellen-Dropdown (gleiche Leseschranke wie die
+          // Verwaltung; ohne Recht leere Liste, Formular bleibt nutzbar).
+          sources: await listLeadSources(tx, ctx, { includeArchived: false }).catch(
+            (error: unknown) => {
+              if (error instanceof PermissionDeniedError) return [];
+              throw error;
+            },
+          ),
+        };
+      },
     );
     board = loaded.board;
     canCreateManualLead = loaded.canCreate;
+    adminColumns = loaded.adminColumns;
     leadSourceOptions = loaded.sources.map((source) => ({ id: source.id, name: source.name }));
   } catch (error) {
     if (error instanceof NotAuthenticatedError) unauthenticated = true;
@@ -250,6 +265,12 @@ export default async function RequestsPage({
               workspaceId={validWorkspaceId}
               scope={scope}
               scopeLabel={scope === "commercial" ? "Gewerbe" : "Wohnbau"}
+            />
+            <BoardColumnAdmin
+              workspaceId={validWorkspaceId}
+              boardId={board.id}
+              scopeLabel={scope === "commercial" ? "Gewerbe" : "Wohnbau"}
+              columns={adminColumns}
             />
           </div>
         ) : null}

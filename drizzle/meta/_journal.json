@@ -694,6 +694,13 @@
       "when": 1789095823382,
       "tag": "0098_f10_03c_commercial_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1789097769331,
+      "tag": "0099_f1_05a_column_grants",
+      "breakpoints": true
     }
   ]
 }
