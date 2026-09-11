@@ -94,6 +94,27 @@ const appointmentInstantSchema = z.string().refine(isBerlinWallClock, {
   message: "start/end must be an Europe/Berlin wall-clock datetime without offset",
 });
 
+// F16-05: Wanduhr-Arithmetik für Termin-Vorlagen (Dauer ab Start). Löst den
+// Offset wie isBerlinWallClock per CET/CEST-Probe; DST-Lücke → null
+// (fail-closed beim Anwenden). Rückgabe ohne Sekunden (Input-Format).
+export function addBerlinWallClockMinutes(start: string, minutes: number): string | null {
+  if (!Number.isInteger(minutes) || minutes < 1) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/u.exec(start);
+  if (!match) return null;
+  const wallClockSeconds = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00`;
+  const naiveUtc = Date.UTC(
+    Number(match[1]), Number(match[2]) - 1, Number(match[3]),
+    Number(match[4]), Number(match[5]),
+  );
+  for (const offsetMinutes of [60, 120]) {
+    if (berlinWallClockOf(naiveUtc - offsetMinutes * 60_000) === wallClockSeconds) {
+      const endWallClock = berlinWallClockOf(naiveUtc - offsetMinutes * 60_000 + minutes * 60_000);
+      return endWallClock.slice(0, 16);
+    }
+  }
+  return null;
+}
+
 function wallClockMs(value: string): number {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/u.exec(value);
   if (!match) return Number.NaN;

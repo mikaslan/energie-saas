@@ -53,7 +53,9 @@ import {
   type TaskTemplateDto,
 } from "@/modules/tasks";
 import {
+  listAppointmentTemplates,
   listProjectAppointments,
+  type AppointmentTemplateDto,
   type ProjectAppointmentRangeV1,
 } from "@/modules/calendar";
 import { getInstallation, type InstallationDto } from "@/modules/installations";
@@ -190,7 +192,7 @@ type ContactLoadResult =
   | { kind: "denied" };
 
 type AppointmentRangeLoadResult =
-  | { kind: "loaded"; range: ProjectAppointmentRangeV1 | null }
+  | { kind: "loaded"; range: ProjectAppointmentRangeV1 | null; templates: AppointmentTemplateDto[] }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
@@ -460,7 +462,14 @@ async function loadProjectAppointmentRange(
         view: "month",
       }),
     );
-    return { kind: "loaded", range };
+    // F16-05: Termin-Vorlagen für „Aus Vorlage anlegen" (gleiche Read-Permission).
+    const templates = await authorizedQuery(
+      workspaceId,
+      "appointment.read",
+      "appointment_template",
+      (tx, ctx) => listAppointmentTemplates(tx, ctx),
+    );
+    return { kind: "loaded", range, templates };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -918,6 +927,7 @@ export default async function ProjectTriagePage({
             workspaceId={workspaceId}
             projectId={projectId}
             range={appointmentRange}
+            templates={appointmentRangeResult.templates}
           />
         </div>
 

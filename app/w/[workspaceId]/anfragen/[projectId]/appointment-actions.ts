@@ -8,12 +8,17 @@ import {
   APPOINTMENT_DESCRIPTION_MAX_LENGTH,
   APPOINTMENT_LOCATION_MAX_LENGTH,
   APPOINTMENT_TITLE_MAX_LENGTH,
+  APPOINTMENT_TEMPLATE_SCHEMA_VERSION,
   PROJECT_APPOINTMENT_COMMAND_VERSION,
   PROJECT_APPOINTMENT_MAX_ATTENDEES,
   PROJECT_APPOINTMENT_MAX_REVISION,
   projectAppointmentCommandV1Schema,
   AppointmentConflictError,
   AppointmentNotFoundError,
+  applyAppointmentTemplate,
+  AppointmentTemplateConflictError,
+  AppointmentTemplateNotFoundError,
+  AppointmentTemplateValidationError,
   AppointmentValidationError,
   executeProjectAppointmentCommand,
   type ProjectAppointmentCommandV1,
@@ -237,5 +242,67 @@ export async function changeProjectAppointment(
       revalidatePath(`/w/${route.data.workspaceId}/anfragen/${route.data.projectId}`);
     }
     return mapped ?? { status: "invalid" };
+  }
+}
+
+export type ApplyAppointmentTemplateActionState =
+  | { status: "idle" }
+  | { status: "success"; appointmentId: string }
+  | { status: "invalid" }
+  | { status: "not_found" }
+  | { status: "denied" }
+  | { status: "unauthenticated" };
+
+// F16-05: Vorlage im Projekt anwenden (eigene Action: nur Template-ID,
+// Kalender-ID und Start; Dauer/Titel aus der Vorlage).
+export async function applyAppointmentTemplateAction(
+  rawWorkspaceId: string,
+  rawBoundProjectId: string,
+  _previousState: ApplyAppointmentTemplateActionState,
+  formData: FormData,
+): Promise<ApplyAppointmentTemplateActionState> {
+  const startValue = formData.get("start");
+  const route = z.strictObject({
+    workspaceId: UUID_SCHEMA,
+    projectId: UUID_SCHEMA,
+    templateId: UUID_SCHEMA,
+    calendarId: UUID_SCHEMA,
+    start: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/u),
+  }).safeParse({
+    workspaceId: rawWorkspaceId,
+    projectId: rawBoundProjectId,
+    templateId: formData.get("templateId"),
+    calendarId: formData.get("calendarId"),
+    start: typeof startValue === "string" ? startValue : null,
+  });
+  if (!route.success) return { status: "invalid" };
+  try {
+    const result = await authorizedAction(
+      route.data.workspaceId,
+      "appointment.write",
+      "project_appointment",
+      (tx, ctx) => applyAppointmentTemplate(tx, ctx, {
+        schemaVersion: APPOINTMENT_TEMPLATE_SCHEMA_VERSION,
+        templateId: route.data.templateId,
+        projectId: route.data.projectId,
+        calendarId: route.data.calendarId,
+        start: route.data.start,
+      }),
+    );
+    revalidatePath(`/w/${route.data.workspaceId}/anfragen/${route.data.projectId}`);
+    return { status: "success", appointmentId: result.appointmentId };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (
+      error instanceof AppointmentTemplateNotFoundError
+      || error instanceof AppointmentNotFoundError
+    ) return { status: "not_found" };
+    if (
+      error instanceof AppointmentTemplateValidationError
+      || error instanceof AppointmentTemplateConflictError
+      || error instanceof AppointmentValidationError
+    ) return { status: "invalid" };
+    throw error;
   }
 }

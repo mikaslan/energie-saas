@@ -525,6 +525,10 @@ const BILLING_RUN_RELATIONS = [
   "billing_run_entry",
 ] as const;
 
+const APPOINTMENT_TEMPLATE_RELATIONS = [
+  "appointment_template",
+] as const;
+
 const PAYMENT_OPTION_RELATIONS = [
   "payment_option",
 ] as const;
@@ -2644,6 +2648,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F16-05: Termin-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
+  const hasAppointmentTemplates = await hasAtomicPublicRelationSet(
+    client,
+    APPOINTMENT_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F16-05-Termin-Vorlagen",
+  );
+  if (hasAppointmentTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.appointment_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.appointment_template to app_runtime
+    `);
+  }
+
   // F2.5: Zahlarten-Stammdaten nutzen Archiv statt Delete. Tabelle, Varianten-
   // Spalte und der 0074-Schreibvertragsmarker muessen atomar vorhanden sein.
   const hasPaymentOptions = await hasAtomicPublicRelationSet(
@@ -3915,6 +3935,11 @@ export async function verifyRoleContract(
     BILLING_RUN_RELATIONS,
     "Rollenvertrag: F9-07-Abrechnungslauf",
   );
+  const hasAppointmentTemplates = await hasAtomicPublicRelationSet(
+    client,
+    APPOINTMENT_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F16-05-Termin-Vorlagen",
+  );
 
   const hasPaymentOptions = await hasAtomicPublicRelationSet(
     client,
@@ -4176,6 +4201,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasBillingRuns ? BILLING_RUN_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
@@ -5352,6 +5380,9 @@ export async function verifyRoleContract(
       ...(hasBillingRuns ? BILLING_RUN_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -5701,6 +5732,9 @@ export async function verifyRoleContract(
         ...(hasBillingRuns ? [
           "billing_run:tenant_isolation:c9c34d9fbe2338e77fbdb0b0d00c015ef0cbe1704a98b003e2abae8f32c1c3be",
           "billing_run_entry:tenant_isolation:3092fc5f1aec6fe0b7b5578fd3e519832f0d7eb8cca933ab3e094651413717eb",
+        ] : []),
+        ...(hasAppointmentTemplates ? [
+          "appointment_template:tenant_isolation:ca50c06bf0731a43c886c4a5bcfe31d24e7d21389d454a48f617fc9129475e30",
         ] : []),
         ...(hasPaymentOptions ? [
           "payment_option:tenant_isolation:854bc07231dd748fe1cadc6fcf55606d413a950abc8c3fac65fc1b405228f13f",
@@ -6239,6 +6273,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasBillingRuns ? BILLING_RUN_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

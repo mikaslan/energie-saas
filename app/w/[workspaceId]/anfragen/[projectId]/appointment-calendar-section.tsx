@@ -1,13 +1,20 @@
 "use client";
 
-import { useCallback, useRef, useState, type MouseEvent } from "react";
+import { useActionState, useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useFormStatus } from "react-dom";
 import type {
+  CalendarItemV1,
   ProjectAppointmentItemV1,
   ProjectAppointmentRangeV1,
 } from "@/lib/integrations/calendar/contract";
+import type { AppointmentTemplateDto } from "@/lib/integrations/calendar/template-contract";
 import { APPOINTMENT_TYPE_LABELS } from "./appointment-editor-model";
 import { AppointmentCalendar, type ViewMode } from "./appointment-calendar";
 import { AppointmentDialog } from "./appointment-dialog";
+import {
+  applyAppointmentTemplateAction,
+  type ApplyAppointmentTemplateActionState,
+} from "./appointment-actions";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("de-DE", {
   dateStyle: "medium",
@@ -46,14 +53,131 @@ export function formatAppointmentWallClock(value: string): string {
   return dateTimeFormatter.format(date);
 }
 
+const INITIAL_APPLY_TEMPLATE_STATE: ApplyAppointmentTemplateActionState = { status: "idle" };
+
+function applyTemplateMessage(state: ApplyAppointmentTemplateActionState): string {
+  switch (state.status) {
+    case "idle": return "";
+    case "success": return "Der Termin wurde aus der Vorlage erstellt.";
+    case "invalid": return "Die Vorlage ist unvollständig oder der Start liegt in der Zeitumstellungs-Lücke.";
+    case "not_found": return "Die Vorlage, das Projekt oder der Kalender ist nicht mehr verfügbar.";
+    case "denied": return "Für diese Terminänderung fehlt dir die Berechtigung.";
+    case "unauthenticated": return "Deine Sitzung ist abgelaufen. Bitte lade die Seite neu.";
+  }
+}
+
+function ApplyTemplateSubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-100"
+    >
+      {pending ? "Wird angelegt …" : "Vorlage anwenden"}
+    </button>
+  );
+}
+
+function formatTemplateDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} Min.`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} Std.` : `${hours} Std. ${rest} Min.`;
+}
+
+function ApplyAppointmentTemplateForm({
+  workspaceId,
+  projectId,
+  templates,
+  calendars,
+}: {
+  workspaceId: string;
+  projectId: string;
+  templates: AppointmentTemplateDto[];
+  calendars: CalendarItemV1[];
+}) {
+  const boundApply = useMemo(
+    () => applyAppointmentTemplateAction.bind(null, workspaceId, projectId),
+    [projectId, workspaceId],
+  );
+  const [state, applyAction] = useActionState(boundApply, INITIAL_APPLY_TEMPLATE_STATE);
+  const message = applyTemplateMessage(state);
+  const isError = state.status !== "idle" && state.status !== "success";
+
+  return (
+    <form action={applyAction} className="mt-4 grid min-w-0 gap-2 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+      <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-slate-900">
+        Termin aus Vorlage anlegen
+        <select
+          name="templateId"
+          aria-label="Terminvorlage"
+          required
+          defaultValue=""
+          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+        >
+          <option value="" disabled>Vorlage wählen …</option>
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name} – {template.title} ({formatTemplateDuration(template.durationMinutes)})
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-slate-900">
+        Beginn
+        <input
+          type="datetime-local"
+          name="start"
+          aria-label="Beginn"
+          required
+          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+        />
+      </label>
+      <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-slate-900">
+        Kalender
+        <select
+          name="calendarId"
+          aria-label="Kalender"
+          required
+          defaultValue=""
+          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+        >
+          <option value="" disabled>Kalender wählen …</option>
+          {calendars.map((calendar) => (
+            <option key={calendar.id} value={calendar.id}>
+              {calendar.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <ApplyTemplateSubmitButton />
+      {message ? (
+        <p
+          role={isError ? "alert" : "status"}
+          aria-live={isError ? "assertive" : "polite"}
+          aria-atomic="true"
+          className={isError
+            ? "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:col-span-4"
+            : "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950 sm:col-span-4"}
+        >
+          {message}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
 export function AppointmentCalendarSection({
   workspaceId,
   projectId,
   range,
+  templates,
 }: {
   workspaceId: string;
   projectId: string;
   range: ProjectAppointmentRangeV1;
+  templates: AppointmentTemplateDto[];
 }) {
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
   const [view, setView] = useState<ViewMode>(range.view);
@@ -99,6 +223,15 @@ export function AppointmentCalendarSection({
         <p className="mt-5 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
           Du kannst Termine sehen, aber nicht verändern.
         </p>
+      ) : null}
+
+      {range.permissions.canWrite && templates.length > 0 && range.calendars.length > 0 ? (
+        <ApplyAppointmentTemplateForm
+          workspaceId={workspaceId}
+          projectId={projectId}
+          templates={templates}
+          calendars={range.calendars}
+        />
       ) : null}
 
       <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">

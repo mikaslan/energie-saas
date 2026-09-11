@@ -47,3 +47,4 @@ export * from "./site";
 export * from "./task-template";
 export * from "./time-tracking";
 export * from "./billing-run";
+export * from "./appointment-template";

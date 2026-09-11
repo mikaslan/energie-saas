@@ -18,3 +18,24 @@ export class AppointmentConflictError extends Error {
     this.name = "AppointmentConflictError";
   }
 }
+
+export class AppointmentTemplateNotFoundError extends Error {
+  constructor() {
+    super("appointment template was not found");
+    this.name = "AppointmentTemplateNotFoundError";
+  }
+}
+
+export class AppointmentTemplateConflictError extends Error {
+  constructor() {
+    super("appointment template name is taken");
+    this.name = "AppointmentTemplateConflictError";
+  }
+}
+
+export class AppointmentTemplateValidationError extends Error {
+  constructor() {
+    super("appointment template command is invalid");
+    this.name = "AppointmentTemplateValidationError";
+  }
+}

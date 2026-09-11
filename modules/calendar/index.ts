@@ -16,6 +16,21 @@ export {
   projectAppointmentItemV1Schema,
   projectAppointmentRangeV1Schema,
 } from "@/lib/integrations/calendar/contract";
+export {
+  APPOINTMENT_TEMPLATE_SCHEMA_VERSION,
+  applyAppointmentTemplateCommandSchema,
+  archiveAppointmentTemplateCommandSchema,
+  createAppointmentTemplateCommandSchema,
+  appointmentTemplateDtoSchema,
+  updateAppointmentTemplateCommandSchema,
+} from "@/lib/integrations/calendar/template-contract";
+export type {
+  ApplyAppointmentTemplateCommand,
+  AppointmentTemplateDto,
+  ArchiveAppointmentTemplateCommand,
+  CreateAppointmentTemplateCommand,
+  UpdateAppointmentTemplateCommand,
+} from "@/lib/integrations/calendar/template-contract";
 export type {
   AppointmentType,
   CalendarCategoryItemV1,
@@ -29,6 +44,9 @@ export type { UpcomingAppointmentV1 } from "./service";
 export {
   AppointmentConflictError,
   AppointmentNotFoundError,
+  AppointmentTemplateConflictError,
+  AppointmentTemplateNotFoundError,
+  AppointmentTemplateValidationError,
   AppointmentValidationError,
 } from "./errors";
 export {
@@ -40,3 +58,12 @@ export {
   listUpcomingAppointments,
   listVisibleCalendars,
 } from "./service";
+export {
+  applyAppointmentTemplate,
+  archiveAppointmentTemplate,
+  createAppointmentTemplate,
+  listAppointmentTemplates,
+  normalizeAppointmentTemplateName,
+  restoreAppointmentTemplate,
+  updateAppointmentTemplate,
+} from "./templates";
