@@ -147,7 +147,7 @@ export function DepositLinkPanel({
           ) : null}
         </div>
       ) : null}
-      {canWrite && document.status !== "voided" ? (
+      {canWrite && document.status !== "voided" && document.type === "invoice" ? (
         candidates.length === 0 ? (
           <p className="mt-3 text-sm leading-6 text-slate-500">
             Keine anrechenbaren Anzahlungen vorhanden (nur ausgestellte, noch nicht angerechnete Rechnungen).
@@ -157,7 +157,7 @@ export function DepositLinkPanel({
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <input type="hidden" name="finalId" value={document.id} />
             <label className="block">
-              <span className="block text-sm font-semibold text-slate-800">Anzahlung</span>
+              <span className="block text-sm font-semibold text-slate-800">Anzahlung / Gutschrift</span>
               <select
                 name="depositId"
                 required
@@ -168,6 +168,7 @@ export function DepositLinkPanel({
                 {candidates.map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
                     {candidate.number ?? candidate.name} · {formatEuro(candidate.grossCents)}
+                    {candidate.kind === "credit" ? " · Gutschrift" : ""}
                     {candidate.appliedCents < candidate.grossCents
                       ? ` · noch ${formatEuro(candidate.appliedCents)} verfügbar`
                       : ""}

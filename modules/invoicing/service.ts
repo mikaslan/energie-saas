@@ -1676,10 +1676,11 @@ export async function getDocumentDetail(
     )
     : null;
   // F8-03 Split: Allokationen dieser Anzahlung auf Schlussrechnungen.
-  const allocated = document.type === "invoice"
+  // F8-04: Gutschriften sind Geber mit eigenem Typ — kein `invoice`-Gate.
+  const allocated = document.type === "invoice" || document.type === "credit_note"
     ? await readAllocatedFinals(tx, ctx, command.documentId)
     : [];
-  const allocatedRestCents = document.type === "invoice"
+  const allocatedRestCents = document.type === "invoice" || document.type === "credit_note"
     ? Math.max(
       document.grossCents - allocated.reduce((sum, final) => sum + final.appliedCents, 0),
       0,
@@ -1715,7 +1716,8 @@ async function readAllocatedFinals(
   depositId: string,
 ): Promise<CommercialDocumentLinkedDepositV1[]> {
   const result = await tx.execute<LinkedDepositRow>(sql`
-    select doc.id, doc.number, doc.name, doc.gross_cents, link_row.applied_cents, doc.issued_at
+    select doc.id, doc.number, doc.name, doc.gross_cents, link_row.applied_cents, doc.issued_at,
+           doc.type as doc_type
       from commercial_document_link link_row
       join commercial_document doc
         on doc.workspace_id = link_row.workspace_id
@@ -1731,6 +1733,7 @@ async function readAllocatedFinals(
     grossCents: Number(row.gross_cents),
     appliedCents: Number(row.applied_cents),
     issuedAt: toIso(row.issued_at),
+    kind: linkKind(row.doc_type),
   }));
 }
 
@@ -1740,8 +1743,13 @@ type LinkedDepositRow = {
   name: string;
   gross_cents: number;
   issued_at: Date | string | null;
+  doc_type: "invoice" | "credit_note";
   [key: string]: unknown;
 };
+
+function linkKind(type: LinkedDepositRow["doc_type"]): "deposit" | "credit" {
+  return type === "credit_note" ? "credit" : "deposit";
+}
 
 async function readLinkedDeposits(
   tx: TenantTx,
@@ -1749,7 +1757,8 @@ async function readLinkedDeposits(
   finalId: string,
 ): Promise<CommercialDocumentLinkedDepositV1[]> {
   const result = await tx.execute<LinkedDepositRow>(sql`
-    select doc.id, doc.number, doc.name, doc.gross_cents, link_row.applied_cents, doc.issued_at
+    select doc.id, doc.number, doc.name, doc.gross_cents, link_row.applied_cents, doc.issued_at,
+           doc.type as doc_type
       from commercial_document_link link_row
       join commercial_document doc
         on doc.workspace_id = link_row.workspace_id
@@ -1765,6 +1774,7 @@ async function readLinkedDeposits(
     grossCents: Number(row.gross_cents),
     appliedCents: Number(row.applied_cents),
     issuedAt: toIso(row.issued_at),
+    kind: linkKind(row.doc_type),
   }));
 }
 
@@ -1816,7 +1826,11 @@ async function assertLinkable(
     readLinkDocument(tx, ctx, finalId),
     readLinkDocument(tx, ctx, depositId),
   ]);
-  if (final.type !== "invoice" || deposit.type !== "invoice") {
+  if (final.type !== "invoice") {
+    throw new InvoicingConflictError();
+  }
+  // F8-04: Geber ist Anzahlung (`invoice`) oder Gutschrift (`credit_note`).
+  if (deposit.type !== "invoice" && deposit.type !== "credit_note") {
     throw new InvoicingConflictError();
   }
   if (final.status === "voided") throw new InvoicingConflictError();
@@ -1875,7 +1889,7 @@ export async function listDepositCandidates(
   const command = parsed.data;
   if (command.type !== "invoice") throw new InvoicingValidationError();
   const result = await tx.execute<LinkedDepositRow & { allocated_cents: string }>(sql`
-    select doc.id, doc.number, doc.name, doc.gross_cents, doc.issued_at,
+    select doc.id, doc.number, doc.name, doc.gross_cents, doc.issued_at, doc.type as doc_type,
            coalesce((
              select sum(link_row.applied_cents)
                from commercial_document_link link_row
@@ -1884,7 +1898,7 @@ export async function listDepositCandidates(
            ), 0)::text as allocated_cents
       from commercial_document doc
      where doc.workspace_id = ${ctx.workspaceId}::uuid
-       and doc.type = 'invoice'
+       and doc.type in ('invoice', 'credit_note')
        and doc.status = 'issued'
        and doc.id <> ${command.documentId}::uuid
        and not exists (
@@ -1897,6 +1911,7 @@ export async function listDepositCandidates(
   `);
   // F8-03 Split: bereits voll allokierte Anzahlungen entfallen; Rest =
   // Brutto − Σ applied (unverlinkt weiter volles Brutto, F8-02-kompatibel).
+  // F8-04: Gutschriften fließen mit eigenem Rest gleichberechtigt ein.
   return result.rows
     .map((row) => ({
       id: row.id,
@@ -1905,6 +1920,7 @@ export async function listDepositCandidates(
       grossCents: Number(row.gross_cents),
       appliedCents: Math.max(Number(row.gross_cents) - Number(row.allocated_cents), 0),
       issuedAt: toIso(row.issued_at),
+      kind: linkKind(row.doc_type),
     }))
     .filter((candidate) => candidate.appliedCents > 0);
 }

@@ -650,6 +650,8 @@ export const commercialDocumentLinkedDepositV1Schema = z.strictObject({
   // F8-02: tatsächlich angerechneter Teilbetrag (≤ grossCents).
   appliedCents: moneyCentsSchema,
   issuedAt: z.string().nullable(),
+  // F8-04: Geberart — Anzahlung (`invoice`) oder Gutschrift (`credit_note`).
+  kind: z.enum(["deposit", "credit"]),
 });
 export type CommercialDocumentLinkedDepositV1 = z.infer<
   typeof commercialDocumentLinkedDepositV1Schema

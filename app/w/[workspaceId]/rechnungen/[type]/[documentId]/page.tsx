@@ -97,8 +97,12 @@ export default async function InvoicingDocumentDetailPage(
     : [];
 
   const { document, lines } = detail;
-  const showDeposits = type === "invoice"
-    && (document.permissions.canWrite || detail.linkedDeposits.length > 0);
+  // F8-04: Gutschrift-Detail zeigt den Block auch ohne eingehende Links,
+  // sobald Allokationen auf Rechnungen bestehen (reine Anzeige, kein
+  // Verlinken auf Gutschriften — Empfänger bleibt `invoice`).
+  const showDeposits = (type === "invoice"
+    && (document.permissions.canWrite || detail.linkedDeposits.length > 0))
+    || (type === "credit_note" && detail.allocatedFinals.length > 0);
   const paidCents = document.paidCents ?? 0;
   const openCents = Math.max(document.grossCents - paidCents, 0);
   const skontoText = document.skontoPercentBps !== null && document.skontoDays !== null
