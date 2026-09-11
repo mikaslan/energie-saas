@@ -9,6 +9,7 @@ import {
   subsidyCasePrograms,
   type SubsidyCaseDto,
 } from "@/lib/subsidy-case";
+import type { SubsidyProgramSuggestion } from "@/lib/subsidy-case";
 import { FILE_REQUEST_STATUS_LABEL, type FileRequestDto } from "@/lib/file-request";
 import {
   createSubsidyBelegAction,
@@ -54,12 +55,14 @@ export function SubsidyCaseSection({
   subsidyCase,
   canWrite,
   belege,
+  suggestion,
 }: {
   workspaceId: string;
   projectId: string;
   subsidyCase: SubsidyCaseDto | null;
   canWrite: boolean;
   belege: FileRequestDto[];
+  suggestion: SubsidyProgramSuggestion;
 }) {
   const [ensureState, ensureDispatch] = useActionState(ensureSubsidyCaseAction, initialState);
   const [detailsState, detailsDispatch] = useActionState(setSubsidyCaseDetailsAction, initialState);
@@ -106,6 +109,42 @@ export function SubsidyCaseSection({
             {subsidyCase.program ? ` · ${SUBSIDY_CASE_PROGRAM_LABEL[subsidyCase.program]}` : null}
             {subsidyCase.bzaNumber ? ` · BzA ${subsidyCase.bzaNumber}` : null}
           </p>
+          <div
+            className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+            data-testid="subsidy-suggestion-block"
+          >
+            <p className="text-sm text-slate-700" data-testid="subsidy-suggestion-text">
+              {suggestion.outcome === "suggested" ? (
+                <>
+                  Programm-Vorschlag (Näherung, bitte prüfen):{" "}
+                  <span className="font-semibold">
+                    {SUBSIDY_CASE_PROGRAM_LABEL[suggestion.program]}
+                  </span>{" "}
+                  — {suggestion.reasons.join("; ")} (Regeln {suggestion.rulesVersion}).
+                </>
+              ) : (
+                <>
+                  Kein Programm-Vorschlag: {suggestion.reasons.join("; ")} (Regeln{" "}
+                  {suggestion.rulesVersion}).
+                </>
+              )}
+            </p>
+            {suggestion.outcome === "suggested" && canWrite ? (
+              <form action={detailsDispatch} className="mt-2">
+                <input type="hidden" name="workspaceId" value={workspaceId} />
+                <input type="hidden" name="projectId" value={projectId} />
+                <input type="hidden" name="program" value={suggestion.program} />
+                <input type="hidden" name="bzaNumber" value={subsidyCase.bzaNumber ?? ""} />
+                <button
+                  type="submit"
+                  data-testid="subsidy-suggestion-apply"
+                  className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                >
+                  Vorschlag übernehmen
+                </button>
+              </form>
+            ) : null}
+          </div>
           {canWrite ? (
             <>
               <form action={detailsDispatch} className="flex flex-wrap items-end gap-2">

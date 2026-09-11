@@ -87,6 +87,92 @@ export function isPortalInviteUsable(
   return Number.isFinite(expiresMs) && expiresMs > nowMs;
 }
 
+// F13-08 Programm-Vorschlag (ESTIMATE, reversibel): deterministische,
+// versionierte Heuristik über Rechner-Signalen — KEINE Förderzusage,
+// KEIN Ersatz für KfW/BAFA-Regelwerke (Mandat: Live-Regeln nie erfinden).
+// Der Vorschlag begründet sich aus belegten Snapshot-Feldern; der Nutzer
+// bestätigt das Programm manuell (setSubsidyCaseDetails). Ohne verwertbare
+// Signale ehrlich no_basis statt geratenem Programm.
+export const SUBSIDY_SUGGEST_RULES_VERSION = "f13-08-suggest.v1" as const;
+
+export type SubsidyProgramSuggestionSignals = {
+  branch: "new_installation" | "existing_installation" | null;
+  answeredFieldIds: string[];
+  requestedProducts: {
+    targetStorageKwh: number;
+    wallbox: boolean;
+    bidirectionalCharging: boolean;
+    backupPower: boolean;
+  } | null;
+};
+
+export type SubsidyProgramSuggestion =
+  | {
+      outcome: "suggested";
+      program: SubsidyCaseProgram;
+      reasons: string[];
+      rulesVersion: typeof SUBSIDY_SUGGEST_RULES_VERSION;
+    }
+  | {
+      outcome: "no_basis";
+      program: null;
+      reasons: string[];
+      rulesVersion: typeof SUBSIDY_SUGGEST_RULES_VERSION;
+    };
+
+export function suggestSubsidyProgram(signals: SubsidyProgramSuggestionSignals): SubsidyProgramSuggestion {
+  const reasons: string[] = [];
+  const answered = new Set(
+    (Array.isArray(signals.answeredFieldIds) ? signals.answeredFieldIds : []).filter(
+      (id): id is string => typeof id === "string",
+    ),
+  );
+  const products = signals.requestedProducts;
+  if (products !== null) {
+    if (products.wallbox || products.bidirectionalCharging) {
+      reasons.push("Wallbox-Ladewunsch im Rechner angegeben");
+    }
+    if (Number.isFinite(products.targetStorageKwh) && products.targetStorageKwh > 0) {
+      reasons.push("Speicherwunsch im Rechner angegeben");
+    }
+  }
+  // R-WP: explizites Wärmepumpen-Signal schlägt den Anlagenkontext —
+  // Heizungstausch läuft in der Heuristik über BAFA.
+  if (answered.has("waermepumpe")) {
+    return {
+      outcome: "suggested",
+      program: "bafa",
+      reasons: ["Wärmepumpe im Rechner-Fragebogen angegeben", ...reasons],
+      rulesVersion: SUBSIDY_SUGGEST_RULES_VERSION,
+    };
+  }
+  if (signals.branch === "existing_installation") {
+    return {
+      outcome: "suggested",
+      program: "bafa",
+      reasons: ["Bestandsanlage im Rechner angegeben (Sanierungskontext prüfen)", ...reasons],
+      rulesVersion: SUBSIDY_SUGGEST_RULES_VERSION,
+    };
+  }
+  if (signals.branch === "new_installation") {
+    return {
+      outcome: "suggested",
+      program: "kfw",
+      reasons: ["Neuanlage im Rechner angegeben (KfW-Programm prüfen)", ...reasons],
+      rulesVersion: SUBSIDY_SUGGEST_RULES_VERSION,
+    };
+  }
+  return {
+    outcome: "no_basis",
+    program: null,
+    reasons:
+      reasons.length > 0
+        ? [...reasons, "kein verwertbarer Anlagenkontext (neu/Bestand unbekannt)"]
+        : ["keine auswertbaren Rechner-Angaben"],
+    rulesVersion: SUBSIDY_SUGGEST_RULES_VERSION,
+  };
+}
+
 export type SubsidyCaseDto = {
   id: string;
   projectId: string;

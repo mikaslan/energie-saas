@@ -15,7 +15,7 @@ import {
 } from "@/modules/catalog";
 import { listFileRequests } from "@/modules/file-requests";
 import { getGridRegistration } from "@/modules/grid-registration";
-import { getSubsidyCase } from "@/modules/subsidy-cases";
+import { getSubsidyCase, getSubsidyProgramSuggestion } from "@/modules/subsidy-cases";
 import { isSubsidyCaseBelegState } from "@/lib/subsidy-case";
 import {
   getProjectAssignmentContext,
@@ -793,6 +793,7 @@ export default async function ProjectTriagePage({
         subsidyCase: Awaited<ReturnType<typeof getSubsidyCase>>;
         canWrite: boolean;
         belege: Awaited<ReturnType<typeof listFileRequests>>;
+        suggestion: Awaited<ReturnType<typeof getSubsidyProgramSuggestion>>;
       }
     | { kind: "unauthenticated" }
     | { kind: "denied" }
@@ -826,7 +827,15 @@ export default async function ProjectTriagePage({
           }
         }
       }
-      return { kind: "loaded", subsidyCase, canWrite: writable, belege };
+      // F13-08: Programm-Vorschlag (ESTIMATE, lesend, gleiche Sicht wie
+      // die Akte; ehrlich no_basis ohne Rechner-Signale).
+      const suggestion = await authorizedQuery(
+        workspaceId,
+        "installation.read",
+        "subsidy_case",
+        (tx, ctx) => getSubsidyProgramSuggestion(tx, ctx, projectId),
+      );
+      return { kind: "loaded", subsidyCase, canWrite: writable, belege, suggestion };
     } catch (error) {
       if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
       if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1139,6 +1148,7 @@ export default async function ProjectTriagePage({
               subsidyCase={subsidyCaseResult.subsidyCase}
               canWrite={subsidyCaseResult.canWrite}
               belege={subsidyCaseResult.belege}
+              suggestion={subsidyCaseResult.suggestion}
             />
           </div>
         ) : null}

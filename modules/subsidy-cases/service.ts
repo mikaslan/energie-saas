@@ -35,10 +35,13 @@ import {
   isPortalInviteUsable,
   subsidyCasePrograms,
   subsidyCaseStatuses,
+  suggestSubsidyProgram,
   type SubsidyCaseDto,
   type SubsidyCasePortalActivation,
   type SubsidyCaseProgram,
   type SubsidyCaseStatus,
+  type SubsidyProgramSuggestion,
+  type SubsidyProgramSuggestionSignals,
 } from "@/lib/subsidy-case";
 
 const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -204,6 +207,96 @@ export async function getSubsidyCase(
   if (!uuidSchema.safeParse(projectId).success) throw new SubsidyCaseValidationError();
   const row = await readByProject(tx, ctx, projectId);
   return row === null ? null : toDto(row, ctx);
+}
+
+// F13-08 Programm-Vorschlag (ESTIMATE, rein lesend): Signale aus dem
+// jüngsten Rechner-Snapshot (branch, answeredFieldIds, requestedProducts)
+// plus jüngster Projekt-Anforderung (branch, requestedProducts, Fallback).
+// Keine neue Permission (installation.read wie getSubsidyCase). Fehlform
+// oder fehlende Zeilen fail-closed → no_basis (nie geraten). Der Vorschlag
+// wird NICHT persistiert; die Programmentscheidung bleibt manuell.
+function parseSuggestionSignals(
+  snapshotJson: unknown,
+  requirementsJson: unknown,
+): SubsidyProgramSuggestionSignals {
+  const signals: SubsidyProgramSuggestionSignals = {
+    branch: null,
+    answeredFieldIds: [],
+    requestedProducts: null,
+  };
+  const asRecord = (value: unknown): Record<string, unknown> | null =>
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  const parseBranch = (value: unknown): SubsidyProgramSuggestionSignals["branch"] =>
+    value === "new_installation" || value === "existing_installation" ? value : null;
+  const parseProducts = (value: unknown): SubsidyProgramSuggestionSignals["requestedProducts"] => {
+    const record = asRecord(value);
+    if (!record) return null;
+    const storage = record["targetStorageKwh"];
+    const wallbox = record["wallbox"];
+    const bidirectional = record["bidirectionalCharging"];
+    const backup = record["backupPower"];
+    if (
+      typeof storage !== "number" || !Number.isFinite(storage) ||
+      typeof wallbox !== "boolean" || typeof bidirectional !== "boolean" ||
+      typeof backup !== "boolean"
+    ) {
+      return null;
+    }
+    return {
+      targetStorageKwh: storage,
+      wallbox,
+      bidirectionalCharging: bidirectional,
+      backupPower: backup,
+    };
+  };
+  const reqRecord = asRecord(requirementsJson);
+  if (reqRecord) {
+    signals.branch = parseBranch(reqRecord["branch"]);
+    signals.requestedProducts = parseProducts(reqRecord["requestedProducts"]);
+  }
+  const snapRecord = asRecord(snapshotJson);
+  if (snapRecord) {
+    const snapBranch = parseBranch(snapRecord["branch"]);
+    if (snapBranch !== null) signals.branch = snapBranch;
+    const inputs = asRecord(snapRecord["inputs"]);
+    if (inputs) {
+      const answered = inputs["answeredFieldIds"];
+      if (Array.isArray(answered)) {
+        signals.answeredFieldIds = answered.filter((id): id is string => typeof id === "string");
+      }
+      const snapProducts = parseProducts(inputs["requestedProducts"]);
+      if (snapProducts !== null) signals.requestedProducts = snapProducts;
+    }
+  }
+  return signals;
+}
+
+export async function getSubsidyProgramSuggestion(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+): Promise<SubsidyProgramSuggestion> {
+  requireRead(ctx, projectId);
+  if (!uuidSchema.safeParse(projectId).success) throw new SubsidyCaseValidationError();
+  const snapshot = await tx.execute<{ snapshot: unknown }>(sql`
+    select snapshot from calculator_snapshot
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${projectId}::uuid
+     order by calculated_at desc
+     limit 1
+  `);
+  const requirement = await tx.execute<{ requirements: unknown }>(sql`
+    select requirements from project_requirement
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${projectId}::uuid
+     order by revision desc
+     limit 1
+  `);
+  return suggestSubsidyProgram(
+    parseSuggestionSignals(snapshot.rows[0]?.snapshot ?? null, requirement.rows[0]?.requirements ?? null),
+  );
 }
 
 // Idempotent je Projekt (UNIQUE): anlegen oder bestehenden liefern.

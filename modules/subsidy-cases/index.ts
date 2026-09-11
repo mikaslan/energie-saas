@@ -4,6 +4,7 @@ export {
   nextSubsidyCaseStatuses,
   SUBSIDY_CASE_PROGRAM_LABEL,
   SUBSIDY_CASE_STATUS_LABEL,
+  SUBSIDY_SUGGEST_RULES_VERSION,
   subsidyCasePrograms,
   subsidyCaseStatuses,
   type SubsidyCaseDto,
@@ -11,11 +12,13 @@ export {
   type SubsidyCasePortalActivationOutcome,
   type SubsidyCaseProgram,
   type SubsidyCaseStatus,
+  type SubsidyProgramSuggestion,
 } from "@/lib/subsidy-case";
 export {
   ensureSubsidyCase,
   getSubsidyCase,
   getSubsidyDashboardStats,
+  getSubsidyProgramSuggestion,
   setSubsidyCaseDetails,
   SubsidyCaseNotFoundError,
   SubsidyCaseValidationError,
