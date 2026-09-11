@@ -321,12 +321,14 @@ type TimeEntryRow = {
   created_at: string;
   updated_at: string;
   billed: boolean;
+  scope_tag: string | null;
 };
 
 // F9-07: Abrechnungs-Sperrkennzeichen je Zeile — Eintrag liegt in einem
 // GESCHLOSSENEN Lauf. In RETURNING- und SELECT-Kontexten auf time_entry
 // korreliert (Zieltabelle bzw. äußeres FROM).
 function billedExistsClause(workspaceId: string) {
+  // F9-02b hängt hier: beide Spalten sind rein abgeleitet (kein Modell).
   return sql`exists (
     select 1
       from billing_run_entry b
@@ -335,7 +337,21 @@ function billedExistsClause(workspaceId: string) {
      where b.workspace_id = ${workspaceId}::uuid
        and b.time_entry_id = time_entry.id
        and r.status = 'closed'
-  ) as billed`;
+  ) as billed, ${scopeTagClause()}`;
+}
+
+// F9-02b Auto-Tag: Bereich aus kanban_board.scope über das Projekt
+// (F15-01-Präzedenz). Korreliert wie billedExistsClause — in SELECT- und
+// RETURNING-Kontexten auf time_entry legal (Zieltabelle/äußeres FROM).
+function scopeTagClause() {
+  return sql`(select board.scope
+    from project project_record
+    join kanban_board board
+      on board.workspace_id = project_record.workspace_id
+     and board.id = project_record.kanban_board_id
+   where project_record.workspace_id = time_entry.workspace_id
+     and project_record.id = time_entry.project_id
+  ) as scope_tag`;
 }
 
 function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
@@ -357,6 +373,11 @@ function toTimeEntryDto(row: TimeEntryRow, canWrite: boolean): TimeEntryDto {
     approvedAt: row.approved_at,
     approvedBy: row.approved_by,
     billed: row.billed,
+    // Nur belegte Scopes passieren; alles andere (inkl. NULL) ist ehrlich
+    // kein Tag — kein Default-Raten.
+    scopeTag: row.scope_tag === "residential" || row.scope_tag === "commercial"
+      ? row.scope_tag
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     permissions: { canWrite },

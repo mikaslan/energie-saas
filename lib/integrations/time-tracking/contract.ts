@@ -78,6 +78,8 @@ export const timeEntryDtoSchema = z.object({
   approvedBy: z.string().uuid().nullable(),
   // F9-07 Abrechnungslauf: true = in GESCHLOSSENEM Lauf (gesperrt).
   billed: z.boolean(),
+  // F9-02b Auto-Tag: Bereich aus kanban_board.scope, NULL = unauflösbar.
+  scopeTag: z.enum(["residential", "commercial"]).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   permissions: z.object({ canWrite: z.boolean() }),

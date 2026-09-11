@@ -285,6 +285,9 @@ export function TimeEntryManager({
                       Abgerechnet
                     </span>
                   ) : null}
+                  <span className="mt-1 inline-block rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                    {entry.scopeTag === "commercial" ? "Commercial" : entry.scopeTag === "residential" ? "Residential" : "—"}
+                  </span>
                 </span>
                 <RevisionHistory
                   entryId={entry.id}
