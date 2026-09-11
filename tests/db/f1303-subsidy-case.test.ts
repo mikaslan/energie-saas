@@ -132,7 +132,7 @@ describe("F13-03 Förderakte (PostgreSQL)", () => {
     ).rejects.toBeInstanceOf(PermissionDeniedError);
     await expect(
       asEditor(fixture, (tx, ctx) =>
-        setSubsidyCaseDetails(tx, ctx, { projectId, program: "eeg", bzaNumber: null })),
+        setSubsidyCaseDetails(tx, ctx, { projectId, program: "eeg" as never, bzaNumber: null })),
     ).rejects.toBeInstanceOf(SubsidyCaseValidationError);
     await expect(
       asEditor(fixture, (tx, ctx) =>

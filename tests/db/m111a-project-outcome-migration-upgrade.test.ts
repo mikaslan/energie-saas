@@ -66,7 +66,13 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F16-04 Aufgaben-Vorlagen (0092), F9-07 Abrechnungslauf (0093),
 //   F16-05 Termin-Vorlagen (0094), F16-06 Angebots-Vorlagen (0095)
 // => 96 Migrationen (idx 0..95).
-const TOTAL_MIGRATION_COUNT = 96;
+// + F7-05 Lead-Installer (0096), F10-03b Timeline (0097),
+//   F10-03c Commercial-Scope (0098), F1-05a Column-Grants (0099),
+//   F1-05b Conversion-Ratio (0100), F1-06 Follow-up (0101),
+//   F8-05 Teilrechnung (0102), F13-02 Netzanmeldung (0103),
+//   F10-04 Datei-Anfragen (0104), F13-03 Foerderakte (0105)
+// => 106 Migrationen (idx 0..105).
+const TOTAL_MIGRATION_COUNT = 106;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -382,8 +388,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 95,
-        tag: "0095_f16_06_angebots_vorlagen",
+        idx: 105,
+        tag: "0105_f13_03_foerderservice",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

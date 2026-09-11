@@ -199,10 +199,15 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0088 F15-01 Gewerbe-Board, 0089 F9-06 Pausen-Segmente,
     // 0090 F8-02 Teilanrechnung, 0091 F10-03 Installation-Tab,
     // 0092 F16-04 Aufgaben-Vorlagen, 0093 F9-07 Abrechnungslauf,
-    // 0094 F16-05 Termin-Vorlagen, 0095 F16-06 Angebots-Vorlagen).
+    // 0094 F16-05 Termin-Vorlagen, 0095 F16-06 Angebots-Vorlagen,
+    // 0096 F7-05 Lead-Installer, 0097 F10-03b Timeline,
+    // 0098 F10-03c Commercial-Scope, 0099 F1-05a Column-Grants,
+    // 0100 F1-05b Conversion-Ratio, 0101 F1-06 Follow-up,
+    // 0102 F8-05 Teilrechnung, 0103 F13-02 Netzanmeldung,
+    // 0104 F10-04 Datei-Anfragen, 0105 F13-03 Foerderakte).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 95,
-      tag: "0095_f16_06_angebots_vorlagen",
+      idx: 105,
+      tag: "0105_f13_03_foerderservice",
     });
   });
 
