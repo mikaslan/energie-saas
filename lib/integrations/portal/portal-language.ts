@@ -55,6 +55,7 @@ export interface PortalStrings {
   documentsHeading: string;
   documentsEmpty: string;
   offerWord: string;
+  downloadWord: string;
   subsidyHeading: string;
   gridHeading: string;
   serviceHeading: string;
@@ -334,6 +335,7 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     documentsHeading: "Dokumente",
     documentsEmpty: "Aktuell liegen keine freigegebenen Dokumente vor.",
     offerWord: "Angebot",
+    downloadWord: "Herunterladen",
     subsidyHeading: "Förderung",
     gridHeading: "Netzanmeldung",
     serviceHeading: "Service",
@@ -375,6 +377,7 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     documentsHeading: "Documents",
     documentsEmpty: "No released documents available.",
     offerWord: "Offer",
+    downloadWord: "Download",
     subsidyHeading: "Subsidy",
     gridHeading: "Grid registration",
     serviceHeading: "Service",

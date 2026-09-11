@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import { sql } from "drizzle-orm";
+import type { Pool } from "pg";
 import { z } from "zod";
 
 import { writeAudit } from "@/lib/audit";
@@ -21,6 +22,11 @@ import {
   type Action,
   type ServiceCtx,
 } from "@/lib/permissions";
+import {
+  hashPortalToken,
+  PortalNotFoundError,
+  resolvePortalByToken,
+} from "@/modules/portal";
 
 const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
@@ -891,6 +897,97 @@ export async function readOfferIssuanceArtifact(
     publicationStatus: "not_issued",
     filename: `${row.offer_number}-NICHT-AUSGESTELLT-Ausstellungsfassung.pdf`,
     mimeType: row.artifact_mime_type,
+    sha256: row.artifact_sha256_hex,
+    sizeBytes: row.artifact_size_bytes,
+    bytes: Buffer.from(row.artifact_bytes),
+  };
+}
+
+export type PortalDocumentArtifactResult = {
+  issuanceId: string;
+  offerNumber: string;
+  documentDate: string;
+  filename: string;
+  mimeType: "application/pdf";
+  sha256: string;
+  sizeBytes: number;
+  bytes: Buffer;
+};
+
+const portalArtifactRowSchema = z.strictObject({
+  offer_number: z.string().regex(OFFER_NUMBER_PATTERN),
+  // pg liefert DATE als Date-Objekt (Mitternacht UTC), Text bleibt erlaubt.
+  document_date: z.union([z.string().min(1), z.date()]),
+  artifact_mime_type: z.string(),
+  artifact_sha256_hex: z.string(),
+  artifact_size_bytes: z.number(),
+  artifact_bytes: z.instanceof(Buffer),
+});
+
+// F10-07 Portal-Dokument-Download (My-Files-Rest): token-gebundener
+// Lesezugriff auf freigegebene Ausstellungsfassungen (Dateiname ESTIMATE,
+// Inhalt exakt das versiegelte Final-Artefakt). Autorisierung ist allein
+// das Portal-Token (publicTokenCapsule, kein Mandantenkontext): erst die
+// Portal-Projektion (uniform NotFound, kein Orakel), dann Zugehörigkeit
+// zur projizierten Dokumentenliste (gleicher Fehler), dann die
+// DEFINER-Funktion 0116. Integrität (SHA/Größe) wie am internen Pfad.
+export async function readPortalDocumentArtifactByToken(
+  pool: Pool,
+  value: unknown,
+): Promise<PortalDocumentArtifactResult> {
+  const command = parseCommand(
+    z.strictObject({ token: z.string().min(1), issuanceId: uuidSchema }),
+    value,
+  );
+  let view;
+  try {
+    view = await resolvePortalByToken(pool, { token: command.token });
+  } catch (error) {
+    if (error instanceof PortalNotFoundError) throw new OfferIssuanceNotFoundError();
+    throw error;
+  }
+  if (!view.documents.some((doc) => doc.id === command.issuanceId)) {
+    throw new OfferIssuanceNotFoundError();
+  }
+  const tokenHash = hashPortalToken(command.token);
+  if (tokenHash === null) throw new OfferIssuanceNotFoundError();
+  let rows: unknown[];
+  try {
+    const result = await pool.query(
+      `select * from public.read_portal_issuance_artifact($1::bytea, $2::uuid)`,
+      [tokenHash, command.issuanceId],
+    );
+    rows = result.rows;
+  } catch {
+    throw new OfferIssuancePersistenceError();
+  }
+  if (rows.length === 0) throw new OfferIssuanceNotFoundError();
+  if (rows.length !== 1) throw new OfferIssuanceIntegrityError();
+  const parsed = portalArtifactRowSchema.safeParse(rows[0]);
+  if (!parsed.success) throw new OfferIssuanceIntegrityError();
+  const row = parsed.data;
+  if (
+    row.artifact_mime_type !== "application/pdf"
+    || !SHA256_PATTERN.test(row.artifact_sha256_hex)
+    || !Number.isSafeInteger(row.artifact_size_bytes)
+    || row.artifact_size_bytes < 100
+    || row.artifact_size_bytes > MAX_ARTIFACT_BYTES
+    || row.artifact_bytes.length !== row.artifact_size_bytes
+  ) throw new OfferIssuanceIntegrityError();
+  const actual = createHash("sha256").update(row.artifact_bytes).digest();
+  const expected = Buffer.from(row.artifact_sha256_hex, "hex");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw new OfferIssuanceIntegrityError();
+  }
+  const documentDate = row.document_date instanceof Date
+    ? row.document_date.toISOString().slice(0, 10)
+    : row.document_date;
+  return {
+    issuanceId: command.issuanceId,
+    offerNumber: row.offer_number,
+    documentDate,
+    filename: `${row.offer_number}-Ausstellungsfassung.pdf`,
+    mimeType: "application/pdf",
     sha256: row.artifact_sha256_hex,
     sizeBytes: row.artifact_size_bytes,
     bytes: Buffer.from(row.artifact_bytes),

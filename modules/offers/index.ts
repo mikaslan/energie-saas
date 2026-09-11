@@ -129,6 +129,7 @@ export {
   getOfferIssuanceStatus,
   listOfferIssuances,
   readOfferIssuanceArtifact,
+  readPortalDocumentArtifactByToken,
   requestOfferIssuance,
   withdrawOfferIssuance,
 } from "./issuance-service";
@@ -140,4 +141,5 @@ export type {
   OfferIssuanceStatusResult,
   OfferIssuanceStatusState,
   OfferIssuanceWithdrawalResult,
+  PortalDocumentArtifactResult,
 } from "./issuance-service";

@@ -4002,6 +4002,17 @@ export async function verifyRoleContract(
   const hasPortalStatusLabelProjection = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("status_label_map"),
   );
+  // F10-07 (0116): Stufenmarker für den Portal-Dokument-Download
+  // (eigene DEFINER-Funktion, Muster 0104).
+  const portalDocumentDownloadProbe = await client.query<{ name: string | null }>(`
+    select routine.proname as name
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'public'
+       and routine.proname = 'read_portal_issuance_artifact'
+  `);
+  const hasPortalDocumentDownload = portalDocumentDownloadProbe.rows.length > 0;
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -4746,6 +4757,9 @@ export async function verifyRoleContract(
       ...(hasFileRequests ? [
         "fulfill_file_request:app_owner",
       ] : []),
+      ...(hasPortalDocumentDownload ? [
+        "read_portal_issuance_artifact:app_owner",
+      ] : []),
       ...(hasPortalService ? [
         "confirm_service_case:app_owner",
       ] : []),
@@ -5257,6 +5271,14 @@ export async function verifyRoleContract(
         "fulfill_file_request(bytea, uuid, text, text, text, integer, text):text:" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
           "541069e4c8a5bead1d1fd14f1e74226d2f4da7af677f53731abc6c53d7d3f9c9",
+        ] : []),
+        // F10-07 (0116): Portal-Dokument-Download (Muster fulfill).
+        ...(hasPortalDocumentDownload ? [
+        "read_portal_issuance_artifact(bytea, uuid):" +
+          "TABLE(offer_number text, document_date date, artifact_mime_type text, " +
+          "artifact_sha256_hex text, artifact_size_bytes integer, artifact_bytes bytea):" +
+          "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "840724837e6fed12d9778416d7d8b4c1d9cd39c8d77cc79d116c09ed447e6eaf",
         ] : []),
         // F13-06 (0107): Kundenbestätigung (Muster fulfill, Marker
         // hasPortalService — gleiche Migration wie die Projektion).
@@ -7034,6 +7056,9 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasFileRequests ? [
         "app_runtime:fulfill_file_request(bytea, uuid, text, text, text, integer, text):EXECUTE:app_owner:false",
+      ] : []),
+      ...(hasPortalDocumentDownload ? [
+        "app_runtime:read_portal_issuance_artifact(bytea, uuid):EXECUTE:app_owner:false",
       ] : []),
       ...(hasPortalService ? [
         "app_runtime:confirm_service_case(bytea, uuid):EXECUTE:app_owner:false",

@@ -79,9 +79,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F11-03a Notiz-Outbox (0111), F11-03b Zeit-Outbox (0112),
 //   F10-05 Portal-Statusmapping (0113), F1-12 Teams (0114),
 //   Snapshot-Baseline (0115, No-Op: friert den Schema-Stand nach dem
-//   verspaeteten Snapshot-Nachzug 0106-0114 als neue Generate-Basis ein)
-// => 116 Migrationen (idx 0..115).
-const TOTAL_MIGRATION_COUNT = 116;
+//   verspaeteten Snapshot-Nachzug 0106-0114 als neue Generate-Basis ein),
+//   F10-07 Portal-Dokument-Download (0116, nur Funktion)
+// => 117 Migrationen (idx 0..116).
+const TOTAL_MIGRATION_COUNT = 117;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -397,8 +398,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 115,
-        tag: "0115_snapshot_baseline",
+        idx: 116,
+        tag: "0116_f10_07_portal_document_download",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

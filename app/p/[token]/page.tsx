@@ -365,7 +365,15 @@ export default async function PortalTokenPage({
                             {formatPortalSignatureStatus(lang, doc.signatureStatus, doc.signedAt)}
                           </span>
                         </span>
-                        <span className="text-sm text-slate-500">{doc.documentDate}</span>
+                        <span className="flex items-center gap-3">
+                          <span className="text-sm text-slate-500">{doc.documentDate}</span>
+                          <Link
+                            href={`/p/${token}/dokumente/${doc.id}?lang=${lang}`}
+                            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-3 text-sm font-semibold text-blue-700 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                          >
+                            {t.downloadWord}
+                          </Link>
+                        </span>
                       </li>
                     ))}
                   </ul>
