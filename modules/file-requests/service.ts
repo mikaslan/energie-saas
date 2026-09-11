@@ -424,6 +424,49 @@ export async function downloadFileRequest(
   };
 }
 
+// F10-11: Einzel-Download eines Folge-Belegs (intern; project.read wie
+// downloadFileRequest — Empfangs-QR, kein Schreibakt). Key fail-closed
+// auf immutable/-Präfix; Anfrage-Bindung verhindert ID-Orakel über
+// fremde Uploads (uniform NotFound).
+export async function downloadFileRequestUpload(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string; requestId: string; uploadId: string },
+): Promise<{ filename: string; contentType: string; body: Buffer }> {
+  requireRead(ctx, input.projectId);
+  if (!uuidSchema.safeParse(input.projectId).success) {
+    throw new FileRequestValidationError();
+  }
+  if (!uuidSchema.safeParse(input.requestId).success) {
+    throw new FileRequestValidationError();
+  }
+  if (!uuidSchema.safeParse(input.uploadId).success) {
+    throw new FileRequestValidationError();
+  }
+  const found = await tx.execute<FileRequestUploadRow & { storage_key: string | null }>(sql`
+    select id, file_request_id, storage_key, content_type, byte_size, original_filename, uploaded_at
+      from file_request_upload
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${input.projectId}::uuid
+       and file_request_id = ${input.requestId}::uuid
+       and id = ${input.uploadId}::uuid
+     limit 1
+  `);
+  const row = found.rows[0];
+  if (!row) throw new FileRequestNotFoundError(input.projectId);
+  const storageKey = row.storage_key;
+  if (storageKey === null || !storageKey.startsWith("immutable/") || row.original_filename === null) {
+    throw new FileRequestValidationError("receipt key mismatch");
+  }
+  const storage = resolveObjectStorage();
+  const got = await storage.get(storageKey);
+  return {
+    filename: row.original_filename,
+    contentType: row.content_type ?? got.contentType,
+    body: got.body,
+  };
+}
+
 export type FulfillFileRequestInput = {
   token: unknown;
   requestId: unknown;

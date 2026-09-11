@@ -171,5 +171,19 @@ test("F10-10-E2E-01: Allow-many-Anfrage nimmt zwei Belege an", async ({ page }) 
     `Weitere Datei: ${SECOND_FILENAME}`,
   );
 
+  // 6) Folge-Beleg laden: Byte-identischer Download.
+  const uploadItem = requestItem.getByTestId("file-request-uploads").locator("li", {
+    hasText: SECOND_FILENAME,
+  });
+  await uploadItem.getByTestId("file-request-upload-download").click();
+  const uploadLink = uploadItem.getByTestId("file-request-upload-download-link");
+  await expect(uploadLink).toBeVisible();
+  const uploadDownloadPromise = page.waitForEvent("download");
+  await uploadLink.click();
+  const uploadDownload = await uploadDownloadPromise;
+  const uploadPath = await uploadDownload.path();
+  expect(uploadPath).toBeTruthy();
+  expect(readFileSync(uploadPath as string).equals(SECOND_BYTES)).toBe(true);
+
   expect(errors, "Browser-Konsole und Page-Errors der Allow-many-Grenze").toEqual([]);
 });

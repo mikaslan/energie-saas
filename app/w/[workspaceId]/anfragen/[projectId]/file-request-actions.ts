@@ -8,6 +8,7 @@ import {
   applyFileRequestTemplate,
   createFileRequest,
   downloadFileRequest,
+  downloadFileRequestUpload,
   FileRequestConflictError,
   FileRequestNotFoundError,
   FileRequestTemplateNotFoundError,
@@ -156,6 +157,40 @@ export async function downloadFileRequestAction(
   try {
     const got = await authorizedQuery(ids.workspaceId, "project.read", "file_request", (tx, ctx) =>
       downloadFileRequest(tx, ctx, { projectId: ids.projectId, requestId }),
+    );
+    return {
+      status: "ready",
+      filename: got.filename,
+      contentType: got.contentType,
+      base64: got.body.toString("base64"),
+    };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof FileRequestNotFoundError) return { status: "not_found" };
+    if (error instanceof FileRequestValidationError) return { status: "invalid" };
+    throw error;
+  }
+}
+
+// F10-11: Folge-Beleg laden (Base64-Daten-URL im Client; Muster
+// downloadFileRequestAction). project.read genügt.
+export async function downloadFileRequestUploadAction(
+  _previous: FileRequestDownloadState,
+  formData: FormData,
+): Promise<FileRequestDownloadState> {
+  const ids = parseIds(formData);
+  const requestId = parseRequestId(formData);
+  const uploadValue = formData.get("uploadId");
+  const parsedUpload = typeof uploadValue === "string" ? uuidSchema.safeParse(uploadValue) : null;
+  if (!ids || !requestId || !parsedUpload?.success) return { status: "invalid" };
+  try {
+    const got = await authorizedQuery(ids.workspaceId, "project.read", "file_request", (tx, ctx) =>
+      downloadFileRequestUpload(tx, ctx, {
+        projectId: ids.projectId,
+        requestId,
+        uploadId: parsedUpload.data,
+      }),
     );
     return {
       status: "ready",

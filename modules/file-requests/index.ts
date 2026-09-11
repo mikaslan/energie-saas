@@ -4,10 +4,12 @@ export {
   nextFileRequestStatuses,
   type FileRequestDto,
   type FileRequestStatus,
+  type FileRequestUploadDto,
 } from "@/lib/file-request";
 export {
   createFileRequest,
   downloadFileRequest,
+  downloadFileRequestUpload,
   FILE_REQUEST_MAX_BYTES,
   FileRequestConflictError,
   FileRequestNotFoundError,

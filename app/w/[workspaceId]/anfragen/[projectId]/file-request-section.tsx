@@ -5,12 +5,14 @@ import {
   FILE_REQUEST_STATUS_LABEL,
   nextFileRequestStatuses,
   type FileRequestDto,
+  type FileRequestUploadDto,
 } from "@/lib/file-request";
 import type { FileRequestTemplateDto } from "@/lib/file-request-template";
 import {
   applyFileRequestTemplateAction,
   createFileRequestAction,
   downloadFileRequestAction,
+  downloadFileRequestUploadAction,
   transitionFileRequestAction,
   type FileRequestActionState,
   type FileRequestDownloadState,
@@ -109,6 +111,66 @@ function ReceiptRow({
   );
 }
 
+// F10-11: Folge-Beleg je Upload-Zeile (eigener Download-Status je Zeile,
+// Muster ReceiptRow).
+function UploadRow({
+  workspaceId,
+  projectId,
+  requestId,
+  upload,
+}: {
+  workspaceId: string;
+  projectId: string;
+  requestId: string;
+  upload: FileRequestUploadDto;
+}) {
+  const [downloadState, downloadDispatch] = useActionState(
+    downloadFileRequestUploadAction,
+    initialDownload,
+  );
+  const dataUrl =
+    downloadState.status === "ready"
+      ? `data:${downloadState.contentType};base64,${downloadState.base64}`
+      : null;
+  return (
+    <li className="text-sm text-slate-600">
+      <span className="block">
+        Weitere Datei: {upload.originalFilename}
+        {upload.byteSize !== null ? ` (${formatBytes(upload.byteSize)})` : ""}
+      </span>
+      {dataUrl ? (
+        <a
+          href={dataUrl}
+          download={downloadState.status === "ready" ? downloadState.filename : undefined}
+          data-testid="file-request-upload-download-link"
+          className="mt-0.5 inline-block font-semibold text-blue-700 hover:underline"
+        >
+          Folge-Beleg herunterladen
+        </a>
+      ) : (
+        <form action={downloadDispatch} className="mt-0.5">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="projectId" value={projectId} />
+          <input type="hidden" name="requestId" value={requestId} />
+          <input type="hidden" name="uploadId" value={upload.id} />
+          <button
+            type="submit"
+            data-testid="file-request-upload-download"
+            className="font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600"
+          >
+            Folge-Beleg laden
+          </button>
+        </form>
+      )}
+      {downloadState.status === "not_found" || downloadState.status === "invalid" ? (
+        <p role="alert" className="mt-0.5 text-sm font-semibold text-red-700">
+          Der Folge-Beleg ist nicht mehr verfügbar.
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
 // F10-04 Datei-Anfragen: Anlage (Titel/Beschreibung), Eingangs-QR mit
 // Prüfsumme + Download, Folge-Buttons. Reine Darstellung gespeicherter Werte.
 export function FileRequestSection({
@@ -160,10 +222,13 @@ export function FileRequestSection({
                 {request.uploads.length > 0 ? (
                   <ul className="mt-2 space-y-1" data-testid="file-request-uploads">
                     {request.uploads.map((upload) => (
-                      <li key={upload.id} className="text-sm text-slate-600">
-                        Weitere Datei: {upload.originalFilename}
-                        {upload.byteSize !== null ? ` (${formatBytes(upload.byteSize)})` : ""}
-                      </li>
+                      <UploadRow
+                        key={upload.id}
+                        workspaceId={workspaceId}
+                        projectId={projectId}
+                        requestId={request.id}
+                        upload={upload}
+                      />
                     ))}
                   </ul>
                 ) : null}

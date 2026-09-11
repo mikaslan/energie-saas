@@ -16,6 +16,7 @@ import { PORTAL_INVITE_CREATE_VERSION } from "@/lib/integrations/portal/portal-c
 import { createPortalInvite, resolvePortalByToken } from "@/modules/portal";
 import {
   createFileRequest,
+  downloadFileRequestUpload,
   FileRequestConflictError,
   FileRequestNotFoundError,
   fulfillFileRequestByToken,
@@ -234,5 +235,69 @@ describe("F10-10 Datei-Anfragen Allow-many (PostgreSQL + LocalStorage)", () => {
       (tx, ctx) => listFileRequests(tx, ctx, foreign.projectId),
     );
     expect(foreignList).toEqual([]);
+  });
+
+  it("F1010-DB-03: Folge-Beleg-Download ist byte-identisch, fremd/unbekannt fail-closed", async () => {
+    const request = await asEditor(fixture, (tx, ctx) =>
+      createFileRequest(tx, ctx, {
+        projectId: fixture.projectId,
+        title: "Download-Test",
+        description: null,
+        allowMany: true,
+      }),
+    );
+    const other = await asEditor(fixture, (tx, ctx) =>
+      createFileRequest(tx, ctx, {
+        projectId: fixture.projectId,
+        title: "Andere Anfrage",
+        description: null,
+        allowMany: true,
+      }),
+    );
+    const token = await seedInvite(fixture);
+    const fulfill = (requestId: string, bytes: Buffer) =>
+      fulfillFileRequestByToken(testPool, {
+        token,
+        requestId,
+        filename: "beleg.pdf",
+        contentType: "application/pdf",
+        bytes,
+      });
+    await fulfill(request.id, FIRST_BYTES);
+    await fulfill(request.id, SECOND_BYTES);
+
+    const listed = await asEditor(fixture, (tx, ctx) => listFileRequests(tx, ctx, fixture.projectId));
+    const uploadId = listed.find((entry) => entry.id === request.id)?.uploads[0]?.id;
+    expect(uploadId).toBeTruthy();
+    const downloaded = await asEditor(fixture, (tx, ctx) =>
+      downloadFileRequestUpload(tx, ctx, {
+        projectId: fixture.projectId,
+        requestId: request.id,
+        uploadId: uploadId as string,
+      }),
+    );
+    expect(downloaded.filename).toBe("beleg.pdf");
+    expect(downloaded.contentType).toBe("application/pdf");
+    expect(Buffer.compare(downloaded.body, SECOND_BYTES)).toBe(0);
+
+    // Unbekannte Upload-ID / falsche Anfrage-Bindung: kein Orakel.
+    await expect(
+      asEditor(fixture, (tx, ctx) =>
+        downloadFileRequestUpload(tx, ctx, {
+          projectId: fixture.projectId,
+          requestId: request.id,
+          uploadId: randomUUID(),
+        }),
+      ),
+    ).rejects.toBeInstanceOf(FileRequestNotFoundError);
+    await expect(
+      asEditor(fixture, (tx, ctx) =>
+        downloadFileRequestUpload(tx, ctx, {
+          projectId: fixture.projectId,
+          requestId: other.id,
+          uploadId: uploadId as string,
+        }),
+      ),
+    ).rejects.toBeInstanceOf(FileRequestNotFoundError);
   });
 });
