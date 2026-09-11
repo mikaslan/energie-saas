@@ -663,6 +663,10 @@ export const commercialDocumentDetailV1Schema = z.strictObject({
   // `invoice`; andere Typen liefern leere Liste / null).
   linkedDeposits: z.array(commercialDocumentLinkedDepositV1Schema),
   remainingCents: moneyCentsSchema.nullable(),
+  // F8-03 Split: Schlussrechnungen, auf die diese Anzahlung verteilt ist,
+  // + noch nicht allokierter Rest (nur Typ `invoice`, sonst [] / null).
+  allocatedFinals: z.array(commercialDocumentLinkedDepositV1Schema),
+  allocatedRestCents: moneyCentsSchema.nullable(),
 });
 export type CommercialDocumentDetailV1 = z.infer<
   typeof commercialDocumentDetailV1Schema

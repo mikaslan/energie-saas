@@ -1675,6 +1675,16 @@ export async function getDocumentDetail(
       0,
     )
     : null;
+  // F8-03 Split: Allokationen dieser Anzahlung auf Schlussrechnungen.
+  const allocated = document.type === "invoice"
+    ? await readAllocatedFinals(tx, ctx, command.documentId)
+    : [];
+  const allocatedRestCents = document.type === "invoice"
+    ? Math.max(
+      document.grossCents - allocated.reduce((sum, final) => sum + final.appliedCents, 0),
+      0,
+    )
+    : null;
 
   return commercialDocumentDetailV1Schema.parse({
     schemaVersion: COMMERCIAL_DOCUMENT_DETAIL_VERSION,
@@ -1694,7 +1704,34 @@ export async function getDocumentDetail(
     })),
     linkedDeposits: linked,
     remainingCents,
+    allocatedFinals: allocated,
+    allocatedRestCents,
   });
+}
+
+async function readAllocatedFinals(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  depositId: string,
+): Promise<CommercialDocumentLinkedDepositV1[]> {
+  const result = await tx.execute<LinkedDepositRow>(sql`
+    select doc.id, doc.number, doc.name, doc.gross_cents, link_row.applied_cents, doc.issued_at
+      from commercial_document_link link_row
+      join commercial_document doc
+        on doc.workspace_id = link_row.workspace_id
+       and doc.id = link_row.final_id
+     where link_row.workspace_id = ${ctx.workspaceId}::uuid
+       and link_row.deposit_id = ${depositId}::uuid
+     order by link_row.created_at asc, link_row.id asc
+  `);
+  return result.rows.map((row) => ({
+    id: row.id,
+    number: row.number,
+    name: row.name,
+    grossCents: Number(row.gross_cents),
+    appliedCents: Number(row.applied_cents),
+    issuedAt: toIso(row.issued_at),
+  }));
 }
 
 type LinkedDepositRow = {
@@ -1738,8 +1775,9 @@ async function readLinkedDeposits(
 // Fail-closed: fehlende Belege → NotFound ohne Orakel; falscher Typ,
 // Selbst-Link, Entwurf/Storno als Anzahlung, stornierte Schlussrechnung,
 // Ketten (Anzahlung mit eigenen Links) und Doppel-Verlinkung →
-// Validation/Conflict. Eine Anzahlung gehört zu höchstens einer
-// Schlussrechnung (keine Doppel-Anrechnung).
+// Validation/Conflict. F8-03 Split: eine Anzahlung darf auf mehrere
+// Schlussrechnungen verteilt werden, gedeckelt durch Σ applied ≤
+// Brutto(Anzahlung) und Σ applied ≤ Brutto(Schlussrechnung).
 // ═══════════════════════════════════════════════════════════════════════
 
 type LinkDocumentRow = {
@@ -1811,15 +1849,19 @@ async function assertLinkable(
      where workspace_id = ${ctx.workspaceId}::uuid and final_id = ${depositId}::uuid
   `);
   if (Number(outgoing.rows[0]?.c ?? 0) > 0) throw new InvoicingConflictError();
-  // Exklusivität: eine Anzahlung gehört zu höchstens einer
-  // Schlussrechnung (keine Doppel-Anrechnung).
-  const incoming = await tx.execute<{ other: string | null }>(sql`
-    select final_id as other from commercial_document_link
+  // F8-03 Split: eine Anzahlung darf auf mehrere Schlussrechnungen
+  // verteilt werden — gedeckelt durch ihr eigenes Brutto (fail-closed
+  // statt stiller Über-Allokation). Die F8-01-Paar-Unique fängt den
+  // Doppel-Link auf dieselbe Schlussrechnung als Konflikt.
+  const allocated = await tx.execute<{ total: string }>(sql`
+    select coalesce(sum(applied_cents), 0)::text as total
+      from commercial_document_link
      where workspace_id = ${ctx.workspaceId}::uuid and deposit_id = ${depositId}::uuid
-     limit 1
   `);
-  const other = incoming.rows[0]?.other ?? null;
-  if (other !== null && other !== finalId) throw new InvoicingConflictError();
+  const allocatedTotal = Number(allocated.rows[0]?.total ?? 0);
+  if (!Number.isFinite(allocatedTotal) || allocatedTotal + appliedCents > depositGross) {
+    throw new InvoicingConflictError();
+  }
 }
 
 export async function listDepositCandidates(
@@ -1832,18 +1874,19 @@ export async function listDepositCandidates(
   if (!parsed.success) throw new InvoicingValidationError();
   const command = parsed.data;
   if (command.type !== "invoice") throw new InvoicingValidationError();
-  const result = await tx.execute<LinkedDepositRow>(sql`
-    select doc.id, doc.number, doc.name, doc.gross_cents, doc.issued_at
+  const result = await tx.execute<LinkedDepositRow & { allocated_cents: string }>(sql`
+    select doc.id, doc.number, doc.name, doc.gross_cents, doc.issued_at,
+           coalesce((
+             select sum(link_row.applied_cents)
+               from commercial_document_link link_row
+              where link_row.workspace_id = doc.workspace_id
+                and link_row.deposit_id = doc.id
+           ), 0)::text as allocated_cents
       from commercial_document doc
      where doc.workspace_id = ${ctx.workspaceId}::uuid
        and doc.type = 'invoice'
        and doc.status = 'issued'
        and doc.id <> ${command.documentId}::uuid
-       and not exists (
-         select 1 from commercial_document_link link_row
-          where link_row.workspace_id = doc.workspace_id
-            and link_row.deposit_id = doc.id
-       )
        and not exists (
          select 1 from commercial_document_link chain_row
           where chain_row.workspace_id = doc.workspace_id
@@ -1852,15 +1895,18 @@ export async function listDepositCandidates(
      order by doc.issued_at desc nulls last, doc.created_at desc, doc.id desc
      limit 50
   `);
-  return result.rows.map((row) => ({
-    id: row.id,
-    number: row.number,
-    name: row.name,
-    grossCents: Number(row.gross_cents),
-    // F8-02: Kandidat noch unverlinkt — volles Brutto verfügbar.
-    appliedCents: Number(row.gross_cents),
-    issuedAt: toIso(row.issued_at),
-  }));
+  // F8-03 Split: bereits voll allokierte Anzahlungen entfallen; Rest =
+  // Brutto − Σ applied (unverlinkt weiter volles Brutto, F8-02-kompatibel).
+  return result.rows
+    .map((row) => ({
+      id: row.id,
+      number: row.number,
+      name: row.name,
+      grossCents: Number(row.gross_cents),
+      appliedCents: Math.max(Number(row.gross_cents) - Number(row.allocated_cents), 0),
+      issuedAt: toIso(row.issued_at),
+    }))
+    .filter((candidate) => candidate.appliedCents > 0);
 }
 
 export async function linkDeposit(

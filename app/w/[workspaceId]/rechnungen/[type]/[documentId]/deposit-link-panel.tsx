@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   linkDepositAction,
   unlinkDepositAction,
@@ -13,6 +13,12 @@ import type {
 } from "@/lib/integrations/invoicing/contract";
 
 const initialState: InvoicingUiActionState = { status: "idle" };
+
+// F8-03 Split: Cent → EUR-Text für die Betragsvorbelegung (deutsches
+// Dezimalkomma, wie parseEuroCents es liest).
+function centsToEurInput(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
 
 function errorText(state: InvoicingUiActionState): string | null {
   switch (state.status) {
@@ -28,8 +34,11 @@ function errorText(state: InvoicingUiActionState): string | null {
 
 // F8-01 · Anrechnung ausgestellter Anzahlungen (genau eine Stufe).
 // F8-02 · optionaler Teilbetrag je Link (Default = volles Brutto).
-// Server-renderte Liste + Restbetrag; Formulare nur mit
-// Schreibrecht (Server-Action bleibt die Sicherheitsgrenze).
+// F8-03 · Split: Kandidaten mit verfügbarem Rest, Vorbelegung
+// min(Rest Anzahlung, Rest Schlussrechnung); Anzahlungs-Detail zeigt
+// Allokationen je Schlussrechnung. Server-renderte Listen + Restbetrag;
+// Formulare nur mit Schreibrecht (Server-Action bleibt die
+// Sicherheitsgrenze).
 export function DepositLinkPanel({
   workspaceId,
   detail,
@@ -41,9 +50,16 @@ export function DepositLinkPanel({
 }) {
   const [linkState, linkDispatch] = useActionState(linkDepositAction, initialState);
   const [unlinkState, unlinkDispatch] = useActionState(unlinkDepositAction, initialState);
-  const { document, linkedDeposits, remainingCents } = detail;
+  const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
+  const { document, linkedDeposits, remainingCents, allocatedFinals, allocatedRestCents } = detail;
   const canWrite = document.permissions.canWrite;
   const linkError = errorText(linkState) ?? errorText(unlinkState);
+  const selectedCandidate = candidates.find((candidate) => candidate.id === selectedDepositId)
+    ?? candidates[0]
+    ?? null;
+  const suggestedCents = selectedCandidate === null || remainingCents === null
+    ? null
+    : Math.min(selectedCandidate.appliedCents, remainingCents);
 
   return (
     <section
@@ -105,13 +121,39 @@ export function DepositLinkPanel({
           </div>
         </dl>
       ) : null}
+      {allocatedFinals.length > 0 ? (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <h3 className="text-sm font-semibold text-slate-800">Auf Schlussrechnungen verteilt</h3>
+          <ul className="mt-2 divide-y divide-slate-100">
+            {allocatedFinals.map((final) => (
+              <li key={final.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                <span className="text-slate-800">
+                  {final.number ?? final.name}
+                  <span className="block text-xs text-slate-500">
+                    {final.number ? `${final.name} · ` : ""}
+                    {formatEuro(final.appliedCents)} von {formatEuro(final.grossCents)}
+                  </span>
+                </span>
+                <span className="font-semibold tabular-nums text-slate-900">
+                  −{formatEuro(final.appliedCents)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {allocatedRestCents !== null ? (
+            <p className="mt-2 text-sm text-slate-600">
+              Noch verfügbar: <span className="font-semibold tabular-nums text-slate-900">{formatEuro(allocatedRestCents)}</span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {canWrite && document.status !== "voided" ? (
         candidates.length === 0 ? (
           <p className="mt-3 text-sm leading-6 text-slate-500">
             Keine anrechenbaren Anzahlungen vorhanden (nur ausgestellte, noch nicht angerechnete Rechnungen).
           </p>
         ) : (
-          <form action={linkDispatch} className="mt-3 flex flex-wrap items-end gap-2">
+          <form action={linkDispatch} key={selectedCandidate?.id ?? "none"} className="mt-3 flex flex-wrap items-end gap-2">
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <input type="hidden" name="finalId" value={document.id} />
             <label className="block">
@@ -119,11 +161,16 @@ export function DepositLinkPanel({
               <select
                 name="depositId"
                 required
+                value={selectedCandidate?.id ?? ""}
+                onChange={(event) => setSelectedDepositId(event.target.value)}
                 className="mt-1 min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
               >
                 {candidates.map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
                     {candidate.number ?? candidate.name} · {formatEuro(candidate.grossCents)}
+                    {candidate.appliedCents < candidate.grossCents
+                      ? ` · noch ${formatEuro(candidate.appliedCents)} verfügbar`
+                      : ""}
                   </option>
                 ))}
               </select>
@@ -135,6 +182,7 @@ export function DepositLinkPanel({
                 type="text"
                 inputMode="decimal"
                 placeholder="volles Brutto"
+                defaultValue={suggestedCents === null ? undefined : centsToEurInput(suggestedCents)}
                 className="mt-1 min-h-11 w-36 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
               />
             </label>
