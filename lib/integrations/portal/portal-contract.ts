@@ -151,12 +151,29 @@ export const portalInstallationTimelineEntrySchema = z.strictObject({
 });
 export type PortalInstallationTimelineEntry = z.infer<typeof portalInstallationTimelineEntrySchema>;
 
+// F10-05: Admin-Statusmapping (Installation-Umfang). Overrides je
+// Anzeigestand; fehlende Schlüssel = Standardtext (kein NULL-Label).
+// Spiegel des DB-CHECKs (getrimmt, 1–80, keine Controls).
+const portalInstallationStatusLabelSchema = z.string()
+  .refine((value) => value === value.trim(), { message: "label ungetrimmt" })
+  .refine((value) => value.length >= 1 && value.length <= 80, { message: "label-Laenge" })
+  .refine((value) => !/[\p{Cc}]/u.test(value), { message: "label-Steuerzeichen" });
+
+export const portalInstallationStatusLabelsSchema = z.strictObject({
+  active: portalInstallationStatusLabelSchema.optional(),
+  completed: portalInstallationStatusLabelSchema.optional(),
+  handover: portalInstallationStatusLabelSchema.optional(),
+});
+export type PortalInstallationStatusLabels = z.infer<typeof portalInstallationStatusLabelsSchema>;
+
 const portalInstallationSchema = z.strictObject({
   status: z.enum(["active", "completed"]),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
   handoverAt: z.iso.datetime({ offset: true }).nullable(),
   // F10-03b Status-Timeline (nur Allowlist-Typen, nie Payloads/Akteure).
   timeline: z.array(portalInstallationTimelineEntrySchema),
+  // F10-05 Admin-Overrides (Resolver projiziert nur gesetzte Schlüssel).
+  statusLabels: portalInstallationStatusLabelsSchema,
 });
 export type PortalInstallation = z.infer<typeof portalInstallationSchema>;
 
@@ -340,7 +357,7 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     const record = raw as Record<string, unknown>;
     // Nur der DEFINER-Wortschatz; fremde Schlüssel = deformiert.
     for (const key of Object.keys(record)) {
-      if (key !== "status" && key !== "completedAt" && key !== "handoverAt" && key !== "timeline") {
+      if (key !== "status" && key !== "completedAt" && key !== "handoverAt" && key !== "timeline" && key !== "statusLabels") {
         return null;
       }
     }
@@ -357,7 +374,15 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
         ? (record.timeline as PortalInstallationTimelineEntry[])
         : null;
     if (timeline === null) return null;
-    installation = { status: status.data, completedAt, handoverAt, timeline };
+    // F10-05: fehlend = Alt-Projektion ohne Mapping → ehrlich leer
+    // (Standardtexte); deformiert bricht fail-closed ab.
+    const statusLabels = record.statusLabels === undefined
+      ? {}
+      : portalInstallationStatusLabelsSchema.safeParse(record.statusLabels).success
+        ? (record.statusLabels as PortalInstallationStatusLabels)
+        : null;
+    if (statusLabels === null) return null;
+    installation = { status: status.data, completedAt, handoverAt, timeline, statusLabels };
   }
   // F10-03c: Katalog F10.3 — kein Preis-/Signatur-Bereich im
   // Commercial-Portal. Strip nach striktem Parse (deformierte Dokumente

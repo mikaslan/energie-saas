@@ -9,6 +9,8 @@ import {
   SUBSIDY_CASE_PROGRAM_LABEL,
   SUBSIDY_CASE_STATUS_LABEL,
 } from "@/modules/subsidy-cases";
+import type { PortalInstallationStatusLabels } from "@/lib/integrations/portal/portal-contract";
+import { INSTALLATION_STATUS_LABEL_DEFAULTS } from "@/modules/installations";
 import { GRID_REGISTRATION_STATUS_LABEL } from "@/modules/grid-registration";
 
 export const metadata: Metadata = {
@@ -35,22 +37,26 @@ function formatBerlinRange(startAt: string, endAt: string, allDay: boolean): str
   return `${date} · ${BERLIN_TIME.format(start)}–${BERLIN_TIME.format(new Date(endAt))} Uhr`;
 }
 
-// F10-03: Installationsstand (festes Anzeige-Mapping, ESTIMATE;
-// Admin-Mapping je Status bleibt offen). Nur Stand + Daten.
+// F10-03: Installationsstand (ESTIMATE-Layout); F10-05: Worte stammen
+// aus dem Admin-Mapping (Override), fehlende Schlüssel fallen ehrlich
+// auf die Standardtexte. Nur Stand + Daten.
 function formatInstallationStatus(
   status: "active" | "completed",
   completedAt: string | null,
   handoverAt: string | null,
+  statusLabels: PortalInstallationStatusLabels,
 ): string {
   if (status === "completed" && handoverAt !== null) {
-    return `Abgenommen am ${BERLIN_DATE.format(new Date(handoverAt))}`;
+    const word = statusLabels.handover ?? INSTALLATION_STATUS_LABEL_DEFAULTS.handover;
+    return `${word} am ${BERLIN_DATE.format(new Date(handoverAt))}`;
   }
   if (status === "completed") {
+    const word = statusLabels.completed ?? INSTALLATION_STATUS_LABEL_DEFAULTS.completed;
     return completedAt === null
-      ? "Abgeschlossen"
-      : `Abgeschlossen am ${BERLIN_DATE.format(new Date(completedAt))}`;
+      ? word
+      : `${word} am ${BERLIN_DATE.format(new Date(completedAt))}`;
   }
-  return "In Ausführung";
+  return statusLabels.active ?? INSTALLATION_STATUS_LABEL_DEFAULTS.active;
 }
 
 // F10.2 Slice B: Signatur-Status je Dokument (read-only, wörtlich aus der
@@ -189,6 +195,7 @@ export default async function PortalTokenPage({
                     view.installation.status,
                     view.installation.completedAt,
                     view.installation.handoverAt,
+                    view.installation.statusLabels,
                   )}</dd>
                 </div>
               </dl>

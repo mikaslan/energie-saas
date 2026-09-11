@@ -7,7 +7,7 @@ export {
   hashPortalToken,
   parsePortalPublicView,
 } from "@/lib/integrations/portal/portal-contract";
-export type { PortalPublicViewV1 } from "@/lib/integrations/portal/portal-contract";
+export type { PortalInstallationStatusLabels, PortalPublicViewV1 } from "@/lib/integrations/portal/portal-contract";
 export {
   PORTAL_CONFLICT_CODES,
   PORTAL_INVITE_STATUS,

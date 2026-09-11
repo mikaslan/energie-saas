@@ -473,3 +473,109 @@ export async function setLeadInstaller(
 
   return toDto(updated.rows[0]!, true);
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// F10-05 Portal-Statusmapping (Installation-Umfang): kundenlesbare
+// Bezeichnung je Anzeigestand. Lesen installation.read, Schreiben
+// installation.write (keine neue Permission). Fehlende Zeile =
+// Standardtext (der Resolver projiziert nur gesetzte Schlüssel).
+// ═══════════════════════════════════════════════════════════════════════
+
+// F10-05: Konstanten/Zod aus dem client-sicheren Vertrag (Service nutzt
+// dieselbe Quelle wie UI und Portal-Fallback).
+export {
+  INSTALLATION_STATUS_LABEL_DEFAULTS,
+  INSTALLATION_STATUS_LABEL_KEYS,
+  INSTALLATION_STATUS_LABEL_SCOPE,
+  installationStatusLabelCommandSchema as statusLabelCommandSchema,
+  installationStatusLabelKeySchema as statusLabelKeySchema,
+  type InstallationStatusLabelKey,
+  type InstallationStatusLabels,
+} from "@/lib/integrations/installations/status-label-contract";
+import {
+  INSTALLATION_STATUS_LABEL_SCOPE,
+  installationStatusLabelCommandSchema,
+  installationStatusLabelKeySchema,
+  type InstallationStatusLabels,
+} from "@/lib/integrations/installations/status-label-contract";
+
+export async function listInstallationStatusLabels(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<InstallationStatusLabels> {
+  requireRead(ctx);
+  const result = await tx.execute<{ source_key: string; label: string }>(sql`
+    select source_key, label
+      from portal_status_label
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and scope = ${INSTALLATION_STATUS_LABEL_SCOPE}
+  `);
+  const labels: InstallationStatusLabels = { active: null, completed: null, handover: null };
+  for (const row of result.rows) {
+    if (row.source_key === "active") labels.active = row.label;
+    else if (row.source_key === "completed") labels.completed = row.label;
+    else if (row.source_key === "handover") labels.handover = row.label;
+  }
+  return labels;
+}
+
+export async function upsertInstallationStatusLabel(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { key: string; label: string },
+): Promise<InstallationStatusLabels> {
+  requireWrite(ctx);
+  const parsed = installationStatusLabelCommandSchema.safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+  const command = parsed.data;
+  await tx.execute(sql`
+    insert into portal_status_label (
+      workspace_id, scope, source_key, label, created_by, updated_by
+    ) values (
+      ${ctx.workspaceId}::uuid,
+      ${INSTALLATION_STATUS_LABEL_SCOPE},
+      ${command.key},
+      ${command.label},
+      ${ctx.actor}::uuid,
+      ${ctx.actor}::uuid
+    )
+    on conflict (workspace_id, scope, source_key) do update set
+      label = excluded.label,
+      updated_by = excluded.updated_by,
+      updated_at = statement_timestamp()
+  `);
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "installation.set_status_label",
+    resource: "portal_status_label",
+    allowed: true,
+    details: { key: command.key },
+  });
+  return listInstallationStatusLabels(tx, ctx);
+}
+
+export async function resetInstallationStatusLabel(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { key: string },
+): Promise<InstallationStatusLabels> {
+  requireWrite(ctx);
+  const parsed = installationStatusLabelKeySchema.safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+  await tx.execute(sql`
+    delete from portal_status_label
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and scope = ${INSTALLATION_STATUS_LABEL_SCOPE}
+       and source_key = ${parsed.data.key}
+  `);
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "installation.reset_status_label",
+    resource: "portal_status_label",
+    allowed: true,
+    details: { key: parsed.data.key },
+  });
+  return listInstallationStatusLabels(tx, ctx);
+}

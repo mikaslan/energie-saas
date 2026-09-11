@@ -533,6 +533,10 @@ const FILE_REQUEST_TEMPLATE_RELATIONS = [
   "file_request_template",
 ] as const;
 
+const PORTAL_STATUS_LABEL_RELATIONS = [
+  "portal_status_label",
+] as const;
+
 const OFFER_TEMPLATE_RELATIONS = [
   "offer_template",
 ] as const;
@@ -2722,6 +2726,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F10-05: Portal-Statusmapping — Upsert je Schlüssel plus gezielter
+  // Reset (DELETE nur eigene Mapping-Zeile, Service-Guard).
+  const hasPortalStatusLabels = await hasAtomicPublicRelationSet(
+    client,
+    PORTAL_STATUS_LABEL_RELATIONS,
+    "Rollen-ACL-Manifest: F10-05-Portal-Statusmapping",
+  );
+  if (hasPortalStatusLabels) {
+    await client.query(`
+      revoke all privileges on
+        public.portal_status_label
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update, delete on public.portal_status_label to app_runtime
+    `);
+  }
+
   // F16-06: Angebots-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
   const hasOfferTemplates = await hasAtomicPublicRelationSet(
     client,
@@ -3937,6 +3958,11 @@ export async function verifyRoleContract(
   const hasPortalGrid = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("grid_entry"),
   );
+  // F10-05 (0113): Stufenmarker für statusLabels im Portal-Resolver
+  // (Muster 0109).
+  const hasPortalStatusLabelProjection = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("status_label_map"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -4145,6 +4171,11 @@ export async function verifyRoleContract(
     client,
     FILE_REQUEST_TEMPLATE_RELATIONS,
     "Rollenvertrag: F16-07-Datei-Anfragen-Vorlagen",
+  );
+  const hasPortalStatusLabels = await hasAtomicPublicRelationSet(
+    client,
+    PORTAL_STATUS_LABEL_RELATIONS,
+    "Rollenvertrag: F10-05-Portal-Statusmapping",
   );
   const hasOfferTemplates = await hasAtomicPublicRelationSet(
     client,
@@ -4418,6 +4449,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasFileRequestTemplates ? FILE_REQUEST_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.map(
@@ -5142,12 +5176,14 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09: Stufenauswahl
-        // 0062/0091/0097/0098/0104/0106/0107/0109 per Marker (Prefix
-        // ≤0075 trägt den alten Rumpf; ein neunter Rumpf bricht
-        // fail-closed über den Hashvergleich).
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05:
+        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113 per
+        // Marker (Prefix ≤0075 trägt den alten Rumpf; ein zehnter Rumpf
+        // bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          `search_path=pg_catalog:${hasPortalGrid
+          `search_path=pg_catalog:${hasPortalStatusLabelProjection
+            ? "1e8da42f38674cc9bd2e9ac6f4b073776ef5bd22ecb1ce9ffd7b5b904ad86029"
+            : hasPortalGrid
             ? "1b1f8d665f2058b16ab8d8ba2f0a4fb24aebff457ec86b1b19632b66ffda8859"
             : hasPortalService
             ? "5131eed9892f851354efa17958024cc8c47172e1f4bb68e8cf1c4c25974c2692"
@@ -5646,6 +5682,9 @@ export async function verifyRoleContract(
       ...(hasFileRequestTemplates ? FILE_REQUEST_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6034,6 +6073,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasFileRequestTemplates ? [
           "file_request_template:tenant_isolation:91d517f0c07c59b57989e4de4da6f66f8e82f049eed35e71fc32cad8dbe0c2fc",
+        ] : []),
+        ...(hasPortalStatusLabels ? [
+          "portal_status_label:tenant_isolation:bc4e54d8d9cadf8aaeb2b77dc5c45c95b2f12fc9eeb5a1ac9d009fd46b1681b6",
         ] : []),
         ...(hasOfferTemplates ? [
           "offer_template:tenant_isolation:1c35c88daada44a92c4de9b2e7a0582673fe8ecc9bb5118e5100ea81713a4ee9",
@@ -6590,6 +6632,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
       ]) : []),
       ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,

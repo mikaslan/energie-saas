@@ -138,11 +138,13 @@ describe("F10.1 portal command contracts", () => {
       },
     });
     // F10-03b: fehlender Schlüssel = Alt-Projektion → ehrlich leer.
+    // F10-05: fehlende statusLabels = Alt-Projektion → ehrlich leer.
     expect(completed?.installation).toEqual({
       status: "completed",
       completedAt: "2026-09-08T10:00:00.000Z",
       handoverAt: null,
       timeline: [],
+      statusLabels: {},
     });
     // Namen/Notizen gehören nicht in die Projektion.
     expect(parsePortalPublicView({
@@ -155,6 +157,45 @@ describe("F10.1 portal command contracts", () => {
     expect(parsePortalPublicView({
       ...base, installation: { status: "flying", completedAt: null, handoverAt: null },
     })).toBeNull();
+  });
+
+  it("parst StatusLabels-Overrides, fehlend = leer, deformiert = null", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
+      documents: [],
+      appointments: [],
+    };
+    const mapped = parsePortalPublicView({
+      ...base,
+      installation: {
+        status: "active", completedAt: null, handoverAt: null,
+        statusLabels: { active: "Wird montiert" },
+      },
+    });
+    expect(mapped?.installation).toEqual({
+      status: "active",
+      completedAt: null,
+      handoverAt: null,
+      timeline: [],
+      statusLabels: { active: "Wird montiert" },
+    });
+    // Deformiert (fremder Schlüssel, Leertext, Kontrollzeichen) = null.
+    for (const statusLabels of [
+      { flying: "X" },
+      { active: "" },
+      { active: "A".repeat(81) },
+      { active: "Gebaut\nmorgen" },
+      "Wird montiert",
+    ]) {
+      expect(parsePortalPublicView({
+        ...base,
+        installation: { status: "active", completedAt: null, handoverAt: null, statusLabels },
+      })).toBeNull();
+    }
   });
 
   it("parst Förderstand, fehlend = null, BzA-Nummer/fremde Schlüssel = null", () => {
