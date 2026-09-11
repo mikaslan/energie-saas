@@ -633,6 +633,11 @@ const COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS = [
 const GRID_REGISTRATION_RELATIONS = [
   "grid_registration",
 ] as const;
+
+// F10-04 (0104): eigene Menge — Datei-Anfragen je Projekt (Upload-Pfad).
+const FILE_REQUEST_RELATIONS = [
+  "file_request",
+] as const;
 const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
   "public._m301_actor_invoicing_role(uuid)",
   "public._m301_actor_can_read_invoicing(uuid)",
@@ -2919,6 +2924,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F10-04 (0104): eigene ACL-Menge — Anlage/Lesen/Schreiben, nie Löschen
+  // (Storno logisch über Status; Muster grid_registration).
+  const hasFileRequestsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    FILE_REQUEST_RELATIONS,
+    "Rollen-ACL-Manifest: F10-04-Datei-Anfragen",
+  );
+  if (hasFileRequestsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.file_request
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.file_request to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -3853,6 +3875,11 @@ export async function verifyRoleContract(
   const hasPortalProjectScope = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("portal_project_scope"),
   );
+  // F10-04 (0104): Stufenmarker für fileRequests im Portal-Resolver
+  // (Muster 0098).
+  const hasPortalFileRequests = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("file_request_list"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -3936,6 +3963,12 @@ export async function verifyRoleContract(
     client,
     GRID_REGISTRATION_RELATIONS,
     "Rollenvertrag: F13-02-Netzanmeldung",
+  );
+  // F10-04 (0104): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben grün.
+  const hasFileRequests = await hasAtomicPublicRelationSet(
+    client,
+    FILE_REQUEST_RELATIONS,
+    "Rollenvertrag: F10-04-Datei-Anfragen",
   );
   // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
   // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
@@ -4356,6 +4389,9 @@ export async function verifyRoleContract(
       ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
+      ...(hasFileRequests ? FILE_REQUEST_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
     ],
     "Relationsinventar",
   );
@@ -4543,6 +4579,9 @@ export async function verifyRoleContract(
         "_f1001_guard_portal_view_log:app_owner",
         "create_portal_invite:app_owner",
         "resolve_portal_public_view:app_owner",
+      ] : []),
+      ...(hasFileRequests ? [
+        "fulfill_file_request:app_owner",
       ] : []),
       ...(hasF704ChecklistCompletion ? F704_CHECKLIST_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
@@ -5026,17 +5065,24 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
-        // F10-03/F10-03b/F10-03c: Stufenauswahl 0062/0091/0097/0098
-        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein fünfter
+        // F10-03/F10-03b/F10-03c/F10-04: Stufenauswahl 0062/0091/0097/0098/0104
+        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein sechster
         // Rumpf bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          `search_path=pg_catalog:${hasPortalProjectScope
+          `search_path=pg_catalog:${hasPortalFileRequests
+            ? "9c0925b21e85598889bea3db4b26902b27c098ccffd76fba85aa257902a6e743"
+            : hasPortalProjectScope
             ? "ab1b3a77a5d583fc64d3e654f4500bc8ddcdadce47fa03a5e384e8fc52b6d73f"
             : hasPortalTimelineProjection
               ? "35ffdd10b8c2f042a07e7561dadb038e3f7910e5165fadaf91d8f84cc911f070"
               : hasPortalInstallationProjection
                 ? "af8c1ae0aaa03b4a875f98cc1deba12f58ed1505439d80d1fa81da7c8bb675e6"
                 : "6d025bff7eee1e267019a81fe77730c139fc3c7a5e94cf9dd9c54541fbc4be57"}`,
+        ...(hasFileRequests ? [
+        "fulfill_file_request(bytea, uuid, text, text, text, integer, text):text:" +
+          "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "541069e4c8a5bead1d1fd14f1e74226d2f4da7af677f53731abc6c53d7d3f9c9",
+        ] : []),
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",
@@ -5546,6 +5592,9 @@ export async function verifyRoleContract(
       ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasFileRequests ? FILE_REQUEST_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -5813,6 +5862,10 @@ export async function verifyRoleContract(
         ...(hasGridRegistrations ? [
         "grid_registration:tenant_isolation:" +
           "61ba8c5455dac838af1647c9dc2aca8b8ec7333ce330e1950156272ccf3aad17",
+        ] : []),
+        ...(hasFileRequests ? [
+        "file_request:tenant_isolation:" +
+          "f23005a0430a26d2b9bb54b7a102d9222eea861e2ef740e5dc4b33b45e7e143c",
         ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
@@ -6501,6 +6554,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
+      // F10-04: Anlage/Lesen/Schreiben, nie Löschen.
+      ...(hasFileRequests ? FILE_REQUEST_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
       "app_system:audit_log:INSERT:app_owner:false",
       "app_system:audit_log:SELECT:app_owner:false",
       "app_system:domain_events:INSERT:app_owner:false",
@@ -6731,6 +6790,9 @@ export async function verifyRoleContract(
         "app_runtime:_f1001_actor_portal_role(uuid):EXECUTE:app_owner:false",
         "app_runtime:create_portal_invite(uuid, uuid, integer, bytea):EXECUTE:app_owner:false",
         "app_runtime:resolve_portal_public_view(bytea):EXECUTE:app_owner:false",
+      ] : []),
+      ...(hasFileRequests ? [
+        "app_runtime:fulfill_file_request(bytea, uuid, text, text, text, integer, text):EXECUTE:app_owner:false",
       ] : []),
       ...(hasF704ChecklistCompletion ? F704_CHECKLIST_RUNTIME_ROUTINES.map(
         (signature) =>

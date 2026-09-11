@@ -13,6 +13,7 @@ import {
   getProjectCatalogResolutionContext,
   type ProjectCatalogResolutionContext,
 } from "@/modules/catalog";
+import { listFileRequests } from "@/modules/file-requests";
 import { getGridRegistration } from "@/modules/grid-registration";
 import {
   getProjectAssignmentContext,
@@ -80,6 +81,7 @@ import { PortalSection } from "./portal-section";
 import { ProductResolutionSection } from "./product-resolution-section";
 import { ProjectActivityPanel } from "./project-activity-panel";
 import { FollowUpSection } from "./follow-up-section";
+import { FileRequestSection } from "./file-request-section";
 import { GridRegistrationSection } from "./grid-registration-section";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import { ProjectNotesSection } from "./project-notes-section";
@@ -781,6 +783,36 @@ export default async function ProjectTriagePage({
     redirectToProjectLogin(detailPath);
   }
 
+  // F10-04: Datei-Anfragen (eigene Sichtbarkeit wie Netzanmeldung).
+  const fileRequestResult = await (async (): Promise<
+    | { kind: "loaded"; requests: Awaited<ReturnType<typeof listFileRequests>>; canWrite: boolean }
+    | { kind: "unauthenticated" }
+    | { kind: "denied" }
+  > => {
+    try {
+      const requests = await authorizedQuery(
+        workspaceId,
+        "project.read",
+        "file_request",
+        (tx, ctx) => listFileRequests(tx, ctx, projectId),
+      );
+      const writable = await authorizedQuery(
+        workspaceId,
+        "project.read",
+        "file_request_write_gate",
+        async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "project.write"),
+      );
+      return { kind: "loaded", requests, canWrite: writable };
+    } catch (error) {
+      if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+      if (error instanceof PermissionDeniedError) return { kind: "denied" };
+      throw error;
+    }
+  })();
+  if (fileRequestResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+
   const taskPageResult = await loadProjectTaskPage(
     workspaceId,
     projectId,
@@ -1041,6 +1073,17 @@ export default async function ProjectTriagePage({
               projectId={projectId}
               registration={gridRegistrationResult.registration}
               canWrite={gridRegistrationResult.canWrite}
+            />
+          </div>
+        ) : null}
+
+        {fileRequestResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <FileRequestSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              requests={fileRequestResult.requests}
+              canWrite={fileRequestResult.canWrite}
             />
           </div>
         ) : null}

@@ -134,6 +134,19 @@ export class S3Storage implements ObjectStorage {
     );
   }
 
+  async get(key: string): Promise<{ body: Buffer; contentType: string }> {
+    const out = await this.client.send(
+      new GetObjectCommand({ Bucket: this.cfg.bucket, Key: key }),
+    );
+    const body = out.Body;
+    if (!body) throw new Error(`Objekt fehlt: ${key}`);
+    const bytes = await body.transformToByteArray();
+    return {
+      body: Buffer.from(bytes),
+      contentType: out.ContentType ?? "application/octet-stream",
+    };
+  }
+
   async getSignedUploadUrl(key: string, contentType: string, ttlSeconds = 600) {
     // Codex-Review #10: eine signierte Upload-URL auf einen immutable/-Key
     // umgeht putImmutable() vollständig — der Client schreibt dann direkt

@@ -575,6 +575,7 @@ function nextEnvironment(
   readyFile: string,
   readyToken: string,
   demoLoginEmail: string | null,
+  storageDir: string,
 ): NodeJS.ProcessEnv {
   return {
     ...cleanEnvironment(),
@@ -602,6 +603,10 @@ function nextEnvironment(
     GEOAPIFY_BASE_URL: geocodingStub.origin,
     M1_05_E2E_READY_FILE: readyFile,
     M1_05_E2E_READY_TOKEN: readyToken,
+    // F10-04: lokales Storage-Backend (kein S3 in E2E); Verzeichnis im
+    // privaten Laufverzeichnis (wird nach dem Lauf weggeräumt).
+    STORAGE_BACKEND: "local",
+    STORAGE_LOCAL_DIR: storageDir,
   };
 }
 
@@ -1469,6 +1474,7 @@ async function main(): Promise<number> {
         readyFile,
         readyToken,
         seedData.editorEmail,
+        join(privateDirectory, "storage"),
       ),
       stdio: ["ignore", serverLogFd, serverLogFd],
     },

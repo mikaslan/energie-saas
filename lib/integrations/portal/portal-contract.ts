@@ -130,6 +130,19 @@ const portalAppointmentSchema = z.strictObject({
 });
 export type PortalAppointment = z.infer<typeof portalAppointmentSchema>;
 
+// F10-04: Datei-Anfragen (nur Titel/Beschreibung/Stand/Zeiten/eigener
+// Dateiname — nie Storage-Key/Prüfsumme/Größe; rein interne Belegdaten).
+export const portalFileRequestSchema = z.strictObject({
+  id: z.uuid(),
+  title: z.string(),
+  description: z.string().nullable(),
+  status: z.enum(["offen", "hochgeladen"]),
+  createdAt: z.iso.datetime({ offset: true }),
+  uploadedAt: z.iso.datetime({ offset: true }).nullable(),
+  originalFilename: z.string().nullable(),
+});
+export type PortalFileRequest = z.infer<typeof portalFileRequestSchema>;
+
 // F10-03: Installationsstand (nur Stand + Daten, nie Namen/Notizen).
 export const portalInstallationTimelineEntrySchema = z.strictObject({
   type: z.enum(["created", "completed", "handover_recorded"]),
@@ -156,6 +169,7 @@ export const portalPublicViewV1Schema = z.strictObject({
   documents: z.array(portalDocumentSchema),
   appointments: z.array(portalAppointmentSchema),
   installation: portalInstallationSchema.nullable(),
+  fileRequests: z.array(portalFileRequestSchema),
 });
 
 export type PortalPublicViewV1 = z.infer<typeof portalPublicViewV1Schema>;
@@ -192,6 +206,8 @@ const portalResolveOkSchema = z.strictObject({
   })),
   // F10-03: optional — alte Projektionen ohne Schlüssel parsen wie null.
   installation: z.unknown().optional(),
+  // F10-04: optional — alte Projektionen ohne Schlüssel parsen wie leer.
+  fileRequests: z.unknown().optional(),
 });
 
 // Parst das DEFINER-Resultat; 'not_found' (unbekannt/deformiert/entzogen/
@@ -288,6 +304,46 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
   // Commercial-Portal. Strip nach striktem Parse (deformierte Dokumente
   // brechen weiter fail-closed ab, auch bei scope commercial).
   const commercialScope = parsed.data.project.scope === "commercial";
+  // F10-04: Datei-Anfragen — strikter Stand-Wortschatz, Zeiten wie oben;
+  // fehlend = Alt-Projektion (F10-03-undefined-Präzedenz) → ehrlich leer.
+  const fileRequests: PortalPublicViewV1["fileRequests"] = [];
+  if (parsed.data.fileRequests !== undefined) {
+    const raw = parsed.data.fileRequests;
+    if (!Array.isArray(raw)) return null;
+    for (const entry of raw) {
+      if (typeof entry !== "object" || entry === null) return null;
+      const record = entry as Record<string, unknown>;
+      for (const key of Object.keys(record)) {
+        if (
+          key !== "id" && key !== "title" && key !== "description" &&
+          key !== "status" && key !== "createdAt" && key !== "uploadedAt" &&
+          key !== "originalFilename"
+        ) {
+          return null;
+        }
+      }
+      const id = typeof record.id === "string" ? record.id : null;
+      const title = typeof record.title === "string" ? record.title : null;
+      if (id === null || title === null) return null;
+      if (typeof record.description !== "string" && record.description !== null) return null;
+      const status = portalFileRequestSchema.shape.status.safeParse(record.status);
+      if (!status.success) return null;
+      const createdAt = toInstant(record.createdAt);
+      if (createdAt === null) return null;
+      const uploadedAt = record.uploadedAt === null ? null : toInstant(record.uploadedAt);
+      if (record.uploadedAt !== null && uploadedAt === null) return null;
+      if (typeof record.originalFilename !== "string" && record.originalFilename !== null) return null;
+      fileRequests.push({
+        id,
+        title,
+        description: record.description as string | null,
+        status: status.data,
+        createdAt,
+        uploadedAt,
+        originalFilename: record.originalFilename as string | null,
+      });
+    }
+  }
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,
     inviteId: parsed.data.inviteId,
@@ -297,5 +353,6 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     documents: commercialScope ? [] : documents,
     appointments,
     installation,
+    fileRequests,
   };
 }
