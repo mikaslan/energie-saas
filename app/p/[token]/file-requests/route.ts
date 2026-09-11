@@ -1,6 +1,11 @@
-import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
 import { z } from "zod";
 import { publicTokenCapsule } from "@/lib/action";
+import {
+  parsePortalLang,
+  PORTAL_LANG_COOKIE,
+  PORTAL_LANG_COOKIE_MAX_AGE,
+} from "@/lib/integrations/portal/portal-language";
 import {
   FileRequestConflictError,
   FileRequestNotFoundError,
@@ -56,9 +61,24 @@ async function uploadOutcome(
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
-): Promise<never> {
+): Promise<NextResponse> {
   const { token } = await params;
   const form = await request.formData().catch(() => null);
   const outcome = await uploadOutcome(token, form);
-  redirect(`/p/${token}?tab=dateien&upload=${outcome}`);
+  // F10-06: Sprache aus dem Formular (Allowlist) in Redirect + Cookie
+  // übernehmen, damit Upload-Feedback und Folgebesuche sprachstabil sind.
+  const lang = parsePortalLang(form?.get("lang"));
+  const response = NextResponse.redirect(
+    new URL(`/p/${token}?tab=dateien&upload=${outcome}&lang=${lang}`, request.url),
+    // 303 wie redirect(): Der Browser lädt die Zielseite per GET neu;
+    // 307 würde den POST (inkl. Datei) erneut senden.
+    303,
+  );
+  response.cookies.set(PORTAL_LANG_COOKIE, lang, {
+    path: "/",
+    maxAge: PORTAL_LANG_COOKIE_MAX_AGE,
+    sameSite: "lax",
+    httpOnly: true,
+  });
+  return response;
 }

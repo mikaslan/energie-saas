@@ -145,8 +145,15 @@ test("F10-03b-E2E-01: Portal zeigt Installations-Verlauf ohne Login", async ({ p
   await page.goto(`${tokenPath}?tab=installation`);
   await expect(page.getByRole("heading", { name: "Installation", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Verlauf", exact: true })).toBeVisible();
-  await expect(page.getByText(/Angelegt am \d{4}-\d{2}-\d{2}/)).toBeVisible();
-  await expect(page.getByText(/Abgeschlossen am \d{4}-\d{2}-\d{2}/)).toBeVisible();
+  // F10-06: Timeline-Tage im Portal-Locale (de-DE), konsistent mit den
+  // übrigen Datumsangaben der Seite (zuvor ISO-Rohformat). Verlauf ist die
+  // Liste (li); der Stand (dd) kann denselben Wortlaut tragen.
+  await expect(
+    page.locator("li").filter({ hasText: /Angelegt am \d{2}\.\d{2}\.\d{4}/ }),
+  ).toBeVisible();
+  await expect(
+    page.locator("li").filter({ hasText: /Abgeschlossen am \d{2}\.\d{2}\.\d{4}/ }),
+  ).toBeVisible();
 
   expect(errors, "Browser-Konsole und Page-Errors der Timeline").toEqual([]);
 });

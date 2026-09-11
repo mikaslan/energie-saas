@@ -1,115 +1,68 @@
-import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { publicTokenCapsule } from "@/lib/action";
-import { derivePortalNextStep } from "@/lib/integrations/portal/portal-contract";
-import { PortalNotFoundError, resolvePortalByToken } from "@/modules/portal";
-import {
-  SUBSIDY_CASE_PROGRAM_LABEL,
-  SUBSIDY_CASE_STATUS_LABEL,
-} from "@/modules/subsidy-cases";
 import type { PortalInstallationStatusLabels } from "@/lib/integrations/portal/portal-contract";
-import { INSTALLATION_STATUS_LABEL_DEFAULTS } from "@/modules/installations";
-import { GRID_REGISTRATION_STATUS_LABEL } from "@/modules/grid-registration";
+import {
+  formatPortalDate,
+  formatPortalInstallationStatus,
+  formatPortalRange,
+  formatPortalSignatureStatus,
+  formatPortalTimelineEntry,
+  parsePortalLang,
+  PORTAL_GRID_STATUS_WORD,
+  PORTAL_LANG_COOKIE,
+  PORTAL_SERVICE_STATUS_WORD,
+  PORTAL_STRINGS,
+  PORTAL_SUBSIDY_PROGRAM_WORD,
+  PORTAL_SUBSIDY_STATUS_WORD,
+  resolvePortalNextStep,
+} from "@/lib/integrations/portal/portal-language";
+import { PortalNotFoundError, resolvePortalByToken } from "@/modules/portal";
 
-export const metadata: Metadata = {
-  title: "Kundenportal",
-  robots: { index: false, follow: false },
-};
-
-const BERLIN_DATE = new Intl.DateTimeFormat("de-DE", {
-  timeZone: "Europe/Berlin",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-const BERLIN_TIME = new Intl.DateTimeFormat("de-DE", {
-  timeZone: "Europe/Berlin",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-function formatBerlinRange(startAt: string, endAt: string, allDay: boolean): string {
-  const start = new Date(startAt);
-  const date = BERLIN_DATE.format(start);
-  if (allDay) return `${date} · ganztägig`;
-  return `${date} · ${BERLIN_TIME.format(start)}–${BERLIN_TIME.format(new Date(endAt))} Uhr`;
-}
-
-// F10-03: Installationsstand (ESTIMATE-Layout); F10-05: Worte stammen
-// aus dem Admin-Mapping (Override), fehlende Schlüssel fallen ehrlich
-// auf die Standardtexte. Nur Stand + Daten.
-function formatInstallationStatus(
-  status: "active" | "completed",
-  completedAt: string | null,
-  handoverAt: string | null,
-  statusLabels: PortalInstallationStatusLabels,
-): string {
-  if (status === "completed" && handoverAt !== null) {
-    const word = statusLabels.handover ?? INSTALLATION_STATUS_LABEL_DEFAULTS.handover;
-    return `${word} am ${BERLIN_DATE.format(new Date(handoverAt))}`;
-  }
-  if (status === "completed") {
-    const word = statusLabels.completed ?? INSTALLATION_STATUS_LABEL_DEFAULTS.completed;
-    return completedAt === null
-      ? word
-      : `${word} am ${BERLIN_DATE.format(new Date(completedAt))}`;
-  }
-  return statusLabels.active ?? INSTALLATION_STATUS_LABEL_DEFAULTS.active;
-}
-
-// F10.2 Slice B: Signatur-Status je Dokument (read-only, wörtlich aus der
-// Projektion; keine internen Details — signer_name/Token/Grund nie).
-function formatSignatureStatus(status: string, signedAt: string | null): string {
-  switch (status) {
-    case "pending": return "Signatur: ausstehend";
-    case "signed":
-      return signedAt === null
-        ? "Signatur: signiert"
-        : `Signiert am ${BERLIN_DATE.format(new Date(signedAt))}`;
-    case "expired": return "Signatur: abgelaufen";
-    case "withdrawn": return "Signatur: zurückgezogen";
-    case "revoked_by_customer": return "Signatur: vom Kunden widerrufen";
-    default: return "Signatur: nicht angefragt";
-  }
-}
-
-// F13-06: Service-Stand (festes Anzeige-Mapping wie intern; nur Stand,
-// keine internen Details).
-function formatServiceCaseStatus(status: "open" | "in_progress" | "done"): string {
-  switch (status) {
-    case "open": return "Offen";
-    case "in_progress": return "In Arbeit";
-    case "done": return "Erledigt";
-  }
+// F10-06 Portal-Sprachen (Slice 1, ESTIMATE): Titel je Sprache (?lang=,
+// sonst Cookie, sonst Deutsch).
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string | string[] }>;
+}) {
+  const query = await searchParams;
+  const cookieStore = await cookies();
+  const lang = query.lang !== undefined
+    ? parsePortalLang(query.lang)
+    : parsePortalLang(cookieStore.get(PORTAL_LANG_COOKIE)?.value);
+  return {
+    title: PORTAL_STRINGS[lang].metaTitle,
+    robots: { index: false, follow: false },
+  };
 }
 
 // F10.1: öffentliche Projektion (read-only). Unbekannt/deformiert/entzogen/
 // abgelaufen -> identischer 404-Endzustand („Link ungültig", kein Orakel).
-// F10-03b: Timeline-Labels (nur Allowlist-Typen; Datum Berlin, keine Uhrzeit,
-// keine Akteure — öffentliche Sicht ohne Login).
-function formatTimelineEntry(type: string, day: string): string {
-  switch (type) {
-    case "created": return `Angelegt am ${day}`;
-    case "completed": return `Abgeschlossen am ${day}`;
-    case "handover_recorded": return `Abgenommen am ${day}`;
-    default: return `Ereignis am ${day}`;
-  }
-}
-
-// F10.2 Slice A: Tabs (Übersicht | Termine) per ?tab=, Server-Links ohne JS.
-// F10-03: Tab „Installation" dazu (Stand oder ehrlicher Leerzustand).
-// Unbekannter tab-Wert fällt auf Übersicht zurück (kein 404, kein Orakel).
+// F10-06: Sprache per ?lang= (stateless, gewinnt), sonst Cookie
+// „portal-lang" (von den anonymen POST-Routen gesetzt), sonst Deutsch.
+// Unbekannte Werte fallen auf Deutsch zurück (kein 404, kein Orakel).
 export default async function PortalTokenPage({
   params,
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ tab?: string | string[]; upload?: string | string[]; confirm?: string | string[] }>;
+  searchParams: Promise<{
+    tab?: string | string[];
+    upload?: string | string[];
+    confirm?: string | string[];
+    lang?: string | string[];
+  }>;
 }) {
   const { token } = await params;
   const query = await searchParams;
+  const cookieStore = await cookies();
+  const lang = query.lang !== undefined
+    ? parsePortalLang(query.lang)
+    : parsePortalLang(cookieStore.get(PORTAL_LANG_COOKIE)?.value);
+  const t = PORTAL_STRINGS[lang];
   const rawTab = Array.isArray(query.tab) ? query.tab[0] : query.tab;
   let view;
   try {
@@ -127,23 +80,25 @@ export default async function PortalTokenPage({
         : "uebersicht";
   const rawUpload = Array.isArray(query.upload) ? query.upload[0] : query.upload;
   const uploadHint = rawUpload === "erfolg"
-    ? "Vielen Dank — die Datei ist eingegangen."
+    ? t.uploadOk
     : rawUpload === "ungueltig"
-      ? "Die Datei ist ungültig (PDF, JPG oder PNG, höchstens 10 MB)."
+      ? t.uploadInvalid
       : rawUpload === "konflikt"
-        ? "Diese Anfrage ist bereits beantwortet."
+        ? t.uploadConflict
         : rawUpload === "fehler"
-          ? "Die Anfrage ist nicht mehr verfügbar."
+          ? t.uploadGone
           : null;
   const rawConfirm = Array.isArray(query.confirm) ? query.confirm[0] : query.confirm;
   const confirmHint = rawConfirm === "ok"
-    ? "Vielen Dank — die Erledigung ist zur Kenntnis genommen."
+    ? t.confirmOk
     : rawConfirm === "bereits"
-      ? "Dieser Vorgang ist bereits zur Kenntnis genommen."
+      ? t.confirmKnown
       : rawConfirm === "fehler"
-        ? "Der Vorgang ist nicht mehr verfügbar."
+        ? t.confirmGone
         : null;
-  const nextStep = derivePortalNextStep(view.project.phase, view.project.outcome);
+  const nextStep = resolvePortalNextStep(view.project.phase, view.project.outcome, lang);
+  // F10-06: Sprache immer explizit weitergeben (stateless, kein JS nötig).
+  const langQuery = `lang=${lang}`;
   const tabClass = (active: boolean): string =>
     `rounded-md px-3 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
       active ? "bg-blue-700 text-white" : "text-blue-700 hover:bg-blue-50"
@@ -153,62 +108,64 @@ export default async function PortalTokenPage({
       <section
         className="w-full rounded-lg border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
         aria-live="polite"
+        lang={lang}
       >
-        <p className="text-sm font-semibold text-blue-700">Kundenportal</p>
+        <p className="text-sm font-semibold text-blue-700">{t.brand}</p>
         <h1 className="mt-2 text-2xl font-semibold text-slate-950">{view.project.name}</h1>
-        <nav aria-label="Portalbereiche" className="mt-4 flex gap-2">
-          <Link href={`/p/${token}`} className={tabClass(activeTab === "uebersicht")}>
-            Übersicht
+        <nav aria-label={t.navAria} className="mt-4 flex gap-2">
+          <Link href={`/p/${token}?${langQuery}`} className={tabClass(activeTab === "uebersicht")}>
+            {t.navOverview}
           </Link>
           <Link
-            href={`/p/${token}?tab=termine`}
+            href={`/p/${token}?tab=termine&${langQuery}`}
             className={tabClass(activeTab === "termine")}
           >
-            Termine{view.appointments.length > 0 ? ` (${view.appointments.length})` : ""}
+            {t.navAppointments}{view.appointments.length > 0 ? ` (${view.appointments.length})` : ""}
           </Link>
           <Link
-            href={`/p/${token}?tab=installation`}
+            href={`/p/${token}?tab=installation&${langQuery}`}
             className={tabClass(activeTab === "installation")}
           >
-            Installation
+            {t.navInstallation}
           </Link>
           <Link
-            href={`/p/${token}?tab=dateien`}
+            href={`/p/${token}?tab=dateien&${langQuery}`}
             className={tabClass(activeTab === "dateien")}
           >
-            Dateien{view.fileRequests.length > 0 ? ` (${view.fileRequests.length})` : ""}
+            {t.navFiles}{view.fileRequests.length > 0 ? ` (${view.fileRequests.length})` : ""}
           </Link>
         </nav>
         {activeTab === "installation" ? (
           <div className="mt-4">
-            <h2 className="text-lg font-semibold text-slate-950">Installation</h2>
+            <h2 className="text-lg font-semibold text-slate-950">{t.installationHeading}</h2>
             {view.installation === null ? (
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Noch keine Installation hinterlegt.
+                {t.installationEmpty}
               </p>
             ) : (
               <>
               <dl className="mt-2 space-y-2 text-sm leading-6 text-slate-600">
                 <div className="flex gap-2">
-                  <dt className="font-semibold text-slate-800">Stand:</dt>
-                  <dd>{formatInstallationStatus(
+                  <dt className="font-semibold text-slate-800">{t.statusTerm}</dt>
+                  <dd>{formatPortalInstallationStatus(
+                    lang,
                     view.installation.status,
                     view.installation.completedAt,
                     view.installation.handoverAt,
-                    view.installation.statusLabels,
+                    view.installation.statusLabels as PortalInstallationStatusLabels,
                   )}</dd>
                 </div>
               </dl>
-              <h3 className="mt-4 text-sm font-semibold text-slate-950">Verlauf</h3>
+              <h3 className="mt-4 text-sm font-semibold text-slate-950">{t.historyHeading}</h3>
               {view.installation.timeline.length === 0 ? (
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Noch keine Ereignisse.
+                  {t.historyEmpty}
                 </p>
               ) : (
                 <ol className="mt-1 space-y-1 text-sm leading-6 text-slate-600">
                   {view.installation.timeline.map((entry) => (
                     <li key={`${entry.type}-${entry.at}`}>
-                      {formatTimelineEntry(entry.type, entry.day)}
+                      {formatPortalTimelineEntry(lang, entry.type, formatPortalDate(lang, entry.day))}
                     </li>
                   ))}
                 </ol>
@@ -218,10 +175,10 @@ export default async function PortalTokenPage({
           </div>
         ) : activeTab === "termine" ? (
           <div className="mt-4">
-            <h2 className="text-lg font-semibold text-slate-950">Termine</h2>
+            <h2 className="text-lg font-semibold text-slate-950">{t.appointmentsHeading}</h2>
             {view.appointments.length === 0 ? (
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Aktuell liegen keine Termine vor.
+                {t.appointmentsEmpty}
               </p>
             ) : (
               <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
@@ -231,7 +188,7 @@ export default async function PortalTokenPage({
                       {appointment.title}
                     </span>
                     <span className="block text-sm text-slate-500">
-                      {formatBerlinRange(appointment.startAt, appointment.endAt, appointment.allDay)}
+                      {formatPortalRange(lang, appointment.startAt, appointment.endAt, appointment.allDay)}
                       {appointment.location ? ` · ${appointment.location}` : ""}
                     </span>
                   </li>
@@ -241,7 +198,7 @@ export default async function PortalTokenPage({
           </div>
         ) : activeTab === "dateien" ? (
           <div className="mt-4" data-testid="file-requests-section">
-            <h2 className="text-lg font-semibold text-slate-950">Dateien</h2>
+            <h2 className="text-lg font-semibold text-slate-950">{t.filesHeading}</h2>
             {uploadHint ? (
               <p
                 role={rawUpload === "erfolg" ? "status" : "alert"}
@@ -255,7 +212,7 @@ export default async function PortalTokenPage({
             ) : null}
             {view.fileRequests.length === 0 ? (
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Aktuell werden keine Dateien benötigt.
+                {t.filesEmpty}
               </p>
             ) : (
               <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
@@ -269,7 +226,7 @@ export default async function PortalTokenPage({
                     ) : null}
                     {req.status === "hochgeladen" ? (
                       <span className="mt-1 block text-sm font-semibold text-emerald-700">
-                        Hochgeladen{req.originalFilename ? ` (${req.originalFilename})` : ""}
+                        {t.uploadedWord}{req.originalFilename ? ` (${req.originalFilename})` : ""}
                       </span>
                     ) : (
                       <form
@@ -279,19 +236,20 @@ export default async function PortalTokenPage({
                         className="mt-2 flex flex-wrap items-center gap-2"
                       >
                         <input type="hidden" name="requestId" value={req.id} />
+                        <input type="hidden" name="lang" value={lang} />
                         <input
                           type="file"
                           name="datei"
                           required
                           accept=".pdf,.jpg,.jpeg,.png"
-                          aria-label={`Datei für ${req.title}`}
+                          aria-label={`${t.uploadFileAriaPrefix} ${req.title}`}
                           className="text-sm text-slate-600"
                         />
                         <button
                           type="submit"
                           className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
                         >
-                          Hochladen
+                          {t.uploadButton}
                         </button>
                       </form>
                     )}
@@ -304,20 +262,20 @@ export default async function PortalTokenPage({
           <>
             <dl className="mt-4 space-y-2 text-sm leading-6 text-slate-600">
               <div className="flex gap-2">
-                <dt className="font-semibold text-slate-800">Stand:</dt>
+                <dt className="font-semibold text-slate-800">{t.statusTerm}</dt>
                 <dd>{nextStep}</dd>
               </div>
             </dl>
             {view.subsidy === null ? null : (
               <div className="mt-6" data-testid="portal-subsidy-section">
-                <h2 className="text-lg font-semibold text-slate-950">Förderung</h2>
+                <h2 className="text-lg font-semibold text-slate-950">{t.subsidyHeading}</h2>
                 <dl className="mt-2 space-y-2 text-sm leading-6 text-slate-600">
                   <div className="flex gap-2">
-                    <dt className="font-semibold text-slate-800">Stand:</dt>
+                    <dt className="font-semibold text-slate-800">{t.statusTerm}</dt>
                     <dd data-testid="portal-subsidy-status">
-                      {SUBSIDY_CASE_STATUS_LABEL[view.subsidy.status]}
+                      {PORTAL_SUBSIDY_STATUS_WORD[lang][view.subsidy.status]}
                       {view.subsidy.program
-                        ? ` (${SUBSIDY_CASE_PROGRAM_LABEL[view.subsidy.program]})`
+                        ? ` (${PORTAL_SUBSIDY_PROGRAM_WORD[lang][view.subsidy.program]})`
                         : ""}
                     </dd>
                   </div>
@@ -326,12 +284,12 @@ export default async function PortalTokenPage({
             )}
             {view.gridRegistration === null ? null : (
               <div className="mt-6" data-testid="portal-grid-section">
-                <h2 className="text-lg font-semibold text-slate-950">Netzanmeldung</h2>
+                <h2 className="text-lg font-semibold text-slate-950">{t.gridHeading}</h2>
                 <dl className="mt-2 space-y-2 text-sm leading-6 text-slate-600">
                   <div className="flex gap-2">
-                    <dt className="font-semibold text-slate-800">Stand:</dt>
+                    <dt className="font-semibold text-slate-800">{t.statusTerm}</dt>
                     <dd data-testid="portal-grid-status">
-                      {GRID_REGISTRATION_STATUS_LABEL[view.gridRegistration.status]}
+                      {PORTAL_GRID_STATUS_WORD[lang][view.gridRegistration.status]}
                       {view.gridRegistration.operatorName
                         ? ` (${view.gridRegistration.operatorName})`
                         : ""}
@@ -342,7 +300,7 @@ export default async function PortalTokenPage({
             )}
             {view.service.length === 0 ? null : (
               <div className="mt-6" data-testid="portal-service-section">
-                <h2 className="text-lg font-semibold text-slate-950">Service</h2>
+                <h2 className="text-lg font-semibold text-slate-950">{t.serviceHeading}</h2>
                 {confirmHint ? (
                   <p
                     role={rawConfirm === "ok" || rawConfirm === "bereits" ? "status" : "alert"}
@@ -364,9 +322,9 @@ export default async function PortalTokenPage({
                         className="block text-sm text-slate-500"
                         data-testid={`portal-service-status-${item.id}`}
                       >
-                        {formatServiceCaseStatus(item.status)}
+                        {PORTAL_SERVICE_STATUS_WORD[lang][item.status]}
                         {item.status === "done" && item.confirmedAt !== null
-                          ? " · Zur Kenntnis genommen"
+                          ? ` ${t.acknowledgedSuffix}`
                           : ""}
                       </span>
                       {item.status === "done" && item.confirmedAt === null ? (
@@ -376,11 +334,12 @@ export default async function PortalTokenPage({
                           className="mt-2"
                         >
                           <input type="hidden" name="caseId" value={item.id} />
+                          <input type="hidden" name="lang" value={lang} />
                           <button
                             type="submit"
                             className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
                           >
-                            Zur Kenntnis nehmen
+                            {t.acknowledgeButton}
                           </button>
                         </form>
                       ) : null}
@@ -391,19 +350,19 @@ export default async function PortalTokenPage({
             )}
             {view.project.scope === "commercial" ? null : (
               <>
-                <h2 className="mt-6 text-lg font-semibold text-slate-950">Dokumente</h2>
+                <h2 className="mt-6 text-lg font-semibold text-slate-950">{t.documentsHeading}</h2>
                 {view.documents.length === 0 ? (
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Aktuell liegen keine freigegebenen Dokumente vor.
+                    {t.documentsEmpty}
                   </p>
                 ) : (
                   <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
                     {view.documents.map((doc) => (
                       <li key={doc.id} className="flex items-center justify-between gap-4 px-4 py-3">
                         <span className="text-sm font-medium text-slate-800">
-                          Angebot {doc.offerNumber}
+                          {t.offerWord} {doc.offerNumber}
                           <span className="block text-xs font-normal text-slate-500">
-                            {formatSignatureStatus(doc.signatureStatus, doc.signedAt)}
+                            {formatPortalSignatureStatus(lang, doc.signatureStatus, doc.signedAt)}
                           </span>
                         </span>
                         <span className="text-sm text-slate-500">{doc.documentDate}</span>
