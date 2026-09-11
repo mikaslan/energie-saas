@@ -10,9 +10,11 @@ import type {
   TimeMemberOption,
   TimeUtilizationDto,
 } from "@/lib/integrations/time-tracking/contract";
-import type { BillingRunDto } from "@/lib/integrations/time-tracking/billing-contract";
+import type { BillingRunBreakdownDto, BillingRunDto } from "@/lib/integrations/time-tracking/billing-contract";
+import { BILLING_RUN_SCHEMA_VERSION } from "@/lib/integrations/time-tracking/billing-contract";
 import {
   breakMinutesTotal,
+  getBillingRunBreakdown,
   getTimeUtilization,
   listBillingRuns,
   listBreaks,
@@ -65,7 +67,7 @@ export default async function ProjectTimeTrackingPage(
   const selectedUserIds = parseUserFilter(await props.searchParams);
 
   let result:
-    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; breaksByEntry: Record<string, BreakSegmentDto[]>; breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }>; utilization: TimeUtilizationDto; runs: BillingRunDto[]; selectedUserIds: string[]; canWrite: boolean }
+    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; breaksByEntry: Record<string, BreakSegmentDto[]>; breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }>; utilization: TimeUtilizationDto; runs: BillingRunDto[]; breakdowns: Record<string, BillingRunBreakdownDto>; selectedUserIds: string[]; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -133,7 +135,20 @@ export default async function ProjectTimeTrackingPage(
           // F9.4 Slice D: gleicher Filter wie die Liste (WYSIWYG).
           utilization: await getTimeUtilization(tx, ctx, { projectId, userIds: selectedUserIds }),
           // F9-07: Abrechnungsläufe (gleiche Read-Permission, kein eigener Gate).
-          runs: await listBillingRuns(tx, ctx),
+          // F9-08: Aufschlüsselung je geschlossenem Lauf, sequenziell
+          // (pg@9 weist überlappende client.query()-Aufrufe ab).
+          ...(await (async () => {
+            const runs = await listBillingRuns(tx, ctx);
+            const breakdowns: Record<string, BillingRunBreakdownDto> = {};
+            for (const run of runs) {
+              if (run.status !== "closed") continue;
+              breakdowns[run.id] = await getBillingRunBreakdown(tx, ctx, {
+                schemaVersion: BILLING_RUN_SCHEMA_VERSION,
+                billingRunId: run.id,
+              });
+            }
+            return { runs, breakdowns };
+          })()),
           selectedUserIds,
           canWrite: writable,
         };
@@ -201,6 +216,7 @@ export default async function ProjectTimeTrackingPage(
         workspaceId={workspaceId}
         projectId={projectId}
         runs={result.runs}
+        breakdowns={result.breakdowns}
         canWrite={result.canWrite}
       />
 

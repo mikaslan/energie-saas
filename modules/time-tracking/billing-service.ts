@@ -8,13 +8,18 @@ import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   BILLING_RUN_SCHEMA_VERSION,
+  billingRunBreakdownDtoSchema,
   billingRunDtoSchema,
   closeBillingRunCommandSchema,
   createBillingRunCommandSchema,
+  getBillingRunBreakdownCommandSchema,
+  type BillingRunBreakdownDto,
   type BillingRunDto,
   type CloseBillingRunCommand,
   type CreateBillingRunCommand,
+  type GetBillingRunBreakdownCommand,
 } from "@/lib/integrations/time-tracking/billing-contract";
+import { listTimeMemberOptions } from "./service";
 import {
   TimeTrackingConflictError,
   TimeTrackingNotFoundError,
@@ -211,6 +216,72 @@ export async function closeBillingRun(
   });
   await writeAuditFor(tx, ctx, "time.billing_run.close", { id: run.id });
   return toDto(updated.rows[0]!, true);
+}
+
+// F9-08 Lauf-Auswertung — Zeilen je Person aus dem eingefrorenen Lauf.
+// Reiner Lesepfad (time.read): Die Zeilensummen müssen exakt dem Snapshot
+// entsprechen, sonst Integritätsfehler statt stiller Anzeige. Offene Läufe
+// liefern leere Zeilen (keine vorweggenommene Auswertung).
+export async function getBillingRunBreakdown(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: GetBillingRunBreakdownCommand,
+): Promise<BillingRunBreakdownDto> {
+  requireRead(ctx);
+  const parsed = getBillingRunBreakdownCommandSchema.safeParse(input);
+  if (!parsed.success) throw new TimeTrackingValidationError("billing run breakdown invalid");
+  const runResult = await tx.execute<BillingRunRow>(sql`
+    ${RUN_SELECT}
+   where workspace_id = ${ctx.workspaceId}::uuid
+     and id = ${parsed.data.billingRunId}::uuid
+  `);
+  const run = runResult.rows[0];
+  if (!run) throw new TimeTrackingNotFoundError("billing_run", parsed.data.billingRunId);
+  if (run.status !== "closed") {
+    return billingRunBreakdownDtoSchema.parse({
+      schemaVersion: BILLING_RUN_SCHEMA_VERSION,
+      billingRunId: run.id,
+      entryCount: 0,
+      totalMinutes: 0,
+      rows: [],
+    });
+  }
+  const members = await listTimeMemberOptions(tx, ctx);
+  const labelByUserId = new Map(members.map((member) => [member.userId, member.label]));
+  const rows = await tx.execute<{
+    user_id: string;
+    entry_count: number;
+    total_minutes: number;
+  }>(sql`
+    select e.user_id,
+           count(*)::int as entry_count,
+           coalesce(sum(e.working_time_minutes), 0)::int as total_minutes
+      from billing_run_entry b
+      join time_entry e
+        on e.workspace_id = b.workspace_id and e.id = b.time_entry_id
+     where b.workspace_id = ${ctx.workspaceId}::uuid
+       and b.run_id = ${run.id}::uuid
+     group by e.user_id
+     order by coalesce(sum(e.working_time_minutes), 0) desc, e.user_id asc
+  `);
+  const entryCount = rows.rows.reduce((sum, row) => sum + row.entry_count, 0);
+  const totalMinutes = rows.rows.reduce((sum, row) => sum + row.total_minutes, 0);
+  if (entryCount !== run.entry_count || totalMinutes !== run.total_minutes) {
+    throw new TimeTrackingValidationError("billing run snapshot mismatch");
+  }
+  return billingRunBreakdownDtoSchema.parse({
+    schemaVersion: BILLING_RUN_SCHEMA_VERSION,
+    billingRunId: run.id,
+    entryCount,
+    totalMinutes,
+    rows: rows.rows.map((row) => ({
+      schemaVersion: BILLING_RUN_SCHEMA_VERSION,
+      userId: row.user_id,
+      label: labelByUserId.get(row.user_id) ?? "Unbekannt",
+      entryCount: row.entry_count,
+      totalWorkingMinutes: row.total_minutes,
+    })),
+  });
 }
 
 // F9-07-Sperre: Einträge in geschlossenem Lauf sind gegen Unapprove gesperrt

@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
-import type { BillingRunDto } from "@/lib/integrations/time-tracking/billing-contract";
+import type { BillingRunBreakdownDto, BillingRunDto } from "@/lib/integrations/time-tracking/billing-contract";
 import {
   closeBillingRunAction,
   createBillingRunAction,
@@ -52,11 +52,13 @@ export function BillingRunSection({
   workspaceId,
   projectId,
   runs,
+  breakdowns,
   canWrite,
 }: {
   workspaceId: string;
   projectId: string;
   runs: BillingRunDto[];
+  breakdowns: Record<string, BillingRunBreakdownDto>;
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createBillingRunAction, initialState);
@@ -145,6 +147,20 @@ export function BillingRunSection({
                   <> · {run.entryCount} {run.entryCount === 1 ? "Eintrag" : "Einträge"} · {formatMinutes(run.totalMinutes)}</>
                 ) : null}
               </p>
+              {run.status === "closed" && breakdowns[run.id] ? (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-sm font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">
+                    Aufschlüsselung je Person
+                  </summary>
+                  <ul className="mt-2 grid gap-1">
+                    {breakdowns[run.id]!.rows.map((row) => (
+                      <li key={row.userId} className="text-sm text-slate-700">
+                        {row.label} — {row.entryCount} {row.entryCount === 1 ? "Eintrag" : "Einträge"} — {formatMinutes(row.totalWorkingMinutes)}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
               {canWrite && run.status === "open" ? (
                 <form action={closeDispatch} className="mt-3">
                   <input type="hidden" name="workspaceId" value={workspaceId} />

@@ -61,3 +61,29 @@ export const closeBillingRunCommandSchema = z.object({
   id: z.string().uuid(),
 });
 export type CloseBillingRunCommand = z.infer<typeof closeBillingRunCommandSchema>;
+
+// F9-08 Lauf-Auswertung — Zeilen je Person aus dem eingefrorenen Lauf.
+// Reiner Lesepfad (keine Migration); Summen müssen dem Snapshot entsprechen.
+export const billingRunBreakdownRowSchema = z.object({
+  schemaVersion: z.literal(BILLING_RUN_SCHEMA_VERSION),
+  userId: z.string().uuid(),
+  label: z.string(),
+  entryCount: z.number().int().min(0),
+  totalWorkingMinutes: z.number().int().min(0),
+});
+export type BillingRunBreakdownRow = z.infer<typeof billingRunBreakdownRowSchema>;
+
+export const billingRunBreakdownDtoSchema = z.object({
+  schemaVersion: z.literal(BILLING_RUN_SCHEMA_VERSION),
+  billingRunId: z.string().uuid(),
+  entryCount: z.number().int().min(0),
+  totalMinutes: z.number().int().min(0),
+  rows: billingRunBreakdownRowSchema.array(),
+});
+export type BillingRunBreakdownDto = z.infer<typeof billingRunBreakdownDtoSchema>;
+
+export const getBillingRunBreakdownCommandSchema = z.object({
+  schemaVersion: z.literal(BILLING_RUN_SCHEMA_VERSION),
+  billingRunId: z.string().uuid(),
+});
+export type GetBillingRunBreakdownCommand = z.infer<typeof getBillingRunBreakdownCommandSchema>;
