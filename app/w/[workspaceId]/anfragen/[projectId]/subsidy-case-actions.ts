@@ -6,6 +6,7 @@ import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
   ensureSubsidyCase,
+  getSubsidyCase,
   SubsidyCaseNotFoundError,
   subsidyCasePrograms,
   subsidyCaseStatuses,
@@ -15,6 +16,8 @@ import {
   type SubsidyCaseProgram,
   type SubsidyCaseStatus,
 } from "@/modules/subsidy-cases";
+import { createFileRequest } from "@/modules/file-requests";
+import { isSubsidyCaseBelegState } from "@/lib/subsidy-case";
 
 const uuidSchema = z.uuid();
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -143,6 +146,42 @@ export async function transitionSubsidyCaseAction(
     return { status: "success", message: "Status geändert." };
   } catch (error) {
     if (error instanceof SubsidyCaseValidationError) return { status: "conflict" };
+    return mapError(error);
+  }
+}
+
+// F13-07 BnD-Beleg anfordern: Datei-Anfrage mit Akten-Verknüpfung.
+// Nur in Beleg-Phasen (UI blendet sonst aus; Action prüft fail-closed).
+// Recht: installation.write für den Aufruf (Akten-Kontext wie Geschwister),
+// createFileRequest erzwingt zusätzlich project.write (F10-04-Recht).
+export async function createSubsidyBelegAction(
+  _previous: SubsidyCaseActionState,
+  formData: FormData,
+): Promise<SubsidyCaseActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const title = formData.get("title");
+  if (typeof title !== "string" || title.trim().length === 0) {
+    return { status: "invalid" };
+  }
+  try {
+    await authorizedAction(ids.workspaceId, "installation.write", "subsidy_case", (tx, ctx) =>
+      (async () => {
+        const kase = await getSubsidyCase(tx, ctx, ids.projectId);
+        if (kase === null || !isSubsidyCaseBelegState(kase.status)) {
+          throw new SubsidyCaseValidationError("beleg state");
+        }
+        await createFileRequest(tx, ctx, {
+          projectId: ids.projectId,
+          title: title.trim(),
+          description: null,
+          subsidyCaseId: kase.id,
+        });
+      })(),
+    );
+    revalidatePath(detailPath(ids.workspaceId, ids.projectId));
+    return { status: "success", message: "Beleg angefordert." };
+  } catch (error) {
     return mapError(error);
   }
 }

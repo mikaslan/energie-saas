@@ -35,6 +35,8 @@ export function nextFileRequestStatuses(from: FileRequestStatus): FileRequestSta
 export type FileRequestDto = {
   id: string;
   projectId: string;
+  // F13-07: optionale Akten-Verknüpfung (BnD-Beleg); null = allgemeine Anfrage.
+  subsidyCaseId: string | null;
   title: string;
   description: string | null;
   status: FileRequestStatus;

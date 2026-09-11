@@ -49,6 +49,14 @@ export function nextSubsidyCaseStatuses(from: SubsidyCaseStatus): SubsidyCaseSta
   return allowedTransitions[from];
 }
 
+// F13-07: Beleg-Phasen der Akte (vor/nach BnD-Versand; Nachreichung
+// bleibt möglich). Reine UI-/Action-Politik, kein Service-Gate.
+export const subsidyCaseBelegStates: SubsidyCaseStatus[] = ["bza_bewilligt", "bnd_eingereicht"];
+
+export function isSubsidyCaseBelegState(status: SubsidyCaseStatus): boolean {
+  return subsidyCaseBelegStates.includes(status);
+}
+
 export function isAllowedSubsidyCaseTransition(from: SubsidyCaseStatus, to: SubsidyCaseStatus): boolean {
   return allowedTransitions[from].includes(to);
 }

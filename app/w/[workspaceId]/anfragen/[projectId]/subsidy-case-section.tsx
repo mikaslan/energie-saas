@@ -4,11 +4,14 @@ import { useActionState } from "react";
 import {
   SUBSIDY_CASE_PROGRAM_LABEL,
   SUBSIDY_CASE_STATUS_LABEL,
+  isSubsidyCaseBelegState,
   nextSubsidyCaseStatuses,
   subsidyCasePrograms,
   type SubsidyCaseDto,
 } from "@/lib/subsidy-case";
+import { FILE_REQUEST_STATUS_LABEL, type FileRequestDto } from "@/lib/file-request";
 import {
+  createSubsidyBelegAction,
   ensureSubsidyCaseAction,
   setSubsidyCaseDetailsAction,
   transitionSubsidyCaseAction,
@@ -50,11 +53,13 @@ export function SubsidyCaseSection({
   projectId,
   subsidyCase,
   canWrite,
+  belege,
 }: {
   workspaceId: string;
   projectId: string;
   subsidyCase: SubsidyCaseDto | null;
   canWrite: boolean;
+  belege: FileRequestDto[];
 }) {
   const [ensureState, ensureDispatch] = useActionState(ensureSubsidyCaseAction, initialState);
   const [detailsState, detailsDispatch] = useActionState(setSubsidyCaseDetailsAction, initialState);
@@ -62,7 +67,14 @@ export function SubsidyCaseSection({
     transitionSubsidyCaseAction,
     initialState,
   );
+  const [belegState, belegDispatch] = useActionState(createSubsidyBelegAction, initialState);
   const next = subsidyCase === null ? [] : nextSubsidyCaseStatuses(subsidyCase.status);
+  // F13-07: Beleg-Block nur in Beleg-Phasen; Leser sehen die Liste,
+  // das Formular verlangt canWrite (Action prüft zusätzlich).
+  const showBelege =
+    subsidyCase !== null &&
+    isSubsidyCaseBelegState(subsidyCase.status) &&
+    (canWrite || belege.length > 0);
 
   return (
     <section aria-label="Förderakte" className="rounded-lg border border-slate-200 bg-white p-4">
@@ -155,6 +167,51 @@ export function SubsidyCaseSection({
               ) : null}
               <Feedback state={transitionState} testId="subsidy-case-transition-feedback" />
             </>
+          ) : null}
+          {showBelege ? (
+            <div className="mt-1 border-t border-slate-200 pt-3" data-testid="subsidy-beleg-block">
+              <h3 className="text-sm font-semibold text-slate-900">BnD-Belege</h3>
+              {belege.length === 0 ? (
+                <p className="mt-1 text-sm text-slate-600">Noch keine Belege angefordert.</p>
+              ) : (
+                <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
+                  {belege.map((beleg) => (
+                    <li key={beleg.id} className="px-3 py-2">
+                      <span className="block text-sm font-medium text-slate-800">{beleg.title}</span>
+                      <span className="block text-sm text-slate-500">
+                        {FILE_REQUEST_STATUS_LABEL[beleg.status]}
+                        {beleg.status === "erledigt" ? " · Beleg erhalten" : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canWrite ? (
+                <form action={belegDispatch} className="mt-2 flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="workspaceId" value={workspaceId} />
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">
+                    Beleg-Titel
+                    <input
+                      type="text"
+                      name="title"
+                      maxLength={160}
+                      defaultValue="BnD-Beleg"
+                      data-testid="subsidy-beleg-title"
+                      className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    data-testid="subsidy-beleg-create"
+                    className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  >
+                    Beleg anfordern
+                  </button>
+                </form>
+              ) : null}
+              <Feedback state={belegState} testId="subsidy-beleg-feedback" />
+            </div>
           ) : null}
         </div>
       )}

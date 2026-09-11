@@ -16,6 +16,7 @@ import {
 import { listFileRequests } from "@/modules/file-requests";
 import { getGridRegistration } from "@/modules/grid-registration";
 import { getSubsidyCase } from "@/modules/subsidy-cases";
+import { isSubsidyCaseBelegState } from "@/lib/subsidy-case";
 import {
   getProjectAssignmentContext,
   getProjectFollowUp,
@@ -787,7 +788,12 @@ export default async function ProjectTriagePage({
 
   // F13-03: Förderakte (eigene Sichtbarkeit wie Netzanmeldung).
   const subsidyCaseResult = await (async (): Promise<
-    | { kind: "loaded"; subsidyCase: Awaited<ReturnType<typeof getSubsidyCase>>; canWrite: boolean }
+    | {
+        kind: "loaded";
+        subsidyCase: Awaited<ReturnType<typeof getSubsidyCase>>;
+        canWrite: boolean;
+        belege: Awaited<ReturnType<typeof listFileRequests>>;
+      }
     | { kind: "unauthenticated" }
     | { kind: "denied" }
   > => {
@@ -804,7 +810,23 @@ export default async function ProjectTriagePage({
         "subsidy_case_write_gate",
         async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
       );
-      return { kind: "loaded", subsidyCase, canWrite: writable };
+      // F13-07: Beleg-Liste der Akte (eigene Leseberechtigung project.read;
+      // ohne Recht ehrlich leer statt Blockade der Akte).
+      let belege: Awaited<ReturnType<typeof listFileRequests>> = [];
+      if (subsidyCase !== null && isSubsidyCaseBelegState(subsidyCase.status)) {
+        try {
+          belege = await authorizedQuery(workspaceId, "project.read", "file_request", (tx, ctx) =>
+            listFileRequests(tx, ctx, projectId, { subsidyCaseId: subsidyCase.id }),
+          );
+        } catch (error) {
+          if (error instanceof PermissionDeniedError) {
+            belege = [];
+          } else {
+            throw error;
+          }
+        }
+      }
+      return { kind: "loaded", subsidyCase, canWrite: writable, belege };
     } catch (error) {
       if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
       if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1116,6 +1138,7 @@ export default async function ProjectTriagePage({
               projectId={projectId}
               subsidyCase={subsidyCaseResult.subsidyCase}
               canWrite={subsidyCaseResult.canWrite}
+              belege={subsidyCaseResult.belege}
             />
           </div>
         ) : null}

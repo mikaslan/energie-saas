@@ -757,6 +757,13 @@
       "when": 1789108300000,
       "tag": "0107_f13_06_service_portal_rueckmeldung",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1789112300000,
+      "tag": "0108_f13_07_bnd_beleg_upload",
+      "breakpoints": true
     }
   ]
 }

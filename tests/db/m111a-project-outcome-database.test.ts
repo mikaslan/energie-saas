@@ -206,10 +206,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0102 F8-05 Teilrechnung, 0103 F13-02 Netzanmeldung,
     // 0104 F10-04 Datei-Anfragen, 0105 F13-03 Foerderakte,
     // 0106 F13-04 Portal-Foerderstand,
-    // 0107 F13-06 Service-Portal-Rueckmeldung).
+    // 0107 F13-06 Service-Portal-Rueckmeldung,
+    // 0108 F13-07 BnD-Beleg-Upload).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 107,
-      tag: "0107_f13_06_service_portal_rueckmeldung",
+      idx: 108,
+      tag: "0108_f13_07_bnd_beleg_upload",
     });
   });
 

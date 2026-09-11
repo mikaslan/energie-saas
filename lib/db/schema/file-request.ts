@@ -12,6 +12,7 @@ import {
 import { sql } from "drizzle-orm";
 import { membership, workspace } from "./core";
 import { project } from "./project";
+import { subsidyCase } from "./subsidy-case";
 
 // F10-04 Datei-Anfragen: interne Bitte um Kundendatei je Projekt
 // (v1 ein Beleg je Anfrage, 10 MiB-Grenze als ESTIMATE). Maschine:
@@ -25,6 +26,7 @@ export const fileRequest = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     workspaceId: uuid("workspace_id").notNull(),
     projectId: uuid("project_id").notNull(),
+    subsidyCaseId: uuid("subsidy_case_id"),
     title: text("title").notNull(),
     description: text("description"),
     status: text("status").notNull().default("offen"),
@@ -50,6 +52,11 @@ export const fileRequest = pgTable(
       columns: [t.workspaceId, t.projectId],
       foreignColumns: [project.workspaceId, project.id],
       name: "file_request_project_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.subsidyCaseId],
+      foreignColumns: [subsidyCase.workspaceId, subsidyCase.id],
+      name: "file_request_subsidy_case_fk",
     }),
     foreignKey({
       columns: [t.workspaceId, t.createdBy],
@@ -92,5 +99,6 @@ export const fileRequest = pgTable(
       sql`${t.byteSize} is null or (${t.byteSize} between 1 and 10485760)`,
     ),
     index("file_request_ws_project_idx").on(t.workspaceId, t.projectId, t.status),
+    index("file_request_ws_case_idx").on(t.workspaceId, t.subsidyCaseId),
   ],
 );

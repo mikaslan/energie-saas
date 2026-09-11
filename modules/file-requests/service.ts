@@ -61,6 +61,7 @@ const ALLOWED_CONTENT_TYPES = {
 type FileRequestRow = {
   id: string;
   project_id: string;
+  subsidy_case_id: string | null;
   title: string;
   description: string | null;
   status: string;
@@ -77,7 +78,7 @@ type FileRequestRow = {
 };
 
 const ROW_COLUMNS = sql`
-  id, project_id, title, description, status,
+  id, project_id, subsidy_case_id, title, description, status,
   storage_key, file_sha256, content_type, byte_size, original_filename,
   uploaded_at, completed_at, created_at, updated_at
 `;
@@ -90,6 +91,7 @@ function toDto(row: FileRequestRow, ctx: ServiceCtx): FileRequestDto {
   return {
     id: row.id,
     projectId: row.project_id,
+    subsidyCaseId: row.subsidy_case_id,
     title: row.title,
     description: row.description,
     status: row.status as FileRequestStatus,
@@ -132,7 +134,7 @@ async function requireProject(tx: TenantTx, ctx: ServiceCtx, projectId: string):
 export async function createFileRequest(
   tx: TenantTx,
   ctx: ServiceCtx,
-  input: { projectId: string; title: unknown; description: unknown },
+  input: { projectId: string; title: unknown; description: unknown; subsidyCaseId?: unknown },
 ): Promise<FileRequestDto> {
   requireWrite(ctx, input.projectId);
   await requireProject(tx, ctx, input.projectId);
@@ -141,10 +143,27 @@ export async function createFileRequest(
     description: input.description ?? null,
   });
   if (!parsed.success) throw new FileRequestValidationError();
+  // F13-07: optionale Akten-Verknüpfung — die Akte muss zum Projekt
+  // gehören (uniform NotFound statt Orakel über fremde Akten).
+  let subsidyCaseId: string | null = null;
+  if (input.subsidyCaseId !== undefined && input.subsidyCaseId !== null) {
+    if (!uuidSchema.safeParse(input.subsidyCaseId).success) {
+      throw new FileRequestValidationError();
+    }
+    const linked = await tx.execute<{ id: string }>(sql`
+      select id from subsidy_case
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${input.subsidyCaseId}::uuid
+         and project_id = ${input.projectId}::uuid
+       limit 1
+    `);
+    if (!linked.rows[0]) throw new FileRequestNotFoundError(input.projectId);
+    subsidyCaseId = input.subsidyCaseId as string;
+  }
   const inserted = await tx.execute<FileRequestRow>(sql`
-    insert into file_request (workspace_id, project_id, title, description, created_by)
+    insert into file_request (workspace_id, project_id, subsidy_case_id, title, description, created_by)
     values (
-      ${ctx.workspaceId}::uuid, ${input.projectId}::uuid,
+      ${ctx.workspaceId}::uuid, ${input.projectId}::uuid, ${subsidyCaseId}::uuid,
       ${parsed.data.title}, ${parsed.data.description},
       ${ctx.actor}::uuid
     )
@@ -158,7 +177,7 @@ export async function createFileRequest(
     aggregateId: input.projectId,
     eventType: "file_request.created",
     actor: ctx.actor,
-    payload: { requestId: row.id },
+    payload: subsidyCaseId === null ? { requestId: row.id } : { requestId: row.id, subsidyCaseId },
   });
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId,
@@ -175,13 +194,25 @@ export async function listFileRequests(
   tx: TenantTx,
   ctx: ServiceCtx,
   projectId: string,
+  filter?: { subsidyCaseId?: unknown },
 ): Promise<FileRequestDto[]> {
   requireRead(ctx, projectId);
   if (!uuidSchema.safeParse(projectId).success) throw new FileRequestValidationError();
+  // F13-07: optionaler Akten-Filter (Beleg-Liste der Akte).
+  let subsidyCaseId: string | null = null;
+  let filterCase = false;
+  if (filter?.subsidyCaseId !== undefined && filter.subsidyCaseId !== null) {
+    if (!uuidSchema.safeParse(filter.subsidyCaseId).success) {
+      throw new FileRequestValidationError();
+    }
+    subsidyCaseId = filter.subsidyCaseId as string;
+    filterCase = true;
+  }
   const found = await tx.execute<FileRequestRow>(sql`
     select ${ROW_COLUMNS} from file_request
      where workspace_id = ${ctx.workspaceId}::uuid
        and project_id = ${projectId}::uuid
+       and (${filterCase} = false or subsidy_case_id = ${subsidyCaseId}::uuid)
      order by created_at, id
   `);
   return found.rows.map((row) => toDto(row, ctx));
