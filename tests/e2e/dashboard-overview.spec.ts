@@ -177,3 +177,33 @@ test("DASH-09: Vorgang, Akte und Beleg erscheinen als Dashboard-Kennzahlen", asy
   await expect(card.getByTestId("dashboard-subsidy-total")).toHaveText("1");
   await expect(card.getByTestId("dashboard-belege-offen")).toHaveText("1");
 });
+
+test("DASH-10: Funnel zeigt Bestands-Stufen mit ehrlichen Raten", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const listPath = `/w/${workspaceId}/anfragen`;
+  const dashboardPath = `/w/${workspaceId}/dashboard`;
+  await page.goto(dashboardPath);
+  await loginWithRealOtp(page, state().editorEmail, dashboardPath);
+
+  const funnel = page.locator('[data-dashboard-funnel="true"]');
+  await expect(funnel).toBeVisible();
+  await expect(funnel.getByText("Noch keine Projekte im Bestand.")).toBeVisible();
+
+  await page.goto(listPath);
+  await page.getByTestId("manual-lead-open").click();
+  const form = page.getByTestId("manual-lead-form");
+  await form.getByLabel("Name *").fill("E2E Funnel");
+  await form.getByLabel("Telefon").fill("0151 45678906");
+  await form.getByRole("button", { name: "Anfrage anlegen" }).click();
+  await expect(page.getByTestId("manual-lead-success")).toContainText("Anfrage angelegt");
+
+  await page.goto(dashboardPath);
+  await expect(funnel.getByTestId("dashboard-funnel-requests")).toHaveText("1");
+  await expect(funnel.getByTestId("dashboard-funnel-offers")).toContainText("0");
+  await expect(funnel.getByTestId("dashboard-funnel-installations")).toContainText("0");
+  await expect(funnel.getByTestId("dashboard-funnel-won")).toContainText("0");
+});

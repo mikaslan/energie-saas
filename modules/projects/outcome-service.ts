@@ -702,6 +702,72 @@ export async function getClosureTrendStats(
   };
 }
 
+export type ConversionFunnelStats = {
+  /** Alle Projekte des Mandanten (Bestand, ESTIMATE-Reichweite). */
+  requests: number;
+  /** Phase Angebot oder Installation. */
+  offers: number;
+  /** Phase Installation. */
+  installations: number;
+  /** Abschluss gewonnen (phasenunabhängig). */
+  won: number;
+  /** Anteile relativ zu requests (0–100, eine Nachkommastelle). */
+  offerRate: number;
+  installationRate: number;
+  wonRate: number;
+};
+
+/**
+ * DASH-10 Conversion-Funnel: Bestands-Snapshot über die Projektphasen
+ * (keine Kohorten-/Zeitattribution — ehrlich Bestand, ESTIMATE). Gleiche
+ * Sichtbarkeit wie die Abschlussliste: project.read, kein External.
+ * Rein lesend, aggregiert.
+ */
+export async function getConversionFunnelStats(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<ConversionFunnelStats> {
+  requireInternalProjectRead(ctx, "conversion_funnel");
+  const result = await tx.execute<{ bucket: string; count: number }>(sql`
+    select bucket, count(*)::int as count from (
+      select 'requests' as bucket
+        from project project_record
+       where project_record.workspace_id = ${ctx.workspaceId}::uuid
+      union all
+      select 'offers' as bucket
+        from project project_record
+       where project_record.workspace_id = ${ctx.workspaceId}::uuid
+         and project_record.phase in ('offer', 'installation')
+      union all
+      select 'installations' as bucket
+        from project project_record
+       where project_record.workspace_id = ${ctx.workspaceId}::uuid
+         and project_record.phase = 'installation'
+      union all
+      select 'won' as bucket
+        from project project_record
+       where project_record.workspace_id = ${ctx.workspaceId}::uuid
+         and project_record.outcome = 'won'
+    ) as funnel
+    group by bucket
+  `);
+  const counts: Record<string, number> = { requests: 0, offers: 0, installations: 0, won: 0 };
+  for (const row of result.rows) {
+    if (row.bucket in counts) counts[row.bucket] = Number(row.count);
+  }
+  const rate = (part: number): number =>
+    counts.requests === 0 ? 0 : Math.round((part / counts.requests) * 1000) / 10;
+  return {
+    requests: counts.requests,
+    offers: counts.offers,
+    installations: counts.installations,
+    won: counts.won,
+    offerRate: rate(counts.offers),
+    installationRate: rate(counts.installations),
+    wonRate: rate(counts.won),
+  };
+}
+
 export async function listClosedRequests(
   tx: TenantTx,
   ctx: ServiceCtx,

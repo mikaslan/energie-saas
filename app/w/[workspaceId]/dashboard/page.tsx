@@ -17,8 +17,10 @@ import {
 } from "@/modules/tasks";
 import {
   getClosureTrendStats,
+  getConversionFunnelStats,
   listClosedRequests,
   type ClosureTrendStats,
+  type ConversionFunnelStats,
   type ProjectClosedRequestPage,
 } from "@/modules/projects";
 import {
@@ -371,6 +373,28 @@ async function loadClosureTrend(workspaceId: string): Promise<
   }
 }
 
+// DASH-10 Conversion-Funnel: Bestands-Snapshot (gleiche Sicht wie
+// Abschlusstrend; ehrlich Bestand, keine Kohorten).
+async function loadFunnel(workspaceId: string): Promise<
+  | { kind: "loaded"; stats: ConversionFunnelStats }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const stats = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "conversion_funnel",
+      (tx, ctx) => getConversionFunnelStats(tx, ctx),
+    );
+    return { kind: "loaded", stats };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
 async function loadAppointments(workspaceId: string): Promise<
   | { kind: "loaded"; items: UpcomingAppointmentV1[] }
   | { kind: "unauthenticated" }
@@ -488,12 +512,13 @@ export default async function DashboardPage({
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  const [pipeline, overdue, today, closures, trend, invoices, leadTime, offerLeadTime, appointments, service, subsidy, belege] = await Promise.all([
+  const [pipeline, overdue, today, closures, trend, funnel, invoices, leadTime, offerLeadTime, appointments, service, subsidy, belege] = await Promise.all([
     loadPipeline(validWorkspaceId),
     loadTasks(validWorkspaceId, "overdue"),
     loadTasks(validWorkspaceId, "today"),
     loadClosures(validWorkspaceId),
     loadClosureTrend(validWorkspaceId),
+    loadFunnel(validWorkspaceId),
     loadInvoiceKpis(validWorkspaceId),
     loadLeadTime(validWorkspaceId),
     loadOfferLeadTime(validWorkspaceId),
@@ -508,6 +533,7 @@ export default async function DashboardPage({
     || today.kind === "unauthenticated"
     || closures.kind === "unauthenticated"
     || trend.kind === "unauthenticated"
+    || funnel.kind === "unauthenticated"
     || invoices.kind === "unauthenticated"
     || leadTime.kind === "unauthenticated"
     || offerLeadTime.kind === "unauthenticated"
@@ -534,6 +560,7 @@ export default async function DashboardPage({
     && today.kind === "denied"
     && closures.kind === "denied"
     && trend.kind === "denied"
+    && funnel.kind === "denied"
     && invoices.kind === "denied"
     && leadTime.kind === "denied"
     && offerLeadTime.kind === "denied"
@@ -791,6 +818,44 @@ export default async function DashboardPage({
                     );
                   })}
                 </ul>
+              )}
+            </section>
+          ) : null}
+
+          {funnel.kind === "loaded" ? (
+            <section
+              aria-label="Conversion-Funnel"
+              data-dashboard-funnel="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Conversion-Funnel (Bestand, ESTIMATE)</h2>
+              {funnel.stats.requests === 0 ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">Noch keine Projekte im Bestand.</p>
+              ) : (
+                <dl className="mt-3 space-y-1.5 text-sm">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-slate-600">Anfragen</dt>
+                    <dd className="font-semibold tabular-nums" data-testid="dashboard-funnel-requests">{funnel.stats.requests}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-slate-600">Angebote</dt>
+                    <dd className="font-semibold tabular-nums" data-testid="dashboard-funnel-offers">
+                      {`${funnel.stats.offers} (${funnel.stats.offerRate.toLocaleString("de-DE")} %)`}
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-slate-600">Installationen</dt>
+                    <dd className="font-semibold tabular-nums" data-testid="dashboard-funnel-installations">
+                      {`${funnel.stats.installations} (${funnel.stats.installationRate.toLocaleString("de-DE")} %)`}
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-slate-600">Gewonnen</dt>
+                    <dd className="font-semibold tabular-nums" data-testid="dashboard-funnel-won">
+                      {`${funnel.stats.won} (${funnel.stats.wonRate.toLocaleString("de-DE")} %)`}
+                    </dd>
+                  </div>
+                </dl>
               )}
             </section>
           ) : null}

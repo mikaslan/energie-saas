@@ -48,6 +48,7 @@ export {
   changeProjectLossReason,
   changeProjectOutcome,
   getClosureTrendStats,
+  getConversionFunnelStats,
   getProjectOutcomeContext,
   listClosedRequests,
   listManagedProjectLossReasons,
@@ -64,6 +65,7 @@ export {
 } from "./outcome-service";
 export type {
   ClosureTrendStats,
+  ConversionFunnelStats,
   ProjectClosedRequestPage,
   ProjectClosedRequestRecord,
   ProjectLossReasonRecord,
