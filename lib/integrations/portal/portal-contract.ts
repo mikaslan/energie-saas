@@ -132,6 +132,8 @@ export type PortalAppointment = z.infer<typeof portalAppointmentSchema>;
 
 // F10-04: Datei-Anfragen (nur Titel/Beschreibung/Stand/Zeiten/eigener
 // Dateiname — nie Storage-Key/Prüfsumme/Größe; rein interne Belegdaten).
+// F10-10: Allow-many — zusaetzlich allowMany/uploadCount/filenames (nur
+// Dateinamen weiterer Belege, nie Keys; fehlend = Alt-Projektion).
 export const portalFileRequestSchema = z.strictObject({
   id: z.uuid(),
   title: z.string(),
@@ -140,6 +142,9 @@ export const portalFileRequestSchema = z.strictObject({
   createdAt: z.iso.datetime({ offset: true }),
   uploadedAt: z.iso.datetime({ offset: true }).nullable(),
   originalFilename: z.string().nullable(),
+  allowMany: z.boolean(),
+  uploadCount: z.number().int().min(0),
+  filenames: z.array(z.string()),
 });
 export type PortalFileRequest = z.infer<typeof portalFileRequestSchema>;
 
@@ -436,7 +441,8 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
         if (
           key !== "id" && key !== "title" && key !== "description" &&
           key !== "status" && key !== "createdAt" && key !== "uploadedAt" &&
-          key !== "originalFilename"
+          key !== "originalFilename" && key !== "allowMany" &&
+          key !== "uploadCount" && key !== "filenames"
         ) {
           return null;
         }
@@ -452,6 +458,19 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       const uploadedAt = record.uploadedAt === null ? null : toInstant(record.uploadedAt);
       if (record.uploadedAt !== null && uploadedAt === null) return null;
       if (typeof record.originalFilename !== "string" && record.originalFilename !== null) return null;
+      // F10-10: Allow-many-Felder (Muster statusFaq: fehlend =
+      // Alt-Projektion → ehrliche Defaults — vor 0120 gab es keine
+      // Folge-Belege; deformiert → null).
+      const allowMany = record.allowMany === undefined ? false : record.allowMany;
+      if (typeof allowMany !== "boolean") return null;
+      const uploadCount = record.uploadCount === undefined ? 0 : record.uploadCount;
+      if (typeof uploadCount !== "number" || !Number.isInteger(uploadCount) || uploadCount < 0) {
+        return null;
+      }
+      const filenames = record.filenames === undefined ? [] : record.filenames;
+      if (!Array.isArray(filenames) || filenames.some((name) => typeof name !== "string")) {
+        return null;
+      }
       fileRequests.push({
         id,
         title,
@@ -460,6 +479,9 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
         createdAt,
         uploadedAt,
         originalFilename: record.originalFilename as string | null,
+        allowMany,
+        uploadCount,
+        filenames: filenames as string[],
       });
     }
   }

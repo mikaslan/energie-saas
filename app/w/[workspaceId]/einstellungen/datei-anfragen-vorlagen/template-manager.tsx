@@ -93,6 +93,15 @@ function TemplateForm({
           className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
         />
       </label>
+      <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+        <input
+          type="checkbox"
+          name="allowMany"
+          defaultChecked={template?.allowMany ?? false}
+          className="min-h-6 min-w-6 accent-slate-900"
+        />
+        Mehrere Dateien erlauben
+      </label>
       <label className="grid gap-1 text-sm font-semibold text-slate-800">
         Reihenfolge
         <input
@@ -155,6 +164,9 @@ export function FileRequestTemplateManager({
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-700">{template.title}</p>
+            {template.allowMany ? (
+              <p className="mt-1 text-xs font-semibold text-slate-600">Mehrere Dateien</p>
+            ) : null}
             {template.description ? (
               <p className="mt-1 text-sm text-slate-500">{template.description}</p>
             ) : null}

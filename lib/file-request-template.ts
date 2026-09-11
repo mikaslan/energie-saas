@@ -5,7 +5,8 @@
 // Server-Code ins Client-Bundle zu ziehen.
 import { z } from "zod";
 
-export const FILE_REQUEST_TEMPLATE_SCHEMA_VERSION = 1;
+// F10-10: Version 2 — allowMany je Vorlage (Allow-many aus Katalog F10-04).
+export const FILE_REQUEST_TEMPLATE_SCHEMA_VERSION = 2;
 
 export const FILE_REQUEST_TEMPLATE_NAME_MAX = 200;
 export const FILE_REQUEST_TEMPLATE_TITLE_MAX = 160;
@@ -36,6 +37,7 @@ export const fileRequestTemplateDtoSchema = z.object({
   name: z.string(),
   title: z.string(),
   description: z.string().nullable(),
+  allowMany: z.boolean(),
   position: z.number().int().min(0),
   active: z.boolean(),
   createdAt: z.string(),
@@ -49,6 +51,7 @@ export const createFileRequestTemplateCommandSchema = z.object({
   name: cleanName,
   title: cleanTitle,
   description: cleanDescription.optional(),
+  allowMany: z.boolean(),
   position: z.number().int().min(0).optional(),
 });
 export type CreateFileRequestTemplateCommand = z.infer<typeof createFileRequestTemplateCommandSchema>;
@@ -59,6 +62,7 @@ export const updateFileRequestTemplateCommandSchema = z.object({
   name: cleanName,
   title: cleanTitle,
   description: cleanDescription.optional(),
+  allowMany: z.boolean(),
   position: z.number().int().min(0),
 });
 export type UpdateFileRequestTemplateCommand = z.infer<typeof updateFileRequestTemplateCommandSchema>;

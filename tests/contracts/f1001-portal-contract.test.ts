@@ -393,4 +393,97 @@ describe("F10.1 portal command contracts", () => {
       ...base, service: "kein-array",
     })).toBeNull();
   });
+
+  it("parst Datei-Anfragen mit Allow-many, fehlend = Defaults, deformiert = null", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
+      documents: [],
+      appointments: [],
+    };
+    // Alt-Projektion ohne Schlüssel → ehrlich leer.
+    expect(parsePortalPublicView(base)?.fileRequests).toEqual([]);
+    // Alt-Anfrage ohne F10-10-Felder → ehrliche Defaults (kein Folge-Beleg).
+    const legacy = parsePortalPublicView({
+      ...base,
+      fileRequests: [{
+        id: INVITE,
+        title: "Stromrechnung",
+        description: null,
+        status: "hochgeladen",
+        createdAt: "2026-09-01T10:00:00.000Z",
+        uploadedAt: "2026-09-02T10:00:00.000Z",
+        originalFilename: "strom.pdf",
+      }],
+    });
+    expect(legacy?.fileRequests).toEqual([{
+      id: INVITE,
+      title: "Stromrechnung",
+      description: null,
+      status: "hochgeladen",
+      createdAt: "2026-09-01T10:00:00.000Z",
+      uploadedAt: "2026-09-02T10:00:00.000Z",
+      originalFilename: "strom.pdf",
+      allowMany: false,
+      uploadCount: 0,
+      filenames: [],
+    }]);
+    // F10-10: Allow-many mit Folge-Belegen.
+    const shown = parsePortalPublicView({
+      ...base,
+      fileRequests: [{
+        id: INVITE,
+        title: "Fotos",
+        description: null,
+        status: "hochgeladen",
+        createdAt: "2026-09-01T10:00:00.000Z",
+        uploadedAt: "2026-09-02T10:00:00.000Z",
+        originalFilename: "foto-1.pdf",
+        allowMany: true,
+        uploadCount: 2,
+        filenames: ["foto-2.pdf", "foto-3.pdf"],
+      }],
+    });
+    expect(shown?.fileRequests).toEqual([{
+      id: INVITE,
+      title: "Fotos",
+      description: null,
+      status: "hochgeladen",
+      createdAt: "2026-09-01T10:00:00.000Z",
+      uploadedAt: "2026-09-02T10:00:00.000Z",
+      originalFilename: "foto-1.pdf",
+      allowMany: true,
+      uploadCount: 2,
+      filenames: ["foto-2.pdf", "foto-3.pdf"],
+    }]);
+    // Deformierte Allow-many-Felder + fremde Schlüssel brechen fail-closed ab.
+    for (const patch of [
+      { allowMany: "ja" },
+      { uploadCount: -1 },
+      { uploadCount: 1.5 },
+      { filenames: "foto-2.pdf" },
+      { filenames: [42] },
+      { storageKey: "immutable/x" },
+    ]) {
+      expect(parsePortalPublicView({
+        ...base,
+        fileRequests: [{
+          id: INVITE,
+          title: "Fotos",
+          description: null,
+          status: "hochgeladen",
+          createdAt: "2026-09-01T10:00:00.000Z",
+          uploadedAt: "2026-09-02T10:00:00.000Z",
+          originalFilename: "foto-1.pdf",
+          allowMany: true,
+          uploadCount: 1,
+          filenames: ["foto-2.pdf"],
+          ...patch,
+        }],
+      })).toBeNull();
+    }
+  });
 });

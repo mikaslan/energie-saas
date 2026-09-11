@@ -50,7 +50,7 @@ function parseOptionalText(value: FormDataEntryValue | null, max: number): strin
 }
 
 function parseFields(formData: FormData):
-  | { name: string; title: string; description: string | null; position: number }
+  | { name: string; title: string; description: string | null; allowMany: boolean; position: number }
   | null {
   const name = parseText(formData.get("name"), 200);
   const title = parseText(formData.get("title"), 160);
@@ -60,7 +60,8 @@ function parseFields(formData: FormData):
   if (typeof positionValue !== "string" || !/^\d+$/u.test(positionValue)) return null;
   const position = Number(positionValue);
   if (!Number.isSafeInteger(position) || position < 0) return null;
-  return { name, title, description, position };
+  // F10-10: Allow-many je Vorlage (Checkbox; fehlend = single).
+  return { name, title, description, allowMany: formData.get("allowMany") === "on", position };
 }
 
 function mapError(error: unknown): FileRequestTemplateActionState {

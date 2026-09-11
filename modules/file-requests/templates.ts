@@ -80,6 +80,7 @@ type TemplateRow = {
   name: string;
   title: string;
   description: string | null;
+  allow_many: boolean;
   position: number;
   active: boolean;
   created_at: string;
@@ -87,7 +88,7 @@ type TemplateRow = {
 };
 
 const TEMPLATE_SELECT = sql`
-  select id, name, title, description,
+  select id, name, title, description, allow_many,
          position, active, created_at, updated_at
     from file_request_template
 `;
@@ -99,6 +100,7 @@ function toDto(row: TemplateRow, canWrite: boolean): FileRequestTemplateDto {
     name: row.name,
     title: row.title,
     description: row.description,
+    allowMany: row.allow_many,
     position: row.position,
     active: row.active,
     createdAt: row.created_at,
@@ -138,7 +140,7 @@ export async function createFileRequestTemplate(
   try {
     const inserted = await tx.execute<TemplateRow>(sql`
       insert into file_request_template (
-        workspace_id, name, name_normalized, title, description,
+        workspace_id, name, name_normalized, title, description, allow_many,
         position, created_by
       ) values (
         ${ctx.workspaceId}::uuid,
@@ -146,10 +148,11 @@ export async function createFileRequestTemplate(
         ${normalizeFileRequestTemplateName(command.name)},
         ${command.title},
         ${command.description ?? null},
+        ${command.allowMany},
         ${command.position ?? 0},
         ${ctx.actor}::uuid
       )
-      returning id, name, title, description,
+      returning id, name, title, description, allow_many,
                 position, active, created_at, updated_at
     `);
     row = inserted.rows[0]!;
@@ -196,12 +199,13 @@ export async function updateFileRequestTemplate(
              name_normalized = ${normalizeFileRequestTemplateName(command.name)},
              title = ${command.title},
              description = ${command.description ?? null},
+             allow_many = ${command.allowMany},
              position = ${command.position},
              updated_by = ${ctx.actor}::uuid,
              updated_at = statement_timestamp()
        where workspace_id = ${ctx.workspaceId}::uuid
          and id = ${command.id}::uuid
-      returning id, name, title, description,
+      returning id, name, title, description, allow_many,
                 position, active, created_at, updated_at
     `);
     rows = updated.rows;
@@ -249,7 +253,7 @@ async function setTemplateActive(
        where workspace_id = ${ctx.workspaceId}::uuid
          and id = ${command.id}::uuid
          and active is distinct from ${command.active}
-      returning id, name, title, description,
+      returning id, name, title, description, allow_many,
                 position, active, created_at, updated_at
     `);
     rows = updated.rows;
@@ -327,10 +331,12 @@ export async function applyFileRequestTemplate(
   const template = found.rows[0];
   if (!template) throw new FileRequestTemplateNotFoundError();
   try {
+    // F10-10: Allow-many wandert aus der Vorlage in die Anfrage.
     const request = await createFileRequest(tx, ctx, {
       projectId: command.projectId,
       title: template.title,
       description: template.description,
+      allowMany: template.allow_many,
     });
     await emitEvent(tx, {
       workspaceId: ctx.workspaceId,

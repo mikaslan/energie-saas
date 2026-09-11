@@ -32,6 +32,15 @@ export function nextFileRequestStatuses(from: FileRequestStatus): FileRequestSta
   return allowedTransitions[from];
 }
 
+export type FileRequestUploadDto = {
+  id: string;
+  requestId: string;
+  contentType: string | null;
+  byteSize: number | null;
+  originalFilename: string | null;
+  uploadedAt: string;
+};
+
 export type FileRequestDto = {
   id: string;
   projectId: string;
@@ -39,6 +48,10 @@ export type FileRequestDto = {
   subsidyCaseId: string | null;
   title: string;
   description: string | null;
+  // F10-10: Allow-many — mehrere Belege je Anfrage (Folge-Belege als
+  // FileRequestUploadDto, Erst-Beleg weiter in den Spalten).
+  allowMany: boolean;
+  uploads: FileRequestUploadDto[];
   status: FileRequestStatus;
   storageKey: string | null;
   fileSha256: string | null;

@@ -681,6 +681,12 @@ const SUBSIDY_CASE_RELATIONS = [
 const SUBSIDY_CASE_MESSAGE_RELATIONS = [
   "subsidy_case_message",
 ] as const;
+
+// F10-10: Folge-Belege je Datei-Anfrage (nur Anlage + Lesen; kein
+// Update/Delete — Muster subsidy_case_message).
+const FILE_REQUEST_UPLOAD_RELATIONS = [
+  "file_request_upload",
+] as const;
 const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
   "public._m301_actor_invoicing_role(uuid)",
   "public._m301_actor_can_read_invoicing(uuid)",
@@ -3153,6 +3159,24 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F10-10: Folge-Belege unveränderlich — app_runtime liest nur (Anlage
+  // ausschließlich über die DEFINER-Kapsel als Owner; Muster
+  // subsidy_case_message, dort ohne insert).
+  const hasFileRequestUploadsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    FILE_REQUEST_UPLOAD_RELATIONS,
+    "Rollen-ACL-Manifest: F10-10-Folge-Belege",
+  );
+  if (hasFileRequestUploadsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.file_request_upload
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select on public.file_request_upload to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -4122,6 +4146,11 @@ export async function verifyRoleContract(
   const hasPortalSubsidyMessagesProjection = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("subsidy_messages"),
   );
+  // F10-10 (0120): Stufenmarker für file_upload_list im Portal-Resolver
+  // (Muster 0119).
+  const hasPortalFileUploads = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("file_upload_list"),
+  );
   // F10-07 (0116): Stufenmarker für den Portal-Dokument-Download
   // (eigene DEFINER-Funktion, Muster 0104).
   const portalDocumentDownloadProbe = await client.query<{ name: string | null }>(`
@@ -4239,6 +4268,13 @@ export async function verifyRoleContract(
     client,
     SUBSIDY_CASE_MESSAGE_RELATIONS,
     "Rollenvertrag: F13-10-Subsidy-Chat",
+  );
+  // F10-10 (0120): eigene Gate-Menge — Folge-Belege je Datei-Anfrage
+  // (Muster hasSubsidyCaseMessages).
+  const hasFileRequestUploads = await hasAtomicPublicRelationSet(
+    client,
+    FILE_REQUEST_UPLOAD_RELATIONS,
+    "Rollenvertrag: F10-10-Folge-Belege",
   );
   // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
   // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
@@ -4708,6 +4744,9 @@ export async function verifyRoleContract(
       ...(hasSubsidyCaseMessages ? SUBSIDY_CASE_MESSAGE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
+      ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
     ],
     "Relationsinventar",
   );
@@ -4898,6 +4937,10 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasFileRequests ? [
         "fulfill_file_request:app_owner",
+      ] : []),
+      // F10-10 (0120): Folge-Beleg-Kapsel (gleiche Migration wie Tabelle).
+      ...(hasFileRequestUploads ? [
+        "fulfill_file_request_followup:app_owner",
       ] : []),
       ...(hasPortalDocumentDownload ? [
         "read_portal_issuance_artifact:app_owner",
@@ -5408,12 +5451,14 @@ export async function verifyRoleContract(
           `search_path=pg_catalog:${hasF1008Notification
             ? "a49661be591f013d15fea7fc6169fc344311badbaeb1879c6e09713195373e7e"
             : "def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf"}`,
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09:
-        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118 per
-        // Marker (Prefix ≤0075 trägt den alten Rumpf; ein elfter Rumpf
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10:
+        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120
+        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein zwoelfter Rumpf
         // bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          `search_path=pg_catalog:${hasPortalSubsidyMessagesProjection
+          `search_path=pg_catalog:${hasPortalFileUploads
+            ? "dc56f5b6f3af6b1774497783d07913c342074582364b5509e6ff92671ae2edfa"
+            : hasPortalSubsidyMessagesProjection
             ? "9ab5cd5a0652e402752eec9c14d31a3defe4e2130bf33ca6a41e07318ed7dc53"
             : hasPortalStatusFaqProjection
             ? "f3fc8366698cb5f4fc7ab873bca79fb63cbe1b69d3a6032746795ec09180c9de"
@@ -5438,6 +5483,12 @@ export async function verifyRoleContract(
         "fulfill_file_request(bytea, uuid, text, text, text, integer, text):text:" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
           "541069e4c8a5bead1d1fd14f1e74226d2f4da7af677f53731abc6c53d7d3f9c9",
+        ] : []),
+        // F10-10 (0120): Folge-Beleg-Kapsel (Hash per Probe geerntet).
+        ...(hasFileRequestUploads ? [
+        "fulfill_file_request_followup(bytea, uuid, text, text, text, integer, text):text:" +
+          "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "3de3363d0bc92738bea5a02a28373e736fae762dd9783b470b9ad423c7123ca9",
         ] : []),
         // F10-07 (0116): Portal-Dokument-Download (Muster fulfill).
         ...(hasPortalDocumentDownload ? [
@@ -5994,6 +6045,9 @@ export async function verifyRoleContract(
       ...(hasSubsidyCaseMessages ? SUBSIDY_CASE_MESSAGE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -6272,6 +6326,10 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasSubsidyCaseMessages ? [
           "subsidy_case_message:tenant_isolation:609abf25fb1cb093df1e5a7cadc198d9f7dc0536fd187f41973ac3d1059c3c26",
+        ] : []),
+        // F10-10 (0120): Folge-Beleg-Tabelle (Hash per Probe geerntet).
+        ...(hasFileRequestUploads ? [
+          "file_request_upload:tenant_isolation:c189aa771ea9a74da5d7899a5f6bc69da8e0cd1a22e7b01a3913d2c872a68a48",
         ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
@@ -7020,6 +7078,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
       ]) : []),
+      // F10-10: nur Lesen (unveränderliche Folge-Belege; Anlage nur per
+      // DEFINER-Kapsel als Owner).
+      ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+      ]) : []),
       "app_system:audit_log:INSERT:app_owner:false",
       "app_system:audit_log:SELECT:app_owner:false",
       "app_system:domain_events:INSERT:app_owner:false",
@@ -7253,6 +7316,10 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasFileRequests ? [
         "app_runtime:fulfill_file_request(bytea, uuid, text, text, text, integer, text):EXECUTE:app_owner:false",
+      ] : []),
+      // F10-10 (0120): Folge-Beleg-Kapsel (Muster fulfill).
+      ...(hasFileRequestUploads ? [
+        "app_runtime:fulfill_file_request_followup(bytea, uuid, text, text, text, integer, text):EXECUTE:app_owner:false",
       ] : []),
       ...(hasPortalDocumentDownload ? [
         "app_runtime:read_portal_issuance_artifact(bytea, uuid):EXECUTE:app_owner:false",

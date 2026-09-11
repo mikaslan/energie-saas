@@ -92,6 +92,7 @@ export async function applyFileRequestTemplateAction(
 }
 
 // F10-04: Anfrage anlegen (Titel + optionale Beschreibung).
+// F10-10: Allow-many je Anfrage (Checkbox „Mehrere Dateien erlauben").
 export async function createFileRequestAction(
   _previous: FileRequestActionState,
   formData: FormData,
@@ -108,6 +109,7 @@ export async function createFileRequestAction(
         projectId: ids.projectId,
         title,
         description: description && description.trim().length > 0 ? description : null,
+        allowMany: formData.get("allowMany") === "on",
       }),
     );
     revalidatePath(detailPath(ids.workspaceId, ids.projectId));

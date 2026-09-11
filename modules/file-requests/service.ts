@@ -4,6 +4,7 @@
 // offen, terminal. Berechtigung: project.read/write (KEINE neuen Keys).
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { z } from "zod";
@@ -41,6 +42,7 @@ import {
   nextFileRequestStatuses,
   type FileRequestDto,
   type FileRequestStatus,
+  type FileRequestUploadDto,
 } from "@/lib/file-request";
 
 const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -64,6 +66,7 @@ type FileRequestRow = {
   subsidy_case_id: string | null;
   title: string;
   description: string | null;
+  allow_many: boolean;
   status: string;
   storage_key: string | null;
   file_sha256: string | null;
@@ -78,22 +81,79 @@ type FileRequestRow = {
 };
 
 const ROW_COLUMNS = sql`
-  id, project_id, subsidy_case_id, title, description, status,
+  id, project_id, subsidy_case_id, title, description, allow_many, status,
   storage_key, file_sha256, content_type, byte_size, original_filename,
   uploaded_at, completed_at, created_at, updated_at
 `;
+
+type FileRequestUploadRow = {
+  id: string;
+  file_request_id: string;
+  content_type: string | null;
+  byte_size: number | null;
+  original_filename: string | null;
+  uploaded_at: Date | string;
+  [key: string]: unknown;
+};
+
+function toUploadDto(row: FileRequestUploadRow): FileRequestUploadDto {
+  return {
+    id: row.id,
+    requestId: row.file_request_id,
+    contentType: row.content_type,
+    byteSize: row.byte_size,
+    originalFilename: row.original_filename,
+    uploadedAt: toIso(row.uploaded_at),
+  };
+}
+
+// F10-10: Folge-Belege je Anfrage (interne Sicht; Storage-Keys bleiben
+// in der DB, nie im Portal).
+async function listUploadsForRequests(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  requestIds: string[],
+): Promise<Map<string, FileRequestUploadDto[]>> {
+  const grouped = new Map<string, FileRequestUploadDto[]>();
+  if (requestIds.length === 0) return grouped;
+  // Parametrisierte IN-Liste (kein Array-Literal: node-pg serialisiert
+  // JS-Arrays nicht zu uuid[] — „malformed array literal", F10-10-Fund).
+  const idList = sql.join(
+    requestIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const found = await tx.execute<FileRequestUploadRow>(sql`
+    select id, file_request_id, content_type, byte_size, original_filename, uploaded_at
+      from file_request_upload
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and file_request_id in (${idList})
+     order by uploaded_at, id
+  `);
+  for (const row of found.rows) {
+    const list = grouped.get(row.file_request_id) ?? [];
+    list.push(toUploadDto(row));
+    grouped.set(row.file_request_id, list);
+  }
+  return grouped;
+}
 
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function toDto(row: FileRequestRow, ctx: ServiceCtx): FileRequestDto {
+function toDto(
+  row: FileRequestRow,
+  ctx: ServiceCtx,
+  uploads: FileRequestUploadDto[] = [],
+): FileRequestDto {
   return {
     id: row.id,
     projectId: row.project_id,
     subsidyCaseId: row.subsidy_case_id,
     title: row.title,
     description: row.description,
+    allowMany: row.allow_many,
+    uploads,
     status: row.status as FileRequestStatus,
     storageKey: row.storage_key,
     fileSha256: row.file_sha256,
@@ -134,7 +194,13 @@ async function requireProject(tx: TenantTx, ctx: ServiceCtx, projectId: string):
 export async function createFileRequest(
   tx: TenantTx,
   ctx: ServiceCtx,
-  input: { projectId: string; title: unknown; description: unknown; subsidyCaseId?: unknown },
+  input: {
+    projectId: string;
+    title: unknown;
+    description: unknown;
+    subsidyCaseId?: unknown;
+    allowMany?: unknown;
+  },
 ): Promise<FileRequestDto> {
   requireWrite(ctx, input.projectId);
   await requireProject(tx, ctx, input.projectId);
@@ -143,6 +209,11 @@ export async function createFileRequest(
     description: input.description ?? null,
   });
   if (!parsed.success) throw new FileRequestValidationError();
+  // F10-10: Allow-many je Anfrage (strikt boolean, Default single).
+  if (input.allowMany !== undefined && typeof input.allowMany !== "boolean") {
+    throw new FileRequestValidationError();
+  }
+  const allowMany = input.allowMany === true;
   // F13-07: optionale Akten-Verknüpfung — die Akte muss zum Projekt
   // gehören (uniform NotFound statt Orakel über fremde Akten).
   let subsidyCaseId: string | null = null;
@@ -161,10 +232,10 @@ export async function createFileRequest(
     subsidyCaseId = input.subsidyCaseId as string;
   }
   const inserted = await tx.execute<FileRequestRow>(sql`
-    insert into file_request (workspace_id, project_id, subsidy_case_id, title, description, created_by)
+    insert into file_request (workspace_id, project_id, subsidy_case_id, title, description, allow_many, created_by)
     values (
       ${ctx.workspaceId}::uuid, ${input.projectId}::uuid, ${subsidyCaseId}::uuid,
-      ${parsed.data.title}, ${parsed.data.description},
+      ${parsed.data.title}, ${parsed.data.description}, ${allowMany},
       ${ctx.actor}::uuid
     )
     returning ${ROW_COLUMNS}
@@ -249,7 +320,9 @@ export async function listFileRequests(
        and (${filterCase} = false or subsidy_case_id = ${subsidyCaseId}::uuid)
      order by created_at, id
   `);
-  return found.rows.map((row) => toDto(row, ctx));
+  // F10-10: Folge-Belege je Liste in EINER Abfrage (kein N+1).
+  const uploads = await listUploadsForRequests(tx, ctx, found.rows.map((row) => row.id));
+  return found.rows.map((row) => toDto(row, ctx, uploads.get(row.id) ?? []));
 }
 
 export async function transitionFileRequest(
@@ -294,6 +367,8 @@ export async function transitionFileRequest(
   `);
   const next = updated.rows[0];
   if (!next) throw new FileRequestNotFoundError(input.projectId);
+  // F10-10: Folge-Belege der einen Zeile mitgeben.
+  const nextUploads = await listUploadsForRequests(tx, ctx, [next.id]);
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
     aggregateType: "project",
@@ -310,7 +385,7 @@ export async function transitionFileRequest(
     allowed: true,
     details: { projectId: input.projectId, requestId: input.requestId, from, to: input.status },
   });
-  return toDto(next, ctx);
+  return toDto(next, ctx, nextUploads.get(next.id) ?? []);
 }
 
 // Interner Beleg-Download: dient Bytes aus dem WORM-Objekt (kein
@@ -421,13 +496,17 @@ export async function fulfillFileRequestByToken(
   const tokenHash = hashPortalToken(token);
   if (tokenHash === null) throw new FileRequestValidationError("token rejected");
 
+  // F10-10: Key ist inhalts-deterministisch (Request + Dateiname + Kurz-Hash
+  // der Bytes): gleiche Datei erneut → gleicher Key → WORM-Conflict
+  // (Duplikat); andere Datei (auch gleichen Namens) → eigener Key. Der
+  // Hash steht VOR dem Put fest und wird gegen den Storage-Befund
+  // gegengeprüft (Integrität, kein blindes Vertrauen).
+  const sha256 = createHash("sha256").update(input.bytes).digest("hex");
   const storageKey = immutableKey(
     view.project.id,
     "file-requests",
-    `${requestId}_${sanitizeStorageStem(filename)}.${expectedExt}`,
+    `${requestId}_${sanitizeStorageStem(filename)}_${sha256.slice(0, 8)}.${expectedExt}`,
   );
-  // Key ist request-deterministisch: existiert er, wurde DIESE Anfrage
-  // bereits erfüllt (WORM schlägt vor dem SQL-Conflict zu) → Konflikt.
   let stored: { key: string; sha256: string };
   try {
     stored = await resolveObjectStorage().putImmutable(storageKey, input.bytes, contentType);
@@ -436,6 +515,9 @@ export async function fulfillFileRequestByToken(
       throw new FileRequestConflictError("already fulfilled");
     }
     throw error;
+  }
+  if (stored.sha256 !== sha256) {
+    throw new FileRequestValidationError("receipt integrity mismatch");
   }
 
   const outcome = await pool.query(
@@ -457,7 +539,31 @@ export async function fulfillFileRequestByToken(
   if (status === "ok") {
     return { requestId, byteSize: input.bytes.byteLength, sha256: stored.sha256 };
   }
-  if (status === "conflict") throw new FileRequestConflictError("already fulfilled");
   if (status === "invalid") throw new FileRequestValidationError("receipt rejected");
-  throw new FileRequestNotFoundError(view.project.id);
+  if (status !== "conflict") throw new FileRequestNotFoundError(view.project.id);
+  // F10-10: Bereits erfüllte Allow-many-Anfrage → Folge-Beleg-Kapsel mit
+  // denselben Parametern (kein zweiter Storage-Put). Single-Anfragen und
+  // terminale Stände melden dort erneut 'conflict'.
+  const followup = await pool.query(
+    `select public.fulfill_file_request_followup(
+       $1::bytea, $2::uuid, $3::text, $4::text, $5::text, $6::integer, $7::text
+     ) as result`,
+    [
+      tokenHash,
+      requestId,
+      storageKey,
+      stored.sha256,
+      contentType,
+      input.bytes.byteLength,
+      filename,
+    ],
+  );
+  const followupResult = z.strictObject({ result: z.string() }).safeParse(followup.rows[0]);
+  const followupStatus = followupResult.success ? followupResult.data.result : null;
+  if (followupStatus === "ok") {
+    return { requestId, byteSize: input.bytes.byteLength, sha256: stored.sha256 };
+  }
+  if (followupStatus === "invalid") throw new FileRequestValidationError("receipt rejected");
+  if (followupStatus === "not_found") throw new FileRequestNotFoundError(view.project.id);
+  throw new FileRequestConflictError("already fulfilled");
 }

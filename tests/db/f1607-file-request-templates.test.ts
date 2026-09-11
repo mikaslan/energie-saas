@@ -69,11 +69,13 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
         name: "Stromrechnung",
         title: "Stromrechnung hochladen",
         description: "Jahresabrechnung als PDF",
+        allowMany: false,
         position: 0,
       }));
     expect(created.title).toBe("Stromrechnung hochladen");
     expect(created.description).toBe("Jahresabrechnung als PDF");
     expect(created.active).toBe(true);
+    expect(created.allowMany).toBe(false);
 
     await expect(
       asEditor(fixture, (tx, ctx) =>
@@ -81,6 +83,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
           schemaVersion: FILE_REQUEST_TEMPLATE_SCHEMA_VERSION,
           name: "  STROMRECHNUNG ",
           title: "Duplikat",
+          allowMany: true,
           position: 1,
         })),
     ).rejects.toBeInstanceOf(FileRequestTemplateConflictError);
@@ -92,11 +95,14 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
         name: "Stromrechnung",
         title: "Stromrechnung (aktuell) hochladen",
         description: null,
+        allowMany: true,
         position: 2,
       }));
     expect(updated.title).toBe("Stromrechnung (aktuell) hochladen");
     expect(updated.description).toBeNull();
     expect(updated.position).toBe(2);
+    // F10-10: Allow-many per Update setzbar.
+    expect(updated.allowMany).toBe(true);
 
     const listed = await asViewer(fixture, (tx, ctx) => listFileRequestTemplates(tx, ctx));
     expect(listed.map((t) => t.id)).toContain(created.id);
@@ -109,6 +115,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
         schemaVersion: FILE_REQUEST_TEMPLATE_SCHEMA_VERSION,
         name: "Zaehlerfoto",
         title: "Zählerfoto hochladen",
+        allowMany: true,
         position: 0,
       }));
 
@@ -149,6 +156,8 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
     expect(applied.request.title).toBe("Zählerfoto hochladen");
     expect(applied.request.status).toBe("offen");
     expect(applied.request.subsidyCaseId).toBeNull();
+    // F10-10: Allow-many wandert aus der Vorlage in die Anfrage.
+    expect(applied.request.allowMany).toBe(true);
   });
 
   it("F1607-DB-03: Viewer fail-closed; fremder Mandant isoliert", async () => {
@@ -158,6 +167,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
           schemaVersion: FILE_REQUEST_TEMPLATE_SCHEMA_VERSION,
           name: "Viewer-Versuch",
           title: "Titel",
+          allowMany: false,
           position: 0,
         })),
     ).rejects.toBeInstanceOf(PermissionDeniedError);
@@ -167,6 +177,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
         schemaVersion: FILE_REQUEST_TEMPLATE_SCHEMA_VERSION,
         name: "Privat",
         title: "Privater Titel",
+        allowMany: false,
         position: 0,
       }));
     const foreign = await seedFixture("F16-07 fremd");
@@ -180,6 +191,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
           name: "Privat",
           title: "Fremder Titel",
           description: null,
+          allowMany: false,
           position: 0,
         })),
     ).rejects.toBeInstanceOf(FileRequestTemplateNotFoundError);

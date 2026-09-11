@@ -2487,6 +2487,38 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${wsId}::uuid, ${projectId}::uuid, 'F10-04 Fixture', ${userId}::uuid)
     `);
   },
+  // F10-10 (0120): Folge-Beleg zu einer echten hochgeladenen Datei-Anfrage
+  // (Erst-Beleg in den Spalten, Folge-Beleg in der Child-Tabelle).
+  file_request_upload: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    const requests = await tx.execute<{ id: string }>(sql`
+      insert into file_request (
+        workspace_id, project_id, title, status, storage_key, file_sha256,
+        content_type, byte_size, original_filename, uploaded_at, created_by
+      )
+      values (
+        ${wsId}::uuid, ${projectId}::uuid, 'F10-10 Fixture', 'hochgeladen',
+        'immutable/fixture/f10-10.pdf',
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        'application/pdf', 8, 'f10-10.pdf', statement_timestamp(), ${userId}::uuid
+      )
+      returning id
+    `);
+    const requestRow = requests.rows[0];
+    if (!requestRow) throw new Error("Upload-Fixture braucht eine Datei-Anfrage.");
+    await tx.execute(sql`
+      insert into file_request_upload (
+        workspace_id, project_id, file_request_id, storage_key,
+        file_sha256, content_type, byte_size, original_filename, uploaded_at
+      ) values (
+        ${wsId}::uuid, ${projectId}::uuid, ${requestRow.id}::uuid,
+        'immutable/fixture/f10-10-folge.pdf',
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        'application/pdf', 8, 'f10-10-folge.pdf', statement_timestamp()
+      )
+    `);
+  },
   // F13-03 (0105): Förderakte zu einem echten Projektgraphen.
   subsidy_case: async (tx, wsId) => {
     const { projectId } = await fixtureProjectGraph(tx, wsId);

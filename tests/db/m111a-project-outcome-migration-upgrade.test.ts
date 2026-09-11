@@ -83,9 +83,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F10-07 Portal-Dokument-Download (0116, nur Funktion),
 //   F10-08 Portal-Link-Automatik (0117, nur Funktionen/Kapseln),
 //   F10-09 Portal-FAQ (0118, Tabelle + Resolver-Projektion),
-//   F13-10 Subsidy-Chat (0119, Tabelle + Kapsel + Resolver-Projektion)
-// => 120 Migrationen (idx 0..119).
-const TOTAL_MIGRATION_COUNT = 120;
+//   F13-10 Subsidy-Chat (0119, Tabelle + Kapsel + Resolver-Projektion),
+//   F10-10 Allow-many (0120, Spalten + Tabelle + Kapsel + Resolver-Projektion)
+// => 121 Migrationen (idx 0..120).
+const TOTAL_MIGRATION_COUNT = 121;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -401,8 +402,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 119,
-        tag: "0119_f13_10_subsidy_chat",
+        idx: 120,
+        tag: "0120_f10_10_file_request_allow_many",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

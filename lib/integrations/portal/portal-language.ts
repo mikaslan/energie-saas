@@ -54,6 +54,9 @@ export interface PortalStrings {
   filesHeading: string;
   filesEmpty: string;
   uploadedWord: string;
+  // F10-10: Allow-many — Zähler + Hinweis auf weitere Dateien.
+  uploadedCountWord: string;
+  uploadMoreHint: string;
   uploadFileAriaPrefix: string;
   uploadButton: string;
   uploadOk: string;
@@ -353,6 +356,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     filesHeading: "Dateien",
     filesEmpty: "Aktuell werden keine Dateien benötigt.",
     uploadedWord: "Hochgeladen",
+    uploadedCountWord: "Dateien erhalten",
+    uploadMoreHint: "Sie können weitere Dateien nachreichen.",
     uploadFileAriaPrefix: "Datei für",
     uploadButton: "Hochladen",
     uploadOk: "Vielen Dank — die Datei ist eingegangen.",
@@ -403,6 +408,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     filesHeading: "Files",
     filesEmpty: "No files are currently required.",
     uploadedWord: "Uploaded",
+    uploadedCountWord: "files received",
+    uploadMoreHint: "You may submit additional files.",
     uploadFileAriaPrefix: "File for",
     uploadButton: "Upload",
     uploadOk: "Thank you — your file has been received.",

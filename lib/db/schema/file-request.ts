@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   foreignKey,
   index,
@@ -20,6 +21,8 @@ import { subsidyCase } from "./subsidy-case";
 // storniert nur aus offen, terminal. Zeiten setzt der Service je
 // Übergang (uploaded/completed), nie per Hand. Storage-Key und
 // Prüfsumme sind rein intern (nie Portal-projiziert).
+// F10-10: allow_many (Katalog F10-04 „Allow many") — mehrere Belege je
+// Anfrage; Folge-Belege in file_request_upload.
 export const fileRequest = pgTable(
   "file_request",
   {
@@ -29,6 +32,7 @@ export const fileRequest = pgTable(
     subsidyCaseId: uuid("subsidy_case_id"),
     title: text("title").notNull(),
     description: text("description"),
+    allowMany: boolean("allow_many").notNull().default(false),
     status: text("status").notNull().default("offen"),
     storageKey: text("storage_key"),
     fileSha256: text("file_sha256"),
@@ -100,5 +104,57 @@ export const fileRequest = pgTable(
     ),
     index("file_request_ws_project_idx").on(t.workspaceId, t.projectId, t.status),
     index("file_request_ws_case_idx").on(t.workspaceId, t.subsidyCaseId),
+  ],
+);
+
+// F10-10 Folge-Belege je Datei-Anfrage (ein WORM-Beleg je Zeile,
+// unveränderlich — nur Anlage über fulfill_file_request_followup,
+// kein Update/Delete im Vertrag).
+export const fileRequestUpload = pgTable(
+  "file_request_upload",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    projectId: uuid("project_id").notNull(),
+    fileRequestId: uuid("file_request_id").notNull(),
+    storageKey: text("storage_key").notNull().unique("file_request_upload_storage_key_uq"),
+    fileSha256: text("file_sha256").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    originalFilename: text("original_filename").notNull(),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("file_request_upload_ws_id_uq").on(t.workspaceId, t.id),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "file_request_upload_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.projectId],
+      foreignColumns: [project.workspaceId, project.id],
+      name: "file_request_upload_project_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.fileRequestId],
+      foreignColumns: [fileRequest.workspaceId, fileRequest.id],
+      name: "file_request_upload_request_fk",
+    }),
+    check(
+      "file_request_upload_receipt_ck",
+      sql`pg_catalog.length(pg_catalog.btrim(${t.storageKey})) between 1 and 512
+        and pg_catalog.length(${t.fileSha256}) = 64
+        and pg_catalog.length(${t.contentType}) between 1 and 128
+        and (${t.byteSize} between 1 and 10485760)
+        and pg_catalog.length(pg_catalog.btrim(${t.originalFilename})) between 1 and 255`,
+    ),
+    index("file_request_upload_ws_request_idx").on(
+      t.workspaceId,
+      t.fileRequestId,
+      t.uploadedAt,
+      t.id,
+    ),
   ],
 );

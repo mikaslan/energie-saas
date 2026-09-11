@@ -152,9 +152,20 @@ export function FileRequestSection({
                   data-testid="file-request-status"
                 >
                   {FILE_REQUEST_STATUS_LABEL[request.status]}
+                  {request.allowMany ? " · Mehrere Dateien" : ""}
                 </span>
                 {request.storageKey !== null ? (
                   <ReceiptRow workspaceId={workspaceId} projectId={projectId} request={request} />
+                ) : null}
+                {request.uploads.length > 0 ? (
+                  <ul className="mt-2 space-y-1" data-testid="file-request-uploads">
+                    {request.uploads.map((upload) => (
+                      <li key={upload.id} className="text-sm text-slate-600">
+                        Weitere Datei: {upload.originalFilename}
+                        {upload.byteSize !== null ? ` (${formatBytes(upload.byteSize)})` : ""}
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
                 {canWrite && next.length > 0 ? (
                   <form action={transitionDispatch} className="mt-2 flex flex-wrap gap-2">
@@ -204,6 +215,15 @@ export function FileRequestSection({
               data-testid="file-request-description"
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900"
             />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              name="allowMany"
+              data-testid="file-request-allow-many"
+              className="min-h-6 min-w-6 accent-slate-900"
+            />
+            Mehrere Dateien erlauben
           </label>
           <button
             type="submit"

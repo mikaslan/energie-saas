@@ -251,8 +251,21 @@ export default async function PortalTokenPage({
                     {req.status === "hochgeladen" ? (
                       <span className="mt-1 block text-sm font-semibold text-emerald-700">
                         {t.uploadedWord}{req.originalFilename ? ` (${req.originalFilename})` : ""}
+                        {req.allowMany && req.uploadCount > 0
+                          ? ` · ${req.uploadCount + 1} ${t.uploadedCountWord}`
+                          : ""}
                       </span>
-                    ) : (
+                    ) : null}
+                    {req.allowMany && req.status === "hochgeladen" && req.filenames.length > 0 ? (
+                      <ul className="mt-1 space-y-0.5">
+                        {req.filenames.map((name, index) => (
+                          <li key={`${index}-${name}`} className="text-sm text-slate-500">
+                            {name}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {req.status === "offen" || req.allowMany ? (
                       <form
                         action={`/p/${token}/file-requests`}
                         method="post"
@@ -276,7 +289,12 @@ export default async function PortalTokenPage({
                           {t.uploadButton}
                         </button>
                       </form>
-                    )}
+                    ) : null}
+                    {req.allowMany && req.status === "hochgeladen" ? (
+                      <span className="mt-1 block text-sm text-slate-500">
+                        {t.uploadMoreHint}
+                      </span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
