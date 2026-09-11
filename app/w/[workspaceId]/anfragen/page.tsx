@@ -16,11 +16,13 @@ import {
   type RequestBoardScope,
 } from "@/modules/boards";
 import { listLeadSources } from "@/modules/lead-sources";
+import { FOLLOW_UP_BAND_LABEL, type FollowUpBand } from "@/lib/follow-up";
 import {
   LEAD_SCORE_BAND_LABEL,
   LEAD_SCORE_SIGNAL_LABEL,
   type LeadScoreBand,
 } from "@/lib/lead-score";
+import type { RequestBoardFollowUpFilter } from "@/modules/boards";
 import { can } from "@/lib/permissions";
 import { ManualLeadForm } from "./manual-lead-form";
 import { ManualLeadBulkForm } from "./manual-lead-bulk-form";
@@ -74,6 +76,21 @@ function scoreBadgeClass(band: LeadScoreBand): string {
   if (band === "warm") return "bg-amber-100 text-amber-900";
   return "bg-slate-200 text-slate-700";
 }
+
+// F1-06: Ampel-Farbe des Wiedervorlage-Badges.
+function followUpBadgeClass(band: FollowUpBand): string {
+  if (band === "escalated") return "bg-red-100 text-red-900";
+  if (band === "overdue") return "bg-amber-100 text-amber-900";
+  if (band === "due") return "bg-blue-100 text-blue-900";
+  return "bg-slate-200 text-slate-700";
+}
+
+const followUpDateFormatter = new Intl.DateTimeFormat("de-DE", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "Europe/Berlin",
+});
 
 function scoreSignalsTitle(card: RequestBoardCard): string {
   if (!card.score) return "";
@@ -148,15 +165,28 @@ export default async function RequestsPage({
     else if (scoreValue === "kalt") scoreBand = "cold";
     else notFound();
   }
+  // F1-06: Wiedervorlage-Preset (?wiedervorlage=anstehend|ueberfaellig).
+  // Unbekannte Werte brechen fail-closed ab — kein stiller Alle-Fallback.
+  const rawFollowUp = (await searchParams)?.wiedervorlage;
+  const followUpValue = Array.isArray(rawFollowUp) ? rawFollowUp[0] : rawFollowUp;
+  let followUpFilter: RequestBoardFollowUpFilter | undefined;
+  if (followUpValue !== undefined) {
+    if (followUpValue === "anstehend") followUpFilter = "due";
+    else if (followUpValue === "ueberfaellig") followUpFilter = "overdue";
+    else notFound();
+  }
   const boardHref = (
     targetScope: RequestBoardScope,
     band: LeadScoreBand | undefined,
+    followUp: RequestBoardFollowUpFilter | undefined,
   ): string => {
     const params = new URLSearchParams();
     if (targetScope === "commercial") params.set("bereich", "gewerbe");
     if (band === "hot") params.set("score", "heiss");
     else if (band === "warm") params.set("score", "warm");
     else if (band === "cold") params.set("score", "kalt");
+    if (followUp === "due") params.set("wiedervorlage", "anstehend");
+    else if (followUp === "overdue") params.set("wiedervorlage", "ueberfaellig");
     const query = params.toString();
     return `/w/${validWorkspaceId}/anfragen${query ? `?${query}` : ""}`;
   };
@@ -174,7 +204,7 @@ export default async function RequestsPage({
       "project.read",
       "kanban_board",
       async (tx, ctx) => {
-        const board = await getRequestBoard(tx, ctx, { scope, scoreBand });
+        const board = await getRequestBoard(tx, ctx, { scope, scoreBand, followUpFilter });
         const canCreate = can(ctx, "project.write");
         // F1-05a: Spaltenverwaltung (nur Editoren; gleiche Schranke wie
         // die Anlage; ohne Recht leere Liste, Board bleibt nutzbar).
@@ -209,7 +239,7 @@ export default async function RequestsPage({
   }
 
   if (unauthenticated) {
-    redirect(`/login?${new URLSearchParams({ next: boardHref(scope, scoreBand) }).toString()}`);
+    redirect(`/login?${new URLSearchParams({ next: boardHref(scope, scoreBand, followUpFilter) }).toString()}`);
   }
   if (denied) return <AccessDenied />;
   if (!board) throw new Error("Anfrage-Board konnte nicht geladen werden");
@@ -273,7 +303,7 @@ export default async function RequestsPage({
         <nav aria-label="Anfrageansichten" className="mb-6 flex flex-wrap gap-2 border-b border-slate-300">
           <Link
             aria-current="page"
-            href={boardHref(scope, scoreBand)}
+            href={boardHref(scope, scoreBand, followUpFilter)}
             className="inline-flex min-h-11 items-center border-b-2 border-blue-700 px-3 text-sm font-semibold text-blue-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
           >
             Offen
@@ -288,14 +318,14 @@ export default async function RequestsPage({
         <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-scope-toggle">
           <Link
             aria-current={scope === "residential" ? "page" : undefined}
-            href={boardHref("residential", scoreBand)}
+            href={boardHref("residential", scoreBand, followUpFilter)}
             className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scope === "residential" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
           >
             Wohnbau
           </Link>
           <Link
             aria-current={scope === "commercial" ? "page" : undefined}
-            href={boardHref("commercial", scoreBand)}
+            href={boardHref("commercial", scoreBand, followUpFilter)}
             className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scope === "commercial" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
           >
             Gewerbe
@@ -305,6 +335,7 @@ export default async function RequestsPage({
           </span>
         </div>
         {board.audience === "internal" ? (
+          <>
           <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-score-presets">
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
               Lead-Score
@@ -320,7 +351,7 @@ export default async function RequestsPage({
               <Link
                 key={preset.label}
                 aria-current={scoreBand === preset.band ? "page" : undefined}
-                href={boardHref(scope, preset.band)}
+                href={boardHref(scope, preset.band, followUpFilter)}
                 className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scoreBand === preset.band ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
               >
                 {preset.label}
@@ -332,6 +363,33 @@ export default async function RequestsPage({
               </span>
             ) : null}
           </div>
+          <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-followup-presets">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+              Wiedervorlage
+            </span>
+            {(
+              [
+                { filter: undefined, label: "Alle" },
+                { filter: "due", label: "Anstehend" },
+                { filter: "overdue", label: "Überfällig" },
+              ] as Array<{ filter: RequestBoardFollowUpFilter | undefined; label: string }>
+            ).map((preset) => (
+              <Link
+                key={preset.label}
+                aria-current={followUpFilter === preset.filter ? "page" : undefined}
+                href={boardHref(scope, scoreBand, preset.filter)}
+                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${followUpFilter === preset.filter ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+              >
+                {preset.label}
+              </Link>
+            ))}
+            {followUpFilter !== undefined ? (
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800">
+                Filter aktiv: {followUpFilter === "due" ? "Anstehend" : "Überfällig"}
+              </span>
+            ) : null}
+          </div>
+          </>
         ) : null}
         {canCreateManualLead ? (
           <div className="mb-6 flex flex-wrap items-start gap-3">
@@ -434,6 +492,18 @@ export default async function RequestsPage({
                                 >
                                   <span aria-hidden="true">●</span>
                                   Score {card.score.value} · {LEAD_SCORE_BAND_LABEL[card.score.band]}
+                                </span>
+                              </p>
+                            ) : null}
+                            {card.followUp ? (
+                              <p className="mt-2">
+                                <span
+                                  data-testid={`followup-${card.id}`}
+                                  title={`Wiedervorlage fällig am ${followUpDateFormatter.format(new Date(card.followUp.at))} (${FOLLOW_UP_BAND_LABEL[card.followUp.band]})`}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${followUpBadgeClass(card.followUp.band)}`}
+                                >
+                                  <span aria-hidden="true">◷</span>
+                                  WV {followUpDateFormatter.format(new Date(card.followUp.at))} · {FOLLOW_UP_BAND_LABEL[card.followUp.band]}
                                 </span>
                               </p>
                             ) : null}

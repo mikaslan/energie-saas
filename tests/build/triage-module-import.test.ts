@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
 
 describe("M1-05 Modulgrenzen", () => {
   it("exportiert nur die öffentlichen Board- und Project-APIs", async () => {
@@ -6,13 +8,30 @@ describe("M1-05 Modulgrenzen", () => {
     const projects = await import("@/modules/projects");
 
     expect(Object.keys(boards).sort()).toEqual([
+      "BoardColumnConflictError",
+      "BoardColumnValidationError",
       "ProjectMoveConflictError",
       "REQUEST_BOARD_SCOPES",
+      "applyConversionRatios",
+      "archiveBoardColumn",
+      "createBoardColumn",
+      "getBoardPipelineSummary",
       "getDefaultRequestBoard",
       "getRequestBoard",
+      "listBoardColumnsForAdmin",
+      "moveBoardColumn",
       "moveProjectCard",
+      "renameBoardColumn",
+      "restoreBoardColumn",
+      "setColumnConversionRatio",
     ]);
     expect(Object.keys(projects).sort()).toEqual([
+      "FollowUpNotFoundError",
+      "FollowUpValidationError",
+      "MANUAL_LEAD_BULK_MAX_ROWS",
+      "MANUAL_LEAD_BULK_REPORT_VERSION",
+      "MANUAL_LEAD_BULK_VERSION",
+      "ManualLeadBulkFileError",
       "ManualLeadLaneError",
       "ManualLeadValidationError",
       "PROJECT_ASSIGNMENT_COMMAND_VERSION",
@@ -55,18 +74,22 @@ describe("M1-05 Modulgrenzen", () => {
       "getClosureTrendStats",
       "getProjectAddressCorrectionContext",
       "getProjectAssignmentContext",
+      "getProjectFollowUp",
       "getProjectOutcomeContext",
       "getProjectPageDetail",
       "getProjectTriageDetail",
+      "importManualLeadBulk",
       "listClosedRequests",
       "listManagedProjectLossReasons",
       "listProjectLossReasons",
+      "manualLeadBulkReportSchema",
       "projectAssignmentCommandV1Schema",
       "projectAssignmentSearchV1Schema",
       "projectClosedRequestCursorSchema",
       "projectClosedRequestFilterSchema",
       "projectLossReasonCommandV1Schema",
       "projectOutcomeCommandV1Schema",
+      "setProjectFollowUp",
     ]);
   });
 });

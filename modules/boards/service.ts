@@ -11,6 +11,11 @@ import {
   type LeadScoreBand,
 } from "@/lib/lead-score";
 import {
+  followUpBandForDate,
+  parseFollowUpAt,
+  type FollowUpBand,
+} from "@/lib/follow-up";
+import {
   can,
   isExternalOnly,
   PermissionDeniedError,
@@ -44,7 +49,14 @@ export type RequestBoardCard = {
   // F1-07 Lead-Score (Regel-Score v1, ESTIMATE): null für externe
   // Leser — internes Qualifizierungssignal, kein Kunden-Datum.
   score: LeadScore | null;
+  // F1-06 Wiedervorlage: null ohne Termin oder für externe Leser
+  // (internes Arbeitsdatum, kein Kunden-Datum).
+  followUp: { at: string; band: FollowUpBand } | null;
 };
+
+// F1-06 Filter-Preset: "due" = anstehend + fällig, "overdue" =
+// überfällig + eskaliert.
+export type RequestBoardFollowUpFilter = "due" | "overdue";
 
 export type RequestBoardColumn = {
   id: string;
@@ -98,6 +110,7 @@ type CardRow = {
   site_lat: number | string | null;
   site_lng: number | string | null;
   lead_source_id: string | null;
+  follow_up_at: Date | string | null;
   profile_id: string | null;
   profile_confirmed: boolean | null;
   has_requirements: boolean;
@@ -181,6 +194,30 @@ function isNonEmpty(value: string | null): boolean {
   return value !== null && value.trim() !== "";
 }
 
+// F1-06: Wiedervorlage je Karte (Leseregel über gespeicherten Wert;
+// null ohne Termin oder für externe Leser).
+function followUpForCard(
+  row: CardRow,
+  external: boolean,
+  now: Date,
+): RequestBoardCard["followUp"] {
+  if (external) return null;
+  const at = row.follow_up_at === null ? null : parseFollowUpAt(row.follow_up_at);
+  if (at === null) return null;
+  return { at: at.toISOString(), band: followUpBandForDate(at, now) };
+}
+
+function followUpMatchesFilter(
+  followUp: RequestBoardCard["followUp"],
+  filter: RequestBoardFollowUpFilter | undefined,
+): boolean {
+  if (filter === undefined) return true;
+  if (followUp === null) return false;
+  return filter === "due"
+    ? followUp.band === "scheduled" || followUp.band === "due"
+    : followUp.band === "overdue" || followUp.band === "escalated";
+}
+
 function locationLabel(row: CardRow): string {
   const locality = [row.postal_code, row.city].filter(Boolean).join(" ");
   if (locality) return locality;
@@ -204,7 +241,7 @@ export async function getDefaultRequestBoard(
 export async function getRequestBoard(
   tx: TenantTx,
   ctx: ServiceCtx,
-  input: { scope: RequestBoardScope; scoreBand?: LeadScoreBand },
+  input: { scope: RequestBoardScope; scoreBand?: LeadScoreBand; followUpFilter?: RequestBoardFollowUpFilter },
 ): Promise<RequestBoard> {
   requireProjectAccess(ctx, "project.read", "kanban_board");
   const scope = input.scope;
@@ -220,6 +257,15 @@ export async function getRequestBoard(
   const external = isExternalOnly(ctx);
   if (external && scoreBand !== undefined) {
     throw new RequestBoardConfigurationError("score filter is not available for external readers");
+  }
+  // F1-06 Filter-Preset: unbekannte Werte fail-closed; extern ohne
+  // Wiedervorlage (internes Signal).
+  const followUpFilter = input.followUpFilter;
+  if (followUpFilter !== undefined && followUpFilter !== "due" && followUpFilter !== "overdue") {
+    throw new RequestBoardConfigurationError(`unknown follow-up filter ${JSON.stringify(followUpFilter)}`);
+  }
+  if (external && followUpFilter !== undefined) {
+    throw new RequestBoardConfigurationError("follow-up filter is not available for external readers");
   }
 
   const boardResult = await tx.execute<BoardRow>(sql`
@@ -259,6 +305,7 @@ export async function getRequestBoard(
            case when ${external} then null else s.lat end as site_lat,
            case when ${external} then null else s.lng end as site_lng,
            case when ${external} then null else p.lead_source_id end as lead_source_id,
+           case when ${external} then null else p.follow_up_at end as follow_up_at,
            prof.profile_id as profile_id,
            (prof.confirmed_at is not null) as profile_confirmed,
            pr.requirements is not null as has_requirements,
@@ -334,6 +381,8 @@ export async function getRequestBoard(
 
   const activeColumnIds = new Set(boardResult.rows.map((row) => row.column_id));
   const cardsByColumn = new Map<string, RequestBoardCard[]>();
+  // F1-06: ein Lesezeitpunkt je Board-Aufruf (stabile Bänder über alle Karten).
+  const boardNow = new Date();
   for (const row of cardResult.rows) {
     if (!activeColumnIds.has(row.column_id)) {
       throw new RequestBoardConfigurationError(
@@ -367,6 +416,7 @@ export async function getRequestBoard(
         assignmentRevision: row.assignment_revision,
         keyAccountLabel: row.key_account_label,
       },
+      followUp: followUpForCard(row, external, boardNow),
       score: external ? null : computeLeadScore({
         hasEmail: isNonEmpty(row.contact_email),
         hasPhone: isNonEmpty(row.contact_phone),
@@ -398,7 +448,9 @@ export async function getRequestBoard(
       // F1-07 Filter-Preset: Ansichtslinse über Bänder; leere Spalten
       // bleiben stehen (stabile Struktur, keine Definitionsänderung).
       cards: (cardsByColumn.get(row.column_id) ?? []).filter(
-        (card) => scoreBand === undefined || card.score?.band === scoreBand,
+        (card) =>
+          (scoreBand === undefined || card.score?.band === scoreBand)
+          && followUpMatchesFilter(card.followUp, followUpFilter),
       ),
     })),
     permissions: external

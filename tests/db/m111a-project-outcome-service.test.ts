@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
 import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
 import { PermissionDeniedError } from "@/lib/permissions";
 import { getDefaultRequestBoard } from "@/modules/boards";

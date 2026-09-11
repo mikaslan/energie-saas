@@ -15,6 +15,7 @@ import {
 } from "@/modules/catalog";
 import {
   getProjectAssignmentContext,
+  getProjectFollowUp,
   getProjectOutcomeContext,
   getProjectPageDetail,
   PROJECT_ASSIGNMENT_COMMAND_VERSION,
@@ -77,6 +78,7 @@ import { PinForm } from "./pin-form";
 import { PortalSection } from "./portal-section";
 import { ProductResolutionSection } from "./product-resolution-section";
 import { ProjectActivityPanel } from "./project-activity-panel";
+import { FollowUpSection } from "./follow-up-section";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import { ProjectNotesSection } from "./project-notes-section";
 import { ProjectOutcomePanel } from "./project-outcome-panel";
@@ -230,6 +232,36 @@ type InstallationLoadResult =
   | { kind: "loaded"; installation: InstallationDto | null; installerOptions: InstallationMemberOption[]; canWrite: boolean }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
+
+type FollowUpLoadResult =
+  | { kind: "loaded"; followUpAt: string | null; canWrite: boolean }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+async function loadProjectFollowUp(
+  workspaceId: string,
+  projectId: string,
+): Promise<FollowUpLoadResult> {
+  try {
+    const followUpAt = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "project",
+      (tx, ctx) => getProjectFollowUp(tx, ctx, projectId),
+    );
+    const writable = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "project_follow_up_write_gate",
+      async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "project.write"),
+    );
+    return { kind: "loaded", followUpAt: followUpAt.followUpAt, canWrite: writable };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
 
 type ServiceCaseLoadResult =
   | { kind: "loaded"; cases: ServiceCaseDto[]; canWrite: boolean }
@@ -709,6 +741,13 @@ export default async function ProjectTriagePage({
     ? await loadServiceCases(workspaceId, projectId)
     : { kind: "denied" } as const;
 
+  // F1-06: Wiedervorlage entkoppelt (eigene Sichtbarkeit, blockiert
+  // andere Sektionen bei fehlendem Recht nicht).
+  const followUpResult = await loadProjectFollowUp(workspaceId, projectId);
+  if (followUpResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+
   const taskPageResult = await loadProjectTaskPage(
     workspaceId,
     projectId,
@@ -950,6 +989,17 @@ export default async function ProjectTriagePage({
             canWrite={installationResult.canWrite}
           />
         </div>
+
+        {followUpResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <FollowUpSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              followUpAt={followUpResult.followUpAt}
+              canWrite={followUpResult.canWrite}
+            />
+          </div>
+        ) : null}
 
         {serviceCaseResult.kind === "loaded" ? (
           <div className="mb-6">

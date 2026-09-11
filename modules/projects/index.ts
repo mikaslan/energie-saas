@@ -88,6 +88,13 @@ export {
   type ManualLeadResult,
 } from "./manual-lead-service";
 export {
+  FollowUpNotFoundError,
+  FollowUpValidationError,
+  getProjectFollowUp,
+  setProjectFollowUp,
+  type FollowUpResult,
+} from "./follow-up-service";
+export {
   importManualLeadBulk,
   MANUAL_LEAD_BULK_MAX_ROWS,
   MANUAL_LEAD_BULK_REPORT_VERSION,

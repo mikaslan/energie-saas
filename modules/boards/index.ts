@@ -28,5 +28,6 @@ export type {
   RequestBoard,
   RequestBoardCard,
   RequestBoardColumn,
+  RequestBoardFollowUpFilter,
   RequestBoardScope,
 } from "./service";

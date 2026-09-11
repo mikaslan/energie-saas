@@ -42,6 +42,9 @@ export const project = pgTable(
     lossReasonId: uuid("loss_reason_id"),
     lossReasonText: text("loss_reason_text"),
     leadSourceId: uuid("lead_source_id"),
+    // F1-06 Lead-Wiedervorlage: optionaler Fälligkeitszeitpunkt je Anfrage
+    // (In-App-Eskalation, kein Mailversand). NULL = keine Wiedervorlage.
+    followUpAt: timestamp("follow_up_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
