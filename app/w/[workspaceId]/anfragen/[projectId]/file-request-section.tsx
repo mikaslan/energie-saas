@@ -6,7 +6,9 @@ import {
   nextFileRequestStatuses,
   type FileRequestDto,
 } from "@/lib/file-request";
+import type { FileRequestTemplateDto } from "@/lib/file-request-template";
 import {
+  applyFileRequestTemplateAction,
   createFileRequestAction,
   downloadFileRequestAction,
   transitionFileRequestAction,
@@ -114,17 +116,20 @@ export function FileRequestSection({
   projectId,
   requests,
   canWrite,
+  templates,
 }: {
   workspaceId: string;
   projectId: string;
   requests: FileRequestDto[];
   canWrite: boolean;
+  templates: FileRequestTemplateDto[];
 }) {
   const [createState, createDispatch] = useActionState(createFileRequestAction, initialAction);
   const [transitionState, transitionDispatch] = useActionState(
     transitionFileRequestAction,
     initialAction,
   );
+  const [applyState, applyDispatch] = useActionState(applyFileRequestTemplateAction, initialAction);
   return (
     <section aria-label="Datei-Anfragen" className="rounded-lg border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-900">Datei-Anfragen</h2>
@@ -209,8 +214,39 @@ export function FileRequestSection({
           </button>
         </form>
       ) : null}
+      {canWrite && templates.length > 0 ? (
+        <form action={applyDispatch} className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="projectId" value={projectId} />
+          <label className="grid gap-1 text-sm text-slate-600">
+            Dateivorlage
+            <select
+              name="templateId"
+              required
+              defaultValue=""
+              className="min-h-11 min-w-44 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 outline-none focus:border-blue-600"
+            >
+              <option value="" disabled>
+                Vorlage wählen …
+              </option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name} – {template.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          >
+            Vorlage anwenden
+          </button>
+        </form>
+      ) : null}
       <Feedback state={createState} testId="file-request-create-feedback" />
       <Feedback state={transitionState} testId="file-request-transition-feedback" />
+      <Feedback state={applyState} testId="file-request-apply-feedback" />
     </section>
   );
 }

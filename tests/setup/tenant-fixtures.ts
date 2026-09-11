@@ -2262,6 +2262,21 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F16-07 (0110): Datei-Anfragen-Vorlagen — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies.
+  file_request_template: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into file_request_template (
+        id, workspace_id, name, name_normalized, title,
+        description, active, position, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Dateianfrage',
+        'fixture dateianfrage', 'Fixture-Datei-Titel',
+        'Fixture-Beschreibung', true, 0,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
   // F9-07 (0093): Abrechnungslauf — nur workspace-FK, RLS
   // tenant_isolation, keine Actor-Policies, kein Delete.
   billing_run: async (tx, wsId) => {

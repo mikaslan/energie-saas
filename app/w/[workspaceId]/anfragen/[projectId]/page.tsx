@@ -13,7 +13,7 @@ import {
   getProjectCatalogResolutionContext,
   type ProjectCatalogResolutionContext,
 } from "@/modules/catalog";
-import { listFileRequests } from "@/modules/file-requests";
+import { listFileRequests, listFileRequestTemplates } from "@/modules/file-requests";
 import { getGridRegistration } from "@/modules/grid-registration";
 import { getSubsidyCase, getSubsidyProgramSuggestion } from "@/modules/subsidy-cases";
 import { isSubsidyCaseBelegState } from "@/lib/subsidy-case";
@@ -848,7 +848,12 @@ export default async function ProjectTriagePage({
 
   // F10-04: Datei-Anfragen (eigene Sichtbarkeit wie Netzanmeldung).
   const fileRequestResult = await (async (): Promise<
-    | { kind: "loaded"; requests: Awaited<ReturnType<typeof listFileRequests>>; canWrite: boolean }
+    | {
+        kind: "loaded";
+        requests: Awaited<ReturnType<typeof listFileRequests>>;
+        canWrite: boolean;
+        templates: Awaited<ReturnType<typeof listFileRequestTemplates>>;
+      }
     | { kind: "unauthenticated" }
     | { kind: "denied" }
   > => {
@@ -865,7 +870,15 @@ export default async function ProjectTriagePage({
         "file_request_write_gate",
         async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "project.write"),
       );
-      return { kind: "loaded", requests, canWrite: writable };
+      // F16-07: Datei-Vorlagen für „Aus Vorlage anlegen" (gleiche
+      // Read-Permission, kein eigener Gate).
+      const templates = await authorizedQuery(
+        workspaceId,
+        "project.read",
+        "file_request_template",
+        (tx, ctx) => listFileRequestTemplates(tx, ctx),
+      );
+      return { kind: "loaded", requests, canWrite: writable, templates };
     } catch (error) {
       if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
       if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1160,6 +1173,7 @@ export default async function ProjectTriagePage({
               projectId={projectId}
               requests={fileRequestResult.requests}
               canWrite={fileRequestResult.canWrite}
+              templates={fileRequestResult.templates}
             />
           </div>
         ) : null}

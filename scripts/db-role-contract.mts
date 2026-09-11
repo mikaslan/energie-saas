@@ -529,6 +529,10 @@ const APPOINTMENT_TEMPLATE_RELATIONS = [
   "appointment_template",
 ] as const;
 
+const FILE_REQUEST_TEMPLATE_RELATIONS = [
+  "file_request_template",
+] as const;
+
 const OFFER_TEMPLATE_RELATIONS = [
   "offer_template",
 ] as const;
@@ -2702,6 +2706,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F16-07: Datei-Anfragen-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
+  const hasFileRequestTemplates = await hasAtomicPublicRelationSet(
+    client,
+    FILE_REQUEST_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F16-07-Datei-Anfragen-Vorlagen",
+  );
+  if (hasFileRequestTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.file_request_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.file_request_template to app_runtime
+    `);
+  }
+
   // F16-06: Angebots-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
   const hasOfferTemplates = await hasAtomicPublicRelationSet(
     client,
@@ -4121,6 +4141,11 @@ export async function verifyRoleContract(
     APPOINTMENT_TEMPLATE_RELATIONS,
     "Rollenvertrag: F16-05-Termin-Vorlagen",
   );
+  const hasFileRequestTemplates = await hasAtomicPublicRelationSet(
+    client,
+    FILE_REQUEST_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F16-07-Datei-Anfragen-Vorlagen",
+  );
   const hasOfferTemplates = await hasAtomicPublicRelationSet(
     client,
     OFFER_TEMPLATE_RELATIONS,
@@ -4390,6 +4415,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasFileRequestTemplates ? FILE_REQUEST_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.map(
@@ -5615,6 +5643,9 @@ export async function verifyRoleContract(
       ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasFileRequestTemplates ? FILE_REQUEST_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6000,6 +6031,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasAppointmentTemplates ? [
           "appointment_template:tenant_isolation:ca50c06bf0731a43c886c4a5bcfe31d24e7d21389d454a48f617fc9129475e30",
+        ] : []),
+        ...(hasFileRequestTemplates ? [
+          "file_request_template:tenant_isolation:91d517f0c07c59b57989e4de4da6f66f8e82f049eed35e71fc32cad8dbe0c2fc",
         ] : []),
         ...(hasOfferTemplates ? [
           "offer_template:tenant_isolation:1c35c88daada44a92c4de9b2e7a0582673fe8ecc9bb5118e5100ea81713a4ee9",
@@ -6548,6 +6582,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasFileRequestTemplates ? FILE_REQUEST_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

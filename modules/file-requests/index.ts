@@ -20,3 +20,15 @@ export {
   type FulfillFileRequestInput,
   type FulfillFileRequestResult,
 } from "./service";
+export {
+  applyFileRequestTemplate,
+  archiveFileRequestTemplate,
+  createFileRequestTemplate,
+  FileRequestTemplateConflictError,
+  FileRequestTemplateNotFoundError,
+  FileRequestTemplateValidationError,
+  listFileRequestTemplates,
+  normalizeFileRequestTemplateName,
+  restoreFileRequestTemplate,
+  updateFileRequestTemplate,
+} from "./templates";

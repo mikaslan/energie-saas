@@ -5,15 +5,19 @@ import { z } from "zod";
 import { authorizedAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
+  applyFileRequestTemplate,
   createFileRequest,
   downloadFileRequest,
   FileRequestConflictError,
   FileRequestNotFoundError,
+  FileRequestTemplateNotFoundError,
+  FileRequestTemplateValidationError,
   FileRequestValidationError,
   fileRequestStatuses,
   transitionFileRequest,
   type FileRequestStatus,
 } from "@/modules/file-requests";
+import { FILE_REQUEST_TEMPLATE_SCHEMA_VERSION } from "@/lib/file-request-template";
 
 const uuidSchema = z.uuid();
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -55,9 +59,36 @@ function mapError(error: unknown): FileRequestActionState {
   if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
   if (error instanceof PermissionDeniedError) return { status: "denied" };
   if (error instanceof FileRequestNotFoundError) return { status: "not_found" };
+  if (error instanceof FileRequestTemplateNotFoundError) return { status: "not_found" };
   if (error instanceof FileRequestConflictError) return { status: "conflict" };
   if (error instanceof FileRequestValidationError) return { status: "invalid" };
+  if (error instanceof FileRequestTemplateValidationError) return { status: "invalid" };
   throw error;
+}
+
+// F16-07: Datei-Anfrage aus Vorlage anlegen (Titel-/Beschreibungs-Preset).
+export async function applyFileRequestTemplateAction(
+  _previous: FileRequestActionState,
+  formData: FormData,
+): Promise<FileRequestActionState> {
+  const ids = parseIds(formData);
+  const templateValue = formData.get("templateId");
+  if (!ids || typeof templateValue !== "string") return { status: "invalid" };
+  const parsedTemplate = uuidSchema.safeParse(templateValue);
+  if (!parsedTemplate.success) return { status: "invalid" };
+  try {
+    await authorizedAction(ids.workspaceId, "project.write", "file_request", (tx, ctx) =>
+      applyFileRequestTemplate(tx, ctx, {
+        schemaVersion: FILE_REQUEST_TEMPLATE_SCHEMA_VERSION,
+        templateId: parsedTemplate.data,
+        projectId: ids.projectId,
+      }),
+    );
+    revalidatePath(detailPath(ids.workspaceId, ids.projectId));
+    return { status: "success", message: "Datei-Anfrage aus Vorlage angelegt." };
+  } catch (error) {
+    return mapError(error);
+  }
 }
 
 // F10-04: Anfrage anlegen (Titel + optionale Beschreibung).
