@@ -30,6 +30,7 @@ import {
   AppointmentNotFoundError,
   AppointmentValidationError,
 } from "./errors";
+import { listTeamOptions } from "@/modules/teams";
 
 const BERLIN_TIMESTAMP = 'YYYY-MM-DD"T"HH24:MI:SS.MS';
 
@@ -70,6 +71,8 @@ type AppointmentRow = {
   calendar_name: string | null;
   calendar_color: string | null;
   attendees: unknown;
+  team_id: string | null;
+  team_name: string | null;
   [key: string]: unknown;
 };
 
@@ -203,6 +206,25 @@ function postgresErrorCode(error: unknown): string | null {
   return null;
 }
 
+// F1-12: team_id muss ein AKTIVES Team desselben Workspace sein, sonst
+// `invalid` (kein Existenz-Leak; archiviert/fremd/unbekannt schlägt fehl).
+async function validateTeam(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  teamId: string | null,
+): Promise<void> {
+  if (teamId === null) return;
+  const result = await tx.execute<{ id: string }>(sql`
+    select id
+      from team
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${teamId}::uuid
+       and active = true
+     for share
+  `);
+  if (result.rows.length !== 1) throw new AppointmentValidationError();
+}
+
 // M1-15b §6: calendar_id muss für den Actor SICHTBAR und active=true sein,
 // sonst `invalid` (keine Existenz-/Scope-Leaks).
 async function validateCalendar(
@@ -311,12 +333,14 @@ async function createAppointment(
   await lockProject(tx, ctx.workspaceId, command.projectId);
   await validateAttendeeMemberships(tx, ctx.workspaceId, command.attendeeMembershipIds);
   await validateCalendar(tx, ctx, command.calendarId);
+  await validateTeam(tx, ctx, command.teamId);
   const appointmentId = randomUUID();
   try {
     await tx.execute(sql`
       insert into project_appointment (
         id, workspace_id, project_id, title, description, location,
         start_at, end_at, all_day, appointment_type, calendar_id,
+        team_id,
         revision, created_by
       ) values (
         ${appointmentId}::uuid, ${ctx.workspaceId}::uuid, ${command.projectId}::uuid,
@@ -327,6 +351,7 @@ async function createAppointment(
         ${command.end}::timestamp at time zone 'Europe/Berlin',
         ${command.allDay}, ${command.type},
         ${command.calendarId},
+        ${command.teamId}::uuid,
         1, ${ctx.actor}::uuid
       )
     `);
@@ -355,6 +380,7 @@ async function updateAppointment(
   requireRevision(appointment.revision, command.expectedRevision);
   await validateAttendeeMemberships(tx, ctx.workspaceId, command.attendeeMembershipIds);
   await validateCalendar(tx, ctx, command.calendarId);
+  await validateTeam(tx, ctx, command.teamId);
 
   let revision: number | undefined;
   try {
@@ -368,6 +394,7 @@ async function updateAppointment(
              all_day = ${command.allDay},
              appointment_type = ${command.type},
              calendar_id = ${command.calendarId},
+             team_id = ${command.teamId}::uuid,
              revision = revision + 1,
              updated_at = statement_timestamp()
        where workspace_id = ${ctx.workspaceId}::uuid
@@ -552,6 +579,8 @@ export async function listProjectAppointments(
            appointment_record.calendar_id,
            calendar_record.name as calendar_name,
            calendar_record.color as calendar_color,
+           appointment_record.team_id,
+           team_record.name as team_name,
            coalesce((
              select jsonb_agg(
                jsonb_build_object(
@@ -586,6 +615,9 @@ export async function listProjectAppointments(
         on calendar_record.workspace_id = appointment_record.workspace_id
        and calendar_record.id = appointment_record.calendar_id
        and ${calendarVisibleFragment(ctx)}
+      left join team team_record
+        on team_record.workspace_id = appointment_record.workspace_id
+       and team_record.id = appointment_record.team_id
      where appointment_record.workspace_id = ${ctx.workspaceId}::uuid
        and appointment_record.project_id = ${projectId}::uuid
        and appointment_record.start_at < (${options.rangeEnd}::timestamp at time zone 'Europe/Berlin')
@@ -657,6 +689,8 @@ export async function listProjectAppointments(
       calendarName: row.calendar_name,
       calendarColor: row.calendar_color,
       attendees: row.attendees,
+      teamId: row.team_id,
+      teamName: row.team_name,
     })),
     calendars: calendars.rows.map((row) => ({
       id: row.id,
@@ -670,6 +704,7 @@ export async function listProjectAppointments(
       membershipId: row.membershipId,
       label: row.label,
     })),
+    teams: await listTeamOptions(tx, ctx),
   });
 }
 

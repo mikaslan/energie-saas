@@ -537,6 +537,14 @@ const PORTAL_STATUS_LABEL_RELATIONS = [
   "portal_status_label",
 ] as const;
 
+const TEAM_RELATIONS = [
+  "team",
+] as const;
+
+const TEAM_MEMBER_RELATIONS = [
+  "team_member",
+] as const;
+
 const OFFER_TEMPLATE_RELATIONS = [
   "offer_template",
 ] as const;
@@ -2726,6 +2734,37 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F1-12: Teams — Stammdaten ohne Delete (Archiv); Mitglieder
+  // Voll-Replace (DELETE nur eigene Team-Zeilen, Service-Guard).
+  const hasTeams = await hasAtomicPublicRelationSet(
+    client,
+    TEAM_RELATIONS,
+    "Rollen-ACL-Manifest: F1-12-Teams",
+  );
+  const hasTeamMembers = await hasAtomicPublicRelationSet(
+    client,
+    TEAM_MEMBER_RELATIONS,
+    "Rollen-ACL-Manifest: F1-12-Team-Mitglieder",
+  );
+  if (hasTeams) {
+    await client.query(`
+      revoke all privileges on
+        public.team
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.team to app_runtime
+    `);
+  }
+  if (hasTeamMembers) {
+    await client.query(`
+      revoke all privileges on
+        public.team_member
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update, delete on public.team_member to app_runtime
+    `);
+  }
+
   // F10-05: Portal-Statusmapping — Upsert je Schlüssel plus gezielter
   // Reset (DELETE nur eigene Mapping-Zeile, Service-Guard).
   const hasPortalStatusLabels = await hasAtomicPublicRelationSet(
@@ -4177,6 +4216,16 @@ export async function verifyRoleContract(
     PORTAL_STATUS_LABEL_RELATIONS,
     "Rollenvertrag: F10-05-Portal-Statusmapping",
   );
+  const hasTeams = await hasAtomicPublicRelationSet(
+    client,
+    TEAM_RELATIONS,
+    "Rollenvertrag: F1-12-Teams",
+  );
+  const hasTeamMembers = await hasAtomicPublicRelationSet(
+    client,
+    TEAM_MEMBER_RELATIONS,
+    "Rollenvertrag: F1-12-Team-Mitglieder",
+  );
   const hasOfferTemplates = await hasAtomicPublicRelationSet(
     client,
     OFFER_TEMPLATE_RELATIONS,
@@ -4452,6 +4501,12 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasTeams ? TEAM_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasTeamMembers ? TEAM_MEMBER_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.map(
@@ -5685,6 +5740,12 @@ export async function verifyRoleContract(
       ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasTeams ? TEAM_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasTeamMembers ? TEAM_MEMBER_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6076,6 +6137,12 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasPortalStatusLabels ? [
           "portal_status_label:tenant_isolation:bc4e54d8d9cadf8aaeb2b77dc5c45c95b2f12fc9eeb5a1ac9d009fd46b1681b6",
+        ] : []),
+        ...(hasTeams ? [
+          "team:tenant_isolation:7cec95743ca2d28fe52a56c0da532387af1080b8683562cca29ae219fee44cdb",
+        ] : []),
+        ...(hasTeamMembers ? [
+          "team_member:tenant_isolation:dba79b14aa6a290bddbb7246a9e742ffe132072787ebb8e88313e80866e4aeb5",
         ] : []),
         ...(hasOfferTemplates ? [
           "offer_template:tenant_isolation:1c35c88daada44a92c4de9b2e7a0582673fe8ecc9bb5118e5100ea81713a4ee9",
@@ -6634,6 +6701,17 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
+      ]) : []),
+      ...(hasTeams ? TEAM_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasTeamMembers ? TEAM_MEMBER_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

@@ -124,6 +124,8 @@ async function seedAppointment(
       description: null,
       calendarId: fixture.editorCalendarId,
       attendeeMembershipIds: input.attendee ? [fixture.editorMembershipId] : [],
+      // F1-12: neues Pflichtfeld (ohne Team).
+      teamId: null,
     }),
   );
   return result.appointmentId;
@@ -245,6 +247,8 @@ describe("F7.05 Plantafel-Lesepfad (PostgreSQL)", () => {
         description: null,
         calendarId: fixture.editorCalendarId,
         attendeeMembershipIds: [fixture.editorMembershipId],
+        // F1-12: neues Pflichtfeld (ohne Team).
+        teamId: null,
       }),
     );
     const board = await boardOf(fixture, fixture.editorId, MONDAY);
@@ -267,6 +271,8 @@ describe("F7.05 Plantafel-Lesepfad (PostgreSQL)", () => {
         description: null,
         calendarId: fixture.editorCalendarId,
         attendeeMembershipIds: [fixture.editorMembershipId],
+        // F1-12: neues Pflichtfeld (ohne Team).
+        teamId: null,
       }),
     )).rejects.toBeInstanceOf(AppointmentValidationError);
   });

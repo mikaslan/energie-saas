@@ -31,6 +31,7 @@ function createCommand(overrides: Record<string, unknown> = {}) {
     description: "Erstgespräch",
     calendarId: "22222222-2222-4222-8222-222222222222",
     attendeeMembershipIds: ["33333333-3333-4333-8333-333333333333"],
+    teamId: null,
     ...overrides,
   };
 }
@@ -156,6 +157,7 @@ describe("M1-15 Kalender-Vertrag (project-appointment-command.v1)", () => {
       description: null,
       calendarId: "22222222-2222-4222-8222-222222222222",
       attendeeMembershipIds: [],
+      teamId: null,
     };
     const parsed = projectAppointmentCommandV1Schema.safeParse(update);
     expect(parsed.success).toBe(true);
@@ -187,6 +189,8 @@ describe("M1-15 minimierte DTOs", () => {
       calendarName: "Unternehmen",
       calendarColor: null,
       attendees: [],
+      teamId: null,
+      teamName: null,
     };
     expect(projectAppointmentItemV1Schema.safeParse(valid).success).toBe(true);
     expect(projectAppointmentItemV1Schema.safeParse({
@@ -229,6 +233,7 @@ describe("M1-15 minimierte DTOs", () => {
       items: [],
       calendars: [],
       members: [],
+      teams: [],
     }).success).toBe(true);
   });
 });

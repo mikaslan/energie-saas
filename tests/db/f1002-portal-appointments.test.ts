@@ -110,6 +110,8 @@ async function createAppointment(fixture: Fixture, overrides: Record<string, unk
       description: "Interne Notiz — nie öffentlich",
       calendarId: fixture.tenancyCalendarId,
       attendeeMembershipIds: [fixture.editorMembershipId],
+      // F1-12: neues Pflichtfeld (ohne Team).
+      teamId: null,
       ...overrides,
     }),
   );

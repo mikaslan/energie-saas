@@ -109,6 +109,8 @@ function createCommand(
     description: "Erstgespräch",
     calendarId: fixture.tenancyCalendarId,
     attendeeMembershipIds: [fixture.editorMembershipId],
+    // F1-12: neues Pflichtfeld (ohne Team).
+    teamId: null,
     ...overrides,
   } as ProjectAppointmentCommandV1;
 }
@@ -176,6 +178,8 @@ describe("M1-15 Termine/Kalender-Service (PostgreSQL)", () => {
         description: null,
         calendarId: fixture.tenancyCalendarId,
         attendeeMembershipIds: [],
+        // F1-12: neues Pflichtfeld (ohne Team).
+        teamId: null,
       }),
     );
     expect(updated.revision).toBe(2);
@@ -241,6 +245,8 @@ describe("M1-15 Termine/Kalender-Service (PostgreSQL)", () => {
             description: null,
             calendarId: fixture.tenancyCalendarId,
             attendeeMembershipIds: [],
+            // F1-12: neues Pflichtfeld (ohne Team).
+            teamId: null,
           }
         : {
             schemaVersion: PROJECT_APPOINTMENT_COMMAND_VERSION,
@@ -440,6 +446,8 @@ describe("M1-15 Termine/Kalender-Service (PostgreSQL)", () => {
         description: null,
         calendarId: personalId,
         attendeeMembershipIds: [],
+        // F1-12: neues Pflichtfeld (ohne Team).
+        teamId: null,
       }),
     );
 

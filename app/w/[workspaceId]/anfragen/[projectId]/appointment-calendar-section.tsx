@@ -270,6 +270,9 @@ export function AppointmentCalendarSection({
                   {appointment.location ? (
                     <p className="mt-1 text-xs text-slate-500">Ort: {appointment.location}</p>
                   ) : null}
+                  {appointment.teamName ? (
+                    <p className="mt-1 text-xs text-slate-500">Team: {appointment.teamName}</p>
+                  ) : null}
                 </div>
                 {range.permissions.canWrite ? (
                   <button
@@ -294,6 +297,7 @@ export function AppointmentCalendarSection({
           appointment={dialogAppointment}
           calendars={range.calendars}
           members={range.members}
+          teams={range.teams}
           returnFocusRef={createButtonRef}
           onClose={closeDialog}
         />

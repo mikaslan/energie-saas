@@ -55,6 +55,7 @@ const CREATE_FIELDS = new Set([
   "description",
   "calendarId",
   "attendees",
+  "teamId",
 ]);
 const UPDATE_FIELDS = new Set([...CREATE_FIELDS, "appointmentId", "expectedRevision"]);
 const DELETE_FIELDS = new Set([
@@ -102,6 +103,13 @@ function parseOptionalText(value: string | undefined): string | null {
   return value;
 }
 
+// F1-12: optionaler Team-Bezug ("" = ohne Team; unförmig = invalid,
+// Fremd/Archiv scheitert im Service-Guard ohne Orakel).
+function parseOptionalTeamId(value: string | undefined): string | null | undefined {
+  if (value === undefined || value === "") return null;
+  return UUID_SCHEMA.safeParse(value).success ? value.toLowerCase() : undefined;
+}
+
 function parseAttendeeIds(value: string | undefined): string[] | null {
   if (value === undefined || value === "") return [];
   try {
@@ -139,7 +147,8 @@ function commandCandidate(
   }
   const allDay = parseBoolean(entries.allDay);
   const attendees = parseAttendeeIds(entries.attendees);
-  if (allDay === null || attendees === null) return null;
+  const teamId = parseOptionalTeamId(entries.teamId);
+  if (allDay === null || attendees === null || teamId === undefined) return null;
   const editable = {
     title: entries.title,
     start: normalizeWallClock(entries.start, allDay),
@@ -150,6 +159,7 @@ function commandCandidate(
     description: parseOptionalText(entries.description),
     calendarId: entries.calendarId,
     attendeeMembershipIds: attendees,
+    teamId,
   };
   if (kind === "create_appointment") return { ...base, ...editable };
   const expectedRevision = parseRevision(entries.expectedRevision);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import type {
   TimeEntryDto,
   TimeEntryListDto,
@@ -172,6 +172,9 @@ export function TimeEntryManager({
 
   // F11-03b: Offline-Anlage manueller Einträge in die Zeit-Outbox.
   const createFormRef = useRef<HTMLFormElement | null>(null);
+  // F11-03b: manueller Dispatch braucht eine Transition (sonst React-
+  // Console-Fehler; Muster board-client).
+  const [, startCreateTransition] = useTransition();
   const [queueing, setQueueing] = useState(false);
   const [queueError, setQueueError] = useState(false);
   const [offlineNotice, setOfflineNotice] = useState("");
@@ -182,7 +185,9 @@ export function TimeEntryManager({
       event.preventDefault();
       const formData = new FormData(event.currentTarget);
       formData.set("clientKey", crypto.randomUUID());
-      createDispatch(formData);
+      startCreateTransition(() => {
+        createDispatch(formData);
+      });
       return;
     }
     // Offline: Entwurf in die Outbox statt Fehlschlag. Nur Anlage

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TEAM_NAME_MAX, teamOptionSchema } from "@/lib/integrations/teams/contract";
 
 export const PROJECT_APPOINTMENT_COMMAND_VERSION =
   "project-appointment-command.v1" as const;
@@ -167,6 +168,9 @@ const editableFields = {
   description: descriptionSchema.nullable(),
   attendeeMembershipIds: attendeeIdsSchema,
   calendarId: uuidSchema,
+  // F1-12: optionale Team-Bindung (null = ohne Team; nur aktive Teams,
+  // Service-Guard ohne Orakel).
+  teamId: uuidSchema.nullable(),
 } as const;
 
 export const projectAppointmentCommandV1Schema = z.discriminatedUnion("kind", [
@@ -242,6 +246,9 @@ export const projectAppointmentItemV1Schema = z.strictObject({
   calendarName: z.string().min(1).max(200).nullable(),
   calendarColor: z.string().nullable(),
   attendees: z.array(projectedAttendeeSchema).max(PROJECT_APPOINTMENT_MAX_ATTENDEES),
+  // F1-12: Team-Bindung (null = ohne Team; Name wie attendees projiziert).
+  teamId: canonicalUuidSchema.nullable(),
+  teamName: z.string().min(1).max(TEAM_NAME_MAX).nullable(),
 });
 
 export type ProjectAppointmentItemV1 = z.infer<typeof projectAppointmentItemV1Schema>;
@@ -277,6 +284,8 @@ export const projectAppointmentRangeV1Schema = z.strictObject({
   items: z.array(projectAppointmentItemV1Schema),
   calendars: z.array(calendarItemV1Schema),
   members: z.array(projectedAttendeeSchema).max(200),
+  // F1-12: aktive Teams für den Team-Dropdown (id + Name, keine PII).
+  teams: z.array(teamOptionSchema),
 });
 
 export type ProjectAppointmentRangeV1 = z.infer<

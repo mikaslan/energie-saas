@@ -324,6 +324,8 @@ export async function applyAppointmentTemplate(
       description: null,
       attendeeMembershipIds: [],
       calendarId: command.calendarId,
+      // F1-12: Vorlagen-Termine ohne Team (explizit, strictObject).
+      teamId: null,
     });
     await emitEvent(tx, {
       workspaceId: ctx.workspaceId,

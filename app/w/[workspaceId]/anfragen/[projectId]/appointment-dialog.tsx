@@ -14,6 +14,7 @@ import {
   type CalendarItemV1,
   type ProjectAppointmentItemV1,
 } from "@/lib/integrations/calendar/contract";
+import type { TeamOption } from "@/lib/integrations/teams/contract";
 import {
   APPOINTMENT_TYPE_OPTIONS,
   toBerlinDateValue,
@@ -58,6 +59,7 @@ export function AppointmentDialog({
   appointment,
   calendars,
   members,
+  teams,
   returnFocusRef,
   onClose,
 }: {
@@ -66,6 +68,7 @@ export function AppointmentDialog({
   appointment: ProjectAppointmentItemV1 | null;
   calendars: CalendarItemV1[];
   members: { membershipId: string; label: string }[];
+  teams: TeamOption[];
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }) {
@@ -218,6 +221,21 @@ export function AppointmentDialog({
                 ) : null}
                 {calendars.map((calendar) => (
                   <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="grid gap-1 text-sm font-semibold text-slate-800">
+              Team
+              <select
+                name="teamId"
+                disabled={pending}
+                defaultValue={appointment?.teamId ?? ""}
+                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+              >
+                <option value="">Ohne Team</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>{team.name}</option>
                 ))}
               </select>
             </label>

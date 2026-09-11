@@ -100,6 +100,8 @@ export async function createPlanningBoardEntryAction(
         description: null,
         calendarId: calendarId.data,
         attendeeMembershipIds: [memberId.data],
+        // F1-12: Plantafel-Termine ohne Team (Blockzuweisung Folge-Slice).
+        teamId: null,
       }),
     );
   } catch (error) {
