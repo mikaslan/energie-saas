@@ -272,9 +272,9 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
   test("M2-04: Editor erzeugt Signatur-Request und widerruft den Pending-Link", async ({ page }) => {
     test.setTimeout(120_000);
     const data = state();
-    // Offset 13 statt UI-Default 14: m2-03a legt im vollen Lauf auf demselben
-    // Workspace einen +14-Kandidaten an; identischer Input waere ein
-    // Reservations-Replay dessen Kandidaten.
+    // Isolation (CI 34608976025): eigener Workspace (Muster F2.8b) — der
+    // Shared-m201-Draft-Pin (juengster Draft, stale Revision) kaskadierte
+    // dort deterministisch aus m2-03a. Offset 13 bleibt Guertel-und-Hosentraeger.
     const released = await seedM204ReleasedOffer({
       databaseUrl: data.databaseUrl,
       serverLogPath: data.serverLogPath,
@@ -286,8 +286,8 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
       m201ModuleId: data.m201ModuleId,
       m201ProjectId: data.m201ProjectId,
       m201WallboxId: data.m201WallboxId,
-    }, { validThroughOffsetDays: 13 });
-    const offerPath = `/w/${data.m201WorkspaceId}/angebote/${released.offerId}?variante=${released.variantId}`;
+    }, { validThroughOffsetDays: 13, isolatedWorkspace: true });
+    const offerPath = `/w/${released.workspaceId}/angebote/${released.offerId}?variante=${released.variantId}`;
     await page.goto(offerPath);
     await loginWithRealOtp(page, data.m201EditorEmail, offerPath);
 
@@ -322,11 +322,8 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
   test("M2-04: Abgelaufener Link zeigt terminalen expired-Zustand", async ({ page }) => {
     test.setTimeout(120_000);
     const data = state();
-    // Ordnungsunabhaengiger Seed: auf frischem Workspace erzeugt der
-    // Offset-15-Seed eine eigene Kette (Standalone lauffaehig); hat Test 2
-    // zuvor mit Offset 14 geseedet, unterscheidet sich der Input-Snapshot
-    // (valid_through) und erzeugt so ebenfalls eine frische Issuance statt
-    // eines Replays der widerrufenen Kette.
+    // Isolation wie Test 2 (CI 34608976025): eigener Workspace statt
+    // Shared-m201 (stale Draft-Pin kaskadierte aus m2-03a). Offset 15 bleibt.
     const released = await seedM204ReleasedOffer({
       databaseUrl: data.databaseUrl,
       serverLogPath: data.serverLogPath,
@@ -338,8 +335,8 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
       m201ModuleId: data.m201ModuleId,
       m201ProjectId: data.m201ProjectId,
       m201WallboxId: data.m201WallboxId,
-    }, { validThroughOffsetDays: 15 });
-    const offerPath = `/w/${data.m201WorkspaceId}/angebote/${released.offerId}?variante=${released.variantId}`;
+    }, { validThroughOffsetDays: 15, isolatedWorkspace: true });
+    const offerPath = `/w/${released.workspaceId}/angebote/${released.offerId}?variante=${released.variantId}`;
     await page.goto(offerPath);
     await loginWithRealOtp(page, data.m201EditorEmail, offerPath);
 
@@ -369,7 +366,7 @@ test.describe("M2-04: E-Signatur (Vorbereitungs-Slice)", () => {
           where workspace_id = $1::uuid
             and offer_id = $2::uuid
             and status = 'pending'`,
-        [data.m201WorkspaceId, released.offerId],
+        [released.workspaceId, released.offerId],
       );
       await client.query("commit");
     } finally {

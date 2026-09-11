@@ -1226,7 +1226,14 @@ test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
         await submitWithPendingFocusEvidence(page, generatePdfButton, {
           pendingClassName: "bg-slate-700",
         });
-        await expect(pdfPanel.getByText(/wurde angenommen|vorhandene Auftrag/u)).toBeVisible();
+        // CI 34608976025: Die Enqueue-Action (Lock + Dispatch + Revalidate
+        // des schweren Angebotsdetails) antwortete unter CI-Last erst nach
+        // >12 s — ohne jedes Feedback (Idle-Button, kein Conflict). Inhaltlich
+        // identische Assertion wie zuvor, nur an Dev-Server-Latenz angepasst
+        // (kein Produkt-SLO an dieser Stelle; Fehler-Feedback scheitert weiter).
+        await expect.poll(async () => (
+          await pdfPanel.getByText(/wurde angenommen|vorhandene Auftrag/u).count()
+        ), { timeout: 90_000 }).toBeGreaterThan(0);
         const queued = await readQueuedPdfDraft(state, offer.offerId, offer.variantId);
         if (queued.state === "queued") await completePdfDraft(state, queued);
         await page.reload();
