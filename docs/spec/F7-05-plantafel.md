@@ -1,6 +1,21 @@
 # F7-05 Plantafel (Ressourcen-Grid, Slice 1: Lesepfad)
 
-Status: **IMPLEMENTIERT/LOKAL VERIFIZIERT** · Lane: `codex/m1-wave-02` · Stand 2026-09-11
+Status: **Slice 1+2 IMPLEMENTIERT/LOKAL VERIFIZIERT (Lesepfad + Anlage)** · Lane: `codex/m1-wave-02` · Stand 2026-09-11
+
+## Slice 2: Anlegen von der Tafel (Create-Pfad)
+
+„＋" je Tageszelle (`?create=DATUM&member=ID`) öffnet ein
+Server-formular: Datum (fix, aus der Zelle), Start-/Ende-Uhrzeit
+(Berlin-Wanduhr), Titel, Projekt (Auswahl aus `project.read`-Optionen),
+Typ, Kalender (Auswahl aus `listVisibleCalendars`), Teilnehmer = die
+Zeilen-Membership (fix, kein Orakel über fremde Zeilen). Submit →
+Server-Action (`appointment.write`, editor+, internalOnly) →
+`executeProjectAppointmentCommand` (echter Pfad, inkl. Konflikt-/
+Guard-Fehler) → Revalidate + Erfolgsmeldung; Fehler fail-closed
+(ungültig/Konflikt/verweigert/nicht gefunden). Read-only-Akteure sehen
+keine „＋"-Links (canWrite aus dem Query). Keine neue Permission, keine
+Migration. Unbekannte/wochenfremde `create`-Params → kein Formular
+(tolerant wie ?week=).
 
 ## Ziel und Abgrenzung
 

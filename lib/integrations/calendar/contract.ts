@@ -287,6 +287,7 @@ export type ProjectAppointmentRangeV1 = z.infer<
 // bestehenden Terminen. Versioniert; keine neuen Grants (appointment.read).
 export const PLANNING_BOARD_VERSION = "planning-board.v1" as const;
 export const PLANNING_BOARD_MAX_ROWS = 200 as const;
+export const PLANNING_BOARD_MAX_OPTIONS = 200 as const;
 
 const planningBoardDaySchema = z
   .string()
@@ -339,3 +340,11 @@ export const planningBoardDtoSchema = z.strictObject({
 
 export type PlanningBoardDto = z.infer<typeof planningBoardDtoSchema>;
 export type PlanningBoardQuery = z.infer<typeof planningBoardQuerySchema>;
+
+// F7-05 Slice 2: Projektauswahl für die Tafel-Anlage (project.read-Gate).
+export const planningBoardProjectOptionSchema = z.strictObject({
+  id: canonicalUuidSchema,
+  name: z.string().min(1),
+});
+
+export type PlanningBoardProjectOption = z.infer<typeof planningBoardProjectOptionSchema>;

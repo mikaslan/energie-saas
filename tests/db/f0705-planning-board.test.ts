@@ -14,6 +14,7 @@ import {
   AppointmentValidationError,
   executeProjectAppointmentCommand,
   getPlanningBoard,
+  listAppointmentProjectOptions,
 } from "@/modules/calendar";
 import { testPool } from "../setup/test-db";
 
@@ -216,6 +217,58 @@ describe("F7.05 Plantafel-Lesepfad (PostgreSQL)", () => {
       .toBeInstanceOf(AppointmentValidationError);
     await expect(boardOf(fixture, fixture.viewerId, "2026-02-30")).rejects
       .toBeInstanceOf(AppointmentValidationError);
+  });
+
+  it("F705-DB-05: Projektoptionen für Editor und Viewer", async () => {
+    for (const userId of [fixture.editorId, fixture.viewerId]) {
+      const options = await withAuthorizedTenantOn(
+        testPool, userId, fixture.workspaceId,
+        (tx, ctx) => listAppointmentProjectOptions(tx, ctx),
+      );
+      expect(options).toEqual([{ id: fixture.projectId, name: fixture.projectName }]);
+    }
+  });
+
+  it("F705-DB-06: Anlage-Roundtrip — erstellter Termin steht auf der Tafel", async () => {
+    await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => executeProjectAppointmentCommand(tx, ctx, {
+        schemaVersion: PROJECT_APPOINTMENT_COMMAND_VERSION,
+        kind: "create_appointment",
+        projectId: fixture.projectId,
+        title: "Neu von der Tafel",
+        start: "2026-09-09T14:00:00",
+        end: "2026-09-09T15:00:00",
+        allDay: false,
+        type: "consultation",
+        location: null,
+        description: null,
+        calendarId: fixture.editorCalendarId,
+        attendeeMembershipIds: [fixture.editorMembershipId],
+      }),
+    );
+    const board = await boardOf(fixture, fixture.editorId, MONDAY);
+    const editorRow = board.rows.find((row) => row.membershipId === fixture.editorMembershipId)!;
+    expect(editorRow.days[2]!.entries.map((entry) => entry.title)).toEqual(["Neu von der Tafel"]);
+
+    // Fail-closed: Ende vor Beginn verweigert der echte Pfad.
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => executeProjectAppointmentCommand(tx, ctx, {
+        schemaVersion: PROJECT_APPOINTMENT_COMMAND_VERSION,
+        kind: "create_appointment",
+        projectId: fixture.projectId,
+        title: "Ungültig",
+        start: "2026-09-09T15:00:00",
+        end: "2026-09-09T14:00:00",
+        allDay: false,
+        type: "consultation",
+        location: null,
+        description: null,
+        calendarId: fixture.editorCalendarId,
+        attendeeMembershipIds: [fixture.editorMembershipId],
+      }),
+    )).rejects.toBeInstanceOf(AppointmentValidationError);
   });
 
   it("F705-DB-04: Viewer liest, External bleibt fail-closed", async () => {

@@ -3,10 +3,18 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
-import { PermissionDeniedError } from "@/lib/permissions";
-import { getPlanningBoard, type PlanningBoardDto } from "@/modules/calendar";
+import { can, PermissionDeniedError } from "@/lib/permissions";
+import {
+  getPlanningBoard,
+  listAppointmentProjectOptions,
+  listVisibleCalendars,
+  type CalendarItemV1,
+  type PlanningBoardDto,
+  type PlanningBoardProjectOption,
+} from "@/modules/calendar";
 import { AppointmentValidationError } from "@/modules/calendar";
 import { DeniedState } from "../_ui";
+import { PlanningBoardCreateForm } from "./planning-board-create-form";
 
 export const metadata: Metadata = {
   title: "Plantafel",
@@ -107,15 +115,48 @@ export default async function PlanningBoardPage(
   const selectedEventId = rawEvent !== undefined && eventIdSchema.safeParse(rawEvent).success
     ? rawEvent.toLowerCase()
     : null;
+  const rawCreate = Array.isArray(query.create) ? query.create[0] : query.create;
+  const rawMember = Array.isArray(query.member) ? query.member[0] : query.member;
+  const createDate = rawCreate !== undefined && calendarDaySchema.safeParse(rawCreate).success
+    ? rawCreate
+    : null;
+  const createMemberId = rawMember !== undefined && eventIdSchema.safeParse(rawMember).success
+    ? rawMember.toLowerCase()
+    : null;
 
   let board: PlanningBoardDto;
+  let calendars: CalendarItemV1[];
+  let projectOptions: PlanningBoardProjectOption[];
+  let canWrite = false;
   try {
-    board = await authorizedQuery(
+    const loaded = await authorizedQuery(
       workspaceId,
       "appointment.read",
       "planning_board",
-      (tx, ctx) => getPlanningBoard(tx, ctx, { weekStart: monday }),
+      async (tx, ctx) => {
+        const loadedBoard = await getPlanningBoard(tx, ctx, { weekStart: monday });
+        // Kalender-/Projektlisten sind eigene Grants: fehlt einer, bleibt
+        // das Board lesbar und nur das Anlegen ehrlich deaktiviert.
+        const loadedCalendars = await listVisibleCalendars(tx, ctx).catch((error: unknown) => {
+          if (error instanceof PermissionDeniedError) return [];
+          throw error;
+        });
+        const loadedOptions = await listAppointmentProjectOptions(tx, ctx).catch((error: unknown) => {
+          if (error instanceof PermissionDeniedError) return [];
+          throw error;
+        });
+        return {
+          board: loadedBoard,
+          calendars: loadedCalendars,
+          projectOptions: loadedOptions,
+          canWrite: can(ctx, "appointment.write"),
+        };
+      },
     );
+    board = loaded.board;
+    calendars = loaded.calendars;
+    projectOptions = loaded.projectOptions;
+    canWrite = loaded.canWrite;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
       redirect(`/login?${new URLSearchParams({ next: `/w/${workspaceId}/plantafel` }).toString()}`);
@@ -137,6 +178,16 @@ export default async function PlanningBoardPage(
   const basePath = `/w/${workspaceId}/plantafel`;
   const prevWeek = addDays(board.weekStart, -7);
   const nextWeek = addDays(board.weekStart, 7);
+
+  // F7-05 Slice 2: Anlageziel nur aus sichtbaren Zeilen/Tagen (kein Orakel,
+  // keine wochenfremden Daten) — sonst kein Formular.
+  const createRow = createMemberId === null
+    ? null
+    : board.rows.find((row) => row.membershipId === createMemberId) ?? null;
+  const createDay = createDate === null || createRow === null
+    ? null
+    : createRow.days.find((day) => day.date === createDate) ?? null;
+  const showCreateForm = canWrite && createRow !== null && createDay !== null;
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
@@ -199,7 +250,7 @@ export default async function PlanningBoardPage(
                     </th>
                     {row.days.map((day) => (
                       <td key={day.date} className="px-2 py-2 align-top">
-                        {day.entries.length === 0 ? (
+                        {day.entries.length === 0 && !(canWrite && row.membershipId !== null) ? (
                           <span className="text-xs text-slate-400">—</span>
                         ) : (
                           <ul className="flex flex-col gap-1">
@@ -217,6 +268,17 @@ export default async function PlanningBoardPage(
                                 </Link>
                               </li>
                             ))}
+                            {canWrite && row.membershipId !== null && (
+                              <li>
+                                <Link
+                                  href={`${basePath}?week=${board.weekStart}&create=${day.date}&member=${row.membershipId}`}
+                                  className="block rounded border border-dashed border-slate-300 px-2 py-1 text-center text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                                  aria-label={`Termin am ${day.date} für ${row.label} anlegen`}
+                                >
+                                  ＋
+                                </Link>
+                              </li>
+                            )}
                           </ul>
                         )}
                       </td>
@@ -226,6 +288,18 @@ export default async function PlanningBoardPage(
               </tbody>
             </table>
           </div>
+        )}
+
+        {showCreateForm && (
+          <PlanningBoardCreateForm
+            workspaceId={workspaceId}
+            date={createDay!.date}
+            memberId={createRow!.membershipId!}
+            memberLabel={createRow!.label}
+            projects={projectOptions}
+            calendars={calendars}
+            cancelHref={`${basePath}?week=${board.weekStart}`}
+          />
         )}
 
         {selectedEventId !== null && (

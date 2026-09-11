@@ -9,15 +9,18 @@ import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   calendarItemV1Schema,
+  PLANNING_BOARD_MAX_OPTIONS,
   PLANNING_BOARD_MAX_ROWS,
   PLANNING_BOARD_VERSION,
   planningBoardDtoSchema,
+  planningBoardProjectOptionSchema,
   planningBoardQuerySchema,
   projectAppointmentCommandV1Schema,
   projectAppointmentItemV1Schema,
   projectAppointmentRangeV1Schema,
   type CalendarItemV1,
   type PlanningBoardDto,
+  type PlanningBoardProjectOption,
   type ProjectAppointmentCommandV1,
   type ProjectAppointmentCommandResult,
   type ProjectAppointmentRangeV1,
@@ -1044,4 +1047,26 @@ export async function getPlanningBoard(
     weekEnd,
     rows,
   });
+}
+
+// F7-05 Slice 2: Projektauswahl für die Tafel-Anlage. Gate project.read
+// (bestehender Grant, keine neue Permission); interne Tafel-Akteure haben
+// ihn via viewer+ — die Tafelseite bleibt zusätzlich appointment.read-gated.
+export async function listAppointmentProjectOptions(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<PlanningBoardProjectOption[]> {
+  if (!can(ctx, "project.read")) {
+    throw new PermissionDeniedError("project.read", "project", undefined, ctx.actor);
+  }
+  const result = await tx.execute<{ id: string; name: string }>(sql`
+    select project_record.id, project_record.name
+      from project project_record
+     where project_record.workspace_id = ${ctx.workspaceId}::uuid
+     order by project_record.name asc, project_record.id asc
+     limit ${PLANNING_BOARD_MAX_OPTIONS}
+  `);
+  return planningBoardProjectOptionSchema
+    .array()
+    .parse(result.rows);
 }

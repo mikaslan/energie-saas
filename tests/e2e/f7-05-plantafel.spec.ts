@@ -22,6 +22,7 @@ type E2EState = {
   w3WorkspaceId: string;
   f93ProjectId: string;
   editorEmail: string;
+  viewerEmail: string;
 };
 
 const APPOINTMENT_TITLE = "F705-Planken-Termin";
@@ -38,6 +39,7 @@ function state(): E2EState {
     "w3WorkspaceId",
     "f93ProjectId",
     "editorEmail",
+    "viewerEmail",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
     throw new Error("Der private F7.05-E2E-State ist unvollständig.");
@@ -228,4 +230,47 @@ test("F7.05-E2E-01: Plantafel zeigt Termin, Drawer verlinkt das Projekt", async 
   await expect(page.getByText(/Woche \d{4}-\d{2}-\d{2} bis \d{4}-\d{2}-\d{2}/)).toBeVisible();
 
   expect(errors, "Browser-Konsole und Page-Errors der Plantafel").toEqual([]);
+});
+
+test("F7.05-E2E-02: Editor legt Termin von der Tafel an, Viewer sieht kein ＋", async ({ page }) => {
+  test.setTimeout(180_000);
+  const data = state();
+  const errors = trackErrors(page);
+  await seedBoardAppointment();
+
+  const url = `/w/${data.w3WorkspaceId}/plantafel?week=${WEEK_MONDAY}`;
+  await page.goto(url);
+  await loginWithRealOtp(page, data.editorEmail, `/w/${data.w3WorkspaceId}/plantafel`);
+  await page.goto(url);
+
+  // ＋ in der Editor-Zelle am Dienstag öffnet das Anlageformular.
+  await page
+    .getByRole("link", { name: `Termin am 2026-06-09 für ${data.editorEmail} anlegen` })
+    .click();
+  const form = page.locator("section").filter({
+    has: page.getByRole("heading", { name: /Neuer Termin am 2026-06-09/ }),
+  });
+  await expect(form).toBeVisible();
+  await form.getByLabel("Titel").fill("F705-Tafel-Anlage");
+  await form.getByLabel("Beginn (Uhrzeit)").fill("14:00");
+  await form.getByLabel("Ende (Uhrzeit)").fill("15:00");
+  await form.getByRole("button", { name: "Anlegen", exact: true }).click();
+  await expect(form.getByText("Termin angelegt — er steht in der Tafelwoche.", { exact: true }))
+    .toBeVisible();
+  // Angelegter Termin steht im Grid (Roundtrip Tafel → Write → Tafel).
+  const row = page.locator("tbody tr").filter({ hasText: data.editorEmail });
+  await expect(row.getByText("F705-Tafel-Anlage", { exact: true })).toBeVisible();
+
+  expect(errors, "Browser-Konsole und Page-Errors der Tafel-Anlage").toEqual([]);
+
+  // Viewer: lesbar, aber ohne Anlage-Links.
+  await page.context().clearCookies();
+  await page.goto(url);
+  await loginWithRealOtp(page, data.viewerEmail, `/w/${data.w3WorkspaceId}/plantafel`);
+  await page.goto(url);
+  await expect(page.getByRole("heading", { name: "Plantafel", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /anlegen$/ })).toHaveCount(0);
+  await expect(page.getByText(APPOINTMENT_TITLE, { exact: true })).toBeVisible();
+
+  expect(errors, "Browser-Konsole und Page-Errors der Viewer-Grenze").toEqual([]);
 });
