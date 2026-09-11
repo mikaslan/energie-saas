@@ -3907,6 +3907,11 @@ export async function verifyRoleContract(
   const hasPortalSubsidy = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("subsidy_entry"),
   );
+  // F13-06 (0107): Stufenmarker für service im Portal-Resolver
+  // (Muster 0106).
+  const hasPortalService = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("service_case_list"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -4619,6 +4624,9 @@ export async function verifyRoleContract(
       ...(hasFileRequests ? [
         "fulfill_file_request:app_owner",
       ] : []),
+      ...(hasPortalService ? [
+        "confirm_service_case:app_owner",
+      ] : []),
       ...(hasF704ChecklistCompletion ? F704_CHECKLIST_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
@@ -5101,12 +5109,14 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04: Stufenauswahl
-        // 0062/0091/0097/0098/0104/0106 per Marker (Prefix ≤0075 trägt
-        // den alten Rumpf; ein siebter Rumpf bricht fail-closed über
-        // den Hashvergleich).
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06: Stufenauswahl
+        // 0062/0091/0097/0098/0104/0106/0107 per Marker (Prefix ≤0075
+        // trägt den alten Rumpf; ein achter Rumpf bricht fail-closed
+        // über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          `search_path=pg_catalog:${hasPortalSubsidy
+          `search_path=pg_catalog:${hasPortalService
+            ? "5131eed9892f851354efa17958024cc8c47172e1f4bb68e8cf1c4c25974c2692"
+            : hasPortalSubsidy
             ? "10c209ccafe20609000840cdd21e1df1c413aea36f0e0f5e46ea0c917e95e6a7"
             : hasPortalFileRequests
             ? "9c0925b21e85598889bea3db4b26902b27c098ccffd76fba85aa257902a6e743"
@@ -5121,6 +5131,13 @@ export async function verifyRoleContract(
         "fulfill_file_request(bytea, uuid, text, text, text, integer, text):text:" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
           "541069e4c8a5bead1d1fd14f1e74226d2f4da7af677f53731abc6c53d7d3f9c9",
+        ] : []),
+        // F13-06 (0107): Kundenbestätigung (Muster fulfill, Marker
+        // hasPortalService — gleiche Migration wie die Projektion).
+        ...(hasPortalService ? [
+        "confirm_service_case(bytea, uuid):text:" +
+          "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "8e1371f38039d2728336ae40d656f9a70b2207121b969bd434befde4c877956f",
         ] : []),
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -6845,6 +6862,9 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasFileRequests ? [
         "app_runtime:fulfill_file_request(bytea, uuid, text, text, text, integer, text):EXECUTE:app_owner:false",
+      ] : []),
+      ...(hasPortalService ? [
+        "app_runtime:confirm_service_case(bytea, uuid):EXECUTE:app_owner:false",
       ] : []),
       ...(hasF704ChecklistCompletion ? F704_CHECKLIST_RUNTIME_ROUTINES.map(
         (signature) =>

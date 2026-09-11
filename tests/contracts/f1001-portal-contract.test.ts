@@ -202,4 +202,56 @@ describe("F10.1 portal command contracts", () => {
       ...base, subsidy: { status: "bewilligt", program: null },
     })).toBeNull();
   });
+
+  it("parst Servicevorgänge, fehlend = leer, description/cancelled/fremd = null", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
+      documents: [],
+      appointments: [],
+    };
+    // Alt-Projektion ohne Schlüssel → ehrlich leer.
+    expect(parsePortalPublicView(base)?.service).toEqual([]);
+    const shown = parsePortalPublicView({
+      ...base,
+      service: [{
+        id: INVITE,
+        title: "Wechselrichter prüfen",
+        status: "done",
+        dueDate: "2026-09-20",
+        completedAt: "2026-09-12T10:00:00.000Z",
+        confirmedAt: null,
+      }],
+    });
+    expect(shown?.service).toEqual([{
+      id: INVITE,
+      title: "Wechselrichter prüfen",
+      status: "done",
+      dueDate: "2026-09-20",
+      completedAt: "2026-09-12T10:00:00.000Z",
+      confirmedAt: null,
+    }]);
+    // description/cancelled-Status/fremde Schlüssel brechen fail-closed ab.
+    expect(parsePortalPublicView({
+      ...base,
+      service: [{
+        id: INVITE, title: "T", status: "done",
+        dueDate: null, completedAt: null, confirmedAt: null,
+        description: "intern",
+      }],
+    })).toBeNull();
+    expect(parsePortalPublicView({
+      ...base,
+      service: [{
+        id: INVITE, title: "T", status: "cancelled",
+        dueDate: null, completedAt: null, confirmedAt: null,
+      }],
+    })).toBeNull();
+    expect(parsePortalPublicView({
+      ...base, service: "kein-array",
+    })).toBeNull();
+  });
 });

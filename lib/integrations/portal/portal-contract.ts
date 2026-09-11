@@ -180,6 +180,18 @@ export const portalSubsidySchema = z.strictObject({
 });
 export type PortalSubsidy = z.infer<typeof portalSubsidySchema>;
 
+// F13-06: Servicevorgang (nur Titel/Stand/Zeiten/Bestaetigung — nie
+// description/cancelled, das filtert der DEFINER).
+export const portalServiceCaseSchema = z.strictObject({
+  id: z.uuid(),
+  title: z.string(),
+  status: z.enum(["open", "in_progress", "done"]),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).nullable(),
+  completedAt: z.iso.datetime({ offset: true }).nullable(),
+  confirmedAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type PortalServiceCase = z.infer<typeof portalServiceCaseSchema>;
+
 export const portalPublicViewV1Schema = z.strictObject({
   schemaVersion: z.literal(PORTAL_PUBLIC_VIEW_VERSION),
   inviteId: z.uuid(),
@@ -191,6 +203,7 @@ export const portalPublicViewV1Schema = z.strictObject({
   installation: portalInstallationSchema.nullable(),
   fileRequests: z.array(portalFileRequestSchema),
   subsidy: portalSubsidySchema.nullable(),
+  service: z.array(portalServiceCaseSchema),
 });
 
 export type PortalPublicViewV1 = z.infer<typeof portalPublicViewV1Schema>;
@@ -231,6 +244,8 @@ const portalResolveOkSchema = z.strictObject({
   fileRequests: z.unknown().optional(),
   // F13-04: optional — alte Projektionen ohne Schlüssel parsen wie null.
   subsidy: z.unknown().optional(),
+  // F13-06: optional — alte Projektionen ohne Schlüssel parsen wie leer.
+  service: z.unknown().optional(),
 });
 
 // Parst das DEFINER-Resultat; 'not_found' (unbekannt/deformiert/entzogen/
@@ -409,6 +424,40 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       completedAt: stamps.completedAt,
     };
   }
+  // F13-06: Servicevorgaenge — strikter Stand-Wortschatz (cancelled
+  // und description liefert der DEFINER nie; Fremdes bricht fail-closed
+  // ab); fehlend = Alt-Projektion → ehrlich leer.
+  const service: PortalPublicViewV1["service"] = [];
+  if (parsed.data.service !== undefined) {
+    const raw = parsed.data.service;
+    if (!Array.isArray(raw)) return null;
+    for (const entry of raw) {
+      if (typeof entry !== "object" || entry === null) return null;
+      const record = entry as Record<string, unknown>;
+      for (const key of Object.keys(record)) {
+        if (
+          key !== "id" && key !== "title" && key !== "status" &&
+          key !== "dueDate" && key !== "completedAt" && key !== "confirmedAt"
+        ) {
+          return null;
+        }
+      }
+      const id = typeof record.id === "string" ? record.id : null;
+      const title = typeof record.title === "string" ? record.title : null;
+      if (id === null || title === null) return null;
+      const status = portalServiceCaseSchema.shape.status.safeParse(record.status);
+      if (!status.success) return null;
+      const dueDate = record.dueDate === null ? null
+        : typeof record.dueDate === "string"
+          && /^\d{4}-\d{2}-\d{2}$/u.test(record.dueDate) ? record.dueDate : null;
+      if (record.dueDate !== null && dueDate === null) return null;
+      const completedAt = record.completedAt === null ? null : toInstant(record.completedAt);
+      if (record.completedAt !== null && completedAt === null) return null;
+      const confirmedAt = record.confirmedAt === null ? null : toInstant(record.confirmedAt);
+      if (record.confirmedAt !== null && confirmedAt === null) return null;
+      service.push({ id, title, status: status.data, dueDate, completedAt, confirmedAt });
+    }
+  }
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,
     inviteId: parsed.data.inviteId,
@@ -420,5 +469,6 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     installation,
     fileRequests,
     subsidy,
+    service,
   };
 }

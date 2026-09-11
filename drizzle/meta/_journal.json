@@ -750,6 +750,13 @@
       "when": 1789106034064,
       "tag": "0106_f13_04_portal_foerderstand",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1789108300000,
+      "tag": "0107_f13_06_service_portal_rueckmeldung",
+      "breakpoints": true
     }
   ]
 }

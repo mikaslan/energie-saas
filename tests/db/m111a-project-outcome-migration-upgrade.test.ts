@@ -71,9 +71,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F1-05b Conversion-Ratio (0100), F1-06 Follow-up (0101),
 //   F8-05 Teilrechnung (0102), F13-02 Netzanmeldung (0103),
 //   F10-04 Datei-Anfragen (0104), F13-03 Foerderakte (0105),
-//   F13-04 Portal-Foerderstand (0106)
-// => 107 Migrationen (idx 0..106).
-const TOTAL_MIGRATION_COUNT = 107;
+//   F13-04 Portal-Foerderstand (0106),
+//   F13-06 Service-Portal-Rueckmeldung (0107)
+// => 108 Migrationen (idx 0..107).
+const TOTAL_MIGRATION_COUNT = 108;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -389,8 +390,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 106,
-        tag: "0106_f13_04_portal_foerderstand",
+        idx: 107,
+        tag: "0107_f13_06_service_portal_rueckmeldung",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

@@ -2,11 +2,19 @@
 // Statusmaschine (open → in_progress → done, cancelled aus open/
 // in_progress; done/cancelled terminal). Berechtigung: Wiederverwendung
 // installation.read/write (KEINE neuen Permission-Keys — Mandat).
+// F13-06: Kundenbestätigung via Token-Kapsel (zweiter anonymer
+// Schreibpfad nach F10-04) — Modul ist server-only (Muster
+// modules/file-requests/service.ts).
+import "server-only";
+
 import { sql } from "drizzle-orm";
+import type { Pool } from "pg";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
+import { hashPortalToken } from "@/lib/integrations/portal/portal-contract";
+import { PortalNotFoundError, resolvePortalByToken } from "@/modules/portal";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 
 export class ServiceCaseNotFoundError extends Error {
@@ -48,6 +56,7 @@ export type ServiceCaseDto = {
   status: ServiceCaseStatus;
   dueDate: string | null;
   completedAt: string | null;
+  confirmedAt: string | null;
   createdAt: string;
   updatedAt: string;
   permissions: { canWrite: boolean };
@@ -61,9 +70,17 @@ type ServiceCaseRow = {
   status: string;
   due_date: string | null;
   completed_at: string | null;
+  confirmed_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+function toIsoOrNull(value: string | null): string | null {
+  if (value === null) return null;
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) throw new ServiceCaseValidationError();
+  return new Date(value).toISOString();
+}
 
 function toDto(row: ServiceCaseRow, canWrite: boolean): ServiceCaseDto {
   if (!serviceCaseStatuses.includes(row.status as ServiceCaseStatus)) {
@@ -76,7 +93,8 @@ function toDto(row: ServiceCaseRow, canWrite: boolean): ServiceCaseDto {
     description: row.description,
     status: row.status as ServiceCaseStatus,
     dueDate: row.due_date,
-    completedAt: row.completed_at,
+    completedAt: toIsoOrNull(row.completed_at),
+    confirmedAt: toIsoOrNull(row.confirmed_at),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     permissions: { canWrite },
@@ -95,7 +113,7 @@ function requireWrite(ctx: ServiceCtx): void {
   }
 }
 
-const ROW_COLUMNS = sql`id, project_id, title, description, status, due_date, completed_at, created_at, updated_at`;
+const ROW_COLUMNS = sql`id, project_id, title, description, status, due_date, completed_at, confirmed_at, created_at, updated_at`;
 
 export async function createServiceCase(
   tx: TenantTx,
@@ -227,4 +245,41 @@ export async function setServiceCaseStatus(
   });
 
   return toDto(updated.rows[0]!, true);
+}
+
+// F13-06 Kundenbestätigung via Token-Kapsel (zweiter anonymer
+// Schreibpfad nach F10-04 fulfillFileRequestByToken): bestätigt einen
+// erledigten Vorgang. 'already' bei bereits bestätigtem done
+// (idempotent, kein Fehler); alles andere (toter Link, fremder oder
+// nicht-erledigter Vorgang) fällt uniform auf NotFound (kein Orakel).
+export type ServiceCaseConfirmOutcome = "ok" | "already";
+
+export async function confirmServiceCaseByToken(
+  pool: Pool,
+  input: { token: string; caseId: string },
+): Promise<{ outcome: ServiceCaseConfirmOutcome; caseId: string }> {
+  const parsed = z.strictObject({
+    token: z.string().min(1),
+    caseId: uuidSchema,
+  }).safeParse(input);
+  if (!parsed.success) throw new ServiceCaseValidationError();
+  const { token, caseId } = parsed.data;
+  let view;
+  try {
+    view = await resolvePortalByToken(pool, { token });
+  } catch (error) {
+    if (error instanceof PortalNotFoundError) throw new ServiceCaseNotFoundError(caseId);
+    throw error;
+  }
+  const tokenHash = hashPortalToken(token);
+  if (tokenHash === null) throw new ServiceCaseValidationError("token rejected");
+  const outcome = await pool.query(
+    `select public.confirm_service_case($1::bytea, $2::uuid) as result`,
+    [tokenHash, caseId],
+  );
+  const result = z.strictObject({ result: z.string() }).safeParse(outcome.rows[0]);
+  const status = result.success ? result.data.result : null;
+  if (status === "ok") return { outcome: "ok", caseId };
+  if (status === "already") return { outcome: "already", caseId };
+  throw new ServiceCaseNotFoundError(view.project.id);
 }

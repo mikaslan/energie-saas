@@ -68,6 +68,16 @@ function formatSignatureStatus(status: string, signedAt: string | null): string 
   }
 }
 
+// F13-06: Service-Stand (festes Anzeige-Mapping wie intern; nur Stand,
+// keine internen Details).
+function formatServiceCaseStatus(status: "open" | "in_progress" | "done"): string {
+  switch (status) {
+    case "open": return "Offen";
+    case "in_progress": return "In Arbeit";
+    case "done": return "Erledigt";
+  }
+}
+
 // F10.1: öffentliche Projektion (read-only). Unbekannt/deformiert/entzogen/
 // abgelaufen -> identischer 404-Endzustand („Link ungültig", kein Orakel).
 // F10-03b: Timeline-Labels (nur Allowlist-Typen; Datum Berlin, keine Uhrzeit,
@@ -89,7 +99,7 @@ export default async function PortalTokenPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ tab?: string | string[]; upload?: string | string[] }>;
+  searchParams: Promise<{ tab?: string | string[]; upload?: string | string[]; confirm?: string | string[] }>;
 }) {
   const { token } = await params;
   const query = await searchParams;
@@ -118,6 +128,14 @@ export default async function PortalTokenPage({
         : rawUpload === "fehler"
           ? "Die Anfrage ist nicht mehr verfügbar."
           : null;
+  const rawConfirm = Array.isArray(query.confirm) ? query.confirm[0] : query.confirm;
+  const confirmHint = rawConfirm === "ok"
+    ? "Vielen Dank — die Erledigung ist zur Kenntnis genommen."
+    : rawConfirm === "bereits"
+      ? "Dieser Vorgang ist bereits zur Kenntnis genommen."
+      : rawConfirm === "fehler"
+        ? "Der Vorgang ist nicht mehr verfügbar."
+        : null;
   const nextStep = derivePortalNextStep(view.project.phase, view.project.outcome);
   const tabClass = (active: boolean): string =>
     `rounded-md px-3 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
@@ -296,6 +314,55 @@ export default async function PortalTokenPage({
                     </dd>
                   </div>
                 </dl>
+              </div>
+            )}
+            {view.service.length === 0 ? null : (
+              <div className="mt-6" data-testid="portal-service-section">
+                <h2 className="text-lg font-semibold text-slate-950">Service</h2>
+                {confirmHint ? (
+                  <p
+                    role={rawConfirm === "ok" || rawConfirm === "bereits" ? "status" : "alert"}
+                    data-testid="portal-service-confirm-feedback"
+                    className={`mt-2 text-sm font-semibold ${
+                      rawConfirm === "fehler" ? "text-red-700" : "text-emerald-700"
+                    }`}
+                  >
+                    {confirmHint}
+                  </p>
+                ) : null}
+                <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
+                  {view.service.map((item) => (
+                    <li key={item.id} className="px-4 py-3">
+                      <span className="block text-sm font-medium text-slate-800">
+                        {item.title}
+                      </span>
+                      <span
+                        className="block text-sm text-slate-500"
+                        data-testid={`portal-service-status-${item.id}`}
+                      >
+                        {formatServiceCaseStatus(item.status)}
+                        {item.status === "done" && item.confirmedAt !== null
+                          ? " · Zur Kenntnis genommen"
+                          : ""}
+                      </span>
+                      {item.status === "done" && item.confirmedAt === null ? (
+                        <form
+                          action={`/p/${token}/service-cases`}
+                          method="post"
+                          className="mt-2"
+                        >
+                          <input type="hidden" name="caseId" value={item.id} />
+                          <button
+                            type="submit"
+                            className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                          >
+                            Zur Kenntnis nehmen
+                          </button>
+                        </form>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
             {view.project.scope === "commercial" ? null : (

@@ -26,6 +26,7 @@ export const serviceCase = pgTable(
     status: text("status").notNull().default("open"),
     dueDate: text("due_date"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -45,6 +46,10 @@ export const serviceCase = pgTable(
     check(
       "service_case_completed_ck",
       sql`(${t.status} = 'done' and ${t.completedAt} is not null) or (${t.status} <> 'done' and ${t.completedAt} is null)`,
+    ),
+    check(
+      "service_case_confirmed_ck",
+      sql`${t.confirmedAt} is null or ${t.status} = 'done'`,
     ),
     check("service_case_timestamps_ck", sql`${t.updatedAt} >= ${t.createdAt} and pg_catalog.isfinite(${t.createdAt}) and pg_catalog.isfinite(${t.updatedAt})`),
     foreignKey({
