@@ -673,6 +673,13 @@
       "when": 1789087518651,
       "tag": "0095_f16_06_angebots_vorlagen",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1789092600000,
+      "tag": "0096_f7_05_lead_installer",
+      "breakpoints": true
     }
   ]
 }

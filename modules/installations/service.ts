@@ -57,9 +57,18 @@ export type InstallationDto = {
   handoverAt: string | null;
   handoverByName: string | null;
   handoverNote: string | null;
+  // F7-05 Slice 3: Lead Installer (Installations-Ebene), NULL = nicht
+  // zugewiesen; Label nur über den Read-Pfad (kein PII-Leak).
+  leadInstallerMembershipId: string | null;
+  leadInstallerLabel: string | null;
   createdAt: string;
   updatedAt: string;
   permissions: { canWrite: boolean };
+};
+
+export type InstallationMemberOption = {
+  membershipId: string;
+  label: string;
 };
 
 type InstallationRow = {
@@ -73,6 +82,8 @@ type InstallationRow = {
   handover_at: string | null;
   handover_by_name: string | null;
   handover_note: string | null;
+  lead_installer_membership_id: string | null;
+  lead_installer_label: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -95,6 +106,8 @@ function toDto(row: InstallationRow, canWrite: boolean): InstallationDto {
     handoverAt: row.handover_at,
     handoverByName: row.handover_by_name,
     handoverNote: row.handover_note,
+    leadInstallerMembershipId: row.lead_installer_membership_id,
+    leadInstallerLabel: row.lead_installer_label,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     permissions: { canWrite },
@@ -113,7 +126,9 @@ function requireWrite(ctx: ServiceCtx): void {
   }
 }
 
-const ROW_COLUMNS = sql`id, project_id, source, status, offer_id, variant_id, completed_at, handover_at, handover_by_name, handover_note, created_at, updated_at`;
+// F7-05 Slice 3: Label per korrelierter Subquery (auch in RETURNING
+// legal) — alle Lese-/Schreibpfade liefern das vollständige DTO.
+const ROW_COLUMNS = sql`id, project_id, source, status, offer_id, variant_id, lead_installer_membership_id, (select identity_record.email from membership membership_record join user_identity identity_record on identity_record.id = membership_record.user_id where membership_record.workspace_id = installation.workspace_id and membership_record.id = installation.lead_installer_membership_id) as lead_installer_label, completed_at, handover_at, handover_by_name, handover_note, created_at, updated_at`;
 
 export async function getInstallation(
   tx: TenantTx,
@@ -372,4 +387,89 @@ function postgresErrorCode(error: unknown): string | null {
     return typeof code === "string" ? code : null;
   }
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F7-05 Slice 3: Lead Installer (Installations-Ebene). Genau eine
+// Membership je Installation, NULL = nicht zugewiesen. Fremde Membership
+// → Validation (kein stiller Fallback); Löschen der Membership räumt per
+// FK SET NULL auf. Fail-closed ohne Orakel.
+// ═══════════════════════════════════════════════════════════════════════
+
+const setLeadInstallerCommandSchema = z.strictObject({
+  projectId: uuidSchema,
+  membershipId: uuidSchema.nullable(),
+});
+
+export async function listInstallerOptions(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<InstallationMemberOption[]> {
+  requireRead(ctx);
+  const result = await tx.execute<{ membership_id: string; label: string }>(sql`
+    select membership_record.id as membership_id, identity_record.email as label
+      from membership membership_record
+      join user_identity identity_record
+        on identity_record.id = membership_record.user_id
+     where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+     order by lower(identity_record.email), membership_record.id
+     limit 200
+  `);
+  return result.rows.map((row) => ({ membershipId: row.membership_id, label: row.label }));
+}
+
+export async function setLeadInstaller(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string; membershipId: string | null },
+): Promise<InstallationDto> {
+  requireWrite(ctx);
+  const parsed = setLeadInstallerCommandSchema.safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+
+  const current = await tx.execute<InstallationRow>(sql`
+    select ${ROW_COLUMNS} from installation
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${parsed.data.projectId}::uuid
+     for update
+  `);
+  if (!current.rows[0]) throw new InstallationNotFoundError(parsed.data.projectId);
+
+  if (parsed.data.membershipId !== null) {
+    const member = await tx.execute<{ id: string }>(sql`
+      select id from membership
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${parsed.data.membershipId!}::uuid
+       limit 1
+    `);
+    if (!member.rows[0]) throw new InstallationValidationError("unknown membership");
+  }
+
+  const updated = await tx.execute<InstallationRow>(sql`
+    update installation
+       set lead_installer_membership_id = ${parsed.data.membershipId}::uuid,
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${parsed.data.projectId}::uuid
+    returning ${ROW_COLUMNS}
+  `);
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "installation",
+    aggregateId: current.rows[0].id,
+    eventType: "installation.lead_installer_assigned",
+    actor: ctx.actor,
+    payload: { projectId: parsed.data.projectId, membershipId: parsed.data.membershipId },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "installation.assign_lead",
+    resource: "installation",
+    allowed: true,
+    details: { projectId: parsed.data.projectId, membershipId: parsed.data.membershipId },
+  });
+
+  return toDto(updated.rows[0]!, true);
 }

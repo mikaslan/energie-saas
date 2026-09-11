@@ -1,11 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
-import type { InstallationDto } from "@/modules/installations";
+import type { InstallationDto, InstallationMemberOption } from "@/modules/installations";
 import {
   completeInstallationAction,
   createInstallationAction,
   recordHandoverAction,
+  setLeadInstallerAction,
   type InstallationActionState,
 } from "./installation-actions";
 
@@ -58,19 +59,24 @@ export function InstallationSection({
   workspaceId,
   projectId,
   installation,
+  installerOptions,
   canWrite,
 }: {
   workspaceId: string;
   projectId: string;
   installation: InstallationDto | null;
+  installerOptions: InstallationMemberOption[];
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createInstallationAction, initialState);
   const [completeState, completeDispatch] = useActionState(completeInstallationAction, initialState);
   const [handoverState, handoverDispatch] = useActionState(recordHandoverAction, initialState);
-  const feedbackState = handoverState.status === "idle"
-    ? (completeState.status === "idle" ? createState : completeState)
-    : handoverState;
+  const [leadState, leadDispatch] = useActionState(setLeadInstallerAction, initialState);
+  const feedbackState = leadState.status === "idle"
+    ? (handoverState.status === "idle"
+      ? (completeState.status === "idle" ? createState : completeState)
+      : handoverState)
+    : leadState;
 
   return (
     <section aria-labelledby="project-installation-title" className="min-w-0">
@@ -120,6 +126,10 @@ export function InstallationSection({
               <dd>{formatDateTime(installation.completedAt)}</dd>
             </div>
           ) : null}
+          <div className="flex gap-2">
+            <dt className="font-semibold text-slate-800">Lead Installer:</dt>
+            <dd>{installation.leadInstallerLabel ?? "nicht zugewiesen"}</dd>
+          </div>
           {installation.handoverAt !== null ? (
             <>
               <div className="flex gap-2">
@@ -140,6 +150,35 @@ export function InstallationSection({
           ) : null}
         </dl>
       )}
+
+      {installation !== null && canWrite ? (
+        <form action={leadDispatch} className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-slate-950">Lead Installer zuweisen</h3>
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="projectId" value={projectId} />
+          <label className="mt-2 block">
+            <span className="block text-sm font-semibold text-slate-800">Mitglied</span>
+            <select
+              name="membershipId"
+              defaultValue={installation.leadInstallerMembershipId ?? ""}
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+            >
+              <option value="">— nicht zugewiesen —</option>
+              {installerOptions.map((option) => (
+                <option key={option.membershipId} value={option.membershipId}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="mt-3 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          >
+            Zuweisung speichern
+          </button>
+        </form>
+      ) : null}
 
       {installation !== null && installation.status === "active" ? (
         <div className="mt-3">

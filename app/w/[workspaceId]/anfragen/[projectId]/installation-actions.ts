@@ -11,6 +11,7 @@ import {
   InstallationNotFoundError,
   InstallationValidationError,
   recordHandover,
+  setLeadInstaller,
 } from "@/modules/installations";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -79,6 +80,38 @@ export async function completeInstallationAction(
 }
 
 // F7-05 Abnahme: Wer/Wann/Bemerkung an abgeschlossener Installation.
+// F7-05 Slice 3: Lead Installer setzen/leeren. Leerer Select-Wert gilt als
+// explizites Leeren (kein stiller Beibehalt); alles andere Ungültige → invalid.
+export async function setLeadInstallerAction(
+  _previous: InstallationActionState,
+  formData: FormData,
+): Promise<InstallationActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const memberValue = formData.get("membershipId");
+  if (typeof memberValue !== "string") return { status: "invalid" };
+  const trimmed = memberValue.trim();
+  const membershipId = trimmed === "" ? null : idSchema.safeParse(trimmed);
+  if (membershipId !== null && !membershipId.success) return { status: "invalid" };
+  try {
+    await authorizedAction(ids.workspaceId, "installation.write", "installation", (tx, ctx) =>
+      setLeadInstaller(tx, ctx, {
+        projectId: ids.projectId,
+        membershipId: membershipId === null ? null : membershipId.data,
+      }),
+    );
+    revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
+    return {
+      status: "success",
+      message: membershipId === null
+        ? "Lead-Zuordnung aufgehoben."
+        : "Lead Installer zugewiesen.",
+    };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
 export async function recordHandoverAction(
   _previous: InstallationActionState,
   formData: FormData,

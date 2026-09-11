@@ -1,6 +1,43 @@
 # F7-05 Plantafel (Ressourcen-Grid, Slice 1: Lesepfad)
 
-Status: **Slice 1+2 IMPLEMENTIERT/LOKAL VERIFIZIERT (Lesepfad + Anlage)** · Lane: `codex/m1-wave-02` · Stand 2026-09-11
+Status: **Slice 1–3 IMPLEMENTIERT/LOKAL VERIFIZIERT (Lesepfad + Anlage + Lead Installer)** · Lane: `codex/m1-wave-02` · Stand 2026-09-11
+
+## Slice 3: Lead Installer je Installation (Installations-Ebene)
+
+Katalog F7.5 verlangt zweistufige Zuweisung. Block-Ebene (mehrere Teams
+parallel) bleibt offen (keine Team-Entität — wie Kalender-`team_id`,
+M1-15b-Präzedenz). Diese Slice schließt die Installations-Ebene:
+genau ein Lead Installer (Membership, nullable) je Installation.
+
+## Datenmodell (Migration 0096, additiv)
+
+`installation.lead_installer_membership_id` (uuid, NULL = nicht
+zugewiesen), Composite-FK `(workspace_id, lead_installer_membership_id)`
+→ `membership(workspace_id, id)` ON DELETE SET NULL (Mitglied weg ≠
+Installation weg), Index auf `(workspace_id, lead_installer_membership_id)`.
+RLS bleibt Tabellen-RLS (keine neue Policy — Spalte, keine Tabelle).
+
+## Validierung (fail-closed)
+
+- Schreiben: `installation.write` (editor+, internalOnly); Lesen:
+  `installation.read` (bestehende Gates, keine neue Permission).
+- Membership fremd/leer/fehlend → Validation (kein stiller NULL-Fallback
+  bei gesetzter ID; explizites Leeren erlaubt).
+- Label (E-Mail) nur über bestehenden Read-Pfad (Join wie F9-Member-
+  Options); kein PII-Leak über den Write-Pfad hinaus.
+
+## Anzeige
+
+Installations-Block „Lead Installer": aktuelle Zuordnung (Label oder
+„nicht zugewiesen") + Select (Mitglieder) + Speichern (Server-Action,
+Revalidate, Feedback); Viewer read-only (canWrite aus DTO).
+
+## Akzeptanz
+
+- DB: setzen/lesen/leeren-Roundtrip, fremde Membership wirft
+  Validation, External/Viewer-Schreiben denied.
+- E2E: Editor weist zu → Label sichtbar; Viewer sieht Label ohne Formular.
+- Gates: migrate+tests grün, typecheck/lint/depcruise grün.
 
 ## Slice 2: Anlegen von der Tafel (Create-Pfad)
 

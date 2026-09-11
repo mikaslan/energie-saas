@@ -58,7 +58,7 @@ import {
   type AppointmentTemplateDto,
   type ProjectAppointmentRangeV1,
 } from "@/modules/calendar";
-import { getInstallation, type InstallationDto } from "@/modules/installations";
+import { getInstallation, listInstallerOptions, type InstallationDto, type InstallationMemberOption } from "@/modules/installations";
 import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
@@ -227,7 +227,7 @@ async function loadPortalStatus(
 }
 
 type InstallationLoadResult =
-  | { kind: "loaded"; installation: InstallationDto | null; canWrite: boolean }
+  | { kind: "loaded"; installation: InstallationDto | null; installerOptions: InstallationMemberOption[]; canWrite: boolean }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
@@ -278,7 +278,13 @@ async function loadInstallationStatus(
       "installation_write_gate",
       async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
     );
-    return { kind: "loaded", installation, canWrite: writable };
+    const installerOptions = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation_installer_options",
+      (tx, ctx) => listInstallerOptions(tx, ctx),
+    );
+    return { kind: "loaded", installation, installerOptions, canWrite: writable };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -940,6 +946,7 @@ export default async function ProjectTriagePage({
             workspaceId={workspaceId}
             projectId={projectId}
             installation={installationResult.installation}
+            installerOptions={installationResult.installerOptions}
             canWrite={installationResult.canWrite}
           />
         </div>

@@ -9,7 +9,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { workspace } from "./core";
+import { membership, workspace } from "./core";
 import { project } from "./project";
 
 // F7.1 Slice A: Ausführungsphase je Projekt (genau eine Zeile).
@@ -25,6 +25,9 @@ export const installation = pgTable(
     status: text("status").notNull(),
     offerId: uuid("offer_id"),
     variantId: uuid("variant_id"),
+    // F7-05 Slice 3: Lead Installer (Installations-Ebene), NULL = nicht
+    // zugewiesen; FK SET NULL (Mitglied weg ≠ Installation weg).
+    leadInstallerMembershipId: uuid("lead_installer_membership_id"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     // F7-05 Abnahme: NULL = nicht abgenommen; nur bei completed belegbar
     // (Service-Guard), korrigierbar via erneuter Abnahme.
@@ -38,6 +41,7 @@ export const installation = pgTable(
     uniqueIndex("installation_ws_id_uq").on(t.workspaceId, t.id),
     uniqueIndex("installation_ws_project_uq").on(t.workspaceId, t.projectId),
     index("installation_ws_status_idx").on(t.workspaceId, t.status),
+    index("installation_ws_lead_installer_idx").on(t.workspaceId, t.leadInstallerMembershipId),
     check("installation_source_ck", sql`${t.source} in ('direct', 'signature')`),
     check("installation_status_ck", sql`${t.status} in ('active', 'completed')`),
     check(
@@ -63,5 +67,10 @@ export const installation = pgTable(
       foreignColumns: [project.workspaceId, project.id],
       name: "installation_project_fk",
     }),
+    foreignKey({
+      columns: [t.workspaceId, t.leadInstallerMembershipId],
+      foreignColumns: [membership.workspaceId, membership.id],
+      name: "installation_lead_installer_membership_fk",
+    }).onDelete("set null"),
   ],
 );
