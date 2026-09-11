@@ -44,6 +44,7 @@ export * from "./planning";
 export * from "./service-case";
 export * from "./grid-registration";
 export * from "./file-request";
+export * from "./subsidy-case";
 export * from "./signatures";
 export * from "./site";
 export * from "./task-template";

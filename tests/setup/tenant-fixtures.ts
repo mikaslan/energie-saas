@@ -2344,6 +2344,15 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${wsId}::uuid, ${projectId}::uuid, 'F10-04 Fixture', ${userId}::uuid)
     `);
   },
+  // F13-03 (0105): Förderakte zu einem echten Projektgraphen.
+  subsidy_case: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`
+      insert into subsidy_case (workspace_id, project_id, created_by)
+      values (${wsId}::uuid, ${projectId}::uuid, ${userId}::uuid)
+    `);
+  },
   // F1-09 (0067): Mention-Zeile zu einer echten Notiz mit echter Identitaet.
   project_note_mention: async (tx, wsId) => {
     await fixtureProjectNoteGraph(tx, wsId);

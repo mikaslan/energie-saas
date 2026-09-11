@@ -15,6 +15,7 @@ import {
 } from "@/modules/catalog";
 import { listFileRequests } from "@/modules/file-requests";
 import { getGridRegistration } from "@/modules/grid-registration";
+import { getSubsidyCase } from "@/modules/subsidy-cases";
 import {
   getProjectAssignmentContext,
   getProjectFollowUp,
@@ -83,6 +84,7 @@ import { ProjectActivityPanel } from "./project-activity-panel";
 import { FollowUpSection } from "./follow-up-section";
 import { FileRequestSection } from "./file-request-section";
 import { GridRegistrationSection } from "./grid-registration-section";
+import { SubsidyCaseSection } from "./subsidy-case-section";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
 import { ProjectNotesSection } from "./project-notes-section";
 import { ProjectOutcomePanel } from "./project-outcome-panel";
@@ -783,6 +785,36 @@ export default async function ProjectTriagePage({
     redirectToProjectLogin(detailPath);
   }
 
+  // F13-03: Förderakte (eigene Sichtbarkeit wie Netzanmeldung).
+  const subsidyCaseResult = await (async (): Promise<
+    | { kind: "loaded"; subsidyCase: Awaited<ReturnType<typeof getSubsidyCase>>; canWrite: boolean }
+    | { kind: "unauthenticated" }
+    | { kind: "denied" }
+  > => {
+    try {
+      const subsidyCase = await authorizedQuery(
+        workspaceId,
+        "installation.read",
+        "subsidy_case",
+        (tx, ctx) => getSubsidyCase(tx, ctx, projectId),
+      );
+      const writable = await authorizedQuery(
+        workspaceId,
+        "installation.read",
+        "subsidy_case_write_gate",
+        async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
+      );
+      return { kind: "loaded", subsidyCase, canWrite: writable };
+    } catch (error) {
+      if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+      if (error instanceof PermissionDeniedError) return { kind: "denied" };
+      throw error;
+    }
+  })();
+  if (subsidyCaseResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+
   // F10-04: Datei-Anfragen (eigene Sichtbarkeit wie Netzanmeldung).
   const fileRequestResult = await (async (): Promise<
     | { kind: "loaded"; requests: Awaited<ReturnType<typeof listFileRequests>>; canWrite: boolean }
@@ -1073,6 +1105,17 @@ export default async function ProjectTriagePage({
               projectId={projectId}
               registration={gridRegistrationResult.registration}
               canWrite={gridRegistrationResult.canWrite}
+            />
+          </div>
+        ) : null}
+
+        {subsidyCaseResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <SubsidyCaseSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              subsidyCase={subsidyCaseResult.subsidyCase}
+              canWrite={subsidyCaseResult.canWrite}
             />
           </div>
         ) : null}

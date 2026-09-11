@@ -638,6 +638,11 @@ const GRID_REGISTRATION_RELATIONS = [
 const FILE_REQUEST_RELATIONS = [
   "file_request",
 ] as const;
+
+// F13-03 (0105): eigene Menge — Förderakte je Projekt (BzA/BnD-Maschine).
+const SUBSIDY_CASE_RELATIONS = [
+  "subsidy_case",
+] as const;
 const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
   "public._m301_actor_invoicing_role(uuid)",
   "public._m301_actor_can_read_invoicing(uuid)",
@@ -2941,6 +2946,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F13-03 (0105): eigene ACL-Menge — Anlage/Lesen/Schreiben, nie Löschen
+  // (Storno logisch über Status; Muster file_request).
+  const hasSubsidyCasesForAcl = await hasAtomicPublicRelationSet(
+    client,
+    SUBSIDY_CASE_RELATIONS,
+    "Rollen-ACL-Manifest: F13-03-Foerderakte",
+  );
+  if (hasSubsidyCasesForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.subsidy_case
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.subsidy_case to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -3970,6 +3992,12 @@ export async function verifyRoleContract(
     FILE_REQUEST_RELATIONS,
     "Rollenvertrag: F10-04-Datei-Anfragen",
   );
+  // F13-03 (0105): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben grün.
+  const hasSubsidyCases = await hasAtomicPublicRelationSet(
+    client,
+    SUBSIDY_CASE_RELATIONS,
+    "Rollenvertrag: F13-03-Foerderakte",
+  );
   // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
   // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
   // (Spaltenpaar atomar je Migration — Spaltenvertrag wie Relationen).
@@ -4390,6 +4418,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasFileRequests ? FILE_REQUEST_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasSubsidyCases ? SUBSIDY_CASE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
     ],
@@ -5595,6 +5626,9 @@ export async function verifyRoleContract(
       ...(hasFileRequests ? FILE_REQUEST_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasSubsidyCases ? SUBSIDY_CASE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -5866,6 +5900,10 @@ export async function verifyRoleContract(
         ...(hasFileRequests ? [
         "file_request:tenant_isolation:" +
           "f23005a0430a26d2b9bb54b7a102d9222eea861e2ef740e5dc4b33b45e7e143c",
+        ] : []),
+        ...(hasSubsidyCases ? [
+        "subsidy_case:tenant_isolation:" +
+          "976746c20c04861d368c8d243dad70fed153a2869cd44aded2ea4a4a6f9dc4ef",
         ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
@@ -6556,6 +6594,12 @@ export async function verifyRoleContract(
       ]) : []),
       // F10-04: Anlage/Lesen/Schreiben, nie Löschen.
       ...(hasFileRequests ? FILE_REQUEST_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      // F13-03: Anlage/Lesen/Schreiben, nie Löschen.
+      ...(hasSubsidyCases ? SUBSIDY_CASE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
