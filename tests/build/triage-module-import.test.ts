@@ -72,6 +72,7 @@ describe("M1-05 Modulgrenzen", () => {
       "correctProjectSiteAddress",
       "createManualLead",
       "getClosureTrendStats",
+      "getConversionFunnelStats",
       "getProjectAddressCorrectionContext",
       "getProjectAssignmentContext",
       "getProjectFollowUp",
