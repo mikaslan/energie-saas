@@ -941,6 +941,7 @@ function addBerlinDays(day: string, offset: number): string {
 
 type PlanningBoardSourceRow = {
   id: string;
+  revision: number;
   title: string;
   start_berlin: string;
   end_berlin: string;
@@ -952,6 +953,8 @@ type PlanningBoardSourceRow = {
   project_id: string;
   project_name: string;
   calendar_name: string | null;
+  team_id: string | null;
+  team_name: string | null;
   membership_id: string | null;
 };
 
@@ -981,6 +984,7 @@ export async function getPlanningBoard(
   // Actor-Gate + Kalender-Maskierung (Name null statt Zeile weg).
   const appointments = await tx.execute<PlanningBoardSourceRow>(sql`
     select appointment_record.id,
+           appointment_record.revision,
            appointment_record.title,
            to_char(
              appointment_record.start_at at time zone 'Europe/Berlin',
@@ -998,6 +1002,8 @@ export async function getPlanningBoard(
            appointment_record.project_id,
            project_record.name as project_name,
            calendar_record.name as calendar_name,
+           appointment_record.team_id,
+           team_record.name as team_name,
            attendee_record.membership_id
       from project_appointment appointment_record
       join project project_record
@@ -1007,6 +1013,9 @@ export async function getPlanningBoard(
         on calendar_record.workspace_id = appointment_record.workspace_id
        and calendar_record.id = appointment_record.calendar_id
        and ${calendarVisibleFragment(ctx)}
+      left join team team_record
+        on team_record.workspace_id = appointment_record.workspace_id
+       and team_record.id = appointment_record.team_id
       left join project_appointment_attendee attendee_record
         on attendee_record.workspace_id = appointment_record.workspace_id
        and attendee_record.appointment_id = appointment_record.id
@@ -1021,6 +1030,7 @@ export async function getPlanningBoard(
 
   const entryOf = (row: PlanningBoardSourceRow) => ({
     id: row.id,
+    revision: row.revision,
     title: row.title,
     start: row.start_berlin,
     end: row.end_berlin,
@@ -1030,6 +1040,11 @@ export async function getPlanningBoard(
     projectId: row.project_id,
     projectName: row.project_name,
     calendarName: row.calendar_name,
+    // F7-06: Team-Bindung je Eintrag (archivierte Teams bleiben lesbar;
+    // der FK verhindert verwaiste IDs, SET NULL beim Archiv gibt es nicht —
+    // Archiv blendet nur aus Dropdowns aus).
+    teamId: row.team_id,
+    teamName: row.team_name,
   });
   type BoardEntry = ReturnType<typeof entryOf>;
 

@@ -13,7 +13,9 @@ import {
   type PlanningBoardProjectOption,
 } from "@/modules/calendar";
 import { AppointmentValidationError } from "@/modules/calendar";
+import { listTeamOptions, type TeamOption } from "@/modules/teams";
 import { DeniedState } from "../_ui";
+import { PlanningBoardAssignForm } from "./planning-board-assign-form";
 import { PlanningBoardCreateForm } from "./planning-board-create-form";
 
 export const metadata: Metadata = {
@@ -127,6 +129,7 @@ export default async function PlanningBoardPage(
   let board: PlanningBoardDto;
   let calendars: CalendarItemV1[];
   let projectOptions: PlanningBoardProjectOption[];
+  let teams: TeamOption[];
   let canWrite = false;
   try {
     const loaded = await authorizedQuery(
@@ -135,8 +138,8 @@ export default async function PlanningBoardPage(
       "planning_board",
       async (tx, ctx) => {
         const loadedBoard = await getPlanningBoard(tx, ctx, { weekStart: monday });
-        // Kalender-/Projektlisten sind eigene Grants: fehlt einer, bleibt
-        // das Board lesbar und nur das Anlegen ehrlich deaktiviert.
+        // Kalender-/Projekt-/Teamlisten sind eigene Grants: fehlt einer,
+        // bleibt das Board lesbar und nur die jeweilige Steuerung entfällt.
         const loadedCalendars = await listVisibleCalendars(tx, ctx).catch((error: unknown) => {
           if (error instanceof PermissionDeniedError) return [];
           throw error;
@@ -145,10 +148,15 @@ export default async function PlanningBoardPage(
           if (error instanceof PermissionDeniedError) return [];
           throw error;
         });
+        const loadedTeams = await listTeamOptions(tx, ctx).catch((error: unknown) => {
+          if (error instanceof PermissionDeniedError) return [];
+          throw error;
+        });
         return {
           board: loadedBoard,
           calendars: loadedCalendars,
           projectOptions: loadedOptions,
+          teams: loadedTeams,
           canWrite: can(ctx, "appointment.write"),
         };
       },
@@ -156,6 +164,7 @@ export default async function PlanningBoardPage(
     board = loaded.board;
     calendars = loaded.calendars;
     projectOptions = loaded.projectOptions;
+    teams = loaded.teams;
     canWrite = loaded.canWrite;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
@@ -195,8 +204,9 @@ export default async function PlanningBoardPage(
         <p className="text-sm text-slate-500">Ressourcen-Übersicht</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Plantafel</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Termine der Woche je Mitglied. Team-Gruppierung folgt mit dem
-          Team-Slice; bis dahin eine Gruppe.
+          Termine der Woche je Mitglied. Einträge tragen ihr Team als Chip;
+          Zuweisung im Detail oder bei Anlage. Team-Zeilengruppierung folgt
+          mit F7-07.
         </p>
 
         <nav aria-label="Woche wählen" className="mt-4 flex flex-wrap items-center gap-3">
@@ -259,12 +269,20 @@ export default async function PlanningBoardPage(
                                 <Link
                                   href={`${basePath}?week=${board.weekStart}&event=${entry.id}`}
                                   className="block rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-900 hover:bg-blue-100"
-                                  title={`${entry.title} (${entry.projectName})`}
+                                  title={`${entry.title} (${entry.projectName})${entry.teamName ? ` — Team ${entry.teamName}` : ""}`}
                                 >
                                   <span className="font-semibold">
                                     {entry.allDay ? "Ganztägig" : wallTime(entry.start)}
                                   </span>{" "}
                                   <span>{entry.title}</span>
+                                  {entry.teamName !== null && (
+                                    <span
+                                      data-testid={`planning-board-team-chip-${entry.id}`}
+                                      className="ml-1 inline-block rounded bg-emerald-100 px-1 font-semibold text-emerald-900"
+                                    >
+                                      {entry.teamName}
+                                    </span>
+                                  )}
                                 </Link>
                               </li>
                             ))}
@@ -298,6 +316,7 @@ export default async function PlanningBoardPage(
             memberLabel={createRow!.label}
             projects={projectOptions}
             calendars={calendars}
+            teams={teams}
             cancelHref={`${basePath}?week=${board.weekStart}`}
           />
         )}
@@ -340,7 +359,26 @@ export default async function PlanningBoardPage(
                     <dt className="font-medium text-slate-500">Zugeordnet:</dt>
                     <dd className="text-slate-900">{selected.row.label}</dd>
                   </div>
+                  <div className="flex gap-2">
+                    <dt className="font-medium text-slate-500">Team:</dt>
+                    <dd className="text-slate-900" data-testid="planning-board-drawer-team">
+                      {selected.entry.teamName ?? "Ohne Team"}
+                    </dd>
+                  </div>
                 </dl>
+                {canWrite && (teams.length > 0 || selected.entry.teamId !== null) && (
+                  <PlanningBoardAssignForm
+                    workspaceId={workspaceId}
+                    projectId={selected.entry.projectId}
+                    appointmentId={selected.entry.id}
+                    revision={selected.entry.revision}
+                    start={selected.entry.start}
+                    end={selected.entry.end}
+                    currentTeamId={selected.entry.teamId}
+                    currentTeamName={selected.entry.teamName}
+                    teams={teams}
+                  />
+                )}
                 <p className="mt-3 text-sm">
                   <Link
                     href={`/w/${workspaceId}/anfragen/${selected.entry.projectId}`}

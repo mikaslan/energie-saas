@@ -8,6 +8,7 @@ import {
   PROJECT_APPOINTMENT_MAX_ATTENDEES,
   appointmentErrorCodeSchema,
   calendarCategoryItemV1Schema,
+  planningBoardEntrySchema,
   projectAppointmentCommandV1Schema,
   projectAppointmentItemV1Schema,
   projectAppointmentRangeV1Schema,
@@ -219,6 +220,35 @@ describe("M1-15 minimierte DTOs", () => {
       id: "11111111-1111-4111-8111-111111111111",
       name: "x".repeat(CALENDAR_CATEGORY_NAME_MAX_LENGTH + 1),
       order: 0,
+    }).success).toBe(false);
+  });
+
+  // F7-06: Board-Eintrag trägt Team-Bindung + Revision (CAS-Zuweisung).
+  it("planning-board-entry.v1 trägt Team und Revision, verbietet Fremdfelder", () => {
+    const valid = {
+      id: "11111111-1111-4111-8111-111111111111",
+      revision: 2,
+      title: "Montage",
+      start: "2026-09-08T10:00",
+      end: "2026-09-08T11:00",
+      allDay: false,
+      location: null,
+      type: "installation",
+      projectId: "11111111-1111-4111-8111-111111111111",
+      projectName: "Projekt",
+      calendarName: null,
+      teamId: "22222222-2222-4222-8222-222222222222",
+      teamName: "Dispo-Team",
+    };
+    expect(planningBoardEntrySchema.safeParse(valid).success).toBe(true);
+    expect(planningBoardEntrySchema.safeParse({
+      ...valid,
+      teamId: null,
+      teamName: null,
+    }).success).toBe(true);
+    expect(planningBoardEntrySchema.safeParse({
+      ...valid,
+      workspace_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     }).success).toBe(false);
   });
 

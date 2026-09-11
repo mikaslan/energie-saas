@@ -9,6 +9,7 @@ import {
   AppointmentNotFoundError,
   AppointmentValidationError,
   executeProjectAppointmentCommand,
+  listProjectAppointments,
   PROJECT_APPOINTMENT_COMMAND_VERSION,
 } from "@/modules/calendar";
 
@@ -67,6 +68,12 @@ export async function createPlanningBoardEntryAction(
   const type = z.enum(["on_site", "phone", "installation", "maintenance", "consultation", "other"])
     .safeParse(formData.get("type"));
   const location = text(formData.get("location"));
+  // F7-06: optionale Team-Bindung bei Anlage (leer = ohne Team; unbekannt/
+  // fremd/archiviert lehnt der F1-12-Service-Guard als Validation ab).
+  const rawTeam = formData.get("teamId");
+  const teamId = rawTeam === "" || rawTeam === null || rawTeam === undefined
+    ? { success: true as const, data: null as string | null }
+    : uuidSchema.safeParse(rawTeam);
   if (
     !workspaceId.success
     || !projectId.success
@@ -79,6 +86,7 @@ export async function createPlanningBoardEntryAction(
     || title.length > 2000
     || !type.success
     || (location !== null && location.length > 2000)
+    || !teamId.success
   ) {
     return { status: "invalid" };
   }
@@ -100,8 +108,7 @@ export async function createPlanningBoardEntryAction(
         description: null,
         calendarId: calendarId.data,
         attendeeMembershipIds: [memberId.data],
-        // F1-12: Plantafel-Termine ohne Team (Blockzuweisung Folge-Slice).
-        teamId: null,
+        teamId: teamId.data,
       }),
     );
   } catch (error) {
@@ -109,4 +116,92 @@ export async function createPlanningBoardEntryAction(
   }
   revalidatePath(`/w/${workspaceId.data}/plantafel`);
   return { status: "success", message: "Termin angelegt — er steht in der Tafelwoche." };
+}
+
+export type PlanningBoardAssignState =
+  | { status: "idle" }
+  | { status: "success"; message: string }
+  | { status: "invalid" }
+  | { status: "conflict" }
+  | { status: "not_found" }
+  | { status: "denied" }
+  | { status: "unauthenticated" };
+
+// F7-06 Team-Blockzuweisung: Team je Tafeleintrag setzen/entziehen.
+// Läuft über update_appointment mit Voll-Resend des aktuellen Stands +
+// Revision-CAS (kein direkter Feldschrieb): Fremd/archiviert/unbekannt
+// lehnt der F1-12-Service-Guard als Validation ab (kein Orakel).
+export async function assignPlanningBoardEntryTeamAction(
+  _previous: PlanningBoardAssignState,
+  formData: FormData,
+): Promise<PlanningBoardAssignState> {
+  const workspaceId = workspaceIdSchema.safeParse(formData.get("workspaceId"));
+  const projectId = uuidSchema.safeParse(formData.get("projectId"));
+  const appointmentId = uuidSchema.safeParse(formData.get("appointmentId"));
+  const expectedRevision = z.coerce.number().int().min(1).safeParse(formData.get("revision"));
+  const startWall = z.string().min(1).safeParse(formData.get("start"));
+  const endWall = z.string().min(1).safeParse(formData.get("end"));
+  const rawTeam = formData.get("teamId");
+  const teamId = rawTeam === "" || rawTeam === null
+    ? { success: true as const, data: null as string | null }
+    : uuidSchema.safeParse(rawTeam);
+  if (
+    !workspaceId.success
+    || !projectId.success
+    || !appointmentId.success
+    || !expectedRevision.success
+    || !startWall.success
+    || !endWall.success
+    || !teamId.success
+  ) {
+    return { status: "invalid" };
+  }
+  try {
+    const assigned = await authorizedAction(
+      workspaceId.data,
+      "appointment.write",
+      "planning_board_assign_team",
+      async (tx, ctx) => {
+        const range = await listProjectAppointments(tx, ctx, projectId.data, {
+          rangeStart: startWall.data,
+          rangeEnd: endWall.data,
+          view: "week",
+        });
+        const current = range?.items.find((item) => item.id === appointmentId.data) ?? null;
+        if (current === null) throw new AppointmentNotFoundError();
+        return executeProjectAppointmentCommand(tx, ctx, {
+          schemaVersion: PROJECT_APPOINTMENT_COMMAND_VERSION,
+          kind: "update_appointment",
+          projectId: projectId.data,
+          appointmentId: appointmentId.data,
+          expectedRevision: expectedRevision.data,
+          title: current.title,
+          start: current.start,
+          end: current.end,
+          allDay: current.allDay,
+          type: current.type,
+          location: current.location,
+          description: current.description,
+          attendeeMembershipIds: current.attendees.map((attendee) => attendee.membershipId),
+          calendarId: current.calendarId,
+          teamId: teamId.data,
+        });
+      },
+    );
+    void assigned;
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof AppointmentNotFoundError) return { status: "not_found" };
+    if (error instanceof AppointmentConflictError) return { status: "conflict" };
+    if (error instanceof AppointmentValidationError) return { status: "invalid" };
+    throw error;
+  }
+  revalidatePath(`/w/${workspaceId.data}/plantafel`);
+  return {
+    status: "success",
+    message: teamId.data === null
+      ? "Team entzogen — der Eintrag steht ohne Team in der Tafelwoche."
+      : "Team zugewiesen — der Eintrag trägt das Team in der Tafelwoche.",
+  };
 }

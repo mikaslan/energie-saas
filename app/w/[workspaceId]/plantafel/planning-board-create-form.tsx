@@ -5,6 +5,7 @@ import type {
   CalendarItemV1,
   PlanningBoardProjectOption,
 } from "@/modules/calendar";
+import type { TeamOption } from "@/modules/teams";
 import {
   createPlanningBoardEntryAction,
   type PlanningBoardCreateState,
@@ -47,6 +48,7 @@ export function PlanningBoardCreateForm({
   memberLabel,
   projects,
   calendars,
+  teams,
   cancelHref,
 }: {
   workspaceId: string;
@@ -55,6 +57,7 @@ export function PlanningBoardCreateForm({
   memberLabel: string;
   projects: PlanningBoardProjectOption[];
   calendars: CalendarItemV1[];
+  teams: TeamOption[];
   cancelHref: string;
 }) {
   const [state, dispatch] = useActionState(createPlanningBoardEntryAction, initialState);
@@ -109,6 +112,15 @@ export function PlanningBoardCreateForm({
             <select name="type" required defaultValue="on_site" className={inputClass}>
               {TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            Team (optional)
+            <select name="teamId" defaultValue="" className={inputClass}>
+              <option value="">Ohne Team</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>{team.name}</option>
               ))}
             </select>
           </label>

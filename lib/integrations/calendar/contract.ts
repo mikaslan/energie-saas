@@ -316,6 +316,7 @@ export const planningBoardQuerySchema = z.strictObject({
 
 export const planningBoardEntrySchema = z.strictObject({
   id: canonicalUuidSchema,
+  revision: revisionSchema,
   title: z.string().min(1).max(APPOINTMENT_TITLE_MAX_LENGTH),
   start: z.string().min(1),
   end: z.string().min(1),
@@ -326,6 +327,10 @@ export const planningBoardEntrySchema = z.strictObject({
   projectName: z.string().min(1),
   // Maskierungs-Präzedenz projectAppointmentItemV1: unsichtbare Kalender → null.
   calendarName: z.string().min(1).max(200).nullable(),
+  // F7-06: Team-Bindung je Eintrag (null = ohne Team; Name wie attendees
+  // projiziert) + Revision für die CAS-Zuweisung vom Board.
+  teamId: canonicalUuidSchema.nullable(),
+  teamName: z.string().min(1).max(TEAM_NAME_MAX).nullable(),
 });
 
 export const planningBoardDayCellSchema = z.strictObject({
