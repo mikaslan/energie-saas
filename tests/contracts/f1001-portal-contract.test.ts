@@ -91,7 +91,7 @@ describe("F10.1 portal command contracts", () => {
       inviteId: INVITE,
       expiresAt: "2026-10-01T00:00:00.000Z",
       viewCount: 2,
-      project: { id: PROJECT, name: "P", phase: "offer", outcome: "open" },
+      project: { id: PROJECT, name: "P", phase: "offer", outcome: "open", scope: "residential" },
       documents: [{
         id: INVITE,
         offerNumber: "A-1",
@@ -125,7 +125,7 @@ describe("F10.1 portal command contracts", () => {
       inviteId: INVITE,
       expiresAt: "2026-10-01T00:00:00.000Z",
       viewCount: 0,
-      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open" },
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
       documents: [],
       appointments: [],
     };
@@ -137,10 +137,12 @@ describe("F10.1 portal command contracts", () => {
         handoverAt: null,
       },
     });
+    // F10-03b: fehlender Schlüssel = Alt-Projektion → ehrlich leer.
     expect(completed?.installation).toEqual({
       status: "completed",
       completedAt: "2026-09-08T10:00:00.000Z",
       handoverAt: null,
+      timeline: [],
     });
     // Namen/Notizen gehören nicht in die Projektion.
     expect(parsePortalPublicView({

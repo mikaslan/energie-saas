@@ -111,7 +111,11 @@ const portalProjectSchema = z.strictObject({
   name: z.string(),
   phase: z.string(),
   outcome: z.string(),
+  // F10-03c: Bereich des Projekt-Boards (0098). Katalog F10.3: kein
+  // Preis-/Signatur-Bereich im Commercial-Portal.
+  scope: z.enum(["residential", "commercial"]),
 });
+export type PortalProjectScope = z.infer<typeof portalProjectSchema>["scope"];
 
 // F10.2 Slice A: Projektermine ohne Freitext-Beschreibung (Privacy:
 // description ist intern und wird nie projiziert).
@@ -166,6 +170,8 @@ const portalResolveOkSchema = z.strictObject({
     name: z.string(),
     phase: z.string(),
     outcome: z.string(),
+    // F10-03c: wie portalProjectSchema (strikter Resolver-Parse).
+    scope: z.enum(["residential", "commercial"]),
   }),
   documents: z.array(z.strictObject({
     id: z.uuid(),
@@ -278,13 +284,17 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     if (timeline === null) return null;
     installation = { status: status.data, completedAt, handoverAt, timeline };
   }
+  // F10-03c: Katalog F10.3 — kein Preis-/Signatur-Bereich im
+  // Commercial-Portal. Strip nach striktem Parse (deformierte Dokumente
+  // brechen weiter fail-closed ab, auch bei scope commercial).
+  const commercialScope = parsed.data.project.scope === "commercial";
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,
     inviteId: parsed.data.inviteId,
     expiresAt,
     viewCount,
     project: parsed.data.project,
-    documents,
+    documents: commercialScope ? [] : documents,
     appointments,
     installation,
   };

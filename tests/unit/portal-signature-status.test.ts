@@ -15,6 +15,8 @@ function viewWithDocument(doc: Record<string, unknown>) {
       name: "F10.2B",
       phase: "offer",
       outcome: "open",
+      // F10-03c: scope ist Pflicht im Resolver-Contract.
+      scope: "residential",
     },
     documents: [doc],
     appointments: [],

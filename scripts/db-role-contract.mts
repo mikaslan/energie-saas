@@ -3787,6 +3787,11 @@ export async function verifyRoleContract(
   const hasPortalTimelineProjection = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("installation_timeline"),
   );
+  // F10-03c (0098): Stufenmarker für project.scope im Portal-Resolver
+  // (Muster 0097: Marker wählt den exakten Pin, kein Selbstabgleich).
+  const hasPortalProjectScope = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("portal_project_scope"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -4941,15 +4946,17 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
-        // F10-03/F10-03b: Stufenauswahl 0062/0091/0097 per Marker
-        // (Prefix ≤0075 trägt den alten Rumpf; ein vierter Rumpf bricht
-        // fail-closed über den Hashvergleich).
+        // F10-03/F10-03b/F10-03c: Stufenauswahl 0062/0091/0097/0098
+        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein fünfter
+        // Rumpf bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          `search_path=pg_catalog:${hasPortalTimelineProjection
-            ? "35ffdd10b8c2f042a07e7561dadb038e3f7910e5165fadaf91d8f84cc911f070"
-            : hasPortalInstallationProjection
-              ? "af8c1ae0aaa03b4a875f98cc1deba12f58ed1505439d80d1fa81da7c8bb675e6"
-              : "6d025bff7eee1e267019a81fe77730c139fc3c7a5e94cf9dd9c54541fbc4be57"}`,
+          `search_path=pg_catalog:${hasPortalProjectScope
+            ? "ab1b3a77a5d583fc64d3e654f4500bc8ddcdadce47fa03a5e384e8fc52b6d73f"
+            : hasPortalTimelineProjection
+              ? "35ffdd10b8c2f042a07e7561dadb038e3f7910e5165fadaf91d8f84cc911f070"
+              : hasPortalInstallationProjection
+                ? "af8c1ae0aaa03b4a875f98cc1deba12f58ed1505439d80d1fa81da7c8bb675e6"
+                : "6d025bff7eee1e267019a81fe77730c139fc3c7a5e94cf9dd9c54541fbc4be57"}`,
       ] : []),
       "apply_catalog_component_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:d26213c16cfaba904d4aef47136bf4324b1b3ab089ac822bfe09b8397ce8e456",

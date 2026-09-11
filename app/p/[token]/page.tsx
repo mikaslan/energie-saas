@@ -199,25 +199,29 @@ export default async function PortalTokenPage({
                 <dd>{nextStep}</dd>
               </div>
             </dl>
-            <h2 className="mt-6 text-lg font-semibold text-slate-950">Dokumente</h2>
-            {view.documents.length === 0 ? (
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Aktuell liegen keine freigegebenen Dokumente vor.
-              </p>
-            ) : (
-              <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
-                {view.documents.map((doc) => (
-                  <li key={doc.id} className="flex items-center justify-between gap-4 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-800">
-                      Angebot {doc.offerNumber}
-                      <span className="block text-xs font-normal text-slate-500">
-                        {formatSignatureStatus(doc.signatureStatus, doc.signedAt)}
-                      </span>
-                    </span>
-                    <span className="text-sm text-slate-500">{doc.documentDate}</span>
-                  </li>
-                ))}
-              </ul>
+            {view.project.scope === "commercial" ? null : (
+              <>
+                <h2 className="mt-6 text-lg font-semibold text-slate-950">Dokumente</h2>
+                {view.documents.length === 0 ? (
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Aktuell liegen keine freigegebenen Dokumente vor.
+                  </p>
+                ) : (
+                  <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
+                    {view.documents.map((doc) => (
+                      <li key={doc.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                        <span className="text-sm font-medium text-slate-800">
+                          Angebot {doc.offerNumber}
+                          <span className="block text-xs font-normal text-slate-500">
+                            {formatSignatureStatus(doc.signatureStatus, doc.signedAt)}
+                          </span>
+                        </span>
+                        <span className="text-sm text-slate-500">{doc.documentDate}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </>
         )}
