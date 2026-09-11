@@ -193,16 +193,19 @@ test("F13-08-E2E-01: Wärmepumpen-Vorschlag übernehmen speichert BAFA", async (
   const projectId = detailUrl.match(/\/anfragen\/([0-9a-f-]+)$/u)?.[1] ?? "";
   expect(projectId).toMatch(/^[0-9a-f-]+$/u);
 
-  // 1) Ohne Rechner-Signale: ehrlich kein Vorschlag.
+  // 1) Ohne Rechner-Signale: ehrlich kein Vorschlag, keine Vorauswahl.
   await page.getByTestId("subsidy-case-create").click();
   await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
   await expect(page.getByTestId("subsidy-suggestion-text")).toContainText("Kein Programm-Vorschlag");
   await expect(page.getByTestId("subsidy-suggestion-apply")).toHaveCount(0);
+  await expect(page.getByTestId("subsidy-case-program")).toHaveValue("");
 
-  // 2) Mit Wärmepumpen-Snapshot: Vorschlag BAFA mit Begründung.
+  // 2) Mit Wärmepumpen-Snapshot: Vorschlag BAFA mit Begründung plus
+  // Programmvorauswahl im Angaben-Formular.
   await seedHeatPumpSnapshot(workspaceId, projectId);
   await page.reload();
   await expect(page.getByTestId("subsidy-suggestion-text")).toContainText("BAFA");
+  await expect(page.getByTestId("subsidy-case-program")).toHaveValue("bafa");
   await expect(page.getByTestId("subsidy-suggestion-text")).toContainText("Wärmepumpe");
   await expect(page.getByTestId("subsidy-suggestion-text")).toContainText("f13-08-suggest.v1");
 

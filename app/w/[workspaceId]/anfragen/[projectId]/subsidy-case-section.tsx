@@ -154,7 +154,10 @@ export function SubsidyCaseSection({
                   Programm
                   <select
                     name="program"
-                    defaultValue={subsidyCase.program ?? ""}
+                    defaultValue={
+                      subsidyCase.program
+                        ?? (suggestion.outcome === "suggested" ? suggestion.program : "")
+                    }
                     data-testid="subsidy-case-program"
                     className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
                   >
