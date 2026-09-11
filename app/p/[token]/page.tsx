@@ -5,6 +5,10 @@ import { notFound } from "next/navigation";
 import { publicTokenCapsule } from "@/lib/action";
 import { derivePortalNextStep } from "@/lib/integrations/portal/portal-contract";
 import { PortalNotFoundError, resolvePortalByToken } from "@/modules/portal";
+import {
+  SUBSIDY_CASE_PROGRAM_LABEL,
+  SUBSIDY_CASE_STATUS_LABEL,
+} from "@/modules/subsidy-cases";
 
 export const metadata: Metadata = {
   title: "Kundenportal",
@@ -278,6 +282,22 @@ export default async function PortalTokenPage({
                 <dd>{nextStep}</dd>
               </div>
             </dl>
+            {view.subsidy === null ? null : (
+              <div className="mt-6" data-testid="portal-subsidy-section">
+                <h2 className="text-lg font-semibold text-slate-950">Förderung</h2>
+                <dl className="mt-2 space-y-2 text-sm leading-6 text-slate-600">
+                  <div className="flex gap-2">
+                    <dt className="font-semibold text-slate-800">Stand:</dt>
+                    <dd data-testid="portal-subsidy-status">
+                      {SUBSIDY_CASE_STATUS_LABEL[view.subsidy.status]}
+                      {view.subsidy.program
+                        ? ` (${SUBSIDY_CASE_PROGRAM_LABEL[view.subsidy.program]})`
+                        : ""}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            )}
             {view.project.scope === "commercial" ? null : (
               <>
                 <h2 className="mt-6 text-lg font-semibold text-slate-950">Dokumente</h2>

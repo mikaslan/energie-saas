@@ -160,6 +160,26 @@ const portalInstallationSchema = z.strictObject({
 });
 export type PortalInstallation = z.infer<typeof portalInstallationSchema>;
 
+// F13-04: Förderstand (nur Stand/Programm/Phasen-Daten — nie
+// BzA-Nummer/interne Akteure).
+export const portalSubsidySchema = z.strictObject({
+  status: z.enum([
+    "vorbereitung",
+    "bza_eingereicht",
+    "korrektur",
+    "bza_bewilligt",
+    "bnd_eingereicht",
+    "abgeschlossen",
+    "storniert",
+  ]),
+  program: z.enum(["kfw", "bafa", "sonstige"]).nullable(),
+  bzaSubmittedAt: z.iso.datetime({ offset: true }).nullable(),
+  bzaApprovedAt: z.iso.datetime({ offset: true }).nullable(),
+  bndSubmittedAt: z.iso.datetime({ offset: true }).nullable(),
+  completedAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type PortalSubsidy = z.infer<typeof portalSubsidySchema>;
+
 export const portalPublicViewV1Schema = z.strictObject({
   schemaVersion: z.literal(PORTAL_PUBLIC_VIEW_VERSION),
   inviteId: z.uuid(),
@@ -170,6 +190,7 @@ export const portalPublicViewV1Schema = z.strictObject({
   appointments: z.array(portalAppointmentSchema),
   installation: portalInstallationSchema.nullable(),
   fileRequests: z.array(portalFileRequestSchema),
+  subsidy: portalSubsidySchema.nullable(),
 });
 
 export type PortalPublicViewV1 = z.infer<typeof portalPublicViewV1Schema>;
@@ -208,6 +229,8 @@ const portalResolveOkSchema = z.strictObject({
   installation: z.unknown().optional(),
   // F10-04: optional — alte Projektionen ohne Schlüssel parsen wie leer.
   fileRequests: z.unknown().optional(),
+  // F13-04: optional — alte Projektionen ohne Schlüssel parsen wie null.
+  subsidy: z.unknown().optional(),
 });
 
 // Parst das DEFINER-Resultat; 'not_found' (unbekannt/deformiert/entzogen/
@@ -344,6 +367,48 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       });
     }
   }
+  // F13-04: Förderstand — Allowlist wie Installation (F10-03-Muster);
+  // fehlend = Alt-Projektion → ehrlich null.
+  let subsidy: PortalPublicViewV1["subsidy"] = null;
+  if (parsed.data.subsidy !== undefined && parsed.data.subsidy !== null) {
+    const raw = parsed.data.subsidy;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+    const record = raw as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (
+        key !== "status" && key !== "program" &&
+        key !== "bzaSubmittedAt" && key !== "bzaApprovedAt" &&
+        key !== "bndSubmittedAt" && key !== "completedAt"
+      ) {
+        return null;
+      }
+    }
+    const status = portalSubsidySchema.shape.status.safeParse(record.status);
+    if (!status.success) return null;
+    if (record.program !== null) {
+      const program = portalSubsidySchema.shape.program.safeParse(record.program);
+      if (!program.success) return null;
+    }
+    const stamps: Record<string, string | null> = {};
+    for (const key of ["bzaSubmittedAt", "bzaApprovedAt", "bndSubmittedAt", "completedAt"]) {
+      const value = record[key];
+      if (value === null) {
+        stamps[key] = null;
+        continue;
+      }
+      const instant = toInstant(value);
+      if (instant === null) return null;
+      stamps[key] = instant;
+    }
+    subsidy = {
+      status: status.data,
+      program: record.program as PortalSubsidy["program"],
+      bzaSubmittedAt: stamps.bzaSubmittedAt,
+      bzaApprovedAt: stamps.bzaApprovedAt,
+      bndSubmittedAt: stamps.bndSubmittedAt,
+      completedAt: stamps.completedAt,
+    };
+  }
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,
     inviteId: parsed.data.inviteId,
@@ -354,5 +419,6 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     appointments,
     installation,
     fileRequests,
+    subsidy,
   };
 }

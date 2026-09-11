@@ -156,4 +156,50 @@ describe("F10.1 portal command contracts", () => {
       ...base, installation: { status: "flying", completedAt: null, handoverAt: null },
     })).toBeNull();
   });
+
+  it("parst Förderstand, fehlend = null, BzA-Nummer/fremde Schlüssel = null", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
+      documents: [],
+      appointments: [],
+    };
+    // Alt-Projektion ohne Schlüssel → ehrlich null.
+    expect(parsePortalPublicView(base)?.subsidy).toBeNull();
+    const shown = parsePortalPublicView({
+      ...base,
+      subsidy: {
+        status: "bza_bewilligt",
+        program: "kfw",
+        bzaSubmittedAt: "2026-09-01T10:00:00.000Z",
+        bzaApprovedAt: "2026-09-05T10:00:00.000Z",
+        bndSubmittedAt: null,
+        completedAt: null,
+      },
+    });
+    expect(shown?.subsidy).toEqual({
+      status: "bza_bewilligt",
+      program: "kfw",
+      bzaSubmittedAt: "2026-09-01T10:00:00.000Z",
+      bzaApprovedAt: "2026-09-05T10:00:00.000Z",
+      bndSubmittedAt: null,
+      completedAt: null,
+    });
+    // BzA-Nummer ist interne Referenz und bricht fail-closed ab.
+    expect(parsePortalPublicView({
+      ...base,
+      subsidy: {
+        status: "bza_bewilligt", program: "kfw",
+        bzaSubmittedAt: null, bzaApprovedAt: null,
+        bndSubmittedAt: null, completedAt: null,
+        bzaNumber: "BZA-1",
+      },
+    })).toBeNull();
+    expect(parsePortalPublicView({
+      ...base, subsidy: { status: "bewilligt", program: null },
+    })).toBeNull();
+  });
 });

@@ -3902,6 +3902,11 @@ export async function verifyRoleContract(
   const hasPortalFileRequests = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("file_request_list"),
   );
+  // F13-04 (0106): Stufenmarker für subsidy im Portal-Resolver
+  // (Muster 0104).
+  const hasPortalSubsidy = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("subsidy_entry"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -5096,11 +5101,14 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
-        // F10-03/F10-03b/F10-03c/F10-04: Stufenauswahl 0062/0091/0097/0098/0104
-        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein sechster
-        // Rumpf bricht fail-closed über den Hashvergleich).
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04: Stufenauswahl
+        // 0062/0091/0097/0098/0104/0106 per Marker (Prefix ≤0075 trägt
+        // den alten Rumpf; ein siebter Rumpf bricht fail-closed über
+        // den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          `search_path=pg_catalog:${hasPortalFileRequests
+          `search_path=pg_catalog:${hasPortalSubsidy
+            ? "10c209ccafe20609000840cdd21e1df1c413aea36f0e0f5e46ea0c917e95e6a7"
+            : hasPortalFileRequests
             ? "9c0925b21e85598889bea3db4b26902b27c098ccffd76fba85aa257902a6e743"
             : hasPortalProjectScope
             ? "ab1b3a77a5d583fc64d3e654f4500bc8ddcdadce47fa03a5e384e8fc52b6d73f"

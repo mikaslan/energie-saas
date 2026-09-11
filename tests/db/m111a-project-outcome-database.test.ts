@@ -204,10 +204,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0098 F10-03c Commercial-Scope, 0099 F1-05a Column-Grants,
     // 0100 F1-05b Conversion-Ratio, 0101 F1-06 Follow-up,
     // 0102 F8-05 Teilrechnung, 0103 F13-02 Netzanmeldung,
-    // 0104 F10-04 Datei-Anfragen, 0105 F13-03 Foerderakte).
+    // 0104 F10-04 Datei-Anfragen, 0105 F13-03 Foerderakte,
+    // 0106 F13-04 Portal-Foerderstand).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 105,
-      tag: "0105_f13_03_foerderservice",
+      idx: 106,
+      tag: "0106_f13_04_portal_foerderstand",
     });
   });
 

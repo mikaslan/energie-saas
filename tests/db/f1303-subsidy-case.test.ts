@@ -16,6 +16,8 @@ import {
   transitionSubsidyCase,
 } from "@/modules/subsidy-cases";
 import { createManualLead } from "@/modules/projects/manual-lead-service";
+import { createPortalInvite, resolvePortalByToken } from "@/modules/portal";
+import { PORTAL_INVITE_CREATE_VERSION } from "@/lib/integrations/portal/portal-contract";
 import { testPool } from "../setup/test-db";
 
 type Fixture = { workspaceId: string; editorId: string; viewerId: string };
@@ -119,6 +121,32 @@ describe("F13-03 Förderakte (PostgreSQL)", () => {
         transitionSubsidyCase(tx, ctx, { projectId, status: "bza_eingereicht" })),
     ).rejects.toBeInstanceOf(SubsidyCaseValidationError);
     expect(nextSubsidyCaseStatuses("abgeschlossen")).toEqual([]);
+  });
+
+  it("F1304-DB-01: Portal-Projektion zeigt Förderstand ohne BzA-Nummer", async () => {
+    const projectId = await seedProject(fixture);
+    await asEditor(fixture, (tx, ctx) => ensureSubsidyCase(tx, ctx, projectId));
+    await asEditor(fixture, (tx, ctx) => setSubsidyCaseDetails(tx, ctx, {
+      projectId, program: "bafa", bzaNumber: "BZA-INTERN-9",
+    }));
+    await asEditor(fixture, (tx, ctx) =>
+      transitionSubsidyCase(tx, ctx, { projectId, status: "bza_eingereicht" }));
+    const created = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId, (tx, ctx) =>
+        createPortalInvite(tx, ctx, {
+          schemaVersion: PORTAL_INVITE_CREATE_VERSION,
+          workspaceId: fixture.workspaceId,
+          projectId,
+          ttlDays: 14,
+        }),
+    );
+    const view = await resolvePortalByToken(testPool, { token: created.token });
+    expect(view.subsidy).toMatchObject({ status: "bza_eingereicht", program: "bafa" });
+    expect(view.subsidy?.bzaSubmittedAt).not.toBeNull();
+    // Interne Referenz tritt nie ins Portal aus.
+    expect(JSON.stringify(view)).not.toContain("BZA-INTERN-9");
+    expect(JSON.stringify(view)).not.toContain("bza_number");
+    expect(JSON.stringify(view)).not.toContain("bzaNumber");
   });
 
   it("F1303-DB-03: Validation, NotFound ohne Orakel, Viewer-denied, Tenant-Isolation", async () => {
