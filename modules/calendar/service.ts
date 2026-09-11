@@ -9,10 +9,15 @@ import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   calendarItemV1Schema,
+  PLANNING_BOARD_MAX_ROWS,
+  PLANNING_BOARD_VERSION,
+  planningBoardDtoSchema,
+  planningBoardQuerySchema,
   projectAppointmentCommandV1Schema,
   projectAppointmentItemV1Schema,
   projectAppointmentRangeV1Schema,
   type CalendarItemV1,
+  type PlanningBoardDto,
   type ProjectAppointmentCommandV1,
   type ProjectAppointmentCommandResult,
   type ProjectAppointmentRangeV1,
@@ -862,5 +867,181 @@ export async function archiveCalendar(
     resource: "calendar",
     allowed: true,
     details: { calendarId, archived: true },
+  });
+}
+
+// F7-05 Plantafel (Slice 1, Lesepfad): Wochengrid je Membership.
+// Datumsmathematik läuft über einen Mittags-UTC-Anker (Berlin +1/+2 →
+// derselbe Kalendertag), daher DST-sicher ohne Zeitzonen-Tabelle in TS.
+const BERLIN_WEEKDAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Europe/Berlin",
+  weekday: "short",
+});
+
+const MONDAY_BASED_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+function berlinMondayOf(day: string): string {
+  const [year, month, date] = day.split("-").map(Number);
+  const anchorMs = Date.UTC(year!, month! - 1, date!, 12);
+  const weekday = BERLIN_WEEKDAY_FORMATTER.format(new Date(anchorMs));
+  const sinceMonday = MONDAY_BASED_WEEKDAYS.indexOf(
+    weekday as (typeof MONDAY_BASED_WEEKDAYS)[number],
+  );
+  if (sinceMonday < 0) throw new AppointmentValidationError();
+  return new Date(anchorMs - sinceMonday * 86_400_000).toISOString().slice(0, 10);
+}
+
+function addBerlinDays(day: string, offset: number): string {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(Date.UTC(year!, month! - 1, date!, 12) + offset * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+type PlanningBoardSourceRow = {
+  id: string;
+  title: string;
+  start_berlin: string;
+  end_berlin: string;
+  start_day: string;
+  end_day: string;
+  all_day: boolean;
+  location: string | null;
+  appointment_type: string;
+  project_id: string;
+  project_name: string;
+  calendar_name: string | null;
+  membership_id: string | null;
+};
+
+export async function getPlanningBoard(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { weekStart: string },
+): Promise<PlanningBoardDto> {
+  requireAppointmentRead(ctx);
+  const parsed = planningBoardQuerySchema.safeParse(query);
+  if (!parsed.success) throw new AppointmentValidationError();
+  const monday = berlinMondayOf(parsed.data.weekStart);
+  const days = Array.from({ length: 7 }, (_, index) => addBerlinDays(monday, index));
+  const weekEnd = days[6]!;
+
+  const members = await tx.execute<{ membership_id: string; label: string }>(sql`
+    select membership_record.id as membership_id, identity_record.email as label
+      from membership membership_record
+      join user_identity identity_record
+        on identity_record.id = membership_record.user_id
+     where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+     order by lower(identity_record.email), membership_record.id
+     limit ${PLANNING_BOARD_MAX_ROWS}
+  `);
+
+  // Sichtbarkeit je Termin exakt wie listUpcomingAppointments (M1-15b):
+  // Actor-Gate + Kalender-Maskierung (Name null statt Zeile weg).
+  const appointments = await tx.execute<PlanningBoardSourceRow>(sql`
+    select appointment_record.id,
+           appointment_record.title,
+           to_char(
+             appointment_record.start_at at time zone 'Europe/Berlin',
+             ${BERLIN_TIMESTAMP}
+           ) as start_berlin,
+           to_char(
+             appointment_record.end_at at time zone 'Europe/Berlin',
+             ${BERLIN_TIMESTAMP}
+           ) as end_berlin,
+           (appointment_record.start_at at time zone 'Europe/Berlin')::date::text as start_day,
+           (appointment_record.end_at at time zone 'Europe/Berlin')::date::text as end_day,
+           appointment_record.all_day,
+           appointment_record.location,
+           appointment_record.appointment_type,
+           appointment_record.project_id,
+           project_record.name as project_name,
+           calendar_record.name as calendar_name,
+           attendee_record.membership_id
+      from project_appointment appointment_record
+      join project project_record
+        on project_record.workspace_id = appointment_record.workspace_id
+       and project_record.id = appointment_record.project_id
+      left join calendar calendar_record
+        on calendar_record.workspace_id = appointment_record.workspace_id
+       and calendar_record.id = appointment_record.calendar_id
+       and ${calendarVisibleFragment(ctx)}
+      left join project_appointment_attendee attendee_record
+        on attendee_record.workspace_id = appointment_record.workspace_id
+       and attendee_record.appointment_id = appointment_record.id
+     where appointment_record.workspace_id = ${ctx.workspaceId}::uuid
+       and public._m115_actor_can_read_appointments(appointment_record.workspace_id)
+       and (appointment_record.start_at at time zone 'Europe/Berlin')::date <= ${weekEnd}::date
+       and (appointment_record.end_at at time zone 'Europe/Berlin')::date >= ${monday}::date
+     order by appointment_record.start_at asc,
+              appointment_record.end_at asc,
+              appointment_record.id asc
+  `);
+
+  const entryOf = (row: PlanningBoardSourceRow) => ({
+    id: row.id,
+    title: row.title,
+    start: row.start_berlin,
+    end: row.end_berlin,
+    allDay: row.all_day,
+    location: row.location,
+    type: row.appointment_type,
+    projectId: row.project_id,
+    projectName: row.project_name,
+    calendarName: row.calendar_name,
+  });
+  type BoardEntry = ReturnType<typeof entryOf>;
+
+  const emptyDays = () => days.map((date) => ({ date, entries: [] as BoardEntry[] }));
+  const place = (
+    cells: { date: string; entries: BoardEntry[] }[],
+    row: PlanningBoardSourceRow,
+  ): void => {
+    for (const cell of cells) {
+      if (row.start_day <= cell.date && cell.date <= row.end_day) {
+        if (!cell.entries.some((entry) => entry.id === row.id)) {
+          cell.entries.push(entryOf(row));
+        }
+      }
+    }
+  };
+
+  const byMember = new Map<string, { date: string; entries: BoardEntry[] }[]>();
+  for (const member of members.rows) {
+    byMember.set(member.membership_id, emptyDays());
+  }
+  const unassigned = emptyDays();
+  let hasUnassigned = false;
+  for (const row of appointments.rows) {
+    if (row.membership_id === null) {
+      hasUnassigned = true;
+      place(unassigned, row);
+      continue;
+    }
+    const cells = byMember.get(row.membership_id);
+    // Attendee ohne sichtbare Membership-Zeile (Limit 200): kein stiller
+    // Verlust — fällt in die Sammelzeile.
+    if (!cells) {
+      hasUnassigned = true;
+      place(unassigned, row);
+      continue;
+    }
+    place(cells, row);
+  }
+
+  const rows: { membershipId: string | null; label: string; days: { date: string; entries: BoardEntry[] }[] }[] =
+    members.rows.map((member) => ({
+      membershipId: member.membership_id as string,
+      label: member.label,
+      days: byMember.get(member.membership_id)!,
+    }));
+  if (hasUnassigned) {
+    rows.push({ membershipId: null, label: "Ohne Zuordnung", days: unassigned });
+  }
+  return planningBoardDtoSchema.parse({
+    schemaVersion: PLANNING_BOARD_VERSION,
+    weekStart: monday,
+    weekEnd,
+    rows,
   });
 }

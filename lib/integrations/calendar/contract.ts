@@ -282,3 +282,60 @@ export const projectAppointmentRangeV1Schema = z.strictObject({
 export type ProjectAppointmentRangeV1 = z.infer<
   typeof projectAppointmentRangeV1Schema
 >;
+
+// F7-05 Plantafel (Slice 1, Lesepfad): Wochengrid je Membership aus
+// bestehenden Terminen. Versioniert; keine neuen Grants (appointment.read).
+export const PLANNING_BOARD_VERSION = "planning-board.v1" as const;
+export const PLANNING_BOARD_MAX_ROWS = 200 as const;
+
+const planningBoardDaySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/u, { message: "kein Kalendertag" })
+  .refine((v) => {
+    const [year, month, day] = v.split("-").map(Number);
+    const probe = new Date(Date.UTC(year!, month! - 1, day!));
+    return probe.getUTCFullYear() === year
+      && probe.getUTCMonth() === month! - 1
+      && probe.getUTCDate() === day;
+  }, { message: "ungültiges Datum" });
+
+export const planningBoardQuerySchema = z.strictObject({
+  // Beliebiger Tag der Woche; der Service normalisiert auf Montag (Berlin).
+  weekStart: planningBoardDaySchema,
+});
+
+export const planningBoardEntrySchema = z.strictObject({
+  id: canonicalUuidSchema,
+  title: z.string().min(1).max(APPOINTMENT_TITLE_MAX_LENGTH),
+  start: z.string().min(1),
+  end: z.string().min(1),
+  allDay: z.boolean(),
+  location: z.string().max(APPOINTMENT_LOCATION_MAX_LENGTH).nullable(),
+  type: typeSchema,
+  projectId: canonicalUuidSchema,
+  projectName: z.string().min(1),
+  // Maskierungs-Präzedenz projectAppointmentItemV1: unsichtbare Kalender → null.
+  calendarName: z.string().min(1).max(200).nullable(),
+});
+
+export const planningBoardDayCellSchema = z.strictObject({
+  date: planningBoardDaySchema,
+  entries: z.array(planningBoardEntrySchema),
+});
+
+export const planningBoardRowSchema = z.strictObject({
+  // membershipId null = Sammelzeile „Ohne Zuordnung" (Termine ohne Attendees).
+  membershipId: canonicalUuidSchema.nullable(),
+  label: z.string().min(1),
+  days: z.array(planningBoardDayCellSchema).length(7),
+});
+
+export const planningBoardDtoSchema = z.strictObject({
+  schemaVersion: z.literal(PLANNING_BOARD_VERSION),
+  weekStart: planningBoardDaySchema,
+  weekEnd: planningBoardDaySchema,
+  rows: z.array(planningBoardRowSchema).max(PLANNING_BOARD_MAX_ROWS + 1),
+});
+
+export type PlanningBoardDto = z.infer<typeof planningBoardDtoSchema>;
+export type PlanningBoardQuery = z.infer<typeof planningBoardQuerySchema>;
