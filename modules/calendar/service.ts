@@ -1,5 +1,8 @@
-import "server-only";
-
+// Hinweis: KEIN "server-only"-Import — konsistent mit Tasks-/Time-Modulen:
+// Die Client-Kette (appointment-calendar-section → appointment-actions →
+// Modul-Barrel) muss unter Vitest ladbar bleiben; "server-only" würde die
+// ganze Hydration-Suite bereits beim Import abbrechen. Server-Grenze bleibt
+// durch Server-Actions/Routen gewahrt (kein direkter Client-Service-Import).
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";

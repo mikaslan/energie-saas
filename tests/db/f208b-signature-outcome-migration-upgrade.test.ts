@@ -321,7 +321,21 @@ describe.sequential("F2.8b Signaturakzeptanz Migration-Upgrade", () => {
         );
       });
 
-      await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
+      // Upgrade in zwei Commits (Produktions-Treue): 0076-Nachzug zuerst.
+      // drizzle-migrate() bündelt alle ausstehenden Migrationen in EINER
+      // Transaktion; der 0076-Backfill (UPDATE project) hinterlässt sonst
+      // pending Events des deferred Integritäts-Triggers, an denen der
+      // spätere ALTER TABLE project (0101 follow_up_at) derselben
+      // Transaktion scheitert („pending trigger events"). Reale Deployments
+      // committeten je Stand — ein 0075→HEAD-Einzelsprung kam nie vor.
+      // Keine Abschwächung: alle Nachweise unten laufen gegen HEAD.
+      const prefix76 = migrationPrefixThrough(F208B_MIGRATION_INDEX);
+      try {
+        await migrate(drizzle(pool), { migrationsFolder: prefix76 });
+        await migrate(drizzle(pool), { migrationsFolder: resolve("drizzle") });
+      } finally {
+        rmSync(prefix76, { recursive: true, force: true });
+      }
       const after = await acceptance(pool, workspaceId);
       expect(after).toMatchObject({
         requestId: before.requestId,

@@ -20,7 +20,10 @@ describe("M1-11a Project-Outcome Portalvertrag", () => {
       expect(page).toContain("/anfragen/abgeschlossen");
     }
     expect(openPage).toContain('<Link\n            aria-current="page"');
-    expect(openPage).toContain('href={`/w/${validWorkspaceId}/anfragen`}');
+    // F1-06 erhält Filter in der Navigation: der Offen-Selbstlink ist
+    // filterparametrisiert, die Basis bleibt die offene Anfragenliste.
+    expect(openPage).toContain("href={boardHref(scope, scoreBand, followUpFilter)}");
+    expect(openPage).toContain("`/w/${validWorkspaceId}/anfragen${query");
     expect(closedPage).toContain(
       '<Link aria-current="page" href={`/w/${workspaceId}/anfragen/abgeschlossen`}',
     );
