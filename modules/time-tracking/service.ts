@@ -535,33 +535,72 @@ async function upsertTimeEntry(
     }
   }
 
+  // F11-03b Replay-Guard: bekannter clientKey → Bestand zurückgeben,
+  // ohne Events/Audits zu duplizieren (Offline-Replay ist sicher).
+  async function findTimeEntryByClientKey(
+    projectId: string,
+    clientKey: string,
+  ): Promise<TimeEntryRow | null> {
+    const found = await tx.execute<TimeEntryRow>(sql`
+      select id, user_id, project_id, type_id, start_at, end_at,
+             start_lat, start_lng,
+             working_time_minutes, break_duration_minutes, comment,
+             archived_at, approved_at, approved_by, created_at, updated_at,
+             ${billedExistsClause(ctx.workspaceId)}
+        from time_entry
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and project_id = ${projectId}::uuid
+         and client_key = ${clientKey}::uuid
+         and archived_at is null
+       limit 1
+    `);
+    return found.rows[0] ?? null;
+  }
+
   let rows: TimeEntryRow[];
   try {
     if (mode === "create") {
       const create = command as CreateTimeEntryCommand;
-      const inserted = await tx.execute<TimeEntryRow>(sql`
-        insert into time_entry (
-          workspace_id, user_id, project_id, type_id, start_at, end_at,
-          working_time_minutes, break_duration_minutes, comment, created_by
-        ) values (
-          ${ctx.workspaceId}::uuid,
-          ${ctx.actor}::uuid,
-          ${create.projectId}::uuid,
-          ${fields.typeId ?? null}::uuid,
-          ${new Date(fields.startAt).toISOString()}::timestamptz,
-          ${new Date(fields.endAt).toISOString()}::timestamptz,
-          ${fields.workingTimeMinutes},
-          ${fields.breakDurationMinutes},
-          ${fields.comment},
-          ${ctx.actor}::uuid
-        )
-        returning id, user_id, project_id, type_id, start_at, end_at,
-                  start_lat, start_lng,
-                  working_time_minutes, break_duration_minutes, comment,
-                  archived_at, approved_at, approved_by, created_at, updated_at,
-                  ${billedExistsClause(ctx.workspaceId)}
-      `);
-      rows = inserted.rows;
+      if (create.clientKey !== undefined) {
+        const known = await findTimeEntryByClientKey(create.projectId, create.clientKey);
+        if (known) return toTimeEntryDto(known, true);
+      }
+      try {
+        const inserted = await tx.execute<TimeEntryRow>(sql`
+          insert into time_entry (
+            workspace_id, user_id, project_id, type_id, start_at, end_at,
+            working_time_minutes, break_duration_minutes, comment, created_by,
+            client_key
+          ) values (
+            ${ctx.workspaceId}::uuid,
+            ${ctx.actor}::uuid,
+            ${create.projectId}::uuid,
+            ${fields.typeId ?? null}::uuid,
+            ${new Date(fields.startAt).toISOString()}::timestamptz,
+            ${new Date(fields.endAt).toISOString()}::timestamptz,
+            ${fields.workingTimeMinutes},
+            ${fields.breakDurationMinutes},
+            ${fields.comment},
+            ${ctx.actor}::uuid,
+            ${create.clientKey ?? null}::uuid
+          )
+          returning id, user_id, project_id, type_id, start_at, end_at,
+                    start_lat, start_lng,
+                    working_time_minutes, break_duration_minutes, comment,
+                    archived_at, approved_at, approved_by, created_at, updated_at,
+                    ${billedExistsClause(ctx.workspaceId)}
+        `);
+        rows = inserted.rows;
+      } catch (error) {
+        // Race zweier Replays: Unique-Verletzung → Bestand liefern.
+        // (Trifft die 23505 den Laufzeit-Unique statt client_key, findet
+        // die Nachsuche nichts und der Fehler fällt unten durch.)
+        if (create.clientKey !== undefined && postgresErrorCode(error) === "23505") {
+          const raced = await findTimeEntryByClientKey(create.projectId, create.clientKey);
+          if (raced) return toTimeEntryDto(raced, true);
+        }
+        throw error;
+      }
     } else {
       const update = command as UpdateTimeEntryCommand;
       // F9.4 Slice B: VOR dem UPDATE das Vorher-Bild als immutable Revision

@@ -30,6 +30,7 @@ import { sql } from "drizzle-orm";
 import { DeniedState } from "../_ui";
 import { BillingRunSection } from "./billing-run-section";
 import { TimeEntryManager } from "./time-entry-manager";
+import { TimeOutboxSync } from "./time-outbox-sync";
 
 export const metadata: Metadata = {
   title: "Zeiterfassung | Energie-SaaS",
@@ -256,6 +257,12 @@ export default async function ProjectTimeTrackingPage(
         members={result.members}
         revisionsByEntry={result.revisionsByEntry}
         utilization={result.utilization}
+        canWrite={result.canWrite}
+      />
+
+      <TimeOutboxSync
+        workspaceId={workspaceId}
+        projectId={projectId}
         canWrite={result.canWrite}
       />
 

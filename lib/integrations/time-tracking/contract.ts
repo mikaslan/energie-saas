@@ -212,6 +212,9 @@ export const createTimeEntryCommandSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
   projectId: z.string().uuid(),
   fields: timeEntryUpsertFieldsSchema,
+  // F11-03b: optionaler Idempotenz-Schlüssel für Offline-Replay
+  // (je Entwurf genau einmal vergeben; fehlt = klassischer Pfad).
+  clientKey: z.string().uuid().optional(),
 });
 export type CreateTimeEntryCommand = z.infer<typeof createTimeEntryCommandSchema>;
 

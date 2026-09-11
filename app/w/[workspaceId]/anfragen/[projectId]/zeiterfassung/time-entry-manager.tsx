@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   TimeEntryDto,
   TimeEntryListDto,
@@ -24,6 +24,7 @@ import {
   type TimeEntryActionState,
 } from "./actions";
 import type { BreakSegmentDto } from "@/modules/time-tracking";
+import { enqueueTimeCreate } from "./time-outbox";
 
 const initialState: TimeEntryActionState = { status: "idle" };
 
@@ -168,6 +169,58 @@ export function TimeEntryManager({
     typeId !== null ? types.find((type) => type.id === typeId && type.archivedAt !== null) : undefined;
 
   const runningEntry = list.entries.find((entry) => entry.running);
+
+  // F11-03b: Offline-Anlage manueller Einträge in die Zeit-Outbox.
+  const createFormRef = useRef<HTMLFormElement | null>(null);
+  const [queueing, setQueueing] = useState(false);
+  const [queueError, setQueueError] = useState(false);
+  const [offlineNotice, setOfflineNotice] = useState("");
+
+  async function submitCreate(event: FormEvent<HTMLFormElement>) {
+    // Online: Idempotenz-Schlüssel je Absendung mitgeben (Replay-Guard).
+    if (typeof navigator === "undefined" || navigator.onLine) {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      formData.set("clientKey", crypto.randomUUID());
+      createDispatch(formData);
+      return;
+    }
+    // Offline: Entwurf in die Outbox statt Fehlschlag. Nur Anlage
+    // (Stoppuhr/Pausen/Bearbeitungen brauchen den Server-Stand).
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const text = (name: string): string => {
+      const value = data.get(name);
+      return typeof value === "string" ? value : "";
+    };
+    const startAt = text("startAt");
+    const endAt = text("endAt");
+    const workingTimeMinutes = Number(text("workingTimeMinutes"));
+    const breakDurationMinutes = Number(text("breakDurationMinutes"));
+    const rawComment = text("comment").trim();
+    setQueueing(true);
+    setQueueError(false);
+    try {
+      await enqueueTimeCreate({
+        clientKey: crypto.randomUUID(),
+        workspaceId,
+        projectId,
+        typeId: text("typeId") === "" ? null : text("typeId"),
+        startAt,
+        endAt,
+        workingTimeMinutes,
+        breakDurationMinutes,
+        comment: rawComment === "" ? null : text("comment"),
+        queuedAt: new Date().toISOString(),
+      });
+      setOfflineNotice("Offline gespeichert. Der Zeiteintrag wird synchronisiert, sobald du wieder online bist.");
+      createFormRef.current?.reset();
+    } catch {
+      setQueueError(true);
+    } finally {
+      setQueueing(false);
+    }
+  }
 
   const memberLabel = (userId: string): string =>
     members.find((member) => member.userId === userId)?.label ?? "Unbekannt";
@@ -405,7 +458,7 @@ export function TimeEntryManager({
             Du hast Lesezugriff. Zum Erfassen brauchst du Editor-Rechte.
           </p>
         ) : (
-          <form action={createDispatch}>
+          <form ref={createFormRef} onSubmit={(event) => void submitCreate(event)}>
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <input type="hidden" name="projectId" value={projectId} />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -441,13 +494,22 @@ export function TimeEntryManager({
             </div>
 
             <Feedback state={createState} />
+            {offlineNotice !== "" ? (
+              <p role="status" className="mt-3 text-sm font-semibold text-green-700">{offlineNotice}</p>
+            ) : null}
+            {queueError ? (
+              <p role="alert" className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                Offline-Speichern ist fehlgeschlagen (Browser-Speicher blockiert). Notiere die Zeiten und erfasse sie online erneut.
+              </p>
+            ) : null}
 
             <div className="mt-5">
               <button
                 type="submit"
-                className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                disabled={queueing}
+                className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
               >
-                Erfassen
+                {queueing ? "Wird gespeichert …" : "Erfassen"}
               </button>
             </div>
           </form>

@@ -57,6 +57,16 @@ function parseId(formData: FormData, key: string): string | null {
   return parsed.success ? parsed.data : null;
 }
 
+// F11-03b: optionaler Idempotenz-Schlüssel (je Entwurf genau einmal
+// vergeben). Fehlt = klassischer Pfad; unförmig = invalid (fail-closed).
+function parseOptionalClientKey(formData: FormData): string | undefined | null {
+  const value = formData.get("clientKey");
+  if (value === null) return undefined;
+  if (typeof value !== "string") return null;
+  const parsed = uuidSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 function parseMinutes(value: FormDataEntryValue | null): number | null {
   if (typeof value !== "string" || value.trim() === "") return null;
   const parsed = Number(value);
@@ -141,12 +151,14 @@ export async function createTimeEntryAction(
   const workspace = parseWorkspace(formData);
   const projectId = parseId(formData, "projectId");
   const fields = parseFields(formData);
-  if (!workspace || !projectId || !fields) return { status: "invalid" };
+  const clientKey = parseOptionalClientKey(formData);
+  if (!workspace || !projectId || !fields || clientKey === null) return { status: "invalid" };
 
   const command: CreateTimeEntryCommand = {
     schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
     projectId,
     fields,
+    ...(clientKey === undefined ? {} : { clientKey }),
   };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>

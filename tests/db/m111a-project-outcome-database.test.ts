@@ -207,10 +207,12 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0104 F10-04 Datei-Anfragen, 0105 F13-03 Foerderakte,
     // 0106 F13-04 Portal-Foerderstand,
     // 0107 F13-06 Service-Portal-Rueckmeldung,
-    // 0108 F13-07 BnD-Beleg-Upload).
+    // 0108 F13-07 BnD-Beleg-Upload, 0109 F13-09 Portal-Netzstand,
+    // 0110 F16-07 Datei-Anfragen-Vorlagen, 0111 F11-03a Notiz-Outbox,
+    // 0112 F11-03b Zeit-Outbox).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 108,
-      tag: "0108_f13_07_bnd_beleg_upload",
+      idx: 112,
+      tag: "0112_f11_03b_time_client_key",
     });
   });
 

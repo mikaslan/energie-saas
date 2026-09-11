@@ -71,6 +71,9 @@ export const timeEntry = pgTable(
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     approvedBy: uuid("approved_by"),
     createdBy: uuid("created_by").notNull(),
+    // F11-03b: Idempotenz-Schlüssel für Offline-Replay (clientseitig je
+    // Entwurf genau einmal vergeben; NULL = klassischer Pfad).
+    clientKey: uuid("client_key"),
     updatedBy: uuid("updated_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -78,6 +81,9 @@ export const timeEntry = pgTable(
   (t) => [
     index("time_entry_ws_project_idx").on(t.workspaceId, t.projectId, t.startAt),
     unique("time_entry_ws_id_uq").on(t.workspaceId, t.id),
+    // Mehrere NULL-Schlüssel bleiben zulässig (klassischer Pfad);
+    // vergebene Schlüssel sind je Mandant eindeutig (Replay-Guard).
+    unique("time_entry_ws_client_key_uq").on(t.workspaceId, t.clientKey),
     check("time_entry_running_ck", sql`(${t.endAt} is null and ${t.workingTimeMinutes} is null) or (${t.endAt} is not null and ${t.workingTimeMinutes} is not null)`),
     check("time_entry_interval_ck", sql`(${t.endAt} is null or ${t.endAt} >= ${t.startAt}) and pg_catalog.isfinite(${t.startAt}) and (${t.endAt} is null or pg_catalog.isfinite(${t.endAt}))`),
     check("time_entry_minutes_ck", sql`${t.workingTimeMinutes} is null or ${t.workingTimeMinutes} between 0 and 1440`),
