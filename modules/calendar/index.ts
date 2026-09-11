@@ -62,6 +62,7 @@ export {
 } from "./errors";
 export {
   archiveCalendar,
+  createTeamCalendar,
   createTenancyCalendar,
   ensurePersonalCalendar,
   executeProjectAppointmentCommand,

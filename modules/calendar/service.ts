@@ -39,7 +39,8 @@ const BERLIN_TIMESTAMP = 'YYYY-MM-DD"T"HH24:MI:SS.MS';
 
 // M1-15b §7 Sichtbarkeit (Kimi-P3-1: ein Fragment statt drei Kopien):
 // tenancy für alle internen Rollen, user für Owner (Membership des Actors)
-// + Admin, client nie. Aktive-Kalender-Filter bleibt Aufrufersache.
+// + Admin, team für Mitglieder des Teams + Admin, client nie.
+// Aktive-Kalender-Filter bleibt Aufrufersache.
 function calendarVisibleFragment(ctx: ServiceCtx) {
   return sql`
     calendar_record.calendar_type <> 'client'
@@ -53,6 +54,22 @@ function calendarVisibleFragment(ctx: ServiceCtx) {
            where membership_record.workspace_id = ${ctx.workspaceId}::uuid
              and membership_record.user_id = ${ctx.actor}::uuid
            limit 1
+        )
+      )
+      or (
+        calendar_record.calendar_type = 'team'
+        and exists (
+          select 1
+            from team_member member_record
+           where member_record.workspace_id = ${ctx.workspaceId}::uuid
+             and member_record.team_id = calendar_record.team_id
+             and member_record.membership_id = (
+               select membership_record.id
+                 from membership membership_record
+                where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+                  and membership_record.user_id = ${ctx.actor}::uuid
+                limit 1
+             )
         )
       )
       or ${ctx.role === "admin"}
@@ -86,6 +103,8 @@ type CalendarRow = {
   calendar_type: string;
   category_id: string | null;
   category_name: string | null;
+  team_id: string | null;
+  team_name: string | null;
   [key: string]: unknown;
 };
 
@@ -636,11 +655,16 @@ export async function listProjectAppointments(
            calendar_record.color,
            calendar_record.calendar_type,
            calendar_record.category_id,
-           category_record.name as category_name
+           category_record.name as category_name,
+           calendar_record.team_id,
+           team_record.name as team_name
       from calendar calendar_record
       left join calendar_category category_record
         on category_record.workspace_id = calendar_record.workspace_id
        and category_record.id = calendar_record.category_id
+      left join team team_record
+        on team_record.workspace_id = calendar_record.workspace_id
+       and team_record.id = calendar_record.team_id
      where calendar_record.workspace_id = ${ctx.workspaceId}::uuid
        and calendar_record.active = true
        and ${calendarVisibleFragment(ctx)}
@@ -702,6 +726,9 @@ export async function listProjectAppointments(
       type: row.calendar_type,
       categoryId: row.category_id,
       categoryName: row.category_name,
+      // F1-13: nur type team belegt (JOIN sonst null).
+      teamId: row.team_id,
+      teamName: row.team_name,
     })),
     members: members.rows.map((row) => ({
       membershipId: row.membershipId,
@@ -742,11 +769,16 @@ export async function listVisibleCalendars(
            calendar_record.color,
            calendar_record.calendar_type,
            calendar_record.category_id,
-           category_record.name as category_name
+           category_record.name as category_name,
+           calendar_record.team_id,
+           team_record.name as team_name
       from calendar calendar_record
       left join calendar_category category_record
         on category_record.workspace_id = calendar_record.workspace_id
        and category_record.id = calendar_record.category_id
+      left join team team_record
+        on team_record.workspace_id = calendar_record.workspace_id
+       and team_record.id = calendar_record.team_id
      where calendar_record.workspace_id = ${ctx.workspaceId}::uuid
        and calendar_record.active = true
        and ${calendarVisibleFragment(ctx)}
@@ -761,6 +793,9 @@ export async function listVisibleCalendars(
     type: row.calendar_type,
     categoryId: row.category_id,
     categoryName: row.category_name,
+    // F1-13: nur type team belegt (JOIN sonst null).
+    teamId: row.team_id,
+    teamName: row.team_name,
   }));
 }
 
@@ -869,7 +904,66 @@ export async function createTenancyCalendar(
   });
   return calendarItemV1Schema.parse({
     id: calendarId, name, color: input.color ?? null, type: "tenancy",
+    categoryId: null, categoryName: null, teamId: null, teamName: null,
+  });
+}
+
+// F1-13 Team-Kalender: ein Kalender je aktivem Team (Sichtbarkeit für
+// Mitglieder über calendarVisibleFragment; Termine buchbar wie tenancy).
+// Unbekannt/fremd/archiviert → Validation (kein Orakel, F1-12-Muster).
+export async function createTeamCalendar(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { teamId: string | null; name: string; color?: string | null },
+): Promise<CalendarItemV1> {
+  requireCalendarWrite(ctx);
+  // Fehlende/deforme Team-ID → Validation (kein Orakel, F1-12-Muster).
+  if (input.teamId === null) throw new AppointmentValidationError();
+  const parsedTeamId = z.uuid().safeParse(input.teamId);
+  if (!parsedTeamId.success) throw new AppointmentValidationError();
+  const teamId = parsedTeamId.data.toLowerCase();
+  const team = await tx.execute<{ id: string; name: string; active: boolean }>(sql`
+    select id, name, active from team
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${teamId}::uuid
+     limit 1
+  `);
+  if (!team.rows[0] || !team.rows[0].active) throw new AppointmentValidationError();
+  const name = input.name.normalize("NFKC").trim();
+  if (name.length < 1 || name.length > 200) throw new AppointmentValidationError();
+  if (input.color !== undefined && input.color !== null
+      && !/^#[0-9a-fA-F]{6}$/u.test(input.color)) {
+    throw new AppointmentValidationError();
+  }
+  const calendarId = randomUUID();
+  await tx.execute(sql`
+    insert into calendar (
+      id, workspace_id, name, color, calendar_type, team_id, created_by
+    ) values (
+      ${calendarId}::uuid, ${ctx.workspaceId}::uuid,
+      ${name}, ${input.color ?? null}, 'team', ${team.rows[0].id}::uuid, ${ctx.actor}::uuid
+    )
+  `);
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "calendar",
+    aggregateId: calendarId,
+    eventType: "calendar.created",
+    actor: ctx.actor,
+    payload: { calendarType: "team", teamId: team.rows[0].id },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "calendar.write",
+    resource: "calendar",
+    allowed: true,
+    details: { calendarId, name, teamId: team.rows[0].id },
+  });
+  return calendarItemV1Schema.parse({
+    id: calendarId, name, color: input.color ?? null, type: "team",
     categoryId: null, categoryName: null,
+    teamId: team.rows[0].id, teamName: team.rows[0].name,
   });
 }
 

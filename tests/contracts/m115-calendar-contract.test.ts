@@ -8,6 +8,7 @@ import {
   PROJECT_APPOINTMENT_MAX_ATTENDEES,
   appointmentErrorCodeSchema,
   calendarCategoryItemV1Schema,
+  calendarItemV1Schema,
   planningBoardEntrySchema,
   projectAppointmentCommandV1Schema,
   projectAppointmentItemV1Schema,
@@ -220,6 +221,34 @@ describe("M1-15 minimierte DTOs", () => {
       id: "11111111-1111-4111-8111-111111111111",
       name: "x".repeat(CALENDAR_CATEGORY_NAME_MAX_LENGTH + 1),
       order: 0,
+    }).success).toBe(false);
+  });
+
+  // F1-13: Kalender-Item trägt optionale Team-Bindung (nur type team).
+  it("calendar-item.v1 trägt Team nur bei Team-Umfang", () => {
+    const base = {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "Montage",
+      color: null,
+      categoryId: null,
+      categoryName: null,
+    };
+    expect(calendarItemV1Schema.safeParse({
+      ...base,
+      type: "team",
+      teamId: "22222222-2222-4222-8222-222222222222",
+      teamName: "Dispo-Team",
+    }).success).toBe(true);
+    expect(calendarItemV1Schema.safeParse({
+      ...base,
+      type: "tenancy",
+      teamId: null,
+      teamName: null,
+    }).success).toBe(true);
+    // Strict: fehlende Schlüssel werden abgewiesen (kein stilles null).
+    expect(calendarItemV1Schema.safeParse({
+      ...base,
+      type: "tenancy",
     }).success).toBe(false);
   });
 

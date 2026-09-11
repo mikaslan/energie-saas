@@ -8,6 +8,7 @@ import {
   AppointmentNotFoundError,
   AppointmentValidationError,
   archiveCalendar,
+  createTeamCalendar,
   createTenancyCalendar,
 } from "@/modules/calendar";
 
@@ -29,9 +30,15 @@ export async function createCalendarAction(
   const workspaceValue = formData.get("workspaceId");
   const nameValue = formData.get("name");
   const colorValue = formData.get("color");
+  const scopeValue = formData.get("scope");
+  const teamValue = formData.get("teamId");
   if (typeof workspaceValue !== "string" || typeof nameValue !== "string") {
     return { status: "invalid" };
   }
+  // F1-13: Umfang (Default Unternehmen); Team-ID roh weiterreichen —
+  // fehlend/deform/fremd lehnt der Service als Validation ab.
+  const scope = scopeValue === "team" ? "team" : "tenancy";
+  const teamId = typeof teamValue === "string" && teamValue !== "" ? teamValue : null;
   const workspace = workspaceIdSchema.safeParse(workspaceValue);
   if (!workspace.success) return { status: "invalid" };
   const name = nameValue.normalize("NFKC").trim();
@@ -45,10 +52,15 @@ export async function createCalendarAction(
 
   try {
     await authorizedAction(workspace.data, "calendar.write", "calendar", (tx, ctx) =>
-      createTenancyCalendar(tx, ctx, { name, color }),
+      scope === "team"
+        ? createTeamCalendar(tx, ctx, { teamId, name, color })
+        : createTenancyCalendar(tx, ctx, { name, color }),
     );
     revalidatePath(`/w/${workspace.data}/kalender`);
-    return { status: "success", message: "Kalender angelegt." };
+    return {
+      status: "success",
+      message: scope === "team" ? "Teamkalender angelegt." : "Kalender angelegt.",
+    };
   } catch (error) {
     if (error instanceof AppointmentValidationError) return { status: "invalid" };
     if (error instanceof AppointmentNotFoundError) return { status: "not_found" };

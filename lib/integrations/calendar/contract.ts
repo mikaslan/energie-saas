@@ -262,6 +262,9 @@ export const calendarItemV1Schema = z.strictObject({
   type: z.enum(["team", "tenancy", "user", "client"]),
   categoryId: canonicalUuidSchema.nullable(),
   categoryName: z.string().min(1).max(CALENDAR_CATEGORY_NAME_MAX_LENGTH).nullable(),
+  // F1-13: Team-Bindung je Kalender (nur type team belegt; Name projiziert).
+  teamId: canonicalUuidSchema.nullable(),
+  teamName: z.string().min(1).max(TEAM_NAME_MAX).nullable(),
 });
 
 export type CalendarItemV1 = z.infer<typeof calendarItemV1Schema>;

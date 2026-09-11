@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type { CalendarItemV1 } from "@/lib/integrations/calendar/contract";
 import { listVisibleCalendars } from "@/modules/calendar";
+import { listTeamOptions, type TeamOption } from "@/modules/teams";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { DeniedState } from "../_ui";
 import { CalendarManager } from "./calendar-manager";
@@ -21,7 +22,7 @@ export default async function WorkspaceCalendarsPage(
   if (!parsedWorkspace.success) notFound();
   const workspaceId = parsedWorkspace.data;
 
-  let result: { calendars: CalendarItemV1[]; canWrite: boolean } | undefined;
+  let result: { calendars: CalendarItemV1[]; teams: TeamOption[]; canWrite: boolean } | undefined;
   try {
     result = await authorizedQuery(
       workspaceId,
@@ -29,6 +30,12 @@ export default async function WorkspaceCalendarsPage(
       "calendar",
       async (tx, ctx) => ({
         calendars: await listVisibleCalendars(tx, ctx),
+        // F1-13: Team-Auswahl für Teamkalender (ohne Grant: leere Liste,
+        // Anlage mit Team scheitert dann ehrlich als invalid).
+        teams: await listTeamOptions(tx, ctx).catch((error: unknown) => {
+          if (error instanceof PermissionDeniedError) return [];
+          throw error;
+        }),
         canWrite: can(ctx, "calendar.write"),
       }),
     );
@@ -60,6 +67,7 @@ export default async function WorkspaceCalendarsPage(
       <CalendarManager
         workspaceId={workspaceId}
         calendars={result.calendars}
+        teams={result.teams}
         canWrite={result.canWrite}
       />
     </main>
