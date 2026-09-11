@@ -6,9 +6,11 @@ import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import { SignOutButton } from "@/app/_components/sign-out-button";
 import {
+  getBoardPipelineSummary,
   getRequestBoard,
   listBoardColumnsForAdmin,
   type BoardColumnAdminEntry,
+  type BoardPipelineSummary,
   type RequestBoardCard,
   type RequestBoardColumn,
   type RequestBoardScope,
@@ -41,6 +43,12 @@ const dateFormatter = new Intl.DateTimeFormat("de-DE", {
 
 const numberFormatter = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 1,
+});
+
+// F1-05b: Pipeline-Beträge (Cent → Euro, de-DE).
+const euroFormatter = new Intl.NumberFormat("de-DE", {
+  style: "currency",
+  currency: "EUR",
 });
 
 function productLabels(card: RequestBoardCard): string[] {
@@ -115,6 +123,7 @@ export default async function RequestsPage({
   let canCreateManualLead = false;
   let leadSourceOptions: Array<{ id: string; name: string }> = [];
   let adminColumns: BoardColumnAdminEntry[] = [];
+  let pipelineSummary: BoardPipelineSummary | undefined;
   let unauthenticated = false;
   let denied = false;
   try {
@@ -134,6 +143,7 @@ export default async function RequestsPage({
           board,
           canCreate,
           adminColumns,
+          pipelineSummary: await getBoardPipelineSummary(tx, ctx, { boardId: board.id }),
           // F1-11: Quellen-Dropdown (gleiche Leseschranke wie die
           // Verwaltung; ohne Recht leere Liste, Formular bleibt nutzbar).
           sources: await listLeadSources(tx, ctx, { includeArchived: false }).catch(
@@ -148,6 +158,7 @@ export default async function RequestsPage({
     board = loaded.board;
     canCreateManualLead = loaded.canCreate;
     adminColumns = loaded.adminColumns;
+    pipelineSummary = loaded.pipelineSummary;
     leadSourceOptions = loaded.sources.map((source) => ({ id: source.id, name: source.name }));
   } catch (error) {
     if (error instanceof NotAuthenticatedError) unauthenticated = true;
@@ -163,6 +174,7 @@ export default async function RequestsPage({
   }
   if (denied) return <AccessDenied />;
   if (!board) throw new Error("Anfrage-Board konnte nicht geladen werden");
+  if (!pipelineSummary) throw new Error("Pipeline-Kennzahlen konnten nicht geladen werden");
 
   const columns = board.columns.map(({ id, name }) => ({ id, name }));
   const cards = board.columns.flatMap((column) =>
@@ -285,6 +297,20 @@ export default async function RequestsPage({
           <div className="rounded-md border border-slate-200 bg-white px-4 py-3 text-right shadow-sm">
             <p className="text-2xl font-semibold tabular-nums">{totalCards}</p>
             <p className="text-xs text-slate-500">offene {totalCards === 1 ? "Anfrage" : "Anfragen"}</p>
+          </div>
+          <div
+            data-testid="pipeline-summary"
+            className="rounded-md border border-slate-200 bg-white px-4 py-3 text-right shadow-sm"
+          >
+            <p className="text-2xl font-semibold tabular-nums">
+              {euroFormatter.format(pipelineSummary.totalNetCents / 100)}
+            </p>
+            <p className="text-xs text-slate-500">Angebotswert</p>
+            <p className="mt-1 text-sm font-semibold tabular-nums text-slate-800">
+              {pipelineSummary.weightedTotalNetCents === null
+                ? "Gewichtet: — (keine Ratio)"
+                : `Gewichtet: ${euroFormatter.format(pipelineSummary.weightedTotalNetCents / 100)}`}
+            </p>
           </div>
         </div>
 

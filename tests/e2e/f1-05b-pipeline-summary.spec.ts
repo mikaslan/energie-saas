@@ -7,9 +7,10 @@ import {
 } from "./m1-11g-fixture";
 
 /**
- * F1-05a Spaltenverwaltung — Chromium-E2E (isolierter Workspace).
- * Editor legt eine Spalte an (Header erscheint), benennt sie um
- * (neuer Header) und archiviert sie (Header weg); kein Konsolenfehler.
+ * F1-05b Conversion-Ratio + gewichtete Pipeline — Chromium-E2E.
+ * Strip zeigt Angebotswert und „keine Ratio"; Ratio 50 % auf Eingang
+ * → Badge „Ratio: 50 %" und „Gewichtet: 0,00 €" (keine Angebote);
+ * kein Konsolenfehler.
  */
 
 type E2EState = {
@@ -35,7 +36,7 @@ function state(): E2EState {
   const full = fixtureState();
   for (const key of ["baseURL", "databaseUrl", "serverLogPath", "editorEmail"] as const) {
     if (typeof full[key] !== "string" || full[key] === "") {
-      throw new Error(`Der private F1-05a-E2E-State ist unvollständig (${key}).`);
+      throw new Error(`Der private F1-05b-E2E-State ist unvollständig (${key}).`);
     }
   }
   return full as unknown as E2EState;
@@ -92,7 +93,7 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
   await page.waitForURL((url) => url.pathname === expectedPath);
 }
 
-test("F1-05a-E2E-01: Spalte anlegen, umbenennen, archivieren", async ({ page }) => {
+test("F1-05b-E2E-01: Ratio setzen, Pipeline-Strip zeigt Gewichtung", async ({ page }) => {
   test.setTimeout(150_000);
   const data = state();
   const errors = trackBrowserErrors(page);
@@ -105,28 +106,17 @@ test("F1-05a-E2E-01: Spalte anlegen, umbenennen, archivieren", async ({ page }) 
   await loginWithRealOtp(page, data.editorEmail, listPath);
   await expect(page.getByRole("heading", { name: "Anfragen", level: 1 })).toBeVisible();
 
+  const strip = page.getByTestId("pipeline-summary");
+  await expect(strip).toContainText("Angebotswert");
+  await expect(strip).toContainText("Gewichtet: — (keine Ratio)");
+
   await page.getByTestId("board-column-admin-open").click();
-  await expect(page.getByTestId("board-column-admin")).toBeVisible();
-  const createForm = page.getByTestId("board-column-create");
-  await createForm.getByLabel("Name *").fill("E2E-Spalte");
-  await createForm.getByRole("button", { name: "Spalte anlegen" }).click();
-  await expect(page.getByTestId("board-column-success")).toContainText("Spalte angelegt.");
-
-  const boardHeader = (name: string) =>
-    page.getByRole("heading", { name, level: 2 });
-  await expect(boardHeader("E2E-Spalte")).toBeVisible();
-
-  const row = page.getByTestId("board-column-row").filter({ hasText: "E2E-Spalte" });
-  await row.getByLabel("Neuer Name für E2E-Spalte").fill("E2E-Spalte Neu");
-  await row.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(boardHeader("E2E-Spalte Neu")).toBeVisible();
-
-  const renamedRow = page.getByTestId("board-column-row").filter({ hasText: "E2E-Spalte Neu" });
-  await renamedRow.getByRole("button", { name: "E2E-Spalte Neu archivieren" }).click();
-  await expect(boardHeader("E2E-Spalte Neu")).toHaveCount(0);
-  // Eingangs-Spalte bleibt unangetastet (kein Archivieren-Button).
   const intakeRow = page.getByTestId("board-column-row").filter({ hasText: "Eingang" });
-  await expect(intakeRow.getByRole("button", { name: /archivieren/iu })).toHaveCount(0);
+  await expect(intakeRow.getByText("Ratio: —")).toBeVisible();
+  await intakeRow.getByLabel(/Conversion-Ratio in % für Eingang/u).fill("50");
+  await intakeRow.getByRole("button", { name: "Ratio speichern" }).click();
+  await expect(intakeRow.getByText("Ratio: 50 %")).toBeVisible();
+  await expect(strip).toContainText("Gewichtet: 0,00 €");
 
-  expect(errors, "Browser-Konsole und Page-Errors der Spalten-Grenze").toEqual([]);
+  expect(errors, "Browser-Konsole und Page-Errors der Pipeline-Grenze").toEqual([]);
 });

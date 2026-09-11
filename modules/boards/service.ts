@@ -4,6 +4,7 @@ import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { writeAudit } from "@/lib/audit";
 import { kanbanColumnColors, kanbanColumnTypes } from "@/lib/db/schema/boards";
+import { getProjectOfferValues } from "@/modules/offers";
 import {
   can,
   isExternalOnly,
@@ -439,6 +440,7 @@ type BoardColumnRow = {
   position: number;
   color: BoardColumnColor;
   is_intake: boolean;
+  conversion_ratio_bps: number | null;
   archived_at: string | null;
 };
 
@@ -472,7 +474,8 @@ async function loadColumnForUpdate(
   columnId: string,
 ): Promise<BoardColumnRow> {
   const found = await tx.execute<BoardColumnRow>(sql`
-    select id, board_id, name, column_type, position, color, is_intake, archived_at
+    select id, board_id, name, column_type, position, color, is_intake,
+           conversion_ratio_bps, archived_at
       from kanban_column
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${columnId}::uuid
@@ -520,6 +523,7 @@ export type BoardColumnAdminEntry = {
   position: number;
   color: BoardColumnColor;
   isIntake: boolean;
+  conversionRatioBps: number | null;
   archived: boolean;
   cardCount: number;
 };
@@ -536,7 +540,7 @@ export async function listBoardColumnsForAdmin(
   requireProjectAccess(ctx, "project.write", "kanban_column");
   const found = await tx.execute<BoardColumnRow & { card_count: string }>(sql`
     select c.id, c.board_id, c.name, c.column_type, c.position, c.color,
-           c.is_intake, c.archived_at,
+           c.is_intake, c.conversion_ratio_bps, c.archived_at,
            count(p.id)::text as card_count
       from kanban_column c
       left join project p
@@ -554,6 +558,9 @@ export async function listBoardColumnsForAdmin(
     position: Number(row.position),
     color: row.color,
     isIntake: row.is_intake,
+    conversionRatioBps: row.conversion_ratio_bps === null
+      ? null
+      : Number(row.conversion_ratio_bps),
     archived: row.archived_at !== null,
     cardCount: Number(row.card_count ?? 0),
   }));
@@ -634,7 +641,8 @@ export async function moveBoardColumn(
   const column = await loadColumnForUpdate(tx, ctx, input.columnId);
   if (column.archived_at !== null) throw new BoardColumnConflictError("column archived");
   const siblings = await tx.execute<BoardColumnRow>(sql`
-    select id, board_id, name, column_type, position, color, is_intake, archived_at
+    select id, board_id, name, column_type, position, color, is_intake,
+           conversion_ratio_bps, archived_at
       from kanban_column
      where workspace_id = ${ctx.workspaceId}::uuid
        and board_id = ${column.board_id}::uuid
@@ -739,4 +747,154 @@ export async function restoreBoardColumn(
     position,
   });
   return { id: column.id, position, changed: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F1-05b · Conversion-Ratio + gewichtete Pipeline (Katalog F1.5)
+// ═══════════════════════════════════════════════════════════════════════
+
+export type PipelineColumnInput = {
+  id: string;
+  totalNetCents: number;
+  conversionRatioBps: number | null;
+};
+
+export type PipelineWeightedColumn = PipelineColumnInput & {
+  weightedNetCents: number | null;
+};
+
+/**
+ * Reine Gewichtungsmathematik (centgenau, kaufmännisch gerundet):
+ * Spalte ohne Ratio zählt NICHT zur gewichteten Pipeline (null statt 0,
+ * damit „keine Ratio" von „0 %" unterscheidbar bleibt).
+ */
+export function applyConversionRatios(
+  columns: readonly PipelineColumnInput[],
+): { columns: PipelineWeightedColumn[]; weightedTotalNetCents: number | null } {
+  let total: number | null = null;
+  const weighted = columns.map((column) => {
+    if (column.conversionRatioBps === null) {
+      return { ...column, weightedNetCents: null };
+    }
+    const weightedNetCents = Math.round(
+      (column.totalNetCents * column.conversionRatioBps) / 10_000,
+    );
+    total = (total ?? 0) + weightedNetCents;
+    return { ...column, weightedNetCents };
+  });
+  return { columns: weighted, weightedTotalNetCents: total };
+}
+
+export type BoardPipelineSummary = {
+  boardId: string;
+  projectCount: number;
+  totalNetCents: number;
+  weightedTotalNetCents: number | null;
+  columns: Array<{
+    id: string;
+    name: string;
+    projectCount: number;
+    totalNetCents: number;
+    conversionRatioBps: number | null;
+    weightedNetCents: number | null;
+  }>;
+};
+
+/**
+ * Pipeline-Kennzahlen eines Boards: Projektzahl und Angebotswerte je
+ * aktiver Spalte (Angebotswert = aktueller Angebotswert je Projekt,
+ * Projekte ohne Angebot zählen mit 0) plus gewichtete Summe über
+ * Spalten mit Ratio. Leseschranke wie das Board (keine neue Permission).
+ */
+export async function getBoardPipelineSummary(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { boardId: string },
+): Promise<BoardPipelineSummary> {
+  requireProjectAccess(ctx, "project.read", "kanban_board");
+  const columns = await tx.execute<{
+    id: string; name: string; conversion_ratio_bps: number | null;
+  }>(sql`
+    select id, name, conversion_ratio_bps
+      from kanban_column
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and board_id = ${input.boardId}::uuid
+       and archived_at is null
+     order by position asc, id asc
+  `);
+  const projects = await tx.execute<{ id: string; column_id: string }>(sql`
+    select id, kanban_column_id as column_id
+      from project
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and kanban_board_id = ${input.boardId}::uuid
+  `);
+  const values = await getProjectOfferValues(
+    tx,
+    ctx,
+    projects.rows.map((row) => row.id),
+  );
+  const byColumn = new Map<string, { count: number; total: number }>();
+  for (const project of projects.rows) {
+    const entry = byColumn.get(project.column_id) ?? { count: 0, total: 0 };
+    entry.count += 1;
+    entry.total += values[project.id] ?? 0;
+    byColumn.set(project.column_id, entry);
+  }
+  const weighted = applyConversionRatios(
+    columns.rows.map((column) => ({
+      id: column.id,
+      totalNetCents: byColumn.get(column.id)?.total ?? 0,
+      conversionRatioBps: column.conversion_ratio_bps === null
+        ? null
+        : Number(column.conversion_ratio_bps),
+    })),
+  );
+  let projectCount = 0;
+  let totalNetCents = 0;
+  const summaryColumns = columns.rows.map((column, index) => {
+    const entry = byColumn.get(column.id) ?? { count: 0, total: 0 };
+    projectCount += entry.count;
+    totalNetCents += entry.total;
+    return {
+      id: column.id,
+      name: column.name,
+      projectCount: entry.count,
+      totalNetCents: entry.total,
+      conversionRatioBps: weighted.columns[index]?.conversionRatioBps ?? null,
+      weightedNetCents: weighted.columns[index]?.weightedNetCents ?? null,
+    };
+  });
+  return {
+    boardId: input.boardId,
+    projectCount,
+    totalNetCents,
+    weightedTotalNetCents: weighted.weightedTotalNetCents,
+    columns: summaryColumns,
+  };
+}
+
+export async function setColumnConversionRatio(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { columnId: string; ratioBps: number | null },
+): Promise<{ id: string; ratioBps: number | null }> {
+  requireProjectAccess(ctx, "project.write", "kanban_column");
+  if (
+    input.ratioBps !== null
+    && (!Number.isInteger(input.ratioBps) || input.ratioBps < 0 || input.ratioBps > 10_000)
+  ) {
+    throw new BoardColumnValidationError("ratio must be 0..10000 bps or null");
+  }
+  const column = await loadColumnForUpdate(tx, ctx, input.columnId);
+  if (column.archived_at !== null) throw new BoardColumnConflictError("column archived");
+  await tx.execute(sql`
+    update kanban_column
+       set conversion_ratio_bps = ${input.ratioBps}, updated_at = now()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${column.id}::uuid
+  `);
+  await emitColumnEvent(tx, ctx, "kanban_column.ratio_set", column.id, column.board_id, {
+    ratioBps: input.ratioBps,
+  });
+  return { id: column.id, ratioBps: input.ratioBps };
 }

@@ -66,6 +66,9 @@ export const kanbanColumn = pgTable(
       .notNull()
       .default("neutral"),
     isIntake: boolean("is_intake").notNull().default(false),
+    // F1-05b: optionale Conversion-Ratio in Basispunkten (NULL = keine
+    // Ratio, Spalte zählt nicht zur gewichteten Pipeline).
+    conversionRatioBps: integer("conversion_ratio_bps"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -103,6 +106,10 @@ export const kanbanColumn = pgTable(
     check(
       "kanban_column_intake_lead_ck",
       sql`${t.isIntake} = false or ${t.columnType} = 'lead'`,
+    ),
+    check(
+      "kanban_column_conversion_ratio_ck",
+      sql`${t.conversionRatioBps} is null or (${t.conversionRatioBps} between 0 and 10000)`,
     ),
   ],
 );

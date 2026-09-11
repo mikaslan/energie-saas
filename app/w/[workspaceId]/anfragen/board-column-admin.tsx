@@ -7,6 +7,7 @@ import {
   moveBoardColumnAction,
   renameBoardColumnAction,
   restoreBoardColumnAction,
+  setColumnConversionRatioAction,
   type BoardColumnActionState,
 } from "./board-column-actions";
 
@@ -26,6 +27,7 @@ export type BoardColumnAdminItem = {
   position: number;
   color: "neutral" | "blue" | "amber" | "green";
   isIntake: boolean;
+  conversionRatioBps: number | null;
   archived: boolean;
   cardCount: number;
 };
@@ -56,7 +58,9 @@ function Feedback({ state }: { state: BoardColumnActionState }) {
             ? "Spalte verschoben."
             : state.action === "archived"
               ? "Spalte archiviert."
-              : "Spalte wiederhergestellt.";
+              : state.action === "ratio"
+                ? "Conversion-Ratio gespeichert."
+                : "Spalte wiederhergestellt.";
     return (
       <p role="status" data-testid="board-column-success" className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
         {message}
@@ -108,9 +112,15 @@ function ColumnRow({
   const [restoreState, restoreDispatch] = useActionState(
     restoreBoardColumnAction.bind(null, workspaceId), initialState,
   );
-  const lastState = [renameState, moveState, archiveState, restoreState].find(
+  const [ratioState, ratioDispatch] = useActionState(
+    setColumnConversionRatioAction.bind(null, workspaceId), initialState,
+  );
+  const lastState = [renameState, moveState, archiveState, restoreState, ratioState].find(
     (candidate) => candidate.status !== "idle",
   ) ?? renameState;
+  const ratioPercent = column.conversionRatioBps === null
+    ? null
+    : (column.conversionRatioBps / 100).toLocaleString("de-DE", { maximumFractionDigits: 2 });
   return (
     <li
       data-testid="board-column-row"
@@ -137,6 +147,9 @@ function ColumnRow({
         ) : null}
         <span className="text-[11px] tabular-nums text-slate-500">
           {column.cardCount} {column.cardCount === 1 ? "Karte" : "Karten"}
+        </span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600">
+          {ratioPercent === null ? "Ratio: —" : `Ratio: ${ratioPercent} %`}
         </span>
       </div>
       {!column.archived ? (
@@ -175,6 +188,24 @@ function ColumnRow({
               </button>
             </form>
           ) : null}
+          <form action={ratioDispatch} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="columnId" value={column.id} />
+            <label className="sr-only" htmlFor={`ratio-${column.id}`}>
+              {`Conversion-Ratio in % für ${column.name} (leer = keine)`}
+            </label>
+            <input
+              id={`ratio-${column.id}`}
+              name="ratioPercent"
+              defaultValue={ratioPercent ?? ""}
+              placeholder="z. B. 25"
+              inputMode="decimal"
+              autoComplete="off"
+              className={`${inputClass} w-28`}
+            />
+            <button type="submit" className={buttonClass}>
+              Ratio speichern
+            </button>
+          </form>
         </div>
       ) : (
         <form action={restoreDispatch}>

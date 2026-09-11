@@ -701,6 +701,13 @@
       "when": 1789097769331,
       "tag": "0099_f1_05a_column_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1789098379497,
+      "tag": "0100_f1_05b_conversion_ratio",
+      "breakpoints": true
     }
   ]
 }

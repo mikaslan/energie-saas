@@ -12,6 +12,7 @@ import {
   moveBoardColumn,
   renameBoardColumn,
   restoreBoardColumn,
+  setColumnConversionRatio,
 } from "@/modules/boards";
 
 const uuidSchema = z.uuid();
@@ -21,7 +22,8 @@ export type BoardColumnAction =
   | "renamed"
   | "moved"
   | "archived"
-  | "restored";
+  | "restored"
+  | "ratio";
 
 export type BoardColumnActionState =
   | { status: "idle" }
@@ -185,6 +187,46 @@ export async function restoreBoardColumnAction(
     );
     revalidateBoard(workspaceId);
     return { status: "success", action: "restored" };
+  } catch (error) {
+    return mapColumnError(error);
+  }
+}
+
+// F1-05b · Conversion-Ratio setzen (Prozent im Formular, bps im Service).
+export async function setColumnConversionRatioAction(
+  workspaceId: string,
+  _previousState: BoardColumnActionState,
+  formData: FormData,
+): Promise<BoardColumnActionState> {
+  const columnId = uuidSchema.safeParse(formData.get("columnId"));
+  if (!z.uuid().safeParse(workspaceId).success || !columnId.success) {
+    return { status: "invalid" };
+  }
+  const raw = formData.get("ratioPercent");
+  let ratioBps: number | null = null;
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const percent = Number(raw.trim().replace(",", "."));
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      return { status: "invalid" };
+    }
+    ratioBps = Math.round(percent * 100);
+  }
+  try {
+    await authorizedAction(
+      workspaceId,
+      "project.write",
+      "kanban_column",
+      (tx, ctx) => setColumnConversionRatio(tx, ctx, {
+        columnId: columnId.data,
+        ratioBps,
+      }),
+    );
+    revalidateBoard(workspaceId);
+    return {
+      status: "success",
+      action: "ratio",
+      detail: ratioBps === null ? "ratio-cleared" : `ratio-${ratioBps}`,
+    };
   } catch (error) {
     return mapColumnError(error);
   }
