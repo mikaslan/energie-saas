@@ -6,6 +6,7 @@ import { buildSingleLineSchematic } from "@/lib/integrations/schematic/single-li
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import { OfferVariantControlsPanel } from "./offer-variant-controls-panel";
 import { OfferPaymentOptionPanel } from "./offer-payment-option-panel";
+import { OfferTemplateApplyPanel } from "./offer-template-apply-panel";
 import {
   OfferIssuancePanel,
   type OfferIssuanceCandidateSurfaceView,
@@ -191,6 +192,8 @@ export interface OfferDetailSurfaceView {
     canReadPurchasePrice: boolean;
     canEditPrice: boolean;
     canApplyDiscount: boolean;
+    // F16-06: optional, damit ältere Fixtures ohne das Flag weiter gelten.
+    canApplyOfferTemplate?: boolean;
     canEditPurchasePrice: boolean;
     canGeneratePdf: boolean;
     canPrepareRelease: boolean;
@@ -237,6 +240,13 @@ export interface OfferDetailSurfaceView {
     key: "purchase" | "financing_classic" | "leasing";
     label: string;
     archivedAt: string | null;
+  }[];
+  // F16-06: aktive Angebots-Vorlagen für das Anwenden an der Variante.
+  offerTemplates?: readonly {
+    id: string;
+    name: string;
+    hasPaymentOption: boolean;
+    hasDiscount: boolean;
   }[];
 }
 
@@ -761,7 +771,29 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
   ) : null;
 
   if (canEdit && view.permissions?.canEdit && view.recoveryScope) {
+    // F16-06: Das Vorlagen-Panel steht AUSSERHALB des revisionsgebundenen
+    // Editors — sonst löscht jeder Apply (Revision+1) per Remount das
+    // Erfolgsfeedback, bevor es lesbar ist.
+    const templateApplyPanel = (
+      <div
+        data-wmee-scope="offer"
+        className={`${offerThemeStyles.offerTheme} bg-slate-50 px-4 pb-8 sm:px-6`}
+      >
+        <div className="mx-auto grid w-full max-w-[1480px] gap-5">
+          <OfferTemplateApplyPanel
+            workspaceId={view.workspaceId}
+            offerId={view.offer.id}
+            variantId={snapshot.variantId}
+            variantName={view.variants?.find((variant) => variant.id === snapshot.variantId)?.name ?? "Aktive Variante"}
+            variantRevision={snapshot.revision}
+            templates={view.offerTemplates ?? []}
+            canApply={canEdit && view.permissions?.canApplyOfferTemplate === true}
+          />
+        </div>
+      </div>
+    );
     return (
+      <>
       <OfferVariantEditor
         key={`${snapshot.variantId}:${snapshot.revision}`}
         view={{
@@ -803,6 +835,8 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           </div>
         </div>}
       />
+      {templateApplyPanel}
+      </>
     );
   }
 
@@ -891,6 +925,15 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
             currentOptionId={view.variants?.find((variant) => variant.id === snapshot.variantId)?.paymentOptionId ?? null}
             options={view.paymentOptions ?? []}
             canEdit={false}
+          />
+          <OfferTemplateApplyPanel
+            workspaceId={view.workspaceId}
+            offerId={view.offer.id}
+            variantId={snapshot.variantId}
+            variantName={view.variants?.find((variant) => variant.id === snapshot.variantId)?.name ?? "Aktive Variante"}
+            variantRevision={snapshot.revision}
+            templates={view.offerTemplates ?? []}
+            canApply={false}
           />
         </div>
 

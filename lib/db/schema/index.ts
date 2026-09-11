@@ -48,3 +48,4 @@ export * from "./task-template";
 export * from "./time-tracking";
 export * from "./billing-run";
 export * from "./appointment-template";
+export * from "./offer-template";

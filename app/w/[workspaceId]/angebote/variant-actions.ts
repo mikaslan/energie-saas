@@ -19,6 +19,7 @@ import {
 } from "@/lib/integrations/offers/variant-controls";
 import { PermissionDeniedError } from "@/lib/permissions";
 import type {
+  ApplyOfferTemplateEditorState,
   SetPrimaryVariantEditorState,
   SetTotalOverrideEditorState,
   SetVariantBundlesEditorState,
@@ -35,6 +36,7 @@ const PRIMARY_FIELDS = new Set(["workspaceId", "offerId", "variantId"]);
 const OVERRIDE_FIELDS = new Set(["workspaceId", "offerId", "overrideEuros"]);
 const BUNDLES_FIELDS = new Set(["workspaceId", "offerId", "variantId", "bundlesJson"]);
 const PAYMENT_OPTION_FIELDS = new Set(["workspaceId", "offerId", "variantId", "paymentOptionId"]);
+const OFFER_TEMPLATE_FIELDS = new Set(["workspaceId", "offerId", "variantId", "templateId", "expectedRevision"]);
 
 function workspaceForAdmission(formData: FormData): string | null {
   const values = formData.getAll("workspaceId");
@@ -238,6 +240,63 @@ export async function setVariantBundlesEditorAction(
     return { status: "success", changed: result.changed };
   } catch (error) {
     if (error instanceof offers.OfferValidationError) return { status: "invalid" };
+    const mapped = mapOfferError(error, offers);
+    if (mapped) return mapped;
+    throw error;
+  }
+}
+
+// F16-06: Angebots-Vorlage an einer Variante anwenden (Zahlart + Global-Rabatt).
+// Der Vorlagen-Schreibschutz (discount_template.write) steht neben project.write
+// in der Admission; veraltete Revisionen melden Konflikt.
+export async function applyOfferTemplateEditorAction(
+  _previousState: ApplyOfferTemplateEditorState,
+  formData: FormData,
+): Promise<ApplyOfferTemplateEditorState> {
+  const workspaceId = workspaceForAdmission(formData);
+  if (!workspaceId) return { status: "invalid" };
+  const offers = await import("@/modules/offers");
+  const { OFFER_TEMPLATE_SCHEMA_VERSION } = await import("@/lib/integrations/offers/template-contract");
+
+  try {
+    const result = await authorizedOfferMutationAction(
+      workspaceId,
+      ["project.write", "discount_template.write"],
+      "offer_template",
+      async (tx, ctx) => {
+        const fields = exactFields(formData, OFFER_TEMPLATE_FIELDS);
+        if (!fields) throw new offers.OfferValidationError();
+        const parsed = z.strictObject({
+          offerId: UUID_SCHEMA,
+          variantId: UUID_SCHEMA,
+          templateId: UUID_SCHEMA,
+          expectedRevision: z.string().regex(/^\d+$/u).transform(Number).refine((value) => Number.isSafeInteger(value) && value >= 1),
+        }).safeParse({
+          offerId: fields.offerId,
+          variantId: fields.variantId,
+          templateId: fields.templateId,
+          expectedRevision: fields.expectedRevision,
+        });
+        if (!parsed.success) throw new offers.OfferValidationError();
+        return offers.applyOfferTemplate(tx, ctx, {
+          schemaVersion: OFFER_TEMPLATE_SCHEMA_VERSION,
+          ...parsed.data,
+        });
+      },
+    );
+
+    revalidatePath(`/w/${workspaceId}/angebote/${result.offerId}`);
+    revalidatePath(`/w/${workspaceId}/angebote`);
+    return {
+      status: "success",
+      discountApplied: result.discountApplied,
+      paymentOptionApplied: result.paymentOptionApplied,
+    };
+  } catch (error) {
+    if (error instanceof offers.OfferValidationError) return { status: "invalid" };
+    if (error instanceof offers.OfferTemplateValidationError) return { status: "invalid" };
+    if (error instanceof offers.OfferTemplateNotFoundError) return { status: "not_found" };
+    if (error instanceof offers.OfferConflictError) return { status: "conflict" };
     const mapped = mapOfferError(error, offers);
     if (mapped) return mapped;
     throw error;

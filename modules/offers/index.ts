@@ -29,6 +29,21 @@ export {
   restorePaymentOption,
   updatePaymentOption,
 } from "./payment-options";
+export {
+  applyOfferTemplate,
+  archiveOfferTemplate,
+  createOfferTemplate,
+  listOfferTemplates,
+  normalizeOfferTemplateName,
+  OfferTemplateConflictError,
+  OfferTemplateNotFoundError,
+  OfferTemplateValidationError,
+  restoreOfferTemplate,
+  updateOfferTemplate,
+} from "./templates";
+export type {
+  ApplyOfferTemplateResult,
+} from "./templates";
 export type {
   OfferDetailViewModel,
   OfferLeadTimeStats,

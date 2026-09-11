@@ -101,7 +101,7 @@ async function readAppointment(
       rangeEnd: "2027-01-01T00:00:00",
       view: "month",
     });
-    const found = range.items.find((item) => item.id === appointmentId);
+    const found = range?.items.find((item) => item.id === appointmentId);
     if (!found) throw new Error(`appointment ${appointmentId} not found`);
     return found;
   });

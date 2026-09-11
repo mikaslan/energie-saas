@@ -199,10 +199,10 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0088 F15-01 Gewerbe-Board, 0089 F9-06 Pausen-Segmente,
     // 0090 F8-02 Teilanrechnung, 0091 F10-03 Installation-Tab,
     // 0092 F16-04 Aufgaben-Vorlagen, 0093 F9-07 Abrechnungslauf,
-    // 0094 F16-05 Termin-Vorlagen).
+    // 0094 F16-05 Termin-Vorlagen, 0095 F16-06 Angebots-Vorlagen).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 94,
-      tag: "0094_f16_05_termin_vorlagen",
+      idx: 95,
+      tag: "0095_f16_06_angebots_vorlagen",
     });
   });
 

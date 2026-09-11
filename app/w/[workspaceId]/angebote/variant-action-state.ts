@@ -49,3 +49,17 @@ export type SetVariantPaymentOptionEditorState =
 export const SET_VARIANT_PAYMENT_OPTION_INITIAL_STATE = {
   status: "idle",
 } as const satisfies SetVariantPaymentOptionEditorState;
+
+export type ApplyOfferTemplateEditorState =
+  | { status: "idle" }
+  | { status: "invalid" }
+  | { status: "unauthenticated" }
+  | { status: "denied" }
+  | { status: "not_found" }
+  | { status: "conflict" }
+  | { status: "unavailable" }
+  | { status: "success"; discountApplied: boolean; paymentOptionApplied: boolean };
+
+export const APPLY_OFFER_TEMPLATE_INITIAL_STATE = {
+  status: "idle",
+} as const satisfies ApplyOfferTemplateEditorState;

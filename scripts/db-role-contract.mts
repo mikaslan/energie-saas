@@ -529,6 +529,10 @@ const APPOINTMENT_TEMPLATE_RELATIONS = [
   "appointment_template",
 ] as const;
 
+const OFFER_TEMPLATE_RELATIONS = [
+  "offer_template",
+] as const;
+
 const PAYMENT_OPTION_RELATIONS = [
   "payment_option",
 ] as const;
@@ -2664,6 +2668,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F16-06: Angebots-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
+  const hasOfferTemplates = await hasAtomicPublicRelationSet(
+    client,
+    OFFER_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F16-06-Angebots-Vorlagen",
+  );
+  if (hasOfferTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.offer_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.offer_template to app_runtime
+    `);
+  }
+
   // F2.5: Zahlarten-Stammdaten nutzen Archiv statt Delete. Tabelle, Varianten-
   // Spalte und der 0074-Schreibvertragsmarker muessen atomar vorhanden sein.
   const hasPaymentOptions = await hasAtomicPublicRelationSet(
@@ -3940,6 +3960,11 @@ export async function verifyRoleContract(
     APPOINTMENT_TEMPLATE_RELATIONS,
     "Rollenvertrag: F16-05-Termin-Vorlagen",
   );
+  const hasOfferTemplates = await hasAtomicPublicRelationSet(
+    client,
+    OFFER_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F16-06-Angebots-Vorlagen",
+  );
 
   const hasPaymentOptions = await hasAtomicPublicRelationSet(
     client,
@@ -4204,6 +4229,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
@@ -5383,6 +5411,9 @@ export async function verifyRoleContract(
       ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasSubsidyTemplates ? SUBSIDY_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -5735,6 +5766,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasAppointmentTemplates ? [
           "appointment_template:tenant_isolation:ca50c06bf0731a43c886c4a5bcfe31d24e7d21389d454a48f617fc9129475e30",
+        ] : []),
+        ...(hasOfferTemplates ? [
+          "offer_template:tenant_isolation:1c35c88daada44a92c4de9b2e7a0582673fe8ecc9bb5118e5100ea81713a4ee9",
         ] : []),
         ...(hasPaymentOptions ? [
           "payment_option:tenant_isolation:854bc07231dd748fe1cadc6fcf55606d413a950abc8c3fac65fc1b405228f13f",
@@ -6278,6 +6312,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasAppointmentTemplates ? APPOINTMENT_TEMPLATE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasOfferTemplates ? OFFER_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

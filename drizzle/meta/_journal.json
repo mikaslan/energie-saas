@@ -666,6 +666,13 @@
       "when": 1789083756525,
       "tag": "0094_f16_05_termin_vorlagen",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1789087518651,
+      "tag": "0095_f16_06_angebots_vorlagen",
+      "breakpoints": true
     }
   ]
 }

@@ -156,6 +156,7 @@ type E2EState = Pick<
   f163dProjectId: string;
   f163cProjectId: string;
   f163eProjectId: string;
+  f1606ProjectId: string;
   f101ProjectId: string;
   f102ProjectId: string;
   f94ProjectId: string;
@@ -1537,6 +1538,11 @@ async function main(): Promise<number> {
     editorIdentityId: seedData.editorIdentityId,
     skuSuffix: "w3-f163e",
   });
+  const w3F1606Seed = await seedM201ReadyProject(embedded.superuserUrl, {
+    workspaceId: seedData.w3WorkspaceId,
+    editorIdentityId: seedData.editorIdentityId,
+    skuSuffix: "w3-f1606",
+  });
   const w3F25Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
@@ -1605,6 +1611,7 @@ async function main(): Promise<number> {
     f163dProjectId: w3F163dSeed.projectId,
     f163cProjectId: w3F163cSeed.projectId,
     f163eProjectId: w3F163eSeed.projectId,
+    f1606ProjectId: w3F1606Seed.projectId,
     f101ProjectId: w3F101Lead.projectId,
     f102ProjectId: w3F102Lead.projectId,
     f94ProjectId: w3F94Lead.projectId,

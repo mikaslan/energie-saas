@@ -11,6 +11,7 @@ import {
   listOfferIssuances,
   listOfferPdfDrafts,
   listOfferReleaseCandidates,
+  listOfferTemplates,
   listPaymentOptions,
   OfferReleaseProfileNotFoundError,
   readCurrentOfferRecipient,
@@ -219,6 +220,7 @@ function projectOfferDetailView(
   editorCapabilities: {
     canEditPrice: boolean;
     canApplyDiscount: boolean;
+    canApplyOfferTemplate: boolean;
     canEditPurchasePrice: boolean;
     canGeneratePdf: boolean;
     canPrepareRelease: boolean;
@@ -243,6 +245,14 @@ function projectOfferDetailView(
     key: "purchase" | "financing_classic" | "leasing";
     label: string;
     archivedAt: string | null;
+  }[],
+  // F16-06: aktive Angebots-Vorlagen (Zahlart-/Rabatt-Presets) für das
+  // Anwenden an der aktiven Variante. Nur mit discount_template.read.
+  offerTemplates: readonly {
+    id: string;
+    name: string;
+    hasPaymentOption: boolean;
+    hasDiscount: boolean;
   }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
@@ -375,6 +385,7 @@ function projectOfferDetailView(
       canReadPurchasePrice: view.permissions.canReadPurchasePrice,
       canEditPrice: editorCapabilities.canEditPrice,
       canApplyDiscount: editorCapabilities.canApplyDiscount,
+      canApplyOfferTemplate: editorCapabilities.canApplyOfferTemplate,
       canEditPurchasePrice: editorCapabilities.canEditPurchasePrice,
       canGeneratePdf: editorCapabilities.canGeneratePdf,
       canPrepareRelease: editorCapabilities.canPrepareRelease,
@@ -455,6 +466,7 @@ function projectOfferDetailView(
     },
     discountTemplates,
     paymentOptions,
+    offerTemplates,
   };
 }
 
@@ -499,10 +511,18 @@ export default async function OfferDetailPage(
       label: string;
       archivedAt: string | null;
     }[];
+    // F16-06: aktive Angebots-Vorlagen für das Anwenden an der Variante.
+    offerTemplates: {
+      id: string;
+      name: string;
+      hasPaymentOption: boolean;
+      hasDiscount: boolean;
+    }[];
     recoveryScope: string;
     editorCapabilities: {
       canEditPrice: boolean;
       canApplyDiscount: boolean;
+      canApplyOfferTemplate: boolean;
       canEditPurchasePrice: boolean;
       canGeneratePdf: boolean;
       canPrepareRelease: boolean;
@@ -542,6 +562,12 @@ export default async function OfferDetailPage(
           key: "purchase" | "financing_classic" | "leasing";
           label: string;
           archivedAt: string | null;
+        }[] = [];
+        const offerTemplates: {
+          id: string;
+          name: string;
+          hasPaymentOption: boolean;
+          hasDiscount: boolean;
         }[] = [];
         if (view !== null && !externalOnly) {
           // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
@@ -628,6 +654,17 @@ export default async function OfferDetailPage(
               });
             }
           }
+          // F16-06: nur aktive Angebots-Vorlagen (Archiv ist nicht anwendbar).
+          if (can(ctx, "discount_template.read")) {
+            for (const template of await listOfferTemplates(tx, ctx, {})) {
+              offerTemplates.push({
+                id: template.id,
+                name: template.name,
+                hasPaymentOption: template.paymentOptionId !== null,
+                hasDiscount: template.discountTemplateId !== null,
+              });
+            }
+          }
         }
         return {
           view,
@@ -644,9 +681,11 @@ export default async function OfferDetailPage(
           showReleasePanel: !externalOnly,
           discountTemplates,
           paymentOptions,
+          offerTemplates,
           editorCapabilities: {
             canEditPrice: !externalOnly && can(ctx, "price.edit"),
             canApplyDiscount: !externalOnly && can(ctx, "discount.apply"),
+            canApplyOfferTemplate: !externalOnly && can(ctx, "project.write") && can(ctx, "discount_template.write"),
             canEditPurchasePrice: !externalOnly
             && can(ctx, "price.edit")
             && can(ctx, "price.read_purchase"),
@@ -686,6 +725,7 @@ export default async function OfferDetailPage(
     result.pdfDrafts,
     result.discountTemplates,
     result.paymentOptions,
+    result.offerTemplates,
     {
       profile: result.releaseProfile,
       recipient: result.releaseRecipient,

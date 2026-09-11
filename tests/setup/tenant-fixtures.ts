@@ -2227,6 +2227,27 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F16-06 (0095): Angebots-Vorlagen — Composite-FKs
+  // (workspace_id, preset) auf (workspace_id, id), RLS tenant_isolation,
+  // keine Actor-Policies. Eigene Zahlart (leasing statt fixture-purchase,
+  // aktive Schlüssel sind je Workspace eindeutig).
+  offer_template: async (tx, wsId) => {
+    const paymentOptionId = randomUUID();
+    await tx.execute(sql`
+      insert into payment_option (id, workspace_id, key, label, kind)
+      values (${paymentOptionId}::uuid, ${wsId}::uuid, 'leasing', 'Fixture-Leasing', 'leasing')
+    `);
+    await tx.execute(sql`
+      insert into offer_template (
+        id, workspace_id, name, name_normalized, payment_option_id,
+        discount_template_id, active, position, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Angebot',
+        'fixture angebot', ${paymentOptionId}::uuid, null, true, 0,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
   // F16-05 (0094): Termin-Vorlagen — nur workspace-FK, RLS
   // tenant_isolation, keine Actor-Policies.
   appointment_template: async (tx, wsId) => {
