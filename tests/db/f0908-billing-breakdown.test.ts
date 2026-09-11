@@ -145,19 +145,20 @@ describe("F9-08 Lauf-Auswertung (PostgreSQL)", () => {
   it("F0908-DB-01: Zeilen je Person mit Labels, Summen = Snapshot", async () => {
     await createApprovedEntry(fixture, fixture.editorId, { startAt: "2026-09-04T08:00:00.000Z", endAt: "2026-09-04T10:00:00.000Z", minutes: 120 });
     await createApprovedEntry(fixture, fixture.editorId, { startAt: "2026-09-05T08:00:00.000Z", endAt: "2026-09-05T09:00:00.000Z", minutes: 60 });
-    await createApprovedEntry(fixture, fixture.editor2Id, { startAt: "2026-09-06T08:00:00.000Z", endAt: "2026-09-06T11:00:00.000Z", minutes: 180 });
+    await createApprovedEntry(fixture, fixture.editor2Id, { startAt: "2026-09-06T08:00:00.000Z", endAt: "2026-09-06T10:30:00.000Z", minutes: 150 });
     const runId = await closeRun(fixture, "September 2026");
 
     const result = await breakdown(fixture, fixture.editorId, runId);
     expect(result.billingRunId).toBe(runId);
     expect(result.entryCount).toBe(3);
-    expect(result.totalMinutes).toBe(360);
+    expect(result.totalMinutes).toBe(330);
     expect(result.rows).toHaveLength(2);
-    // Sortierung: Minuten absteigend.
-    expect(result.rows[0]).toMatchObject({ userId: fixture.editor2Id, entryCount: 1, totalWorkingMinutes: 180 });
-    expect(result.rows[0]!.label).toContain("editor2-");
-    expect(result.rows[1]).toMatchObject({ userId: fixture.editorId, entryCount: 2, totalWorkingMinutes: 180 });
-    expect(result.rows[1]!.label).toContain("editor-");
+    // Sortierung: Minuten absteigend. Absichtlich 180 vs. 150 (kein Gleichstand):
+    // Bei Gleichstand wäre die Reihenfolge von zufälligen User-UUIDs abhängig (flaky).
+    expect(result.rows[0]).toMatchObject({ userId: fixture.editorId, entryCount: 2, totalWorkingMinutes: 180 });
+    expect(result.rows[0]!.label).toContain("editor-");
+    expect(result.rows[1]).toMatchObject({ userId: fixture.editor2Id, entryCount: 1, totalWorkingMinutes: 150 });
+    expect(result.rows[1]!.label).toContain("editor2-");
   });
 
   it("F0908-DB-02: offener/leerer Lauf → leere Zeilen; Viewer lesend", async () => {

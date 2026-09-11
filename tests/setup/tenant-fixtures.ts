@@ -1955,6 +1955,125 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${wsId}::uuid, ${finalId}::uuid, ${depositId}::uuid, 0, ${userId}::uuid)
     `);
   },
+  // F8-05 (0102): Teilrechnungskette AB → Teilrechnung (Modus percent).
+  // Eltern inline (Muster commercial_document_line); created_by spiegelt
+  // die Membership (FK commercial_document_partial_created_by_fk).
+  commercial_document_partial: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const orderId = randomUUID();
+    const invoiceId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, status, name, created_by, due_date, payment_status,
+        planned_delivery_date, planned_service_date
+      ) values
+        (${orderId}::uuid, ${wsId}::uuid, 'order_confirmation', 'draft',
+         'F8-05 AB (Partial-Fixture)', ${userId}::uuid, null, 'unpaid',
+         (now()::date + 14), (now()::date + 14)),
+        (${invoiceId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+         'F8-05 Teilrechnung (Partial-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid',
+         null, null)
+    `);
+    await tx.execute(sql`
+      insert into commercial_document_partial (
+        workspace_id, source_order_id, partial_invoice_id, mode, percent_bps, ordinal, created_by
+      ) values (
+        ${wsId}::uuid, ${orderId}::uuid, ${invoiceId}::uuid,
+        'percent', 5000, 1, ${userId}::uuid
+      )
+    `);
+  },
+  // F8-05 (0102): Kettenglied Teilrechnung ↔ AB-Position (ganze Kette inline,
+  // damit der Cross-Write-Pfad zuerst an der RLS der Eltern scheitert).
+  commercial_document_partial_line: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const orderId = randomUUID();
+    const invoiceId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, status, name, created_by, due_date, payment_status,
+        planned_delivery_date, planned_service_date
+      ) values
+        (${orderId}::uuid, ${wsId}::uuid, 'order_confirmation', 'draft',
+         'F8-05 AB (Partial-Line-Fixture)', ${userId}::uuid, null, 'unpaid',
+         (now()::date + 14), (now()::date + 14)),
+        (${invoiceId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+         'F8-05 Teilrechnung (Partial-Line-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid',
+         null, null)
+    `);
+    const partialId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document_partial (
+        id, workspace_id, source_order_id, partial_invoice_id, mode, percent_bps, ordinal, created_by
+      ) values (
+        ${partialId}::uuid, ${wsId}::uuid, ${orderId}::uuid, ${invoiceId}::uuid,
+        'percent', 5000, 1, ${userId}::uuid
+      )
+    `);
+    const sourceLineId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document_line (
+        id, workspace_id, document_id, position, name, quantity_milli, unit,
+        net_cents, tax_cents, gross_cents, tax_rate_bps
+      ) values (
+        ${sourceLineId}::uuid, ${wsId}::uuid, ${orderId}::uuid, 1,
+        'Position', 1000, 'piece', 100, 19, 119, 1900
+      )
+    `);
+    await tx.execute(sql`
+      insert into commercial_document_partial_line (
+        workspace_id, partial_id, source_line_id
+      ) values (
+        ${wsId}::uuid, ${partialId}::uuid, ${sourceLineId}::uuid
+      )
+    `);
+  },
+  // F1-12 (0114): benanntes Team (Muster: normalisiert kleingeschrieben).
+  team: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"settings":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into team (workspace_id, name, name_normalized, created_by)
+      values (${wsId}::uuid, 'Fixture-Team', 'fixture-team', ${userId}::uuid)
+    `);
+  },
+  // F1-12 (0114): Team-Mitgliedschaft (Team + Membership inline, damit der
+  // Cross-Write-Pfad zuerst an der RLS der Eltern scheitert).
+  team_member: async (tx, wsId) => {
+    const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor", '{"settings":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const teamId = randomUUID();
+    await tx.execute(sql`
+      insert into team (id, workspace_id, name, name_normalized, created_by)
+      values (${teamId}::uuid, ${wsId}::uuid, 'Fixture-Team-Mitglied', 'fixture-team-mitglied', ${userId}::uuid)
+    `);
+    await tx.execute(sql`
+      insert into team_member (workspace_id, team_id, membership_id)
+      values (${wsId}::uuid, ${teamId}::uuid, ${membershipId}::uuid)
+    `);
+  },
+  // F10-05 (0113): Portal-Statuslabel (Installation-Umfang).
+  portal_status_label: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"installation":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    await tx.execute(sql`
+      insert into portal_status_label (workspace_id, scope, source_key, label, created_by)
+      values (${wsId}::uuid, 'installation', 'active', 'Aktiv', ${userId}::uuid)
+    `);
+  },
+  // F13-02 (0103): Netzanmeldung (Projekt inline, damit der
+  // Cross-Write-Pfad zuerst an der RLS der Eltern scheitert).
+  grid_registration: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    await tx.execute(sql`
+      insert into grid_registration (workspace_id, project_id, created_by)
+      values (${wsId}::uuid, ${projectId}::uuid, ${userId}::uuid)
+    `);
+  },
   workspace_economics_settings: async (tx, wsId) => {
     const { userId, membershipId } = await fixtureMembership(tx, wsId, "editor", '{"economics":true}');
     await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
