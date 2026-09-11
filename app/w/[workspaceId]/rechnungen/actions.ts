@@ -6,6 +6,7 @@ import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
 import {
   COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
@@ -24,6 +25,7 @@ import { PermissionDeniedError } from "@/lib/permissions";
 import {
   createDocument,
   createDocumentGroup,
+  duplicateOrderConfirmationAsInvoice,
   issueDocument,
   linkDeposit,
   markSentDocument,
@@ -395,4 +397,43 @@ export async function unlinkDepositAction(
   }
   revalidatePath(`/w/${workspaceId}/rechnungen/invoice/${finalId}`);
   return { status: "success" };
+}
+
+export type DuplicateDocumentActionState =
+  | { status: "idle" }
+  | { status: "success"; invoiceId: string }
+  | { status: "invalid" }
+  | { status: "not_found" }
+  | { status: "conflict" }
+  | { status: "denied" }
+  | { status: "unauthenticated" };
+
+// F8-04b · AB als Rechnung übernehmen (Duplicate into type, nur AB).
+export async function duplicateDocumentAction(
+  _previous: DuplicateDocumentActionState,
+  formData: FormData,
+): Promise<DuplicateDocumentActionState> {
+  const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
+  const documentId = parseUuid(formData.get("documentId"));
+  if (!workspaceId || !documentId) return { status: "invalid" };
+  try {
+    const result = await authorizedAction(
+      workspaceId,
+      "invoicing.write",
+      "commercial_document",
+      (tx, ctx) => duplicateOrderConfirmationAsInvoice(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION,
+        sourceDocumentId: documentId,
+      }),
+    );
+    revalidatePath(`/w/${workspaceId}/rechnungen/invoice`);
+    revalidatePath(`/w/${workspaceId}/rechnungen/order_confirmation/${documentId}`);
+    return { status: "success", invoiceId: result.id };
+  } catch (error) {
+    const mapped = mapError(error);
+    if (mapped.status === "success" || mapped.status === "precondition") {
+      return { status: "invalid" };
+    }
+    return mapped;
+  }
 }

@@ -256,6 +256,16 @@ export const COMMERCIAL_DOCUMENT_DETAIL_VERSION =
 // F8-01: Anzahlung → Schlussrechnung (Link, genau eine Stufe).
 export const COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION =
   "commercial-document-link-command.v1" as const;
+// F8-04b: AB als Rechnung übernehmen (Duplicate into type, nur Positionen).
+export const COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION =
+  "commercial-document-duplicate-command.v1" as const;
+export const commercialDocumentDuplicateCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION),
+  sourceDocumentId: z.string().uuid(),
+});
+export type CommercialDocumentDuplicateCommandV1 = z.infer<
+  typeof commercialDocumentDuplicateCommandV1Schema
+>;
 export const COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION =
   "commercial-document-unlink-command.v1" as const;
 export const INVOICING_REPORT_COMMAND_VERSION = "invoicing-report-command.v1" as const;

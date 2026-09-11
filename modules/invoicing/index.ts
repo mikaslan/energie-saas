@@ -123,6 +123,7 @@ export {
   createDocument,
   createDocumentGroup,
   createDocumentLine,
+  duplicateOrderConfirmationAsInvoice,
   getDocumentDetail,
   linkDeposit,
   listDepositCandidates,

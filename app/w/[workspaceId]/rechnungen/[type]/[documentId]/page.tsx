@@ -24,6 +24,7 @@ import {
 } from "@/modules/invoicing";
 import { DeniedState } from "../../../_ui";
 import { DepositLinkPanel } from "./deposit-link-panel";
+import { DuplicateDocumentPanel } from "./duplicate-document-panel";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
 const typeSchema = z.enum(commercialDocumentTypes);
@@ -229,6 +230,12 @@ export default async function InvoicingDocumentDetailPage(
 
       {showDeposits ? (
         <DepositLinkPanel workspaceId={workspaceId} detail={detail} candidates={candidates} />
+      ) : null}
+
+      {type === "order_confirmation"
+      && document.permissions.canWrite
+      && document.status !== "voided" ? (
+        <DuplicateDocumentPanel workspaceId={workspaceId} documentId={documentId} />
       ) : null}
 
       {document.status === "voided" ? (

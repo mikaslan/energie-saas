@@ -11,7 +11,9 @@ import { createHash } from "node:crypto";
 import {
   COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_DETAIL_VERSION,
+  COMMERCIAL_DOCUMENT_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_GROUP_VERSION,
+  COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_LINE_VERSION,
   COMMERCIAL_DOCUMENT_LIST_VERSION,
   COMMERCIAL_DOCUMENT_NUMBER_SERIES_DEFAULTS,
@@ -39,6 +41,7 @@ import {
   commercialDocumentGroupArchiveCommandV1Schema,
   commercialDocumentDetailCommandV1Schema,
   commercialDocumentDetailV1Schema,
+  commercialDocumentDuplicateCommandV1Schema,
   commercialDocumentLinkCommandV1Schema,
   commercialDocumentUnlinkCommandV1Schema,
   commercialDocumentLineCommandV1Schema,
@@ -55,6 +58,7 @@ import {
   type CommercialDocumentCommandV1,
   type CommercialDocumentDetailCommandV1,
   type CommercialDocumentDetailV1,
+  type CommercialDocumentDuplicateCommandV1,
   type CommercialDocumentLinkCommandV1,
   type CommercialDocumentLinkedDepositV1,
   type CommercialDocumentUnlinkCommandV1,
@@ -2010,6 +2014,111 @@ export async function unlinkDeposit(
     type: "invoice",
     documentId: command.finalId,
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F8-04b · AB als Rechnung übernehmen (Duplicate into type, Katalog F8.4)
+// ═══════════════════════════════════════════════════════════════════════
+
+export type DuplicateOrderConfirmationResult = {
+  id: string;
+  type: "invoice";
+  status: "draft";
+  linesCopied: number;
+};
+
+/**
+ * Uebernimmt eine Auftragsbestätigung als Rechnungs-Entwurf: gleiche
+ * Gruppe/Projekt/Kontakt, gleiche Positionen in Reihenfolge, Summen
+ * ueber die Zeilenanlage neu gerechnet. Skonto/Konditionen werden
+ * bewusst NICHT kopiert (Empfänger setzt sie an der Rechnung neu).
+ * Faelligkeit: heute + 14 Tage Europe/Berlin (ESTIMATE, reversibel —
+ * Entwurf bleibt editierbar). Quelle muss AB und darf nicht storniert
+ * sein; andere Typen brechen fail-closed als Validation ab.
+ */
+export async function duplicateOrderConfirmationAsInvoice(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentDuplicateCommandV1,
+): Promise<DuplicateOrderConfirmationResult> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentDuplicateCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+
+  const source = await readDocument(tx, ctx, parsed.data.sourceDocumentId);
+  if (source.type !== "order_confirmation") throw new InvoicingValidationError();
+  if (source.status === "voided") throw new InvoicingConflictError();
+
+  const detail = await getDocumentDetail(tx, ctx, {
+    schemaVersion: COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION,
+    type: "order_confirmation",
+    documentId: source.id,
+  });
+
+  const berlinToday = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" }),
+  );
+  const dueDate = new Date(berlinToday.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const dueDateIso = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, "0")}-${String(dueDate.getDate()).padStart(2, "0")}`;
+
+  const created = await createDocument(tx, ctx, {
+    schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+    input: {
+      type: "invoice",
+      name: `Rechnung zu ${source.number ?? source.name}`,
+      groupId: source.groupId,
+      projectId: source.projectId,
+      contactId: source.contactId,
+      dueDate: dueDateIso,
+      skontoPercentBps: null,
+      skontoDays: null,
+      deliveryDate: null,
+      validityDate: null,
+      plannedDeliveryDate: null,
+      plannedServiceDate: null,
+      creditNoteType: null,
+    },
+  });
+
+  for (const line of detail.lines) {
+    await createDocumentLine(tx, ctx, {
+      schemaVersion: COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
+      documentId: created.id,
+      input: {
+        position: line.position,
+        name: line.name,
+        quantityMilli: line.quantityMilli,
+        unit: line.unit,
+        netCents: line.netCents,
+        taxRateBps: line.taxRateBps,
+      },
+    });
+  }
+
+  const evidence = {
+    workspaceId: ctx.workspaceId,
+    sourceDocumentId: source.id,
+    sourceType: source.type,
+    targetDocumentId: created.id,
+    linesCopied: detail.lines.length,
+  };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: created.id,
+    eventType: "commercial_document.duplicated",
+    actor: ctx.actor,
+    payload: evidence,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "invoicing.document.duplicate",
+    resource: "commercial_document",
+    allowed: true,
+    details: evidence,
+  });
+  return { id: created.id, type: "invoice", status: "draft", linesCopied: detail.lines.length };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
