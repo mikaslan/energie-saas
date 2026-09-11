@@ -6,8 +6,8 @@ import { DOCUMENT_TYPE_LABELS } from "./labels";
 import { commercialDocumentTypes } from "@/lib/integrations/invoicing/contract";
 
 const tabClass =
-  "inline-flex min-h-11 items-center border-b-2 px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2";
-const activeClass = "border-blue-700 text-blue-800";
+  "inline-flex min-h-11 items-center border-b-2 px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2";
+const activeClass = "border-brand-700 text-brand-800";
 const inactiveClass =
   "border-transparent text-slate-600 hover:text-slate-950";
 

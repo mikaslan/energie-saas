@@ -10,7 +10,7 @@ import {
 const initialState: ManualLeadActionState = { status: "idle" };
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-600";
+  "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-brand-600";
 const labelClass = "grid gap-1 text-sm font-medium text-slate-700";
 
 function Feedback({ state, workspaceId }: { state: ManualLeadActionState; workspaceId: string }) {
@@ -88,7 +88,7 @@ export function ManualLeadForm({
         type="button"
         onClick={() => setOpen(true)}
         data-testid="manual-lead-open"
-        className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+        className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
       >
         Anfrage manuell erfassen
       </button>
@@ -157,7 +157,7 @@ export function ManualLeadForm({
       <div className="flex flex-wrap gap-2">
         <button
           type="submit"
-          className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Anfrage anlegen
         </button>

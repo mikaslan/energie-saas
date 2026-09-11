@@ -142,7 +142,7 @@ export default async function CatalogPage({
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <nav aria-label="Bereichsnavigation" className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <Link href={`/w/${workspaceId}/anfragen`} className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+          <Link href={`/w/${workspaceId}/anfragen`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
             <span aria-hidden="true" className="mr-2">←</span>
             Zu den Anfragen
           </Link>
@@ -152,7 +152,7 @@ export default async function CatalogPage({
         <header className="mb-8 border-b border-slate-200 pb-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-blue-700">Eigener Workspace-Bestand</p>
+              <p className="text-sm font-semibold text-brand-700">Eigener Workspace-Bestand</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Produktkatalog</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                 Eigene Produkte werden revisionsgebunden geführt. Nur aktive,
@@ -184,14 +184,14 @@ export default async function CatalogPage({
                   {result.latestImport ? (
                     <Link
                       href={`${catalogPath}/importe/${result.latestImport.importId}`}
-                      className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                      className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                     >
                       Letzten Import öffnen
                     </Link>
                   ) : null}
                   <Link
                     href={`${catalogPath}/import`}
-                    className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                    className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                   >
                     CSV importieren
                   </Link>
@@ -204,7 +204,7 @@ export default async function CatalogPage({
             <form method="get" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_2fr_auto]">
               <label className="grid gap-1.5 text-sm font-medium text-slate-800">
                 Status
-                <select name="status" defaultValue={filters.status ?? ""} className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200">
+                <select name="status" defaultValue={filters.status ?? ""} className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200">
                   <option value="">Alle sichtbaren</option>
                   {result.canManage ? <option value="draft">Entwurf</option> : null}
                   <option value="active">Aktiv</option>
@@ -213,16 +213,16 @@ export default async function CatalogPage({
               </label>
               <label className="grid gap-1.5 text-sm font-medium text-slate-800">
                 Typ
-                <select name="type" defaultValue={filters.componentType ?? ""} className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200">
+                <select name="type" defaultValue={filters.componentType ?? ""} className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200">
                   <option value="">Alle Typen</option>
                   {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
               <label className="grid gap-1.5 text-sm font-medium text-slate-800">
                 SKU oder Name
-                <input name="q" maxLength={120} defaultValue={filters.query ?? ""} className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200" />
+                <input name="q" maxLength={120} defaultValue={filters.query ?? ""} className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200" />
               </label>
-              <button type="submit" className="min-h-11 self-end rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Anwenden</button>
+              <button type="submit" className="min-h-11 self-end rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Anwenden</button>
             </form>
           </Section>
 
@@ -232,7 +232,7 @@ export default async function CatalogPage({
                 <h2 id="catalog-list-title" className="text-lg font-semibold text-slate-950">Produkte</h2>
                 <p className="mt-1 text-sm text-slate-600">{result.components.length} sichtbare {result.components.length === 1 ? "Position" : "Positionen"}</p>
               </div>
-              {filtered ? <Link href={catalogPath} className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 hover:text-blue-900">Filter zurücksetzen</Link> : null}
+              {filtered ? <Link href={catalogPath} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 hover:text-brand-900">Filter zurücksetzen</Link> : null}
             </div>
 
             {result.components.length === 0 ? (
@@ -257,7 +257,7 @@ export default async function CatalogPage({
                     <li key={component.id} className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate font-mono text-xs font-semibold text-blue-700">{component.current.identity.internalSku}</p>
+                          <p className="truncate font-mono text-xs font-semibold text-brand-700">{component.current.identity.internalSku}</p>
                           <h3 className="mt-1 truncate text-base font-semibold text-slate-950">{component.current.presentation.displayName}</h3>
                           <p className="mt-1 text-sm text-slate-600">{component.current.presentation.manufacturer} · {component.current.presentation.model}</p>
                         </div>
@@ -270,18 +270,18 @@ export default async function CatalogPage({
                         <div><dt className="text-slate-500">VK netto</dt><dd className="mt-0.5 font-medium tabular-nums text-slate-900">{commercial ? formatCents(commercial.salesPriceNetCents) : "Noch offen"}</dd></div>
                         {result.canReadPurchasePrice ? <div><dt className="text-slate-500">EK netto</dt><dd className="mt-0.5 font-medium tabular-nums text-slate-900">{commercial ? formatCents(purchase) : "Noch offen"}</dd></div> : null}
                       </dl>
-                      <Link href={`${catalogPath}/${component.id}`} className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Produkt öffnen <span aria-hidden="true" className="ml-2">→</span></Link>
+                      <Link href={`${catalogPath}/${component.id}`} className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Produkt öffnen <span aria-hidden="true" className="ml-2">→</span></Link>
                     </li>
                   );
                 })}
               </ul>
             )}
-            {result.components.length === 200 ? <p role="note" className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">Es werden höchstens 200 Produkte angezeigt. Grenze die Filter für weitere Treffer ein.</p> : null}
+            {result.components.length === 200 ? <p role="note" className="rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-950">Es werden höchstens 200 Produkte angezeigt. Grenze die Filter für weitere Treffer ein.</p> : null}
           </section>
 
           {result.canManage ? (
             <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
-              <summary className="min-h-11 cursor-pointer px-5 py-4 text-sm font-semibold text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 sm:px-6">Neuen Produktentwurf anlegen</summary>
+              <summary className="min-h-11 cursor-pointer px-5 py-4 text-sm font-semibold text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-600 sm:px-6">Neuen Produktentwurf anlegen</summary>
               <div className="border-t border-slate-200 p-5 sm:p-6"><ProductForm workspaceId={workspaceId} /></div>
             </details>
           ) : null}

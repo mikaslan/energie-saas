@@ -53,7 +53,7 @@ export default async function CatalogImportPage({
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <nav aria-label="Bereichsnavigation" className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+          <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
             <span aria-hidden="true" className="mr-2">←</span>
             Zum Produktkatalog
           </Link>
@@ -61,7 +61,7 @@ export default async function CatalogImportPage({
         </nav>
 
         <header className="mb-8 border-b border-slate-200 pb-7">
-          <p className="text-sm font-semibold text-blue-700">Eigene oder autorisierte Produktdaten</p>
+          <p className="text-sm font-semibold text-brand-700">Eigene oder autorisierte Produktdaten</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
             Produktkatalog aus CSV vorbereiten
           </h1>
@@ -73,7 +73,7 @@ export default async function CatalogImportPage({
         </header>
 
         <div className="mb-6 flex flex-wrap gap-3">
-          <a href={`${pagePath}/vorlage`} className="inline-flex min-h-11 items-center rounded-md border border-blue-700 bg-white px-4 py-2 text-sm font-semibold text-blue-800 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+          <a href={`${pagePath}/vorlage`} className="inline-flex min-h-11 items-center rounded-md border border-brand-700 bg-white px-4 py-2 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
             CSV-Vorlage herunterladen
           </a>
         </div>

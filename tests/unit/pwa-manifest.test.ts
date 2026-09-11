@@ -35,7 +35,8 @@ describe("pwa manifest skeleton", () => {
     expect(manifest.start_url).toBe("/");
     expect(manifest.display).toBe("standalone");
     expect(manifest.background_color).toBe("#ffffff");
-    expect(manifest.theme_color).toBe("#1d4ed8");
+    // THEME-01: WMEE-Akzent (Beleg docs/parity/wmee-theme-beleg.md).
+    expect(manifest.theme_color).toBe("#218355");
     const sizes = new Map(manifest.icons.map((icon) => [`${icon.sizes}:${icon.purpose ?? "any"}`, icon.src]));
     expect(sizes.get("192x192:any")).toBe("/icons/icon-192.png");
     expect(sizes.get("512x512:any")).toBe("/icons/icon-512.png");

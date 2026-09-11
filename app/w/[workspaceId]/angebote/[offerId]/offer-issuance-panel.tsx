@@ -232,7 +232,7 @@ function SubmitButton({
       onClick={(event) => {
         if (pending) event.preventDefault();
       }}
-      className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait bg-slate-700 text-white" : activeClass}`}
+      className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait bg-slate-700 text-white" : activeClass}`}
     >
       {pending ? pendingLabel : children}
       {accessibleContext ? <span className="sr-only">{accessibleContext}</span> : null}
@@ -376,7 +376,7 @@ function WithdrawalForm({
         aria-invalid={reasonInvalid || undefined}
         aria-describedby={describedBy(feedbackId)}
         defaultValue=""
-        className={`mt-1 min-h-11 w-full rounded-md border bg-white px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-blue-600 sm:max-w-md ${reasonInvalid ? "border-rose-600 ring-1 ring-rose-600/30" : "border-slate-300"}`}
+        className={`mt-1 min-h-11 w-full rounded-md border bg-white px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-brand-600 sm:max-w-md ${reasonInvalid ? "border-rose-600 ring-1 ring-rose-600/30" : "border-slate-300"}`}
       >
         <option value="" disabled>Grund auswählen</option>
         <option value="content_error">Inhaltlicher Fehler</option>
@@ -495,7 +495,7 @@ function IssuanceCard({
       {issuance.canDownload ? (
         <a
           href={`/w/${workspaceId}/angebote/${offerId}/ausstellungsfassungen/${issuance.issuanceId}/pdf`}
-          className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-950 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-950 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Finale PDF intern prüfen<span className="sr-only"> · Ausstellungsfassung {issuance.issuanceReference}</span>
         </a>
@@ -518,7 +518,7 @@ function IssuanceCard({
         />
       ) : null}
       {approvalOpen && canApprove && issuance.viewerHasApproved ? (
-        <p className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-950">
+        <p className="mt-4 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-950">
           Deine Bytefreigabe zählt bereits als {issuance.approvalCount} von 2. Die zweite Freigabe muss eine andere berechtigte Person übernehmen.
         </p>
       ) : null}
@@ -585,7 +585,7 @@ function RequestForm({
   }];
   const candidateInvalid = isIssueInvalid(state, candidateIssues, candidateFieldId);
   return (
-    <form action={action} aria-describedby={feedbackId} className="rounded-lg border border-blue-200 bg-blue-50 p-4 sm:p-5">
+    <form action={action} aria-describedby={feedbackId} className="rounded-lg border border-brand-200 bg-brand-50 p-4 sm:p-5">
       <input type="hidden" name="schemaVersion" value={OFFER_ISSUANCE_REQUEST_VERSION} />
       <input type="hidden" name="workspaceId" value={workspaceId} />
       <input type="hidden" name="offerId" value={offerId} />
@@ -594,15 +594,15 @@ function RequestForm({
         tabIndex={-1}
         aria-invalid={candidateInvalid || undefined}
         aria-describedby={describedBy(feedbackId)}
-        className={`min-w-0 rounded-md border p-3 outline-none ${candidateInvalid ? "border-rose-600 ring-1 ring-rose-600/30" : "border-blue-300"}`}
+        className={`min-w-0 rounded-md border p-3 outline-none ${candidateInvalid ? "border-rose-600 ring-1 ring-rose-600/30" : "border-brand-300"}`}
       >
-        <legend className="px-1 text-sm font-semibold text-blue-950">Freigegebenen Freigabekandidaten wählen</legend>
+        <legend className="px-1 text-sm font-semibold text-brand-950">Freigegebenen Freigabekandidaten wählen</legend>
         <div className="grid min-w-0 gap-2">
           {candidates.map((candidate) => {
             const inputId = `offer-issuance-candidate-${candidate.candidateId}`;
             const repairable = repairableCandidateIds.has(candidate.candidateId);
             return (
-              <label key={candidate.candidateId} htmlFor={inputId} className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-blue-200 bg-white p-3 text-sm leading-6 text-slate-800 outline-none hover:border-blue-400">
+              <label key={candidate.candidateId} htmlFor={inputId} className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-brand-200 bg-white p-3 text-sm leading-6 text-slate-800 outline-none hover:border-brand-400">
                 <input
                   id={inputId}
                   type="radio"
@@ -616,7 +616,7 @@ function RequestForm({
                 <span className="min-w-0">
                   <span className="block break-words font-semibold text-slate-950">{candidate.variantName} · Revision {candidate.variantRevision}</span>
                   <span className="block break-words">{candidate.candidateReference} · freigegeben {formatDate(candidate.approvedAt)}</span>
-                  <span className="block font-semibold text-blue-900">{repairable ? "Laufende Erstellung erneut anstoßen" : "Neue Fassung erstellen"}</span>
+                  <span className="block font-semibold text-brand-900">{repairable ? "Laufende Erstellung erneut anstoßen" : "Neue Fassung erstellen"}</span>
                 </span>
               </label>
             );
@@ -624,7 +624,7 @@ function RequestForm({
         </div>
       </fieldset>
       {repairableCount > 0 ? (
-        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-blue-950">
+        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-brand-950">
           Als „laufende Erstellung erneut anstoßen“ markierte Einträge verwenden denselben gebundenen Auftrag und lösen dessen sichere Warteschlangen-Reparatur erneut aus.
         </p>
       ) : null}
@@ -690,7 +690,7 @@ export function OfferIssuancePanel({
     <section id="offer-issuance" tabIndex={-1} aria-labelledby="offer-issuance-title" className="min-w-0 rounded-xl border border-slate-300 bg-slate-100 p-4 outline-none sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-4xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Finale Dokumentstufe</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Finale Dokumentstufe</p>
           <h2 id="offer-issuance-title" className="mt-1 text-xl font-semibold text-slate-950">Ausstellungsfassung</h2>
           <p className="mt-2 text-sm leading-6 text-slate-700">
             Der Freigabekandidat wird niemals ausgestellt. Aus demselben versiegelten Datenstand entsteht eine neue finale PDF-Datei. Erst zwei bytegebundene Freigaben und ein späterer echter Archivnachweis dürfen daraus ein ausgestelltes Dokument machen.
@@ -704,7 +704,7 @@ export function OfferIssuancePanel({
           href={refreshHref}
           label="Status der Ausstellungsfassungen aktualisieren"
           kind="refresh"
-          className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-blue-700 underline decoration-2 underline-offset-4 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           <span className="sr-only">Ausstellungsfassungen: </span>Status aktualisieren
         </OfferDirtyNavigationLink>
@@ -734,7 +734,7 @@ export function OfferIssuancePanel({
           <OfferDirtyNavigationLink
             href={`${refreshHref}#offer-release-candidate`}
             label="Freigabekandidaten öffnen"
-            className="font-semibold text-blue-700 underline decoration-2 underline-offset-4 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Freigabekandidaten öffnen
           </OfferDirtyNavigationLink>
@@ -756,7 +756,7 @@ export function OfferIssuancePanel({
           <OfferDirtyNavigationLink
             href={`${refreshHref}#offer-release-candidate`}
             label="Neuen Freigabekandidaten vorbereiten"
-            className="font-semibold text-blue-700 underline decoration-2 underline-offset-4 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Freigabekandidaten öffnen
           </OfferDirtyNavigationLink>

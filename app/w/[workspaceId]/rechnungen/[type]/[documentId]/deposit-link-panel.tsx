@@ -102,7 +102,7 @@ export function DepositLinkPanel({
                     <button
                       type="submit"
                       aria-label={`Anrechnung ${deposit.number ?? deposit.name} entfernen`}
-                      className="inline-flex min-h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                      className="inline-flex min-h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                     >
                       Entfernen
                     </button>
@@ -163,7 +163,7 @@ export function DepositLinkPanel({
                 required
                 value={selectedCandidate?.id ?? ""}
                 onChange={(event) => setSelectedDepositId(event.target.value)}
-                className="mt-1 min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+                className="mt-1 min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
               >
                 {candidates.map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
@@ -184,12 +184,12 @@ export function DepositLinkPanel({
                 inputMode="decimal"
                 placeholder="volles Brutto"
                 defaultValue={suggestedCents === null ? undefined : centsToEurInput(suggestedCents)}
-                className="mt-1 min-h-11 w-36 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+                className="mt-1 min-h-11 w-36 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
               />
             </label>
             <button
               type="submit"
-              className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Anrechnen
             </button>

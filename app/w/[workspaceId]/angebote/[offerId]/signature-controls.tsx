@@ -61,7 +61,7 @@ function Feedback(props: { state: SignatureActionState }) {
   if (!message && !token) return null;
   return (
     <p
-      className={`mt-2 text-sm font-medium ${isError ? "text-amber-700" : "text-blue-800"}`}
+      className={`mt-2 text-sm font-medium ${isError ? "text-amber-700" : "text-brand-800"}`}
       aria-live={isError ? "assertive" : "polite"}
       role={isError ? "alert" : "status"}
     >
@@ -70,7 +70,7 @@ function Feedback(props: { state: SignatureActionState }) {
       {token ? (
         <a
           href={`/s/${token}`}
-          className="font-mono text-xs break-all text-blue-800 underline underline-offset-2"
+          className="font-mono text-xs break-all text-brand-800 underline underline-offset-2"
         >
           /s/{token}
         </a>

@@ -119,7 +119,7 @@ export function ProjectOutcomePanel({
         <div className="mt-2 text-sm leading-6 text-amber-950">
           <p>Vor einem Lost-Abschluss muss ein Admin mindestens einen aktiven Verlustgrund anlegen.</p>
           {context.permissions.canManageReasons ? (
-            <Link href={`/w/${workspaceId}/einstellungen/verlustgruende`} className="mt-2 inline-flex min-h-11 items-center font-semibold text-blue-800 underline outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+            <Link href={`/w/${workspaceId}/einstellungen/verlustgruende`} className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-800 underline outline-none focus-visible:ring-2 focus-visible:ring-brand-600">
               Verlustgründe verwalten
             </Link>
           ) : null}
@@ -129,7 +129,7 @@ export function ProjectOutcomePanel({
           <CommonFields commandVersion={commandVersion} kind="mark_lost" projectId={context.projectId} revision={context.outcomeRevision} />
           <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-900">
             Verlustgrund
-            <select name="lossReasonId" required defaultValue="" className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm">
+            <select name="lossReasonId" required defaultValue="" className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 sm:text-sm">
               <option value="" disabled>Bitte auswählen</option>
               {context.activeLossReasons.map((reason) => (
                 <option key={reason.id} value={reason.id}>{reason.label}</option>
@@ -138,7 +138,7 @@ export function ProjectOutcomePanel({
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-900">
             Interner Hinweis (optional)
-            <textarea name="lossReasonText" maxLength={500} rows={4} className="min-h-24 min-w-0 resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-base outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm" />
+            <textarea name="lossReasonText" maxLength={500} rows={4} className="min-h-24 min-w-0 resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-base outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 sm:text-sm" />
           </label>
           <button type="submit" className="min-h-11 justify-self-start rounded-md bg-amber-800 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-amber-900 focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 disabled:cursor-wait">
             Verloren verbindlich bestätigen
@@ -160,7 +160,7 @@ export function ProjectOutcomePanel({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
             Geschäftsergebnis
           </p>
           <h2 id="project-outcome-title" className="mt-1 text-lg font-semibold text-slate-950">
@@ -264,16 +264,16 @@ export function ProjectOutcomePanel({
           ) : postAcceptanceWon ? (
             lostOutcomeControl
           ) : context.outcome === "won" || context.outcome === "lost" ? (
-            <details className="rounded-md border border-blue-200 bg-blue-50 p-3">
-              <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-blue-950 outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+            <details className="rounded-md border border-brand-200 bg-brand-50 p-3">
+              <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-brand-950 outline-none focus-visible:ring-2 focus-visible:ring-brand-600">
                 Anfrage wieder öffnen
               </summary>
-              <p className="mt-2 text-sm leading-6 text-blue-900">
+              <p className="mt-2 text-sm leading-6 text-brand-900">
                 Die Anfrage kehrt in dieselbe Kanban-Spalte zurück. Ein aktiver Verlustgrund und der interne Hinweis werden vom Projekt entfernt.
               </p>
               <form action={action} className="mt-3">
                 <CommonFields commandVersion={commandVersion} kind="reopen" projectId={context.projectId} revision={context.outcomeRevision} />
-                <button type="submit" className="min-h-11 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait">
+                <button type="submit" className="min-h-11 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait">
                   Wieder öffnen bestätigen
                 </button>
               </form>

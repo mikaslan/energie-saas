@@ -93,7 +93,7 @@ export function AddressPinMap({
           >
             <span
               aria-hidden="true"
-              className="block h-7 w-7 rounded-full border-4 border-white bg-blue-700 shadow-lg"
+              className="block h-7 w-7 rounded-full border-4 border-white bg-brand-700 shadow-lg"
             />
           </Marker>
         </Map>
@@ -107,7 +107,7 @@ export function AddressPinMap({
             type="button"
             onClick={() => nudge("north")}
             aria-label="Pin einen Meter nach Norden verschieben"
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true">↑</span>
           </button>
@@ -116,7 +116,7 @@ export function AddressPinMap({
             type="button"
             onClick={() => nudge("west")}
             aria-label="Pin einen Meter nach Westen verschieben"
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true">←</span>
           </button>
@@ -124,7 +124,7 @@ export function AddressPinMap({
             type="button"
             onClick={() => nudge("south")}
             aria-label="Pin einen Meter nach Süden verschieben"
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true">↓</span>
           </button>
@@ -132,7 +132,7 @@ export function AddressPinMap({
             type="button"
             onClick={() => nudge("east")}
             aria-label="Pin einen Meter nach Osten verschieben"
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true">→</span>
           </button>

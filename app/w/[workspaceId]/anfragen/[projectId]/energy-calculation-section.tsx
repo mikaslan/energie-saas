@@ -74,7 +74,7 @@ function AnnualDetails({ annual }: { annual: AnnualEnergy }) {
 function NewMonthlyTable({ monthly }: { monthly: MonthlyEnergy }) {
   return (
     <div
-      className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+      className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
       tabIndex={0}
       role="region"
       aria-label="Monatsergebnisse der Planungsrechnung, horizontal scrollbar"
@@ -115,7 +115,7 @@ function ExistingMonthlyTable({ result }: { result: ExistingResult }) {
   const planned = result.calculation.planned.monthly;
   return (
     <div
-      className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+      className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
       tabIndex={0}
       role="region"
       aria-label="Monatsvergleich der Bestandsplanung, horizontal scrollbar"
@@ -170,7 +170,7 @@ function ResultProvenance({ result }: { result: ProjectEnergyCalculationResult }
   return (
     <>
       <details className="mt-5 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-        <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+        <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600">
           Annahmen und technische Provenienz
         </summary>
         <dl className="mt-2">
@@ -359,7 +359,7 @@ function V2AnnualDetails({ annual }: { annual: AnnualEnergyV2 }) {
 function V2MonthlyTable({ monthly }: { monthly: MonthlyEnergyV2 }) {
   return (
     <div
-      className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+      className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
       tabIndex={0}
       role="region"
       aria-label="Monatsergebnisse der Viertelstunden-Planungsrechnung, horizontal scrollbar"
@@ -437,7 +437,7 @@ function V2ExistingComparison({ existing }: { existing: ExistingInstallationV2 }
         ) : null}
       </dl>
       <div
-        className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+        className="mt-5 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         tabIndex={0}
         role="region"
         aria-label="Monatsvergleich der Bestandsplanung (v2), horizontal scrollbar"
@@ -477,7 +477,7 @@ function V2ExistingComparison({ existing }: { existing: ExistingInstallationV2 }
 function V2Provenance({ result }: { result: ProjectEnergyCalculationResultV2 }) {
   return (
     <details className="mt-5 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-      <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+      <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600">
         Annahmen und technische Provenienz (v2)
       </summary>
       <dl className="mt-2">
@@ -588,7 +588,7 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
       </dl>
       {economics.tou ? <V2Tou tou={economics.tou} /> : null}
       <div
-        className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+        className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         tabIndex={0}
         role="region"
         aria-label="Jahres-Cashflow der Wirtschaftlichkeitsrechnung, horizontal scrollbar"
@@ -784,7 +784,7 @@ export function EnergyCalculationSection({
         || calculation.status === "retry_wait" ? (
           <div
             aria-busy="true"
-            className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950"
+            className="rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm leading-6 text-brand-950"
           >
             <p className="font-semibold">{runningLabel(calculation.status)}</p>
             <p className="mt-1">

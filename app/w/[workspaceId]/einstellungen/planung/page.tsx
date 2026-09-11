@@ -51,7 +51,7 @@ export default async function PlanningSettingsPage(
   return (
     <main className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
           Einstellungen
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Planung</h1>
@@ -65,7 +65,7 @@ export default async function PlanningSettingsPage(
       <div className="mt-6">
         <Link
           href={`/w/${workspaceId}/einstellungen/wirtschaftlichkeit`}
-          className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Zur Wirtschaftlichkeit
         </Link>

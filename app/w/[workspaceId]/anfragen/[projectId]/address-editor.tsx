@@ -266,10 +266,10 @@ export function AddressEditor({
   return (
     <section
       aria-labelledby="address-editor-title"
-      className="min-w-0 rounded-lg border border-blue-200 bg-blue-50/50 p-4 sm:p-5"
+      className="min-w-0 rounded-lg border border-brand-200 bg-brand-50/50 p-4 sm:p-5"
     >
       <div className="mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Adresskorrektur</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Adresskorrektur</p>
         <h3 id="address-editor-title" className="mt-1 text-base font-semibold text-slate-950">
           Hausadresse nachtragen
         </h3>
@@ -323,7 +323,7 @@ export function AddressEditor({
               minLength={5}
               maxLength={160}
               disabled={searchState.status === "pending" || correctionPending}
-              className="min-h-11 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base text-slate-950 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-200 disabled:cursor-wait disabled:bg-slate-100 sm:text-sm"
+              className="min-h-11 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base text-slate-950 shadow-sm outline-none placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-200 disabled:cursor-wait disabled:bg-slate-100 sm:text-sm"
               placeholder="Musterstraße 12, 10115 Berlin"
             />
             {listOpen ? (
@@ -351,12 +351,12 @@ export function AddressEditor({
                     }}
                     className={`cursor-pointer rounded px-3 py-3 text-sm leading-5 outline-none ${
                       activeIndex === index
-                        ? "bg-blue-700 text-white"
-                        : "text-slate-800 hover:bg-blue-50"
+                        ? "bg-brand-700 text-white"
+                        : "text-slate-800 hover:bg-brand-50"
                     }`}
                   >
                     <span className="block break-words font-semibold">{candidate.formattedAddress}</span>
-                    <span className={`mt-0.5 block text-xs ${activeIndex === index ? "text-blue-100" : "text-slate-500"}`}>
+                    <span className={`mt-0.5 block text-xs ${activeIndex === index ? "text-brand-100" : "text-slate-500"}`}>
                       Hausgenau · Deutschland
                     </span>
                   </li>
@@ -367,7 +367,7 @@ export function AddressEditor({
           <button
             type="submit"
             disabled={searchState.status === "pending" || correctionPending}
-            className="min-h-11 shrink-0 rounded-md border border-blue-700 bg-white px-4 text-sm font-semibold text-blue-800 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:border-slate-300 disabled:text-slate-400"
+            className="min-h-11 shrink-0 rounded-md border border-brand-700 bg-white px-4 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:border-slate-300 disabled:text-slate-400"
           >
             {searchState.status === "pending" ? "Suche läuft …" : "Adresse suchen"}
           </button>
@@ -455,7 +455,7 @@ export function AddressEditor({
               <button
                 type="button"
                 onClick={() => setPin({ latitude: selected.latitude, longitude: selected.longitude })}
-                className="min-h-11 justify-self-start rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="min-h-11 justify-self-start rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Pin auf Hauspunkt zurücksetzen
               </button>
@@ -463,7 +463,7 @@ export function AddressEditor({
             <button
               type="submit"
               disabled={correctionPending || correctionState.status === "success"}
-              className="min-h-11 w-full rounded-md bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="min-h-11 w-full rounded-md bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {correctionPending
                 ? "Adresse wird geprüft …"

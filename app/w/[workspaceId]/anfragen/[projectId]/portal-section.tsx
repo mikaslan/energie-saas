@@ -44,7 +44,7 @@ function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: st
     <button
       type="submit"
       disabled={pending}
-      className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-50"
+      className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:opacity-50"
     >
       {pending ? pendingLabel : label}
     </button>
@@ -106,7 +106,7 @@ export function PortalSection({
           <button
             type="button"
             onClick={() => void copyToken(createdToken)}
-            className="mt-2 inline-flex min-h-11 items-center rounded-md border border-amber-400 bg-white px-4 text-sm font-semibold text-amber-900 outline-none hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="mt-2 inline-flex min-h-11 items-center rounded-md border border-amber-400 bg-white px-4 text-sm font-semibold text-amber-900 outline-none hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             {copied ? "Kopiert" : "Link kopieren"}
           </button>
@@ -120,7 +120,7 @@ export function PortalSection({
               <select
                 name="ttlDays"
                 defaultValue="14"
-                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
               >
                 <option value="7">7 Tage</option>
                 <option value="14">14 Tage</option>
@@ -138,7 +138,7 @@ export function PortalSection({
                 <select
                   name="reason"
                   defaultValue="user_request"
-                  className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                  className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
                 >
                   <option value="user_request">Kundenwunsch</option>
                   <option value="project_closed">Projekt geschlossen</option>

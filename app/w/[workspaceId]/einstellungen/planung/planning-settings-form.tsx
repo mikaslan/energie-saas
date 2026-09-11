@@ -78,14 +78,14 @@ function ReadOnlyPlanningSettings({ settings }: { settings: PlanningSettingsV1 }
               key={mode.value}
               className={`rounded-md border p-4 ${
                 selected
-                  ? "border-blue-600 bg-blue-50"
+                  ? "border-brand-600 bg-brand-50"
                   : "border-slate-200 bg-slate-50"
               }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-semibold text-slate-950">{mode.title}</h3>
                 {selected ? (
-                  <span className="rounded-full bg-blue-700 px-2 py-0.5 text-xs font-semibold text-white">
+                  <span className="rounded-full bg-brand-700 px-2 py-0.5 text-xs font-semibold text-white">
                     Aktuell
                   </span>
                 ) : null}
@@ -148,7 +148,7 @@ export function PlanningSettingsForm({
             {MODES.map((mode) => (
               <label
                 key={mode.value}
-                className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border border-slate-300 p-4 outline-none has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 focus-within:ring-2 focus-within:ring-blue-600 focus-within:ring-offset-2"
+                className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border border-slate-300 p-4 outline-none has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50 focus-within:ring-2 focus-within:ring-brand-600 focus-within:ring-offset-2"
               >
                 <input
                   type="radio"
@@ -156,7 +156,7 @@ export function PlanningSettingsForm({
                   value={mode.value}
                   defaultChecked={mode.value === settings.defaultPlanningMode}
                   aria-describedby="planning-mode-help"
-                  className="mt-1 size-4 shrink-0 accent-blue-700"
+                  className="mt-1 size-4 shrink-0 accent-brand-700"
                 />
                 <span className="min-w-0">
                   <span className="block font-semibold text-slate-950">{mode.title}</span>
@@ -189,7 +189,7 @@ export function PlanningSettingsForm({
           <button
             type="submit"
             disabled={isPending}
-            className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
+            className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
           >
             {isPending ? "Speichert …" : "Speichern"}
           </button>

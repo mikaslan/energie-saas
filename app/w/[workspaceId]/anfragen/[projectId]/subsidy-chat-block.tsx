@@ -81,13 +81,13 @@ export function SubsidyChatBlock({
               rows={2}
               data-testid="subsidy-chat-body"
               placeholder="z. B. Die BzA ist eingereicht."
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-2 py-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-2 py-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
             />
           </label>
           <button
             type="submit"
             data-testid="subsidy-chat-send"
-            className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Senden
           </button>

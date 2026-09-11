@@ -16,7 +16,7 @@ function renderMention(emailLower: string, key: string): ReactNode {
     <span
       key={key}
       data-testid={`note-mention-${emailLower}`}
-      className="inline-block rounded-full bg-blue-50 px-2 py-px font-medium text-blue-800"
+      className="inline-block rounded-full bg-brand-50 px-2 py-px font-medium text-brand-800"
     >
       @{emailLower}
     </span>
@@ -59,7 +59,7 @@ function renderInline(
         href={href}
         rel="noopener noreferrer"
         {...(external ? { target: "_blank" } : {})}
-        className="underline decoration-slate-400 underline-offset-2 hover:text-blue-800"
+        className="underline decoration-slate-400 underline-offset-2 hover:text-brand-800"
       >
         {content}
       </a>

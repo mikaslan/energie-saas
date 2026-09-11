@@ -32,7 +32,7 @@ const INITIAL_TASK_ACTION_STATE: ProjectTaskActionState = { status: "idle" };
 
 const TASK_LABEL_CLASSES: Record<TaskLabelColor, string> = {
   slate: "border-slate-300 bg-slate-50 text-slate-800",
-  blue: "border-blue-200 bg-blue-50 text-blue-900",
+  blue: "border-brand-200 bg-brand-50 text-brand-900",
   emerald: "border-emerald-200 bg-emerald-50 text-emerald-900",
   amber: "border-amber-200 bg-amber-50 text-amber-950",
   rose: "border-rose-200 bg-rose-50 text-rose-900",
@@ -160,7 +160,7 @@ function ApplyTemplateForm({
           aria-label="Aufgabenvorlage"
           required
           defaultValue=""
-          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1"
         >
           <option value="" disabled>Vorlage wählen …</option>
           {templates.map((template) => (
@@ -172,7 +172,7 @@ function ApplyTemplateForm({
       </label>
       <LocalSubmitButton
         pendingLabel="Wird angelegt …"
-        className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-100"
+        className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-100"
       >
         Vorlage anwenden
       </LocalSubmitButton>
@@ -225,7 +225,7 @@ function TaskCard({
           ? "bg-slate-200 text-slate-700"
           : task.status === "done"
             ? "bg-emerald-100 text-emerald-900"
-            : "bg-blue-100 text-blue-900"}`}>
+            : "bg-brand-100 text-brand-900"}`}>
           {isArchived ? "Archiviert" : task.status === "done" ? "Erledigt" : "Offen"}
         </span>
       </div>
@@ -271,7 +271,7 @@ function TaskCard({
                     <LocalSubmitButton
                       pendingLabel="Checkliste wird aktualisiert …"
                       ariaLabel={`${item.text} als ${item.done ? "offen" : "erledigt"} markieren`}
-                      className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-md px-2 text-left text-sm text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
+                      className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-md px-2 text-left text-sm text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
                     >
                       <span aria-hidden="true" className="shrink-0 text-base">{item.done ? "☑" : "☐"}</span>
                       <span className={`min-w-0 break-words ${item.done ? "text-slate-500 line-through" : ""}`}>{item.text}</span>
@@ -295,7 +295,7 @@ function TaskCard({
           <button
             type="button"
             onClick={(event) => onEdit(event, task)}
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Bearbeiten
           </button>
@@ -307,7 +307,7 @@ function TaskCard({
             />
             <LocalSubmitButton
               pendingLabel="Status wird gespeichert …"
-              className="min-h-11 rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
+              className="min-h-11 rounded-md bg-brand-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
             >
               {task.status === "done" ? "Wieder öffnen" : "Abschließen"}
             </LocalSubmitButton>
@@ -412,7 +412,7 @@ export function ProjectTasksSection({
     <section id="project-tasks" aria-labelledby="project-tasks-title" className="min-w-0">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Arbeit</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Arbeit</p>
           <h2 id="project-tasks-title" className="mt-1 text-xl font-semibold text-slate-950">Aufgaben</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             Interne Aufgaben, Zuständigkeiten und Checklisten für dieses Projekt.
@@ -422,20 +422,20 @@ export function ProjectTasksSection({
           {showingArchived ? (
             <Link
               href={`${detailPath}#project-tasks`}
-              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Aktive Aufgaben
             </Link>
           ) : workspace.archivedCount > 0 ? (
             <Link
               href={`${detailPath}?tasks=archived#project-tasks`}
-              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Archiv anzeigen ({workspace.archivedCount})
             </Link>
           ) : null}
           {workspace.permissions.canWrite && !showingArchived ? (
-            <button type="button" onClick={openCreateEditor} className="min-h-11 rounded-md border border-blue-700 bg-white px-4 py-2 text-sm font-semibold text-blue-800 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+            <button type="button" onClick={openCreateEditor} className="min-h-11 rounded-md border border-brand-700 bg-white px-4 py-2 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
               Vollständige Aufgabe
             </button>
           ) : null}
@@ -443,11 +443,11 @@ export function ProjectTasksSection({
       </div>
 
       {workspace.permissions.canWrite && !showingArchived ? (
-        <form action={runAction} className="mt-5 grid min-w-0 gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <form action={runAction} className="mt-5 grid min-w-0 gap-2 rounded-lg border border-brand-200 bg-brand-50 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <input type="hidden" name="schemaVersion" value={PROJECT_TASK_COMMAND_VERSION} />
           <input type="hidden" name="kind" value="quick_create" />
           <input type="hidden" name="projectId" value={projectId} />
-          <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-blue-950">
+          <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-brand-950">
             Neue Aufgabe
             <input
               type="text"
@@ -456,12 +456,12 @@ export function ProjectTasksSection({
               minLength={1}
               maxLength={200}
               required
-              className="min-h-11 min-w-0 rounded-md border border-blue-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+              className="min-h-11 min-w-0 rounded-md border border-brand-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1"
             />
           </label>
           <LocalSubmitButton
             pendingLabel="Wird gespeichert …"
-            className="min-h-11 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
+            className="min-h-11 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
           >
             Aufgabe anlegen
           </LocalSubmitButton>
@@ -539,7 +539,7 @@ export function ProjectTasksSection({
           {latestTaskHref !== null ? (
             <Link
               href={latestTaskHref}
-              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Erste Aufgabenseite
             </Link>
@@ -547,7 +547,7 @@ export function ProjectTasksSection({
           {nextTaskHref !== null ? (
             <Link
               href={nextTaskHref}
-              className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-3 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-3 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Weitere Aufgaben
             </Link>

@@ -12,6 +12,21 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* THEME-01 WMEE-Akzent (Beleg docs/parity/wmee-theme-beleg.md):
+     700 = belegtes WMEE-Grün #218355 (wmee.de :root --primary,
+     2026-09-11); übrige Stufen per color-mix daraus abgeleitet
+     (ESTIMATE, reversibel). Semantische Farben bleiben unangetastet. */
+  --color-brand-50: color-mix(in srgb, #218355 7%, white);
+  --color-brand-100: color-mix(in srgb, #218355 14%, white);
+  --color-brand-200: color-mix(in srgb, #218355 26%, white);
+  --color-brand-300: color-mix(in srgb, #218355 42%, white);
+  --color-brand-400: color-mix(in srgb, #218355 62%, white);
+  --color-brand-500: color-mix(in srgb, #218355 82%, white);
+  --color-brand-600: color-mix(in srgb, #218355 92%, white);
+  --color-brand-700: #218355;
+  --color-brand-800: color-mix(in srgb, #218355 82%, black);
+  --color-brand-900: color-mix(in srgb, #218355 64%, black);
+  --color-brand-950: color-mix(in srgb, #218355 48%, black);
 }
 
 body {
@@ -29,8 +44,8 @@ textarea {
 }
 
 ::selection {
-  background: #bfdbfe;
-  color: #172554;
+  background: color-mix(in srgb, #218355 26%, white);
+  color: color-mix(in srgb, #218355 48%, black);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -22,7 +22,7 @@ export default async function InvoicingAreaLayout({
   return (
     <main className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
           Rechnungen &amp; Dokumente
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">

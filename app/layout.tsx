@@ -37,7 +37,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1d4ed8",
+  // THEME-01: WMEE-Akzent (Beleg docs/parity/wmee-theme-beleg.md).
+  themeColor: "#218355",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

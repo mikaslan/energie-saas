@@ -19,7 +19,7 @@ import {
 const initialState: LeadSourceActionState = { status: "idle" };
 
 const inputClass =
-  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30";
+  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
 
 function message(state: LeadSourceActionState): { text: string; isError: boolean } | null {
   switch (state.status) {
@@ -134,7 +134,7 @@ export function LeadSourceManager({
             <div className="mt-5">
               <button
                 type="submit"
-                className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Anlegen
               </button>
@@ -179,7 +179,7 @@ export function LeadSourceManager({
                         <input type="hidden" name="id" value={source.id} />
                         <button
                           type="submit"
-                          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                         >
                           Archivieren
                         </button>
@@ -224,7 +224,7 @@ export function LeadSourceManager({
                     <input type="hidden" name="id" value={source.id} />
                     <button
                       type="submit"
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                     >
                       Reaktivieren
                     </button>
@@ -258,7 +258,7 @@ function EditForm({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         Bearbeiten
       </button>
@@ -275,13 +275,13 @@ function EditForm({
         maxLength={120}
         defaultValue={source.name}
         aria-label="Name"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
       />
       <select
         name="projectDomain"
         defaultValue={source.projectDomain ?? ""}
         aria-label="Bereich"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
       >
         <option value="">Ohne Zuordnung</option>
         <option value="residential">Wohnbau</option>
@@ -294,11 +294,11 @@ function EditForm({
         placeholder="#3B82F6"
         defaultValue={source.color ?? ""}
         aria-label="Farbe"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
       />
       <button
         type="submit"
-        className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         Speichern
       </button>
@@ -362,7 +362,7 @@ function RoutingForm({
             defaultValue={rule?.assigneeMembershipId ?? ""}
             required
             aria-label={`Standard-Betreuer für ${sourceName}`}
-            className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+            className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-600"
           >
             <option value="">Bitte wählen</option>
             {members.map((member) => (
@@ -375,7 +375,7 @@ function RoutingForm({
         <button
           type="submit"
           aria-label={`Standard-Betreuer für ${sourceName} speichern`}
-          className="min-h-11 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+          className="min-h-11 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600"
         >
           Speichern
         </button>
@@ -392,7 +392,7 @@ function RoutingForm({
           <button
             type="submit"
             aria-label={`Standard-Betreuer für ${sourceName} entfernen`}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600"
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             Standard-Betreuer entfernen
           </button>

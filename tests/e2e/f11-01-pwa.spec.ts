@@ -29,7 +29,8 @@ test("F11-01-E2E-01: Manifest und Icons sind öffentlich erreichbar und verlinkt
   expect(homeResponse.status()).toBeLessThan(400);
   const html = await homeResponse.text();
   expect(html).toContain("/manifest.webmanifest");
-  expect(html).toContain("#1d4ed8");
+  // THEME-01: WMEE-Akzent (Beleg docs/parity/wmee-theme-beleg.md).
+  expect(html).toContain("#218355");
   expect(html).toContain("/icons/apple-touch-icon.png");
 
   // Beobachtbar: Manifest-Link steht im gerenderten <head>.

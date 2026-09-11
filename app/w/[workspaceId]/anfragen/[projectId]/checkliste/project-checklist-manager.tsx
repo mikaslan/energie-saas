@@ -263,7 +263,7 @@ export function ProjectChecklistManager({
             type="button"
             onClick={addBlock}
             disabled={blocksCapped || savePending}
-            className="mt-4 min-h-11 rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+            className="mt-4 min-h-11 rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
           >
             Block hinzufügen
           </button>
@@ -292,7 +292,7 @@ export function ProjectChecklistManager({
             <button
               type="submit"
               disabled={hasEmptyTitle || blocksExceedTransport || savePending}
-              className="mt-3 inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="mt-3 inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {savePending ? "Speichert …" : "Speichern"}
             </button>
@@ -343,7 +343,7 @@ function BlockCard({
           aria-label={`Block-Name ${blockIndex + 1}`}
           value={block.name}
           onChange={(event) => onRename(event.target.value)}
-          className="min-h-11 w-full max-w-md rounded-md border border-slate-300 px-2 text-base font-semibold outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm"
+          className="min-h-11 w-full max-w-md rounded-md border border-slate-300 px-2 text-base font-semibold outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 sm:text-sm"
         />
       ) : (
         <h3 className="text-sm font-semibold text-slate-900">{block.name}</h3>
@@ -383,7 +383,7 @@ function BlockCard({
           type="button"
           aria-label={`${block.name}: Segment hinzufügen`}
           onClick={onAddSegment}
-          className="mt-3 min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+          className="mt-3 min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
         >
           Segment hinzufügen
         </button>
@@ -431,7 +431,7 @@ function SegmentGroup({
             aria-label={`Segment-Name ${segmentIndex + 1}`}
             value={segment.name}
             onChange={(event) => onRename(event.target.value)}
-            className="min-h-11 w-full max-w-md rounded-md border border-slate-300 bg-white px-2 text-base font-semibold outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm"
+            className="min-h-11 w-full max-w-md rounded-md border border-slate-300 bg-white px-2 text-base font-semibold outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 sm:text-sm"
           />
         ) : (
           <h4 className="text-sm font-semibold text-slate-800">{segment.name}</h4>
@@ -460,7 +460,7 @@ function SegmentGroup({
                 checked={item.done}
                 disabled={!canWrite || completed || pending}
                 onChange={(event) => onSetItem(itemIndex, { done: event.target.checked }, canWrite)}
-                className="h-5 w-5 rounded border-slate-300 text-blue-700 focus:ring-2 focus:ring-blue-600"
+                className="h-5 w-5 rounded border-slate-300 text-brand-700 focus:ring-2 focus:ring-brand-600"
               />
             </label>
             <div className="min-w-0 flex-1">
@@ -471,7 +471,7 @@ function SegmentGroup({
                   aria-label={`Punkt-Name ${segmentIndex + 1}.${itemIndex + 1}`}
                   onChange={(event) => onSetItem(itemIndex, { title: event.target.value }, canEditStructure)}
                   placeholder="Punkt"
-                  className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-2 text-base outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 sm:text-sm"
+                  className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-2 text-base outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 sm:text-sm"
                 />
               ) : (
                 <span className={`text-sm ${item.done ? "text-slate-500 line-through" : "text-slate-800"}`}>
@@ -485,7 +485,7 @@ function SegmentGroup({
                     aria-label={`${item.title || `Punkt ${itemIndex + 1}`}: Pflichtpunkt`}
                     checked={item.required}
                     onChange={(event) => onSetItem(itemIndex, { required: event.target.checked }, canConfigure)}
-                    className="h-5 w-5 rounded border-slate-300 text-blue-700 focus:ring-2 focus:ring-blue-600"
+                    className="h-5 w-5 rounded border-slate-300 text-brand-700 focus:ring-2 focus:ring-brand-600"
                   />
                   Pflichtpunkt
                 </label>
@@ -503,7 +503,7 @@ function SegmentGroup({
           aria-label={`${segment.name}: Punkt hinzufügen`}
           onClick={onAddItem}
           disabled={pending}
-          className="mt-2 min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+          className="mt-2 min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
         >
           Punkt hinzufügen
         </button>
@@ -517,7 +517,7 @@ function SegmentGroup({
             type="submit"
             aria-label={`${segment.name}: Segment abschließen`}
             disabled={remainingRequired > 0 || hasUnsavedChanges || pending}
-            className="min-h-11 rounded-md bg-blue-700 px-3 text-xs font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="min-h-11 rounded-md bg-brand-700 px-3 text-xs font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {mutationPending ? "Schließt ab …" : "Segment abschließen"}
           </button>
@@ -537,7 +537,7 @@ function SegmentGroup({
             type="submit"
             aria-label={`${segment.name}: Segment entsperren`}
             disabled={pending}
-            className="min-h-11 rounded-md border border-slate-400 bg-white px-3 text-xs font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+            className="min-h-11 rounded-md border border-slate-400 bg-white px-3 text-xs font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
           >
             {mutationPending ? "Entsperrt …" : "Segment entsperren"}
           </button>
@@ -611,13 +611,13 @@ export function ApplyTemplateSection({
         <input type="hidden" name="workspaceId" value={workspaceId} />
         <input type="hidden" name="projectId" value={projectId} />
         <select name="templateId" aria-label="Vorlage" disabled={applyPending}
-          className="min-h-11 rounded-md border border-slate-300 px-2 text-base outline-none focus:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-slate-100 sm:text-sm">
+          className="min-h-11 rounded-md border border-slate-300 px-2 text-base outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:bg-slate-100 sm:text-sm">
           {templates.map((template) => (
             <option key={template.id} value={template.id}>{template.name}</option>
           ))}
         </select>
         <button type="submit" disabled={applyPending}
-          className="min-h-11 rounded-md bg-blue-700 px-3 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300">
+          className="min-h-11 rounded-md bg-brand-700 px-3 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">
           {applyPending ? "Erstellt …" : "Checkliste erstellen"}
         </button>
       </form>

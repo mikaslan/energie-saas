@@ -146,7 +146,7 @@ export function AppointmentDialog({
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Termin</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Termin</p>
             <h2 id={titleId} className="mt-1 break-words text-xl font-semibold text-slate-950">
               {appointment === null ? "Termin anlegen" : "Termin bearbeiten"}
             </h2>
@@ -159,7 +159,7 @@ export function AppointmentDialog({
             disabled={pending}
             onClick={onClose}
             aria-label="Termineditor schließen"
-            className="min-h-11 rounded-md px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
+            className="min-h-11 rounded-md px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
           >
             Schließen
           </button>
@@ -188,7 +188,7 @@ export function AppointmentDialog({
               maxLength={2000}
               disabled={pending}
               defaultValue={appointment?.title ?? ""}
-              className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+              className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
             />
           </label>
 
@@ -199,7 +199,7 @@ export function AppointmentDialog({
                 name="type"
                 disabled={pending}
                 defaultValue={appointment?.type ?? "on_site"}
-                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
               >
                 {APPOINTMENT_TYPE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -214,7 +214,7 @@ export function AppointmentDialog({
                 required
                 disabled={pending || calendars.length === 0}
                 defaultValue={appointment?.calendarId ?? calendars[0]?.id ?? ""}
-                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
               >
                 {calendars.length === 0 ? (
                   <option value="">Kein Kalender verfügbar</option>
@@ -231,7 +231,7 @@ export function AppointmentDialog({
                 name="teamId"
                 disabled={pending}
                 defaultValue={appointment?.teamId ?? ""}
-                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
               >
                 <option value="">Ohne Team</option>
                 {teams.map((team) => (
@@ -247,7 +247,7 @@ export function AppointmentDialog({
               checked={allDay}
               disabled={pending}
               onChange={(event) => setAllDay(event.currentTarget.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="h-4 w-4 rounded border-slate-300 text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             />
             Ganztägig
           </label>
@@ -267,7 +267,7 @@ export function AppointmentDialog({
                       ? toBerlinDateValue(appointment.start)
                       : toBerlinDateTimeValue(appointment.start)
                 }
-                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
               />
             </label>
             <label className="grid gap-1 text-sm font-semibold text-slate-800">
@@ -284,7 +284,7 @@ export function AppointmentDialog({
                       ? toBerlinDateValue(appointment.end)
                       : toBerlinDateTimeValue(appointment.end)
                 }
-                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+                className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
               />
             </label>
           </div>
@@ -297,7 +297,7 @@ export function AppointmentDialog({
               maxLength={2000}
               disabled={pending}
               defaultValue={appointment?.location ?? ""}
-              className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+              className="mt-1 min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
             />
           </label>
 
@@ -309,7 +309,7 @@ export function AppointmentDialog({
               maxLength={5000}
               disabled={pending}
               defaultValue={appointment?.description ?? ""}
-              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
+              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-50"
             />
           </label>
 
@@ -326,7 +326,7 @@ export function AppointmentDialog({
                       checked={selectedAttendees.includes(member.membershipId)}
                       disabled={pending}
                       onChange={() => toggleAttendee(member.membershipId)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                      className="h-4 w-4 rounded border-slate-300 text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                     />
                     {member.label}
                   </label>
@@ -352,7 +352,7 @@ export function AppointmentDialog({
               type="button"
               disabled={pending}
               onClick={onClose}
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
             >
               Abbrechen
             </button>
@@ -360,7 +360,7 @@ export function AppointmentDialog({
               type="submit"
               disabled={pending}
               aria-busy={pending || undefined}
-              className="min-h-11 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
+              className="min-h-11 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
             >
               {pending ? "Wird gespeichert …" : "Speichern"}
             </button>

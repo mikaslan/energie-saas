@@ -46,7 +46,7 @@ function SubmitButton({ label }: { label: string }) {
       type="submit"
       disabled={pending}
       aria-busy={pending || undefined}
-      className="min-h-11 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
+      className="min-h-11 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
     >
       {pending ? "Wird gespeichert …" : label}
     </button>
@@ -79,7 +79,7 @@ function Field({
         type={type}
         defaultValue={defaultValue ?? ""}
         required={required}
-        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1"
+        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 focus:ring-offset-1"
       />
       {hint ? <p className="mt-1 text-xs leading-5 text-slate-500">{hint}</p> : null}
     </div>
@@ -104,7 +104,7 @@ function SelectField({
         id={`invoicing-${name}`}
         name={name}
         defaultValue={defaultValue ?? ""}
-        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1"
+        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 focus:ring-offset-1"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
@@ -294,7 +294,7 @@ function NumberFormatRow({
           name="formatTemplate"
           defaultValue={formatTemplate}
           disabled={!canWrite}
-          className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1 disabled:bg-slate-100 disabled:text-slate-500"
+          className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 focus:ring-offset-1 disabled:bg-slate-100 disabled:text-slate-500"
         />
       </div>
       <span className="text-xs text-slate-500">Zähler: {counter}</span>

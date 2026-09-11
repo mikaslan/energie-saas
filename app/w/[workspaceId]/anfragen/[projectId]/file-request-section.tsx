@@ -84,7 +84,7 @@ function ReceiptRow({
           href={dataUrl}
           download={downloadState.status === "ready" ? downloadState.filename : undefined}
           data-testid="file-request-download-link"
-          className="mt-1 inline-block font-semibold text-blue-700 hover:underline"
+          className="mt-1 inline-block font-semibold text-brand-700 hover:underline"
         >
           Beleg herunterladen
         </a>
@@ -96,7 +96,7 @@ function ReceiptRow({
           <button
             type="submit"
             data-testid="file-request-download"
-            className="font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600"
+            className="font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             Beleg laden
           </button>
@@ -143,7 +143,7 @@ function UploadRow({
           href={dataUrl}
           download={downloadState.status === "ready" ? downloadState.filename : undefined}
           data-testid="file-request-upload-download-link"
-          className="mt-0.5 inline-block font-semibold text-blue-700 hover:underline"
+          className="mt-0.5 inline-block font-semibold text-brand-700 hover:underline"
         >
           Folge-Beleg herunterladen
         </a>
@@ -156,7 +156,7 @@ function UploadRow({
           <button
             type="submit"
             data-testid="file-request-upload-download"
-            className="font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600"
+            className="font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             Folge-Beleg laden
           </button>
@@ -244,7 +244,7 @@ export function FileRequestSection({
                         name="status"
                         value={status}
                         data-testid={`file-request-transition-${status}`}
-                        className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                        className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                       >
                         {status === "erledigt" ? "Als erledigt markieren" : "Stornieren"}
                       </button>
@@ -293,7 +293,7 @@ export function FileRequestSection({
           <button
             type="submit"
             data-testid="file-request-create"
-            className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Datei-Anfrage anlegen
           </button>
@@ -309,7 +309,7 @@ export function FileRequestSection({
               name="templateId"
               required
               defaultValue=""
-              className="min-h-11 min-w-44 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 outline-none focus:border-blue-600"
+              className="min-h-11 min-w-44 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 outline-none focus:border-brand-600"
             >
               <option value="" disabled>
                 Vorlage wählen …
@@ -323,7 +323,7 @@ export function FileRequestSection({
           </label>
           <button
             type="submit"
-            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Vorlage anwenden
           </button>

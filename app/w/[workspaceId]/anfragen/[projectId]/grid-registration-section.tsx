@@ -74,7 +74,7 @@ export function GridRegistrationSection({
               <button
                 type="submit"
                 data-testid="grid-registration-create"
-                className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Netzanmeldung anlegen
               </button>
@@ -102,7 +102,7 @@ export function GridRegistrationSection({
                     maxLength={160}
                     defaultValue={registration.operatorName ?? ""}
                     data-testid="grid-registration-operator"
-                    className="min-h-11 min-w-44 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                    className="min-h-11 min-w-44 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
                   />
                 </label>
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -113,13 +113,13 @@ export function GridRegistrationSection({
                     maxLength={64}
                     defaultValue={registration.meterNumber ?? ""}
                     data-testid="grid-registration-meter"
-                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
                   />
                 </label>
                 <button
                   type="submit"
                   data-testid="grid-registration-save"
-                  className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                 >
                   Speichern
                 </button>
@@ -136,7 +136,7 @@ export function GridRegistrationSection({
                       name="status"
                       value={status}
                       data-testid={`grid-registration-to-${status}`}
-                      className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                      className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                     >
                       {GRID_REGISTRATION_STATUS_LABEL[status]}
                     </button>

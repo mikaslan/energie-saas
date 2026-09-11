@@ -85,8 +85,8 @@ function ToolbarButton({
       aria-pressed={pressed}
       disabled={disabled}
       onClick={onClick}
-      className={`min-h-11 rounded-md border px-3 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400 ${pressed
-        ? "border-blue-700 bg-blue-50 text-blue-900"
+      className={`min-h-11 rounded-md border px-3 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400 ${pressed
+        ? "border-brand-700 bg-brand-50 text-brand-900"
         : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
     >
       {label}
@@ -180,7 +180,7 @@ function NoteRichTextEditor({
   }, [editor]);
 
   return (
-    <div className="rounded-md border border-slate-300 bg-white focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600 focus-within:ring-offset-2">
+    <div className="rounded-md border border-slate-300 bg-white focus-within:border-brand-600 focus-within:ring-2 focus-within:ring-brand-600 focus-within:ring-offset-2">
       <div className="flex flex-wrap gap-1 border-b border-slate-200 bg-slate-50 p-2">
         <ToolbarButton label="Fett" pressed={active?.bold} disabled={!editor || disabled} onClick={() => editor?.chain().focus().toggleBold().run()} />
         <ToolbarButton label="Kursiv" pressed={active?.italic} disabled={!editor || disabled} onClick={() => editor?.chain().focus().toggleItalic().run()} />
@@ -367,7 +367,7 @@ export function NoteEditorDialog({
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Notiz</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Notiz</p>
             <h1 id={titleId} className="mt-1 break-words text-xl font-semibold text-slate-950">
               {note ? "Notiz bearbeiten" : "Notiz anlegen"}
             </h1>
@@ -380,7 +380,7 @@ export function NoteEditorDialog({
             disabled={pending}
             onClick={onClose}
             aria-label="Notizeditor schließen"
-            className="min-h-11 rounded-md px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
+            className="min-h-11 rounded-md px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
           >
             Schließen
           </button>
@@ -429,7 +429,7 @@ export function NoteEditorDialog({
                 checked={pinned}
                 disabled={pending}
                 onChange={(event) => setPinned(event.target.checked)}
-                className="size-4 accent-blue-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="size-4 accent-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               />
               Notiz anpinnen
             </label>
@@ -445,10 +445,10 @@ export function NoteEditorDialog({
           ) : null}
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-            <button type="button" disabled={pending} onClick={onClose} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">
+            <button type="button" disabled={pending} onClick={onClose} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">
               Abbrechen
             </button>
-            <button type="submit" disabled={pending || queueing || !markdownValid} aria-busy={pending || queueing || undefined} className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
+            <button type="submit" disabled={pending || queueing || !markdownValid} aria-busy={pending || queueing || undefined} className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
               {pending || queueing ? "Wird gespeichert …" : note ? "Änderungen speichern" : "Notiz anlegen"}
             </button>
           </div>

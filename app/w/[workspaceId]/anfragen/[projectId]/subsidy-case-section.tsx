@@ -98,7 +98,7 @@ export function SubsidyCaseSection({
               <button
                 type="submit"
                 data-testid="subsidy-case-create"
-                className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Förderakte anlegen
               </button>
@@ -142,7 +142,7 @@ export function SubsidyCaseSection({
                 <button
                   type="submit"
                   data-testid="subsidy-suggestion-apply"
-                  className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                 >
                   Vorschlag übernehmen
                 </button>
@@ -163,7 +163,7 @@ export function SubsidyCaseSection({
                         ?? (suggestion.outcome === "suggested" ? suggestion.program : "")
                     }
                     data-testid="subsidy-case-program"
-                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
                   >
                     <option value="">—</option>
                     {subsidyCasePrograms.map((program) => (
@@ -181,13 +181,13 @@ export function SubsidyCaseSection({
                     maxLength={64}
                     defaultValue={subsidyCase.bzaNumber ?? ""}
                     data-testid="subsidy-case-bza-number"
-                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
                   />
                 </label>
                 <button
                   type="submit"
                   data-testid="subsidy-case-save"
-                  className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                 >
                   Speichern
                 </button>
@@ -204,7 +204,7 @@ export function SubsidyCaseSection({
                       name="status"
                       value={status}
                       data-testid={`subsidy-case-to-${status}`}
-                      className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                      className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                     >
                       {SUBSIDY_CASE_STATUS_LABEL[status]}
                     </button>
@@ -244,13 +244,13 @@ export function SubsidyCaseSection({
                       maxLength={160}
                       defaultValue="BnD-Beleg"
                       data-testid="subsidy-beleg-title"
-                      className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                      className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
                     />
                   </label>
                   <button
                     type="submit"
                     data-testid="subsidy-beleg-create"
-                    className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                    className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                   >
                     Beleg anfordern
                   </button>

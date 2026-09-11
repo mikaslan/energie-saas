@@ -198,7 +198,7 @@ export function RequestBoardClient({
           <select
             value={selectedMobileColumn}
             onChange={(event) => setSelectedMobileColumn(event.target.value)}
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
           >
             <option value="all">Alle Status</option>
             {columns.map((column) => (
@@ -211,7 +211,7 @@ export function RequestBoardClient({
         role="status"
         aria-live="polite"
         aria-atomic="true"
-        className={announcement ? "mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-950" : "sr-only"}
+        className={announcement ? "mb-4 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-950" : "sr-only"}
       >
         {announcement}
       </p>
@@ -259,11 +259,11 @@ export function RequestBoardColumn({
       data-column-id={columnId}
       data-mobile-hidden={mobileHidden ? "true" : "false"}
       className={`min-w-0 rounded-lg border bg-slate-50/80 ${
-        isOver ? "border-blue-500 ring-2 ring-blue-200" : "border-slate-200"
+        isOver ? "border-brand-500 ring-2 ring-brand-200" : "border-slate-200"
       } ${mobileHidden ? "max-md:hidden" : ""}`}
     >
       {isOver ? (
-        <p className="mx-3 mt-3 rounded bg-blue-100 px-3 py-2 text-center text-xs font-semibold text-blue-900">
+        <p className="mx-3 mt-3 rounded bg-brand-100 px-3 py-2 text-center text-xs font-semibold text-brand-900">
           Hier ablegen
         </p>
       ) : null}
@@ -313,7 +313,7 @@ export function RequestBoardCard({
       ref={cardRef}
       data-project-id={projectId}
       className={`relative rounded-md border bg-white p-4 shadow-sm ${
-        dragging ? "border-blue-500 opacity-70 shadow-lg" : "border-slate-200"
+        dragging ? "border-brand-500 opacity-70 shadow-lg" : "border-slate-200"
       }`}
     >
       {canMove && dndEnabled ? (
@@ -342,7 +342,7 @@ export function RequestBoardCard({
               defaultValue=""
               required
               disabled={pending}
-              className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-2 text-xs outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200 disabled:cursor-wait disabled:bg-slate-100"
+              className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-2 text-xs outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200 disabled:cursor-wait disabled:bg-slate-100"
             >
               <option value="">Ziel wählen</option>
               {targets.map((column) => (
@@ -354,7 +354,7 @@ export function RequestBoardCard({
               disabled={pending || targets.length === 0}
               data-move-control={projectId}
               aria-label={`„${projectLabel}“ verschieben`}
-              className="min-h-11 rounded-md bg-slate-900 px-3 text-xs font-semibold text-white outline-none hover:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="min-h-11 rounded-md bg-slate-900 px-3 text-xs font-semibold text-white outline-none hover:bg-slate-700 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {pending ? "Wird verschoben …" : "Verschieben"}
             </button>

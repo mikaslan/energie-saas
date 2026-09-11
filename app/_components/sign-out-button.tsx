@@ -31,7 +31,7 @@ export function SignOutButton() {
         type="button"
         onClick={signOut}
         disabled={pending}
-        className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
+        className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
       >
         {pending ? "Abmeldung …" : "Abmelden"}
       </button>

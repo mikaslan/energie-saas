@@ -41,7 +41,7 @@ function SubmitButton({ children, pendingLabel }: { children: string; pendingLab
     <button
       type="submit"
       disabled={pending}
-      className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-wait disabled:bg-slate-400"
+      className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-wait disabled:bg-slate-400"
     >
       {pending ? pendingLabel : children}
     </button>
@@ -89,7 +89,7 @@ export function BillingRunSection({
               required
               maxLength={120}
               placeholder="z. B. September 2026"
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             />
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-800">
@@ -98,7 +98,7 @@ export function BillingRunSection({
               type="date"
               name="periodStart"
               required
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             />
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-800">
@@ -107,7 +107,7 @@ export function BillingRunSection({
               type="date"
               name="periodEnd"
               required
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             />
           </label>
           <SubmitButton pendingLabel="Wird angelegt …">Lauf anlegen</SubmitButton>
@@ -149,7 +149,7 @@ export function BillingRunSection({
               </p>
               {run.status === "closed" && breakdowns[run.id] ? (
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-sm font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">
+                  <summary className="cursor-pointer text-sm font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
                     Aufschlüsselung je Person
                   </summary>
                   <ul className="mt-2 grid gap-1">

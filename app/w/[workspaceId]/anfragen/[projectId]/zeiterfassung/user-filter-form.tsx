@@ -137,7 +137,7 @@ export function UserFilterForm({
       <div className="mt-3 flex gap-3">
         <button
           type="submit"
-          className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800"
+          className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-800"
         >
           Filtern
         </button>

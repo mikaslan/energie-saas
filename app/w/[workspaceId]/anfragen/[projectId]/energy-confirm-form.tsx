@@ -87,7 +87,7 @@ export function EnergyConfirmForm({
       <button
         type="submit"
         disabled={pending || succeeded}
-        className="min-h-11 w-full rounded-md bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+        className="min-h-11 w-full rounded-md bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
         {pending
           ? "Eingaben werden bestätigt …"

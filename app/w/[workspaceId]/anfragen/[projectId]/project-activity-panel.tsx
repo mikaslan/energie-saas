@@ -27,7 +27,7 @@ export function ProjectActivityPanel({
       aria-labelledby="project-activity-title"
       className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
     >
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
         Verlauf
       </p>
       <h2 id="project-activity-title" className="mt-1 text-lg font-semibold text-slate-950">
@@ -41,7 +41,7 @@ export function ProjectActivityPanel({
       ) : (
         <ol role="list" className="mt-4 grid list-none gap-3">
           {activity.items.map((item) => (
-            <li key={item.id} className="min-w-0 border-l-2 border-blue-200 pl-3">
+            <li key={item.id} className="min-w-0 border-l-2 border-brand-200 pl-3">
               <p className="break-words text-sm font-semibold text-slate-900">
                 {item.label}
               </p>
@@ -63,12 +63,12 @@ export function ProjectActivityPanel({
       {latestHref !== null || (activity.nextCursor !== null && nextHref !== null) ? (
         <nav aria-label="Aktivitätsseiten" className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
           {latestHref !== null ? (
-            <Link href={latestHref} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+            <Link href={latestHref} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
               Neueste Aktivität
             </Link>
           ) : null}
           {activity.nextCursor !== null && nextHref !== null ? (
-            <Link href={nextHref} className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-3 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+            <Link href={nextHref} className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-3 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
               Ältere Aktivität
             </Link>
           ) : null}

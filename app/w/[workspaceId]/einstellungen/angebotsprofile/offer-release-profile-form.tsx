@@ -53,7 +53,7 @@ export type OfferReleaseProfileSurface = {
   };
 };
 
-const fieldClass = "mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600/30";
+const fieldClass = "mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600/30";
 const invalidFieldClass = "border-rose-600 ring-1 ring-rose-600/30";
 const textareaClass = `${fieldClass} min-h-36 resize-y leading-6`;
 
@@ -153,7 +153,7 @@ function SubmitButton({ children }: { children: React.ReactNode }) {
       onClick={(event) => {
         if (pending) event.preventDefault();
       }}
-      className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait bg-slate-700" : "bg-slate-950 hover:bg-slate-800"}`}
+      className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait bg-slate-700" : "bg-slate-950 hover:bg-slate-800"}`}
     >
       {pending ? "Wird geprüft …" : children}
     </button>
@@ -381,7 +381,7 @@ export function OfferReleaseProfileForm({
           <input type="hidden" name="country" value="DE" />
 
           <div className="border-b border-slate-200 pb-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Neuer append-only Stand</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Neuer append-only Stand</p>
             <h2 className="mt-1 text-xl font-semibold text-slate-950">Angebotsprofil erfassen</h2>
             <p id="profile-form-safety" className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
               Es gibt keine Standardtexte. Trage ausschließlich fachlich und rechtlich verantwortete Inhalte ein.
@@ -427,7 +427,7 @@ export function OfferReleaseProfileForm({
 
       {profile ? (
         <section aria-labelledby="profile-activation-title" className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Getrennte Betreiberprüfung</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Getrennte Betreiberprüfung</p>
           <h2 id="profile-activation-title" tabIndex={-1} className="mt-1 text-xl font-semibold text-slate-950 outline-none">Aktuellen Profilstand aktivieren</h2>
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div className="rounded-md bg-slate-50 p-3"><dt className="text-slate-600">Aktuelle Revision</dt><dd className="mt-1 font-semibold tabular-nums text-slate-950">{profile.currentRevision}</dd></div>
@@ -443,7 +443,7 @@ export function OfferReleaseProfileForm({
               <input type="hidden" name="profileId" value={profile.profileId} />
               <input type="hidden" name="profileRevisionId" value={profile.current.profileRevisionId} />
               <input type="hidden" name="expectedProfileRevision" value={String(profile.currentRevision)} />
-              <label htmlFor="profile-operator-reviewed" className={`mb-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-md border bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-800 focus-within:ring-2 focus-within:ring-blue-600 focus-within:ring-offset-2 ${effectiveActivationInvalid ? "border-rose-600" : "border-slate-200"}`}>
+              <label htmlFor="profile-operator-reviewed" className={`mb-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-md border bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-800 focus-within:ring-2 focus-within:ring-brand-600 focus-within:ring-offset-2 ${effectiveActivationInvalid ? "border-rose-600" : "border-slate-200"}`}>
                 <input
                   id="profile-operator-reviewed"
                   name="operatorReviewed"

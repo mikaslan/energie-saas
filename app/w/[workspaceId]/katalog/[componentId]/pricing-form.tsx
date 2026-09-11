@@ -8,7 +8,7 @@ import {
 } from "../actions";
 
 const fieldClass =
-  "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200";
+  "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200";
 const labelClass = "grid gap-1.5 text-sm font-medium text-slate-800";
 
 function euroValue(cents: number | undefined): string {
@@ -67,7 +67,7 @@ export function PricingForm({
       ) : null}
 
       {!purchaseProvenance && commercial ? (
-        <p role="note" className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950">
+        <p role="note" className="rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm leading-6 text-brand-950">
           Der bestehende Einkaufspreis ist für deine Rolle ausgeblendet. Für
           eine neue Preisrevision musst du EK und EK-Quelle bewusst neu eingeben.
         </p>
@@ -167,7 +167,7 @@ export function PricingForm({
         Eine Preisänderung erzeugt Revision N+1 und setzt das Produkt zurück
         auf Entwurf. Bestehende Snapshots bleiben unverändert.
       </div>
-      <button type="submit" disabled={pending} className="min-h-11 w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-60 sm:w-auto sm:justify-self-start">
+      <button type="submit" disabled={pending} className="min-h-11 w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:opacity-60 sm:w-auto sm:justify-self-start">
         {pending ? "Wird gespeichert …" : mode === "complete" ? "Neue Preisrevision speichern" : "Preise entfernen"}
       </button>
     </form>

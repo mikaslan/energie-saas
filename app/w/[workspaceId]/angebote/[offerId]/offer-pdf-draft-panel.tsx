@@ -75,7 +75,7 @@ function GenerateButton() {
       onClick={(event) => {
         if (pending) event.preventDefault();
       }}
-      className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait bg-slate-700" : "bg-slate-950 hover:bg-slate-800"}`}
+      className={`inline-flex min-h-11 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait bg-slate-700" : "bg-slate-950 hover:bg-slate-800"}`}
     >
       {pending ? "Auftrag wird geprüft …" : "Internen PDF-Entwurf erzeugen"}
     </button>
@@ -114,7 +114,7 @@ export function OfferPdfDraftPanel({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
             Dokumentausgabe
           </p>
           <h2 id="offer-pdf-draft-title" className="mt-1 text-lg font-semibold text-slate-950">
@@ -129,7 +129,7 @@ export function OfferPdfDraftPanel({
           href={refreshHref}
           label="PDF-Status aktualisieren"
           kind="refresh"
-          className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-blue-700 underline decoration-2 underline-offset-4 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Status aktualisieren
         </OfferDirtyNavigationLink>
@@ -201,7 +201,7 @@ export function OfferPdfDraftPanel({
                     {draft.state === "succeeded" && draft.canDownload ? (
                       <a
                         href={downloadHref}
-                        className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                        className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-900 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                       >
                         PDF-Entwurf der Revision {draft.variantRevision} laden
                       </a>

@@ -221,10 +221,10 @@ export function ResolutionForm({
               required
               aria-invalid={searchError !== null}
               aria-describedby={searchError ? "catalog-search-error" : undefined}
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
             />
           </label>
-          <button type="submit" disabled={searchPending} className="min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-50">
+          <button type="submit" disabled={searchPending} className="min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:opacity-50">
             {searchPending ? "Suche läuft …" : "Katalog durchsuchen"}
           </button>
         </form>
@@ -241,14 +241,14 @@ export function ResolutionForm({
         </div>
       </section>
 
-      <section aria-labelledby="selected-products-title" className="rounded-lg border border-blue-200 bg-blue-50 p-4 sm:p-5">
-        <h3 id="selected-products-title" className="text-sm font-semibold text-blue-950">Ausgewählte Produkte</h3>
+      <section aria-labelledby="selected-products-title" className="rounded-lg border border-brand-200 bg-brand-50 p-4 sm:p-5">
+        <h3 id="selected-products-title" className="text-sm font-semibold text-brand-950">Ausgewählte Produkte</h3>
         {selectedComponentList.length === 0 ? (
-          <p className="mt-1 text-sm text-blue-900">Noch kein Produkt ausgewählt.</p>
+          <p className="mt-1 text-sm text-brand-900">Noch kein Produkt ausgewählt.</p>
         ) : (
           <ul className="mt-3 grid gap-2 sm:grid-cols-2">
             {selectedComponentList.map((component) => (
-              <li key={component.id} className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-slate-800">
+              <li key={component.id} className="rounded-md border border-brand-200 bg-white px-3 py-2 text-sm text-slate-800">
                 <span className="font-semibold">{component.name}</span>
                 <span className="ml-2 font-mono text-xs text-slate-600">{component.sku}</span>
               </li>
@@ -299,7 +299,7 @@ export function ResolutionForm({
                   );
                   const selected = selectedComponents[component.id] !== undefined;
                   return (
-                    <div key={component.id} className={selected ? "rounded-lg border border-blue-300 bg-blue-50 p-4" : "rounded-lg border border-slate-200 bg-white p-4"}>
+                    <div key={component.id} className={selected ? "rounded-lg border border-brand-300 bg-brand-50 p-4" : "rounded-lg border border-slate-200 bg-white p-4"}>
                       <label className="flex min-h-11 cursor-pointer items-start gap-3">
                         <input
                           type="checkbox"
@@ -316,7 +316,7 @@ export function ResolutionForm({
                             delete next[component.id];
                             return next;
                           })}
-                          className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-700 focus:ring-blue-600"
+                          className="mt-1 h-5 w-5 rounded border-slate-300 text-brand-700 focus:ring-brand-600"
                         />
                         <span className="min-w-0">
                           <span className="block truncate text-sm font-semibold text-slate-950">{component.name}</span>
@@ -354,7 +354,7 @@ export function ResolutionForm({
                                 : 1,
                             }));
                           }}
-                          className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm tabular-nums outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                          className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm tabular-nums outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
                         />
                       </label>
                     </div>
@@ -400,14 +400,14 @@ export function ResolutionForm({
           <p className="text-sm leading-6 text-slate-600">Diese Punkte werden strukturiert im Snapshot gespeichert. Sie verändern nicht die Qualität der Planungsrechnung.</p>
           {preview.requiredAcknowledgements.map((code) => (
             <label key={code} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
-              <input type="checkbox" name={`ack.${code}`} value="yes" required aria-invalid={state.status === "invalid" && state.field === "acknowledgements"} className="mt-0.5 h-5 w-5 rounded border-amber-400 text-blue-700 focus:ring-blue-600" />
+              <input type="checkbox" name={`ack.${code}`} value="yes" required aria-invalid={state.status === "invalid" && state.field === "acknowledgements"} className="mt-0.5 h-5 w-5 rounded border-amber-400 text-brand-700 focus:ring-brand-600" />
               <span>{ackLabels[code]}</span>
             </label>
           ))}
         </fieldset>
       ) : null}
 
-      <button type="submit" disabled={pending || !previewResult.ok || preview.blockers.length > 0} className="min-h-11 w-full rounded-md bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:justify-self-start">
+      <button type="submit" disabled={pending || !previewResult.ok || preview.blockers.length > 0} className="min-h-11 w-full rounded-md bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:justify-self-start">
         {pending ? "Wird revisionssicher bestätigt …" : "Projektauflösung bestätigen"}
       </button>
       </form>

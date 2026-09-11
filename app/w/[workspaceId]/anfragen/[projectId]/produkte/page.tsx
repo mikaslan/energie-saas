@@ -109,14 +109,14 @@ export default async function ProjectProductsPage({
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <nav aria-label="Brotkrumen" className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-wrap gap-x-5">
-            <Link href={projectPath} className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"><span aria-hidden="true" className="mr-2">←</span>Zurück zur Projektakte</Link>
-            <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center text-sm font-semibold text-slate-700 outline-none hover:text-slate-950 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Produktkatalog</Link>
+            <Link href={projectPath} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"><span aria-hidden="true" className="mr-2">←</span>Zurück zur Projektakte</Link>
+            <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center text-sm font-semibold text-slate-700 outline-none hover:text-slate-950 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Produktkatalog</Link>
           </div>
           <SignOutButton />
         </nav>
 
         <header className="mb-8 border-b border-slate-200 pb-7">
-          <p className="text-sm font-semibold text-blue-700">Projektakte · Angebotsvorbereitung</p>
+          <p className="text-sm font-semibold text-brand-700">Projektakte · Angebotsvorbereitung</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Produkte revisionssicher zuordnen</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             Die Planungsschätzung ist generisch. Diese Auflösung kopiert
@@ -153,7 +153,7 @@ export default async function ProjectProductsPage({
           {context.blocker ? (
             <Section title="Produktauflösung blockiert">
               <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">{blockerLabels[context.blocker]}</div>
-              <Link href={context.blocker === "missing_requirement" ? projectPath : `${projectPath}/energieprofil`} className="mt-5 inline-flex min-h-11 items-center rounded-md border border-blue-700 bg-white px-4 text-sm font-semibold text-blue-800 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Voraussetzungen prüfen</Link>
+              <Link href={context.blocker === "missing_requirement" ? projectPath : `${projectPath}/energieprofil`} className="mt-5 inline-flex min-h-11 items-center rounded-md border border-brand-700 bg-white px-4 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Voraussetzungen prüfen</Link>
             </Section>
           ) : null}
 
@@ -167,7 +167,7 @@ export default async function ProjectProductsPage({
 
           {latest ? (
             <Section title={`Gespeicherter Snapshot · Revision ${latest.revision}`} intro="Produktdaten und Preise dieses Stands bleiben unverändert, auch wenn der Katalog später revidiert wird.">
-              <div role="region" aria-label="Gespeicherte Produktpositionen" tabIndex={0} className="overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+              <div role="region" aria-label="Gespeicherte Produktpositionen" tabIndex={0} className="overflow-x-auto rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600">
                 <table className="min-w-[760px] w-full border-collapse text-left text-sm">
                   <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600"><tr><th className="px-4 py-3">Pos.</th><th className="px-4 py-3">Produkt</th><th className="px-4 py-3">Rev.</th><th className="px-4 py-3 text-right">Menge</th><th className="px-4 py-3 text-right">VK netto</th></tr></thead>
                   <tbody>{latest.lines.map((line) => {
@@ -192,7 +192,7 @@ export default async function ProjectProductsPage({
           {!context.blocker && context.activeComponents.length === 0 ? (
             <Section title="Noch keine aktiven Produkte">
               <p className="text-sm leading-6 text-slate-600">Lege eigene Produkte mit vollständigem Preisstand an und aktiviere sie. Erst dann können sie revisionssicher ausgewählt werden.</p>
-              <Link href={`/w/${workspaceId}/katalog`} className="mt-5 inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Zum Produktkatalog</Link>
+              <Link href={`/w/${workspaceId}/katalog`} className="mt-5 inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Zum Produktkatalog</Link>
             </Section>
           ) : null}
 

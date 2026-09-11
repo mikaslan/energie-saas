@@ -83,12 +83,12 @@ function TeamRow({
               defaultValue={team.name}
               required
               maxLength={120}
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             />
           </label>
           <button
             type="submit"
-            className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600"
+            className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             Umbenennen
           </button>
@@ -106,7 +106,7 @@ function TeamRow({
               <ul className="mt-2 grid gap-1">
                 {members.map((member) => (
                   <li key={member.membershipId}>
-                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 has-checked:border-blue-600 has-checked:bg-blue-50">
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 has-checked:border-brand-600 has-checked:bg-brand-50">
                       <input
                         type="checkbox"
                         checked={selected.includes(member.membershipId)}
@@ -115,7 +115,7 @@ function TeamRow({
                             ? current.filter((id) => id !== member.membershipId)
                             : [...current, member.membershipId],
                         )}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-700"
+                        className="h-4 w-4 rounded border-slate-300 text-brand-700"
                       />
                       <span className="min-w-0 flex-1 truncate" title={member.label}>{member.label}</span>
                       {currentIds.has(member.membershipId) ? null : (
@@ -129,7 +129,7 @@ function TeamRow({
           </fieldset>
           <button
             type="submit"
-            className="mt-2 min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+            className="mt-2 min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             Mitglieder speichern
           </button>
@@ -142,7 +142,7 @@ function TeamRow({
           <input type="hidden" name="active" value={team.active ? "false" : "true"} />
           <button
             type="submit"
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             {team.active ? "Archivieren" : "Wiederherstellen"}
           </button>
@@ -177,12 +177,12 @@ export function TeamManager({
               required
               maxLength={120}
               placeholder="z. B. Montageteam Nord"
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             />
           </label>
           <button
             type="submit"
-            className="min-h-11 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="min-h-11 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Anlegen
           </button>

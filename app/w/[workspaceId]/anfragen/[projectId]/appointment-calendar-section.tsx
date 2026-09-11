@@ -72,7 +72,7 @@ function ApplyTemplateSubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-100"
+      className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-100"
     >
       {pending ? "Wird angelegt …" : "Vorlage anwenden"}
     </button>
@@ -114,7 +114,7 @@ function ApplyAppointmentTemplateForm({
           aria-label="Terminvorlage"
           required
           defaultValue=""
-          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1"
         >
           <option value="" disabled>Vorlage wählen …</option>
           {templates.map((template) => (
@@ -131,7 +131,7 @@ function ApplyAppointmentTemplateForm({
           name="start"
           aria-label="Beginn"
           required
-          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1"
         />
       </label>
       <label className="grid min-w-0 gap-1.5 text-sm font-semibold text-slate-900">
@@ -141,7 +141,7 @@ function ApplyAppointmentTemplateForm({
           aria-label="Kalender"
           required
           defaultValue=""
-          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1"
+          className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1"
         >
           <option value="" disabled>Kalender wählen …</option>
           {calendars.map((calendar) => (
@@ -201,7 +201,7 @@ export function AppointmentCalendarSection({
     <section id="project-appointments" aria-labelledby="project-appointments-title" className="min-w-0">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Akte</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Akte</p>
           <h2 id="project-appointments-title" className="mt-1 text-xl font-semibold text-slate-950">Termine</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             Projekttermine im Kalender. Termine werden dauerhaft gelöscht und bleiben über die Aktivität nachvollziehbar.
@@ -212,7 +212,7 @@ export function AppointmentCalendarSection({
             type="button"
             onClick={openCreate}
             ref={createButtonRef}
-            className="min-h-11 rounded-md border border-blue-700 bg-white px-4 py-2 text-sm font-semibold text-blue-800 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="min-h-11 rounded-md border border-brand-700 bg-white px-4 py-2 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Termin anlegen
           </button>
@@ -278,7 +278,7 @@ export function AppointmentCalendarSection({
                   <button
                     type="button"
                     onClick={() => openEdit(appointment)}
-                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                   >
                     Bearbeiten
                   </button>

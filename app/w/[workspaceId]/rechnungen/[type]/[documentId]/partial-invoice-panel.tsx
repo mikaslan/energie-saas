@@ -93,7 +93,7 @@ export function PartialInvoicePanel({
               </span>
               <Link
                 href={`/w/${workspaceId}/rechnungen/invoice/${entry.invoiceId}`}
-                className="font-semibold text-blue-700 underline underline-offset-2"
+                className="font-semibold text-brand-700 underline underline-offset-2"
               >
                 {entry.number ?? entry.name}
               </Link>
@@ -144,7 +144,7 @@ export function PartialInvoicePanel({
                 required
                 defaultValue="30"
                 data-testid="partial-percent"
-                className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
               />
             </label>
           ) : (
@@ -171,7 +171,7 @@ export function PartialInvoicePanel({
             <button
               type="submit"
               data-testid="partial-invoice-submit"
-              className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Teilrechnung anlegen
             </button>

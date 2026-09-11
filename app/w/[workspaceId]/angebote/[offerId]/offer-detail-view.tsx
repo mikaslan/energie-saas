@@ -334,7 +334,7 @@ function DetailStatus({ view }: { view: OfferDetailSurfaceView }) {
   }
   if (view.state === "dirty") {
     return (
-      <aside role="status" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-base leading-6 text-blue-950">
+      <aside role="status" className="rounded-md border border-brand-300 bg-brand-50 px-4 py-3 text-base leading-6 text-brand-950">
         <p className="font-semibold">Ungespeicherte Änderungen im lokalen Entwurf</p>
         <p className="mt-1">Der gespeicherte Serverstand wurde noch nicht verändert.</p>
       </aside>
@@ -342,7 +342,7 @@ function DetailStatus({ view }: { view: OfferDetailSurfaceView }) {
   }
   if (view.state === "pending") {
     return (
-      <aside aria-live="polite" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-base leading-6 text-blue-950">
+      <aside aria-live="polite" className="rounded-md border border-brand-300 bg-brand-50 px-4 py-3 text-base leading-6 text-brand-950">
         <p className="font-semibold">Änderungen werden geprüft und gespeichert …</p>
         <p className="mt-1">Bis zur Serverantwort bleibt eine weitere Aktion gesperrt.</p>
       </aside>
@@ -398,7 +398,7 @@ function DetailStatus({ view }: { view: OfferDetailSurfaceView }) {
         </p>
         <Link
           href="/login"
-          className="mt-3 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="mt-3 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Zur Anmeldung
         </Link>
@@ -438,13 +438,13 @@ function VariantNavigation({ variants }: { variants: readonly OfferVariantTabVie
               aria-current={variant.active ? "page" : undefined}
               className={
                 variant.active
-                  ? "inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
-                  : "inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  ? "inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                  : "inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               }
             >
               {variant.name}
               <span className={variant.active ? "ml-2 text-xs text-white" : "ml-2 text-xs text-slate-700"}>Rev. {variant.revision}</span>
-              {variant.isPrimary ? <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-900">Primär</span> : null}
+              {variant.isPrimary ? <span className="ml-2 rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-900">Primär</span> : null}
             </Link>
           </li>
         ))}
@@ -578,7 +578,7 @@ function SchematicCard({
       data-offer-schematic="true"
       className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
     >
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
         Schaltplan (ESTIMATE)
       </p>
       <h2 className="mt-1 text-lg font-semibold text-slate-950">Einphasige Übersicht</h2>
@@ -602,13 +602,13 @@ function OfferSectionCard({
     <section className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
             Sektion {section.position}
           </p>
           <h2 className="mt-1 text-lg font-semibold text-slate-950">{section.title}</h2>
         </div>
         {section.discountBps > 0 ? (
-          <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-900">
+          <span className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold text-brand-900">
             {formatBasisPoints(section.discountBps)} Sektionsrabatt
           </span>
         ) : null}
@@ -636,7 +636,7 @@ function TotalsCard({
   const lines = snapshot.sections.flatMap((section) => section.lines);
   return (
     <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
         Preiszusammenfassung
       </p>
       <h2 className="mt-1 text-lg font-semibold text-slate-950">Serverberechneter Stand</h2>
@@ -716,7 +716,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
         <div id="offer-empty-main" className="mx-auto grid w-full max-w-3xl gap-5">
           <Link
             href={`/w/${view.workspaceId}/angebote`}
-            className="inline-flex min-h-11 w-fit items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 w-fit items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             ← Zur Angebotsübersicht
           </Link>
@@ -858,7 +858,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
         <nav aria-label="Brotkrumen" className="mb-5">
           <Link
             href={`/w/${view.workspaceId}/angebote`}
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true" className="mr-2">←</span>
             Zur Angebotsübersicht
@@ -868,7 +868,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
         <header className="mb-6 border-b border-slate-200 pb-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
                 {view.offer.offerNumber}
               </p>
               <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -883,7 +883,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                 Revision {snapshot.revision}
               </span>
               {canEdit ? (
-                <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800">
+                <span className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800">
                   Editoransicht
                 </span>
               ) : (
@@ -945,7 +945,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
             <div className="grid min-w-0 gap-5">
               <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
                   Aktive Variante
                 </p>
                 <h2 className="mt-1 text-xl font-semibold text-slate-950">{snapshot.variantName}</h2>

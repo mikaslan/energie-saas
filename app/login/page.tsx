@@ -25,13 +25,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <div className="mb-6 flex items-center gap-3" aria-label="WMEE">
             <span
               aria-hidden="true"
-              className="grid size-9 place-items-center rounded-md bg-blue-700 text-sm font-bold text-white"
+              className="grid size-9 place-items-center rounded-md bg-brand-700 text-sm font-bold text-white"
             >
               W
             </span>
             <span className="text-sm font-semibold tracking-[0.18em] text-slate-700">WMEE</span>
           </div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
             Sicherer Zugang
           </p>
           <h1 id="login-heading" className="text-2xl font-semibold tracking-tight text-slate-950">

@@ -13,7 +13,7 @@ import {
 const initialState: TimeEventTypeActionState = { status: "idle" };
 
 const inputClass =
-  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30";
+  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
 
 function message(state: TimeEventTypeActionState): { text: string; isError: boolean } | null {
   switch (state.status) {
@@ -124,7 +124,7 @@ export function TimeEventTypeManager({
             <div className="mt-5">
               <button
                 type="submit"
-                className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Anlegen
               </button>
@@ -159,7 +159,7 @@ export function TimeEventTypeManager({
                       <input type="hidden" name="id" value={type.id} />
                       <button
                         type="submit"
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                       >
                         Archivieren
                       </button>
@@ -189,7 +189,7 @@ export function TimeEventTypeManager({
                     <input type="hidden" name="id" value={type.id} />
                     <button
                       type="submit"
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                     >
                       Reaktivieren
                     </button>
@@ -222,7 +222,7 @@ function EditForm({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         Bearbeiten
       </button>
@@ -239,7 +239,7 @@ function EditForm({
         maxLength={120}
         defaultValue={type.name}
         aria-label="Name"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
       />
       <input
         type="number"
@@ -248,7 +248,7 @@ function EditForm({
         step={1}
         defaultValue={type.position}
         aria-label="Position"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
       />
       <input
         type="text"
@@ -256,7 +256,7 @@ function EditForm({
         maxLength={7}
         defaultValue={type.textColor ?? ""}
         aria-label="Textfarbe"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
       />
       <input
         type="text"
@@ -264,11 +264,11 @@ function EditForm({
         maxLength={7}
         defaultValue={type.backgroundColor ?? ""}
         aria-label="Hintergrundfarbe"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
       />
       <button
         type="submit"
-        className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         Speichern
       </button>

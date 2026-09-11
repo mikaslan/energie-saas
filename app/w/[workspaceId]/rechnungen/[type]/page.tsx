@@ -86,7 +86,7 @@ function typeDateField(document: {
 const moneyTypes: CommercialDocumentType[] = ["invoice", "credit_note"];
 
 const inputClass =
-  "mt-1 min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30";
+  "mt-1 min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
 
 function activeFilterCount(filters: z.infer<typeof filterSchema>): number {
   return [
@@ -186,7 +186,7 @@ export default async function InvoicingDocumentListPage(
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
             {DOCUMENT_TYPE_SINGULAR_LABELS[type]}
           </p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">{DOCUMENT_TYPE_LABELS[type]}</h2>
@@ -310,14 +310,14 @@ export default async function InvoicingDocumentListPage(
         <div className="flex items-end gap-2">
           <button
             type="submit"
-            className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Filtern
           </button>
           {!emptyQuery ? (
             <Link
               href={`/w/${workspaceId}/rechnungen/${type}`}
-              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Zurücksetzen
             </Link>
@@ -356,7 +356,7 @@ export default async function InvoicingDocumentListPage(
                       <td className="px-3 py-3 text-sm font-medium text-slate-900">
                         <Link
                           href={`/w/${workspaceId}/rechnungen/${type}/${document.id}`}
-                          className="text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600"
+                          className="text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
                         >
                           {document.name}
                         </Link>
@@ -418,7 +418,7 @@ export default async function InvoicingDocumentListPage(
           <div className="mt-4 flex justify-center">
             <Link
               href={`/w/${workspaceId}/rechnungen/${type}${nextLink}`}
-              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Weitere laden
             </Link>

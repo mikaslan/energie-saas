@@ -7,7 +7,7 @@ export default function CatalogError({ reset }: { error: Error & { digest?: stri
         <p className="text-sm font-semibold text-red-800">Unerwarteter Fehler</p>
         <h1 className="mt-2 text-2xl font-semibold text-slate-950">Der Produktkatalog konnte nicht geladen werden.</h1>
         <p className="mt-3 text-sm leading-6 text-slate-700">Es wurden keine Änderungen vorgenommen. Bitte versuche es erneut.</p>
-        <button type="button" onClick={reset} className="mt-6 min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Erneut versuchen</button>
+        <button type="button" onClick={reset} className="mt-6 min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Erneut versuchen</button>
       </section>
     </main>
   );

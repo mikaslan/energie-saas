@@ -117,7 +117,7 @@ export function DirtyNavigationDialog({
             onClick={() => {
               if (!pending) onStay();
             }}
-            className={`min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait" : ""}`}
+            className={`min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait" : ""}`}
           >
             Bleiben
           </button>
@@ -138,7 +138,7 @@ export function DirtyNavigationDialog({
             onClick={() => {
               if (!pending) onSaveAndContinue();
             }}
-            className={`min-h-11 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait" : ""}`}
+            className={`min-h-11 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${pending ? "cursor-wait" : ""}`}
           >
             {pending ? "Speichert …" : "Speichern und fortfahren"}
           </button>
@@ -400,7 +400,7 @@ export function GuardedSignOutButton({
         type="button"
         disabled={pending}
         onClick={() => void signOut()}
-        className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait"
+        className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait"
       >
         Abmelden
       </button>

@@ -370,10 +370,10 @@ export function ImportWizard({ workspaceId }: { workspaceId: string }) {
             accept=".csv,text/csv"
             disabled={!hydrated || busy}
             onChange={(event) => selectFile(event.currentTarget.files?.[0] ?? null)}
-            className="min-h-11 min-w-0 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:font-semibold file:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+            className="min-h-11 min-w-0 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:font-semibold file:text-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
           />
         </label>
-        <button type="button" onClick={() => void inspectFile()} aria-disabled={!hydrated || busy || undefined} disabled={!hydrated || busy} className="mt-4 min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-500">
+        <button type="button" onClick={() => void inspectFile()} aria-disabled={!hydrated || busy || undefined} disabled={!hydrated || busy} className="mt-4 min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-500">
           {state === "inspecting" ? "Datei wird geprüft …" : "Datei prüfen"}
         </button>
       </div>
@@ -391,7 +391,7 @@ export function ImportWizard({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       {inspection ? (
-        <div ref={mappingRef} tabIndex={-1} className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-600 sm:p-6">
+        <div ref={mappingRef} tabIndex={-1} className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-600 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-950">3. Spalten zuordnen</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             Die Vorschau nutzt ausschließlich diese serverseitig erneut geprüfte Zuordnung.
@@ -407,7 +407,7 @@ export function ImportWizard({ workspaceId }: { workspaceId: string }) {
             role="region"
             aria-label="Spaltenzuordnungstabelle"
             tabIndex={0}
-            className="mt-4 overflow-x-auto rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="mt-4 overflow-x-auto rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <table className="w-full min-w-[36rem] border-separate border-spacing-0 text-left text-sm">
               <thead><tr><th className="border-b border-slate-200 px-3 py-2 font-semibold text-slate-700">CSV-Spalte</th><th className="border-b border-slate-200 px-3 py-2 font-semibold text-slate-700">Zielfeld</th></tr></thead>
@@ -419,7 +419,7 @@ export function ImportWizard({ workspaceId }: { workspaceId: string }) {
                       <th scope="row" className="border-b border-slate-100 px-3 py-2 font-medium text-slate-900">{header}</th>
                       <td className="border-b border-slate-100 px-3 py-2">
                         <label className="sr-only" htmlFor={`mapping-${inspection.headers.indexOf(header)}`}>Zielfeld für {header}</label>
-                        <select id={`mapping-${inspection.headers.indexOf(header)}`} value={current} disabled={mappingLocked} onChange={(event) => changeMapping(header, event.currentTarget.value)} className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200">
+                        <select id={`mapping-${inspection.headers.indexOf(header)}`} value={current} disabled={mappingLocked} onChange={(event) => changeMapping(header, event.currentTarget.value)} className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200">
                           <option value="">Ignorieren</option>
                           {CATALOG_CSV_CANONICAL_FIELDS.map((field) => (
                             <option key={field} value={field} disabled={selectedFields.has(field) && field !== current}>{fieldLabels[field]}</option>
@@ -432,7 +432,7 @@ export function ImportWizard({ workspaceId }: { workspaceId: string }) {
               </tbody>
             </table>
           </div>
-          <button type="button" onClick={() => void createPreview()} aria-disabled={mappingLocked || undefined} disabled={mappingLocked} className="mt-5 min-h-11 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-500">
+          <button type="button" onClick={() => void createPreview()} aria-disabled={mappingLocked || undefined} disabled={mappingLocked} className="mt-5 min-h-11 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-500">
             {state === "previewing" ? "Vorschau wird angelegt …" : "Vorschau erstellen"}
           </button>
         </div>

@@ -76,7 +76,7 @@ function TemplateForm({
           defaultValue={template?.name ?? ""}
           required
           maxLength={200}
-          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
         />
       </label>
       <label className="grid gap-1 text-sm font-semibold text-slate-800">
@@ -87,7 +87,7 @@ function TemplateForm({
           defaultValue={template?.title ?? ""}
           required
           maxLength={200}
-          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
         />
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -99,7 +99,7 @@ function TemplateForm({
             inputMode="numeric"
             defaultValue={template?.dueOffsetDays === null || template?.dueOffsetDays === undefined ? "" : String(template.dueOffsetDays)}
             placeholder="z. B. 14"
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
           />
         </label>
         <label className="grid gap-1 text-sm font-semibold text-slate-800">
@@ -110,14 +110,14 @@ function TemplateForm({
             inputMode="numeric"
             defaultValue={template ? String(template.position) : "0"}
             required
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
           />
         </label>
       </div>
       <div>
         <button
           type="submit"
-          className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600"
+          className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600"
         >
           {submitLabel}
         </button>
@@ -167,7 +167,7 @@ export function TaskTemplateManager({
             <p className="mt-1 text-sm text-slate-700">{template.title}</p>
             {canWrite ? (
               <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">
+                <summary className="cursor-pointer text-sm font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
                   Bearbeiten
                 </summary>
                 <div className="mt-3">
@@ -188,7 +188,7 @@ export function TaskTemplateManager({
                   <button
                     type="submit"
                     aria-label={`${template.name} archivieren`}
-                    className="min-h-11 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                    className="min-h-11 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                   >
                     Archivieren
                   </button>
@@ -200,7 +200,7 @@ export function TaskTemplateManager({
                   <button
                     type="submit"
                     aria-label={`${template.name} reaktivieren`}
-                    className="min-h-11 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                    className="min-h-11 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                   >
                     Reaktivieren
                   </button>

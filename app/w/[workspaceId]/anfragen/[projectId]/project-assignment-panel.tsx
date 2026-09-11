@@ -138,7 +138,7 @@ function ResultActions({
             type="submit"
             disabled={pending}
             aria-label={`${result.label} als Key Account festlegen`}
-            className="min-h-11 rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="min-h-11 rounded-md bg-brand-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             Als Key Account
           </button>
@@ -157,7 +157,7 @@ function ResultActions({
             type="submit"
             disabled={pending}
             aria-label={`${result.label} zusätzlich zuweisen`}
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400"
           >
             Zusätzlich zuweisen
           </button>
@@ -214,7 +214,7 @@ export function ProjectAssignmentPanel({
     <section id="project-assignment" aria-labelledby="project-assignment-title" className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
             Verantwortung
           </p>
           <h2 id="project-assignment-title" className="mt-1 text-lg font-semibold text-slate-950">
@@ -228,10 +228,10 @@ export function ProjectAssignmentPanel({
 
       {assignment.canAssign && routingSuggestion ? (
         <div
-          className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5"
+          className="mt-4 rounded-md border border-brand-200 bg-brand-50 px-3 py-2.5"
           data-testid="routing-suggestion"
         >
-          <p className="text-sm font-semibold text-blue-950">
+          <p className="text-sm font-semibold text-brand-950">
             {`Routing-Vorschlag (Quelle „${routingSuggestion.sourceName}“): ${routingSuggestion.label}`}
           </p>
           <form action={mutationAction} className="mt-2">
@@ -246,7 +246,7 @@ export function ProjectAssignmentPanel({
               type="submit"
               disabled={mutationPending}
               aria-label={`${routingSuggestion.label} aus dem Routing-Vorschlag als Key Account festlegen`}
-              className="min-h-11 rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="min-h-11 rounded-md bg-brand-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               Als Key Account festlegen
             </button>
@@ -272,7 +272,7 @@ export function ProjectAssignmentPanel({
                 type="submit"
                 disabled={mutationPending}
                 aria-label={`${assignment.keyAccount.label} als Key Account abwählen`}
-                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400"
               >
                 Key Account abwählen
               </button>
@@ -347,13 +347,13 @@ export function ProjectAssignmentPanel({
                 required
                 autoComplete="off"
                 aria-describedby="project-assignment-search-status"
-                className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200"
+                className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
               />
             </label>
             <button
               type="submit"
               disabled={searchPending}
-              className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {searchPending ? "Suche läuft …" : "Suchen"}
             </button>

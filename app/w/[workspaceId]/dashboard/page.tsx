@@ -95,14 +95,14 @@ function AccessDenied() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl items-center px-6 py-16">
       <section className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">WMEE Vertrieb</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">WMEE Vertrieb</p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Kein Zugriff</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Für diesen Arbeitsbereich liegt keine passende Mitgliedschaft vor.
         </p>
         <Link
           href="/"
-          className="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
         >
           Zur Startseite
         </Link>
@@ -577,7 +577,7 @@ export default async function DashboardPage({
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-md bg-blue-700 text-sm font-bold text-white" aria-hidden="true">
+            <span className="grid size-9 place-items-center rounded-md bg-brand-700 text-sm font-bold text-white" aria-hidden="true">
               W
             </span>
             <div>
@@ -588,13 +588,13 @@ export default async function DashboardPage({
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href={`/w/${validWorkspaceId}/anfragen`}
-              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Anfragen
             </Link>
             <Link
               href={`/w/${validWorkspaceId}/aufgaben`}
-              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Aufgaben
             </Link>
@@ -652,7 +652,7 @@ export default async function DashboardPage({
               </p>
               <Link
                 href={`/w/${validWorkspaceId}/anfragen`}
-                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Zum Board
               </Link>
@@ -698,7 +698,7 @@ export default async function DashboardPage({
               )}
               <Link
                 href={`/w/${validWorkspaceId}/aufgaben`}
-                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Zum Posteingang
               </Link>
@@ -724,7 +724,7 @@ export default async function DashboardPage({
               )}
               <Link
                 href={`/w/${validWorkspaceId}/aufgaben`}
-                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Zum Posteingang
               </Link>
@@ -776,7 +776,7 @@ export default async function DashboardPage({
               })()}
               <Link
                 href={`/w/${validWorkspaceId}/anfragen/abgeschlossen`}
-                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Zu den Abschlüssen
               </Link>
@@ -889,7 +889,7 @@ export default async function DashboardPage({
               </dl>
               <Link
                 href={`/w/${validWorkspaceId}/rechnungen/berichte`}
-                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Zu den Berichten
               </Link>
@@ -971,7 +971,7 @@ export default async function DashboardPage({
                       <li key={item.id} className="py-2 text-sm leading-6">
                         <Link
                           href={`/w/${validWorkspaceId}/anfragen/${item.projectId}`}
-                          className="font-medium text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                          className="font-medium text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                         >
                           {item.title}
                         </Link>
@@ -986,7 +986,7 @@ export default async function DashboardPage({
               )}
               <Link
                 href={`/w/${validWorkspaceId}/kalender`}
-                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Zum Kalender
               </Link>

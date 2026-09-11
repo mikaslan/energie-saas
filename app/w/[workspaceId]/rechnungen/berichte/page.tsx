@@ -56,7 +56,7 @@ function KpiCard({
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">{title}</p>
       <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-950">{formatEuro(valueCents)}</p>
       <p className="mt-1 text-xs text-slate-500">{formatDelta(valueCents, previousCents)}</p>
     </div>
@@ -120,7 +120,7 @@ export default async function InvoicingReportsPage(
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Berichte</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Berichte</p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">Monatsübersicht {month}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Einnahmen, Zahlungseingänge und offene Posten auf einen Blick.
@@ -134,18 +134,18 @@ export default async function InvoicingReportsPage(
               type="month"
               name="monat"
               defaultValue={month}
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             />
             <button
               type="submit"
-              className="ml-2 inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="ml-2 inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Anzeigen
             </button>
           </form>
           <Link
             href={csvUrl}
-            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Daten herunterladen (CSV)
           </Link>

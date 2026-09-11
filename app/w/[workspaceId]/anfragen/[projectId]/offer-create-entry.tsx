@@ -63,7 +63,7 @@ export function OfferCreateFeedback({
   if (state.status === "idle") return null;
   if (state.status === "pending") {
     return (
-      <p role="status" className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-950">
+      <p role="status" className="rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-950">
         Angebotsentwurf wird serverseitig erstellt …
       </p>
     );
@@ -366,7 +366,7 @@ export function OfferCreateEntry({ view }: { view: OfferCreateEntryView }) {
         aria-labelledby="offer-create-heading"
         className={`${offerThemeStyles.offerTheme} rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6`}
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Angebotsphase</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Angebotsphase</p>
         <h2 id="offer-create-heading" className="mt-2 text-lg font-semibold text-slate-950">Angebotsentwurf erstellen</h2>
         <div role="status" className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-sm font-semibold text-slate-950">Nur Lesezugriff</p>
@@ -415,7 +415,7 @@ export function OfferCreateEntry({ view }: { view: OfferCreateEntryView }) {
           {view.blockers.map((blocker) => (
             <li key={blocker.code} className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-950">{blocker.label}</p>
-              <Link href={blocker.href} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-blue-900 underline decoration-2 underline-offset-4 outline-none">
+              <Link href={blocker.href} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-900 underline decoration-2 underline-offset-4 outline-none">
                 {blocker.actionLabel}
               </Link>
             </li>

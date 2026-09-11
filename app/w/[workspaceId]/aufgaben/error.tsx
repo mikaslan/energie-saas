@@ -12,7 +12,7 @@ export default function GlobalTaskInboxError({
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">WMEE Vertrieb</p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Aufgaben nicht verfügbar</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">Die Aufgaben-Inbox konnte gerade nicht geladen werden. Es wurden keine Änderungen vorgenommen.</p>
-        <button type="button" onClick={retry} className="mt-6 min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Erneut versuchen</button>
+        <button type="button" onClick={retry} className="mt-6 min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Erneut versuchen</button>
       </section>
     </main>
   );

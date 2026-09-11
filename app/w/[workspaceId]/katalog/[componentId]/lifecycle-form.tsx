@@ -49,11 +49,11 @@ export function LifecycleForm({
       ) : null}
       {status === "draft" ? (
         <>
-          <button name="operation" value="activate" type="submit" disabled={pending || !hasPricing} className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+          <button name="operation" value="activate" type="submit" disabled={pending || !hasPricing} className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
             Aktivieren
           </button>
           {!hasPricing ? <p className="text-xs leading-5 text-amber-800">Erfasse zuerst einen vollständigen Preisstand.</p> : null}
-          <button name="operation" value="archive" type="submit" disabled={pending} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-50">
+          <button name="operation" value="archive" type="submit" disabled={pending} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:opacity-50">
             Entwurf archivieren
           </button>
         </>
@@ -62,7 +62,7 @@ export function LifecycleForm({
           Produkt archivieren
         </button>
       ) : (
-        <button name="operation" value="return_to_draft" type="submit" disabled={pending} className="min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-50">
+        <button name="operation" value="return_to_draft" type="submit" disabled={pending} className="min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:opacity-50">
           Zurück in Entwurf
         </button>
       )}

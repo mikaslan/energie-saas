@@ -15,7 +15,7 @@ type EnergyProfile = ProjectEnergyProfileCandidate["profile"];
 type KnownOrUnknown = { status: "known"; value: unknown } | { status: "unknown" };
 
 const initialState: SaveProjectEnergyProfileState = { status: "idle" };
-const inputClass = "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
+const inputClass = "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 const labelClass = "grid min-w-0 gap-1.5 text-sm font-medium text-slate-800";
 
 function fieldValue(field: KnownOrUnknown): string | number {
@@ -453,7 +453,7 @@ export function EnergyProfileEditor({
                   {HOUR_LABELS.map((hourLabel, hour) => (
                     <label key={hour} className="grid min-w-0 gap-1 text-xs font-medium text-slate-700">
                       {hourLabel}
-                      <input name={`${prefix}.${hour}`} type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={customArrayValue(customProfile, key, hour)} className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1" />
+                      <input name={`${prefix}.${hour}`} type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={customArrayValue(customProfile, key, hour)} className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1" />
                     </label>
                   ))}
                 </div>
@@ -592,7 +592,7 @@ export function EnergyProfileEditor({
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 w-full rounded-md bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-300 sm:w-auto sm:justify-self-start"
+          className="min-h-11 w-full rounded-md bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-300 sm:w-auto sm:justify-self-start"
         >
           {pending ? "Profil wird gespeichert …" : "Profil speichern"}
         </button>

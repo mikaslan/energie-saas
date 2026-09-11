@@ -82,9 +82,9 @@ export function AppointmentCalendar({
             type="button"
             onClick={() => handleViewChange(mode)}
             aria-pressed={view === mode}
-            className={`min-h-11 rounded-md border px-3 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${
+            className={`min-h-11 rounded-md border px-3 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${
               view === mode
-                ? "border-blue-700 bg-blue-50 text-blue-900"
+                ? "border-brand-700 bg-brand-50 text-brand-900"
                 : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >

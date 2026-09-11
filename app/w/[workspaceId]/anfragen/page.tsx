@@ -81,7 +81,7 @@ function scoreBadgeClass(band: LeadScoreBand): string {
 function followUpBadgeClass(band: FollowUpBand): string {
   if (band === "escalated") return "bg-red-100 text-red-900";
   if (band === "overdue") return "bg-amber-100 text-amber-900";
-  if (band === "due") return "bg-blue-100 text-blue-900";
+  if (band === "due") return "bg-brand-100 text-brand-900";
   return "bg-slate-200 text-slate-700";
 }
 
@@ -108,7 +108,7 @@ function blockerLabels(card: RequestBoardCard): string[] {
 }
 
 function columnTone(column: RequestBoardColumn): string {
-  if (column.color === "blue") return "bg-blue-600";
+  if (column.color === "blue") return "bg-brand-600";
   if (column.color === "amber") return "bg-amber-500";
   if (column.color === "green") return "bg-emerald-600";
   return "bg-slate-400";
@@ -118,14 +118,14 @@ function AccessDenied() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl items-center px-6 py-16">
       <section className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">WMEE Vertrieb</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">WMEE Vertrieb</p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Kein Zugriff</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Für diesen Arbeitsbereich liegt keine passende Mitgliedschaft vor.
         </p>
         <Link
           href="/"
-          className="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
         >
           Zur Startseite
         </Link>
@@ -256,7 +256,7 @@ export default async function RequestsPage({
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-[1480px] flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-md bg-blue-700 text-sm font-bold text-white" aria-hidden="true">
+            <span className="grid size-9 place-items-center rounded-md bg-brand-700 text-sm font-bold text-white" aria-hidden="true">
               W
             </span>
             <div>
@@ -268,7 +268,7 @@ export default async function RequestsPage({
             {board.audience === "internal" ? (
               <Link
                 href={`/w/${validWorkspaceId}/dashboard`}
-                className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Übersicht
               </Link>
@@ -276,7 +276,7 @@ export default async function RequestsPage({
             {board.audience === "internal" ? (
               <Link
                 href={`/w/${validWorkspaceId}/aufgaben`}
-                className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Aufgaben
               </Link>
@@ -284,7 +284,7 @@ export default async function RequestsPage({
             {board.permissions.canOpenCatalog ? (
               <Link
                 href={`/w/${validWorkspaceId}/katalog`}
-                className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Produktkatalog
               </Link>
@@ -304,13 +304,13 @@ export default async function RequestsPage({
           <Link
             aria-current="page"
             href={boardHref(scope, scoreBand, followUpFilter)}
-            className="inline-flex min-h-11 items-center border-b-2 border-blue-700 px-3 text-sm font-semibold text-blue-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center border-b-2 border-brand-700 px-3 text-sm font-semibold text-brand-800 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Offen
           </Link>
           <Link
             href={`/w/${validWorkspaceId}/anfragen/abgeschlossen`}
-            className="inline-flex min-h-11 items-center border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 outline-none hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 outline-none hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Abgeschlossen
           </Link>
@@ -319,14 +319,14 @@ export default async function RequestsPage({
           <Link
             aria-current={scope === "residential" ? "page" : undefined}
             href={boardHref("residential", scoreBand, followUpFilter)}
-            className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scope === "residential" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+            className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${scope === "residential" ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
           >
             Wohnbau
           </Link>
           <Link
             aria-current={scope === "commercial" ? "page" : undefined}
             href={boardHref("commercial", scoreBand, followUpFilter)}
-            className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scope === "commercial" ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+            className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${scope === "commercial" ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
           >
             Gewerbe
           </Link>
@@ -352,13 +352,13 @@ export default async function RequestsPage({
                 key={preset.label}
                 aria-current={scoreBand === preset.band ? "page" : undefined}
                 href={boardHref(scope, preset.band, followUpFilter)}
-                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${scoreBand === preset.band ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${scoreBand === preset.band ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
               >
                 {preset.label}
               </Link>
             ))}
             {scoreBand !== undefined ? (
-              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800">
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">
                 Filter aktiv: {LEAD_SCORE_BAND_LABEL[scoreBand]}
               </span>
             ) : null}
@@ -378,13 +378,13 @@ export default async function RequestsPage({
                 key={preset.label}
                 aria-current={followUpFilter === preset.filter ? "page" : undefined}
                 href={boardHref(scope, scoreBand, preset.filter)}
-                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${followUpFilter === preset.filter ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${followUpFilter === preset.filter ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
               >
                 {preset.label}
               </Link>
             ))}
             {followUpFilter !== undefined ? (
-              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800">
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">
                 Filter aktiv: {followUpFilter === "due" ? "Anstehend" : "Überfällig"}
               </span>
             ) : null}
@@ -414,7 +414,7 @@ export default async function RequestsPage({
         ) : null}
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Rechner-Leads</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Rechner-Leads</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">{board.name}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Neue Solarrechner-Anfragen prüfen, qualifizieren und in die nächste Vertriebsstufe bewegen.
@@ -476,7 +476,7 @@ export default async function RequestsPage({
                           projectLabel={card.contactName}
                         >
                           <div className="pr-8">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-700">
                               {card.sourceLabel}
                             </p>
                             <h3 className="mt-1 text-base font-semibold leading-6 text-slate-950">
@@ -542,7 +542,7 @@ export default async function RequestsPage({
                             </time>
                             <Link
                               href={`/w/${validWorkspaceId}/anfragen/${card.id}`}
-                              className="rounded text-xs font-semibold text-blue-700 outline-none hover:text-blue-900 hover:underline focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                              className="rounded text-xs font-semibold text-brand-700 outline-none hover:text-brand-900 hover:underline focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
                             >
                               Projekt öffnen
                             </Link>

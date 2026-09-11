@@ -96,7 +96,7 @@ export function CalendarManager({
                     <input type="hidden" name="id" value={calendar.id} />
                     <button
                       type="submit"
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                     >
                       Archivieren
                     </button>
@@ -122,7 +122,7 @@ export function CalendarManager({
                   name="name"
                   required
                   maxLength={200}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
                 />
               </label>
               <label className="block">
@@ -132,7 +132,7 @@ export function CalendarManager({
                   name="color"
                   placeholder="#3B82F6"
                   maxLength={7}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
                 />
               </label>
               <label className="block">
@@ -141,7 +141,7 @@ export function CalendarManager({
                   name="scope"
                   value={scope}
                   onChange={(event) => setScope(event.target.value === "team" ? "team" : "tenancy")}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
                 >
                   <option value="tenancy">Unternehmen</option>
                   <option value="team">Team</option>
@@ -154,7 +154,7 @@ export function CalendarManager({
                     name="teamId"
                     required
                     defaultValue=""
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
                   >
                     <option value="" disabled>Bitte wählen</option>
                     {teams.map((team) => (
@@ -167,7 +167,7 @@ export function CalendarManager({
             <Feedback state={createState} />
             <button
               type="submit"
-              className="mt-4 inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="mt-4 inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Anlegen
             </button>

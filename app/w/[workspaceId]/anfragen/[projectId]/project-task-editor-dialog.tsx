@@ -161,8 +161,8 @@ function ToolbarButton({
       disabled={disabled}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
-      className={`min-h-11 rounded-md border px-3 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400 ${pressed
-        ? "border-blue-700 bg-blue-50 text-blue-900"
+      className={`min-h-11 rounded-md border px-3 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400 ${pressed
+        ? "border-brand-700 bg-brand-50 text-brand-900"
         : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
     >
       {label}
@@ -258,7 +258,7 @@ function TaskRichTextEditor({
   }, [nextFocusRef]);
 
   return (
-    <div className="rounded-md border border-slate-300 bg-white focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600 focus-within:ring-offset-2">
+    <div className="rounded-md border border-slate-300 bg-white focus-within:border-brand-600 focus-within:ring-2 focus-within:ring-brand-600 focus-within:ring-offset-2">
       <div className="flex flex-wrap gap-1 border-b border-slate-200 bg-slate-50 p-2">
         <ToolbarButton label="Fett" pressed={active?.bold} disabled={!editor || disabled} onClick={() => editor?.chain().focus().toggleBold().run()} />
         <ToolbarButton label="Kursiv" pressed={active?.italic} disabled={!editor || disabled} onClick={() => editor?.chain().focus().toggleItalic().run()} />
@@ -499,7 +499,7 @@ export function ProjectTaskEditorDialog({
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Aufgabe</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Aufgabe</p>
             <h1 id={titleId} className="mt-1 break-words text-xl font-semibold text-slate-950">
               {task ? "Aufgabe bearbeiten" : "Vollständige Aufgabe anlegen"}
             </h1>
@@ -513,7 +513,7 @@ export function ProjectTaskEditorDialog({
             disabled={pending}
             onClick={onClose}
             aria-label="Aufgabeneditor schließen"
-            className="min-h-11 rounded-md px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
+            className="min-h-11 rounded-md px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
           >
             Schließen
           </button>
@@ -544,7 +544,7 @@ export function ProjectTaskEditorDialog({
               maxLength={200}
               required
               disabled={pending}
-              className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1 disabled:cursor-wait disabled:bg-slate-100"
+              className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1 disabled:cursor-wait disabled:bg-slate-100"
             />
           </label>
 
@@ -579,7 +579,7 @@ export function ProjectTaskEditorDialog({
               value={dueDate}
               onChange={(event) => setDueDate(event.target.value)}
               disabled={pending}
-              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1 disabled:cursor-wait disabled:bg-slate-100"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1 disabled:cursor-wait disabled:bg-slate-100"
             />
           </label>
 
@@ -603,14 +603,14 @@ export function ProjectTaskEditorDialog({
                     event.preventDefault();
                     runMemberSearch();
                   }}
-                  className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1 disabled:cursor-wait disabled:bg-slate-100"
+                  className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1 disabled:cursor-wait disabled:bg-slate-100"
                 />
               </label>
               <button
                 type="button"
                 disabled={memberSearchPending}
                 onClick={runMemberSearch}
-                className="min-h-11 rounded-md border border-blue-700 bg-white px-3 text-sm font-semibold text-blue-800 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:border-slate-300 disabled:text-slate-400"
+                className="min-h-11 rounded-md border border-brand-700 bg-white px-3 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:border-slate-300 disabled:text-slate-400"
               >
                 {memberSearchPending ? "Suche läuft …" : "Person suchen"}
               </button>
@@ -637,7 +637,7 @@ export function ProjectTaskEditorDialog({
                         disabled={pending || memberSearchPending || (!selected && selectedAssignees.length >= PROJECT_TASK_MAX_ASSIGNEES)}
                         onClick={() => toggleAssignee(member)}
                         aria-label={`${member.label} ${selected ? "aus Auswahl entfernen" : "auswählen"}`}
-                        className="flex min-h-11 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400"
+                        className="flex min-h-11 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-slate-400"
                       >
                         <span className="min-w-0 break-all">{member.label}</span>
                         <span aria-hidden="true" className="shrink-0 font-semibold">{selected ? "−" : "+"}</span>
@@ -655,7 +655,7 @@ export function ProjectTaskEditorDialog({
               {selectedAssignees.length > 0 ? (
                 <ul aria-label="Ausgewählte Personen" className="mt-2 grid list-none gap-2 sm:grid-cols-2">
                   {selectedAssignees.map((member) => (
-                    <li key={member.membershipId} className="flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-950">
+                    <li key={member.membershipId} className="flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-950">
                       <span className="min-w-0 break-all">{member.label}</span>
                       <button
                         type="button"
@@ -681,12 +681,12 @@ export function ProjectTaskEditorDialog({
               {checklist.map((item, index) => (
                 <div key={item.clientKey} className="grid min-w-0 gap-2 rounded-md bg-slate-50 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
                   <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" checked={item.done} disabled={pending} onChange={(event) => setChecklist((current) => current.map((entry) => entry.clientKey === item.clientKey ? { ...entry, done: event.target.checked } : entry))} className="size-4 accent-blue-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2" />
+                    <input type="checkbox" checked={item.done} disabled={pending} onChange={(event) => setChecklist((current) => current.map((entry) => entry.clientKey === item.clientKey ? { ...entry, done: event.target.checked } : entry))} className="size-4 accent-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2" />
                     Erledigt
                   </label>
                   <label className="grid min-w-0 gap-1 text-xs font-semibold text-slate-700">
                     Punkt {index + 1}
-                    <input type="text" value={item.text} minLength={1} maxLength={500} required disabled={pending} onChange={(event) => setChecklist((current) => current.map((entry) => entry.clientKey === item.clientKey ? { ...entry, text: event.target.value } : entry))} className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1" />
+                    <input type="text" value={item.text} minLength={1} maxLength={500} required disabled={pending} onChange={(event) => setChecklist((current) => current.map((entry) => entry.clientKey === item.clientKey ? { ...entry, text: event.target.value } : entry))} className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1" />
                   </label>
                   <button type="button" disabled={pending} onClick={() => setChecklist((current) => current.filter((entry) => entry.clientKey !== item.clientKey))} className="min-h-11 rounded-md px-3 text-sm font-semibold text-red-700 outline-none hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 disabled:text-slate-400">
                     Entfernen
@@ -695,7 +695,7 @@ export function ProjectTaskEditorDialog({
               ))}
             </div>
             {checklist.length < PROJECT_TASK_MAX_CHECKLIST_ITEMS ? (
-              <button type="button" disabled={pending} onClick={() => setChecklist((current) => [...current, { clientKey: nextKey("check"), id: null, text: "", done: false }])} className="mt-3 min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+              <button type="button" disabled={pending} onClick={() => setChecklist((current) => [...current, { clientKey: nextKey("check"), id: null, text: "", done: false }])} className="mt-3 min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
                 Checklistenpunkt hinzufügen
               </button>
             ) : null}
@@ -708,11 +708,11 @@ export function ProjectTaskEditorDialog({
                 <div key={label.clientKey} className="grid min-w-0 gap-2 rounded-md bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
                   <label className="grid min-w-0 gap-1 text-xs font-semibold text-slate-700">
                     Label {index + 1}
-                    <input type="text" value={label.name} minLength={1} maxLength={40} required disabled={pending} onChange={(event) => setLabels((current) => current.map((entry) => entry.clientKey === label.clientKey ? { ...entry, name: event.target.value } : entry))} className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1" />
+                    <input type="text" value={label.name} minLength={1} maxLength={40} required disabled={pending} onChange={(event) => setLabels((current) => current.map((entry) => entry.clientKey === label.clientKey ? { ...entry, name: event.target.value } : entry))} className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1" />
                   </label>
                   <label className="grid gap-1 text-xs font-semibold text-slate-700">
                     Farbe
-                    <select value={label.color} disabled={pending} onChange={(event) => setLabels((current) => current.map((entry) => entry.clientKey === label.clientKey ? { ...entry, color: event.target.value as TaskLabelColor } : entry))} className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-1">
+                    <select value={label.color} disabled={pending} onChange={(event) => setLabels((current) => current.map((entry) => entry.clientKey === label.clientKey ? { ...entry, color: event.target.value as TaskLabelColor } : entry))} className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-base font-normal text-slate-950 outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1">
                       {taskLabelColors.map((color) => <option key={color} value={color}>{colorLabels[color]}</option>)}
                     </select>
                   </label>
@@ -723,7 +723,7 @@ export function ProjectTaskEditorDialog({
               ))}
             </div>
             {labels.length < PROJECT_TASK_MAX_LABELS ? (
-              <button type="button" disabled={pending} onClick={() => setLabels((current) => [...current, { clientKey: nextKey("label"), id: null, name: "", color: "slate" }])} className="mt-3 min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+              <button type="button" disabled={pending} onClick={() => setLabels((current) => [...current, { clientKey: nextKey("label"), id: null, name: "", color: "slate" }])} className="mt-3 min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
                 Label hinzufügen
               </button>
             ) : null}
@@ -734,10 +734,10 @@ export function ProjectTaskEditorDialog({
           </p>
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-            <button ref={cancelButtonRef} type="button" disabled={pending} onClick={onClose} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">
+            <button ref={cancelButtonRef} type="button" disabled={pending} onClick={onClose} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">
               Abbrechen
             </button>
-            <button ref={submitButtonRef} type="submit" disabled={pending || !bodyValid} aria-busy={pending || undefined} className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
+            <button ref={submitButtonRef} type="submit" disabled={pending || !bodyValid} aria-busy={pending || undefined} className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
               {pending ? "Wird gespeichert …" : task ? "Änderungen speichern" : "Aufgabe anlegen"}
             </button>
           </div>

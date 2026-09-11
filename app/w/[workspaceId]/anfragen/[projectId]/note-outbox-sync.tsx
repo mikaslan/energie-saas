@@ -117,7 +117,7 @@ export function NoteOutboxSync({
           type="button"
           onClick={() => void syncNow()}
           disabled={syncing}
-          className="mt-2 inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
+          className="mt-2 inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400"
         >
           {syncing ? "Wird synchronisiert …" : "Jetzt synchronisieren"}
         </button>

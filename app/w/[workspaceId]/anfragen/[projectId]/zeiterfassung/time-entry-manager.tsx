@@ -29,7 +29,7 @@ import { enqueueTimeCreate } from "./time-outbox";
 const initialState: TimeEntryActionState = { status: "idle" };
 
 const inputClass =
-  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30";
+  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
 
 function message(state: TimeEntryActionState): { text: string; isError: boolean } | null {
   switch (state.status) {
@@ -233,7 +233,7 @@ export function TimeEntryManager({
   return (
     <div className="space-y-6">
       {canWrite && runningEntry ? (
-        <section className="min-w-0 rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm sm:p-6">
+        <section className="min-w-0 rounded-lg border border-brand-200 bg-brand-50 p-5 shadow-sm sm:p-6">
           <h2 className="text-base font-semibold text-slate-950">Stoppuhr läuft</h2>
           <p className="mt-1 text-sm leading-6 text-slate-700">
             {typeName(runningEntry.typeId) ?? "Ohne Ereignistyp"} ·{" "}
@@ -253,7 +253,7 @@ export function TimeEntryManager({
                   max={1440}
                   step={1}
                   required
-                  className="mt-1 w-36 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+                  className="mt-1 w-36 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
                 />
               </label>
               <label className="block text-sm font-semibold text-slate-800">
@@ -265,12 +265,12 @@ export function TimeEntryManager({
                   max={1440}
                   step={1}
                   defaultValue={0}
-                  className="mt-1 w-36 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+                  className="mt-1 w-36 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
                 />
               </label>
               <button
                 type="submit"
-                className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+                className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600"
               >
                 Stoppen
               </button>
@@ -281,7 +281,7 @@ export function TimeEntryManager({
               <input type="hidden" name="id" value={runningEntry.id} />
               <button
                 type="submit"
-                className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
               >
                 Verwerfen
               </button>
@@ -383,7 +383,7 @@ export function TimeEntryManager({
                       <input type="hidden" name="id" value={entry.id} />
                       <button
                         type="submit"
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                       >
                         Archivieren
                       </button>
@@ -396,7 +396,7 @@ export function TimeEntryManager({
                           <input type="hidden" name="id" value={entry.id} />
                           <button
                             type="submit"
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                           >
                             Entsperren
                           </button>
@@ -408,7 +408,7 @@ export function TimeEntryManager({
                           <input type="hidden" name="id" value={entry.id} />
                           <button
                             type="submit"
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                           >
                             Freigeben
                           </button>
@@ -512,7 +512,7 @@ export function TimeEntryManager({
               <button
                 type="submit"
                 disabled={queueing}
-                className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
+                className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
               >
                 {queueing ? "Wird gespeichert …" : "Erfassen"}
               </button>
@@ -593,7 +593,7 @@ function StartForm({
               if (lngRef.current) lngRef.current.value = "";
             }
           }}
-          className="h-4 w-4 accent-blue-700 disabled:opacity-60"
+          className="h-4 w-4 accent-brand-700 disabled:opacity-60"
         />
         Standort beim Start speichern
       </label>
@@ -601,7 +601,7 @@ function StartForm({
         type="button"
         onClick={handleStart}
         disabled={locating}
-        className="mt-3 min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:opacity-60"
+        className="mt-3 min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-60"
       >
         {locating ? "Standort wird ermittelt …" : "Stoppuhr starten"}
       </button>
@@ -626,7 +626,7 @@ function RevisionHistory({
   if (revisions.length === 0) return null;
   return (
     <details className="w-full rounded-md bg-slate-50 px-3 py-2" data-testid={`verlauf-${entryId}`}>
-      <summary className="cursor-pointer text-xs font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">
+      <summary className="cursor-pointer text-xs font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
         Verlauf ({revisions.length})
       </summary>
       <ul className="mt-2 space-y-2">
@@ -700,7 +700,7 @@ function BreakControls({
             <input type="hidden" name="id" value={entryId} />
             <button
               type="submit"
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
             >
               Pause beenden
             </button>
@@ -712,7 +712,7 @@ function BreakControls({
             <input type="hidden" name="id" value={entryId} />
             <button
               type="submit"
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
             >
               Pause starten
             </button>
@@ -726,7 +726,7 @@ function BreakControls({
       ) : null}
       {segments.length > 0 ? (
         <details className="mt-1 rounded-md bg-slate-50 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-semibold text-blue-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-blue-600">
+          <summary className="cursor-pointer text-xs font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
             Pausen ({segments.length})
           </summary>
           <ul className="mt-2 space-y-1">
@@ -763,7 +763,7 @@ function EditForm({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         Bearbeiten
       </button>
@@ -775,7 +775,7 @@ function EditForm({
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="id" value={entry.id} />
       <select name="typeId" defaultValue={entry.typeId ?? ""} aria-label="Ereignistyp"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600">
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600">
         <option value="">Ohne Ereignistyp</option>
         {archivedType ? (
           <option value={archivedType.id}>{archivedType.name} (archiviert)</option>
@@ -786,22 +786,22 @@ function EditForm({
       </select>
       <input type="datetime-local" name="startAt" required defaultValue={isoToBerlinLocalInput(entry.startAt)}
         aria-label="Beginn"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600" />
       <input type="datetime-local" name="endAt" required defaultValue={entry.endAt !== null ? isoToBerlinLocalInput(entry.endAt) : ""}
         aria-label="Ende"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600" />
       <input type="number" name="workingTimeMinutes" min={0} max={1440} step={1} required
         defaultValue={entry.workingTimeMinutes ?? ""} aria-label="Arbeitszeit (Minuten)"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600" />
       <input type="number" name="breakDurationMinutes" min={0} max={1440} step={1}
         defaultValue={entry.breakDurationMinutes} aria-label="Pause (Minuten)"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600" />
       <input type="text" name="comment" maxLength={500} defaultValue={entry.comment ?? ""}
         aria-label="Kommentar"
-        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600" />
+        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600" />
       <button
         type="submit"
-        className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         Speichern
       </button>

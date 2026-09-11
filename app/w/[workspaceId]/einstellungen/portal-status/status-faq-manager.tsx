@@ -84,12 +84,12 @@ function StatusFaqRow({
                 maxLength={INSTALLATION_STATUS_FAQ_MAX}
                 rows={3}
                 placeholder="z. B. Die Anlage läuft, die Abnahme folgt in Kürze."
-                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
               />
             </label>
             <button
               type="submit"
-              className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600"
             >
               Speichern
             </button>
@@ -100,7 +100,7 @@ function StatusFaqRow({
               <input type="hidden" name="key" value={stateKey} />
               <button
                 type="submit"
-                className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
               >
                 FAQ entfernen
               </button>

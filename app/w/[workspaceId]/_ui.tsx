@@ -5,7 +5,7 @@ export function YesNo({ value }: { value: boolean }) {
     <span
       className={
         value
-          ? "inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800"
+          ? "inline-flex rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800"
           : "inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
       }
     >
@@ -73,7 +73,7 @@ export function DeniedState({
         </p>
         <Link
           href="/"
-          className="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Zur Startseite
         </Link>

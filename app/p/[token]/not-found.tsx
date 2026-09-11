@@ -20,7 +20,7 @@ export default async function PortalLinkInvalid() {
         aria-live="polite"
         lang={lang}
       >
-        <p className="text-sm font-semibold text-blue-700">{t.brand}</p>
+        <p className="text-sm font-semibold text-brand-700">{t.brand}</p>
         <h1 className="mt-2 text-2xl font-semibold text-slate-950">{t.invalidTitle}</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           {t.invalidBody}

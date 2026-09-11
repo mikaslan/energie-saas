@@ -152,7 +152,7 @@ export function EnergyProfileSection({
         {context.capabilities.canEdit ? (
           <Link
             href={editorPath}
-            className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-md border border-blue-700 bg-white px-4 py-2.5 text-sm font-semibold text-blue-800 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 sm:w-auto"
+            className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-md border border-brand-700 bg-white px-4 py-2.5 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 sm:w-auto"
           >
             {profile === null ? "Energieprofil anlegen" : "Energieprofil prüfen und bearbeiten"}
           </Link>

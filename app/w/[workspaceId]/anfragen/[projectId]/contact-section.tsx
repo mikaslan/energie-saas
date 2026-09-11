@@ -53,7 +53,7 @@ function SubmitButton() {
       type="submit"
       disabled={pending}
       aria-busy={pending || undefined}
-      className="min-h-11 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
+      className="min-h-11 rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400"
     >
       {pending ? "Wird gespeichert …" : "Speichern"}
     </button>
@@ -86,7 +86,7 @@ function Field({
         type={type}
         defaultValue={defaultValue ?? ""}
         autoComplete={autoComplete}
-        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1"
+        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 focus:ring-offset-1"
       />
       {hint ? <p className="mt-1 text-xs leading-5 text-slate-500">{hint}</p> : null}
     </div>
@@ -113,7 +113,7 @@ function SelectField({
         id={`contact-${name}`}
         name={name}
         defaultValue={defaultValue ?? ""}
-        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1"
+        className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 focus:ring-offset-1"
       >
         <option value="">Nicht hinterlegt</option>
         {options.map((option) => (
@@ -182,7 +182,7 @@ function ContactEditForm({
               id="contact-isBusiness"
               name="isBusiness"
               defaultValue={dataset.name.isBusiness ? "true" : "false"}
-              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1"
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 focus:ring-offset-1"
             >
               <option value="false">Privatkunde (B2C)</option>
               <option value="true">Geschäftskunde (B2B)</option>
@@ -231,7 +231,7 @@ function ContactEditForm({
             name="marketingConsentText"
             defaultValue={dataset.marketingConsent.text ?? ""}
             rows={3}
-            className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-offset-1"
+            className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 focus:ring-offset-1"
           />
         </div>
         <Field label="Datenschutzlink" name="marketingConsentDataProtectionLink" defaultValue={dataset.marketingConsent.dataProtectionLink} type="url" hint="Muss mit https:// beginnen." />
@@ -270,7 +270,7 @@ function ContactEditForm({
         <button
           type="button"
           onClick={onClose}
-          className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Abbrechen
         </button>
@@ -410,7 +410,7 @@ export function ContactSection({
             <button
               type="button"
               onClick={openEditor}
-              className="min-h-11 rounded-md border border-blue-700 bg-white px-4 py-2 text-sm font-semibold text-blue-800 outline-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+              className="min-h-11 rounded-md border border-brand-700 bg-white px-4 py-2 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               Kontakt bearbeiten
             </button>

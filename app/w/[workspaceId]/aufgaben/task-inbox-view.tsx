@@ -91,7 +91,7 @@ function InboxTaskCard({
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${task.status === "done"
               ? "bg-emerald-100 text-emerald-950"
-              : "bg-blue-100 text-blue-950"}`}>
+              : "bg-brand-100 text-brand-950"}`}>
               {stateLabels[task.status]}
             </span>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -130,12 +130,12 @@ function InboxTaskCard({
             </div>
           </dl>
           {relationship ? (
-            <p className="mt-3 text-xs font-semibold text-blue-800">{relationship}</p>
+            <p className="mt-3 text-xs font-semibold text-brand-800">{relationship}</p>
           ) : null}
         </div>
         <Link
           href={`/w/${workspaceId}/anfragen/${task.project.id}#project-tasks`}
-          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Projektakte öffnen
         </Link>
@@ -171,13 +171,13 @@ export function GlobalTaskInboxView({
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
-      <a href="#global-task-inbox-main" className="sr-only rounded-md bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-blue-600">
+      <a href="#global-task-inbox-main" className="sr-only rounded-md bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-brand-600">
         Zur Aufgabenliste springen
       </a>
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <span aria-hidden="true" className="grid size-9 place-items-center rounded-md bg-blue-700 text-sm font-bold text-white">W</span>
+            <span aria-hidden="true" className="grid size-9 place-items-center rounded-md bg-brand-700 text-sm font-bold text-white">W</span>
             <div>
               <p className="text-sm font-semibold leading-5">WMEE Vertrieb</p>
               <p className="text-xs text-slate-500">Aufgaben-Inbox</p>
@@ -185,10 +185,10 @@ export function GlobalTaskInboxView({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <nav aria-label="Bereichsnavigation" className="flex flex-wrap items-center gap-2">
-              <Link href={`/w/${workspaceId}/anfragen`} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Anfragen</Link>
-              <Link aria-current="page" href={`/w/${workspaceId}/aufgaben`} className="inline-flex min-h-11 items-center rounded-md border border-blue-700 bg-blue-50 px-3 text-sm font-semibold text-blue-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Aufgaben</Link>
-              <Link href={`/w/${workspaceId}/angebote`} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Angebote</Link>
-              <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Produktkatalog</Link>
+              <Link href={`/w/${workspaceId}/anfragen`} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Anfragen</Link>
+              <Link aria-current="page" href={`/w/${workspaceId}/aufgaben`} className="inline-flex min-h-11 items-center rounded-md border border-brand-700 bg-brand-50 px-3 text-sm font-semibold text-brand-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Aufgaben</Link>
+              <Link href={`/w/${workspaceId}/angebote`} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Angebote</Link>
+              <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Produktkatalog</Link>
             </nav>
             <SignOutButton />
           </div>
@@ -206,7 +206,7 @@ export function GlobalTaskInboxView({
       >
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Projektübergreifend</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Projektübergreifend</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Aufgaben</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Offene und erledigte Projektaufgaben zentral finden. Änderungen erfolgen weiterhin revisionssicher in der jeweiligen Projektakte.
@@ -234,31 +234,31 @@ export function GlobalTaskInboxView({
           >
             <div>
               <label htmlFor="task-filter" className="text-sm font-medium text-slate-800">Ansicht</label>
-              <select id="task-filter" name="filter" defaultValue={page.filter} className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-200">
+              <select id="task-filter" name="filter" defaultValue={page.filter} className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-200">
                 {Object.entries(filterLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </div>
             <div>
               <label htmlFor="task-state" className="text-sm font-medium text-slate-800">Status</label>
-              <select id="task-state" name="state" defaultValue={page.state} className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-200">
+              <select id="task-state" name="state" defaultValue={page.state} className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-200">
                 {Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </div>
             <div>
               <label htmlFor="task-due-bucket" className="text-sm font-medium text-slate-800">Fälligkeit</label>
-              <select id="task-due-bucket" name="dueBucket" defaultValue={page.dueBucket} className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-200">
+              <select id="task-due-bucket" name="dueBucket" defaultValue={page.dueBucket} className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-200">
                 {Object.entries(dueBucketLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </div>
             <div>
               <label htmlFor="task-query" className="text-sm font-medium text-slate-800">Suche</label>
-              <input id="task-query" name="query" type="search" defaultValue={page.query ?? ""} maxLength={GLOBAL_TASK_INBOX_QUERY_MAX_LENGTH} aria-describedby="task-query-help" className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-base outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-200" />
+              <input id="task-query" name="query" type="search" defaultValue={page.query ?? ""} maxLength={GLOBAL_TASK_INBOX_QUERY_MAX_LENGTH} aria-describedby="task-query-help" className="mt-1.5 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-base outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-200" />
               <p id="task-query-help" className="mt-1 text-xs leading-5 text-slate-500">Sucht im Titel und im sicheren Beschreibungstext.</p>
             </div>
-            <button type="submit" className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Anzeigen</button>
+            <button type="submit" className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Anzeigen</button>
           </form>
           {filtersActive ? (
-            <Link href={`/w/${workspaceId}/aufgaben`} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Filter zurücksetzen</Link>
+            <Link href={`/w/${workspaceId}/aufgaben`} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Filter zurücksetzen</Link>
           ) : null}
         </section>
 
@@ -285,8 +285,8 @@ export function GlobalTaskInboxView({
 
         {firstHref !== null || nextHref !== null ? (
           <nav aria-label="Aufgabenseiten" className="mt-6 flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
-            {firstHref !== null ? <Link href={firstHref} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Erste Seite</Link> : null}
-            {nextHref !== null ? <Link href={nextHref} className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Weitere Aufgaben</Link> : null}
+            {firstHref !== null ? <Link href={firstHref} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Erste Seite</Link> : null}
+            {nextHref !== null ? <Link href={nextHref} className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Weitere Aufgaben</Link> : null}
           </nav>
         ) : null}
       </div>

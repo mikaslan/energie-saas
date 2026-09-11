@@ -80,7 +80,7 @@ export function InstallationSection({
 
   return (
     <section aria-labelledby="project-installation-title" className="min-w-0">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Akte</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Akte</p>
       <h2 id="project-installation-title" className="mt-1 text-xl font-semibold text-slate-950">
         Installation
       </h2>
@@ -97,7 +97,7 @@ export function InstallationSection({
               <input type="hidden" name="projectId" value={projectId} />
               <button
                 type="submit"
-                className="inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Installation direkt anlegen
               </button>
@@ -161,7 +161,7 @@ export function InstallationSection({
             <select
               name="membershipId"
               defaultValue={installation.leadInstallerMembershipId ?? ""}
-              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             >
               <option value="">— nicht zugewiesen —</option>
               {installerOptions.map((option) => (
@@ -173,7 +173,7 @@ export function InstallationSection({
           </label>
           <button
             type="submit"
-            className="mt-3 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="mt-3 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Zuweisung speichern
           </button>
@@ -188,7 +188,7 @@ export function InstallationSection({
               <input type="hidden" name="projectId" value={projectId} />
               <button
                 type="submit"
-                className="inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Installation abschließen
               </button>
@@ -214,7 +214,7 @@ export function InstallationSection({
               required
               maxLength={160}
               defaultValue={installation.handoverByName ?? ""}
-              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             />
           </label>
           <label className="mt-2 block">
@@ -224,12 +224,12 @@ export function InstallationSection({
               name="note"
               maxLength={500}
               defaultValue={installation.handoverNote ?? ""}
-              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30"
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
             />
           </label>
           <button
             type="submit"
-            className="mt-3 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+            className="mt-3 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Abnahme speichern
           </button>

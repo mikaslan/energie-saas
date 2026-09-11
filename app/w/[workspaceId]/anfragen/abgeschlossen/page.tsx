@@ -38,7 +38,7 @@ function AccessDenied() {
         <p className="mt-2 text-sm leading-6 text-slate-600">
           Abgeschlossene Anfragen sind nur im internen Arbeitsbereich sichtbar.
         </p>
-        <Link href="/" className="mt-5 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+        <Link href="/" className="mt-5 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
           Zur Startseite
         </Link>
       </section>
@@ -104,7 +104,7 @@ export default async function ClosedRequestsPage({
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-md bg-blue-700 text-sm font-bold text-white" aria-hidden="true">W</span>
+            <span className="grid size-9 place-items-center rounded-md bg-brand-700 text-sm font-bold text-white" aria-hidden="true">W</span>
             <div>
               <p className="text-sm font-semibold">WMEE Vertrieb</p>
               <p className="text-xs text-slate-500">Geschützter Arbeitsbereich</p>
@@ -116,17 +116,17 @@ export default async function ClosedRequestsPage({
 
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <nav aria-label="Anfrageansichten" className="mb-6 flex flex-wrap gap-2 border-b border-slate-300">
-          <Link href={`/w/${workspaceId}/anfragen`} className="inline-flex min-h-11 items-center border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 outline-none hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+          <Link href={`/w/${workspaceId}/anfragen`} className="inline-flex min-h-11 items-center border-b-2 border-transparent px-3 text-sm font-semibold text-slate-600 outline-none hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
             Offen
           </Link>
-          <Link aria-current="page" href={`/w/${workspaceId}/anfragen/abgeschlossen`} className="inline-flex min-h-11 items-center border-b-2 border-blue-700 px-3 text-sm font-semibold text-blue-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+          <Link aria-current="page" href={`/w/${workspaceId}/anfragen/abgeschlossen`} className="inline-flex min-h-11 items-center border-b-2 border-brand-700 px-3 text-sm font-semibold text-brand-800 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
             Abgeschlossen
           </Link>
         </nav>
 
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Anfragearchiv</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Anfragearchiv</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Abgeschlossene Anfragen</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Gewonnene und verlorene Anfragen bleiben revisionssicher auffindbar und können in ihrer Projektakte wieder geöffnet werden.
@@ -142,7 +142,7 @@ export default async function ClosedRequestsPage({
             const active = filter === value;
             const label = value === "all" ? "Alle" : value === "won" ? "Gewonnen" : value === "lost" ? "Verloren" : "Nicht erfüllbar";
             return (
-              <Link key={value} aria-current={active ? "page" : undefined} href={filterHref(workspaceId, value)} className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${active ? "border-blue-700 bg-blue-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}>
+              <Link key={value} aria-current={active ? "page" : undefined} href={filterHref(workspaceId, value)} className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${active ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}>
                 {label}
               </Link>
             );
@@ -183,7 +183,7 @@ export default async function ClosedRequestsPage({
                   </div>
                   <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
                     <time dateTime={record.closedAt} className="text-xs tabular-nums text-slate-500">{dateFormatter.format(new Date(record.closedAt))}</time>
-                    <Link href={`/w/${workspaceId}/anfragen/${record.projectId}`} className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+                    <Link href={`/w/${workspaceId}/anfragen/${record.projectId}`} className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
                       Projektakte öffnen
                     </Link>
                   </div>
@@ -195,7 +195,7 @@ export default async function ClosedRequestsPage({
 
         {nextHref ? (
           <nav aria-label="Seitennavigation" className="mt-6 flex justify-end">
-            <Link href={nextHref} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+            <Link href={nextHref} className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
               Ältere Abschlüsse
             </Link>
           </nav>

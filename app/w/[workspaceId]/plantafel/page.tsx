@@ -348,7 +348,7 @@ export default async function PlanningBoardPage(
                               <li key={entry.id}>
                                 <Link
                                   href={`${basePath}?week=${board.weekStart}&event=${entry.id}`}
-                                  className="block rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-900 hover:bg-blue-100"
+                                  className="block rounded border border-brand-200 bg-brand-50 px-2 py-1 text-xs text-brand-900 hover:bg-brand-100"
                                   title={`${entry.title} (${entry.projectName})${entry.teamName ? ` — Team ${entry.teamName}` : ""}`}
                                 >
                                   <span className="font-semibold">
@@ -464,7 +464,7 @@ export default async function PlanningBoardPage(
                 <p className="mt-3 text-sm">
                   <Link
                     href={`/w/${workspaceId}/anfragen/${selected.entry.projectId}`}
-                    className="font-semibold text-blue-700 underline-offset-2 hover:underline"
+                    className="font-semibold text-brand-700 underline-offset-2 hover:underline"
                   >
                     Zum Projekt „{selected.entry.projectName}“
                   </Link>

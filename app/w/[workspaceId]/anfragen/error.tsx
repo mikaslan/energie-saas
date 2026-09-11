@@ -12,7 +12,7 @@ export default function RequestsError({ retry }: { error: Error; retry: () => vo
         <button
           type="button"
           onClick={retry}
-          className="mt-6 min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="mt-6 min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
         >
           Erneut versuchen
         </button>

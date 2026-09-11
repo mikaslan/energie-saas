@@ -131,7 +131,7 @@ export function PlanningBoardCreateForm({
           <p className="text-sm sm:col-span-2">
             <button
               type="submit"
-              className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800"
+              className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-800"
             >
               Anlegen
             </button>{" "}

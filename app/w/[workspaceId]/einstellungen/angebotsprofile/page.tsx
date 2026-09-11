@@ -99,7 +99,7 @@ export default async function OfferReleaseProfilesPage(
           <section className="rounded-lg border border-amber-200 bg-amber-50 p-6">
             <h1 className="text-2xl font-semibold text-slate-950">Anmeldung erforderlich</h1>
             <p className="mt-2 text-sm leading-6 text-slate-700">Melde dich erneut an, um die Angebotsprofile zu öffnen.</p>
-            <Link href="/login" className="mt-5 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">Zum Login</Link>
+            <Link href="/login" className="mt-5 inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Zum Login</Link>
           </section>
         </main>
       );
@@ -112,13 +112,13 @@ export default async function OfferReleaseProfilesPage(
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 lg:px-8">
-      <a href="#offer-profile-main" className="sr-only rounded bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-blue-600">Zum Angebotsprofil springen</a>
+      <a href="#offer-profile-main" className="sr-only rounded bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-brand-600">Zum Angebotsprofil springen</a>
       <div id="offer-profile-main" className="mx-auto w-full max-w-5xl">
         <nav aria-label="Brotkrumen">
-          <Link href={`/w/${workspaceId}/angebote`} className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 outline-none hover:text-blue-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">← Zur Angebotsübersicht</Link>
+          <Link href={`/w/${workspaceId}/angebote`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">← Zur Angebotsübersicht</Link>
         </nav>
         <header className="mb-6 mt-4 border-b border-slate-200 pb-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Einstellungen</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Einstellungen</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Angebotsprofile</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
             Versionierte Ausstellerdaten und Rechtstexte für Freigabekandidaten. Jeder Stand bleibt nachvollziehbar; Aktivieren ist eine getrennte Prüfung.

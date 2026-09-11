@@ -80,9 +80,9 @@ export function LossReasonManager({
           <input type="hidden" name="kind" value="create" />
           <label className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-900">
             Bezeichnung
-            <input name="label" required minLength={1} maxLength={80} disabled={pending} autoComplete="off" className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base outline-none focus-visible:border-blue-600 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-slate-100 sm:text-sm" />
+            <input name="label" required minLength={1} maxLength={80} disabled={pending} autoComplete="off" className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-base outline-none focus-visible:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:bg-slate-100 sm:text-sm" />
           </label>
-          <button type="submit" disabled={pending} className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
+          <button type="submit" disabled={pending} className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
             Anlegen
           </button>
         </form>
@@ -118,7 +118,7 @@ export function LossReasonManager({
                   {archived ? (
                     <form action={action}>
                       <CommandFields commandVersion={commandVersion} kind="reactivate" reason={reason} />
-                      <button type="submit" disabled={pending} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">Reaktivieren</button>
+                      <button type="submit" disabled={pending} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">Reaktivieren</button>
                     </form>
                   ) : (
                     <details className="min-w-0 sm:text-right">

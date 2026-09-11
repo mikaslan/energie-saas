@@ -16,7 +16,7 @@ import {
 const initialState: TemplateActionState = { status: "idle" };
 
 const inputClass =
-  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/30";
+  "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
 
 function message(state: TemplateActionState): { text: string; isError: boolean } | null {
   switch (state.status) {
@@ -98,7 +98,7 @@ export function ChecklistTemplateManager({
                       <input type="hidden" name="id" value={template.id} />
                       <button
                         type="submit"
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                       >
                         Archivieren
                       </button>
@@ -128,7 +128,7 @@ export function ChecklistTemplateManager({
                     <input type="hidden" name="id" value={template.id} />
                     <button
                       type="submit"
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
                     >
                       Reaktivieren
                     </button>
@@ -184,7 +184,7 @@ function ItemEditor({
             aria-label={`Komponente ${index + 1}`}
             value={item.componentId}
             onChange={(event) => setItem(index, { componentId: event.target.value })}
-            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
           >
             {components.map((component) => (
               <option key={component.id} value={component.id}>{component.sku}</option>
@@ -202,7 +202,7 @@ function ItemEditor({
               const quantity = Number(event.target.value);
               if (Number.isSafeInteger(quantity)) setItem(index, { quantity });
             }}
-              className="w-20 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+              className="w-20 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
             />
           </label>
           <button
@@ -217,7 +217,7 @@ function ItemEditor({
       <button
         type="button"
         onClick={addItem}
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         Position hinzufügen
       </button>
@@ -270,7 +270,7 @@ function CreateForm({
         <Feedback state={state} />
         <button
           type="submit"
-          className="inline-flex min-h-11 items-center rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Anlegen
         </button>
@@ -298,7 +298,7 @@ function EditForm({
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         Bearbeiten
       </button>
@@ -317,7 +317,7 @@ function EditForm({
           maxLength={200}
           defaultValue={template.name}
           aria-label="Name"
-          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
         />
         <input
           type="number"
@@ -326,14 +326,14 @@ function EditForm({
           step={1}
           defaultValue={template.position}
           aria-label="Position"
-          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
         />
         <input
           type="text"
           name="targets"
           defaultValue={template.targets.join(", ")}
           aria-label="Zielgruppen"
-          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
         />
       </div>
       <input
@@ -342,13 +342,13 @@ function EditForm({
         maxLength={2000}
         defaultValue={template.description ?? ""}
         aria-label="Beschreibung"
-        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-600"
+        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
       />
       <ItemEditor components={components} items={items} onChange={setItems} />
       <div className="flex gap-2">
         <button
           type="submit"
-          className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600"
+          className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600"
         >
           Speichern
         </button>

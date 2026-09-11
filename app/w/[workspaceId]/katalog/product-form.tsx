@@ -23,7 +23,7 @@ const typeLabels: Record<CatalogComponentType, string> = {
 };
 
 const fieldClass =
-  "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-200 disabled:bg-slate-100 disabled:text-slate-500";
+  "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100 disabled:text-slate-500";
 const labelClass = "grid gap-1.5 text-sm font-medium text-slate-800";
 
 function messageFor(state: CatalogActionState): { tone: "good" | "bad"; text: string } | null {
@@ -369,7 +369,7 @@ export function ProductForm({
       <button
         type="submit"
         disabled={pending}
-        className="min-h-11 w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:justify-self-start"
+        className="min-h-11 w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:justify-self-start"
       >
         {pending ? "Wird gespeichert …" : mode === "create" ? "Produktentwurf anlegen" : "Neue Revision speichern"}
       </button>

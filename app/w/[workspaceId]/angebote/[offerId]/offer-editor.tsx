@@ -319,7 +319,7 @@ function FeedbackBanner({
   }
   if (feedback.status === "pending") {
     return (
-      <div aria-live="polite" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-base leading-6 text-blue-950">
+      <div aria-live="polite" className="rounded-md border border-brand-300 bg-brand-50 px-4 py-3 text-base leading-6 text-brand-950">
         <p className="font-semibold">Genau eine Änderung wird serverseitig geprüft …</p>
       </div>
     );
@@ -334,7 +334,7 @@ function FeedbackBanner({
   }
   if (feedback.status === "noop") {
     return (
-      <div role="status" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-base leading-6 text-blue-950">
+      <div role="status" className="rounded-md border border-brand-300 bg-brand-50 px-4 py-3 text-base leading-6 text-brand-950">
         <p className="font-semibold">Keine fachliche Änderung zu speichern.</p>
         <p className="mt-1">Die Eingaben wurden auf den kanonischen gespeicherten Stand zurückgesetzt; es wurde keine neue Serverrevision erzeugt.</p>
       </div>
@@ -342,7 +342,7 @@ function FeedbackBanner({
   }
   if (dirty) {
     return (
-      <div role="status" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-base leading-6 text-blue-950">
+      <div role="status" className="rounded-md border border-brand-300 bg-brand-50 px-4 py-3 text-base leading-6 text-brand-950">
         <p className="font-semibold">Ungespeichert</p>
         <p className="mt-1">Nur der lokale Draft wurde verändert.</p>
       </div>
@@ -431,7 +431,7 @@ function ServerTotals({
           <div className="flex justify-between gap-4"><dt>Gespeicherte Marge</dt><dd className="font-semibold tabular-nums">{formatOfferCentsTotal(snapshotLines.map((line) => line.computed.marginNetCents))}</dd></div>
         </dl>
       ) : null}
-      <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+      <div className="mt-4 rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-950">
         <p className="font-semibold">Lokale Preisvorschau · noch nicht gespeichert</p>
         {preview ? (
           <dl className="mt-2 grid gap-2">
@@ -1025,7 +1025,7 @@ export function OfferVariantEditor({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold">Revision {expectedRevision}</span>
-                <span className={dirty ? "rounded-full bg-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-900" : "rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-900"}>
+                <span className={dirty ? "rounded-full bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-900" : "rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-900"}>
                   {dirty ? "Ungespeichert" : "Gespeichert"}
                 </span>
               </div>
@@ -1035,7 +1035,7 @@ export function OfferVariantEditor({
           <div className="grid gap-4">
             {view.offer.outdated ? <PersistentOutdatedWarning /> : null}
             {rebaseRecovered ? (
-              <div role="status" className="rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-base leading-6 text-blue-950">
+              <div role="status" className="rounded-md border border-brand-300 bg-brand-50 px-4 py-3 text-base leading-6 text-brand-950">
                 <p className="font-semibold">Lokaler Draft wurde auf den aktuellen Serverstand rebasiert.</p>
                 <p className="mt-1">Deine Eingaben bleiben sichtbar. Prüfe parallele Änderungen vor dem erneuten Speichern.</p>
                 {purchaseDraftOmitted ? (
@@ -1045,7 +1045,7 @@ export function OfferVariantEditor({
                 ) : null}
                 {rebaseNotices.length > 0 ? <ul className="mt-2 list-disc space-y-1 pl-5">{rebaseNotices.map((notice) => <li key={notice}>{notice}</li>)}</ul> : null}
                 {unappliedRebaseLines.length > 0 || unappliedRebaseSections.length > 0 ? (
-                  <details className="mt-3 rounded-md border border-blue-300 bg-white p-3">
+                  <details className="mt-3 rounded-md border border-brand-300 bg-white p-3">
                     <summary className="min-h-11 cursor-pointer py-2 font-semibold">Erhaltene, nicht automatisch anwendbare Zeilenwerte</summary>
                     <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify({ sections: unappliedRebaseSections, lines: unappliedRebaseLines }, null, 2)}</pre>
                   </details>
@@ -1122,7 +1122,7 @@ export function OfferVariantEditor({
                         ? "inline-flex min-h-11 items-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
                         : "inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"}
                     >
-                      {variant.name}<span className={variant.active ? "ml-2 text-xs text-white" : "ml-2 text-xs text-slate-700"}>Rev. {variant.revision}</span>{variant.isPrimary ? <span className={variant.active ? "ml-2 rounded-full bg-blue-950 px-2 py-0.5 text-xs font-semibold text-white" : "ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900"}>Primär</span> : null}
+                      {variant.name}<span className={variant.active ? "ml-2 text-xs text-white" : "ml-2 text-xs text-slate-700"}>Rev. {variant.revision}</span>{variant.isPrimary ? <span className={variant.active ? "ml-2 rounded-full bg-brand-950 px-2 py-0.5 text-xs font-semibold text-white" : "ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900"}>Primär</span> : null}
                     </GuardedLink>
                   </li>
                 ))}
