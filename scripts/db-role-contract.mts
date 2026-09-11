@@ -3912,6 +3912,11 @@ export async function verifyRoleContract(
   const hasPortalService = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("service_case_list"),
   );
+  // F13-09 (0109): Stufenmarker für gridRegistration im Portal-Resolver
+  // (Muster 0107).
+  const hasPortalGrid = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("grid_entry"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -5109,12 +5114,14 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06: Stufenauswahl
-        // 0062/0091/0097/0098/0104/0106/0107 per Marker (Prefix ≤0075
-        // trägt den alten Rumpf; ein achter Rumpf bricht fail-closed
-        // über den Hashvergleich).
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09: Stufenauswahl
+        // 0062/0091/0097/0098/0104/0106/0107/0109 per Marker (Prefix
+        // ≤0075 trägt den alten Rumpf; ein neunter Rumpf bricht
+        // fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          `search_path=pg_catalog:${hasPortalService
+          `search_path=pg_catalog:${hasPortalGrid
+            ? "1b1f8d665f2058b16ab8d8ba2f0a4fb24aebff457ec86b1b19632b66ffda8859"
+            : hasPortalService
             ? "5131eed9892f851354efa17958024cc8c47172e1f4bb68e8cf1c4c25974c2692"
             : hasPortalSubsidy
             ? "10c209ccafe20609000840cdd21e1df1c413aea36f0e0f5e46ea0c917e95e6a7"

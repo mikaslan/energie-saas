@@ -9,6 +9,7 @@ import {
   SUBSIDY_CASE_PROGRAM_LABEL,
   SUBSIDY_CASE_STATUS_LABEL,
 } from "@/modules/subsidy-cases";
+import { GRID_REGISTRATION_STATUS_LABEL } from "@/modules/grid-registration";
 
 export const metadata: Metadata = {
   title: "Kundenportal",
@@ -310,6 +311,22 @@ export default async function PortalTokenPage({
                       {SUBSIDY_CASE_STATUS_LABEL[view.subsidy.status]}
                       {view.subsidy.program
                         ? ` (${SUBSIDY_CASE_PROGRAM_LABEL[view.subsidy.program]})`
+                        : ""}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            )}
+            {view.gridRegistration === null ? null : (
+              <div className="mt-6" data-testid="portal-grid-section">
+                <h2 className="text-lg font-semibold text-slate-950">Netzanmeldung</h2>
+                <dl className="mt-2 space-y-2 text-sm leading-6 text-slate-600">
+                  <div className="flex gap-2">
+                    <dt className="font-semibold text-slate-800">Stand:</dt>
+                    <dd data-testid="portal-grid-status">
+                      {GRID_REGISTRATION_STATUS_LABEL[view.gridRegistration.status]}
+                      {view.gridRegistration.operatorName
+                        ? ` (${view.gridRegistration.operatorName})`
                         : ""}
                     </dd>
                   </div>

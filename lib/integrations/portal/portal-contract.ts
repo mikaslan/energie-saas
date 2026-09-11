@@ -192,6 +192,24 @@ export const portalServiceCaseSchema = z.strictObject({
 });
 export type PortalServiceCase = z.infer<typeof portalServiceCaseSchema>;
 
+// F13-09: Netzstand (nur Stand/Betreiber/Phasen-Daten — nie
+// Zaehlernummer/interne Akteure).
+export const portalGridSchema = z.strictObject({
+  status: z.enum([
+    "vorbereitung",
+    "eingereicht",
+    "genehmigt",
+    "fertiggemeldet",
+    "abgeschlossen",
+    "storniert",
+  ]),
+  operatorName: z.string().nullable(),
+  submittedAt: z.iso.datetime({ offset: true }).nullable(),
+  decidedAt: z.iso.datetime({ offset: true }).nullable(),
+  completedAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type PortalGrid = z.infer<typeof portalGridSchema>;
+
 export const portalPublicViewV1Schema = z.strictObject({
   schemaVersion: z.literal(PORTAL_PUBLIC_VIEW_VERSION),
   inviteId: z.uuid(),
@@ -204,6 +222,7 @@ export const portalPublicViewV1Schema = z.strictObject({
   fileRequests: z.array(portalFileRequestSchema),
   subsidy: portalSubsidySchema.nullable(),
   service: z.array(portalServiceCaseSchema),
+  gridRegistration: portalGridSchema.nullable(),
 });
 
 export type PortalPublicViewV1 = z.infer<typeof portalPublicViewV1Schema>;
@@ -246,6 +265,8 @@ const portalResolveOkSchema = z.strictObject({
   subsidy: z.unknown().optional(),
   // F13-06: optional — alte Projektionen ohne Schlüssel parsen wie leer.
   service: z.unknown().optional(),
+  // F13-09: optional — alte Projektionen ohne Schlüssel parsen wie null.
+  gridRegistration: z.unknown().optional(),
 });
 
 // Parst das DEFINER-Resultat; 'not_found' (unbekannt/deformiert/entzogen/
@@ -458,6 +479,45 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       service.push({ id, title, status: status.data, dueDate, completedAt, confirmedAt });
     }
   }
+  // F13-09: Netzstand — Allowlist wie Foerderstand (F13-04-Muster);
+  // Zaehlernummer liefert der DEFINER nie; Fremdes bricht fail-closed
+  // ab; fehlend = Alt-Projektion → ehrlich null.
+  let gridRegistration: PortalPublicViewV1["gridRegistration"] = null;
+  if (parsed.data.gridRegistration !== undefined && parsed.data.gridRegistration !== null) {
+    const raw = parsed.data.gridRegistration;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+    const record = raw as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (
+        key !== "status" && key !== "operatorName" &&
+        key !== "submittedAt" && key !== "decidedAt" &&
+        key !== "completedAt"
+      ) {
+        return null;
+      }
+    }
+    const gridStatus = portalGridSchema.shape.status.safeParse(record.status);
+    if (!gridStatus.success) return null;
+    if (record.operatorName !== null && typeof record.operatorName !== "string") return null;
+    const gridStamps: Record<string, string | null> = {};
+    for (const key of ["submittedAt", "decidedAt", "completedAt"]) {
+      const value = record[key];
+      if (value === null) {
+        gridStamps[key] = null;
+        continue;
+      }
+      const instant = toInstant(value);
+      if (instant === null) return null;
+      gridStamps[key] = instant;
+    }
+    gridRegistration = {
+      status: gridStatus.data,
+      operatorName: record.operatorName as PortalGrid["operatorName"],
+      submittedAt: gridStamps.submittedAt,
+      decidedAt: gridStamps.decidedAt,
+      completedAt: gridStamps.completedAt,
+    };
+  }
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,
     inviteId: parsed.data.inviteId,
@@ -470,5 +530,6 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     fileRequests,
     subsidy,
     service,
+    gridRegistration,
   };
 }
