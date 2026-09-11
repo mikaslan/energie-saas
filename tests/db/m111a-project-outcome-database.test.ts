@@ -211,10 +211,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0110 F16-07 Datei-Anfragen-Vorlagen, 0111 F11-03a Notiz-Outbox,
     // 0112 F11-03b Zeit-Outbox, 0113 F10-05 Portal-Statusmapping,
     // 0114 F1-12 Teams, 0115 Snapshot-Baseline [No-Op],
-    // 0116 F10-07 Portal-Dokument-Download).
+    // 0116 F10-07 Portal-Dokument-Download,
+    // 0117 F10-08 Portal-Link-Automatik).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 116,
-      tag: "0116_f10_07_portal_document_download",
+      idx: 117,
+      tag: "0117_f10_08_portal_link_notification",
     });
   });
 

@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { project } from "./project";
 import { workspace } from "./core";
+import { portalInvite } from "./portal";
 
 // Transactional-Outbox fuer die Cannot-Fulfil-Kundenbenachrichtigung. Die
 // Tabelle traegt bewusst KEINE Empfaenger- oder Inhalts-PII: der Empfaenger
@@ -48,6 +49,10 @@ export const customerNotification = pgTable(
     projectId: uuid("project_id").notNull(),
     status: text("status").notNull().default("queued"),
     templateId: text("template_id").notNull().default("cannot-fulfil.v1"),
+    // F10-08: Portal-Link-Automatik — genau eine Einladung je Zeile
+    // (NULL bei cannot-fulfil). Empfaengeradresse steht NIE hier
+    // (ID-only-Payload, ADR 0018), sondern an portal_invite.
+    inviteId: uuid("invite_id"),
     idempotencyKey: text("idempotency_key").notNull(),
     attemptCount: integer("attempt_count").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
@@ -66,10 +71,11 @@ export const customerNotification = pgTable(
     unique("customer_notification_ws_id_uq").on(t.workspaceId, t.id),
     unique("customer_notification_ws_idempotency_uq").on(t.workspaceId, t.idempotencyKey),
     // Review-Befund P2-8: hoechstens EINE aktive (nicht-terminale) Notification
-    // je Projekt. Terminale Zeilen duerfen mehrfach existieren (Historie), die
-    // aktive ist dadurch eindeutig.
-    uniqueIndex("customer_notification_ws_project_active_uq")
-      .on(t.workspaceId, t.projectId)
+    // je (Projekt, Template). Terminale Zeilen duerfen mehrfach existieren
+    // (Historie), die aktive ist dadurch je Template eindeutig (F10-08:
+    // Portal-Link laeuft parallel zu Cannot-Fulfil).
+    uniqueIndex("customer_notification_ws_project_template_active_uq")
+      .on(t.workspaceId, t.projectId, t.templateId)
       .where(sql`${t.status} in ('queued', 'failed_retriable')`),
     foreignKey({
       columns: [t.workspaceId],
@@ -81,6 +87,19 @@ export const customerNotification = pgTable(
       foreignColumns: [project.workspaceId, project.id],
       name: "customer_notification_project_fk",
     }),
+    foreignKey({
+      columns: [t.workspaceId, t.inviteId],
+      foreignColumns: [portalInvite.workspaceId, portalInvite.id],
+      name: "customer_notification_invite_fk",
+    }),
+    check(
+      "customer_notification_template_ck",
+      sql`${t.templateId} in ('cannot-fulfil.v1', 'portal-link.v1')`,
+    ),
+    check(
+      "customer_notification_template_invite_ck",
+      sql`(((${t.templateId} = 'portal-link.v1') and (${t.inviteId} is not null)) or ((${t.templateId} = 'cannot-fulfil.v1') and (${t.inviteId} is null)))`,
+    ),
     check(
       "customer_notification_status_ck",
       sql`${t.status} in ('queued', 'delivered', 'failed_retriable', 'failed_final', 'cancelled_contact_erased', 'cancelled_manual')`,

@@ -26,9 +26,10 @@ function actionMessage(state: PortalActionState): string {
   switch (state.status) {
     case "idle": return "";
     case "success":
-      return state.operation === "create_invite"
-        ? "Der Portal-Link wurde erstellt. Kopiere ihn jetzt — er wird nicht erneut angezeigt."
-        : "Der Portal-Link wurde zurückgezogen.";
+      if (state.operation !== "create_invite") return "Der Portal-Link wurde zurückgezogen.";
+      return state.notificationQueued
+        ? "Der Portal-Link wurde erstellt und die E-Mail an den Kunden queued. Kopiere ihn jetzt — er wird nicht erneut angezeigt."
+        : "Der Portal-Link wurde erstellt (keine E-Mail-Adresse beim Kunden hinterlegt — kein Versand). Kopiere ihn jetzt — er wird nicht erneut angezeigt.";
     case "invalid": return "Die Eingabe ist unvollständig oder ungültig.";
     case "conflict": return "Der Stand hat sich zwischenzeitlich geändert. Die Ansicht wurde aktualisiert.";
     case "not_found": return "Der Link oder das Projekt ist nicht mehr verfügbar.";

@@ -820,6 +820,13 @@
       "when": 1789131235000,
       "tag": "0116_f10_07_portal_document_download",
       "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1789142897693,
+      "tag": "0117_f10_08_portal_link_notification",
+      "breakpoints": true
     }
   ]
 }

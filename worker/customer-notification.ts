@@ -1,8 +1,5 @@
 import { Pool } from "pg";
-import {
-  CUSTOMER_NOTIFICATION_TEMPLATE_ID,
-  parseCustomerNotificationDispatchV1,
-} from "../lib/integrations/notifications/contract";
+import { parseCustomerNotificationDispatchV1 } from "../lib/integrations/notifications/contract";
 import {
   customerNotificationTransportFailure,
   type CustomerNotificationTransport,
@@ -11,6 +8,11 @@ import { servicePoolConfig } from "../lib/db/role-env";
 
 export type CustomerNotificationDatabase = Readonly<{
   resolveRecipient(workspaceId: string, notificationId: string): Promise<string | null>;
+  // F10-08: Zeilen-Template (Handler versendet je Template-Art; Payload
+  // bleibt ID-only). NULL = Zeile fehlt (wie resolveRecipient-Throw zuvor).
+  // Empfaengeraufloesung bleibt fuer alle Templates der Contact-Graph
+  // (portal_invite ist aktor-gated und worker-seitig nicht lesbar).
+  resolveTemplate(workspaceId: string, notificationId: string): Promise<string | null>;
   deliver(input: {
     workspaceId: string;
     notificationId: string;
@@ -45,6 +47,13 @@ export function createCustomerNotificationHandler(
         : undefined;
       const dispatch = parseCustomerNotificationDispatchV1(payload);
 
+      const templateId = await dependencies.database.resolveTemplate(
+        dispatch.workspaceId,
+        dispatch.notificationId,
+      );
+      if (templateId === null) {
+        throw new Error("customer notification: Outbox-Zeile fehlt");
+      }
       const recipient = await dependencies.database.resolveRecipient(
         dispatch.workspaceId,
         dispatch.notificationId,
@@ -60,7 +69,7 @@ export function createCustomerNotificationHandler(
       try {
         await dependencies.transport.send({
           idempotencyKey: dispatch.notificationId,
-          templateId: CUSTOMER_NOTIFICATION_TEMPLATE_ID,
+          templateId,
           recipient: { email: recipient },
         });
         await dependencies.database.deliver({
@@ -109,6 +118,14 @@ export function createCustomerNotificationDatabaseGateway(
       );
       const email = result.rows[0]?.email as string | null | undefined;
       return email ?? null;
+    },
+    async resolveTemplate(workspaceId, notificationId) {
+      const result = await pool.query(
+        "select public._f1008_worker_notification_template($1::uuid, $2::uuid) as template_id",
+        [workspaceId, notificationId],
+      );
+      const templateId = result.rows[0]?.template_id as string | null | undefined;
+      return templateId ?? null;
     },
     async deliver(input) {
       await pool.query(

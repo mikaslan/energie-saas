@@ -136,10 +136,22 @@ const CUSTOMER_NOTIFICATION_PRIVATE_ROUTINES = [
   "public._m111b_guard_customer_notification()",
   "public._m111b_guard_delivery_attempt()",
 ] as const;
+// F10-08: Portal-Link-Kapseln — Template-Lookup (Worker) und
+// Projekt-Storno (Runtime, Entzug; Rotation laeuft in create_portal_invite).
+const F1008_NOTIFICATION_WORKER_ROUTINES = [
+  "public._f1008_worker_notification_template(uuid,uuid)",
+] as const;
+const F1008_NOTIFICATION_RUNTIME_ROUTINES = [
+  "public._f1008_cancel_project_portal_notification(uuid,uuid)",
+] as const;
 const CUSTOMER_NOTIFICATION_FUNCTION_NAMES = [
   ...CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES,
   ...CUSTOMER_NOTIFICATION_WORKER_ROUTINES,
   ...CUSTOMER_NOTIFICATION_PRIVATE_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+const F1008_NOTIFICATION_FUNCTION_NAMES = [
+  ...F1008_NOTIFICATION_WORKER_ROUTINES,
+  ...F1008_NOTIFICATION_RUNTIME_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 
 const PROJECT_NOTE_RELATIONS = ["project_note"] as const;
@@ -2065,6 +2077,41 @@ async function hasAtomicF704ChecklistContract(
   return true;
 }
 
+// F10-08: Portal-Link-Kapseln (Migration 0117) existieren nur ab 0117.
+// Existenzgeprueft wie finalize_project_calculation_success_v2, damit
+// Upgrade-Prefixe ohne 0117 (z. B. M2-04 bei 0076) gruen bleiben. Teilstand
+// ist fail-closed.
+async function hasAtomicF1008NotificationContract(
+  client: PoolClient,
+  hasCustomerNotification: boolean,
+  label: string,
+): Promise<boolean> {
+  if (!hasCustomerNotification) return false;
+  const presence = await client.query<{
+    template: boolean;
+    cancel: boolean;
+  }>(`
+    select
+      pg_catalog.to_regprocedure(
+        'public._f1008_worker_notification_template(uuid,uuid)'
+      ) is not null as template,
+      pg_catalog.to_regprocedure(
+        'public._f1008_cancel_project_portal_notification(uuid,uuid)'
+      ) is not null as cancel
+  `);
+  const row = presence.rows[0];
+  const template = row?.template === true;
+  const cancel = row?.cancel === true;
+  if (!template && !cancel) return false;
+  if (!template || !cancel) {
+    throw new Error(
+      `${label} ist nur teilweise vorhanden ` +
+        `(Template=${String(template)}, Storno=${String(cancel)}).`,
+    );
+  }
+  return true;
+}
+
 async function hasAtomicPublicColumnSet(
   client: PoolClient,
   columns: readonly string[],
@@ -2333,6 +2380,29 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     CUSTOMER_NOTIFICATION_RELATIONS,
     "Rollen-ACL-Manifest: M1-11b-Customer-Notification",
   );
+  // F10-08-Kapseln nur ab 0117 anfassen (Existenzprobe oben); aeltere
+  // Prefixe behalten exakt die M1-11b-Semantik.
+  const hasF1008Notification = await hasAtomicF1008NotificationContract(
+    client,
+    hasCustomerNotification,
+    "Rollen-ACL-Manifest: F10-08-Portal-Link-Notification",
+  );
+  const notificationRevokeRoutines = [
+    ...CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES,
+    ...CUSTOMER_NOTIFICATION_WORKER_ROUTINES,
+    ...CUSTOMER_NOTIFICATION_PRIVATE_ROUTINES,
+    ...(hasF1008Notification
+      ? [...F1008_NOTIFICATION_WORKER_ROUTINES, ...F1008_NOTIFICATION_RUNTIME_ROUTINES]
+      : []),
+  ];
+  const notificationRuntimeRoutines = [
+    ...CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES,
+    ...(hasF1008Notification ? [...F1008_NOTIFICATION_RUNTIME_ROUTINES] : []),
+  ];
+  const notificationWorkerRoutines = [
+    ...CUSTOMER_NOTIFICATION_WORKER_ROUTINES,
+    ...(hasF1008Notification ? [...F1008_NOTIFICATION_WORKER_ROUTINES] : []),
+  ];
   if (hasCustomerNotification) {
     await client.query(`
       -- app_runtime liest customer_notification ausschliesslich ueber die
@@ -2345,18 +2415,14 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       grant insert on public.customer_notification to app_runtime;
 
       revoke execute on function
-        ${[
-          ...CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES,
-          ...CUSTOMER_NOTIFICATION_WORKER_ROUTINES,
-          ...CUSTOMER_NOTIFICATION_PRIVATE_ROUTINES,
-        ].join(",\n        ")}
+        ${notificationRevokeRoutines.join(",\n        ")}
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant execute on function
-        ${CUSTOMER_NOTIFICATION_RUNTIME_ROUTINES.join(",\n        ")}
+        ${notificationRuntimeRoutines.join(",\n        ")}
         to app_runtime;
       grant execute on function
-        ${CUSTOMER_NOTIFICATION_WORKER_ROUTINES.join(",\n        ")}
+        ${notificationWorkerRoutines.join(",\n        ")}
         to app_worker
     `);
   }
@@ -4047,6 +4113,12 @@ export async function verifyRoleContract(
     CUSTOMER_NOTIFICATION_RELATIONS,
     "Rollenvertrag: M1-11b-Customer-Notification",
   );
+  // F10-08-Kapseln nur ab 0117 erwarten; aeltere Prefixe bleiben gruen.
+  const hasF1008Notification = await hasAtomicF1008NotificationContract(
+    client,
+    hasCustomerNotification,
+    "Rollenvertrag: F10-08-Portal-Link-Notification",
+  );
   const hasProjectNotes = await hasAtomicPublicRelationSet(
     client,
     PROJECT_NOTE_RELATIONS,
@@ -4826,6 +4898,9 @@ export async function verifyRoleContract(
       ...(hasCustomerNotification ? CUSTOMER_NOTIFICATION_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
+      ...(hasF1008Notification ? F1008_NOTIFICATION_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
       ...(hasProjectNotes ? PROJECT_NOTE_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
@@ -5089,8 +5164,10 @@ export async function verifyRoleContract(
         "_m111b_customer_notification_dispatch_state(uuid, uuid):TABLE(id uuid, attempt_count integer, next_attempt_at timestamp with time zone):app_owner:plpgsql:f:s:true:false:false:u:" +
           "search_path=pg_catalog:aecf8cc0fc7790c6e67b7570a590d2912696588674c3480921abbcfb800e96f3",
         "_m111b_guard_customer_notification():trigger:app_owner:plpgsql:f:v:" +
-          "false:false:false:u:search_path=pg_catalog:" +
-          "665a1b06f3891baf5b7c11f01ea90b013a3da9f44f94bbcaa62c72ac3fcffd63",
+          `false:false:false:u:search_path=pg_catalog:${hasF1008Notification
+            // F10-08 (0117): Portal-Link-Zweig im Guard.
+            ? "99515a48b446d62becf22cfb9755ed76ed4b91c312cb4a0401a0075ba3e1d6ea"
+            : "665a1b06f3891baf5b7c11f01ea90b013a3da9f44f94bbcaa62c72ac3fcffd63"}`,
         "_m111b_guard_delivery_attempt():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
           "5870c85b721ea15d44af62cfa7d154ba5f7b64dae650718cb8b3607a16b5def8",
@@ -5112,6 +5189,15 @@ export async function verifyRoleContract(
         "_m111b_worker_resolve_recipient(uuid, uuid):text:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
           "b5ce5d43143330224d0e095c20c9a3d8215fd57445299a5bb02b60d849e62d13",
+        // F10-08: Portal-Link-Kapseln (Template-Lookup Worker, Storno Runtime).
+        ...(hasF1008Notification ? [
+          "_f1008_worker_notification_template(uuid, uuid):text:app_owner:plpgsql:f:s:" +
+            "true:false:false:u:search_path=pg_catalog:" +
+            "9ddba4555c7f6a27012484f73c25b8653118976d8c6591387de82f18d798e5f3",
+          "_f1008_cancel_project_portal_notification(uuid, uuid):void:app_owner:plpgsql:f:v:" +
+            "true:false:false:u:search_path=pg_catalog:" +
+            "ed869102297798d62a4fd3dac35696870492df5a79acc1c614c371fd638635a8",
+        ] : []),
       ] : []),
       ...(hasProjectNotes ? [
         "_m113_actor_can_read_notes(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
@@ -5244,7 +5330,10 @@ export async function verifyRoleContract(
         "_f1001_guard_portal_view_log():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:870b60ef4eeb873312b493dfca681827f97a418fc0d81b99979763f72281cc2c",
         "create_portal_invite(uuid, uuid, integer, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          "search_path=pg_catalog:def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf",
+          // F10-08 (0117): Rotations-Storno in derselben Transaktion.
+          `search_path=pg_catalog:${hasF1008Notification
+            ? "a49661be591f013d15fea7fc6169fc344311badbaeb1879c6e09713195373e7e"
+            : "def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf"}`,
         // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05:
         // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113 per
         // Marker (Prefix ≤0075 trägt den alten Rumpf; ein zehnter Rumpf
@@ -7095,8 +7184,14 @@ export async function verifyRoleContract(
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
       ...(hasCustomerNotification ? [
+        ...(hasF1008Notification ? [
+          "app_runtime:_f1008_cancel_project_portal_notification(uuid, uuid):EXECUTE:app_owner:false",
+        ] : []),
         "app_runtime:_m111b_project_has_binding_issuance(uuid, uuid):EXECUTE:app_owner:false",
         "app_runtime:_m111b_read_notification_delivery(uuid, uuid):EXECUTE:app_owner:false",
+        ...(hasF1008Notification ? [
+          "app_worker:_f1008_worker_notification_template(uuid, uuid):EXECUTE:app_owner:false",
+        ] : []),
         "app_worker:_m111b_customer_notification_dispatch_state(uuid, uuid):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_cancel_erased(uuid, uuid):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_deliver(uuid, uuid, integer, text, text):EXECUTE:app_owner:false",

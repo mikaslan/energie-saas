@@ -26,6 +26,7 @@ import {
   type Action,
   type ServiceCtx,
 } from "@/lib/permissions";
+import { PORTAL_LINK_TEMPLATE_ID } from "@/lib/integrations/notifications/contract";
 
 const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
 const instantSchema = z.union([z.date(), z.string().min(1)])
@@ -92,6 +93,9 @@ export type PortalCreateResult = {
   projectId: string;
   token: string;
   expiresAt: string;
+  // F10-08: true, wenn mit Empfaengeradresse die Portal-Link-Automatik
+  // atomar queued wurde (Outbox; Versand via Worker/Noop-Transport).
+  notificationQueued: boolean;
 };
 
 export type PortalStatusResult = {
@@ -214,11 +218,63 @@ export async function createPortalInvite(
       expiresAt: result.expiresAt,
     },
   });
+  // F10-08: Portal-Link-Automatik — Outbox + Dispatch in derselben
+  // Transaktion wie die Einladung (Muster M1-11b). Empfaenger ist der
+  // Projekt-Contact (proven Contact-Graph-Pfad; ID-only-Payload, ADR 0018).
+  // Ohne Contact-E-Mail bleibt der reine Link-Copy-Flow (keine Outbox-Zeile,
+  // fail-closed statt unzustellbarer Queue). Rotation storniert die alte
+  // Automatik in create_portal_invite (gleiche Transaktion).
+  let notificationQueued = false;
+  let contactEmail: string | null = null;
+  try {
+    const contact = await tx.execute<{ email_primary: string | null }>(sql`
+      select contact_record.email_primary
+        from public.project as project_record
+        join public.contact as contact_record
+          on contact_record.workspace_id = project_record.workspace_id
+         and contact_record.id = project_record.contact_id
+       where project_record.workspace_id = ${command.workspaceId}::uuid
+         and project_record.id = ${command.projectId}::uuid
+    `);
+    contactEmail = contact.rows[0]?.email_primary ?? null;
+  } catch {
+    throw new PortalPersistenceError();
+  }
+  if (contactEmail !== null && contactEmail !== "") {
+    try {
+      await tx.execute(sql`
+        insert into customer_notification (workspace_id, project_id, template_id, invite_id, idempotency_key)
+        values (${command.workspaceId}::uuid, ${command.projectId}::uuid,
+                ${PORTAL_LINK_TEMPLATE_ID},
+                ${result.inviteId}::uuid,
+                ${`portal-link:${result.inviteId}`})
+      `);
+    } catch {
+      throw new PortalPersistenceError();
+    }
+    // Dispatch wie M1-11b: fehlt die Dispatch-Funktion (Test-DB ohne
+    // pgboss-Schema), bleibt die Outbox-Zeile die Zustellwahrheit und der
+    // Sweeper reicht nach.
+    const dispatchAvailable = await tx.execute<{ has_dispatch: boolean }>(sql`
+      select pg_catalog.to_regprocedure(
+        'pgboss.enqueue_customer_notification(uuid,uuid)'
+      ) is not null as has_dispatch
+    `);
+    if (dispatchAvailable.rows[0]?.has_dispatch) {
+      await tx.execute(sql`
+        select pgboss.enqueue_customer_notification(
+          ${command.workspaceId}::uuid, ${command.projectId}::uuid
+        )
+      `);
+    }
+    notificationQueued = true;
+  }
   return {
     inviteId: result.inviteId,
     projectId: result.projectId,
     token,
     expiresAt: result.expiresAt,
+    notificationQueued,
   };
 }
 
@@ -261,6 +317,18 @@ export async function withdrawPortalInvite(
     projectId: row.data.project_id,
     details: { inviteId: row.data.id, projectId: row.data.project_id, reason: row.data.withdraw_reason },
   });
+  // F10-08: Entzug storniert die noch aktive Portal-Link-Automatik in
+  // derselben Transaktion (DEFINER-Kapsel — app_runtime besitzt kein UPDATE
+  // auf customer_notification; nie Dead-Links).
+  try {
+    await tx.execute(sql`
+      select public._f1008_cancel_project_portal_notification(
+        ${command.workspaceId}::uuid, ${row.data.project_id}::uuid
+      )
+    `);
+  } catch {
+    throw new PortalPersistenceError();
+  }
   return {
     inviteId: row.data.id,
     projectId: row.data.project_id,

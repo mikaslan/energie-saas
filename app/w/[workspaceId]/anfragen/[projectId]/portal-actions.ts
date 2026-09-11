@@ -26,6 +26,8 @@ export type PortalActionState =
       inviteId: string;
       token: string | null;
       expiresAt: string;
+      // F10-08: true, wenn die Portal-Link-Automatik queued wurde.
+      notificationQueued: boolean;
     }
   | { status: "invalid" }
   | { status: "conflict" }
@@ -84,6 +86,7 @@ export async function createPortalInviteAction(
       inviteId: result.inviteId,
       token: result.token,
       expiresAt: result.expiresAt,
+      notificationQueued: result.notificationQueued,
     };
   } catch (error) {
     const mapped = mapError(error);
@@ -133,6 +136,7 @@ export async function withdrawPortalInviteAction(
       inviteId: result.inviteId,
       token: null,
       expiresAt: "",
+      notificationQueued: false,
     };
   } catch (error) {
     const mapped = mapError(error);

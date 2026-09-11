@@ -9,6 +9,16 @@ export const CUSTOMER_NOTIFICATION_QUEUE = "notification.customer" as const;
 export const CUSTOMER_NOTIFICATION_DISPATCH_VERSION =
   "customer-notification-dispatch.v1" as const;
 export const CUSTOMER_NOTIFICATION_TEMPLATE_ID = "cannot-fulfil.v1" as const;
+// F10-08: zweite Automatik — Portal-Link an den Einladungsempfaenger.
+// Echter Provider-Versand bleibt ausgeschlossen (Noop-Transport);
+// RESEND_API_KEY ist externer Blocker (fragen an codex/offen).
+export const PORTAL_LINK_TEMPLATE_ID = "portal-link.v1" as const;
+export const CUSTOMER_NOTIFICATION_TEMPLATE_IDS = [
+  CUSTOMER_NOTIFICATION_TEMPLATE_ID,
+  PORTAL_LINK_TEMPLATE_ID,
+] as const;
+export type CustomerNotificationTemplateId =
+  (typeof CUSTOMER_NOTIFICATION_TEMPLATE_IDS)[number];
 
 export const customerNotificationStatusSchema = z.enum([
   "queued",

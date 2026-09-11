@@ -1,5 +1,5 @@
 import {
-  CUSTOMER_NOTIFICATION_TEMPLATE_ID,
+  CUSTOMER_NOTIFICATION_TEMPLATE_IDS,
   CustomerNotificationTransportError,
 } from "./contract";
 
@@ -50,7 +50,11 @@ export class NoopCustomerNotificationTransport implements CustomerNotificationTr
   async send(
     input: CustomerNotificationSendInput,
   ): Promise<CustomerNotificationSendResult> {
-    if (input.templateId !== CUSTOMER_NOTIFICATION_TEMPLATE_ID) {
+    if (
+      !(CUSTOMER_NOTIFICATION_TEMPLATE_IDS as readonly string[]).includes(
+        input.templateId,
+      )
+    ) {
       throw new CustomerNotificationTransportError(
         "invalid_template",
         false,
