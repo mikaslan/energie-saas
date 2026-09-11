@@ -243,6 +243,7 @@ export function NoteEditorDialog({
   // ist dadurch duplikatfrei.
   const [clientKey] = useState(() => crypto.randomUUID());
   const [queueing, setQueueing] = useState(false);
+  const [queueError, setQueueError] = useState(false);
   const message = editorMessage(state);
   const isError = state.status !== "idle" && state.status !== "success";
   const expectedRevision = note === null
@@ -328,6 +329,7 @@ export function NoteEditorDialog({
     // (Bearbeitungen brauchen den Server-Stand und bleiben online).
     if (note === null && typeof navigator !== "undefined" && !navigator.onLine) {
       setQueueing(true);
+      setQueueError(false);
       try {
         await enqueueNoteCreate({
           clientKey,
@@ -337,11 +339,14 @@ export function NoteEditorDialog({
           pinned,
           queuedAt: new Date().toISOString(),
         });
-        onSuccess("Offline gespeichert. Die Notiz wird synchronisiert, sobald du wieder online bist.");
-        onClose();
+      } catch {
+        setQueueError(true);
+        return;
       } finally {
         setQueueing(false);
       }
+      onSuccess("Offline gespeichert. Die Notiz wird synchronisiert, sobald du wieder online bist.");
+      onClose();
       return;
     }
     const formData = new FormData(form);
@@ -433,6 +438,11 @@ export function NoteEditorDialog({
           <p ref={feedbackRef} tabIndex={-1} role={isError ? "alert" : "status"} aria-live={isError ? "assertive" : "polite"} className={message ? `rounded-md border px-3 py-2 text-sm outline-none ${isError ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}` : "sr-only"}>
             {message}
           </p>
+          {queueError ? (
+            <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              Offline-Speichern ist fehlgeschlagen (Browser-Speicher blockiert). Kopiere den Text und versuche es online erneut.
+            </p>
+          ) : null}
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
             <button type="button" disabled={pending} onClick={onClose} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">
