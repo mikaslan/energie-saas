@@ -629,3 +629,111 @@ export const commercialDocumentLink = pgTable(
     ),
   ],
 );
+
+// F8-05 · Teilrechnungskette: AB (order_confirmation) → Teilrechnung
+// (invoice, gleiche Nummernserie). Modus `percent` = EINE Sammellinie mit
+// X % des AB-Netto (nur einheitlicher Steuersatz, v1-Grenze); Modus
+// `lines` = ganze übernommene AB-Positionen (verbrauchte IDs in
+// commercial_document_partial_line, kein Positions-Split, v1-Grenze).
+// Stornierte Teilrechnungen zählen für Caps/Verbrauch nicht (Budget frei).
+export const commercialDocumentPartial = pgTable(
+  "commercial_document_partial",
+  {
+    id: uuid("id").notNull().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    sourceOrderId: uuid("source_order_id").notNull(),
+    partialInvoiceId: uuid("partial_invoice_id").notNull(),
+    mode: text("mode").$type<"percent" | "lines">().notNull(),
+    percentBps: integer("percent_bps"),
+    ordinal: integer("ordinal").notNull(),
+    createdBy: uuid("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("commercial_document_partial_ws_id_uq").on(t.workspaceId, t.id),
+    unique("commercial_document_partial_ws_invoice_uq").on(t.workspaceId, t.partialInvoiceId),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "commercial_document_partial_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.sourceOrderId],
+      foreignColumns: [commercialDocument.workspaceId, commercialDocument.id],
+      name: "commercial_document_partial_source_order_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.partialInvoiceId],
+      foreignColumns: [commercialDocument.workspaceId, commercialDocument.id],
+      name: "commercial_document_partial_invoice_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.createdBy],
+      foreignColumns: [membership.workspaceId, membership.userId],
+      name: "commercial_document_partial_created_by_fk",
+    }),
+    check(
+      "commercial_document_partial_mode_ck",
+      sql`${t.mode} in ('percent', 'lines')`,
+    ),
+    check(
+      "commercial_document_partial_percent_ck",
+      sql`(
+        (${t.mode} = 'percent' and ${t.percentBps} between 1 and 10000)
+        or (${t.mode} = 'lines' and ${t.percentBps} is null)
+      )`,
+    ),
+    check(
+      "commercial_document_partial_ordinal_ck",
+      sql`${t.ordinal} > 0`,
+    ),
+    check(
+      "commercial_document_partial_no_self_ck",
+      sql`${t.sourceOrderId} <> ${t.partialInvoiceId}`,
+    ),
+    index("commercial_document_partial_ws_order_idx").on(
+      t.workspaceId,
+      t.sourceOrderId,
+      t.ordinal,
+      t.id,
+    ),
+  ],
+);
+
+export const commercialDocumentPartialLine = pgTable(
+  "commercial_document_partial_line",
+  {
+    id: uuid("id").notNull().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    partialId: uuid("partial_id").notNull(),
+    sourceLineId: uuid("source_line_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("commercial_document_partial_line_ws_id_uq").on(t.workspaceId, t.id),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "commercial_document_partial_line_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.partialId],
+      foreignColumns: [commercialDocumentPartial.workspaceId, commercialDocumentPartial.id],
+      name: "commercial_document_partial_line_partial_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.sourceLineId],
+      foreignColumns: [commercialDocumentLine.workspaceId, commercialDocumentLine.id],
+      name: "commercial_document_partial_line_source_line_fk",
+    }),
+    index("commercial_document_partial_line_ws_partial_idx").on(
+      t.workspaceId,
+      t.partialId,
+      t.sourceLineId,
+    ),
+    index("commercial_document_partial_line_ws_source_idx").on(
+      t.workspaceId,
+      t.sourceLineId,
+    ),
+  ],
+);

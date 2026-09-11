@@ -259,6 +259,24 @@ export const COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION =
 // F8-04b: AB als Rechnung übernehmen (Duplicate into type, nur Positionen).
 export const COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION =
   "commercial-document-duplicate-command.v1" as const;
+// F8-05: Teilrechnung zum Auftrag (Modi percent/lines, Kette mit Cap).
+export const COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION =
+  "commercial-document-partial-command.v1" as const;
+export const commercialDocumentPartialCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION),
+  orderId: z.string().uuid(),
+  mode: z.enum(["percent", "lines"]),
+  percentBps: z.number().int().min(1).max(10000).nullable(),
+  lineIds: z.array(z.string().uuid()).max(200).nullable(),
+}).refine(
+  (value) =>
+    (value.mode === "percent" && value.percentBps !== null && value.lineIds === null)
+    || (value.mode === "lines" && value.percentBps === null && value.lineIds !== null && value.lineIds.length > 0),
+  "partial mode input inconsistent",
+);
+export type CommercialDocumentPartialCommandV1 = z.infer<
+  typeof commercialDocumentPartialCommandV1Schema
+>;
 export const commercialDocumentDuplicateCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION),
   sourceDocumentId: z.string().uuid(),

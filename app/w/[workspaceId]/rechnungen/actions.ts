@@ -11,6 +11,7 @@ import {
   COMMERCIAL_DOCUMENT_GROUP_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION,
@@ -25,6 +26,7 @@ import { PermissionDeniedError } from "@/lib/permissions";
 import {
   createDocument,
   createDocumentGroup,
+  createPartialInvoice,
   duplicateOrderConfirmationAsInvoice,
   issueDocument,
   linkDeposit,
@@ -407,6 +409,67 @@ export type DuplicateDocumentActionState =
   | { status: "conflict" }
   | { status: "denied" }
   | { status: "unauthenticated" };
+
+export type PartialInvoiceActionState =
+  | { status: "idle" }
+  | { status: "success"; invoiceId: string }
+  | { status: "invalid" }
+  | { status: "not_found" }
+  | { status: "conflict" }
+  | { status: "denied" }
+  | { status: "unauthenticated" };
+
+// F8-05 · Teilrechnung zum Auftrag (Modi percent/lines). Prozent als
+// Dezimal-Prozent (0 < p ≤ 100, zwei Stellen) → Basispunkte ohne Float:
+// Math.round(p * 100), danach Schema-Range 1–10000.
+export async function createPartialInvoiceAction(
+  _previous: PartialInvoiceActionState,
+  formData: FormData,
+): Promise<PartialInvoiceActionState> {
+  const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
+  const documentId = parseUuid(formData.get("documentId"));
+  const modeValue = formData.get("mode");
+  const mode = modeValue === "percent" || modeValue === "lines" ? modeValue : null;
+  if (!workspaceId || !documentId || !mode) return { status: "invalid" };
+  let percentBps: number | null = null;
+  let lineIds: string[] | null = null;
+  if (mode === "percent") {
+    const raw = formData.get("percent");
+    const percent = typeof raw === "string" ? Number(raw) : NaN;
+    if (!Number.isFinite(percent) || percent <= 0 || percent > 100) return { status: "invalid" };
+    percentBps = Math.round(percent * 100);
+    if (percentBps < 1 || percentBps > 10000) return { status: "invalid" };
+  } else {
+    const raw = formData.getAll("lineIds").filter((value): value is string => typeof value === "string");
+    const unique = [...new Set(raw)];
+    if (unique.length === 0 || unique.length > 200) return { status: "invalid" };
+    if (!unique.every((value) => z.uuid().safeParse(value).success)) return { status: "invalid" };
+    lineIds = unique;
+  }
+  try {
+    const result = await authorizedAction(
+      workspaceId,
+      "invoicing.write",
+      "commercial_document_partial",
+      (tx, ctx) => createPartialInvoice(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION,
+        orderId: documentId,
+        mode,
+        percentBps,
+        lineIds,
+      }),
+    );
+    revalidatePath(`/w/${workspaceId}/rechnungen/invoice`);
+    revalidatePath(`/w/${workspaceId}/rechnungen/order_confirmation/${documentId}`);
+    return { status: "success", invoiceId: result.id };
+  } catch (error) {
+    const mapped = mapError(error);
+    if (mapped.status === "success" || mapped.status === "precondition") {
+      return { status: "invalid" };
+    }
+    return mapped;
+  }
+}
 
 // F8-04b · AB als Rechnung übernehmen (Duplicate into type, nur AB).
 export async function duplicateDocumentAction(

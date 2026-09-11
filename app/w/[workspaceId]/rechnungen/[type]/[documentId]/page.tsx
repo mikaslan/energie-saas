@@ -21,10 +21,12 @@ import {
   InvoicingNotFoundError,
   getDocumentDetail,
   listDepositCandidates,
+  listPartialInvoices,
 } from "@/modules/invoicing";
 import { DeniedState } from "../../../_ui";
 import { DepositLinkPanel } from "./deposit-link-panel";
 import { DuplicateDocumentPanel } from "./duplicate-document-panel";
+import { PartialInvoicePanel } from "./partial-invoice-panel";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
 const typeSchema = z.enum(commercialDocumentTypes);
@@ -96,6 +98,24 @@ export default async function InvoicingDocumentDetailPage(
       }
     })()
     : [];
+
+  // F8-05: Teilrechnungskette nur zur AB (reine Anzeige ohne
+  // Schreibrecht; Fehler ohne Recht → leere Kette, Seite bleibt lesbar).
+  const partialChain = type === "order_confirmation"
+    ? await (async () => {
+      try {
+        return await authorizedQuery(
+          workspaceId,
+          "invoicing.read",
+          "commercial_document_partial",
+          (tx, ctx) => listPartialInvoices(tx, ctx, { orderId: documentId }),
+        );
+      } catch (error) {
+        if (error instanceof PermissionDeniedError) return null;
+        throw error;
+      }
+    })()
+    : null;
 
   const { document, lines } = detail;
   // F8-04: Gutschrift-Detail zeigt den Block auch ohne eingehende Links,
@@ -236,6 +256,18 @@ export default async function InvoicingDocumentDetailPage(
       && document.permissions.canWrite
       && document.status !== "voided" ? (
         <DuplicateDocumentPanel workspaceId={workspaceId} documentId={documentId} />
+      ) : null}
+
+      {type === "order_confirmation"
+      && partialChain !== null
+      && ((document.permissions.canWrite && document.status !== "voided")
+        || partialChain.partials.length > 0) ? (
+        <PartialInvoicePanel
+          workspaceId={workspaceId}
+          documentId={documentId}
+          chain={partialChain}
+          canWrite={document.permissions.canWrite && document.status !== "voided"}
+        />
       ) : null}
 
       {document.status === "voided" ? (

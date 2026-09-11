@@ -715,6 +715,13 @@
       "when": 1789100002149,
       "tag": "0101_f1_06_follow_up",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1789100857836,
+      "tag": "0102_f8_05_teilrechnung",
+      "breakpoints": true
     }
   ]
 }

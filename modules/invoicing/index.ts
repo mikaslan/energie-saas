@@ -147,3 +147,11 @@ export {
   upsertInvoicingSettings,
   upsertNumberFormat,
 } from "./service";
+export {
+  createPartialInvoice,
+  listPartialInvoices,
+  type CreatePartialInvoiceResult,
+  type PartialChain,
+  type PartialChainEntry,
+  type PartialOrderLine,
+} from "./partial-service";

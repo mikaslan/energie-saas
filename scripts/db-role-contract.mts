@@ -621,6 +621,13 @@ const COMMERCIAL_DOCUMENT_RELATIONS = [
 const COMMERCIAL_DOCUMENT_LINK_RELATIONS = [
   "commercial_document_link",
 ] as const;
+
+// F8-05 (0102): eigene Menge — Teilrechnungskette AB → Rechnung (Modi
+// percent/lines). Kern- und Link-Menge bleiben stabil.
+const COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS = [
+  "commercial_document_partial",
+  "commercial_document_partial_line",
+] as const;
 const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
   "public._m301_actor_invoicing_role(uuid)",
   "public._m301_actor_can_read_invoicing(uuid)",
@@ -2870,6 +2877,26 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F8-05 (0102): eigene ACL-Menge — Kette wird angelegt/gelesen, nie
+  // gelöscht (Storno logisch über Belegstatus; Muster appointment_template:
+  // select/insert/update, bewusst kein DELETE).
+  const hasCommercialDocumentPartialsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS,
+    "Rollen-ACL-Manifest: F8-05-Teilrechnung-Kette",
+  );
+  if (hasCommercialDocumentPartialsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.commercial_document_partial,
+        public.commercial_document_partial_line
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.commercial_document_partial to app_runtime;
+      grant select, insert, update on public.commercial_document_partial_line to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -3875,6 +3902,13 @@ export async function verifyRoleContract(
     COMMERCIAL_DOCUMENT_LINK_RELATIONS,
     "Rollenvertrag: F8-01-Anzahlung-Link",
   );
+  // F8-05 (0102): eigene Gate-Menge — alte Prefixe ohne Kettentabellen
+  // bleiben grün (atomar je Menge).
+  const hasCommercialDocumentPartials = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS,
+    "Rollenvertrag: F8-05-Teilrechnung-Kette",
+  );
   // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
   // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
   // (Spaltenpaar atomar je Migration — Spaltenvertrag wie Relationen).
@@ -4286,6 +4320,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCommercialDocumentLinks ? COMMERCIAL_DOCUMENT_LINK_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
     ],
@@ -5472,6 +5509,9 @@ export async function verifyRoleContract(
       ...(hasCommercialDocumentLinks ? COMMERCIAL_DOCUMENT_LINK_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -5729,6 +5769,12 @@ export async function verifyRoleContract(
           "da3cf5aef3e9a24a54bc6968cafd2cb1223fa3016b43c1f23130c1e0804c558c",
         "commercial_document_link:commercial_document_link_actor_delete:" +
           "1f843ce07ab6698c0ad211390f9fb870c674cf5d00dd201393f9cc867c4432e0",
+        ] : []),
+        ...(hasCommercialDocumentPartials ? [
+        "commercial_document_partial:tenant_isolation:" +
+          "f3a73abc00f11c80fd5e5ef7b60d4ad853e562217ae6bcffedbfab9d1ccfd0c2",
+        "commercial_document_partial_line:tenant_isolation:" +
+          "2c5b808091a8f0ae804196556f451525a893b1d27fd60954c8eca3b2a4ccdb71",
         ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
@@ -6404,6 +6450,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
         `app_runtime:${relation}:DELETE:app_owner:false`,
+      ]) : []),
+      // F8-05: Kette ohne DELETE (Storno logisch über Belegstatus).
+      ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       "app_system:audit_log:INSERT:app_owner:false",
       "app_system:audit_log:SELECT:app_owner:false",
