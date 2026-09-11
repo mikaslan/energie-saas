@@ -22,6 +22,7 @@ import {
 } from "./note-actions";
 import { NoteMarkdownRenderer } from "./note-markdown-renderer";
 import { NoteEditorDialog } from "./note-editor-dialog";
+import { NoteOutboxSync } from "./note-outbox-sync";
 
 const INITIAL_STATE: ProjectNoteActionState = { status: "idle" };
 
@@ -263,6 +264,12 @@ export function ProjectNotesSection({
       >
         {message}
       </p>
+
+      <NoteOutboxSync
+        workspaceId={workspaceId}
+        projectId={projectId}
+        canWrite={page.permissions.canWrite}
+      />
 
       {page.notes.length === 0 ? (
         <p className="mt-5 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">

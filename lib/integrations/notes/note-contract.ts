@@ -69,6 +69,9 @@ export const projectNoteCommandV1Schema = z.discriminatedUnion("kind", [
     kind: z.literal("create_note"),
     textMarkdown: textMarkdownSchema,
     pinned: z.boolean(),
+    // F11-03a: optionaler Idempotenz-Schlüssel für Offline-Replay
+    // (je Entwurf genau einmal vergeben; fehlt = klassischer Pfad).
+    clientKey: uuidSchema.optional(),
   }),
   z.strictObject({
     ...mutationBase,

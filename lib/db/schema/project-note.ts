@@ -30,6 +30,9 @@ export const projectNote = pgTable(
     pinnedBy: uuid("pinned_by"),
     revision: integer("revision").notNull().default(1),
     createdBy: uuid("created_by").notNull(),
+    // F11-03a: Idempotenz-Schlüssel für Offline-Replay (clientseitig je
+    // Entwurf genau einmal vergeben; NULL = klassischer Pfad).
+    clientKey: uuid("client_key"),
     editedBy: uuid("edited_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp("edited_at", { withTimezone: true }),
@@ -37,6 +40,9 @@ export const projectNote = pgTable(
   },
   (t) => [
     unique("project_note_ws_id_uq").on(t.workspaceId, t.id),
+    // Mehrere NULL-Schlüssel bleiben zulässig (klassischer Pfad);
+    // vergebene Schlüssel sind je Mandant eindeutig (Replay-Guard).
+    unique("project_note_ws_client_key_uq").on(t.workspaceId, t.clientKey),
     index("project_note_ws_project_active_idx")
       .on(
         t.workspaceId,

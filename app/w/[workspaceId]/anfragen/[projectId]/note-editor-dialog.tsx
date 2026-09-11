@@ -24,6 +24,7 @@ import {
   changeProjectNote,
   type ProjectNoteActionState,
 } from "./note-actions";
+import { enqueueNoteCreate } from "./note-outbox";
 import {
   noteEditorDocumentFromMarkdown,
   noteMarkdownFromEditor,
@@ -237,6 +238,11 @@ export function NoteEditorDialog({
   const [markdown, setMarkdown] = useState(() => note?.textMarkdown ?? "");
   const [markdownValid, setMarkdownValid] = useState(true);
   const [pinned, setPinned] = useState(() => note?.pinned ?? false);
+  // F11-03a: Idempotenz-Schlüssel je Dialog-Öffnung (Anlage). Offline
+  // speichert der Dialog denselben Schlüssel in die Outbox; das Replay
+  // ist dadurch duplikatfrei.
+  const [clientKey] = useState(() => crypto.randomUUID());
+  const [queueing, setQueueing] = useState(false);
   const message = editorMessage(state);
   const isError = state.status !== "idle" && state.status !== "success";
   const expectedRevision = note === null
@@ -304,7 +310,7 @@ export function NoteEditorDialog({
     target?.focus();
   }, []);
 
-  function submitEditor(event: FormEvent<HTMLFormElement>) {
+  async function submitEditor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const currentDocument = editorDocumentRef.current?.();
@@ -318,6 +324,26 @@ export function NoteEditorDialog({
     setMarkdown(result.markdown);
     setMarkdownValid(result.valid);
     if (!result.valid) return;
+    // F11-03a: Offline-Anlage → Outbox statt Fehlschlag. Nur Anlage
+    // (Bearbeitungen brauchen den Server-Stand und bleiben online).
+    if (note === null && typeof navigator !== "undefined" && !navigator.onLine) {
+      setQueueing(true);
+      try {
+        await enqueueNoteCreate({
+          clientKey,
+          workspaceId,
+          projectId,
+          textMarkdown: result.markdown,
+          pinned,
+          queuedAt: new Date().toISOString(),
+        });
+        onSuccess("Offline gespeichert. Die Notiz wird synchronisiert, sobald du wieder online bist.");
+        onClose();
+      } finally {
+        setQueueing(false);
+      }
+      return;
+    }
     const formData = new FormData(form);
     startFormTransition(() => formAction(formData));
   }
@@ -358,6 +384,7 @@ export function NoteEditorDialog({
         <form onSubmit={submitEditor} className="mt-6 grid min-w-0 gap-6">
           <input type="hidden" name="schemaVersion" value={PROJECT_NOTE_COMMAND_VERSION} />
           <input type="hidden" name="kind" value={note ? "update_note_text" : "create_note"} />
+          {note === null ? <input type="hidden" name="clientKey" value={clientKey} /> : null}
           <input type="hidden" name="projectId" value={projectId} />
           {note ? <input type="hidden" name="noteId" value={note.id} /> : null}
           {expectedRevision !== null ? (
@@ -411,8 +438,8 @@ export function NoteEditorDialog({
             <button type="button" disabled={pending} onClick={onClose} className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400">
               Abbrechen
             </button>
-            <button type="submit" disabled={pending || !markdownValid} aria-busy={pending || undefined} className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
-              {pending ? "Wird gespeichert …" : note ? "Änderungen speichern" : "Notiz anlegen"}
+            <button type="submit" disabled={pending || queueing || !markdownValid} aria-busy={pending || queueing || undefined} className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white outline-none hover:bg-blue-800 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:bg-slate-400">
+              {pending || queueing ? "Wird gespeichert …" : note ? "Änderungen speichern" : "Notiz anlegen"}
             </button>
           </div>
         </form>

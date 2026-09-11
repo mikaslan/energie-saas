@@ -41,6 +41,9 @@ const CREATE_FIELDS = new Set([
   "projectId",
   "textMarkdown",
   "pinned",
+  // F11-03a: Idempotenz-Schlüssel — immer vorhanden (Dialog vergibt je
+  // Entwurf genau einen; Offline-Outbox wiederverwendet ihn).
+  "clientKey",
 ]);
 const UPDATE_TEXT_FIELDS = new Set([
   ...CREATE_FIELDS,
@@ -102,7 +105,12 @@ function commandCandidate(
   if (entries.schemaVersion !== PROJECT_NOTE_COMMAND_VERSION) return null;
   const base = { schemaVersion: entries.schemaVersion, kind, projectId: entries.projectId };
   if (kind === "create_note") {
-    return { ...base, textMarkdown: entries.textMarkdown, pinned: entries.pinned === "true" };
+    return {
+      ...base,
+      textMarkdown: entries.textMarkdown,
+      pinned: entries.pinned === "true",
+      clientKey: entries.clientKey,
+    };
   }
   const expectedRevision = parseRevision(entries.expectedRevision);
   if (expectedRevision === null) return null;

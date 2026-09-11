@@ -255,25 +255,69 @@ async function emitNoteEvidence(
   });
 }
 
+function postgresErrorCode(error: unknown): string | null {
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause && typeof cause === "object" && "code" in cause) {
+    const code = (cause as { code?: unknown }).code;
+    return typeof code === "string" ? code : null;
+  }
+  return null;
+}
+
 async function createNote(
   tx: TenantTx,
   ctx: ServiceCtx,
   command: Extract<ProjectNoteCommandV1, { kind: "create_note" }>,
 ): Promise<ProjectNoteCommandResult> {
   await lockProject(tx, ctx.workspaceId, command.projectId);
+  // F11-03a Replay-Guard: gleicher clientKey → Bestand zurückgeben,
+  // ohne Events/Mentions zu duplizieren (Offline-Replay ist sicher).
+  if (command.clientKey !== undefined) {
+    const existing = await tx.execute<{ id: string }>(sql`
+      select id from project_note
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and project_id = ${command.projectId}::uuid
+         and client_key = ${command.clientKey}::uuid
+         and deleted_at is null
+       limit 1
+    `);
+    const found = existing.rows[0];
+    if (found) {
+      return { projectId: command.projectId, noteId: found.id, revision: 1, changed: false };
+    }
+  }
   const noteId = randomUUID();
-  await tx.execute(sql`
-    insert into project_note (
-      id, workspace_id, project_id, parent_type, text_version, text_markdown,
-      pinned_at, pinned_by, revision, created_by
-    ) values (
-      ${noteId}::uuid, ${ctx.workspaceId}::uuid, ${command.projectId}::uuid,
-      'project', 'note-text.v1', ${command.textMarkdown},
-      case when ${command.pinned} then statement_timestamp() else null end,
-      case when ${command.pinned} then ${ctx.actor}::uuid else null end,
-      1, ${ctx.actor}::uuid
-    )
-  `);
+  try {
+    await tx.execute(sql`
+      insert into project_note (
+        id, workspace_id, project_id, parent_type, text_version, text_markdown,
+        pinned_at, pinned_by, revision, created_by, client_key
+      ) values (
+        ${noteId}::uuid, ${ctx.workspaceId}::uuid, ${command.projectId}::uuid,
+        'project', 'note-text.v1', ${command.textMarkdown},
+        case when ${command.pinned} then statement_timestamp() else null end,
+        case when ${command.pinned} then ${ctx.actor}::uuid else null end,
+        1, ${ctx.actor}::uuid, ${command.clientKey ?? null}::uuid
+      )
+    `);
+  } catch (error) {
+    // Race zweier Replays: Unique-Verletzung → Bestand liefern.
+    if (command.clientKey !== undefined && postgresErrorCode(error) === "23505") {
+      const raced = await tx.execute<{ id: string }>(sql`
+        select id from project_note
+         where workspace_id = ${ctx.workspaceId}::uuid
+           and project_id = ${command.projectId}::uuid
+           and client_key = ${command.clientKey}::uuid
+           and deleted_at is null
+         limit 1
+      `);
+      const found = raced.rows[0];
+      if (found) {
+        return { projectId: command.projectId, noteId: found.id, revision: 1, changed: false };
+      }
+    }
+    throw error;
+  }
   await emitNoteEvidence(tx, ctx, {
     projectId: command.projectId,
     noteId,
