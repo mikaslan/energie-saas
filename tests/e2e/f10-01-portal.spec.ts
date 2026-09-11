@@ -108,7 +108,7 @@ test("F10.1-E2E-01: Portal-Link Create, Resolve-View, Withdraw", async ({ page }
   });
   await expect(portal.getByText("Kein aktiver Link.", { exact: false })).toBeVisible();
   await portal.getByRole("button", { name: "Link erstellen", exact: true }).click();
-  await expect(portal.getByText("Der Portal-Link wurde erstellt. Kopiere ihn jetzt — er wird nicht erneut angezeigt.", { exact: true }))
+  await expect(portal.getByText("Der Portal-Link wurde erstellt und die E-Mail an den Kunden queued. Kopiere ihn jetzt — er wird nicht erneut angezeigt.", { exact: true }))
     .toBeVisible();
   const tokenText = await portal.locator("p.font-mono").textContent();
   const tokenPath = tokenText?.trim() ?? "";

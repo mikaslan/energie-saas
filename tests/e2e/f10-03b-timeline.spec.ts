@@ -135,7 +135,7 @@ test("F10-03b-E2E-01: Portal zeigt Installations-Verlauf ohne Login", async ({ p
     await expect(portal.getByText("Der Portal-Link wurde zurückgezogen.", { exact: true })).toBeVisible();
   }
   await portal.getByRole("button", { name: "Link erstellen", exact: true }).click();
-  await expect(portal.getByText("Der Portal-Link wurde erstellt. Kopiere ihn jetzt — er wird nicht erneut angezeigt.", { exact: true }))
+  await expect(portal.getByText("Der Portal-Link wurde erstellt und die E-Mail an den Kunden queued. Kopiere ihn jetzt — er wird nicht erneut angezeigt.", { exact: true }))
     .toBeVisible();
   const tokenPath = ((await portal.locator("p.font-mono").textContent()) ?? "").trim();
   expect(tokenPath).toMatch(/^\/p\/[A-Za-z0-9_-]+$/u);
