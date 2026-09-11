@@ -392,7 +392,7 @@ export async function listTimeMemberOptions(
 export async function listTimeEntries(
   tx: TenantTx,
   ctx: ServiceCtx,
-  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null; approval?: "open" | "approved" },
+  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null; approval?: "open" | "approved"; startDate?: string; endDate?: string; eventTypeIds?: string[] | null },
 ): Promise<TimeEntryListDto> {
   requireRead(ctx);
   const parsed = timeEntryListQuerySchema.safeParse(query);
@@ -411,6 +411,17 @@ export async function listTimeEntries(
   const userFilter = userIds.length === 0
     ? sql``
     : sql`and user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  // F9-09: Zeitraum (Kalendertage, Berlin, auf Beginn) + Ereignistyp(en).
+  const eventTypeIds = parsed.data.eventTypeIds ?? [];
+  const startFilter = parsed.data.startDate === undefined
+    ? sql``
+    : sql`and (start_at at time zone 'Europe/Berlin')::date >= ${parsed.data.startDate}::date`;
+  const endFilter = parsed.data.endDate === undefined
+    ? sql``
+    : sql`and (start_at at time zone 'Europe/Berlin')::date <= ${parsed.data.endDate}::date`;
+  const typeFilter = eventTypeIds.length === 0
+    ? sql``
+    : sql`and type_id in (${sql.join(eventTypeIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
   const result = await tx.execute<TimeEntryRow & { total: string }>(sql`
     select id, user_id, project_id, type_id, start_at, end_at,
            start_lat, start_lng,
@@ -426,13 +437,19 @@ export async function listTimeEntries(
                and total_entries.project_id = ${parsed.data.projectId}::uuid
                and total_entries.archived_at is null
                and total_entries.end_at is not null
-               ${userFilter}) as total
+               ${userFilter}
+               ${startFilter}
+               ${endFilter}
+               ${typeFilter}) as total
       from time_entry
      where workspace_id = ${ctx.workspaceId}::uuid
        and project_id = ${parsed.data.projectId}::uuid
        ${includeArchived ? sql`` : sql`and archived_at is null`}
        ${userFilter}
        ${approvalFilter}
+       ${startFilter}
+       ${endFilter}
+       ${typeFilter}
      order by (end_at is null) desc, start_at desc, id asc
   `);
   const canWrite = can(ctx, "time.write");
@@ -1164,7 +1181,7 @@ type TimeExportRow = {
 export async function exportTimeEntries(
   tx: TenantTx,
   ctx: ServiceCtx,
-  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null },
+  query: { projectId: string; includeArchived?: boolean; userIds?: string[] | null; startDate?: string; endDate?: string; eventTypeIds?: string[] | null },
 ): Promise<TimeEntryExportResult> {
   requireRead(ctx);
   const parsed = timeEntryListQuerySchema.safeParse(query);
@@ -1175,6 +1192,17 @@ export async function exportTimeEntries(
   const userFilter = userIds.length === 0
     ? sql``
     : sql`and e.user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  // F9-09: gleiche Filter wie die Liste (Zeitraum Berlin + Ereignistyp).
+  const eventTypeIds = parsed.data.eventTypeIds ?? [];
+  const startFilter = parsed.data.startDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date >= ${parsed.data.startDate}::date`;
+  const endFilter = parsed.data.endDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date <= ${parsed.data.endDate}::date`;
+  const typeFilter = eventTypeIds.length === 0
+    ? sql``
+    : sql`and e.type_id in (${sql.join(eventTypeIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
   const result = await tx.execute<TimeExportRow>(sql`
     select e.start_at, e.end_at, e.working_time_minutes, e.break_duration_minutes,
            t.name as type_name, e.comment, e.user_id
@@ -1186,6 +1214,9 @@ export async function exportTimeEntries(
        and e.project_id = ${parsed.data.projectId}::uuid
        ${includeArchived ? sql`` : sql`and e.archived_at is null`}
        ${userFilter}
+       ${startFilter}
+       ${endFilter}
+       ${typeFilter}
      order by (e.end_at is null) desc, e.start_at desc, e.id asc
   `);
   const lines = [

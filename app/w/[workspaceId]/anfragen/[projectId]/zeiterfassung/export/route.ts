@@ -12,24 +12,45 @@ const projectIdSchema = z.uuid();
 // F9.4 Slice A CSV-Export: userId als wiederholter oder komma-getrennter
 // Query-Param (max 50). Anders als die Listenansicht (tolerant) wirft der
 // Export bei UNGÜLTIGEN UUIDs 400 statt still ALLE Nutzer zu exportieren
-// (Review Welle 03: stiller Export-Filter-Fallback).
-const filterParamsSchema = z.object({
-  userId: z.union([z.string(), z.array(z.string())]).optional(),
-});
+// (Review Welle 03: stiller Export-Filter-Fallback). F9-09: dazu
+// startDate/endDate (YYYY-MM-DD) und eventTypeId (gleiche Strenge: ungültig
+// → 400, vorhanden-aber-leer → kein Filter).
+const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-function parseUserFilter(raw: URLSearchParams): string[] {
-  const values = raw.getAll("userId");
+type ExportFilters = {
+  userIds: string[];
+  startDate?: string;
+  endDate?: string;
+  eventTypeIds: string[];
+};
+
+function parseUuidListStrict(raw: URLSearchParams, name: string): string[] {
+  const values = raw.getAll(name);
   if (values.length === 0) return [];
-  const parsed = filterParamsSchema.safeParse({ userId: values });
-  if (!parsed.success || parsed.data.userId === undefined) throw new TimeTrackingValidationError();
-  const rawValues = Array.isArray(parsed.data.userId) ? parsed.data.userId : [parsed.data.userId];
-  const tokens = rawValues
+  const tokens = values
     .flatMap((value) => value.split(","))
     .map((value) => value.trim());
-  if (tokens.some((value) => !z.uuid().safeParse(value).success)) {
+  // F9.4-Semantik: vorhandener, aber leerer/ungültiger Param → 400
+  // (kein stiller Fallback auf „alle“).
+  if (tokens.length === 0 || tokens.some((value) => !z.uuid().safeParse(value).success)) {
     throw new TimeTrackingValidationError();
   }
   return [...new Set(tokens)].slice(0, 50);
+}
+
+function parseExportFilters(raw: URLSearchParams): ExportFilters {
+  const parseDate = (name: string): string | undefined => {
+    const value = raw.get(name);
+    if (value === null || value === "") return undefined;
+    if (!localDateSchema.safeParse(value).success) throw new TimeTrackingValidationError();
+    return value;
+  };
+  return {
+    userIds: parseUuidListStrict(raw, "userId"),
+    startDate: parseDate("startDate"),
+    endDate: parseDate("endDate"),
+    eventTypeIds: parseUuidListStrict(raw, "eventTypeId"),
+  };
 }
 
 const PRIVATE_HEADERS = {
@@ -50,12 +71,24 @@ export async function GET(
   const { workspaceId, projectId } = route.data;
 
   try {
-    const userIds = parseUserFilter(new URL(request.url).searchParams);
+    const filters = parseExportFilters(new URL(request.url).searchParams);
+    // Nur gesetzte F9-09-Filter weiterreichen (F9.4-Call-Shape unverändert,
+    // wenn kein Datums-/Typ-Filter aktiv ist).
+    const exportQuery: {
+      projectId: string;
+      userIds: string[];
+      startDate?: string;
+      endDate?: string;
+      eventTypeIds?: string[];
+    } = { projectId, userIds: filters.userIds };
+    if (filters.startDate !== undefined) exportQuery.startDate = filters.startDate;
+    if (filters.endDate !== undefined) exportQuery.endDate = filters.endDate;
+    if (filters.eventTypeIds.length > 0) exportQuery.eventTypeIds = filters.eventTypeIds;
     const csv = await authorizedQuery(
       workspaceId,
       "time.read",
       "time_tracking_export",
-      (tx, ctx) => exportTimeEntries(tx, ctx, { projectId, userIds }),
+      (tx, ctx) => exportTimeEntries(tx, ctx, exportQuery),
     );
     return new Response(csv.content, {
       status: 200,

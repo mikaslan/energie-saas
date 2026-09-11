@@ -42,20 +42,60 @@ const routeParamsSchema = z.object({
 
 // F9.3: userId als wiederholter oder komma-getrennter Query-Param; nur
 // wohlgeformte UUIDs (max 50) erreichen den Service (UI kann nichts anderes
-// erzeugen; Service-Validation bleibt authoritative).
+// erzeugen; Service-Validation bleibt authoritative). F9-09: dazu
+// startDate/endDate (YYYY-MM-DD) und eventTypeId (wiederholt/kommagetrennt).
 const filterParamsSchema = z.object({
   userId: z.union([z.string(), z.array(z.string())]).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  eventTypeId: z.union([z.string(), z.array(z.string())]).optional(),
 });
 
-function parseUserFilter(raw: unknown): string[] {
-  const parsed = filterParamsSchema.safeParse(raw);
-  if (!parsed.success || parsed.data.userId === undefined) return [];
-  const values = Array.isArray(parsed.data.userId) ? parsed.data.userId : [parsed.data.userId];
+const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+type TimeTrackingFilters = {
+  userIds: string[];
+  startDate?: string;
+  endDate?: string;
+  eventTypeIds: string[];
+};
+
+function parseUuidList(raw: string | string[] | undefined): string[] {
+  if (raw === undefined) return [];
+  const values = Array.isArray(raw) ? raw : [raw];
   const ids = values
     .flatMap((value) => value.split(","))
     .map((value) => value.trim())
     .filter((value) => z.uuid().safeParse(value).success);
   return [...new Set(ids)].slice(0, 50);
+}
+
+function parseFilters(raw: unknown): TimeTrackingFilters {
+  const parsed = filterParamsSchema.safeParse(raw);
+  if (!parsed.success) return { userIds: [], eventTypeIds: [] };
+  const startDate = parsed.data.startDate !== undefined && localDateSchema.safeParse(parsed.data.startDate).success
+    ? parsed.data.startDate
+    : undefined;
+  const endDate = parsed.data.endDate !== undefined && localDateSchema.safeParse(parsed.data.endDate).success
+    ? parsed.data.endDate
+    : undefined;
+  return {
+    userIds: parseUuidList(parsed.data.userId),
+    startDate,
+    endDate,
+    eventTypeIds: parseUuidList(parsed.data.eventTypeId),
+  };
+}
+
+// F9-09: Export-Link übernimmt alle aktiven Listen-Filter (WYSIWYG).
+function buildExportQuery(filters: TimeTrackingFilters): string {
+  const params = new URLSearchParams();
+  for (const id of filters.userIds) params.append("userId", id);
+  if (filters.startDate !== undefined) params.set("startDate", filters.startDate);
+  if (filters.endDate !== undefined) params.set("endDate", filters.endDate);
+  for (const id of filters.eventTypeIds) params.append("eventTypeId", id);
+  const query = params.toString();
+  return query === "" ? "" : `?${query}`;
 }
 
 export default async function ProjectTimeTrackingPage(
@@ -64,10 +104,11 @@ export default async function ProjectTimeTrackingPage(
   const params = routeParamsSchema.safeParse(await props.params);
   if (!params.success) notFound();
   const { workspaceId, projectId } = params.data;
-  const selectedUserIds = parseUserFilter(await props.searchParams);
+  const filters = parseFilters(await props.searchParams);
+  const selectedUserIds = filters.userIds;
 
   let result:
-    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; breaksByEntry: Record<string, BreakSegmentDto[]>; breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }>; utilization: TimeUtilizationDto; runs: BillingRunDto[]; breakdowns: Record<string, BillingRunBreakdownDto>; selectedUserIds: string[]; canWrite: boolean }
+    | { projectName: string; list: TimeEntryListDto; types: TimeEventTypeDto[]; members: TimeMemberOption[]; revisionsByEntry: Record<string, TimeEntryRevisionDto[]>; breaksByEntry: Record<string, BreakSegmentDto[]>; breakTotalsByEntry: Record<string, { breakMinutes: number; openBreak: boolean }>; utilization: TimeUtilizationDto; runs: BillingRunDto[]; breakdowns: Record<string, BillingRunBreakdownDto>; filters: TimeTrackingFilters; canWrite: boolean }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -80,7 +121,13 @@ export default async function ProjectTimeTrackingPage(
         // Projekt-Lookup wuerde zuvor durch die restriktive M1-09-Policy
         // (project_external_select_scope) leer laufen und faelschlich die
         // 404-Projektseite rendern.
-        const list = await listTimeEntries(tx, ctx, { projectId, userIds: selectedUserIds });
+        const list = await listTimeEntries(tx, ctx, {
+          projectId,
+          userIds: selectedUserIds,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          eventTypeIds: filters.eventTypeIds,
+        });
         const projectRow = await tx.execute<{ name: string }>(sql`
           select name from project
            where workspace_id = ${ctx.workspaceId}::uuid
@@ -149,7 +196,7 @@ export default async function ProjectTimeTrackingPage(
             }
             return { runs, breakdowns };
           })()),
-          selectedUserIds,
+          filters,
           canWrite: writable,
         };
       },
@@ -182,17 +229,17 @@ export default async function ProjectTimeTrackingPage(
 
       <UserFilterForm
         members={result.members}
-        selectedUserIds={result.selectedUserIds}
+        types={result.types}
+        selectedUserIds={result.filters.userIds}
+        startDate={result.filters.startDate ?? ""}
+        endDate={result.filters.endDate ?? ""}
+        selectedEventTypeIds={result.filters.eventTypeIds}
         resetHref={`/w/${workspaceId}/anfragen/${projectId}/zeiterfassung`}
       />
 
       <div className="mt-4">
         <Link
-          href={`/w/${workspaceId}/anfragen/${projectId}/zeiterfassung/export${
-            result.selectedUserIds.length === 0
-              ? ""
-              : `?${result.selectedUserIds.map((id) => `userId=${encodeURIComponent(id)}`).join("&")}`
-          }`}
+          href={`/w/${workspaceId}/anfragen/${projectId}/zeiterfassung/export${buildExportQuery(result.filters)}`}
           className="text-sm font-semibold text-blue-700 underline-offset-2 hover:underline"
         >
           CSV exportieren

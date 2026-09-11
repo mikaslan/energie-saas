@@ -92,13 +92,29 @@ export const timeEntryListDtoSchema = z.object({
 export type TimeEntryListDto = z.infer<typeof timeEntryListDtoSchema>;
 
 // F9.3 Fremdnutzer-Filter: userIds wie live (UUID, max 50); null/fehlend = kein Filter.
+const calendarDaySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/u, { message: "kein Kalendertag" })
+  .refine((v) => {
+    const [year, month, day] = v.split("-").map(Number);
+    const probe = new Date(Date.UTC(year!, month! - 1, day!));
+    return probe.getUTCFullYear() === year
+      && probe.getUTCMonth() === month! - 1
+      && probe.getUTCDate() === day;
+  }, { message: "ungültiges Datum" });
+
 export const timeEntryListQuerySchema = z.object({
   projectId: z.string().uuid(),
   includeArchived: z.boolean().optional(),
   userIds: z.array(z.string().uuid()).max(50).nullish(),
   // F9-05 Freigabe-Filter: open = nur offene, approved = nur freigegebene.
   approval: z.enum(["open", "approved"]).optional(),
-});
+  // F9-09 Listen-/Export-Filter: Zeitraum (Kalendertage, Berlin) und
+  // Ereignistyp(en); fehlend = kein Filter.
+  startDate: calendarDaySchema.optional(),
+  endDate: calendarDaySchema.optional(),
+  eventTypeIds: z.array(z.string().uuid()).max(50).nullish(),
+}).refine((v) => v.startDate === undefined || v.endDate === undefined || v.startDate <= v.endDate, { message: "Start nach Ende" });
 export type TimeEntryListQuery = z.infer<typeof timeEntryListQuerySchema>;
 
 export const timeMemberOptionSchema = z.object({
