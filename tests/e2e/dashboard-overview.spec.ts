@@ -99,6 +99,12 @@ test("DASH-01: leere Workspace-Übersicht rendert ehrliche Leerzustände", async
   await expect(appointments).toBeVisible();
   await expect(appointments.getByText("Keine anstehenden Termine.")).toBeVisible();
   await expect(appointments.getByRole("link", { name: "Zum Kalender" })).toBeVisible();
+  // DASH-09: leere Service-/Förder-/Beleg-Karte mit ehrlichen Leerzuständen.
+  const emptyService = dashboard.locator('[data-dashboard-service="true"]');
+  await expect(emptyService).toBeVisible();
+  await expect(emptyService.getByText("Keine offenen Vorgänge.")).toBeVisible();
+  await expect(emptyService.getByText("Keine Förderakten.")).toBeVisible();
+  await expect(emptyService.getByText("Keine Datei-Anfragen.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Anfragen" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Aufgaben" })).toBeVisible();
 });
@@ -122,4 +128,52 @@ test("DASH-08: angelegte Lead-Quelle erscheint als Dashboard-Quellenkarte", asyn
   await expect(sources).toBeVisible();
   await expect(sources.getByText("Pipeline nach Quelle (ESTIMATE)")).toBeVisible();
   await expect(sources.getByText("Messe-Portal")).toBeVisible();
+});
+
+test("DASH-09: Vorgang, Akte und Beleg erscheinen als Dashboard-Kennzahlen", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const listPath = `/w/${workspaceId}/anfragen`;
+  const dashboardPath = `/w/${workspaceId}/dashboard`;
+  await page.goto(listPath);
+  await loginWithRealOtp(page, state().editorEmail, listPath);
+
+  await page.getByTestId("manual-lead-open").click();
+  const form = page.getByTestId("manual-lead-form");
+  await form.getByLabel("Name *").fill("E2E Dashboard Service");
+  await form.getByLabel("Telefon").fill("0151 45678905");
+  await form.getByRole("button", { name: "Anfrage anlegen" }).click();
+  const success = page.getByTestId("manual-lead-success");
+  await expect(success).toContainText("Anfrage angelegt");
+  await success.getByRole("link", { name: "Projektakte öffnen" }).click();
+  await expect(page).toHaveURL(/\/anfragen\/[0-9a-f-]+$/u);
+
+  const service = page.locator('section[data-service-cases="true"]');
+  await service.getByLabel("Titel").fill("Dashboard Wartung");
+  await service.getByRole("button", { name: "Vorgang anlegen" }).click();
+  await expect(service).toContainText("Dashboard Wartung");
+
+  await page.getByTestId("subsidy-case-create").click();
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
+
+  const files = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Datei-Anfragen", exact: true }),
+  });
+  await files.getByTestId("file-request-title").fill("Dashboard Beleg");
+  await files.getByTestId("file-request-description").fill("Bitte als PDF hochladen.");
+  await files.getByTestId("file-request-create").click();
+  await expect(files.getByTestId("file-request-create-feedback")).toHaveText(
+    "Datei-Anfrage angelegt.",
+  );
+
+  await page.goto(dashboardPath);
+  const card = page.locator('[data-dashboard-service="true"]');
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId("dashboard-service-open")).toHaveText("1");
+  await expect(card.getByTestId("dashboard-subsidy-vorbereitung")).toHaveText("1");
+  await expect(card.getByTestId("dashboard-subsidy-total")).toHaveText("1");
+  await expect(card.getByTestId("dashboard-belege-offen")).toHaveText("1");
 });

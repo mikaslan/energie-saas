@@ -13,8 +13,10 @@ export {
   FileRequestNotFoundError,
   FileRequestValidationError,
   fulfillFileRequestByToken,
+  getFileRequestDashboardStats,
   listFileRequests,
   transitionFileRequest,
+  type FileRequestDashboardStats,
   type FulfillFileRequestInput,
   type FulfillFileRequestResult,
 } from "./service";

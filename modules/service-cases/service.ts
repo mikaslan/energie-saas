@@ -169,6 +169,45 @@ export async function createServiceCase(
   return toDto(inserted.rows[0]!, true);
 }
 
+export type ServiceDashboardStats = {
+  open: number;
+  inProgress: number;
+  overdue: number;
+  doneUnconfirmed: number;
+};
+
+// DASH-09 Service-Kachel: workspace-weite Zähler (rein lesend, keine
+// neue Permission — installation.read wie listServiceCases). Überfällig
+// = Fälligkeit vor Berliner Heute, nur open/in_progress.
+export async function getServiceDashboardStats(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<ServiceDashboardStats> {
+  requireRead(ctx);
+  const result = await tx.execute<{
+    open_count: number; in_progress_count: number; overdue_count: number; done_unconfirmed_count: number;
+  }>(sql`
+    select
+      count(*) filter (where status = 'open')::int as open_count,
+      count(*) filter (where status = 'in_progress')::int as in_progress_count,
+      count(*) filter (
+        where status in ('open', 'in_progress')
+          and due_date is not null
+          and due_date < to_char(pg_catalog.now() at time zone 'Europe/Berlin', 'YYYY-MM-DD')
+      )::int as overdue_count,
+      count(*) filter (where status = 'done' and confirmed_at is null)::int as done_unconfirmed_count
+      from service_case
+     where workspace_id = ${ctx.workspaceId}::uuid
+  `);
+  const row = result.rows[0];
+  return {
+    open: row?.open_count ?? 0,
+    inProgress: row?.in_progress_count ?? 0,
+    overdue: row?.overdue_count ?? 0,
+    doneUnconfirmed: row?.done_unconfirmed_count ?? 0,
+  };
+}
+
 export async function listServiceCases(
   tx: TenantTx,
   ctx: ServiceCtx,

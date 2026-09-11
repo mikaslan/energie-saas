@@ -37,6 +37,19 @@ import {
   listUpcomingAppointments,
   type UpcomingAppointmentV1,
 } from "@/modules/calendar";
+import {
+  getServiceDashboardStats,
+  type ServiceDashboardStats,
+} from "@/modules/service-cases";
+import {
+  getSubsidyDashboardStats,
+  type SubsidyDashboardStats,
+} from "@/modules/subsidy-cases";
+import {
+  getFileRequestDashboardStats,
+  type FileRequestDashboardStats,
+} from "@/modules/file-requests";
+import { SUBSIDY_CASE_STATUS_LABEL } from "@/lib/subsidy-case";
 import { monthLabel } from "@/lib/integrations/dashboard/closure-trend-v1";
 import { INVOICING_REPORT_COMMAND_VERSION } from "@/lib/integrations/invoicing/contract";
 import { parseGlobalTaskInboxRouteQuery } from "../aufgaben/query";
@@ -378,6 +391,68 @@ async function loadAppointments(workspaceId: string): Promise<
   }
 }
 
+// DASH-09 Service & Förderung: drei entkoppelte Zählkarten (je eigene
+// Sichtbarkeit, blockieren einander und andere Karten nicht).
+async function loadServiceStats(workspaceId: string): Promise<
+  | { kind: "loaded"; stats: ServiceDashboardStats }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const stats = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "service_case_dashboard",
+      (tx, ctx) => getServiceDashboardStats(tx, ctx),
+    );
+    return { kind: "loaded", stats };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+async function loadSubsidyStats(workspaceId: string): Promise<
+  | { kind: "loaded"; stats: SubsidyDashboardStats }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const stats = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "subsidy_case_dashboard",
+      (tx, ctx) => getSubsidyDashboardStats(tx, ctx),
+    );
+    return { kind: "loaded", stats };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+async function loadBelegStats(workspaceId: string): Promise<
+  | { kind: "loaded"; stats: FileRequestDashboardStats }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const stats = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "file_request_dashboard",
+      (tx, ctx) => getFileRequestDashboardStats(tx, ctx),
+    );
+    return { kind: "loaded", stats };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
 /** Berlin-Wandzeit „YYYY-MM-DDTHH:MM:…" -> „10.09.2026, 14:00" (ohne TZ-Raten). */
 function formatBerlinWall(wall: string): { date: string; time: string } {
   const date = wall.slice(0, 10).split("-");
@@ -413,7 +488,7 @@ export default async function DashboardPage({
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  const [pipeline, overdue, today, closures, trend, invoices, leadTime, offerLeadTime, appointments] = await Promise.all([
+  const [pipeline, overdue, today, closures, trend, invoices, leadTime, offerLeadTime, appointments, service, subsidy, belege] = await Promise.all([
     loadPipeline(validWorkspaceId),
     loadTasks(validWorkspaceId, "overdue"),
     loadTasks(validWorkspaceId, "today"),
@@ -423,6 +498,9 @@ export default async function DashboardPage({
     loadLeadTime(validWorkspaceId),
     loadOfferLeadTime(validWorkspaceId),
     loadAppointments(validWorkspaceId),
+    loadServiceStats(validWorkspaceId),
+    loadSubsidyStats(validWorkspaceId),
+    loadBelegStats(validWorkspaceId),
   ]);
   if (
     pipeline.kind === "unauthenticated"
@@ -434,6 +512,9 @@ export default async function DashboardPage({
     || leadTime.kind === "unauthenticated"
     || offerLeadTime.kind === "unauthenticated"
     || appointments.kind === "unauthenticated"
+    || service.kind === "unauthenticated"
+    || subsidy.kind === "unauthenticated"
+    || belege.kind === "unauthenticated"
   ) {
     const nextPath = `/w/${validWorkspaceId}/dashboard`;
     redirect(`/login?${new URLSearchParams({ next: nextPath }).toString()}`);
@@ -457,6 +538,9 @@ export default async function DashboardPage({
     && leadTime.kind === "denied"
     && offerLeadTime.kind === "denied"
     && appointments.kind === "denied"
+    && service.kind === "denied"
+    && subsidy.kind === "denied"
+    && belege.kind === "denied"
   ) {
     return <AccessDenied />;
   }
@@ -841,6 +925,87 @@ export default async function DashboardPage({
               >
                 Zum Kalender
               </Link>
+            </section>
+          ) : null}
+
+          {service.kind === "loaded" || subsidy.kind === "loaded" || belege.kind === "loaded" ? (
+            <section
+              aria-label="Service und Förderung"
+              data-dashboard-service="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Service &amp; Förderung (ESTIMATE)</h2>
+              {service.kind === "loaded" ? (
+                <div className="mt-3">
+                  <h3 className="text-sm font-semibold text-slate-800">Servicevorgänge</h3>
+                  {service.stats.open + service.stats.inProgress + service.stats.overdue + service.stats.doneUnconfirmed === 0 ? (
+                    <p className="mt-1 text-sm leading-6 text-slate-600">Keine offenen Vorgänge.</p>
+                  ) : (
+                    <dl className="mt-1 space-y-1 text-sm leading-6 text-slate-600">
+                      <div className="flex gap-2">
+                        <dt>Offen:</dt>
+                        <dd data-testid="dashboard-service-open">{countFormatter.format(service.stats.open)}</dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt>In Arbeit:</dt>
+                        <dd data-testid="dashboard-service-in-progress">{countFormatter.format(service.stats.inProgress)}</dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt>Überfällig:</dt>
+                        <dd data-testid="dashboard-service-overdue">{countFormatter.format(service.stats.overdue)}</dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt>Erledigt unbestätigt:</dt>
+                        <dd data-testid="dashboard-service-unconfirmed">{countFormatter.format(service.stats.doneUnconfirmed)}</dd>
+                      </div>
+                    </dl>
+                  )}
+                </div>
+              ) : null}
+              {subsidy.kind === "loaded" ? (
+                <div className="mt-3">
+                  <h3 className="text-sm font-semibold text-slate-800">Förderakten</h3>
+                  {subsidy.stats.total === 0 ? (
+                    <p className="mt-1 text-sm leading-6 text-slate-600">Keine Förderakten.</p>
+                  ) : (
+                    <dl className="mt-1 space-y-1 text-sm leading-6 text-slate-600">
+                      {subsidy.stats.byStatus.map((slice) => (
+                        <div className="flex gap-2" key={slice.status}>
+                          <dt>{`${SUBSIDY_CASE_STATUS_LABEL[slice.status]}:`}</dt>
+                          <dd data-testid={`dashboard-subsidy-${slice.status}`}>{countFormatter.format(slice.count)}</dd>
+                        </div>
+                      ))}
+                      <div className="flex gap-2">
+                        <dt>Gesamt:</dt>
+                        <dd data-testid="dashboard-subsidy-total">{countFormatter.format(subsidy.stats.total)}</dd>
+                      </div>
+                    </dl>
+                  )}
+                </div>
+              ) : null}
+              {belege.kind === "loaded" ? (
+                <div className="mt-3">
+                  <h3 className="text-sm font-semibold text-slate-800">Datei-Anfragen</h3>
+                  {belege.stats.total === 0 ? (
+                    <p className="mt-1 text-sm leading-6 text-slate-600">Keine Datei-Anfragen.</p>
+                  ) : (
+                    <dl className="mt-1 space-y-1 text-sm leading-6 text-slate-600">
+                      <div className="flex gap-2">
+                        <dt>Offen:</dt>
+                        <dd data-testid="dashboard-belege-offen">{countFormatter.format(belege.stats.offen)}</dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt>Hochgeladen:</dt>
+                        <dd data-testid="dashboard-belege-hochgeladen">{countFormatter.format(belege.stats.hochgeladen)}</dd>
+                      </div>
+                      <div className="flex gap-2">
+                        <dt>Erledigt:</dt>
+                        <dd data-testid="dashboard-belege-erledigt">{countFormatter.format(belege.stats.erledigt)}</dd>
+                      </div>
+                    </dl>
+                  )}
+                </div>
+              ) : null}
             </section>
           ) : null}
         </div>

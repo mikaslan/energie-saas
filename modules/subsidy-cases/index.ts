@@ -15,8 +15,11 @@ export {
 export {
   ensureSubsidyCase,
   getSubsidyCase,
+  getSubsidyDashboardStats,
   setSubsidyCaseDetails,
   SubsidyCaseNotFoundError,
   SubsidyCaseValidationError,
   transitionSubsidyCase,
+  type SubsidyDashboardSlice,
+  type SubsidyDashboardStats,
 } from "./service";

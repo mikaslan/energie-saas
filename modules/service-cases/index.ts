@@ -1,6 +1,7 @@
 export {
   confirmServiceCaseByToken,
   createServiceCase,
+  getServiceDashboardStats,
   listServiceCases,
   setServiceCaseStatus,
   ServiceCaseNotFoundError,
@@ -8,4 +9,5 @@ export {
   type ServiceCaseConfirmOutcome,
   type ServiceCaseDto,
   type ServiceCaseStatus,
+  type ServiceDashboardStats,
 } from "./service";

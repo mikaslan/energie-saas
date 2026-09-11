@@ -190,6 +190,40 @@ export async function createFileRequest(
   return toDto(row, ctx);
 }
 
+export type FileRequestDashboardStats = {
+  offen: number;
+  hochgeladen: number;
+  erledigt: number;
+  total: number;
+};
+
+// DASH-09 Beleg-Kachel: Datei-Anfragen je Stand (rein lesend, keine
+// neue Permission — project.read wie listFileRequests).
+export async function getFileRequestDashboardStats(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<FileRequestDashboardStats> {
+  if (!can(ctx, "project.read")) {
+    throw new PermissionDeniedError("project.read", "file_request", undefined, ctx.actor);
+  }
+  const result = await tx.execute<{ status: string; count: number }>(sql`
+    select status, count(*)::int as count
+      from file_request
+     where workspace_id = ${ctx.workspaceId}::uuid
+     group by status
+  `);
+  const counts = new Map(result.rows.map((row) => [row.status, Number(row.count)]));
+  const offen = counts.get("offen") ?? 0;
+  const hochgeladen = counts.get("hochgeladen") ?? 0;
+  const erledigt = counts.get("erledigt") ?? 0;
+  return {
+    offen,
+    hochgeladen,
+    erledigt,
+    total: [...counts.values()].reduce((sum, count) => sum + count, 0),
+  };
+}
+
 export async function listFileRequests(
   tx: TenantTx,
   ctx: ServiceCtx,

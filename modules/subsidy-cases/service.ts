@@ -162,6 +162,39 @@ async function readByProject(
   return found.rows[0] ?? null;
 }
 
+export type SubsidyDashboardSlice = { status: SubsidyCaseStatus; count: number };
+
+export type SubsidyDashboardStats = {
+  total: number;
+  byStatus: SubsidyDashboardSlice[];
+};
+
+// DASH-09 Förder-Kachel: Akten je Stand (rein lesend, keine neue
+// Permission — installation.read wie getSubsidyCase). Feste
+// Statusordnung, nur belegte Stände plus Gesamt.
+export async function getSubsidyDashboardStats(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<SubsidyDashboardStats> {
+  if (!can(ctx, "installation.read")) {
+    throw new PermissionDeniedError("installation.read", "subsidy_case", undefined, ctx.actor);
+  }
+  const result = await tx.execute<{ status: string; count: number }>(sql`
+    select status, count(*)::int as count
+      from subsidy_case
+     where workspace_id = ${ctx.workspaceId}::uuid
+     group by status
+  `);
+  const counts = new Map(result.rows.map((row) => [row.status, Number(row.count)]));
+  const byStatus = subsidyCaseStatuses
+    .filter((status) => (counts.get(status) ?? 0) > 0)
+    .map((status) => ({ status, count: counts.get(status) ?? 0 }));
+  return {
+    total: [...counts.values()].reduce((sum, count) => sum + count, 0),
+    byStatus,
+  };
+}
+
 export async function getSubsidyCase(
   tx: TenantTx,
   ctx: ServiceCtx,
