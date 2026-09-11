@@ -690,7 +690,7 @@ export function OfferIssuancePanel({
     <section id="offer-issuance" tabIndex={-1} aria-labelledby="offer-issuance-title" className="min-w-0 rounded-xl border border-slate-300 bg-slate-100 p-4 outline-none sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-4xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Finale Dokumentstufe</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Finale Dokumentstufe</p>
           <h2 id="offer-issuance-title" className="mt-1 text-xl font-semibold text-slate-950">Ausstellungsfassung</h2>
           <p className="mt-2 text-sm leading-6 text-slate-700">
             Der Freigabekandidat wird niemals ausgestellt. Aus demselben versiegelten Datenstand entsteht eine neue finale PDF-Datei. Erst zwei bytegebundene Freigaben und ein späterer echter Archivnachweis dürfen daraus ein ausgestelltes Dokument machen.
@@ -704,7 +704,7 @@ export function OfferIssuancePanel({
           href={refreshHref}
           label="Status der Ausstellungsfassungen aktualisieren"
           kind="refresh"
-          className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-brand-800 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           <span className="sr-only">Ausstellungsfassungen: </span>Status aktualisieren
         </OfferDirtyNavigationLink>
@@ -734,7 +734,7 @@ export function OfferIssuancePanel({
           <OfferDirtyNavigationLink
             href={`${refreshHref}#offer-release-candidate`}
             label="Freigabekandidaten öffnen"
-            className="font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            className="font-semibold text-brand-800 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Freigabekandidaten öffnen
           </OfferDirtyNavigationLink>
@@ -756,7 +756,7 @@ export function OfferIssuancePanel({
           <OfferDirtyNavigationLink
             href={`${refreshHref}#offer-release-candidate`}
             label="Neuen Freigabekandidaten vorbereiten"
-            className="font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            className="font-semibold text-brand-800 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Freigabekandidaten öffnen
           </OfferDirtyNavigationLink>

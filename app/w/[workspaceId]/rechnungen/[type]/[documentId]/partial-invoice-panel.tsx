@@ -93,7 +93,7 @@ export function PartialInvoicePanel({
               </span>
               <Link
                 href={`/w/${workspaceId}/rechnungen/invoice/${entry.invoiceId}`}
-                className="font-semibold text-brand-700 underline underline-offset-2"
+                className="font-semibold text-brand-800 underline underline-offset-2"
               >
                 {entry.number ?? entry.name}
               </Link>

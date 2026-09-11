@@ -31,7 +31,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </span>
             <span className="text-sm font-semibold tracking-[0.18em] text-slate-700">WMEE</span>
           </div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
             Sicherer Zugang
           </p>
           <h1 id="login-heading" className="text-2xl font-semibold tracking-tight text-slate-950">

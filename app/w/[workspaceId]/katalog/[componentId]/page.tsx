@@ -122,14 +122,14 @@ export default async function CatalogComponentPage({
     <main className="min-h-screen bg-slate-50" data-catalog-component-state={componentState}>
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <nav aria-label="Brotkrumen" className="mb-6 flex items-start justify-between gap-4">
-          <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"><span aria-hidden="true" className="mr-2">←</span>Zurück zum Katalog</Link>
+          <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"><span aria-hidden="true" className="mr-2">←</span>Zurück zum Katalog</Link>
           <SignOutButton />
         </nav>
 
         <header className="mb-8 border-b border-slate-200 pb-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="font-mono text-xs font-semibold text-brand-700">{current.identity.internalSku}</p>
+              <p className="font-mono text-xs font-semibold text-brand-800">{current.identity.internalSku}</p>
               <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{current.presentation.displayName}</h1>
               <p className="mt-2 text-sm leading-6 text-slate-600">{current.presentation.manufacturer} · {current.presentation.model}</p>
             </div>

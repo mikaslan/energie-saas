@@ -32,6 +32,21 @@
   semantische Zustandsfarben, bleiben.
 - `background_color: #ffffff` (Manifest): neutral, bleibt.
 
+## Kontrast-Fix (THEME-02, 2026-09-11) — WCAG AA ist blockierendes Gate
+
+Belegter 700er (#218355) ist fix; gemessene Ratios (sRGB, AA normal ≥ 4.5):
+
+- text-700 auf Weiß 4.73 (ok), auf body-slate-100 (#f1f5f9) **4.32 (Fail)** —
+  exakt der CI-Befund (`.uppercase`-Eyebrows/Links auf Seiten-BG).
+- text-800 auf Weiß 6.49, auf slate-100 5.92 (ok überall hell).
+- text-brand-100 auf bg-700 3.95 (Fail) → Weiß (4.73).
+- Weiß auf bg-600 (92 %-Mix) 4.09 (Fail) → Hover/Chips auf 700/800.
+
+Fix ohne Wertänderung: `text-brand-700` → `text-brand-800` (140 Stellen),
+`hover:bg-brand-600` → `hover:bg-brand-800`, Adress-Tab-Zweitzeile →
+`text-white`. Fokus-Ringe bleiben brand-600 (UI-3:1 ≥ 4.09 ok).
+Kanban-Punkt bg-brand-600 ist dekorativ (aria-hidden) und bleibt.
+
 ## Umgestellt (THEME-01, 2026-09-11)
 
 - `blue-*`-Utilities (1111 Stellen, 142 Dateien) → `brand-*`-Token

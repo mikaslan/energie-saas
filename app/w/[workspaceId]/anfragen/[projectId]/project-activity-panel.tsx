@@ -27,7 +27,7 @@ export function ProjectActivityPanel({
       aria-labelledby="project-activity-title"
       className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
     >
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
         Verlauf
       </p>
       <h2 id="project-activity-title" className="mt-1 text-lg font-semibold text-slate-950">

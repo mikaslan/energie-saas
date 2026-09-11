@@ -381,7 +381,7 @@ export function OfferReleaseProfileForm({
           <input type="hidden" name="country" value="DE" />
 
           <div className="border-b border-slate-200 pb-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Neuer append-only Stand</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Neuer append-only Stand</p>
             <h2 className="mt-1 text-xl font-semibold text-slate-950">Angebotsprofil erfassen</h2>
             <p id="profile-form-safety" className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
               Es gibt keine Standardtexte. Trage ausschließlich fachlich und rechtlich verantwortete Inhalte ein.
@@ -427,7 +427,7 @@ export function OfferReleaseProfileForm({
 
       {profile ? (
         <section aria-labelledby="profile-activation-title" className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Getrennte Betreiberprüfung</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Getrennte Betreiberprüfung</p>
           <h2 id="profile-activation-title" tabIndex={-1} className="mt-1 text-xl font-semibold text-slate-950 outline-none">Aktuellen Profilstand aktivieren</h2>
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div className="rounded-md bg-slate-50 p-3"><dt className="text-slate-600">Aktuelle Revision</dt><dd className="mt-1 font-semibold tabular-nums text-slate-950">{profile.currentRevision}</dd></div>

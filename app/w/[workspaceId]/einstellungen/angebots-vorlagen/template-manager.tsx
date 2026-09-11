@@ -201,7 +201,7 @@ export function OfferTemplateManager({
             </p>
             {canWrite ? (
               <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
+                <summary className="cursor-pointer text-sm font-semibold text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
                   Bearbeiten
                 </summary>
                 <div className="mt-3">

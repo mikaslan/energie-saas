@@ -160,7 +160,7 @@ export function ProjectOutcomePanel({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
             Geschäftsergebnis
           </p>
           <h2 id="project-outcome-title" className="mt-1 text-lg font-semibold text-slate-950">

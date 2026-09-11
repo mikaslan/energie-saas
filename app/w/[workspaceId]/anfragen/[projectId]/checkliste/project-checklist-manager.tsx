@@ -460,7 +460,7 @@ function SegmentGroup({
                 checked={item.done}
                 disabled={!canWrite || completed || pending}
                 onChange={(event) => onSetItem(itemIndex, { done: event.target.checked }, canWrite)}
-                className="h-5 w-5 rounded border-slate-300 text-brand-700 focus:ring-2 focus:ring-brand-600"
+                className="h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
               />
             </label>
             <div className="min-w-0 flex-1">
@@ -485,7 +485,7 @@ function SegmentGroup({
                     aria-label={`${item.title || `Punkt ${itemIndex + 1}`}: Pflichtpunkt`}
                     checked={item.required}
                     onChange={(event) => onSetItem(itemIndex, { required: event.target.checked }, canConfigure)}
-                    className="h-5 w-5 rounded border-slate-300 text-brand-700 focus:ring-2 focus:ring-brand-600"
+                    className="h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
                   />
                   Pflichtpunkt
                 </label>

@@ -167,7 +167,7 @@ export default async function CatalogImportDetailsPage({
     <main className="min-h-screen bg-slate-50" data-catalog-import-detail-state={visibleState}>
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <nav aria-label="Bereichsnavigation" className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
+          <Link href={`/w/${workspaceId}/katalog`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">
             <span aria-hidden="true" className="mr-2">←</span>
             Zum Produktkatalog
           </Link>
@@ -175,7 +175,7 @@ export default async function CatalogImportDetailsPage({
         </nav>
 
         <header className="mb-8 border-b border-slate-200 pb-7">
-          <p className="text-sm font-semibold text-brand-700">Revisionsgebundener CSV-Import</p>
+          <p className="text-sm font-semibold text-brand-800">Revisionsgebundener CSV-Import</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
             {details.fileName ?? "Geschützte Importvorschau"}
           </h1>
@@ -249,7 +249,7 @@ export default async function CatalogImportDetailsPage({
                               ? command?.presentation.displayName ?? "Fehlerhafte Zeile"
                               : row.validationStatus === "invalid" ? "Fehlerhafte Zeile" : "Verarbeitete Zeile"}
                           </h3>
-                          {snapshotVisible && row.normalizedSku ? <p className="mt-1 font-mono text-xs text-brand-700">{row.normalizedSku}</p> : null}
+                          {snapshotVisible && row.normalizedSku ? <p className="mt-1 font-mono text-xs text-brand-800">{row.normalizedSku}</p> : null}
                         </div>
                         <span className={row.validationStatus === "valid" ? "rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-900" : "rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-900"}>{row.validationStatus === "valid" ? row.operation === "create" ? "Neu" : row.operation === "revise" ? "Revision" : "Unverändert" : "Fehler"}</span>
                       </div>
@@ -267,7 +267,7 @@ export default async function CatalogImportDetailsPage({
                         </ul>
                       ) : null}
                       {row.result?.componentId ? (
-                        <Link href={`/w/${workspaceId}/katalog/${row.result.componentId}`} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 hover:text-brand-900">Ergebnisprodukt öffnen <span aria-hidden="true" className="ml-2">→</span></Link>
+                        <Link href={`/w/${workspaceId}/katalog/${row.result.componentId}`} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 hover:text-brand-900">Ergebnisprodukt öffnen <span aria-hidden="true" className="ml-2">→</span></Link>
                       ) : row.result?.state === "conflict" ? <p className="mt-4 text-sm font-medium text-amber-900">Verarbeitungskonflikt: {row.result.errorCode}</p> : null}
                     </li>
                   );
@@ -281,10 +281,10 @@ export default async function CatalogImportDetailsPage({
                 </p>
                 <div className="flex gap-3">
                   {previousAfterRow !== null ? (
-                    <Link prefetch={false} href={previousAfterRow === 1 ? detailPath : `${detailPath}?after=${previousAfterRow}`} rel="prev" className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 font-semibold text-brand-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Vorherige 100</Link>
+                    <Link prefetch={false} href={previousAfterRow === 1 ? detailPath : `${detailPath}?after=${previousAfterRow}`} rel="prev" className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 font-semibold text-brand-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Vorherige 100</Link>
                   ) : null}
                   {nextAfterRow !== null ? (
-                    <Link prefetch={false} href={`${detailPath}?after=${nextAfterRow}`} rel="next" className="inline-flex min-h-11 items-center rounded-md border border-brand-700 px-4 font-semibold text-brand-700 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Nächste 100</Link>
+                    <Link prefetch={false} href={`${detailPath}?after=${nextAfterRow}`} rel="next" className="inline-flex min-h-11 items-center rounded-md border border-brand-700 px-4 font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Nächste 100</Link>
                   ) : null}
                 </div>
               </nav>

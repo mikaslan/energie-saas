@@ -269,7 +269,7 @@ export function AddressEditor({
       className="min-w-0 rounded-lg border border-brand-200 bg-brand-50/50 p-4 sm:p-5"
     >
       <div className="mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Adresskorrektur</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-brand-800">Adresskorrektur</p>
         <h3 id="address-editor-title" className="mt-1 text-base font-semibold text-slate-950">
           Hausadresse nachtragen
         </h3>
@@ -356,7 +356,8 @@ export function AddressEditor({
                     }`}
                   >
                     <span className="block break-words font-semibold">{candidate.formattedAddress}</span>
-                    <span className={`mt-0.5 block text-xs ${activeIndex === index ? "text-brand-100" : "text-slate-500"}`}>
+                    {/* THEME-02: text-brand-100 auf bg-brand-700 = 3.95 (AA-Fail) → Weiß (4.73). */}
+                    <span className={`mt-0.5 block text-xs ${activeIndex === index ? "text-white" : "text-slate-500"}`}>
                       Hausgenau · Deutschland
                     </span>
                   </li>

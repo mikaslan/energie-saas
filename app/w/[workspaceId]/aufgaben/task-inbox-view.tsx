@@ -206,7 +206,7 @@ export function GlobalTaskInboxView({
       >
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Projektübergreifend</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">Projektübergreifend</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Aufgaben</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Offene und erledigte Projektaufgaben zentral finden. Änderungen erfolgen weiterhin revisionssicher in der jeweiligen Projektakte.
@@ -258,7 +258,7 @@ export function GlobalTaskInboxView({
             <button type="submit" className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Anzeigen</button>
           </form>
           {filtersActive ? (
-            <Link href={`/w/${workspaceId}/aufgaben`} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Filter zurücksetzen</Link>
+            <Link href={`/w/${workspaceId}/aufgaben`} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Filter zurücksetzen</Link>
           ) : null}
         </section>
 

@@ -578,7 +578,7 @@ function SchematicCard({
       data-offer-schematic="true"
       className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
     >
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
         Schaltplan (ESTIMATE)
       </p>
       <h2 className="mt-1 text-lg font-semibold text-slate-950">Einphasige Übersicht</h2>
@@ -602,7 +602,7 @@ function OfferSectionCard({
     <section className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
             Sektion {section.position}
           </p>
           <h2 className="mt-1 text-lg font-semibold text-slate-950">{section.title}</h2>
@@ -636,7 +636,7 @@ function TotalsCard({
   const lines = snapshot.sections.flatMap((section) => section.lines);
   return (
     <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
         Preiszusammenfassung
       </p>
       <h2 className="mt-1 text-lg font-semibold text-slate-950">Serverberechneter Stand</h2>
@@ -716,7 +716,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
         <div id="offer-empty-main" className="mx-auto grid w-full max-w-3xl gap-5">
           <Link
             href={`/w/${view.workspaceId}/angebote`}
-            className="inline-flex min-h-11 w-fit items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 w-fit items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             ← Zur Angebotsübersicht
           </Link>
@@ -858,7 +858,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
         <nav aria-label="Brotkrumen" className="mb-5">
           <Link
             href={`/w/${view.workspaceId}/angebote`}
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true" className="mr-2">←</span>
             Zur Angebotsübersicht
@@ -868,7 +868,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
         <header className="mb-6 border-b border-slate-200 pb-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
                 {view.offer.offerNumber}
               </p>
               <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -945,7 +945,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
             <div className="grid min-w-0 gap-5">
               <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
                   Aktive Variante
                 </p>
                 <h2 className="mt-1 text-xl font-semibold text-slate-950">{snapshot.variantName}</h2>

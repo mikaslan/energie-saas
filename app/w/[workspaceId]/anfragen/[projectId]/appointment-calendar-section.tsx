@@ -201,7 +201,7 @@ export function AppointmentCalendarSection({
     <section id="project-appointments" aria-labelledby="project-appointments-title" className="min-w-0">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Akte</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Akte</p>
           <h2 id="project-appointments-title" className="mt-1 text-xl font-semibold text-slate-950">Termine</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             Projekttermine im Kalender. Termine werden dauerhaft gelöscht und bleiben über die Aktivität nachvollziehbar.

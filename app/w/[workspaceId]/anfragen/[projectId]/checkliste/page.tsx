@@ -71,7 +71,7 @@ export default async function ProjectChecklistPage(
   return (
     <main className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
           Projektakte
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Checkliste</h1>
@@ -97,7 +97,7 @@ export default async function ProjectChecklistPage(
       <div className="mt-6">
         <Link
           href={`/w/${workspaceId}/anfragen/${projectId}`}
-          className="text-sm font-semibold text-brand-700 underline-offset-2 hover:underline"
+          className="text-sm font-semibold text-brand-800 underline-offset-2 hover:underline"
         >
           Zurück zur Projektakte
         </Link>

@@ -464,7 +464,7 @@ export default async function PlanningBoardPage(
                 <p className="mt-3 text-sm">
                   <Link
                     href={`/w/${workspaceId}/anfragen/${selected.entry.projectId}`}
-                    className="font-semibold text-brand-700 underline-offset-2 hover:underline"
+                    className="font-semibold text-brand-800 underline-offset-2 hover:underline"
                   >
                     Zum Projekt „{selected.entry.projectName}“
                   </Link>

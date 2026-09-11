@@ -549,7 +549,7 @@ export function OfferReleaseCandidatePanel({
     <section id="offer-release-candidate" tabIndex={-1} aria-labelledby="offer-release-title" className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm outline-none sm:p-6">
       <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Kundentaugliche Dokumentvorbereitung</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Kundentaugliche Dokumentvorbereitung</p>
           <h2 id="offer-release-title" className="mt-1 text-xl font-semibold text-slate-950">Angebots-Freigabekandidat</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
             Drei getrennte Schritte binden Empfänger, gespeicherten Angebotsstand und die abschließend geprüften PDF-Bytes.
@@ -558,7 +558,7 @@ export function OfferReleaseCandidatePanel({
             Freigabekandidat · nicht ausgestellt · nicht versendet
           </p>
         </div>
-        <OfferDirtyNavigationLink href={refreshHref} label="Freigabestatus aktualisieren" kind="refresh" className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Status aktualisieren</OfferDirtyNavigationLink>
+        <OfferDirtyNavigationLink href={refreshHref} label="Freigabestatus aktualisieren" kind="refresh" className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-brand-800 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">Status aktualisieren</OfferDirtyNavigationLink>
       </div>
 
       {projectOutcome === "cannot_fulfill" ? (
@@ -570,7 +570,7 @@ export function OfferReleaseCandidatePanel({
       <ol role="list" className="mt-6 grid list-none gap-6 p-0">
         <li>
           <section aria-labelledby="release-step-recipient" className="rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Schritt 1 von 3</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Schritt 1 von 3</p>
             <h3 id="release-step-recipient" tabIndex={-1} className="mt-1 text-lg font-semibold text-slate-950 outline-none"><span className="sr-only">Schritt 1 von 3: </span>Empfänger und Rechnungsadresse</h3>
             <p className="mt-2 text-sm leading-6 text-slate-700">Die Rechnungsadresse wird ausdrücklich erfasst und niemals still aus dem Anlagenstandort übernommen.</p>
             {canPrepare ? (
@@ -613,7 +613,7 @@ export function OfferReleaseCandidatePanel({
 
         <li>
           <section aria-labelledby="release-step-render" className="rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Schritt 2 von 3</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Schritt 2 von 3</p>
             <h3 id="release-step-render" tabIndex={-1} className="mt-1 text-lg font-semibold text-slate-950 outline-none"><span className="sr-only">Schritt 2 von 3: </span>Freigabekandidat rendern</h3>
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
               <div className="rounded-md bg-white p-3"><dt className="text-slate-600">Variante</dt><dd className="mt-1 font-semibold text-slate-950">Revision {variantRevision}</dd></div>
@@ -669,7 +669,7 @@ export function OfferReleaseCandidatePanel({
 
         <li>
           <section aria-labelledby="release-step-approval" className="rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Schritt 3 von 3</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Schritt 3 von 3</p>
             <h3 id="release-step-approval" tabIndex={-1} className="mt-1 text-lg font-semibold text-slate-950 outline-none"><span className="sr-only">Schritt 3 von 3: </span>Finale Prüfung der erzeugten PDF-Bytes</h3>
             <p className="mt-2 text-sm leading-6 text-slate-700">Die Bestätigungen gelten nur für den jeweils angezeigten Kandidaten. Auch nach Freigabe bleibt er ausdrücklich nicht ausgestellt und nicht versendet.</p>
             {candidates.length === 0 ? (

@@ -316,7 +316,7 @@ export function ResolutionForm({
                             delete next[component.id];
                             return next;
                           })}
-                          className="mt-1 h-5 w-5 rounded border-slate-300 text-brand-700 focus:ring-brand-600"
+                          className="mt-1 h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-brand-600"
                         />
                         <span className="min-w-0">
                           <span className="block truncate text-sm font-semibold text-slate-950">{component.name}</span>
@@ -400,7 +400,7 @@ export function ResolutionForm({
           <p className="text-sm leading-6 text-slate-600">Diese Punkte werden strukturiert im Snapshot gespeichert. Sie verändern nicht die Qualität der Planungsrechnung.</p>
           {preview.requiredAcknowledgements.map((code) => (
             <label key={code} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
-              <input type="checkbox" name={`ack.${code}`} value="yes" required aria-invalid={state.status === "invalid" && state.field === "acknowledgements"} className="mt-0.5 h-5 w-5 rounded border-amber-400 text-brand-700 focus:ring-brand-600" />
+              <input type="checkbox" name={`ack.${code}`} value="yes" required aria-invalid={state.status === "invalid" && state.field === "acknowledgements"} className="mt-0.5 h-5 w-5 rounded border-amber-400 text-brand-800 focus:ring-brand-600" />
               <span>{ackLabels[code]}</span>
             </label>
           ))}

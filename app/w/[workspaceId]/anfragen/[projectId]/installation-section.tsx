@@ -80,7 +80,7 @@ export function InstallationSection({
 
   return (
     <section aria-labelledby="project-installation-title" className="min-w-0">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Akte</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Akte</p>
       <h2 id="project-installation-title" className="mt-1 text-xl font-semibold text-slate-950">
         Installation
       </h2>

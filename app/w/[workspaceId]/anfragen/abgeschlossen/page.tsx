@@ -126,7 +126,7 @@ export default async function ClosedRequestsPage({
 
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Anfragearchiv</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">Anfragearchiv</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Abgeschlossene Anfragen</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Gewonnene und verlorene Anfragen bleiben revisionssicher auffindbar und können in ihrer Projektakte wieder geöffnet werden.

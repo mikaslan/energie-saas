@@ -146,7 +146,7 @@ export function AppointmentDialog({
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Termin</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Termin</p>
             <h2 id={titleId} className="mt-1 break-words text-xl font-semibold text-slate-950">
               {appointment === null ? "Termin anlegen" : "Termin bearbeiten"}
             </h2>
@@ -247,7 +247,7 @@ export function AppointmentDialog({
               checked={allDay}
               disabled={pending}
               onChange={(event) => setAllDay(event.currentTarget.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+              className="h-4 w-4 rounded border-slate-300 text-brand-800 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             />
             Ganztägig
           </label>
@@ -326,7 +326,7 @@ export function AppointmentDialog({
                       checked={selectedAttendees.includes(member.membershipId)}
                       disabled={pending}
                       onChange={() => toggleAttendee(member.membershipId)}
-                      className="h-4 w-4 rounded border-slate-300 text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                      className="h-4 w-4 rounded border-slate-300 text-brand-800 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                     />
                     {member.label}
                   </label>

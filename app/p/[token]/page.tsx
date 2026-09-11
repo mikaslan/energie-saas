@@ -119,7 +119,7 @@ export default async function PortalTokenPage({
   const langQuery = `lang=${lang}`;
   const tabClass = (active: boolean): string =>
     `rounded-md px-3 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 ${
-      active ? "bg-brand-700 text-white" : "text-brand-700 hover:bg-brand-50"
+      active ? "bg-brand-700 text-white" : "text-brand-800 hover:bg-brand-50"
     }`;
   return (
     <main className="mx-auto flex min-h-[70vh] w-full max-w-3xl items-center px-6 py-12">
@@ -128,7 +128,7 @@ export default async function PortalTokenPage({
         aria-live="polite"
         lang={lang}
       >
-        <p className="text-sm font-semibold text-brand-700">{t.brand}</p>
+        <p className="text-sm font-semibold text-brand-800">{t.brand}</p>
         <h1 className="mt-2 text-2xl font-semibold text-slate-950">{view.project.name}</h1>
         <nav aria-label={t.navAria} className="mt-4 flex gap-2">
           <Link href={`/p/${token}?${langQuery}`} className={tabClass(activeTab === "uebersicht")}>
@@ -284,7 +284,7 @@ export default async function PortalTokenPage({
                         />
                         <button
                           type="submit"
-                          className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                          className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                         >
                           {t.uploadButton}
                         </button>
@@ -426,7 +426,7 @@ export default async function PortalTokenPage({
                           <input type="hidden" name="lang" value={lang} />
                           <button
                             type="submit"
-                            className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                            className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                           >
                             {t.acknowledgeButton}
                           </button>
@@ -458,7 +458,7 @@ export default async function PortalTokenPage({
                           <span className="text-sm text-slate-500">{doc.documentDate}</span>
                           <Link
                             href={`/p/${token}/dokumente/${doc.id}?lang=${lang}`}
-                            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-3 text-sm font-semibold text-brand-700 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-3 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                           >
                             {t.downloadWord}
                           </Link>

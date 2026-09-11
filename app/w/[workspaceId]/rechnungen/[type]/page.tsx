@@ -186,7 +186,7 @@ export default async function InvoicingDocumentListPage(
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
             {DOCUMENT_TYPE_SINGULAR_LABELS[type]}
           </p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">{DOCUMENT_TYPE_LABELS[type]}</h2>
@@ -356,7 +356,7 @@ export default async function InvoicingDocumentListPage(
                       <td className="px-3 py-3 text-sm font-medium text-slate-900">
                         <Link
                           href={`/w/${workspaceId}/rechnungen/${type}/${document.id}`}
-                          className="text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
+                          className="text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
                         >
                           {document.name}
                         </Link>

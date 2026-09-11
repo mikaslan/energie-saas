@@ -151,7 +151,7 @@ export default async function EnergyProfilePage({
         <nav aria-label="Brotkrumen" className="mb-6 flex items-start justify-between gap-4">
           <Link
             href={projectPath}
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true" className="mr-2">←</span>
             Zurück zur Projektakte
@@ -160,7 +160,7 @@ export default async function EnergyProfilePage({
         </nav>
 
         <header className="mb-8 border-b border-slate-200 pb-7">
-          <p className="text-sm font-semibold text-brand-700">Projektakte</p>
+          <p className="text-sm font-semibold text-brand-800">Projektakte</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
             Energieprofil prüfen
           </h1>

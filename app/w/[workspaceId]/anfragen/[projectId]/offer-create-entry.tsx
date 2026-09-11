@@ -366,7 +366,7 @@ export function OfferCreateEntry({ view }: { view: OfferCreateEntryView }) {
         aria-labelledby="offer-create-heading"
         className={`${offerThemeStyles.offerTheme} rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6`}
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Angebotsphase</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Angebotsphase</p>
         <h2 id="offer-create-heading" className="mt-2 text-lg font-semibold text-slate-950">Angebotsentwurf erstellen</h2>
         <div role="status" className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-sm font-semibold text-slate-950">Nur Lesezugriff</p>

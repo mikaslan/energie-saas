@@ -95,7 +95,7 @@ function AccessDenied() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl items-center px-6 py-16">
       <section className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">WMEE Vertrieb</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">WMEE Vertrieb</p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Kein Zugriff</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Für diesen Arbeitsbereich liegt keine passende Mitgliedschaft vor.
@@ -971,7 +971,7 @@ export default async function DashboardPage({
                       <li key={item.id} className="py-2 text-sm leading-6">
                         <Link
                           href={`/w/${validWorkspaceId}/anfragen/${item.projectId}`}
-                          className="font-medium text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                          className="font-medium text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                         >
                           {item.title}
                         </Link>

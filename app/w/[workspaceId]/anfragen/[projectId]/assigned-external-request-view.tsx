@@ -46,7 +46,7 @@ export function AssignedExternalRequestView({
         <nav aria-label="Seitennavigation" className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <Link
             href={`/w/${workspaceId}/anfragen`}
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             <span aria-hidden="true" className="mr-2">←</span>
             Zurück zu den Anfragen

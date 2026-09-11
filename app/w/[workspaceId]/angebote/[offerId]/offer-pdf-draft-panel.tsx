@@ -114,7 +114,7 @@ export function OfferPdfDraftPanel({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
             Dokumentausgabe
           </p>
           <h2 id="offer-pdf-draft-title" className="mt-1 text-lg font-semibold text-slate-950">
@@ -129,7 +129,7 @@ export function OfferPdfDraftPanel({
           href={refreshHref}
           label="PDF-Status aktualisieren"
           kind="refresh"
-          className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-brand-700 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 shrink-0 items-center text-sm font-semibold text-brand-800 underline decoration-2 underline-offset-4 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Status aktualisieren
         </OfferDirtyNavigationLink>

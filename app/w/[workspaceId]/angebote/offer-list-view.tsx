@@ -87,7 +87,7 @@ function OfferListHeader({
 function EmptyOfferList({ workspaceId }: { workspaceId: string }) {
   return (
     <section className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-14 text-center shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
         Angebotsphase
       </p>
       <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
@@ -155,7 +155,7 @@ function OfferColumn({ column }: { column: OfferListColumnView }) {
             <article className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-800">
                     {offer.offerNumber}
                   </p>
                   <h3 className="mt-1 break-words text-base font-semibold text-slate-950">
@@ -181,7 +181,7 @@ function OfferColumn({ column }: { column: OfferListColumnView }) {
                 </div>
                 <Link
                   href={offer.href}
-                  className="inline-flex min-h-11 items-center rounded-md px-3 text-sm font-semibold text-brand-700 outline-none hover:bg-brand-50 hover:text-brand-900 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center rounded-md px-3 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 hover:text-brand-900 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                 >
                   Öffnen
                 </Link>
@@ -210,7 +210,7 @@ export function OfferListView({ view }: { view: OfferListSurfaceView }) {
       <div id="offer-list-main" className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
               Vertrieb
             </p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">Angebote</h1>

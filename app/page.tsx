@@ -15,7 +15,7 @@ export default function Home() {
             </div>
           </div>
           <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Rechner → Anfrage → Triage</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">Rechner → Anfrage → Triage</p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
               Solarrechner-Leads sauber weiterbearbeiten.
             </h1>

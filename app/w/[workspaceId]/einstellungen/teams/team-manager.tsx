@@ -115,7 +115,7 @@ function TeamRow({
                             ? current.filter((id) => id !== member.membershipId)
                             : [...current, member.membershipId],
                         )}
-                        className="h-4 w-4 rounded border-slate-300 text-brand-700"
+                        className="h-4 w-4 rounded border-slate-300 text-brand-800"
                       />
                       <span className="min-w-0 flex-1 truncate" title={member.label}>{member.label}</span>
                       {currentIds.has(member.membershipId) ? null : (

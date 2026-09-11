@@ -26,7 +26,7 @@ export default function SignatureTokenPage() {
         role="status"
         aria-live="polite"
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
           E-Signatur
         </p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">

@@ -412,7 +412,7 @@ export function ProjectTasksSection({
     <section id="project-tasks" aria-labelledby="project-tasks-title" className="min-w-0">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Arbeit</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Arbeit</p>
           <h2 id="project-tasks-title" className="mt-1 text-xl font-semibold text-slate-950">Aufgaben</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             Interne Aufgaben, Zuständigkeiten und Checklisten für dieses Projekt.

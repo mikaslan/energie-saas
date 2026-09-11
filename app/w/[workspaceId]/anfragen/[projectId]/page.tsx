@@ -1037,7 +1037,7 @@ export default async function ProjectTriagePage({
           <div className="flex flex-wrap gap-x-5">
             <Link
               href={requestListPath}
-              className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               <span aria-hidden="true" className="mr-2">←</span>
               Zurück zu den Anfragen
@@ -1061,7 +1061,7 @@ export default async function ProjectTriagePage({
         <header className="mb-8 border-b border-slate-200 pb-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-brand-700">Projektakte</p>
+              <p className="text-sm font-semibold text-brand-800">Projektakte</p>
               <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
                 {detail.contact.displayName}
               </h1>

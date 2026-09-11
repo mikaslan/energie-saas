@@ -115,10 +115,10 @@ export default async function OfferReleaseProfilesPage(
       <a href="#offer-profile-main" className="sr-only rounded bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:ring-2 focus:ring-brand-600">Zum Angebotsprofil springen</a>
       <div id="offer-profile-main" className="mx-auto w-full max-w-5xl">
         <nav aria-label="Brotkrumen">
-          <Link href={`/w/${workspaceId}/angebote`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">← Zur Angebotsübersicht</Link>
+          <Link href={`/w/${workspaceId}/angebote`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2">← Zur Angebotsübersicht</Link>
         </nav>
         <header className="mb-6 mt-4 border-b border-slate-200 pb-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Einstellungen</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">Einstellungen</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Angebotsprofile</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
             Versionierte Ausstellerdaten und Rechtstexte für Freigabekandidaten. Jeder Stand bleibt nachvollziehbar; Aktivieren ist eine getrennte Prüfung.

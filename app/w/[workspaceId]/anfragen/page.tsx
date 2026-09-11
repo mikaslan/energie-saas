@@ -118,7 +118,7 @@ function AccessDenied() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl items-center px-6 py-16">
       <section className="w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">WMEE Vertrieb</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">WMEE Vertrieb</p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Kein Zugriff</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Für diesen Arbeitsbereich liegt keine passende Mitgliedschaft vor.
@@ -414,7 +414,7 @@ export default async function RequestsPage({
         ) : null}
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Rechner-Leads</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">Rechner-Leads</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">{board.name}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Neue Solarrechner-Anfragen prüfen, qualifizieren und in die nächste Vertriebsstufe bewegen.
@@ -476,7 +476,7 @@ export default async function RequestsPage({
                           projectLabel={card.contactName}
                         >
                           <div className="pr-8">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-700">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-800">
                               {card.sourceLabel}
                             </p>
                             <h3 className="mt-1 text-base font-semibold leading-6 text-slate-950">
@@ -542,7 +542,7 @@ export default async function RequestsPage({
                             </time>
                             <Link
                               href={`/w/${validWorkspaceId}/anfragen/${card.id}`}
-                              className="rounded text-xs font-semibold text-brand-700 outline-none hover:text-brand-900 hover:underline focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+                              className="rounded text-xs font-semibold text-brand-800 outline-none hover:text-brand-900 hover:underline focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
                             >
                               Projekt öffnen
                             </Link>

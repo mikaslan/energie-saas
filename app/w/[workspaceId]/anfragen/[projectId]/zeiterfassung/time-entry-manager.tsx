@@ -626,7 +626,7 @@ function RevisionHistory({
   if (revisions.length === 0) return null;
   return (
     <details className="w-full rounded-md bg-slate-50 px-3 py-2" data-testid={`verlauf-${entryId}`}>
-      <summary className="cursor-pointer text-xs font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
+      <summary className="cursor-pointer text-xs font-semibold text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
         Verlauf ({revisions.length})
       </summary>
       <ul className="mt-2 space-y-2">
@@ -726,7 +726,7 @@ function BreakControls({
       ) : null}
       {segments.length > 0 ? (
         <details className="mt-1 rounded-md bg-slate-50 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
+          <summary className="cursor-pointer text-xs font-semibold text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
             Pausen ({segments.length})
           </summary>
           <ul className="mt-2 space-y-1">

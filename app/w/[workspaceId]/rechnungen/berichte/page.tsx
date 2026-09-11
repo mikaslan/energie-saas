@@ -56,7 +56,7 @@ function KpiCard({
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">{title}</p>
       <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-950">{formatEuro(valueCents)}</p>
       <p className="mt-1 text-xs text-slate-500">{formatDelta(valueCents, previousCents)}</p>
     </div>
@@ -120,7 +120,7 @@ export default async function InvoicingReportsPage(
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Berichte</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">Berichte</p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">Monatsübersicht {month}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Einnahmen, Zahlungseingänge und offene Posten auf einen Blick.

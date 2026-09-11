@@ -135,12 +135,12 @@ export default async function InvoicingDocumentDetailPage(
       <nav aria-label="Brotkrumen">
         <Link
           href={listHref}
-          className="text-sm font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
+          className="text-sm font-semibold text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
         >
           ← Zurück zu {DOCUMENT_TYPE_LABELS[type]}
         </Link>
       </nav>
-      <p className="mt-4 text-sm font-semibold text-brand-700">
+      <p className="mt-4 text-sm font-semibold text-brand-800">
         {DOCUMENT_TYPE_SINGULAR_LABELS[type]} · {DOCUMENT_STATUS_LABELS[document.status] ?? document.status}
       </p>
       <h1 className="mt-1 text-2xl font-semibold text-slate-950">

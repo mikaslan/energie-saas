@@ -149,7 +149,7 @@ export function BillingRunSection({
               </p>
               {run.status === "closed" && breakdowns[run.id] ? (
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-sm font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
+                  <summary className="cursor-pointer text-sm font-semibold text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">
                     Aufschlüsselung je Person
                   </summary>
                   <ul className="mt-2 grid gap-1">

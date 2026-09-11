@@ -74,9 +74,9 @@ export default async function TeamsPage({
         </div>
       </header>
       <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <Link href={`/w/${workspaceId}/anfragen`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 outline-none hover:text-brand-900 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"><span aria-hidden="true" className="mr-2">←</span>Zu den Anfragen</Link>
+        <Link href={`/w/${workspaceId}/anfragen`} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 outline-none hover:text-brand-900 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"><span aria-hidden="true" className="mr-2">←</span>Zu den Anfragen</Link>
         <div className="mb-6 mt-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Administration</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">Administration</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Teams</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Monteure- und Vertriebsteams mit Mitgliedern. Termine lassen sich einem Team zuordnen; Archivieren ersetzt bewusst kein Löschen.</p>
         </div>

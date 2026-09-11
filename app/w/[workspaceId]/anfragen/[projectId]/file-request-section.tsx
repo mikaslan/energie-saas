@@ -84,7 +84,7 @@ function ReceiptRow({
           href={dataUrl}
           download={downloadState.status === "ready" ? downloadState.filename : undefined}
           data-testid="file-request-download-link"
-          className="mt-1 inline-block font-semibold text-brand-700 hover:underline"
+          className="mt-1 inline-block font-semibold text-brand-800 hover:underline"
         >
           Beleg herunterladen
         </a>
@@ -96,7 +96,7 @@ function ReceiptRow({
           <button
             type="submit"
             data-testid="file-request-download"
-            className="font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
+            className="font-semibold text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             Beleg laden
           </button>
@@ -143,7 +143,7 @@ function UploadRow({
           href={dataUrl}
           download={downloadState.status === "ready" ? downloadState.filename : undefined}
           data-testid="file-request-upload-download-link"
-          className="mt-0.5 inline-block font-semibold text-brand-700 hover:underline"
+          className="mt-0.5 inline-block font-semibold text-brand-800 hover:underline"
         >
           Folge-Beleg herunterladen
         </a>
@@ -156,7 +156,7 @@ function UploadRow({
           <button
             type="submit"
             data-testid="file-request-upload-download"
-            className="font-semibold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
+            className="font-semibold text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             Folge-Beleg laden
           </button>
