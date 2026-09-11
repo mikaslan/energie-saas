@@ -127,10 +127,19 @@ const portalAppointmentSchema = z.strictObject({
 export type PortalAppointment = z.infer<typeof portalAppointmentSchema>;
 
 // F10-03: Installationsstand (nur Stand + Daten, nie Namen/Notizen).
+export const portalInstallationTimelineEntrySchema = z.strictObject({
+  type: z.enum(["created", "completed", "handover_recorded"]),
+  at: z.iso.datetime({ offset: true }),
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+});
+export type PortalInstallationTimelineEntry = z.infer<typeof portalInstallationTimelineEntrySchema>;
+
 const portalInstallationSchema = z.strictObject({
   status: z.enum(["active", "completed"]),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
   handoverAt: z.iso.datetime({ offset: true }).nullable(),
+  // F10-03b Status-Timeline (nur Allowlist-Typen, nie Payloads/Akteure).
+  timeline: z.array(portalInstallationTimelineEntrySchema),
 });
 export type PortalInstallation = z.infer<typeof portalInstallationSchema>;
 
@@ -250,7 +259,9 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     const record = raw as Record<string, unknown>;
     // Nur der DEFINER-Wortschatz; fremde Schlüssel = deformiert.
     for (const key of Object.keys(record)) {
-      if (key !== "status" && key !== "completedAt" && key !== "handoverAt") return null;
+      if (key !== "status" && key !== "completedAt" && key !== "handoverAt" && key !== "timeline") {
+        return null;
+      }
     }
     const status = portalInstallationSchema.shape.status.safeParse(record.status);
     if (!status.success) return null;
@@ -258,7 +269,14 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     if (record.completedAt !== null && completedAt === null) return null;
     const handoverAt = record.handoverAt === null ? null : toInstant(record.handoverAt);
     if (record.handoverAt !== null && handoverAt === null) return null;
-    installation = { status: status.data, completedAt, handoverAt };
+    // Fehlend = Alt-Projektion (F10-03-undefined-Präzedenz) → ehrlich leer.
+    const timeline = record.timeline === undefined
+      ? []
+      : portalInstallationSchema.shape.timeline.safeParse(record.timeline).success
+        ? (record.timeline as PortalInstallationTimelineEntry[])
+        : null;
+    if (timeline === null) return null;
+    installation = { status: status.data, completedAt, handoverAt, timeline };
   }
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,

@@ -66,6 +66,17 @@ function formatSignatureStatus(status: string, signedAt: string | null): string 
 
 // F10.1: öffentliche Projektion (read-only). Unbekannt/deformiert/entzogen/
 // abgelaufen -> identischer 404-Endzustand („Link ungültig", kein Orakel).
+// F10-03b: Timeline-Labels (nur Allowlist-Typen; Datum Berlin, keine Uhrzeit,
+// keine Akteure — öffentliche Sicht ohne Login).
+function formatTimelineEntry(type: string, day: string): string {
+  switch (type) {
+    case "created": return `Angelegt am ${day}`;
+    case "completed": return `Abgeschlossen am ${day}`;
+    case "handover_recorded": return `Abgenommen am ${day}`;
+    default: return `Ereignis am ${day}`;
+  }
+}
+
 // F10.2 Slice A: Tabs (Übersicht | Termine) per ?tab=, Server-Links ohne JS.
 // F10-03: Tab „Installation" dazu (Stand oder ehrlicher Leerzustand).
 // Unbekannter tab-Wert fällt auf Übersicht zurück (kein 404, kein Orakel).
@@ -129,6 +140,7 @@ export default async function PortalTokenPage({
                 Noch keine Installation hinterlegt.
               </p>
             ) : (
+              <>
               <dl className="mt-2 space-y-2 text-sm leading-6 text-slate-600">
                 <div className="flex gap-2">
                   <dt className="font-semibold text-slate-800">Stand:</dt>
@@ -139,6 +151,21 @@ export default async function PortalTokenPage({
                   )}</dd>
                 </div>
               </dl>
+              <h3 className="mt-4 text-sm font-semibold text-slate-950">Verlauf</h3>
+              {view.installation.timeline.length === 0 ? (
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Noch keine Ereignisse.
+                </p>
+              ) : (
+                <ol className="mt-1 space-y-1 text-sm leading-6 text-slate-600">
+                  {view.installation.timeline.map((entry) => (
+                    <li key={`${entry.type}-${entry.at}`}>
+                      {formatTimelineEntry(entry.type, entry.day)}
+                    </li>
+                  ))}
+                </ol>
+              )}
+              </>
             )}
           </div>
         ) : activeTab === "termine" ? (
