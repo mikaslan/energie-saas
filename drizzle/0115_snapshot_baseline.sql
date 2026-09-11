@@ -1,0 +1,10 @@
+-- ─────────────────────────────────────────────────────────────────────────
+-- 0115 Snapshot-Baseline (No-Op): Die Migrationen 0106–0114 wurden mit
+-- SQL + Journal-Eintrag, aber ohne Snapshot-Nachzug committet; Snapshots
+-- standen bei 0105. `drizzle-kit generate` hat deshalb den Gesamt-Diff
+-- seit 0105 erneut erzeugt (Tabellen aus 0113/0114 wären doppelt angelegt
+-- worden). Diese Datei ist bewusst leer: Alle Schema-Änderungen bis 0114
+-- sind bereits in 0106–0114 enthalten; drizzle/meta/0115_snapshot.json
+-- friert den aktuellen Stand von lib/db/schema als neue Generate-Basis ein.
+-- Forward-only, kein Downgrade, keine Datenänderung.
+-- ─────────────────────────────────────────────────────────────────────────
