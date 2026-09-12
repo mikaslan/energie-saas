@@ -164,6 +164,7 @@ test("F702C-E2E-01: Beschreibungspunkt rendert Text ohne Checkbox", async ({ pag
   const taskTitle = `Dachhaken prüfen ${stamp}`;
   const noteTitle = `Arbeitshinweis ${stamp}`;
   const noteText = `Vor Arbeitsbeginn freischalten lassen ${stamp}.`;
+  const headerTitle = `Montageabschnitt ${stamp}`;
   await page.getByRole("button", { name: "Block hinzufügen" }).click();
   await page.getByLabel("Block-Name 1").fill("PV");
   await page.getByRole("button", { name: "Segment hinzufügen" }).click();
@@ -176,6 +177,10 @@ test("F702C-E2E-01: Beschreibungspunkt rendert Text ohne Checkbox", async ({ pag
   const noteItem = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.2") });
   await noteItem.getByLabel("Typ").selectOption("description");
   await noteItem.getByLabel(`${noteTitle}: Beschreibungstext`).fill(noteText);
+  await page.getByRole("button", { name: "Punkt hinzufügen" }).click();
+  await page.getByLabel("Punkt-Name 1.3").fill(headerTitle);
+  const headerItem = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.3") });
+  await headerItem.getByLabel("Typ").selectOption("title");
   await page.getByRole("button", { name: "Speichern" }).click();
   await expect(page.getByText("Gespeichert (Version 1).", { exact: true })).toBeVisible();
 
@@ -183,13 +188,17 @@ test("F702C-E2E-01: Beschreibungspunkt rendert Text ohne Checkbox", async ({ pag
   // ignorieren den Anzeige-Punkt.
   await expect(noteItem.getByLabel(`${noteTitle}: Beschreibungstext`)).toHaveValue(noteText);
   await expect(noteItem.getByRole("checkbox")).toHaveCount(0);
+  await expect(headerItem.getByRole("checkbox")).toHaveCount(0);
   await expect(page.getByText("Noch 1 Pflichtpunkt offen.", { exact: true })).toBeVisible();
   await expect(page.getByText("Punkte: 0/1", { exact: true })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
   await expect(page.getByLabel("Punkt-Name 1.2")).toBeVisible();
+  await expect(page.getByLabel("Punkt-Name 1.3")).toBeVisible();
   const noteItemReloaded = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.2") });
+  const headerItemReloaded = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.3") });
+  await expect(headerItemReloaded.getByRole("checkbox")).toHaveCount(0);
   await expect(noteItemReloaded.getByLabel(`${noteTitle}: Beschreibungstext`)).toHaveValue(noteText);
   await expect(noteItemReloaded.getByRole("checkbox")).toHaveCount(0);
   await expect(page.getByText("Punkte: 0/1", { exact: true })).toBeVisible();
@@ -201,6 +210,7 @@ test("F702C-E2E-01: Beschreibungspunkt rendert Text ohne Checkbox", async ({ pag
   await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
   await expect(page.getByText(taskTitle, { exact: true })).toBeVisible();
   await expect(page.getByText(noteText, { exact: true })).toBeVisible();
+  await expect(page.getByText(headerTitle, { exact: true })).toBeVisible();
   const noteItemViewer = page.locator("li", { hasText: noteTitle });
   await expect(noteItemViewer.getByRole("checkbox")).toHaveCount(0);
   await expect(noteItemViewer.getByLabel("Typ")).toHaveCount(0);
