@@ -50,18 +50,19 @@ function parsePresetRef(value: FormDataEntryValue | null): string | null | undef
 }
 
 function parseFields(formData: FormData):
-  | { name: string; paymentOptionId: string | null; discountTemplateId: string | null; position: number }
+  | { name: string; paymentOptionId: string | null; discountTemplateId: string | null; subsidyTemplateId: string | null; position: number }
   | null {
   const name = parseText(formData.get("name"), 200);
   const positionValue = formData.get("position");
   const paymentOptionId = parsePresetRef(formData.get("paymentOptionId"));
   const discountTemplateId = parsePresetRef(formData.get("discountTemplateId"));
-  if (name === null || paymentOptionId === undefined || discountTemplateId === undefined) return null;
+  const subsidyTemplateId = parsePresetRef(formData.get("subsidyTemplateId"));
+  if (name === null || paymentOptionId === undefined || discountTemplateId === undefined || subsidyTemplateId === undefined) return null;
   if (typeof positionValue !== "string" || !/^\d+$/u.test(positionValue)) return null;
   const position = Number(positionValue);
   if (!Number.isSafeInteger(position) || position < 0) return null;
-  if (paymentOptionId === null && discountTemplateId === null) return null;
-  return { name, paymentOptionId, discountTemplateId, position };
+  if (paymentOptionId === null && discountTemplateId === null && subsidyTemplateId === null) return null;
+  return { name, paymentOptionId, discountTemplateId, subsidyTemplateId, position };
 }
 
 function mapError(error: unknown): OfferTemplateActionState {

@@ -246,11 +246,13 @@ export interface OfferDetailSurfaceView {
     archivedAt: string | null;
   }[];
   // F16-06: aktive Angebots-Vorlagen für das Anwenden an der Variante.
+  // F16-09: zusätzlich Förder-Preset-Kennzeichen je Vorlage.
   offerTemplates?: readonly {
     id: string;
     name: string;
     hasPaymentOption: boolean;
     hasDiscount: boolean;
+    hasSubsidy: boolean;
   }[];
   // F16-08: aktive Planungs-Vorlagen für das Anwenden an der Variante.
   planningTemplates?: readonly {

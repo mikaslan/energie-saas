@@ -14,6 +14,7 @@ export interface OfferTemplateEntry {
   name: string;
   hasPaymentOption: boolean;
   hasDiscount: boolean;
+  hasSubsidy: boolean;
 }
 
 function feedback(state: ApplyOfferTemplateEditorState): string | null {
@@ -22,6 +23,7 @@ function feedback(state: ApplyOfferTemplateEditorState): string | null {
     const parts: string[] = [];
     if (state.paymentOptionApplied) parts.push("Zahlart gesetzt");
     if (state.discountApplied) parts.push("Global-Rabatt gesetzt");
+    if (state.subsidyApplied) parts.push("Förderung gesetzt");
     return parts.length > 0
       ? `Vorlage angewendet: ${parts.join(" + ")}.`
       : "Vorlage angewendet (keine Änderung).";
@@ -50,6 +52,8 @@ function ApplyButton() {
 // F16-06: Angebots-Vorlage (Zahlart-Preset + Rabatt-Preset) in einem Schritt
 // an der aktiven Variante anwenden. Direkte Servermutation (kein Entwurf):
 // Zahlart setzen + Global-Rabatt via bestehende Commands.
+// F16-09: zusätzlich Förder-Preset (gleiche Ordnung wie der Service:
+// Rabatt → Förderung → Zahlart).
 export function OfferTemplateApplyPanel({ workspaceId, offerId, variantId, variantName, variantRevision, templates, canApply }: {
   workspaceId: string;
   offerId: string;
@@ -79,7 +83,7 @@ export function OfferTemplateApplyPanel({ workspaceId, offerId, variantId, varia
         Vorlage anwenden · {variantName}
       </h2>
       <p className="mt-1 text-sm leading-6 text-slate-600">
-        Setzt die Zahlart und den Global-Rabatt der Vorlage direkt an dieser Variante (Rev. {variantRevision}).
+        Setzt Zahlart, Global-Rabatt und Förderung der Vorlage direkt an dieser Variante (Rev. {variantRevision}).
       </p>
 
       {canApply && templates.length > 0 ? (
@@ -97,12 +101,13 @@ export function OfferTemplateApplyPanel({ workspaceId, offerId, variantId, varia
               <option value="">Vorlage wählen …</option>
               {templates.map((template) => (
                 <option key={template.id} value={template.id}>
-                  {template.name}
-                  {template.hasPaymentOption && template.hasDiscount
-                    ? " (Zahlart + Rabatt)"
-                    : template.hasPaymentOption
-                      ? " (Zahlart)"
-                      : " (Rabatt)"}
+                  {`${template.name} (${
+                    [
+                      template.hasPaymentOption ? "Zahlart" : null,
+                      template.hasDiscount ? "Rabatt" : null,
+                      template.hasSubsidy ? "Förderung" : null,
+                    ].filter((part): part is string => part !== null).join(" + ") || "–"
+                  })`}
                 </option>
               ))}
             </select>

@@ -58,7 +58,7 @@ export type ApplyOfferTemplateEditorState =
   | { status: "not_found" }
   | { status: "conflict" }
   | { status: "unavailable" }
-  | { status: "success"; discountApplied: boolean; paymentOptionApplied: boolean };
+  | { status: "success"; discountApplied: boolean; subsidyApplied: boolean; paymentOptionApplied: boolean };
 
 export const APPLY_OFFER_TEMPLATE_INITIAL_STATE = {
   status: "idle",

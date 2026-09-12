@@ -6,6 +6,7 @@ import type { OfferTemplateDto } from "@/lib/integrations/offers/template-contra
 import { listOfferTemplates } from "@/modules/offers";
 import { listPaymentOptions } from "@/modules/offers";
 import { listDiscountTemplates } from "@/modules/discounts";
+import { listSubsidyTemplates } from "@/modules/subsidies";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { DeniedState } from "../../_ui";
 import { OfferTemplateManager, type OfferTemplatePresetOption } from "./template-manager";
@@ -28,6 +29,7 @@ export default async function OfferTemplatesPage(
       templates: OfferTemplateDto[];
       paymentOptions: OfferTemplatePresetOption[];
       discountTemplates: OfferTemplatePresetOption[];
+      subsidyTemplates: OfferTemplatePresetOption[];
       canWrite: boolean;
     }
     | undefined;
@@ -45,6 +47,16 @@ export default async function OfferTemplatesPage(
           usable: option.archivedAt === null,
         })),
         discountTemplates: (await listDiscountTemplates(tx, ctx, { includeArchived: true })).map((template) => ({
+          id: template.id,
+          label: template.kind === "percent_bps" && template.percentBps !== null
+            ? `${template.name} (${(template.percentBps / 100).toLocaleString("de-DE")} %)`
+            : template.kind === "fix_cents" && template.amountCents !== null
+              ? `${template.name} (${(template.amountCents / 100).toLocaleString("de-DE", { style: "currency", currency: "EUR" })})`
+              : template.name,
+          detail: template.kind,
+          usable: template.active,
+        })),
+        subsidyTemplates: (await listSubsidyTemplates(tx, ctx, { includeArchived: true })).map((template) => ({
           id: template.id,
           label: template.kind === "percent_bps" && template.percentBps !== null
             ? `${template.name} (${(template.percentBps / 100).toLocaleString("de-DE")} %)`
@@ -78,8 +90,8 @@ export default async function OfferTemplatesPage(
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Angebots-Vorlagen</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Zahlart- und Rabatt-Presets je Vorlage — das Anwenden an einer
-          Angebotsvariante setzt die Zahlart und den Global-Rabatt in einem Schritt.
+          Zahlart-, Rabatt- und Förder-Presets je Vorlage — das Anwenden an einer
+          Angebotsvariante setzt Zahlart, Global-Rabatt und Förderung in einem Schritt.
         </p>
       </div>
 
@@ -88,6 +100,7 @@ export default async function OfferTemplatesPage(
         templates={result.templates}
         paymentOptions={result.paymentOptions}
         discountTemplates={result.discountTemplates}
+        subsidyTemplates={result.subsidyTemplates}
         canWrite={result.canWrite}
       />
     </main>

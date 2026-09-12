@@ -33,7 +33,7 @@ function Feedback({ state }: { state: OfferTemplateActionState }) {
           ? "Vorlage nicht gefunden."
           : state.status === "unauthenticated"
             ? "Bitte erneut anmelden."
-            : "Eingaben prüfen (Name plus mindestens ein Preset: Zahlart oder Rabatt).";
+            : "Eingaben prüfen (Name plus mindestens ein Preset: Zahlart, Rabatt oder Förderung).";
   return <p role="alert" className="mt-2 text-sm font-medium text-red-700">{message}</p>;
 }
 
@@ -41,23 +41,28 @@ function formatPresets(
   template: OfferTemplateDto,
   paymentOptions: OfferTemplatePresetOption[],
   discountTemplates: OfferTemplatePresetOption[],
+  subsidyTemplates: OfferTemplatePresetOption[],
 ): string {
   const parts: string[] = [];
   const payment = paymentOptions.find((option) => option.id === template.paymentOptionId);
   const discount = discountTemplates.find((entry) => entry.id === template.discountTemplateId);
+  const subsidy = subsidyTemplates.find((entry) => entry.id === template.subsidyTemplateId);
   parts.push(payment ? `Zahlart: ${payment.label}` : "Zahlart: –");
   parts.push(discount ? `Rabatt: ${discount.label}` : "Rabatt: –");
+  parts.push(subsidy ? `Förderung: ${subsidy.label}` : "Förderung: –");
   return parts.join(" · ");
 }
 
 // F16-06: Create-/Edit-Formular (Name, Zahlart-Preset, Rabatt-Preset;
 // mindestens eines belegt). Remount bei Erfolg/Datensatzwechsel (stale-DOM,
 // Muster Termin-Vorlagen).
+// F16-09: dritte Preset-Spalte Förder-Preset (optional, gleiche Usability).
 function TemplateForm({
   workspaceId,
   template,
   paymentOptions,
   discountTemplates,
+  subsidyTemplates,
   action,
   submitLabel,
 }: {
@@ -65,6 +70,7 @@ function TemplateForm({
   template?: OfferTemplateDto;
   paymentOptions: OfferTemplatePresetOption[];
   discountTemplates: OfferTemplatePresetOption[];
+  subsidyTemplates: OfferTemplatePresetOption[];
   action: (
     previous: OfferTemplateActionState,
     formData: FormData,
@@ -97,7 +103,7 @@ function TemplateForm({
           className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
         />
       </label>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label className="grid gap-1 text-sm font-semibold text-slate-800">
           Zahlart-Preset
           <select
@@ -122,6 +128,21 @@ function TemplateForm({
           >
             <option value="">Kein Rabatt</option>
             {discountTemplates.map((entry) => (
+              <option key={entry.id} value={entry.id} disabled={!entry.usable}>
+                {entry.label}{entry.usable ? "" : " (archiviert)"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm font-semibold text-slate-800">
+          Förder-Preset
+          <select
+            name="subsidyTemplateId"
+            defaultValue={template?.subsidyTemplateId ?? ""}
+            className={selectClass}
+          >
+            <option value="">Keine Förderung</option>
+            {subsidyTemplates.map((entry) => (
               <option key={entry.id} value={entry.id} disabled={!entry.usable}>
                 {entry.label}{entry.usable ? "" : " (archiviert)"}
               </option>
@@ -158,12 +179,14 @@ export function OfferTemplateManager({
   templates,
   paymentOptions,
   discountTemplates,
+  subsidyTemplates,
   canWrite,
 }: {
   workspaceId: string;
   templates: OfferTemplateDto[];
   paymentOptions: OfferTemplatePresetOption[];
   discountTemplates: OfferTemplatePresetOption[];
+  subsidyTemplates: OfferTemplatePresetOption[];
   canWrite: boolean;
 }) {
   const [archiveState, archiveDispatch] = useActionState(archiveOfferTemplateAction, initialState);
@@ -178,6 +201,7 @@ export function OfferTemplateManager({
               workspaceId={workspaceId}
               paymentOptions={paymentOptions}
               discountTemplates={discountTemplates}
+              subsidyTemplates={subsidyTemplates}
               action={createOfferTemplateAction}
               submitLabel="Anlegen"
             />
@@ -197,7 +221,7 @@ export function OfferTemplateManager({
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-700">
-              {formatPresets(template, paymentOptions, discountTemplates)}
+              {formatPresets(template, paymentOptions, discountTemplates, subsidyTemplates)}
             </p>
             {canWrite ? (
               <details className="mt-3">
@@ -210,6 +234,7 @@ export function OfferTemplateManager({
                     template={template}
                     paymentOptions={paymentOptions}
                     discountTemplates={discountTemplates}
+                    subsidyTemplates={subsidyTemplates}
                     action={updateOfferTemplateAction}
                     submitLabel="Speichern"
                   />

@@ -7,7 +7,6 @@ import {
 } from "../setup/pg-pool-drain";
 import {
   M2_01_E2E_CONTACT,
-  readM201Offer,
   readM201RevisionEvidence,
   type M201RuntimeState,
 } from "./m2-01-fixture";
@@ -176,6 +175,43 @@ async function createPlanningPreset(
   ).toHaveCount(1);
 }
 
+
+// Suite-robust: Das Seed-Projekt trägt höchstens EIN Angebot. Läuft ein
+// früherer Spec (F16-06-E2E-03) zuerst, ist das Projekt konvertiert — dann
+// das bestehende Angebot über die Übersicht öffnen statt neu anzulegen.
+// Revisionen immer relativ zur vorgefundenen Basis behaupten.
+async function openOfferForApply(
+  page: Page,
+  projectPath: string,
+  w3State: M201RuntimeState & { workspaceId: string; m201ProjectId: string },
+): Promise<{ offerId: string; variantId: string; baseRevision: number }> {
+  await page.goto(projectPath);
+  await expect(page.getByRole("heading", { name: M2_01_E2E_CONTACT, level: 1 })).toBeVisible();
+  const readyEntry = page.locator('[data-offer-create-state="ready"]');
+  if (await readyEntry.isVisible()) {
+    await readyEntry.getByLabel("Forecast netto in Euro (optional)").fill("12500");
+    await readyEntry.getByLabel("B2C-Preiszielgruppe ausdrücklich bestätigen").check();
+    await readyEntry.getByLabel("Steuerentwurf").selectOption("standard_19");
+    await readyEntry.getByRole("button", { name: "Angebot erstellen", exact: true }).click();
+    await page.waitForURL((url) =>
+      /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
+      && url.searchParams.has("variante"));
+  } else {
+    await expect(page.locator('[data-offer-create-state="converted"]')).toBeVisible();
+    await page.getByRole("link", { name: "Angebotsübersicht öffnen", exact: true }).click();
+    await page.waitForURL((url) => /^\/w\/[0-9a-f-]+\/angebote\/?$/u.test(url.pathname));
+    await page.getByRole("link", { name: "Öffnen", exact: true }).first().click();
+    await page.waitForURL((url) =>
+      /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
+      && url.searchParams.has("variante"));
+  }
+  const current = new URL(page.url());
+  const offerId = current.pathname.split("/").pop()!;
+  const variantId = current.searchParams.get("variante")!;
+  const evidence = await readM201RevisionEvidence(w3State, offerId, variantId);
+  return { offerId, variantId, baseRevision: evidence.revision };
+}
+
 test.describe("F16-08 Planungs-Vorlagen", () => {
   test("F1608-E2E-01: Admin verwaltet Modus-Presets; Viewer read-only", async ({ page }) => {
     test.setTimeout(180_000);
@@ -258,22 +294,9 @@ test.describe("F16-08 Planungs-Vorlagen", () => {
     await createPlanningPreset(page, data.w3WorkspaceId, quickName, "quick");
     await createPlanningPreset(page, data.w3WorkspaceId, d2Name, "2d");
 
-    const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f1606ProjectId}`;
-    await page.goto(projectPath);
-    await expect(page.getByRole("heading", { name: M2_01_E2E_CONTACT, level: 1 })).toBeVisible();
-    const createEntry = page.locator('[data-offer-create-state="ready"]');
-    await expect(createEntry).toBeVisible();
-    await createEntry.getByLabel("Forecast netto in Euro (optional)").fill("12500");
-    await createEntry.getByLabel("B2C-Preiszielgruppe ausdrücklich bestätigen").check();
-    await createEntry.getByLabel("Steuerentwurf").selectOption("standard_19");
-    await createEntry.getByRole("button", { name: "Angebot erstellen", exact: true }).click();
-    await page.waitForURL((url) =>
-      /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
-      && url.searchParams.has("variante"));
     const w3State = { ...data, workspaceId: data.w3WorkspaceId, m201ProjectId: data.f1606ProjectId };
-    const initial = await readM201Offer(w3State);
-    const variantId = new URL(page.url()).searchParams.get("variante");
-    expect(variantId).toBe(initial.variantId);
+    const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f1606ProjectId}`;
+    const { offerId, variantId, baseRevision } = await openOfferForApply(page, projectPath, w3State);
 
     await expect(page.locator('[data-offer-detail-state="loaded"]')).toBeVisible();
     // Aktuellen Modus lesen, Gegen-Vorlage wählen (kein No-op).
@@ -288,12 +311,12 @@ test.describe("F16-08 Planungs-Vorlagen", () => {
     await applyPanel.getByRole("button", { name: "Vorlage anwenden", exact: true }).click();
     await expect(applyPanel.getByText(`Planungsmodus gesetzt (${MODE_OPTION[target.mode]}).`, { exact: true })).toBeVisible();
     await expect.poll(async () => (
-      await readM201RevisionEvidence(w3State, initial.offerId, variantId!)
+      await readM201RevisionEvidence(w3State, offerId, variantId)
     ).revision, {
-      message: "Das Vorlagen-Apply muss Revision 2 dauerhaft persistieren.",
+      message: "Das Vorlagen-Apply muss genau eine Revision dauerhaft persistieren.",
       timeout: 15_000,
-    }).toBe(2);
-    const evidence = await readM201RevisionEvidence(w3State, initial.offerId, variantId!);
+    }).toBe(baseRevision + 1);
+    const evidence = await readM201RevisionEvidence(w3State, offerId, variantId);
     const snapshot = JSON.parse(evidence.snapshotText) as { planningMode?: unknown };
     expect(snapshot.planningMode).toBe(target.mode);
     expect(errors, "Browser-Konsole beim Anwenden").toEqual([]);

@@ -291,6 +291,7 @@ export async function applyOfferTemplateEditorAction(
     return {
       status: "success",
       discountApplied: result.discountApplied,
+      subsidyApplied: result.subsidyApplied,
       paymentOptionApplied: result.paymentOptionApplied,
     };
   } catch (error) {

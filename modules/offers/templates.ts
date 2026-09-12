@@ -3,6 +3,8 @@
 // Keine neuen Permissions: discount_template.read/discount_template.write
 // für die Verwaltung; den Angebots-Schreibschutz (project.write) prüft der
 // Angebots-Pfad selbst (setVariantPaymentOption/reviseOfferVariant).
+// F16-09: drittes Preset Förder-Vorlage (subsidy_template), gleiche
+// Leseschranke (subsidy_template.read, Viewer-ok), ein Revisions-Call.
 import { sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
@@ -34,7 +36,22 @@ import {
   PlanningTemplateNotFoundError,
   PlanningTemplateValidationError,
 } from "@/modules/planning";
-import { applyDiscountTemplateToOfferGlobal } from "@/modules/discounts";
+import {
+  DISCOUNT_KIND_FIX,
+  DISCOUNT_KIND_PERCENT,
+} from "@/lib/integrations/discounts/contract";
+import {
+  SUBSIDY_KIND_FIX,
+  SUBSIDY_KIND_PERCENT,
+} from "@/lib/integrations/subsidies/contract";
+import {
+  DiscountTemplateNotFoundError,
+  DiscountTemplateValidationError,
+} from "@/modules/discounts";
+import {
+  SubsidyTemplateNotFoundError,
+  SubsidyTemplateValidationError,
+} from "@/modules/subsidies";
 import {
   reviseOfferVariant,
   setVariantPaymentOption,
@@ -92,6 +109,7 @@ type TemplateRow = {
   name: string;
   payment_option_id: string | null;
   discount_template_id: string | null;
+  subsidy_template_id: string | null;
   position: number;
   active: boolean;
   created_at: string;
@@ -100,9 +118,20 @@ type TemplateRow = {
 
 const TEMPLATE_SELECT = sql`
   select id, name, payment_option_id, discount_template_id,
-         position, active, created_at, updated_at
+         subsidy_template_id, position, active, created_at, updated_at
     from offer_template
 `;
+
+// Aktive Preset-Zeile aus discount_template/subsidy_template (gleiche
+// Spaltenform beider F16.3-Tabellen): nur aktive Vorlagen sind anwendbar,
+// der Aufrufer wirft die NotFound-Fehler der Fachmodule.
+type PresetTemplateRow = {
+  id: string;
+  kind: string;
+  amount_cents: number | null;
+  percent_bps: number | null;
+  cap_cents: number | null;
+};
 
 function toDto(row: TemplateRow, canWrite: boolean): OfferTemplateDto {
   return offerTemplateDtoSchema.parse({
@@ -111,6 +140,7 @@ function toDto(row: TemplateRow, canWrite: boolean): OfferTemplateDto {
     name: row.name,
     paymentOptionId: row.payment_option_id,
     discountTemplateId: row.discount_template_id,
+    subsidyTemplateId: row.subsidy_template_id,
     position: row.position,
     active: row.active,
     createdAt: row.created_at,
@@ -127,6 +157,7 @@ async function assertPresetReferences(
   ctx: ServiceCtx,
   paymentOptionId: string | null | undefined,
   discountTemplateId: string | null | undefined,
+  subsidyTemplateId: string | null | undefined,
 ): Promise<void> {
   if (paymentOptionId != null) {
     const option = await tx.execute<{ id: string }>(sql`
@@ -145,6 +176,15 @@ async function assertPresetReferences(
        limit 1
     `);
     if (!template.rows[0]) throw new OfferTemplateValidationError("Rabatt-Vorlage ist nicht belegt");
+  }
+  if (subsidyTemplateId != null) {
+    const template = await tx.execute<{ id: string }>(sql`
+      select id from subsidy_template
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${subsidyTemplateId}::uuid
+       limit 1
+    `);
+    if (!template.rows[0]) throw new OfferTemplateValidationError("Förder-Vorlage ist nicht belegt");
   }
 }
 
@@ -174,25 +214,26 @@ export async function createOfferTemplate(
   const parsed = createOfferTemplateCommandSchema.safeParse(input);
   if (!parsed.success) throw new OfferTemplateValidationError();
   const command = parsed.data;
-  await assertPresetReferences(tx, ctx, command.paymentOptionId, command.discountTemplateId);
+  await assertPresetReferences(tx, ctx, command.paymentOptionId, command.discountTemplateId, command.subsidyTemplateId);
 
   let row: TemplateRow;
   try {
     const inserted = await tx.execute<TemplateRow>(sql`
       insert into offer_template (
         workspace_id, name, name_normalized, payment_option_id,
-        discount_template_id, position, created_by
+        discount_template_id, subsidy_template_id, position, created_by
       ) values (
         ${ctx.workspaceId}::uuid,
         ${command.name},
         ${normalizeOfferTemplateName(command.name)},
         ${command.paymentOptionId ?? null}::uuid,
         ${command.discountTemplateId ?? null}::uuid,
+        ${command.subsidyTemplateId ?? null}::uuid,
         ${command.position ?? 0},
         ${ctx.actor}::uuid
       )
       returning id, name, payment_option_id, discount_template_id,
-                position, active, created_at, updated_at
+                subsidy_template_id, position, active, created_at, updated_at
     `);
     row = inserted.rows[0]!;
   } catch (error) {
@@ -229,7 +270,7 @@ export async function updateOfferTemplate(
   const parsed = updateOfferTemplateCommandSchema.safeParse(input);
   if (!parsed.success) throw new OfferTemplateValidationError();
   const command = parsed.data;
-  await assertPresetReferences(tx, ctx, command.paymentOptionId, command.discountTemplateId);
+  await assertPresetReferences(tx, ctx, command.paymentOptionId, command.discountTemplateId, command.subsidyTemplateId);
 
   let rows: TemplateRow[];
   try {
@@ -239,13 +280,14 @@ export async function updateOfferTemplate(
              name_normalized = ${normalizeOfferTemplateName(command.name)},
              payment_option_id = ${command.paymentOptionId ?? null}::uuid,
              discount_template_id = ${command.discountTemplateId ?? null}::uuid,
+             subsidy_template_id = ${command.subsidyTemplateId ?? null}::uuid,
              position = ${command.position},
              updated_by = ${ctx.actor}::uuid,
              updated_at = statement_timestamp()
        where workspace_id = ${ctx.workspaceId}::uuid
          and id = ${command.id}::uuid
       returning id, name, payment_option_id, discount_template_id,
-                position, active, created_at, updated_at
+                subsidy_template_id, position, active, created_at, updated_at
     `);
     rows = updated.rows;
   } catch (error) {
@@ -293,7 +335,7 @@ async function setTemplateActive(
          and id = ${command.id}::uuid
          and active is distinct from ${command.active}
       returning id, name, payment_option_id, discount_template_id,
-                position, active, created_at, updated_at
+                subsidy_template_id, position, active, created_at, updated_at
     `);
     rows = updated.rows;
   } catch (error) {
@@ -352,13 +394,20 @@ export type ApplyOfferTemplateResult = OfferMutationResult & {
   templateId: string;
   paymentOptionApplied: boolean;
   discountApplied: boolean;
+  subsidyApplied: boolean;
 };
 
-// Vorlage an einer Variante anwenden: zuerst der Rabatt (revisionsgeführt,
-// fail-closed bei veralteter Revision), danach die Zahlart (ohne
-// Revisionsbindung). Archivierte Zahlarten / inaktive Rabatt-Vorlagen sind
-// nicht anwendbar — das melden die Angebots-Pfade selbst (Offer-Fehler
-// werden als Vorlage-Fehler transparent durchgereicht).
+// Vorlage an einer Variante anwenden: Rabatt + Förderung in EINER Revision
+// (revisionsgeführt, fail-closed bei veralteter Revision), danach die
+// Zahlart (ohne Revisionsbindung, kein Revisionsbump). Eine Revision je
+// Anwenden ist kein Stil, sondern DB-Invariant: der Deferred-Mirror-Trigger
+// verlangt current_revision = höchste Revision je Transaktion, zwei Revises
+// in einer Tx committen nie. Rabatt und Förderung teilen sich je Kind einen
+// Slot (Prozent → globalDiscountBps, Fix → globalFixDiscountCents): Ordnung
+// Rabatt zuerst, Förderung danach — der spätere Schritt gewinnt, Flags +
+// Payload machen das sichtbar. Archivierte Zahlarten / inaktive
+// Rabatt-/Förder-Vorlagen sind nicht anwendbar (NotFound der Fachmodule,
+// Fehlermeldungen wörtlich wie dort).
 export async function applyOfferTemplate(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -378,16 +427,67 @@ export async function applyOfferTemplate(
   const template = found.rows[0];
   if (!template) throw new OfferTemplateNotFoundError();
 
-  let result: OfferMutationResult | null = null;
+  type GlobalOperation =
+    | { operation: "set_global_discount"; discountBps: number; capCents: number | null }
+    | { operation: "set_global_fix_discount"; fixDiscountCents: number };
+  const operations: GlobalOperation[] = [];
   let discountApplied = false;
+  let subsidyApplied = false;
   if (template.discount_template_id !== null) {
-    result = await applyDiscountTemplateToOfferGlobal(tx, ctx, {
-      templateId: template.discount_template_id,
+    const found = await tx.execute<PresetTemplateRow>(sql`
+      select id, kind, amount_cents, percent_bps, cap_cents
+        from discount_template
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${template.discount_template_id}::uuid
+         and active = true
+       limit 1
+    `);
+    const row = found.rows[0];
+    if (!row) throw new DiscountTemplateNotFoundError(template.discount_template_id);
+    if (row.kind === DISCOUNT_KIND_FIX) {
+      if (row.amount_cents === null) {
+        throw new DiscountTemplateValidationError("Fix-Vorlage ohne Betrag ist nicht anwendbar");
+      }
+      operations.push({ operation: "set_global_fix_discount", fixDiscountCents: row.amount_cents });
+    } else if (row.kind === DISCOUNT_KIND_PERCENT && row.percent_bps !== null) {
+      operations.push({ operation: "set_global_discount", discountBps: row.percent_bps, capCents: row.cap_cents });
+    } else {
+      throw new DiscountTemplateValidationError("nur Prozent-Vorlagen sind global anwendbar");
+    }
+    discountApplied = true;
+  }
+  if (template.subsidy_template_id !== null) {
+    const found = await tx.execute<PresetTemplateRow>(sql`
+      select id, kind, amount_cents, percent_bps, cap_cents
+        from subsidy_template
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${template.subsidy_template_id}::uuid
+         and active = true
+       limit 1
+    `);
+    const row = found.rows[0];
+    if (!row) throw new SubsidyTemplateNotFoundError(template.subsidy_template_id);
+    if (row.kind === SUBSIDY_KIND_FIX) {
+      if (row.amount_cents === null) {
+        throw new SubsidyTemplateValidationError("Fix-Vorlage ohne Betrag ist nicht anwendbar");
+      }
+      operations.push({ operation: "set_global_fix_discount", fixDiscountCents: row.amount_cents });
+    } else if (row.kind === SUBSIDY_KIND_PERCENT && row.percent_bps !== null) {
+      operations.push({ operation: "set_global_discount", discountBps: row.percent_bps, capCents: row.cap_cents });
+    } else {
+      throw new SubsidyTemplateValidationError("nur Prozent-Vorlagen sind global anwendbar");
+    }
+    subsidyApplied = true;
+  }
+  let result: OfferMutationResult | null = null;
+  if (operations.length > 0) {
+    result = await reviseOfferVariant(tx, ctx, {
+      schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
       offerId: command.offerId,
       variantId: command.variantId,
       expectedRevision: command.expectedRevision,
+      operations,
     });
-    discountApplied = true;
   }
   let paymentOptionApplied = false;
   if (template.payment_option_id !== null) {
@@ -407,9 +507,9 @@ export async function applyOfferTemplate(
     aggregateId: template.id,
     eventType: "offer_template.applied",
     actor: ctx.actor,
-    payload: { offerId: result.offerId, variantId: result.variantId, discountApplied, paymentOptionApplied },
+    payload: { offerId: result.offerId, variantId: result.variantId, discountApplied, subsidyApplied, paymentOptionApplied },
   });
-  return { ...result, templateId: template.id, paymentOptionApplied, discountApplied };
+  return { ...result, templateId: template.id, paymentOptionApplied, discountApplied, subsidyApplied };
 }
 
 // F16-08: Planungs-Vorlage an einer Variante anwenden (Modus-Preset via

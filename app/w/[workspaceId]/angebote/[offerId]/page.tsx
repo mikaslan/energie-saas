@@ -288,11 +288,13 @@ function projectOfferDetailView(
   }[],
   // F16-06: aktive Angebots-Vorlagen (Zahlart-/Rabatt-Presets) für das
   // Anwenden an der aktiven Variante. Nur mit discount_template.read.
+  // F16-09: zusätzlich Förder-Preset-Kennzeichen je Vorlage.
   offerTemplates: readonly {
     id: string;
     name: string;
     hasPaymentOption: boolean;
     hasDiscount: boolean;
+    hasSubsidy: boolean;
   }[],
   // F16-08: aktive Planungs-Vorlagen (Modus-Presets) für das Anwenden
   // an der aktiven Variante. Nur mit planning.settings.read.
@@ -579,11 +581,13 @@ export default async function OfferDetailPage(
       archivedAt: string | null;
     }[];
     // F16-06: aktive Angebots-Vorlagen für das Anwenden an der Variante.
+    // F16-09: zusätzlich Förder-Preset-Kennzeichen je Vorlage.
     offerTemplates: {
       id: string;
       name: string;
       hasPaymentOption: boolean;
       hasDiscount: boolean;
+      hasSubsidy: boolean;
     }[];
     // F16-08: aktive Planungs-Vorlagen für das Anwenden an der Variante.
     planningTemplates: {
@@ -643,6 +647,7 @@ export default async function OfferDetailPage(
           name: string;
           hasPaymentOption: boolean;
           hasDiscount: boolean;
+          hasSubsidy: boolean;
         }[] = [];
         const planningTemplates: {
           id: string;
@@ -742,6 +747,7 @@ export default async function OfferDetailPage(
                 name: template.name,
                 hasPaymentOption: template.paymentOptionId !== null,
                 hasDiscount: template.discountTemplateId !== null,
+                hasSubsidy: template.subsidyTemplateId !== null,
               });
             }
           }

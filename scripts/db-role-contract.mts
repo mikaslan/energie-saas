@@ -667,7 +667,12 @@ const BLOCK_TEAM_ASSIGNMENT_RELATIONS = [
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
-  // F10-12: Download-Protokoll (DEFINER schreibt, Runtime liest).
+] as const;
+
+// F10-12 (0137): eigene Menge — alte Prefixe (z. B. m204-Test mit 0..76)
+// kennen das Download-Protokoll nicht; die F10-01-Kernmenge bleibt stabil.
+// Download-Protokoll (DEFINER schreibt, Runtime liest).
+const PORTAL_DOWNLOAD_LOG_RELATIONS = [
   "portal_download_log",
 ] as const;
 
@@ -2732,8 +2737,7 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     await client.query(`
       revoke all privileges on
         public.portal_invite,
-        public.portal_view_log,
-        public.portal_download_log
+        public.portal_view_log
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.portal_invite to app_runtime;
@@ -2741,8 +2745,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       -- sonst koennte jeder Viewer View-Counts aufblaehen). Einziger
       -- Schreiber ist resolve_portal_public_view (SECURITY DEFINER).
       grant select on public.portal_view_log to app_runtime;
-      -- F10-12 portal_download_log: gleiche Form (einziger Schreiber ist
-      -- read_portal_issuance_artifact, SECURITY DEFINER).
+    `);
+  }
+
+  const hasPortalDownloadLog = await hasAtomicPublicRelationSet(
+    client,
+    PORTAL_DOWNLOAD_LOG_RELATIONS,
+    "Rollen-ACL-Manifest: F10-12-Download-Protokoll",
+  );
+  if (hasPortalDownloadLog) {
+    await client.query(`
+      revoke all privileges on
+        public.portal_download_log
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      -- F10-12 portal_download_log: gleiche Form wie view_log (einziger
+      -- Schreiber ist read_portal_issuance_artifact, SECURITY DEFINER).
       grant select on public.portal_download_log to app_runtime
     `);
   }
@@ -4505,6 +4523,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F10-01-Kundenportal",
   );
 
+  const hasPortalDownloadLogRelations = await hasAtomicPublicRelationSet(
+    client,
+    PORTAL_DOWNLOAD_LOG_RELATIONS,
+    "Rollenvertrag: F10-12-Download-Protokoll",
+  );
+
   const hasChecklistTemplates = await hasAtomicPublicRelationSet(
     client,
     CHECKLIST_TEMPLATE_RELATIONS,
@@ -4927,6 +4951,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPortalDownloadLogRelations ? PORTAL_DOWNLOAD_LOG_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? [`r:${PORTAL_LOCATOR_RELATION}`] : []),
@@ -6255,6 +6282,9 @@ export async function verifyRoleContract(
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasPortalDownloadLogRelations ? PORTAL_DOWNLOAD_LOG_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? [`${PORTAL_LOCATOR_RELATION}:false:false`] : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
@@ -6699,6 +6729,8 @@ export async function verifyRoleContract(
           "portal_view_log:portal_view_log_actor_insert:3fa580d9e09fdd99cd325f6770593b1c4c45de357414455f0b44c2e2619323f8",
           "portal_view_log:portal_view_log_actor_select:67613a5e7d2dbe2e22b0bef7c928c0b2b7f1b93e18d3911aabfc85a87ab4e44c",
           "portal_view_log:tenant_isolation:c9b3c9ffd92590268fcdb651f22801033f05c0ef9a5dc801ed517b4431478bca",
+        ] : []),
+        ...(hasPortalDownloadLogRelations ? [
           // F10-12 (0137): Download-Protokoll (Hash per Embedded-Probe
           // geerntet, Muster file_request/portal_view_log).
           "portal_download_log:tenant_isolation:9fa677bc5364b066c5506a352bfc6fec403781e5b65a294eedfa9f438bfb96cc",
@@ -7327,6 +7359,11 @@ export async function verifyRoleContract(
         "app_runtime:portal_invite:SELECT:app_owner:false",
         "app_runtime:portal_invite:UPDATE:app_owner:false",
         "app_runtime:portal_view_log:SELECT:app_owner:false",
+      ] : []),
+      ...(hasPortalDownloadLogRelations ? [
+        // F10-12: Download-Protokoll (Runtime liest, einziger Schreiber
+        // ist read_portal_issuance_artifact, SECURITY DEFINER).
+        "app_runtime:portal_download_log:SELECT:app_owner:false",
       ] : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,

@@ -8,6 +8,9 @@ import { z } from "zod";
 // Archiv statt Delete (F7.3/F16.3-Muster). Keine neuen Permissions:
 // discount_template.read/discount_template.write; den Angebots-Schreibschutz
 // (project.write) prüft der Angebots-Pfad selbst.
+// F16-09 zusätzlich: Förder-Vorlage (subsidy_template) als drittes
+// optionales Preset, angewandt zwischen Rabatt und Zahlart mit
+// Revisionsverkettung (geteilte Slots: späterer Schritt gewinnt).
 
 export const OFFER_TEMPLATE_SCHEMA_VERSION = 1;
 
@@ -21,8 +24,8 @@ const cleanName = z
 
 const optionalUuid = z.string().uuid().nullish();
 
-const presetRefinement = (value: { paymentOptionId?: string | null; discountTemplateId?: string | null }) =>
-  value.paymentOptionId != null || value.discountTemplateId != null;
+const presetRefinement = (value: { paymentOptionId?: string | null; discountTemplateId?: string | null; subsidyTemplateId?: string | null }) =>
+  value.paymentOptionId != null || value.discountTemplateId != null || value.subsidyTemplateId != null;
 
 export const offerTemplateDtoSchema = z.object({
   schemaVersion: z.literal(OFFER_TEMPLATE_SCHEMA_VERSION),
@@ -30,6 +33,7 @@ export const offerTemplateDtoSchema = z.object({
   name: z.string(),
   paymentOptionId: z.string().uuid().nullable(),
   discountTemplateId: z.string().uuid().nullable(),
+  subsidyTemplateId: z.string().uuid().nullable(),
   position: z.number().int().min(0),
   active: z.boolean(),
   createdAt: z.string(),
@@ -43,6 +47,7 @@ export const createOfferTemplateCommandSchema = z.object({
   name: cleanName,
   paymentOptionId: optionalUuid,
   discountTemplateId: optionalUuid,
+  subsidyTemplateId: optionalUuid,
   position: z.number().int().min(0).optional(),
 }).refine(presetRefinement, { message: "mindestens ein Preset" });
 export type CreateOfferTemplateCommand = z.infer<typeof createOfferTemplateCommandSchema>;
@@ -53,6 +58,7 @@ export const updateOfferTemplateCommandSchema = z.object({
   name: cleanName,
   paymentOptionId: optionalUuid,
   discountTemplateId: optionalUuid,
+  subsidyTemplateId: optionalUuid,
   position: z.number().int().min(0),
 }).refine(presetRefinement, { message: "mindestens ein Preset" });
 export type UpdateOfferTemplateCommand = z.infer<typeof updateOfferTemplateCommandSchema>;
