@@ -138,17 +138,25 @@ test("F1.8-E2E-01: Editor legt Quelle an, lädt sie persistiert, archiviert und 
   await expect(page.getByRole("heading", { name: "Lead-Quellen", level: 1 })).toBeVisible();
   await expect(page.getByText("Noch keine aktiven Lead-Quellen angelegt.")).toBeVisible();
 
-  await page.getByLabel("Name").fill("wmee-rechner-v5");
-  await page.getByLabel("Bereich").selectOption("residential");
-  await page.getByLabel("Farbe").fill("#3B82F6");
-  await page.getByRole("button", { name: "Anlegen" }).click();
+  // Create-Formular scopen: Die Kampagnen-Sektion (F12-01) trägt eigene
+  // „Name"-/„Anlegen"-Controls auf derselben Seite.
+  const createForm = page.getByTestId("lead-source-create-form");
+  await createForm.getByLabel("Name").fill("wmee-rechner-v5");
+  await createForm.getByLabel("Bereich").selectOption("residential");
+  await createForm.getByLabel("Farbe").fill("#3B82F6");
+  await createForm.getByRole("button", { name: "Anlegen" }).click();
 
   await expect(page.getByText("Lead-Quelle angelegt.", { exact: true })).toBeVisible();
-  await expect(page.getByText("wmee-rechner-v5", { exact: true })).toBeVisible();
+  // Quellenname auf die Quellenliste scopen: Das Kampagnen-Formular
+  // (F12-01) führt dieselbe Quelle als Select-Option.
+  const activeSources = page.locator("section", {
+    has: page.getByRole("heading", { name: "Aktive Quellen" }),
+  });
+  await expect(activeSources.getByText("wmee-rechner-v5", { exact: true })).toBeVisible();
 
   // Persistenz über Reload.
   await page.reload();
-  await expect(page.getByText("wmee-rechner-v5", { exact: true })).toBeVisible();
+  await expect(activeSources.getByText("wmee-rechner-v5", { exact: true })).toBeVisible();
 
   // Bearbeiten: Bereich ändern (Felder auf den Listeneintrag scopen —
   // das Anlegeformular trägt ebenfalls ein „Name"-Feld).
@@ -189,7 +197,12 @@ test("F1.8-E2E-02: Viewer read-only, External fail-closed", async ({ page }) => 
   await page.goto(path);
   await loginWithRealOtp(page, data.viewerEmail, path);
   await expect(page.getByRole("heading", { name: "Lead-Quellen", level: 1 })).toBeVisible();
-  await expect(page.getByText(/Du hast Lesezugriff\./u)).toBeVisible();
+  // Hinweis auf die Quellen-Sektion scopen (Kampagnen-Sektion zeigt denselben
+  // Hinweis für Viewer).
+  const sourceSection = page.locator("section", {
+    has: page.getByRole("heading", { name: "Neue Lead-Quelle" }),
+  });
+  await expect(sourceSection.getByText(/Du hast Lesezugriff\./u)).toBeVisible();
   await expect(page.getByRole("button", { name: "Anlegen" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Archivieren" })).toHaveCount(0);
 

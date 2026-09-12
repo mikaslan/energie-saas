@@ -102,7 +102,7 @@ export function LeadSourceManager({
             Du hast Lesezugriff. Zum Anlegen brauchst du Editor-Rechte.
           </p>
         ) : (
-          <form action={createDispatch}>
+          <form action={createDispatch} data-testid="lead-source-create-form">
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <div className="grid gap-4 sm:grid-cols-3">
               <label className="block">

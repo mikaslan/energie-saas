@@ -119,9 +119,15 @@ test("DASH-08: angelegte Lead-Quelle erscheint als Dashboard-Quellenkarte", asyn
   await page.goto(settingsPath);
   await loginWithRealOtp(page, state().editorEmail, settingsPath);
 
-  await page.getByLabel("Name").fill("Messe-Portal");
-  await page.getByRole("button", { name: "Anlegen" }).click();
-  await expect(page.getByText("Messe-Portal", { exact: true })).toBeVisible();
+  const createForm = page.getByTestId("lead-source-create-form");
+  await createForm.getByLabel("Name").fill("Messe-Portal");
+  await createForm.getByRole("button", { name: "Anlegen" }).click();
+  // Quellenname auf die Quellenliste scopen (Kampagnen-Select führt ihn
+  // als Option).
+  const activeSources = page.locator("section", {
+    has: page.getByRole("heading", { name: "Aktive Quellen" }),
+  });
+  await expect(activeSources.getByText("Messe-Portal", { exact: true })).toBeVisible();
 
   await page.goto(dashboardPath);
   const sources = page.locator('[data-dashboard-sources="true"]');
