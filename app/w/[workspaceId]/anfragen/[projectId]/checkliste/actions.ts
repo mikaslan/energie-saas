@@ -13,9 +13,11 @@ import {
   ChecklistConflictError,
   ChecklistNotFoundError,
   ChecklistSegmentIncompleteError,
+  ChecklistSegmentStateError,
   ChecklistValidationError,
   completeChecklistSegment,
   saveProjectChecklist,
+  setChecklistItemIrrelevant,
   unlockChecklistSegment,
 } from "@/modules/checklists";
 
@@ -26,10 +28,11 @@ export type ChecklistActionState =
   | { status: "idle" }
   | {
       status: "success";
-      operation: "save" | "apply" | "complete" | "unlock";
+      operation: "save" | "apply" | "complete" | "unlock" | "mark" | "unmark";
       version: number;
     }
   | { status: "incomplete"; remainingRequired: number }
+  | { status: "state"; state: "completed" | "hidden" }
   | { status: "invalid" }
   | { status: "conflict"; currentVersion?: number }
   | { status: "not_found" }
@@ -231,4 +234,64 @@ export async function mutateChecklistSegmentAction(
   const operation = z.enum(["complete", "unlock"]).safeParse(formData.get("operation"));
   if (!operation.success) return { status: "invalid" };
   return mutateSegment(operation.data, formData);
+}
+
+// F7-04b: Punkt als irrelevant markieren (reason gesetzt) bzw. aufheben
+// (reason leer). Revalidiert wie complete/unlock; keine neue Permission.
+export async function setChecklistItemIrrelevantAction(
+  _previous: ChecklistActionState,
+  formData: FormData,
+): Promise<ChecklistActionState> {
+  const parsed = z.object({
+    workspaceId: workspaceIdSchema,
+    projectId: uuidSchema,
+    checklistId: uuidSchema,
+    segmentId: uuidSchema,
+    itemId: uuidSchema,
+    baseVersion: z.string().regex(/^\d+$/u).transform(Number).pipe(z.number().int().min(1)),
+    reason: z.string(),
+  }).safeParse({
+    workspaceId: formData.get("workspaceId"),
+    projectId: formData.get("projectId"),
+    checklistId: formData.get("checklistId"),
+    segmentId: formData.get("segmentId"),
+    itemId: formData.get("itemId"),
+    baseVersion: formData.get("baseVersion"),
+    reason: formData.get("reason"),
+  });
+  if (!parsed.success) return { status: "invalid" };
+
+  const { workspaceId, reason, ...command } = parsed.data;
+  const unmark = reason.trim() === "";
+  try {
+    const result = await authorizedAction(
+      workspaceId,
+      "checklist.write",
+      "project_checklist",
+      (tx, ctx) => setChecklistItemIrrelevant(tx, ctx, {
+        schemaVersion: CHECKLIST_SCHEMA_VERSION,
+        ...command,
+        reason: unmark ? null : reason,
+      }),
+    );
+    revalidatePath(`/w/${workspaceId}/anfragen/${command.projectId}/checkliste`);
+    return { status: "success", operation: unmark ? "unmark" : "mark", version: result.version };
+  } catch (error) {
+    if (error instanceof ChecklistSegmentStateError) {
+      // Die Op wirft nur completed/hidden; open faellt defensiv auf hidden.
+      return { status: "state", state: error.state === "open" ? "hidden" : error.state };
+    }
+    if (error instanceof ChecklistConflictError) {
+      return {
+        status: "conflict",
+        currentVersion: typeof error.detail === "number" ? error.detail : undefined,
+      };
+    }
+    if (error instanceof ChecklistNotFoundError) return { status: "not_found" };
+    if (error instanceof ChecklistValidationError) return { status: "invalid" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    console.error("[checkliste] setChecklistItemIrrelevantAction: unerwarteter Fehler", error);
+    return { status: "error" };
+  }
 }

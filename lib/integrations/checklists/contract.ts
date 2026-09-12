@@ -10,6 +10,9 @@ export const CHECKLIST_SCHEMA_VERSION = 2;
 export const CHECKLIST_BLOCK_NAME_MAX = 200;
 export const CHECKLIST_SEGMENT_NAME_MAX = 200;
 export const CHECKLIST_ITEM_TITLE_MAX = 500;
+// F7-04b: Begründungs-Maximum (UTF-16-Einheiten, spiegelt
+// public._f704_valid_clean_text(..., 500) in Migration 0127).
+export const CHECKLIST_ITEM_IRRELEVANT_REASON_MAX = 500;
 export const CHECKLIST_TITLE_MAX = 200;
 export const CHECKLIST_BLOCKS_MAX = 50;
 export const CHECKLIST_SEGMENTS_MAX = 100;
@@ -52,12 +55,24 @@ const cleanText = (max: number) =>
 const stableUuidSchema = z.uuid().transform((value) => value.toLowerCase());
 const checklistPositionSchema = z.number().int().min(0).max(CHECKLIST_POSITION_MAX);
 
+// F7-04b: „Als irrelevant markieren" (Katalog F7.2, mit Begründung).
+// Item-Attribut wie done/required (kein Siegel-Metadatum): Whole-Tree-
+// Saves erhalten es, setzen/löschen darf nur die dedizierte Op (serverseitige
+// Begründungspflicht). NULL/fehlend = relevant.
+export const checklistItemIrrelevantSchema = z.object({
+  reason: cleanText(CHECKLIST_ITEM_IRRELEVANT_REASON_MAX),
+  by: stableUuidSchema,
+  at: z.iso.datetime({ offset: true }),
+}).strict();
+export type ChecklistItemIrrelevantV1 = z.infer<typeof checklistItemIrrelevantSchema>;
+
 export const editableChecklistItemSchema = z.object({
   id: stableUuidSchema,
   title: cleanText(CHECKLIST_ITEM_TITLE_MAX),
   done: z.boolean(),
   required: z.boolean(),
   visible: z.boolean(),
+  irrelevant: checklistItemIrrelevantSchema.nullish(),
 }).strict();
 export type ChecklistItemV1 = z.infer<typeof editableChecklistItemSchema>;
 
@@ -222,6 +237,19 @@ export const mutateChecklistSegmentCommandSchema = z.object({
 }).strict();
 export type MutateChecklistSegmentCommand = z.infer<typeof mutateChecklistSegmentCommandSchema>;
 
+// F7-04b: reason = null → Markierung aufheben (idempotent); sonst setzen
+// (Begründungspflicht serverseitig in Migration 0127).
+export const setChecklistItemIrrelevantCommandSchema = z.object({
+  schemaVersion: z.literal(CHECKLIST_SCHEMA_VERSION),
+  checklistId: stableUuidSchema,
+  projectId: stableUuidSchema,
+  segmentId: stableUuidSchema,
+  itemId: stableUuidSchema,
+  baseVersion: z.number().int().min(1),
+  reason: z.string().max(CHECKLIST_ITEM_IRRELEVANT_REASON_MAX * 4).nullable(),
+}).strict();
+export type SetChecklistItemIrrelevantCommand = z.infer<typeof setChecklistItemIrrelevantCommandSchema>;
+
 export function withOpenSegmentMetadata(
   blocks: EditableChecklistBlocksV2,
 ): ChecklistBlocksV1 {
@@ -256,7 +284,11 @@ export function toEditableChecklistBlocks(
 export function segmentRequiredRemaining(
   segment: Pick<ChecklistSegmentV1, "items">,
 ): number {
-  return segment.items.filter((item) => item.visible && item.required && !item.done).length;
+  // F7-04b: irrelevant markierte Pflichtpunkte zählen nicht (Gate-Skip
+  // spiegelt Migration 0127 im Complete-Gate).
+  return segment.items.filter(
+    (item) => item.visible && item.required && !item.done && item.irrelevant == null,
+  ).length;
 }
 
 export function segmentItemProgress(

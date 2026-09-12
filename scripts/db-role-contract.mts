@@ -315,6 +315,7 @@ const F704_CHECKLIST_RUNTIME_ROUTINES = [
   "public.save_project_checklist_v2(uuid, uuid, uuid, text, text, integer, jsonb)",
   "public.complete_project_checklist_segment(uuid, uuid, uuid, uuid, integer)",
   "public.unlock_project_checklist_segment(uuid, uuid, uuid, uuid, integer)",
+  "public.set_project_checklist_item_irrelevant(uuid, uuid, uuid, uuid, uuid, integer, text)",
 ] as const;
 const F704_CHECKLIST_PRIVATE_ROUTINES = [
   "public._f704_valid_clean_text(text, integer)",
@@ -467,10 +468,11 @@ const F704_CHECKLIST_FUNCTION_SHA256 = {
   assertWorkspace: "b726ed4b961b6e583e11179e32a8f34a10e76330352e5fc5c54c86cc6bc9b633",
   checklistStructure: "de1708bfbcaf0df724181bcae5fa112a3d3505c168745977dd0193816e1ced56",
   cleanText: "f29466a887843140336a98a1398b916d4d6ec3554f1db864dad1a5b9c5fba345",
-  completeSegment: "76a7a2709c7cb01c2a49ae4ebd859d81db50308d067d4918850cfaab86d35c98",
+  completeSegment: "4943533f7dc2c774b86b135fe69bc081719148e258c0907739ce1489419e1336",
   saveChecklist: "8090f3ff4e3a3b79a513147a4cc2d3fd03f2a270757c4a7f6309a4f263aed470",
+  setIrrelevant: "e37e70b04c9c0ae912fd58ab4349b6063b34c96a50da7aa684a462fe56f536f2",
   unlockSegment: "328076b50403adaa2a571f9b640058b49122d2bb9978ad969ad0048590588f27",
-  validBlocks: "d989d14f05b07456a37fa5c9393bfc9a1726f245ca3743b7e0387a86e6c8ba92",
+  validBlocks: "ac0c941627a25eb6cedbfbaf29029cddf9b0d0f4b57c208a49b427413c991bd7",
 } as const;
 const F704_CHECKLIST_FUNCTION_SECURITY_ROWS = [
   "_f704_actor_checklist_role(uuid):text:app_owner:plpgsql:f:s:" +
@@ -494,6 +496,9 @@ const F704_CHECKLIST_FUNCTION_SECURITY_ROWS = [
   "save_project_checklist_v2(uuid, uuid, uuid, text, text, integer, jsonb):jsonb:" +
     "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
     F704_CHECKLIST_FUNCTION_SHA256.saveChecklist,
+  "set_project_checklist_item_irrelevant(uuid, uuid, uuid, uuid, uuid, integer, text):jsonb:" +
+    "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+    F704_CHECKLIST_FUNCTION_SHA256.setIrrelevant,
   "unlock_project_checklist_segment(uuid, uuid, uuid, uuid, integer):jsonb:" +
     "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
     F704_CHECKLIST_FUNCTION_SHA256.unlockSegment,

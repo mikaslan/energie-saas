@@ -218,10 +218,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0120 F10-10 Datei-Anfragen Allow-many,
     // 0121 F8-07 Scheme-Modus, 0122 F8-08 Rest-Schlussrechnung,
     // 0123 F13-11 Planungsservice, 0124 F7-12 Nachbestellungen,
-    // 0125 F12-01 Funnel-Kampagnen, 0126 F12-02 Auto-Routing).
+    // 0125 F12-01 Funnel-Kampagnen, 0126 F12-02 Auto-Routing,
+    // 0127 F7-04b Irrelevant-Markierung).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 126,
-      tag: "0126_f12_02_auto_routing",
+      idx: 127,
+      tag: "0127_f704b_item_irrelevant",
     });
   });
 

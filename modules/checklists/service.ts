@@ -10,16 +10,19 @@ import {
   mutateChecklistSegmentCommandSchema,
   projectChecklistDtoSchema,
   saveProjectChecklistCommandSchema,
+  setChecklistItemIrrelevantCommandSchema,
   withOpenSegmentMetadata,
   type ChecklistBlocksV1,
   type MutateChecklistSegmentCommand,
   type ProjectChecklistDto,
   type SaveProjectChecklistCommand,
+  type SetChecklistItemIrrelevantCommand,
 } from "@/lib/integrations/checklists/contract";
 import {
   ChecklistConflictError,
   ChecklistNotFoundError,
   ChecklistSegmentIncompleteError,
+  ChecklistSegmentStateError,
   ChecklistValidationError,
 } from "./errors";
 
@@ -76,7 +79,16 @@ const completionRowsSchema = z.array(z.object({
 }).strict());
 
 const capsuleResultSchema = z.object({
-  status: z.enum(["created", "updated", "completed", "unlocked", "replayed"]),
+  status: z.enum([
+    "created",
+    "updated",
+    "completed",
+    "unlocked",
+    "replayed",
+    "marked",
+    "unmarked",
+    "unchanged",
+  ]),
   checklistId: z.uuid(),
   version: z.number().int().min(1),
 }).passthrough();
@@ -279,6 +291,46 @@ export async function completeChecklistSegment(
     const pg = postgresError(error);
     if (pg.code === "23514" && pg.detail && /^\d+$/u.test(pg.detail)) {
       throw new ChecklistSegmentIncompleteError(Number(pg.detail));
+    }
+    throwCapsuleError(error, ctx, command.projectId, "checklist.write");
+  }
+  const row = await readChecklistById(tx, ctx, command.projectId, capsule.checklistId);
+  if (!row) throw new ChecklistNotFoundError(command.projectId);
+  return toDto(row, command.projectId, ctx);
+}
+
+// F7-04b: Punkt als irrelevant markieren (reason gesetzt) bzw. Markierung
+// aufheben (reason null, idempotent). Dedizierte Op statt Whole-Tree-Save:
+// Begründungspflicht, CAS und Event/Audit wie complete/unlock; keine neue
+// Permission (checklist.write). 55000 trägt den Segmentzustand im Detail.
+export async function setChecklistItemIrrelevant(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: SetChecklistItemIrrelevantCommand,
+): Promise<ProjectChecklistDto> {
+  requireWrite(ctx);
+  const parsed = setChecklistItemIrrelevantCommandSchema.safeParse(input);
+  if (!parsed.success) throw new ChecklistValidationError();
+  const command = parsed.data;
+  let capsule: z.infer<typeof capsuleResultSchema>;
+  try {
+    const result = await tx.execute<{ result: unknown }>(sql`
+      select public.set_project_checklist_item_irrelevant(
+        ${ctx.workspaceId}::uuid,
+        ${command.projectId}::uuid,
+        ${command.checklistId}::uuid,
+        ${command.segmentId}::uuid,
+        ${command.itemId}::uuid,
+        ${command.baseVersion},
+        ${command.reason}
+      ) as result
+    `);
+    capsule = capsuleResultSchema.parse(result.rows[0]?.result);
+  } catch (error) {
+    const pg = postgresError(error);
+    if (pg.code === "55000") {
+      if (pg.detail === "completed") throw new ChecklistSegmentStateError("completed");
+      if (pg.detail === "hidden") throw new ChecklistSegmentStateError("hidden");
     }
     throwCapsuleError(error, ctx, command.projectId, "checklist.write");
   }

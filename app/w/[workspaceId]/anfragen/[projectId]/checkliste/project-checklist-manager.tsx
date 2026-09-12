@@ -18,6 +18,7 @@ import {
   applyTemplateAction,
   mutateChecklistSegmentAction,
   saveProjectChecklistAction,
+  setChecklistItemIrrelevantAction,
   type ChecklistActionState,
 } from "./actions";
 
@@ -31,9 +32,17 @@ function message(state: ChecklistActionState): { text: string; isError: boolean 
         apply: "Vorlage angewendet",
         complete: "Segment abgeschlossen",
         unlock: "Segment entsperrt",
+        mark: "Punkt als irrelevant markiert",
+        unmark: "Irrelevant-Markierung aufgehoben",
       }[state.operation];
       return { text: `${label} (Version ${state.version}).`, isError: false };
     }
+    case "state": return {
+      text: state.state === "completed"
+        ? "Das Segment ist abgeschlossen und unveränderlich."
+        : "Der Punkt ist derzeit verborgen und kann nicht markiert werden.",
+      isError: true,
+    };
     case "incomplete": return {
       text: `${state.remainingRequired} Pflichtpunkt${state.remainingRequired === 1 ? " ist" : "e sind"} noch offen.`,
       isError: true,
@@ -492,6 +501,18 @@ function SegmentGroup({
               ) : item.required ? (
                 <span className="mt-0.5 block text-xs text-slate-500">Pflichtpunkt</span>
               ) : null}
+              {checklistId !== null ? (
+                <ItemIrrelevantControl
+                  workspaceId={workspaceId}
+                  projectId={projectId}
+                  checklistId={checklistId}
+                  segmentId={segment.id}
+                  item={item}
+                  baseVersion={baseVersion}
+                  canWrite={canWrite}
+                  completed={completed}
+                />
+              ) : null}
             </div>
           </li>
         ) : null)}
@@ -544,6 +565,114 @@ function SegmentGroup({
         </form>
       ) : null}
       <Feedback state={mutationState} />
+    </div>
+  );
+}
+
+// F7-04b: Irrelevant-Markierung je Pflichtpunkt. Eigene Server-Action
+// (sofort wirksam, eigene Version) statt Whole-Tree-Save — Begründungspflicht
+// und Gate-Skip kommen aus der Kapsel, nicht aus lokalem State.
+function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId, item, baseVersion, canWrite, completed }: {
+  workspaceId: string;
+  projectId: string;
+  checklistId: string;
+  segmentId: string;
+  item: ChecklistItemV1;
+  baseVersion: number;
+  canWrite: boolean;
+  completed: boolean;
+}) {
+  const [markState, markDispatch, markPending] = useActionState(
+    setChecklistItemIrrelevantAction,
+    initialState,
+  );
+  const [formOpen, setFormOpen] = useState(false);
+  const title = item.title || "Punkt";
+  if (!canWrite || completed) return null;
+
+  if (item.irrelevant != null) {
+    return (
+      <div className="mt-1">
+        <p
+          data-testid={`checklist-item-irrelevant-${item.id}`}
+          className="inline-block rounded-full bg-slate-200 px-2 py-px text-xs font-medium text-slate-700"
+        >
+          Irrelevant: {item.irrelevant.reason}
+        </p>
+        <form action={markDispatch} className="mt-1">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="projectId" value={projectId} />
+          <input type="hidden" name="checklistId" value={checklistId} />
+          <input type="hidden" name="segmentId" value={segmentId} />
+          <input type="hidden" name="itemId" value={item.id} />
+          <input type="hidden" name="baseVersion" value={baseVersion} />
+          <input type="hidden" name="reason" value="" />
+          <button
+            type="submit"
+            aria-label={`${title}: Markierung aufheben`}
+            disabled={markPending}
+            className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+          >
+            {markPending ? "Hebt auf …" : "Markierung aufheben"}
+          </button>
+        </form>
+        <Feedback state={markState} />
+      </div>
+    );
+  }
+
+  if (!item.required) return null;
+  return (
+    <div className="mt-1">
+      {formOpen ? (
+        <form action={markDispatch} className="mt-1 space-y-2">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="projectId" value={projectId} />
+          <input type="hidden" name="checklistId" value={checklistId} />
+          <input type="hidden" name="segmentId" value={segmentId} />
+          <input type="hidden" name="itemId" value={item.id} />
+          <input type="hidden" name="baseVersion" value={baseVersion} />
+          <label className="block text-xs font-semibold text-slate-700" htmlFor={`irrelevant-reason-${item.id}`}>
+            Begründung (Pflicht)
+          </label>
+          <textarea
+            id={`irrelevant-reason-${item.id}`}
+            name="reason"
+            rows={2}
+            maxLength={2000}
+            disabled={markPending}
+            className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:bg-slate-100"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              aria-label={`${title}: Als irrelevant markieren`}
+              disabled={markPending}
+              className="min-h-11 rounded-md bg-brand-700 px-3 text-xs font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {markPending ? "Markiert …" : "Als irrelevant markieren"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormOpen(false)}
+              disabled={markPending}
+              className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button
+          type="button"
+          aria-label={`${title}: Irrelevant-Dialog öffnen`}
+          onClick={() => setFormOpen(true)}
+          className="min-h-11 rounded-md border border-dashed border-slate-300 px-3 text-xs font-semibold text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
+        >
+          Als irrelevant markieren
+        </button>
+      )}
+      <Feedback state={markState} />
     </div>
   );
 }
