@@ -722,6 +722,33 @@ export type CommercialDocumentDetailV1 = z.infer<
   typeof commercialDocumentDetailV1Schema
 >;
 
+// ═══════════════════════════════════════════════════════════════════════
+// F8-10 · E-Rechnung CII-Export (Spec §F8-10). Read-Pfad ohne neue
+// Permission: XML-Download eines Geldbelegs als EN16931-CII-Syntax
+// (BASIC-naher Subset, Builder in ./cii-export).
+// ═══════════════════════════════════════════════════════════════════════
+
+export const COMMERCIAL_DOCUMENT_CII_COMMAND_VERSION =
+  "commercial-document-cii-command.v1" as const;
+export const COMMERCIAL_DOCUMENT_CII_VERSION = "commercial-document-cii.v1" as const;
+
+export const commercialDocumentCiiCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_CII_COMMAND_VERSION),
+  type: z.enum(documentNumberTypes),
+  documentId: z.string().uuid(),
+});
+export type CommercialDocumentCiiCommandV1 = z.infer<
+  typeof commercialDocumentCiiCommandV1Schema
+>;
+
+export const commercialDocumentCiiV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_CII_VERSION),
+  fileName: z.string().min(1).max(120),
+  contentType: z.literal("application/xml"),
+  content: z.string().min(1),
+});
+export type CommercialDocumentCiiV1 = z.infer<typeof commercialDocumentCiiV1Schema>;
+
 export const commercialDocumentLinkCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_LINK_COMMAND_VERSION),
   finalId: z.string().uuid(),

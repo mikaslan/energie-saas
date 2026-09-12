@@ -92,6 +92,8 @@ export type {
   CommercialDocumentGroupArchiveCommandV1,
   CommercialDocumentListCommandV1,
   CommercialDocumentListFiltersV1,
+  CommercialDocumentCiiCommandV1,
+  CommercialDocumentCiiV1,
   CommercialDocumentListV1,
   CommercialDocumentStatus,
   CommercialDocumentTermsCommandV1,
@@ -157,3 +159,4 @@ export {
   type PartialChainEntry,
   type PartialOrderLine,
 } from "./partial-service";
+export { exportDocumentCii } from "./cii-service";

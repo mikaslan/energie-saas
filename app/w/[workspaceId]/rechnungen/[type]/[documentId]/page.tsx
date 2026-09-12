@@ -24,6 +24,7 @@ import {
   listPartialInvoices,
 } from "@/modules/invoicing";
 import { DeniedState } from "../../../_ui";
+import { CiiExportPanel } from "./cii-export-panel";
 import { DepositLinkPanel } from "./deposit-link-panel";
 import { DuplicateDocumentPanel } from "./duplicate-document-panel";
 import { PartialInvoicePanel } from "./partial-invoice-panel";
@@ -247,6 +248,10 @@ export default async function InvoicingDocumentDetailPage(
           </ul>
         )}
       </section>
+
+      {(type === "invoice" || type === "credit_note") && document.status === "issued" ? (
+        <CiiExportPanel workspaceId={workspaceId} type={type} documentId={documentId} />
+      ) : null}
 
       {showDeposits ? (
         <DepositLinkPanel workspaceId={workspaceId} detail={detail} candidates={candidates} />

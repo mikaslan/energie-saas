@@ -99,7 +99,7 @@ import {
   offerVariantSnapshotV1Schema,
 } from "@/lib/integrations/offers/contract";
 
-function requireInvoicingRead(ctx: ServiceCtx): void {
+export function requireInvoicingRead(ctx: ServiceCtx): void {
   if (!can(ctx, "invoicing.read")) {
     throw new PermissionDeniedError("invoicing.read", "workspace_invoicing_settings", undefined, ctx.actor);
   }
