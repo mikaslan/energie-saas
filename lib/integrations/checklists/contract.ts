@@ -66,6 +66,18 @@ export const checklistItemIrrelevantSchema = z.object({
 }).strict();
 export type ChecklistItemIrrelevantV1 = z.infer<typeof checklistItemIrrelevantSchema>;
 
+// F7-02B: Bedingte Sichtbarkeit (if/then, Katalog F7.2). Regel als Ganzes
+// oder gar nicht (nullish): „Zeige mich, wenn Punkt itemId erledigt
+// (equals true) bzw. unerledigt (equals false) ist". Single-Hop: Die
+// Auswertung liest das RAW-done-Flag, keine effektive Sichtbarkeit —
+// Zyklen sind deterministisch und schleifenfrei; Selbstreferenz und
+// segmentfremde Referenzen weist die Baumvalidierung ab.
+export const checklistItemVisibleIfSchema = z.object({
+  itemId: stableUuidSchema,
+  equals: z.boolean(),
+}).strict();
+export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSchema>;
+
 export const editableChecklistItemSchema = z.object({
   id: stableUuidSchema,
   title: cleanText(CHECKLIST_ITEM_TITLE_MAX),
@@ -73,6 +85,7 @@ export const editableChecklistItemSchema = z.object({
   required: z.boolean(),
   visible: z.boolean(),
   irrelevant: checklistItemIrrelevantSchema.nullish(),
+  visibleIf: checklistItemVisibleIfSchema.nullish(),
 }).strict();
 export type ChecklistItemV1 = z.infer<typeof editableChecklistItemSchema>;
 
@@ -180,7 +193,10 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
     const seen = new Set<string>();
     for (const block of blocks as Array<{
       id: string;
-      segments: Array<{ id: string; items: Array<{ id: string }> }>;
+      segments: Array<{
+        id: string;
+        items: Array<{ id: string; visibleIf?: { itemId: string } | null }>;
+      }>;
     }>) {
       const addIdentity = (kind: string, id: string) => {
         if (seen.has(id)) {
@@ -196,6 +212,19 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
       for (const segment of block.segments) {
         addIdentity("Segment", segment.id);
         for (const item of segment.items) addIdentity("Punkt", item.id);
+        // F7-02B: Regelreferenzen muessen im selben Segment auf einen
+        // anderen Punkt zeigen (keine Selbstreferenz, kein Baumeln).
+        const segmentItemIds = new Set(segment.items.map((item) => item.id));
+        for (const item of segment.items) {
+          const rule = item.visibleIf;
+          if (rule == null) continue;
+          if (rule.itemId === item.id || !segmentItemIds.has(rule.itemId)) {
+            context.addIssue({
+              code: "custom",
+              message: "Sichtbarkeitsregel verweist nicht auf einen anderen Punkt desselben Segments",
+            });
+          }
+        }
       }
     }
   });
@@ -306,20 +335,44 @@ export function toEditableChecklistBlocks(
   }));
 }
 
+// F7-02B: effektive Sichtbarkeit mit if/then-Regel (Single-Hop über das
+// RAW-done-Flag; fehlende Referenz → sichtbar, Schreibzeit verweigert
+// baumelnde Referenzen fail-closed).
+export function isItemEffectivelyVisible(
+  item: Pick<ChecklistItemV1, "visible" | "done" | "visibleIf">,
+  byId: ReadonlyMap<string, Pick<ChecklistItemV1, "done">>,
+): boolean {
+  if (!item.visible) return false;
+  const rule = item.visibleIf;
+  if (rule == null) return true;
+  const referenced = byId.get(rule.itemId);
+  return referenced == null || referenced.done === rule.equals;
+}
+
+function segmentItemsById(
+  segment: Pick<ChecklistSegmentV1, "items">,
+): Map<string, Pick<ChecklistItemV1, "done">> {
+  return new Map(segment.items.map((item) => [item.id, item]));
+}
+
 export function segmentRequiredRemaining(
   segment: Pick<ChecklistSegmentV1, "items">,
 ): number {
   // F7-04b: irrelevant markierte Pflichtpunkte zählen nicht (Gate-Skip
-  // spiegelt Migration 0127 im Complete-Gate).
+  // spiegelt Migration 0127 im Complete-Gate). F7-02B: bedingt versteckte
+  // Pflichtpunkte zählen nicht (spiegelt Migration 0129).
+  const byId = segmentItemsById(segment);
   return segment.items.filter(
-    (item) => item.visible && item.required && !item.done && item.irrelevant == null,
+    (item) => item.required && !item.done && item.irrelevant == null
+      && isItemEffectivelyVisible(item, byId),
   ).length;
 }
 
 export function segmentItemProgress(
   segment: Pick<ChecklistSegmentV1, "items">,
 ): { done: number; total: number } {
-  const visibleItems = segment.items.filter((item) => item.visible);
+  const byId = segmentItemsById(segment);
+  const visibleItems = segment.items.filter((item) => isItemEffectivelyVisible(item, byId));
   return {
     done: visibleItems.filter((item) => item.done).length,
     total: visibleItems.length,

@@ -463,16 +463,18 @@ const F704_CHECKLIST_INDEX_ROWS = [
     "project_checklist_segment_completion_ws_id_uq ON " +
     "public.project_checklist_segment_completion USING btree (workspace_id, id)",
 ] as const;
+// F7-02B (0129): completeSegment + validBlocks per Probe nach 0129-Anwendung
+// geerntet (sichtbare Body-Aenderung: visibleIf-Shape + Gate-Skip).
 const F704_CHECKLIST_FUNCTION_SHA256 = {
   actorRole: "2327d748e395d0a596c129657a32bfc255e74a681459036f612ddcd5a0e2a050",
   assertWorkspace: "b726ed4b961b6e583e11179e32a8f34a10e76330352e5fc5c54c86cc6bc9b633",
   checklistStructure: "de1708bfbcaf0df724181bcae5fa112a3d3505c168745977dd0193816e1ced56",
   cleanText: "f29466a887843140336a98a1398b916d4d6ec3554f1db864dad1a5b9c5fba345",
-  completeSegment: "4943533f7dc2c774b86b135fe69bc081719148e258c0907739ce1489419e1336",
+  completeSegment: "0fdf278e26f449a326cf32f7d5c7c2f012fdabf99d9f7482eeda8d957d2a18e7",
   saveChecklist: "8090f3ff4e3a3b79a513147a4cc2d3fd03f2a270757c4a7f6309a4f263aed470",
   setIrrelevant: "e37e70b04c9c0ae912fd58ab4349b6063b34c96a50da7aa684a462fe56f536f2",
   unlockSegment: "328076b50403adaa2a571f9b640058b49122d2bb9978ad969ad0048590588f27",
-  validBlocks: "ac0c941627a25eb6cedbfbaf29029cddf9b0d0f4b57c208a49b427413c991bd7",
+  validBlocks: "6c8c35e2a64402386ee4455a0c79b971cad1e23ccc65279af3930a1d14579719",
 } as const;
 const F704_CHECKLIST_FUNCTION_SECURITY_ROWS = [
   "_f704_actor_checklist_role(uuid):text:app_owner:plpgsql:f:s:" +

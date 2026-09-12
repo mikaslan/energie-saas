@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import {
   CHECKLIST_BLOCKS_TRANSPORT_MAX_BYTES,
   checklistProgress,
+  isItemEffectivelyVisible,
   segmentItemProgress,
   segmentRequiredRemaining,
   toEditableChecklistBlocks,
@@ -484,6 +485,10 @@ function SegmentGroup({
   const remainingRequired = segmentRequiredRemaining(segment);
   const itemProgress = segmentItemProgress(segment);
   const pending = mutationPending;
+  // F7-02B: effektive Sichtbarkeit (if/then, Single-Hop). Die Map wird pro
+  // Render neu aufgebaut (kleine Arrays); Indizes bleiben stabil, weil
+  // versteckte Punkte als null weitergerendert werden.
+  const segmentItemsById = new Map(segment.items.map((candidate) => [candidate.id, candidate]));
 
   return (
     <div className={`rounded-md p-3 ${completed ? "border border-green-200 bg-green-50" : "bg-slate-50"}`}>
@@ -514,7 +519,7 @@ function SegmentGroup({
       ) : null}
 
       <ul className="mt-2 space-y-2">
-        {segment.items.map((item, itemIndex) => item.visible ? (
+        {segment.items.map((item, itemIndex) => isItemEffectivelyVisible(item, segmentItemsById) ? (
           <li key={item.id} className="flex items-start gap-1">
             <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
               <input
@@ -554,6 +559,15 @@ function SegmentGroup({
                 </label>
               ) : item.required ? (
                 <span className="mt-0.5 block text-xs text-slate-500">Pflichtpunkt</span>
+              ) : null}
+              {canConfigure && !completed ? (
+                <ItemVisibilityRuleControl
+                  item={item}
+                  itemIndex={itemIndex}
+                  segment={segment}
+                  canConfigure={canConfigure}
+                  onSetItem={onSetItem}
+                />
               ) : null}
               {checklistId !== null ? (
                 <ItemIrrelevantControl
@@ -842,6 +856,63 @@ function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId,
         </button>
       )}
       <Feedback state={markState} />
+    </div>
+  );
+}
+
+// F7-02B: Regel-Editor für bedingte Sichtbarkeit (if/then). Schreibt die
+// Regel in den lokalen Baum (Whole-Tree-Save persistiert); der Save-Guard
+// (Zod) und der DB-Validator (0129) verweigern baumelnde Regeln
+// fail-closed — eine verwaiste Referenz bleibt als deaktivierte Option
+// sichtbar, statt still auf „Immer" zu fallen.
+function ItemVisibilityRuleControl({ item, itemIndex, segment, canConfigure, onSetItem }: {
+  item: ChecklistItemV1;
+  itemIndex: number;
+  segment: ChecklistSegmentV1;
+  canConfigure: boolean;
+  onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+}) {
+  const title = item.title || "Punkt";
+  const rule = item.visibleIf ?? null;
+  const siblings = segment.items.filter((candidate) => candidate.id !== item.id);
+  const dangling = rule !== null && !siblings.some((candidate) => candidate.id === rule.itemId);
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-slate-600">
+      <label htmlFor={`visible-if-${item.id}`}>Sichtbar, wenn</label>
+      <select
+        id={`visible-if-${item.id}`}
+        value={rule?.itemId ?? ""}
+        onChange={(event) => {
+          const next = event.target.value;
+          onSetItem(itemIndex, {
+            visibleIf: next === "" ? null : { itemId: next, equals: rule?.equals ?? true },
+          }, canConfigure);
+        }}
+        className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+      >
+        <option value="">Immer sichtbar</option>
+        {dangling && rule !== null ? (
+          <option value={rule.itemId} disabled>Entfernter Punkt (ungültig)</option>
+        ) : null}
+        {siblings.map((sibling) => (
+          <option key={sibling.id} value={sibling.id}>{sibling.title || "Punkt"}</option>
+        ))}
+      </select>
+      {rule !== null ? (
+        <select
+          aria-label={`${title}: Bedingung`}
+          value={rule.equals ? "done" : "open"}
+          onChange={(event) => {
+            onSetItem(itemIndex, {
+              visibleIf: { itemId: rule.itemId, equals: event.target.value === "done" },
+            }, canConfigure);
+          }}
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+        >
+          <option value="done">erledigt ist</option>
+          <option value="open">nicht erledigt ist</option>
+        </select>
+      ) : null}
     </div>
   );
 }
