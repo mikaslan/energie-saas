@@ -130,6 +130,7 @@ type E2EState = Pick<
   | "foreignWorkspaceId"
   | "adminEmail"
   | "editorEmail"
+  | "editorIdentityId"
   | "viewerEmail"
   | "restrictedEditorEmail"
   | "externalEditorEmail"
@@ -150,6 +151,7 @@ type E2EState = Pick<
   f22ProjectId: string;
   f22ControlProjectId: string;
   f25ProjectId: string;
+  f26ProjectId: string;
   f71ProjectId: string;
   f93ProjectId: string;
   f902bProjectId: string;
@@ -1575,6 +1577,11 @@ async function main(): Promise<number> {
     editorIdentityId: seedData.editorIdentityId,
     skuSuffix: "w3-f25",
   });
+  const w3F26Seed = await seedM201ReadyProject(embedded.superuserUrl, {
+    workspaceId: seedData.w3WorkspaceId,
+    editorIdentityId: seedData.editorIdentityId,
+    skuSuffix: "w3-f26",
+  });
   const w3F71Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
@@ -1653,6 +1660,7 @@ async function main(): Promise<number> {
     f22ProjectId: w3F22Seed.projectId,
     f22ControlProjectId: w3F22ControlSeed.projectId,
     f25ProjectId: w3F25Seed.projectId,
+    f26ProjectId: w3F26Seed.projectId,
     f71ProjectId: w3F71Seed.projectId,
     f93ProjectId: w3F93Lead.projectId,
     f902bProjectId: w3F902bLead.projectId,
@@ -1686,6 +1694,7 @@ async function main(): Promise<number> {
     workspaceId: seedData.workspaceId,
     foreignWorkspaceId: seedData.foreignWorkspaceId,
     editorEmail: seedData.editorEmail,
+    editorIdentityId: seedData.editorIdentityId,
     viewerEmail: seedData.viewerEmail,
     restrictedEditorEmail: seedData.restrictedEditorEmail,
     externalEditorEmail: seedData.externalEditorEmail,

@@ -1,13 +1,12 @@
 import { readFileSync, statSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "playwright/test";
-import {
-  readM201RevisionEvidence,
-  type M201RuntimeState,
-} from "./m2-01-fixture";
+import { readM201RevisionEvidence } from "./m2-01-fixture";
 
 /**
- * F2-06 Upsell-Auswahl Slice A — Chromium-E2E (m201-Seed).
+ * F2-06 Upsell-Auswahl Slice A — Chromium-E2E (eigenes W3-Projekt,
+ * keine Kopplung an andere Specs: f7-03-/f2-05-Lehre, der geteilte
+ * m201-Seed bleibt one-shot-frei für M2-01).
  * Editor legt eine optionale freie Position an (Positionsart Optional),
  * die Detailseite zeigt den Upsell-Block mit Checkbox; Toggle aktualisiert
  * die angezeigte Summe nachweisbar und reversibel. Axe sauber.
@@ -17,18 +16,23 @@ const browserErrors = new WeakMap<Page, string[]>();
 
 type SerializedM201State = {
   databaseUrl: string;
-  m201BatteryId: string;
-  m201EditorEmail: string;
-  m201EditorIdentityId: string;
-  m201InverterId: string;
-  m201ModuleId: string;
-  m201ProjectId: string;
-  m201WallboxId: string;
-  m201WorkspaceId: string;
+  editorEmail: string;
+  editorIdentityId: string;
+  f26ProjectId: string;
+  w3WorkspaceId: string;
   serverLogPath: string;
 };
 
-function runtimeState(): M201RuntimeState {
+type F206RuntimeState = {
+  databaseUrl: string;
+  editorEmail: string;
+  editorIdentityId: string;
+  projectId: string;
+  serverLogPath: string;
+  workspaceId: string;
+};
+
+function runtimeState(): F206RuntimeState {
   const statePath = process.env.M1_05_E2E_STATE;
   if (!statePath) {
     throw new Error("M1_05_E2E_STATE fehlt; bitte über npm run test:e2e starten.");
@@ -36,14 +40,10 @@ function runtimeState(): M201RuntimeState {
   const parsed = JSON.parse(readFileSync(statePath, "utf8")) as Partial<SerializedM201State>;
   const required: Array<keyof SerializedM201State> = [
     "databaseUrl",
-    "m201BatteryId",
-    "m201EditorEmail",
-    "m201EditorIdentityId",
-    "m201InverterId",
-    "m201ModuleId",
-    "m201ProjectId",
-    "m201WallboxId",
-    "m201WorkspaceId",
+    "editorEmail",
+    "editorIdentityId",
+    "f26ProjectId",
+    "w3WorkspaceId",
     "serverLogPath",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
@@ -52,15 +52,11 @@ function runtimeState(): M201RuntimeState {
   const complete = parsed as SerializedM201State;
   return {
     databaseUrl: complete.databaseUrl,
-    editorEmail: complete.m201EditorEmail,
-    editorIdentityId: complete.m201EditorIdentityId,
-    m201BatteryId: complete.m201BatteryId,
-    m201InverterId: complete.m201InverterId,
-    m201ModuleId: complete.m201ModuleId,
-    m201ProjectId: complete.m201ProjectId,
-    m201WallboxId: complete.m201WallboxId,
+    editorEmail: complete.editorEmail,
+    editorIdentityId: complete.editorIdentityId,
+    projectId: complete.f26ProjectId,
     serverLogPath: complete.serverLogPath,
-    workspaceId: complete.m201WorkspaceId,
+    workspaceId: complete.w3WorkspaceId,
   };
 }
 
@@ -145,7 +141,7 @@ test.afterEach(async ({ page }) => {
 test("F206-E2E-01: Optionale Position wird Upsell-Checkbox mit Live-Summe", async ({ page }) => {
   test.setTimeout(240_000);
   const state = runtimeState();
-  const projectPath = `/w/${state.workspaceId}/anfragen/${state.m201ProjectId}`;
+  const projectPath = `/w/${state.workspaceId}/anfragen/${state.projectId}`;
   await page.goto(projectPath);
   await loginWithRealOtp(page, projectPath);
 

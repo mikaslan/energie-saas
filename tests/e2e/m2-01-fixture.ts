@@ -489,7 +489,7 @@ export async function seedM201ReadyProject(
 }
 
 export async function withM201Database<T>(
-  state: M201RuntimeState,
+  state: Pick<M201RuntimeState, "databaseUrl" | "workspaceId" | "editorIdentityId">,
   callback: (tx: TenantTx, ctx: ServiceCtx) => Promise<T>,
 ): Promise<T> {
   const pool = createDrainTrackedPool({ connectionString: state.databaseUrl, max: 1 });
@@ -526,7 +526,7 @@ export async function readM201Offer(state: M201RuntimeState): Promise<M201OfferI
 }
 
 export async function readM201RevisionEvidence(
-  state: M201RuntimeState,
+  state: Pick<M201RuntimeState, "databaseUrl" | "workspaceId" | "editorIdentityId">,
   offerId: string,
   variantId: string,
 ): Promise<M201RevisionEvidence> {
