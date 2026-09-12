@@ -429,12 +429,12 @@ export async function createPartialInvoiceAction(
   const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
   const documentId = parseUuid(formData.get("documentId"));
   const modeValue = formData.get("mode");
-  const mode = modeValue === "percent" || modeValue === "lines" || modeValue === "scheme" ? modeValue : null;
+  const mode = modeValue === "percent" || modeValue === "lines" || modeValue === "scheme" || modeValue === "closing" ? modeValue : null;
   if (!workspaceId || !documentId || !mode) return { status: "invalid" };
   let percentBps: number | null = null;
   let lineIds: string[] | null = null;
-  if (mode === "scheme") {
-    // F8-07: Tranche folgt aus der Kette (kein Prozent-Input).
+  if (mode === "scheme" || mode === "closing") {
+    // F8-07/F8-08: Tranche/Rest folgt aus der Kette (kein Prozent-Input).
   } else if (mode === "percent") {
     const raw = formData.get("percent");
     const percent = typeof raw === "string" ? Number(raw) : NaN;
