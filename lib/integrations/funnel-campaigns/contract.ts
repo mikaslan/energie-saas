@@ -34,6 +34,11 @@ export const funnelCampaignDtoSchema = z.object({
   slug: z.string(),
   leadSourceId: z.string().uuid(),
   leadSourceName: z.string(),
+  // F12-02: Beauftragter für Auto-Routing (null = keine Zuweisung).
+  assignee: z.object({
+    membershipId: z.string().uuid(),
+    label: z.string(),
+  }).nullable(),
   archivedAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -46,6 +51,7 @@ export const createFunnelCampaignCommandSchema = z.object({
   name: nameSchema,
   slug: slugSchema,
   leadSourceId: z.string().uuid(),
+  assigneeMembershipId: z.string().uuid().nullable().optional(),
 });
 export type CreateFunnelCampaignCommand = z.infer<typeof createFunnelCampaignCommandSchema>;
 

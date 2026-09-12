@@ -18,3 +18,10 @@ export class FunnelCampaignValidationError extends Error {
     this.name = "FunnelCampaignValidationError";
   }
 }
+
+export class FunnelCampaignAssigneeNotFoundError extends Error {
+  constructor(public readonly membershipId: string) {
+    super(`funnel_campaign assignee not found: ${membershipId}`);
+    this.name = "FunnelCampaignAssigneeNotFoundError";
+  }
+}

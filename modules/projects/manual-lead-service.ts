@@ -21,6 +21,7 @@ import { normalizeRechnerPhone } from "@/modules/intake";
 import { LeadSourceNotFoundError } from "@/modules/lead-sources";
 import {
   FunnelCampaignNotFoundError,
+  FunnelCampaignValidationError,
   resolveActiveFunnelCampaign,
 } from "@/modules/funnel-campaigns";
 
@@ -144,11 +145,15 @@ export async function createManualLead(
 
   let leadSourceId: string | null = null;
   let funnelCampaignId: string | null = null;
+  let campaignAssigneeMembershipId: string | null = null;
   if (command.funnelCampaignId !== undefined) {
     const campaign = await resolveActiveFunnelCampaign(tx, ctx, command.funnelCampaignId);
     if (!campaign) throw new FunnelCampaignNotFoundError(command.funnelCampaignId);
     funnelCampaignId = campaign.id;
     leadSourceId = campaign.leadSourceId;
+    // F12-02: Beauftragter wird nach dem Projekt-Insert als Key Account
+    // zugewiesen (Auto-Routing, Regelvollzug — s.u.).
+    campaignAssigneeMembershipId = campaign.assigneeMembershipId;
   } else if (command.leadSourceId !== undefined) {
     const source = await tx.execute<{ id: string }>(sql`
       select id from lead_source
@@ -245,6 +250,64 @@ export async function createManualLead(
       'request', 'open', 'pending', ${contactReused}
     )
   `);
+
+  // F12-02 Auto-Routing: Kampagnen-Beauftragter wird Key Account des neuen
+  // Projekts. Regelvollzug unter project.write (kein Zuweisungsrecht des
+  // Erfassers nötig) — vollständig belegt durch Event (autoRouted: true)
+  // und Audit. Fehlt die Mitgliedschaft (Race/offboardet trotz RESTRICT),
+  // wird die gesamte Erfassung verweigert statt still ohne Zuweisung.
+  if (campaignAssigneeMembershipId !== null) {
+    const target = await tx.execute<{ id: string }>(sql`
+      select id from membership
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${campaignAssigneeMembershipId}::uuid
+       limit 1
+    `);
+    if (!target.rows[0]) {
+      throw new FunnelCampaignValidationError(
+        `funnel_campaign assignee gone: ${campaignAssigneeMembershipId}`,
+      );
+    }
+    await tx.execute(sql`
+      insert into project_assignment (
+        workspace_id, project_id, membership_id, assignment_role
+      ) values (
+        ${ctx.workspaceId}::uuid, ${projectId}::uuid,
+        ${campaignAssigneeMembershipId}::uuid, 'key_account'
+      )
+    `);
+    await tx.execute(sql`
+      update project
+         set assignment_revision = 1, updated_at = now()
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${projectId}::uuid
+         and assignment_revision = 0
+    `);
+    const routingEvidence = {
+      projectId,
+      assignmentRevision: 1,
+      commandKind: "set_key_account",
+      membershipId: campaignAssigneeMembershipId,
+      autoRouted: true,
+      funnelCampaignId,
+    };
+    await emitEvent(tx, {
+      workspaceId: ctx.workspaceId,
+      aggregateType: "project",
+      aggregateId: projectId,
+      eventType: "project.assignment_key_account_changed",
+      actor: ctx.actor,
+      payload: routingEvidence,
+    });
+    await writeAudit(tx, {
+      workspaceId: ctx.workspaceId,
+      actor: ctx.actor,
+      action: "project.assign",
+      resource: "project_assignment",
+      allowed: true,
+      details: routingEvidence,
+    });
+  }
 
   // Hinweis: die Notiz hängt die Server Action nachgelagert an (siehe
   // Dateikopf) — hier wird nur vorgültig geprüft, nie geschrieben.

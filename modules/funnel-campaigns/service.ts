@@ -16,6 +16,7 @@ import {
 } from "@/lib/integrations/funnel-campaigns/contract";
 import { LeadSourceNotFoundError } from "@/modules/lead-sources";
 import {
+  FunnelCampaignAssigneeNotFoundError,
   FunnelCampaignConflictError,
   FunnelCampaignNotFoundError,
   FunnelCampaignValidationError,
@@ -56,6 +57,8 @@ type FunnelCampaignRow = {
   slug: string;
   lead_source_id: string;
   lead_source_name: string;
+  assignee_membership_id: string | null;
+  assignee_label: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -64,11 +67,18 @@ type FunnelCampaignRow = {
 const ROW_SELECT = sql`
   select campaign.id, campaign.name, campaign.slug,
          campaign.lead_source_id, source.name as lead_source_name,
+         campaign.assignee_membership_id,
+         identity_record.email as assignee_label,
          campaign.archived_at, campaign.created_at, campaign.updated_at
     from funnel_campaign campaign
     join lead_source source
       on source.workspace_id = campaign.workspace_id
      and source.id = campaign.lead_source_id
+    left join membership membership_record
+      on membership_record.workspace_id = campaign.workspace_id
+     and membership_record.id = campaign.assignee_membership_id
+    left join user_identity identity_record
+      on identity_record.id = membership_record.user_id
 `;
 
 function toDto(row: FunnelCampaignRow, canWrite: boolean): FunnelCampaignDto {
@@ -79,6 +89,12 @@ function toDto(row: FunnelCampaignRow, canWrite: boolean): FunnelCampaignDto {
     slug: row.slug,
     leadSourceId: row.lead_source_id,
     leadSourceName: row.lead_source_name,
+    assignee: row.assignee_membership_id === null
+      ? null
+      : {
+        membershipId: row.assignee_membership_id,
+        label: row.assignee_label ?? "",
+      },
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -113,9 +129,11 @@ export async function resolveActiveFunnelCampaign(
   tx: TenantTx,
   ctx: Pick<ServiceCtx, "workspaceId">,
   id: string,
-): Promise<{ id: string; leadSourceId: string } | null> {
-  const result = await tx.execute<{ id: string; lead_source_id: string }>(sql`
-    select id, lead_source_id
+): Promise<{ id: string; leadSourceId: string; assigneeMembershipId: string | null } | null> {
+  const result = await tx.execute<{
+    id: string; lead_source_id: string; assignee_membership_id: string | null;
+  }>(sql`
+    select id, lead_source_id, assignee_membership_id
       from funnel_campaign
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${id}::uuid
@@ -124,7 +142,11 @@ export async function resolveActiveFunnelCampaign(
   `);
   const row = result.rows[0];
   if (!row) return null;
-  return { id: row.id, leadSourceId: row.lead_source_id };
+  return {
+    id: row.id,
+    leadSourceId: row.lead_source_id,
+    assigneeMembershipId: row.assignee_membership_id,
+  };
 }
 
 export async function createFunnelCampaign(
@@ -148,23 +170,44 @@ export async function createFunnelCampaign(
   `);
   if (!source.rows[0]) throw new LeadSourceNotFoundError(command.leadSourceId);
 
+  // F12-02: Beauftragter muss Mitgliedschaft im Workspace sein.
+  const assigneeMembershipId = command.assigneeMembershipId ?? null;
+  if (assigneeMembershipId !== null) {
+    const member = await tx.execute<{ id: string }>(sql`
+      select id from membership
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${assigneeMembershipId}::uuid
+       limit 1
+    `);
+    if (!member.rows[0]) throw new FunnelCampaignAssigneeNotFoundError(assigneeMembershipId);
+  }
+
   let row: FunnelCampaignRow;
   try {
     const inserted = await tx.execute<FunnelCampaignRow>(sql`
       insert into funnel_campaign (
-        workspace_id, name, name_normalized, slug, slug_normalized, lead_source_id
+        workspace_id, name, name_normalized, slug, slug_normalized,
+        lead_source_id, assignee_membership_id
       ) values (
         ${ctx.workspaceId}::uuid,
         ${command.name},
         ${normalizeFunnelCampaignName(command.name)},
         ${command.slug},
         ${normalizeFunnelCampaignSlug(command.slug)},
-        ${command.leadSourceId}::uuid
+        ${command.leadSourceId}::uuid,
+        ${assigneeMembershipId}::uuid
       )
       returning id, name, slug, lead_source_id,
         (select name from lead_source
           where workspace_id = ${ctx.workspaceId}::uuid
             and id = ${command.leadSourceId}::uuid) as lead_source_name,
+        assignee_membership_id,
+        (select identity_record.email
+           from membership membership_record
+           join user_identity identity_record
+             on identity_record.id = membership_record.user_id
+          where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+            and membership_record.id = ${assigneeMembershipId}::uuid) as assignee_label,
         archived_at, created_at, updated_at
     `);
     row = inserted.rows[0]!;
@@ -181,7 +224,12 @@ export async function createFunnelCampaign(
     aggregateId: row.id,
     eventType: "funnel_campaign.created",
     actor: ctx.actor,
-    payload: { name: command.name, slug: command.slug, leadSourceId: command.leadSourceId },
+    payload: {
+      name: command.name,
+      slug: command.slug,
+      leadSourceId: command.leadSourceId,
+      assigneeMembershipId,
+    },
   });
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId,
@@ -212,6 +260,13 @@ export async function archiveFunnelCampaign(
       (select name from lead_source
         where workspace_id = funnel_campaign.workspace_id
           and id = funnel_campaign.lead_source_id) as lead_source_name,
+      assignee_membership_id,
+      (select identity_record.email
+         from membership membership_record
+         join user_identity identity_record
+           on identity_record.id = membership_record.user_id
+        where membership_record.workspace_id = funnel_campaign.workspace_id
+          and membership_record.id = funnel_campaign.assignee_membership_id) as assignee_label,
       archived_at, created_at, updated_at
   `);
   const row = updated.rows[0];

@@ -88,9 +88,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F8-07 Scheme-Modus (0121, nur CHECKs), F8-08 Rest-Schlussrechnung
 //   (0122, nur CHECKs), F13-11 Planungsservice (0123, Tabelle + RLS),
 //   F7-12 Nachbestellungen (0124, Tabellen + composite-FK + RLS),
-//   F12-01 Funnel-Kampagnen (0125, Tabelle + Spalte + RLS)
-// => 126 Migrationen (idx 0..125).
-const TOTAL_MIGRATION_COUNT = 126;
+//   F12-01 Funnel-Kampagnen (0125, Tabelle + Spalte + RLS),
+//   F12-02 Auto-Routing (0126, Spalte + RESTRICT-FK)
+// => 127 Migrationen (idx 0..126).
+const TOTAL_MIGRATION_COUNT = 127;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -406,8 +407,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 125,
-        tag: "0125_f12_01_funnel_kampagnen",
+        idx: 126,
+        tag: "0126_f12_02_auto_routing",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

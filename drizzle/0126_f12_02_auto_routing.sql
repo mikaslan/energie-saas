@@ -1,0 +1,2 @@
+ALTER TABLE "funnel_campaign" ADD COLUMN "assignee_membership_id" uuid;--> statement-breakpoint
+ALTER TABLE "funnel_campaign" ADD CONSTRAINT "funnel_campaign_assignee_fk" FOREIGN KEY ("workspace_id","assignee_membership_id") REFERENCES "public"."membership"("workspace_id","id") ON DELETE restrict ON UPDATE no action;

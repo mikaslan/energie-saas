@@ -96,6 +96,7 @@ export default async function LeadSourcesPage(
         workspaceId={workspaceId}
         campaigns={result.campaigns}
         sources={result.sources}
+        members={result.members}
         canWrite={result.canWrite}
       />
 

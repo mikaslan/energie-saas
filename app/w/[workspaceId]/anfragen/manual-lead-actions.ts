@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
-import { FunnelCampaignNotFoundError } from "@/modules/funnel-campaigns";
+import {
+  FunnelCampaignNotFoundError,
+  FunnelCampaignValidationError,
+} from "@/modules/funnel-campaigns";
 import { LeadSourceNotFoundError } from "@/modules/lead-sources";
 import {
   createManualLead,
@@ -124,6 +127,7 @@ export async function createManualLeadAction(
       error instanceof ManualLeadValidationError
       || error instanceof LeadSourceNotFoundError
       || error instanceof FunnelCampaignNotFoundError
+      || error instanceof FunnelCampaignValidationError
     ) {
       return { status: "invalid" };
     }

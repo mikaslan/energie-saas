@@ -10,7 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { workspace } from "./core";
+import { membership, workspace } from "./core";
 import { leadSource } from "./lead-source";
 
 // F12-01 Funnel-Kampagne: benannte Variante mit eigener Lead-Quelle und
@@ -26,6 +26,9 @@ export const funnelCampaign = pgTable(
     slug: text("slug").notNull(),
     slugNormalized: text("slug_normalized").notNull(),
     leadSourceId: uuid("lead_source_id").notNull(),
+    // F12-02: Beauftragter für Auto-Routing (NULL = keine automatische
+    // Zuweisung). Unveränderlich nach Anlage (wie die Quelle).
+    assigneeMembershipId: uuid("assignee_membership_id"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -60,5 +63,12 @@ export const funnelCampaign = pgTable(
       foreignColumns: [leadSource.workspaceId, leadSource.id],
       name: "funnel_campaign_lead_source_fk",
     }),
+    // RESTRICT wie project_lead_routing_rule_membership_fk: kein stilles
+    // Verlieren der Kampagne beim Offboarding — erst Kampagne archivieren.
+    foreignKey({
+      columns: [t.workspaceId, t.assigneeMembershipId],
+      foreignColumns: [membership.workspaceId, membership.id],
+      name: "funnel_campaign_assignee_fk",
+    }).onDelete("restrict"),
   ],
 );

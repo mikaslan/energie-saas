@@ -15,6 +15,7 @@ import { LeadSourceNotFoundError } from "@/modules/lead-sources";
 import {
   archiveFunnelCampaign,
   createFunnelCampaign,
+  FunnelCampaignAssigneeNotFoundError,
   FunnelCampaignConflictError,
   FunnelCampaignNotFoundError,
   FunnelCampaignValidationError,
@@ -38,6 +39,7 @@ function mapError(error: unknown): FunnelCampaignActionState {
   if (
     error instanceof FunnelCampaignNotFoundError
     || error instanceof LeadSourceNotFoundError
+    || error instanceof FunnelCampaignAssigneeNotFoundError
   ) {
     return { status: "not_found" };
   }
@@ -76,14 +78,21 @@ export async function createFunnelCampaignAction(
   const slug = parseSlug(formData.get("slug"));
   const sourceValue = formData.get("leadSourceId");
   const leadSourceId = typeof sourceValue === "string" ? idSchema.safeParse(sourceValue) : null;
+  // F12-02: Beauftragter optional (leerer String = keine Auto-Zuweisung).
+  const assigneeValue = formData.get("assigneeMembershipId");
+  const assignee = typeof assigneeValue === "string" && assigneeValue !== ""
+    ? idSchema.safeParse(assigneeValue)
+    : null;
   if (!workspace || name === null || slug === null || !leadSourceId?.success) {
     return { status: "invalid" };
   }
+  if (assignee !== null && !assignee.success) return { status: "invalid" };
   const command: CreateFunnelCampaignCommand = {
     schemaVersion: FUNNEL_CAMPAIGN_SCHEMA_VERSION,
     name,
     slug,
     leadSourceId: leadSourceId.data,
+    assigneeMembershipId: assignee?.success === true ? assignee.data : null,
   };
   try {
     await authorizedAction(workspace, "lead_source.write", "funnel_campaign", (tx, ctx) =>

@@ -195,7 +195,9 @@ export default async function RequestsPage({
   let board: Awaited<ReturnType<typeof getRequestBoard>> | undefined;
   let canCreateManualLead = false;
   let leadSourceOptions: Array<{ id: string; name: string }> = [];
-  let campaignOptions: Array<{ id: string; name: string; leadSourceName: string }> = [];
+  let campaignOptions: Array<{
+    id: string; name: string; leadSourceName: string; assigneeLabel: string | null;
+  }> = [];
   let adminColumns: BoardColumnAdminEntry[] = [];
   let pipelineSummary: BoardPipelineSummary | undefined;
   let unauthenticated = false;
@@ -245,6 +247,7 @@ export default async function RequestsPage({
       id: campaign.id,
       name: campaign.name,
       leadSourceName: campaign.leadSourceName,
+      assigneeLabel: campaign.assignee?.label ?? null,
     }));
   } catch (error) {
     if (error instanceof NotAuthenticatedError) unauthenticated = true;

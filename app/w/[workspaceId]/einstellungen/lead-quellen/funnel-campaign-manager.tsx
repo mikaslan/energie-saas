@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import type { FunnelCampaignDto } from "@/lib/integrations/funnel-campaigns/contract";
 import type { LeadSourceDto } from "@/lib/integrations/lead-sources/contract";
+import type { RoutableMember } from "@/modules/lead-sources";
 import {
   archiveFunnelCampaignAction,
   createFunnelCampaignAction,
@@ -60,11 +61,13 @@ export function FunnelCampaignManager({
   workspaceId,
   campaigns,
   sources,
+  members,
   canWrite,
 }: {
   workspaceId: string;
   campaigns: FunnelCampaignDto[];
   sources: LeadSourceDto[];
+  members: RoutableMember[];
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createFunnelCampaignAction, initialState);
@@ -93,7 +96,7 @@ export function FunnelCampaignManager({
         ) : (
           <form action={createDispatch} data-testid="funnel-campaign-create-form">
             <input type="hidden" name="workspaceId" value={workspaceId} />
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <label className="block">
                 <span className="block text-sm font-semibold text-slate-800">Name</span>
                 <input type="text" name="name" required maxLength={120} className={inputClass} />
@@ -116,6 +119,19 @@ export function FunnelCampaignManager({
                   {activeSources.map((source) => (
                     <option key={source.id} value={source.id}>
                       {source.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-sm font-semibold text-slate-800">
+                  Beauftragter (Auto-Routing, optional)
+                </span>
+                <select name="assigneeMembershipId" defaultValue="" className={inputClass}>
+                  <option value="">Keine automatische Zuweisung</option>
+                  {members.map((member) => (
+                    <option key={member.membershipId} value={member.membershipId}>
+                      {member.label}
                     </option>
                   ))}
                 </select>
@@ -149,7 +165,9 @@ export function FunnelCampaignManager({
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-slate-900">{campaign.name}</span>
                   <span className="block text-xs text-slate-500">
-                    {`${campaign.slug} · ${campaign.leadSourceName}`}
+                    {`${campaign.slug} · ${campaign.leadSourceName}${
+                      campaign.assignee ? ` · Zuweisung: ${campaign.assignee.label}` : ""
+                    }`}
                   </span>
                 </span>
                 {canWrite ? (

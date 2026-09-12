@@ -742,3 +742,13 @@ identisch (`983ed67`, 0 unpusht).
   (Pin fa42… geerntet) + Invarianten gruen; Nachbarn f111/lead/triage
   30/30. Oeffentlicher Funnel wartet weiter auf Q-F12-FUNNEL-REFERENZ,
   Provider auf Q-F12-PROVIDER-PRIVACY.
+- Push `f0d5b6e..194bc49` (3 Commits: Gate/F7-12/F12-01) mit gruenem
+  Pre-Push-Hook; CI `34681306399` läuft.
+- F12-02 Auto-Routing (Katalog F12.2 „zugewiesener User", 0126, LOKAL):
+  Kampagnen-Beauftragter (Mitgliedschaft, RESTRICT wie Routing-Regeln)
+  wird bei Erfassung Key Account (Revision 1, Event autoRouted: true,
+  Audit; Regelvollzug unter project.write, keine neuen Keys). DB 6/6
+  (fremd verweigert, RESTRICT-Block 23001 belegt, Archiv lesbar),
+  E2E 1/1 (Key Account + Stand 1 in Projektverantwortung),
+  Nachbarn 86/86, Invarianten + m111a-Pins (127) gruen, Rollenvertrag
+  gruen (keine neue Tabelle). Regression F12-01-E2E 1/1.
