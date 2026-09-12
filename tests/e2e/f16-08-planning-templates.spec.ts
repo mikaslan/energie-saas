@@ -1,0 +1,301 @@
+import { randomUUID } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
+import {
+  M2_01_E2E_CONTACT,
+  readM201Offer,
+  readM201RevisionEvidence,
+  type M201RuntimeState,
+} from "./m2-01-fixture";
+
+/**
+ * F16-08 Planungs-Vorlagen — Chromium-E2E.
+ * - Admin verwaltet Modus-Presets in den Einstellungen (anlegen,
+ *   archivieren, reaktivieren); Viewer bleibt read-only.
+ * - Admin erstellt ein Angebot am F1606-Projekt und wendet die zum
+ *   aktuellen Modus passende Gegen-Vorlage an → Modus gesetzt,
+ *   Revision 2, Snapshot belegt.
+ */
+
+type SerializedF1608State = {
+  databaseUrl: string;
+  editorEmail: string;
+  viewerEmail: string;
+  f1606ProjectId: string;
+  w3WorkspaceId: string;
+  serverLogPath: string;
+};
+
+type F1608State = M201RuntimeState & { f1606ProjectId: string; w3WorkspaceId: string; viewerEmail: string };
+
+function runtimeState(): F1608State {
+  const statePath = process.env.M1_05_E2E_STATE;
+  if (!statePath) {
+    throw new Error("M1_05_E2E_STATE fehlt; bitte über npm run test:e2e starten.");
+  }
+  const parsed = JSON.parse(readFileSync(statePath, "utf8")) as Partial<SerializedF1608State>;
+  const required: Array<keyof SerializedF1608State> = [
+    "databaseUrl",
+    "editorEmail",
+    "viewerEmail",
+    "f1606ProjectId",
+    "w3WorkspaceId",
+    "serverLogPath",
+  ];
+  if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
+    throw new Error("Der private F16-08-E2E-State ist unvollständig.");
+  }
+  const complete = parsed as SerializedF1608State;
+  return {
+    databaseUrl: complete.databaseUrl,
+    editorEmail: complete.editorEmail,
+    editorIdentityId: "",
+    m201BatteryId: "",
+    m201InverterId: "",
+    m201ModuleId: "",
+    m201ProjectId: complete.f1606ProjectId,
+    f1606ProjectId: complete.f1606ProjectId,
+    w3WorkspaceId: complete.w3WorkspaceId,
+    m201WallboxId: "",
+    serverLogPath: complete.serverLogPath,
+    workspaceId: complete.w3WorkspaceId,
+    viewerEmail: complete.viewerEmail,
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function otpFromPrivateDevMailLog(
+  logPath: string,
+  email: string,
+  byteOffset: number,
+): Promise<string> {
+  const deadline = Date.now() + 12_000;
+  const pattern = new RegExp(
+    `\\[dev-mail\\] an ${escapeRegExp(email)}: Dein Login-Code\\s+Code: (\\d{6})`,
+    "u",
+  );
+  while (Date.now() < deadline) {
+    const log = readFileSync(logPath);
+    const tail = log.subarray(Math.min(byteOffset, log.byteLength)).toString("utf8");
+    const match = pattern.exec(tail);
+    if (match) return match[1]!;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+  throw new Error("Der echte F16-08-Dev-Mail-OTP wurde nicht rechtzeitig protokolliert.");
+}
+
+async function loginWithRealOtp(page: Page, email: string, expectedTarget: string): Promise<void> {
+  const data = runtimeState();
+  await page.waitForURL((url) => url.pathname === "/login");
+  const current = new URL(page.url());
+  expect(current.searchParams.get("next")).toBe(expectedTarget);
+
+  const logOffset = statSync(data.serverLogPath).size;
+  await page.getByLabel("E-Mail-Adresse").fill(email);
+  const sendResponsePromise = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/api/auth/email-otp/send-verification-otp"
+    && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Code anfordern" }).click();
+  expect((await sendResponsePromise).status()).toBe(200);
+
+  const otpInput = page.getByLabel("Sechsstelliger Code");
+  await otpInput.fill(await otpFromPrivateDevMailLog(data.serverLogPath, email, logOffset));
+  const signInResponsePromise = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/api/auth/sign-in/email-otp"
+    && response.request().method() === "POST");
+  try {
+    await page.getByRole("button", { name: "Anmelden" }).click();
+    expect((await signInResponsePromise).status()).toBe(200);
+  } finally {
+    if (await otpInput.isVisible().catch(() => false)) {
+      await otpInput.fill("").catch(() => undefined);
+    }
+  }
+  await page.waitForURL((url) => `${url.pathname}${url.search}` === expectedTarget);
+}
+
+async function seedAdminMembership(): Promise<string> {
+  const data = runtimeState();
+  const identityId = randomUUID();
+  const email = `f1608-admin-${randomUUID().slice(0, 8)}@example.test`;
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(
+      "select set_config('app.actor_id', '', true), set_config('app.workspace_id', $1, true)",
+      [data.w3WorkspaceId],
+    );
+    await client.query("insert into user_identity (id, email) values ($1::uuid, $2)", [identityId, email]);
+    await client.query(
+      `insert into membership (workspace_id, user_id, role, capabilities)
+       values ($1::uuid, $2::uuid, 'admin', '{}'::jsonb)`,
+      [data.w3WorkspaceId, identityId],
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+    await endPoolAndWaitForClientRemoval(pool);
+  }
+  return email;
+}
+
+const MODE_OPTION: Record<string, string> = {
+  quick: "Quick-Planung",
+  "2d": "2D-Planung",
+  "3d": "3D-Planung",
+};
+
+async function createPlanningPreset(
+  page: Page,
+  workspaceId: string,
+  name: string,
+  mode: "quick" | "2d" | "3d",
+): Promise<void> {
+  const settingsPath = `/w/${workspaceId}/einstellungen/planungs-vorlagen`;
+  await page.goto(settingsPath);
+  await expect(page.getByRole("heading", { name: "Planungs-Vorlagen", level: 1 })).toBeVisible();
+  const creator = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Neue Vorlage", exact: true }),
+  });
+  await creator.getByLabel("Name").fill(name);
+  await creator.getByLabel("Planungsmodus").selectOption(mode);
+  await creator.getByRole("button", { name: "Anlegen", exact: true }).click();
+  await expect(
+    page.locator('section[aria-label="Vorlagen"] article').filter({ hasText: name }),
+  ).toHaveCount(1);
+}
+
+test.describe("F16-08 Planungs-Vorlagen", () => {
+  test("F1608-E2E-01: Admin verwaltet Modus-Presets; Viewer read-only", async ({ page }) => {
+    test.setTimeout(180_000);
+    const data = runtimeState();
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(`console: ${message.text()}`);
+    });
+    page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+    const stamp = Date.now();
+    const templateName = `F1608 E2E ${stamp}`;
+    const settingsPath = `/w/${data.w3WorkspaceId}/einstellungen/planungs-vorlagen`;
+    const adminEmail = await seedAdminMembership();
+
+    await page.goto(settingsPath);
+    await loginWithRealOtp(page, adminEmail, settingsPath);
+    await createPlanningPreset(page, data.w3WorkspaceId, templateName, "2d");
+    const entry = page.locator('section[aria-label="Vorlagen"] article').filter({ hasText: templateName });
+    await expect(entry.getByRole("paragraph")).toHaveText("2D-Planung");
+
+    await entry.getByRole("button", { name: `${templateName} archivieren`, exact: true }).click();
+    await expect(entry.getByText("archiviert", { exact: true })).toBeVisible();
+    await entry.getByRole("button", { name: `${templateName} reaktivieren`, exact: true }).click();
+    await expect(entry.getByText("aktiv", { exact: true })).toBeVisible();
+    expect(errors, "Browser-Konsole bei der Verwaltung").toEqual([]);
+  });
+
+  test("F1608-E2E-02: Viewer sieht Vorlagen ausschließlich lesend", async ({ page, browser }) => {
+    test.setTimeout(180_000);
+    const data = runtimeState();
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(`console: ${message.text()}`);
+    });
+    page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+    const stamp = Date.now();
+    const templateName = `F1608 E2E Sicht ${stamp}`;
+    const settingsPath = `/w/${data.w3WorkspaceId}/einstellungen/planungs-vorlagen`;
+    const adminEmail = await seedAdminMembership();
+
+    await page.goto(settingsPath);
+    await loginWithRealOtp(page, adminEmail, settingsPath);
+    await createPlanningPreset(page, data.w3WorkspaceId, templateName, "quick");
+
+    // Frischer Viewer-Kontext (eigene Session, keine Admin-Cookies).
+    const viewerContext = await browser.newContext();
+    const viewerPage = await viewerContext.newPage();
+    try {
+      viewerPage.on("console", (message) => {
+        if (message.type() === "error") errors.push(`viewer console: ${message.text()}`);
+      });
+      viewerPage.on("pageerror", (error) => errors.push(`viewer pageerror: ${error.message}`));
+      await viewerPage.goto(settingsPath);
+      await loginWithRealOtp(viewerPage, data.viewerEmail, settingsPath);
+      await expect(viewerPage.getByRole("heading", { name: "Planungs-Vorlagen", level: 1 })).toBeVisible();
+      await expect(viewerPage.getByText(templateName, { exact: true })).toBeVisible();
+      await expect(viewerPage.getByRole("heading", { name: "Neue Vorlage", exact: true })).toHaveCount(0);
+    } finally {
+      await viewerContext.close();
+    }
+    expect(errors, "Browser-Konsole in der Viewer-Sicht").toEqual([]);
+  });
+
+  test("F1608-E2E-03: Vorlage am Angebot anwenden setzt Planungsmodus", async ({ page }) => {
+    test.setTimeout(240_000);
+    const data = runtimeState();
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(`console: ${message.text()}`);
+    });
+    page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+    const stamp = Date.now();
+    const quickName = `F1608 E2E Quick ${stamp}`;
+    const d2Name = `F1608 E2E ZweiD ${stamp}`;
+    const settingsPath = `/w/${data.w3WorkspaceId}/einstellungen/planungs-vorlagen`;
+    const adminEmail = await seedAdminMembership();
+
+    await page.goto(settingsPath);
+    await loginWithRealOtp(page, adminEmail, settingsPath);
+    await createPlanningPreset(page, data.w3WorkspaceId, quickName, "quick");
+    await createPlanningPreset(page, data.w3WorkspaceId, d2Name, "2d");
+
+    const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f1606ProjectId}`;
+    await page.goto(projectPath);
+    await expect(page.getByRole("heading", { name: M2_01_E2E_CONTACT, level: 1 })).toBeVisible();
+    const createEntry = page.locator('[data-offer-create-state="ready"]');
+    await expect(createEntry).toBeVisible();
+    await createEntry.getByLabel("Forecast netto in Euro (optional)").fill("12500");
+    await createEntry.getByLabel("B2C-Preiszielgruppe ausdrücklich bestätigen").check();
+    await createEntry.getByLabel("Steuerentwurf").selectOption("standard_19");
+    await createEntry.getByRole("button", { name: "Angebot erstellen", exact: true }).click();
+    await page.waitForURL((url) =>
+      /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
+      && url.searchParams.has("variante"));
+    const w3State = { ...data, workspaceId: data.w3WorkspaceId, m201ProjectId: data.f1606ProjectId };
+    const initial = await readM201Offer(w3State);
+    const variantId = new URL(page.url()).searchParams.get("variante");
+    expect(variantId).toBe(initial.variantId);
+
+    await expect(page.locator('[data-offer-detail-state="loaded"]')).toBeVisible();
+    // Aktuellen Modus lesen, Gegen-Vorlage wählen (kein No-op).
+    const currentMode = await page.locator('input[name="planning-mode"]:checked').inputValue();
+    const target = currentMode === "quick"
+      ? { name: d2Name, mode: "2d" as const }
+      : { name: quickName, mode: "quick" as const };
+    const applyPanel = page.locator("form").filter({
+      has: page.getByLabel("Planungs-Vorlage"),
+    });
+    await applyPanel.getByLabel("Planungs-Vorlage").selectOption({ label: `${target.name} (${MODE_OPTION[target.mode]})` });
+    await applyPanel.getByRole("button", { name: "Vorlage anwenden", exact: true }).click();
+    await expect(applyPanel.getByText(`Planungsmodus gesetzt (${MODE_OPTION[target.mode]}).`, { exact: true })).toBeVisible();
+    await expect.poll(async () => (
+      await readM201RevisionEvidence(w3State, initial.offerId, variantId!)
+    ).revision, {
+      message: "Das Vorlagen-Apply muss Revision 2 dauerhaft persistieren.",
+      timeout: 15_000,
+    }).toBe(2);
+    const evidence = await readM201RevisionEvidence(w3State, initial.offerId, variantId!);
+    const snapshot = JSON.parse(evidence.snapshotText) as { planningMode?: unknown };
+    expect(snapshot.planningMode).toBe(target.mode);
+    expect(errors, "Browser-Konsole beim Anwenden").toEqual([]);
+  });
+});

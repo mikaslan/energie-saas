@@ -953,6 +953,13 @@
       "when": 1789247271765,
       "tag": "0135_f8_15_portal_rechnungen",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1789250291401,
+      "tag": "0136_f16_08_planungs_vorlagen",
+      "breakpoints": true
     }
   ]
 }

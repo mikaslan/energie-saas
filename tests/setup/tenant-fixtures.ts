@@ -2511,6 +2511,21 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F16-08 (0136): Planungs-Vorlagen — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies.
+  planning_template: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into planning_template (
+        id, workspace_id, name, name_normalized, mode,
+        active, position, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Planung',
+        'fixture planung', 'quick',
+        true, 0,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
   // F9-07 (0093): Abrechnungslauf — nur workspace-FK, RLS
   // tenant_isolation, keine Actor-Policies, kein Delete.
   billing_run: async (tx, wsId) => {

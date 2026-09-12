@@ -31,6 +31,7 @@ import { deriveCertifiedCapacities } from "@/lib/integrations/offers/certified-c
 import { planningModeSchema } from "@/lib/integrations/planning/contract";
 
 import { listDiscountTemplates } from "@/modules/discounts";
+import { listPlanningTemplates } from "@/modules/planning";
 import { listSubsidyTemplates } from "@/modules/subsidies";
 import {
   OfferDetailView,
@@ -258,6 +259,7 @@ function projectOfferDetailView(
     canEditPrice: boolean;
     canApplyDiscount: boolean;
     canApplyOfferTemplate: boolean;
+    canApplyPlanningTemplate: boolean;
     canEditPurchasePrice: boolean;
     canGeneratePdf: boolean;
     canPrepareRelease: boolean;
@@ -291,6 +293,13 @@ function projectOfferDetailView(
     name: string;
     hasPaymentOption: boolean;
     hasDiscount: boolean;
+  }[],
+  // F16-08: aktive Planungs-Vorlagen (Modus-Presets) für das Anwenden
+  // an der aktiven Variante. Nur mit planning.settings.read.
+  planningTemplates: readonly {
+    id: string;
+    name: string;
+    mode: "quick" | "2d" | "3d";
   }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
@@ -441,6 +450,7 @@ function projectOfferDetailView(
       canEditPrice: editorCapabilities.canEditPrice,
       canApplyDiscount: editorCapabilities.canApplyDiscount,
       canApplyOfferTemplate: editorCapabilities.canApplyOfferTemplate,
+      canApplyPlanningTemplate: editorCapabilities.canApplyPlanningTemplate,
       canEditPurchasePrice: editorCapabilities.canEditPurchasePrice,
       canGeneratePdf: editorCapabilities.canGeneratePdf,
       canPrepareRelease: editorCapabilities.canPrepareRelease,
@@ -523,6 +533,7 @@ function projectOfferDetailView(
     discountTemplates,
     paymentOptions,
     offerTemplates,
+    planningTemplates,
   };
 }
 
@@ -574,11 +585,18 @@ export default async function OfferDetailPage(
       hasPaymentOption: boolean;
       hasDiscount: boolean;
     }[];
+    // F16-08: aktive Planungs-Vorlagen für das Anwenden an der Variante.
+    planningTemplates: {
+      id: string;
+      name: string;
+      mode: "quick" | "2d" | "3d";
+    }[];
     recoveryScope: string;
     editorCapabilities: {
       canEditPrice: boolean;
       canApplyDiscount: boolean;
       canApplyOfferTemplate: boolean;
+      canApplyPlanningTemplate: boolean;
       canEditPurchasePrice: boolean;
       canGeneratePdf: boolean;
       canPrepareRelease: boolean;
@@ -625,6 +643,11 @@ export default async function OfferDetailPage(
           name: string;
           hasPaymentOption: boolean;
           hasDiscount: boolean;
+        }[] = [];
+        const planningTemplates: {
+          id: string;
+          name: string;
+          mode: "quick" | "2d" | "3d";
         }[] = [];
         if (view !== null && !externalOnly) {
           // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
@@ -722,6 +745,16 @@ export default async function OfferDetailPage(
               });
             }
           }
+          // F16-08: nur aktive Planungs-Vorlagen (Archiv ist nicht anwendbar).
+          if (can(ctx, "planning.settings.read")) {
+            for (const template of await listPlanningTemplates(tx, ctx, {})) {
+              planningTemplates.push({
+                id: template.id,
+                name: template.name,
+                mode: template.mode,
+              });
+            }
+          }
         }
         return {
           view,
@@ -739,10 +772,12 @@ export default async function OfferDetailPage(
           discountTemplates,
           paymentOptions,
           offerTemplates,
+          planningTemplates,
           editorCapabilities: {
             canEditPrice: !externalOnly && can(ctx, "price.edit"),
             canApplyDiscount: !externalOnly && can(ctx, "discount.apply"),
             canApplyOfferTemplate: !externalOnly && can(ctx, "project.write") && can(ctx, "discount_template.write"),
+            canApplyPlanningTemplate: !externalOnly && can(ctx, "project.write") && can(ctx, "planning.settings.read"),
             canEditPurchasePrice: !externalOnly
             && can(ctx, "price.edit")
             && can(ctx, "price.read_purchase"),
@@ -784,6 +819,7 @@ export default async function OfferDetailPage(
     result.discountTemplates,
     result.paymentOptions,
     result.offerTemplates,
+    result.planningTemplates,
     {
       profile: result.releaseProfile,
       recipient: result.releaseRecipient,

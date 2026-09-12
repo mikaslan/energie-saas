@@ -7,6 +7,7 @@ import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import { OfferVariantControlsPanel } from "./offer-variant-controls-panel";
 import { OfferPaymentOptionPanel } from "./offer-payment-option-panel";
 import { OfferTemplateApplyPanel } from "./offer-template-apply-panel";
+import { PlanningTemplateApplyPanel } from "./planning-template-apply-panel";
 import {
   OfferIssuancePanel,
   type OfferIssuanceCandidateSurfaceView,
@@ -194,6 +195,8 @@ export interface OfferDetailSurfaceView {
     canApplyDiscount: boolean;
     // F16-06: optional, damit ältere Fixtures ohne das Flag weiter gelten.
     canApplyOfferTemplate?: boolean;
+    // F16-08: optional, wie canApplyOfferTemplate.
+    canApplyPlanningTemplate?: boolean;
     canEditPurchasePrice: boolean;
     canGeneratePdf: boolean;
     canPrepareRelease: boolean;
@@ -248,6 +251,12 @@ export interface OfferDetailSurfaceView {
     name: string;
     hasPaymentOption: boolean;
     hasDiscount: boolean;
+  }[];
+  // F16-08: aktive Planungs-Vorlagen für das Anwenden an der Variante.
+  planningTemplates?: readonly {
+    id: string;
+    name: string;
+    mode: "quick" | "2d" | "3d";
   }[];
   // F7-09: serverseitig aus dem versiegelten Snapshot projizierte
   // Anlagenkennzahlen (reine Aggregate, keine Rohdaten).
@@ -871,6 +880,15 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
             templates={view.offerTemplates ?? []}
             canApply={canEdit && view.permissions?.canApplyOfferTemplate === true}
           />
+          {canEdit && view.permissions?.canApplyPlanningTemplate === true && (view.planningTemplates ?? []).length > 0 ? (
+            <PlanningTemplateApplyPanel
+              workspaceId={view.workspaceId}
+              offerId={view.offer.id}
+              variantId={snapshot.variantId}
+              expectedRevision={snapshot.revision}
+              templates={view.planningTemplates ?? []}
+            />
+          ) : null}
         </div>
       </div>
     );
@@ -1020,6 +1038,11 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
             templates={view.offerTemplates ?? []}
             canApply={false}
           />
+          {(view.planningTemplates ?? []).length > 0 ? (
+            <p className="text-sm text-slate-600">
+              Planungs-Vorlagen: {(view.planningTemplates ?? []).map((template) => template.name).join(", ")}
+            </p>
+          ) : null}
         </div>
 
         <fieldset disabled={pending} className="mt-6 min-w-0 border-0 p-0">

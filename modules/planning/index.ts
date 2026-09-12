@@ -19,6 +19,9 @@ export {
   PlanningSettingsConflictError,
   PlanningSettingsIntegrityError,
   PlanningSettingsValidationError,
+  PlanningTemplateConflictError,
+  PlanningTemplateNotFoundError,
+  PlanningTemplateValidationError,
 } from "./errors";
 
 export {
@@ -26,3 +29,14 @@ export {
   getPlanningSettings,
   upsertPlanningSettings,
 } from "./service";
+
+export {
+  archivePlanningTemplate,
+  createPlanningTemplate,
+  findActivePlanningTemplate,
+  listPlanningTemplates,
+  normalizePlanningTemplateName,
+  restorePlanningTemplate,
+  updatePlanningTemplate,
+} from "./templates";
+export type { PlanningTemplateDto } from "./templates";

@@ -18,3 +18,24 @@ export class PlanningSettingsIntegrityError extends Error {
     this.name = "PlanningSettingsIntegrityError";
   }
 }
+
+export class PlanningTemplateValidationError extends Error {
+  constructor() {
+    super("planning template input is invalid");
+    this.name = "PlanningTemplateValidationError";
+  }
+}
+
+export class PlanningTemplateConflictError extends Error {
+  constructor() {
+    super("planning template name is already in use");
+    this.name = "PlanningTemplateConflictError";
+  }
+}
+
+export class PlanningTemplateNotFoundError extends Error {
+  constructor() {
+    super("planning template was not found");
+    this.name = "PlanningTemplateNotFoundError";
+  }
+}

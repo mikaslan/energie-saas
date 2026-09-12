@@ -554,6 +554,10 @@ const FILE_REQUEST_TEMPLATE_RELATIONS = [
   "file_request_template",
 ] as const;
 
+const PLANNING_TEMPLATE_RELATIONS = [
+  "planning_template",
+] as const;
+
 const PORTAL_STATUS_LABEL_RELATIONS = [
   "portal_status_label",
 ] as const;
@@ -2848,6 +2852,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F16-08: Planungs-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
+  const hasPlanningTemplates = await hasAtomicPublicRelationSet(
+    client,
+    PLANNING_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F16-08-Planungs-Vorlagen",
+  );
+  if (hasPlanningTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.planning_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.planning_template to app_runtime
+    `);
+  }
+
   // F1-12: Teams — Stammdaten ohne Delete (Archiv); Mitglieder
   // Voll-Replace (DELETE nur eigene Team-Zeilen, Service-Guard).
   const hasTeams = await hasAtomicPublicRelationSet(
@@ -4504,6 +4524,11 @@ export async function verifyRoleContract(
     FILE_REQUEST_TEMPLATE_RELATIONS,
     "Rollenvertrag: F16-07-Datei-Anfragen-Vorlagen",
   );
+  const hasPlanningTemplates = await hasAtomicPublicRelationSet(
+    client,
+    PLANNING_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F16-08-Planungs-Vorlagen",
+  );
   const hasPortalStatusLabels = await hasAtomicPublicRelationSet(
     client,
     PORTAL_STATUS_LABEL_RELATIONS,
@@ -4826,6 +4851,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasFileRequestTemplates ? FILE_REQUEST_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.map(
@@ -6147,6 +6175,9 @@ export async function verifyRoleContract(
       ...(hasFileRequestTemplates ? FILE_REQUEST_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6580,6 +6611,11 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasFileRequestTemplates ? [
           "file_request_template:tenant_isolation:91d517f0c07c59b57989e4de4da6f66f8e82f049eed35e71fc32cad8dbe0c2fc",
+        ] : []),
+        // F16-08 (0136): Planungs-Vorlagen (Hash per Embedded-Probe
+        // geerntet, Methode gegen file_request-Pin gegengeprüft).
+        ...(hasPlanningTemplates ? [
+          "planning_template:tenant_isolation:8be1690547ba95dd467d0f15cb959830845dd929a6de4caff76b5b662d601315",
         ] : []),
         ...(hasPortalStatusLabels ? [
           "portal_status_label:tenant_isolation:bc4e54d8d9cadf8aaeb2b77dc5c45c95b2f12fc9eeb5a1ac9d009fd46b1681b6",
@@ -7161,6 +7197,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasFileRequestTemplates ? FILE_REQUEST_TEMPLATE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

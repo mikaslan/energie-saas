@@ -33,6 +33,7 @@ export {
 } from "./payment-options";
 export {
   applyOfferTemplate,
+  applyPlanningTemplate,
   archiveOfferTemplate,
   createOfferTemplate,
   listOfferTemplates,

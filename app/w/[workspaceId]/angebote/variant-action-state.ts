@@ -63,3 +63,17 @@ export type ApplyOfferTemplateEditorState =
 export const APPLY_OFFER_TEMPLATE_INITIAL_STATE = {
   status: "idle",
 } as const satisfies ApplyOfferTemplateEditorState;
+
+export type ApplyPlanningTemplateEditorState =
+  | { status: "idle" }
+  | { status: "invalid" }
+  | { status: "unauthenticated" }
+  | { status: "denied" }
+  | { status: "not_found" }
+  | { status: "conflict" }
+  | { status: "unavailable" }
+  | { status: "success"; mode: string };
+
+export const APPLY_PLANNING_TEMPLATE_INITIAL_STATE = {
+  status: "idle",
+} as const satisfies ApplyPlanningTemplateEditorState;

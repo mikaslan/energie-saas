@@ -21,9 +21,22 @@ import {
   type OfferTemplateDto,
   type UpdateOfferTemplateCommand,
 } from "@/lib/integrations/offers/template-contract";
-import { OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION } from "@/lib/integrations/offers/contract";
+import {
+  OFFER_VARIANT_PAYMENT_OPTION_COMMAND_VERSION,
+  OFFER_VARIANT_REVISE_COMMAND_VERSION,
+} from "@/lib/integrations/offers/contract";
+import {
+  applyPlanningTemplateCommandSchema,
+  type ApplyPlanningTemplateCommand,
+} from "@/lib/integrations/planning/template-contract";
+import {
+  findActivePlanningTemplate,
+  PlanningTemplateNotFoundError,
+  PlanningTemplateValidationError,
+} from "@/modules/planning";
 import { applyDiscountTemplateToOfferGlobal } from "@/modules/discounts";
 import {
+  reviseOfferVariant,
   setVariantPaymentOption,
   type OfferMutationResult,
 } from "./service";
@@ -397,4 +410,39 @@ export async function applyOfferTemplate(
     payload: { offerId: result.offerId, variantId: result.variantId, discountApplied, paymentOptionApplied },
   });
   return { ...result, templateId: template.id, paymentOptionApplied, discountApplied };
+}
+
+// F16-08: Planungs-Vorlage an einer Variante anwenden (Modus-Preset via
+// set_planning_mode-Revision, nur aktive Vorlagen; veraltete Revision und
+// Varianten-Sperren meldet der Angebots-Pfad selbst — Offer-Fehler laufen
+// transparent durch).
+export async function applyPlanningTemplate(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: ApplyPlanningTemplateCommand,
+): Promise<OfferMutationResult & { templateId: string; mode: "quick" | "2d" | "3d" }> {
+  if (!can(ctx, "planning.settings.read")) {
+    throw new PermissionDeniedError("planning.settings.read", "planning_template", undefined, ctx.actor);
+  }
+  const parsed = applyPlanningTemplateCommandSchema.safeParse(input);
+  if (!parsed.success) throw new PlanningTemplateValidationError();
+  const command = parsed.data;
+  const template = await findActivePlanningTemplate(tx, ctx, command.templateId);
+  if (!template) throw new PlanningTemplateNotFoundError();
+  const result = await reviseOfferVariant(tx, ctx, {
+    schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
+    offerId: command.offerId,
+    variantId: command.variantId,
+    expectedRevision: command.expectedRevision,
+    operations: [{ operation: "set_planning_mode", planningMode: template.mode }],
+  });
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "planning_template",
+    aggregateId: template.id,
+    eventType: "planning_template.applied",
+    actor: ctx.actor,
+    payload: { offerId: result.offerId, variantId: result.variantId, mode: template.mode },
+  });
+  return { ...result, templateId: template.id, mode: template.mode };
 }
