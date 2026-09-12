@@ -1396,6 +1396,22 @@ export async function createDocumentLine(
   if (document.type === "letter") {
     throw new InvoicingValidationError();
   }
+  // F8-09 Eltern-Sperre: AB mit AKTIVER Teilrechnungs-Kette nimmt keine
+  // weiteren Positionen an (Kettenbasis unveränderlich; Storno befreit).
+  if (document.type === "order_confirmation") {
+    const chained = await tx.execute(sql`
+      select 1
+        from commercial_document_partial partial
+        join commercial_document invoice
+          on invoice.workspace_id = partial.workspace_id
+         and invoice.id = partial.partial_invoice_id
+         and invoice.status <> 'voided'
+       where partial.workspace_id = ${ctx.workspaceId}::uuid
+         and partial.source_order_id = ${command.documentId}::uuid
+       limit 1
+    `);
+    if (chained.rows.length > 0) throw new InvoicingConflictError();
+  }
 
   const line = command.input;
   const taxCents = roundHalfUpCents(line.netCents, line.taxRateBps);
