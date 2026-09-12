@@ -11,8 +11,10 @@ import {
   InstallationNotFoundError,
   InstallationValidationError,
   recordHandover,
+  setInstallationVariant,
   setLeadInstaller,
 } from "@/modules/installations";
+import { OfferNotFoundError } from "@/modules/offers";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
 const idSchema = z.uuid();
@@ -40,6 +42,7 @@ function mapError(error: unknown): InstallationActionState {
   if (error instanceof InstallationValidationError) return { status: "invalid" };
   if (error instanceof InstallationConflictError) return { status: "conflict" };
   if (error instanceof InstallationNotFoundError) return { status: "not_found" };
+  if (error instanceof OfferNotFoundError) return { status: "not_found" };
   if (error instanceof PermissionDeniedError) return { status: "denied" };
   if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
   throw error;
@@ -129,6 +132,29 @@ export async function recordHandoverAction(
     );
     revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
     return { status: "success", message: "Abnahme festgehalten." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F7-08 Workbook: zu installierende Variante binden (explizit; die UI
+// schlägt die signierte Variante vor, der Mensch bestätigt).
+export async function setInstallationVariantAction(
+  _previous: InstallationActionState,
+  formData: FormData,
+): Promise<InstallationActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const variantValue = formData.get("variantId");
+  if (typeof variantValue !== "string") return { status: "invalid" };
+  const variant = idSchema.safeParse(variantValue);
+  if (!variant.success) return { status: "invalid" };
+  try {
+    await authorizedAction(ids.workspaceId, "installation.write", "installation", (tx, ctx) =>
+      setInstallationVariant(tx, ctx, { projectId: ids.projectId, variantId: variant.data }),
+    );
+    revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
+    return { status: "success", message: "Zu installierende Variante festgelegt." };
   } catch (error) {
     return mapError(error);
   }

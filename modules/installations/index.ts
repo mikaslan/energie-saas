@@ -27,3 +27,12 @@ export {
   type InstallationStatusLabelKey,
   type InstallationStatusLabels,
 } from "./service";
+export {
+  getInstallationWorkbook,
+  listInstallableVariants,
+  setInstallationVariant,
+  type InstallableVariantOption,
+  type InstallationWorkbook,
+  type WorkbookLine,
+  type WorkbookSection,
+} from "./workbook-service";

@@ -63,7 +63,7 @@ import {
   type AppointmentTemplateDto,
   type ProjectAppointmentRangeV1,
 } from "@/modules/calendar";
-import { getInstallation, listInstallerOptions, type InstallationDto, type InstallationMemberOption } from "@/modules/installations";
+import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallerOptions, type InstallableVariantOption, type InstallationDto, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
 import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
@@ -72,6 +72,7 @@ import { ContactSection } from "./contact-section";
 import { EnergyCalculationSection } from "./energy-calculation-section";
 import { EnergyProfileSection } from "./energy-profile-section";
 import { InstallationSection } from "./installation-section";
+import { InstallationWorkbookPanel } from "./installation-workbook-panel";
 import { ServiceCaseSection } from "./service-case-section";
 import { OfferCreateEntry } from "./offer-create-entry";
 import {
@@ -236,7 +237,14 @@ async function loadPortalStatus(
 }
 
 type InstallationLoadResult =
-  | { kind: "loaded"; installation: InstallationDto | null; installerOptions: InstallationMemberOption[]; canWrite: boolean }
+  | {
+      kind: "loaded";
+      installation: InstallationDto | null;
+      installerOptions: InstallationMemberOption[];
+      canWrite: boolean;
+      variants: InstallableVariantOption[];
+      workbook: InstallationWorkbook | null;
+    }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
@@ -323,7 +331,20 @@ async function loadInstallationStatus(
       "installation_installer_options",
       (tx, ctx) => listInstallerOptions(tx, ctx),
     );
-    return { kind: "loaded", installation, installerOptions, canWrite: writable };
+    // F7-08 Workbook: Varianten-Auswahl + Stückliste (lesend).
+    const variants = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation_workbook_options",
+      (tx, ctx) => listInstallableVariants(tx, ctx, { projectId }),
+    );
+    const workbook = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation_workbook",
+      (tx, ctx) => getInstallationWorkbook(tx, ctx, { projectId }),
+    );
+    return { kind: "loaded", installation, installerOptions, canWrite: writable, variants, workbook };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1135,6 +1156,14 @@ export default async function ProjectTriagePage({
             projectId={projectId}
             installation={installationResult.installation}
             installerOptions={installationResult.installerOptions}
+            canWrite={installationResult.canWrite}
+          />
+          <InstallationWorkbookPanel
+            workspaceId={workspaceId}
+            projectId={projectId}
+            installation={installationResult.installation}
+            variants={installationResult.variants}
+            workbook={installationResult.workbook}
             canWrite={installationResult.canWrite}
           />
         </div>

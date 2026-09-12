@@ -19,6 +19,10 @@ import {
   OFFER_VARIANT_SNAPSHOT_VERSION,
   canonicalizeOfferJson,
 } from "@/lib/integrations/offers/contract";
+import {
+  canonicalizeCalculationJson,
+  siteEnergyProfileV1Schema,
+} from "@/lib/integrations/calculation/contract";
 import { hashOfferPdfDraftInput } from "@/lib/integrations/offers/pdf-contract";
 import type { TenantTx } from "@/lib/db/types";
 
@@ -330,6 +334,15 @@ async function fixtureEnergyGraph(tx: TenantTx, wsId: string): Promise<{
   const siteId = projectRow.rows[0].site_id;
   const requirementId = randomUUID();
   const profileId = randomUUID();
+  // Ehrlicher Profil-Hash (gleiche Kanonisierung wie der Service):
+  // Platzhalter brächen die fail-closed Hash-Prüfung der Projektseite.
+  const parsedProfile = siteEnergyProfileV1Schema.safeParse(fixtureEnergyProfile);
+  if (!parsedProfile.success) {
+    throw new Error("fixtureEnergyProfile ist gegen siteEnergyProfileV1Schema ungültig.");
+  }
+  const profileDigest = createHash("sha256")
+    .update(canonicalizeCalculationJson(parsedProfile.data), "utf8")
+    .digest();
 
   await tx.execute(sql`
     insert into project_requirement (
@@ -352,7 +365,7 @@ async function fixtureEnergyGraph(tx: TenantTx, wsId: string): Promise<{
       'site-energy-profile.v1', 'consumption', 'rechner_snapshot',
       ${snapshotId}::uuid, ${projectId}::uuid, 1,
       ${JSON.stringify(fixtureEnergyProfile)}::jsonb,
-      decode(repeat('11', 32), 'hex'), 1, 1, ${actorId}::uuid, now()
+      ${profileDigest}, 1, 1, ${actorId}::uuid, now()
     )
   `);
 
