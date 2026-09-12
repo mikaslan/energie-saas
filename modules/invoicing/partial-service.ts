@@ -174,7 +174,7 @@ async function readActiveBilledNet(
   // Netto-Summe der AKTIVEN Teilrechnungen (optional nur ein Modus):
   // Basis für cent-exakte Rest-Beträge (Scheme-Endtranche, Closing).
   const modeFilter = mode === null
-    ? sql`and partial.mode in ('percent', 'lines', 'scheme', 'closing')`
+    ? sql`and partial.mode in ('percent', 'lines', 'scheme', 'closing', 'remainder')`
     : sql`and partial.mode = ${mode}`;
   const result = await tx.execute<{ net: number | string }>(sql`
     select coalesce(sum(line.net_cents), 0) as net
@@ -196,7 +196,7 @@ async function readActiveBilledNet(
 export type CreatePartialInvoiceResult = {
   id: string;
   ordinal: number;
-  mode: "percent" | "lines" | "scheme" | "closing";
+  mode: "percent" | "lines" | "scheme" | "closing" | "remainder";
   grossCents: number;
 };
 
@@ -290,6 +290,36 @@ export async function createPartialInvoice(
       taxRateBps: rate,
       sourceLineId: null,
     }];
+  } else if (command.mode === "remainder") {
+    // F8-12: Teil-Rest — Anteil (percentBps, 1..9999, Contract-Refine)
+    // am AKTUELLEN Ketten-Rest, Kette bleibt offen. Ohne aktive
+    // Teilrechnung kein Remainder (kein F8-04b-Ersatz); 100 % ist
+    // closing. Nominelle Bps nur für Anzeige (CHECK 1..9999).
+    const rates = new Set(orderLines.map((line) => Number(line.tax_rate_bps)));
+    if (rates.size !== 1) throw new InvoicingValidationError();
+    const rate = [...rates][0]!;
+    if (rate !== 0 && rate !== 1900) throw new InvoicingValidationError();
+    if (partials.length === 0) throw new InvoicingValidationError();
+    if (command.percentBps === null || command.percentBps > 9999) {
+      throw new InvoicingValidationError();
+    }
+    const orderNet = Number(order.net_cents);
+    const remainderNet = orderNet - await readActiveBilledNet(tx, ctx, command.orderId, null);
+    if (!Number.isSafeInteger(remainderNet) || remainderNet <= 0) {
+      throw new InvoicingConflictError();
+    }
+    const netCents = roundPercentCents(remainderNet, command.percentBps);
+    if (!Number.isSafeInteger(netCents) || netCents <= 0) throw new InvoicingConflictError();
+    storedBps = command.percentBps;
+    linesToCopy = [{
+      position: 1,
+      name: `Teil-Restbetrag zu ${order.number ?? order.name}`,
+      quantityMilli: 1000,
+      unit: "piece",
+      netCents,
+      taxRateBps: rate,
+      sourceLineId: null,
+    }];
   } else {
     const requested = command.lineIds!;
     if (new Set(requested).size !== requested.length) throw new InvoicingValidationError();
@@ -368,7 +398,7 @@ export async function createPartialInvoice(
       ) values (
         ${partialId}::uuid, ${ctx.workspaceId}::uuid, ${command.orderId}::uuid,
         ${created.id}::uuid, ${command.mode},
-        ${command.mode === "lines" ? null : command.mode === "percent" ? command.percentBps : storedBps},
+        ${command.mode === "lines" ? null : command.mode === "percent" || command.mode === "remainder" ? command.percentBps : storedBps},
         ${ordinal}, ${ctx.actor}::uuid
       )
     `);
@@ -423,7 +453,7 @@ export type PartialChainEntry = {
   name: string;
   status: string;
   ordinal: number;
-  mode: "percent" | "lines" | "scheme" | "closing";
+  mode: "percent" | "lines" | "scheme" | "closing" | "remainder";
   percentBps: number | null;
   grossCents: number;
   createdAt: string;
@@ -504,7 +534,9 @@ export async function listPartialInvoices(
       ? "lines"
       : row.mode === "scheme"
         ? "scheme"
-        : row.mode === "closing" ? "closing" : "percent",
+        : row.mode === "closing"
+          ? "closing"
+          : row.mode === "remainder" ? "remainder" : "percent",
     percentBps: row.percent_bps,
     grossCents: Number(row.invoice_gross),
     createdAt: toIso(row.created_at),

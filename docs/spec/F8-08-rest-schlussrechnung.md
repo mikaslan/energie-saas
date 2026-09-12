@@ -42,5 +42,7 @@ F8-01 bleibt Anzahlungs-Anrechnung (anderer Mechanismus).
 
 ## Bewusst offen
 
-- Skonto auf Restrechnung, Portal-Sicht, Teil-Rest (nur Teil des
-  Rests schließen — immer Voll-Rest in v1).
+- Skonto auf Restrechnung, Portal-Sicht, absolute Rest-Beträge.
+- Teil-Rest (nur Teil des Rests schließen) ist seit 2026-09-12 als
+  eigener Modus `remainder` in F8-12 belegt (dort: Prozentanteil vom
+  Rest, Kette bleibt offen).

@@ -262,6 +262,8 @@ export const COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION =
 // F8-05: Teilrechnung zum Auftrag (Modi percent/lines, Kette mit Cap).
 // F8-07: Zahlungsplan-Modus scheme (Staffel 30/40/30, Tranche aus Kette).
 // F8-08: Rest-Schlussrechnung (Modus closing, exakter Ketten-Rest).
+// F8-12: Teil-Rest (Modus remainder, Prozentanteil 1..9999 bps vom
+// aktuellen Ketten-Rest; 100 % bleibt closing).
 export const COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION =
   "commercial-document-partial-command.v1" as const;
 // F8-07: versionierte Tranchen-Staffel des Scheme-Modus (ESTIMATE,
@@ -272,7 +274,7 @@ export const COMMERCIAL_DOCUMENT_SCHEME_TRANCHES_BPS = [3000, 4000, 3000] as con
 export const commercialDocumentPartialCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION),
   orderId: z.string().uuid(),
-  mode: z.enum(["percent", "lines", "scheme", "closing"]),
+  mode: z.enum(["percent", "lines", "scheme", "closing", "remainder"]),
   percentBps: z.number().int().min(1).max(10000).nullable(),
   lineIds: z.array(z.string().uuid()).max(200).nullable(),
 }).refine(
@@ -280,7 +282,8 @@ export const commercialDocumentPartialCommandV1Schema = z.strictObject({
     (value.mode === "percent" && value.percentBps !== null && value.lineIds === null)
     || (value.mode === "lines" && value.percentBps === null && value.lineIds !== null && value.lineIds.length > 0)
     || (value.mode === "scheme" && value.percentBps === null && value.lineIds === null)
-    || (value.mode === "closing" && value.percentBps === null && value.lineIds === null),
+    || (value.mode === "closing" && value.percentBps === null && value.lineIds === null)
+    || (value.mode === "remainder" && value.percentBps !== null && value.percentBps <= 9999 && value.lineIds === null),
   "partial mode input inconsistent",
 );
 export type CommercialDocumentPartialCommandV1 = z.infer<

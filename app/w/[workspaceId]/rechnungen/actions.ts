@@ -421,7 +421,8 @@ export type PartialInvoiceActionState =
 
 // F8-05 · Teilrechnung zum Auftrag (Modi percent/lines). Prozent als
 // Dezimal-Prozent (0 < p ≤ 100, zwei Stellen) → Basispunkte ohne Float:
-// Math.round(p * 100), danach Schema-Range 1–10000.
+// Math.round(p * 100), danach Schema-Range 1–10000. F8-12 · remainder:
+// Anteil VOM REST (0 < p < 100, Range 1–9999; 100 % ist closing).
 export async function createPartialInvoiceAction(
   _previous: PartialInvoiceActionState,
   formData: FormData,
@@ -429,18 +430,21 @@ export async function createPartialInvoiceAction(
   const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
   const documentId = parseUuid(formData.get("documentId"));
   const modeValue = formData.get("mode");
-  const mode = modeValue === "percent" || modeValue === "lines" || modeValue === "scheme" || modeValue === "closing" ? modeValue : null;
+  const mode = modeValue === "percent" || modeValue === "lines" || modeValue === "scheme" || modeValue === "closing" || modeValue === "remainder" ? modeValue : null;
   if (!workspaceId || !documentId || !mode) return { status: "invalid" };
   let percentBps: number | null = null;
   let lineIds: string[] | null = null;
   if (mode === "scheme" || mode === "closing") {
     // F8-07/F8-08: Tranche/Rest folgt aus der Kette (kein Prozent-Input).
-  } else if (mode === "percent") {
+  } else if (mode === "percent" || mode === "remainder") {
     const raw = formData.get("percent");
     const percent = typeof raw === "string" ? Number(raw) : NaN;
-    if (!Number.isFinite(percent) || percent <= 0 || percent > 100) return { status: "invalid" };
+    // F8-12: Teil-Rest ist ein echter Teil (0 < p < 100); 100 % ist
+    // die Rest-Schlussrechnung (closing-Modus).
+    if (!Number.isFinite(percent) || percent <= 0) return { status: "invalid" };
+    if (mode === "remainder" ? percent >= 100 : percent > 100) return { status: "invalid" };
     percentBps = Math.round(percent * 100);
-    if (percentBps < 1 || percentBps > 10000) return { status: "invalid" };
+    if (percentBps < 1 || percentBps > (mode === "remainder" ? 9999 : 10000)) return { status: "invalid" };
   } else {
     const raw = formData.getAll("lineIds").filter((value): value is string => typeof value === "string");
     const unique = [...new Set(raw)];
