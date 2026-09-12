@@ -79,7 +79,10 @@ function belegDatum(isoDate: string, field: string): string {
 function bookingText(kind: DatevBookingKind, number: string, contactName: string): string {
   const label = kind === "invoice" ? "Rechnung" : "Gutschrift";
   const contact = contactName.trim().replace(/\s+/gu, " ").slice(0, 40);
-  return `${label} ${number.trim()} - ${contact}`.slice(0, 60);
+  // Kontaktlose Belege sind produkt-legal (contact_id nullable) — dann trägt
+  // der Buchungstext nur Typ + Nummer (Belegnummer bleibt eindeutig).
+  const text = contact === "" ? `${label} ${number.trim()}` : `${label} ${number.trim()} - ${contact}`;
+  return text.slice(0, 60);
 }
 
 function checkBooking(booking: DatevBookingInput): void {
@@ -91,7 +94,6 @@ function checkBooking(booking: DatevBookingInput): void {
   }
   if (booking.number.trim() === "") fail("booking", "Belegnummer fehlt");
   if (!ISO_DATE.test(booking.issueDate)) fail("booking", `Beleg ${booking.number}: Ausstelldatum fehlt`);
-  if (booking.contactName.trim() === "") fail("booking", `Beleg ${booking.number}: Kontakt fehlt`);
   if (booking.lines.length === 0) fail("booking", `Beleg ${booking.number}: keine Positionen`);
   let net = 0;
   let tax = 0;

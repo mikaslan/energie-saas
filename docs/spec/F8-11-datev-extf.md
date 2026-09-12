@@ -43,6 +43,10 @@ Anlagenbuchhaltung, Festschreibung, E-Mail-Versand an den Steuerberater.
   Nummer nicht null, `issued_at` im Monat (Berlin).
 - Nur 19-%-Zeilen (`tax_rate_bps = 1900` überall im Beleg); 0-%-Zeilen →
   Fehler mit Belegnummer (kein stiller Teil-Export, keine erfundenen BU-Schlüssel).
+- Kopf-only-Belege (produkt-legal, issue verlangt keine Zeilen):
+  `[ESTIMATE]` exakt-19-%-Kopf (`Steuer·100 == 19·Netto`, ganzzahlig)
+  wird als EINE 19-%-Zeile aus Kopfbeträgen gebucht; jeder andere
+  kopf-only-Beleg → Fehler mit Belegnummer.
 - Summenkranz je Beleg wie CII: Σ Zeilen-Netto == Kopf-Netto,
   Σ Steuer == Kopf-Steuer, Brutto == Netto + Steuer (sonst Fehler).
 - Leerer Monat → gültiger Stapel mit 0 Buchungen (kein Fehler, ehrlich leer).
@@ -51,8 +55,9 @@ Anlagenbuchhaltung, Festschreibung, E-Mail-Versand an den Steuerberater.
 
 - CRLF, `;`-getrennt, deutsche Datumsform DDMM im Belegdatum (EXTF-Konvention),
   Beträge mit Punkt-Dezimal (2 Stellen, maschinenlesbar wie Berichte-CSV).
-- Buchungstext: `<Rechnung|Gutschrift> <nummer> · <Kontaktname>` (gekürzt,
-  Formula-Injection-Guard wie Berichte-CSV).
+- Buchungstext: `<Rechnung|Gutschrift> <nummer>[ - <Kontaktname>]` (gekürzt,
+  Formula-Injection-Guard wie Berichte-CSV; kontaktlose Belege tragen nur
+  Typ + Nummer, Belegnummer bleibt eindeutig).
 - Reihenfolge: Ausstellungsdatum aufsteigend, dann Beleg-ID.
 - Dateiname `datev-buchungsstapel-<monat>-skr<03|04>.csv`,
   `text/csv; charset=utf-8`.

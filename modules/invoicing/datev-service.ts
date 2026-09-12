@@ -103,22 +103,38 @@ export async function exportDatevBatch(
     linesByDocument.set(line.document_id, bucket);
   }
 
-  const bookings: DatevBookingInput[] = documents.rows.map((row) => ({
-    kind: row.type as "invoice" | "credit_note",
-    number: row.number ?? "",
-    issueDate: row.issued_date ?? "",
-    contactName: row.contact_name ?? "",
-    currency: row.currency,
-    lines: (linesByDocument.get(row.id) ?? []).map((line) => ({
+  const bookings: DatevBookingInput[] = documents.rows.map((row) => {
+    const netCents = Number(row.net_cents);
+    const taxCents = Number(row.tax_cents);
+    const grossCents = Number(row.gross_cents);
+    let lines = (linesByDocument.get(row.id) ?? []).map((line) => ({
       taxRateBps: Number(line.tax_rate_bps),
       netCents: Number(line.net_cents),
       taxCents: Number(line.tax_cents),
       grossCents: Number(line.gross_cents),
-    })),
-    netCents: Number(row.net_cents),
-    taxCents: Number(row.tax_cents),
-    grossCents: Number(row.gross_cents),
-  }));
+    }));
+    if (lines.length === 0) {
+      // Kopf-only-Belege sind produkt-legal (issue verlangt keine Zeilen).
+      // Exakt-19-%-Kopf (ganzzahliger Quotient) wird als EINE 19-%-Zeile
+      // aus Kopfbeträgen gebucht (ESTIMATE-Ableitung, Spec §F8-11);
+      // alles andere verweigert der Builder fail-closed mit Belegnummer.
+      const ratioExact = netCents > 0 && taxCents * 100 === 19 * netCents;
+      if (ratioExact) {
+        lines = [{ taxRateBps: 1900, netCents, taxCents, grossCents }];
+      }
+    }
+    return {
+      kind: row.type as "invoice" | "credit_note",
+      number: row.number ?? "",
+      issueDate: row.issued_date ?? "",
+      contactName: row.contact_name ?? "",
+      currency: row.currency,
+      lines,
+      netCents,
+      taxCents,
+      grossCents,
+    };
+  });
 
   let content: string;
   try {

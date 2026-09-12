@@ -52,6 +52,14 @@ describe("F8-11 DATEV-EXTF Buchungsstapel", () => {
     expect(datevBatchFileName("2026-11", "03")).toBe("datev-buchungsstapel-2026-11-skr03.csv");
   });
 
+  it("F811-U-02b: kontaktloser Beleg trägt Typ + Nummer im Buchungstext", () => {
+    const content = buildDatevBatchCsv(batch({
+      bookings: [booking({ contactName: "   " })],
+    }));
+    const row = content.split("\r\n")[2];
+    expect(row?.endsWith(";Rechnung RE-2026-000001")).toBe(true);
+  });
+
   it("F811-U-03: Escaping (Trennzeichen, Quotes, Formel-Guard)", () => {
     const content = buildDatevBatchCsv(batch({
       bookings: [booking({ contactName: 'A"B;C & Sohn', number: "=RE-1" })],
