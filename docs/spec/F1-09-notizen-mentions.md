@@ -1,6 +1,8 @@
 # F1-09 — Projektnotizen @-Mentions (SPEC, Welle 03/04)
 
-- Status: SPEC (Turn 34). RED/IMPLEMENTED folgen nach CI-Stau (Nr. 5).
+- Status: IMPLEMENTIERT/LOKAL VERIFIZIERT (DB 5/5 in
+  `tests/db/f109-note-mentions.test.ts`, E2E-06 1/1 in
+  `tests/e2e/f1-09-note-mentions.spec.ts`, Stand 2026-09-12).
 - Scope: Parsen + Speichern + Auflösen + Rendern + RLS. KEINE
   Benachrichtigung (externer Versand braucht eigene Beauftragung).
 - Fundament: `project_note` (0041, `text_markdown`, v1-Check bleibt),
@@ -59,8 +61,8 @@ lösen gegen den Workspace-Mitgliederstand auf und rendern als
 - DB-05: 21. Mention → NoteValidationError.
 - UI: Mention-Chips im Renderer (`data-testid="note-mention-<email>"`,
   nie in Code-Marks); Section reicht `note.mentions` durch.
-- E2E-06 (eigene Spec-Datei, OFFEN — mit CI-Feedback schreiben, nicht
-  blind): `@`-Ref tippen, speichern, Reload → Mention-Chip sichtbar;
+- E2E-06 (`tests/e2e/f1-09-note-mentions.spec.ts`, lokal 1/1):
+  `@`-Ref tippen, speichern, Reload → Mention-Chip sichtbar;
   Phantom-Ref rendert als Text.
 
 ## 4. Nicht-Ziele
