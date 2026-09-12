@@ -51,7 +51,8 @@ function Feedback({
 
 /**
  * F8-05 · Teilrechnung zum Auftrag (Modi Prozent/Positionen, Kette mit
- * Restbetrag). Reine Darstellung gespeicherter Kette + Summen.
+ * Restbetrag). F8-07 · Zahlungsplan-Modus (Staffel 30/40/30, Tranche aus
+ * Kette). Reine Darstellung gespeicherter Kette + Summen.
  */
 export function PartialInvoicePanel({
   workspaceId,
@@ -65,7 +66,7 @@ export function PartialInvoicePanel({
   canWrite: boolean;
 }) {
   const [state, dispatch] = useActionState(createPartialInvoiceAction, initialState);
-  const [mode, setMode] = useState<"percent" | "lines">("percent");
+  const [mode, setMode] = useState<"percent" | "lines" | "scheme">("percent");
   const selectable = chain.orderLines.filter((line) => !line.consumed);
 
   return (
@@ -87,7 +88,7 @@ export function PartialInvoicePanel({
             <li key={entry.partialId} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
               <span>
                 <span className="font-semibold">Nr. {entry.ordinal}</span>
-                {" · "}{entry.mode === "percent" ? `${(entry.percentBps ?? 0) / 100} %` : "Positionen"}
+                {" · "}{entry.mode === "lines" ? "Positionen" : entry.mode === "scheme" ? `Zahlungsplan ${(entry.percentBps ?? 0) / 100} %` : `${(entry.percentBps ?? 0) / 100} %`}
                 {" · "}{formatEuro(entry.grossCents)}
                 {entry.status === "voided" ? " · storniert" : null}
               </span>
@@ -131,8 +132,24 @@ export function PartialInvoicePanel({
               Einzelne Auftragspositionen
               {selectable.length === 0 ? " (alle verbraucht)" : null}
             </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="mode"
+                value="scheme"
+                checked={mode === "scheme"}
+                onChange={() => setMode("scheme")}
+                className="h-4 w-4"
+              />
+              Zahlungsplan 30/40/30 (nächste Tranche)
+            </label>
           </fieldset>
-          {mode === "percent" ? (
+          {mode === "scheme" ? (
+            <p className="text-sm leading-6 text-slate-600">
+              Legt die nächste Tranche der Staffel 30/40/30 als Sammellinie an
+              (letzte Tranche cent-exakter Rest).
+            </p>
+          ) : mode === "percent" ? (
             <label className="grid max-w-48 gap-1 text-sm font-medium text-slate-700">
               Anteil in %
               <input

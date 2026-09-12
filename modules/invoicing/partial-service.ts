@@ -14,6 +14,7 @@ import { emitEvent } from "@/lib/events";
 import {
   COMMERCIAL_DOCUMENT_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_SCHEME_TRANCHES_BPS,
   commercialDocumentLineInputV1Schema,
   commercialDocumentPartialCommandV1Schema,
   type CommercialDocumentLineInputV1,
@@ -164,10 +165,34 @@ function roundPercentCents(netCents: number, percentBps: number): number {
   return Number(rounded);
 }
 
+async function readActiveSchemeNet(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  orderId: string,
+): Promise<number> {
+  // Netto-Summe der AKTIVEN Scheme-Tranchen (je genau eine Sammellinie):
+  // Basis für die cent-exakte Rest-Tranche.
+  const result = await tx.execute<{ net: number | string }>(sql`
+    select coalesce(sum(line.net_cents), 0) as net
+      from commercial_document_partial partial
+      join commercial_document invoice
+        on invoice.workspace_id = partial.workspace_id
+       and invoice.id = partial.partial_invoice_id
+       and invoice.status <> 'voided'
+      join commercial_document_line line
+        on line.workspace_id = partial.workspace_id
+       and line.document_id = invoice.id
+     where partial.workspace_id = ${ctx.workspaceId}::uuid
+       and partial.source_order_id = ${orderId}::uuid
+       and partial.mode = 'scheme'
+  `);
+  return Number(result.rows[0]?.net ?? 0);
+}
+
 export type CreatePartialInvoiceResult = {
   id: string;
   ordinal: number;
-  mode: "percent" | "lines";
+  mode: "percent" | "lines" | "scheme";
   grossCents: number;
 };
 
@@ -192,6 +217,7 @@ export async function createPartialInvoice(
 
   type CopyLine = CommercialDocumentLineInputV1 & { sourceLineId: string | null };
   let linesToCopy: CopyLine[];
+  let schemeTrancheBps: number | null = null;
   if (command.mode === "percent") {
     // v1-Grenze: Mischsätze fail-closed (EINE Sammellinie braucht genau
     // einen Satz — createDocumentLine rechnet je Zeile genau einen).
@@ -203,6 +229,33 @@ export async function createPartialInvoice(
     linesToCopy = [{
       position: 1,
       name: `Teilrechnung-Anteil ${ordinal} – ${command.percentBps! / 100} %`,
+      quantityMilli: 1000,
+      unit: "piece",
+      netCents,
+      taxRateBps: rate,
+      sourceLineId: null,
+    }];
+  } else if (command.mode === "scheme") {
+    // F8-07: Tranchenindex aus AKTIVEN Scheme-Tranchen (andere Modi
+    // zählen nicht); Plan erschöpft → Conflict. Letzte Tranche = Rest
+    // für cent-exakte Staffel. Gleiche Ein-Satz-Grenze wie percent.
+    const rates = new Set(orderLines.map((line) => Number(line.tax_rate_bps)));
+    if (rates.size !== 1) throw new InvoicingValidationError();
+    const rate = [...rates][0]!;
+    if (rate !== 0 && rate !== 1900) throw new InvoicingValidationError();
+    const trancheIndex = partials.filter((row) => row.mode === "scheme").length;
+    if (trancheIndex >= COMMERCIAL_DOCUMENT_SCHEME_TRANCHES_BPS.length) {
+      throw new InvoicingConflictError();
+    }
+    schemeTrancheBps = COMMERCIAL_DOCUMENT_SCHEME_TRANCHES_BPS[trancheIndex]!;
+    const isLast = trancheIndex === COMMERCIAL_DOCUMENT_SCHEME_TRANCHES_BPS.length - 1;
+    const netCents = isLast
+      ? Number(order.net_cents) - await readActiveSchemeNet(tx, ctx, command.orderId)
+      : roundPercentCents(Number(order.net_cents), schemeTrancheBps);
+    if (!Number.isSafeInteger(netCents) || netCents <= 0) throw new InvoicingConflictError();
+    linesToCopy = [{
+      position: 1,
+      name: `Zahlungsplan-Tranche ${trancheIndex + 1} – ${schemeTrancheBps / 100} %`,
       quantityMilli: 1000,
       unit: "piece",
       netCents,
@@ -287,7 +340,7 @@ export async function createPartialInvoice(
       ) values (
         ${partialId}::uuid, ${ctx.workspaceId}::uuid, ${command.orderId}::uuid,
         ${created.id}::uuid, ${command.mode},
-        ${command.mode === "percent" ? command.percentBps : null},
+        ${command.mode === "lines" ? null : command.mode === "scheme" ? schemeTrancheBps : command.percentBps},
         ${ordinal}, ${ctx.actor}::uuid
       )
     `);
@@ -342,7 +395,7 @@ export type PartialChainEntry = {
   name: string;
   status: string;
   ordinal: number;
-  mode: "percent" | "lines";
+  mode: "percent" | "lines" | "scheme";
   percentBps: number | null;
   grossCents: number;
   createdAt: string;
@@ -419,7 +472,7 @@ export async function listPartialInvoices(
     name: row.invoice_name,
     status: row.invoice_status,
     ordinal: row.ordinal,
-    mode: row.mode === "lines" ? "lines" : "percent",
+    mode: row.mode === "lines" ? "lines" : row.mode === "scheme" ? "scheme" : "percent",
     percentBps: row.percent_bps,
     grossCents: Number(row.invoice_gross),
     createdAt: toIso(row.created_at),
