@@ -55,8 +55,9 @@ function Feedback({
  * Kette). F8-08 · Rest-Schlussrechnung (Modus closing, exakter
  * Ketten-Rest). F8-12 · Teil-Rest (Modus remainder, Prozentanteil vom
  * aktuellen Rest, Kette bleibt offen). F8-13 · Betrag-Teilrechnung
- * (Modus amount, fester Netto-Betrag, cent-exakt). Reine Darstellung
- * gespeicherter Kette + Summen.
+ * (Modus amount, fester Netto-Betrag, cent-exakt). F8-14 · Skonto je
+ * Teilrechnung (eigene Kind-Kondition als Ketten-Anzeige). Reine
+ * Darstellung gespeicherter Kette + Summen.
  */
 export function PartialInvoicePanel({
   workspaceId,
@@ -95,6 +96,9 @@ export function PartialInvoicePanel({
                 <span className="font-semibold">Nr. {entry.ordinal}</span>
                 {" · "}{entry.mode === "lines" ? "Positionen" : entry.mode === "scheme" ? `Zahlungsplan ${(entry.percentBps ?? 0) / 100} %` : entry.mode === "closing" ? "Rest" : entry.mode === "remainder" ? `Teil-Rest ${(entry.percentBps ?? 0) / 100} %` : entry.mode === "amount" ? `Betrag ${formatEuro(entry.netCents)}` : `${(entry.percentBps ?? 0) / 100} %`}
                 {" · "}{formatEuro(entry.grossCents)}
+                {entry.skontoPercentBps !== null && entry.skontoDays !== null
+                  ? ` · Skonto ${(entry.skontoPercentBps / 100).toLocaleString("de-DE")} %/${entry.skontoDays} T`
+                  : null}
                 {entry.status === "voided" ? " · storniert" : null}
               </span>
               <Link

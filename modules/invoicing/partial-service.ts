@@ -485,6 +485,10 @@ export type PartialChainEntry = {
   grossCents: number;
   // F8-13: Netto-Summe je Teilrechnung (ehrliche „Betrag X €“-Anzeige).
   netCents: number;
+  // F8-14: eigene Skonto-Kondition je Teilrechnung (Kind-Anzeige in der
+  // Kette; Setzen weiter über setDocumentTerms am Entwurf des Kinds).
+  skontoPercentBps: number | null;
+  skontoDays: number | null;
   createdAt: string;
 };
 
@@ -538,13 +542,17 @@ export async function listPartialInvoices(
     invoice_status: string;
     invoice_gross: number | string;
     invoice_net: number | string;
+    invoice_skonto_percent: number | null;
+    invoice_skonto_days: number | null;
     [key: string]: unknown;
   }>(sql`
     select partial.id as partial_id, partial.ordinal, partial.mode,
            partial.percent_bps, partial.created_at,
            invoice.id as invoice_id, invoice.number as invoice_number,
            invoice.name as invoice_name, invoice.status as invoice_status,
-           invoice.gross_cents as invoice_gross, invoice.net_cents as invoice_net
+           invoice.gross_cents as invoice_gross, invoice.net_cents as invoice_net,
+           invoice.skonto_percent_bps as invoice_skonto_percent,
+           invoice.skonto_days as invoice_skonto_days
       from commercial_document_partial partial
       join commercial_document invoice
         on invoice.workspace_id = partial.workspace_id
@@ -572,6 +580,8 @@ export async function listPartialInvoices(
     percentBps: row.percent_bps,
     grossCents: Number(row.invoice_gross),
     netCents: Number(row.invoice_net),
+    skontoPercentBps: row.invoice_skonto_percent === null ? null : Number(row.invoice_skonto_percent),
+    skontoDays: row.invoice_skonto_days === null ? null : Number(row.invoice_skonto_days),
     createdAt: toIso(row.created_at),
   }));
   const billedGrossCents = partials
