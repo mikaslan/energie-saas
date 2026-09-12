@@ -356,6 +356,56 @@ async function setCalculationFailed(claim: ProjectCalculationClaim): Promise<voi
   }));
 }
 
+/**
+ * M1-07-Rate-Limit-Härtung (2× CI-rot bei identischer Assertion, lokal
+ * grün): Der 10-s-Aktor-Cooldown hängt an der Wanduhr — unter CI-Last
+ * altern die Test-Erstellungen aus dem Fenster, die Sperre löst nie aus.
+ * Diese Vorbereitung legt eine frische Auftragskopie auf „jetzt", sodass
+ * der Klick deterministisch in die Cooldown-Sperre läuft (UPDATE ist per
+ * Bindungs-Guard verboten, daher INSERT-Kopie aller Spalten mit frischem
+ * Zählschlüssel; die Kopie ist terminal-failed (nie aktiv, nie
+ * Retry-Ziel) und zählt nur für die Ratenprüfung. Die Sperrlogik selbst
+ * bleibt echt (kein Mock, keine Assertion gelockert).
+ */
+async function refreshLatestCalculationJobTimestamp(): Promise<void> {
+  const data = state();
+  await withEnergyFixtureDatabase(async (tx) => {
+    const copied = await tx.execute<{ id: string }>(sql`
+      insert into project_calculation_job (
+        workspace_id, project_id, site_id, address_revision,
+        pin_confirmed_address_revision, profile_id, profile_revision,
+        confirmed_profile_revision, confirmed_address_revision,
+        requirement_id, requirement_revision, source_snapshot_id,
+        reservation_key, provider_recipe_version, contract_version,
+        model_id, model_version, source_revision, defaults_version,
+        preparation_snapshot, preparation_sha256, state, attempt_count,
+        next_attempt_at, lease_token, lease_expires_at, input_sha256,
+        input_snapshot, provider_snapshot, error_code, error_retryable,
+        created_by, created_at, started_at, finished_at, result_revision_id
+      )
+      select workspace_id, project_id, site_id, address_revision,
+        pin_confirmed_address_revision, profile_id, profile_revision,
+        confirmed_profile_revision, confirmed_address_revision,
+        requirement_id, requirement_revision, source_snapshot_id,
+        pg_catalog.decode(pg_catalog.md5(pg_catalog.gen_random_uuid()::text) || pg_catalog.md5(pg_catalog.clock_timestamp()::text), 'hex'), provider_recipe_version, contract_version,
+        model_id, model_version, source_revision, defaults_version,
+        preparation_snapshot, preparation_sha256, 'failed_final', 1,
+        next_attempt_at, null, null, input_sha256,
+        input_snapshot, provider_snapshot, 'e2e_rate_seed', false,
+        created_by, pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp(), null
+        from project_calculation_job
+       where workspace_id = ${data.workspaceId}::uuid
+         and project_id = ${data.mainProjectId}::uuid
+       order by created_at desc, id desc
+       limit 1
+     returning id
+    `);
+    if (copied.rows.length !== 1) {
+      throw new Error("M1-07-E2E-Rechenauftrag fehlt für die Raten-Härtung.");
+    }
+  });
+}
+
 async function addCurrentRequirementRevision(): Promise<void> {
   const data = state();
   const requirementId = randomUUID();
@@ -807,6 +857,7 @@ test("M1-07: Editor bindet das Energieprofil und prüft alle Rechenzustände", a
   await expect(staleCalculation).toBeVisible();
   await expect(staleCalculation).toContainText("Ergebnis veraltet");
   await expect(page.getByText(/aktuelle Planung ist nicht mehr daran gebunden/u)).toBeVisible();
+  await refreshLatestCalculationJobTimestamp();
   await page.getByRole("button", { name: "Eingaben bestätigen" }).click();
   const rateLimitFeedback = page.getByRole("alert").filter({
     hasText: "Zu viele neue Berechnungen",

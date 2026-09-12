@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { expect, test, type Page } from "playwright/test";
-import type { M201RuntimeState } from "./m2-01-fixture";
+import { seedM201AdditionalReadyProject, type M201RuntimeState } from "./m2-01-fixture";
 
 /**
  * F7-09 Zertifizierte Anlagenkennzahlen — Chromium-E2E.
@@ -136,7 +136,11 @@ test.describe("F7-09 Zertifizierte Anlagenkennzahlen", () => {
   test("F7-09-E2E-01: Angebotsdetail zeigt versiegelte kWp/kWh aus dem Snapshot", async ({ page }) => {
     test.setTimeout(120_000);
     const state = runtimeState();
-    const projectPath = `/w/${state.workspaceId}/anfragen/${state.m201ProjectId}`;
+    // Eigenes Zusatzprojekt: Die Angebotserstellung kippt die Projektphase
+    // auf "offer" — das geteilte M2-01-Projekt bliebe sonst für M2-01/02/03a
+    // im Zustand "converted" statt "ready" zurück.
+    const projectId = await seedM201AdditionalReadyProject(state);
+    const projectPath = `/w/${state.workspaceId}/anfragen/${projectId}`;
     await page.goto(projectPath);
     await loginWithRealOtp(page, projectPath);
 

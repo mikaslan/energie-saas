@@ -1,8 +1,9 @@
 import { readFileSync, statSync } from "node:fs";
 import { expect, test, type Page } from "playwright/test";
+import { sql } from "drizzle-orm";
 import { createInstallation, setInstallationVariant } from "@/modules/installations";
 import {
-  readM201Offer,
+  seedM201AdditionalReadyProject,
   withM201Database,
   type M201RuntimeState,
 } from "./m2-01-fixture";
@@ -141,7 +142,11 @@ test.describe("F7-10 Workbook-Kapazitaeten", () => {
   test("F7-10-E2E-01: Workbook zeigt versiegelte kWp/kWh der gebundenen Variante", async ({ page }) => {
     test.setTimeout(120_000);
     const state = runtimeState();
-    const projectPath = `/w/${state.workspaceId}/anfragen/${state.m201ProjectId}`;
+    // Eigenes Zusatzprojekt: Die Angebotserstellung kippt die Projektphase
+    // auf "offer" — das geteilte M2-01-Projekt bliebe sonst für M2-01/02/03a
+    // im Zustand "converted" statt "ready" zurück.
+    const projectId = await seedM201AdditionalReadyProject(state);
+    const projectPath = `/w/${state.workspaceId}/anfragen/${projectId}`;
     await page.goto(projectPath);
     await loginWithRealOtp(page, projectPath);
 
@@ -154,12 +159,30 @@ test.describe("F7-10 Workbook-Kapazitaeten", () => {
     await page.waitForURL((url) =>
       /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
       && url.searchParams.has("variante"));
-    const offer = await readM201Offer(state);
+    // Jüngstes Angebot des EIGENEN Projekts (readM201Offer ist an das
+    // geteilte M2-01-Projekt gebunden).
+    const offer = await withM201Database(state, async (tx) => {
+      const found = await tx.execute<{ variantId: string }>(sql`
+        select variant.id as "variantId"
+          from offer
+          join offer_variant as variant
+            on variant.workspace_id = offer.workspace_id
+           and variant.offer_id = offer.id
+           and variant.ordinal = 1
+         where offer.workspace_id = ${state.workspaceId}::uuid
+           and offer.project_id = ${projectId}::uuid
+         order by offer.created_at desc, offer.id desc
+         limit 1
+      `);
+      const row = found.rows[0];
+      if (!row) throw new Error("F7-10-E2E: eigenes Angebot fehlt.");
+      return row;
+    });
 
     await withM201Database(state, async (tx, ctx) => {
-      await createInstallation(tx, ctx, { projectId: state.m201ProjectId });
+      await createInstallation(tx, ctx, { projectId });
       await setInstallationVariant(tx, ctx, {
-        projectId: state.m201ProjectId,
+        projectId,
         variantId: offer.variantId,
       });
     });
