@@ -486,4 +486,105 @@ describe("F10.1 portal command contracts", () => {
       })).toBeNull();
     }
   });
+
+  it("parst Portal-Rechnungen, fehlend = leer, deformiert = null", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
+      documents: [],
+      appointments: [],
+    };
+    // Alt-Projektion ohne Schlüssel → ehrlich leer.
+    expect(parsePortalPublicView(base)?.invoices).toEqual([]);
+    const shown = parsePortalPublicView({
+      ...base,
+      invoices: [{
+        id: INVITE,
+        number: "R-2026-7",
+        kind: "invoice",
+        issuedAt: "2026-09-12T10:00:00.000Z",
+        grossCents: 11900,
+        paymentStatus: "unpaid",
+      }, {
+        id: PROJECT,
+        number: null,
+        kind: "credit_note",
+        issuedAt: "2026-09-13T10:00:00.000Z",
+        grossCents: 0,
+        paymentStatus: null,
+      }],
+    });
+    expect(shown?.invoices).toEqual([{
+      id: INVITE,
+      number: "R-2026-7",
+      kind: "invoice",
+      issuedAt: "2026-09-12T10:00:00.000Z",
+      grossCents: 11900,
+      paymentStatus: "unpaid",
+    }, {
+      id: PROJECT,
+      number: null,
+      kind: "credit_note",
+      issuedAt: "2026-09-13T10:00:00.000Z",
+      grossCents: 0,
+      paymentStatus: null,
+    }]);
+    // Fremde Schlüssel/falsche Art/krumme/negative Cents/falscher
+    // Zahlstand brechen fail-closed ab.
+    for (const patch of [
+      { netCents: 10000 },
+      { kind: "order_confirmation" },
+      { grossCents: 119.5 },
+      { grossCents: -1 },
+      { grossCents: "11900" },
+      { paymentStatus: "gemahnt" },
+      { issuedAt: "kein-datum" },
+    ]) {
+      expect(parsePortalPublicView({
+        ...base,
+        invoices: [{
+          id: INVITE,
+          number: "R-2026-7",
+          kind: "invoice",
+          issuedAt: "2026-09-12T10:00:00.000Z",
+          grossCents: 11900,
+          paymentStatus: "unpaid",
+          ...patch,
+        }],
+      })).toBeNull();
+    }
+    expect(parsePortalPublicView({ ...base, invoices: "kein-array" })).toBeNull();
+  });
+
+  it("leert Portal-Rechnungen im Commercial-Portal wie Dokumente", () => {
+    const shown = parsePortalPublicView({
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "offer", outcome: "open", scope: "commercial" },
+      documents: [{
+        id: INVITE,
+        offerNumber: "A-1",
+        documentDate: "2026-09-01",
+        issuedAt: "2026-09-02T00:00:00.000Z",
+        signatureStatus: "none",
+        signedAt: null,
+      }],
+      appointments: [],
+      invoices: [{
+        id: INVITE,
+        number: "R-2026-7",
+        kind: "invoice",
+        issuedAt: "2026-09-12T10:00:00.000Z",
+        grossCents: 11900,
+        paymentStatus: "paid",
+      }],
+    });
+    expect(shown?.documents).toEqual([]);
+    expect(shown?.invoices).toEqual([]);
+  });
 });

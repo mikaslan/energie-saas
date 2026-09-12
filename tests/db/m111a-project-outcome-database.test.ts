@@ -226,10 +226,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0131 F7-13 Vorlagen-Identitaet,
     // 0132 F8-12 Teil-Rest (nur CHECKs),
     // 0133 F7-14 Abnahme-Historie,
-    // 0134 F8-13 Betrag (nur CHECKs)).
+    // 0134 F8-13 Betrag (nur CHECKs),
+    // 0135 F8-15 Portal-Rechnungssicht (nur DEFINER-Replace + Grant)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 134,
-      tag: "0134_f8_13_betrag_teilrechnung",
+      idx: 135,
+      tag: "0135_f8_15_portal_rechnungen",
     });
   });
 

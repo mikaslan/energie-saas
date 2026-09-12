@@ -9,7 +9,9 @@ import type {
 } from "@/lib/integrations/portal/portal-contract";
 import {
   formatPortalDate,
+  formatPortalEuro,
   formatPortalInstallationStatus,
+  formatPortalInvoicePayment,
   formatPortalRange,
   formatPortalSignatureStatus,
   formatPortalTimelineEntry,
@@ -462,6 +464,34 @@ export default async function PortalTokenPage({
                           >
                             {t.downloadWord}
                           </Link>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {/* F8-15: Portal-Rechnungssicht — nur ausgestellte
+                    Geldbelege (Nummer/Art/Brutto/Zahlstand), kein Download. */}
+                <h2 className="mt-6 text-lg font-semibold text-slate-950">{t.invoicesHeading}</h2>
+                {view.invoices.length === 0 ? (
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {t.invoicesEmpty}
+                  </p>
+                ) : (
+                  <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
+                    {view.invoices.map((invoice) => (
+                      <li key={invoice.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                        <span className="text-sm font-medium text-slate-800">
+                          {invoice.kind === "credit_note" ? t.creditNoteWord : t.invoiceWord}{" "}
+                          {invoice.number ?? t.invoicePaymentUnknown}
+                          <span className="block text-xs font-normal text-slate-500">
+                            {formatPortalInvoicePayment(lang, invoice.paymentStatus)}
+                          </span>
+                        </span>
+                        <span className="flex items-center gap-3">
+                          <span className="text-sm text-slate-500">{formatPortalDate(lang, invoice.issuedAt)}</span>
+                          <span className="text-sm font-semibold tabular-nums text-slate-900">
+                            {formatPortalEuro(lang, invoice.grossCents)}
+                          </span>
                         </span>
                       </li>
                     ))}

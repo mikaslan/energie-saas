@@ -67,6 +67,17 @@ export interface PortalStrings {
   documentsEmpty: string;
   offerWord: string;
   downloadWord: string;
+  // F8-15: Portal-Rechnungssicht (Nummer/Art/Brutto/Zahlstand).
+  invoicesHeading: string;
+  invoicesEmpty: string;
+  invoiceWord: string;
+  creditNoteWord: string;
+  invoicePaymentUnpaid: string;
+  invoicePaymentPartiallyPaid: string;
+  invoicePaymentPaid: string;
+  invoicePaymentOverdue: string;
+  invoicePaymentUncollectable: string;
+  invoicePaymentUnknown: string;
   subsidyHeading: string;
   gridHeading: string;
   serviceHeading: string;
@@ -111,6 +122,32 @@ const timeFormatters: Record<PortalLang, Intl.DateTimeFormat> = {
 
 export function formatPortalDate(lang: PortalLang, at: string | Date): string {
   return dateFormatters[lang].format(new Date(at));
+}
+
+const euroFormatters: Record<PortalLang, Intl.NumberFormat> = {
+  de: new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }),
+  en: new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }),
+};
+
+// F8-15: Brutto-Anzeige je Portal-Rechnung (Cent → Euro, Sprach-Locale).
+export function formatPortalEuro(lang: PortalLang, cents: number): string {
+  return euroFormatters[lang].format(cents / 100);
+}
+
+// F8-15: Zahlstand-Wort je Portal-Rechnung (null = ehrlich unbekannt).
+export function formatPortalInvoicePayment(
+  lang: PortalLang,
+  status: "unpaid" | "partially_paid" | "paid" | "overdue" | "uncollectable" | null,
+): string {
+  const t = PORTAL_STRINGS[lang];
+  switch (status) {
+    case "unpaid": return t.invoicePaymentUnpaid;
+    case "partially_paid": return t.invoicePaymentPartiallyPaid;
+    case "paid": return t.invoicePaymentPaid;
+    case "overdue": return t.invoicePaymentOverdue;
+    case "uncollectable": return t.invoicePaymentUncollectable;
+    default: return t.invoicePaymentUnknown;
+  }
 }
 
 // Bereichsanzeige Berlin (Datum + Uhrzeit); EN ohne „Uhr"-Suffix.
@@ -368,6 +405,16 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     documentsEmpty: "Aktuell liegen keine freigegebenen Dokumente vor.",
     offerWord: "Angebot",
     downloadWord: "Herunterladen",
+    invoicesHeading: "Rechnungen",
+    invoicesEmpty: "Aktuell liegen keine Rechnungen vor.",
+    invoiceWord: "Rechnung",
+    creditNoteWord: "Gutschrift",
+    invoicePaymentUnpaid: "Offen",
+    invoicePaymentPartiallyPaid: "Teilweise bezahlt",
+    invoicePaymentPaid: "Bezahlt",
+    invoicePaymentOverdue: "Überfällig",
+    invoicePaymentUncollectable: "Uneinbringlich",
+    invoicePaymentUnknown: "–",
     subsidyHeading: "Förderung",
     gridHeading: "Netzanmeldung",
     serviceHeading: "Service",
@@ -420,6 +467,16 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     documentsEmpty: "No released documents available.",
     offerWord: "Offer",
     downloadWord: "Download",
+    invoicesHeading: "Invoices",
+    invoicesEmpty: "No invoices available.",
+    invoiceWord: "Invoice",
+    creditNoteWord: "Credit note",
+    invoicePaymentUnpaid: "Open",
+    invoicePaymentPartiallyPaid: "Partially paid",
+    invoicePaymentPaid: "Paid",
+    invoicePaymentOverdue: "Overdue",
+    invoicePaymentUncollectable: "Uncollectible",
+    invoicePaymentUnknown: "–",
     subsidyHeading: "Subsidy",
     gridHeading: "Grid registration",
     serviceHeading: "Service",

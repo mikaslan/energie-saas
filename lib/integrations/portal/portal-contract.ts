@@ -106,6 +106,19 @@ const portalDocumentSchema = z.strictObject({
   signedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
+// F8-15: Portal-Rechnung (nur Nummer/Art/Ausstellung/Brutto/Zahlstand —
+// nie Positionen/Konditionen/Snapshots; liefert der DEFINER nur für
+// ausgestellte Geldbelege des Invite-Projekts).
+export const portalInvoiceSchema = z.strictObject({
+  id: z.uuid(),
+  number: z.string().nullable(),
+  kind: z.enum(["invoice", "credit_note"]),
+  issuedAt: z.iso.datetime({ offset: true }),
+  grossCents: z.number().int().min(0),
+  paymentStatus: z.enum(["unpaid", "partially_paid", "paid", "overdue", "uncollectable"]).nullable(),
+});
+export type PortalInvoice = z.infer<typeof portalInvoiceSchema>;
+
 const portalProjectSchema = z.strictObject({
   id: z.uuid(),
   name: z.string(),
@@ -266,6 +279,8 @@ export const portalPublicViewV1Schema = z.strictObject({
   viewCount: z.int().safe().min(0),
   project: portalProjectSchema,
   documents: z.array(portalDocumentSchema),
+  // F8-15: Geldbelege je Invite-Projekt (Commercial-Portal: leer).
+  invoices: z.array(portalInvoiceSchema),
   appointments: z.array(portalAppointmentSchema),
   installation: portalInstallationSchema.nullable(),
   fileRequests: z.array(portalFileRequestSchema),
@@ -297,6 +312,8 @@ const portalResolveOkSchema = z.strictObject({
     signatureStatus: z.unknown(),
     signedAt: z.unknown(),
   })),
+  // F8-15: optional — alte Projektionen ohne Schlüssel parsen wie leer.
+  invoices: z.unknown().optional(),
   appointments: z.array(z.strictObject({
     id: z.uuid(),
     title: z.string(),
@@ -359,6 +376,50 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       documentDate: doc.documentDate, issuedAt,
       signatureStatus: signatureStatus.data, signedAt,
     });
+  }
+  // F8-15: Geldbelege — strikter Wortschatz (Art/Zahlstand, Zeiten
+  // wie oben); fehlend = Alt-Projektion (F10-03-undefined-Präzedenz) →
+  // ehrlich leer; Fremdes bricht fail-closed ab.
+  const invoices: PortalPublicViewV1["invoices"] = [];
+  if (parsed.data.invoices !== undefined) {
+    const raw = parsed.data.invoices;
+    if (!Array.isArray(raw)) return null;
+    for (const entry of raw) {
+      if (typeof entry !== "object" || entry === null) return null;
+      const record = entry as Record<string, unknown>;
+      for (const key of Object.keys(record)) {
+        if (
+          key !== "id" && key !== "number" && key !== "kind" &&
+          key !== "issuedAt" && key !== "grossCents" && key !== "paymentStatus"
+        ) {
+          return null;
+        }
+      }
+      const id = portalInvoiceSchema.shape.id.safeParse(record.id);
+      if (!id.success) return null;
+      if (record.number !== null && typeof record.number !== "string") return null;
+      const kind = portalInvoiceSchema.shape.kind.safeParse(record.kind);
+      if (!kind.success) return null;
+      const invoiceIssuedAt = toInstant(record.issuedAt);
+      if (invoiceIssuedAt === null) return null;
+      // jsonb-numeric kommt als JS-Zahl; Cent-ganzzahlig, nie negativ.
+      if (
+        typeof record.grossCents !== "number" ||
+        !Number.isInteger(record.grossCents) || record.grossCents < 0
+      ) {
+        return null;
+      }
+      const paymentStatus = portalInvoiceSchema.shape.paymentStatus.safeParse(record.paymentStatus);
+      if (!paymentStatus.success) return null;
+      invoices.push({
+        id: id.data,
+        number: record.number as string | null,
+        kind: kind.data,
+        issuedAt: invoiceIssuedAt,
+        grossCents: record.grossCents,
+        paymentStatus: paymentStatus.data,
+      });
+    }
   }
   // F10.2 Slice A: Termine mit strikter Typprüfung (allDay/location wie
   // DEFINER: boolean / text-or-null, keine Description je).
@@ -617,6 +678,8 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     viewCount,
     project: parsed.data.project,
     documents: commercialScope ? [] : documents,
+    // F8-15: kein Preis-Bereich im Commercial-Portal (wie documents).
+    invoices: commercialScope ? [] : invoices,
     appointments,
     installation,
     fileRequests,

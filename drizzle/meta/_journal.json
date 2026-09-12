@@ -946,6 +946,13 @@
       "when": 1789246000000,
       "tag": "0134_f8_13_betrag_teilrechnung",
       "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1789247271765,
+      "tag": "0135_f8_15_portal_rechnungen",
+      "breakpoints": true
     }
   ]
 }
