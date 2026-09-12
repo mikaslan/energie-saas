@@ -1,5 +1,7 @@
 # F8-05 Teilrechnungen zum Auftrag (Modi: Prozent / Positionen)
 
+Status: **IMPLEMENTIERT/LOKAL VERIFIZIERT** · Lane: `codex/m1-wave-02` · Stand 2026-09-12 (DB F805 3/3, E2E F8-05-E2E-01 1/1, am Code verifiziert vorgefunden + erneut beobachtet).
+
 Ziel: Aus einer Auftragsbestätigung (AB) heraus gestaffelt Teilrechnungen
 stellen — beobachtbar als Kette mit Restbetrag. Ergänzt F8-01
 (Anzahlung/Schluss) und F8-04b (Voll-Duplikat); F8-02/03/04

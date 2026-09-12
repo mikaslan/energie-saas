@@ -1,5 +1,7 @@
 # F11-03b Zeit-Outbox (Offline-Anlage, Replay-sicher)
 
+Status: **IMPLEMENTIERT/LOKAL VERIFIZIERT** · Lane: `codex/m1-wave-02` · Stand 2026-09-12 (DB F1103b 2/2, E2E F11-03b-E2E-01 1/1, am Code verifiziert vorgefunden + erneut beobachtet).
+
 Zweite vertikale Outbox-Scheibe nach F11-03a (dort ausdrücklich als
 Folge-Slice offengelassen: „Outbox für Fotos/Checklisten/Zeit-Sync“):
 Offline erstellte manuelle Zeiteinträge (F9.1) werden in IndexedDB
