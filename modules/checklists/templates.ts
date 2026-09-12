@@ -2,6 +2,7 @@
 // Kein "server-only" (konsistent mit F7.2-Modul).
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
@@ -312,12 +313,18 @@ export function restoreChecklistTemplate(
 // ESTIMATE-Mapping (Spec §2.2, DECIDED): Vorlage → Projekt-Checkliste als
 // ein Block (Template-Name) mit Segment „Material" und Items
 // „«Komponentenname» × quantity". Radio-/Bild-Typen = Slice B.
-export async function applyChecklistTemplate(
+// F7-13: gerenderte Vorlage (Name + Positionen mit stabiler componentId)
+// als gemeinsame Basis für Erst-Anlage, Merge und Reset.
+type RenderedTemplate = {
+  name: string;
+  items: Array<{ componentId: string; title: string }>;
+};
+
+async function loadTemplateRender(
   tx: TenantTx,
-  ctx: ServiceCtx,
-  input: { templateId: string; projectId: string },
-): Promise<{ projectId: string; version: number }> {
-  requireWrite(ctx);
+  workspaceId: string,
+  templateId: string,
+): Promise<RenderedTemplate> {
   const template = await tx.execute<TemplateRow & { component_rows: unknown }>(sql`
     select template_record.id, template_record.name, template_record.active,
            template_record.items,
@@ -334,13 +341,13 @@ export async function applyChecklistTemplate(
                 and component_record.id = (item.value->>'componentId')::uuid
            ), '[]'::jsonb) as component_rows
       from checklist_template template_record
-     where template_record.workspace_id = ${ctx.workspaceId}::uuid
-       and template_record.id = ${input.templateId}::uuid
+     where template_record.workspace_id = ${workspaceId}::uuid
+       and template_record.id = ${templateId}::uuid
        and template_record.active = true
      limit 1
   `);
   const row = template.rows[0];
-  if (!row) throw new ChecklistNotFoundError(input.templateId);
+  if (!row) throw new ChecklistNotFoundError(templateId);
 
   const itemsParsed = checklistTemplateItemsSchema.parse(row.items);
   const components = (row.component_rows as Array<{
@@ -352,26 +359,47 @@ export async function applyChecklistTemplate(
   const nameById = new Map(components.map((component) => [
     component.componentId, component.componentName,
   ]));
+  return {
+    name: row.name,
+    items: itemsParsed.map((item) => ({
+      componentId: item.componentId,
+      title: `${nameById.get(item.componentId) ?? "Komponente"} × ${item.quantity}`,
+    })),
+  };
+}
+
+function renderFreshBlocks(render: RenderedTemplate, position: number): EditableChecklistBlocksV2 {
   const blocks: EditableChecklistBlocksV2 = [{
     id: randomUUID(),
-    name: row.name,
-    position: 0,
+    name: render.name,
+    position,
     visible: true,
     segments: [{
       id: randomUUID(),
       name: "Material",
       position: 0,
       visible: true,
-      items: itemsParsed.map((item) => ({
+      items: render.items.map((item) => ({
         id: randomUUID(),
-        title: `${nameById.get(item.componentId) ?? "Komponente"} × ${item.quantity}`,
+        title: item.title,
         done: false,
         required: false,
         visible: true,
+        componentId: item.componentId,
       })),
     }],
   }];
-  editableChecklistBlocksSchema.parse(blocks);
+  return editableChecklistBlocksSchema.parse(blocks);
+}
+
+export async function applyChecklistTemplate(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { templateId: string; projectId: string },
+): Promise<{ projectId: string; version: number }> {
+  requireWrite(ctx);
+  const render = await loadTemplateRender(tx, ctx.workspaceId, input.templateId);
+  const blocks = renderFreshBlocks(render, 0);
 
   // Apply wird pro Projekt serialisiert. Damit gilt auch ohne den alten
   // 1:1-Unique-Index: Projekt-Lock -> Existing-Check -> Checklist-Insert.
@@ -426,4 +454,151 @@ export async function applyChecklistTemplate(
     },
   });
   return { projectId: input.projectId, version: created.version };
+}
+
+export const checklistReapplyModes = ["merge", "reset"] as const;
+export type ChecklistReapplyMode = (typeof checklistReapplyModes)[number];
+
+const reapplyChecklistTemplateCommandSchema = z.strictObject({
+  projectId: z.uuid(),
+  templateId: z.uuid(),
+  mode: z.enum(checklistReapplyModes),
+});
+
+function requireConfigure(ctx: ServiceCtx): void {
+  if (!can(ctx, "checklist.configure")) {
+    throw new PermissionDeniedError("checklist.configure", "project_checklist", undefined, ctx.actor);
+  }
+}
+
+function requireReset(ctx: ServiceCtx): void {
+  // Katalog F7.3 „Admin-only" über den bestehenden Unlock-Key —
+  // KEINE neue Permission.
+  if (!can(ctx, "checklist.unlock")) {
+    throw new PermissionDeniedError("checklist.unlock", "project_checklist", undefined, ctx.actor);
+  }
+}
+
+/**
+ * F7-13 Template Re-Apply (Katalog F7.3). Erfordert eine vorhandene
+ * Checkliste (keine Auto-Anlage — dafür bleibt die Erst-Anlage zuständig).
+ * Merge ergänzt fehlende Vorlagen-Positionen und lässt alle vorhandenen
+ * Werte unangetastet (idempotent); Reset ersetzt den Baum durch frisches
+ * Rendering (Admin-only, Werte gehen verloren). Speichern mit Versions-CAS
+ * (Race → Conflict statt stillem Overwrite).
+ */
+export async function reapplyChecklistTemplate(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string; templateId: string; mode: ChecklistReapplyMode },
+): Promise<{ projectId: string; version: number; mode: ChecklistReapplyMode; added: number }> {
+  const parsed = reapplyChecklistTemplateCommandSchema.safeParse(input);
+  if (!parsed.success) throw new ChecklistValidationError();
+  const command = parsed.data;
+  // Merge ergänzt Knoten = Strukturänderung: wie jede Strukturänderung des
+  // Produkts (Kapsel + canEditStructure-Regel) Admin-genehmigt
+  // (checklist.configure). Reset ersetzt destruktiv (checklist.unlock).
+  if (command.mode === "reset") requireReset(ctx);
+  else requireConfigure(ctx);
+
+  const render = await loadTemplateRender(tx, ctx.workspaceId, command.templateId);
+  if (render.items.length === 0) throw new ChecklistValidationError("template has no items");
+
+  // Kein FOR UPDATE: Die App-Rolle hat kein Tabellen-UPDATE (Schreibzugriff
+  // nur über die Kapsel); der Versions-CAS beim Speichern trägt Races
+  // korrekt aus (Verlierer → Conflict statt stiller Overwrite).
+  const stored = await tx.execute<{ id: string; version: number; title: string; blocks: unknown }>(sql`
+    select id, version, title, blocks
+      from project_checklist
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${command.projectId}::uuid
+       and phase = 'site_documentation'
+     limit 1
+  `);
+  const current = stored.rows[0];
+  if (!current) throw new ChecklistNotFoundError(command.projectId);
+  const blocks = editableChecklistBlocksSchema.parse(current.blocks);
+
+  let added = 0;
+  let next: EditableChecklistBlocksV2;
+  if (command.mode === "reset") {
+    next = renderFreshBlocks(render, 0);
+  } else {
+    const knownComponents = new Set<string>();
+    const knownTitles = new Set<string>();
+    for (const block of blocks) {
+      for (const segment of block.segments) {
+        for (const item of segment.items) {
+          if (item.componentId !== null && item.componentId !== undefined) {
+            knownComponents.add(item.componentId);
+          }
+          knownTitles.add(item.title);
+        }
+      }
+    }
+    // Umbenannte Vorlage erzeugt bewusst neue Punkte (kein Werteverlust
+    // durch stille Überschreibung); Legacy-Bestand matcht per Titel.
+    const missing = render.items.filter((item) =>
+      !knownComponents.has(item.componentId) && !knownTitles.has(item.title),
+    );
+    added = missing.length;
+    const target = blocks.find((block) => block.name === render.name) ?? (() => {
+      const position = blocks.reduce((max, block) => Math.max(max, block.position), -1) + 1;
+      const fresh = renderFreshBlocks({ name: render.name, items: [] }, position);
+      blocks.push(fresh[0]!);
+      return fresh[0]!;
+    })();
+    let segment = target.segments[0];
+    if (!segment) {
+      segment = {
+        id: randomUUID(), name: "Material", position: 0, visible: true, items: [],
+      };
+      target.segments.push(segment);
+    }
+    for (const item of missing) {
+      segment.items.push({
+        id: randomUUID(),
+        title: item.title,
+        done: false,
+        required: false,
+        visible: true,
+        componentId: item.componentId,
+      });
+    }
+    const merged = editableChecklistBlocksSchema.safeParse(blocks);
+    if (!merged.success) throw new ChecklistValidationError();
+    next = merged.data;
+  }
+
+  const saved = await saveProjectChecklist(tx, ctx, {
+    schemaVersion: CHECKLIST_SCHEMA_VERSION,
+    checklistId: current.id,
+    projectId: command.projectId,
+    phase: "site_documentation",
+    title: current.title,
+    baseVersion: Number(current.version),
+    blocks: next,
+  });
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "project_checklist",
+    aggregateId: saved.checklistId!,
+    eventType: "checklist.template_reapplied",
+    actor: ctx.actor,
+    payload: { templateId: command.templateId, mode: command.mode, added },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "checklist.write",
+    resource: "project_checklist",
+    allowed: true,
+    details: {
+      templateId: command.templateId,
+      projectId: command.projectId,
+      checklistId: saved.checklistId,
+      mode: command.mode,
+    },
+  });
+  return { projectId: command.projectId, version: saved.version, mode: command.mode, added };
 }

@@ -92,6 +92,9 @@ export const editableChecklistItemSchema = z.object({
   done: z.boolean(),
   required: z.boolean(),
   visible: z.boolean(),
+  // F7-13: Vorlagen-Identität für Merge (Katalog F7.3). Nullish = Legacy-
+  // Bestand ohne Feld bleibt gültig; Merge matcht dann per exaktem Titel.
+  componentId: stableUuidSchema.nullish(),
   irrelevant: checklistItemIrrelevantSchema.nullish(),
   visibleIf: checklistItemVisibleIfSchema.nullish(),
   kind: checklistItemKindSchema.nullish(),

@@ -222,10 +222,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0127 F7-04b Irrelevant-Markierung,
     // 0128 F7-05b Block-Team-Zuweisung,
     // 0129 F7-02B Bedingte Sichtbarkeit,
-    // 0130 F7-02C Anzeige-Punkte).
+    // 0130 F7-02C Anzeige-Punkte,
+    // 0131 F7-13 Vorlagen-Identitaet).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 130,
-      tag: "0130_f702c_anzeige_punkte",
+      idx: 131,
+      tag: "0131_f713_vorlagen_identitaet",
     });
   });
 

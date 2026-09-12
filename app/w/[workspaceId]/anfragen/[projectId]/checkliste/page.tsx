@@ -11,7 +11,7 @@ import { listTeamOptions } from "@/modules/teams";
 import { PermissionDeniedError } from "@/lib/permissions";
 import { sql } from "drizzle-orm";
 import { DeniedState } from "../_ui";
-import { ApplyTemplateSection, ProjectChecklistManager } from "./project-checklist-manager";
+import { ApplyTemplateSection, ProjectChecklistManager, ReapplyTemplateSection } from "./project-checklist-manager";
 
 export const metadata: Metadata = {
   title: "Checkliste | Energie-SaaS",
@@ -102,6 +102,15 @@ export default async function ProjectChecklistPage(
         projectId={projectId}
         templates={result.templates}
         canWrite={result.checklist.permissions.canWrite}
+        checklistVersion={result.checklist.version}
+      />
+
+      <ReapplyTemplateSection
+        workspaceId={workspaceId}
+        projectId={projectId}
+        templates={result.templates}
+        canMerge={result.checklist.permissions.canConfigure}
+        canReset={result.checklist.permissions.canUnlock}
         checklistVersion={result.checklist.version}
       />
 

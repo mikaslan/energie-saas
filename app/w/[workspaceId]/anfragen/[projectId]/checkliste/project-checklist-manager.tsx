@@ -21,6 +21,7 @@ import {
   applyTemplateAction,
   assignChecklistBlockTeamAction,
   mutateChecklistSegmentAction,
+  reapplyTemplateAction,
   saveProjectChecklistAction,
   setChecklistItemIrrelevantAction,
   unassignChecklistBlockTeamAction,
@@ -37,6 +38,7 @@ function message(state: ChecklistActionState): { text: string; isError: boolean 
       const label = {
         save: "Gespeichert",
         apply: "Vorlage angewendet",
+        reapply: "Vorlage erneut angewendet",
         complete: "Segment abgeschlossen",
         unlock: "Segment entsperrt",
         mark: "Punkt als irrelevant markiert",
@@ -1055,6 +1057,67 @@ export function ApplyTemplateSection({
         </button>
       </form>
       <Feedback state={applyState} />
+    </section>
+  );
+}
+
+// F7-13: Vorlage erneut anwenden (Merge erhält Werte, beide Modi
+// Admin-genehmigt: Merge = Strukturrecht, Reset = Unlock). Nur bei
+// vorhandener Checkliste sichtbar.
+export function ReapplyTemplateSection({
+  workspaceId,
+  projectId,
+  templates,
+  canMerge,
+  canReset,
+  checklistVersion,
+}: {
+  workspaceId: string;
+  projectId: string;
+  templates: ChecklistTemplateDto[];
+  canMerge: boolean;
+  canReset: boolean;
+  checklistVersion: number;
+}) {
+  const [reapplyState, reapplyDispatch, reapplyPending] = useActionState(reapplyTemplateAction, initialState);
+  if ((!canMerge && !canReset) || templates.length === 0 || checklistVersion === 0) {
+    return null;
+  }
+  return (
+    <section aria-label="Vorlage erneut anwenden" data-testid="reapply-template-section" className="mb-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <h2 className="text-base font-semibold text-slate-950">Vorlage erneut anwenden</h2>
+      <p className="mt-1 text-sm leading-6 text-slate-600">
+        Zusammenführen ergänzt fehlende Positionen (Werte bleiben).
+        Zurücksetzen ersetzt die Checkliste (Werte gehen verloren).
+      </p>
+      <form action={reapplyDispatch} className="mt-3 flex flex-wrap items-center gap-2">
+        <input type="hidden" name="workspaceId" value={workspaceId} />
+        <input type="hidden" name="projectId" value={projectId} />
+        <select name="templateId" aria-label="Vorlage" disabled={reapplyPending}
+          data-testid="reapply-template-select"
+          className="min-h-11 rounded-md border border-slate-300 px-2 text-base outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:bg-slate-100 sm:text-sm">
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>{template.name}</option>
+          ))}
+        </select>
+        {canMerge ? (
+          <label className="inline-flex min-h-11 items-center gap-1 text-sm text-slate-800">
+            <input type="radio" name="mode" value="merge" defaultChecked disabled={reapplyPending} />
+            Zusammenführen
+          </label>
+        ) : null}
+        {canReset ? (
+          <label className="inline-flex min-h-11 items-center gap-1 text-sm text-slate-800">
+            <input type="radio" name="mode" value="reset" defaultChecked={!canMerge} disabled={reapplyPending} />
+            Zurücksetzen
+          </label>
+        ) : null}
+        <button type="submit" disabled={reapplyPending}
+          className="min-h-11 rounded-md bg-brand-700 px-3 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-300">
+          {reapplyPending ? "Wendet an …" : "Anwenden"}
+        </button>
+      </form>
+      <Feedback state={reapplyState} />
     </section>
   );
 }

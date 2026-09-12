@@ -30,7 +30,7 @@ export type ChecklistActionState =
   | { status: "idle" }
   | {
       status: "success";
-      operation: "save" | "apply" | "complete" | "unlock" | "mark" | "unmark" | "assign" | "unassign";
+      operation: "save" | "apply" | "reapply" | "complete" | "unlock" | "mark" | "unmark" | "assign" | "unassign";
       version: number;
     }
   | { status: "incomplete"; remainingRequired: number }
@@ -125,7 +125,7 @@ export async function saveProjectChecklistAction(
 }
 
 // F7.3: Vorlage auf dieses Projekt anwenden (ESTIMATE-Mapping).
-import { applyChecklistTemplate } from "@/modules/checklists";
+import { applyChecklistTemplate, reapplyChecklistTemplate } from "@/modules/checklists";
 
 export async function applyTemplateAction(
   _previous: ChecklistActionState,
@@ -169,6 +169,56 @@ export async function applyTemplateAction(
     if (error instanceof PermissionDeniedError) return { status: "denied" };
     if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
     console.error("[checkliste] applyTemplateAction: unerwarteter Fehler", error);
+    return { status: "error" };
+  }
+}
+
+// F7-13: Vorlage erneut anwenden — Merge (Werte bleiben, Strukturrecht)
+// oder Reset (Admin-only, Werte gehen verloren). Modus-gerechte
+// Permission-Hülle; der Service prüft erneut (Sicherheitsgrenze bleibt
+// serverseitig).
+export async function reapplyTemplateAction(
+  _previous: ChecklistActionState,
+  formData: FormData,
+): Promise<ChecklistActionState> {
+  const workspaceValue = formData.get("workspaceId");
+  const projectValue = formData.get("projectId");
+  const templateValue = formData.get("templateId");
+  const modeValue = formData.get("mode");
+  if (
+    typeof workspaceValue !== "string"
+    || typeof projectValue !== "string"
+    || typeof templateValue !== "string"
+    || (modeValue !== "merge" && modeValue !== "reset")
+  ) {
+    return { status: "invalid" };
+  }
+  const workspace = z.uuid().safeParse(workspaceValue);
+  const projectId = z.uuid().safeParse(projectValue);
+  const templateId = z.uuid().safeParse(templateValue);
+  if (!workspace.success || !projectId.success || !templateId.success) {
+    return { status: "invalid" };
+  }
+  try {
+    const result = await authorizedAction(
+      workspace.data,
+      modeValue === "reset" ? "checklist.unlock" : "checklist.configure",
+      "project_checklist",
+      (tx, ctx) => reapplyChecklistTemplate(tx, ctx, {
+        templateId: templateId.data,
+        projectId: projectId.data,
+        mode: modeValue,
+      }),
+    );
+    revalidatePath(`/w/${workspace.data}/anfragen/${projectId.data}/checkliste`);
+    return { status: "success", operation: "reapply", version: result.version };
+  } catch (error) {
+    if (error instanceof ChecklistConflictError) return { status: "conflict" };
+    if (error instanceof ChecklistNotFoundError) return { status: "not_found" };
+    if (error instanceof ChecklistValidationError) return { status: "invalid" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    console.error("[checkliste] reapplyTemplateAction: unerwarteter Fehler", error);
     return { status: "error" };
   }
 }

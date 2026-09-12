@@ -93,9 +93,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F7-04b Irrelevant-Markierung (0127, Kapsel-Ops + Gate-Skip + ACL),
 //   F7-05b Block-Team-Zuweisung (0128, Side-Table + RLS + ACL),
 //   F7-02B Bedingte Sichtbarkeit (0129, Validator + Gate-Skip),
-//   F7-02C Anzeige-Punkte (0130, Validator-Shape)
-// => 131 Migrationen (idx 0..130).
-const TOTAL_MIGRATION_COUNT = 131;
+//   F7-02C Anzeige-Punkte (0130, Validator-Shape),
+//   F7-13 Vorlagen-Identitaet (0131, Validator-Shape)
+// => 132 Migrationen (idx 0..131).
+const TOTAL_MIGRATION_COUNT = 132;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -411,8 +412,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 130,
-        tag: "0130_f702c_anzeige_punkte",
+        idx: 131,
+        tag: "0131_f713_vorlagen_identitaet",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,
