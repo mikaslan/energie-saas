@@ -225,10 +225,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0130 F7-02C Anzeige-Punkte,
     // 0131 F7-13 Vorlagen-Identitaet,
     // 0132 F8-12 Teil-Rest (nur CHECKs),
-    // 0133 F7-14 Abnahme-Historie).
+    // 0133 F7-14 Abnahme-Historie,
+    // 0134 F8-13 Betrag (nur CHECKs)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 133,
-      tag: "0133_f7_14_abnahme_historie",
+      idx: 134,
+      tag: "0134_f8_13_betrag_teilrechnung",
     });
   });
 

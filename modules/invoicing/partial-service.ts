@@ -174,7 +174,7 @@ async function readActiveBilledNet(
   // Netto-Summe der AKTIVEN Teilrechnungen (optional nur ein Modus):
   // Basis für cent-exakte Rest-Beträge (Scheme-Endtranche, Closing).
   const modeFilter = mode === null
-    ? sql`and partial.mode in ('percent', 'lines', 'scheme', 'closing', 'remainder')`
+    ? sql`and partial.mode in ('percent', 'lines', 'scheme', 'closing', 'remainder', 'amount')`
     : sql`and partial.mode = ${mode}`;
   const result = await tx.execute<{ net: number | string }>(sql`
     select coalesce(sum(line.net_cents), 0) as net
@@ -196,7 +196,7 @@ async function readActiveBilledNet(
 export type CreatePartialInvoiceResult = {
   id: string;
   ordinal: number;
-  mode: "percent" | "lines" | "scheme" | "closing" | "remainder";
+  mode: "percent" | "lines" | "scheme" | "closing" | "remainder" | "amount";
   grossCents: number;
 };
 
@@ -314,6 +314,33 @@ export async function createPartialInvoice(
     linesToCopy = [{
       position: 1,
       name: `Teil-Restbetrag zu ${order.number ?? order.name}`,
+      quantityMilli: 1000,
+      unit: "piece",
+      netCents,
+      taxRateBps: rate,
+      sourceLineId: null,
+    }];
+  } else if (command.mode === "amount") {
+    // F8-13: Betrag-Teilrechnung — freier Netto-Centbetrag 1:1, ohne
+    // Rundung. Gegen den AKTUELLEN Ketten-Rest geprüft (ohne Kette =
+    // Auftrags-Netto); Betrag über Rest ist Conflict (nichts mehr zu
+    // berechnen), nicht Validation. Nominelle Bps nur für Anzeige.
+    const rates = new Set(orderLines.map((line) => Number(line.tax_rate_bps)));
+    if (rates.size !== 1) throw new InvoicingValidationError();
+    const rate = [...rates][0]!;
+    if (rate !== 0 && rate !== 1900) throw new InvoicingValidationError();
+    if (command.amountCents === null) throw new InvoicingValidationError();
+    const orderNet = Number(order.net_cents);
+    const remainderNet = orderNet - await readActiveBilledNet(tx, ctx, command.orderId, null);
+    if (!Number.isSafeInteger(remainderNet) || remainderNet <= 0) {
+      throw new InvoicingConflictError();
+    }
+    if (command.amountCents > remainderNet) throw new InvoicingConflictError();
+    const netCents = command.amountCents;
+    storedBps = Math.max(1, Math.min(10000, Math.floor((netCents * 10000) / orderNet)));
+    linesToCopy = [{
+      position: 1,
+      name: `Teilbetrag zu ${order.number ?? order.name}`,
       quantityMilli: 1000,
       unit: "piece",
       netCents,
@@ -453,9 +480,11 @@ export type PartialChainEntry = {
   name: string;
   status: string;
   ordinal: number;
-  mode: "percent" | "lines" | "scheme" | "closing" | "remainder";
+  mode: "percent" | "lines" | "scheme" | "closing" | "remainder" | "amount";
   percentBps: number | null;
   grossCents: number;
+  // F8-13: Netto-Summe je Teilrechnung (ehrliche „Betrag X €“-Anzeige).
+  netCents: number;
   createdAt: string;
 };
 
@@ -508,13 +537,14 @@ export async function listPartialInvoices(
     invoice_name: string;
     invoice_status: string;
     invoice_gross: number | string;
+    invoice_net: number | string;
     [key: string]: unknown;
   }>(sql`
     select partial.id as partial_id, partial.ordinal, partial.mode,
            partial.percent_bps, partial.created_at,
            invoice.id as invoice_id, invoice.number as invoice_number,
            invoice.name as invoice_name, invoice.status as invoice_status,
-           invoice.gross_cents as invoice_gross
+           invoice.gross_cents as invoice_gross, invoice.net_cents as invoice_net
       from commercial_document_partial partial
       join commercial_document invoice
         on invoice.workspace_id = partial.workspace_id
@@ -536,9 +566,12 @@ export async function listPartialInvoices(
         ? "scheme"
         : row.mode === "closing"
           ? "closing"
-          : row.mode === "remainder" ? "remainder" : "percent",
+          : row.mode === "remainder"
+            ? "remainder"
+            : row.mode === "amount" ? "amount" : "percent",
     percentBps: row.percent_bps,
     grossCents: Number(row.invoice_gross),
+    netCents: Number(row.invoice_net),
     createdAt: toIso(row.created_at),
   }));
   const billedGrossCents = partials

@@ -423,6 +423,8 @@ export type PartialInvoiceActionState =
 // Dezimal-Prozent (0 < p ≤ 100, zwei Stellen) → Basispunkte ohne Float:
 // Math.round(p * 100), danach Schema-Range 1–10000. F8-12 · remainder:
 // Anteil VOM REST (0 < p < 100, Range 1–9999; 100 % ist closing).
+// F8-13 · amount: Euro-Betrag (0 < €, zwei Stellen) → Cent ohne Float:
+// Math.round(€ * 100), danach Service gegen Ketten-Rest (Conflict).
 export async function createPartialInvoiceAction(
   _previous: PartialInvoiceActionState,
   formData: FormData,
@@ -430,12 +432,20 @@ export async function createPartialInvoiceAction(
   const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
   const documentId = parseUuid(formData.get("documentId"));
   const modeValue = formData.get("mode");
-  const mode = modeValue === "percent" || modeValue === "lines" || modeValue === "scheme" || modeValue === "closing" || modeValue === "remainder" ? modeValue : null;
+  const mode = modeValue === "percent" || modeValue === "lines" || modeValue === "scheme" || modeValue === "closing" || modeValue === "remainder" || modeValue === "amount" ? modeValue : null;
   if (!workspaceId || !documentId || !mode) return { status: "invalid" };
   let percentBps: number | null = null;
+  let amountCents: number | null = null;
   let lineIds: string[] | null = null;
   if (mode === "scheme" || mode === "closing") {
     // F8-07/F8-08: Tranche/Rest folgt aus der Kette (kein Prozent-Input).
+  } else if (mode === "amount") {
+    // F8-13: Euro-Betrag (Dezimal, zwei Stellen) → Cent ohne Float.
+    const raw = formData.get("amount");
+    const euros = typeof raw === "string" ? Number(raw) : NaN;
+    if (!Number.isFinite(euros) || euros <= 0) return { status: "invalid" };
+    amountCents = Math.round(euros * 100);
+    if (amountCents < 1) return { status: "invalid" };
   } else if (mode === "percent" || mode === "remainder") {
     const raw = formData.get("percent");
     const percent = typeof raw === "string" ? Number(raw) : NaN;
@@ -462,6 +472,7 @@ export async function createPartialInvoiceAction(
         orderId: documentId,
         mode,
         percentBps,
+        amountCents,
         lineIds,
       }),
     );

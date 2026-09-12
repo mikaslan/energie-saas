@@ -134,6 +134,7 @@ const closingInput = (orderId: string) => ({
   orderId,
   mode: "closing" as const,
   percentBps: null,
+  amountCents: null,
   lineIds: null,
 });
 
@@ -142,6 +143,7 @@ const percentInput = (orderId: string, percentBps: number) => ({
   orderId,
   mode: "percent" as const,
   percentBps,
+  amountCents: null,
   lineIds: null,
 });
 
@@ -195,6 +197,7 @@ describe("F8-08 Rest-Schlussrechnung (PostgreSQL)", () => {
       orderId: mixedId,
       mode: "closing" as const,
       percentBps: null,
+      amountCents: null,
       lineIds: null,
     }))).rejects.toBeInstanceOf(InvoicingValidationError);
     // Viewer ohne Schreibrecht → denied.

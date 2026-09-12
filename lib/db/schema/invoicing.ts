@@ -643,7 +643,7 @@ export const commercialDocumentPartial = pgTable(
     workspaceId: uuid("workspace_id").notNull(),
     sourceOrderId: uuid("source_order_id").notNull(),
     partialInvoiceId: uuid("partial_invoice_id").notNull(),
-    mode: text("mode").$type<"percent" | "lines" | "scheme" | "closing" | "remainder">().notNull(),
+    mode: text("mode").$type<"percent" | "lines" | "scheme" | "closing" | "remainder" | "amount">().notNull(),
     percentBps: integer("percent_bps"),
     ordinal: integer("ordinal").notNull(),
     createdBy: uuid("created_by").notNull(),

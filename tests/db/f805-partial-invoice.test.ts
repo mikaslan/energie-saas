@@ -138,6 +138,8 @@ const partialInput = (
 ) => ({
   schemaVersion: COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION,
   orderId,
+  // F8-13: neues Pflichtfeld, für percent/lines immer null.
+  amountCents: null,
   ...extra,
 });
 

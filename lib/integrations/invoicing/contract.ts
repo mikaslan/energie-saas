@@ -264,8 +264,16 @@ export const COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION =
 // F8-08: Rest-Schlussrechnung (Modus closing, exakter Ketten-Rest).
 // F8-12: Teil-Rest (Modus remainder, Prozentanteil 1..9999 bps vom
 // aktuellen Ketten-Rest; 100 % bleibt closing).
+// F8-13: Betrag-Teilrechnung (Modus amount, fester Netto-Centbetrag
+// 1..Rest-Netto, cent-exakt ohne Rundung).
 export const COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION =
   "commercial-document-partial-command.v1" as const;
+export const MAX_DOCUMENT_MONEY_CENTS = 9_000_000_000_000_000 as const;
+export const MAX_DOCUMENT_QUANTITY_MILLI = 100_000_000 as const;
+export const MAX_DOCUMENT_LINE_POSITION = 500 as const;
+export const DOCUMENT_LIST_DEFAULT_LIMIT = 25 as const;
+export const DOCUMENT_LIST_MAX_LIMIT = 100 as const;
+export const INVOICING_REPORT_LATEST_DOCUMENTS = 10 as const;
 // F8-07: versionierte Tranchen-Staffel des Scheme-Modus (ESTIMATE,
 // Referenzfrage offen — nur der Name „30-40-30" ist katalogbelegt).
 export const COMMERCIAL_DOCUMENT_SCHEME_VERSION =
@@ -274,16 +282,18 @@ export const COMMERCIAL_DOCUMENT_SCHEME_TRANCHES_BPS = [3000, 4000, 3000] as con
 export const commercialDocumentPartialCommandV1Schema = z.strictObject({
   schemaVersion: z.literal(COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION),
   orderId: z.string().uuid(),
-  mode: z.enum(["percent", "lines", "scheme", "closing", "remainder"]),
+  mode: z.enum(["percent", "lines", "scheme", "closing", "remainder", "amount"]),
   percentBps: z.number().int().min(1).max(10000).nullable(),
+  amountCents: z.number().int().min(1).max(MAX_DOCUMENT_MONEY_CENTS).nullable(),
   lineIds: z.array(z.string().uuid()).max(200).nullable(),
 }).refine(
   (value) =>
-    (value.mode === "percent" && value.percentBps !== null && value.lineIds === null)
-    || (value.mode === "lines" && value.percentBps === null && value.lineIds !== null && value.lineIds.length > 0)
-    || (value.mode === "scheme" && value.percentBps === null && value.lineIds === null)
-    || (value.mode === "closing" && value.percentBps === null && value.lineIds === null)
-    || (value.mode === "remainder" && value.percentBps !== null && value.percentBps <= 9999 && value.lineIds === null),
+    (value.mode === "percent" && value.percentBps !== null && value.amountCents === null && value.lineIds === null)
+    || (value.mode === "lines" && value.percentBps === null && value.amountCents === null && value.lineIds !== null && value.lineIds.length > 0)
+    || (value.mode === "scheme" && value.percentBps === null && value.amountCents === null && value.lineIds === null)
+    || (value.mode === "closing" && value.percentBps === null && value.amountCents === null && value.lineIds === null)
+    || (value.mode === "remainder" && value.percentBps !== null && value.percentBps <= 9999 && value.amountCents === null && value.lineIds === null)
+    || (value.mode === "amount" && value.amountCents !== null && value.percentBps === null && value.lineIds === null),
   "partial mode input inconsistent",
 );
 export type CommercialDocumentPartialCommandV1 = z.infer<
@@ -315,12 +325,6 @@ export const INVOICING_REPORT_CSV_VERSION = "invoicing-report-csv.v1" as const;
 export const INVOICING_DATEV_COMMAND_VERSION = "invoicing-datev-command.v1" as const;
 export const INVOICING_DATEV_BATCH_VERSION = "invoicing-datev-batch.v1" as const;
 
-export const MAX_DOCUMENT_MONEY_CENTS = 9_000_000_000_000_000 as const;
-export const MAX_DOCUMENT_QUANTITY_MILLI = 100_000_000 as const;
-export const MAX_DOCUMENT_LINE_POSITION = 500 as const;
-export const DOCUMENT_LIST_DEFAULT_LIMIT = 25 as const;
-export const DOCUMENT_LIST_MAX_LIMIT = 100 as const;
-export const INVOICING_REPORT_LATEST_DOCUMENTS = 10 as const;
 // F5-01: v2 versiegelt zusaetzlich die Skonto-Konditionen (Paar
 // skontoPercentBps/skontoDays, null = kein Skonto). v1-Snapshots bleiben
 // lesbar (Seeds/History), neue Ausstellungen siegeln v2.

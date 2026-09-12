@@ -134,6 +134,7 @@ const schemeInput = (orderId: string) => ({
   orderId,
   mode: "scheme" as const,
   percentBps: null,
+  amountCents: null,
   lineIds: null,
 });
 
@@ -142,6 +143,7 @@ const percentInput = (orderId: string, percentBps: number) => ({
   orderId,
   mode: "percent" as const,
   percentBps,
+  amountCents: null,
   lineIds: null,
 });
 

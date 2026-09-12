@@ -54,8 +54,9 @@ function Feedback({
  * Restbetrag). F8-07 · Zahlungsplan-Modus (Staffel 30/40/30, Tranche aus
  * Kette). F8-08 · Rest-Schlussrechnung (Modus closing, exakter
  * Ketten-Rest). F8-12 · Teil-Rest (Modus remainder, Prozentanteil vom
- * aktuellen Rest, Kette bleibt offen). Reine Darstellung gespeicherter
- * Kette + Summen.
+ * aktuellen Rest, Kette bleibt offen). F8-13 · Betrag-Teilrechnung
+ * (Modus amount, fester Netto-Betrag, cent-exakt). Reine Darstellung
+ * gespeicherter Kette + Summen.
  */
 export function PartialInvoicePanel({
   workspaceId,
@@ -69,7 +70,7 @@ export function PartialInvoicePanel({
   canWrite: boolean;
 }) {
   const [state, dispatch] = useActionState(createPartialInvoiceAction, initialState);
-  const [mode, setMode] = useState<"percent" | "lines" | "scheme" | "closing" | "remainder">("percent");
+  const [mode, setMode] = useState<"percent" | "lines" | "scheme" | "closing" | "remainder" | "amount">("percent");
   const selectable = chain.orderLines.filter((line) => !line.consumed);
   const hasActiveChain = chain.partials.some((entry) => entry.status !== "voided");
 
@@ -92,7 +93,7 @@ export function PartialInvoicePanel({
             <li key={entry.partialId} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
               <span>
                 <span className="font-semibold">Nr. {entry.ordinal}</span>
-                {" · "}{entry.mode === "lines" ? "Positionen" : entry.mode === "scheme" ? `Zahlungsplan ${(entry.percentBps ?? 0) / 100} %` : entry.mode === "closing" ? "Rest" : entry.mode === "remainder" ? `Teil-Rest ${(entry.percentBps ?? 0) / 100} %` : `${(entry.percentBps ?? 0) / 100} %`}
+                {" · "}{entry.mode === "lines" ? "Positionen" : entry.mode === "scheme" ? `Zahlungsplan ${(entry.percentBps ?? 0) / 100} %` : entry.mode === "closing" ? "Rest" : entry.mode === "remainder" ? `Teil-Rest ${(entry.percentBps ?? 0) / 100} %` : entry.mode === "amount" ? `Betrag ${formatEuro(entry.netCents)}` : `${(entry.percentBps ?? 0) / 100} %`}
                 {" · "}{formatEuro(entry.grossCents)}
                 {entry.status === "voided" ? " · storniert" : null}
               </span>
@@ -173,6 +174,17 @@ export function PartialInvoicePanel({
               Teil-Rest (Anteil vom Rest, Kette bleibt offen)
               {!hasActiveChain ? " (keine aktive Kette)" : null}
             </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="mode"
+                value="amount"
+                checked={mode === "amount"}
+                onChange={() => setMode("amount")}
+                className="h-4 w-4"
+              />
+              Fester Betrag (netto, €)
+            </label>
           </fieldset>
           {mode === "scheme" ? (
             <p className="text-sm leading-6 text-slate-600">
@@ -184,6 +196,20 @@ export function PartialInvoicePanel({
               Legt eine Sammellinie über den exakten Restbetrag der aktiven
               Kette an und schließt sie damit.
             </p>
+          ) : mode === "amount" ? (
+            <label className="grid max-w-48 gap-1 text-sm font-medium text-slate-700">
+              Betrag netto in €
+              <input
+                type="number"
+                name="amount"
+                min="0.01"
+                step="0.01"
+                required
+                defaultValue="1000"
+                data-testid="partial-amount"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
+              />
+            </label>
           ) : mode === "percent" || mode === "remainder" ? (
             <label className="grid max-w-48 gap-1 text-sm font-medium text-slate-700">
               {mode === "remainder" ? "Anteil vom Rest in % (unter 100 %)" : "Anteil in %"}

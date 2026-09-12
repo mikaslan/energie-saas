@@ -135,6 +135,7 @@ describe("F8-09 Eltern-Sperre (PostgreSQL)", () => {
       orderId,
       mode: "percent",
       percentBps: 3000,
+      amountCents: null,
       lineIds: null,
     }));
 

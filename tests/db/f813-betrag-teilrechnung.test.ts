@@ -33,12 +33,12 @@ async function seedFixture(): Promise<Fixture> {
   const editorId = randomUUID();
   const viewerId = randomUUID();
   await withTenantOn(testPool, workspaceId, async (tx) => {
-    await tx.execute(sql`insert into workspace (id, name) values (${workspaceId}::uuid, 'F8-12 Teil-Rest')`);
+    await tx.execute(sql`insert into workspace (id, name) values (${workspaceId}::uuid, 'F8-13 Betrag')`);
     await tx.execute(sql`
       insert into user_identity (id, email)
       values
-        (${editorId}::uuid, ${`editor-${editorId}@f812.test`}),
-        (${viewerId}::uuid, ${`viewer-${viewerId}@f812.test`})
+        (${editorId}::uuid, ${`editor-${editorId}@f813.test`}),
+        (${viewerId}::uuid, ${`viewer-${viewerId}@f813.test`})
     `);
     await tx.execute(sql`
       insert into membership (id, workspace_id, user_id, role, capabilities)
@@ -55,8 +55,8 @@ function settingsCommand(): InvoicingSettingsCommandV1 {
     schemaVersion: WORKSPACE_INVOICING_SETTINGS_COMMAND_VERSION,
     baseRevision: 0,
     input: {
-      companyName: "F8-12 GmbH",
-      companyEmail: "office@f812.example",
+      companyName: "F8-13 GmbH",
+      companyEmail: "office@f813.example",
       companyAuthority: null,
       companyRegisterNumber: null,
       companyTaxId: null,
@@ -66,7 +66,7 @@ function settingsCommand(): InvoicingSettingsCommandV1 {
       companyCity: "Berlin",
       companyCountry: "DE",
       accountingMethod: "accrual",
-      paymentAccountHolder: "F8-12 GmbH",
+      paymentAccountHolder: "F8-13 GmbH",
       paymentIban: "DE89370400440532013000",
       paymentBic: "MARKDEF1100",
       goebdRetentionDefaultDays: 3650,
@@ -147,16 +147,16 @@ const percentInput = (orderId: string, percentBps: number) => ({
   lineIds: null,
 });
 
-const remainderInput = (orderId: string, percentBps: number | null) => ({
+const amountInput = (orderId: string, amountCents: number | null) => ({
   schemaVersion: COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION,
   orderId,
-  mode: "remainder" as const,
-  percentBps,
-  amountCents: null,
+  mode: "amount" as const,
+  percentBps: null,
+  amountCents,
   lineIds: null,
 });
 
-describe("F8-12 Teil-Rest (PostgreSQL)", () => {
+describe("F8-13 Betrag-Teilrechnung (PostgreSQL)", () => {
   let fixture: Fixture;
 
   beforeEach(async () => {
@@ -168,29 +168,32 @@ describe("F8-12 Teil-Rest (PostgreSQL)", () => {
   const asViewer = <T>(fx: Fixture, fn: (tx: never, ctx: never) => Promise<T>): Promise<T> =>
     withAuthorizedTenantOn(testPool, fx.viewerId, fx.workspaceId, fn as never) as Promise<T>;
 
-  it("F812-DB-01: Prozent 30 % → Teil-Rest 50 % vom Rest → Closing, Kette bleibt offen", async () => {
-    const orderId = await seedOrderConfirmation(fixture, "AB Teil-Rest", LINES);
+  it("F813-DB-01: Prozent 30 % → Betrag 100.000 ct (cent-exakt) → Closing", async () => {
+    const orderId = await seedOrderConfirmation(fixture, "AB Betrag", LINES);
 
     const base = await asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, percentInput(orderId, 3000)));
     expect(base.ordinal).toBe(1);
 
-    // Rest netto 665.000 ct; 50 % davon = 332.500 ct netto → brutto 395.675 ct.
-    const remainder = await asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, remainderInput(orderId, 5000)));
-    expect(remainder.ordinal).toBe(2);
-    expect(remainder.mode).toBe("remainder");
-    expect(remainder.grossCents).toBe(395675);
+    // 100.000 ct netto 1:1 → 19.000 ct Steuer → brutto 119.000 ct.
+    const amount = await asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, amountInput(orderId, 100000)));
+    expect(amount.ordinal).toBe(2);
+    expect(amount.mode).toBe("amount");
+    expect(amount.grossCents).toBe(119000);
 
     const chain = await asEditor(fixture, (tx, ctx) => listPartialInvoices(tx, ctx, { orderId }));
-    expect(chain.partials.map((entry) => entry.mode)).toEqual(["percent", "remainder"]);
-    expect(chain.billedGrossCents).toBe(339150 + 395675);
-    expect(chain.remainingGrossCents).toBe(1130500 - 339150 - 395675);
+    expect(chain.partials.map((entry) => entry.mode)).toEqual(["percent", "amount"]);
+    // Nomineller Auftrags-Anteil: floor(100000*10000/950000) = 1052 bps.
+    expect(chain.partials[1]?.percentBps).toBe(1052);
+    expect(chain.partials[1]?.netCents).toBe(100000);
+    expect(chain.billedGrossCents).toBe(339150 + 119000);
+    expect(chain.remainingGrossCents).toBe(1130500 - 339150 - 119000);
 
     // Kette ist OFFEN: Closing schließt über den geschrumpften Rest.
     const closing = await asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, closingInput(orderId)));
     expect(closing.ordinal).toBe(3);
     expect(closing.mode).toBe("closing");
     const closed = await asEditor(fixture, (tx, ctx) => listPartialInvoices(tx, ctx, { orderId }));
-    expect(closed.partials.map((entry) => entry.mode)).toEqual(["percent", "remainder", "closing"]);
+    expect(closed.partials.map((entry) => entry.mode)).toEqual(["percent", "amount", "closing"]);
     expect(closed.remainingGrossCents).toBe(0);
 
     // Kette geschlossen: zweites Closing → Conflict (Rest 0).
@@ -198,24 +201,37 @@ describe("F8-12 Teil-Rest (PostgreSQL)", () => {
       .toBeInstanceOf(InvoicingConflictError);
   });
 
-  it("F812-DB-02: Guards — ohne Kette, 100 %, Mischsatz, Rest 0, RBAC", async () => {
+  it("F813-DB-02: Guards — Betrag fehlt/≤0, über Rest, Mischsatz, Rest 0, RBAC", async () => {
     const orderId = await seedOrderConfirmation(fixture, "AB Leer", LINES);
     const mixedId = await seedOrderConfirmation(fixture, "AB Mischsatz", [
       { position: 1, name: "Modul", quantityMilli: 1000, unit: "piece", netCents: 100000, taxRateBps: 1900 },
       { position: 2, name: "Kleinleistung", quantityMilli: 1000, unit: "set", netCents: 50000, taxRateBps: 0 },
     ]);
 
-    // Ohne aktive Teilrechnung kein Teil-Rest (kein F8-04b-Ersatz).
-    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, remainderInput(orderId, 5000)))).rejects
+    // Betrag fehlt oder ≤ 0 → Validation (Contract-Refine).
+    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, amountInput(orderId, null)))).rejects
       .toBeInstanceOf(InvoicingValidationError);
-    // 100 % ist closing, kein Teil-Rest (Contract-Refine).
+    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, amountInput(orderId, 0)))).rejects
+      .toBeInstanceOf(InvoicingValidationError);
+    // Betrag + Prozent zugleich → Validation (Refine).
+    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, {
+      schemaVersion: COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION,
+      orderId,
+      mode: "percent" as const,
+      percentBps: 3000,
+      amountCents: 100000,
+      lineIds: null,
+    }))).rejects.toBeInstanceOf(InvoicingValidationError);
+    // Betrag über Rest (ohne Kette: über Auftrag) → Conflict.
     await asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, percentInput(orderId, 3000)));
-    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, remainderInput(orderId, 10000)))).rejects
-      .toBeInstanceOf(InvoicingValidationError);
-    // Anteil fehlt → Validation.
-    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, remainderInput(orderId, null)))).rejects
-      .toBeInstanceOf(InvoicingValidationError);
-    // Mischsatz im Remainder-Modus fail-closed (v1-Grenze). Kette per
+    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, amountInput(orderId, 665001)))).rejects
+      .toBeInstanceOf(InvoicingConflictError);
+    // Betrag exakt gleich Rest → zulässig (schließt voll, wie percent 100 %).
+    const exact = await asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, amountInput(orderId, 665000)));
+    expect(exact.mode).toBe("amount");
+    const closed = await asEditor(fixture, (tx, ctx) => listPartialInvoices(tx, ctx, { orderId }));
+    expect(closed.remainingGrossCents).toBe(0);
+    // Mischsatz im Amount-Modus fail-closed (v1-Grenze). Kette per
     // lines-Modus aufbauen (Positions-Kopie kennt kein Ein-Satz-Gate).
     const mixedChain = await asEditor(fixture, (tx, ctx) => listPartialInvoices(tx, ctx, { orderId: mixedId }));
     const mixedLineIds = mixedChain.orderLines.map((line) => line.id);
@@ -228,14 +244,13 @@ describe("F8-12 Teil-Rest (PostgreSQL)", () => {
       amountCents: null,
       lineIds: mixedLineIds,
     }));
-    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, remainderInput(mixedId, 5000)))).rejects
+    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, amountInput(mixedId, 50000)))).rejects
       .toBeInstanceOf(InvoicingValidationError);
-    // Rest 0 nach Closing → Conflict.
-    await asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, closingInput(orderId)));
-    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, remainderInput(orderId, 5000)))).rejects
+    // Rest 0 → Conflict.
+    await expect(asEditor(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, amountInput(orderId, 1)))).rejects
       .toBeInstanceOf(InvoicingConflictError);
     // Viewer ohne Schreibrecht → denied.
-    await expect(asViewer(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, remainderInput(orderId, 5000)))).rejects
+    await expect(asViewer(fixture, (tx, ctx) => createPartialInvoice(tx, ctx, amountInput(orderId, 1)))).rejects
       .toBeInstanceOf(PermissionDeniedError);
   });
 });
