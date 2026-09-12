@@ -862,6 +862,13 @@
       "when": 1789181000000,
       "tag": "0122_f8_08_rest_schlussrechnung",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1789189557519,
+      "tag": "0123_f13_11_planungsservice",
+      "breakpoints": true
     }
   ]
 }

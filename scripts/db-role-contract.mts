@@ -614,6 +614,10 @@ const SERVICE_CASE_RELATIONS = [
   "service_case",
 ] as const;
 
+const PLANNING_REQUEST_RELATIONS = [
+  "planning_request",
+] as const;
+
 const LEAD_ROUTING_RELATIONS = [
   "project_lead_routing_rule",
 ] as const;
@@ -2960,6 +2964,21 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasPlanningRequestsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    PLANNING_REQUEST_RELATIONS,
+    "Rollen-ACL-Manifest: F13-11-Planungsservice",
+  );
+  if (hasPlanningRequestsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.planning_request
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.planning_request to app_runtime
+    `);
+  }
+
   // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
   // daher zusaetzlich DELETE (Muster commercial_document_link).
   const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
@@ -4452,6 +4471,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F13-01-Serviceauftrag",
   );
 
+  const hasPlanningRequests = await hasAtomicPublicRelationSet(
+    client,
+    PLANNING_REQUEST_RELATIONS,
+    "Rollenvertrag: F13-11-Planungsservice",
+  );
+
   const hasLeadRouting = await hasAtomicPublicRelationSet(
     client,
     LEAD_ROUTING_RELATIONS,
@@ -4708,6 +4733,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasServiceCases ? SERVICE_CASE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPlanningRequests ? PLANNING_REQUEST_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.map(
@@ -6011,6 +6039,9 @@ export async function verifyRoleContract(
       ...(hasServiceCases ? SERVICE_CASE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasPlanningRequests ? PLANNING_REQUEST_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6421,6 +6452,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasServiceCases ? [
           "service_case:tenant_isolation:9885f0875ae33019b13b34440e67a8cae20548ab3be350bbdc29cd6b3c836423",
+        ] : []),
+        ...(hasPlanningRequests ? [
+          "planning_request:tenant_isolation:b243c3b3fc64e6c557fa5576612ddfe590c41c1042e495eaca04fec6afdeefe1",
         ] : []),
         ...(hasLeadRouting ? [
           "project_lead_routing_rule:tenant_isolation:5e65ec9d858477d79085ae976979f4e4349773895b49b57c1cd32ae1101dd48d",
@@ -7010,6 +7044,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasServiceCases ? SERVICE_CASE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasPlanningRequests ? PLANNING_REQUEST_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

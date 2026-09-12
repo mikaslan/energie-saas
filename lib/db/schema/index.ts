@@ -42,6 +42,7 @@ export * from "./project-task";
 export * from "./portal";
 export * from "./planning";
 export * from "./service-case";
+export * from "./planning-request";
 export * from "./team";
 export * from "./portal-status-label";
 export * from "./portal-status-faq";

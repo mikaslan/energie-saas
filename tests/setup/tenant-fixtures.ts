@@ -2491,6 +2491,24 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${wsId}::uuid, ${projectId}::uuid, 'F13-01 Fixture', 'open', ${userId}::uuid)
     `);
   },
+  // F13-11 (0123): Planungsanfrage zu einem echten Angebot (genau eine).
+  planning_request: async (tx, wsId) => {
+    await fixtureOfferGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"installation":true}');
+    await tx.execute(sql`
+      insert into planning_request (
+        workspace_id, project_id, offer_id, deadline_kind, deadline_at, status, created_by
+      )
+      select ${wsId}::uuid, offer_record.project_id, offer_record.id,
+             'standard_48h', statement_timestamp() + interval '48 hours',
+             'requested', ${userId}::uuid
+        from offer as offer_record
+       where offer_record.workspace_id = ${wsId}::uuid
+       order by offer_record.id
+       limit 1
+      on conflict (workspace_id, offer_id) do nothing
+    `);
+  },
   // F10-04 (0104): Datei-Anfrage zu einem echten Projektgraphen.
   file_request: async (tx, wsId) => {
     const { projectId } = await fixtureProjectGraph(tx, wsId);

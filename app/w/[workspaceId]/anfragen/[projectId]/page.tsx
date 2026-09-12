@@ -65,6 +65,10 @@ import {
 } from "@/modules/calendar";
 import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallerOptions, type InstallableVariantOption, type InstallationDto, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
 import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
+import {
+  listPlanningRequests,
+  type PlanningRequestDto,
+} from "@/modules/planning-requests";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
 import { AssignedExternalRequestView } from "./assigned-external-request-view";
@@ -74,6 +78,7 @@ import { EnergyProfileSection } from "./energy-profile-section";
 import { InstallationSection } from "./installation-section";
 import { InstallationWorkbookPanel } from "./installation-workbook-panel";
 import { ServiceCaseSection } from "./service-case-section";
+import { PlanningRequestSection } from "./planning-request-section";
 import { OfferCreateEntry } from "./offer-create-entry";
 import {
   buildOfferCreateView,
@@ -282,6 +287,56 @@ type ServiceCaseLoadResult =
   | { kind: "loaded"; cases: ServiceCaseDto[]; canWrite: boolean }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
+
+type PlanningRequestLoadResult =
+  | {
+    kind: "loaded";
+    requests: PlanningRequestDto[];
+    offers: { id: string; label: string }[];
+    canWrite: boolean;
+  }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+async function loadPlanningRequests(
+  workspaceId: string,
+  projectId: string,
+): Promise<PlanningRequestLoadResult> {
+  try {
+    const requests = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "planning_request",
+      (tx, ctx) => listPlanningRequests(tx, ctx, { projectId }),
+    );
+    const variants = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation_workbook_options",
+      (tx, ctx) => listInstallableVariants(tx, ctx, { projectId }),
+    );
+    const seen = new Set<string>();
+    const offers = variants.flatMap((variant) => {
+      if (seen.has(variant.offerId)) return [];
+      seen.add(variant.offerId);
+      return [{
+        id: variant.offerId,
+        label: `${variant.offerNumber ?? "Angebot"} · ${variant.variantName}`,
+      }];
+    });
+    const writable = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "planning_request_write_gate",
+      async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
+    );
+    return { kind: "loaded", requests, offers, canWrite: writable };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
 
 async function loadServiceCases(
   workspaceId: string,
@@ -769,6 +824,11 @@ export default async function ProjectTriagePage({
     ? await loadServiceCases(workspaceId, projectId)
     : { kind: "denied" } as const;
 
+  // F13-11: Planungsservice voll entkoppelt (eigene Sichtbarkeit,
+  // unabhaengig vom Installations-Ladestand). Angebotsoptionen aus den
+  // installierbaren Varianten (dedupliziert je Angebot).
+  const planningResult = await loadPlanningRequests(workspaceId, projectId);
+
   // F1-06: Wiedervorlage entkoppelt (eigene Sichtbarkeit, blockiert
   // andere Sektionen bei fehlendem Recht nicht).
   const followUpResult = await loadProjectFollowUp(workspaceId, projectId);
@@ -1223,6 +1283,18 @@ export default async function ProjectTriagePage({
               projectId={projectId}
               cases={serviceCaseResult.cases}
               canWrite={serviceCaseResult.canWrite}
+            />
+          </div>
+        ) : null}
+
+        {planningResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <PlanningRequestSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              requests={planningResult.requests}
+              offers={planningResult.offers}
+              canWrite={planningResult.canWrite}
             />
           </div>
         ) : null}
