@@ -43,6 +43,7 @@ import {
   commercialDocumentDetailV1Schema,
   commercialDocumentDuplicateCommandV1Schema,
   commercialDocumentLinkCommandV1Schema,
+  commercialDocumentOfferImportCommandV1Schema,
   commercialDocumentUnlinkCommandV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineV1Schema,
@@ -77,6 +78,7 @@ import {
   type CommercialDocumentGroupArchiveCommandV1,
   type CommercialDocumentLineCommandV1,
   type CommercialDocumentLineV1,
+  type CommercialDocumentOfferImportCommandV1,
   type DocumentNumberType,
   type InvoicingReportCommandV1,
   type InvoicingReportCsvV1,
@@ -88,10 +90,14 @@ import {
 } from "@/lib/integrations/invoicing/contract";
 import {
   InvoicingConflictError,
+  InvoicingIntegrityError,
   InvoicingNotFoundError,
   InvoicingPreconditionConflictError,
   InvoicingValidationError,
 } from "./errors";
+import {
+  offerVariantSnapshotV1Schema,
+} from "@/lib/integrations/offers/contract";
 
 function requireInvoicingRead(ctx: ServiceCtx): void {
   if (!can(ctx, "invoicing.read")) {
@@ -2119,6 +2125,229 @@ export async function duplicateOrderConfirmationAsInvoice(
     details: evidence,
   });
   return { id: created.id, type: "invoice", status: "draft", linesCopied: detail.lines.length };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F8-06 · Signierte Angebotsvariante als Rechnung übernehmen
+// ═══════════════════════════════════════════════════════════════════════
+
+export type ImportOfferVariantResult = {
+  id: string;
+  type: "invoice";
+  status: "draft";
+  linesCopied: number;
+  basisNetCents: number;
+};
+
+type OfferImportLine = {
+  position: number;
+  name: string;
+  quantityMilli: number;
+  unit: "piece" | "set" | "meter";
+  netCents: number;
+  taxRateBps: 0 | 1900;
+};
+
+/**
+ * Uebernimmt die signierte Variante eines Angebots als Rechnungs-Entwurf:
+ * Projekt/Kontakt aus dem Angebot (gruppenlos), Positionen aus dem
+ * versiegelten Varianten-Snapshot in Sektions-/Positionsreihenfolge,
+ * Summen ueber die Zeilenanlage neu gerechnet. Die versiegelten
+ * `finalSalesNetCents` enthalten alle Rabattstufen, die Rechnungssumme
+ * entspricht dadurch `basisNetCents`. Skonto/Konditionen werden wie in
+ * F8-04b NICHT kopiert; Faelligkeit heute + 14 Tage Europe/Berlin
+ * (ESTIMATE, reversibel — Entwurf bleibt editierbar).
+ *
+ * v1-Grenzen (fail-closed statt geraten): nur `required` + `additional`,
+ * nicht versteckt; Deal-Override ist pro Zeile nicht darstellbar; die
+ * signierte Revision muss die aktuelle sein (sonst stiller Altpreis).
+ */
+export async function importOfferVariantAsInvoice(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentOfferImportCommandV1,
+): Promise<ImportOfferVariantResult> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentOfferImportCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+
+  const offer = await tx.execute<{
+    id: string;
+    project_id: string;
+    contact_id: string;
+    offer_number: string;
+    total_price_override_net_cents: number | null;
+  }>(sql`
+    select id, project_id, contact_id, offer_number, total_price_override_net_cents
+      from offer
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${parsed.data.offerId}::uuid
+     limit 1
+  `);
+  const offerRow = offer.rows[0];
+  if (!offerRow) throw new InvoicingNotFoundError();
+
+  const variant = await tx.execute<{ id: string; current_revision: number }>(sql`
+    select id, current_revision
+      from offer_variant
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${parsed.data.variantId}::uuid
+       and offer_id = ${offerRow.id}::uuid
+     limit 1
+  `);
+  const variantRow = variant.rows[0];
+  if (!variantRow) throw new InvoicingNotFoundError();
+
+  const revision = await tx.execute<{ id: string; revision_snapshot: unknown }>(sql`
+    select id, revision_snapshot
+      from offer_variant_revision
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and variant_id = ${variantRow.id}::uuid
+       and revision = ${variantRow.current_revision}
+     limit 1
+  `);
+  const revisionRow = revision.rows[0];
+  if (!revisionRow) throw new InvoicingNotFoundError();
+  const snapshot = offerVariantSnapshotV1Schema.safeParse(revisionRow.revision_snapshot);
+  // Das Siegel prueft serverautoritativ nach (Preisresultat je Zeile) —
+  // ein korrupter Snapshot darf nie teilweise importiert werden.
+  if (!snapshot.success) throw new InvoicingIntegrityError();
+
+  // Content-Lock-Muster wie readVariantContentLock (Module offers):
+  // revoked_by_customer sticht signed (Kundenwille wie Storno).
+  const lock = await tx.execute<{
+    id: string;
+    status: string;
+    variant_revision_id: string;
+  }>(sql`
+    select id, status, variant_revision_id
+      from signature_request
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerRow.id}::uuid
+       and variant_id = ${variantRow.id}::uuid
+       and (
+         status in ('signed', 'revoked_by_customer')
+         or (status = 'pending' and expires_at > statement_timestamp())
+       )
+     order by case status
+       when 'revoked_by_customer' then 1
+       when 'signed' then 2
+       else 3
+     end, created_at desc, id
+     limit 1
+  `);
+  const lockRow = lock.rows[0];
+  if (!lockRow || lockRow.status === "pending") throw new InvoicingValidationError();
+  if (lockRow.status === "revoked_by_customer") throw new InvoicingConflictError();
+  if (lockRow.status !== "signed") throw new InvoicingValidationError();
+  if (lockRow.variant_revision_id !== revisionRow.id) throw new InvoicingConflictError();
+
+  // Deal-Override ist pro Zeile nicht darstellbar (kein stiller Preiswechsel).
+  if (offerRow.total_price_override_net_cents !== null) throw new InvoicingValidationError();
+
+  const lines: OfferImportLine[] = [];
+  const sections = [...snapshot.data.sections].sort((left, right) => left.position - right.position);
+  for (const section of sections) {
+    const ordered = [...section.lines].sort((left, right) => left.position - right.position);
+    for (const line of ordered) {
+      if (line.positionType !== "required" && line.positionType !== "additional") continue;
+      // Versteckte Zeilen sind bepreist (Rechenkern unterscheidet nicht) —
+      // ein Wert ungleich null wuerde die Rechnung still verkuerzen oder
+      // versteckte Positionen leaken: fail-closed statt geraten.
+      if (line.isHidden && line.computed.finalSalesNetCents !== 0) {
+        throw new InvoicingValidationError();
+      }
+      if (line.isHidden) continue;
+      lines.push({
+        position: lines.length + 1,
+        name: line.product.displayName,
+        quantityMilli: line.quantityMilli,
+        unit: line.product.unit,
+        netCents: line.computed.finalSalesNetCents,
+        taxRateBps: line.taxRateBps,
+      });
+    }
+  }
+  if (lines.length === 0) throw new InvoicingValidationError();
+  // Abbildungswache: sichtbare required/additional-Zeilen muessen exakt
+  // basisNetCents ergeben (Siegel garantiert die Eingabe, das hier die
+  // Abbildung).
+  const mappedNet = lines.reduce((sum, line) => sum + line.netCents, 0);
+  if (mappedNet !== snapshot.data.totals.basisNetCents) throw new InvoicingIntegrityError();
+
+  const berlinToday = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" }),
+  );
+  const dueDate = new Date(berlinToday.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const dueDateIso = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, "0")}-${String(dueDate.getDate()).padStart(2, "0")}`;
+
+  const created = await createDocument(tx, ctx, {
+    schemaVersion: COMMERCIAL_DOCUMENT_COMMAND_VERSION,
+    input: {
+      type: "invoice",
+      name: `Rechnung zu Angebot ${offerRow.offer_number} – ${snapshot.data.variantName}`,
+      groupId: null,
+      projectId: offerRow.project_id,
+      contactId: offerRow.contact_id,
+      dueDate: dueDateIso,
+      skontoPercentBps: null,
+      skontoDays: null,
+      deliveryDate: null,
+      validityDate: null,
+      plannedDeliveryDate: null,
+      plannedServiceDate: null,
+      creditNoteType: null,
+    },
+  });
+
+  for (const line of lines) {
+    await createDocumentLine(tx, ctx, {
+      schemaVersion: COMMERCIAL_DOCUMENT_LINE_COMMAND_VERSION,
+      documentId: created.id,
+      input: {
+        position: line.position,
+        name: line.name,
+        quantityMilli: line.quantityMilli,
+        unit: line.unit,
+        netCents: line.netCents,
+        taxRateBps: line.taxRateBps,
+      },
+    });
+  }
+
+  const evidence = {
+    workspaceId: ctx.workspaceId,
+    offerId: offerRow.id,
+    variantId: variantRow.id,
+    revision: variantRow.current_revision,
+    signatureRequestId: lockRow.id,
+    targetDocumentId: created.id,
+    linesCopied: lines.length,
+    basisNetCents: snapshot.data.totals.basisNetCents,
+  };
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: created.id,
+    eventType: "commercial_document.offer_imported",
+    actor: ctx.actor,
+    payload: evidence,
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "invoicing.document.offer_import",
+    resource: "commercial_document",
+    allowed: true,
+    details: evidence,
+  });
+  return {
+    id: created.id,
+    type: "invoice",
+    status: "draft",
+    linesCopied: lines.length,
+    basisNetCents: snapshot.data.totals.basisNetCents,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════

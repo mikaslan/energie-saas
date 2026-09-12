@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { authorizedOfferMutationAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
+import { authorizedAction, authorizedOfferMutationAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
+import { COMMERCIAL_DOCUMENT_OFFER_IMPORT_COMMAND_VERSION } from "@/lib/integrations/invoicing/contract";
 import {
   createOfferCommandV1Schema,
   createVariantFromResolutionCommandV1Schema,
@@ -25,6 +26,14 @@ import {
   OfferValidationError,
   reviseOfferVariant,
 } from "@/modules/offers";
+import {
+  importOfferVariantAsInvoice,
+  InvoicingConflictError,
+  InvoicingIntegrityError,
+  InvoicingNotFoundError,
+  InvoicingPreconditionConflictError,
+  InvoicingValidationError,
+} from "@/modules/invoicing";
 
 const OFFER_BLOCKED_CODES = [
   "project_not_found",
@@ -574,6 +583,61 @@ export async function previewOfferHtmlAction(input: {
         : { status: "conflict", currentRevision: error.currentRevision };
     }
     if (error instanceof OfferPdfDraftIntegrityError) return { status: "unavailable" };
+    throw error;
+  }
+}
+
+export type OfferInvoiceImportActionState =
+  | { status: "idle" }
+  | { status: "pending" }
+  | { status: "invalid" }
+  | { status: "not_found" }
+  | { status: "conflict" }
+  | { status: "precondition" }
+  | { status: "denied" }
+  | { status: "unauthenticated" }
+  | { status: "error" }
+  | { status: "success"; invoiceId: string; linesCopied: number };
+
+const IMPORT_FORM_FIELDS = new Set(["workspaceId", "offerId", "variantId"]);
+
+/**
+ * F8-06: signierte Angebotsvariante als Rechnungs-Entwurf übernehmen.
+ * Schreibrecht `invoicing.write`; alle Domänen-Gates kommen aus dem
+ * Service (Signatur, Revision, Override, Zeilen) und werden 1:1
+ * abgebildet — das Panel zeigt nur, was der Service zulässt.
+ */
+export async function importOfferAsInvoiceAction(
+  _previousState: OfferInvoiceImportActionState,
+  formData: FormData,
+): Promise<OfferInvoiceImportActionState> {
+  const workspaceId = workspaceForAdmission(formData);
+  if (!workspaceId) return { status: "invalid" };
+  const fields = parseExactForm(formData, [IMPORT_FORM_FIELDS]);
+  if (!fields) return { status: "invalid" };
+
+  try {
+    const result = await authorizedAction(
+      workspaceId,
+      "invoicing.write",
+      "commercial_document",
+      (tx, ctx) => importOfferVariantAsInvoice(tx, ctx, {
+        schemaVersion: COMMERCIAL_DOCUMENT_OFFER_IMPORT_COMMAND_VERSION,
+        offerId: fields.offerId,
+        variantId: fields.variantId,
+      }),
+    );
+    revalidatePath(`/w/${workspaceId}/rechnungen`);
+    revalidatePath(`/w/${workspaceId}/angebote/${fields.offerId}`);
+    return { status: "success", invoiceId: result.id, linesCopied: result.linesCopied };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof InvoicingValidationError) return { status: "invalid" };
+    if (error instanceof InvoicingNotFoundError) return { status: "not_found" };
+    if (error instanceof InvoicingPreconditionConflictError) return { status: "precondition" };
+    if (error instanceof InvoicingConflictError) return { status: "conflict" };
+    if (error instanceof InvoicingIntegrityError) return { status: "error" };
     throw error;
   }
 }

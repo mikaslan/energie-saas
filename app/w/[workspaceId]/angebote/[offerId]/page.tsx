@@ -36,6 +36,7 @@ import {
   type OfferDetailSurfaceView,
 } from "./offer-detail-view";
 import { OfferSignaturePanel } from "./offer-signature-panel";
+import { OfferInvoiceImportPanel } from "./offer-invoice-import-panel";
 
 export const metadata: Metadata = {
   title: "Angebotsentwurf | WMEE Vertrieb",
@@ -228,6 +229,7 @@ function projectOfferDetailView(
     canPrepareIssuance: boolean;
     canApproveIssuance: boolean;
     canWithdrawIssuance: boolean;
+    canImportInvoice: boolean;
   },
   recoveryScope: string,
   pdfDrafts: readonly OfferPdfDraftStatusResult[],
@@ -393,6 +395,7 @@ function projectOfferDetailView(
       canPrepareIssuance: editorCapabilities.canPrepareIssuance,
       canApproveIssuance: editorCapabilities.canApproveIssuance,
       canWithdrawIssuance: editorCapabilities.canWithdrawIssuance,
+      canImportInvoice: editorCapabilities.canImportInvoice,
     },
     basisInput: view.permissions.canCreateBasis && view.newBasisInput ? {
       ...view.newBasisInput,
@@ -530,6 +533,7 @@ export default async function OfferDetailPage(
       canPrepareIssuance: boolean;
       canApproveIssuance: boolean;
       canWithdrawIssuance: boolean;
+      canImportInvoice: boolean;
     };
   };
   try {
@@ -695,6 +699,7 @@ export default async function OfferDetailPage(
             canPrepareIssuance: !externalOnly && can(ctx, "offer.issue.prepare"),
             canApproveIssuance: !externalOnly && can(ctx, "offer.issue.approve"),
             canWithdrawIssuance: !externalOnly && can(ctx, "offer.issue.withdraw"),
+            canImportInvoice: !externalOnly && can(ctx, "invoicing.write"),
           },
         };
       },
@@ -742,6 +747,14 @@ export default async function OfferDetailPage(
         workspaceId={workspaceId}
         offerId={offerId}
         variantId={projectedView.activeVariant?.snapshot.variantId ?? null}
+      />
+      <OfferInvoiceImportPanel
+        workspaceId={workspaceId}
+        offerId={offerId}
+        variantId={projectedView.activeVariant?.snapshot.variantId ?? null}
+        signed={projectedView.contentLock === "signed" && projectedView.offer !== undefined}
+        overrideActive={projectedView.offer?.overrideActive === true}
+        canImport={projectedView.permissions?.canImportInvoice === true}
       />
     </>
   );

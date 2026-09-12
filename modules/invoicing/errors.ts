@@ -19,6 +19,13 @@ export class InvoicingConflictError extends Error {
   }
 }
 
+export class InvoicingIntegrityError extends Error {
+  constructor() {
+    super("invoicing stored data is corrupt");
+    this.name = "InvoicingIntegrityError";
+  }
+}
+
 export class InvoicingPreconditionConflictError extends Error {
   constructor(public readonly reason: string) {
     super(`issuing details are incomplete: ${reason}`);

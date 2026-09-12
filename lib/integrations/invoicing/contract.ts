@@ -284,6 +284,17 @@ export const commercialDocumentDuplicateCommandV1Schema = z.strictObject({
 export type CommercialDocumentDuplicateCommandV1 = z.infer<
   typeof commercialDocumentDuplicateCommandV1Schema
 >;
+// F8-06: signierte Angebotsvariante als Rechnung übernehmen (nur Positionen).
+export const COMMERCIAL_DOCUMENT_OFFER_IMPORT_COMMAND_VERSION =
+  "commercial-document-offer-import-command.v1" as const;
+export const commercialDocumentOfferImportCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_OFFER_IMPORT_COMMAND_VERSION),
+  offerId: z.string().uuid(),
+  variantId: z.string().uuid(),
+});
+export type CommercialDocumentOfferImportCommandV1 = z.infer<
+  typeof commercialDocumentOfferImportCommandV1Schema
+>;
 export const COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION =
   "commercial-document-unlink-command.v1" as const;
 export const INVOICING_REPORT_COMMAND_VERSION = "invoicing-report-command.v1" as const;

@@ -201,6 +201,7 @@ export interface OfferDetailSurfaceView {
     canPrepareIssuance: boolean;
     canApproveIssuance: boolean;
     canWithdrawIssuance: boolean;
+    canImportInvoice: boolean;
   };
   basisInput?: {
     expectedRequirementRevision: number;

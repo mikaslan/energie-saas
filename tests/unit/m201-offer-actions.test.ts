@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// F8-06: angebote/actions bindet neu @/modules/invoicing (server-only).
+// Wie m201-offer-permission-matrix wird server-only neutralisiert, damit
+// die echte Aktionsdatei ladbar bleibt; alle Aktions-Deps bleiben gemockt.
+vi.mock("server-only", () => ({}));
+
 const deps = vi.hoisted(() => {
   class NotAuthenticatedError extends Error {}
   class PermissionDeniedError extends Error {}

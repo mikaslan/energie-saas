@@ -114,6 +114,7 @@ export type {
 } from "@/lib/integrations/invoicing/contract";
 export {
   InvoicingConflictError,
+  InvoicingIntegrityError,
   InvoicingNotFoundError,
   InvoicingPreconditionConflictError,
   InvoicingValidationError,
@@ -124,6 +125,7 @@ export {
   createDocumentGroup,
   createDocumentLine,
   duplicateOrderConfirmationAsInvoice,
+  importOfferVariantAsInvoice,
   getDocumentDetail,
   linkDeposit,
   listDepositCandidates,
