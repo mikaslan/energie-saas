@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useActionState, useCallback, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { useFormStatus } from "react-dom";
 import type {
   CalendarItemV1,
@@ -168,6 +168,13 @@ function ApplyAppointmentTemplateForm({
   );
 }
 
+// M1-15-Härtung (CI 34692521678/34694681228/34697426710): SSR-HTML ist schon
+// vor der React-Hydration klickbar — ein Klick auf „Bearbeiten" ohne Listener
+// öffnet den Dialog nie (synchroner openEdit-Pfad, kein App-Fehler). Das
+// Marker-Attribut belegt die Hydration für die E2E-Bereitschaft
+// (Muster: data-catalog-import-hydrated).
+const subscribeToHydration = () => () => undefined;
+
 export function AppointmentCalendarSection({
   workspaceId,
   projectId,
@@ -180,6 +187,11 @@ export function AppointmentCalendarSection({
   templates: AppointmentTemplateDto[];
 }) {
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
   const [view, setView] = useState<ViewMode>(range.view);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogAppointment, setDialogAppointment] = useState<ProjectAppointmentItemV1 | null>(null);
@@ -198,7 +210,7 @@ export function AppointmentCalendarSection({
   const closeDialog = useCallback(() => setDialogOpen(false), []);
 
   return (
-    <section id="project-appointments" aria-labelledby="project-appointments-title" className="min-w-0">
+    <section id="project-appointments" data-appointments-hydrated={hydrated ? "true" : "false"} aria-labelledby="project-appointments-title" className="min-w-0">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">Akte</p>

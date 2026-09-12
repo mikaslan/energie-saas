@@ -171,6 +171,14 @@ function appointmentArticle(page: Page, title: string): Locator {
   });
 }
 
+// M1-15-Härtung (CI 34692521678/34694681228/34697426710): SSR-HTML ist vor
+// der React-Hydration klickbar — ein zu früher Klick auf „Bearbeiten" hat
+// keinen Listener und öffnet den Dialog nie. Auf das Hydrations-Marker
+// warten, bevor der erste Klick fällt (Muster m1-08b).
+async function awaitAppointmentsHydrated(page: Page): Promise<void> {
+  await expect(page.locator('[data-appointments-hydrated="true"]')).toBeVisible();
+}
+
 async function expectNoWcagAaAxeViolations(
   page: Page,
   selector: string,
@@ -266,6 +274,7 @@ test("M1-15: Monatsansicht rendert; Editor legt einen Termin an (persistent)", a
     await seedTenancyCalendar();
     await page.goto(detailPath);
     await loginWithRealOtp(page, data.editorEmail, detailPath);
+    await awaitAppointmentsHydrated(page);
 
     const section = page.locator("#project-appointments");
     await expect(section.getByRole("heading", { name: "Termine", level: 2 })).toBeVisible();
@@ -345,6 +354,7 @@ test("M1-15: Monatsansicht rendert; Editor legt einen Termin an (persistent)", a
     const detailPath = `/w/${data.m111bWorkspaceId}/anfragen/${data.m111bProjectId}`;
     await page.goto(detailPath);
     await loginWithRealOtp(page, data.editorEmail, detailPath);
+    await awaitAppointmentsHydrated(page);
 
     await page.locator("#project-appointments").getByRole("button", {
       name: "Termin anlegen",
@@ -372,6 +382,7 @@ test("M1-15: Monatsansicht rendert; Editor legt einen Termin an (persistent)", a
     const detailPath = `/w/${data.m111bWorkspaceId}/anfragen/${data.m111bProjectId}`;
     await page.goto(detailPath);
     await loginWithRealOtp(page, data.editorEmail, detailPath);
+    await awaitAppointmentsHydrated(page);
 
     const article = appointmentArticle(page, APPOINTMENT_TITLE);
     await expect(article).toHaveCount(1);
@@ -399,6 +410,7 @@ test("M1-15: Monatsansicht rendert; Editor legt einen Termin an (persistent)", a
     const detailPath = `/w/${data.m111bWorkspaceId}/anfragen/${data.m111bProjectId}`;
     await page.goto(detailPath);
     await loginWithRealOtp(page, data.editorEmail, detailPath);
+    await awaitAppointmentsHydrated(page);
 
     const article = appointmentArticle(page, APPOINTMENT_TITLE_EDITED);
     await expect(article).toHaveCount(1);
