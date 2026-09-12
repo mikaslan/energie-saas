@@ -14,11 +14,14 @@ import {
   type ProjectChecklistDto,
 } from "@/lib/integrations/checklists/contract";
 import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
+import type { TeamOption } from "@/lib/integrations/teams/contract";
 import {
   applyTemplateAction,
+  assignChecklistBlockTeamAction,
   mutateChecklistSegmentAction,
   saveProjectChecklistAction,
   setChecklistItemIrrelevantAction,
+  unassignChecklistBlockTeamAction,
   type ChecklistActionState,
 } from "./actions";
 
@@ -34,6 +37,8 @@ function message(state: ChecklistActionState): { text: string; isError: boolean 
         unlock: "Segment entsperrt",
         mark: "Punkt als irrelevant markiert",
         unmark: "Irrelevant-Markierung aufgehoben",
+        assign: "Team zugewiesen",
+        unassign: "Team-Zuweisung entfernt",
       }[state.operation];
       return { text: `${label} (Version ${state.version}).`, isError: false };
     }
@@ -85,10 +90,12 @@ export function ProjectChecklistManager({
   workspaceId,
   projectId,
   checklist,
+  teamOptions,
 }: {
   workspaceId: string;
   projectId: string;
   checklist: ProjectChecklistDto;
+  teamOptions: TeamOption[];
 }) {
   const { canWrite, canConfigure, canComplete, canUnlock } = checklist.permissions;
   const canEditStructure = canConfigure || (checklist.version === 0 && canWrite);
@@ -105,11 +112,23 @@ export function ProjectChecklistManager({
   const blocks = blocksState.version === checklist.version
     ? blocksState.blocks
     : checklist.blocks;
+  // F7-05b: assignedTeams ist reines Server-Overlay aus versionslosen Ops
+  // (Zuweisen/Entfernen bumpt die Baumversion bewusst nicht). Nach
+  // Revalidierung deshalb immer frisch vom Serverprop je Block-ID
+  // einmischen — sonst ueberstimmt der lokal zwischengespeicherte Baum
+  // (gleiche Version) das entfernte Team und der Chip bleibt stehen.
+  const serverTeamsByBlock = new Map(
+    checklist.blocks.map((block) => [block.id, block.assignedTeams] as const),
+  );
+  const blocksWithServerTeams = blocks.map((block) => ({
+    ...block,
+    assignedTeams: serverTeamsByBlock.get(block.id) ?? [],
+  }));
   const editableBlocks = toEditableChecklistBlocks(blocks);
   const serializedBlocks = JSON.stringify(editableBlocks);
   const blocksExceedTransport = new TextEncoder().encode(serializedBlocks).byteLength
     > CHECKLIST_BLOCKS_TRANSPORT_MAX_BYTES;
-  const visibleBlocks = blocks.filter((block) => block.visible);
+  const visibleBlocks = blocksWithServerTeams.filter((block) => block.visible);
   const hasUnsavedChanges = JSON.stringify(editableBlocks)
     !== JSON.stringify(toEditableChecklistBlocks(checklist.blocks));
   const progress = checklistProgress(blocks);
@@ -136,6 +155,8 @@ export function ProjectChecklistManager({
       position: value.length,
       visible: true,
       segments: [],
+      // F7-05b: neuer Block hat serverseitig noch keine Teams.
+      assignedTeams: [],
     },
   ]);
 
@@ -261,6 +282,7 @@ export function ProjectChecklistManager({
                   onRenameSegment={(segmentIndex, name) => renameSegment(blockIndex, segmentIndex, name)}
                   onSetItem={(segmentIndex, itemIndex, patch, allowed) =>
                     setItem(blockIndex, segmentIndex, itemIndex, patch, allowed)}
+                  teamOptions={teamOptions}
                 />
               );
             })}
@@ -322,7 +344,7 @@ type SetItem = (
 function BlockCard({
   block, blockIndex, workspaceId, projectId, checklistId, baseVersion,
   canWrite, canEditStructure, canConfigure, canComplete, canUnlock,
-  hasUnsavedChanges,
+  hasUnsavedChanges, teamOptions,
   onRename, onAddSegment, onAddItem, onRenameSegment, onSetItem,
 }: {
   block: ChecklistBlockV1;
@@ -337,6 +359,7 @@ function BlockCard({
   canComplete: boolean;
   canUnlock: boolean;
   hasUnsavedChanges: boolean;
+  teamOptions: TeamOption[];
   onRename: (name: string) => void;
   onAddSegment: () => void;
   onAddItem: (segmentIndex: number) => void;
@@ -357,6 +380,16 @@ function BlockCard({
       ) : (
         <h3 className="text-sm font-semibold text-slate-900">{block.name}</h3>
       )}
+      {checklistId !== null ? (
+        <BlockTeamControl
+          workspaceId={workspaceId}
+          projectId={projectId}
+          checklistId={checklistId}
+          block={block}
+          teamOptions={teamOptions}
+          canWrite={canWrite}
+        />
+      ) : null}
 
       <div className="mt-3 space-y-3">
         {visibleSegments.map((segment) => {
@@ -565,6 +598,90 @@ function SegmentGroup({
         </form>
       ) : null}
       <Feedback state={mutationState} />
+    </div>
+  );
+}
+
+// F7-05b: Block-Team-Zuweisung (mehrere Teams parallel, Katalog F7.5).
+// Eigene Server-Actions (sofort wirksam, keine Revision): aktive Teams
+// zuweisen, zugewiesene (auch archivierte) entfernen.
+function BlockTeamControl({ workspaceId, projectId, checklistId, block, teamOptions, canWrite }: {
+  workspaceId: string;
+  projectId: string;
+  checklistId: string;
+  block: ChecklistBlockV1;
+  teamOptions: TeamOption[];
+  canWrite: boolean;
+}) {
+  const [assignState, assignDispatch, assignPending] = useActionState(
+    assignChecklistBlockTeamAction,
+    initialState,
+  );
+  const [unassignState, unassignDispatch, unassignPending] = useActionState(
+    unassignChecklistBlockTeamAction,
+    initialState,
+  );
+  const assignedIds = new Set(block.assignedTeams.map((entry) => entry.teamId));
+  const assignable = teamOptions.filter((option) => !assignedIds.has(option.id));
+  const blockLabel = block.name || "Block";
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-slate-500">Teams:</span>
+        {block.assignedTeams.length === 0 ? (
+          <span className="text-xs text-slate-500">keine zugewiesen</span>
+        ) : null}
+        {block.assignedTeams.map((entry) => (
+          <span key={entry.teamId} className="inline-flex items-center gap-1">
+            <span
+              data-testid={`checklist-block-team-${block.id}-${entry.teamId}`}
+              className="inline-block rounded-full bg-brand-100 px-2 py-px text-xs font-medium text-brand-900"
+            >
+              {entry.teamName}{entry.active ? "" : " (archiviert)"}
+            </span>
+            {canWrite ? (
+              <form action={unassignDispatch} className="inline">
+                <input type="hidden" name="workspaceId" value={workspaceId} />
+                <input type="hidden" name="projectId" value={projectId} />
+                <input type="hidden" name="checklistId" value={checklistId} />
+                <input type="hidden" name="blockId" value={block.id} />
+                <input type="hidden" name="teamId" value={entry.teamId} />
+                <button
+                  type="submit"
+                  aria-label={`${blockLabel}: ${entry.teamName} entfernen`}
+                  disabled={unassignPending}
+                  className="min-h-11 rounded-md border border-slate-300 px-2 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+                >
+                  {unassignPending ? "Entfernt …" : "Entfernen"}
+                </button>
+              </form>
+            ) : null}
+          </span>
+        ))}
+      </div>
+      {canWrite && assignable.length > 0 ? (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {assignable.map((option) => (
+            <form key={option.id} action={assignDispatch} className="inline">
+              <input type="hidden" name="workspaceId" value={workspaceId} />
+              <input type="hidden" name="projectId" value={projectId} />
+              <input type="hidden" name="checklistId" value={checklistId} />
+              <input type="hidden" name="blockId" value={block.id} />
+              <input type="hidden" name="teamId" value={option.id} />
+              <button
+                type="submit"
+                aria-label={`${blockLabel}: ${option.name} zuweisen`}
+                disabled={assignPending}
+                className="min-h-11 rounded-md border border-dashed border-slate-300 px-2 text-xs font-semibold text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+              >
+                {assignPending ? "Weist zu …" : `${option.name} zuweisen`}
+              </button>
+            </form>
+          ))}
+        </div>
+      ) : null}
+      <Feedback state={assignState} />
+      <Feedback state={unassignState} />
     </div>
   );
 }

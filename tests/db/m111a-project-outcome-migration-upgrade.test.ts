@@ -90,9 +90,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F7-12 Nachbestellungen (0124, Tabellen + composite-FK + RLS),
 //   F12-01 Funnel-Kampagnen (0125, Tabelle + Spalte + RLS),
 //   F12-02 Auto-Routing (0126, Spalte + RESTRICT-FK),
-//   F7-04b Irrelevant-Markierung (0127, Kapsel-Ops + Gate-Skip + ACL)
-// => 128 Migrationen (idx 0..127).
-const TOTAL_MIGRATION_COUNT = 128;
+//   F7-04b Irrelevant-Markierung (0127, Kapsel-Ops + Gate-Skip + ACL),
+//   F7-05b Block-Team-Zuweisung (0128, Side-Table + RLS + ACL)
+// => 129 Migrationen (idx 0..128).
+const TOTAL_MIGRATION_COUNT = 129;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -408,8 +409,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 127,
-        tag: "0127_f704b_item_irrelevant",
+        idx: 128,
+        tag: "0128_f705b_block_team_assignment",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

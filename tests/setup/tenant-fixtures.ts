@@ -1833,7 +1833,7 @@ async function fixtureSignatureViewLog(tx: TenantTx, wsId: string): Promise<void
 async function fixtureProjectChecklistGraph(
   tx: TenantTx,
   wsId: string,
-): Promise<{ checklistId: string; segmentId: string; completedBy: string }> {
+): Promise<{ checklistId: string; blockId: string; segmentId: string; completedBy: string }> {
   const { userId } = await fixtureMembership(tx, wsId, "editor");
   await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
   const { projectId } = await fixtureProjectGraph(tx, wsId);
@@ -1868,7 +1868,7 @@ async function fixtureProjectChecklistGraph(
       ${JSON.stringify(blocks)}::jsonb, ${userId}::uuid
     )
   `);
-  return { checklistId, segmentId, completedBy: userId };
+  return { checklistId, blockId, segmentId, completedBy: userId };
 }
 
 // F7-12 (0124): stellt sicher, dass GENAU EINE Nachbestellung im Workspace
@@ -2312,6 +2312,27 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       ) values (
         ${wsId}::uuid, ${checklistId}::uuid, ${segmentId}::uuid,
         ${completedBy}::uuid
+      )
+    `);
+  },
+  // F7-05b (0128): Block-Team-Zuweisung (Graph + Team inline, damit der
+  // Cross-Write-Pfad an der RLS-With-Check scheitert, nicht an FKs —
+  // Muster team_member).
+  project_checklist_block_assignment: async (tx, wsId) => {
+    const { checklistId, blockId, completedBy } =
+      await fixtureProjectChecklistGraph(tx, wsId);
+    const teamId = randomUUID();
+    await tx.execute(sql`
+      insert into team (id, workspace_id, name, name_normalized, created_by)
+      values (${teamId}::uuid, ${wsId}::uuid, 'Fixture-Blockteam',
+        'fixture-blockteam', ${completedBy}::uuid)
+    `);
+    await tx.execute(sql`
+      insert into project_checklist_block_assignment (
+        workspace_id, checklist_id, block_id, team_id, assigned_by
+      ) values (
+        ${wsId}::uuid, ${checklistId}::uuid, ${blockId}::uuid,
+        ${teamId}::uuid, ${completedBy}::uuid
       )
     `);
   },

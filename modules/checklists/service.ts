@@ -1,7 +1,9 @@
 // Kein "server-only"-Import: Der Projekt-Seitengraph bleibt build-importierbar.
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
+import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   CHECKLIST_SCHEMA_VERSION,
@@ -10,12 +12,15 @@ import {
   mutateChecklistSegmentCommandSchema,
   projectChecklistDtoSchema,
   saveProjectChecklistCommandSchema,
+  setChecklistBlockTeamCommandSchema,
   setChecklistItemIrrelevantCommandSchema,
   withOpenSegmentMetadata,
+  type ChecklistBlockAssignedTeamV1,
   type ChecklistBlocksV1,
   type MutateChecklistSegmentCommand,
   type ProjectChecklistDto,
   type SaveProjectChecklistCommand,
+  type SetChecklistBlockTeamCommand,
   type SetChecklistItemIrrelevantCommand,
 } from "@/lib/integrations/checklists/contract";
 import {
@@ -70,7 +75,15 @@ type ChecklistRow = {
   blocks: unknown;
   updated_at: string | Date;
   completions: unknown;
+  assignments: unknown;
 };
+
+const assignmentRowsSchema = z.array(z.object({
+  blockId: z.uuid(),
+  teamId: z.uuid(),
+  teamName: z.string(),
+  teamActive: z.boolean(),
+}));
 
 const completionRowsSchema = z.array(z.object({
   segmentId: z.uuid(),
@@ -108,8 +121,25 @@ function hydrateBlocks(row: ChecklistRow): ChecklistBlocksV1 {
     completion.segmentId,
     completion,
   ]));
+  // F7-05b: Block-Team-Zuweisung als Anzeige-Overlay (Ghost-Zeilen
+  // gelöschter Blöcke fallen raus; archivierte Teams bleiben lesbar).
+  const assignments = assignmentRowsSchema.parse(row.assignments ?? []);
+  const teamsByBlock = new Map<string, ChecklistBlockAssignedTeamV1[]>();
+  for (const assignment of assignments) {
+    const list = teamsByBlock.get(assignment.blockId) ?? [];
+    list.push({
+      teamId: assignment.teamId,
+      teamName: assignment.teamName,
+      active: assignment.teamActive,
+    });
+    teamsByBlock.set(assignment.blockId, list);
+  }
+  for (const list of teamsByBlock.values()) {
+    list.sort((left, right) => left.teamName.localeCompare(right.teamName, "de"));
+  }
   return checklistBlocksSchema.parse(stored.map((block) => ({
     ...block,
+    assignedTeams: teamsByBlock.get(block.id) ?? [],
     segments: block.segments.map((segment) => {
       const completion = completionBySegment.get(segment.id);
       return {
@@ -164,7 +194,21 @@ const checklistProjection = sql`
       from project_checklist_segment_completion completion
      where completion.workspace_id = checklist_record.workspace_id
        and completion.checklist_id = checklist_record.id
-  ), '[]'::jsonb) as completions
+  ), '[]'::jsonb) as completions,
+  coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'blockId', assignment.block_id,
+      'teamId', assignment.team_id,
+      'teamName', team_record.name,
+      'teamActive', team_record.active
+    ) order by assignment.block_id, team_record.name, assignment.team_id)
+      from project_checklist_block_assignment assignment
+      join team team_record
+        on team_record.workspace_id = assignment.workspace_id
+       and team_record.id = assignment.team_id
+     where assignment.workspace_id = checklist_record.workspace_id
+       and assignment.checklist_id = checklist_record.id
+  ), '[]'::jsonb) as assignments
 `;
 
 async function readChecklistById(
@@ -335,6 +379,154 @@ export async function setChecklistItemIrrelevant(
     throwCapsuleError(error, ctx, command.projectId, "checklist.write");
   }
   const row = await readChecklistById(tx, ctx, command.projectId, capsule.checklistId);
+  if (!row) throw new ChecklistNotFoundError(command.projectId);
+  return toDto(row, command.projectId, ctx);
+}
+
+// F7-05b: Teams parallel je Block zuweisen/entfernen (Katalog F7.5).
+// Mengen-Idempotenz ohne Revision (kein Tree-Write): doppeltes Zuweisen
+// und leeres Entfernen gelingen still. Nur AKTIVE Teams sind zuweisbar
+// (Kalender-Präzedenz F1-12, kein Existenz-Leak); archivierte bleiben an
+// bestehenden Zuweisungen lesbar. Keine neue Permission (checklist.write).
+async function lockChecklistBlock(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+  checklistId: string,
+  blockId: string,
+): Promise<void> {
+  const row = await readChecklistById(tx, ctx, projectId, checklistId);
+  if (!row) throw new ChecklistNotFoundError(projectId);
+  let stored;
+  try {
+    stored = editableChecklistBlocksSchema.parse(row.blocks);
+  } catch {
+    throw new ChecklistValidationError("checklist tree is corrupt");
+  }
+  if (!stored.some((candidate) => candidate.id === blockId)) {
+    throw new ChecklistNotFoundError(projectId);
+  }
+}
+
+async function requireActiveTeam(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  teamId: string,
+): Promise<void> {
+  const result = await tx.execute<{ id: string }>(sql`
+    select id
+      from team
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${teamId}::uuid
+       and active = true
+  `);
+  if (result.rows.length !== 1) throw new ChecklistValidationError("unknown team");
+}
+
+async function emitBlockTeamEvidence(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: {
+    projectId: string;
+    checklistId: string;
+    blockId: string;
+    teamId: string;
+    operation: "assign" | "unassign";
+  },
+): Promise<void> {
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "project_checklist",
+    aggregateId: input.checklistId,
+    eventType:
+      input.operation === "assign"
+        ? "checklist.block_team_assigned"
+        : "checklist.block_team_unassigned",
+    actor: ctx.actor,
+    payload: {
+      projectId: input.projectId,
+      checklistId: input.checklistId,
+      blockId: input.blockId,
+      teamId: input.teamId,
+    },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "checklist.write",
+    resource: "project_checklist_block",
+    allowed: true,
+    details: {
+      projectId: input.projectId,
+      checklistId: input.checklistId,
+      blockId: input.blockId,
+      teamId: input.teamId,
+      operation: input.operation,
+    },
+  });
+}
+
+export async function assignChecklistBlockTeam(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: SetChecklistBlockTeamCommand,
+): Promise<ProjectChecklistDto> {
+  requireWrite(ctx);
+  const parsed = setChecklistBlockTeamCommandSchema.safeParse(input);
+  if (!parsed.success) throw new ChecklistValidationError();
+  const command = parsed.data;
+  await lockChecklistBlock(tx, ctx, command.projectId, command.checklistId, command.blockId);
+  await requireActiveTeam(tx, ctx, command.teamId);
+  try {
+    await tx.execute(sql`
+      insert into project_checklist_block_assignment (
+        workspace_id, checklist_id, block_id, team_id, assigned_by
+      ) values (
+        ${ctx.workspaceId}::uuid, ${command.checklistId}::uuid,
+        ${command.blockId}::uuid, ${command.teamId}::uuid, ${ctx.actor}::uuid
+      )
+      on conflict (
+        workspace_id, checklist_id, block_id, team_id
+      ) do nothing
+    `);
+  } catch (error) {
+    throwCapsuleError(error, ctx, command.projectId, "checklist.write");
+  }
+  await emitBlockTeamEvidence(tx, ctx, { ...command, operation: "assign" });
+  const row = await readChecklistById(tx, ctx, command.projectId, command.checklistId);
+  if (!row) throw new ChecklistNotFoundError(command.projectId);
+  return toDto(row, command.projectId, ctx);
+}
+
+export async function unassignChecklistBlockTeam(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: SetChecklistBlockTeamCommand,
+): Promise<ProjectChecklistDto> {
+  requireWrite(ctx);
+  const parsed = setChecklistBlockTeamCommandSchema.safeParse(input);
+  if (!parsed.success) throw new ChecklistValidationError();
+  const command = parsed.data;
+  await lockChecklistBlock(tx, ctx, command.projectId, command.checklistId, command.blockId);
+  let removed = false;
+  try {
+    const deleted = await tx.execute<{ id: string }>(sql`
+      delete from project_checklist_block_assignment
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and checklist_id = ${command.checklistId}::uuid
+         and block_id = ${command.blockId}::uuid
+         and team_id = ${command.teamId}::uuid
+       returning id
+    `);
+    removed = deleted.rows.length > 0;
+  } catch (error) {
+    throwCapsuleError(error, ctx, command.projectId, "checklist.write");
+  }
+  // Leeres Entfernen ist stiller Erfolg — aber ohne Evidenzrauschen.
+  if (removed) {
+    await emitBlockTeamEvidence(tx, ctx, { ...command, operation: "unassign" });
+  }
+  const row = await readChecklistById(tx, ctx, command.projectId, command.checklistId);
   if (!row) throw new ChecklistNotFoundError(command.projectId);
   return toDto(row, command.projectId, ctx);
 }

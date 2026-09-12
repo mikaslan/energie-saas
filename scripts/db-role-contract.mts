@@ -646,6 +646,12 @@ const MENTION_RELATIONS = [
   "project_note_mention",
 ] as const;
 
+// F7-05b (0128): Block-Team-Zuweisung — ACL-Form wie MENTION_RELATIONS
+// (INSERT/SELECT/DELETE, kein UPDATE: Zeilen werden nur gelegt/entfernt).
+const BLOCK_TEAM_ASSIGNMENT_RELATIONS = [
+  "project_checklist_block_assignment",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -3025,6 +3031,21 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasBlockTeamAssignmentForAcl = await hasAtomicPublicRelationSet(
+    client,
+    BLOCK_TEAM_ASSIGNMENT_RELATIONS,
+    "Rollen-ACL-Manifest: F7-05b-Block-Team-Zuweisung",
+  );
+  if (hasBlockTeamAssignmentForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.project_checklist_block_assignment
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, delete on public.project_checklist_block_assignment to app_runtime
+    `);
+  }
+
   // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
   // daher zusaetzlich DELETE (Muster commercial_document_link).
   const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
@@ -4535,6 +4556,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F12-01-Funnel-Kampagnen",
   );
 
+  const hasBlockTeamAssignment = await hasAtomicPublicRelationSet(
+    client,
+    BLOCK_TEAM_ASSIGNMENT_RELATIONS,
+    "Rollenvertrag: F7-05b-Block-Team-Zuweisung",
+  );
+
   const hasLeadRouting = await hasAtomicPublicRelationSet(
     client,
     LEAD_ROUTING_RELATIONS,
@@ -4809,6 +4836,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasMentions ? MENTION_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasBlockTeamAssignment ? BLOCK_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -6121,6 +6151,9 @@ export async function verifyRoleContract(
       ...(hasMentions ? MENTION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasBlockTeamAssignment ? BLOCK_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6474,6 +6507,11 @@ export async function verifyRoleContract(
                   "711797a558f37e71658c8adc89f6e18dd7355c16581b4c06ab61baffb68b522d",
               ]
           : []),
+        // F7-05b (0128): Hash per Probe geerntet (0077-identische Policy).
+        ...(hasBlockTeamAssignment ? [
+          "project_checklist_block_assignment:tenant_isolation:" +
+            "886d4ec2f4800cc15341f2cc1792c1a3b0f784d80db565927416335b76ffa812",
+        ] : []),
         ...(hasCalendars ? [
           "calendar:tenant_isolation:57296ca13f33ffe335cd1cde9f96a0024470521481da054313e6843d9ca6ce25",
         ] : []),
@@ -7154,6 +7192,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasMentions ? MENTION_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
+      ]) : []),
+      ...(hasBlockTeamAssignment ? BLOCK_TEAM_ASSIGNMENT_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:DELETE:app_owner:false`,

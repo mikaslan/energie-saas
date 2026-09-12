@@ -13,6 +13,7 @@ import {
 import { sql } from "drizzle-orm";
 import { workspace } from "./core";
 import { project } from "./project";
+import { team } from "./team";
 
 export const projectChecklist = pgTable(
   "project_checklist",
@@ -100,6 +101,56 @@ export const projectChecklistSegmentCompletion = pgTable(
     check(
       "project_checklist_segment_completion_time_ck",
       sql`pg_catalog.isfinite(${t.completedAt})`,
+    ),
+  ],
+);
+
+// F7-05b · Block-Team-Zuweisung (mehrere Teams je Block, Katalog F7.5).
+// Join-Zeilen ohne eigene Revision: Add/Remove sind mengen-idempotent.
+// Teams sind archiv-only (F1-12) — die Team-FK feuert nie; Checklisten-
+// Löschung räumt per CASCADE auf (Completion-Präzedenz).
+export const projectChecklistBlockAssignment = pgTable(
+  "project_checklist_block_assignment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    checklistId: uuid("checklist_id").notNull(),
+    blockId: uuid("block_id").notNull(),
+    teamId: uuid("team_id").notNull(),
+    assignedBy: uuid("assigned_by").notNull(),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("project_checklist_block_assignment_ws_id_uq").on(t.workspaceId, t.id),
+    unique("project_checklist_block_assignment_ws_checklist_block_team_uq").on(
+      t.workspaceId,
+      t.checklistId,
+      t.blockId,
+      t.teamId,
+    ),
+    index("project_checklist_block_assignment_ws_checklist_block_idx").on(
+      t.workspaceId,
+      t.checklistId,
+      t.blockId,
+    ),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "project_checklist_block_assignment_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.checklistId],
+      foreignColumns: [projectChecklist.workspaceId, projectChecklist.id],
+      name: "project_checklist_block_assignment_checklist_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.workspaceId, t.teamId],
+      foreignColumns: [team.workspaceId, team.id],
+      name: "project_checklist_block_assignment_team_fk",
+    }).onDelete("cascade"),
+    check(
+      "project_checklist_block_assignment_time_ck",
+      sql`pg_catalog.isfinite(${t.assignedAt})`,
     ),
   ],
 );

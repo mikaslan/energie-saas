@@ -10,6 +10,7 @@ import {
   editableChecklistBlocksSchema,
 } from "@/lib/integrations/checklists/contract";
 import {
+  assignChecklistBlockTeam,
   ChecklistConflictError,
   ChecklistNotFoundError,
   ChecklistSegmentIncompleteError,
@@ -18,6 +19,7 @@ import {
   completeChecklistSegment,
   saveProjectChecklist,
   setChecklistItemIrrelevant,
+  unassignChecklistBlockTeam,
   unlockChecklistSegment,
 } from "@/modules/checklists";
 
@@ -28,7 +30,7 @@ export type ChecklistActionState =
   | { status: "idle" }
   | {
       status: "success";
-      operation: "save" | "apply" | "complete" | "unlock" | "mark" | "unmark";
+      operation: "save" | "apply" | "complete" | "unlock" | "mark" | "unmark" | "assign" | "unassign";
       version: number;
     }
   | { status: "incomplete"; remainingRequired: number }
@@ -225,6 +227,75 @@ async function mutateSegment(
     console.error(`[checkliste] ${operation}ChecklistSegmentAction: unerwarteter Fehler`, error);
     return { status: "error" };
   }
+}
+
+// F7-05b: Block-Team-Zuweisung (assign/unassign teilen Validation und
+// Revalidate; keine neue Permission).
+async function mutateBlockTeam(
+  operation: "assign" | "unassign",
+  formData: FormData,
+): Promise<ChecklistActionState> {
+  const parsed = z.object({
+    workspaceId: workspaceIdSchema,
+    projectId: uuidSchema,
+    checklistId: uuidSchema,
+    blockId: uuidSchema,
+    teamId: uuidSchema,
+  }).safeParse({
+    workspaceId: formData.get("workspaceId"),
+    projectId: formData.get("projectId"),
+    checklistId: formData.get("checklistId"),
+    blockId: formData.get("blockId"),
+    teamId: formData.get("teamId"),
+  });
+  if (!parsed.success) return { status: "invalid" };
+
+  const { workspaceId, ...command } = parsed.data;
+  try {
+    const result = await authorizedAction(
+      workspaceId,
+      "checklist.write",
+      "project_checklist",
+      (tx, ctx) => operation === "assign"
+        ? assignChecklistBlockTeam(tx, ctx, {
+            schemaVersion: CHECKLIST_SCHEMA_VERSION,
+            ...command,
+          })
+        : unassignChecklistBlockTeam(tx, ctx, {
+            schemaVersion: CHECKLIST_SCHEMA_VERSION,
+            ...command,
+          }),
+    );
+    revalidatePath(`/w/${workspaceId}/anfragen/${command.projectId}/checkliste`);
+    return { status: "success", operation, version: result.version };
+  } catch (error) {
+    if (error instanceof ChecklistConflictError) {
+      return {
+        status: "conflict",
+        currentVersion: typeof error.detail === "number" ? error.detail : undefined,
+      };
+    }
+    if (error instanceof ChecklistNotFoundError) return { status: "not_found" };
+    if (error instanceof ChecklistValidationError) return { status: "invalid" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    console.error(`[checkliste] ${operation}ChecklistBlockTeamAction: unerwarteter Fehler`, error);
+    return { status: "error" };
+  }
+}
+
+export async function assignChecklistBlockTeamAction(
+  _previous: ChecklistActionState,
+  formData: FormData,
+): Promise<ChecklistActionState> {
+  return mutateBlockTeam("assign", formData);
+}
+
+export async function unassignChecklistBlockTeamAction(
+  _previous: ChecklistActionState,
+  formData: FormData,
+): Promise<ChecklistActionState> {
+  return mutateBlockTeam("unassign", formData);
 }
 
 export async function mutateChecklistSegmentAction(

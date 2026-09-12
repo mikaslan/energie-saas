@@ -897,6 +897,13 @@
       "when": 1789200817546,
       "tag": "0127_f704b_item_irrelevant",
       "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1789202655063,
+      "tag": "0128_f705b_block_team_assignment",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,8 @@ import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type { ProjectChecklistDto } from "@/lib/integrations/checklists/contract";
 import { getProjectChecklist, listChecklistTemplates } from "@/modules/checklists";
 import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
+import type { TeamOption } from "@/lib/integrations/teams/contract";
+import { listTeamOptions } from "@/modules/teams";
 import { PermissionDeniedError } from "@/lib/permissions";
 import { sql } from "drizzle-orm";
 import { DeniedState } from "../_ui";
@@ -68,6 +70,21 @@ export default async function ProjectChecklistPage(
   }
   if (!result) throw new Error("Checkliste konnte nicht geladen werden");
 
+  // F7-05b: Team-Optionen für die Block-Zuweisung (calendar.read; ohne Recht
+  // leere Auswahl — zugewiesene Teams bleiben über die Checkliste lesbar).
+  let teamOptions: TeamOption[] = [];
+  try {
+    teamOptions = await authorizedQuery(workspaceId, "calendar.read", "team", (tx, ctx) =>
+      listTeamOptions(tx, ctx));
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) {
+      redirect(`/login?${new URLSearchParams({
+        next: `/w/${workspaceId}/anfragen/${projectId}/checkliste`,
+      }).toString()}`);
+    }
+    if (!(error instanceof PermissionDeniedError)) throw error;
+  }
+
   return (
     <main className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6">
@@ -92,6 +109,7 @@ export default async function ProjectChecklistPage(
         workspaceId={workspaceId}
         projectId={projectId}
         checklist={result.checklist}
+        teamOptions={teamOptions}
       />
 
       <div className="mt-6">

@@ -103,12 +103,25 @@ export const editableChecklistBlockSchema = z.object({
 }).strict();
 export type EditableChecklistBlockV2 = z.infer<typeof editableChecklistBlockSchema>;
 
+// F7-05b: Block-Team-Zuweisung (Katalog F7.5, mehrere Teams parallel).
+// Anzeige-only: Saves schreiben ganze Bäume ohne dieses Feld (Validator
+// lehnt es ab, toEditableChecklistBlocks verwirft es) — kein Schmuggelpfad.
+export const checklistBlockAssignedTeamSchema = z.object({
+  teamId: stableUuidSchema,
+  // Anzeige-Only (DB-CHECK team_name_ck begrenzt); bewusst ohne
+  // cleanText-Normalisierung, damit kein gültiger Teamname je crasht.
+  teamName: z.string().min(1),
+  active: z.boolean(),
+}).strict();
+export type ChecklistBlockAssignedTeamV1 = z.infer<typeof checklistBlockAssignedTeamSchema>;
+
 export const checklistBlockSchema = z.object({
   id: stableUuidSchema,
   name: cleanText(CHECKLIST_BLOCK_NAME_MAX),
   position: checklistPositionSchema,
   visible: z.boolean(),
   segments: z.array(checklistSegmentSchema).max(CHECKLIST_SEGMENTS_MAX),
+  assignedTeams: z.array(checklistBlockAssignedTeamSchema).max(50),
 }).strict();
 export type ChecklistBlockV1 = z.infer<typeof checklistBlockSchema>;
 
@@ -250,11 +263,23 @@ export const setChecklistItemIrrelevantCommandSchema = z.object({
 }).strict();
 export type SetChecklistItemIrrelevantCommand = z.infer<typeof setChecklistItemIrrelevantCommandSchema>;
 
+// F7-05b: Block-Team-Zuweisung (assign/unassign teilen das Command;
+// Mengen-Idempotenz, keine Revision).
+export const setChecklistBlockTeamCommandSchema = z.object({
+  schemaVersion: z.literal(CHECKLIST_SCHEMA_VERSION),
+  checklistId: stableUuidSchema,
+  projectId: stableUuidSchema,
+  blockId: stableUuidSchema,
+  teamId: stableUuidSchema,
+}).strict();
+export type SetChecklistBlockTeamCommand = z.infer<typeof setChecklistBlockTeamCommandSchema>;
+
 export function withOpenSegmentMetadata(
   blocks: EditableChecklistBlocksV2,
 ): ChecklistBlocksV1 {
   return blocks.map((block) => ({
     ...block,
+    assignedTeams: [],
     segments: block.segments.map((segment) => ({
       ...segment,
       completedAt: null,
