@@ -1,6 +1,12 @@
 # F9-09 Listen-/Export-Filter (Zeitraum + Ereignistyp)
 
-Status: **SPECIFIED** · Lane: `codex/m1-wave-02` · Stand 2026-09-11
+Status: **IMPLEMENTIERT/LOKAL VERIFIZIERT** · Lane: `codex/m1-wave-02` · Stand 2026-09-12
+
+## Verifikation (2026-09-12, lokal beobachtet)
+- DB F0909 4/4 (`tests/db/f0909-list-filters.test.ts`): Datum, Typ,
+  kombiniert + Summe, Export-Filter, invalid.
+- E2E F9-09-E2E-01 1/1 (`tests/e2e/f9-09-export-filter.spec.ts`):
+  Datumsfilter blendet Eintrag aus, Zurücksetzen zeigt beide.
 
 ## Ziel und Abgrenzung
 
