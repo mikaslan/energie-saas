@@ -32,6 +32,16 @@ function formatEuro(cents: number): string {
   return euroFormatter.format(cents / 100);
 }
 
+const kiloFormatter = new Intl.NumberFormat("de-DE", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 3,
+});
+
+const countFormatter = new Intl.NumberFormat("de-DE", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
 function optionLabel(option: InstallableVariantOption): string {
   const offer = option.offerNumber ?? "Angebot";
   const signed = option.signed ? " (signiert)" : "";
@@ -154,6 +164,53 @@ export function InstallationWorkbookPanel({
               {formatEuro(workbook.visibleGrossCents)}
             </span>
           </p>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4" data-testid="workbook-capacities">
+            <h3 className="text-sm font-semibold text-slate-950">
+              Anlagenleistung (versiegelt)
+            </h3>
+            <dl className="mt-2 grid gap-1 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-slate-600">
+                  Module · {countFormatter.format(workbook.capacities.moduleCount)} Stk.
+                </dt>
+                <dd className="font-semibold tabular-nums text-slate-900">
+                  {kiloFormatter.format(workbook.capacities.pvPeakPowerWatts / 1000)} kWp
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-slate-600">
+                  Speicher · {countFormatter.format(workbook.capacities.batteryCount)} Stk.
+                </dt>
+                <dd className="font-semibold tabular-nums text-slate-900">
+                  {kiloFormatter.format(workbook.capacities.storageUsableCapacityWh / 1000)} kWh
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-slate-600">
+                  Wechselrichter · {countFormatter.format(workbook.capacities.inverterCount)} Stk.
+                </dt>
+                <dd className="font-semibold tabular-nums text-slate-900">
+                  {kiloFormatter.format(workbook.capacities.inverterAcPowerWatts / 1000)} kW
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-slate-600">
+                  Wallbox · {countFormatter.format(workbook.capacities.wallboxCount)} Stk.
+                </dt>
+                <dd className="font-semibold tabular-nums text-slate-900">
+                  {kiloFormatter.format(workbook.capacities.wallboxChargePowerWatts / 1000)} kW
+                </dd>
+              </div>
+            </dl>
+            {workbook.capacities.hasUncertifiedModuleLines
+              || workbook.capacities.hasUncertifiedBatteryLines
+              || workbook.capacities.hasUncertifiedInverterLines
+              || workbook.capacities.hasUncertifiedWallboxLines ? (
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Zzgl. nicht zertifizierter Positionen ohne versiegelte Leistungsdaten.
+              </p>
+            ) : null}
+          </div>
         </div>
       )}
     </section>

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { OfferIntegrityError, OfferNotFoundError } from "./errors";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
@@ -152,12 +153,7 @@ export class OfferConflictError extends Error {
 
 export { OfferRateLimitError };
 
-export class OfferNotFoundError extends Error {
-  constructor() {
-    super("offer was not found");
-    this.name = "OfferNotFoundError";
-  }
-}
+export { OfferNotFoundError } from "./errors";
 
 export class OfferBlockedError extends OfferValidationError {
   constructor(public readonly code: string) {
@@ -166,12 +162,7 @@ export class OfferBlockedError extends OfferValidationError {
   }
 }
 
-export class OfferIntegrityError extends Error {
-  constructor() {
-    super("stored offer data failed integrity validation");
-    this.name = "OfferIntegrityError";
-  }
-}
+export { OfferIntegrityError } from "./errors";
 
 export class OfferPersistenceError extends Error {
   constructor() {

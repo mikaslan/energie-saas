@@ -6,7 +6,7 @@ import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
-import { OfferNotFoundError } from "@/modules/offers";
+import { OfferNotFoundError } from "@/modules/offers/errors";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 
 export class InstallationNotFoundError extends Error {

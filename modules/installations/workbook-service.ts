@@ -1,16 +1,23 @@
 // F7-08 Workbook: zu installierende Variante + Stückliste (lesend).
+// F7-10: kWp/kWh-Rollups aus demselben Snapshot (F7-09-Projektor).
 //
 // Explizite Varianten-Bindung (kein Eingriff in den versiegelten
 // Signatur-Ablauf) und Read-only-Projektion aus dem hash-geprüften
 // Current-Revision-Snapshot. Keine Einkaufspreise (Monteur-Sicht),
-// nur sichtbare Zeilen, keine erfundene Physik (kWp/kWh offen).
+// nur sichtbare Zeilen, keine erfundene Physik (Custom-Positionen
+// tragen keine zertifizierte Leistung).
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
+import {
+  deriveCertifiedCapacities,
+  type CertifiedCapacities,
+} from "@/lib/integrations/offers/certified-capacities";
+import type { CatalogTechnicalDataV1 } from "@/lib/integrations/catalog/contract";
 import { validateOfferVariantSnapshot } from "@/lib/integrations/offers/contract";
-import { OfferIntegrityError, OfferNotFoundError } from "@/modules/offers";
+import { OfferIntegrityError, OfferNotFoundError } from "@/modules/offers/errors";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   InstallationConflictError,
@@ -187,11 +194,30 @@ export type InstallationWorkbook = {
   revision: number;
   sections: WorkbookSection[];
   visibleGrossCents: number;
+  // F7-10: Aggregate aus dem versiegelten Snapshot (keine Rohdaten).
+  capacities: CertifiedCapacities;
 };
 
 function formatQuantity(quantityMilli: number, unit: string): string {
   if (unit === "meter") return `${(quantityMilli / 1000).toLocaleString("de-DE")} m`;
   return `${(quantityMilli / 1000).toLocaleString("de-DE")} ${unit}`;
+}
+
+// F7-10: flache Watt-Sicht auf die diskriminierten Katalogdaten; der
+// Projektor validiert Schema-Passung und Wertebereiche fail-closed.
+function capacityWatts(data: CatalogTechnicalDataV1): {
+  nominalPowerWatts?: number;
+  nominalAcPowerWatts?: number;
+  usableCapacityWh?: number;
+  maxChargingPowerWatts?: number;
+} {
+  switch (data.schemaVersion) {
+    case "module.v1": return { nominalPowerWatts: data.nominalPowerWatts };
+    case "inverter.v1": return { nominalAcPowerWatts: data.nominalAcPowerWatts };
+    case "battery.v1": return { usableCapacityWh: data.usableCapacityWh };
+    case "wallbox.v1": return { maxChargingPowerWatts: data.maxChargingPowerWatts };
+    default: return {};
+  }
 }
 
 export async function getInstallationWorkbook(
@@ -266,6 +292,21 @@ export async function getInstallationWorkbook(
     (sum, section) => sum + section.lines.reduce((inner, line) => inner + line.grossCents, 0),
     0,
   );
+  // F7-10: Rollups aus dem VOLLEN Snapshot (technicalData ist hier
+  // vorhanden; an den Client gehen nur die Aggregate im Typ oben).
+  const capacities = deriveCertifiedCapacities(
+    validated.value.sections.flatMap((section) => section.lines.map((line) => ({
+      positionType: line.positionType,
+      isHidden: line.isHidden,
+      quantityMilli: line.quantityMilli,
+      componentCategory: line.componentCategory,
+      productKind: line.product.kind,
+      technicalData: line.product.kind === "catalog" ? {
+        schemaVersion: line.product.technicalData.schemaVersion,
+        ...capacityWatts(line.product.technicalData),
+      } : null,
+    }))),
+  );
   return {
     installationId: row.installation_id,
     projectId: parsed.data.projectId,
@@ -276,5 +317,6 @@ export async function getInstallationWorkbook(
     revision: Number(row.revision),
     sections,
     visibleGrossCents,
+    capacities,
   };
 }
