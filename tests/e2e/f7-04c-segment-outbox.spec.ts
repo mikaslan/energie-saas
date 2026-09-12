@@ -19,7 +19,7 @@ type E2EState = {
   serverLogPath: string;
   workspaceId: string;
   w3WorkspaceId: string;
-  f704ProjectId: string;
+  f704cProjectId: string;
   adminEmail: string;
   editorEmail: string;
   viewerEmail: string;
@@ -49,7 +49,7 @@ function state(): E2EState {
     "serverLogPath",
     "workspaceId",
     "w3WorkspaceId",
-    "f704ProjectId",
+    "f704cProjectId",
     "adminEmail",
     "editorEmail",
     "viewerEmail",
@@ -127,8 +127,8 @@ async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promi
   })), `${stateName}: keine automatisiert prüfbare WCAG-A/AA-Verletzung`).toEqual([]);
 }
 
-const f704Path = (): string =>
-  `/w/${state().w3WorkspaceId}/anfragen/${state().f704ProjectId}/checkliste`;
+const f704cPath = (): string =>
+  `/w/${state().w3WorkspaceId}/anfragen/${state().f704cProjectId}/checkliste`;
 
 async function activateF704Installation(): Promise<void> {
   const data = state();
@@ -143,12 +143,13 @@ async function activateF704Installation(): Promise<void> {
       `update project
           set phase = 'installation', updated_at = statement_timestamp()
         where workspace_id = $1::uuid and id = $2::uuid`,
-      [data.w3WorkspaceId, data.f704ProjectId],
+      [data.w3WorkspaceId, data.f704cProjectId],
     );
+    // Eigenes f704c-Projekt je Spec (kein Shared-Seed mehr).
     await pool.query(
       `insert into installation (workspace_id, project_id, source, status)
        values ($1::uuid, $2::uuid, 'direct', 'active')`,
-      [data.w3WorkspaceId, data.f704ProjectId],
+      [data.w3WorkspaceId, data.f704cProjectId],
     );
     await pool.query("commit");
   } catch (error) {
@@ -166,7 +167,7 @@ test("F704C-E2E-01: Offline-Abschluss wird online genau einmal synchronisiert", 
   test.setTimeout(240_000);
   const data = state();
   const errors = trackBrowserErrors(page);
-  const url = f704Path();
+  const url = f704cPath();
   await activateF704Installation();
 
   await page.goto(url);
