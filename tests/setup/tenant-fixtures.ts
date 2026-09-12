@@ -1871,6 +1871,59 @@ async function fixtureProjectChecklistGraph(
   return { checklistId, segmentId, completedBy: userId };
 }
 
+// F7-12 (0124): stellt sicher, dass GENAU EINE Nachbestellung im Workspace
+// existiert, und gibt deren ID zurück (idempotent — wiederverwendet eine
+// vorhandene Zeile). Geteilter Helfer für die order_part- und die
+// order_part_message-Factory (jede Mandantentabelle braucht eine EIGENE
+// Factory, sonst wird tests/db/tenant-invariants.test.ts rot).
+async function fixtureOrderPart(tx: TenantTx, wsId: string): Promise<string | null> {
+  const existing = await tx.execute<{ id: string }>(sql`
+    select id from order_part where workspace_id = ${wsId}::uuid limit 1
+  `);
+  if (existing.rows[0]) return existing.rows[0].id;
+  await fixtureOfferGraph(tx, wsId);
+  const { userId } = await fixtureMembership(tx, wsId, "editor", '{"installation":true}');
+  const graph = await tx.execute<{
+    project_id: string; offer_id: string; variant_id: string; line_domain_id: string;
+  }>(sql`
+    with first_offer as (
+      select offer_record.project_id, offer_record.id as offer_id, variant.id as variant_id
+        from offer as offer_record
+        join offer_variant as variant
+          on variant.workspace_id = offer_record.workspace_id
+         and variant.offer_id = offer_record.id
+       where offer_record.workspace_id = ${wsId}::uuid
+       order by offer_record.id
+       limit 1
+    )
+    select first_offer.project_id, first_offer.offer_id, first_offer.variant_id,
+           line.value ->> 'lineDomainId' as line_domain_id
+      from first_offer
+      join offer_variant_revision as revision
+        on revision.workspace_id = ${wsId}::uuid
+       and revision.offer_id = first_offer.offer_id
+       and revision.variant_id = first_offer.variant_id
+      join lateral jsonb_array_elements(revision.revision_snapshot -> 'sections') as section(value) on true
+      join lateral jsonb_array_elements(section.value -> 'lines') as line(value) on true
+     where (line.value ->> 'isHidden')::boolean is distinct from true
+     limit 1
+  `);
+  const hit = graph.rows[0];
+  if (!hit) return null;
+  const installationId = randomUUID();
+  await tx.execute(sql`
+    insert into installation (id, workspace_id, project_id, source, status, offer_id, variant_id)
+    values (${installationId}::uuid, ${wsId}::uuid, ${hit.project_id}::uuid,
+            'direct', 'active', ${hit.offer_id}::uuid, ${hit.variant_id}::uuid)
+  `);
+  const partId = randomUUID();
+  await tx.execute(sql`
+    insert into order_part (id, workspace_id, installation_id, line_domain_id, quantity_milli, status, created_by)
+    values (${partId}::uuid, ${wsId}::uuid, ${installationId}::uuid, ${hit.line_domain_id}, 2000, 'open', ${userId}::uuid)
+  `);
+  return partId;
+}
+
 // Factory legt GENAU EINE Zeile im gegebenen Workspace an (workspace-Zeile existiert bereits).
 // Jede neue Mandantentabelle MUSS hier eine Factory registrieren, sonst wird
 // tests/db/tenant-invariants.test.ts rot — das ist der Mechanismus, der die
@@ -2185,6 +2238,25 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         ${`fixture lead source ${id}`})
     `);
   },
+  // F12-01 (0125): Funnel-Kampagne an eigener aktiver Quelle.
+  funnel_campaign: async (tx, wsId) => {
+    const sourceId = randomUUID();
+    await tx.execute(sql`
+      insert into lead_source (id, workspace_id, name, name_normalized)
+      values (${sourceId}::uuid, ${wsId}::uuid, ${`Fixture Kampagnenquelle ${sourceId}`},
+        ${`fixture kampagnenquelle ${sourceId}`})
+    `);
+    const id = randomUUID();
+    await tx.execute(sql`
+      insert into funnel_campaign (
+        id, workspace_id, name, name_normalized, slug, slug_normalized, lead_source_id
+      ) values (
+        ${id}::uuid, ${wsId}::uuid, ${`Fixture Kampagne ${id}`},
+        ${`fixture kampagne ${id}`}, ${`fixture-${id}`}, ${`fixture-${id}`},
+        ${sourceId}::uuid
+      )
+    `);
+  },
   // F1-10 (0087): Routing-Regel zu echter Quelle + echter Mitgliedschaft.
   project_lead_routing_rule: async (tx, wsId) => {
     const sourceId = randomUUID();
@@ -2480,6 +2552,20 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     await tx.execute(sql`
       insert into installation (workspace_id, project_id, source, status)
       values (${wsId}::uuid, ${projectId}::uuid, 'direct', 'active')
+    `);
+  },
+  // F7-12 (0124): Nachbestellung an echter Snapshot-Zeile.
+  order_part: async (tx, wsId) => {
+    await fixtureOrderPart(tx, wsId);
+  },
+  // F7-12 (0124): Thread-Nachricht an der Workspace-Nachbestellung.
+  order_part_message: async (tx, wsId) => {
+    const partId = await fixtureOrderPart(tx, wsId);
+    if (!partId) return;
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"installation":true}');
+    await tx.execute(sql`
+      insert into order_part_message (workspace_id, order_part_id, author_id, body)
+      values (${wsId}::uuid, ${partId}::uuid, ${userId}::uuid, 'F7-12 Fixture-Thread')
     `);
   },
   // F13-01 (0086): Servicevorgang zu einem echten Projektgraphen.

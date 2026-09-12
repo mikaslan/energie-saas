@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -38,7 +39,10 @@ export const installation = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("installation_ws_id_uq").on(t.workspaceId, t.id),
+    // F7-12: echter UNIQUE-Constraint (statt Index) als zusammengesetztes
+    // FK-Ziel für order_part (Tenant-Invariante: kein einspaltiger FK).
+    // Semantik identisch (id ist PK), kein Datenrisiko.
+    unique("installation_ws_id_uq").on(t.workspaceId, t.id),
     uniqueIndex("installation_ws_project_uq").on(t.workspaceId, t.projectId),
     index("installation_ws_status_idx").on(t.workspaceId, t.status),
     index("installation_ws_lead_installer_idx").on(t.workspaceId, t.leadInstallerMembershipId),

@@ -171,6 +171,8 @@ export async function setInstallationVariant(
 
 export type WorkbookLine = {
   position: number;
+  // F7-12: Domain-Referenz für Nachbestellungen (UUID, kein Geheimnis).
+  lineDomainId: string;
   name: string;
   quantity: string;
   unit: string;
@@ -282,6 +284,7 @@ export async function getInstallationWorkbook(
         .sort((left, right) => left.position - right.position)
         .map((line) => ({
           position: line.position,
+          lineDomainId: line.lineDomainId,
           name: line.product.displayName,
           quantity: formatQuantity(line.quantityMilli, line.product.unit),
           unit: line.product.unit,

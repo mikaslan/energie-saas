@@ -65,6 +65,7 @@ import {
 } from "@/modules/calendar";
 import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallerOptions, type InstallableVariantOption, type InstallationDto, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
 import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
+import { listOrderParts, type OrderPartDto } from "@/modules/order-parts";
 import {
   listPlanningRequests,
   type PlanningRequestDto,
@@ -79,6 +80,7 @@ import { InstallationSection } from "./installation-section";
 import { InstallationWorkbookPanel } from "./installation-workbook-panel";
 import { ServiceCaseSection } from "./service-case-section";
 import { PlanningRequestSection } from "./planning-request-section";
+import { OrderPartSection } from "./order-part-section";
 import { OfferCreateEntry } from "./offer-create-entry";
 import {
   buildOfferCreateView,
@@ -287,6 +289,37 @@ type ServiceCaseLoadResult =
   | { kind: "loaded"; cases: ServiceCaseDto[]; canWrite: boolean }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
+
+type OrderPartLoadResult =
+  | { kind: "loaded"; parts: OrderPartDto[]; canWrite: boolean }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+  | { kind: "hidden" };
+
+async function loadOrderParts(
+  workspaceId: string,
+  installationId: string,
+): Promise<OrderPartLoadResult> {
+  try {
+    const parts = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "order_part",
+      (tx, ctx) => listOrderParts(tx, ctx, { installationId }),
+    );
+    const writable = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "order_part_write_gate",
+      async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
+    );
+    return { kind: "loaded", parts, canWrite: writable };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
 
 type PlanningRequestLoadResult =
   | {
@@ -829,6 +862,13 @@ export default async function ProjectTriagePage({
   // installierbaren Varianten (dedupliziert je Angebot).
   const planningResult = await loadPlanningRequests(workspaceId, projectId);
 
+  // F7-12: Order Parts hängen an der Installation (eigene Sichtbarkeit).
+  // Zeilenoptionen aus dem Workbook (versiegelte Stückliste).
+  const orderPartResult = installationResult.kind === "loaded"
+    && installationResult.installation
+    ? await loadOrderParts(workspaceId, installationResult.installation.id)
+    : { kind: "hidden" } as const;
+
   // F1-06: Wiedervorlage entkoppelt (eigene Sichtbarkeit, blockiert
   // andere Sektionen bei fehlendem Recht nicht).
   const followUpResult = await loadProjectFollowUp(workspaceId, projectId);
@@ -1226,6 +1266,21 @@ export default async function ProjectTriagePage({
             workbook={installationResult.workbook}
             canWrite={installationResult.canWrite}
           />
+          {orderPartResult.kind === "loaded" && installationResult.installation ? (
+            <OrderPartSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              installationId={installationResult.installation.id}
+              parts={orderPartResult.parts}
+              lines={(installationResult.workbook?.sections ?? []).flatMap((section) =>
+                section.lines.map((line) => ({
+                  lineDomainId: line.lineDomainId,
+                  label: `${line.name} (${line.quantity})`,
+                })),
+              )}
+              canWrite={orderPartResult.canWrite}
+            />
+          ) : null}
         </div>
 
         {followUpResult.kind === "loaded" ? (

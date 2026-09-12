@@ -86,9 +86,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F13-10 Subsidy-Chat (0119, Tabelle + Kapsel + Resolver-Projektion),
 //   F10-10 Allow-many (0120, Spalten + Tabelle + Kapsel + Resolver-Projektion),
 //   F8-07 Scheme-Modus (0121, nur CHECKs), F8-08 Rest-Schlussrechnung
-//   (0122, nur CHECKs), F13-11 Planungsservice (0123, Tabelle + RLS)
-// => 124 Migrationen (idx 0..123).
-const TOTAL_MIGRATION_COUNT = 124;
+//   (0122, nur CHECKs), F13-11 Planungsservice (0123, Tabelle + RLS),
+//   F7-12 Nachbestellungen (0124, Tabellen + composite-FK + RLS)
+// => 125 Migrationen (idx 0..124).
+const TOTAL_MIGRATION_COUNT = 125;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -404,8 +405,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 123,
-        tag: "0123_f13_11_planungsservice",
+        idx: 124,
+        tag: "0124_f7_12_order_parts",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

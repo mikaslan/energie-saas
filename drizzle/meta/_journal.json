@@ -869,6 +869,13 @@
       "when": 1789189557519,
       "tag": "0123_f13_11_planungsservice",
       "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1789194350084,
+      "tag": "0124_f7_12_order_parts",
+      "breakpoints": true
     }
   ]
 }

@@ -618,6 +618,11 @@ const PLANNING_REQUEST_RELATIONS = [
   "planning_request",
 ] as const;
 
+const ORDER_PART_RELATIONS = [
+  "order_part",
+  "order_part_message",
+] as const;
+
 const LEAD_ROUTING_RELATIONS = [
   "project_lead_routing_rule",
 ] as const;
@@ -2979,6 +2984,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasOrderPartsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    ORDER_PART_RELATIONS,
+    "Rollen-ACL-Manifest: F7-12-Order-Parts",
+  );
+  if (hasOrderPartsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.order_part,
+        public.order_part_message
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.order_part to app_runtime;
+      grant select, insert, update on public.order_part_message to app_runtime
+    `);
+  }
+
   // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
   // daher zusaetzlich DELETE (Muster commercial_document_link).
   const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
@@ -4477,6 +4499,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F13-11-Planungsservice",
   );
 
+  const hasOrderParts = await hasAtomicPublicRelationSet(
+    client,
+    ORDER_PART_RELATIONS,
+    "Rollenvertrag: F7-12-Order-Parts",
+  );
+
   const hasLeadRouting = await hasAtomicPublicRelationSet(
     client,
     LEAD_ROUTING_RELATIONS,
@@ -4736,6 +4764,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPlanningRequests ? PLANNING_REQUEST_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasOrderParts ? ORDER_PART_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.map(
@@ -6042,6 +6073,9 @@ export async function verifyRoleContract(
       ...(hasPlanningRequests ? PLANNING_REQUEST_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasOrderParts ? ORDER_PART_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasLeadRouting ? LEAD_ROUTING_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6455,6 +6489,10 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasPlanningRequests ? [
           "planning_request:tenant_isolation:b243c3b3fc64e6c557fa5576612ddfe590c41c1042e495eaca04fec6afdeefe1",
+        ] : []),
+        ...(hasOrderParts ? [
+          "order_part:tenant_isolation:268512a6573eac45e57baff80c9ec88d2eeb1b95a6b7b8bebba57a0ff588193e",
+          "order_part_message:tenant_isolation:f164176a41c2d3125264bae542d24e7f926494b23d72fb4267a53747a85c8559",
         ] : []),
         ...(hasLeadRouting ? [
           "project_lead_routing_rule:tenant_isolation:5e65ec9d858477d79085ae976979f4e4349773895b49b57c1cd32ae1101dd48d",
@@ -7049,6 +7087,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasPlanningRequests ? PLANNING_REQUEST_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasOrderParts ? ORDER_PART_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

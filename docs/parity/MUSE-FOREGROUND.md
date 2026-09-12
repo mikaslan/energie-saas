@@ -676,3 +676,63 @@ identisch (`983ed67`, 0 unpusht).
   spaeter auf nicht-retryable `engine_invalid` mappen, nicht auf
   `engine_unavailable`.
 - Tests `f401-p-distribute-v2` 4/4, eslint/tsc 0.
+
+## Vorderbau 2026-09-12 (Muse, codex/m1-wave-02)
+- HEAD `3640a4e` (gepusht 9b1f578..3640a4e, Pre-Push-Hook gruen). CI
+  `34673831887` in_progress.
+- F7-08 Workbook lesend (`524afee`): DB 2/2, E2E 1/1, Nachbarn m107/
+  tenant/m201/f806 gruen.
+- F7-09 zertifizierte Anlagenkennzahlen (`3640a4e`): Projektor
+  `lib/integrations/offers/certified-capacities.ts` aus versiegeltem
+  Snapshot (technicalData), serverseitige Projektion in Angebots-page
+  (Client-Grenze: nur Aggregate), Karte in Editor- + Readonly-Zweig.
+  Unit 4/4, E2E F7-09-E2E-01 1/1 (10,4 kWp/8 kWh/10 kW/11 kW an echter
+  M2-01-Kette), Full-Unit 126/1166, Nachbarn m2-01 (8) + f8-06 (1) gruen,
+  tsc/eslint 0.
+- CI `34671522187` (9b1f578): 196 passed, 1 failed = M1-07-Rate-Limit-
+  Alert (Z.814). Lokal Datei-Verbund m1-05-triage 7/7 gruen;
+  F8-06/07/08 in CI gruen; kein Bezug zu F8-Code -> Timing-Flake,
+  kein Re-run/Abbruch angeruehrt.
+- Q-M5-LIDAR-PLATTFORM in fragen an codex/offen gesichert (nativ-iOS,
+  kein Web-Pfad; Entscheid a/b/c an Mikail/Codex).
+- Befund Luecken-Sweep: F4.2/F4.3/F4.4a/F4.4b + F15-01 + F16-04 +
+  Dashboard DASH-01..10 im Code vorhanden (Spec-Header teils veraltet);
+  F4-02c CSV an F15-Commercial gebunden (Board-Umschalter existiert).
+
+## Vorderbau 2026-09-12 (Muse, Fortsetzung)
+- F7-10 Workbook-Rollups (`dc7e3d1`): `capacities` aus versiegeltem
+  Snapshot (F7-09-Projektor-Reuse), Panel-Block; Offer-Fehlerklassen nach
+  `modules/offers/errors.ts` (server-only-frei, Re-Export API-identisch).
+  DB 1/1, E2E 1/1 (10,4 kWp/8 kWh), Nachbarn f708/m201/f7-08 gruen.
+- F13-11 Planungsservice (`5dc9dae`): Migration 0123 (Tabelle + UNIQUE je
+  Angebot + CHECKs + RLS/FORCE), Rollenvertrag gespiegelt (Policy-Pin
+  `b243c3b3…` empirisch, service_case-Pin reproduziert), Service mit
+  installation.read/write, Projektakten-UI. DB 3/3, Invarianten 18/18,
+  roles-verify gruen, E2E 1/1.
+- CI `34673831887` (3640a4e): 195 passed, 4 failed — M1-07-Raten-Alert
+  (2× identisch: 10-s-Cooldown altert unter CI-Last aus) + M2-01/02/03a-
+  Kaskade durch EIGENEN f7-09-Phasen-Flip (Offer-Erstellung setzt
+  Projektphase='offer'; `createOfferFromRequest` Z.1653).
+- Fix (`e37cfe4`): f7-09/f7-10 auf `seedM201AdditionalReadyProject`;
+  M1-07-Cooldown per INSERT-Kopie (`failed_final`, frischer Schlüssel,
+  nie aktiv) deterministisch. Interferenz-Set 19/19 lokal gruen.
+- Pre-Push stoppte: m111a-Pins (Journal-Head 0122, Count 123) —
+  per Konvention auf 0123/124 fortgeschrieben (`f0d5b6e`, Gate-Staerke
+  erhalten). Vollsuite danach 357 Dateien / 2697 Tests gruen.
+- Push `3640a4e..f0d5b6e` mit gruenem Pre-Push-Hook.
+- CI `34677229182` (f0d5b6e): rot — 2 Depcruise-Verstoesse
+  (installations/* → modules/offers/errors.ts, seit F7-10/dc7e3d1) +
+  1 E2E m2-03a PDF-Poll-Timeout (205 passed/1 skipped). Statik sonst
+  gruen (lint/tsc/DB/Rollen/Build).
+- Fix Depcruise: KEIN Index-Import (zog server-only in E2E-Seeds —
+  lokal belegt kaputt), sondern dokumentierte errors.ts-Ausnahme in
+  `.dependency-cruiser.cjs` (reine Fehlerklassen, Negativkontrolle
+  service.ts-Interna weiter verboten, depcruise gruen).
+- m2-03a: CI-Fehler (PDF-Panel 90-s-Poll) lokal im Fokussiert-Modus
+  NICHT reproduzierbar (Fixture braucht Full-Run-Kontext; auf cleanem
+  HEAD identisch) — verdaechtig Flake unter CI-Last, neuer CI-Lauf
+  entscheidet; kein Code angeruehrt.
+- F7-12 Nachbestellungen: Tenant-Invariante repariert (composite-FK
+  auf installation(workspace_id,id) via echtem UNIQUE-Constraint
+  statt Index; eigene order_part_message-Factory; RLS/tenant_isolation
+  in 0124) — Invarianten + f712 21/21, Nachbarn 15/15, E2E 1/1.
