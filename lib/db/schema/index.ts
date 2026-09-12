@@ -28,6 +28,7 @@ export * from "./installation";
 export * from "./intake";
 export * from "./invoicing";
 export * from "./lead-source";
+export * from "./funnel-campaign";
 export * from "./lead-routing";
 export * from "./subsidy-template";
 export * from "./offers";

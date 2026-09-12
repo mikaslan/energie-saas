@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
+import type { FunnelCampaignDto } from "@/lib/integrations/funnel-campaigns/contract";
 import type { LeadSourceDto } from "@/lib/integrations/lead-sources/contract";
+import { listFunnelCampaigns } from "@/modules/funnel-campaigns";
 import {
   listLeadSources,
   listRoutableMembers,
@@ -13,6 +15,7 @@ import {
 } from "@/modules/lead-sources";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { DeniedState } from "../../_ui";
+import { FunnelCampaignManager } from "./funnel-campaign-manager";
 import { LeadSourceManager } from "./lead-source-manager";
 
 export const metadata: Metadata = {
@@ -34,6 +37,7 @@ export default async function LeadSourcesPage(
       canWrite: boolean;
       rules: LeadRoutingRuleDto[];
       members: RoutableMember[];
+      campaigns: FunnelCampaignDto[];
     }
     | undefined;
   try {
@@ -50,6 +54,8 @@ export default async function LeadSourcesPage(
         // Leseschranke, keine neuen Permissions).
         rules: await listRoutingRules(tx, ctx),
         members: await listRoutableMembers(tx, ctx),
+        // F12-01: Kampagnen (gleiche Leseschranke, keine neuen Permissions).
+        campaigns: await listFunnelCampaigns(tx, ctx, { includeArchived: true }),
       }),
     );
   } catch (error) {
@@ -84,6 +90,13 @@ export default async function LeadSourcesPage(
         canWrite={result.canWrite}
         rules={result.rules}
         members={result.members}
+      />
+
+      <FunnelCampaignManager
+        workspaceId={workspaceId}
+        campaigns={result.campaigns}
+        sources={result.sources}
+        canWrite={result.canWrite}
       />
 
       <div className="mt-6">

@@ -19,6 +19,10 @@ import { validateNoteMarkdown } from "@/lib/integrations/notes/note-markdown";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { normalizeRechnerPhone } from "@/modules/intake";
 import { LeadSourceNotFoundError } from "@/modules/lead-sources";
+import {
+  FunnelCampaignNotFoundError,
+  resolveActiveFunnelCampaign,
+} from "@/modules/funnel-campaigns";
 
 export class ManualLeadValidationError extends Error {
   constructor(message = "manual lead validation failed") {
@@ -55,6 +59,9 @@ const manualLeadCommandSchema = z.strictObject({
   postalCode: z.string().trim().regex(/^[0-9]{5}$/).optional(),
   city: optionalText(200),
   leadSourceId: uuidSchema.optional(),
+  // F12-01: Kampagnen-Attribution (setzt Quelle + Kampagne; zusammen mit
+  // leadSourceId mehrdeutig → fail-closed, s.u.).
+  funnelCampaignId: uuidSchema.optional(),
   note: z.string().trim().min(1).max(2000).optional(),
 });
 
@@ -97,6 +104,7 @@ export async function createManualLead(
     postalCode?: string;
     city?: string;
     leadSourceId?: string;
+    funnelCampaignId?: string;
     note?: string;
   },
 ): Promise<ManualLeadResult> {
@@ -128,8 +136,20 @@ export async function createManualLead(
     }
   }
 
+  // F12-01: Kampagne UND Quelle gleichzeitig ist mehrdeutig (die
+  // Kampagne bestimmt ihre Quelle selbst) → kein stiller Vorrang.
+  if (command.leadSourceId !== undefined && command.funnelCampaignId !== undefined) {
+    throw new ManualLeadValidationError("leadSourceId and funnelCampaignId are mutually exclusive");
+  }
+
   let leadSourceId: string | null = null;
-  if (command.leadSourceId !== undefined) {
+  let funnelCampaignId: string | null = null;
+  if (command.funnelCampaignId !== undefined) {
+    const campaign = await resolveActiveFunnelCampaign(tx, ctx, command.funnelCampaignId);
+    if (!campaign) throw new FunnelCampaignNotFoundError(command.funnelCampaignId);
+    funnelCampaignId = campaign.id;
+    leadSourceId = campaign.leadSourceId;
+  } else if (command.leadSourceId !== undefined) {
     const source = await tx.execute<{ id: string }>(sql`
       select id from lead_source
        where workspace_id = ${ctx.workspaceId}::uuid
@@ -214,14 +234,14 @@ export async function createManualLead(
     insert into project (
       id, workspace_id, contact_id, site_id,
       kanban_board_id, kanban_column_id,
-      name, source_key, lead_source_id,
+      name, source_key, lead_source_id, funnel_campaign_id,
       phase, outcome, catalog_resolution_status,
       dedupe_review_required
     ) values (
       ${projectId}::uuid, ${ctx.workspaceId}::uuid,
       ${contactId}::uuid, ${siteId}::uuid,
       ${lane.rows[0].board_id}::uuid, ${lane.rows[0].column_id}::uuid,
-      ${command.displayName}::text, 'manual', ${leadSourceId}::uuid,
+      ${command.displayName}::text, 'manual', ${leadSourceId}::uuid, ${funnelCampaignId}::uuid,
       'request', 'open', 'pending', ${contactReused}
     )
   `);
@@ -234,7 +254,7 @@ export async function createManualLead(
     aggregateId: projectId,
     eventType: "manual_lead.created",
     actor: ctx.actor,
-    payload: { scope: command.scope, contactReused, leadSourceId },
+    payload: { scope: command.scope, contactReused, leadSourceId, funnelCampaignId },
   });
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId,
@@ -242,7 +262,7 @@ export async function createManualLead(
     action: "manual_lead.create",
     resource: "project",
     allowed: true,
-    details: { projectId, scope: command.scope, contactReused },
+    details: { projectId, scope: command.scope, contactReused, funnelCampaignId },
   });
 
   return {

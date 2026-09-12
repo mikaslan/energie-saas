@@ -1487,6 +1487,11 @@ export default async function ProjectTriagePage({
             <Section title="Quelle und technische Provenienz">
               <dl>
                 <DetailItem term="Quelle">{detail.source.label}</DetailItem>
+                {detail.source.campaign ? (
+                  <DetailItem term="Kampagne">
+                    {`${detail.source.campaign.name} · ${detail.source.campaign.leadSourceName}`}
+                  </DetailItem>
+                ) : null}
                 <DetailItem term="Eingegangen">{formatDate(detail.source.submittedAt)}</DetailItem>
                 <DetailItem term="Rechner-Engine">
                   {detail.source.calculatorEngine ?? "Nicht übermittelt"}

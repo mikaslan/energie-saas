@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
+import { FunnelCampaignNotFoundError } from "@/modules/funnel-campaigns";
 import { LeadSourceNotFoundError } from "@/modules/lead-sources";
 import {
   createManualLead,
@@ -28,6 +29,7 @@ const manualLeadFormSchema = z.strictObject({
   postalCode: z.string().trim().max(10).optional(),
   city: z.string().trim().max(200).optional(),
   leadSourceId: z.string().trim().max(100).optional(),
+  funnelCampaignId: z.string().trim().max(100).optional(),
   note: z.string().trim().max(2000).optional(),
 });
 
@@ -62,6 +64,7 @@ export async function createManualLeadAction(
     postalCode: emptyToUndefined(formData.get("postalCode")),
     city: emptyToUndefined(formData.get("city")),
     leadSourceId: emptyToUndefined(formData.get("leadSourceId")),
+    funnelCampaignId: emptyToUndefined(formData.get("funnelCampaignId")),
     note: emptyToUndefined(formData.get("note")),
   });
   if (!parsed.success) return { status: "invalid" };
@@ -82,6 +85,7 @@ export async function createManualLeadAction(
         postalCode: input.postalCode,
         city: input.city,
         leadSourceId: input.leadSourceId,
+        funnelCampaignId: input.funnelCampaignId,
         note: input.note,
       }),
     );
@@ -119,6 +123,7 @@ export async function createManualLeadAction(
     if (
       error instanceof ManualLeadValidationError
       || error instanceof LeadSourceNotFoundError
+      || error instanceof FunnelCampaignNotFoundError
     ) {
       return { status: "invalid" };
     }

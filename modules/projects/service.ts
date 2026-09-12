@@ -50,6 +50,8 @@ export type ProjectTriageDetail = {
     submittedAt: string | null;
     calculatorEngine: string | null;
     producerRevision: string | null;
+    // F12-01: attributierte Funnel-Kampagne (null = keine Kampagne).
+    campaign: { name: string; leadSourceName: string } | null;
   };
   requirements: {
     branch: string | null;
@@ -105,6 +107,8 @@ type DetailRow = {
   lat: number | null;
   lng: number | null;
   source_key: string;
+  funnel_campaign_name: string | null;
+  funnel_lead_source_name: string | null;
   submitted_at: Date | string | null;
   calculator_engine: string | null;
   producer_revision: string | null;
@@ -280,6 +284,8 @@ export async function getProjectTriageDetail(
            (pr.requirements #>> '{requestedProducts,backupPower}')::boolean as backup_power,
            cs.result_integrity,
            cs.investment_source as price_source,
+           fc.name as funnel_campaign_name,
+           camp_source.name as funnel_lead_source_name,
            nullif(cs.snapshot #>> '{result,systemPeakPowerKwp}', '')::numeric
              as system_peak_power_kwp,
            nullif(cs.snapshot #>> '{result,storageCapacityKwh}', '')::numeric
@@ -312,6 +318,11 @@ export async function getProjectTriageDetail(
       on r.workspace_id = p.workspace_id and r.project_id = p.id
     left join calculator_snapshot cs
       on cs.workspace_id = p.workspace_id and cs.project_id = p.id
+    left join funnel_campaign fc
+      on fc.workspace_id = p.workspace_id and fc.id = p.funnel_campaign_id
+    left join lead_source camp_source
+      on camp_source.workspace_id = fc.workspace_id
+     and camp_source.id = fc.lead_source_id
     left join lateral (
       select requirement.requirements
       from project_requirement requirement
@@ -361,6 +372,12 @@ export async function getProjectTriageDetail(
       submittedAt: isoOrNull(row.submitted_at),
       calculatorEngine: row.calculator_engine,
       producerRevision: row.producer_revision,
+      campaign: row.funnel_campaign_name === null
+        ? null
+        : {
+          name: row.funnel_campaign_name,
+          leadSourceName: row.funnel_lead_source_name ?? "",
+        },
     },
     requirements: {
       branch: row.requirements_branch,

@@ -217,10 +217,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0119 F13-10 Subsidy-Chat,
     // 0120 F10-10 Datei-Anfragen Allow-many,
     // 0121 F8-07 Scheme-Modus, 0122 F8-08 Rest-Schlussrechnung,
-    // 0123 F13-11 Planungsservice).
+    // 0123 F13-11 Planungsservice, 0124 F7-12 Nachbestellungen,
+    // 0125 F12-01 Funnel-Kampagnen).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 123,
-      tag: "0123_f13_11_planungsservice",
+      idx: 125,
+      tag: "0125_f12_01_funnel_kampagnen",
     });
   });
 

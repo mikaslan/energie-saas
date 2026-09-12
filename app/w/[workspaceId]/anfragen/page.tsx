@@ -16,6 +16,7 @@ import {
   type RequestBoardScope,
 } from "@/modules/boards";
 import { listLeadSources } from "@/modules/lead-sources";
+import { listFunnelCampaigns } from "@/modules/funnel-campaigns";
 import { FOLLOW_UP_BAND_LABEL, type FollowUpBand } from "@/lib/follow-up";
 import {
   LEAD_SCORE_BAND_LABEL,
@@ -194,6 +195,7 @@ export default async function RequestsPage({
   let board: Awaited<ReturnType<typeof getRequestBoard>> | undefined;
   let canCreateManualLead = false;
   let leadSourceOptions: Array<{ id: string; name: string }> = [];
+  let campaignOptions: Array<{ id: string; name: string; leadSourceName: string }> = [];
   let adminColumns: BoardColumnAdminEntry[] = [];
   let pipelineSummary: BoardPipelineSummary | undefined;
   let unauthenticated = false;
@@ -224,6 +226,13 @@ export default async function RequestsPage({
               throw error;
             },
           ),
+          // F12-01: Kampagnen-Dropdown (gleiche Schranke/Muster wie Quellen).
+          campaigns: await listFunnelCampaigns(tx, ctx).catch(
+            (error: unknown) => {
+              if (error instanceof PermissionDeniedError) return [];
+              throw error;
+            },
+          ),
         };
       },
     );
@@ -232,6 +241,11 @@ export default async function RequestsPage({
     adminColumns = loaded.adminColumns;
     pipelineSummary = loaded.pipelineSummary;
     leadSourceOptions = loaded.sources.map((source) => ({ id: source.id, name: source.name }));
+    campaignOptions = loaded.campaigns.map((campaign) => ({
+      id: campaign.id,
+      name: campaign.name,
+      leadSourceName: campaign.leadSourceName,
+    }));
   } catch (error) {
     if (error instanceof NotAuthenticatedError) unauthenticated = true;
     else if (error instanceof PermissionDeniedError) denied = true;
@@ -398,6 +412,7 @@ export default async function RequestsPage({
               scope={scope}
               scopeLabel={scope === "commercial" ? "Gewerbe" : "Wohnbau"}
               sources={leadSourceOptions}
+              campaigns={campaignOptions}
             />
             <ManualLeadBulkForm
               workspaceId={validWorkspaceId}

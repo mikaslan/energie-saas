@@ -17,6 +17,7 @@ import { workspace } from "./core";
 import { site } from "./site";
 import { projectLossReason } from "./project-loss-reason";
 import { leadSource } from "./lead-source";
+import { funnelCampaign } from "./funnel-campaign";
 
 export const projectPhases = ["request", "offer", "installation"] as const;
 export const projectOutcomes = ["open", "won", "lost", "cannot_fulfill"] as const;
@@ -42,6 +43,10 @@ export const project = pgTable(
     lossReasonId: uuid("loss_reason_id"),
     lossReasonText: text("loss_reason_text"),
     leadSourceId: uuid("lead_source_id"),
+    // F12-01 Funnel-Kampagne: attributierte Variante (NULL = keine
+    // Kampagne, kein Bucket-Zwang). Historie bleibt nach Archivierung
+    // der Kampagne lesbar (kein ON DELETE).
+    funnelCampaignId: uuid("funnel_campaign_id"),
     // F1-06 Lead-Wiedervorlage: optionaler Fälligkeitszeitpunkt je Anfrage
     // (In-App-Eskalation, kein Mailversand). NULL = keine Wiedervorlage.
     followUpAt: timestamp("follow_up_at", { withTimezone: true }),
@@ -52,6 +57,7 @@ export const project = pgTable(
     index("project_ws_contact_idx").on(t.workspaceId, t.contactId),
     index("project_ws_site_idx").on(t.workspaceId, t.siteId),
     index("project_ws_lead_source_idx").on(t.workspaceId, t.leadSourceId),
+    index("project_ws_funnel_campaign_idx").on(t.workspaceId, t.funnelCampaignId),
     index("project_ws_kanban_created_idx").on(
       t.workspaceId,
       t.kanbanColumnId,
@@ -107,6 +113,11 @@ export const project = pgTable(
       columns: [t.workspaceId, t.leadSourceId],
       foreignColumns: [leadSource.workspaceId, leadSource.id],
       name: "project_lead_source_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.funnelCampaignId],
+      foreignColumns: [funnelCampaign.workspaceId, funnelCampaign.id],
+      name: "project_funnel_campaign_fk",
     }),
     check("project_name_ck", sql`length(btrim(${t.name})) between 1 and 200`),
     check("project_phase_ck", sql`${t.phase} in ('request', 'offer', 'installation')`),

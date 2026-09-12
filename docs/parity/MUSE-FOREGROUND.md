@@ -736,3 +736,9 @@ identisch (`983ed67`, 0 unpusht).
   auf installation(workspace_id,id) via echtem UNIQUE-Constraint
   statt Index; eigene order_part_message-Factory; RLS/tenant_isolation
   in 0124) — Invarianten + f712 21/21, Nachbarn 15/15, E2E 1/1.
+- F12-01 Funnel-Kampagnen (Katalog F12.2-intern, 0125): Variante mit
+  eigener Quelle + Slug, manuelle Erfassung mit Attribution,
+  Projektakte zeigt Kampagne. DB 6/6, E2E 1/1, Rollenvertrag
+  (Pin fa42… geerntet) + Invarianten gruen; Nachbarn f111/lead/triage
+  30/30. Oeffentlicher Funnel wartet weiter auf Q-F12-FUNNEL-REFERENZ,
+  Provider auf Q-F12-PROVIDER-PRIVACY.

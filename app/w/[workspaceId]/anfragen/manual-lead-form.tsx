@@ -54,11 +54,13 @@ export function ManualLeadForm({
   scope,
   scopeLabel,
   sources,
+  campaigns,
 }: {
   workspaceId: string;
   scope: "residential" | "commercial";
   scopeLabel: string;
   sources: Array<{ id: string; name: string }>;
+  campaigns: Array<{ id: string; name: string; leadSourceName: string }>;
 }) {
   const [open, setOpen] = useState(false);
   const [state, dispatch] = useActionState(
@@ -146,6 +148,17 @@ export function ManualLeadForm({
           {sources.map((source) => (
             <option key={source.id} value={source.id}>
               {source.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className={labelClass}>
+        Funnel-Kampagne (optional, bestimmt die Quelle)
+        <select name="funnelCampaignId" defaultValue="" className={inputClass}>
+          <option value="">Keine Kampagne</option>
+          {campaigns.map((campaign) => (
+            <option key={campaign.id} value={campaign.id}>
+              {`${campaign.name} · ${campaign.leadSourceName}`}
             </option>
           ))}
         </select>
