@@ -27,6 +27,7 @@ import { requireAuthSecret } from "@/lib/env";
 import {
   OFFER_VARIANT_SNAPSHOT_VERSION,
 } from "@/lib/integrations/offers/contract";
+import { deriveCertifiedCapacities } from "@/lib/integrations/offers/certified-capacities";
 import { planningModeSchema } from "@/lib/integrations/planning/contract";
 
 import { listDiscountTemplates } from "@/modules/discounts";
@@ -163,6 +164,36 @@ const purchaseLineViewSchema = publicLineViewSchema.extend({
   computed: purchaseComputedViewSchema,
 }).strip();
 
+// F7-09: schmale Zweitgrenze NUR fuer die Kapazitaetsprojektion. Sie liest
+// aus dem vollen Domain-Snapshot (mit technicalData) und laesst sonst nichts
+// durch; an den Client gehen nur die Aggregate aus deriveCertifiedCapacities.
+const certifiedTechnicalDataSchema = z.object({
+  schemaVersion: z.string().trim().min(1).max(40),
+  nominalPowerWatts: z.number().optional(),
+  nominalAcPowerWatts: z.number().optional(),
+  usableCapacityWh: z.number().optional(),
+  maxChargingPowerWatts: z.number().optional(),
+}).strip();
+
+const certifiedLineSchema = z.object({
+  positionType: z.enum(["required", "additional", "optional"]),
+  isHidden: z.boolean(),
+  quantityMilli: z.int().safe().min(1).max(100_000_000),
+  componentCategory: z.enum([
+    "module", "inverter", "battery", "wallbox", "heat_pump", "mounting", "other",
+  ]),
+  product: z.object({
+    kind: z.enum(["catalog", "custom"]),
+    technicalData: certifiedTechnicalDataSchema.nullable().optional(),
+  }).strip(),
+}).strip();
+
+const certifiedSnapshotSchema = z.object({
+  sections: z.array(z.object({
+    lines: z.array(certifiedLineSchema).min(1).max(500),
+  }).strip()).min(1).max(25),
+}).strip();
+
 function sectionViewSchema(lineSchema: typeof publicLineViewSchema | typeof purchaseLineViewSchema) {
   return z.object({
     sectionDomainId: snapshotUuidSchema,
@@ -290,6 +321,22 @@ function projectOfferDetailView(
   if (releaseContext.showPanel && releaseContext.validityWindow === null) {
     throw new Error("Der serverseitige Gültigkeitszeitraum fehlt");
   }
+  // F7-09: Kapazitaeten werden serverseitig aus dem VOLLEN Snapshot
+  // projiziert (die obige View-Grenze streicht technicalData bewusst).
+  const parsedCertified = certifiedSnapshotSchema.safeParse(view.activeVariant.snapshot);
+  if (!parsedCertified.success) {
+    throw new Error("Angebotsansicht enthält einen ungültigen Datenstand");
+  }
+  const certifiedCapacities = deriveCertifiedCapacities(
+    parsedCertified.data.sections.flatMap((section) => section.lines.map((line) => ({
+      positionType: line.positionType,
+      isHidden: line.isHidden,
+      quantityMilli: line.quantityMilli,
+      componentCategory: line.componentCategory,
+      productKind: line.product.kind,
+      technicalData: line.product.technicalData ?? null,
+    }))),
+  );
 
   const variantById = new Map(view.variants.map((variant) => [variant.id, variant]));
   const releaseCandidateById = new Map(releaseContext.candidates.map((candidate) => (
@@ -379,6 +426,7 @@ function projectOfferDetailView(
       paymentOptionId: variant.paymentOptionId,
     })),
     activeVariant: parsedVariant.data,
+    certifiedCapacities,
     contentLock: view.contentLock,
     permissions: {
       canEdit: view.permissions.canEdit,

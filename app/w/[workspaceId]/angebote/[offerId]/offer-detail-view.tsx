@@ -249,6 +249,22 @@ export interface OfferDetailSurfaceView {
     hasPaymentOption: boolean;
     hasDiscount: boolean;
   }[];
+  // F7-09: serverseitig aus dem versiegelten Snapshot projizierte
+  // Anlagenkennzahlen (reine Aggregate, keine Rohdaten).
+  certifiedCapacities?: {
+    moduleCount: number;
+    pvPeakPowerWatts: number;
+    batteryCount: number;
+    storageUsableCapacityWh: number;
+    inverterCount: number;
+    inverterAcPowerWatts: number;
+    wallboxCount: number;
+    wallboxChargePowerWatts: number;
+    hasUncertifiedModuleLines: boolean;
+    hasUncertifiedBatteryLines: boolean;
+    hasUncertifiedInverterLines: boolean;
+    hasUncertifiedWallboxLines: boolean;
+  };
 }
 
 export type OfferComponentCategory =
@@ -683,6 +699,71 @@ function TotalsCard({
   );
 }
 
+const kiloFormatter = new Intl.NumberFormat("de-DE", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 3,
+});
+
+function CertifiedCapacitiesCard({
+  capacities,
+}: {
+  capacities: NonNullable<OfferDetailSurfaceView["certifiedCapacities"]>;
+}) {
+  const rows: readonly {
+    label: string;
+    value: string;
+    uncertified: boolean;
+  }[] = [
+    {
+      label: `Module · ${quantityFormatter.format(capacities.moduleCount)} Stk.`,
+      value: `${kiloFormatter.format(capacities.pvPeakPowerWatts / 1000)} kWp`,
+      uncertified: capacities.hasUncertifiedModuleLines,
+    },
+    {
+      label: `Speicher · ${quantityFormatter.format(capacities.batteryCount)} Stk.`,
+      value: `${kiloFormatter.format(capacities.storageUsableCapacityWh / 1000)} kWh`,
+      uncertified: capacities.hasUncertifiedBatteryLines,
+    },
+    {
+      label: `Wechselrichter · ${quantityFormatter.format(capacities.inverterCount)} Stk.`,
+      value: `${kiloFormatter.format(capacities.inverterAcPowerWatts / 1000)} kW`,
+      uncertified: capacities.hasUncertifiedInverterLines,
+    },
+    {
+      label: `Wallbox · ${quantityFormatter.format(capacities.wallboxCount)} Stk.`,
+      value: `${kiloFormatter.format(capacities.wallboxChargePowerWatts / 1000)} kW`,
+      uncertified: capacities.hasUncertifiedWallboxLines,
+    },
+  ];
+  return (
+    <section
+      aria-label="Anlagenleistung versiegelt"
+      className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+    >
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-800">
+        Anlagenleistung · versiegelt
+      </p>
+      <h2 className="mt-1 text-lg font-semibold text-slate-950">Zertifizierter Stand</h2>
+      <dl className="mt-5 grid gap-3 text-sm">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-4">
+            <dt className="text-slate-600">{row.label}</dt>
+            <dd className="font-semibold tabular-nums text-slate-950">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {rows.some((row) => row.uncertified) ? (
+        <p className="mt-4 border-t border-slate-100 pt-4 text-base leading-6 text-slate-600">
+          Zzgl. nicht zertifizierter Positionen ohne versiegelte Leistungsdaten.
+        </p>
+      ) : null}
+      <p className="mt-4 border-t border-slate-100 pt-4 text-base leading-6 text-slate-600">
+        Summen aus den sichtbaren Katalogpositionen des versiegelten Variantenstands.
+      </p>
+    </section>
+  );
+}
+
 function SalesForecast({ value }: { value: number | null }) {
   return (
     <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -830,6 +911,9 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
               canEdit={canEdit}
             />
             <SchematicCard snapshot={snapshot} offerNumber={view.offer.offerNumber} />
+            {view.certifiedCapacities ? (
+              <CertifiedCapacitiesCard capacities={view.certifiedCapacities} />
+            ) : null}
             {pdfDraftPanel}
             {offerReleasePanel}
             {offerIssuancePanel}
@@ -968,6 +1052,9 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                   canReadPurchasePrice={canReadPurchasePrice}
                 />
               ))}
+              {view.certifiedCapacities ? (
+                <CertifiedCapacitiesCard capacities={view.certifiedCapacities} />
+              ) : null}
             </div>
             <TotalsCard
               snapshot={snapshot}
