@@ -911,6 +911,13 @@
       "when": 1789214951370,
       "tag": "0129_f702b_bedingte_sichtbarkeit",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1789217529989,
+      "tag": "0130_f702c_anzeige_punkte",
+      "breakpoints": true
     }
   ]
 }

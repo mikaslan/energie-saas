@@ -10,6 +10,8 @@ export const CHECKLIST_SCHEMA_VERSION = 2;
 export const CHECKLIST_BLOCK_NAME_MAX = 200;
 export const CHECKLIST_SEGMENT_NAME_MAX = 200;
 export const CHECKLIST_ITEM_TITLE_MAX = 500;
+// F7-02C: Fließtext-Maximum für Anzeige-Punkte (spiegelt den DB-Validator).
+export const CHECKLIST_ITEM_DESCRIPTION_MAX = 2000;
 // F7-04b: Begründungs-Maximum (UTF-16-Einheiten, spiegelt
 // public._f704_valid_clean_text(..., 500) in Migration 0127).
 export const CHECKLIST_ITEM_IRRELEVANT_REASON_MAX = 500;
@@ -78,6 +80,12 @@ export const checklistItemVisibleIfSchema = z.object({
 }).strict();
 export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSchema>;
 
+// F7-02C: Anzeige-Punkte (Katalog F7.2, live beobachtete Typen title und
+// description). Nullish wie irrelevant/visibleIf: fehlend/null = Aufgabe,
+// kein Bestand bricht. Anzeige-Punkte sind nicht abhakbar und nie Pflicht.
+export const checklistItemKindSchema = z.enum(["task", "title", "description"]);
+export type ChecklistItemKindV1 = z.infer<typeof checklistItemKindSchema>;
+
 export const editableChecklistItemSchema = z.object({
   id: stableUuidSchema,
   title: cleanText(CHECKLIST_ITEM_TITLE_MAX),
@@ -86,6 +94,8 @@ export const editableChecklistItemSchema = z.object({
   visible: z.boolean(),
   irrelevant: checklistItemIrrelevantSchema.nullish(),
   visibleIf: checklistItemVisibleIfSchema.nullish(),
+  kind: checklistItemKindSchema.nullish(),
+  description: cleanText(CHECKLIST_ITEM_DESCRIPTION_MAX).nullish(),
 }).strict();
 export type ChecklistItemV1 = z.infer<typeof editableChecklistItemSchema>;
 
@@ -195,7 +205,14 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
       id: string;
       segments: Array<{
         id: string;
-        items: Array<{ id: string; visibleIf?: { itemId: string } | null }>;
+        items: Array<{
+          id: string;
+          done: boolean;
+          required: boolean;
+          kind?: string | null;
+          description?: string | null;
+          visibleIf?: { itemId: string } | null;
+        }>;
       }>;
     }>) {
       const addIdentity = (kind: string, id: string) => {
@@ -222,6 +239,22 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
             context.addIssue({
               code: "custom",
               message: "Sichtbarkeitsregel verweist nicht auf einen anderen Punkt desselben Segments",
+            });
+          }
+        }
+        // F7-02C: Anzeige-Punkte tragen weder Pflicht/Erledigt noch fremden
+        // Fließtext (keine Mischbestände, kein stilles Ignorieren).
+        for (const item of segment.items) {
+          if (item.description != null && item.kind !== "description") {
+            context.addIssue({
+              code: "custom",
+              message: "Beschreibungstext verlangt einen Beschreibungspunkt",
+            });
+          }
+          if (item.kind != null && item.kind !== "task" && (item.required || item.done)) {
+            context.addIssue({
+              code: "custom",
+              message: "Anzeigepunkte sind weder Pflicht noch abhakbar",
             });
           }
         }
@@ -355,6 +388,15 @@ function segmentItemsById(
   return new Map(segment.items.map((item) => [item.id, item]));
 }
 
+// F7-02C: Nur Aufgabenpunkte sind Arbeitsgegenstand der Gates; Anzeige-
+// Punkte (title/description) zählen nie (spiegelt Migration 0130: Sie
+// können kein required tragen).
+export function isChecklistWorkItem(
+  item: Pick<ChecklistItemV1, "kind">,
+): boolean {
+  return item.kind == null || item.kind === "task";
+}
+
 export function segmentRequiredRemaining(
   segment: Pick<ChecklistSegmentV1, "items">,
 ): number {
@@ -364,6 +406,7 @@ export function segmentRequiredRemaining(
   const byId = segmentItemsById(segment);
   return segment.items.filter(
     (item) => item.required && !item.done && item.irrelevant == null
+      && isChecklistWorkItem(item)
       && isItemEffectivelyVisible(item, byId),
   ).length;
 }
@@ -372,7 +415,9 @@ export function segmentItemProgress(
   segment: Pick<ChecklistSegmentV1, "items">,
 ): { done: number; total: number } {
   const byId = segmentItemsById(segment);
-  const visibleItems = segment.items.filter((item) => isItemEffectivelyVisible(item, byId));
+  const visibleItems = segment.items.filter(
+    (item) => isChecklistWorkItem(item) && isItemEffectivelyVisible(item, byId),
+  );
   return {
     done: visibleItems.filter((item) => item.done).length,
     total: visibleItems.length,

@@ -221,10 +221,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0125 F12-01 Funnel-Kampagnen, 0126 F12-02 Auto-Routing,
     // 0127 F7-04b Irrelevant-Markierung,
     // 0128 F7-05b Block-Team-Zuweisung,
-    // 0129 F7-02B Bedingte Sichtbarkeit).
+    // 0129 F7-02B Bedingte Sichtbarkeit,
+    // 0130 F7-02C Anzeige-Punkte).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 129,
-      tag: "0129_f702b_bedingte_sichtbarkeit",
+      idx: 130,
+      tag: "0130_f702c_anzeige_punkte",
     });
   });
 

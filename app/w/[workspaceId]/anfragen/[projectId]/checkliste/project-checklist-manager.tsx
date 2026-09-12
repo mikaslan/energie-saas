@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import {
   CHECKLIST_BLOCKS_TRANSPORT_MAX_BYTES,
   checklistProgress,
+  isChecklistWorkItem,
   isItemEffectivelyVisible,
   segmentItemProgress,
   segmentRequiredRemaining,
@@ -521,16 +522,18 @@ function SegmentGroup({
       <ul className="mt-2 space-y-2">
         {segment.items.map((item, itemIndex) => isItemEffectivelyVisible(item, segmentItemsById) ? (
           <li key={item.id} className="flex items-start gap-1">
-            <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
-              <input
-                type="checkbox"
-                aria-label={item.title || `Punkt ${itemIndex + 1}`}
-                checked={item.done}
-                disabled={!canWrite || completed || pending}
-                onChange={(event) => onSetItem(itemIndex, { done: event.target.checked }, canWrite)}
-                className="h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
-              />
-            </label>
+            {isChecklistWorkItem(item) ? (
+              <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
+                <input
+                  type="checkbox"
+                  aria-label={item.title || `Punkt ${itemIndex + 1}`}
+                  checked={item.done}
+                  disabled={!canWrite || completed || pending}
+                  onChange={(event) => onSetItem(itemIndex, { done: event.target.checked }, canWrite)}
+                  className="h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
+                />
+              </label>
+            ) : null}
             <div className="min-w-0 flex-1">
               {canEditStructure && !completed ? (
                 <input
@@ -542,11 +545,22 @@ function SegmentGroup({
                   className="min-h-11 w-full rounded-md border border-slate-300 bg-white px-2 text-base outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600 sm:text-sm"
                 />
               ) : (
-                <span className={`text-sm ${item.done ? "text-slate-500 line-through" : "text-slate-800"}`}>
+                <span className={`text-sm ${item.done ? "text-slate-500 line-through" : "text-slate-800"}${item.kind === "title" ? " font-semibold" : ""}`}>
                   {item.title}
                 </span>
               )}
-              {canConfigure && !completed ? (
+              {canEditStructure && !completed ? (
+                <ItemKindControl
+                  item={item}
+                  itemIndex={itemIndex}
+                  canEditStructure={canEditStructure}
+                  onSetItem={onSetItem}
+                />
+              ) : null}
+              {item.kind === "description" && item.description && !(canEditStructure && !completed) ? (
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.description}</p>
+              ) : null}
+              {canConfigure && !completed && isChecklistWorkItem(item) ? (
                 <label className="mt-1 flex min-h-11 w-fit cursor-pointer items-center gap-2 px-1 text-xs text-slate-600">
                   <input
                     type="checkbox"
@@ -856,6 +870,56 @@ function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId,
         </button>
       )}
       <Feedback state={markState} />
+    </div>
+  );
+}
+
+// F7-02C: Typ-Editor für Anzeige-Punkte (title/description). Der Typwechsel
+// schreibt ehrlich um (kein Dialog): weg von Aufgabe → done/required false,
+// weg von Beschreibung → description null. Mischbestände lehnen Zod-Guard
+// und DB-Validator (0130) fail-closed ab.
+function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
+  item: ChecklistItemV1;
+  itemIndex: number;
+  canEditStructure: boolean;
+  onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+}) {
+  const title = item.title || "Punkt";
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-slate-600">
+      <label htmlFor={`item-kind-${item.id}`}>Typ</label>
+      <select
+        id={`item-kind-${item.id}`}
+        value={item.kind ?? "task"}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (next === "description") {
+            onSetItem(itemIndex, { kind: "description", done: false, required: false }, canEditStructure);
+          } else if (next === "title") {
+            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null }, canEditStructure);
+          } else {
+            onSetItem(itemIndex, { kind: "task", description: null }, canEditStructure);
+          }
+        }}
+        className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+      >
+        <option value="task">Aufgabe</option>
+        <option value="title">Titel</option>
+        <option value="description">Beschreibung</option>
+      </select>
+      {item.kind === "description" ? (
+        <textarea
+          aria-label={`${title}: Beschreibungstext`}
+          value={item.description ?? ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            onSetItem(itemIndex, { description: value === "" ? null : value }, canEditStructure);
+          }}
+          rows={2}
+          placeholder="Beschreibungstext"
+          className="min-h-11 w-full max-w-md rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+        />
+      ) : null}
     </div>
   );
 }
