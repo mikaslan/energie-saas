@@ -309,6 +309,8 @@ export const COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION =
 export const INVOICING_REPORT_COMMAND_VERSION = "invoicing-report-command.v1" as const;
 export const INVOICING_REPORT_VERSION = "invoicing-report.v1" as const;
 export const INVOICING_REPORT_CSV_VERSION = "invoicing-report-csv.v1" as const;
+export const INVOICING_DATEV_COMMAND_VERSION = "invoicing-datev-command.v1" as const;
+export const INVOICING_DATEV_BATCH_VERSION = "invoicing-datev-batch.v1" as const;
 
 export const MAX_DOCUMENT_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const MAX_DOCUMENT_QUANTITY_MILLI = 100_000_000 as const;
@@ -936,3 +938,25 @@ export const invoicingReportCsvV1Schema = z.strictObject({
   content: z.string(),
 });
 export type InvoicingReportCsvV1 = z.infer<typeof invoicingReportCsvV1Schema>;
+
+// F8-11 DATEV-EXTF Buchungsstapel (Spec §F8-11). SKR03/04-Umsatzseite,
+// Forderung an Erlös (19 % Automatikkonto); Monat Europe/Berlin.
+export const datevSkrSchema = z.enum(["03", "04"]);
+export type DatevSkr = z.infer<typeof datevSkrSchema>;
+
+export const invoicingDatevCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(INVOICING_DATEV_COMMAND_VERSION),
+  month: invoicingReportMonthSchema,
+  skr: datevSkrSchema,
+});
+export type InvoicingDatevCommandV1 = z.infer<typeof invoicingDatevCommandV1Schema>;
+
+export const invoicingDatevBatchV1Schema = z.strictObject({
+  schemaVersion: z.literal(INVOICING_DATEV_BATCH_VERSION),
+  month: invoicingReportMonthSchema,
+  skr: datevSkrSchema,
+  fileName: z.string().min(1).max(120),
+  contentType: z.literal("text/csv; charset=utf-8"),
+  content: z.string().min(1),
+});
+export type InvoicingDatevBatchV1 = z.infer<typeof invoicingDatevBatchV1Schema>;

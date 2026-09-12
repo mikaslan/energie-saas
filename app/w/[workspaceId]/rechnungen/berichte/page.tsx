@@ -115,6 +115,8 @@ export default async function InvoicingReportsPage(
   const buckets = report.revenueByStatus;
   const overdue = report.overdueBuckets;
   const csvUrl = `/w/${workspaceId}/rechnungen/berichte/csv?monat=${encodeURIComponent(month)}`;
+  const datevUrl03 = `/w/${workspaceId}/rechnungen/berichte/datev?monat=${encodeURIComponent(month)}&skr=03`;
+  const datevUrl04 = `/w/${workspaceId}/rechnungen/berichte/datev?monat=${encodeURIComponent(month)}&skr=04`;
 
   return (
     <div>
@@ -149,6 +151,20 @@ export default async function InvoicingReportsPage(
           >
             Daten herunterladen (CSV)
           </Link>
+          <Link
+            href={datevUrl03}
+            data-testid="datev-download-skr03"
+            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+          >
+            DATEV-Stapel (SKR03)
+          </Link>
+          <Link
+            href={datevUrl04}
+            data-testid="datev-download-skr04"
+            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+          >
+            DATEV-Stapel (SKR04)
+          </Link>
         </div>
       </div>
 
@@ -174,6 +190,12 @@ export default async function InvoicingReportsPage(
           previousCents={report.previousMonth.overdueCents}
         />
       </div>
+      <p className="mt-3 max-w-2xl text-xs leading-5 text-slate-600">
+        DATEV-Stapel (ESTIMATE-Subset): nur 19-%-Belege in Euro, Forderung an
+        Erlös (SKR03 1400 → 8400, SKR04 1200 → 4400). Berater- und
+        Mandantennummer beim DATEV-Import setzen; 0-%-/§13b-Fälle sind
+        ausgenommen.
+      </p>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section aria-label="Einnahmen nach Status" className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">

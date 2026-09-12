@@ -21,6 +21,8 @@ export {
   GOEBD_RETENTION_DEFAULT_DAYS,
   GOEBD_SNAPSHOT_CANONICALIZATION_VERSION,
   GOEBD_SNAPSHOT_SCHEMA_VERSION,
+  INVOICING_DATEV_BATCH_VERSION,
+  INVOICING_DATEV_COMMAND_VERSION,
   INVOICING_REPORT_COMMAND_VERSION,
   INVOICING_REPORT_CSV_VERSION,
   INVOICING_REPORT_LATEST_DOCUMENTS,
@@ -45,6 +47,9 @@ export {
   commercialDocumentUnlinkCommandV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineInputV1Schema,
+  datevSkrSchema,
+  invoicingDatevBatchV1Schema,
+  invoicingDatevCommandV1Schema,
   commercialDocumentTermsCommandV1Schema,
   commercialDocumentArchiveCommandV1Schema,
   commercialDocumentLineV1Schema,
@@ -88,6 +93,9 @@ export type {
   CommercialDocumentArchiveCommandV1,
   CommercialDocumentLineCommandV1,
   CommercialDocumentLineInputV1,
+  DatevSkr,
+  InvoicingDatevBatchV1,
+  InvoicingDatevCommandV1,
   CommercialDocumentLineV1,
   CommercialDocumentGroupArchiveCommandV1,
   CommercialDocumentListCommandV1,
@@ -160,3 +168,4 @@ export {
   type PartialOrderLine,
 } from "./partial-service";
 export { exportDocumentCii } from "./cii-service";
+export { exportDatevBatch } from "./datev-service";
