@@ -24,6 +24,8 @@ import {
   unassignChecklistBlockTeamAction,
   type ChecklistActionState,
 } from "./actions";
+import { enqueueSegmentComplete } from "./segment-outbox";
+import { SegmentOutboxSync } from "./segment-outbox-sync";
 
 const initialState: ChecklistActionState = { status: "idle" };
 
@@ -255,6 +257,23 @@ export function ProjectChecklistManager({
           </p>
         </div>
 
+        {checklist.checklistId !== null ? (
+          <SegmentOutboxSync
+            workspaceId={workspaceId}
+            projectId={projectId}
+            checklistId={checklist.checklistId}
+            version={baseVersion}
+            segments={blocks.flatMap((block) =>
+              block.segments.map((segment) => ({
+                segmentId: segment.id,
+                name: segment.name,
+                completedAt: segment.completedAt,
+              })),
+            )}
+            canWrite={canComplete}
+          />
+        ) : null}
+
         {visibleBlocks.length === 0 ? (
           <p className="mt-3 text-sm leading-6 text-slate-500">Noch keine sichtbaren Blöcke angelegt.</p>
         ) : (
@@ -459,6 +478,8 @@ function SegmentGroup({
     mutateChecklistSegmentAction,
     initialState,
   );
+  // F7-04c: Offline-Abschluss in die Segment-Outbox statt Submit.
+  const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
   const completed = segment.completedAt !== null;
   const remainingRequired = segmentRequiredRemaining(segment);
   const itemProgress = segmentItemProgress(segment);
@@ -564,7 +585,33 @@ function SegmentGroup({
       ) : null}
 
       {!completed && canComplete && checklistId !== null ? (
-        <form action={mutationDispatch} className="mt-3">
+        <form
+          action={mutationDispatch}
+          className="mt-3"
+          onSubmit={(event) => {
+            if (typeof navigator !== "undefined" && navigator.onLine === false) {
+              event.preventDefault();
+              const targetChecklistId = checklistId;
+              if (targetChecklistId === null) return;
+              void enqueueSegmentComplete({
+                workspaceId,
+                projectId,
+                checklistId: targetChecklistId,
+                segmentId: segment.id,
+                queuedAt: new Date().toISOString(),
+              }).then(
+                () => setOfflineNotice(
+                  "Offline gespeichert — wird synchronisiert, sobald du wieder online bist.",
+                ),
+                () => setOfflineNotice(
+                  "Offline-Speichern ist fehlgeschlagen (erneut versuchen, sobald online).",
+                ),
+              );
+            } else {
+              setOfflineNotice(null);
+            }
+          }}
+        >
           <SegmentMutationFields workspaceId={workspaceId} projectId={projectId} checklistId={checklistId}
             segmentId={segment.id} baseVersion={baseVersion} operation="complete" />
           <button
@@ -578,6 +625,11 @@ function SegmentGroup({
           {hasUnsavedChanges ? (
             <p className="mt-2 text-xs font-semibold text-amber-700">
               Änderungen zuerst speichern, dann das Segment abschließen.
+            </p>
+          ) : null}
+          {offlineNotice !== null ? (
+            <p role="status" className="mt-2 text-xs font-semibold text-slate-700">
+              {offlineNotice}
             </p>
           ) : null}
         </form>
