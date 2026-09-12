@@ -2526,6 +2526,32 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F10-12 (0137): Download-Protokoll — workspace-FK + Invite-FK
+  // (CASCADE), RLS tenant_isolation, keine Actor-Policies.
+  // Eigenständig (Muster portal_view_log): eigener Invite, da die
+  // Fixture-Reihenfolge keine Abhängigkeit trägt.
+  portal_download_log: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const inviteId = randomUUID();
+    await tx.execute(sql`
+      insert into portal_invite (
+        id, workspace_id, project_id, token_hash, expires_at, created_by
+      ) values (
+        ${inviteId}::uuid, ${wsId}::uuid, ${projectId}::uuid,
+        decode(md5(random()::text) || md5(random()::text), 'hex'), now() + interval '14 days', ${userId}::uuid
+      )
+    `);
+    await tx.execute(sql`
+      insert into portal_download_log (
+        id, workspace_id, portal_invite_id, issuance_id
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, ${inviteId}::uuid,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
   // F9-07 (0093): Abrechnungslauf — nur workspace-FK, RLS
   // tenant_isolation, keine Actor-Policies, kein Delete.
   billing_run: async (tx, wsId) => {

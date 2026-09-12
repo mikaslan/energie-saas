@@ -91,7 +91,7 @@ export function PortalSection({
       <h2 id="portal-heading" className="text-lg font-semibold text-slate-950">Kundenportal</h2>
       <p className="mt-1 text-sm leading-6 text-slate-600">
         {active
-          ? `Aktiver Link — gültig bis ${formatDateTime(active.expiresAt)}, ${active.viewCount} Aufrufe.`
+          ? `Aktiver Link — gültig bis ${formatDateTime(active.expiresAt)}, ${active.viewCount} Aufrufe, ${active.downloadCount} Downloads.`
           : "Kein aktiver Link. Genau ein Link je Projekt; ein neuer Link zieht den alten zurück."}
       </p>
       {message !== "" ? (

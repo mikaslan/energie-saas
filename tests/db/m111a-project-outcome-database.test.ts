@@ -228,10 +228,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0133 F7-14 Abnahme-Historie,
     // 0134 F8-13 Betrag (nur CHECKs),
     // 0135 F8-15 Portal-Rechnungssicht (nur DEFINER-Replace + Grant),
-    // 0136 F16-08 Planungs-Vorlagen (Tabelle + RLS)).
+    // 0136 F16-08 Planungs-Vorlagen (Tabelle + RLS),
+    // 0137 F10-12 Download-Protokoll (Tabelle + RLS + DEFINER-Replace)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 136,
-      tag: "0136_f16_08_planungs_vorlagen",
+      idx: 137,
+      tag: "0137_f10_12_download_protokoll",
     });
   });
 

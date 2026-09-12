@@ -667,6 +667,8 @@ const BLOCK_TEAM_ASSIGNMENT_RELATIONS = [
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
+  // F10-12: Download-Protokoll (DEFINER schreibt, Runtime liest).
+  "portal_download_log",
 ] as const;
 
 // RLS-FREIER Token-Locator des oeffentlichen Kundenportal-Links (F10.1,
@@ -2730,14 +2732,18 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     await client.query(`
       revoke all privileges on
         public.portal_invite,
-        public.portal_view_log
+        public.portal_view_log,
+        public.portal_download_log
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.portal_invite to app_runtime;
       -- portal_view_log: bewusst KEIN INSERT fuer app_runtime (Review-Fund:
       -- sonst koennte jeder Viewer View-Counts aufblaehen). Einziger
       -- Schreiber ist resolve_portal_public_view (SECURITY DEFINER).
-      grant select on public.portal_view_log to app_runtime
+      grant select on public.portal_view_log to app_runtime;
+      -- F10-12 portal_download_log: gleiche Form (einziger Schreiber ist
+      -- read_portal_issuance_artifact, SECURITY DEFINER).
+      grant select on public.portal_download_log to app_runtime
     `);
   }
 
@@ -4297,6 +4303,19 @@ export async function verifyRoleContract(
        and routine.proname = 'read_portal_issuance_artifact'
   `);
   const hasPortalDocumentDownload = portalDocumentDownloadProbe.rows.length > 0;
+  // F10-12 (0137): Stufenmarker für den Download-Insert in der
+  // Artefakt-Kapsel (prosrc enthält portal_download_log).
+  const portalDownloadLogProbe = await client.query<{ source: string | null }>(`
+    select routine.prosrc as source
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'public'
+       and routine.proname = 'read_portal_issuance_artifact'
+  `);
+  const hasPortalDownloadLog = portalDownloadLogProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("portal_download_log"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -5682,12 +5701,16 @@ export async function verifyRoleContract(
           "3de3363d0bc92738bea5a02a28373e736fae762dd9783b470b9ad423c7123ca9",
         ] : []),
         // F10-07 (0116): Portal-Dokument-Download (Muster fulfill).
+        // F10-12 (0137): Download-Insert (Marker portal_download_log;
+        // Hash aus dem Migrationsrumpf, Methode gegen 0116-Pin bewiesen).
         ...(hasPortalDocumentDownload ? [
         "read_portal_issuance_artifact(bytea, uuid):" +
           "TABLE(offer_number text, document_date date, artifact_mime_type text, " +
           "artifact_sha256_hex text, artifact_size_bytes integer, artifact_bytes bytea):" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
-          "840724837e6fed12d9778416d7d8b4c1d9cd39c8d77cc79d116c09ed447e6eaf",
+          (hasPortalDownloadLog
+            ? "0c42e75eab8371ffc1fdc085d67fa393dfd70b4b1e7a350a2d8f23154116ba03"
+            : "840724837e6fed12d9778416d7d8b4c1d9cd39c8d77cc79d116c09ed447e6eaf"),
         ] : []),
         // F13-06 (0107): Kundenbestätigung (Muster fulfill, Marker
         // hasPortalService — gleiche Migration wie die Projektion).
@@ -6676,6 +6699,9 @@ export async function verifyRoleContract(
           "portal_view_log:portal_view_log_actor_insert:3fa580d9e09fdd99cd325f6770593b1c4c45de357414455f0b44c2e2619323f8",
           "portal_view_log:portal_view_log_actor_select:67613a5e7d2dbe2e22b0bef7c928c0b2b7f1b93e18d3911aabfc85a87ab4e44c",
           "portal_view_log:tenant_isolation:c9b3c9ffd92590268fcdb651f22801033f05c0ef9a5dc801ed517b4431478bca",
+          // F10-12 (0137): Download-Protokoll (Hash per Embedded-Probe
+          // geerntet, Muster file_request/portal_view_log).
+          "portal_download_log:tenant_isolation:9fa677bc5364b066c5506a352bfc6fec403781e5b65a294eedfa9f438bfb96cc",
         ] : []),
       ] : []),
     ],

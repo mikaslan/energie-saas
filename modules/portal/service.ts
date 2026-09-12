@@ -103,6 +103,8 @@ export type PortalStatusResult = {
     inviteId: string;
     expiresAt: string;
     viewCount: number;
+    // F10-12: protokollierte Dokument-Downloads je aktivem Invite.
+    downloadCount: number;
   } | null;
 };
 
@@ -359,7 +361,10 @@ export async function getPortalStatus(
       select invite.id, invite.expires_at,
         (select count(*)::integer from public.portal_view_log as view_record
           where view_record.workspace_id = invite.workspace_id
-            and view_record.portal_invite_id = invite.id) as view_count
+            and view_record.portal_invite_id = invite.id) as view_count,
+        (select count(*)::integer from public.portal_download_log as download_record
+          where download_record.workspace_id = invite.workspace_id
+            and download_record.portal_invite_id = invite.id) as download_count
         from public.portal_invite as invite
        where invite.workspace_id = ${command.workspaceId}::uuid
          and invite.project_id = ${command.projectId}::uuid
@@ -375,10 +380,16 @@ export async function getPortalStatus(
     id: uuidSchema,
     expires_at: instantSchema,
     view_count: z.int().safe().min(0),
+    download_count: z.int().safe().min(0),
   }).safeParse(rows[0]);
   if (!row.success) throw new PortalIntegrityError();
   return {
-    active: { inviteId: row.data.id, expiresAt: row.data.expires_at, viewCount: row.data.view_count },
+    active: {
+      inviteId: row.data.id,
+      expiresAt: row.data.expires_at,
+      viewCount: row.data.view_count,
+      downloadCount: row.data.download_count,
+    },
   };
 }
 

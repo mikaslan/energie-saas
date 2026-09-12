@@ -99,9 +99,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F7-14 Abnahme-Historie (0133, Tabelle + RLS),
 //   F8-13 Betrag (0134, nur CHECKs),
 //   F8-15 Portal-Rechnungssicht (0135, nur DEFINER-Replace + Grant),
-//   F16-08 Planungs-Vorlagen (0136, Tabelle + RLS)
-// => 137 Migrationen (idx 0..136).
-const TOTAL_MIGRATION_COUNT = 137;
+//   F16-08 Planungs-Vorlagen (0136, Tabelle + RLS),
+//   F10-12 Download-Protokoll (0137, Tabelle + RLS + DEFINER-Replace)
+// => 138 Migrationen (idx 0..137).
+const TOTAL_MIGRATION_COUNT = 138;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -417,8 +418,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 136,
-        tag: "0136_f16_08_planungs_vorlagen",
+        idx: 137,
+        tag: "0137_f10_12_download_protokoll",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,
