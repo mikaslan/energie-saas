@@ -25,6 +25,7 @@ import {
 } from "./actions";
 import type { BreakSegmentDto } from "@/modules/time-tracking";
 import { enqueueTimeCreate } from "./time-outbox";
+import { IdleHint } from "./idle-hint";
 
 const initialState: TimeEntryActionState = { status: "idle" };
 
@@ -287,6 +288,15 @@ export function TimeEntryManager({
               </button>
             </form>
           </div>
+          {/* F9-09 Idle-Hinweis (nur ohne offene Pause — sonst läuft bereits eine). */}
+          {(breakTotalsByEntry[runningEntry.id]?.openBreak ?? false) === false ? (
+            <IdleHint
+              workspaceId={workspaceId}
+              projectId={projectId}
+              entryId={runningEntry.id}
+              startDispatch={breakStartDispatch}
+            />
+          ) : null}
         </section>
       ) : canWrite ? (
         <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
