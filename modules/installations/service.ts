@@ -71,6 +71,15 @@ export type InstallationMemberOption = {
   label: string;
 };
 
+// F7-14 Abnahme-Historie: lesende Projektion je Verlaufseintrag
+// (Wer/Notiz/Zeit). Keine IDs/Akteure — Freitext-Name wie F7-05.
+export type InstallationHandoverHistoryEntry = {
+  id: string;
+  byName: string;
+  note: string | null;
+  recordedAt: string;
+};
+
 type InstallationRow = {
   id: string;
   project_id: string;
@@ -359,6 +368,19 @@ export async function recordHandover(
        and project_id = ${command.projectId}::uuid
     returning ${ROW_COLUMNS}
   `);
+  const head = updated.rows[0];
+  if (!head) throw new InstallationValidationError();
+
+  // F7-14: Verlaufseintrag in derselben Transaktion (Kopf + Historie
+  // sind atomar; Historie ohne Kopf gibt es nicht).
+  await tx.execute(sql`
+    insert into installation_handover (
+      workspace_id, installation_id, by_name, note, recorded_by
+    ) values (
+      ${ctx.workspaceId}::uuid, ${head.id}::uuid,
+      ${command.byName}, ${note}, ${ctx.actor}::uuid
+    )
+  `);
 
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
@@ -378,6 +400,53 @@ export async function recordHandover(
   });
 
   return toDto(updated.rows[0]!, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F7-14 Abnahme-Historie (lesend): Verlauf je Projekt-Installation,
+// aufsteigend. installation.read, keine neue Permission. Fremde oder
+// fehlende Installation → NotFound ohne Orakel.
+// ═══════════════════════════════════════════════════════════════════════
+
+type HandoverHistoryRow = {
+  id: string;
+  by_name: string;
+  note: string | null;
+  recorded_at: string;
+};
+
+function toIso(value: string): string {
+  return new Date(value).toISOString();
+}
+
+export async function listInstallationHandovers(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string },
+): Promise<InstallationHandoverHistoryEntry[]> {
+  requireRead(ctx);
+  const parsed = z.strictObject({ projectId: uuidSchema }).safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+  const head = await tx.execute<{ id: string }>(sql`
+    select id from installation
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${parsed.data.projectId}::uuid
+  `);
+  const installationId = head.rows[0]?.id;
+  if (!installationId) throw new InstallationNotFoundError(parsed.data.projectId);
+  const rows = await tx.execute<HandoverHistoryRow>(sql`
+    select id, by_name, note, recorded_at
+      from installation_handover
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and installation_id = ${installationId}::uuid
+     order by recorded_at asc, id asc
+  `);
+  return rows.rows.map((row) => ({
+    id: row.id,
+    byName: row.by_name,
+    note: row.note,
+    recordedAt: toIso(row.recorded_at),
+  }));
 }
 
 function postgresErrorCode(error: unknown): string | null {

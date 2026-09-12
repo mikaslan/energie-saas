@@ -63,7 +63,7 @@ import {
   type AppointmentTemplateDto,
   type ProjectAppointmentRangeV1,
 } from "@/modules/calendar";
-import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallerOptions, type InstallableVariantOption, type InstallationDto, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
+import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallationHandovers, listInstallerOptions, type InstallableVariantOption, type InstallationDto, type InstallationHandoverHistoryEntry, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
 import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
 import { listOrderParts, type OrderPartDto } from "@/modules/order-parts";
 import {
@@ -248,6 +248,7 @@ type InstallationLoadResult =
       kind: "loaded";
       installation: InstallationDto | null;
       installerOptions: InstallationMemberOption[];
+      handoverHistory: InstallationHandoverHistoryEntry[];
       canWrite: boolean;
       variants: InstallableVariantOption[];
       workbook: InstallationWorkbook | null;
@@ -432,7 +433,15 @@ async function loadInstallationStatus(
       "installation_workbook",
       (tx, ctx) => getInstallationWorkbook(tx, ctx, { projectId }),
     );
-    return { kind: "loaded", installation, installerOptions, canWrite: writable, variants, workbook };
+    // F7-14 Abnahme-Historie: nur bei vorhandener Installation lesen
+    // (listInstallationHandovers wirft ohne Installation NotFound).
+    const handoverHistory = installation === null ? [] : await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation_handover_history",
+      (tx, ctx) => listInstallationHandovers(tx, ctx, { projectId }),
+    );
+    return { kind: "loaded", installation, installerOptions, handoverHistory, canWrite: writable, variants, workbook };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1256,6 +1265,7 @@ export default async function ProjectTriagePage({
             projectId={projectId}
             installation={installationResult.installation}
             installerOptions={installationResult.installerOptions}
+            handoverHistory={installationResult.handoverHistory}
             canWrite={installationResult.canWrite}
           />
           <InstallationWorkbookPanel

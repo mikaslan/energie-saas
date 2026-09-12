@@ -25,6 +25,7 @@ export * from "./events";
 export * from "./energy";
 export * from "./erasure";
 export * from "./installation";
+export * from "./installation-handover";
 export * from "./intake";
 export * from "./invoicing";
 export * from "./lead-source";

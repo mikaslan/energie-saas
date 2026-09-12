@@ -34,4 +34,6 @@ extern blockiert, Q-ARCHIV-OBJECT-LOCK-REFERENZ).
 
 ## Bewusst offen
 - Kunden-Gegenzeichnung im Portal (Blocker siehe oben),
-  Disposition/Terminplanung, Mehrfach-Abnahmen mit Historie.
+  Disposition/Terminplanung.
+- Mehrfach-Abnahmen mit Historie sind seit 2026-09-12 in F7-14
+  belegt (append-only Verlauf, Kopf bleibt aktuelle Abnahme).

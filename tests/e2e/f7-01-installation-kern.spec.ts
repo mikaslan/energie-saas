@@ -218,13 +218,86 @@ test("F7-05-E2E-01: Abnahme — Wer/Wann/Notiz sichtbar", async ({ page }) => {
   await section.getByLabel("Notiz (optional)").fill("Zähler läuft.");
   await section.getByRole("button", { name: "Abnahme speichern", exact: true }).click();
   await expect(section.getByText("Abnahme festgehalten.")).toBeVisible();
-  await expect(section.getByText("Familie Berger")).toBeVisible();
-  await expect(section.getByText("Zähler läuft.")).toBeVisible();
+  // Exakt: Der Abnahme-Verlauf (F7-14) zeigt denselben Namen als längeren
+  // Listeneintrag („Abnahme 1: …“) — der Kopf bleibt die exakte Fundstelle.
+  await expect(section.getByText("Familie Berger", { exact: true })).toBeVisible();
+  await expect(section.getByText("Zähler läuft.", { exact: true })).toBeVisible();
 
   await expect.poll(async () => readInstallation(), {
     message: "Die Abnahme muss in der DB sichtbar sein.",
     timeout: 15_000,
   }).toMatchObject({ handoverByName: "Familie Berger" });
+
+  expect(errors, "Browser-Konsole und Page-Errors der Abnahme-Grenze").toEqual([]);
+});
+
+async function readHandoverNames(): Promise<string[]> {
+  const data = state();
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
+  try {
+    const result = await pool.query(
+      `select h.by_name as "byName"
+         from installation_handover h
+         join installation i
+           on i.workspace_id = h.workspace_id
+          and i.id = h.installation_id
+        where h.workspace_id = $1::uuid
+          and i.project_id = $2::uuid
+        order by h.recorded_at asc, h.id asc`,
+      [data.w3WorkspaceId, data.f71ProjectId],
+    );
+    return result.rows.map((row) => (row as { byName: string }).byName);
+  } finally {
+    await endPoolAndWaitForClientRemoval(pool);
+  }
+}
+
+test("F714-E2E-01: Abnahme-Verlauf — zwei Abnahmen bleiben beide sichtbar", async ({ page }) => {
+  test.setTimeout(150_000);
+  const data = state();
+  const errors = trackErrors(page);
+
+  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f71ProjectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, data.editorEmail, projectPath);
+
+  const section = installationSection(page);
+  await expect(section).toBeVisible();
+  // Eigenständig: Anlage + Abschluss falls noch nicht geschehen
+  // (Vollsuite teilt sich die frische DB in Datei-Reihenfolge).
+  const createButton = section.getByRole("button", { name: "Installation direkt anlegen", exact: true });
+  if (await createButton.count() > 0) {
+    await createButton.click();
+    await expect(section.getByText("Installation angelegt")).toBeVisible();
+  }
+  const completeButton = section.getByRole("button", { name: "Installation abschließen", exact: true });
+  if (await completeButton.count() > 0) {
+    await completeButton.click();
+    await expect(section.getByText("Installation abgeschlossen.")).toBeVisible();
+  }
+  await section.getByLabel("Abgenommen durch").fill("Verlauf A");
+  await section.getByLabel("Notiz (optional)").fill("Notiz A.");
+  await section.getByRole("button", { name: "Abnahme speichern", exact: true }).click();
+  await expect(section.getByText("Abnahme festgehalten.")).toBeVisible();
+
+  await section.getByLabel("Abgenommen durch").fill("Verlauf B");
+  await section.getByLabel("Notiz (optional)").fill("");
+  await section.getByRole("button", { name: "Abnahme speichern", exact: true }).click();
+  await expect(section.getByText("Abnahme festgehalten.")).toBeVisible();
+
+  // Verlauf zeigt BEIDE Abnahmen (plus ggf. frühere aus F7-05-E2E-01).
+  const history = section.getByTestId("handover-history");
+  await expect(history).toBeVisible();
+  await expect(history.getByText("Verlauf A")).toBeVisible();
+  await expect(history.getByText("Verlauf B")).toBeVisible();
+  await expect(history.getByText("Notiz A.")).toBeVisible();
+
+  // DB-Read-back: beide Namen im Verlauf (Reihenfolge egal — Datei-
+  // Reihenfolge der Vollsuite legt ggf. F7-05-Einträge davor).
+  await expect.poll(async () => readHandoverNames(), {
+    message: "Beide Abnahmen müssen im Verlauf der DB sichtbar sein.",
+    timeout: 15_000,
+  }).toEqual(expect.arrayContaining(["Verlauf A", "Verlauf B"]));
 
   expect(errors, "Browser-Konsole und Page-Errors der Abnahme-Grenze").toEqual([]);
 });

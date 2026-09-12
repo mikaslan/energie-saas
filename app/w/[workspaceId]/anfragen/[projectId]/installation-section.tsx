@@ -1,7 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import type { InstallationDto, InstallationMemberOption } from "@/modules/installations";
+import type {
+  InstallationDto,
+  InstallationHandoverHistoryEntry,
+  InstallationMemberOption,
+} from "@/modules/installations";
 import {
   completeInstallationAction,
   createInstallationAction,
@@ -60,12 +64,14 @@ export function InstallationSection({
   projectId,
   installation,
   installerOptions,
+  handoverHistory,
   canWrite,
 }: {
   workspaceId: string;
   projectId: string;
   installation: InstallationDto | null;
   installerOptions: InstallationMemberOption[];
+  handoverHistory: InstallationHandoverHistoryEntry[];
   canWrite: boolean;
 }) {
   const [createState, createDispatch] = useActionState(createInstallationAction, initialState);
@@ -234,6 +240,26 @@ export function InstallationSection({
             Abnahme speichern
           </button>
         </form>
+      ) : null}
+
+      {installation !== null && handoverHistory.length > 0 ? (
+        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4" data-testid="handover-history">
+          <h3 className="text-sm font-semibold text-slate-950">Abnahme-Verlauf</h3>
+          <ul className="mt-2 grid gap-2" aria-label="Abnahme-Verlauf">
+            {handoverHistory.map((entry, index) => (
+              <li key={entry.id} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+                <span className="font-semibold text-slate-800">Abnahme {index + 1}:</span>{" "}
+                {entry.byName} · {formatDateTime(entry.recordedAt)}
+                {entry.note ? (
+                  <>
+                    {" — "}
+                    {entry.note}
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       <Feedback state={feedbackState} />

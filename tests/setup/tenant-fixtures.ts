@@ -2589,6 +2589,22 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${wsId}::uuid, ${partId}::uuid, ${userId}::uuid, 'F7-12 Fixture-Thread')
     `);
   },
+  // F7-14 (0133): Abnahme-Verlauf an echter Installation (eigener
+  // Projektgraph + Installation, damit FKs/CHECKs passieren und nur
+  // die RLS-Policy über Cross-Tenant-Schreibversuche entscheidet).
+  installation_handover: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"installation":true}');
+    const installationId = randomUUID();
+    await tx.execute(sql`
+      insert into installation (id, workspace_id, project_id, source, status)
+      values (${installationId}::uuid, ${wsId}::uuid, ${projectId}::uuid, 'direct', 'active')
+    `);
+    await tx.execute(sql`
+      insert into installation_handover (workspace_id, installation_id, by_name, note, recorded_by)
+      values (${wsId}::uuid, ${installationId}::uuid, 'F714 Fixture', null, ${userId}::uuid)
+    `);
+  },
   // F13-01 (0086): Servicevorgang zu einem echten Projektgraphen.
   service_case: async (tx, wsId) => {
     const { projectId } = await fixtureProjectGraph(tx, wsId);
