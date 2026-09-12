@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import type {
   TimeEntryDto,
   TimeEntryListDto,
@@ -24,7 +24,17 @@ import {
   type TimeEntryActionState,
 } from "./actions";
 import type { BreakSegmentDto } from "@/modules/time-tracking";
-import { enqueueTimeCreate } from "./time-outbox";
+import {
+  enqueueTimeCreate,
+  putTimerStart,
+  readTimerStart,
+  removeTimerStart,
+} from "./time-outbox";
+import {
+  buildTimerPairCreate,
+  timerStartKey,
+  type QueuedTimerStart,
+} from "./time-timer-outbox";
 import { IdleHint } from "./idle-hint";
 
 const initialState: TimeEntryActionState = { status: "idle" };
@@ -179,6 +189,172 @@ export function TimeEntryManager({
   const [queueing, setQueueing] = useState(false);
   const [queueError, setQueueError] = useState(false);
   const [offlineNotice, setOfflineNotice] = useState("");
+  // F11-03c: eigenes Action-State für das Online-Replay wartender
+  // Offline-Starts (getrennt vom manuellen Formular, damit dessen
+  // Feedback unberührt bleibt; kein useRouter — SSR-Test).
+  const [replayState, replayDispatch] = useActionState(createTimeEntryAction, initialState);
+  const [, startReplayTransition] = useTransition();
+  const replayArmed = useRef(false);
+
+  // F11-03c: wartender Offline-Start der Stoppuhr (IDB, ein Start je
+  // Projekt). `undefined` = noch nicht geladen.
+  const [pendingStart, setPendingStart] = useState<QueuedTimerStart | null | undefined>(undefined);
+  const [timerBusy, setTimerBusy] = useState(false);
+  const [timerNotice, setTimerNotice] = useState("");
+  const [timerError, setTimerError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    readTimerStart(workspaceId, projectId).then(
+      (found) => {
+        if (!cancelled) setPendingStart(found);
+      },
+      () => {
+        // Ohne IndexedDB keine wartenden Starts (App bleibt nutzbar).
+        if (!cancelled) setPendingStart(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, workspaceId]);
+
+  const queueOfflineStart = useCallback(async (): Promise<boolean> => {
+    setTimerBusy(true);
+    setTimerError("");
+    try {
+      const now = new Date().toISOString();
+      const record: QueuedTimerStart = {
+        key: timerStartKey(workspaceId, projectId),
+        workspaceId,
+        projectId,
+        typeId: null,
+        comment: null,
+        startAt: now,
+        queuedAt: now,
+      };
+      await putTimerStart(record);
+      setPendingStart(record);
+      setTimerNotice("Offline gestartet. Die Zeit läuft, bis du stoppst (ohne Standort).");
+      return true;
+    } catch {
+      setTimerError("Der Offline-Start konnte nicht gespeichert werden.");
+      return false;
+    } finally {
+      setTimerBusy(false);
+    }
+  }, [projectId, workspaceId]);
+
+  const discardPendingStart = useCallback(async () => {
+    setTimerBusy(true);
+    setTimerError("");
+    try {
+      await removeTimerStart(workspaceId, projectId);
+      setPendingStart(null);
+      setTimerNotice("");
+    } catch {
+      setTimerError("Der wartende Start konnte nicht verworfen werden.");
+    } finally {
+      setTimerBusy(false);
+    }
+  }, [projectId, workspaceId]);
+
+  const stopPendingStart = useCallback(async () => {
+    if (!pendingStart) return;
+    setTimerBusy(true);
+    setTimerError("");
+    setTimerNotice("");
+    const pair = buildTimerPairCreate({
+      clientKey: crypto.randomUUID(),
+      workspaceId,
+      projectId,
+      typeId: pendingStart.typeId,
+      comment: pendingStart.comment,
+      startAt: pendingStart.startAt,
+      endAt: new Date().toISOString(),
+      queuedAt: new Date().toISOString(),
+    });
+    if (!pair.ok) {
+      setTimerError(
+        pair.reason === "too-long"
+          ? "Der Offline-Zeitraum ist länger als 24 Stunden und kann nicht übernommen werden. Erfasse ihn manuell und verwerfe dann den wartenden Start."
+          : "Der Offline-Zeitraum ist ungültig. Der wartende Start bleibt erhalten.",
+      );
+      setTimerBusy(false);
+      return;
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      // Offline: Paar in die Zeit-Outbox (Sync von F11-03b).
+      try {
+        await enqueueTimeCreate(pair.entry);
+        await removeTimerStart(workspaceId, projectId);
+        setPendingStart(null);
+        setTimerNotice("Offline gestoppt. Der Eintrag wird synchronisiert, sobald du wieder online bist.");
+      } catch {
+        setTimerError("Der Offline-Stopp konnte nicht gespeichert werden.");
+      } finally {
+        setTimerBusy(false);
+      }
+      return;
+    }
+    // Online: über die normale Server-Action replayen (eigener
+    // Action-State; der clientKey-Guard macht Doppel-Syncs sicher,
+    // die Action-Revalidierung aktualisiert die Liste).
+    const formData = new FormData();
+    formData.set("workspaceId", workspaceId);
+    formData.set("projectId", pair.entry.projectId);
+    formData.set("typeId", pair.entry.typeId ?? "");
+    formData.set("startAt", pair.entry.startAt);
+    formData.set("endAt", pair.entry.endAt);
+    formData.set("workingTimeMinutes", String(pair.entry.workingTimeMinutes));
+    formData.set("breakDurationMinutes", String(pair.entry.breakDurationMinutes));
+    formData.set("comment", pair.entry.comment ?? "");
+    formData.set("clientKey", pair.entry.clientKey);
+    replayArmed.current = true;
+    startReplayTransition(() => {
+      replayDispatch(formData);
+    });
+  }, [pendingStart, projectId, workspaceId]);
+
+  // F11-03c: Ergebnis des Online-Replays einsammeln. Nur der eigene
+  // Replay-Lauf (replayArmed) räumt den wartenden Start — das
+  // manuelle Formular teilt sich diesen State nicht. Die Einlösung
+  // läuft in einer Async-Funktion (Muster syncNow), nicht direkt im
+  // Effect-Rumpf.
+  const settleReplay = useCallback(async (status: TimeEntryActionState["status"]): Promise<void> => {
+    if (status === "success") {
+      try {
+        await removeTimerStart(workspaceId, projectId);
+        setPendingStart(null);
+      } catch {
+        setTimerError("Der wartende Start konnte nicht aufgeräumt werden.");
+      }
+      setTimerNotice("Offline-Zeit übernommen und gespeichert.");
+      setTimerBusy(false);
+      return;
+    }
+    if (status === "invalid" || status === "not_found" || status === "denied") {
+      try {
+        await removeTimerStart(workspaceId, projectId);
+        setPendingStart(null);
+      } catch {
+        setTimerError("Der wartende Start konnte nicht aufgeräumt werden.");
+      }
+      setTimerError("Der Offline-Zeitraum wurde serverseitig endgültig abgelehnt.");
+      setTimerBusy(false);
+      return;
+    }
+    // Unerwarteter Terminal-Status: Start bleibt wartend, Stopp ist
+    // wiederholbar.
+    setTimerError("Der Offline-Zeitraum konnte nicht gespeichert werden. Später erneut stoppen.");
+    setTimerBusy(false);
+  }, [projectId, workspaceId]);
+
+  useEffect(() => {
+    if (!replayArmed.current || replayState.status === "idle") return;
+    replayArmed.current = false;
+    void settleReplay(replayState.status);
+  }, [replayState, settleReplay]);
 
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     // Online: Idempotenz-Schlüssel je Absendung mitgeben (Replay-Guard).
@@ -305,12 +481,54 @@ export function TimeEntryManager({
             workspaceId={workspaceId}
             projectId={projectId}
             dispatch={startDispatch}
+            queueOfflineStart={queueOfflineStart}
           />
         </section>
       ) : null}
       {startState.status !== "idle" ? <Feedback state={startState} /> : null}
       {stopState.status !== "idle" ? <Feedback state={stopState} /> : null}
       {discardState.status !== "idle" ? <Feedback state={discardState} /> : null}
+      {canWrite && pendingStart ? (
+        <section
+          className="min-w-0 rounded-lg border border-brand-200 bg-brand-50 p-5 shadow-sm sm:p-6"
+          data-testid="timer-offline-pending"
+        >
+          <h2 className="text-base font-semibold text-slate-950">Stoppuhr offline gestartet</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-700">
+            Beginn: {formatBerlinDateTime(pendingStart.startAt)} Uhr (Geräte-Zeit, ohne Standort)
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void stopPendingStart()}
+              disabled={timerBusy}
+              data-testid="timer-offline-stop"
+              className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-60"
+            >
+              {timerBusy ? "Wird gestoppt …" : "Stoppen"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void discardPendingStart()}
+              disabled={timerBusy}
+              data-testid="timer-offline-discard"
+              className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-60"
+            >
+              Verwerfen
+            </button>
+          </div>
+        </section>
+      ) : null}
+      {timerNotice !== "" ? (
+        <p role="status" data-testid="timer-offline-notice" className="mt-3 text-sm font-semibold text-green-700">
+          {timerNotice}
+        </p>
+      ) : null}
+      {timerError !== "" ? (
+        <p role="alert" className="mt-3 text-sm font-semibold text-red-700">
+          {timerError}
+        </p>
+      ) : null}
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-semibold text-slate-950">Zeiteinträge</h2>
@@ -543,10 +761,12 @@ function StartForm({
   workspaceId,
   projectId,
   dispatch,
+  queueOfflineStart,
 }: {
   workspaceId: string;
   projectId: string;
   dispatch: (formData: FormData) => void;
+  queueOfflineStart: () => Promise<boolean>;
 }) {
   const formRef = useRef<HTMLFormElement | null>(null);
   const latRef = useRef<HTMLInputElement | null>(null);
@@ -563,7 +783,13 @@ function StartForm({
     formRef.current?.requestSubmit();
   };
 
-  const handleStart = (): void => {
+  const handleStart = async (): Promise<void> => {
+    // F11-03c: Offline-Start in die Stoppuhr-Outbox (ohne Standort —
+    // Geolocation braucht kein Netz, aber der Server-Stand fehlt).
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await queueOfflineStart();
+      return;
+    }
     if (!consent || typeof navigator === "undefined" || !navigator.geolocation) {
       formRef.current?.requestSubmit();
       return;
@@ -609,7 +835,7 @@ function StartForm({
       </label>
       <button
         type="button"
-        onClick={handleStart}
+        onClick={() => void handleStart()}
         disabled={locating}
         className="mt-3 min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-60"
       >

@@ -21,13 +21,18 @@ export type QueuedTimeCreate = {
 
 const DB_NAME = "wmee-time-outbox";
 const STORE_NAME = "time-creates";
+// F11-03c: wartende Offline-Starts der Stoppuhr (ein Start je Projekt).
+const TIMER_STORE_NAME = "timer-starts";
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
+    const request = indexedDB.open(DB_NAME, 2);
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME, { keyPath: "clientKey" });
+      }
+      if (!request.result.objectStoreNames.contains(TIMER_STORE_NAME)) {
+        request.result.createObjectStore(TIMER_STORE_NAME, { keyPath: "key" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -36,14 +41,15 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 function withStore<T>(
+  storeName: string,
   mode: IDBTransactionMode,
   run: (store: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T> {
   return openDatabase().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, mode);
-        const store = tx.objectStore(STORE_NAME);
+        const tx = db.transaction(storeName, mode);
+        const store = tx.objectStore(storeName);
         let value: T | undefined;
         let failed: unknown = null;
         let settled = false;
@@ -84,13 +90,42 @@ function withStore<T>(
 }
 
 export async function enqueueTimeCreate(entry: QueuedTimeCreate): Promise<void> {
-  await withStore("readwrite", (store) => store.put(entry));
+  await withStore(STORE_NAME, "readwrite", (store) => store.put(entry));
 }
 
 export async function listQueuedTimeCreates(): Promise<QueuedTimeCreate[]> {
-  return withStore("readonly", (store) => store.getAll());
+  return withStore(STORE_NAME, "readonly", (store) => store.getAll());
 }
 
 export async function removeQueuedTimeCreate(clientKey: string): Promise<void> {
-  await withStore("readwrite", (store) => store.delete(clientKey));
+  await withStore(STORE_NAME, "readwrite", (store) => store.delete(clientKey));
+}
+
+export type QueuedTimerStartRecord = {
+  key: string;
+  workspaceId: string;
+  projectId: string;
+  typeId: string | null;
+  comment: string | null;
+  startAt: string;
+  queuedAt: string;
+};
+
+// F11-03c: genau ein wartender Offline-Start je Projekt (erneutes
+// Starten überschreibt — kein Stapel wartender Starts).
+export async function putTimerStart(entry: QueuedTimerStartRecord): Promise<void> {
+  await withStore(TIMER_STORE_NAME, "readwrite", (store) => store.put(entry));
+}
+
+export async function readTimerStart(workspaceId: string, projectId: string): Promise<QueuedTimerStartRecord | null> {
+  const found = await withStore<QueuedTimerStartRecord | undefined>(
+    TIMER_STORE_NAME,
+    "readonly",
+    (store) => store.get(`${workspaceId}:${projectId}`),
+  );
+  return found ?? null;
+}
+
+export async function removeTimerStart(workspaceId: string, projectId: string): Promise<void> {
+  await withStore(TIMER_STORE_NAME, "readwrite", (store) => store.delete(`${workspaceId}:${projectId}`));
 }

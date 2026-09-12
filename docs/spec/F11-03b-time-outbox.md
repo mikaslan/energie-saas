@@ -24,8 +24,9 @@ eigene Näherung (ESTIMATE).
 
 1. Offline erkannt (`navigator.onLine === false`) → nur manuelle Anlage
    geht in die Outbox (IndexedDB `wmee-time-outbox`/`time-creates`,
-   Schlüssel = clientKey). Stoppuhr, Pausen, Freigabe und Bearbeitungen
-   brauchen den Server-Stand und bleiben online-pflichtig.
+   Schlüssel = clientKey). Online gestartete Stoppuhr, Pausen, Freigabe
+   und Bearbeitungen brauchen den Server-Stand und bleiben
+   online-pflichtig (offline GESTARTETE Stoppuhr: F11-03c).
 2. Sync bei Mount und `online`-Event plus manueller Button; Erfolg und
    endgültige Antworten (`invalid`/`not_found`/`denied`) räumen den
    Eintrag, Netzfehler behalten ihn für den nächsten Versuch.
