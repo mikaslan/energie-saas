@@ -19,10 +19,15 @@ module.exports = {
       comment:
         "Module reden nur über ihre index.ts miteinander (Architektur §1). " +
         "Imports von Interna (service.ts, queries.ts, …) eines FREMDEN Moduls " +
-        "sind verboten; Zugriffe innerhalb des eigenen Moduls bleiben erlaubt.",
+        "sind verboten; Zugriffe innerhalb des eigenen Moduls bleiben erlaubt. " +
+        "Ausnahme NUR errors.ts: reine Fehlerklassen ohne Server-Bindung " +
+        "(kein server-only — siehe modules/offers/errors.ts-Kopf), damit " +
+        "lesende Module und E2E-Seeds Fehler werfen/fangen können, ohne die " +
+        "service-Kette (server-only) zu laden. Jede andere Interna bleibt " +
+        "verboten.",
       severity: "error",
       from: { path: "^modules/([^/]+)/" },
-      to: { path: "^modules/(?!$1/)([^/]+)/(?!index\\.ts$).+" },
+      to: { path: "^modules/(?!$1/)([^/]+)/(?!index\\.ts$|errors\\.ts$).+" },
     },
     {
       name: "lib-kennt-keine-module",
