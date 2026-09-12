@@ -37,6 +37,11 @@ import {
   type OfferDetailSurfaceView,
 } from "./offer-detail-view";
 import { OfferSignaturePanel } from "./offer-signature-panel";
+import { formatUpsellQuantity } from "./offer-format";
+import {
+  OfferUpsellPanel,
+  type UpsellOptionLine,
+} from "./offer-upsell-panel";
 import { OfferInvoiceImportPanel } from "./offer-invoice-import-panel";
 
 export const metadata: Metadata = {
@@ -788,9 +793,33 @@ export default async function OfferDetailPage(
       showPanel: result.showReleasePanel,
     },
   );
+  // F2-06 Slice A: sichtbare optionale Zeilen der aktiven Variante als
+  // Upsell-Checkboxen (reine Projektion versiegelter Beträge).
+  const upsellOptions: UpsellOptionLine[] =
+    projectedView.activeVariant?.snapshot.sections.flatMap((section) =>
+      section.lines
+        .filter((line) => line.positionType === "optional" && !line.isHidden)
+        .map((line) => ({
+          lineDomainId: line.lineDomainId,
+          name: line.product.displayName,
+          quantityLabel: formatUpsellQuantity(line.quantityMilli, line.product.unit),
+          salesGrossCents: line.computed.salesGrossCents,
+        })),
+    ) ?? [];
+  const upsellBasisGrossCents =
+    projectedView.activeVariant?.snapshot.totals.basisGrossCents ?? 0;
+  const upsellVariantId = projectedView.activeVariant?.snapshot.variantId ?? null;
   return (
     <>
       <OfferDetailView view={projectedView} />
+      {upsellVariantId !== null && upsellOptions.length > 0 ? (
+        <OfferUpsellPanel
+          key={upsellVariantId}
+          variantId={upsellVariantId}
+          basisGrossCents={upsellBasisGrossCents}
+          options={upsellOptions}
+        />
+      ) : null}
       <OfferSignaturePanel
         workspaceId={workspaceId}
         offerId={offerId}

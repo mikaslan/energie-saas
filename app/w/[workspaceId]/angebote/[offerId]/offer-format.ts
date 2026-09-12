@@ -2,6 +2,23 @@ const groupedEurosFormatter = new Intl.NumberFormat("de-DE", {
   maximumFractionDigits: 0,
 });
 
+function upsellUnitLabel(unit: string): string {
+  switch (unit) {
+    case "piece": return "Stück";
+    case "set": return "Set";
+    case "meter": return "Meter";
+    default: return unit;
+  }
+}
+
+/** F2-06: Mengenlabel für Upsell-Optionen (serverseitig nutzbar). */
+export function formatUpsellQuantity(quantityMilli: number, unit: string): string {
+  const amount = (quantityMilli / 1000).toLocaleString("de-DE", {
+    maximumFractionDigits: 3,
+  });
+  return `${amount} × ${upsellUnitLabel(unit)}`;
+}
+
 /** Formatiert Centwerte ohne verlustbehaftete Division am Safe-Integer-Rand. */
 export function formatOfferCents(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isSafeInteger(value)) return "–";
