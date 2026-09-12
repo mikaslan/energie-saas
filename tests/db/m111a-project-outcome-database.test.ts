@@ -215,10 +215,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0117 F10-08 Portal-Link-Automatik,
     // 0118 F10-09 Portal-FAQ,
     // 0119 F13-10 Subsidy-Chat,
-    // 0120 F10-10 Datei-Anfragen Allow-many).
+    // 0120 F10-10 Datei-Anfragen Allow-many,
+    // 0121 F8-07 Scheme-Modus, 0122 F8-08 Rest-Schlussrechnung).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 120,
-      tag: "0120_f10_10_file_request_allow_many",
+      idx: 122,
+      tag: "0122_f8_08_rest_schlussrechnung",
     });
   });
 
