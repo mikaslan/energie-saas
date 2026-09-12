@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { expect, test, type Page } from "playwright/test";
@@ -113,47 +114,52 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
   await page.waitForURL((url) => url.pathname === expectedPath);
 }
 
-async function seedSignedOffer(): Promise<{ offerId: string }> {
+async function seedSignedOffer(): Promise<{ workspaceId: string; offerId: string }> {
   const data = state();
+  // Isolierter Workspace (M1-11g-Muster): Der Angebots-Graph zieht per
+  // Fixture-Kette einen Katalog-Bestand herein; im geteilten Workspace
+  // bräche das die exakte Katalogzählung von m1-05-triage (CI 34667557994).
+  const workspaceId = randomUUID();
   const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
-    const admin = await pool.query<{ id: string }>(
-      "select id from user_identity where email = $1",
-      [data.adminEmail],
+    const identities = await pool.query<{ id: string; email: string }>(
+      "select id, email from user_identity where email in ($1, $2)",
+      [data.adminEmail, data.editorEmail],
     );
-    const adminId = admin.rows[0]?.id;
+    const adminId = identities.rows.find((row) => row.email === data.adminEmail)?.id;
+    const editorId = identities.rows.find((row) => row.email === data.editorEmail)?.id;
     if (!adminId) throw new Error("F8-06-E2E: Admin-Identität fehlt.");
-    // Editor bekommt ehrlich Invoicing-Recht (bestehende Caps bleiben).
-    // Ausstellungsdaten (Firma DE + IBAN) sind Import-Voraussetzung des
-    // Services; der Runner seedet sie nur im Preview-Modus — hier ehrlich
-    // pro Spec, idempotent wie der Runner-Seed.
-    await withTenantOn(pool, data.workspaceId, async (tx) => {
+    if (!editorId) throw new Error("F8-06-E2E: Editor-Identität fehlt.");
+    await withTenantOn(pool, workspaceId, async (tx) => {
       await tx.execute(sql`
-        update membership
-           set capabilities = coalesce(capabilities, '{}'::jsonb) || '{"invoicing":true}'::jsonb
-         where workspace_id = ${data.workspaceId}::uuid
-           and user_id = (select id from user_identity where email = ${data.editorEmail})
+        insert into workspace (id, name) values (${workspaceId}::uuid, 'F8-06 isoliert')
       `);
+      await tx.execute(sql`
+        insert into membership (workspace_id, user_id, role, capabilities)
+        values (${workspaceId}::uuid, ${adminId}::uuid, 'admin', '{}'::jsonb),
+               (${workspaceId}::uuid, ${editorId}::uuid, 'editor', '{"invoicing":true}'::jsonb)
+      `);
+      // Ausstellungsdaten (Firma DE + IBAN) sind Import-Voraussetzung des
+      // Services; der Runner seedet sie nur im Preview-Modus.
       await tx.execute(sql`
         insert into workspace_invoicing_settings (
           id, workspace_id, company_name, company_email, company_country,
           company_address_line1, company_postal_code, company_city,
           accounting_method, revision, created_by,
           payment_account_holder, payment_iban, payment_bic
-        ) select gen_random_uuid(), ${data.workspaceId}::uuid, 'Solarwerk Demo GmbH',
+        ) values (
+          gen_random_uuid(), ${workspaceId}::uuid, 'Solarwerk Demo GmbH',
           'rechnung@demo.invalid', 'DE', 'Musterstraße 1', '10115', 'Berlin',
-          'accrual', 1, (select id from user_identity where email = ${data.editorEmail} limit 1),
+          'accrual', 1, ${editorId}::uuid,
           'Solarwerk Demo GmbH', 'DE89370400440532013000', 'MARKDEF1100'
-         where not exists (
-           select 1 from workspace_invoicing_settings where workspace_id = ${data.workspaceId}::uuid
-         )
+        )
       `);
     });
     const { graph } = await seedSignedGraphDirect(pool, {
-      workspaceId: data.workspaceId,
+      workspaceId,
       adminId,
     });
-    return { offerId: graph.offerId };
+    return { workspaceId, offerId: graph.offerId };
   } finally {
     await endPoolAndWaitForClientRemoval(pool);
   }
@@ -171,8 +177,8 @@ test("F8-06-E2E-01: signiertes Angebot übernehmen → Rechnung mit Positionen",
   test.setTimeout(180_000);
   const data = state();
   const errors = trackBrowserErrors(page);
-  const { offerId } = await seedSignedOffer();
-  const path = `/w/${data.workspaceId}/angebote/${offerId}`;
+  const { workspaceId, offerId } = await seedSignedOffer();
+  const path = `/w/${workspaceId}/angebote/${offerId}`;
 
   // Die Angebotsseite rendert ohne Sitzung einen Inline-Hinweis statt auf
   // /login umzuleiten (Bestandsverhalten); direkter Login mit next-Pfad.
