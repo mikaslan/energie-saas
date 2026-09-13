@@ -276,7 +276,18 @@ async function loginWithRealOtp(
   expect(new URL(page.url()).searchParams.get("next")).toBe(expectedTarget);
 
   const logOffset = statSync(state.serverLogPath).size;
-  await page.getByLabel("E-Mail-Adresse").fill(email);
+  // CI 34783677722-Re-Run (Zweit-Login, 15/15 OTP-Paare, kein Server-Trace):
+  // Klicks ohne Request bei lebendiger Seite = leeres Controlled-Input
+  // (`value={email}`, `required` blockiert silent). Fill gegen
+  // Hydration-Clobber stabilisieren, dann erst klicken.
+  const emailInput = page.getByLabel("E-Mail-Adresse");
+  await emailInput.fill(email);
+  await expect
+    .poll(async () => {
+      if ((await emailInput.inputValue()) !== email) await emailInput.fill(email);
+      return emailInput.inputValue();
+    })
+    .toBe(email);
   // CI 34780886727 (m2-03a Zweit-Login): OTP-`waitForResponse` laeuft unter
   // CI-Last ins Leere (M3-00-/F1609-Klasse, kein Commit-Bezug). Verlorenen
   // Klick nur dann wiederholen, wenn nachweislich KEIN Request abging — ein
@@ -313,6 +324,12 @@ async function loginWithRealOtp(
   const otp = await otpFromPrivateDevMailLog(state.serverLogPath, email, logOffset);
   const otpInput = page.getByLabel("Sechsstelliger Code");
   await otpInput.fill(otp);
+  await expect
+    .poll(async () => {
+      if ((await otpInput.inputValue()) !== otp) await otpInput.fill(otp);
+      return otpInput.inputValue();
+    })
+    .toBe(otp);
   const signInRequestPath = "/api/auth/sign-in/email-otp";
   let signInRequestSeen = false;
   const onSignInRequest = (request: Request): void => {

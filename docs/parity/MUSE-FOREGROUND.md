@@ -968,3 +968,21 @@ identisch (`983ed67`, 0 unpusht).
   Snapshot ohne `unavailable`-Text). Kein Code-Eingriff (kein Volllauf-Befund).
 - Systemik-Notiz fuers Endaudit: 128 Kopien `loginWithRealOtp` → Shared-Helper
   empfohlen; E2E-Job-Retry-Policy als Alternative zu Einzelpunkt-Haertungen.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 18 — OTP-Root-Cause: Fill/Hydration-Race)
+- Re-Run CI 34783677722: 238/239, m2-03a Zweit-Login ERNEUT `waitForResponse`-
+  Timeout — trotz Request-gated-Retry. Server-Log entscheidet: 15/15 OTP-Paare
+  balanciert, ALLE Antworten 200 in ms, KEIN Trace des fehlgeschlagenen Logins.
+  Klicks ohne Request bei lebendiger Seite + Controlled-Input
+  (`app/login/login-form.tsx`: `value={email}`, `required` blockiert silent,
+  OTP-Guard `if (pending || !/^\d{6}$/) return` ebenfalls silent) =
+  Hydration-Clobber des Fills (Fill pre-Hydration → State-Reset → leer).
+  Request-Retry adressierte die falsche Unterart (korrekt gebaut, nie gefeuert).
+- Fix (nur `m2-03a`-Helper): Fill-Verify-Poll (Nachfuellen bis stabil) VOR
+  Code-/Anmelden-Klick — schliesst Clobber aus, maskiert nichts (Erfolg nur bei
+  gehaltenem Wert, sonst rot). Request-Gated-Retry bleibt fuer Stall-Variante.
+  tsc/eslint gruen.
+- Kette m2-01+m2-03a damit 2/2 GRUEN (Login-, Fokus-, Enqueue-, Download- und
+  Zweit-Login-Schritte alle ausgefuehrt gruen) — Download-Retry-Happy-Path und
+  Enqueue-Stelle damit erstmals end-to-end belegt; Ketten-Enqueue-Theorie
+  (2x fokussiert rot) als eigene Flake-Art widerlegt.
