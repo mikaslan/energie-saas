@@ -8,8 +8,8 @@ import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
-import { parseFollowUpAt } from "@/lib/follow-up";
-import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
+import { followUpBandForDate, parseFollowUpAt, type FollowUpBand } from "@/lib/follow-up";
+import { can, isExternalOnly, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 
 export class FollowUpValidationError extends Error {
   constructor(message = "follow-up input invalid") {
@@ -61,6 +61,57 @@ export async function getProjectFollowUp(
   if (!row) throw new FollowUpNotFoundError();
   const at = parseFollowUpAt(row.follow_up_at);
   return { projectId, followUpAt: at === null ? null : at.toISOString() };
+}
+
+export type FollowUpDashboardEntry = {
+  projectId: string;
+  name: string;
+  followUpAt: string;
+  band: Exclude<FollowUpBand, "scheduled">;
+};
+
+const DASHBOARD_DEFAULT_LIMIT = 5;
+const DASHBOARD_MAX_LIMIT = 20;
+
+// F1-06b Dashboard-Widget: handlungsbedürftige Wiedervorlagen über alle
+// offenen Anfragen (fällig/überfällig/eskaliert, fälligste zuerst).
+// Kein neuer Permission-Key (project.read); Externe sehen bewusst nichts
+// (internes Arbeitsdatum, gleiche Regel wie Board-Filter).
+export async function listFollowUpDashboard(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { limit?: number } = {},
+): Promise<FollowUpDashboardEntry[]> {
+  if (!can(ctx, "project.read")) {
+    throw new PermissionDeniedError("project.read", "project", undefined, ctx.actor);
+  }
+  if (isExternalOnly(ctx)) return [];
+  const limit = query.limit ?? DASHBOARD_DEFAULT_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1 || limit > DASHBOARD_MAX_LIMIT) {
+    throw new FollowUpValidationError("dashboard limit invalid");
+  }
+  const rows = (
+    await tx.execute<{ id: string; name: string; follow_up_at: Date | string }>(sql`
+      select id, name, follow_up_at
+        from project
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and phase = 'request'
+         and outcome = 'open'
+         and follow_up_at is not null
+       order by follow_up_at asc, id asc
+       limit ${limit}
+    `)
+  ).rows;
+  const now = new Date();
+  const entries: FollowUpDashboardEntry[] = [];
+  for (const row of rows) {
+    const at = parseFollowUpAt(row.follow_up_at);
+    if (at === null) continue;
+    const band = followUpBandForDate(at, now);
+    if (band === "scheduled") continue;
+    entries.push({ projectId: row.id, name: row.name, followUpAt: at.toISOString(), band });
+  }
+  return entries;
 }
 
 export async function setProjectFollowUp(

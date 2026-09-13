@@ -155,3 +155,49 @@ test("F1-06-E2E-01: Wiedervorlage setzen, Badge, Preset-Filter, Löschen", async
 
   expect(errors, "Browser-Konsole und Page-Errors der Wiedervorlage-Grenze").toEqual([]);
 });
+
+test("F106B-E2E-01: Dashboard-Widget zeigt überfällige Wiedervorlage mit Band und Preset-Link", async ({ page }) => {
+  test.setTimeout(180_000);
+  const data = state();
+  const errors = trackBrowserErrors(page);
+  const stamp = Date.now();
+  const leadName = `F106B E2E Widget ${stamp}`;
+  const targetDate = plusDays(-2);
+  const expectedBerlin = new Date(`${targetDate}T12:00:00Z`)
+    .toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" });
+
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+
+  const listPath = `/w/${workspaceId}/anfragen`;
+  await page.goto(listPath);
+  await loginWithRealOtp(page, data.editorEmail, listPath);
+  await expect(page.getByRole("heading", { name: "Anfragen", level: 1 })).toBeVisible();
+
+  await page.getByTestId("manual-lead-open").click();
+  const form = page.getByTestId("manual-lead-form");
+  await form.getByLabel("Name *").fill(leadName);
+  await form.getByLabel("Telefon").fill("0151 23456789");
+  await form.getByRole("button", { name: "Anfrage anlegen" }).click();
+  const success = page.getByTestId("manual-lead-success");
+  await expect(success).toContainText("Anfrage angelegt");
+  await success.getByRole("link", { name: "Projektakte öffnen" }).click();
+  await expect(page).toHaveURL(/\/anfragen\/[0-9a-f-]+$/u);
+
+  await page.getByTestId("follow-up-date").fill(targetDate);
+  await page.getByTestId("follow-up-save").click();
+  await expect(page.getByTestId("follow-up-current")).toContainText("Überfällig");
+
+  await page.goto(`/w/${workspaceId}/dashboard`);
+  await expect(page.getByRole("heading", { name: "Übersicht", level: 1 })).toBeVisible();
+  const widget = page.locator('section[aria-label="Wiedervorlagen"]');
+  await expect(widget).toBeVisible();
+  await expect(widget.getByText(leadName, { exact: false })).toBeVisible();
+  await expect(widget.getByText("Überfällig", { exact: true })).toBeVisible();
+  await expect(widget.getByText(expectedBerlin, { exact: false })).toBeVisible();
+  const presetLink = widget.getByRole("link", { name: "Alle überfälligen", exact: true });
+  await expect(presetLink).toHaveAttribute("href", `/w/${workspaceId}/anfragen?wiedervorlage=ueberfaellig`);
+  await presetLink.click();
+  await expect(page).toHaveURL(/wiedervorlage=ueberfaellig/u);
+  expect(errors, "Browser-Konsole beim Widget").toEqual([]);
+});

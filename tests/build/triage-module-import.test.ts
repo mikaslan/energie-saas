@@ -81,6 +81,7 @@ describe("M1-05 Modulgrenzen", () => {
       "getProjectTriageDetail",
       "importManualLeadBulk",
       "listClosedRequests",
+      "listFollowUpDashboard",
       "listManagedProjectLossReasons",
       "listProjectLossReasons",
       "manualLeadBulkReportSchema",

@@ -19,10 +19,13 @@ import {
   getClosureTrendStats,
   getConversionFunnelStats,
   listClosedRequests,
+  listFollowUpDashboard,
   type ClosureTrendStats,
   type ConversionFunnelStats,
+  type FollowUpDashboardEntry,
   type ProjectClosedRequestPage,
 } from "@/modules/projects";
+import { FOLLOW_UP_BAND_LABEL } from "@/lib/follow-up";
 import {
   getInvoicingReport,
   type InvoicingReportV1,
@@ -201,6 +204,29 @@ async function loadTasks(
       (tx, ctx) => getGlobalTaskInboxPage(tx, ctx, query),
     );
     return { kind: "loaded", page };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+// F1-06b: handlungsbedürftige Wiedervorlagen (fällig/überfällig/
+// eskaliert, Default-Limit 5). Externe sehen bewusst nichts (leere
+// Liste, kein Fehler — internes Arbeitsdatum).
+async function loadFollowUps(workspaceId: string): Promise<
+  | { kind: "loaded"; entries: FollowUpDashboardEntry[] }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const entries = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "follow_up_dashboard",
+      (tx, ctx) => listFollowUpDashboard(tx, ctx, {}),
+    );
+    return { kind: "loaded", entries };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -512,10 +538,11 @@ export default async function DashboardPage({
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  const [pipeline, overdue, today, closures, trend, funnel, invoices, leadTime, offerLeadTime, appointments, service, subsidy, belege] = await Promise.all([
+  const [pipeline, overdue, today, followUps, closures, trend, funnel, invoices, leadTime, offerLeadTime, appointments, service, subsidy, belege] = await Promise.all([
     loadPipeline(validWorkspaceId),
     loadTasks(validWorkspaceId, "overdue"),
     loadTasks(validWorkspaceId, "today"),
+    loadFollowUps(validWorkspaceId),
     loadClosures(validWorkspaceId),
     loadClosureTrend(validWorkspaceId),
     loadFunnel(validWorkspaceId),
@@ -531,6 +558,7 @@ export default async function DashboardPage({
     pipeline.kind === "unauthenticated"
     || overdue.kind === "unauthenticated"
     || today.kind === "unauthenticated"
+    || followUps.kind === "unauthenticated"
     || closures.kind === "unauthenticated"
     || trend.kind === "unauthenticated"
     || funnel.kind === "unauthenticated"
@@ -727,6 +755,44 @@ export default async function DashboardPage({
                 className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 Zum Posteingang
+              </Link>
+            </section>
+          ) : null}
+
+          {followUps.kind === "loaded" ? (
+            <section
+              aria-label="Wiedervorlagen"
+              data-dashboard-followups="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Wiedervorlagen</h2>
+              {followUps.entries.length === 0 ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">Nichts überfällig oder fällig.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {followUps.entries.map((entry) => (
+                    <li key={entry.projectId} className="flex items-baseline justify-between gap-4 text-sm">
+                      <Link
+                        href={`/w/${validWorkspaceId}/anfragen/${entry.projectId}`}
+                        className="min-w-0 flex-1 truncate font-medium text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
+                      >
+                        {entry.name}
+                      </Link>
+                      <span className="shrink-0 text-slate-600">
+                        {FOLLOW_UP_BAND_LABEL[entry.band]}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-slate-500">
+                        {berlinDateFormatter.format(new Date(entry.followUpAt))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link
+                href={`/w/${validWorkspaceId}/anfragen?wiedervorlage=ueberfaellig`}
+                className="mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+              >
+                Alle überfälligen
               </Link>
             </section>
           ) : null}

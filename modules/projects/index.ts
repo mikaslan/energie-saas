@@ -93,7 +93,9 @@ export {
   FollowUpNotFoundError,
   FollowUpValidationError,
   getProjectFollowUp,
+  listFollowUpDashboard,
   setProjectFollowUp,
+  type FollowUpDashboardEntry,
   type FollowUpResult,
 } from "./follow-up-service";
 export {
