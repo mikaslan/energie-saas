@@ -832,3 +832,16 @@ identisch (`983ed67`, 0 unpusht).
 - Zuordnung: Last-Flakes unter CI-Last, kein Code angeruehrt, kein Re-Run
   angestossen (keine blinden Re-Runs). Naechster Fix-Push traegt diesen
   Nachtrag mit.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 6 — Visual-Reviewmatrix)
+- ECHTER FUND: `M201-VISUAL-01`-Capture rot (Hydration-Mismatch,
+  Projekt-UUID Triage-Seite). Ursache Harness, kein App-Bug (ohne
+  Maskierung alles fehlerfrei): DOM-Text-Mutation racing React-Hydration
+  auf der gewachsenen Triage-Seite. Fix nur Test-Harness: Redaktion per
+  Overlay-Boxen statt Text-Mutation (hydrationssicher per Konstruktion,
+  Skripte ausgenommen, Cleanup je Shot) + eigener Visual-Workspace mit
+  genau einem Projekt fuers Board (Main-Board waechst je Shard;
+  f703b-Muster).
+- Beweis-Volllauf: 241/241 GRUEN (0 skipped/flaky), 26/26 Kandidaten.
+  Shots selbst geprueft: WMEE-Gruen, kein Orange, Redaktions-Boxen sitzen,
+  kein Layoutbruch (Board/Editor/Readiness, Desktop+Mobile).

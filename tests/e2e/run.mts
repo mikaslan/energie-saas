@@ -114,6 +114,9 @@ type SeedData = {
   // W3-Nachholblock: eigener isolierter Workspace (f7-03-Fix + 4 neue
   // Specs). Eigene Projekte je Spec — keine Kopplung an mainProjectId.
   w3WorkspaceId: string;
+  // Visual-Reviewmatrix: eigener Workspace mit genau einem Projekt, damit
+  // der Board-Capture deterministisch bleibt (Main-Board waechst je Lauf).
+  visualWorkspaceId: string;
   mainContactName: string;
   foreignContactName: string;
 };
@@ -138,6 +141,7 @@ type E2EState = Pick<
   | "m111bContactName"
   | "m111bWorkspaceId"
   | "w3WorkspaceId"
+  | "visualWorkspaceId"
   | "mainContactName"
   | "foreignContactName"
 > & {
@@ -955,6 +959,19 @@ async function seedInvitations(databaseUrl: string, data: SeedData): Promise<voi
         ],
       );
     });
+
+    await withWorkspaceSeed(client, data.visualWorkspaceId, async () => {
+      await client.query(
+        "insert into workspace (id, name) values ($1::uuid, $2)",
+        [data.visualWorkspaceId, "Visual isolierter E2E Workspace"],
+      );
+      // Nur Editor (Board-Capture); bestehende Identitaet, kein neuer Account.
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor', '{}'::jsonb)`,
+        [data.visualWorkspaceId, data.editorIdentityId],
+      );
+    });
   } finally {
     client.release();
     await endPoolAndWaitForClientRemoval(pool);
@@ -1297,6 +1314,7 @@ function createSeedData(): SeedData {
     m111bWorkspaceId: randomUUID(),
     m111bContactName: "Clara E2E Absage",
     w3WorkspaceId: randomUUID(),
+    visualWorkspaceId: randomUUID(),
     mainContactName: "Erika E2E Muster",
     foreignContactName: "Fremdmandant E2E Geheim",
   };
@@ -1454,6 +1472,11 @@ async function main(): Promise<number> {
     workspaceId: seedData.w3WorkspaceId,
     secret: randomBytes(32),
   };
+  const visualCredential: IntakeCredential = {
+    keyId: `e2e-visual-${randomUUID()}`,
+    workspaceId: seedData.visualWorkspaceId,
+    secret: randomBytes(32),
+  };
   const authSecret = randomBytes(48).toString("base64url");
 
   workerLogFd = openPrivateLog(workerLogPath);
@@ -1476,7 +1499,7 @@ async function main(): Promise<number> {
       env: nextEnvironment(
         serviceUrls,
         authSecret,
-        [mainCredential, foreignCredential, m111bCredential, w3Credential],
+        [mainCredential, foreignCredential, m111bCredential, w3Credential, visualCredential],
         providerStub,
         readyFile,
         readyToken,
@@ -1540,6 +1563,14 @@ async function main(): Promise<number> {
     embedded.superuserUrl,
     w3Credential,
     intakePayload("Wilma W3 Vorlagen-Arten", `w3-f703b-${randomUUID()}`, true),
+  );
+  // Visual-Board: genau ein Projekt im eigenen Workspace (deterministischer
+  // Review-Capture, unabhaengig von Main-Board-Wachstum je Shard).
+  await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    visualCredential,
+    intakePayload("Vera Visual E2E", `visual-board-${randomUUID()}`, true),
   );
   const w3F704Lead = await submitSignedLead(
     server,
@@ -1675,6 +1706,7 @@ async function main(): Promise<number> {
     m111bWorkspaceId: seedData.m111bWorkspaceId,
     f703ProjectId: w3F703Lead.projectId,
     f703bProjectId: w3F703bLead.projectId,
+    visualWorkspaceId: seedData.visualWorkspaceId,
     f704ProjectId: w3F704Lead.projectId,
     f704cProjectId: w3F704cLead.projectId,
     f22ProjectId: w3F22Seed.projectId,

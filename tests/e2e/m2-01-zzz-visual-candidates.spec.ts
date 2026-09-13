@@ -23,6 +23,7 @@ type SerializedVisualState = {
   m201WallboxId: string;
   m201WorkspaceId: string;
   serverLogPath: string;
+  visualWorkspaceId: string;
   workspaceId: string;
 };
 
@@ -60,6 +61,7 @@ function state(): SerializedVisualState {
     "m201WallboxId",
     "m201WorkspaceId",
     "serverLogPath",
+    "visualWorkspaceId",
     "workspaceId",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
@@ -154,30 +156,82 @@ function visualContext(context: BrowserContext): void {
   });
 }
 
-async function maskDynamicVisualData(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const replacements: Array<[RegExp, string]> = [
-      [/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu,
-        "00000000-0000-4000-8000-000000000000"],
-      [/AN-\d{4}-\d{5}/gu, "AN-0000-00000"],
-      [/[\w.+-]+@(?:[\w-]+\.)+[\w-]+/gu, "maskiert@example.test"],
-      [/\b\d{1,2}\.\d{1,2}\.\d{4}(?:,?\s+\d{1,2}:\d{2}(?::\d{2})?)?\b/gu,
-        "00.00.0000, 00:00"],
-      [/Erika M2-01 Browser/gu, "Maskierte Testperson"],
-      [/Erika E2E Muster/gu, "Maskierter Boardkontakt"],
-      [/Testweg 7, 69168 Dielheim/gu, "Maskierte Testadresse 00, 00000 Testort"],
-    ];
-    const replace = (value: string) => replacements.reduce(
-      (current, [pattern, replacement]) => current.replace(pattern, replacement),
-      value,
-    );
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+type VisualOverlayCleanup = () => Promise<void>;
+
+// Schwärzt dynamische Inhalte AUSSCHLIESSLICH per Overlay-Boxen — der DOM-Text
+// wird nie mutiert. Text-Mutation trieb jeden späteren React-Commit in einen
+// Hydration-Mismatch (beobachtet: Projekt-UUID auf der Triage-Seite, sobald
+// die Maskierung vor abgeschlossener Hydration landete). Overlays sind
+// React-fremde Body-Geschwister (kein Eingriff in React-Container) und
+// beeinflussen kein Layout; Cleanup direkt nach dem Shot.
+const VISUAL_REDACT_PATTERNS: readonly RegExp[] = [
+  /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/giu,
+  /AN-\d{4}-\d{5}/gu,
+  /[\w.+-]+@(?:[\w-]+\.)+[\w-]+/gu,
+  /\b\d{1,2}\.\d{1,2}\.\d{4}(?:,?\s+\d{1,2}:\d{2}(?::\d{2})?)?\b/gu,
+  /Erika M2-01 Browser/gu,
+  /Erika E2E Muster/gu,
+  /Vera Visual E2E/gu,
+  /Testweg 7, 69168 Dielheim/gu,
+];
+
+async function maskDynamicVisualData(page: Page): Promise<VisualOverlayCleanup> {
+  await page.evaluate((patterns: string[]) => {
+    const overlayRoot = document.createElement("div");
+    overlayRoot.setAttribute("data-visual-redaction-root", "true");
+    overlayRoot.style.cssText = "position:static;";
+    const compiled = patterns.map((source) => new RegExp(source, "giu"));
+    const matches = (value: string): boolean =>
+      compiled.some((pattern) => {
+        pattern.lastIndex = 0;
+        return pattern.test(value);
+      });
+    const filter = {
+      acceptNode(node: Node): number {
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        const tag = parent.tagName;
+        if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "TEMPLATE") {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    };
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, filter);
+    const boxes: Array<{ left: number; top: number; width: number; height: number }> = [];
     let node = walker.nextNode();
     while (node) {
-      node.textContent = replace(node.textContent ?? "");
+      const text = node.textContent ?? "";
+      if (text.trim() !== "" && matches(text)) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const rect of range.getClientRects()) {
+          if (rect.width > 0 && rect.height > 0) {
+            boxes.push({
+              left: rect.left + window.scrollX,
+              top: rect.top + window.scrollY,
+              width: rect.width,
+              height: rect.height,
+            });
+          }
+        }
+      }
       node = walker.nextNode();
     }
-  });
+    for (const box of boxes) {
+      const cover = document.createElement("div");
+      cover.setAttribute("data-visual-redaction", "true");
+      cover.style.cssText = `position:absolute;left:${box.left}px;top:${box.top}px;`
+        + `width:${box.width}px;height:${box.height}px;background:#cbd5e1;z-index:2147483647;`;
+      overlayRoot.appendChild(cover);
+    }
+    document.body.appendChild(overlayRoot);
+  }, VISUAL_REDACT_PATTERNS.map((pattern) => pattern.source));
+  return async () => {
+    await page.evaluate(() => {
+      document.querySelectorAll("[data-visual-redaction-root]").forEach((root) => root.remove());
+    });
+  };
   await page.addStyleTag({ content: `
     *, *::before, *::after {
       animation: none !important;
@@ -221,17 +275,21 @@ async function capture(
 ): Promise<void> {
   await page.setViewportSize(viewport);
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
-  await maskDynamicVisualData(page);
-  expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
-  const name = `${route}__${role}__${visualState}__${viewport.width}x${viewport.height}.png`;
-  expect(captured.has(name), `${name} wird genau einmal erzeugt`).toBe(false);
-  await page.screenshot({
-    animations: "disabled",
-    caret: "hide",
-    fullPage: true,
-    path: join(directory, name),
-  });
-  captured.add(name);
+  const restoreMask = await maskDynamicVisualData(page);
+  try {
+    expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+    const name = `${route}__${role}__${visualState}__${viewport.width}x${viewport.height}.png`;
+    expect(captured.has(name), `${name} wird genau einmal erzeugt`).toBe(false);
+    await page.screenshot({
+      animations: "disabled",
+      caret: "hide",
+      fullPage: true,
+      path: join(directory, name),
+    });
+    captured.add(name);
+  } finally {
+    await restoreMask();
+  }
 }
 
 async function captureViewports(
@@ -277,7 +335,9 @@ test("erzeugt die vollständige maskierte M201-VISUAL-01-Reviewmatrix", async ({
   visualContext(boardContext);
   try {
     const board = await boardContext.newPage();
-    const boardPath = `/w/${data.workspaceId}/anfragen`;
+    // Eigener Visual-Workspace: genau ein Projekt, deterministisch
+    // unabhaengig vom Main-Board-Wachstum anderer Specs.
+    const boardPath = `/w/${data.visualWorkspaceId}/anfragen`;
     await login(board, data.editorEmail, boardPath);
     await expect(board.getByRole("heading", { name: "Anfragen", level: 1 })).toBeVisible();
     await expect(board.locator("article[data-project-id]")).toHaveCount(1);
