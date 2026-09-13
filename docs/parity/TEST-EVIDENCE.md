@@ -376,3 +376,19 @@ SCOP-Skalar, keine Kurven — F5), Warmwasser-Split (kein Profilfeld),
 dachgebundene Albedo (Fixture-Pin 0.2), F4.2–F4.5
 Wirtschaftlichkeit/Cashflow/Tarife, übrige F-Slices außerhalb F4. Kein Deploy,
 kein Live-PVGIS-Abruf in Produktion, kein unabhängiges Abschlussreview.
+
+## F7.2/F7.3/F16.3/M2-04b (Branch `codex/m1-wave-02`, Stand 2026-09-13)
+
+Alle Zahlen lokal beobachtet (keine CI-Behauptung; CI-Spitze 34760808207:
+Statik/DB/Rollen/Build grün, E2E 236/238 mit zwei Last-Timeout-Flakes ohne
+Commit-Bezug). Kein Deploy, kein unabhängiges Abschlussreview.
+
+| Test-ID | Ebene | Beleg | Aktuell |
+|---|---|---|---|
+| `F702F-DB-01` | DB | Mehrfachauswahl je Segment (Migration 0143) | GREEN; `f702f-mehrfachauswahl` 3/3 (13.09. beobachtet) |
+| `F702F-E2E-01` | Browser | Mehrfachauswahl anlegen/anzeigen/persistieren | GREEN; Vollläufe 12./13.09. ohne Befund |
+| `F703B-DB-01` | DB | Punkt-Arten in Vorlagen + Antwortwert-Nutzlast (Migration 0144) | GREEN; `f703b-vorlagen-arten` 4/4 (13.09. beobachtet) |
+| `F703B-E2E-01` | Browser | Arten landen per Apply 1:1, Speichern + Reload persistent | GREEN; Volllauf nach f703b-Isolationsfix grün (davor 2× geteilter-Seed-Timeout, kein App-Befund; Commit `8acd85c`) |
+| `F1604B-DB-01` | DB | Mehrfach-Bearbeiter aus Aufgaben-Vorlage (Migration 0145, Cap 50) | GREEN; `f1604b-vorlagen-bearbeiter` 4/4 |
+| `F1604B-E2E-01` | Browser | Bearbeiter per Vorlage setzen/anwenden | GREEN; Vollläufe 12./13.09. ohne Befund |
+| `M204B-DB-01/02` | DB/Service | deformiertes Roh-Token uniform NotFound (kein TypeError/500, kein Orakel) | GREEN; `m204b-token-orakel` 2/2, RED am Alt-Code belegt, Nachbarn 47/47; kein E2E (Kapseln ungeroutet bis M2-03b2/issued) |
