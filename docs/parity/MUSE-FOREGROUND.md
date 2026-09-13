@@ -950,3 +950,21 @@ identisch (`983ed67`, 0 unpusht).
   (fremde, zweifach gehoertete a11y-Evidenz; kein beweisbar sicherer Eingriff)
   — Follow-up fuers Endaudit (stabile Keys/Fokus-Retention im PDF-Panel
   ODER CI-Retry-Policy).
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 17 — CI 34780886727 + OTP-Haertung)
+- CI 34780886727 (HEAD 8fc2c26): Statik/DB/Rollen/Build GRUEN; E2E 238/239.
+  m2-03a-Download-Schritt (Fix aus F16) in CI PASSIERT — Download-Fix damit
+  im echten CI-Lauf verifiziert. Neuer Einzel-Fehler: m2-03a Zweit-Login,
+  OTP-`waitForResponse` Timeout (gleiche Last-Klasse, kein Commit-Bezug).
+- Fix (nur `m2-03a`, 128 baugleiche Login-Helper im Repo bleiben unberuehrt):
+  bedingter Einmal-Retry des Code-/Anmelden-Klicks NUR bei nachweislich
+  fehlendem Request (`page.on("request")`-Signal). Kein blinder Re-Versand:
+  OTP-Rotation wuerde den Login vergiften; versandter-but-unbeantworteter
+  Request behält Original-Budget (fail-closed). tsc/eslint gruen; Happy Path
+  in Kettenlaeufen ausgefuehrt gruen (Retry-Pfad feuert nur bei Timeout).
+- Kette m2-01+m2-03a (fokussiert, 2x): Enqueue-90-s-Poll ohne Feedbacktext.
+  NUR fokussiert beobachtet (alle Volllaeufe + beide CIs passieren die Stelle);
+  Rate-Limit als Ursache per Zahlen ausgeschlossen (120 Versuche/15 min,
+  Snapshot ohne `unavailable`-Text). Kein Code-Eingriff (kein Volllauf-Befund).
+- Systemik-Notiz fuers Endaudit: 128 Kopien `loginWithRealOtp` → Shared-Helper
+  empfohlen; E2E-Job-Retry-Policy als Alternative zu Einzelpunkt-Haertungen.

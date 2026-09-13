@@ -10,6 +10,7 @@ import {
   type ElementHandle,
   type Locator,
   type Page,
+  type Request,
   type Response,
   type Route,
 } from "playwright/test";
@@ -276,24 +277,67 @@ async function loginWithRealOtp(
 
   const logOffset = statSync(state.serverLogPath).size;
   await page.getByLabel("E-Mail-Adresse").fill(email);
+  // CI 34780886727 (m2-03a Zweit-Login): OTP-`waitForResponse` laeuft unter
+  // CI-Last ins Leere (M3-00-/F1609-Klasse, kein Commit-Bezug). Verlorenen
+  // Klick nur dann wiederholen, wenn nachweislich KEIN Request abging — ein
+  // erneuter Code-Versand wuerde den OTP rotieren und den Login vergiften.
+  // Bei versandtem, aber unbeantwortetem Request gilt das Original-Budget
+  // (fail-closed, Original-Signatur).
+  const sendRequestPath = "/api/auth/email-otp/send-verification-otp";
+  let sendRequestSeen = false;
+  const onSendRequest = (request: Request): void => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === sendRequestPath) {
+      sendRequestSeen = true;
+    }
+  };
+  page.on("request", onSendRequest);
   const sendResponsePromise = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === "/api/auth/email-otp/send-verification-otp"
+    new URL(response.url()).pathname === sendRequestPath
     && response.request().method() === "POST"
   ));
-  await page.getByRole("button", { name: "Code anfordern" }).click();
-  expect((await sendResponsePromise).status()).toBe(200);
+  try {
+    const requestCodeButton = page.getByRole("button", { name: "Code anfordern" });
+    await requestCodeButton.click();
+    const sendResponded = await Promise.race([
+      sendResponsePromise.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+    ]);
+    if (!sendResponded && !sendRequestSeen) {
+      await requestCodeButton.click();
+    }
+    expect((await sendResponsePromise).status()).toBe(200);
+  } finally {
+    page.off("request", onSendRequest);
+  }
 
   const otp = await otpFromPrivateDevMailLog(state.serverLogPath, email, logOffset);
   const otpInput = page.getByLabel("Sechsstelliger Code");
   await otpInput.fill(otp);
+  const signInRequestPath = "/api/auth/sign-in/email-otp";
+  let signInRequestSeen = false;
+  const onSignInRequest = (request: Request): void => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === signInRequestPath) {
+      signInRequestSeen = true;
+    }
+  };
+  page.on("request", onSignInRequest);
   const signInResponsePromise = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === "/api/auth/sign-in/email-otp"
+    new URL(response.url()).pathname === signInRequestPath
     && response.request().method() === "POST"
   ));
   try {
-    await page.getByRole("button", { name: "Anmelden" }).click();
+    const signInButton = page.getByRole("button", { name: "Anmelden" });
+    await signInButton.click();
+    const signInResponded = await Promise.race([
+      signInResponsePromise.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+    ]);
+    if (!signInResponded && !signInRequestSeen) {
+      await signInButton.click();
+    }
     expect((await signInResponsePromise).status()).toBe(200);
   } finally {
+    page.off("request", onSignInRequest);
     if (await otpInput.isVisible().catch(() => false)) {
       await otpInput.fill("").catch(() => undefined);
     }
