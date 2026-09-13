@@ -119,6 +119,7 @@ export {
   listTaskTemplates,
   normalizeTaskTemplateName,
   restoreTaskTemplate,
+  searchTaskTemplateMembers,
   updateTaskTemplate,
 } from "./templates";
 export {

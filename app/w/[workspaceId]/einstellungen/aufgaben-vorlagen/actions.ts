@@ -2,13 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
+import { authorizedAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
+import { PROJECT_TASK_MAX_ASSIGNEES } from "@/lib/integrations/tasks/contract";
 import { TASK_TEMPLATE_SCHEMA_VERSION } from "@/lib/integrations/tasks/template-contract";
 import {
   archiveTaskTemplate,
   createTaskTemplate,
   restoreTaskTemplate,
+  searchTaskTemplateMembers,
   TaskTemplateConflictError,
   TaskTemplateNotFoundError,
   TaskTemplateValidationError,
@@ -24,6 +26,19 @@ export type TaskTemplateActionState =
   | { status: "invalid" }
   | { status: "conflict" }
   | { status: "not_found" }
+  | { status: "denied" }
+  | { status: "unauthenticated" };
+
+export type TaskTemplateMemberSearchState =
+  | { status: "idle" }
+  | {
+      status: "results";
+      query: string;
+      members: { membershipId: string; label: string }[];
+      hasMore: boolean;
+    }
+  | { status: "empty"; query: string }
+  | { status: "invalid" }
   | { status: "denied" }
   | { status: "unauthenticated" };
 
@@ -50,7 +65,7 @@ function parseDueOffset(value: FormDataEntryValue | null): number | null | undef
 }
 
 function parseFields(formData: FormData):
-  | { name: string; title: string; dueOffsetDays: number | null; position: number }
+  | { name: string; title: string; dueOffsetDays: number | null; position: number; assigneeMembershipIds: string[] }
   | null {
   const name = parseText(formData.get("name"), 200);
   const title = parseText(formData.get("title"), 200);
@@ -60,7 +75,22 @@ function parseFields(formData: FormData):
   if (typeof positionValue !== "string" || !/^\d+$/u.test(positionValue)) return null;
   const position = Number(positionValue);
   if (!Number.isSafeInteger(position) || position < 0) return null;
-  return { name, title, dueOffsetDays, position };
+  // F16-04b: Bearbeiter als JSON-Liste (UUIDs, max Cap); fehlend = leer.
+  const assigneesValue = formData.get("assigneeMembershipIds");
+  let assigneeMembershipIds: string[] = [];
+  if (typeof assigneesValue === "string" && assigneesValue.trim() !== "") {
+    try {
+      const parsed: unknown = JSON.parse(assigneesValue);
+      if (!Array.isArray(parsed)) return null;
+      const ids = [...new Set(parsed)];
+      if (ids.length > PROJECT_TASK_MAX_ASSIGNEES) return null;
+      if (!ids.every((id) => typeof id === "string" && z.string().uuid().safeParse(id).success)) return null;
+      assigneeMembershipIds = ids as string[];
+    } catch {
+      return null;
+    }
+  }
+  return { name, title, dueOffsetDays, position, assigneeMembershipIds };
 }
 
 function mapError(error: unknown): TaskTemplateActionState {
@@ -88,6 +118,7 @@ export async function createTaskTemplateAction(
         name: fields.name,
         title: fields.title,
         dueOffsetDays: fields.dueOffsetDays,
+        assigneeMembershipIds: fields.assigneeMembershipIds,
         position: fields.position,
       }),
     );
@@ -115,6 +146,7 @@ export async function updateTaskTemplateAction(
         name: fields.name,
         title: fields.title,
         dueOffsetDays: fields.dueOffsetDays,
+        assigneeMembershipIds: fields.assigneeMembershipIds,
         position: fields.position,
       }),
     );
@@ -148,6 +180,39 @@ async function toggleActive(
     return { status: "success", message: active ? "Vorlage reaktiviert." : "Vorlage archiviert." };
   } catch (error) {
     return mapError(error);
+  }
+}
+
+// F16-04b: workspace-weite Mitgliedersuche für Bearbeiter-Auswahl
+// (task.write wie Vorlagen-CRUD; Query ≥ 2 Zeichen serverseitig,
+// Limit wie Projektsuche — keine Voll-Enumeration).
+export async function searchTaskTemplateMembersAction(
+  rawWorkspaceId: string,
+  _previousState: TaskTemplateMemberSearchState,
+  formData: FormData,
+): Promise<TaskTemplateMemberSearchState> {
+  const workspace = workspaceIdSchema.safeParse(rawWorkspaceId);
+  const queryValue = formData.get("query");
+  if (!workspace.success || typeof queryValue !== "string") return { status: "invalid" };
+  try {
+    const page = await authorizedQuery(
+      workspace.data,
+      "task.write",
+      "task_template",
+      (tx, ctx) => searchTaskTemplateMembers(tx, ctx, { query: queryValue }),
+    );
+    return page.members.length === 0
+      ? { status: "empty", query: page.query }
+      : {
+          status: "results",
+          query: page.query,
+          members: page.members,
+          hasMore: page.hasMore,
+        };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    return { status: "invalid" };
   }
 }
 

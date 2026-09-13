@@ -25,6 +25,8 @@ export const taskTemplate = pgTable(
     nameNormalized: text("name_normalized").notNull(),
     title: text("title").notNull(),
     dueOffsetDays: integer("due_offset_days"),
+    // F16-04b: Bearbeiter-Memberships (leer = nur Anwendender wie bisher).
+    assigneeMembershipIds: uuid("assignee_membership_ids").array().notNull().default([]),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
     createdBy: uuid("created_by").notNull(),
@@ -42,6 +44,7 @@ export const taskTemplate = pgTable(
     check("task_template_name_normalized_ck", sql`${t.nameNormalized} = pg_catalog.lower(pg_catalog.btrim(${t.nameNormalized}))`),
     check("task_template_title_ck", sql`pg_catalog.length(pg_catalog.btrim(${t.title})) between 1 and 200`),
     check("task_template_due_offset_ck", sql`${t.dueOffsetDays} is null or (${t.dueOffsetDays} between 0 and 3650)`),
+    check("task_template_assignees_ck", sql`pg_catalog.cardinality(${t.assigneeMembershipIds}) <= 50`),
     check("task_template_position_ck", sql`${t.position} >= 0`),
     check("task_template_timestamps_ck", sql`${t.updatedAt} >= ${t.createdAt} and pg_catalog.isfinite(${t.createdAt}) and pg_catalog.isfinite(${t.updatedAt})`),
     foreignKey({

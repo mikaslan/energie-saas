@@ -1,9 +1,12 @@
 import { z } from "zod";
 
+import { PROJECT_TASK_MAX_ASSIGNEES } from "./contract";
+
 // F16-04 Aufgaben-Vorlagen — interner DTO-/Command-Vertrag.
 // Titel-Preset + optionaler Fälligkeits-Offset (Tage ab heute,
 // Europe/Berlin); Archiv statt Delete (F7.3/F16.3-Muster).
 // Keine neuen Permissions: task.read/task.write.
+// F16-04b: optionale Bearbeiter-Memberships (leer = nur Anwendender).
 
 export const TASK_TEMPLATE_SCHEMA_VERSION = 1;
 
@@ -25,12 +28,25 @@ const cleanTitle = z
 
 const dueOffsetDaysSchema = z.number().int().min(0).max(TASK_TEMPLATE_DUE_OFFSET_MAX);
 
+// F16-04b: Bearbeiter-Memberships der Vorlage (Cap = Task-Vertrag;
+// leere Liste = nur Anwendender wie bisher).
+const assigneeMembershipIdsSchema = z.array(z.string().uuid()).max(PROJECT_TASK_MAX_ASSIGNEES);
+
+// Aufgelöste Anzeige-Optionen fürs Edit-Formular (Fehlende entfallen;
+// Anzeige, keine Autorisierung — IDs bleiben die Quelle).
+const assigneeOptionSchema = z.object({
+  membershipId: z.string().uuid(),
+  label: z.string().min(1),
+});
+
 export const taskTemplateDtoSchema = z.object({
   schemaVersion: z.literal(TASK_TEMPLATE_SCHEMA_VERSION),
   id: z.string().uuid(),
   name: z.string(),
   title: z.string(),
   dueOffsetDays: z.number().int().min(0).max(TASK_TEMPLATE_DUE_OFFSET_MAX).nullable(),
+  assigneeMembershipIds: assigneeMembershipIdsSchema,
+  assignees: z.array(assigneeOptionSchema).max(PROJECT_TASK_MAX_ASSIGNEES),
   position: z.number().int().min(0),
   active: z.boolean(),
   createdAt: z.string(),
@@ -44,6 +60,7 @@ export const createTaskTemplateCommandSchema = z.object({
   name: cleanName,
   title: cleanTitle,
   dueOffsetDays: dueOffsetDaysSchema.nullable().optional(),
+  assigneeMembershipIds: assigneeMembershipIdsSchema.optional(),
   position: z.number().int().min(0).optional(),
 });
 export type CreateTaskTemplateCommand = z.infer<typeof createTaskTemplateCommandSchema>;
@@ -54,6 +71,7 @@ export const updateTaskTemplateCommandSchema = z.object({
   name: cleanName,
   title: cleanTitle,
   dueOffsetDays: dueOffsetDaysSchema.nullable().optional(),
+  assigneeMembershipIds: assigneeMembershipIdsSchema.optional(),
   position: z.number().int().min(0),
 });
 export type UpdateTaskTemplateCommand = z.infer<typeof updateTaskTemplateCommandSchema>;

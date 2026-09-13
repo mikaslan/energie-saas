@@ -1016,6 +1016,13 @@
       "when": 1789285000000,
       "tag": "0144_f7_03b_antwortwert_nutzlast",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1789290000000,
+      "tag": "0145_f16_04b_vorlagen_bearbeiter",
+      "breakpoints": true
     }
   ]
 }

@@ -1,16 +1,20 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
+import { PROJECT_TASK_MAX_ASSIGNEES, PROJECT_TASK_MEMBER_SEARCH_LIMIT } from "@/lib/integrations/tasks/contract";
 import type { TaskTemplateDto } from "@/lib/integrations/tasks/template-contract";
 import {
   archiveTaskTemplateAction,
   createTaskTemplateAction,
+  searchTaskTemplateMembersAction,
   type TaskTemplateActionState,
+  type TaskTemplateMemberSearchState,
   restoreTaskTemplateAction,
   updateTaskTemplateAction,
 } from "./actions";
 
 const initialState: TaskTemplateActionState = { status: "idle" };
+const initialSearchState: TaskTemplateMemberSearchState = { status: "idle" };
 
 function Feedback({ state }: { state: TaskTemplateActionState }) {
   if (state.status === "idle") return null;
@@ -35,6 +39,121 @@ function formatOffset(template: TaskTemplateDto): string {
   if (template.dueOffsetDays === 0) return "fällig heute";
   if (template.dueOffsetDays === 1) return "fällig morgen";
   return `fällig in ${template.dueOffsetDays} Tagen`;
+}
+
+// F16-04b: Bearbeiter-Auswahl je Formular (Suche + Toggle, Auswahl als
+// Hidden-JSON; Initial aus Vorlage, Remount-Key des Formulars gilt).
+function AssigneePicker({
+  workspaceId,
+  initial,
+}: {
+  workspaceId: string;
+  initial: { membershipId: string; label: string }[];
+}) {
+  const [selected, setSelected] = useState(initial);
+  const [searchState, searchAction] = useActionState(
+    searchTaskTemplateMembersAction.bind(null, workspaceId),
+    initialSearchState,
+  );
+  const [, startSearchTransition] = useTransition();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const toggle = (member: { membershipId: string; label: string }) => {
+    setSelected((current) =>
+      current.some((entry) => entry.membershipId === member.membershipId)
+        ? current.filter((entry) => entry.membershipId !== member.membershipId)
+        : current.length < PROJECT_TASK_MAX_ASSIGNEES
+          ? [...current, member]
+          : current,
+    );
+  };
+  const runSearch = () => {
+    const formData = new FormData();
+    formData.set("query", searchInputRef.current?.value ?? "");
+    startSearchTransition(() => searchAction(formData));
+  };
+  return (
+    <div className="grid gap-2">
+      <input
+        type="hidden"
+        name="assigneeMembershipIds"
+        value={JSON.stringify(selected.map((entry) => entry.membershipId))}
+      />
+      <span className="text-sm font-semibold text-slate-800">Bearbeiter (leer = Anwendender)</span>
+      {selected.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {selected.map((entry) => (
+            <li
+              key={entry.membershipId}
+              className="flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-800"
+            >
+              {entry.label}
+              <button
+                type="button"
+                aria-label={`${entry.label} entfernen`}
+                onClick={() => toggle(entry)}
+                className="rounded-full px-1 text-slate-500 outline-none hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-brand-600"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div role="search" aria-label="Bearbeiter suchen" className="flex flex-wrap items-center gap-2">
+        <input
+          ref={searchInputRef}
+          type="search"
+          aria-label="Mitglieder suchen"
+          placeholder="Mind. 2 Zeichen"
+          minLength={2}
+          maxLength={80}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              runSearch();
+            }
+          }}
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
+        />
+        <button
+          type="button"
+          onClick={runSearch}
+          className="min-h-11 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
+        >
+          Suchen
+        </button>
+      </div>
+      <p className="text-xs leading-5 text-slate-600">
+        Bis zu {PROJECT_TASK_MAX_ASSIGNEES} interne Personen. Die Suche zeigt höchstens {PROJECT_TASK_MEMBER_SEARCH_LIMIT} Treffer.
+      </p>
+      {searchState.status === "results" ? (
+        <ul className="grid gap-1">
+          {searchState.members.map((member) => {
+            const active = selected.some((entry) => entry.membershipId === member.membershipId);
+            return (
+              <li key={member.membershipId}>
+                <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 px-1 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={active}
+                    onChange={() => toggle(member)}
+                    className="h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
+                  />
+                  {member.label}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {searchState.status === "empty" ? (
+        <p className="text-sm text-slate-500">Keine Mitglieder für „{searchState.query}“ gefunden.</p>
+      ) : null}
+      {searchState.status === "invalid" ? (
+        <p className="text-sm font-medium text-red-700">Suche prüfen (mind. 2 Zeichen).</p>
+      ) : null}
+    </div>
+  );
 }
 
 // F16-04: Create-/Edit-Formular (Name, Titel-Preset, Offset; leer =
@@ -115,6 +234,7 @@ function TemplateForm({
         </label>
       </div>
       <div>
+        <AssigneePicker workspaceId={workspaceId} initial={template?.assignees ?? []} />
         <button
           type="submit"
           className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600"
