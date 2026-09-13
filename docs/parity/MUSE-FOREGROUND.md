@@ -813,3 +813,10 @@ identisch (`983ed67`, 0 unpusht).
 - Damit ist der Stapel ab `3dc81a1` lokal vollständig verifiziert; einziger
   ausstehender Schritt bleibt der Push + CI-Orakel (Entscheid Mikail/Codex).
   Kein Push erfolgt.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 4 — Push)
+- Push freigegeben und erfolgt: `3dc81a1..d5719fd` (9 Commits, Fast-Forward,
+  `[ECC pre-push] Verification checks passed`), Branch synchron mit Origin.
+- CI `34760808207` (codex-lane-gates, HEAD d5719fd) läuft; Auswertung nach
+  Abschluss: Befund dem Commit zuordnen, Ursache gezielt testen, keine
+  blinden Re-Runs.
