@@ -614,6 +614,9 @@ function SegmentGroup({
               {item.kind === "description" && item.description && !(canEditStructure && !completed) ? (
                 <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.description}</p>
               ) : null}
+              {item.kind === "text" && item.value && !(canEditStructure && !completed) ? (
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{item.value}</p>
+              ) : null}
               {canConfigure && !completed && isChecklistWorkItem(item) ? (
                 <label className="mt-1 flex min-h-11 w-fit cursor-pointer items-center gap-2 px-1 text-xs text-slate-600">
                   <input
@@ -934,6 +937,8 @@ function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId,
 // und DB-Validator (0130) fail-closed ab.
 // F7-02D: `radio` (Einfachauswahl, Katalog F7.2 Slice B) ergänzt die Liste;
 // Exklusivität je Segment sichert Toggle + Validator (0141).
+// F7-02E: `text` (Textantwort, Slice B ohne Diktat); Wechsel von Text
+// löscht `value` überall ehrlich (Spiegel zu description).
 function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
   item: ChecklistItemV1;
   itemIndex: number;
@@ -950,16 +955,18 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
         onChange={(event) => {
           const next = event.target.value;
           if (next === "description") {
-            onSetItem(itemIndex, { kind: "description", done: false, required: false }, canEditStructure);
+            onSetItem(itemIndex, { kind: "description", done: false, required: false, value: null }, canEditStructure);
           } else if (next === "title") {
-            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null, value: null }, canEditStructure);
           } else if (next === "radio") {
             // F7-02D: ehrliches Umschreiben wie Anzeige-Punkte — done fällt,
             // damit der Wechsel nie einen speicherbaren Doppel-done erzeugt
             // (Exklusivität wählt der Radio-Input selbst).
-            onSetItem(itemIndex, { kind: "radio", done: false, description: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "radio", done: false, description: null, value: null }, canEditStructure);
+          } else if (next === "text") {
+            onSetItem(itemIndex, { kind: "text", description: null }, canEditStructure);
           } else {
-            onSetItem(itemIndex, { kind: "task", description: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "task", description: null, value: null }, canEditStructure);
           }
         }}
         className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
@@ -968,7 +975,21 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
         <option value="title">Titel</option>
         <option value="description">Beschreibung</option>
         <option value="radio">Einfachauswahl</option>
+        <option value="text">Textantwort</option>
       </select>
+      {item.kind === "text" ? (
+        <textarea
+          aria-label={`${title}: Antworttext`}
+          value={item.value ?? ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            onSetItem(itemIndex, { value: value === "" ? null : value }, canEditStructure);
+          }}
+          rows={2}
+          placeholder="Antworttext"
+          className="min-h-11 w-full max-w-md rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+        />
+      ) : null}
       {item.kind === "description" ? (
         <textarea
           aria-label={`${title}: Beschreibungstext`}

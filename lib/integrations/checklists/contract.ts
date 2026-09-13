@@ -12,6 +12,10 @@ export const CHECKLIST_SEGMENT_NAME_MAX = 200;
 export const CHECKLIST_ITEM_TITLE_MAX = 500;
 // F7-02C: Fließtext-Maximum für Anzeige-Punkte (spiegelt den DB-Validator).
 export const CHECKLIST_ITEM_DESCRIPTION_MAX = 2000;
+// F7-02E: Antworttext-Maximum für Textpunkte (spiegelt den DB-Validator;
+// bewusst eigene Konstante statt Alias, damit beide Schranken getrennt
+// versionierbar bleiben).
+export const CHECKLIST_ITEM_VALUE_MAX = 2000;
 // F7-04b: Begründungs-Maximum (UTF-16-Einheiten, spiegelt
 // public._f704_valid_clean_text(..., 500) in Migration 0127).
 export const CHECKLIST_ITEM_IRRELEVANT_REASON_MAX = 500;
@@ -86,7 +90,9 @@ export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSche
 // F7-02D: Einfachauswahl (Katalog F7.2, Slice B). `radio` ist abhakbar wie
 // Aufgabe; Exklusivitaet (hoechstens ein erledigter Radio-Punkt je Segment)
 // prueft die Baumvalidierung unten (Scope spiegelt visibleIf-Regeln).
-export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio"]);
+// F7-02E: Freitext-Antwort (Katalog F7.2, Slice B ohne Diktat). `text` ist
+// abhakbar wie Aufgabe und trägt optional `value` (Antworttext, nur dort).
+export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text"]);
 export type ChecklistItemKindV1 = z.infer<typeof checklistItemKindSchema>;
 
 export const editableChecklistItemSchema = z.object({
@@ -102,6 +108,8 @@ export const editableChecklistItemSchema = z.object({
   visibleIf: checklistItemVisibleIfSchema.nullish(),
   kind: checklistItemKindSchema.nullish(),
   description: cleanText(CHECKLIST_ITEM_DESCRIPTION_MAX).nullish(),
+  // F7-02E: Antworttext nur am Textpunkt (Regel unten; Spiegel zu description).
+  value: cleanText(CHECKLIST_ITEM_VALUE_MAX).nullish(),
 }).strict();
 export type ChecklistItemV1 = z.infer<typeof editableChecklistItemSchema>;
 
@@ -217,6 +225,7 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
           required: boolean;
           kind?: string | null;
           description?: string | null;
+          value?: string | null;
           visibleIf?: { itemId: string } | null;
         }>;
       }>;
@@ -251,6 +260,7 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
         // F7-02C: Anzeige-Punkte tragen weder Pflicht/Erledigt noch fremden
         // Fließtext (keine Mischbestände, kein stilles Ignorieren).
         // F7-02D: `radio` ist kein Anzeige-Punkt (abhakbar wie Aufgabe).
+        // F7-02E: `text` ist kein Anzeige-Punkt (abhakbar wie Aufgabe).
         for (const item of segment.items) {
           if (item.description != null && item.kind !== "description") {
             context.addIssue({
@@ -258,8 +268,15 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
               message: "Beschreibungstext verlangt einen Beschreibungspunkt",
             });
           }
+          // F7-02E: Antworttext verlangt einen Textpunkt (Spiegel-Regel).
+          if (item.value != null && item.kind !== "text") {
+            context.addIssue({
+              code: "custom",
+              message: "Antworttext verlangt einen Textpunkt",
+            });
+          }
           if (item.kind != null && item.kind !== "task" && item.kind !== "radio"
-            && (item.required || item.done)) {
+            && item.kind !== "text" && (item.required || item.done)) {
             context.addIssue({
               code: "custom",
               message: "Anzeigepunkte sind weder Pflicht noch abhakbar",
@@ -413,10 +430,12 @@ function segmentItemsById(
 // können kein required tragen).
 // F7-02D: Radio-Punkte sind Arbeitsgegenstand wie Aufgaben (abhakbar,
 // Pflicht-fähig; Exklusivität sichert die Baumvalidierung).
+// F7-02E: Textpunkte ebenso (Antworttext ist Nutzlast, kein Gate).
 export function isChecklistWorkItem(
   item: Pick<ChecklistItemV1, "kind">,
 ): boolean {
-  return item.kind == null || item.kind === "task" || item.kind === "radio";
+  return item.kind == null || item.kind === "task" || item.kind === "radio"
+    || item.kind === "text";
 }
 
 export function segmentRequiredRemaining(

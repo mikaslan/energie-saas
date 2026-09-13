@@ -476,6 +476,8 @@ const F704_CHECKLIST_INDEX_ROWS = [
 // F7-02D (0141): validBlocks erneut geerntet (radio-Art + Segment-
 // Exklusivitaet); Ist-Wert aus Gate-Lauf nach 0141-Anwendung, Gate
 // verifiziert den Pin bei jedem Lauf erneut.
+// F7-02E (0142): validBlocks erneut geerntet (text-Art + value-Spiegel);
+// Ist-Wert aus Gate-Lauf nach 0142-Anwendung, Gate verifiziert erneut.
 const F704_CHECKLIST_FUNCTION_SHA256 = {
   actorRole: "2327d748e395d0a596c129657a32bfc255e74a681459036f612ddcd5a0e2a050",
   assertWorkspace: "b726ed4b961b6e583e11179e32a8f34a10e76330352e5fc5c54c86cc6bc9b633",
@@ -485,7 +487,7 @@ const F704_CHECKLIST_FUNCTION_SHA256 = {
   saveChecklist: "8090f3ff4e3a3b79a513147a4cc2d3fd03f2a270757c4a7f6309a4f263aed470",
   setIrrelevant: "e37e70b04c9c0ae912fd58ab4349b6063b34c96a50da7aa684a462fe56f536f2",
   unlockSegment: "328076b50403adaa2a571f9b640058b49122d2bb9978ad969ad0048590588f27",
-  validBlocks: "892ab15cd805061660dd1c937da0da03f04a4be119c06d504e3a1f5642153299",
+  validBlocks: "3b5a048e4eface90e380913133dd5396a79dff5cdb87ad2219970ef9a943ccb3",
 } as const;
 const F704_CHECKLIST_FUNCTION_SECURITY_ROWS = [
   "_f704_actor_checklist_role(uuid):text:app_owner:plpgsql:f:s:" +
