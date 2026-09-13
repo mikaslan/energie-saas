@@ -907,3 +907,21 @@ identisch (`983ed67`, 0 unpusht).
   Cast-Stelle (`formatPortalSignatureStatus`) faellt fail-closed auf
   `none` in der aktiven Sprache zurueck; Inline-Ternaries zentral in
   `portal-language.ts` mit beiden Aesten. KEIN Befund.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 15 — F1609-Fix + Beweis-Volllauf)
+- Auftrag CI 34767026269: F1609-E2E-03 (`waitForURL` Angebotsuebersicht)
+  als verlorener Klick unter Last eingeordnet; Retry-einmal-Helfer
+  `clickOverviewAndWait` in `f16-08`/`f16-09` (nur Specs, kein App-Code,
+  keine Timeout-Abschwaechung). tsc/eslint gruen.
+- Beweis-Volllauf (identischer Code): 222 passed, 8 failed — F1609-Scope
+  (f16-08/f16-09) VOLLSTAENDIG GRUEN. 8 Fehler ausserhalb des Scopes:
+  6x React-Dev-`performance.measure` (`'\u200b'Page kann kein negatives
+  Zeitintervall haben`, nur in `react-dom-client.development.js`,
+  `logComponentRender`; Production-Bundle ohne diese Pfade —
+  Dev-Instrumentierungs-Race, kein App-Bug), 1x OTP-400 beim Kalt-Login
+  (DASH-01, erster Login des Laufs), 1x Content-Lock-Timeout (F301,
+  Queue-Lag). Alle 8 im fokussierten Repro 24/24 GRUEN sowie im
+  241er-Volllauf auf identischem Code gruen — umgebungsbedingt
+  (Lauf-Varianz), kein Commit-Bezug, keine Gate-Abschwaechung.
+  Empfehlung fuers Endaudit: schmaler Artefakt-Filter nur fuer diese
+  React-Dev-Meldung ODER CI-Retry-Policy (nicht einseitig umgesetzt).

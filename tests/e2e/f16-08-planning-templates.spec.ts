@@ -31,6 +31,21 @@ type SerializedF1608State = {
 
 type F1608State = M201RuntimeState & { f1606ProjectId: string; w3WorkspaceId: string; viewerEmail: string };
 
+const OVERVIEW_URL = (url: URL): boolean =>
+  /^\/w\/[0-9a-f-]+\/angebote\/?$/u.test(url.pathname);
+
+// Wie F1609 (CI 34767026269): verlorenen Overview-Klick einmal wiederholen;
+// die Landung bleibt die volle harte Prüfung.
+async function clickOverviewAndWait(page: Page): Promise<void> {
+  const overview = page.getByRole("link", { name: "Angebotsübersicht öffnen", exact: true });
+  try {
+    await Promise.all([page.waitForURL(OVERVIEW_URL, { timeout: 10_000 }), overview.click()]);
+  } catch {
+    await overview.click();
+    await page.waitForURL(OVERVIEW_URL);
+  }
+}
+
 function runtimeState(): F1608State {
   const statePath = process.env.M1_05_E2E_STATE;
   if (!statePath) {
@@ -198,8 +213,7 @@ async function openOfferForApply(
       && url.searchParams.has("variante"));
   } else {
     await expect(page.locator('[data-offer-create-state="converted"]')).toBeVisible();
-    await page.getByRole("link", { name: "Angebotsübersicht öffnen", exact: true }).click();
-    await page.waitForURL((url) => /^\/w\/[0-9a-f-]+\/angebote\/?$/u.test(url.pathname));
+    await clickOverviewAndWait(page);
     await page.getByRole("link", { name: "Öffnen", exact: true }).first().click();
     await page.waitForURL((url) =>
       /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)

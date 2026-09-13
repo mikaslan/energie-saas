@@ -16,6 +16,23 @@ import {
 
 const browserErrors = new WeakMap<Page, string[]>();
 
+const OVERVIEW_URL = (url: URL): boolean =>
+  /^\/w\/[0-9a-f-]+\/angebote\/?$/u.test(url.pathname);
+
+// CI 34767026269 (F1609-E2E-03:170): Klick erfolgreich, Navigation startet
+// unter Last nicht (kein Commit-Bezug, Route Minuten zuvor warm, lokal
+// 5× grün). Verlorenen Klick einmal wiederholen; die Landung bleibt die
+// volle harte Prüfung (kein aufgeweichtes Gate, keine Timeout-Erhöhung).
+async function clickOverviewAndWait(page: Page): Promise<void> {
+  const overview = page.getByRole("link", { name: "Angebotsübersicht öffnen", exact: true });
+  try {
+    await Promise.all([page.waitForURL(OVERVIEW_URL, { timeout: 10_000 }), overview.click()]);
+  } catch {
+    await overview.click();
+    await page.waitForURL(OVERVIEW_URL);
+  }
+}
+
 type SerializedF1609State = {
   databaseUrl: string;
   editorEmail: string;
@@ -166,8 +183,7 @@ async function openOfferForApply(
       && url.searchParams.has("variante"));
   } else {
     await expect(page.locator('[data-offer-create-state="converted"]')).toBeVisible();
-    await page.getByRole("link", { name: "Angebotsübersicht öffnen", exact: true }).click();
-    await page.waitForURL((url) => /^\/w\/[0-9a-f-]+\/angebote\/?$/u.test(url.pathname));
+    await clickOverviewAndWait(page);
     await page.getByRole("link", { name: "Öffnen", exact: true }).first().click();
     await page.waitForURL((url) =>
       /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
