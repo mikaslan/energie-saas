@@ -845,3 +845,11 @@ identisch (`983ed67`, 0 unpusht).
 - Beweis-Volllauf: 241/241 GRUEN (0 skipped/flaky), 26/26 Kandidaten.
   Shots selbst geprueft: WMEE-Gruen, kein Orange, Redaktions-Boxen sitzen,
   kein Layoutbruch (Board/Editor/Readiness, Desktop+Mobile).
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 7 — CI 34767026269-Befund, HEAD fd0515e)
+- CI rot, aber NUR E2E-Job: Statik/DB/Rollen/Build gruen. E2E 238/239;
+  einziger Fehler F1609-E2E-03 (`waitForURL` Angebotsuebersicht, 30 s,
+  10 min im Lauf) — Navigations-Stillstand unter CI-Dev-Last (M3-00-Klasse).
+  Kein Bezug zu den 10 Commits (keiner beruehrt Angebotsuebersicht/
+  Foerder-Preset-Pfade). Lokal gezielt GRUEN (10,9 s) + im 241/241-Volllauf
+  auf identischem Code gruen. Kein Code angeruehrt, kein Re-Run.
