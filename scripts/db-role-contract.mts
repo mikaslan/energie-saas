@@ -558,6 +558,10 @@ const PLANNING_TEMPLATE_RELATIONS = [
   "planning_template",
 ] as const;
 
+const EMAIL_TEMPLATE_RELATIONS = [
+  "email_template",
+] as const;
+
 const PORTAL_STATUS_LABEL_RELATIONS = [
   "portal_status_label",
 ] as const;
@@ -2892,6 +2896,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F16-10: E-Mail-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
+  const hasEmailTemplates = await hasAtomicPublicRelationSet(
+    client,
+    EMAIL_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F16-10-E-Mail-Vorlagen",
+  );
+  if (hasEmailTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.email_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.email_template to app_runtime
+    `);
+  }
+
   // F1-12: Teams — Stammdaten ohne Delete (Archiv); Mitglieder
   // Voll-Replace (DELETE nur eigene Team-Zeilen, Service-Guard).
   const hasTeams = await hasAtomicPublicRelationSet(
@@ -4572,6 +4592,11 @@ export async function verifyRoleContract(
     PLANNING_TEMPLATE_RELATIONS,
     "Rollenvertrag: F16-08-Planungs-Vorlagen",
   );
+  const hasEmailTemplates = await hasAtomicPublicRelationSet(
+    client,
+    EMAIL_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F16-10-E-Mail-Vorlagen",
+  );
   const hasPortalStatusLabels = await hasAtomicPublicRelationSet(
     client,
     PORTAL_STATUS_LABEL_RELATIONS,
@@ -4897,6 +4922,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasEmailTemplates ? EMAIL_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.map(
@@ -6228,6 +6256,9 @@ export async function verifyRoleContract(
       ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasEmailTemplates ? EMAIL_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortalStatusLabels ? PORTAL_STATUS_LABEL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6669,6 +6700,11 @@ export async function verifyRoleContract(
         // geerntet, Methode gegen file_request-Pin gegengeprüft).
         ...(hasPlanningTemplates ? [
           "planning_template:tenant_isolation:8be1690547ba95dd467d0f15cb959830845dd929a6de4caff76b5b662d601315",
+        ] : []),
+        // F16-10 (0139): E-Mail-Vorlagen (Hash per Gate-Ist geerntet,
+        // Methode gegen file_request-Pin gegengeprüft).
+        ...(hasEmailTemplates ? [
+          "email_template:tenant_isolation:f3e23834a8ceb6eeff396bfb3ec51a274a417071a9ac114363ae490066cc1f75",
         ] : []),
         ...(hasPortalStatusLabels ? [
           "portal_status_label:tenant_isolation:bc4e54d8d9cadf8aaeb2b77dc5c45c95b2f12fc9eeb5a1ac9d009fd46b1681b6",
@@ -7260,6 +7296,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasEmailTemplates ? EMAIL_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

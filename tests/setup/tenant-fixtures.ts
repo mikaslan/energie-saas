@@ -2496,6 +2496,19 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F16-10 (0139): E-Mail-Vorlagen — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies.
+  email_template: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into email_template (
+        id, workspace_id, "key", subject, body, active, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'portal_link',
+        'Fixture-Betreff', 'Fixture-Text', true,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
   // F16-07 (0110): Datei-Anfragen-Vorlagen — nur workspace-FK, RLS
   // tenant_isolation, keine Actor-Policies.
   file_request_template: async (tx, wsId) => {
