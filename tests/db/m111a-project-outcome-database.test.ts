@@ -231,10 +231,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0136 F16-08 Planungs-Vorlagen (Tabelle + RLS),
     // 0137 F10-12 Download-Protokoll (Tabelle + RLS + DEFINER-Replace),
     // 0138 F16-09 Förder-Preset (Spalte + FK + CHECK),
-    // 0139 F16-10 E-Mail-Vorlagen (Tabelle + RLS)).
+    // 0139 F16-10 E-Mail-Vorlagen (Tabelle + RLS),
+    // 0140 F10-02c Portal-Signatur-Kapseln (Funktionen + Owner-Tanz)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 139,
-      tag: "0139_f16_10_email_vorlagen",
+      idx: 140,
+      tag: "0140_f10_02c_portal_signatur_schreiben",
     });
   });
 

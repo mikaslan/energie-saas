@@ -60,6 +60,8 @@ export default async function PortalTokenPage({
     upload?: string | string[];
     confirm?: string | string[];
     chat?: string | string[];
+    sign?: string | string[];
+    revoke?: string | string[];
     lang?: string | string[];
   }>;
 }) {
@@ -109,6 +111,23 @@ export default async function PortalTokenPage({
     : rawChat === "fehler"
       ? t.chatGone
       : null;
+  // F10-02c: Portal-Signatur schreiben (Annehmen/Widerrufen je Dokument).
+  const rawSign = Array.isArray(query.sign) ? query.sign[0] : query.sign;
+  const signHint = rawSign === "ok"
+    ? t.signOk
+    : rawSign === "bereits"
+      ? t.signKnown
+      : rawSign === "fehler"
+        ? t.signGone
+        : null;
+  const rawRevoke = Array.isArray(query.revoke) ? query.revoke[0] : query.revoke;
+  const revokeHint = rawRevoke === "ok"
+    ? t.revokeOk
+    : rawRevoke === "bereits"
+      ? t.revokeKnown
+      : rawRevoke === "fehler"
+        ? t.revokeGone
+        : null;
   const nextStep = resolvePortalNextStep(view.project.phase, view.project.outcome, lang);
   // F10-09: FAQ genau des aktuellen Installationsstands (Abnahme >
   // Abschluss > laufend); ohne Eintrag kein Block.
@@ -442,6 +461,28 @@ export default async function PortalTokenPage({
             {view.project.scope === "commercial" ? null : (
               <>
                 <h2 className="mt-6 text-lg font-semibold text-slate-950">{t.documentsHeading}</h2>
+                {signHint ? (
+                  <p
+                    role={rawSign === "fehler" ? "alert" : "status"}
+                    data-testid="portal-signature-sign-feedback"
+                    className={`mt-2 text-sm font-semibold ${
+                      rawSign === "fehler" ? "text-red-700" : "text-emerald-700"
+                    }`}
+                  >
+                    {signHint}
+                  </p>
+                ) : null}
+                {revokeHint ? (
+                  <p
+                    role={rawRevoke === "fehler" ? "alert" : "status"}
+                    data-testid="portal-signature-revoke-feedback"
+                    className={`mt-2 text-sm font-semibold ${
+                      rawRevoke === "fehler" ? "text-red-700" : "text-emerald-700"
+                    }`}
+                  >
+                    {revokeHint}
+                  </p>
+                ) : null}
                 {view.documents.length === 0 ? (
                   <p className="mt-2 text-sm leading-6 text-slate-600">
                     {t.documentsEmpty}
@@ -458,6 +499,32 @@ export default async function PortalTokenPage({
                         </span>
                         <span className="flex items-center gap-3">
                           <span className="text-sm text-slate-500">{doc.documentDate}</span>
+                          {doc.signatureStatus === "pending" ? (
+                            <form action={`/p/${token}/signatur`} method="post">
+                              <input type="hidden" name="action" value="sign" />
+                              <input type="hidden" name="issuanceId" value={doc.id} />
+                              <input type="hidden" name="lang" value={lang} />
+                              <button
+                                type="submit"
+                                className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-3 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                              >
+                                {t.signButton}
+                              </button>
+                            </form>
+                          ) : null}
+                          {doc.signatureStatus === "signed" ? (
+                            <form action={`/p/${token}/signatur`} method="post">
+                              <input type="hidden" name="action" value="revoke" />
+                              <input type="hidden" name="issuanceId" value={doc.id} />
+                              <input type="hidden" name="lang" value={lang} />
+                              <button
+                                type="submit"
+                                className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                              >
+                                {t.revokeButton}
+                              </button>
+                            </form>
+                          ) : null}
                           <Link
                             href={`/p/${token}/dokumente/${doc.id}?lang=${lang}`}
                             className="inline-flex min-h-11 items-center rounded-md border border-slate-300 px-3 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"

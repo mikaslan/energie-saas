@@ -12,6 +12,8 @@ export {
   recordSignatureView,
   resolveSignatureByToken,
   revokeSignatureByCustomer,
+  revokeSignatureByInviteToken,
+  signSignatureByInviteToken,
   signSignatureByToken,
   uploadAnalogSignature,
   withdrawSignatureRequest,

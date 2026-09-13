@@ -67,6 +67,15 @@ export interface PortalStrings {
   documentsEmpty: string;
   offerWord: string;
   downloadWord: string;
+  // F10-02c: Portal-Signatur schreiben (Annehmen/Widerrufen je Dokument).
+  signButton: string;
+  revokeButton: string;
+  signOk: string;
+  signKnown: string;
+  signGone: string;
+  revokeOk: string;
+  revokeKnown: string;
+  revokeGone: string;
   // F8-15: Portal-Rechnungssicht (Nummer/Art/Brutto/Zahlstand).
   invoicesHeading: string;
   invoicesEmpty: string;
@@ -405,6 +414,14 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     documentsEmpty: "Aktuell liegen keine freigegebenen Dokumente vor.",
     offerWord: "Angebot",
     downloadWord: "Herunterladen",
+    signButton: "Angebot annehmen",
+    revokeButton: "Widerrufen",
+    signOk: "Vielen Dank — das Angebot ist angenommen.",
+    signKnown: "Dieses Angebot ist bereits angenommen.",
+    signGone: "Das Angebot ist nicht mehr verfügbar.",
+    revokeOk: "Der Vertrag ist widerrufen.",
+    revokeKnown: "Dieser Vertrag ist bereits widerrufen.",
+    revokeGone: "Der Vertrag ist nicht mehr verfügbar.",
     invoicesHeading: "Rechnungen",
     invoicesEmpty: "Aktuell liegen keine Rechnungen vor.",
     invoiceWord: "Rechnung",
@@ -467,6 +484,14 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     documentsEmpty: "No released documents available.",
     offerWord: "Offer",
     downloadWord: "Download",
+    signButton: "Accept offer",
+    revokeButton: "Withdraw",
+    signOk: "Thank you — the offer has been accepted.",
+    signKnown: "This offer has already been accepted.",
+    signGone: "This offer is no longer available.",
+    revokeOk: "The contract has been withdrawn.",
+    revokeKnown: "This contract has already been withdrawn.",
+    revokeGone: "This contract is no longer available.",
     invoicesHeading: "Invoices",
     invoicesEmpty: "No invoices available.",
     invoiceWord: "Invoice",

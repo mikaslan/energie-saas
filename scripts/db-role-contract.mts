@@ -219,6 +219,12 @@ const F208B_SIGNATURE_RUNTIME_ROUTINES = [
 const F208B_SIGNATURE_PRIVATE_ROUTINES = [
   "public._f208b_assert_terminal_signature_integrity()",
 ] as const;
+// F10-02c (0140): Portal-Signatur schreiben — eigene Gate-Menge, damit alte
+// Prefixe ohne diese Funktionen grün bleiben (atomar je Menge).
+const F1002C_SIGNATURE_RUNTIME_ROUTINES = [
+  "public.revoke_signature_by_invite(bytea,uuid)",
+  "public.sign_signature_by_invite(bytea,uuid)",
+] as const;
 
 const INVOICING_RELATIONS = [
   "workspace_invoicing_settings",
@@ -1511,6 +1517,33 @@ async function hasAtomicSignatureAcceptanceWonContract(
   return true;
 }
 
+async function hasAtomicSignaturePortalWriteContract(
+  client: PoolClient,
+  hasSignatures: boolean,
+  label: string,
+): Promise<boolean> {
+  if (!hasSignatures) return false;
+  const presence = await client.query<{ sign: boolean; revoke: boolean }>(`
+    select
+      pg_catalog.to_regprocedure(
+        'public.sign_signature_by_invite(bytea,uuid)'
+      ) is not null as sign,
+      pg_catalog.to_regprocedure(
+        'public.revoke_signature_by_invite(bytea,uuid)'
+      ) is not null as revoke
+  `);
+  const row = presence.rows[0];
+  const indicators = [row?.sign === true, row?.revoke === true];
+  if (indicators.every((present) => !present)) return false;
+  if (!indicators.every(Boolean)) {
+    throw new Error(
+      `${label} ist nur teilweise vorhanden ` +
+        `(Sign=${String(row?.sign)}, Revoke=${String(row?.revoke)}).`,
+    );
+  }
+  return true;
+}
+
 async function hasAtomicF704ChecklistContract(
   client: PoolClient,
   hasChecklists: boolean,
@@ -2552,10 +2585,18 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     hasSignatures,
     "Rollen-ACL-Manifest: F2.8b-Signaturakzeptanz",
   );
+  // F10-02c (0140): eigene Gate-Menge — alte Prefixe ohne Portal-Signatur-
+  // Schreibfunktionen bleiben grün (atomar je Menge).
+  const hasSignaturePortalWrite = await hasAtomicSignaturePortalWriteContract(
+    client,
+    hasSignatures,
+    "Rollen-ACL-Manifest: F10-02c-Portal-Signatur-Schreiben",
+  );
   if (hasSignatures) {
     const signatureRuntimeRoutines = [
       ...SIGNATURE_RUNTIME_ROUTINES,
       ...(hasSignatureAcceptanceWon ? F208B_SIGNATURE_RUNTIME_ROUTINES : []),
+      ...(hasSignaturePortalWrite ? F1002C_SIGNATURE_RUNTIME_ROUTINES : []),
     ];
     const signaturePrivateRoutines = [
       ...SIGNATURE_PRIVATE_ROUTINES,
@@ -4414,6 +4455,13 @@ export async function verifyRoleContract(
     hasSignatures,
     "Rollenvertrag: F2.8b-Signaturakzeptanz",
   );
+  // F10-02c (0140): eigene Gate-Menge — alte Prefixe ohne Portal-Signatur-
+  // Schreibfunktionen bleiben grün (atomar je Menge).
+  const hasSignaturePortalWrite = await hasAtomicSignaturePortalWriteContract(
+    client,
+    hasSignatures,
+    "Rollenvertrag: F10-02c-Portal-Signatur-Schreiben",
+  );
   const hasWorkspaceInvoicing = await hasAtomicPublicRelationSet(
     client,
     INVOICING_RELATIONS,
@@ -5362,6 +5410,8 @@ export async function verifyRoleContract(
         "record_signature_view:app_owner",
         "resolve_signature_public_view:app_owner",
         "revoke_signature_by_customer:app_owner",
+        ...(hasSignaturePortalWrite ? ["revoke_signature_by_invite:app_owner"] : []),
+        ...(hasSignaturePortalWrite ? ["sign_signature_by_invite:app_owner"] : []),
         ...(hasSignatureAcceptanceWon ? ["sign_signature_analog:app_owner"] : []),
         "sign_signature_by_token:app_owner",
       ] : []),
@@ -5645,6 +5695,13 @@ export async function verifyRoleContract(
           "1fbf9fddde50cb2d2298f1bd713b5c53922bd9e8179564286f9bce2ffc197040",
         "revoke_signature_by_customer(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:c61869de7b489354884dc81af015d3d47947a7009804fbb48c73e46596cb89b1",
+        // F10-02c (0140): Portal-Signatur schreiben (Hash aus Migrationstext).
+        ...(hasSignaturePortalWrite ? [
+          "revoke_signature_by_invite(bytea, uuid):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+            "search_path=pg_catalog:9c22c63865f730ff04fa1e5a2c63b630671b2200065275cf6087a3bec7f2e668",
+          "sign_signature_by_invite(bytea, uuid):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+            "search_path=pg_catalog:bb7477c724814748b5af92860fea285aae84222ea8b67a8eab47b246d2dd43dd",
+        ] : []),
         ...(hasSignatureAcceptanceWon ? [
           "sign_signature_analog(uuid, uuid, timestamp with time zone, text, bytea):jsonb:" +
             "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
@@ -7758,8 +7815,14 @@ export async function verifyRoleContract(
         "app_runtime:record_signature_view(bytea):EXECUTE:app_owner:false",
         "app_runtime:resolve_signature_public_view(bytea):EXECUTE:app_owner:false",
         "app_runtime:revoke_signature_by_customer(bytea):EXECUTE:app_owner:false",
+        ...(hasSignaturePortalWrite ? [
+          "app_runtime:revoke_signature_by_invite(bytea, uuid):EXECUTE:app_owner:false",
+        ] : []),
         ...(hasSignatureAcceptanceWon ? [
           "app_runtime:sign_signature_analog(uuid, uuid, timestamp with time zone, text, bytea):EXECUTE:app_owner:false",
+        ] : []),
+        ...(hasSignaturePortalWrite ? [
+          "app_runtime:sign_signature_by_invite(bytea, uuid):EXECUTE:app_owner:false",
         ] : []),
         "app_runtime:sign_signature_by_token(bytea, text, text, bytea):EXECUTE:app_owner:false",
       ] : []),

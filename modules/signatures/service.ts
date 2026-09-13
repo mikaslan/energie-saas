@@ -22,6 +22,8 @@ import {
   type SignatureRequestStatus,
   type SignatureWithdrawalReason,
 } from "@/lib/integrations/offers/signature-contract";
+import { hashPortalToken } from "@/lib/integrations/portal/portal-contract";
+import { PortalNotFoundError, resolvePortalByToken } from "@/modules/portal";
 import {
   can,
   isExternalOnly,
@@ -714,6 +716,83 @@ export async function revokeSignatureByCustomer(
     requestId: parsed.data.requestId,
     offerId: parsed.data.offerId ?? null,
     status: parsed.data.status === "conflict" ? "signed" : parsed.data.status,
+    revokedByCustomerAt: parsed.data.revokedByCustomerAt ?? null,
+    replayed: parsed.data.replayed ?? false,
+  };
+}
+
+// F10-02c Portal-Signatur schreiben: Invite-Kapseln (dritter anonymer
+// Schreibpfad des Portals nach F10-04/F13-06). Toter Invite fällt uniform
+// auf NotFound (kein Orakel); Kapsel-Antworten werden wie die
+// Token-Pendants gemappt (already_signed/replayed = Replay-ok).
+const inviteCapsuleInputSchema = z.strictObject({
+  token: z.string().min(1),
+  issuanceId: uuidSchema,
+});
+
+async function resolveInviteTokenHash(pool: Pool, token: string): Promise<Buffer> {
+  try {
+    await resolvePortalByToken(pool, { token });
+  } catch (error) {
+    if (error instanceof PortalNotFoundError) throw new SignatureNotFoundError();
+    throw error;
+  }
+  const tokenHash = hashPortalToken(token);
+  if (tokenHash === null) throw new SignatureValidationError(["/token"]);
+  return tokenHash;
+}
+
+export async function signSignatureByInviteToken(
+  pool: Pool,
+  value: unknown,
+): Promise<SignatureSignResult> {
+  const command = parseCommand(inviteCapsuleInputSchema, value);
+  const tokenHash = await resolveInviteTokenHash(pool, command.token);
+  const rows = await poolRows(pool, `
+    select public.sign_signature_by_invite($1::bytea, $2::uuid) as result
+  `, [tokenHash, command.issuanceId]);
+  const raw = z.strictObject({ result: z.unknown() }).safeParse(rows[0]);
+  if (!raw.success || rows.length !== 1) throw new SignatureIntegrityError();
+  const parsed = signResultSchema.safeParse(raw.data.result);
+  if (!parsed.success) return mapNonSuccess(raw.data.result);
+  // Falscher Stand (weder signiert noch Replay) fällt uniform auf
+  // NotFound — kein Orakel über Request-Existenz oder -Stand.
+  if (parsed.data.status !== "signed" && parsed.data.status !== "already_signed") {
+    throw new SignatureNotFoundError();
+  }
+  return {
+    requestId: parsed.data.requestId,
+    projectId: parsed.data.projectId ?? null,
+    offerId: parsed.data.offerId ?? null,
+    attestationId: parsed.data.attestationId ?? null,
+    status: parsed.data.status,
+    signerName: parsed.data.signerName ?? null,
+    signedAt: parsed.data.signedAt ?? null,
+  };
+}
+
+export async function revokeSignatureByInviteToken(
+  pool: Pool,
+  value: unknown,
+): Promise<SignatureRevokeResult> {
+  const command = parseCommand(inviteCapsuleInputSchema, value);
+  const tokenHash = await resolveInviteTokenHash(pool, command.token);
+  const rows = await poolRows(pool, `
+    select public.revoke_signature_by_invite($1::bytea, $2::uuid) as result
+  `, [tokenHash, command.issuanceId]);
+  const raw = z.strictObject({ result: z.unknown() }).safeParse(rows[0]);
+  if (!raw.success || rows.length !== 1) throw new SignatureIntegrityError();
+  const parsed = revokeResultSchema.safeParse(raw.data.result);
+  if (!parsed.success) return mapNonSuccess(raw.data.result);
+  // Falscher Stand (z. B. pending widerrufen) fällt uniform auf NotFound —
+  // kein Orakel über Request-Existenz oder -Stand.
+  if (parsed.data.status !== "revoked_by_customer") {
+    throw new SignatureNotFoundError();
+  }
+  return {
+    requestId: parsed.data.requestId,
+    offerId: parsed.data.offerId ?? null,
+    status: parsed.data.status,
     revokedByCustomerAt: parsed.data.revokedByCustomerAt ?? null,
     replayed: parsed.data.replayed ?? false,
   };
