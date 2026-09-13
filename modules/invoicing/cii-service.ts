@@ -5,7 +5,6 @@ import { sql } from "drizzle-orm";
 import type { TenantTx } from "@/lib/db/types";
 import type { ServiceCtx } from "@/lib/permissions";
 import {
-  COMMERCIAL_DOCUMENT_CII_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_CII_VERSION,
   COMMERCIAL_DOCUMENT_DETAIL_COMMAND_VERSION,
   commercialDocumentCiiCommandV1Schema,
