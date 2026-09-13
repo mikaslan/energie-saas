@@ -147,6 +147,7 @@ type E2EState = Pick<
   mainProjectId: string;
   m111bProjectId: string;
   f703ProjectId: string;
+  f703bProjectId: string;
   f704ProjectId: string;
   f704cProjectId: string;
   f22ProjectId: string;
@@ -1532,6 +1533,14 @@ async function main(): Promise<number> {
     w3Credential,
     intakePayload("Wilma W3 Nachholblock", `w3-f703-${randomUUID()}`, true),
   );
+  // F7-03b: eigenes Projekt — F7.3-E2E-01 legt auf f703 eine Checkliste an;
+  // geteilter Seed versteckt je Shard-Reihenfolge die Apply-Sektion (F7-04c-Muster).
+  const w3F703bLead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("Wilma W3 Vorlagen-Arten", `w3-f703b-${randomUUID()}`, true),
+  );
   const w3F704Lead = await submitSignedLead(
     server,
     embedded.superuserUrl,
@@ -1665,6 +1674,7 @@ async function main(): Promise<number> {
     m111bProjectId: m111bLead.projectId,
     m111bWorkspaceId: seedData.m111bWorkspaceId,
     f703ProjectId: w3F703Lead.projectId,
+    f703bProjectId: w3F703bLead.projectId,
     f704ProjectId: w3F704Lead.projectId,
     f704cProjectId: w3F704cLead.projectId,
     f22ProjectId: w3F22Seed.projectId,

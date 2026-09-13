@@ -788,3 +788,17 @@ identisch (`983ed67`, 0 unpusht).
   tsc/eslint/depcruise gruen, keine Migration/Permission/Provider, kein E2E
   (Kapseln ungeroutet). Spec `docs/spec/M2-04b-token-orakel.md` + STATUS-Zeile.
 - Origin unveraendert (`3dc81a1`); weiter kein Push ohne CI-Entscheid.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 2)
+- F7-03b-E2E-01 Volllauf-Fix (LOKAL, nur Test-Seed): F7.3-E2E-01 + F7-03B
+  teilten `f703ProjectId`; legt die Basis-Spec zuerst eine Checkliste an,
+  rendert die Apply-Sektion nicht mehr (`checklistVersion !== 0` →
+  `getByLabel('Vorlage')`-Timeout, 2× identisch im Volllauf, isoliert
+  gruen). Eigenes W3-Projekt `f703bProjectId` (F7-04c-Muster, CI
+  34692521678): Seed + State + Spec-Pfad in `tests/e2e/run.mts` /
+  `f7-03b-vorlagen-arten.spec.ts`. Beweis-Volllauf danach: f7-03b GRUEN.
+  tsc/eslint gruen. Kein App-Code angeruehrt, kein Push.
+- Flake-Belege (Volllauefe, rotierende Timeouts unter 16–21-min-Last):
+  m1-11g (React-Dev-`performance.measure`-Artefakt, `dev:true`, kein
+  App-Aufruf; Re-Run gruen), f2-06 (`ERR_ABORTED` bei Reload; Lauf 1
+  gruen), m3-01-E2E-03 (CSV-GET-Timeout; gezielt isoliert gruen, 8,1 s).

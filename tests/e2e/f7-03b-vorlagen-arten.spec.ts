@@ -9,7 +9,8 @@ import {
 
 /**
  * F7-03B Punkt-Arten in Vorlagen (Katalog F7.3) — Chromium-E2E
- * (W3-Isolation wie F7.3-E2E-01). Editor legt eine Vorlage mit
+ * (eigenes W3-Projekt f703b: F7.3-E2E-01 legt auf f703 eine Checkliste an,
+ * was je Shard-Reihenfolge die Apply-Sektion verstecken wuerde). Editor legt
  * Einfachauswahl- und Textantwort-Position an und wendet sie am Projekt
  * an → die Arten landen 1:1 auf den Projekt-Punkten (Radio-Input +
  * Antwort-Textarea), Speichern + Reload belegt die Persistenz.
@@ -24,7 +25,7 @@ type E2EState = {
   viewerEmail: string;
   mainProjectId: string;
   w3WorkspaceId: string;
-  f703ProjectId: string;
+  f703bProjectId: string;
 };
 
 const browserErrors = new WeakMap<Page, string[]>();
@@ -45,7 +46,7 @@ function state(): E2EState {
   const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<E2EState>;
   const required: Array<keyof E2EState> = [
     "baseURL", "databaseUrl", "serverLogPath", "workspaceId", "editorEmail", "viewerEmail", "mainProjectId",
-    "w3WorkspaceId", "f703ProjectId",
+    "w3WorkspaceId", "f703bProjectId",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
     throw new Error("Der private F7-03B-E2E-State ist unvollständig.");
@@ -123,7 +124,7 @@ async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promi
 }
 
 const settingsPath = (): string => `/w/${state().w3WorkspaceId}/einstellungen/checklisten-vorlagen`;
-const checklistPath = (): string => `/w/${state().w3WorkspaceId}/anfragen/${state().f703ProjectId}/checkliste`;
+const checklistPath = (): string => `/w/${state().w3WorkspaceId}/anfragen/${state().f703bProjectId}/checkliste`;
 
 test("F7-03B-E2E-01: Vorlagen-Arten landen per Apply auf den Projekt-Punkten und persistieren", async ({ page }) => {
   test.setTimeout(150_000);
