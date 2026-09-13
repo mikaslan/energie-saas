@@ -820,3 +820,15 @@ identisch (`983ed67`, 0 unpusht).
 - CI `34760808207` (codex-lane-gates, HEAD d5719fd) läuft; Auswertung nach
   Abschluss: Befund dem Commit zuordnen, Ursache gezielt testen, keine
   blinden Re-Runs.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 5 — CI 34760808207-Befund, HEAD d5719fd)
+- CI rot, aber NUR Job „Chromium-E2E (blockierend)": Statik/DB/Rollen/Build
+  gruen. E2E 236/238, zwei Timeouts, beide ohne Bezug zu den 9 Commits
+  (keiner beruehrt Offers/PDF/Release/Planung-Pfade):
+  1. F1608-E2E-03 `waitForURL` 30 s (13:59) → lokal gezielt GRUEN (10,5 s).
+  2. m2-03a `waitForResponse` 12 s (14:24, bekannter PDF-Poll-Flake,
+  3. Auftreten; lokal 3/3 Volllaeufe gruen; fokussiert per Harness-Design
+  nicht lauffaehig — Fixture braucht m2-01-Angebot aus dem Volllauf).
+- Zuordnung: Last-Flakes unter CI-Last, kein Code angeruehrt, kein Re-Run
+  angestossen (keine blinden Re-Runs). Naechster Fix-Push traegt diesen
+  Nachtrag mit.
