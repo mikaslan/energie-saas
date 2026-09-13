@@ -130,6 +130,18 @@ export class SignaturePersistenceError extends Error {
   }
 }
 
+// M2-04b (Kimi-P2 b2): deformiertes Roh-Token faellt uniform auf NotFound,
+// nie als TypeError/500 nach aussen — kein Orakel ueber Existenz oder Stand
+// (wohlgeformt-unbekannt und deformiert sind ununterscheidbar).
+function hashPublicSignatureToken(token: string): Buffer {
+  try {
+    return hashSignatureToken(token);
+  } catch (error) {
+    if (error instanceof TypeError) throw new SignatureNotFoundError();
+    throw error;
+  }
+}
+
 export type SignatureCreateResult = {
   requestId: string;
   token: string;
@@ -680,7 +692,7 @@ export async function signSignatureByToken(
     }
     assertArtifactMagic(command.artifactMimeType, command.artifactBytes);
   }
-  const tokenHash = hashSignatureToken(command.token);
+  const tokenHash = hashPublicSignatureToken(command.token);
   const rows = await poolRows(pool, `
     select public.sign_signature_by_token($1::bytea, $2::text, $3::text, $4::bytea) as result
   `, [tokenHash, command.mode, command.artifactMimeType, command.artifactBytes]);
@@ -704,7 +716,7 @@ export async function revokeSignatureByCustomer(
   value: unknown,
 ): Promise<SignatureRevokeResult> {
   const command = parseCommand(z.strictObject({ token: z.string().min(1) }), value);
-  const tokenHash = hashSignatureToken(command.token);
+  const tokenHash = hashPublicSignatureToken(command.token);
   const rows = await poolRows(pool, `
     select public.revoke_signature_by_customer($1::bytea) as result
   `, [tokenHash]);
@@ -803,7 +815,17 @@ export async function recordSignatureView(
   value: unknown,
 ): Promise<SignatureViewResult> {
   const command = parseCommand(z.strictObject({ token: z.string().min(1) }), value);
-  const tokenHash = hashSignatureToken(command.token);
+  let tokenHash: Buffer;
+  try {
+    tokenHash = hashPublicSignatureToken(command.token);
+  } catch (error) {
+    // Uniform zum unbekannten Token (DB meldet {status:"not_found"} als
+    // Rueckgabe, nicht als Fehler): kein Orakel ueber Token-Format.
+    if (error instanceof SignatureNotFoundError) {
+      return { requestId: null, status: "not_found", viewCount: 0, firstViewedAt: null };
+    }
+    throw error;
+  }
   const rows = await poolRows(pool, `
     select public.record_signature_view($1::bytea) as result
   `, [tokenHash]);
@@ -824,7 +846,7 @@ export async function resolveSignatureByToken(
   value: unknown,
 ): Promise<SignaturePublicView> {
   const command = parseCommand(z.strictObject({ token: z.string().min(1) }), value);
-  const tokenHash = hashSignatureToken(command.token);
+  const tokenHash = hashPublicSignatureToken(command.token);
   const rows = await poolRows(pool, `
     select * from public.resolve_signature_public_view($1::bytea)
   `, [tokenHash]);

@@ -776,3 +776,15 @@ identisch (`983ed67`, 0 unpusht).
   Q-M5-LIDAR, F3-Belegung (fuer dachgebundene Modul-kWp),
   CI-Re-Run-/Push-Entscheid, visuelle Baselines INCONCLUSIVE
   (kein Live-Reonic-Zugang).
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung)
+- M2-04b Token-Orakel (Kimi-P2 b2, LOKAL): deformiertes Roh-Token faellt an
+  den vier oeffentlichen Signatur-Kapseln uniform auf NotFound
+  (`hashPublicSignatureToken` in `modules/signatures/service.ts`; View gibt
+  byte-identisches not_found-Payload zurueck — DB-0044-Verhalten verifiziert).
+  TODO im Contract als umgesetzt markiert (Render `/s/[token]` bleibt BLOCKED
+  bis M2-03b2/issued, DEC-M204-04; M2-03b2 extern BLOCKED bestaetigt).
+  DB M204B 2/2 (RED am Alt-Code belegt: DB-01 rot ohne Fix), Nachbarn 47/47,
+  tsc/eslint/depcruise gruen, keine Migration/Permission/Provider, kein E2E
+  (Kapseln ungeroutet). Spec `docs/spec/M2-04b-token-orakel.md` + STATUS-Zeile.
+- Origin unveraendert (`3dc81a1`); weiter kein Push ohne CI-Entscheid.
