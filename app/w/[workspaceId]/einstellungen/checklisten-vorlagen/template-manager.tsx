@@ -168,7 +168,7 @@ function ItemEditor({
 }) {
   const addItem = () => onChange([
     ...items,
-    { componentId: components[0]?.id ?? "", quantity: 1, position: items.length, visibleToCustomer: true, priceOverridesComponent: false },
+    { componentId: components[0]?.id ?? "", quantity: 1, position: items.length, visibleToCustomer: true, priceOverridesComponent: false, kind: null },
   ]);
   const setItem = (index: number, patch: Partial<ChecklistTemplateItemV1>) =>
     onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -204,6 +204,22 @@ function ItemEditor({
             }}
               className="w-20 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
             />
+          </label>
+          <label className="flex items-center gap-1 text-sm text-slate-700">
+            Art
+            <select
+              aria-label={`Art ${index + 1}`}
+              value={item.kind ?? "task"}
+              onChange={(event) => setItem(index, { kind: event.target.value as ChecklistTemplateItemV1["kind"] })}
+              className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
+            >
+              <option value="task">Aufgabe</option>
+              <option value="title">Titel</option>
+              <option value="description">Beschreibung</option>
+              <option value="radio">Einfachauswahl</option>
+              <option value="text">Textantwort</option>
+              <option value="multi">Mehrfachauswahl</option>
+            </select>
           </label>
           <button
             type="button"

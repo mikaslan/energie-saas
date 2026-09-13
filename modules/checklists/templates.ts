@@ -10,6 +10,7 @@ import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   CHECKLIST_SCHEMA_VERSION,
   editableChecklistBlocksSchema,
+  type ChecklistItemKindV1,
   type EditableChecklistBlocksV2,
 } from "@/lib/integrations/checklists/contract";
 import {
@@ -312,12 +313,14 @@ export function restoreChecklistTemplate(
 
 // ESTIMATE-Mapping (Spec §2.2, DECIDED): Vorlage → Projekt-Checkliste als
 // ein Block (Template-Name) mit Segment „Material" und Items
-// „«Komponentenname» × quantity". Radio-/Bild-Typen = Slice B.
+// „«Komponentenname» × quantity".
 // F7-13: gerenderte Vorlage (Name + Positionen mit stabiler componentId)
 // als gemeinsame Basis für Erst-Anlage, Merge und Reset.
+// F7-03B: Positionen tragen die Punkt-Art (null = Legacy = Aufgabe);
+// Bild-Typen bleiben Q-STORAGE-UPLOADS.
 type RenderedTemplate = {
   name: string;
-  items: Array<{ componentId: string; title: string }>;
+  items: Array<{ componentId: string; title: string; kind: ChecklistItemKindV1 | null }>;
 };
 
 async function loadTemplateRender(
@@ -364,6 +367,8 @@ async function loadTemplateRender(
     items: itemsParsed.map((item) => ({
       componentId: item.componentId,
       title: `${nameById.get(item.componentId) ?? "Komponente"} × ${item.quantity}`,
+      // F7-03B: Punkt-Art je Position (nullish = Legacy = Aufgabe).
+      kind: item.kind ?? null,
     })),
   };
 }
@@ -386,6 +391,9 @@ function renderFreshBlocks(render: RenderedTemplate, position: number): Editable
         required: false,
         visible: true,
         componentId: item.componentId,
+        // F7-03B: Art aus der Vorlage (null = Aufgabe); Inhalt/Antwort
+        // trägt die Vorlage nie (description/value bleiben null).
+        kind: item.kind,
       })),
     }],
   }];
@@ -563,6 +571,9 @@ export async function reapplyChecklistTemplate(
         required: false,
         visible: true,
         componentId: item.componentId,
+        // F7-03B: Nachschub mit Art; vorhandene Punkte (Match oben)
+        // behalten ihre Art — kein Overwrite (Werterhalt).
+        kind: item.kind,
       });
     }
     const merged = editableChecklistBlocksSchema.safeParse(blocks);

@@ -614,8 +614,23 @@ function SegmentGroup({
               {item.kind === "description" && item.description && !(canEditStructure && !completed) ? (
                 <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.description}</p>
               ) : null}
-              {item.kind === "text" && item.value && !(canEditStructure && !completed) ? (
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{item.value}</p>
+              {item.kind === "text" && !(canEditStructure && !completed) ? (
+                canWrite && !completed ? (
+                  <textarea
+                    aria-label={`${item.title || `Punkt ${itemIndex + 1}`}: Antworttext`}
+                    value={item.value ?? ""}
+                    disabled={pending}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      onSetItem(itemIndex, { value: value === "" ? null : value }, canWrite);
+                    }}
+                    rows={2}
+                    placeholder="Antworttext"
+                    className="mt-1 min-h-11 w-full max-w-md rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+                  />
+                ) : item.value ? (
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{item.value}</p>
+                ) : null
               ) : null}
               {canConfigure && !completed && isChecklistWorkItem(item) ? (
                 <label className="mt-1 flex min-h-11 w-fit cursor-pointer items-center gap-2 px-1 text-xs text-slate-600">

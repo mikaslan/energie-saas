@@ -1,8 +1,12 @@
 import { z } from "zod";
 
+import { checklistItemKindSchema } from "./contract";
+
 // F7.3 Checklisten-Vorlagen — interner DTO-/Command-Vertrag (Slice A).
 // OBSERVED-Item-Form: {componentId, quantity, position, visibleToCustomer,
 // priceOverridesComponent}; componentId referenziert den EIGENEN Katalog.
+// F7-03B: optionale Punkt-Art je Position (nullish = Legacy = Aufgabe);
+// die Vorlage definiert die ART, nie Inhalt oder Antwort.
 
 export const CHECKLIST_TEMPLATE_SCHEMA_VERSION = 1;
 
@@ -24,6 +28,9 @@ export const checklistTemplateItemSchema = z.strictObject({
   position: z.number().int().min(0),
   visibleToCustomer: z.boolean(),
   priceOverridesComponent: z.boolean(),
+  // F7-03B: Art des Punkts, den das Anwenden erzeugt (alle sechs
+  // Projekt-Arten; fehlend = Legacy = Aufgabe wie bisher).
+  kind: checklistItemKindSchema.nullish(),
 });
 export type ChecklistTemplateItemV1 = z.infer<typeof checklistTemplateItemSchema>;
 

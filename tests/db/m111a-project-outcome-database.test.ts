@@ -235,10 +235,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0140 F10-02c Portal-Signatur-Kapseln (Funktionen + Owner-Tanz),
     // 0141 F7-02d Radio-Einfachauswahl (Validator-Replace),
     // 0142 F7-02e Freitext-Antwort (Validator-Replace),
-    // 0143 F7-02f Mehrfachauswahl (Validator-Replace)).
+    // 0143 F7-02f Mehrfachauswahl (Validator-Replace),
+    // 0144 F7-03b Antwortwert-Nutzlast (Struktur-Replace)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 143,
-      tag: "0143_f7_02f_mehrfachauswahl",
+      idx: 144,
+      tag: "0144_f7_03b_antwortwert_nutzlast",
     });
   });
 
