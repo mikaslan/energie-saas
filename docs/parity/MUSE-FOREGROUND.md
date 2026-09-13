@@ -752,3 +752,27 @@ identisch (`983ed67`, 0 unpusht).
   E2E 1/1 (Key Account + Stand 1 in Projektverantwortung),
   Nachbarn 86/86, Invarianten + m111a-Pins (127) gruen, Rollenvertrag
   gruen (keine neue Tabelle). Regression F12-01-E2E 1/1.
+
+## Vorderbau 2026-09-13 (Muse, codex/m1-wave-02)
+- F16-04b Mehrfach-Bearbeiter aus Aufgaben-Vorlage (`42d63a9`, LOKAL,
+  kein Push): Vorlage traegt optionale `assignee_membership_ids`
+  (Migration 0145, Cap 50); Schreiben fail-closed, Anwenden mit
+  Fallback; Mitgliedersuche unter task.write (Query >= 2, Limit wie
+  Projektsuche). DB 4/4, E2E 1/1, Nachbarn DB 24/24, E2E F16-04 2/2,
+  m111a 16/16, Vollsuite DB 1447+1 skipped / Unit 1219,
+  tsc/eslint/depcruise/generate gruen. ESTIMATE (templates.ts:899-902).
+  Baum jetzt 4 Commits vor origin — Push/CI-Re-Run weiter bei
+  Mikail/Codex (CI 34750762946: Infra-Shutdown, 0 Testfehler).
+- Luecken-Sweep (grep ueber Spec-Status vs. Code, ca. 15 Proben):
+  KEINE unabhaengige offene Katalogluecke gefunden. Alle geprueften
+  SPECIFIED-/headerlosen Slices sind im Code vorhanden (F1-08/09,
+  F2-02/05/06, F3-01, F4-01/02/03/04a/04b/05/05b/06, F7-02b/c,
+  F7-04, F9-01/02/03/04, F10-01/02, F16-02/03*, F2-08b, M111B-12-Race).
+  Spec-Header (`SPECIFIED`, `IN ARBEIT`, fehlend) und STATUS.md sind
+  teils veraltet — kein Funktionsrueckstand, nur Dokumentationsdrift
+  (pro Slice bei Gelegenheit nachziehen, kein Bulk-Edit).
+- Weiterhin blockiert (Mikail/Codex): Q-F14-KI-PROVIDER,
+  Q-DASHBOARD-REFERENZ, Q-STORAGE-UPLOADS, Q-F12-FUNNEL-REFERENZ,
+  Q-M5-LIDAR, F3-Belegung (fuer dachgebundene Modul-kWp),
+  CI-Re-Run-/Push-Entscheid, visuelle Baselines INCONCLUSIVE
+  (kein Live-Reonic-Zugang).
