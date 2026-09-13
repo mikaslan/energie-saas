@@ -239,6 +239,12 @@ test.describe("M2-01 Angebotsvarianten und Snapshot-BOM", () => {
       message: "Der Browser-Save muss Revision 2 dauerhaft persistieren.",
       timeout: 15_000,
     }).toBe(2);
+    // CI-Befund 34735364420 (Re-Run): page.reload direkt danach stürzt mit
+    // ERR_ABORTED/Frame-Detach ab; das Artefakt zeigt Links/Buttons noch
+    // disabled (Router-Transition läuft). Erst UI-settled assertieren, dann
+    // neu laden (F7-07-Präzedenz e0c9bd5) — keine Abschwächung, nur Sync.
+    await expect(page.getByText("Revision 2 wurde gespeichert.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Zur Angebotsübersicht" })).toBeEnabled();
 
     await page.reload();
     await expect(page.locator("#variant-name")).toHaveValue("Browser-Kopie");
