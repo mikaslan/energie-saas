@@ -125,6 +125,7 @@ test("F7-07-E2E-01: Plantafel gruppiert Zeilen je Team, Archiv fällt flach", as
   // 3) Alpha archivieren → flach: keine Sektion, Zeile bleibt.
   await page.goto(`/w/${workspaceId}/einstellungen/teams`);
   await alphaRow.getByRole("button", { name: "Archivieren", exact: true }).click();
+  await expect(alphaRow.getByRole("button", { name: "Wiederherstellen", exact: true })).toBeVisible();
   await page.reload();
   await expect(alphaRow.getByText("Archiviert", { exact: true })).toBeVisible();
   await page.goto(boardPath);
