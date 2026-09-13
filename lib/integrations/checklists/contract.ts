@@ -83,7 +83,10 @@ export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSche
 // F7-02C: Anzeige-Punkte (Katalog F7.2, live beobachtete Typen title und
 // description). Nullish wie irrelevant/visibleIf: fehlend/null = Aufgabe,
 // kein Bestand bricht. Anzeige-Punkte sind nicht abhakbar und nie Pflicht.
-export const checklistItemKindSchema = z.enum(["task", "title", "description"]);
+// F7-02D: Einfachauswahl (Katalog F7.2, Slice B). `radio` ist abhakbar wie
+// Aufgabe; Exklusivitaet (hoechstens ein erledigter Radio-Punkt je Segment)
+// prueft die Baumvalidierung unten (Scope spiegelt visibleIf-Regeln).
+export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio"]);
 export type ChecklistItemKindV1 = z.infer<typeof checklistItemKindSchema>;
 
 export const editableChecklistItemSchema = z.object({
@@ -247,6 +250,7 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
         }
         // F7-02C: Anzeige-Punkte tragen weder Pflicht/Erledigt noch fremden
         // Fließtext (keine Mischbestände, kein stilles Ignorieren).
+        // F7-02D: `radio` ist kein Anzeige-Punkt (abhakbar wie Aufgabe).
         for (const item of segment.items) {
           if (item.description != null && item.kind !== "description") {
             context.addIssue({
@@ -254,12 +258,25 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
               message: "Beschreibungstext verlangt einen Beschreibungspunkt",
             });
           }
-          if (item.kind != null && item.kind !== "task" && (item.required || item.done)) {
+          if (item.kind != null && item.kind !== "task" && item.kind !== "radio"
+            && (item.required || item.done)) {
             context.addIssue({
               code: "custom",
               message: "Anzeigepunkte sind weder Pflicht noch abhakbar",
             });
           }
+        }
+        // F7-02D: Einfachauswahl — höchstens ein erledigter Radio-Punkt je
+        // Segment (fail-closed wie DB-Validator 0141; Scope spiegelt
+        // visibleIf-Regeln).
+        const doneRadioCount = segment.items.filter(
+          (item) => item.kind === "radio" && item.done,
+        ).length;
+        if (doneRadioCount > 1) {
+          context.addIssue({
+            code: "custom",
+            message: "Je Segment ist höchstens ein Radio-Punkt auswählbar",
+          });
         }
       }
     }
@@ -394,10 +411,12 @@ function segmentItemsById(
 // F7-02C: Nur Aufgabenpunkte sind Arbeitsgegenstand der Gates; Anzeige-
 // Punkte (title/description) zählen nie (spiegelt Migration 0130: Sie
 // können kein required tragen).
+// F7-02D: Radio-Punkte sind Arbeitsgegenstand wie Aufgaben (abhakbar,
+// Pflicht-fähig; Exklusivität sichert die Baumvalidierung).
 export function isChecklistWorkItem(
   item: Pick<ChecklistItemV1, "kind">,
 ): boolean {
-  return item.kind == null || item.kind === "task";
+  return item.kind == null || item.kind === "task" || item.kind === "radio";
 }
 
 export function segmentRequiredRemaining(

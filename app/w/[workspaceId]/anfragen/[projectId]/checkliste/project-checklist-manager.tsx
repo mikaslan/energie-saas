@@ -232,6 +232,32 @@ export function ProjectChecklistManager({
     };
   }));
 
+  // F7-02D: Radio-Einfachauswahl — Anwählen setzt done, löscht done aller
+  // Radio-Geschwister im selben Segment (Browser-Radio-Gruppe spiegelt das
+  // nativ; Server validiert erneut fail-closed).
+  const toggleRadioItem = (
+    blockIndex: number,
+    segmentIndex: number,
+    itemIndex: number,
+    checked: boolean,
+  ) => patchBlocks(canWrite, (value) => value.map((block, index) => {
+    if (index !== blockIndex) return block;
+    return {
+      ...block,
+      segments: block.segments.map((segment, currentSegmentIndex) => {
+        if (currentSegmentIndex !== segmentIndex || segment.completedAt !== null) return segment;
+        return {
+          ...segment,
+          items: segment.items.map((item, currentItemIndex) => {
+            if (currentItemIndex === itemIndex) return { ...item, done: checked };
+            if (checked && item.kind === "radio") return { ...item, done: false };
+            return item;
+          }),
+        };
+      }),
+    };
+  }));
+
   const renameBlock = (blockIndex: number, name: string) =>
     patchBlocks(canEditStructure, (value) => value.map((block, index) =>
       index === blockIndex ? { ...block, name } : block));
@@ -305,6 +331,8 @@ export function ProjectChecklistManager({
                   onRenameSegment={(segmentIndex, name) => renameSegment(blockIndex, segmentIndex, name)}
                   onSetItem={(segmentIndex, itemIndex, patch, allowed) =>
                     setItem(blockIndex, segmentIndex, itemIndex, patch, allowed)}
+                  onToggleRadioItem={(segmentIndex, itemIndex, checked) =>
+                    toggleRadioItem(blockIndex, segmentIndex, itemIndex, checked)}
                   teamOptions={teamOptions}
                 />
               );
@@ -364,11 +392,19 @@ type SetItem = (
   allowed: boolean,
 ) => void;
 
+// F7-02D: exklusives Radio-Toggle je Segment (optimistisch; Server
+// validiert erneut, Whole-Tree-Save persistiert).
+type ToggleRadioItem = (
+  segmentIndex: number,
+  itemIndex: number,
+  checked: boolean,
+) => void;
+
 function BlockCard({
   block, blockIndex, workspaceId, projectId, checklistId, baseVersion,
   canWrite, canEditStructure, canConfigure, canComplete, canUnlock,
   hasUnsavedChanges, teamOptions,
-  onRename, onAddSegment, onAddItem, onRenameSegment, onSetItem,
+  onRename, onAddSegment, onAddItem, onRenameSegment, onSetItem, onToggleRadioItem,
 }: {
   block: ChecklistBlockV1;
   blockIndex: number;
@@ -388,6 +424,7 @@ function BlockCard({
   onAddItem: (segmentIndex: number) => void;
   onRenameSegment: (segmentIndex: number, name: string) => void;
   onSetItem: SetItem;
+  onToggleRadioItem: ToggleRadioItem;
 }) {
   const visibleSegments = block.segments.filter((segment) => segment.visible);
   return (
@@ -435,6 +472,7 @@ function BlockCard({
               onRename={(name) => onRenameSegment(segmentIndex, name)}
               onAddItem={() => onAddItem(segmentIndex)}
               onSetItem={(itemIndex, patch, allowed) => onSetItem(segmentIndex, itemIndex, patch, allowed)}
+              onToggleRadioItem={(itemIndex, checked) => onToggleRadioItem(segmentIndex, itemIndex, checked)}
             />
           );
         })}
@@ -460,6 +498,7 @@ function BlockCard({
 function SegmentGroup({
   segment, segmentIndex, workspaceId, projectId, checklistId, baseVersion,
   canWrite, canEditStructure, canConfigure, canComplete, canUnlock, onRename, onAddItem, onSetItem,
+  onToggleRadioItem,
   hasUnsavedChanges,
 }: {
   segment: ChecklistSegmentV1;
@@ -477,6 +516,7 @@ function SegmentGroup({
   onRename: (name: string) => void;
   onAddItem: () => void;
   onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+  onToggleRadioItem: (itemIndex: number, checked: boolean) => void;
 }) {
   const [mutationState, mutationDispatch, mutationPending] = useActionState(
     mutateChecklistSegmentAction,
@@ -526,14 +566,26 @@ function SegmentGroup({
           <li key={item.id} className="flex items-start gap-1">
             {isChecklistWorkItem(item) ? (
               <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
-                <input
-                  type="checkbox"
-                  aria-label={item.title || `Punkt ${itemIndex + 1}`}
-                  checked={item.done}
-                  disabled={!canWrite || completed || pending}
-                  onChange={(event) => onSetItem(itemIndex, { done: event.target.checked }, canWrite)}
-                  className="h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
-                />
+                {item.kind === "radio" ? (
+                  <input
+                    type="radio"
+                    name={`segment-radio-${segment.id}`}
+                    aria-label={item.title || `Punkt ${itemIndex + 1}`}
+                    checked={item.done}
+                    disabled={!canWrite || completed || pending}
+                    onChange={(event) => onToggleRadioItem(itemIndex, event.target.checked)}
+                    className="h-5 w-5 border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
+                  />
+                ) : (
+                  <input
+                    type="checkbox"
+                    aria-label={item.title || `Punkt ${itemIndex + 1}`}
+                    checked={item.done}
+                    disabled={!canWrite || completed || pending}
+                    onChange={(event) => onSetItem(itemIndex, { done: event.target.checked }, canWrite)}
+                    className="h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
+                  />
+                )}
               </label>
             ) : null}
             <div className="min-w-0 flex-1">
@@ -880,6 +932,8 @@ function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId,
 // schreibt ehrlich um (kein Dialog): weg von Aufgabe → done/required false,
 // weg von Beschreibung → description null. Mischbestände lehnen Zod-Guard
 // und DB-Validator (0130) fail-closed ab.
+// F7-02D: `radio` (Einfachauswahl, Katalog F7.2 Slice B) ergänzt die Liste;
+// Exklusivität je Segment sichert Toggle + Validator (0141).
 function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
   item: ChecklistItemV1;
   itemIndex: number;
@@ -899,6 +953,11 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
             onSetItem(itemIndex, { kind: "description", done: false, required: false }, canEditStructure);
           } else if (next === "title") {
             onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null }, canEditStructure);
+          } else if (next === "radio") {
+            // F7-02D: ehrliches Umschreiben wie Anzeige-Punkte — done fällt,
+            // damit der Wechsel nie einen speicherbaren Doppel-done erzeugt
+            // (Exklusivität wählt der Radio-Input selbst).
+            onSetItem(itemIndex, { kind: "radio", done: false, description: null }, canEditStructure);
           } else {
             onSetItem(itemIndex, { kind: "task", description: null }, canEditStructure);
           }
@@ -908,6 +967,7 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
         <option value="task">Aufgabe</option>
         <option value="title">Titel</option>
         <option value="description">Beschreibung</option>
+        <option value="radio">Einfachauswahl</option>
       </select>
       {item.kind === "description" ? (
         <textarea

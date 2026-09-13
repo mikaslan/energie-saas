@@ -99,8 +99,10 @@ describe("F7-02C Anzeige-Punkte", () => {
   });
 
   it("F702C-U-05: Art-Enum und Textgrenzen sind strikt", () => {
+    // F7-02D: `radio` ist seit 0141 eine bekannte Art (Einfachauswahl);
+    // die Sonde nutzt den weiterhin unbekannten Typ `video`.
     const badKind = editableChecklistBlocksSchema.safeParse(blocksWith([
-      item({ kind: "radio" as unknown as "task" }),
+      item({ kind: "video" as unknown as "task" }),
     ]));
     expect(badKind.success).toBe(false);
     const tooLong = editableChecklistBlocksSchema.safeParse(blocksWith([

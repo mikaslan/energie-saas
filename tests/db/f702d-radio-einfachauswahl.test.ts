@@ -7,12 +7,13 @@ vi.mock("server-only", () => ({}));
 import { withAuthorizedTenantOn, withTenantOn } from "@/lib/db/tenant";
 import {
   CHECKLIST_SCHEMA_VERSION,
-  type ChecklistItemKindV1,
   type EditableChecklistBlocksV2,
+  type MutateChecklistSegmentCommand,
   type ProjectChecklistDto,
   type SaveProjectChecklistCommand,
 } from "@/lib/integrations/checklists/contract";
 import {
+  ChecklistNotFoundError,
   ChecklistValidationError,
   completeChecklistSegment,
   saveProjectChecklist,
@@ -20,8 +21,9 @@ import {
 import { testPool } from "../setup/test-db";
 
 /**
- * F7-02C Anzeige-Punkte title/description (Katalog F7.2, Slice B).
- * Validator-Shape (Migration 0130), Mischbestand-Rejects, Gate-Neutralität.
+ * F7-02D Radio-Einfachauswahl (Katalog F7.2, Slice B).
+ * kind=radio abhakbar wie Aufgabe, hoechstens ein erledigter Radio-Punkt
+ * je Segment (Validator 0141 + Zod), Pflicht-/Gate-Neutralitaet, Tenant-Schranke.
  */
 
 type Fixture = {
@@ -35,9 +37,10 @@ function treeIds() {
   return {
     blockId: randomUUID(),
     segmentId: randomUUID(),
+    secondSegmentId: randomUUID(),
+    radioAId: randomUUID(),
+    radioBId: randomUUID(),
     taskId: randomUUID(),
-    titleId: randomUUID(),
-    textId: randomUUID(),
   };
 }
 
@@ -49,8 +52,8 @@ async function seedWorkspace(label: string): Promise<Fixture> {
     await tx.execute(sql`insert into workspace (id, name) values (${workspaceId}::uuid, ${label})`);
     await tx.execute(sql`
       insert into user_identity (id, email)
-      values (${editorId}::uuid, ${`editor-${editorId}@f702c.test`}),
-             (${adminId}::uuid, ${`admin-${adminId}@f702c.test`})
+      values (${editorId}::uuid, ${`editor-${editorId}@f702d.test`}),
+             (${adminId}::uuid, ${`admin-${adminId}@f702d.test`})
     `);
     await tx.execute(sql`
       insert into membership (id, workspace_id, user_id, role, capabilities)
@@ -67,7 +70,7 @@ async function seedWorkspace(label: string): Promise<Fixture> {
     await tx.execute(sql`
       insert into contact (id, workspace_id, display_name, first_name, last_name, email_primary, email_normalized)
       values (${contactId}::uuid, ${workspaceId}::uuid, ${label}, 'F7', 'Fixture',
-        ${`${contactId}@f702c.test`}, ${`${contactId}@f702c.test`})
+        ${`${contactId}@f702d.test`}, ${`${contactId}@f702d.test`})
     `);
     await tx.execute(sql`
       insert into site (id, workspace_id, contact_id, label)
@@ -96,7 +99,11 @@ async function seedWorkspace(label: string): Promise<Fixture> {
   return { workspaceId, editorId, adminId, projectId };
 }
 
-function displayBlocks(ids: ReturnType<typeof treeIds>): EditableChecklistBlocksV2 {
+function radioBlocks(
+  ids: ReturnType<typeof treeIds>,
+  doneA: boolean,
+  doneB: boolean,
+): EditableChecklistBlocksV2 {
   return [{
     id: ids.blockId,
     name: "PV",
@@ -104,33 +111,32 @@ function displayBlocks(ids: ReturnType<typeof treeIds>): EditableChecklistBlocks
     visible: true,
     segments: [{
       id: ids.segmentId,
-      name: "Basis",
+      name: "Auswahl",
       position: 0,
       visible: true,
       items: [
         {
+          id: ids.radioAId,
+          title: "Variante A",
+          done: doneA,
+          required: true,
+          visible: true,
+          kind: "radio",
+        },
+        {
+          id: ids.radioBId,
+          title: "Variante B",
+          done: doneB,
+          required: false,
+          visible: true,
+          kind: "radio",
+        },
+        {
           id: ids.taskId,
           title: "Dach geprüft",
           done: true,
-          required: true,
-          visible: true,
-        },
-        {
-          id: ids.titleId,
-          title: "Montageabschnitt",
-          done: false,
           required: false,
           visible: true,
-          kind: "title",
-        },
-        {
-          id: ids.textId,
-          title: "Hinweis",
-          done: false,
-          required: false,
-          visible: true,
-          kind: "description",
-          description: "Vor Arbeitsbeginn freischalten lassen.",
         },
       ],
     }],
@@ -170,78 +176,106 @@ async function activateInstallation(fixture: Fixture): Promise<void> {
   });
 }
 
-describe("F7-02C Anzeige-Punkte (PostgreSQL)", () => {
+describe("F7-02D Radio-Einfachauswahl (PostgreSQL)", () => {
   let fixture: Fixture;
   beforeEach(async () => {
-    fixture = await seedWorkspace("F7-02C Anzeige");
+    fixture = await seedWorkspace("F7-02D Radio");
   });
 
-  it("F702C-DB-01: Anzeige-Punkte persistieren und blockieren den Abschluss nie", async () => {
+  it("F702D-DB-01: Radio-Art persistiert; Pflicht-Radio blockiert den Abschluss bis zur Auswahl", async () => {
     const ids = treeIds();
-    const created = await saveBlocks(fixture, displayBlocks(ids));
+    const created = await saveBlocks(fixture, radioBlocks(ids, false, false));
     expect(created.version).toBe(1);
     const items = created.blocks[0]!.segments[0]!.items;
-    expect(items.find((item) => item.id === ids.titleId)?.kind).toBe("title");
-    expect(items.find((item) => item.id === ids.textId)?.description)
-      .toBe("Vor Arbeitsbeginn freischalten lassen.");
+    expect(items.find((item) => item.id === ids.radioAId)?.kind).toBe("radio");
+    expect(items.find((item) => item.id === ids.radioBId)?.kind).toBe("radio");
 
     await activateInstallation(fixture);
-    const completed = await withAuthorizedTenantOn(
+    const completeCommand = (
+      checklistId: string,
+      version: number,
+    ): MutateChecklistSegmentCommand => ({
+      schemaVersion: CHECKLIST_SCHEMA_VERSION,
+      checklistId,
+      projectId: fixture.projectId,
+      segmentId: ids.segmentId,
+      baseVersion: version,
+    });
+    // Pflicht-Radio unerledigt -> Abschluss verweigert (Gate-Neutralitaet).
+    await expect(withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
-      (tx, ctx) => completeChecklistSegment(tx, ctx, {
+      (tx, ctx) => completeChecklistSegment(tx, ctx, completeCommand(created.checklistId!, created.version)),
+    )).rejects.toThrow();
+    // Auswahl treffen -> Abschluss gelingt.
+    const chosen = await withAuthorizedTenantOn(
+      testPool, fixture.adminId, fixture.workspaceId,
+      (tx, ctx) => saveProjectChecklist(tx, ctx, {
         schemaVersion: CHECKLIST_SCHEMA_VERSION,
         checklistId: created.checklistId!,
         projectId: fixture.projectId,
-        segmentId: ids.segmentId,
+        phase: "site_documentation",
+        title: "Baustellendokumentation",
         baseVersion: created.version,
+        blocks: radioBlocks(ids, true, false),
       }),
     );
-    expect(completed.version).toBe(2);
+    const completed = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => completeChecklistSegment(tx, ctx, completeCommand(chosen.checklistId!, chosen.version)),
+    );
+    expect(completed.version).toBe(chosen.version + 1);
   });
 
-  it("F702C-DB-02: Mischbestände verweigert der Save-Guard", async () => {
+  it("F702D-DB-02: zwei erledigte Radios im Segment verweigert der Save-Guard", async () => {
     const ids = treeIds();
-    const base = displayBlocks(ids);
-    const mutate = (
-      itemId: string,
-      patch: { kind?: ChecklistItemKindV1 | null; description?: string | null; required?: boolean; done?: boolean },
-    ): EditableChecklistBlocksV2 => {
-      const copy = JSON.parse(JSON.stringify(base)) as EditableChecklistBlocksV2;
-      const target = copy[0]!.segments[0]!.items.find((item) => item.id === itemId)!;
-      Object.assign(target, patch);
-      return copy;
-    };
-    await expect(saveBlocks(fixture, mutate(ids.titleId, { required: true })))
+    await expect(saveBlocks(fixture, radioBlocks(ids, true, true)))
       .rejects.toBeInstanceOf(ChecklistValidationError);
-    await expect(saveBlocks(fixture, mutate(ids.titleId, { done: true })))
-      .rejects.toBeInstanceOf(ChecklistValidationError);
-    await expect(saveBlocks(fixture, mutate(ids.taskId, { description: "Fremdtext" })))
-      .rejects.toBeInstanceOf(ChecklistValidationError);
+    // Direkt-Validator (SQL 0141) weist denselben Bestand ab.
+    const direct = await withTenantOn(testPool, fixture.workspaceId, (tx) => tx.execute(sql`
+      select public._f704_valid_checklist_blocks(${JSON.stringify(radioBlocks(ids, true, true))}::jsonb) as valid
+    `));
+    expect((direct.rows[0] as { valid: boolean }).valid).toBe(false);
+    const single = await withTenantOn(testPool, fixture.workspaceId, (tx) => tx.execute(sql`
+      select public._f704_valid_checklist_blocks(${JSON.stringify(radioBlocks(ids, true, false))}::jsonb) as valid
+    `));
+    expect((single.rows[0] as { valid: boolean }).valid).toBe(true);
   });
 
-  it("F702C-DB-03: DB-Validator weist defekte kind/description-Shapes direkt ab", async () => {
+  it("F702D-DB-03: je ein erledigter Radio in zwei Segmenten ist gueltig; Fremdtenant scheitert", async () => {
     const ids = treeIds();
-    const created = await saveBlocks(fixture, displayBlocks(ids));
-    const patch = (shape: unknown) => {
-      const patched = JSON.parse(JSON.stringify(displayBlocks(ids))) as EditableChecklistBlocksV2;
-      Object.assign(
-        patched[0]!.segments[0]!.items[1]!,
-        { kind: "title", description: null, ...(shape as Record<string, unknown>) },
-      );
-      return withTenantOn(testPool, fixture.workspaceId, (tx) => tx.execute(sql`
-        update project_checklist set blocks = ${JSON.stringify(patched)}::jsonb
-         where workspace_id = ${fixture.workspaceId}::uuid
-           and id = ${created.checklistId}::uuid
-      `));
+    const first = radioBlocks(ids, true, false);
+    const secondSegment = {
+      id: ids.secondSegmentId,
+      name: "Zusatz",
+      position: 1,
+      visible: true,
+      items: [{
+        id: randomUUID(),
+        title: "Variante C",
+        done: true,
+        required: false,
+        visible: true,
+        kind: "radio" as const,
+      }],
     };
-    // F7-02D: `radio` ist seit 0141 eine bekannte Art (Einfachauswahl);
-    // die Sonde nutzt den weiterhin unbekannten Typ `video`.
-    await expect(patch({ kind: "video" })).rejects.toThrow();
-    await expect(patch({ kind: "title", required: true })).rejects.toThrow();
-    await expect(patch({ kind: "task", description: "Fremdtext" })).rejects.toThrow();
-    await expect(patch({ kind: "description", description: `x${"y".repeat(2000)}` })).rejects.toThrow();
-    await patch({ kind: "title" });
-    await patch({ kind: "description", description: "Gültiger Hinweis." });
-    await patch({ kind: null, description: null });
+    const created = await saveBlocks(fixture, [{
+      ...first[0]!,
+      segments: [...first[0]!.segments, secondSegment],
+    }]);
+    expect(created.version).toBe(1);
+
+    const foreign = await seedWorkspace("F7-02D Fremd");
+    await expect(withAuthorizedTenantOn(
+      testPool, foreign.editorId, foreign.workspaceId,
+      (tx, ctx) => saveProjectChecklist(tx, ctx, {
+        schemaVersion: CHECKLIST_SCHEMA_VERSION,
+        checklistId: null,
+        projectId: fixture.projectId,
+        phase: "site_documentation",
+        title: "Baustellendokumentation",
+        baseVersion: 0,
+        blocks: radioBlocks(treeIds(), true, false),
+      }),
+    )).rejects.toBeInstanceOf(ChecklistNotFoundError);
   });
 });

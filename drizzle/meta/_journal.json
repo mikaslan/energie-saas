@@ -988,6 +988,13 @@
       "when": 1789266000000,
       "tag": "0140_f10_02c_portal_signatur_schreiben",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1789273000000,
+      "tag": "0141_f7_02d_radio_einfachauswahl",
+      "breakpoints": true
     }
   ]
 }
