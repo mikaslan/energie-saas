@@ -6,13 +6,18 @@ import {
   createDrainTrackedPool,
   endPoolAndWaitForClientRemoval,
 } from "../setup/pg-pool-drain";
+import {
+  resolveEditorId,
+  seedIsolatedWorkspace,
+} from "./m1-11g-fixture";
 
 /**
- * F7-13 Template Re-Apply (Merge/Reset) — Chromium-E2E.
- * Eigene Katalog-Komponenten + eigenes Projekt per SQL seeden, als Admin
- * zwei Vorlagen anlegen, Vorlage A anwenden, Punkt abhaken + speichern,
- * Vorlage B mergen (beide Blöcke, Haken bleibt), Vorlage A resetten
- * (Haken weg, Punkte frisch); Axe sauber; keine Konsolenfehler.
+ * F7-13 Template Re-Apply (Merge/Reset) — Chromium-E2E (isolierter
+ * Workspace: eigener Board + eigenes Projekt per SQL, sonst liegt die
+ * Seed-Karte auf dem Shared-Board und bricht M1-05-Triage:614).
+ * Als Admin zwei Vorlagen anlegen, Vorlage A anwenden, Punkt abhaken +
+ * speichern, Vorlage B mergen (beide Blöcke, Haken bleibt), Vorlage A
+ * resetten (Haken weg, Punkte frisch); Axe sauber; keine Konsolenfehler.
  */
 
 type E2EState = {
@@ -107,7 +112,7 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
   await page.waitForURL((url) => url.pathname === expectedPath);
 }
 
-async function seedComponentsAndProject(): Promise<string> {
+async function seedComponentsAndProject(workspaceId: string, adminId: string): Promise<string> {
   const data = state();
   const projectId = randomUUID();
   const contactId = randomUUID();
@@ -115,15 +120,30 @@ async function seedComponentsAndProject(): Promise<string> {
   const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
   try {
     await pool.query("begin");
-    await pool.query("select set_config('app.workspace_id', $1, true)", [data.workspaceId]);
+    await pool.query("select set_config('app.workspace_id', $1, true)", [workspaceId]);
+    // Isolations-Workspace bringt Default-Board inkl. Spalten bereits mit
+    // (Workspace-Seed); F713 nutzt die vorhandene Intake-Spalte.
+    const boards = await pool.query<{ id: string }>(
+      `select intake_column.id
+         from kanban_board board
+         join kanban_column intake_column
+           on intake_column.workspace_id = board.workspace_id
+          and intake_column.board_id = board.id
+          and intake_column.is_intake = true
+          and intake_column.archived_at is null
+        where board.workspace_id = $1::uuid
+          and board.scope = 'residential'
+          and board.is_default = true
+          and board.archived_at is null`,
+      [workspaceId],
+    );
+    if (!boards.rows[0]) throw new Error("F713-E2E: keine Intake-Spalte im Isolations-Workspace");
     for (const sku of ["F713-A", "F713-B"]) {
       await pool.query(
         `insert into catalog_component (id, workspace_id, internal_sku, component_type, created_by)
-         select $1::uuid, $2::uuid, $3, 'module', u.id
-           from user_identity u
-          where u.email = $4
+         values ($1::uuid, $2::uuid, $3, 'module', $4::uuid)
          on conflict do nothing`,
-        [randomUUID(), data.workspaceId, sku, data.adminEmail],
+        [randomUUID(), workspaceId, sku, adminId],
       );
     }
     await pool.query(
@@ -132,13 +152,13 @@ async function seedComponentsAndProject(): Promise<string> {
          email_primary, email_normalized
        ) values ($1::uuid, $2::uuid, 'F713 Reapply', 'F7', 'Dreizehn', $3, $3)
        on conflict do nothing`,
-      [contactId, data.workspaceId, `${contactId}@f713-e2e.test`],
+      [contactId, workspaceId, `${contactId}@f713-e2e.test`],
     );
     await pool.query(
       `insert into site (id, workspace_id, contact_id, label)
        values ($1::uuid, $2::uuid, $3::uuid, 'F713 Site')
        on conflict do nothing`,
-      [siteId, data.workspaceId, contactId],
+      [siteId, workspaceId, contactId],
     );
     const inserted = await pool.query(
       `insert into project (
@@ -157,7 +177,7 @@ async function seedComponentsAndProject(): Promise<string> {
           and board.scope = 'residential'
           and board.is_default = true
           and board.archived_at is null`,
-      [projectId, data.workspaceId, contactId, siteId, `f713-reapply-${projectId}`],
+      [projectId, workspaceId, contactId, siteId, `f713-reapply-${projectId}`],
     );
     expect(inserted.rowCount).toBe(1);
     await pool.query("commit");
@@ -174,15 +194,17 @@ test("F713-E2E-01: Merge erhält Haken, Reset ersetzt", async ({ page }) => {
   test.setTimeout(180_000);
   const data = state();
   const errors = trackBrowserErrors(page);
-  const projectId = await seedComponentsAndProject();
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const projectId = await seedComponentsAndProject(workspaceId, actorId);
   const stamp = Date.now();
   const templateA = `F713-A-Vorlage ${stamp}`;
   const templateB = `F713-B-Vorlage ${stamp}`;
-  const settings = `/w/${data.workspaceId}/einstellungen/checklisten-vorlagen`;
-  const checklist = `/w/${data.workspaceId}/anfragen/${projectId}/checkliste`;
+  const settings = `/w/${workspaceId}/einstellungen/checklisten-vorlagen`;
+  const checklist = `/w/${workspaceId}/anfragen/${projectId}/checkliste`;
 
   await page.goto(settings);
-  await loginWithRealOtp(page, data.adminEmail, settings);
+  await loginWithRealOtp(page, data.editorEmail, settings);
   await expect(page.getByRole("heading", { name: "Checklisten-Vorlagen", level: 1 })).toBeVisible();
 
   for (const [name, sku] of [[templateA, "F713-A"], [templateB, "F713-B"]] as const) {
