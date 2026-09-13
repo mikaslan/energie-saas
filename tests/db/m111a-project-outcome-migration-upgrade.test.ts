@@ -105,9 +105,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F16-10 E-Mail-Vorlagen (0139, Tabelle + RLS),
 //   F10-02c Portal-Signatur-Kapseln (0140, Funktionen + Owner-Tanz),
 //   F7-02d Radio-Einfachauswahl (0141, Validator-Replace),
-//   F7-02e Freitext-Antwort (0142, Validator-Replace)
-// => 143 Migrationen (idx 0..142).
-const TOTAL_MIGRATION_COUNT = 143;
+//   F7-02e Freitext-Antwort (0142, Validator-Replace),
+//   F7-02f Mehrfachauswahl (0143, Validator-Replace)
+// => 144 Migrationen (idx 0..143).
+const TOTAL_MIGRATION_COUNT = 144;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -423,8 +424,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 142,
-        tag: "0142_f7_02e_freitext_antwort",
+        idx: 143,
+        tag: "0143_f7_02f_mehrfachauswahl",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

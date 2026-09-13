@@ -92,7 +92,7 @@ export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSche
 // prueft die Baumvalidierung unten (Scope spiegelt visibleIf-Regeln).
 // F7-02E: Freitext-Antwort (Katalog F7.2, Slice B ohne Diktat). `text` ist
 // abhakbar wie Aufgabe und trägt optional `value` (Antworttext, nur dort).
-export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text"]);
+export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text", "multi"]);
 export type ChecklistItemKindV1 = z.infer<typeof checklistItemKindSchema>;
 
 export const editableChecklistItemSchema = z.object({
@@ -261,6 +261,8 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
         // Fließtext (keine Mischbestände, kein stilles Ignorieren).
         // F7-02D: `radio` ist kein Anzeige-Punkt (abhakbar wie Aufgabe).
         // F7-02E: `text` ist kein Anzeige-Punkt (abhakbar wie Aufgabe).
+        // F7-02F: `multi` ist kein Anzeige-Punkt (abhakbar wie Aufgabe,
+        // ohne Exklusivitaet — Gegenstueck zu `radio`).
         for (const item of segment.items) {
           if (item.description != null && item.kind !== "description") {
             context.addIssue({
@@ -276,7 +278,7 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
             });
           }
           if (item.kind != null && item.kind !== "task" && item.kind !== "radio"
-            && item.kind !== "text" && (item.required || item.done)) {
+            && item.kind !== "text" && item.kind !== "multi" && (item.required || item.done)) {
             context.addIssue({
               code: "custom",
               message: "Anzeigepunkte sind weder Pflicht noch abhakbar",
@@ -431,11 +433,13 @@ function segmentItemsById(
 // F7-02D: Radio-Punkte sind Arbeitsgegenstand wie Aufgaben (abhakbar,
 // Pflicht-fähig; Exklusivität sichert die Baumvalidierung).
 // F7-02E: Textpunkte ebenso (Antworttext ist Nutzlast, kein Gate).
+// F7-02F: Multi-Punkte ebenso (mehrere erledigte je Segment legal —
+// ohne Exklusivität, Gegenstück zu `radio`).
 export function isChecklistWorkItem(
   item: Pick<ChecklistItemV1, "kind">,
 ): boolean {
   return item.kind == null || item.kind === "task" || item.kind === "radio"
-    || item.kind === "text";
+    || item.kind === "text" || item.kind === "multi";
 }
 
 export function segmentRequiredRemaining(

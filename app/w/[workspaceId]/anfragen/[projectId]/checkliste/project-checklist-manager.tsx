@@ -939,6 +939,10 @@ function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId,
 // Exklusivität je Segment sichert Toggle + Validator (0141).
 // F7-02E: `text` (Textantwort, Slice B ohne Diktat); Wechsel von Text
 // löscht `value` überall ehrlich (Spiegel zu description).
+// F7-02F: `multi` (Mehrfachauswahl, Slice B neben Radio/Freitext);
+// Wechsel nach Multi behält Flags (Doppel-done ist legal, anders als
+// Radio), löscht `description`/`value`; Rendering über den
+// Standard-Checkbox-Zweig, Zähler/Gates wie Aufgabe.
 function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
   item: ChecklistItemV1;
   itemIndex: number;
@@ -965,6 +969,10 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
             onSetItem(itemIndex, { kind: "radio", done: false, description: null, value: null }, canEditStructure);
           } else if (next === "text") {
             onSetItem(itemIndex, { kind: "text", description: null }, canEditStructure);
+          } else if (next === "multi") {
+            // F7-02F: ehrliches Umschreiben — Flags bleiben (mehrere
+            // erledigte Multis sind speicherbar), Nutzlast fällt.
+            onSetItem(itemIndex, { kind: "multi", description: null, value: null }, canEditStructure);
           } else {
             onSetItem(itemIndex, { kind: "task", description: null, value: null }, canEditStructure);
           }
@@ -976,6 +984,7 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
         <option value="description">Beschreibung</option>
         <option value="radio">Einfachauswahl</option>
         <option value="text">Textantwort</option>
+        <option value="multi">Mehrfachauswahl</option>
       </select>
       {item.kind === "text" ? (
         <textarea
