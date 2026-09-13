@@ -986,3 +986,13 @@ identisch (`983ed67`, 0 unpusht).
   Zweit-Login-Schritte alle ausgefuehrt gruen) — Download-Retry-Happy-Path und
   Enqueue-Stelle damit erstmals end-to-end belegt; Ketten-Enqueue-Theorie
   (2x fokussiert rot) als eigene Flake-Art widerlegt.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 19 — CI 34788038921: Issuance-Download)
+- CI 34788038921: 238/239. Fill-Verify-Logins + Kandidaten-Download in CI
+  GRUEN (Snapshot: Erstfreigabe gespeichert, 1von2, Zweit-Login ok) — neuer
+  Einzel-Fehler am ZWILLING: Issuance-PDF-Download (`Finale PDF intern
+  pruefen`, gleiche Triple-Form, bisher ungehaertet). Server gesund, kein
+  Commit-Bezug — gleiche Last-Klasse (Erstrender 10–15 s).
+- Fix: `clickPrivateDownloadAndWait` als Shared-Helper, BEIDE Download-Stellen
+  darauf zusammengezogen (kein Doppel-Code). tsc/eslint gruen; Kette 2/2
+  GRUEN (beide Stellen ausgefuehrt).

@@ -362,6 +362,37 @@ async function loginWithRealOtp(
   await page.waitForURL((url) => `${url.pathname}${url.search}` === expectedTarget);
 }
 
+// CI 34774616172/34788038921 (m2-03a Download-Schritte): GET-Response auf
+// private PDF-Downloads bleibt unter CI-Last aus (M3-00-/F1609-Klasse: Link
+// mit Ziel vorhanden, Erstrender 10–15 s serverseitig, kein Commit-Bezug).
+// Verlorenen Klick einmal wiederholen; Status, Header und Byte-Identitaet
+// bleiben die volle harte Pruefung (kein aufgeweichtes Gate).
+async function clickPrivateDownloadAndWait(
+  page: Page,
+  downloadLink: Locator,
+  downloadPath: string,
+): Promise<{ downloadResponse: Response; download: Download }> {
+  const attempt = async (): Promise<{
+    downloadResponse: Response;
+    download: Download;
+  }> => {
+    const [downloadResponse, download] = await Promise.all([
+      page.waitForResponse((response) => (
+        response.request().method() === "GET"
+        && new URL(response.url()).pathname === downloadPath
+      )),
+      page.waitForEvent("download"),
+      downloadLink.click(),
+    ]);
+    return { downloadResponse, download };
+  };
+  try {
+    return await attempt();
+  } catch {
+    return await attempt();
+  }
+}
+
 async function submitWithPendingFocusEvidence(
   page: Page,
   button: Locator,
@@ -1661,33 +1692,11 @@ test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
         const downloadLink = panel.getByRole("link", { name: "Freigabekandidat-PDF laden" });
         const downloadPath = await downloadLink.getAttribute("href");
         if (!downloadPath) throw new Error("Der private Kandidaten-Download hat kein Ziel.");
-        // CI 34774616172 (m2-03a Download-Schritt): GET-Response auf den
-        // Kandidaten-Download bleibt unter CI-Last aus (M3-00-/F1609-Klasse:
-        // Link mit Ziel vorhanden, lokal auf identischem HEAD gruen, kein
-        // Commit-Bezug). Verlorenen Klick einmal wiederholen; Status, Header
-        // und Byte-Identitaet bleiben die volle harte Pruefung (kein
-        // aufgeweichtes Gate, keine Timeout-Erhöhung).
-        const clickCandidateDownload = async (): Promise<{
-          downloadResponse: Response;
-          download: Download;
-        }> => {
-          const [downloadResponse, download] = await Promise.all([
-            page.waitForResponse((response) => (
-              response.request().method() === "GET"
-              && new URL(response.url()).pathname === downloadPath
-            )),
-            page.waitForEvent("download"),
-            downloadLink.click(),
-          ]);
-          return { downloadResponse, download };
-        };
-        let downloadResponse: Response;
-        let download: Download;
-        try {
-          ({ downloadResponse, download } = await clickCandidateDownload());
-        } catch {
-          ({ downloadResponse, download } = await clickCandidateDownload());
-        }
+        const { downloadResponse, download } = await clickPrivateDownloadAndWait(
+          page,
+          downloadLink,
+          downloadPath,
+        );
         const downloadedBytes = await bytesFromDownload(download);
         expect(downloadResponse.status()).toBe(200);
         expect(downloadResponse.headers()["cache-control"]).toBe("private, no-store, max-age=0");
@@ -1901,14 +1910,10 @@ test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
         if (!issuanceDownloadPath) {
           throw new Error("Der private M2-03b1-Download hat kein Ziel.");
         }
-        const [issuanceDownloadResponse, issuanceDownload] = await Promise.all([
-          page.waitForResponse((response) => (
-            response.request().method() === "GET"
-            && new URL(response.url()).pathname === issuanceDownloadPath
-          )),
-          page.waitForEvent("download"),
-          issuanceDownloadLink.click(),
-        ]);
+        const {
+          downloadResponse: issuanceDownloadResponse,
+          download: issuanceDownload,
+        } = await clickPrivateDownloadAndWait(page, issuanceDownloadLink, issuanceDownloadPath);
         const issuanceBytes = await bytesFromDownload(issuanceDownload);
         expect(issuanceDownloadResponse.status()).toBe(200);
         expect(issuanceDownloadResponse.headers()["cache-control"])
