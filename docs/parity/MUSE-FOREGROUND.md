@@ -900,3 +900,10 @@ identisch (`983ed67`, 0 unpusht).
   (TTL per `statement_timestamp`, Faelligkeit per Lese-Filter). Echte
   Erinnerungszustellung (Mail/Push) ist laut F1-06-Spec bewusst offen und
   haengt an Provider-Frontier (Resend-Slice) — KEIN Gap, kein Fix.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 14 — Portal-i18n-Sweep)
+- Portal-Sprachworte (de/en) geprueft: Dicts sind `Record<PortalLang, …>`
+  typisiert (Vollstaendigkeit per tsc erzwungen, gruen); einzige
+  Cast-Stelle (`formatPortalSignatureStatus`) faellt fail-closed auf
+  `none` in der aktiven Sprache zurueck; Inline-Ternaries zentral in
+  `portal-language.ts` mit beiden Aesten. KEIN Befund.
