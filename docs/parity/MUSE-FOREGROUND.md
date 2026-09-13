@@ -873,3 +873,10 @@ identisch (`983ed67`, 0 unpusht).
   (`provision_default_request_board` bei Workspace-Insert,
   `apply_catalog_component_revision` als Row-Trigger). KEINE verwaiste
   Sicherheitsgrenze, kein Fix noetig.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 10 — Action-Guard-Sweep)
+- Alle `actions.ts` auf Berechtigungspruefung gerastert: einziger Treffer
+  ohne Keyword (`sites/actions.ts`) manuell verifiziert — `createSiteAction`
+  laeuft ueber `authorizedAction(workspaceId, "project.write", "site")`,
+  kein ungeschuetzter Schreibpfad. KEIN Befund; `/sites` bleibt nur
+  verwaistes Scaffold (Audit-Flag aus Fortsetzung 8).
