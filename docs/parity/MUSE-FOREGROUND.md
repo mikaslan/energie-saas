@@ -853,3 +853,14 @@ identisch (`983ed67`, 0 unpusht).
   Kein Bezug zu den 10 Commits (keiner beruehrt Angebotsuebersicht/
   Foerder-Preset-Pfade). Lokal gezielt GRUEN (10,9 s) + im 241/241-Volllauf
   auf identischem Code gruen. Kein Code angeruehrt, kein Re-Run.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 8 — Routen-Sweep)
+- Alle `page.tsx`-Routen gegen E2E-Abdeckung geprüft: einzige Treffer ohne
+  Spec-Referenz sind (a) `w/[workspaceId]/sites` und (b)
+  `katalog/importe/[importId]`. (b) ist via UI-Flow abgedeckt
+  (M108B-E2E-01: Replay/Report/Pagination per Klick, daher kein
+  `importe/`-String in Specs) — KEINE Luecke. (a) ist ein unverlinktes
+  Roh-Scaffold (nacktes Formular, UUID im Klartext, Zink-Stil, keine
+  Spec-Anforderung; Standortverwaltung liegt je Projekt in M1-05/M1-06) —
+  Flag fuers Codex-Endaudit (Kandidat zur Entfernung), NICHT selbst gebaut
+  oder geloescht.
