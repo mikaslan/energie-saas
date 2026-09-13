@@ -138,9 +138,22 @@ test("F2.5-E2E-01: Zahlarten-Stammdaten — CRUD in den Einstellungen", async ({
   // Anlegen (Schlüssel Kauf, eigene Bezeichnung).
   await page.getByLabel("Schlüssel").selectOption("purchase");
   await page.getByLabel("Bezeichnung").fill("Kauf E2E");
-  await page.getByRole("button", { name: "Anlegen", exact: true }).click();
-  await expect(page.getByText("Zahlart angelegt.")).toBeVisible();
-  await expect(page.getByText("Kauf E2E", { exact: true })).toBeVisible();
+  // Beweis-Volllauf (identischer Code, Toast blieb unter Last aus, kein
+  // Commit-Bezug — M3-00-/F1609-Klasse): verlorenen Klick einmal wiederholen,
+  // nur wenn nachweislich nichts angelegt wurde (kein Toast, keine Zeile).
+  // Volle Prüfung bleibt (Toast + persistierte Zeile).
+  const createButton = page.getByRole("button", { name: "Anlegen", exact: true });
+  const createdRow = page.getByText("Kauf E2E", { exact: true });
+  await createButton.click();
+  try {
+    await expect(page.getByText("Zahlart angelegt.")).toBeVisible({ timeout: 5_000 });
+  } catch {
+    if ((await createdRow.count()) === 0) {
+      await createButton.click();
+    }
+    await expect(page.getByText("Zahlart angelegt.")).toBeVisible();
+  }
+  await expect(createdRow).toBeVisible();
 
   // Zweite Zeile: Update-Feedback muss zeilenlokal bleiben, auch wenn zwei
   // Editoren zugleich offen sind.

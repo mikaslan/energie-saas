@@ -925,3 +925,28 @@ identisch (`983ed67`, 0 unpusht).
   (Lauf-Varianz), kein Commit-Bezug, keine Gate-Abschwaechung.
   Empfehlung fuers Endaudit: schmaler Artefakt-Filter nur fuer diese
   React-Dev-Meldung ODER CI-Retry-Policy (nicht einseitig umgesetzt).
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 16 — CI 34774616172 + Last-Flake-Haertungen)
+- CI 34774616172 (HEAD 6ab983c): Statik/DB/Rollen/Build GRUEN; E2E 238/239.
+  f16-08/f16-09 in CI VOLLSTAENDIG GRUEN (F1609-Fix belegt). Einziger Fehler:
+  m2-03a PDF-Download (`waitForResponse` 12 s, kein Commit-Bezug — Link mit
+  Ziel vorhanden, lokal auf identischem HEAD gruen). Fix im F1609-Muster:
+  `clickCandidateDownload` (Klick einmal wiederholen, Status/Header/
+  Byte-Identitaet unveraendert, nur idempotente GETs). tsc/eslint gruen;
+  Volllauf-Ausfuehrung steht aus (upstream Fokus-Flake, s. u.).
+- Beweis-Volllaeufe 2–4 (lokal): rotierende Einzel-Flakes ohne Commit-Bezug
+  (DASH-01 OTP-400 kalt, React-Dev-measure, F301-Lock, F2-05-Toast). Gezielt
+  gehoertet (bedingt, fail-closed, volle Assertion): F301-Widerruf nur bei
+  fortbestehender Sperre + vorhandenem Button wiederholen (Lehre aus v1:
+  blinder Re-Klick traf auf bereits wirksamen, langsamen Widerruf);
+  F2-05-Anlegen nur bei fehlendem Toast + fehlender Zeile wiederholen.
+  Beide fokussiert (5/5) und im Volllauf 4 GRUEN.
+- Rest-Flake Volllauf 3+4 + Kette (3x identisch): m2-03a `submitWithPendingFocusEvidence`
+  (Fokus-Poll). Mechanismus belegt: Helper haelt Next-Action-POST per Route-Gate
+  zurueck; Suspense-Fallback (Snapshot: "Rendering"-Skelett, Live-Button ohne
+  Pending-Marker, kein Draft-Job) ersetzt den geklickten Knoten zwischen
+  Aria-Polls (gruen, eingefroren) und Fokus-Poll (rot, Fokus auf Body).
+  App-Verhalten korrekt (Job-Pfad intakt). Helper bewusst NICHT angeruehrt
+  (fremde, zweifach gehoertete a11y-Evidenz; kein beweisbar sicherer Eingriff)
+  — Follow-up fuers Endaudit (stabile Keys/Fokus-Retention im PDF-Panel
+  ODER CI-Retry-Policy).

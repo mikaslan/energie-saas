@@ -10,6 +10,7 @@ import {
   type ElementHandle,
   type Locator,
   type Page,
+  type Response,
   type Route,
 } from "playwright/test";
 import {
@@ -1599,14 +1600,33 @@ test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
         const downloadLink = panel.getByRole("link", { name: "Freigabekandidat-PDF laden" });
         const downloadPath = await downloadLink.getAttribute("href");
         if (!downloadPath) throw new Error("Der private Kandidaten-Download hat kein Ziel.");
-        const [downloadResponse, download] = await Promise.all([
-          page.waitForResponse((response) => (
-            response.request().method() === "GET"
-            && new URL(response.url()).pathname === downloadPath
-          )),
-          page.waitForEvent("download"),
-          downloadLink.click(),
-        ]);
+        // CI 34774616172 (m2-03a Download-Schritt): GET-Response auf den
+        // Kandidaten-Download bleibt unter CI-Last aus (M3-00-/F1609-Klasse:
+        // Link mit Ziel vorhanden, lokal auf identischem HEAD gruen, kein
+        // Commit-Bezug). Verlorenen Klick einmal wiederholen; Status, Header
+        // und Byte-Identitaet bleiben die volle harte Pruefung (kein
+        // aufgeweichtes Gate, keine Timeout-Erhöhung).
+        const clickCandidateDownload = async (): Promise<{
+          downloadResponse: Response;
+          download: Download;
+        }> => {
+          const [downloadResponse, download] = await Promise.all([
+            page.waitForResponse((response) => (
+              response.request().method() === "GET"
+              && new URL(response.url()).pathname === downloadPath
+            )),
+            page.waitForEvent("download"),
+            downloadLink.click(),
+          ]);
+          return { downloadResponse, download };
+        };
+        let downloadResponse: Response;
+        let download: Download;
+        try {
+          ({ downloadResponse, download } = await clickCandidateDownload());
+        } catch {
+          ({ downloadResponse, download } = await clickCandidateDownload());
+        }
         const downloadedBytes = await bytesFromDownload(download);
         expect(downloadResponse.status()).toBe(200);
         expect(downloadResponse.headers()["cache-control"]).toBe("private, no-store, max-age=0");
