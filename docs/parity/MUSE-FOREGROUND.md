@@ -880,3 +880,10 @@ identisch (`983ed67`, 0 unpusht).
   laeuft ueber `authorizedAction(workspaceId, "project.write", "site")`,
   kein ungeschuetzter Schreibpfad. KEIN Befund; `/sites` bleibt nur
   verwaistes Scaffold (Audit-Flag aus Fortsetzung 8).
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 11 — API-Routen-Sweep)
+- Alle 4 `app/api`-Routen verifiziert: `auth/[...all]` (Framework-Handler),
+  `preview-otp` (nur `ENERGIE_SAAS_LOCAL_PREVIEW=1` + feste Demo-Adresse,
+  sonst 404), `address-candidates` (`authorizedQuery` mit
+  unauthenticated/forbidden-Mapping), `inbound/rechner/v1`
+  (HMAC-brandmarkierte `VerifiedRechnerIdentity`). KEIN Befund.
