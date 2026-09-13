@@ -864,3 +864,12 @@ identisch (`983ed67`, 0 unpusht).
   Spec-Anforderung; Standortverwaltung liegt je Projekt in M1-05/M1-06) —
   Flag fuers Codex-Endaudit (Kandidat zur Entfernung), NICHT selbst gebaut
   oder geloescht.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 9 — Kapsel-Sweep)
+- Alle 207 `public.*`-Kapseln gegen Testabdeckung geprüft: 21 ohne direkten
+  Namens-Treffer, alle aufgeloest — (a) `_`-interne Helper/Guards, indirekt
+  ueber oeffentliche Pfade; (b) per TS-Wrapper unter anderem Namen
+  aufgerufen (getestete Services); (c) Trigger-Funktionen
+  (`provision_default_request_board` bei Workspace-Insert,
+  `apply_catalog_component_revision` als Row-Trigger). KEINE verwaiste
+  Sicherheitsgrenze, kein Fix noetig.
