@@ -894,3 +894,9 @@ identisch (`983ed67`, 0 unpusht).
   offer-issuance.render.v1, customer-notification, offer-pdf-draft-dispatch,
   offer.release.prepare, project-calculation-dispatch[.v2], health.echo):
   jede Queue hat Unit-/DB-/E2E-Pfade. KEIN Befund.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 13 — Scheduler-Sweep)
+- Kein Cron/pgBoss-Schedule im Code; Zeitverhalten laeuft lazy
+  (TTL per `statement_timestamp`, Faelligkeit per Lese-Filter). Echte
+  Erinnerungszustellung (Mail/Push) ist laut F1-06-Spec bewusst offen und
+  haengt an Provider-Frontier (Resend-Slice) — KEIN Gap, kein Fix.
