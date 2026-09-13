@@ -887,3 +887,10 @@ identisch (`983ed67`, 0 unpusht).
   sonst 404), `address-candidates` (`authorizedQuery` mit
   unauthenticated/forbidden-Mapping), `inbound/rechner/v1`
   (HMAC-brandmarkierte `VerifiedRechnerIdentity`). KEIN Befund.
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 12 — Worker-Queue-Sweep)
+- Alle pgBoss-Queues gegen Tests geprueft (calculation.execute[.v2],
+  catalog.import[.v1+cleanup], pdf.render, offer.release-candidate.render,
+  offer-issuance.render.v1, customer-notification, offer-pdf-draft-dispatch,
+  offer.release.prepare, project-calculation-dispatch[.v2], health.echo):
+  jede Queue hat Unit-/DB-/E2E-Pfade. KEIN Befund.
