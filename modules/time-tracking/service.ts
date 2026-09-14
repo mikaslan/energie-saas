@@ -1088,9 +1088,38 @@ export async function stopTimeEntry(
   if (!parsed.success) throw new TimeTrackingValidationError();
   const command = parsed.data;
 
+  // F11-03d: Client-Stopp-Instant (Offline-Stopp) fail-closed prüfen — nie
+  // still kappen: vor Start, weiter als 5 Min. in der Zukunft (Uhr-Skew) oder
+  // Spanne > 24 h (TIME_MINUTES_MAX-Geist) verweigern. Ohne endAt gilt
+  // Serverzeit (bisheriges Verhalten).
+  let endAtSql: ReturnType<typeof sql> | null = null;
+  if (command.endAt !== undefined) {
+    const endAt = new Date(command.endAt);
+    const now = Date.now();
+    if (!Number.isFinite(endAt.getTime()) || endAt.getTime() > now + 5 * 60 * 1000) {
+      throw new TimeTrackingValidationError();
+    }
+    const current = await tx.execute<{ start_at: Date; end_at: Date | null }>(sql`
+      select start_at, end_at
+        from time_entry
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${command.id}::uuid
+         and user_id = ${ctx.actor}::uuid
+    `);
+    const existing = current.rows[0];
+    if (!existing || existing.end_at !== null) {
+      throw new TimeTrackingNotFoundError("time_entry", command.id);
+    }
+    const startAt = new Date(existing.start_at).getTime();
+    if (endAt.getTime() < startAt || endAt.getTime() - startAt > 24 * 60 * 60 * 1000) {
+      throw new TimeTrackingValidationError();
+    }
+    endAtSql = sql`${command.endAt}::timestamptz`;
+  }
+
   const updated = await tx.execute<TimeEntryRow>(sql`
     update time_entry
-       set end_at = statement_timestamp(),
+       set end_at = coalesce(${endAtSql}, statement_timestamp()),
            working_time_minutes = ${command.workingTimeMinutes},
            break_duration_minutes = ${command.breakDurationMinutes},
            comment = coalesce(${command.comment}, comment),
@@ -1115,11 +1144,15 @@ export async function stopTimeEntry(
     aggregateId: command.id,
     eventType: "time_entry.stopped",
     actor: ctx.actor,
-    payload: { workingTimeMinutes: command.workingTimeMinutes },
+    payload: {
+      workingTimeMinutes: command.workingTimeMinutes,
+      endAt: command.endAt ?? null,
+    },
   });
   await writeAuditFor(tx, ctx, "time.entry.stop", {
     id: command.id,
     workingTimeMinutes: command.workingTimeMinutes,
+    endAt: command.endAt ?? null,
   });
 
   return toTimeEntryDto(row, true);

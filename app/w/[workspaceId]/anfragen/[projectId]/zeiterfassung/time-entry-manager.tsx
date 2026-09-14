@@ -26,12 +26,17 @@ import {
 import type { BreakSegmentDto } from "@/modules/time-tracking";
 import {
   enqueueTimeCreate,
+  listTimerStops,
   putTimerStart,
+  putTimerStop,
   readTimerStart,
   removeTimerStart,
+  removeTimerStop,
+  type QueuedTimerStop,
 } from "./time-outbox";
 import {
   buildTimerPairCreate,
+  buildTimerStopIntent,
   timerStartKey,
   type QueuedTimerStart,
 } from "./time-timer-outbox";
@@ -356,6 +361,147 @@ export function TimeEntryManager({
     void settleReplay(replayState.status);
   }, [replayState, settleReplay]);
 
+  // F11-03d: wartender Offline-Stopp eines online gestarteten Timers
+  // (genau ein Intent je Eintrag). `undefined` = noch nicht geladen.
+  const [pendingStop, setPendingStop] = useState<QueuedTimerStop | null | undefined>(undefined);
+  const stopSyncArmedRef = useRef(false);
+  const [, startStopSyncTransition] = useTransition();
+
+  useEffect(() => {
+    let cancelled = false;
+    listTimerStops(workspaceId, projectId).then(
+      (stops) => {
+        if (cancelled) return;
+        const runningId = list.entries.find((entry) => entry.running)?.id;
+        setPendingStop(stops.find((stop) => stop.entryId === runningId) ?? stops[0] ?? null);
+      },
+      () => {
+        if (!cancelled) setPendingStop(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [list.entries, projectId, workspaceId]);
+
+  // F11-03d: Online-Stopp offline abfangen (Stopp-Formular). Online läuft
+  // die normale Server-Action (Serverzeit); offline wird der Stopp-Instant
+  // mit Minuten als Intent gespeichert — kein Phantom-Doppel, der Server-
+  // Timer läuft sichtbar weiter, bis der Sync ihn beendet.
+  async function submitStop(event: FormEvent<HTMLFormElement>): Promise<void> {
+    if (typeof navigator === "undefined" || navigator.onLine || !runningEntry) return;
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const number = (name: string): number => Number(data.get(name));
+    setTimerBusy(true);
+    setTimerError("");
+    setTimerNotice("");
+    const intent = buildTimerStopIntent({
+      workspaceId,
+      projectId,
+      entryId: runningEntry.id,
+      serverStartAt: runningEntry.startAt,
+      endAt: new Date().toISOString(),
+      workingTimeMinutes: number("workingTimeMinutes"),
+      breakDurationMinutes: number("breakDurationMinutes"),
+      queuedAt: new Date().toISOString(),
+    });
+    if (!intent.ok) {
+      setTimerError(
+        intent.reason === "too-long"
+          ? "Der Offline-Zeitraum ist länger als 24 Stunden und kann nicht übernommen werden."
+          : "Der Offline-Stopp ist ungültig (Minuten/Anordnung prüfen).",
+      );
+      setTimerBusy(false);
+      return;
+    }
+    try {
+      await putTimerStop(intent.stop);
+      setPendingStop(intent.stop);
+      setTimerNotice("Offline gestoppt. Der Stopp wird synchronisiert, sobald du wieder online bist.");
+    } catch {
+      setTimerError("Der Offline-Stopp konnte nicht gespeichert werden.");
+    } finally {
+      setTimerBusy(false);
+    }
+  }
+
+  const discardPendingStop = useCallback(async (): Promise<void> => {
+    if (!pendingStop) return;
+    setTimerBusy(true);
+    setTimerError("");
+    try {
+      await removeTimerStop(pendingStop.entryId);
+      setPendingStop(null);
+      setTimerNotice("");
+    } catch {
+      setTimerError("Der wartende Stopp konnte nicht verworfen werden.");
+    } finally {
+      setTimerBusy(false);
+    }
+  }, [pendingStop]);
+
+  // F11-03d: wartenden Offline-Stopp über stopTimeEntryAction mit
+  // Client-endAt replayen (eigener Armed-Flag — das Stopp-Formular teilt
+  // sich stopState, aber nur der Sync räumt den Intent).
+  const syncPendingStop = useCallback((): void => {
+    if (!pendingStop) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setTimerError("Du bist offline. Der Stopp wird synchronisiert, sobald du wieder online bist.");
+      return;
+    }
+    setTimerBusy(true);
+    setTimerError("");
+    const formData = new FormData();
+    formData.set("workspaceId", workspaceId);
+    formData.set("projectId", projectId);
+    formData.set("id", pendingStop.entryId);
+    formData.set("endAt", pendingStop.endAt);
+    formData.set("workingTimeMinutes", String(pendingStop.workingTimeMinutes));
+    formData.set("breakDurationMinutes", String(pendingStop.breakDurationMinutes));
+    stopSyncArmedRef.current = true;
+    startStopSyncTransition(() => {
+      stopDispatch(formData);
+    });
+  }, [pendingStop, projectId, workspaceId]);
+
+  const settleStopSync = useCallback(async (status: TimeEntryActionState["status"]): Promise<void> => {
+    if (status === "success") {
+      try {
+        await removeTimerStop(pendingStop?.entryId ?? "");
+        setPendingStop(null);
+      } catch {
+        setTimerError("Der wartende Stopp konnte nicht aufgeräumt werden.");
+      }
+      setTimerNotice("Offline-Stopp übernommen und gespeichert.");
+      setTimerBusy(false);
+      return;
+    }
+    if (status === "not_found") {
+      // Eintrag läuft nicht mehr (anderswo beendet) — Intent ist
+      // gegenstandslos, kein Doppel-Stopp möglich.
+      try {
+        await removeTimerStop(pendingStop?.entryId ?? "");
+        setPendingStop(null);
+      } catch {
+        setTimerError("Der wartende Stopp konnte nicht aufgeräumt werden.");
+      }
+      setTimerError("Der Eintrag wurde bereits beendet. Der wartende Stopp ist entfallen.");
+      setTimerBusy(false);
+      return;
+    }
+    // invalid/denied/Rest: Intent bleibt erhalten (Uhr-Skew heilt ggf.),
+    // Sync ist wiederholbar.
+    setTimerError("Der Offline-Stopp wurde serverseitig abgelehnt und bleibt wartend.");
+    setTimerBusy(false);
+  }, [pendingStop]);
+
+  useEffect(() => {
+    if (!stopSyncArmedRef.current || stopState.status === "idle") return;
+    stopSyncArmedRef.current = false;
+    void settleStopSync(stopState.status);
+  }, [stopState, settleStopSync]);
+
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     // Online: Idempotenz-Schlüssel je Absendung mitgeben (Replay-Guard).
     if (typeof navigator === "undefined" || navigator.onLine) {
@@ -417,7 +563,9 @@ export function TimeEntryManager({
             {formatTimeEntryRange(runningEntry.startAt, runningEntry.endAt)}
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-2">
-            <form action={stopDispatch} className="flex flex-wrap items-end gap-2">
+            {/* F11-03d: Offline-Stopps fängt submitStop ab (Intent statt
+                Server-Call); online läuft die normale Stopp-Action. */}
+            <form action={stopDispatch} onSubmit={(event) => void submitStop(event)} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="workspaceId" value={workspaceId} />
               <input type="hidden" name="projectId" value={projectId} />
               <input type="hidden" name="id" value={runningEntry.id} />
@@ -515,6 +663,45 @@ export function TimeEntryManager({
               className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-60"
             >
               Verwerfen
+            </button>
+          </div>
+        </section>
+      ) : null}
+      {canWrite && pendingStop ? (
+        <section
+          className="min-w-0 rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm sm:p-6"
+          data-testid="timer-offline-stop-pending"
+        >
+          <h2 className="text-base font-semibold text-slate-950">Offline-Stopp wartet auf Synchronisierung</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-700">
+            Stopp: {formatBerlinDateTime(pendingStop.endAt)} Uhr (Geräte-Zeit) ·{" "}
+            {formatDuration(pendingStop.workingTimeMinutes)}
+            {pendingStop.breakDurationMinutes > 0
+              ? ` · Pause ${formatDuration(pendingStop.breakDurationMinutes)}`
+              : null}
+          </p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Der Server-Timer läuft weiter, bis der Stopp übernommen ist — kein Doppel-Eintrag.
+            Verwerfen lässt die Stoppuhr serverseitig weiterlaufen.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={syncPendingStop}
+              disabled={timerBusy}
+              data-testid="timer-offline-stop-sync"
+              className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-60"
+            >
+              {timerBusy ? "Wird synchronisiert …" : "Jetzt synchronisieren"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void discardPendingStop()}
+              disabled={timerBusy}
+              data-testid="timer-offline-stop-discard"
+              className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-60"
+            >
+              Stopp verwerfen
             </button>
           </div>
         </section>

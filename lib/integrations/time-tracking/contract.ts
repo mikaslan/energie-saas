@@ -255,9 +255,14 @@ export const startTimeEntryCommandWithGpsSchema = startTimeEntryCommandSchema.re
   { message: "startLat und startLng nur gemeinsam" },
 );
 
+// F11-03d: optionales Client-Stopp-Datum (Offline-Stopp eines online
+// gestarteten Timers). ISO-Instant, vom Client beim Stoppen offline erfasst;
+// fehlt er, gilt Serverzeit (bisheriges Verhalten). Guards (Reihenfolge,
+// Zukunft, 24-h-Spanne) prüft der Service fail-closed — nie stilles Kappen.
 export const stopTimeEntryCommandSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
   id: z.string().uuid(),
+  endAt: z.string().datetime().optional(),
   workingTimeMinutes: z.number().int().min(1).max(TIME_MINUTES_MAX),
   breakDurationMinutes: z.number().int().min(0).max(TIME_MINUTES_MAX),
   comment: z

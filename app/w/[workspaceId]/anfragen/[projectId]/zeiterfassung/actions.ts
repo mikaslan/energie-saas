@@ -321,6 +321,15 @@ export async function stopTimeEntryAction(
   const breakDurationMinutes = parseMinutes(formData.get("breakDurationMinutes"));
   const commentValue = formData.get("comment");
   const comment = parseComment(commentValue);
+  // F11-03d: optionaler Client-Stopp-Instant (Offline-Stopp eines online
+  // gestarteten Timers, ISO). Leer = Serverzeit. Defekt = invalid, nie raten.
+  const endAtValue = formData.get("endAt");
+  let endAt: string | undefined;
+  if (typeof endAtValue === "string" && endAtValue !== "") {
+    const parsed = new Date(endAtValue);
+    if (!Number.isFinite(parsed.getTime())) return { status: "invalid" };
+    endAt = parsed.toISOString();
+  }
   if (
     !workspace || !projectId || !id
     || workingTimeMinutes === null || workingTimeMinutes < 1
@@ -333,13 +342,17 @@ export async function stopTimeEntryAction(
       stopTimeEntry(tx, ctx, {
         schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
         id,
+        endAt,
         workingTimeMinutes,
         breakDurationMinutes,
         comment,
       }),
     );
     revalidate(workspace, projectId);
-    return { status: "success", message: "Stoppuhr gestoppt." };
+    return {
+      status: "success",
+      message: endAt === undefined ? "Stoppuhr gestoppt." : "Offline-Stopp übernommen.",
+    };
   } catch (error) {
     return mapError(error);
   }

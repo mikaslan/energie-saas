@@ -248,6 +248,61 @@ describe("F9.2 Stoppuhr (PostgreSQL)", () => {
     )).rejects.toBeInstanceOf(PermissionDeniedError);
   });
 
+  it("F1103D-DB-01: stop mit Client-endAt persistiert exakt den Offline-Stopp", async () => {
+    const running = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => startTimeEntry(tx, ctx, startCommand(fixture.projectId)),
+    );
+    // Offline-Stopp „jetzt" (nach Start, vor Sync) — Server übernimmt exakt.
+    const endAt = new Date().toISOString();
+    const stopped = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => stopTimeEntry(tx, ctx, { ...stopCommand(running.id, 1), endAt }),
+    );
+    expect(stopped.running).toBe(false);
+    expect(new Date(stopped.endAt as unknown as string).getTime()).toBe(new Date(endAt).getTime());
+    expect(stopped.workingTimeMinutes).toBe(1);
+    // Replay nach Erfolg (bereits gestoppt) → NotFound, kein Doppel-Stopp.
+    await expect(withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => stopTimeEntry(tx, ctx, { ...stopCommand(running.id, 1), endAt }),
+    )).rejects.toBeInstanceOf(TimeTrackingNotFoundError);
+  });
+
+  it("F1103D-DB-02: stop-endAt fail-closed — vor Start, Zukunft, >24 h, defekt", async () => {
+    const running = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => startTimeEntry(tx, ctx, startCommand(fixture.projectId)),
+    );
+    const stop = (endAt: string) => withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => stopTimeEntry(tx, ctx, { ...stopCommand(running.id, 1), endAt }),
+    );
+    // Vor Start → Validation (kein stilles Kappen).
+    await expect(stop("2000-01-01T00:00:00.000Z"))
+      .rejects.toBeInstanceOf(TimeTrackingValidationError);
+    // Weit in der Zukunft → Validation (5-Min-Skew-Toleranz).
+    await expect(stop(new Date(Date.now() + 60 * 60 * 1000).toISOString()))
+      .rejects.toBeInstanceOf(TimeTrackingValidationError);
+    // Spanne > 24 h → Validation: Start ehrlich zurückdatieren, Stopp jetzt
+    // (trifft gezielt den Spannen-Guard, nicht den Future-Guard).
+    await withTenantOn(testPool, fixture.workspaceId, (tx) => tx.execute(sql`
+      update time_entry set start_at = now() - interval '25 hours'
+       where workspace_id = ${fixture.workspaceId}::uuid and id = ${running.id}::uuid
+    `));
+    await expect(stop(new Date().toISOString()))
+      .rejects.toBeInstanceOf(TimeTrackingValidationError);
+    // Defektes Datum → Validation (Zod-datetime).
+    await expect(stop("kein-datum"))
+      .rejects.toBeInstanceOf(TimeTrackingValidationError);
+    // Eintrag bleibt laufend (kein Teilzustand aus den Ablehnungen).
+    const list = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => listTimeEntries(tx, ctx, { projectId: fixture.projectId }),
+    );
+    expect(list.entries[0]!.running).toBe(true);
+  });
+
   it("F902-DB-05: DB-CHECKs — laufend ohne Minuten ok, gestoppt ohne Minuten rejected", async () => {
     // Laufend (end_at NULL, Minuten NULL) ist erlaubt.
     await withTenantOn(testPool, fixture.workspaceId, (tx) => tx.execute(sql`

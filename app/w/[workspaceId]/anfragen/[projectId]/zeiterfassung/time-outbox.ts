@@ -23,16 +23,22 @@ const DB_NAME = "wmee-time-outbox";
 const STORE_NAME = "time-creates";
 // F11-03c: wartende Offline-Starts der Stoppuhr (ein Start je Projekt).
 const TIMER_STORE_NAME = "timer-starts";
+// F11-03d: wartende Offline-Stopps online gestarteter Timer (ein Stopp je
+// Eintrag — put überschreibt, kein Stapel).
+const TIMER_STOP_STORE_NAME = "timer-stops";
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 2);
+    const request = indexedDB.open(DB_NAME, 3);
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME, { keyPath: "clientKey" });
       }
       if (!request.result.objectStoreNames.contains(TIMER_STORE_NAME)) {
         request.result.createObjectStore(TIMER_STORE_NAME, { keyPath: "key" });
+      }
+      if (!request.result.objectStoreNames.contains(TIMER_STOP_STORE_NAME)) {
+        request.result.createObjectStore(TIMER_STOP_STORE_NAME, { keyPath: "key" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -128,4 +134,41 @@ export async function readTimerStart(workspaceId: string, projectId: string): Pr
 
 export async function removeTimerStart(workspaceId: string, projectId: string): Promise<void> {
   await withStore(TIMER_STORE_NAME, "readwrite", (store) => store.delete(`${workspaceId}:${projectId}`));
+}
+
+export async function listTimerStops(workspaceId: string, projectId: string): Promise<QueuedTimerStop[]> {
+  const all = await withStore<QueuedTimerStop[]>(TIMER_STOP_STORE_NAME, "readonly", (store) => store.getAll());
+  return (all ?? []).filter(
+    (stop) => stop.workspaceId === workspaceId && stop.projectId === projectId,
+  );
+}
+
+export type QueuedTimerStop = {
+  // Genau ein wartender Stopp je Eintrag (Schlüssel = Eintrags-Id).
+  key: string;
+  workspaceId: string;
+  projectId: string;
+  entryId: string;
+  // Beim Offline-Stoppen erfasster ISO-Instant (kein Server-Raten).
+  endAt: string;
+  workingTimeMinutes: number;
+  breakDurationMinutes: number;
+  queuedAt: string;
+};
+
+export async function putTimerStop(entry: QueuedTimerStop): Promise<void> {
+  await withStore(TIMER_STOP_STORE_NAME, "readwrite", (store) => store.put(entry));
+}
+
+export async function readTimerStop(entryId: string): Promise<QueuedTimerStop | null> {
+  const found = await withStore<QueuedTimerStop | undefined>(
+    TIMER_STOP_STORE_NAME,
+    "readonly",
+    (store) => store.get(entryId),
+  );
+  return found ?? null;
+}
+
+export async function removeTimerStop(entryId: string): Promise<void> {
+  await withStore(TIMER_STOP_STORE_NAME, "readwrite", (store) => store.delete(entryId));
 }
