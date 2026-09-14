@@ -1,6 +1,6 @@
 # F7-02B — Bedingte Sichtbarkeit (if/then) am Checklisten-Punkt
 
-Status: **IN ARBEIT** · Lane: `codex/m1-wave-02`
+Status: **IMPLEMENTIERT/LOKAL VERIFIZIERT** · Lane: `codex/m1-wave-02` · Stand 2026-09-14 (DB 7/7 über F7-02b/c, E2E F7-02 9/9 lokal beobachtet; Header-Drift aus IN ARBEIT nachgezogen, kein Code-Eingriff)
 Basis: Modulkatalog F7.2 („if/then-Konditionallogik") · Q-unblockiert
 (Reonic-Helpcenter belegt Konditionallogik als Checklisten-Kern; exakte
 Reonic-Regeltypen bleiben ohne Live-Referenz ESTIMATE, s.u.)
