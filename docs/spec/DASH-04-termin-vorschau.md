@@ -1,6 +1,6 @@
 # DASH-04 Termin-Vorschau (eigene Daten, Layout ESTIMATE)
 
-Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (E2E DASH-01-Test: Termin-Leerzustand + Kalender-Link; Stand 2026-09-14 nachgezogen, kein Code-Eingriff). Wie DASH-01–03: kein
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (E2E DASH-01-Test: Termin-Leerzustand + Kalender-Link; E2E DASH-04-Daten 1/1: angelegter Termin erscheint in der Karte, Leertext weg; Stand 2026-09-14, kein Code-Eingriff). Wie DASH-01–03: kein
 Reonic-Referenzbeleg (Q-DASHBOARD-REFERENZ offen); Auswahl und Layout
 sind reversible eigene Naeherung (ESTIMATE).
 

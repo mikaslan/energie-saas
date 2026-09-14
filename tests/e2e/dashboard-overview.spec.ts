@@ -1,6 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
 import { expect, test, type Page } from "playwright/test";
 import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
+import {
   resolveEditorId,
   seedIsolatedWorkspace,
   state,
@@ -212,4 +216,74 @@ test("DASH-10: Funnel zeigt Bestands-Stufen mit ehrlichen Raten", async ({
   await expect(funnel.getByTestId("dashboard-funnel-offers")).toContainText("0");
   await expect(funnel.getByTestId("dashboard-funnel-installations")).toContainText("0");
   await expect(funnel.getByTestId("dashboard-funnel-won")).toContainText("0");
+});
+
+test("DASH-04-Daten: angelegter Termin erscheint in Naechste Termine", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const listPath = `/w/${workspaceId}/anfragen`;
+  const dashboardPath = `/w/${workspaceId}/dashboard`;
+  await page.goto(listPath);
+  await loginWithRealOtp(page, state().editorEmail, listPath);
+
+  // Projekt per UI, Kalender per Seed (Dialog braucht ihn serverseitig).
+  await page.getByTestId("manual-lead-open").click();
+  const form = page.getByTestId("manual-lead-form");
+  await form.getByLabel("Name *").fill("E2E Dashboard Termin");
+  await form.getByLabel("Telefon").fill("0151 45678907");
+  await form.getByRole("button", { name: "Anfrage anlegen" }).click();
+  const success = page.getByTestId("manual-lead-success");
+  await expect(success).toContainText("Anfrage angelegt");
+  await success.getByRole("link", { name: "Projektakte öffnen" }).click();
+  await expect(page).toHaveURL(/\/anfragen\/[0-9a-f-]+$/u);
+  const projectPath = new URL(page.url()).pathname;
+
+  const pool = createDrainTrackedPool({ connectionString: state().databaseUrl, max: 1 });
+  try {
+    await pool.query(
+      `insert into calendar (id, workspace_id, name, calendar_type, created_by)
+       select gen_random_uuid(), $1::uuid, 'DASH-04 E2E Kalender', 'tenancy', u.id
+         from user_identity u where u.email = $2
+          and not exists (
+            select 1 from calendar
+             where workspace_id = $1::uuid and name = 'DASH-04 E2E Kalender'
+          )
+        limit 1`,
+      [workspaceId, state().editorEmail],
+    );
+  } finally {
+    await endPoolAndWaitForClientRemoval(pool);
+  }
+
+  // Termin in der Projektakte anlegen (übermorgen, DST-sicher mittags).
+  // Kalender vor dem Seiten-Render seeden (Dialog braucht ihn serverseitig).
+  await page.goto(projectPath);
+  const section = page.locator("#project-appointments");
+  await section.getByRole("button", { name: "Termin anlegen" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Termin anlegen", level: 2 }))
+    .toBeVisible();
+  await expect(dialog.getByLabel("Kalender").locator("option"))
+    .toHaveText("DASH-04 E2E Kalender");
+  const title = `DASH-04 E2E Termin ${Date.now()}`;
+  await dialog.getByLabel("Titel").fill(title);
+  await dialog.getByLabel("Typ").selectOption("on_site");
+  const start = new Date(Date.now() + 2 * 86_400_000);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const day = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+  await dialog.getByLabel("Beginn").fill(`${day}T10:00`);
+  await dialog.getByLabel("Ende", { exact: true }).fill(`${day}T11:00`);
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // Dashboard-Karte zeigt den Termin statt des Leerzustands.
+  await page.goto(dashboardPath);
+  const card = page.locator('[data-dashboard-appointments="true"]');
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("link", { name: title })).toBeVisible();
+  await expect(card.getByText("Keine anstehenden Termine.", { exact: true }))
+    .toHaveCount(0);
 });
