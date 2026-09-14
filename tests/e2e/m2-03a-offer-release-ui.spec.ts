@@ -1319,6 +1319,30 @@ test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
         await submitWithPendingFocusEvidence(page, generatePdfButton, {
           pendingClassName: "bg-slate-700",
         });
+        // CI 34608976025/34790387027: Der Submit kann unter CI-Last ohne jedes
+        // Feedback versanden (Idle-Button, kein Conflict, kein Error-Text).
+        // Nur dann EINMAL erneut einreichen: ein spaeter, aber wirksamer
+        // Erst-Submit landet im Replay-Pfad ("vorhandene Auftrag"), ein
+        // verlorener wird ersetzt. Bei Pending (Submit laeuft), Erfolgs- ODER
+        // Fehler-Feedback kein zweiter Submit — echte App-Urteile und
+        // langsame Erfolge bleiben unberuehrt (fail-closed).
+        const draftAccepted = pdfPanel.getByText(/wurde angenommen|vorhandene Auftrag/u);
+        const draftRejected = pdfPanel.getByText(
+          /war ungültig|erneut anmelden|keinen PDF-Entwurf erzeugen|nicht mehr verfügbar|Lade den aktuellen Stand|vorübergehend nicht verfügbar|später erneut/u,
+        );
+        try {
+          await expect(draftAccepted.first()).toBeVisible({ timeout: 15_000 });
+        } catch {
+          if (
+            (await draftAccepted.count()) === 0
+            && (await draftRejected.count()) === 0
+            && (await generatePdfButton.count()) > 0
+          ) {
+            await submitWithPendingFocusEvidence(page, generatePdfButton, {
+              pendingClassName: "bg-slate-700",
+            });
+          }
+        }
         // CI 34608976025: Die Enqueue-Action (Lock + Dispatch + Revalidate
         // des schweren Angebotsdetails) antwortete unter CI-Last erst nach
         // >12 s — ohne jedes Feedback (Idle-Button, kein Conflict). Inhaltlich

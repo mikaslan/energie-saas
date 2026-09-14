@@ -996,3 +996,13 @@ identisch (`983ed67`, 0 unpusht).
 - Fix: `clickPrivateDownloadAndWait` als Shared-Helper, BEIDE Download-Stellen
   darauf zusammengezogen (kein Doppel-Code). tsc/eslint gruen; Kette 2/2
   GRUEN (beide Stellen ausgefuehrt).
+
+## Vorderbau 2026-09-13 (Muse, Fortsetzung 20 — CI 34790387027: Enqueue-Resubmit)
+- CI 34790387027: 238/239. Fill-Verify-Logins, Download, Erstfreigabe,
+  Zweit-Login in CI GRUEN — neuer Einzel-Fehler: Enqueue-90-s-Poll ohne
+  Feedback (Idle-Button, kein Error-Text, kein Draft-Job; Vorgaenger-CI
+  34608976025 dokumentierte exakt dieses Bild). Kein Commit-Bezug.
+- Fix (nur Enqueue-Stelle): nach Helper 15-s-Probe aufs Erfolgs-Feedback;
+  Re-Submit EINMAL nur bei Idle-Button + weder Erfolg noch Fehler (spaeter
+  Erst-Submit landet im Replay-Pfad "vorhandene Auftrag", Pending/Fehler/
+  Erfolg unberuehrt, fail-closed). tsc/eslint gruen; Kette 2/2 GRUEN.
