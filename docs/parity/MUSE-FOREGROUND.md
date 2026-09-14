@@ -1042,3 +1042,14 @@ identisch (`983ed67`, 0 unpusht).
   Mail-Offset (rotationssicher), Versuch-1 console-silent, Original-Assertions
   bleiben Schiedsrichter. Deckt Clobber/Dispatch/Stall/Slow einheitlich ab.
   tsc/eslint gruen; Kette 2/2 GRUEN (alle Logins inkl. Zweit-Login).
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 24 — CI 34803737924 VOLLGRUEN)
+- CI 34803737924 (HEAD acc111e): conclusion SUCCESS — Statik/DB/Rollen/Build
+  GRUEN, Chromium-E2E 240 erwartet / 0 unerwartet / 0 flaky (1 Skip vorbestehend).
+  Erster Vollgruen-Lauf der Serie: F1609, m2-03a (Download, Login, Enqueue),
+  f3-01, f7-02 alle GRUEN. Auftrag CI 34767026269 damit geschlossen:
+  F1609-E2E-03 repariert + im echten CI-Lauf belegt; Folge-Flakes derselben
+  Last-Klasse je mit Befund-Zuordnung gehoertet (kein Gate abgeschwaecht,
+  `retries: 0` unangetastet). Rest-Notizen fuers Endaudit: Fokus-Helper
+  (bewusst unberuehrt), 128 Login-Helper-Kopien (Shared-Helper), CI-Retry-
+  Policy, f3-01-Withdraw-Latenz, CI-Log-Sampling (74 GETs/39 min).
