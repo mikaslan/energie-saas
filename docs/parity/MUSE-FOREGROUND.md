@@ -1031,3 +1031,14 @@ identisch (`983ed67`, 0 unpusht).
   Kein weiterer Eingriff ohne neue Evidenz (App-seitig, Endaudit).
 - Konvergenz: jeder bisherige Fix hielt (keine Signatur kehrte zurueck);
   `retries: 0` bleibt unangetastet (explizite Projektentscheidung).
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 23 — Re-Run 34798657788: Login-Wrapper)
+- Re-Run 34798657788: 238/239, m2-03a Zweit-Login TROTZ Fill-Verify +
+  Request-Gating rot (Timeout bei verifiziertem Fill). Gating adressierte
+  unnoetig enge Unterart (nie gefeuert) — entfernt. Echte Form: Event-Loop-
+  Stall jenseits 12-s-Budget (Dispatch/Response weg, Handler-Zeiten ms).
+- Fix: Login-Sequenz als `attemptLoginWithRealOtp` + Wrapper (F1609-Muster):
+  EINMAL komplett neu bei Fehler — Budgets je Versuch unveraendert, frischer
+  Mail-Offset (rotationssicher), Versuch-1 console-silent, Original-Assertions
+  bleiben Schiedsrichter. Deckt Clobber/Dispatch/Stall/Slow einheitlich ab.
+  tsc/eslint gruen; Kette 2/2 GRUEN (alle Logins inkl. Zweit-Login).

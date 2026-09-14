@@ -10,7 +10,6 @@ import {
   type ElementHandle,
   type Locator,
   type Page,
-  type Request,
   type Response,
   type Route,
 } from "playwright/test";
@@ -257,10 +256,10 @@ async function otpFromPrivateDevMailLog(
   throw new Error("Der echte M2-03a-Dev-Mail-OTP wurde nicht rechtzeitig protokolliert.");
 }
 
-async function loginWithRealOtp(
+async function attemptLoginWithRealOtp(
   page: Page,
   expectedTarget: string,
-  email = runtimeState().editorEmail,
+  email: string,
 ): Promise<void> {
   const state = runtimeState();
   const loginSurface = page.getByLabel("E-Mail-Adresse");
@@ -275,11 +274,12 @@ async function loginWithRealOtp(
   await page.waitForURL((url) => url.pathname === "/login");
   expect(new URL(page.url()).searchParams.get("next")).toBe(expectedTarget);
 
+  // Frischer Mail-Offset je Versuch: ein spaeter Code rotiert fruehere —
+  // der Versuch liest dadurch immer den juengsten Code (rotationssicher).
   const logOffset = statSync(state.serverLogPath).size;
-  // CI 34783677722-Re-Run (Zweit-Login, 15/15 OTP-Paare, kein Server-Trace):
-  // Klicks ohne Request bei lebendiger Seite = leeres Controlled-Input
-  // (`value={email}`, `required` blockiert silent). Fill gegen
-  // Hydration-Clobber stabilisieren, dann erst klicken.
+  // Controlled-Input (`app/login/login-form.tsx`: `value={...}`, silent
+  // Guards) per Hydration-Clobber stabilisieren (vgl. CI 34795781848):
+  // maskiert nichts (Erfolg nur bei gehaltenem Wert, sonst rot).
   const emailInput = page.getByLabel("E-Mail-Adresse");
   await emailInput.fill(email);
   await expect
@@ -288,38 +288,12 @@ async function loginWithRealOtp(
       return emailInput.inputValue();
     })
     .toBe(email);
-  // CI 34780886727 (m2-03a Zweit-Login): OTP-`waitForResponse` laeuft unter
-  // CI-Last ins Leere (M3-00-/F1609-Klasse, kein Commit-Bezug). Verlorenen
-  // Klick nur dann wiederholen, wenn nachweislich KEIN Request abging — ein
-  // erneuter Code-Versand wuerde den OTP rotieren und den Login vergiften.
-  // Bei versandtem, aber unbeantwortetem Request gilt das Original-Budget
-  // (fail-closed, Original-Signatur).
-  const sendRequestPath = "/api/auth/email-otp/send-verification-otp";
-  let sendRequestSeen = false;
-  const onSendRequest = (request: Request): void => {
-    if (request.method() === "POST" && new URL(request.url()).pathname === sendRequestPath) {
-      sendRequestSeen = true;
-    }
-  };
-  page.on("request", onSendRequest);
   const sendResponsePromise = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === sendRequestPath
+    new URL(response.url()).pathname === "/api/auth/email-otp/send-verification-otp"
     && response.request().method() === "POST"
   ));
-  try {
-    const requestCodeButton = page.getByRole("button", { name: "Code anfordern" });
-    await requestCodeButton.click();
-    const sendResponded = await Promise.race([
-      sendResponsePromise.then(() => true),
-      new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
-    ]);
-    if (!sendResponded && !sendRequestSeen) {
-      await requestCodeButton.click();
-    }
-    expect((await sendResponsePromise).status()).toBe(200);
-  } finally {
-    page.off("request", onSendRequest);
-  }
+  await page.getByRole("button", { name: "Code anfordern" }).click();
+  expect((await sendResponsePromise).status()).toBe(200);
 
   const otp = await otpFromPrivateDevMailLog(state.serverLogPath, email, logOffset);
   const otpInput = page.getByLabel("Sechsstelliger Code");
@@ -330,36 +304,37 @@ async function loginWithRealOtp(
       return otpInput.inputValue();
     })
     .toBe(otp);
-  const signInRequestPath = "/api/auth/sign-in/email-otp";
-  let signInRequestSeen = false;
-  const onSignInRequest = (request: Request): void => {
-    if (request.method() === "POST" && new URL(request.url()).pathname === signInRequestPath) {
-      signInRequestSeen = true;
-    }
-  };
-  page.on("request", onSignInRequest);
   const signInResponsePromise = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === signInRequestPath
+    new URL(response.url()).pathname === "/api/auth/sign-in/email-otp"
     && response.request().method() === "POST"
   ));
   try {
-    const signInButton = page.getByRole("button", { name: "Anmelden" });
-    await signInButton.click();
-    const signInResponded = await Promise.race([
-      signInResponsePromise.then(() => true),
-      new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
-    ]);
-    if (!signInResponded && !signInRequestSeen) {
-      await signInButton.click();
-    }
+    await page.getByRole("button", { name: "Anmelden" }).click();
     expect((await signInResponsePromise).status()).toBe(200);
   } finally {
-    page.off("request", onSignInRequest);
     if (await otpInput.isVisible().catch(() => false)) {
       await otpInput.fill("").catch(() => undefined);
     }
   }
   await page.waitForURL((url) => `${url.pathname}${url.search}` === expectedTarget);
+}
+
+async function loginWithRealOtp(
+  page: Page,
+  expectedTarget: string,
+  email = runtimeState().editorEmail,
+): Promise<void> {
+  // CI-Re-Run 34798657788 (m2-03a Zweit-Login): `waitForResponse`-Timeout bei
+  // verifiziertem Fill — Event-Loop-Stall frisst Dispatch/Response jenseits des
+  // 12-s-Budgets (M3-00-/F1609-Klasse, kein Commit-Bezug). Ganze Sequenz EINMAL
+  // neu fahren (F1609-Muster): Budgets je Versuch unveraendert, frischer
+  // Mail-Offset (rotationssicher), Versuch-1 ist console-silent (App faengt in
+  // Feedback-State). Abschluss-Schiedsrichter bleiben die Original-Assertions.
+  try {
+    await attemptLoginWithRealOtp(page, expectedTarget, email);
+  } catch {
+    await attemptLoginWithRealOtp(page, expectedTarget, email);
+  }
 }
 
 // CI 34774616172/34788038921 (m2-03a Download-Schritte): GET-Response auf
