@@ -1109,3 +1109,21 @@ identisch (`983ed67`, 0 unpusht).
   liefert 35.040 Import-Slots, Jahresspitze = 4 × max(Slot) kW exakt
   aus der Simulation (keine erfundene Physik); €/kW je Tarif als
   optionale Eingabe wie Grundpreis (keine erfundenen Tarife).
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 30 — CI 34851752053: 245/1/1, m2-03a-Timing-Flake)
+- CI 34851752053 (HEAD 1103784 F4-04e): Statik/DB/Rollen/Build SUCCESS,
+  Chromium-E2E 245 passed / 1 failed / 1 skipped (Skip vorbestehend,
+  38,5 Min). Einziger Fehler: m2-03a-offer-release-ui.spec.ts:1076 —
+  12-s-waitForResponse-Timeout auf PDF-Download unter Volllast, keine
+  Assertion. Gleiche Timing-Klasse wie CI 34739545245 (:1008, dort als
+  Flake belegt); Diff 5f344f0..HEAD berührt null Angebots-/PDF-/
+  Signatur-Code (nur Rechnung/Profil/UI/Docs).
+- Flake-Beweis, dreifach: (a) beide neuen Tests liefen in CI mit und
+  sind nicht der Fehler (F16-04D-E2E-01 [65/247], F4-04e [196/247] —
+  damit F16-04d per Superset echt im CI-Lauf belegt, F4-04e ebenso);
+  (b) M2-0-Kette lokal 15 passed / 1 skipped / 0 failed inkl. des
+  exakten Fehlertests :1076; (c) fokussierter m2-03a-Einzellauf ist
+  ungültig (Fixture-Vorbedingung M2-01-Angebot fehlt ohne Kette —
+  abweichender Fehler, kein Produktbefund).
+- Kein Produkt-/Test-Eingriff (kein Timeout-Hochsetzen = keine
+  Gate-Abschwächung); Re-Orakel ist der nächste Slice-Push.
