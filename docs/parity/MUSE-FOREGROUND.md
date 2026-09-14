@@ -1177,3 +1177,29 @@ identisch (`983ed67`, 0 unpusht).
   1 skipped (Skip vorbestehend, 37 Min). Zweites Vollgrün in Folge.
 - Race-Fix bestätigt: kein Timer-CHECK-Feuer im Vollgate; F2-06-Härtung
   weiter unauffällig. Timer-Suite lokal 5× 9/9 + 10/10 mit Fix.
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 35 — CI 34895985323: echter M115B-Race + Fix)
+- CI 34895985323 (HEAD 156b8a7 DASH-07): Statik-Job ROT — Vitest-Artefakt
+  (`vitest-result.json`) belegt 2858/2859, einziger Fehler M115B-DB-07
+  (parallele Erst-Provisionierung, `ensurePersonalCalendar`): „Failed
+  query" am Membership-Re-Select. Lint/Typecheck/Vertrag/Depcruise grün.
+- ECHTER BUG, kein Flake: 23505 bricht die Postgres-Transaktion ab
+  (25P02) — der Re-Select im catch war bei echter Kollision deterministisch
+  tot. Lokal nie getroffen (A committet vor B-Insert), unter CI-Last schon.
+  Diff seit Grün (f8c91dd..156b8a7) nur Docs + DASH-E2E — Latenz aus
+  Vor-Commits, jetzt erst sichtbar.
+- Fix (`86bf385`): INSERT … ON CONFLICT DO NOTHING RETURNING id — DO
+  NOTHING wartet die Gewinner-Transaktion ab (READ COMMITTED sieht sie
+  danach); RETURNING trennt Gewinner (`calendar.created`-Event) von
+  Verlierer (fremde ID, kein Doppel-Event). Re-Select strikt über
+  MEMBERSHIP; Fremd-Namenskonflikt → `AppointmentConflictError`. Test:
+  8-fach Kollisionsdruck + deterministischer Verlierer-Pfad (sequentieller
+  Re-Call). Datei 7/7 (3×), Negativkontrolle Alt-Code lokal 7/7 (kein
+  lokaler Kollisionsdruck — CI ist das Orakel), tsc/eslint grün.
+- E2E im selben Run 248/1/1: einziger Fehler m2-04 F2.8b als LADEHÄNGER
+  („Projektakte wird geladen", `#project-outcome` nie erschienen) — alle
+  Schritte davor inkl. DB-Evidenz-Poll liefen; null Diff-Überlappung.
+  Als Lastklasse gewertet (neue Variante neben m2-04-Status-Timeout),
+  kein Code-Eingriff. DASH-07-Daten bestand in diesem Run (PASS).
+- Push `86bf385` mit grünem Pre-Push-Hook; CI `34900582752` läuft als
+  Re-Orakel (M115B-Fix + m2-04-Flake-Hypothese).
