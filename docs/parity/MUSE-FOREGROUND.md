@@ -1127,3 +1127,20 @@ identisch (`983ed67`, 0 unpusht).
   abweichender Fehler, kein Produktbefund).
 - Kein Produkt-/Test-Eingriff (kein Timeout-Hochsetzen = keine
   Gate-Abschwächung); Re-Orakel ist der nächste Slice-Push.
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 31 — CI 34859462201: 244/3/1, drei Last-Flakes)
+- CI 34859462201 (HEAD 9d31116 F4-04f): Statik/DB/Rollen/Build SUCCESS,
+  Chromium-E2E 244 passed / 3 failed / 1 skipped (Skip vorbestehend,
+  38,2 Min). Alle drei Fehler Timing-/Infra-Klasse, null
+  Diff-Überlappung (F4-04f berührt nur Rechnung/Profil/UI):
+  (1) f2-06:141 `page.reload: net::ERR_ABORTED, frame detached` —
+  keine Assertion; (2) m2-03a:1076 identischer 12-s-PDF-Download-
+  Timeout wie CI 34851752053 (2. Lauf in Folge, gleiche
+  Timing-Klasse wie :1008); (3) m2-04:382 12-s-Status-Text-Timeout
+  (leere Status-Region unter Last).
+- Flake-Beweis lokal auf aktuellem Baum: f2-06 isoliert 1/1 grün,
+  F2.8b isoliert 1/1 grün, M2-0-Kette 15 passed / 1 skipped inkl.
+  :1076. F4-04f [197/248] lief in CI mit und ist nicht unter den
+  Fehlern — per Superset belegt.
+- Kein Produkt-/Test-Eingriff (kein Timeout-Hochsetzen); Re-Orakel
+  ist der nächste Slice-Push.
