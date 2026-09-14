@@ -144,6 +144,17 @@ test("F10-06-E2E-01: Portalsprache EN wählen, Upload-Feedback, Cookie, EN-404",
   await expect(page.getByText("Kundenportal", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Übersicht" })).toBeVisible();
 
+  // 4b) Slice-2-Katalog: ?lang=fr rendert FR-Chrome, Großschreibung gilt auch,
+  // Tab-Link behält die Sprache (SSR, kein Cookie nötig).
+  await page.goto(`${tokenPath}?lang=fr`);
+  await expect(page.getByText("Portail client", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Aperçu" })).toBeVisible();
+  await page.goto(`${tokenPath}?lang=FR`);
+  await expect(page.getByText("Portail client", { exact: true }).first()).toBeVisible();
+  await page.getByRole("link", { name: "Fichiers" }).click();
+  await page.waitForURL((url) => url.searchParams.get("lang") === "fr");
+  await expect(page.getByRole("button", { name: "Téléverser", exact: true })).toBeVisible();
+
   // 5) Upload mit Sprache: EN-Feedback + Cookie wird gesetzt.
   await page.goto(`${tokenPath}?tab=dateien&lang=en`);
   await page.locator('input[type="file"]').setInputFiles({
