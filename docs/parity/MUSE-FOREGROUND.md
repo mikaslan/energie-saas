@@ -1091,3 +1091,21 @@ identisch (`983ed67`, 0 unpusht).
   SUCCESS — Statik/DB/Rollen/Build GRUEN, Chromium-E2E 244 passed /
   0 failed (39,3 Min). F4-04d damit echt im CI-Lauf grün; kein
   Triage-Befund im Folge-Lauf (Last-Flake-Hypothese weiter gestützt).
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 29 — CI 34844703301: E2E-Infra-Abbruch, 0 Testfehler)
+- CI 34844703301 (HEAD 27da2ad F16-04d + 0146-Pin-Nachzug): Statik/
+  DB-Tests/Rollenproben/Build SUCCESS. Chromium-E2E per Runner-
+  Shutdown abgebrochen: `The runner has received a shutdown signal`
+  13:22:39 UTC bei Spec 229/246 — danach nur noch
+  `destination stream closed early`-Folgefehler (gleicher Timestamp),
+  kein einziger Test-Assertion-Befund im Log (`failed`-Suche leer).
+  Gleiche Infra-Signatur wie CI 34750762946 (dort Spec 221/238).
+- Kein Produkt-/Test-Eingriff, kein eigener Re-Run (Re-Run-Entscheid
+  weiter bei Mikail/Codex). Dieser Vorderbau-Push dient zugleich als
+  Re-Orakel für F16-04d (identischer Baum + Docs).
+- Nächste echte Lücke (selbst gewählt, Katalogreihenfolge F4.4):
+  F4-04e Leistungspreis je Tarif — letzter offener Punkt aus F4-04a/
+  F4-04d („braucht ein Lastspitzen-Modell"). Modell steht: Dispatch
+  liefert 35.040 Import-Slots, Jahresspitze = 4 × max(Slot) kW exakt
+  aus der Simulation (keine erfundene Physik); €/kW je Tarif als
+  optionale Eingabe wie Grundpreis (keine erfundenen Tarife).
