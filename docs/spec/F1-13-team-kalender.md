@@ -1,5 +1,7 @@
 # F1-13 Team-Kalender (Slice 1: Umfang „Team" umsetzen)
 
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (DB f1013 4/4, E2E F1-13-E2E-01 1/1 lokal beobachtet; Stand 2026-09-14 nachgezogen, kein Code-Eingriff).
+
 Folge zu M1-15b (dort: „team strukturell (später)"): Tabellen-Struktur
 (`calendar.team_id` + Scope-CHECKs seit 0052) war bereit, Service/UI
 fehlten. Teamkalender bündeln Termine je Team; sichtbar für Mitglieder
