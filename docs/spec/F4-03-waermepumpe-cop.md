@@ -1,6 +1,6 @@
 # F4-03 — Wärmepumpe: COP-Kennlinie, Bivalenzpunkt, WW-Split
 
-Status: **SPECIFIED** · Lane: `codex/m1-wave-02` · Stand 2026-09-10
+Status: **IMPLEMENTIERT/LOKAL VERIFIZIERT** · Lane: `codex/m1-wave-02` · Stand 2026-09-14 (Engine heat-pump-cop-v2 + Unit 7/7 + Fetch-Compose-Integration „WP-Thermie über COP-Kennlinie", E2E-Anbindung in m1-11g; Header aus SPECIFIED nachgezogen, kein Code-Eingriff)
 
 ## Ziel und Abgrenzung
 
