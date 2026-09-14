@@ -1,6 +1,6 @@
 # DASH-07 Abschlusstrend (12 Monate)
 
-Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (Unit closure-trend-v1 + DB dash07 + E2E DASH-01-Test „Noch keine Abschlüsse im Zeitraum."; Stand 2026-09-14 nachgezogen, kein Code-Eingriff).
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (Unit closure-trend-v1 + DB dash07 + E2E DASH-01-Test „Noch keine Abschlüsse im Zeitraum." + E2E DASH-07-Daten 1/1: gewonnenes Projekt zeigt Balken „1 / 0"; Stand 2026-09-14, kein Code-Eingriff).
 
 Ziel: won/lost je Berliner Kalendermonat über die letzten 12 Monate als
 Balkendiagramm (CSS, keine Chart-Lib), aus eigenen Abschlussdaten.

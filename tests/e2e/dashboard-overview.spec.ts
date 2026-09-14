@@ -287,3 +287,45 @@ test("DASH-04-Daten: angelegter Termin erscheint in Naechste Termine", async ({
   await expect(card.getByText("Keine anstehenden Termine.", { exact: true }))
     .toHaveCount(0);
 });
+
+test("DASH-07-Daten: gewonnenes Projekt erscheint im Abschlusstrend", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const listPath = `/w/${workspaceId}/anfragen`;
+  const dashboardPath = `/w/${workspaceId}/dashboard`;
+  await page.goto(listPath);
+  await loginWithRealOtp(page, state().editorEmail, listPath);
+
+  // Projekt per UI, Ergebnis per UI auf gewonnen.
+  await page.getByTestId("manual-lead-open").click();
+  const form = page.getByTestId("manual-lead-form");
+  await form.getByLabel("Name *").fill("E2E Dashboard Gewonnen");
+  await form.getByLabel("Telefon").fill("0151 45678908");
+  await form.getByRole("button", { name: "Anfrage anlegen" }).click();
+  const success = page.getByTestId("manual-lead-success");
+  await expect(success).toContainText("Anfrage angelegt");
+  await success.getByRole("link", { name: "Projektakte öffnen" }).click();
+  await expect(page).toHaveURL(/\/anfragen\/[0-9a-f-]+$/u);
+
+  const outcome = page.locator("#project-outcome");
+  await outcome.getByText("Als gewonnen abschließen", { exact: true }).click();
+  const wonConfirmation = outcome.getByRole("button", {
+    name: "Gewonnen verbindlich bestätigen",
+  });
+  await expect(wonConfirmation.locator("xpath=ancestor::form[1]")
+    .locator('input[name="confirmation"]')).toHaveValue("mark_won");
+  await wonConfirmation.click();
+  await expect(outcome.getByRole("status"))
+    .toHaveText("Die Anfrage wurde als gewonnen abgeschlossen.");
+
+  // Trend-Karte zeigt den Balken statt des Leerzustands.
+  await page.goto(dashboardPath);
+  const trend = page.locator('[data-dashboard-trend="true"]');
+  await expect(trend).toBeVisible();
+  await expect(trend.getByText("1 / 0", { exact: true }).first()).toBeVisible();
+  await expect(trend.getByText("Noch keine Abschlüsse im Zeitraum.", { exact: true }))
+    .toHaveCount(0);
+});
