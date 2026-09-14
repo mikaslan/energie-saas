@@ -1044,7 +1044,11 @@ export async function startTimeEntry(
         ${ctx.actor}::uuid,
         ${command.projectId}::uuid,
         ${command.typeId ?? null}::uuid,
-        statement_timestamp(),
+        -- F11-03d-Race-Fix: Start auf Millisekunden stutzen (Client-endAt
+        -- ist ISO-ms; volle µs-DB-Zeit machte Same-Millisekunden-Stops
+        -- per CHECK-Feuer fälschlich ungültig — echter Produktpfad, kein
+        -- Test-Artefakt; workingTimeMinutes rechnet in Minuten).
+        date_trunc('milliseconds', statement_timestamp()),
         ${command.comment},
         ${command.startLat ?? null},
         ${command.startLng ?? null},

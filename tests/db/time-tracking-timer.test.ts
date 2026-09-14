@@ -269,6 +269,26 @@ describe("F9.2 Stoppuhr (PostgreSQL)", () => {
     )).rejects.toBeInstanceOf(TimeTrackingNotFoundError);
   });
 
+  it("F1103D-DB-03: stop in der Start-Millisekunde ist gültig (kein CHECK-Feuer)", async () => {
+    const running = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => startTimeEntry(tx, ctx, startCommand(fixture.projectId)),
+    );
+    // Regression 2026-09-14 (Pre-Push-Gate): start_at lief in µs-DB-Zeit,
+    // Client-endAt in ISO-ms — derselbe Wandzeitpunkt feuerte fälschlich
+    // time_entry_interval_ck. Fix: Start in ms-Domäne; dieser Stopp mit
+    // exakt der Start-Millisekunde muss deterministisch gelten.
+    const sameMillisecond = new Date(new Date(running.startAt).getTime()).toISOString();
+    const stopped = await withAuthorizedTenantOn(
+      testPool, fixture.editorId, fixture.workspaceId,
+      (tx, ctx) => stopTimeEntry(tx, ctx, {
+        ...stopCommand(running.id, 1),
+        endAt: sameMillisecond,
+      }),
+    );
+    expect(stopped.running).toBe(false);
+  });
+
   it("F1103D-DB-02: stop-endAt fail-closed — vor Start, Zukunft, >24 h, defekt", async () => {
     const running = await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
