@@ -1,6 +1,6 @@
 # F16.2 — Zustandslose PDF-Vorschau
 
-Status: **SPECIFIED (DISCOVERED abgeschlossen)**
+Status: **IMPLEMENTIERT/VERIFIZIERT** (Lane gemergt; Service + UI + DB f162 + E2E f16-02-pdf-vorschau; im grünen Vollgate CI 34878437904 mitgelaufen, 0 Fehler. Header am 2026-09-14 nachgezogen, kein Code-Eingriff)
 
 Lane: `codex/f16-02-pdf-vorschau` off `origin/codex/m1-wave-02` (keine Migration).
 Vorgänger: M2-02 (PDF-Draft-Engine, Template, Worker), M2-01 (Snapshot).
