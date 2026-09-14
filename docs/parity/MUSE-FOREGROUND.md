@@ -1085,3 +1085,9 @@ identisch (`983ed67`, 0 unpusht).
   34823866742 per Re-Orakel als Flake bestätigt (kein Befund im
   Folge-Lauf), F16-04c per Superset-Abdeckung mit belegt, und F4-04c
   inkl. v1-/v2-Pin-Regen echt im CI-Lauf grün.
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 28 — CI 34836658375 VOLLGRUEN)
+- CI 34836658375 (HEAD 6d4fe61 F4-04d inkl. SHA-Regen): conclusion
+  SUCCESS — Statik/DB/Rollen/Build GRUEN, Chromium-E2E 244 passed /
+  0 failed (39,3 Min). F4-04d damit echt im CI-Lauf grün; kein
+  Triage-Befund im Folge-Lauf (Last-Flake-Hypothese weiter gestützt).
