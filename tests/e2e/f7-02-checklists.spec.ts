@@ -101,7 +101,19 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
   expect(current.searchParams.get("next")).toBe(expectedPath);
 
   const logOffset = statSync(state().serverLogPath).size;
-  await page.getByLabel("E-Mail-Adresse").fill(email);
+  // CI 34795781848 (F7.4-Login, OTP-400 ohne Commit-Bezug): Controlled-Input
+  // (`app/login/login-form.tsx`: `value={...}`, silent Guards) kann per
+  // Hydration-Clobber leerfallen — Submit mit leerem Stand → 400. Fill gegen
+  // Clobber stabilisieren (vgl. m2-03a); maskiert nichts (Erfolg nur bei
+  // gehaltenem Wert, sonst rot).
+  const emailInput = page.getByLabel("E-Mail-Adresse");
+  await emailInput.fill(email);
+  await expect
+    .poll(async () => {
+      if ((await emailInput.inputValue()) !== email) await emailInput.fill(email);
+      return emailInput.inputValue();
+    })
+    .toBe(email);
   const sendResponsePromise = page.waitForResponse((response) =>
     new URL(response.url()).pathname === "/api/auth/email-otp/send-verification-otp"
     && response.request().method() === "POST");
@@ -110,7 +122,14 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
 
   const otpInput = page.getByLabel("Sechsstelliger Code");
   await expect(otpInput).toBeVisible();
-  await otpInput.fill(await otpFromPrivateDevMailLog(state().serverLogPath, email, logOffset));
+  const otp = await otpFromPrivateDevMailLog(state().serverLogPath, email, logOffset);
+  await otpInput.fill(otp);
+  await expect
+    .poll(async () => {
+      if ((await otpInput.inputValue()) !== otp) await otpInput.fill(otp);
+      return otpInput.inputValue();
+    })
+    .toBe(otp);
   const signInResponsePromise = page.waitForResponse((response) =>
     new URL(response.url()).pathname === "/api/auth/sign-in/email-otp"
     && response.request().method() === "POST");

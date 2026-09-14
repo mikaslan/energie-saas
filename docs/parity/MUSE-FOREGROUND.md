@@ -1016,3 +1016,18 @@ identisch (`983ed67`, 0 unpusht).
   (kein doppeltes Schlucken), 90-s-Poll bleibt Abschluss-Schiedsrichter.
   Danach keine weiteren m2-03a-Haertungen: neue Signatur → Endaudit.
   tsc/eslint gruen; Kette 2/2 GRUEN.
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 22 — CI 34795781848: f7-02 + f3-01)
+- CI 34795781848: 238/239. m2-03a ERSTMALS Gesamt-GRUEN (alle Haertungen
+  halten) — zwei neue Einzel-Punkte: f7-02 OTP-400, f3-01-Lock.
+- f7-02 (F7.4-Login): `toBe(200)` mit 400, KEIN 400-Eintrag im CI-Server-Log
+  (Log ist Sampling: 74 GETs/39 min — Abwesenheit beweist nichts). Befund per
+  Ausschluss + Form-Code: Controlled-Input-Clobber (Case B: Submit mit leerem
+  Stand → 400). Fix: Fill-Verify-Poll in f7-02-Helper (nur belegter Mechanismus,
+  kein Request-Gating). tsc/eslint gruen; fokussiert gruen.
+- f3-01-Lock: v2 griff nicht (Final-12-s rot). Hypothese: Withdraw-Action
+  selbst langsam/haengend (dyn. Import + Admission-Locks + Service) — kein
+  Klick-Retry der Welt hilft; v2 bleibt (alle Aeste korrekt, Proof-4 gruen).
+  Kein weiterer Eingriff ohne neue Evidenz (App-seitig, Endaudit).
+- Konvergenz: jeder bisherige Fix hielt (keine Signatur kehrte zurueck);
+  `retries: 0` bleibt unangetastet (explizite Projektentscheidung).
