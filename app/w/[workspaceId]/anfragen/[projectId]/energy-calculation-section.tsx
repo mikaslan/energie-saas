@@ -585,6 +585,14 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
             ? "—"
             : euroFormatter.format(economics.annualBillsEuro.newTariffEuro)}
         </DetailItem>
+        <DetailItem term="Grundpreis (aktueller Tarif, €/Jahr)" numeric>
+          {economics.baseFeeEuro === undefined ? "—" : euroFormatter.format(economics.baseFeeEuro)}
+        </DetailItem>
+        <DetailItem term="Grundpreis (Neutarif, €/Jahr)" numeric>
+          {economics.alternativeImportPriceCtPerKwh === null
+            ? "—"
+            : euroFormatter.format(economics.alternativeBaseFeeEuro ?? economics.baseFeeEuro ?? 0)}
+        </DetailItem>
       </dl>
       {economics.annualBillSeriesEuro ? (
         <V2BillSeries

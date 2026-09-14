@@ -530,6 +530,13 @@ function assembleResultV2(
     ...(economicsInput.alternativePriceEscalationRate === undefined
       ? {}
       : { alternativePriceEscalationRate: economicsInput.alternativePriceEscalationRate }),
+    // F4-04d: Echo nur bei belegtem Profilfeld (Althashes stabil).
+    ...(economicsInput.baseFeeEuro === undefined
+      ? {}
+      : { baseFeeEuro: economicsInput.baseFeeEuro }),
+    ...(economicsInput.alternativeBaseFeeEuro === undefined
+      ? {}
+      : { alternativeBaseFeeEuro: economicsInput.alternativeBaseFeeEuro }),
     horizonYears: economicsInput.horizonYears,
     priceSource: economicsInput.priceSource,
     settingsRevision: economicsInput.settingsRevision,

@@ -257,6 +257,16 @@
               "minimum": -0.1,
               "maximum": 0.25
             },
+            "baseFeeEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "alternativeBaseFeeEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -571,6 +581,16 @@
               "type": "number",
               "minimum": -0.1,
               "maximum": 0.25
+            },
+            "baseFeeEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "alternativeBaseFeeEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
             },
             "horizonYears": {
               "type": "integer",

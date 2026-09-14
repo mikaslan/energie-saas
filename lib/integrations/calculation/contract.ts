@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "b242a25ad586f9699f7455c70c075a975117f18dbe35fe28294b2ab982a583d6" as const;
+  "904da3d27e6a16e7a42c634ddc1261d1aab821d7b87a3ebc12b75780f7712dc4" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -212,6 +212,11 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     // (% p. a., Bereich wie annualPriceIncreasePercent; unbelegt = gleiche
     // Eskalation wie aktueller Tarif, dokumentiert — kein Fehler).
     alternativeImportPriceEscalationPct: knownOrUnknown(finite().min(-10).max(25)).optional(),
+    // F4-04d Grundpreis je Tarif (€/Jahr, konstant über Horizont —
+    // Grundpreis-Änderungen sind unregelmäßig, keine Eskalation;
+    // unbelegt = 0, kein Fehler).
+    baseFeeEuroPerYear: knownOrUnknown(finite().min(0).max(100_000)).optional(),
+    alternativeBaseFeeEuroPerYear: knownOrUnknown(finite().min(0).max(100_000)).optional(),
     // F4.4b TOU: optionale 24 Stundenpreise (Ct/kWh; unbelegt = kein
     // TOU-Block, kein Fehler).
     touImportPricesCtPerKwh: knownOrUnknown(

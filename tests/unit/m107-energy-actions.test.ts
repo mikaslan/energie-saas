@@ -164,6 +164,8 @@ function validProfileForm(): FormData {
     groundAlbedo: "",
     alternativeImportPriceCtPerKwh: "",
     alternativeImportPriceEscalationPct: "",
+    baseFeeEuroPerYear: "",
+    alternativeBaseFeeEuroPerYear: "",
     touImportPricesCt: "",
     coolingKwhPerYear: "",
     heatingAcKwhPerYear: "",

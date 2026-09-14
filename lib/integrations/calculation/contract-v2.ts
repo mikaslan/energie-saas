@@ -58,6 +58,9 @@ const economicsInputV2Schema = z.strictObject({
   // F4-04c: nur bei belegtem Profilfeld (sonst fehlt der Schluessel und
   // Althashes bleiben stabil).
   alternativePriceEscalationRate: finite().min(-0.1).max(0.25).optional(),
+  // F4-04d: Grundpreis je Tarif (nur bei belegtem Profilfeld).
+  baseFeeEuro: finite().min(0).max(100_000).optional(),
+  alternativeBaseFeeEuro: finite().min(0).max(100_000).optional(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -102,6 +105,9 @@ const economicsResultV2Schema = z.strictObject({
   alternativeImportPriceCtPerKwh: finite().min(1).max(200).nullable(),
   // F4-04c: Echo wie Input (nur bei belegtem Profilfeld).
   alternativePriceEscalationRate: finite().min(-0.1).max(0.25).optional(),
+  // F4-04d: Echo wie Input (nur bei belegtem Profilfeld).
+  baseFeeEuro: finite().min(0).max(100_000).optional(),
+  alternativeBaseFeeEuro: finite().min(0).max(100_000).optional(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),

@@ -1111,6 +1111,31 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["alternativeImportPriceEscalationPct"],
+      // F4-04d Grundpreis je Tarif (optional; fehlt in Altzeilen).
+      baseFeeEuroPerYear: normalizeKnownField(
+        submitted.consumption.baseFeeEuroPerYear ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.baseFeeEuroPerYear ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["baseFeeEuroPerYear"],
+      alternativeBaseFeeEuroPerYear: normalizeKnownField(
+        submitted.consumption.alternativeBaseFeeEuroPerYear ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.alternativeBaseFeeEuroPerYear ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["alternativeBaseFeeEuroPerYear"],
       // F4.2c Lastgang-CSV (optional; fehlt in Altzeilen).
       customCsvKwh: normalizeKnownField(
         submitted.consumption.customCsvKwh ?? {

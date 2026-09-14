@@ -1,7 +1,7 @@
 {
   "contractVersion": "planning-calculation.v1",
   "canonicalizationVersion": "planning-jcs.v1",
-  "schemaSha256": "b242a25ad586f9699f7455c70c075a975117f18dbe35fe28294b2ab982a583d6",
+  "schemaSha256": "904da3d27e6a16e7a42c634ddc1261d1aab821d7b87a3ebc12b75780f7712dc4",
   "semanticSha256": {
     "newInput": "17b55f4a01690356663587f3ccb606783dce5c808932498b2dc52a2f197d0bfb",
     "existingInput": "30a4762d66a4fc105e0192e1b7b3251b4953e12a49c9e60a5a097eec457b55d9",

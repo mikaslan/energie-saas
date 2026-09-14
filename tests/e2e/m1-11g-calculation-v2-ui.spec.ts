@@ -1099,6 +1099,84 @@ test("M1-11g: F4-04c-Neutarif-Eskalation traegt Mehrjahres-Serie", async ({ page
   await expect(billSeries.locator("table tbody tr")).toHaveCount(economics.horizonYears);
 });
 
+test("M1-11g: F4-04d-Grundpreis traegt Bills und Serie, Ersparnis unberuehrt", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await page.getByLabel("Investition netto (€)").fill("20000");
+  await page.getByLabel("Einspeisevergütung Override (Ct/kWh, leer = EEG-Default)").fill("8");
+  await page.getByLabel("EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)").fill("2024");
+  await page.getByLabel("Neutarif Vergleich (Ct/kWh, leer = kein Vergleich)").fill("28");
+  await page.getByLabel("Grundpreis aktueller Tarif (€/Jahr, leer = 0)").fill("120");
+  await page.getByLabel("Grundpreis Neutarif (€/Jahr, leer = wie aktueller Tarif)").fill("60");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Grundpreis-Kette erreichte kein currentV2.");
+  }
+  const economics = expected.calculation.resultV2.value.economics;
+  if (!economics) throw new Error("currentV2 traegt kein economics.");
+  const annual = expected.calculation.resultV2.value.annual;
+  // Rechnungen tragen den Grundpreis (aktuell 120, neu 60); die Ersparnis
+  // bleibt grundpreisfrei (Netzanschluss bleibt): noPv − current = self × Preis.
+  expect(economics.baseFeeEuro).toBe(120);
+  expect(economics.alternativeBaseFeeEuro).toBe(60);
+  expect(economics.annualBillsEuro.currentEuro).toBeCloseTo(annual.gridImportKwh * 0.36 + 120, 2);
+  expect(economics.annualBillsEuro.newTariffEuro).toBeCloseTo(annual.gridImportKwh * 0.28 + 60, 2);
+  expect(
+    economics.annualBillsEuro.noPvEuro - economics.annualBillsEuro.currentEuro,
+  ).toBeCloseTo(annual.selfConsumptionKwh * 0.36, 2);
+  const series = economics.annualBillSeriesEuro;
+  if (!series) throw new Error("currentV2 traegt keine Mehrjahres-Serie.");
+  expect(series[0]!.currentEuro).toBe(economics.annualBillsEuro.currentEuro);
+  expect(series[0]!.newTariffEuro).toBe(economics.annualBillsEuro.newTariffEuro);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  const block = page.locator('[data-energy-calculation-v2-economics="true"]');
+  await expect(block).toBeVisible();
+  await expect(block.locator("dt", { hasText: "Grundpreis (aktueller Tarif" })).toBeVisible();
+  await expect(block.locator("dt", { hasText: "Grundpreis (Neutarif" })).toBeVisible();
+});
+
 test("M1-11g: F4.4b-TOU traegt currentV2-Bill und Ladefahrplan", async ({ page }) => {
   const actorId = await resolveEditorId();
   const workspaceId = await seedIsolatedWorkspace(actorId);

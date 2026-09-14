@@ -298,6 +298,77 @@ describe("economics computation", () => {
     expect(withoutPrice.annualBillsEuro.newTariffEuro).toBeNull();
   });
 
+  it("F4-04d: Grundpreis je Tarif in Rechnungen, Ersparnis unberührt", () => {
+    const base = {
+      generationKwh: 10_000,
+      selfConsumptionKwh: 4_000,
+      feedInKwh: 6_000,
+      consumptionKwh: 7_000,
+      gridImportKwh: 3_000,
+    };
+    const plain = {
+      importPriceCtPerKwh: 36,
+      priceEscalationRate: 0,
+      feedInTariffCtPerKwh: 8,
+      feedInTariffSource: "override" as const,
+      investmentEuro: 20_000,
+      alternativeImportPriceCtPerKwh: null,
+      horizonYears: 20,
+      priceSource: "profile" as const,
+      settingsRevision: 0,
+    };
+    const withoutBase = computeEconomics(base, plain);
+    const withBase = computeEconomics(base, {
+      ...plain,
+      baseFeeEuro: 120,
+      alternativeImportPriceCtPerKwh: 28,
+      alternativeBaseFeeEuro: 60,
+    });
+    // Rechnungen tragen den Grundpreis (aktuell 120, neu 60).
+    expect(withBase.annualBillsEuro).toEqual({
+      noPvEuro: 2_520 + 120,
+      currentEuro: 1_080 + 120,
+      newTariffEuro: 840 + 60,
+    });
+    // Ersparnis/Cashflow unberührt (Grundpreis kürzt sich analytisch).
+    expect(withBase.annualSavingsEuro).toBe(withoutBase.annualSavingsEuro);
+    expect(withBase.cumulativeCashflowEuro).toEqual(withoutBase.cumulativeCashflowEuro);
+    expect(withBase.amortizationYears).toBe(withoutBase.amortizationYears);
+    // Serie mit Grundpreis, Jahr 1 == Jahr-1-Rechnung; Neu-Fallback = aktuell.
+    expect(withBase.annualBillSeriesEuro![0]).toEqual({
+      year: 1,
+      noPvEuro: 2_640,
+      currentEuro: 1_200,
+      newTariffEuro: 900,
+    });
+    const fallback = computeEconomics(base, {
+      ...plain,
+      baseFeeEuro: 120,
+      alternativeImportPriceCtPerKwh: 28,
+      horizonYears: 2,
+    });
+    expect(fallback.annualBillsEuro.newTariffEuro).toBe(840 + 120);
+    expect(fallback.annualBillSeriesEuro![1]!.newTariffEuro).toBe(840 + 120);
+  });
+
+  it("F4-04d: Grundpreis nur bei belegtem Profilfeld, Bereich fail-closed", () => {
+    const resolved = resolveEconomics(consumption({
+      baseFeeEuroPerYear: known(120),
+      alternativeBaseFeeEuroPerYear: known(60),
+    }))!;
+    expect(resolved.baseFeeEuro).toBe(120);
+    expect(resolved.alternativeBaseFeeEuro).toBe(60);
+    const unbelegt = resolveEconomics(consumption())!;
+    expect("baseFeeEuro" in unbelegt).toBe(false);
+    expect("alternativeBaseFeeEuro" in unbelegt).toBe(false);
+    expect(() => resolveEconomics(consumption({
+      baseFeeEuroPerYear: known(-1),
+    }))).toThrow();
+    expect(() => resolveEconomics(consumption({
+      alternativeBaseFeeEuroPerYear: known(100_001),
+    }))).toThrow();
+  });
+
   it("F4-04c: Neutarif-Eskalation nur bei belegtem Profilfeld, Bereich fail-closed", () => {
     const resolved = resolveEconomics(consumption({
       alternativeImportPriceCtPerKwh: known(28),

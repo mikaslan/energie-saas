@@ -77,6 +77,12 @@ export type EconomicsInputV2 = {
    * (dokumentiert) — Althashes bleiben ohne Neutarif-Eskalation stabil.
    */
   alternativePriceEscalationRate?: number;
+  /**
+   * F4-04d Grundpreis je Tarif [€/Jahr], konstant über Horizont.
+   * Fehlende Schlüssel = 0 (Althashes stabil).
+   */
+  baseFeeEuro?: number;
+  alternativeBaseFeeEuro?: number;
   horizonYears: number;
   /** Herkunft des Bezugspreises (F4.5b Workspace-Fallback). */
   priceSource: EconomicsPriceSource;
@@ -189,6 +195,16 @@ export function resolveEconomics(
       feedInTariffSource = "eeg_default";
     }
   }
+  // F4-04d: Grundpreis nur bei belegtem Profilfeld (sonst fehlt der
+  // Schlüssel und Althashes bleiben stabil). Bereich 0..100.000 €/Jahr.
+  const baseFee = knownNumber(holder.baseFeeEuroPerYear);
+  if (baseFee !== null && (baseFee < 0 || baseFee > 100_000)) {
+    economicsError("Grundpreis ausserhalb 0..100000 Euro/Jahr");
+  }
+  const alternativeBaseFee = knownNumber(holder.alternativeBaseFeeEuroPerYear);
+  if (alternativeBaseFee !== null && (alternativeBaseFee < 0 || alternativeBaseFee > 100_000)) {
+    economicsError("Neutarif-Grundpreis ausserhalb 0..100000 Euro/Jahr");
+  }
   return {
     importPriceCtPerKwh: importPriceCt,
     priceEscalationRate: escalationPct / 100,
@@ -199,6 +215,8 @@ export function resolveEconomics(
     ...(alternativeEscalationPct === null
       ? {}
       : { alternativePriceEscalationRate: alternativeEscalationPct / 100 }),
+    ...(baseFee === null ? {} : { baseFeeEuro: baseFee }),
+    ...(alternativeBaseFee === null ? {} : { alternativeBaseFeeEuro: alternativeBaseFee }),
     horizonYears,
     priceSource: profilePrice !== null ? "profile" : "workspace_default",
     settingsRevision: fallback?.settingsRevision ?? 0,
@@ -396,13 +414,20 @@ export function computeEconomics(
       irr = (low + high) / 2;
     }
   }
+  // F4-04d Grundpreis je Tarif (konstant, keine Eskalation): Ohne-PV
+  // und aktueller Tarif tragen den aktuellen Grundpreis, der Neutarif
+  // den eigenen (unbelegt = aktueller, dokumentiert). Ersparnis und
+  // Cashflow bleiben unberührt — der Grundpreis kürzt sich analytisch
+  // (Netzanschluss bleibt), nur die Rechnungen werden ehrlich.
+  const baseFee = input.baseFeeEuro ?? 0;
+  const alternativeBaseFee = input.alternativeBaseFeeEuro ?? baseFee;
   // F4.4a Jahr-1-Tarifvergleich (gleiche physikalische Fluesse).
   const annualBillsEuro: AnnualBillsV2 = {
-    noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro),
-    currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro),
+    noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro + baseFee),
+    currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro + baseFee),
     newTariffEuro: input.alternativeImportPriceCtPerKwh === null
       ? null
-      : roundMoney(annual.gridImportKwh * (input.alternativeImportPriceCtPerKwh / 100)),
+      : roundMoney(annual.gridImportKwh * (input.alternativeImportPriceCtPerKwh / 100) + alternativeBaseFee),
   };
   // F4-04c Mehrjahres-Tarifvergleich mit Eskalation je Tarif (nur bei
   // belegtem Neutarif; unbelegte Neutarif-Eskalation = aktuelle
@@ -417,9 +442,9 @@ export function computeEconomics(
   for (let year = 1; year <= horizon; year += 1) {
     annualBillSeriesEuro.push({
       year,
-      noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1)),
-      currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1)),
-      newTariffEuro: roundMoney(annual.gridImportKwh * newPriceEuro * (1 + newEscalation) ** (year - 1)),
+      noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1) + baseFee),
+      currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1) + baseFee),
+      newTariffEuro: roundMoney(annual.gridImportKwh * newPriceEuro * (1 + newEscalation) ** (year - 1) + alternativeBaseFee),
     });
   }
   return {
