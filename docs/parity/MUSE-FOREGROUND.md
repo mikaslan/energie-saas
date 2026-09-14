@@ -1006,3 +1006,13 @@ identisch (`983ed67`, 0 unpusht).
   Re-Submit EINMAL nur bei Idle-Button + weder Erfolg noch Fehler (spaeter
   Erst-Submit landet im Replay-Pfad "vorhandene Auftrag", Pending/Fehler/
   Erfolg unberuehrt, fail-closed). tsc/eslint gruen; Kette 2/2 GRUEN.
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 21 — CI 34793066717: Helper-Wrapper)
+- CI 34793066717: 238/239. Erstmals Fokus-Poll (`submitWithPendingFocusEvidence`,
+  bisher nur lokal) in CI rot — Helper-Evidenz reisst, Submit-Schicksal offen.
+  Snapshot: Idle-Live-Button ohne Pending-Marker. Kein Commit-Bezug.
+- Fix (nur Call-Site): Helper-Aufruf in try/catch; Re-Submit EINMAL nur bei
+  feedbacklosem Idle (`draftNeedsResubmit`), Zweitversuch mit voller Evidenz
+  (kein doppeltes Schlucken), 90-s-Poll bleibt Abschluss-Schiedsrichter.
+  Danach keine weiteren m2-03a-Haertungen: neue Signatur → Endaudit.
+  tsc/eslint gruen; Kette 2/2 GRUEN.
