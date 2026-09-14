@@ -186,7 +186,18 @@ test("F206-E2E-01: Optionale Position wird Upsell-Checkbox mit Live-Summe", asyn
   await expect.poll(async () =>
     (await readM201RevisionEvidence(state, offerId, variantId)).revision,
   { timeout: 30_000 }).toBe(firstEvidence.revision + 1);
-  await page.reload();
+  // Flake-Härtung (CI 34859462201/34872132657): page.reload kann unter
+  // Volllast den Frame verlieren (net::ERR_ABORTED, keine Assertion
+  // betroffen). Einmaliger Retry desselben Reloads — keine abgeschwächte
+  // Prüfung, identische Folge-Assertions.
+  try {
+    await page.reload();
+  } catch (error) {
+    if (!(error instanceof Error) || !/ERR_ABORTED|frame was detached/u.test(error.message)) {
+      throw error;
+    }
+    await page.reload();
+  }
   await expect(page.locator('[data-offer-detail-state="loaded"]')).toBeVisible();
 
   const panel = page.getByTestId("offer-upsell-panel");
