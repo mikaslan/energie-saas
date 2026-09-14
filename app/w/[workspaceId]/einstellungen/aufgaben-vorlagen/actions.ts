@@ -64,6 +64,21 @@ function parseDueOffset(value: FormDataEntryValue | null): number | null | undef
   return Number.isSafeInteger(days) && days <= 3650 ? days : undefined;
 }
 
+function parseIdList(value: FormDataEntryValue | null): string[] | null {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return null;
+    const ids = [...new Set(parsed)];
+    if (!ids.every((id) => typeof id === "string" && z.string().uuid().safeParse(id).success)) {
+      return null;
+    }
+    return ids as string[];
+  } catch {
+    return null;
+  }
+}
+
 function parseFields(formData: FormData):
   | { name: string; title: string; dueOffsetDays: number | null; position: number; assigneeMembershipIds: string[] }
   | null {
@@ -76,21 +91,15 @@ function parseFields(formData: FormData):
   const position = Number(positionValue);
   if (!Number.isSafeInteger(position) || position < 0) return null;
   // F16-04b: Bearbeiter als JSON-Liste (UUIDs, max Cap); fehlend = leer.
-  const assigneesValue = formData.get("assigneeMembershipIds");
-  let assigneeMembershipIds: string[] = [];
-  if (typeof assigneesValue === "string" && assigneesValue.trim() !== "") {
-    try {
-      const parsed: unknown = JSON.parse(assigneesValue);
-      if (!Array.isArray(parsed)) return null;
-      const ids = [...new Set(parsed)];
-      if (ids.length > PROJECT_TASK_MAX_ASSIGNEES) return null;
-      if (!ids.every((id) => typeof id === "string" && z.string().uuid().safeParse(id).success)) return null;
-      assigneeMembershipIds = ids as string[];
-    } catch {
-      return null;
-    }
-  }
-  return { name, title, dueOffsetDays, position, assigneeMembershipIds };
+  // F16-04c: erhaltene Ausgeschiedene als zweite JSON-Liste (gleiche
+  // Form); Union geht an den Service — Create verweigert sie (nicht
+  // live), Update erhält nur bereits gespeicherte (Service-Guard).
+  const assigneeMembershipIds = parseIdList(formData.get("assigneeMembershipIds"));
+  const departedIds = parseIdList(formData.get("departedAssigneeMembershipIds"));
+  if (assigneeMembershipIds === null || departedIds === null) return null;
+  const merged = [...new Set([...assigneeMembershipIds, ...departedIds])];
+  if (merged.length > PROJECT_TASK_MAX_ASSIGNEES) return null;
+  return { name, title, dueOffsetDays, position, assigneeMembershipIds: merged };
 }
 
 function mapError(error: unknown): TaskTemplateActionState {

@@ -43,12 +43,16 @@ function formatOffset(template: TaskTemplateDto): string {
 
 // F16-04b: Bearbeiter-Auswahl je Formular (Suche + Toggle, Auswahl als
 // Hidden-JSON; Initial aus Vorlage, Remount-Key des Formulars gilt).
+// F16-04c: Ausgeschiedene sichtbar (Zähler ohne Label, kein PII-Lookup)
+// plus Hidden-JSON zum Werterhalt — Speichern purgt sie nicht mehr still.
 function AssigneePicker({
   workspaceId,
   initial,
+  departedIds,
 }: {
   workspaceId: string;
   initial: { membershipId: string; label: string }[];
+  departedIds: string[];
 }) {
   const [selected, setSelected] = useState(initial);
   const [searchState, searchAction] = useActionState(
@@ -78,7 +82,20 @@ function AssigneePicker({
         name="assigneeMembershipIds"
         value={JSON.stringify(selected.map((entry) => entry.membershipId))}
       />
+      <input
+        type="hidden"
+        name="departedAssigneeMembershipIds"
+        value={JSON.stringify(departedIds)}
+      />
       <span className="text-sm font-semibold text-slate-800">Bearbeiter (leer = Anwendender)</span>
+      {departedIds.length > 0 ? (
+        <p className="text-sm text-slate-600" data-testid="template-departed-notice">
+          {departedIds.length === 1
+            ? "1 ausgeschiedener Bearbeiter"
+            : `${departedIds.length} ausgeschiedene Bearbeiter`} —{" "}
+          beim Anwenden übersprungen, bleiben gespeichert.
+        </p>
+      ) : null}
       {selected.length > 0 ? (
         <ul className="flex flex-wrap gap-2">
           {selected.map((entry) => (
@@ -234,7 +251,11 @@ function TemplateForm({
         </label>
       </div>
       <div>
-        <AssigneePicker workspaceId={workspaceId} initial={template?.assignees ?? []} />
+        <AssigneePicker
+          workspaceId={workspaceId}
+          initial={template?.assignees ?? []}
+          departedIds={template?.departedAssigneeMembershipIds ?? []}
+        />
         <button
           type="submit"
           className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600"

@@ -32,8 +32,11 @@ const dueOffsetDaysSchema = z.number().int().min(0).max(TASK_TEMPLATE_DUE_OFFSET
 // leere Liste = nur Anwendender wie bisher).
 const assigneeMembershipIdsSchema = z.array(z.string().uuid()).max(PROJECT_TASK_MAX_ASSIGNEES);
 
-// Aufgelöste Anzeige-Optionen fürs Edit-Formular (Fehlende entfallen;
+// Aufgelöste Anzeige-Optionen fürs Edit-Formular (nur Lebende;
 // Anzeige, keine Autorisierung — IDs bleiben die Quelle).
+// Ausgeschiedene stehen separat (F16-04c): sichtbar, aber ohne Label
+// (kein PII-Lookup an Nicht-Mitglieder) — Anwenden überspringt sie,
+// Speichern erhält sie.
 const assigneeOptionSchema = z.object({
   membershipId: z.string().uuid(),
   label: z.string().min(1),
@@ -47,6 +50,7 @@ export const taskTemplateDtoSchema = z.object({
   dueOffsetDays: z.number().int().min(0).max(TASK_TEMPLATE_DUE_OFFSET_MAX).nullable(),
   assigneeMembershipIds: assigneeMembershipIdsSchema,
   assignees: z.array(assigneeOptionSchema).max(PROJECT_TASK_MAX_ASSIGNEES),
+  departedAssigneeMembershipIds: assigneeMembershipIdsSchema,
   position: z.number().int().min(0),
   active: z.boolean(),
   createdAt: z.string(),

@@ -97,9 +97,9 @@ async function resolveAssigneeOptions(
   tx: TenantTx,
   workspaceId: string,
   membershipIds: readonly string[],
-): Promise<{ membershipId: string; label: string }[]> {
+): Promise<{ live: { membershipId: string; label: string }[]; departedIds: string[] }> {
   const ids = [...new Set(membershipIds)];
-  if (ids.length === 0) return [];
+  if (ids.length === 0) return { live: [], departedIds: [] };
   const result = await tx.execute<{ membershipId: string; label: string }>(sql`
     select membership_record.id as "membershipId",
            identity_record.email as label
@@ -110,11 +110,16 @@ async function resolveAssigneeOptions(
        and membership_record.id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
   `);
   const byId = new Map(result.rows.map((row) => [row.membershipId, row.label]));
-  // Vorlagen-Reihenfolge bleibt; Ausgeschiedene entfallen still.
-  return ids.flatMap((id) => {
+  // Vorlagen-Reihenfolge bleibt; Ausgeschiedene stehen separat (F16-04c,
+  // sichtbar ohne Label — kein PII-Lookup an Nicht-Mitglieder).
+  const live: { membershipId: string; label: string }[] = [];
+  const departedIds: string[] = [];
+  for (const id of ids) {
     const label = byId.get(id);
-    return label === undefined ? [] : [{ membershipId: id, label }];
-  });
+    if (label === undefined) departedIds.push(id);
+    else live.push({ membershipId: id, label });
+  }
+  return { live, departedIds };
 }
 
 async function toDto(
@@ -124,6 +129,7 @@ async function toDto(
   canWrite: boolean,
 ): Promise<TaskTemplateDto> {
   const assigneeMembershipIds = [...new Set(row.assignee_membership_ids ?? [])];
+  const resolved = await resolveAssigneeOptions(tx, workspaceId, assigneeMembershipIds);
   return taskTemplateDtoSchema.parse({
     schemaVersion: TASK_TEMPLATE_SCHEMA_VERSION,
     id: row.id,
@@ -131,7 +137,8 @@ async function toDto(
     title: row.title,
     dueOffsetDays: row.due_offset_days,
     assigneeMembershipIds,
-    assignees: await resolveAssigneeOptions(tx, workspaceId, assigneeMembershipIds),
+    assignees: resolved.live,
+    departedAssigneeMembershipIds: resolved.departedIds,
     position: row.position,
     active: row.active,
     createdAt: row.created_at,
@@ -151,13 +158,13 @@ function uuidArrayLiteral(values: readonly string[]) {
 // (gleiche Prädikate wie der Task-Validator; fail-closed ohne Orakel).
 // Ohne Workspace-Lock wie der F7.3-Komponenten-Check — ausgeschiedene
 // IDs filtert das Anwenden tolerant heraus (s. applyTaskTemplate).
-async function validateTemplateAssignees(
+async function selectLiveAssigneeIds(
   tx: TenantTx,
   workspaceId: string,
   membershipIds: readonly string[],
-): Promise<void> {
+): Promise<string[]> {
   const expected = [...new Set(membershipIds)];
-  if (expected.length === 0) return;
+  if (expected.length === 0) return [];
   const result = await tx.execute<{ id: string }>(sql`
     select id
       from membership
@@ -175,7 +182,17 @@ async function validateTemplateAssignees(
          or capabilities->'external_only' = 'false'::jsonb
        )
   `);
-  if (result.rows.length !== expected.length) throw new TaskTemplateValidationError();
+  return result.rows.map((row) => row.id);
+}
+
+async function validateTemplateAssignees(
+  tx: TenantTx,
+  workspaceId: string,
+  membershipIds: readonly string[],
+): Promise<void> {
+  const expected = [...new Set(membershipIds)];
+  const live = await selectLiveAssigneeIds(tx, workspaceId, expected);
+  if (live.length !== expected.length) throw new TaskTemplateValidationError();
 }
 
 export async function listTaskTemplates(
@@ -262,7 +279,25 @@ export async function updateTaskTemplate(
   if (!parsed.success) throw new TaskTemplateValidationError();
   const command = parsed.data;
   const assignees = [...new Set(command.assigneeMembershipIds ?? [])];
-  await validateTemplateAssignees(tx, ctx.workspaceId, assignees);
+  // F16-04c: Ausgeschiedene bleiben gespeichert (Werterhalt statt stillem
+  // Purgen). Lebende strikt validieren; der Rest muss bereits gespeicherte
+  // Ausgeschiedene sein — Neuzugang fremder IDs bleibt Validation (kein
+  // Einschleusen über den Update-Pfad).
+  const current = await tx.execute<{ assignee_membership_ids: string[] | null }>(sql`
+    select assignee_membership_ids
+      from task_template
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${command.id}::uuid
+  `);
+  const currentRow = current.rows[0];
+  if (!currentRow) throw new TaskTemplateNotFoundError();
+  const stored = new Set(currentRow.assignee_membership_ids ?? []);
+  const live = await selectLiveAssigneeIds(tx, ctx.workspaceId, assignees);
+  await validateTemplateAssignees(tx, ctx.workspaceId, live);
+  const liveSet = new Set(live);
+  for (const id of assignees) {
+    if (!liveSet.has(id) && !stored.has(id)) throw new TaskTemplateValidationError();
+  }
 
   let rows: TemplateRow[];
   try {
