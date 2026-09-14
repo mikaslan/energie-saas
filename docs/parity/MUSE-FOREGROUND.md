@@ -1157,3 +1157,15 @@ identisch (`983ed67`, 0 unpusht).
   und F4-04f [198/249] liefen in CI mit und sind nicht die Fehler —
   F4-04f damit per Re-Orakel echt im CI-Lauf belegt, DASH-04 ebenso.
 - Kein Produkt-/Test-Eingriff; Re-Orakel ist der nächste Slice-Push.
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 33 — CI 34878437904 VOLLGRUEN)
+- CI 34878437904 (HEAD 8261c02 F2-06-Härtung): VOLLGRUEN —
+  Statik/DB-Tests/Rollenproben/Build SUCCESS, Chromium-E2E
+  248 passed / 0 failed / 1 skipped (Skip vorbestehend, 33,6 Min).
+  Erstes Vollgrün seit CI 34836658375 (F4-04d).
+- Härtung bestätigt: kein f2-06-Befund mehr (Retry-Guard bei
+  ERR_ABORTED/Frame-Detach, Assertions unverändert). Damit sind
+  F4-04f, DASH-04-Daten und alle Slices seit F4-04d im grünen
+  Vollgate belegt — die drei roten Läufe dazwischen waren
+  dokumentierte Last-Flakes (Infra-Shutdown, Download-Timeouts,
+  Frame-Detach), jeweils lokal entkräftet.
