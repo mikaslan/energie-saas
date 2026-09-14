@@ -96,6 +96,27 @@ function roundEnergy(value: number): number {
 }
 
 /**
+ * F4-04e Jahresspitze [kW, 2 dp] (ESTIMATE-Rundung, Anzeige-Ehrlichkeit:
+ * 10-W-Genauigkeit; Rechnungen nutzen denselben gerundeten Wert).
+ */
+function roundPeakKw(value: number): number {
+  if (!Number.isFinite(value) || value < 0) runError("Jahresspitze ist ungueltig");
+  const rounded = Math.round(value * 100) / 100;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+/** Maximum einer Slot-Reihe (35040 Slots; Schleife statt Spread). */
+function maxSlot(values: ArrayLike<number>): number {
+  let peak = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    const candidate = values[index]!;
+    if (!Number.isFinite(candidate) || candidate < 0) runError("Slot-Reihe ist ungueltig");
+    if (candidate > peak) peak = candidate;
+  }
+  return peak;
+}
+
+/**
  * Kanonische Serienschranke (35040 endliche, nichtnegative kWh/Slot).
  * Geteilt von Persist- und Finalize-Schicht, damit Claim/Run/Replay
  * dieselbe Schranke sehen.
@@ -249,6 +270,11 @@ function dispatchAndSummarize(input: {
   const directConsumptionKwh = roundEnergy(neumaierSum(pick((slot) => slot.directKwh)));
   const fromStorageKwh = roundEnergy(neumaierSum(pick((slot) => slot.dischargeOutKwh)));
   const storageLossKwh = roundEnergy(neumaierSum(pick((slot) => slot.storageLossKwh)));
+  // F4-04e Jahresspitzen [kW, 2 dp, ESTIMATE-Rundung]: geplanter
+  // Netzbezug (Dispatch-Slots) bzw. Ohne-PV-Gegenfakt (Lastreihe).
+  // Exakt aus der Viertelstunde (Slot-kWh × 4) — kein erfundenes Modell.
+  const peakImportKw = roundPeakKw(maxSlot(pick((slot) => slot.importKwh)) * 4);
+  const noPvPeakImportKw = roundPeakKw(maxSlot(input.loadKwh) * 4);
   // Energieerhaltung: Erzeugung = Eigenverbrauch + Einspeisung + Verlust
   // (zyklischer SoC traegt nichts bei). Toleranz deckt Monatsrundung ab.
   if (
@@ -267,6 +293,8 @@ function dispatchAndSummarize(input: {
       feedInKwh,
       gridImportKwh,
       storageLossKwh,
+      peakImportKw,
+      noPvPeakImportKw,
       selfConsumptionRate: generationKwh === 0 ? 0 : selfConsumptionKwh / generationKwh,
       autonomyRate: consumptionKwh === 0 ? 0 : selfConsumptionKwh / consumptionKwh,
       storageFullCycles: usableCapacityKwh === 0
@@ -516,6 +544,12 @@ function assembleResultV2(
       feedInKwh: annual.feedInKwh,
       consumptionKwh: annual.consumptionKwh,
       gridImportKwh: annual.gridImportKwh,
+      // F4-04e: Jahresspitzen aus dem Dispatch (Althashes stabil —
+      // Spitzen fehlen nur in Altlaeufen ohne Leistungspreis).
+      ...(annual.peakImportKw === undefined ? {} : { peakImportKw: annual.peakImportKw }),
+      ...(annual.noPvPeakImportKw === undefined
+        ? {}
+        : { noPvPeakImportKw: annual.noPvPeakImportKw }),
     },
     economicsInput,
   );
@@ -537,6 +571,13 @@ function assembleResultV2(
     ...(economicsInput.alternativeBaseFeeEuro === undefined
       ? {}
       : { alternativeBaseFeeEuro: economicsInput.alternativeBaseFeeEuro }),
+    // F4-04e: Echo nur bei belegtem Profilfeld (Althashes stabil).
+    ...(economicsInput.demandChargeEuroPerKw === undefined
+      ? {}
+      : { demandChargeEuroPerKw: economicsInput.demandChargeEuroPerKw }),
+    ...(economicsInput.alternativeDemandChargeEuroPerKw === undefined
+      ? {}
+      : { alternativeDemandChargeEuroPerKw: economicsInput.alternativeDemandChargeEuroPerKw }),
     horizonYears: economicsInput.horizonYears,
     priceSource: economicsInput.priceSource,
     settingsRevision: economicsInput.settingsRevision,

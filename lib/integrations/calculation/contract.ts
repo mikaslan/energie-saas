@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "904da3d27e6a16e7a42c634ddc1261d1aab821d7b87a3ebc12b75780f7712dc4" as const;
+  "e749b5da8082add97e54ed6e783ce29bb0fdbeef7844f7cacb78e5a4fcda0f6a" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -217,6 +217,10 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     // unbelegt = 0, kein Fehler).
     baseFeeEuroPerYear: knownOrUnknown(finite().min(0).max(100_000)).optional(),
     alternativeBaseFeeEuroPerYear: knownOrUnknown(finite().min(0).max(100_000)).optional(),
+    // F4-04e Leistungspreis je Tarif (€/kW Jahresspitze, konstant über
+    // Horizont, keine Eskalation; unbelegt = 0, kein Fehler).
+    demandChargeEuroPerKw: knownOrUnknown(finite().min(0).max(10_000)).optional(),
+    alternativeDemandChargeEuroPerKw: knownOrUnknown(finite().min(0).max(10_000)).optional(),
     // F4.4b TOU: optionale 24 Stundenpreise (Ct/kWh; unbelegt = kein
     // TOU-Block, kein Fehler).
     touImportPricesCtPerKwh: knownOrUnknown(

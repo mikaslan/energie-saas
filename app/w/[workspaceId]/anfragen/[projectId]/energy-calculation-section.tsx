@@ -348,6 +348,12 @@ function V2AnnualDetails({ annual }: { annual: AnnualEnergyV2 }) {
       <DetailItem term="Speicherverluste" numeric>
         {formatNumber(annual.storageLossKwh, "kWh")}
       </DetailItem>
+      <DetailItem term="Jahresspitze Netzbezug (mit PV)" numeric>
+        {annual.peakImportKw === undefined ? "—" : formatNumber(annual.peakImportKw, "kW")}
+      </DetailItem>
+      <DetailItem term="Jahresspitze Netzbezug (ohne PV)" numeric>
+        {annual.noPvPeakImportKw === undefined ? "—" : formatNumber(annual.noPvPeakImportKw, "kW")}
+      </DetailItem>
       <DetailItem term="Autarkiegrad" numeric>{formatRate(annual.autonomyRate)}</DetailItem>
       <DetailItem term="Eigenverbrauchsquote" numeric>
         {formatRate(annual.selfConsumptionRate)}
@@ -592,6 +598,14 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
           {economics.alternativeImportPriceCtPerKwh === null
             ? "—"
             : euroFormatter.format(economics.alternativeBaseFeeEuro ?? economics.baseFeeEuro ?? 0)}
+        </DetailItem>
+        <DetailItem term="Leistungspreis (aktueller Tarif, €/kW)" numeric>
+          {economics.demandChargeEuroPerKw === undefined ? "—" : euroFormatter.format(economics.demandChargeEuroPerKw)}
+        </DetailItem>
+        <DetailItem term="Leistungspreis (Neutarif, €/kW)" numeric>
+          {economics.alternativeImportPriceCtPerKwh === null
+            ? "—"
+            : euroFormatter.format(economics.alternativeDemandChargeEuroPerKw ?? economics.demandChargeEuroPerKw ?? 0)}
         </DetailItem>
       </dl>
       {economics.annualBillSeriesEuro ? (

@@ -17,6 +17,12 @@
  *   Einspeisung skalieren mit der Erzeugungsquote, Last konstant.
  * - Vergütung 20 Jahre fix (EEG-Logik); Bezugspreis eskaliert.
  * - Geld rundet auf Cent.
+ * - F4-04e Leistungspreis (€/kW Jahresspitze je Tarif, ESTIMATE): Spitze
+ *   exakt aus der Viertelstunden-Simulation (max Netzbezugs-Slot × 4),
+ *   konstant über Horizont ohne Eskalation (wie Grundpreis). Nur in den
+ *   Rechnungen (Jahr 1 + Serie); Ersparnis/Cashflow/IRR bleiben
+ *   unberührt — die Spitzenkappung ist im Rechnungsvergleich sichtbar
+ *   (noPv- vs. current-Rechnung), nicht in der Ersparnis-Definition.
  */
 import { F401EngineError } from "./engine-v2";
 
@@ -83,6 +89,12 @@ export type EconomicsInputV2 = {
    */
   baseFeeEuro?: number;
   alternativeBaseFeeEuro?: number;
+  /**
+   * F4-04e Leistungspreis je Tarif [€/kW Jahresspitze], konstant über
+   * Horizont. Fehlende Schlüssel = 0 (Althashes stabil).
+   */
+  demandChargeEuroPerKw?: number;
+  alternativeDemandChargeEuroPerKw?: number;
   horizonYears: number;
   /** Herkunft des Bezugspreises (F4.5b Workspace-Fallback). */
   priceSource: EconomicsPriceSource;
@@ -205,6 +217,16 @@ export function resolveEconomics(
   if (alternativeBaseFee !== null && (alternativeBaseFee < 0 || alternativeBaseFee > 100_000)) {
     economicsError("Neutarif-Grundpreis ausserhalb 0..100000 Euro/Jahr");
   }
+  // F4-04e: Leistungspreis nur bei belegtem Profilfeld (sonst fehlt der
+  // Schlüssel und Althashes bleiben stabil). Bereich 0..10.000 €/kW/a.
+  const demandCharge = knownNumber(holder.demandChargeEuroPerKw);
+  if (demandCharge !== null && (demandCharge < 0 || demandCharge > 10_000)) {
+    economicsError("Leistungspreis ausserhalb 0..10000 Euro/kW");
+  }
+  const alternativeDemandCharge = knownNumber(holder.alternativeDemandChargeEuroPerKw);
+  if (alternativeDemandCharge !== null && (alternativeDemandCharge < 0 || alternativeDemandCharge > 10_000)) {
+    economicsError("Neutarif-Leistungspreis ausserhalb 0..10000 Euro/kW");
+  }
   return {
     importPriceCtPerKwh: importPriceCt,
     priceEscalationRate: escalationPct / 100,
@@ -217,6 +239,10 @@ export function resolveEconomics(
       : { alternativePriceEscalationRate: alternativeEscalationPct / 100 }),
     ...(baseFee === null ? {} : { baseFeeEuro: baseFee }),
     ...(alternativeBaseFee === null ? {} : { alternativeBaseFeeEuro: alternativeBaseFee }),
+    ...(demandCharge === null ? {} : { demandChargeEuroPerKw: demandCharge }),
+    ...(alternativeDemandCharge === null
+      ? {}
+      : { alternativeDemandChargeEuroPerKw: alternativeDemandCharge }),
     horizonYears,
     priceSource: profilePrice !== null ? "profile" : "workspace_default",
     settingsRevision: fallback?.settingsRevision ?? 0,
@@ -365,6 +391,13 @@ export function computeEconomics(
     feedInKwh: number;
     consumptionKwh: number;
     gridImportKwh: number;
+    /**
+     * F4-04e Jahresspitzen [kW, 2 dp] aus der Simulation (geplant bzw.
+     * Ohne-PV-Gegenfakt). Fehlen sie bei belegtem Leistungspreis,
+     * ist das fail-closed (kein stilles Nullen der Umlage).
+     */
+    peakImportKw?: number;
+    noPvPeakImportKw?: number;
   },
   input: EconomicsInputV2,
 ): EconomicsResultV2 {
@@ -421,13 +454,30 @@ export function computeEconomics(
   // (Netzanschluss bleibt), nur die Rechnungen werden ehrlich.
   const baseFee = input.baseFeeEuro ?? 0;
   const alternativeBaseFee = input.alternativeBaseFeeEuro ?? baseFee;
+  // F4-04e Leistungspreis je Tarif (konstant, keine Eskalation): Ohne-PV
+  // traegt die Lastspitze, geplante Rechnungen die Dispatch-Spitze, der
+  // Neutarif den eigenen Satz (unbelegt = aktueller, dokumentiert).
+  // Ersparnis und Cashflow bleiben unberührt (Grundpreis-Vorbild).
+  const demandCharge = input.demandChargeEuroPerKw ?? 0;
+  const alternativeDemandCharge = input.alternativeDemandChargeEuroPerKw ?? demandCharge;
+  const peakKw = annual.peakImportKw;
+  const noPvPeakKw = annual.noPvPeakImportKw;
+  if (demandCharge > 0 && (peakKw === undefined || noPvPeakKw === undefined)) {
+    economicsError("Leistungspreis ohne Jahresspitze aus der Simulation");
+  }
+  if (alternativeDemandCharge > 0 && (peakKw === undefined || noPvPeakKw === undefined)) {
+    economicsError("Neutarif-Leistungspreis ohne Jahresspitze aus der Simulation");
+  }
+  const demandEuro = demandCharge * (peakKw ?? 0);
+  const noPvDemandEuro = demandCharge * (noPvPeakKw ?? 0);
+  const alternativeDemandEuro = alternativeDemandCharge * (peakKw ?? 0);
   // F4.4a Jahr-1-Tarifvergleich (gleiche physikalische Fluesse).
   const annualBillsEuro: AnnualBillsV2 = {
-    noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro + baseFee),
-    currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro + baseFee),
+    noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro + baseFee + noPvDemandEuro),
+    currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro + baseFee + demandEuro),
     newTariffEuro: input.alternativeImportPriceCtPerKwh === null
       ? null
-      : roundMoney(annual.gridImportKwh * (input.alternativeImportPriceCtPerKwh / 100) + alternativeBaseFee),
+      : roundMoney(annual.gridImportKwh * (input.alternativeImportPriceCtPerKwh / 100) + alternativeBaseFee + alternativeDemandEuro),
   };
   // F4-04c Mehrjahres-Tarifvergleich mit Eskalation je Tarif (nur bei
   // belegtem Neutarif; unbelegte Neutarif-Eskalation = aktuelle
@@ -442,9 +492,9 @@ export function computeEconomics(
   for (let year = 1; year <= horizon; year += 1) {
     annualBillSeriesEuro.push({
       year,
-      noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1) + baseFee),
-      currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1) + baseFee),
-      newTariffEuro: roundMoney(annual.gridImportKwh * newPriceEuro * (1 + newEscalation) ** (year - 1) + alternativeBaseFee),
+      noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1) + baseFee + noPvDemandEuro),
+      currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1) + baseFee + demandEuro),
+      newTariffEuro: roundMoney(annual.gridImportKwh * newPriceEuro * (1 + newEscalation) ** (year - 1) + alternativeBaseFee + alternativeDemandEuro),
     });
   }
   return {

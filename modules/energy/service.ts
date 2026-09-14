@@ -1136,6 +1136,31 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["alternativeBaseFeeEuroPerYear"],
+      // F4-04e Leistungspreis je Tarif (optional; fehlt in Altzeilen).
+      demandChargeEuroPerKw: normalizeKnownField(
+        submitted.consumption.demandChargeEuroPerKw ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.demandChargeEuroPerKw ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["demandChargeEuroPerKw"],
+      alternativeDemandChargeEuroPerKw: normalizeKnownField(
+        submitted.consumption.alternativeDemandChargeEuroPerKw ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.alternativeDemandChargeEuroPerKw ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["alternativeDemandChargeEuroPerKw"],
       // F4.2c Lastgang-CSV (optional; fehlt in Altzeilen).
       customCsvKwh: normalizeKnownField(
         submitted.consumption.customCsvKwh ?? {

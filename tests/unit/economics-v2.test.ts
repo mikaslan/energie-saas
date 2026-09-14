@@ -351,6 +351,84 @@ describe("economics computation", () => {
     expect(fallback.annualBillSeriesEuro![1]!.newTariffEuro).toBe(840 + 120);
   });
 
+  it("F4-04e: Leistungspreis je Tarif in Rechnungen, Ersparnis unberührt", () => {
+    const base = {
+      generationKwh: 10_000,
+      selfConsumptionKwh: 4_000,
+      feedInKwh: 6_000,
+      consumptionKwh: 7_000,
+      gridImportKwh: 3_000,
+      peakImportKw: 8.5,
+      noPvPeakImportKw: 12,
+    };
+    const plain = {
+      importPriceCtPerKwh: 36,
+      priceEscalationRate: 0,
+      feedInTariffCtPerKwh: 8,
+      feedInTariffSource: "override" as const,
+      investmentEuro: 20_000,
+      alternativeImportPriceCtPerKwh: null,
+      horizonYears: 20,
+      priceSource: "profile" as const,
+      settingsRevision: 0,
+    };
+    const withoutCharge = computeEconomics(base, plain);
+    const withCharge = computeEconomics(base, {
+      ...plain,
+      demandChargeEuroPerKw: 100,
+      alternativeImportPriceCtPerKwh: 28,
+      alternativeDemandChargeEuroPerKw: 80,
+    });
+    // Rechnungen tragen den Leistungspreis (ohne PV 12 kW, mit PV 8,5 kW).
+    expect(withCharge.annualBillsEuro).toEqual({
+      noPvEuro: 2_520 + 1_200,
+      currentEuro: 1_080 + 850,
+      newTariffEuro: 840 + 680,
+    });
+    // Ersparnis/Cashflow unberührt (Spitzenkappung nur im Vergleich).
+    expect(withCharge.annualSavingsEuro).toBe(withoutCharge.annualSavingsEuro);
+    expect(withCharge.cumulativeCashflowEuro).toEqual(withoutCharge.cumulativeCashflowEuro);
+    expect(withCharge.amortizationYears).toBe(withoutCharge.amortizationYears);
+    // Serie mit Leistungspreis, Jahr 1 == Jahr-1-Rechnung; Neu-Fallback = aktuell.
+    expect(withCharge.annualBillSeriesEuro![0]).toEqual({
+      year: 1,
+      noPvEuro: 3_720,
+      currentEuro: 1_930,
+      newTariffEuro: 1_520,
+    });
+    const fallback = computeEconomics(base, {
+      ...plain,
+      demandChargeEuroPerKw: 100,
+      alternativeImportPriceCtPerKwh: 28,
+      horizonYears: 2,
+    });
+    expect(fallback.annualBillsEuro.newTariffEuro).toBe(840 + 850);
+    expect(fallback.annualBillSeriesEuro![1]!.newTariffEuro).toBe(840 + 850);
+    // Fehlende Spitze bei belegtem Satz ist fail-closed (kein stilles Nullen).
+    expect(() => computeEconomics({ ...base, peakImportKw: undefined }, {
+      ...plain,
+      demandChargeEuroPerKw: 100,
+    })).toThrow();
+  });
+
+  it("F4-04e: Leistungspreis nur bei belegtem Profilfeld, Bereich fail-closed", () => {
+    const resolved = resolveEconomics(consumption({
+      demandChargeEuroPerKw: known(100),
+      alternativeDemandChargeEuroPerKw: known(80),
+    }))!;
+    expect(resolved.demandChargeEuroPerKw).toBe(100);
+    expect(resolved.alternativeDemandChargeEuroPerKw).toBe(80);
+    const unbelegt = resolveEconomics(consumption())!;
+    expect("demandChargeEuroPerKw" in unbelegt).toBe(false);
+    expect("alternativeDemandChargeEuroPerKw" in unbelegt).toBe(false);
+    expect(() => resolveEconomics(consumption({
+      demandChargeEuroPerKw: known(-1),
+    }))).toThrow();
+    expect(() => resolveEconomics(consumption({
+      alternativeDemandChargeEuroPerKw: known(10_001),
+    }))).toThrow();
+  });
+
   it("F4-04d: Grundpreis nur bei belegtem Profilfeld, Bereich fail-closed", () => {
     const resolved = resolveEconomics(consumption({
       baseFeeEuroPerYear: known(120),

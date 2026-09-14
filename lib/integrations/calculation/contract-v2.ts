@@ -61,6 +61,9 @@ const economicsInputV2Schema = z.strictObject({
   // F4-04d: Grundpreis je Tarif (nur bei belegtem Profilfeld).
   baseFeeEuro: finite().min(0).max(100_000).optional(),
   alternativeBaseFeeEuro: finite().min(0).max(100_000).optional(),
+  // F4-04e: Leistungspreis je Tarif (nur bei belegtem Profilfeld).
+  demandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
+  alternativeDemandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -108,6 +111,9 @@ const economicsResultV2Schema = z.strictObject({
   // F4-04d: Echo wie Input (nur bei belegtem Profilfeld).
   baseFeeEuro: finite().min(0).max(100_000).optional(),
   alternativeBaseFeeEuro: finite().min(0).max(100_000).optional(),
+  // F4-04e: Echo wie Input (nur bei belegtem Profilfeld).
+  demandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
+  alternativeDemandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -184,6 +190,11 @@ const annualEnergyResultV2Schema = z.strictObject({
   selfConsumptionRate: finite().min(0).max(1),
   autonomyRate: finite().min(0).max(1),
   storageFullCycles: nonNegative(100_000),
+  // F4-04e Jahresspitzen [kW, 2 dp] aus der Simulation (geplant bzw.
+  // Ohne-PV-Gegenfakt aus der Lastreihe). Optional: Altlaeufe ohne
+  // Spitzen bleiben lesbar.
+  peakImportKw: nonNegative(10_000_000).optional(),
+  noPvPeakImportKw: nonNegative(10_000_000).optional(),
 });
 
 const monthlyEnergyResultV2Schema = z.array(z.strictObject({

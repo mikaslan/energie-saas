@@ -161,6 +161,9 @@ const profileFormSchema = z.strictObject({
   // F4-04d Grundpreis je Tarif (€/Jahr, leer = 0, kein Vergleich).
   baseFeeEuroPerYear: optionalNumber(0, 100_000).optional(),
   alternativeBaseFeeEuroPerYear: optionalNumber(0, 100_000).optional(),
+  // F4-04e Leistungspreis je Tarif (€/kW, leer = 0, kein Vergleich).
+  demandChargeEuroPerKw: optionalNumber(0, 10_000).optional(),
+  alternativeDemandChargeEuroPerKw: optionalNumber(0, 10_000).optional(),
   // F4.4b TOU: 24 Stundenpreise Komma-getrennt (leer = kein TOU).
   touImportPricesCt: touPriceListField().optional(),
   coolingKwhPerYear: optionalNumber(0, 100_000),
@@ -274,6 +277,8 @@ const baseProfileFields = [
   "alternativeImportPriceEscalationPct",
   "baseFeeEuroPerYear",
   "alternativeBaseFeeEuroPerYear",
+  "demandChargeEuroPerKw",
+  "alternativeDemandChargeEuroPerKw",
   "touImportPricesCt",
   "coolingKwhPerYear",
   "heatingAcKwhPerYear",
@@ -522,6 +527,10 @@ function buildSubmittedProfile(
     baseFeeEuroPerYear: knownOrUnknown(input.baseFeeEuroPerYear ?? null),
     alternativeBaseFeeEuroPerYear: knownOrUnknown(
       input.alternativeBaseFeeEuroPerYear ?? null,
+    ),
+    demandChargeEuroPerKw: knownOrUnknown(input.demandChargeEuroPerKw ?? null),
+    alternativeDemandChargeEuroPerKw: knownOrUnknown(
+      input.alternativeDemandChargeEuroPerKw ?? null,
     ),
     touImportPricesCtPerKwh: knownOrUnknown(input.touImportPricesCt ?? null),
     coolingKwhPerYear: knownOrUnknown(input.coolingKwhPerYear),

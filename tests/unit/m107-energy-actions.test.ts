@@ -166,6 +166,8 @@ function validProfileForm(): FormData {
     alternativeImportPriceEscalationPct: "",
     baseFeeEuroPerYear: "",
     alternativeBaseFeeEuroPerYear: "",
+    demandChargeEuroPerKw: "",
+    alternativeDemandChargeEuroPerKw: "",
     touImportPricesCt: "",
     coolingKwhPerYear: "",
     heatingAcKwhPerYear: "",

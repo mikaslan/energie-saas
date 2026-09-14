@@ -430,6 +430,14 @@ export function EnergyProfileEditor({
             Grundpreis Neutarif (€/Jahr, leer = wie aktueller Tarif)
             <input id="energy-alt-base-fee" name="alternativeBaseFeeEuroPerYear" type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={fieldValue(profile.consumption.alternativeBaseFeeEuroPerYear ?? { status: "unknown" })} className={inputClass} />
           </label>
+          <label htmlFor="energy-demand-charge" className={labelClass}>
+            Leistungspreis aktueller Tarif (€/kW, leer = 0)
+            <input id="energy-demand-charge" name="demandChargeEuroPerKw" type="number" inputMode="decimal" min="0" max="10000" step="any" defaultValue={fieldValue(profile.consumption.demandChargeEuroPerKw ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-alt-demand-charge" className={labelClass}>
+            Leistungspreis Neutarif (€/kW, leer = wie aktueller Tarif)
+            <input id="energy-alt-demand-charge" name="alternativeDemandChargeEuroPerKw" type="number" inputMode="decimal" min="0" max="10000" step="any" defaultValue={fieldValue(profile.consumption.alternativeDemandChargeEuroPerKw ?? { status: "unknown" })} className={inputClass} />
+          </label>
           <label htmlFor="energy-tou-prices" className={labelClass}>
             TOU-Stundenpreise (24 Werte Komma-getrennt, leer = kein TOU)
             <input id="energy-tou-prices" name="touImportPricesCt" type="text" inputMode="decimal" defaultValue={touPriceListValue(profile.consumption.touImportPricesCtPerKwh ?? { status: "unknown" })} className={inputClass} />

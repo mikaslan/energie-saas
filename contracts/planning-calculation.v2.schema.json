@@ -267,6 +267,16 @@
               "minimum": 0,
               "maximum": 100000
             },
+            "demandChargeEuroPerKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "alternativeDemandChargeEuroPerKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -592,6 +602,16 @@
               "minimum": 0,
               "maximum": 100000
             },
+            "demandChargeEuroPerKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "alternativeDemandChargeEuroPerKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -805,6 +825,16 @@
               "type": "number",
               "minimum": 0,
               "maximum": 100000
+            },
+            "peakImportKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "noPvPeakImportKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000000
             }
           },
           "required": [
