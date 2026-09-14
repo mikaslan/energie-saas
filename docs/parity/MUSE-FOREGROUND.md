@@ -1053,3 +1053,11 @@ identisch (`983ed67`, 0 unpusht).
   `retries: 0` unangetastet). Rest-Notizen fuers Endaudit: Fokus-Helper
   (bewusst unberuehrt), 128 Login-Helper-Kopien (Shared-Helper), CI-Retry-
   Policy, f3-01-Withdraw-Latenz, CI-Log-Sampling (74 GETs/39 min).
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 25 — CI 34817998386 VOLLGRUEN)
+- CI 34817998386 (HEAD f7bb70d = 84f6118 F10-06 Slice 2 + f7bb70d F11-03d):
+  conclusion SUCCESS — Statik/DB/Rollen/Build GRUEN, Chromium-E2E 241
+  passed / 0 failed / 1 skipped (Skip vorbestehend), 39,8 Min. Lauf
+  34816702833 (nur 84f6118) per Concurrency zugunsten dieses Laufs
+  storniert — kein Befund, Superset-Abdeckung. Neue Slices damit auch im
+  echten CI-Lauf belegt: F10-06 Katalog-11 + F11-03d Offline-Stopp.
