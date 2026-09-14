@@ -1,7 +1,6 @@
 # DASH-01 Workspace-Übersicht (eigene Daten, Layout ESTIMATE)
 
-Stand: SPECIFIED (Codex-Slice DASH-01; Gesamtauftrag F1–F16 inklusive
-Dashboard). Es existiert kein Reonic-Referenzbeleg (Frage
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (E2E DASH-01 1/1: Überschrift, Pipeline-/Aufgaben-Leerzustände; Stand 2026-09-14 nachgezogen, kein Code-Eingriff). Es existiert kein Reonic-Referenzbeleg (Frage
 Q-DASHBOARD-REFERENZ in `fragen an codex/offen`); Layout und
 Kennzahlauswahl sind daher eine reversible eigene Näherung (ESTIMATE),
 keine behauptete Reonic-Parität. Alle Zahlen stammen aus verifizierten

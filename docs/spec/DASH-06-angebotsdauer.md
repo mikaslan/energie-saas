@@ -1,5 +1,7 @@
 # DASH-06 Angebotsdauer (Time-to-Offer)
 
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (E2E DASH-01-Test: Offer-Leadtime-Leerzustand „Noch keine Angebote."; Stand 2026-09-14 nachgezogen, kein Code-Eingriff).
+
 Ziel: Median Projektanlage -> erstes Angebot (Tage), Projekte mit Angebot.
 
 ## ESTIMATE (reversibel, Referenzen offen)

@@ -1,7 +1,6 @@
 # DASH-05 Gewichtete Pipeline (eigene Daten, Gewichte ESTIMATE)
 
-Stand: SPECIFIED (Codex-Slice DASH-05; Modulkatalog Querschnitt
-Dashboard/Reporting „gewichtete Pipeline"). Wie DASH-01–04: kein
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (E2E DASH-01-Test: Gewichtstext „Gewichte lead 10 %, offer 50 %" sichtbar; Stand 2026-09-14 nachgezogen, kein Code-Eingriff). Wie DASH-01–04: kein
 Reonic-Referenzbeleg (Q-DASHBOARD-REFERENZ offen). Angebotswerte stammen
 aus verifizierten eigenen Daten (Override sonst Forecast des jeweils
 juengsten Angebots); die Phasengewichte sind reversible eigene Naeherung

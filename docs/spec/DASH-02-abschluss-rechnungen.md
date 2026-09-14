@@ -1,7 +1,6 @@
 # DASH-02 Abschluss- und Rechnungs-Kacheln (eigene Daten, Layout ESTIMATE)
 
-Stand: SPECIFIED (Codex-Slice DASH-02; Gesamtauftrag F1–F16 inklusive
-Dashboard, Modulkatalog Querschnitt Dashboard/Reporting). Wie DASH-01
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (E2E DASH-01-Test deckt §3 ab: Abschlüsse- + Rechnungs-Leerzustände; Stand 2026-09-14 nachgezogen, kein Code-Eingriff). Wie DASH-01
 gilt: kein Reonic-Referenzbeleg (Q-DASHBOARD-REFERENZ offen); Auswahl und
 Layout sind reversible eigene Naeherung (ESTIMATE). Alle Zahlen stammen
 aus verifizierten eigenen Lesemodellen.
