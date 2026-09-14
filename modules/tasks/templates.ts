@@ -80,6 +80,7 @@ type TemplateRow = {
   title: string;
   due_offset_days: number | null;
   assignee_membership_ids: string[] | null;
+  checklist_items: unknown;
   position: number;
   active: boolean;
   created_at: string;
@@ -88,10 +89,31 @@ type TemplateRow = {
 
 const TEMPLATE_SELECT = sql`
   select id, name, title, due_offset_days,
-         assignee_membership_ids,
+         assignee_membership_ids, checklist_items,
          position, active, created_at, updated_at
     from task_template
 `;
+
+// F16-04d: gespeicherte Checklisten-Texte lesen (DB-Check sichert Array;
+// fremde Formen entfallen defensiv — Schreiben validiert strikt).
+function storedChecklistItems(value: unknown): { text: string }[] {
+  if (!Array.isArray(value)) return [];
+  const items: { text: string }[] = [];
+  for (const entry of value) {
+    if (
+      typeof entry === "object" && entry !== null && !Array.isArray(entry)
+      && typeof (entry as { text?: unknown }).text === "string"
+    ) {
+      const text = ((entry as { text: string }).text as string).trim();
+      if (text.length >= 1 && text.length <= 500) items.push({ text });
+    }
+  }
+  return items;
+}
+
+function checklistJsonLiteral(items: readonly { text: string }[]) {
+  return sql`${JSON.stringify(items.map((item) => ({ text: item.text })))}::jsonb`;
+}
 
 async function resolveAssigneeOptions(
   tx: TenantTx,
@@ -139,6 +161,7 @@ async function toDto(
     assigneeMembershipIds,
     assignees: resolved.live,
     departedAssigneeMembershipIds: resolved.departedIds,
+    checklistItems: storedChecklistItems(row.checklist_items),
     position: row.position,
     active: row.active,
     createdAt: row.created_at,
@@ -223,13 +246,14 @@ export async function createTaskTemplate(
   const command = parsed.data;
   const assignees = [...new Set(command.assigneeMembershipIds ?? [])];
   await validateTemplateAssignees(tx, ctx.workspaceId, assignees);
+  const checklist = command.checklistItems ?? [];
 
   let row: TemplateRow;
   try {
     const inserted = await tx.execute<TemplateRow>(sql`
       insert into task_template (
         workspace_id, name, name_normalized, title, due_offset_days,
-        assignee_membership_ids, position, created_by
+        assignee_membership_ids, checklist_items, position, created_by
       ) values (
         ${ctx.workspaceId}::uuid,
         ${command.name},
@@ -237,11 +261,12 @@ export async function createTaskTemplate(
         ${command.title},
         ${command.dueOffsetDays ?? null},
         ${uuidArrayLiteral(assignees)},
+        ${checklistJsonLiteral(checklist)},
         ${command.position ?? 0},
         ${ctx.actor}::uuid
       )
       returning id, name, title, due_offset_days, assignee_membership_ids,
-                position, active, created_at, updated_at
+                checklist_items, position, active, created_at, updated_at
     `);
     row = inserted.rows[0]!;
   } catch (error) {
@@ -308,13 +333,14 @@ export async function updateTaskTemplate(
              title = ${command.title},
              due_offset_days = ${command.dueOffsetDays ?? null},
              assignee_membership_ids = ${uuidArrayLiteral(assignees)},
+             checklist_items = ${checklistJsonLiteral(command.checklistItems ?? [])},
              position = ${command.position},
              updated_by = ${ctx.actor}::uuid,
              updated_at = statement_timestamp()
        where workspace_id = ${ctx.workspaceId}::uuid
          and id = ${command.id}::uuid
       returning id, name, title, due_offset_days, assignee_membership_ids,
-                position, active, created_at, updated_at
+                checklist_items, position, active, created_at, updated_at
     `);
     rows = updated.rows;
   } catch (error) {
@@ -467,6 +493,11 @@ export async function applyTaskTemplate(
   const assigneeMembershipIds = validAssignees.length === 0
     ? [await actorMembershipId(tx, ctx)]
     : validAssignees;
+  // F16-04d: Vorlagen-Checkliste wird unerledigt übernommen (Reihenfolge
+  // stabil; Texte sind schreibseitig validiert — Anwenden scheitert nie
+  // an der eigenen Vorlage).
+  const checklist = storedChecklistItems(template.checklist_items)
+    .map((item) => ({ text: item.text, done: false }));
   const created = await executeProjectTaskCommand(tx, ctx, {
     schemaVersion: PROJECT_TASK_COMMAND_VERSION,
     kind: "create",
@@ -475,7 +506,7 @@ export async function applyTaskTemplate(
     body: EMPTY_TASK_RICH_TEXT_V1,
     dueDate,
     assigneeMembershipIds,
-    checklist: [],
+    checklist,
     labels: [],
   });
   await emitEvent(tx, {
@@ -484,7 +515,7 @@ export async function applyTaskTemplate(
     aggregateId: template.id,
     eventType: "task_template.applied",
     actor: ctx.actor,
-    payload: { projectId: created.projectId, taskId: created.taskId, assigneeCount: assigneeMembershipIds.length },
+    payload: { projectId: created.projectId, taskId: created.taskId, assigneeCount: assigneeMembershipIds.length, checklistCount: checklist.length },
   });
   return { ...created, templateId: template.id };
 }

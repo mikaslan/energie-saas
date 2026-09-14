@@ -250,6 +250,17 @@ function TemplateForm({
           />
         </label>
       </div>
+      <label className="grid gap-1 text-sm font-semibold text-slate-800">
+        Checkliste (eine Zeile je Punkt, leer = ohne)
+        <textarea
+          name="checklistText"
+          rows={3}
+          maxLength={50_500}
+          defaultValue={(template?.checklistItems ?? []).map((item) => item.text).join("\n")}
+          placeholder={"z. B.\nWechselrichter prüfen\nZählerstand notieren"}
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
+        />
+      </label>
       <div>
         <AssigneePicker
           workspaceId={workspaceId}
@@ -306,6 +317,13 @@ export function TaskTemplateManager({
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-700">{template.title}</p>
+            {template.checklistItems.length > 0 ? (
+              <p className="mt-1 text-sm text-slate-500">
+                {template.checklistItems.length === 1
+                  ? "1 Checklistenpunkt"
+                  : `${template.checklistItems.length} Checklistenpunkte`}
+              </p>
+            ) : null}
             {canWrite ? (
               <details className="mt-3">
                 <summary className="cursor-pointer text-sm font-semibold text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600">

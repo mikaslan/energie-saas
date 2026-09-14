@@ -108,9 +108,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F7-02e Freitext-Antwort (0142, Validator-Replace),
 //   F7-02f Mehrfachauswahl (0143, Validator-Replace),
 //   F7-03b Antwortwert-Nutzlast (0144, Struktur-Replace),
-//   F16-04b Vorlagen-Bearbeiter (0145, Spalte + CHECK)
-// => 146 Migrationen (idx 0..145).
-const TOTAL_MIGRATION_COUNT = 146;
+//   F16-04b Vorlagen-Bearbeiter (0145, Spalte + CHECK),
+//   F16-04d Vorlagen-Checkliste (0146, Spalte + CHECK)
+// => 147 Migrationen (idx 0..146).
+const TOTAL_MIGRATION_COUNT = 147;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -426,8 +427,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 145,
-        tag: "0145_f16_04b_vorlagen_bearbeiter",
+        idx: 146,
+        tag: "0146_f16_04d_vorlagen_checkliste",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

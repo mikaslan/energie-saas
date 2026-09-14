@@ -237,10 +237,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0142 F7-02e Freitext-Antwort (Validator-Replace),
     // 0143 F7-02f Mehrfachauswahl (Validator-Replace),
     // 0144 F7-03b Antwortwert-Nutzlast (Struktur-Replace),
-    // 0145 F16-04b Vorlagen-Bearbeiter (Spalte + CHECK)).
+    // 0145 F16-04b Vorlagen-Bearbeiter (Spalte + CHECK),
+    // 0146 F16-04d Vorlagen-Checkliste (Spalte + CHECK)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 145,
-      tag: "0145_f16_04b_vorlagen_bearbeiter",
+      idx: 146,
+      tag: "0146_f16_04d_vorlagen_checkliste",
     });
   });
 
