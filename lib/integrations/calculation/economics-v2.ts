@@ -71,6 +71,12 @@ export type EconomicsInputV2 = {
   investmentEuro: number;
   /** Optionaler Neutarif [Ct/kWh] für den Jahr-1-Vergleich (F4.4a). */
   alternativeImportPriceCtPerKwh: number | null;
+  /**
+   * Optionale Neutarif-Eskalation [Rate] für die Mehrjahres-Serie
+   * (F4-04c). Fehlt der Schlüssel, gilt die aktuelle Eskalation
+   * (dokumentiert) — Althashes bleiben ohne Neutarif-Eskalation stabil.
+   */
+  alternativePriceEscalationRate?: number;
   horizonYears: number;
   /** Herkunft des Bezugspreises (F4.5b Workspace-Fallback). */
   priceSource: EconomicsPriceSource;
@@ -154,6 +160,13 @@ export function resolveEconomics(
   if (alternativeCt !== null && (alternativeCt < 1 || alternativeCt > 200)) {
     economicsError("Neutarif ausserhalb 1..200 Ct/kWh");
   }
+  // F4-04c: Neutarif-Eskalation nur bei belegtem Profilfeld (sonst fehlt
+  // der Schlüssel und Althashes bleiben stabil).
+  const alternativeEscalationPct = knownNumber(holder.alternativeImportPriceEscalationPct);
+  if (alternativeEscalationPct !== null
+    && (alternativeEscalationPct < -10 || alternativeEscalationPct > 25)) {
+    economicsError("Neutarif-Eskalation ausserhalb -10..25 %");
+  }
   const overrideCt = knownNumber(holder.feedInTariffCtPerKwh);
   const commissioningYear = knownNumber(holder.feedInCommissioningYear);
   let feedInTariffCtPerKwh: number;
@@ -183,6 +196,9 @@ export function resolveEconomics(
     feedInTariffSource,
     investmentEuro,
     alternativeImportPriceCtPerKwh: alternativeCt,
+    ...(alternativeEscalationPct === null
+      ? {}
+      : { alternativePriceEscalationRate: alternativeEscalationPct / 100 }),
     horizonYears,
     priceSource: profilePrice !== null ? "profile" : "workspace_default",
     settingsRevision: fallback?.settingsRevision ?? 0,
@@ -288,12 +304,26 @@ export type AnnualBillsV2 = {
   newTariffEuro: number | null;
 };
 
+export type AnnualBillSeriesRowV2 = {
+  year: number;
+  noPvEuro: number;
+  currentEuro: number;
+  newTariffEuro: number;
+};
+
 export type EconomicsResultV2 = {
   annualSavingsEuro: number;
   cumulativeCashflowEuro: number[];
   amortizationYears: number | null;
   irr: number | null;
   annualBillsEuro: AnnualBillsV2;
+  /**
+   * F4-04c Mehrjahres-Tarifvergleich (nur bei belegtem Neutarif; sonst
+   * fehlt der Schlüssel und Altresultate bleiben gültig). Jahr-1-Zeile
+   * == annualBillsEuro (gepinnt). Physik je Jahr identisch (kein
+   * Degradations-/Verbrauchsdrift — reine Tarifrechnung).
+   */
+  annualBillSeriesEuro?: AnnualBillSeriesRowV2[];
 };
 
 /** Kapitalwert einer Zahlungsreihe (t=0..n) bei Zinssatz. */
@@ -374,5 +404,30 @@ export function computeEconomics(
       ? null
       : roundMoney(annual.gridImportKwh * (input.alternativeImportPriceCtPerKwh / 100)),
   };
-  return { annualSavingsEuro, cumulativeCashflowEuro, amortizationYears, irr, annualBillsEuro };
+  // F4-04c Mehrjahres-Tarifvergleich mit Eskalation je Tarif (nur bei
+  // belegtem Neutarif; unbelegte Neutarif-Eskalation = aktuelle
+  // Eskalation, dokumentiert). Reine Tarifrechnung: Physik je Jahr
+  // identisch, Jahr 1 == annualBillsEuro per Konstruktion.
+  if (input.alternativeImportPriceCtPerKwh === null) {
+    return { annualSavingsEuro, cumulativeCashflowEuro, amortizationYears, irr, annualBillsEuro };
+  }
+  const newPriceEuro = input.alternativeImportPriceCtPerKwh / 100;
+  const newEscalation = input.alternativePriceEscalationRate ?? input.priceEscalationRate;
+  const annualBillSeriesEuro: AnnualBillSeriesRowV2[] = [];
+  for (let year = 1; year <= horizon; year += 1) {
+    annualBillSeriesEuro.push({
+      year,
+      noPvEuro: roundMoney(annual.consumptionKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1)),
+      currentEuro: roundMoney(annual.gridImportKwh * importPriceEuro * (1 + input.priceEscalationRate) ** (year - 1)),
+      newTariffEuro: roundMoney(annual.gridImportKwh * newPriceEuro * (1 + newEscalation) ** (year - 1)),
+    });
+  }
+  return {
+    annualSavingsEuro,
+    cumulativeCashflowEuro,
+    amortizationYears,
+    irr,
+    annualBillsEuro,
+    annualBillSeriesEuro,
+  };
 }

@@ -163,6 +163,7 @@ function validProfileForm(): FormData {
     feedInCommissioningYear: "",
     groundAlbedo: "",
     alternativeImportPriceCtPerKwh: "",
+    alternativeImportPriceEscalationPct: "",
     touImportPricesCt: "",
     coolingKwhPerYear: "",
     heatingAcKwhPerYear: "",

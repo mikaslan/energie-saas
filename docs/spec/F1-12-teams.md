@@ -34,6 +34,9 @@ Verhalten ist reversible eigene Näherung (ESTIMATE).
    bestehenden Terminen lesbar (kein stilles Entfernen).
 4. Team-Löschung gibt es in Slice 1 nicht (Archiv); Plantafel-
    Blockzuweisung und Kalender-Scopes bleiben Folge-Slices.
+   Stand 2026-09-14 (Code-Verifikation, kein Neubau): beide Pfade bestehen —
+   Team-Blockzuweisung auf der Plantafel ist F7-06 (planning-board-assign),
+   Team-Umfang je Kalender ist F1-13 (Kalender-Scope) — kein offener Rest.
 5. RLS tenant_isolation + FORCE (beide Tabellen); Rollenvertrag
    (ACL + Policy-Hashes, kein Routine-Pin — kein Funktionswechsel).
 

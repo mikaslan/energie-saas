@@ -1014,7 +1014,89 @@ test("M1-11g: F4.4a-Neutarif traegt currentV2-Bills", async ({ page }) => {
   const block = page.locator('[data-energy-calculation-v2-economics="true"]');
   await expect(block).toBeVisible();
   await expect(block.getByText("Stromrechnung (Jahr 1)")).toBeVisible();
-  await expect(block.getByText("Mit PV (Neutarif)")).toBeVisible();
+  // F4-04c: Jahr-1-dl-Term (nicht der Mehrjahres-Tabellenkopf gleichen Namens).
+  await expect(block.locator("dt", { hasText: "Mit PV (Neutarif)" })).toBeVisible();
+});
+
+test("M1-11g: F4-04c-Neutarif-Eskalation traegt Mehrjahres-Serie", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await page.getByLabel("Investition netto (€)").fill("20000");
+  await page.getByLabel("Einspeisevergütung Override (Ct/kWh, leer = EEG-Default)").fill("8");
+  await page.getByLabel("EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)").fill("2024");
+  await page.getByLabel("Angegebene Preisänderung (%/Jahr)").fill("3");
+  await page.getByLabel("Neutarif Vergleich (Ct/kWh, leer = kein Vergleich)").fill("28");
+  await page.getByLabel("Neutarif Preissteigerung (% p. a., −10–25, leer = wie aktueller Tarif)").fill("1");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Mehrjahres-Serie erreichte kein currentV2.");
+  }
+  const economics = expected.calculation.resultV2.value.economics;
+  if (!economics) throw new Error("currentV2 traegt kein economics.");
+  const annual = expected.calculation.resultV2.value.annual;
+  // Serie über den Horizont; Jahr 1 == Jahr-1-Rechnung; Neu-Leg mit 1 %
+  // statt 3 % (eigene Eskalation je Tarif).
+  const series = economics.annualBillSeriesEuro;
+  if (!series) throw new Error("currentV2 traegt keine Mehrjahres-Serie.");
+  expect(series).toHaveLength(economics.horizonYears);
+  expect(series[0]).toEqual({
+    year: 1,
+    noPvEuro: economics.annualBillsEuro.noPvEuro,
+    currentEuro: economics.annualBillsEuro.currentEuro,
+    newTariffEuro: economics.annualBillsEuro.newTariffEuro,
+  });
+  const year2 = series[1]!;
+  expect(year2.newTariffEuro).toBeCloseTo(annual.gridImportKwh * 0.28 * 1.01, 2);
+  expect(year2.currentEuro).toBeCloseTo(annual.gridImportKwh * 0.36 * 1.03, 2);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  const block = page.locator('[data-energy-calculation-v2-economics="true"]');
+  await expect(block).toBeVisible();
+  const billSeries = block.getByTestId("v2-bill-series");
+  await expect(billSeries).toBeVisible();
+  await expect(billSeries.locator("table caption")).toHaveText("Stromrechnung je Jahr");
+  await expect(billSeries.locator("table tbody tr")).toHaveCount(economics.horizonYears);
 });
 
 test("M1-11g: F4.4b-TOU traegt currentV2-Bill und Ladefahrplan", async ({ page }) => {

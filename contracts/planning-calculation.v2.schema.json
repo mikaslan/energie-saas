@@ -252,6 +252,11 @@
                 }
               ]
             },
+            "alternativePriceEscalationRate": {
+              "type": "number",
+              "minimum": -0.1,
+              "maximum": 0.25
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -562,6 +567,11 @@
                 }
               ]
             },
+            "alternativePriceEscalationRate": {
+              "type": "number",
+              "minimum": -0.1,
+              "maximum": 0.25
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -643,6 +653,14 @@
               ],
               "additionalProperties": false
             },
+            "annualBillSeriesEuro": {
+              "minItems": 1,
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema5"
+              }
+            },
             "tou": {
               "type": "object",
               "properties": {
@@ -663,7 +681,7 @@
                   "maxItems": 24,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema5"
+                    "$ref": "#/$defs/__schema6"
                   }
                 }
               },
@@ -861,6 +879,35 @@
           "type": "number"
         },
         "__schema5": {
+          "type": "object",
+          "properties": {
+            "year": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "noPvEuro": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currentEuro": {
+              "type": "number",
+              "minimum": 0
+            },
+            "newTariffEuro": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "year",
+            "noPvEuro",
+            "currentEuro",
+            "newTariffEuro"
+          ],
+          "additionalProperties": false
+        },
+        "__schema6": {
           "type": "object",
           "properties": {
             "hour": {

@@ -213,6 +213,112 @@ describe("economics computation", () => {
     });
   });
 
+  it("rechnet F4-04c-Mehrjahres-Serie mit Eskalation je Tarif", () => {
+    const result = computeEconomics(
+      {
+        generationKwh: 10_000,
+        selfConsumptionKwh: 4_000,
+        feedInKwh: 6_000,
+        consumptionKwh: 7_000,
+        gridImportKwh: 3_000,
+      },
+      {
+        importPriceCtPerKwh: 36,
+        priceEscalationRate: 0.03,
+        feedInTariffCtPerKwh: 8,
+        feedInTariffSource: "override",
+        investmentEuro: 20_000,
+        alternativeImportPriceCtPerKwh: 28,
+        alternativePriceEscalationRate: 0.01,
+        horizonYears: 3,
+        priceSource: "profile",
+        settingsRevision: 0,
+      },
+    );
+    expect(result.annualBillSeriesEuro).toHaveLength(3);
+    // Jahr 1 == annualBillsEuro (gepinnt).
+    expect(result.annualBillSeriesEuro![0]).toEqual({
+      year: 1,
+      noPvEuro: result.annualBillsEuro.noPvEuro,
+      currentEuro: result.annualBillsEuro.currentEuro,
+      newTariffEuro: result.annualBillsEuro.newTariffEuro,
+    });
+    // Jahr 2: 7000 × 0,36 × 1,03 = 2595,60; 3000 × 0,36 × 1,03 = 1112,40;
+    // neu: 3000 × 0,28 × 1,01 = 848,40.
+    expect(result.annualBillSeriesEuro![1]).toEqual({
+      year: 2,
+      noPvEuro: 2_595.6,
+      currentEuro: 1_112.4,
+      newTariffEuro: 848.4,
+    });
+    // Jahr 3: Eskalation quadriert (Faktor je Tarif getrennt).
+    expect(result.annualBillSeriesEuro![2]).toEqual({
+      year: 3,
+      noPvEuro: roundMoney(7_000 * 0.36 * 1.03 ** 2),
+      currentEuro: roundMoney(3_000 * 0.36 * 1.03 ** 2),
+      newTariffEuro: roundMoney(3_000 * 0.28 * 1.01 ** 2),
+    });
+  });
+
+  it("F4-04c: unbelegte Neutarif-Eskalation = aktuelle Eskalation; keine Serie ohne Neutarif", () => {
+    const base = {
+      generationKwh: 10_000,
+      selfConsumptionKwh: 4_000,
+      feedInKwh: 6_000,
+      consumptionKwh: 7_000,
+      gridImportKwh: 3_000,
+    };
+    const withPrice = computeEconomics(base, {
+      importPriceCtPerKwh: 36,
+      priceEscalationRate: 0.03,
+      feedInTariffCtPerKwh: 8,
+      feedInTariffSource: "override",
+      investmentEuro: 20_000,
+      alternativeImportPriceCtPerKwh: 28,
+      horizonYears: 2,
+      priceSource: "profile",
+      settingsRevision: 0,
+    });
+    // Fallback: Neu-Leg läuft mit 3 % wie aktuell → Jahr 2 neu = 3000 × 0,28 × 1,03.
+    expect(withPrice.annualBillSeriesEuro![1]!.newTariffEuro).toBe(roundMoney(3_000 * 0.28 * 1.03));
+    // Ohne Neutarif: kein Serien-Schlüssel (Altresultate gültig).
+    const withoutPrice = computeEconomics(base, {
+      importPriceCtPerKwh: 36,
+      priceEscalationRate: 0.03,
+      feedInTariffCtPerKwh: 8,
+      feedInTariffSource: "override",
+      investmentEuro: 20_000,
+      alternativeImportPriceCtPerKwh: null,
+      alternativePriceEscalationRate: 0.01,
+      horizonYears: 2,
+      priceSource: "profile",
+      settingsRevision: 0,
+    });
+    expect(withoutPrice.annualBillSeriesEuro).toBeUndefined();
+    expect(withoutPrice.annualBillsEuro.newTariffEuro).toBeNull();
+  });
+
+  it("F4-04c: Neutarif-Eskalation nur bei belegtem Profilfeld, Bereich fail-closed", () => {
+    const resolved = resolveEconomics(consumption({
+      alternativeImportPriceCtPerKwh: known(28),
+      alternativeImportPriceEscalationPct: known(2),
+    }))!;
+    expect(resolved.alternativeImportPriceCtPerKwh).toBe(28);
+    expect(resolved.alternativePriceEscalationRate).toBeCloseTo(0.02, 12);
+    // Unbelegt → Schlüssel fehlt (Althashes stabil).
+    const unbelegt = resolveEconomics(consumption({
+      alternativeImportPriceCtPerKwh: known(28),
+    }))!;
+    expect("alternativePriceEscalationRate" in unbelegt).toBe(false);
+    // Bereich wie annualPriceIncreasePercent.
+    expect(() => resolveEconomics(consumption({
+      alternativeImportPriceEscalationPct: known(26),
+    }))).toThrow();
+    expect(() => resolveEconomics(consumption({
+      alternativeImportPriceEscalationPct: known(-11),
+    }))).toThrow();
+  });
+
   it("meldet nie-Amortisation; negativer IRR ist ein ehrlicher Wert", () => {
     const expensive = computeEconomics(annual, { ...input, investmentEuro: 1_000_000 });
     expect(expensive.amortizationYears).toBeNull();

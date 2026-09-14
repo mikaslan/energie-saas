@@ -418,6 +418,10 @@ export function EnergyProfileEditor({
             Neutarif Vergleich (Ct/kWh, leer = kein Vergleich)
             <input id="energy-alt-tariff" name="alternativeImportPriceCtPerKwh" type="number" inputMode="decimal" min="1" max="200" step="any" defaultValue={fieldValue(profile.consumption.alternativeImportPriceCtPerKwh ?? { status: "unknown" })} className={inputClass} />
           </label>
+          <label htmlFor="energy-alt-tariff-escalation" className={labelClass}>
+            Neutarif Preissteigerung (% p. a., −10–25, leer = wie aktueller Tarif)
+            <input id="energy-alt-tariff-escalation" name="alternativeImportPriceEscalationPct" type="number" inputMode="decimal" min="-10" max="25" step="any" defaultValue={fieldValue(profile.consumption.alternativeImportPriceEscalationPct ?? { status: "unknown" })} className={inputClass} />
+          </label>
           <label htmlFor="energy-tou-prices" className={labelClass}>
             TOU-Stundenpreise (24 Werte Komma-getrennt, leer = kein TOU)
             <input id="energy-tou-prices" name="touImportPricesCt" type="text" inputMode="decimal" defaultValue={touPriceListValue(profile.consumption.touImportPricesCtPerKwh ?? { status: "unknown" })} className={inputClass} />

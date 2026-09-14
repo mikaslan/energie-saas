@@ -586,6 +586,13 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
             : euroFormatter.format(economics.annualBillsEuro.newTariffEuro)}
         </DetailItem>
       </dl>
+      {economics.annualBillSeriesEuro ? (
+        <V2BillSeries
+          series={economics.annualBillSeriesEuro}
+          alternativeEscalation={economics.alternativePriceEscalationRate ?? null}
+          currentEscalation={economics.priceEscalationRate}
+        />
+      ) : null}
       {economics.tou ? <V2Tou tou={economics.tou} /> : null}
       <div
         className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
@@ -612,6 +619,62 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
                 </th>
                 <td className="px-4 py-3 text-right">{euroFormatter.format(entry.savings)}</td>
                 <td className="px-4 py-3 text-right">{euroFormatter.format(entry.cumulative)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function V2BillSeries({
+  series,
+  alternativeEscalation,
+  currentEscalation,
+}: {
+  series: NonNullable<EconomicsV2["annualBillSeriesEuro"]>;
+  alternativeEscalation: number | null;
+  currentEscalation: number;
+}) {
+  const percent = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
+  return (
+    <div className="mt-5" data-testid="v2-bill-series">
+      <h4 className="px-1 text-sm font-semibold text-slate-950">
+        Stromrechnung je Jahr (mit Tarif-Eskalation)
+      </h4>
+      <p className="mt-1 px-1 text-sm leading-6 text-slate-600">
+        {`Aktueller Tarif +${percent.format(currentEscalation * 100)} % p. a. · Neutarif +${
+          percent.format((alternativeEscalation ?? currentEscalation) * 100)
+        } % p. a.${alternativeEscalation === null ? " (wie aktueller Tarif)" : ""} · gleiche Physik je Jahr.`}
+      </p>
+      <div
+        className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+        tabIndex={0}
+        role="region"
+        aria-label="Stromrechnung je Jahr, horizontal scrollbar"
+      >
+        <table className="min-w-[32rem] w-full border-collapse text-left text-sm tabular-nums">
+          <caption className="px-4 py-3 text-left font-semibold text-slate-950">
+            Stromrechnung je Jahr
+          </caption>
+          <thead className="bg-slate-50 text-slate-700">
+            <tr>
+              <th scope="col" className="px-4 py-3 font-semibold">Jahr</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Ohne PV</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Mit PV (aktueller Tarif)</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Mit PV (Neutarif)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {series.map((entry) => (
+              <tr key={entry.year} className="border-t border-slate-200">
+                <th scope="row" className="px-4 py-3 font-medium text-slate-900">
+                  {entry.year}
+                </th>
+                <td className="px-4 py-3 text-right">{euroFormatter.format(entry.noPvEuro)}</td>
+                <td className="px-4 py-3 text-right">{euroFormatter.format(entry.currentEuro)}</td>
+                <td className="px-4 py-3 text-right">{euroFormatter.format(entry.newTariffEuro)}</td>
               </tr>
             ))}
           </tbody>

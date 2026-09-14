@@ -526,6 +526,10 @@ function assembleResultV2(
     feedInTariffSource: economicsInput.feedInTariffSource,
     investmentEuro: economicsInput.investmentEuro,
     alternativeImportPriceCtPerKwh: economicsInput.alternativeImportPriceCtPerKwh,
+    // F4-04c: Echo nur bei belegtem Profilfeld (Althashes stabil).
+    ...(economicsInput.alternativePriceEscalationRate === undefined
+      ? {}
+      : { alternativePriceEscalationRate: economicsInput.alternativePriceEscalationRate }),
     horizonYears: economicsInput.horizonYears,
     priceSource: economicsInput.priceSource,
     settingsRevision: economicsInput.settingsRevision,

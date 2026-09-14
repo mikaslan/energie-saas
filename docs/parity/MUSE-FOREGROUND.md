@@ -1061,3 +1061,19 @@ identisch (`983ed67`, 0 unpusht).
   34816702833 (nur 84f6118) per Concurrency zugunsten dieses Laufs
   storniert — kein Befund, Superset-Abdeckung. Neue Slices damit auch im
   echten CI-Lauf belegt: F10-06 Katalog-11 + F11-03d Offline-Stopp.
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 26 — CI 34823866742: 1 Last-Flake, kein Produktbefund)
+- CI 34823866742 (HEAD 5f275fc F16-04c): Statik/DB/Rollen/Build GRUEN,
+  Chromium-E2E 236 passed / 1 failed / 1 skipped. Einziger Fehler:
+  m1-05-triage M1-07 (Energieprofil-Bindung) mit 60-s-Timeout im
+  37-Min-Vollparallel-Lauf — kein Assertion-Befund.
+- Zuordnung, dreifach belegt: (a) Diff 5f275fc berührt nur
+  Aufgaben-Vorlagen (Contract/Service/Actions/Manager) + eigene
+  Tests/Docs — null Überlappung mit Energieprofil/Rechenkette/Triage;
+  (b) m1-05-triage-Datei in Reihenfolge lokal 7/7 GRUEN auf identischem
+  HEAD; (c) fokussierter Einzelaufruf scheitert anders (falscher
+  Blockadegrund — Vorzustand fehlt), d. h. der Test ist dateiintern
+  reihenfolgeabhängig (Bestandseigenschaft, kein neues Verhalten).
+- Kein Produkt-/Test-Eingriff (kein Timeout-Hochsetzen = keine
+  Gate-Abschwächung); Re-Orakel ist der nächste Slice-Push. Offene
+  Watch-Items: m1-05-Triage-Lastklasse (4. Signatur), f3-01-Latenz.

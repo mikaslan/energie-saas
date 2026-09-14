@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "da15e707eccd2ca7f867f266f577c32f2fe7c9a36b7ab99da376306d9ae0d7c0" as const;
+  "b242a25ad586f9699f7455c70c075a975117f18dbe35fe28294b2ab982a583d6" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -208,6 +208,10 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     // F4.4a Tarifvergleich: optionaler Neutarif (Arbeitspreis, Jahr-1-
     // Vergleich; unbelegt = kein Vergleich, kein Fehler).
     alternativeImportPriceCtPerKwh: knownOrUnknown(finite().min(1).max(200)).optional(),
+    // F4-04c Mehrjahres-Tarifvergleich: optionale Neutarif-Eskalation
+    // (% p. a., Bereich wie annualPriceIncreasePercent; unbelegt = gleiche
+    // Eskalation wie aktueller Tarif, dokumentiert — kein Fehler).
+    alternativeImportPriceEscalationPct: knownOrUnknown(finite().min(-10).max(25)).optional(),
     // F4.4b TOU: optionale 24 Stundenpreise (Ct/kWh; unbelegt = kein
     // TOU-Block, kein Fehler).
     touImportPricesCtPerKwh: knownOrUnknown(

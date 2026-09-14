@@ -55,6 +55,9 @@ const economicsInputV2Schema = z.strictObject({
   feedInTariffSource: z.enum(["override", "eeg_default", "post_eeg"]),
   investmentEuro: finite().min(0).max(10_000_000),
   alternativeImportPriceCtPerKwh: finite().min(1).max(200).nullable(),
+  // F4-04c: nur bei belegtem Profilfeld (sonst fehlt der Schluessel und
+  // Althashes bleiben stabil).
+  alternativePriceEscalationRate: finite().min(-0.1).max(0.25).optional(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -97,6 +100,8 @@ const economicsResultV2Schema = z.strictObject({
   feedInTariffSource: z.enum(["override", "eeg_default", "post_eeg"]),
   investmentEuro: finite().min(0).max(10_000_000),
   alternativeImportPriceCtPerKwh: finite().min(1).max(200).nullable(),
+  // F4-04c: Echo wie Input (nur bei belegtem Profilfeld).
+  alternativePriceEscalationRate: finite().min(-0.1).max(0.25).optional(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -109,6 +114,14 @@ const economicsResultV2Schema = z.strictObject({
     currentEuro: finite().min(0),
     newTariffEuro: finite().min(0).nullable(),
   }),
+  // F4-04c: nur bei belegtem Neutarif (sonst fehlt der Schluessel und
+  // Altresultate bleiben gueltig).
+  annualBillSeriesEuro: z.array(z.strictObject({
+    year: z.int().min(1).max(50),
+    noPvEuro: finite().min(0),
+    currentEuro: finite().min(0),
+    newTariffEuro: finite().min(0),
+  })).min(1).max(50).optional(),
   // F4.4b: nur bei request.tou + economics (sonst fehlt der Schluessel).
   tou: touResultV2Schema.optional(),
 });

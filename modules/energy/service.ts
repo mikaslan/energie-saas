@@ -1098,6 +1098,19 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["alternativeImportPriceCtPerKwh"],
+      // F4-04c Neutarif-Eskalation (optional; fehlt in Altzeilen).
+      alternativeImportPriceEscalationPct: normalizeKnownField(
+        submitted.consumption.alternativeImportPriceEscalationPct ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.alternativeImportPriceEscalationPct ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["alternativeImportPriceEscalationPct"],
       // F4.2c Lastgang-CSV (optional; fehlt in Altzeilen).
       customCsvKwh: normalizeKnownField(
         submitted.consumption.customCsvKwh ?? {
