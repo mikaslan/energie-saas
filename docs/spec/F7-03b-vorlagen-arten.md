@@ -1,5 +1,7 @@
 # F7-03b Punkt-Arten in Vorlagen (Katalog F7.3)
 
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (DB 4/4, E2E F7-03b 1/1 lokal beobachtet; Stand 2026-09-14 nachgezogen, kein Code-Eingriff).
+
 F7-02d „Bewusst offen“: „Radio in Vorlagen“; F7-02c „Bewusst offen“:
 „Template-Autorenschaft von Anzeige-Punkten (Template-Items sind
 komponentengebunden)“. Dieser Slice trägt die Projekt-Punkt-Arten in die

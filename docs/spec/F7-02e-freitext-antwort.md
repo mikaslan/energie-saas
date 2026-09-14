@@ -1,5 +1,7 @@
 # F7-02e Freitext-Antwort (Slice B, Katalog F7.2)
 
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (DB f702e + E2E F7-02E-E2E-01 in F7-02-Datei 9/9; Stand 2026-09-14 nachgezogen, kein Code-Eingriff).
+
 Katalog F7.2 nennt „freetext mit Diktat“ unter 12+ Item-Typen. Diktat
 (Spracheingabe/Transkription) ist KI-providergebunden und bleibt offen;
 dieser Slice liefert den rein lokalen Rest: Textantwort-Wert je Punkt

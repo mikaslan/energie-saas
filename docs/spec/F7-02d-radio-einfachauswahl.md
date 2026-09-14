@@ -1,5 +1,7 @@
 # F7-02d Radio-Einfachauswahl (Slice B, Katalog F7.2)
 
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (DB f702d + E2E F7-02D-E2E-01 in F7-02-Datei 9/9; Stand 2026-09-14 nachgezogen, kein Code-Eingriff).
+
 F7-02 Spec §Scope: „Reonic-Item-Typen (`radio`/`image`/`description`) sind
 **Slice B**“; Code-Stand (`modules/checklists/templates.ts:315`):
 „Radio-/Bild-Typen = Slice B“. F7-02c lieferte title/description. Dieser
