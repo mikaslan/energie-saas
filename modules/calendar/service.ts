@@ -829,40 +829,46 @@ export async function ensurePersonalCalendar(
 
   const calendarId = randomUUID();
   // Kimi-P2-2/P2-3: Race-sicher — parallele Erst-Provisionierungen kollidieren
-  // am partial-unique (membership) oder am Namens-Unique; dann re-selectieren
-  // wir strikt über die MEMBERSHIP (nie über den Namen).
-  try {
-    await tx.execute(sql`
-      insert into calendar (
-        id, workspace_id, name, calendar_type, membership_id, created_by
-      ) values (
-        ${calendarId}::uuid, ${ctx.workspaceId}::uuid,
-        ${`Persönlich — ${member.rows[0].email}`}, 'user',
-        ${membershipId}::uuid, ${ctx.actor}::uuid
-      )
-    `);
-  } catch (error) {
-    const code = postgresErrorCode(error);
-    if (code !== "23505") throw error;
-    const winner = await tx.execute<{ id: string }>(sql`
-      select id from calendar
-       where workspace_id = ${ctx.workspaceId}::uuid
-         and membership_id = ${membershipId}::uuid
-         and calendar_type = 'user'
-       limit 1
-    `);
-    if (winner.rows[0]) return winner.rows[0].id;
-    throw error;
+  // am partial-unique (membership) oder am Namens-Unique. ON CONFLICT statt
+  // try/catch: 23505 bricht die Transaktion ab (25P02), ein Re-Select im catch
+  // wäre tot (M115B-DB-07 CI-Flake 34895985323). DO NOTHING wartet die
+  // Gewinner-Transaktion ab; danach sieht der Membership-Re-Select sie
+  // (READ COMMITTED). RETURNING unterscheidet Gewinner (Event emittieren)
+  // von Verlierer (fremde ID übernehmen, kein Doppel-Event).
+  const inserted = await tx.execute<{ id: string }>(sql`
+    insert into calendar (
+      id, workspace_id, name, calendar_type, membership_id, created_by
+    ) values (
+      ${calendarId}::uuid, ${ctx.workspaceId}::uuid,
+      ${`Persönlich — ${member.rows[0].email}`}, 'user',
+      ${membershipId}::uuid, ${ctx.actor}::uuid
+    )
+    on conflict do nothing
+    returning id
+  `);
+  if (inserted.rows[0]) {
+    await emitEvent(tx, {
+      workspaceId: ctx.workspaceId,
+      aggregateType: "calendar",
+      aggregateId: calendarId,
+      eventType: "calendar.created",
+      actor: ctx.actor,
+      payload: { calendarType: "user", membershipId },
+    });
+    return calendarId;
   }
-  await emitEvent(tx, {
-    workspaceId: ctx.workspaceId,
-    aggregateType: "calendar",
-    aggregateId: calendarId,
-    eventType: "calendar.created",
-    actor: ctx.actor,
-    payload: { calendarType: "user", membershipId },
-  });
-  return calendarId;
+  // Verlierer: strikt über die MEMBERSHIP re-selektieren (nie über den Namen).
+  const winner = await tx.execute<{ id: string }>(sql`
+    select id from calendar
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and membership_id = ${membershipId}::uuid
+       and calendar_type = 'user'
+     limit 1
+  `);
+  if (winner.rows[0]) return winner.rows[0].id;
+  // Nur bei Fremdkollision am Namens-Unique erreichbar (eine andere Membership
+  // besitzt bereits exakt diesen „Persönlich — E-Mail"-Namen).
+  throw new AppointmentConflictError();
 }
 
 export async function createTenancyCalendar(

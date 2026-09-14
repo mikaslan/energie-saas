@@ -169,14 +169,22 @@ describe("M1-15b Kalender-Scopes (PostgreSQL)", () => {
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => ensurePersonalCalendar(tx, ctx, fixture.editorMembershipId),
     );
-    const results = await Promise.all([provision(), provision()]);
-    expect(results[0]).toBe(results[1]);
+    // 8-fach statt 2-fach: echter Kollisiondruck — mit 2 parallelen Transaktionen
+    // trifft der Race nur sporadisch (CI 34895985323), mit 8 fast sicher.
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => provision()),
+    );
+    for (const id of results) expect(id).toBe(results[0]);
     const all = await withAuthorizedTenantOn(
       testPool, fixture.adminId, fixture.workspaceId,
       (tx, ctx) => listVisibleCalendars(tx, ctx),
     );
     const personal = all.filter((c) => c.type === "user");
     expect(personal).toHaveLength(1);
+    // Deterministischer Verlierer-Pfad (ON CONFLICT DO NOTHING + Re-Select):
+    // Nach EXISTIERENDER Zeile liefert ensure dieselbe ID ohne Neuanlage.
+    const repeat = await provision();
+    expect(repeat).toBe(results[0]);
   });
 
   it("M115B-DB-04: Cross-Workspace-Isolation der Kalender", async () => {
