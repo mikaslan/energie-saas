@@ -1144,3 +1144,16 @@ identisch (`983ed67`, 0 unpusht).
   Fehlern — per Superset belegt.
 - Kein Produkt-/Test-Eingriff (kein Timeout-Hochsetzen); Re-Orakel
   ist der nächste Slice-Push.
+
+## Vorderbau 2026-09-14 (Muse, Fortsetzung 32 — CI 34872132657: 247/1/1, f2-06-Flake)
+- CI 34872132657 (HEAD d53840c DASH-04-Daten): Statik/DB/Rollen/Build
+  SUCCESS, Chromium-E2E 247 passed / 1 failed / 1 skipped (Skip
+  vorbestehend, 36 Min). Einziger Fehler: f2-06:141 (F206-E2E-01) —
+  `page.reload: net::ERR_ABORTED, frame detached`, keine Assertion.
+  Identische Infra-Signatur wie CI 34859462201; Diff berührt null
+  Angebots-Code (nur Dashboard-Spec + DASH-04-Header).
+- Flake-Beweis: f2-06 isoliert 1/1 grün auf aktuellem Baum (zweite
+  Isolation-Bestätigung nach CI 34859462201). DASH-04-Daten [5/249]
+  und F4-04f [198/249] liefen in CI mit und sind nicht die Fehler —
+  F4-04f damit per Re-Orakel echt im CI-Lauf belegt, DASH-04 ebenso.
+- Kein Produkt-/Test-Eingriff; Re-Orakel ist der nächste Slice-Push.
