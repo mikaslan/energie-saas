@@ -64,6 +64,14 @@ const economicsInputV2Schema = z.strictObject({
   // F4-04e: Leistungspreis je Tarif (nur bei belegtem Profilfeld).
   demandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
   alternativeDemandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
+  // F4-04f: zusätzliche Vergleichstarife (nur bei belegtem Profilfeld).
+  comparisonTariffs: z.array(z.strictObject({
+    name: z.string().min(1).max(40),
+    importPriceCtPerKwh: finite().min(1).max(200),
+    priceEscalationRate: finite().min(-0.1).max(0.25),
+    baseFeeEuro: finite().min(0).max(100_000),
+    demandChargeEuroPerKw: finite().min(0).max(10_000),
+  })).min(1).max(3).optional(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -114,6 +122,14 @@ const economicsResultV2Schema = z.strictObject({
   // F4-04e: Echo wie Input (nur bei belegtem Profilfeld).
   demandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
   alternativeDemandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
+  // F4-04f: Echo wie Input (nur bei belegtem Profilfeld).
+  comparisonTariffs: z.array(z.strictObject({
+    name: z.string().min(1).max(40),
+    importPriceCtPerKwh: finite().min(1).max(200),
+    priceEscalationRate: finite().min(-0.1).max(0.25),
+    baseFeeEuro: finite().min(0).max(100_000),
+    demandChargeEuroPerKw: finite().min(0).max(10_000),
+  })).min(1).max(3).optional(),
   horizonYears: z.int().min(1).max(50),
   priceSource: z.enum(["profile", "workspace_default"]),
   settingsRevision: z.int().min(0),
@@ -134,6 +150,13 @@ const economicsResultV2Schema = z.strictObject({
     currentEuro: finite().min(0),
     newTariffEuro: finite().min(0),
   })).min(1).max(50).optional(),
+  // F4-04f: nur bei belegtem Profilfeld (sonst fehlt der Schlüssel und
+  // Altresultate bleiben gültig).
+  comparisonBillsEuro: z.array(z.strictObject({
+    name: z.string().min(1).max(40),
+    year1Euro: finite().min(0),
+    seriesEuro: z.array(finite().min(0)).min(1).max(50),
+  })).min(1).max(3).optional(),
   // F4.4b: nur bei request.tou + economics (sonst fehlt der Schluessel).
   tou: touResultV2Schema.optional(),
 });

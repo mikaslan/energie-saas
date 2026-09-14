@@ -23,7 +23,7 @@ export const CALCULATION_V2_DEFAULTS_VERSION = "wmee-planning-defaults.v2" as co
 // (contracts/planning-calculation.v2.schema.json). Jede absichtliche
 // Aenderung verlangt einen neuen Review und Hash.
 export const CALCULATION_V2_SCHEMA_SHA256 =
-  "f7042881aaa68ec49aef844635678d9e2c8c48513c1704fa54989a9b78868c49" as const;
+  "68048233e4705271cea26853c252f1afc75b9088c5ab1f2ef64dd127d1d31714" as const;
 export const CALCULATION_V2_QUALITY = "server_reproduced_public_reference" as const;
 export const CALCULATION_V2_VALIDATION_STATUS = "f4_public_reference_validated" as const;
 export const CALCULATION_V2_AXIS_VERSION =

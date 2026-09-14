@@ -24,6 +24,20 @@ function fieldValue(field: KnownOrUnknown): string | number {
   ) ? field.value : "";
 }
 
+// F4-04f Vergleichstarif-Feld (Gruppe, Key) -> Default (leer ohne Tarif;
+// Speichern bleibt ein Roundtrip, Namen ungetrimmt wie gespeichert).
+function comparisonTariffField(
+  profile: EnergyProfile,
+  group: number,
+  key: "name" | "importPriceCtPerKwh" | "priceEscalationPct" | "baseFeeEuroPerYear" | "demandChargeEuroPerKw",
+): string | number {
+  const field = profile.consumption.comparisonTariffs ?? { status: "unknown" };
+  if (field.status !== "known" || !Array.isArray(field.value)) return "";
+  const entry = (field.value[group] ?? {}) as Record<string, unknown>;
+  const value = entry[key];
+  return typeof value === "string" || typeof value === "number" ? value : "";
+}
+
 // F4.2c CSV: bekannte kWh-Reihe -> Zeilentext (vollstaendig, damit
 // Speichern ein Roundtrip bleibt), sonst leer.
 function csvDefaultValue(field: KnownOrUnknown): string {
@@ -438,6 +452,33 @@ export function EnergyProfileEditor({
             Leistungspreis Neutarif (€/kW, leer = wie aktueller Tarif)
             <input id="energy-alt-demand-charge" name="alternativeDemandChargeEuroPerKw" type="number" inputMode="decimal" min="0" max="10000" step="any" defaultValue={fieldValue(profile.consumption.alternativeDemandChargeEuroPerKw ?? { status: "unknown" })} className={inputClass} />
           </label>
+          {[0, 1, 2].map((group) => (
+            <fieldset key={`cmp-${group}`} className="grid gap-3 rounded-md border border-slate-200 p-3 sm:grid-cols-2">
+              <legend className="px-1 text-xs font-semibold text-slate-700">
+                {`Vergleichstarif ${group + 1} (Name + Preis = Tarif, Rest leer = wie aktueller Tarif)`}
+              </legend>
+              <label htmlFor={`energy-cmp-${group}-name`} className={labelClass}>
+                {`Vergleichstarif ${group + 1} Name (leer = kein Tarif)`}
+                <input id={`energy-cmp-${group}-name`} name={`cmp${group}Name`} type="text" maxLength={40} defaultValue={comparisonTariffField(profile, group, "name")} className={inputClass} />
+              </label>
+              <label htmlFor={`energy-cmp-${group}-price`} className={labelClass}>
+                {`Vergleichstarif ${group + 1} Preis (Ct/kWh, 1–200)`}
+                <input id={`energy-cmp-${group}-price`} name={`cmp${group}Price`} type="number" inputMode="decimal" min="1" max="200" step="any" defaultValue={comparisonTariffField(profile, group, "importPriceCtPerKwh")} className={inputClass} />
+              </label>
+              <label htmlFor={`energy-cmp-${group}-escalation`} className={labelClass}>
+                {`Vergleichstarif ${group + 1} Preissteigerung (% p. a., −10–25)`}
+                <input id={`energy-cmp-${group}-escalation`} name={`cmp${group}Escalation`} type="number" inputMode="decimal" min="-10" max="25" step="any" defaultValue={comparisonTariffField(profile, group, "priceEscalationPct")} className={inputClass} />
+              </label>
+              <label htmlFor={`energy-cmp-${group}-base-fee`} className={labelClass}>
+                {`Vergleichstarif ${group + 1} Grundpreis (€/Jahr)`}
+                <input id={`energy-cmp-${group}-base-fee`} name={`cmp${group}BaseFee`} type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={comparisonTariffField(profile, group, "baseFeeEuroPerYear")} className={inputClass} />
+              </label>
+              <label htmlFor={`energy-cmp-${group}-demand`} className={labelClass}>
+                {`Vergleichstarif ${group + 1} Leistungspreis (€/kW)`}
+                <input id={`energy-cmp-${group}-demand`} name={`cmp${group}Demand`} type="number" inputMode="decimal" min="0" max="10000" step="any" defaultValue={comparisonTariffField(profile, group, "demandChargeEuroPerKw")} className={inputClass} />
+              </label>
+            </fieldset>
+          ))}
           <label htmlFor="energy-tou-prices" className={labelClass}>
             TOU-Stundenpreise (24 Werte Komma-getrennt, leer = kein TOU)
             <input id="energy-tou-prices" name="touImportPricesCt" type="text" inputMode="decimal" defaultValue={touPriceListValue(profile.consumption.touImportPricesCtPerKwh ?? { status: "unknown" })} className={inputClass} />

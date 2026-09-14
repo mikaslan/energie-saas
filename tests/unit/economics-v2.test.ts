@@ -6,6 +6,7 @@ import {
   ECONOMICS_DEGRADATION_RATE,
   ECONOMICS_HORIZON_YEARS,
   POST_EEG_MARKET_VALUE_CT,
+  resolveComparisonTariffs,
   resolveEconomics,
   roundMoney,
 } from "@/lib/integrations/calculation/economics-v2";
@@ -409,6 +410,125 @@ describe("economics computation", () => {
       ...plain,
       demandChargeEuroPerKw: 100,
     })).toThrow();
+  });
+
+  it("F4-04f: Vergleichstarife je Tarif in Rechnungen, Ersparnis unberührt", () => {
+    const base = {
+      generationKwh: 10_000,
+      selfConsumptionKwh: 4_000,
+      feedInKwh: 6_000,
+      consumptionKwh: 7_000,
+      gridImportKwh: 3_000,
+      peakImportKw: 8.5,
+      noPvPeakImportKw: 12,
+    };
+    const plain = {
+      importPriceCtPerKwh: 36,
+      priceEscalationRate: 0,
+      feedInTariffCtPerKwh: 8,
+      feedInTariffSource: "override" as const,
+      investmentEuro: 20_000,
+      alternativeImportPriceCtPerKwh: null,
+      horizonYears: 3,
+      priceSource: "profile" as const,
+      settingsRevision: 0,
+    };
+    const withoutCmp = computeEconomics(base, plain);
+    expect("comparisonBillsEuro" in withoutCmp).toBe(false);
+    const withCmp = computeEconomics(base, {
+      ...plain,
+      comparisonTariffs: [
+        {
+          name: "Günstig",
+          importPriceCtPerKwh: 30,
+          priceEscalationRate: 0.02,
+          baseFeeEuro: 60,
+          demandChargeEuroPerKw: 80,
+        },
+        {
+          name: "Teuer",
+          importPriceCtPerKwh: 40,
+          priceEscalationRate: 0,
+          baseFeeEuro: 0,
+          demandChargeEuroPerKw: 0,
+        },
+      ],
+    });
+    // Jahr 1: Netzbezug × Preis + Grundpreis + Spitze × Satz.
+    expect(withCmp.comparisonBillsEuro!.map((bill) => bill.name)).toEqual(["Günstig", "Teuer"]);
+    expect(withCmp.comparisonBillsEuro![0]).toEqual({
+      name: "Günstig",
+      year1Euro: 900 + 60 + 680,
+      seriesEuro: [1_640, 1_658, 1_676.36],
+    });
+    expect(withCmp.comparisonBillsEuro![1]!.year1Euro).toBe(1_200);
+    // Serie Jahr 1 == Jahr-1-Rechnung; Ersparnis/Cashflow unberührt.
+    expect(withCmp.comparisonBillsEuro![0]!.seriesEuro[0]).toBe(
+      withCmp.comparisonBillsEuro![0]!.year1Euro,
+    );
+    expect(withCmp.annualSavingsEuro).toBe(withoutCmp.annualSavingsEuro);
+    expect(withCmp.cumulativeCashflowEuro).toEqual(withoutCmp.cumulativeCashflowEuro);
+    expect(withCmp.amortizationYears).toBe(withoutCmp.amortizationYears);
+    // Haupt-Rechnungen unverändert (Vergleich ist additiv).
+    expect(withCmp.annualBillsEuro).toEqual(withoutCmp.annualBillsEuro);
+  });
+
+  it("F4-04f: Vergleichstarife nur bei belegtem Profilfeld, Form fail-closed", () => {
+    const cmp = (value: unknown) => ({
+      status: "known" as const,
+      value,
+      source: "operator_reviewed" as const,
+    });
+    const current = { priceEscalationRate: 0.03, baseFeeEuro: 120, demandChargeEuroPerKw: 100 };
+    const resolved = resolveComparisonTariffs(
+      cmp([{ name: " A ", importPriceCtPerKwh: 30 }]),
+      current,
+    )!;
+    // Name getrimmt, Rest fällt auf aktuellen Tarif zurück.
+    expect(resolved).toEqual([{
+      name: "A",
+      importPriceCtPerKwh: 30,
+      priceEscalationRate: 0.03,
+      baseFeeEuro: 120,
+      demandChargeEuroPerKw: 100,
+    }]);
+    expect(resolveComparisonTariffs({ status: "unknown", value: null }, current)).toBeNull();
+    expect(resolveComparisonTariffs(undefined, current)).toBeNull();
+    // Formfehler: leer, zu viele, Doppelname, Bereich — alles fail-closed.
+    expect(() => resolveComparisonTariffs(cmp([]), current)).toThrow();
+    expect(() => resolveComparisonTariffs(
+      cmp([1, 2, 3, 4].map((n) => ({ name: `T${n}`, importPriceCtPerKwh: 30 }))),
+      current,
+    )).toThrow();
+    expect(() => resolveComparisonTariffs(
+      cmp([{ name: "A", importPriceCtPerKwh: 30 }, { name: "A", importPriceCtPerKwh: 32 }]),
+      current,
+    )).toThrow();
+    expect(() => resolveComparisonTariffs(
+      cmp([{ name: "", importPriceCtPerKwh: 30 }]),
+      current,
+    )).toThrow();
+    expect(() => resolveComparisonTariffs(
+      cmp([{ name: "A", importPriceCtPerKwh: 0.5 }]),
+      current,
+    )).toThrow();
+    expect(() => resolveComparisonTariffs(
+      cmp([{ name: "A", importPriceCtPerKwh: 30, priceEscalationPct: 26 }]),
+      current,
+    )).toThrow();
+    // Profil-Aufloesung: belegt → Schlüssel da, unbelegt → fehlt.
+    const withCmp = resolveEconomics(consumption({
+      comparisonTariffs: cmp([{ name: "A", importPriceCtPerKwh: 30 }]),
+    }))!;
+    expect(withCmp.comparisonTariffs).toEqual([{
+      name: "A",
+      importPriceCtPerKwh: 30,
+      priceEscalationRate: 0,
+      baseFeeEuro: 0,
+      demandChargeEuroPerKw: 0,
+    }]);
+    const unbelegt = resolveEconomics(consumption())!;
+    expect("comparisonTariffs" in unbelegt).toBe(false);
   });
 
   it("F4-04e: Leistungspreis nur bei belegtem Profilfeld, Bereich fail-closed", () => {

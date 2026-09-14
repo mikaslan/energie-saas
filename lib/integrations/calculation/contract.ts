@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "e749b5da8082add97e54ed6e783ce29bb0fdbeef7844f7cacb78e5a4fcda0f6a" as const;
+  "71d6eda0f682a3a56b770cf3f4e4fde8756d7d746f30ddd88a25fec9401475c4" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -221,6 +221,17 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     // Horizont, keine Eskalation; unbelegt = 0, kein Fehler).
     demandChargeEuroPerKw: knownOrUnknown(finite().min(0).max(10_000)).optional(),
     alternativeDemandChargeEuroPerKw: knownOrUnknown(finite().min(0).max(10_000)).optional(),
+    // F4-04f zusätzliche Vergleichstarife (max 3, Name Pflicht 1..40;
+    // unbelegt = kein Vergleich, kein Fehler).
+    comparisonTariffs: knownOrUnknown(
+      z.array(z.strictObject({
+        name: z.string().min(1).max(40),
+        importPriceCtPerKwh: finite().min(1).max(200),
+        priceEscalationPct: finite().min(-10).max(25).optional(),
+        baseFeeEuroPerYear: finite().min(0).max(100_000).optional(),
+        demandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
+      })).min(1).max(3),
+    ).optional(),
     // F4.4b TOU: optionale 24 Stundenpreise (Ct/kWh; unbelegt = kein
     // TOU-Block, kein Fehler).
     touImportPricesCtPerKwh: knownOrUnknown(

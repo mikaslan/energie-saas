@@ -69,6 +69,18 @@ export type FeedInTariffSource = "override" | "eeg_default" | "post_eeg";
 
 export type EconomicsPriceSource = "profile" | "workspace_default";
 
+/** F4-04f Vergleichstarif (voll aufgelöst, keine Nulls — Fallbacks gebacken). */
+export type ComparisonTariffV2 = {
+  name: string;
+  importPriceCtPerKwh: number;
+  priceEscalationRate: number;
+  baseFeeEuro: number;
+  demandChargeEuroPerKw: number;
+};
+
+/** F4-04f Obergrenze Vergleichstarife (ESTIMATE, UI-Formular fix 3 Gruppen). */
+export const COMPARISON_TARIFFS_MAX = 3;
+
 export type EconomicsInputV2 = {
   importPriceCtPerKwh: number;
   priceEscalationRate: number;
@@ -95,6 +107,11 @@ export type EconomicsInputV2 = {
    */
   demandChargeEuroPerKw?: number;
   alternativeDemandChargeEuroPerKw?: number;
+  /**
+   * F4-04f zusätzliche Vergleichstarife (nur bei belegtem Profilfeld;
+   * sonst fehlt der Schlüssel und Althashes bleiben stabil).
+   */
+  comparisonTariffs?: ComparisonTariffV2[];
   horizonYears: number;
   /** Herkunft des Bezugspreises (F4.5b Workspace-Fallback). */
   priceSource: EconomicsPriceSource;
@@ -227,6 +244,17 @@ export function resolveEconomics(
   if (alternativeDemandCharge !== null && (alternativeDemandCharge < 0 || alternativeDemandCharge > 10_000)) {
     economicsError("Neutarif-Leistungspreis ausserhalb 0..10000 Euro/kW");
   }
+  // F4-04f: Vergleichstarife nur bei belegtem Profilfeld (sonst fehlt
+  // der Schlüssel und Althashes bleiben stabil). Unbelegte Komponenten
+  // fallen auf den aktuellen Tarif zurück (Haupt-Neutarif-Vorbild).
+  const comparisonTariffs = resolveComparisonTariffs(
+    holder.comparisonTariffs,
+    {
+      priceEscalationRate: escalationPct / 100,
+      baseFeeEuro: baseFee ?? 0,
+      demandChargeEuroPerKw: demandCharge ?? 0,
+    },
+  );
   return {
     importPriceCtPerKwh: importPriceCt,
     priceEscalationRate: escalationPct / 100,
@@ -243,10 +271,65 @@ export function resolveEconomics(
     ...(alternativeDemandCharge === null
       ? {}
       : { alternativeDemandChargeEuroPerKw: alternativeDemandCharge }),
+    ...(comparisonTariffs === null ? {} : { comparisonTariffs }),
     horizonYears,
     priceSource: profilePrice !== null ? "profile" : "workspace_default",
     settingsRevision: fallback?.settingsRevision ?? 0,
   };
+}
+
+/**
+ * F4-04f Vergleichstarife aus belegtem Profil: null ohne Feld
+ * (Althashes stabil), sonst 1..3 voll aufgeloeste Tarife. Jede
+ * Bereichs-/Formverletzung und jeder Doppelname ist fail-closed
+ * (kein stilles Kuerzen oder Ueberschreiben).
+ */
+export function resolveComparisonTariffs(
+  entry: unknown,
+  current: { priceEscalationRate: number; baseFeeEuro: number; demandChargeEuroPerKw: number },
+): ComparisonTariffV2[] | null {
+  const candidate = entry as { status?: unknown; value?: unknown } | undefined;
+  if (candidate === undefined || candidate === null || candidate.status !== "known") return null;
+  if (!Array.isArray(candidate.value)) economicsError("Vergleichstarife sind kein Array");
+  if (candidate.value.length === 0) economicsError("Vergleichstarife sind leer");
+  if (candidate.value.length > COMPARISON_TARIFFS_MAX) {
+    economicsError("Zu viele Vergleichstarife");
+  }
+  const seen = new Set<string>();
+  return candidate.value.map((raw) => {
+    const tariff = (raw ?? {}) as Record<string, unknown>;
+    const name = typeof tariff.name === "string" ? tariff.name.trim() : "";
+    if (name.length === 0 || name.length > 40) economicsError("Vergleichstarif-Name ausserhalb 1..40 Zeichen");
+    if (seen.has(name)) economicsError("Vergleichstarif-Name doppelt");
+    seen.add(name);
+    const price = tariff.importPriceCtPerKwh;
+    if (typeof price !== "number" || !Number.isFinite(price) || price < 1 || price > 200) {
+      economicsError("Vergleichstarif-Preis ausserhalb 1..200 Ct/kWh");
+    }
+    const escalationPct = tariff.priceEscalationPct ?? null;
+    if (escalationPct !== null
+      && (typeof escalationPct !== "number" || !Number.isFinite(escalationPct)
+        || escalationPct < -10 || escalationPct > 25)) {
+      economicsError("Vergleichstarif-Eskalation ausserhalb -10..25 %");
+    }
+    const baseFee = tariff.baseFeeEuroPerYear ?? null;
+    if (baseFee !== null
+      && (typeof baseFee !== "number" || !Number.isFinite(baseFee) || baseFee < 0 || baseFee > 100_000)) {
+      economicsError("Vergleichstarif-Grundpreis ausserhalb 0..100000 Euro/Jahr");
+    }
+    const demand = tariff.demandChargeEuroPerKw ?? null;
+    if (demand !== null
+      && (typeof demand !== "number" || !Number.isFinite(demand) || demand < 0 || demand > 10_000)) {
+      economicsError("Vergleichstarif-Leistungspreis ausserhalb 0..10000 Euro/kW");
+    }
+    return {
+      name,
+      importPriceCtPerKwh: price,
+      priceEscalationRate: escalationPct === null ? current.priceEscalationRate : escalationPct / 100,
+      baseFeeEuro: baseFee === null ? current.baseFeeEuro : baseFee,
+      demandChargeEuroPerKw: demand === null ? current.demandChargeEuroPerKw : demand,
+    };
+  });
 }
 
 /**
@@ -355,6 +438,15 @@ export type AnnualBillSeriesRowV2 = {
   newTariffEuro: number;
 };
 
+export type ComparisonBillV2 = {
+  /** Vergleichstarif-Name (1..40 Zeichen, eindeutig je Lauf). */
+  name: string;
+  /** Jahr-1-Rechnung mit PV (Netzbezug × Preis + Grundpreis + Spitze). */
+  year1Euro: number;
+  /** Mehrjahres-Serie (Horizont, Jahr 1 == year1Euro per Konstruktion). */
+  seriesEuro: number[];
+};
+
 export type EconomicsResultV2 = {
   annualSavingsEuro: number;
   cumulativeCashflowEuro: number[];
@@ -368,6 +460,11 @@ export type EconomicsResultV2 = {
    * Degradations-/Verbrauchsdrift — reine Tarifrechnung).
    */
   annualBillSeriesEuro?: AnnualBillSeriesRowV2[];
+  /**
+   * F4-04f zusätzliche Vergleichstarife (nur bei belegtem Profilfeld;
+   * sonst fehlt der Schlüssel und Altresultate bleiben gültig).
+   */
+  comparisonBillsEuro?: ComparisonBillV2[];
 };
 
 /** Kapitalwert einer Zahlungsreihe (t=0..n) bei Zinssatz. */
@@ -468,6 +565,12 @@ export function computeEconomics(
   if (alternativeDemandCharge > 0 && (peakKw === undefined || noPvPeakKw === undefined)) {
     economicsError("Neutarif-Leistungspreis ohne Jahresspitze aus der Simulation");
   }
+  // F4-04f: Vergleichstarife mit Satz brauchen die Dispatch-Spitze
+  // (gleicher fail-closed-Maßstab wie Haupt-Neutarif).
+  const comparisons = input.comparisonTariffs ?? [];
+  if (comparisons.some((tariff) => tariff.demandChargeEuroPerKw > 0) && peakKw === undefined) {
+    economicsError("Vergleichstarif-Leistungspreis ohne Jahresspitze aus der Simulation");
+  }
   const demandEuro = demandCharge * (peakKw ?? 0);
   const noPvDemandEuro = demandCharge * (noPvPeakKw ?? 0);
   const alternativeDemandEuro = alternativeDemandCharge * (peakKw ?? 0);
@@ -483,8 +586,34 @@ export function computeEconomics(
   // belegtem Neutarif; unbelegte Neutarif-Eskalation = aktuelle
   // Eskalation, dokumentiert). Reine Tarifrechnung: Physik je Jahr
   // identisch, Jahr 1 == annualBillsEuro per Konstruktion.
+  // F4-04f Vergleichsrechnungen je Tarif (Jahr 1 + Serie über Horizont;
+  // Physik je Jahr identisch, Sätze konstant — reine Tarifrechnung wie
+  // F4-04c, unabhängig vom Haupt-Neutarif).
+  const comparisonBills = comparisons.map((tariff) => {
+    const tariffPriceEuro = tariff.importPriceCtPerKwh / 100;
+    const tariffDemandEuro = tariff.demandChargeEuroPerKw * (peakKw ?? 0);
+    const seriesEuro: number[] = [];
+    for (let year = 1; year <= horizon; year += 1) {
+      seriesEuro.push(roundMoney(
+        annual.gridImportKwh * tariffPriceEuro * (1 + tariff.priceEscalationRate) ** (year - 1)
+          + tariff.baseFeeEuro
+          + tariffDemandEuro,
+      ));
+    }
+    return { name: tariff.name, year1Euro: seriesEuro[0]!, seriesEuro };
+  });
+  const comparisonEcho = comparisonBills.length === 0
+    ? {}
+    : { comparisonBillsEuro: comparisonBills };
   if (input.alternativeImportPriceCtPerKwh === null) {
-    return { annualSavingsEuro, cumulativeCashflowEuro, amortizationYears, irr, annualBillsEuro };
+    return {
+      annualSavingsEuro,
+      cumulativeCashflowEuro,
+      amortizationYears,
+      irr,
+      annualBillsEuro,
+      ...comparisonEcho,
+    };
   }
   const newPriceEuro = input.alternativeImportPriceCtPerKwh / 100;
   const newEscalation = input.alternativePriceEscalationRate ?? input.priceEscalationRate;
@@ -504,5 +633,6 @@ export function computeEconomics(
     irr,
     annualBillsEuro,
     annualBillSeriesEuro,
+    ...comparisonEcho,
   };
 }

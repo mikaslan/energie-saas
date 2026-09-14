@@ -164,6 +164,23 @@ const profileFormSchema = z.strictObject({
   // F4-04e Leistungspreis je Tarif (€/kW, leer = 0, kein Vergleich).
   demandChargeEuroPerKw: optionalNumber(0, 10_000).optional(),
   alternativeDemandChargeEuroPerKw: optionalNumber(0, 10_000).optional(),
+  // F4-04f Vergleichstarife (je Gruppe: Name oder alles leer; Cap 3
+  // durch genau drei Gruppen, Teilmengen fail-closed in der Assembly).
+  cmp0Name: z.string().max(40).optional(),
+  cmp0Price: optionalNumber(1, 200).optional(),
+  cmp0Escalation: optionalNumber(-10, 25).optional(),
+  cmp0BaseFee: optionalNumber(0, 100_000).optional(),
+  cmp0Demand: optionalNumber(0, 10_000).optional(),
+  cmp1Name: z.string().max(40).optional(),
+  cmp1Price: optionalNumber(1, 200).optional(),
+  cmp1Escalation: optionalNumber(-10, 25).optional(),
+  cmp1BaseFee: optionalNumber(0, 100_000).optional(),
+  cmp1Demand: optionalNumber(0, 10_000).optional(),
+  cmp2Name: z.string().max(40).optional(),
+  cmp2Price: optionalNumber(1, 200).optional(),
+  cmp2Escalation: optionalNumber(-10, 25).optional(),
+  cmp2BaseFee: optionalNumber(0, 100_000).optional(),
+  cmp2Demand: optionalNumber(0, 10_000).optional(),
   // F4.4b TOU: 24 Stundenpreise Komma-getrennt (leer = kein TOU).
   touImportPricesCt: touPriceListField().optional(),
   coolingKwhPerYear: optionalNumber(0, 100_000),
@@ -279,6 +296,21 @@ const baseProfileFields = [
   "alternativeBaseFeeEuroPerYear",
   "demandChargeEuroPerKw",
   "alternativeDemandChargeEuroPerKw",
+  "cmp0Name",
+  "cmp0Price",
+  "cmp0Escalation",
+  "cmp0BaseFee",
+  "cmp0Demand",
+  "cmp1Name",
+  "cmp1Price",
+  "cmp1Escalation",
+  "cmp1BaseFee",
+  "cmp1Demand",
+  "cmp2Name",
+  "cmp2Price",
+  "cmp2Escalation",
+  "cmp2BaseFee",
+  "cmp2Demand",
   "touImportPricesCt",
   "coolingKwhPerYear",
   "heatingAcKwhPerYear",
@@ -494,11 +526,58 @@ function customLoadProfileFromForm(input: ParsedProfileForm): {
   };
 }
 
+// F4-04f: Vergleichstarife aus drei Formulargruppen (je Gruppe Name +
+// Preis Pflicht, Rest optional mit Current-Fallback in der Engine).
+// Leere Gruppe = kein Tarif; Teilgruppe oder Doppelname = null
+// (fail-closed, kein stilles Ergänzen).
+function comparisonTariffsFromForm(input: ParsedProfileForm): Array<{
+  name: string;
+  importPriceCtPerKwh: number;
+  priceEscalationPct?: number;
+  baseFeeEuroPerYear?: number;
+  demandChargeEuroPerKw?: number;
+}> | null {
+  const record = input as unknown as Record<string, string | number | null | undefined>;
+  const tariffs: Array<{
+    name: string;
+    importPriceCtPerKwh: number;
+    priceEscalationPct?: number;
+    baseFeeEuroPerYear?: number;
+    demandChargeEuroPerKw?: number;
+  }> = [];
+  const seen = new Set<string>();
+  for (const prefix of ["cmp0", "cmp1", "cmp2"] as const) {
+    const rawName = record[`${prefix}Name`];
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    const price = record[`${prefix}Price`] ?? null;
+    const escalation = record[`${prefix}Escalation`] ?? null;
+    const baseFee = record[`${prefix}BaseFee`] ?? null;
+    const demand = record[`${prefix}Demand`] ?? null;
+    const anySet = name !== "" || price !== null || escalation !== null || baseFee !== null || demand !== null;
+    if (!anySet) continue;
+    if (name === "" || typeof price !== "number") return null;
+    if (seen.has(name)) return null;
+    seen.add(name);
+    tariffs.push({
+      name,
+      importPriceCtPerKwh: price,
+      ...(typeof escalation === "number" ? { priceEscalationPct: escalation } : {}),
+      ...(typeof baseFee === "number" ? { baseFeeEuroPerYear: baseFee } : {}),
+      ...(typeof demand === "number" ? { demandChargeEuroPerKw: demand } : {}),
+    });
+  }
+  return tariffs;
+}
+
 function buildSubmittedProfile(
   candidate: ProjectEnergyProfileCandidate,
   input: ParsedProfileForm,
 ): { profile: EnergyProfile; roofAcknowledgements: string[] } | null {
   const profile = structuredClone(candidate.profile);
+  // F4-04f: Teilgruppe/Doppelname verweigert den Save (fail-closed).
+  const comparisonTariffs = comparisonTariffsFromForm(input);
+  if (comparisonTariffs === null) return null;
+  const comparisonTariffsOrAbort = comparisonTariffs.length === 0 ? null : comparisonTariffs;
   profile.building = {
     type: knownOrUnknown(input.buildingType),
     year: knownOrUnknown(input.buildingYear),
@@ -532,6 +611,7 @@ function buildSubmittedProfile(
     alternativeDemandChargeEuroPerKw: knownOrUnknown(
       input.alternativeDemandChargeEuroPerKw ?? null,
     ),
+    comparisonTariffs: knownOrUnknown(comparisonTariffsOrAbort),
     touImportPricesCtPerKwh: knownOrUnknown(input.touImportPricesCt ?? null),
     coolingKwhPerYear: knownOrUnknown(input.coolingKwhPerYear),
     heatingAcKwhPerYear: knownOrUnknown(input.heatingAcKwhPerYear),

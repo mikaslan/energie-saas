@@ -1268,6 +1268,88 @@ test("M1-11g: F4-04e-Leistungspreis traegt Bills und Serie, Ersparnis unberuehrt
   await expect(page.locator("dt", { hasText: "Jahresspitze Netzbezug (ohne PV" })).toBeVisible();
 });
 
+test("M1-11g: F4-04f-Vergleichstarife tragen Bills und Serie, Ersparnis unberuehrt", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await page.getByLabel("Investition netto (€)").fill("20000");
+  await page.getByLabel("Einspeisevergütung Override (Ct/kWh, leer = EEG-Default)").fill("8");
+  await page.getByLabel("EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)").fill("2024");
+  await page.getByLabel("Vergleichstarif 1 Name (leer = kein Tarif)").fill("Nachtstrom");
+  await page.getByLabel("Vergleichstarif 1 Preis (Ct/kWh, 1–200)").fill("28");
+  await page.getByLabel("Vergleichstarif 2 Name (leer = kein Tarif)").fill("ÖkoPlus");
+  await page.getByLabel("Vergleichstarif 2 Preis (Ct/kWh, 1–200)").fill("32");
+  await page.getByLabel("Vergleichstarif 2 Grundpreis (€/Jahr)").fill("60");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Vergleichstarif-Kette erreichte kein currentV2.");
+  }
+  const economics = expected.calculation.resultV2.value.economics;
+  if (!economics) throw new Error("currentV2 traegt kein economics.");
+  const annual = expected.calculation.resultV2.value.annual;
+  // Zwei Vergleichstarife aufgelöst (Fallbacks: Eskalation/Sätze aktuell);
+  // Jahr 1 = Netzbezug × Preis (+ 60 Grundpreis bei ÖkoPlus).
+  const comparison = economics.comparisonBillsEuro;
+  if (!comparison || comparison.length !== 2) throw new Error("currentV2 traegt keine zwei Vergleichstarife.");
+  expect(comparison.map((bill) => bill.name)).toEqual(["Nachtstrom", "ÖkoPlus"]);
+  expect(comparison[0]!.year1Euro).toBeCloseTo(annual.gridImportKwh * 0.28, 2);
+  expect(comparison[1]!.year1Euro).toBeCloseTo(annual.gridImportKwh * 0.32 + 60, 2);
+  expect(comparison[0]!.seriesEuro).toHaveLength(economics.horizonYears);
+  expect(comparison[0]!.seriesEuro[0]).toBe(comparison[0]!.year1Euro);
+  expect(comparison[1]!.seriesEuro[0]).toBe(comparison[1]!.year1Euro);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  const block = page.locator('[data-energy-calculation-v2-economics="true"]');
+  await expect(block).toBeVisible();
+  await expect(block.locator("dt", { hasText: "Mit PV (Nachtstrom" })).toBeVisible();
+  await expect(block.locator("dt", { hasText: "Mit PV (ÖkoPlus" })).toBeVisible();
+  const table = page.locator('[data-testid="v2-comparison-bills"]');
+  await expect(table).toBeVisible();
+  await expect(table.locator("th", { hasText: "Mit PV (Nachtstrom" })).toBeVisible();
+  await expect(table.locator("th", { hasText: "Mit PV (ÖkoPlus" })).toBeVisible();
+  await expect(table.locator("table tbody tr")).toHaveCount(economics.horizonYears);
+});
+
 test("M1-11g: F4.4b-TOU traegt currentV2-Bill und Ladefahrplan", async ({ page }) => {
   const actorId = await resolveEditorId();
   const workspaceId = await seedIsolatedWorkspace(actorId);

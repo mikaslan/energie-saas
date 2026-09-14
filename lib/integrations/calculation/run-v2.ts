@@ -578,6 +578,10 @@ function assembleResultV2(
     ...(economicsInput.alternativeDemandChargeEuroPerKw === undefined
       ? {}
       : { alternativeDemandChargeEuroPerKw: economicsInput.alternativeDemandChargeEuroPerKw }),
+    // F4-04f: Echo nur bei belegtem Profilfeld (Althashes stabil).
+    ...(economicsInput.comparisonTariffs === undefined
+      ? {}
+      : { comparisonTariffs: economicsInput.comparisonTariffs }),
     horizonYears: economicsInput.horizonYears,
     priceSource: economicsInput.priceSource,
     settingsRevision: economicsInput.settingsRevision,

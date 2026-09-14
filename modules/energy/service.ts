@@ -810,16 +810,15 @@ function normalizeKnownField(
   ) {
     return structuredClone(candidate);
   }
-  // F4.4b TOU-Array: elementweiser Vergleich (Referenz-=== waere bei
-  // gleichen Werten immer "geaendert").
+  // F4.4b TOU-Array / F4-04f Tarif-Array: Tiefenvergleich
+  // (Referenz-=== waere bei gleichen Werten immer "geaendert").
   const submittedValue = submitted.value;
   const candidateValue = candidate.value;
   if (
     submitted.status === candidate.status
     && Array.isArray(submittedValue)
     && Array.isArray(candidateValue)
-    && submittedValue.length === candidateValue.length
-    && submittedValue.every((entry, index) => entry === candidateValue[index])
+    && canonicalizeCalculationJson(submittedValue) === canonicalizeCalculationJson(candidateValue)
   ) {
     return structuredClone(candidate);
   }
@@ -1161,6 +1160,19 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["alternativeDemandChargeEuroPerKw"],
+      // F4-04f Vergleichstarife (optional; fehlt in Altzeilen).
+      comparisonTariffs: normalizeKnownField(
+        submitted.consumption.comparisonTariffs ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.comparisonTariffs ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["comparisonTariffs"],
       // F4.2c Lastgang-CSV (optional; fehlt in Altzeilen).
       customCsvKwh: normalizeKnownField(
         submitted.consumption.customCsvKwh ?? {

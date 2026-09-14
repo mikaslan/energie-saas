@@ -277,6 +277,14 @@
               "minimum": 0,
               "maximum": 10000
             },
+            "comparisonTariffs": {
+              "minItems": 1,
+              "maxItems": 3,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema9"
+              }
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -316,7 +324,7 @@
               "maxItems": 24,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/__schema9"
+                "$ref": "#/$defs/__schema10"
               }
             }
           },
@@ -385,6 +393,44 @@
           "maximum": 1
         },
         "__schema9": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "importPriceCtPerKwh": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "priceEscalationRate": {
+              "type": "number",
+              "minimum": -0.1,
+              "maximum": 0.25
+            },
+            "baseFeeEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "demandChargeEuroPerKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          },
+          "required": [
+            "name",
+            "importPriceCtPerKwh",
+            "priceEscalationRate",
+            "baseFeeEuro",
+            "demandChargeEuroPerKw"
+          ],
+          "additionalProperties": false
+        },
+        "__schema10": {
           "type": "number",
           "minimum": 0,
           "maximum": 200
@@ -612,6 +658,14 @@
               "minimum": 0,
               "maximum": 10000
             },
+            "comparisonTariffs": {
+              "minItems": 1,
+              "maxItems": 3,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema4"
+              }
+            },
             "horizonYears": {
               "type": "integer",
               "minimum": 1,
@@ -638,7 +692,7 @@
               "maxItems": 50,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/__schema4"
+                "$ref": "#/$defs/__schema5"
               }
             },
             "amortizationYears": {
@@ -698,7 +752,15 @@
               "maxItems": 50,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/__schema5"
+                "$ref": "#/$defs/__schema6"
+              }
+            },
+            "comparisonBillsEuro": {
+              "minItems": 1,
+              "maxItems": 3,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema7"
               }
             },
             "tou": {
@@ -721,7 +783,7 @@
                   "maxItems": 24,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema6"
+                    "$ref": "#/$defs/__schema9"
                   }
                 }
               },
@@ -926,9 +988,47 @@
           "additionalProperties": false
         },
         "__schema4": {
-          "type": "number"
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "importPriceCtPerKwh": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "priceEscalationRate": {
+              "type": "number",
+              "minimum": -0.1,
+              "maximum": 0.25
+            },
+            "baseFeeEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "demandChargeEuroPerKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000
+            }
+          },
+          "required": [
+            "name",
+            "importPriceCtPerKwh",
+            "priceEscalationRate",
+            "baseFeeEuro",
+            "demandChargeEuroPerKw"
+          ],
+          "additionalProperties": false
         },
         "__schema5": {
+          "type": "number"
+        },
+        "__schema6": {
           "type": "object",
           "properties": {
             "year": {
@@ -957,7 +1057,39 @@
           ],
           "additionalProperties": false
         },
-        "__schema6": {
+        "__schema7": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "year1Euro": {
+              "type": "number",
+              "minimum": 0
+            },
+            "seriesEuro": {
+              "minItems": 1,
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema8"
+              }
+            }
+          },
+          "required": [
+            "name",
+            "year1Euro",
+            "seriesEuro"
+          ],
+          "additionalProperties": false
+        },
+        "__schema8": {
+          "type": "number",
+          "minimum": 0
+        },
+        "__schema9": {
           "type": "object",
           "properties": {
             "hour": {

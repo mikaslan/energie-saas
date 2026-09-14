@@ -607,7 +607,18 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
             ? "—"
             : euroFormatter.format(economics.alternativeDemandChargeEuroPerKw ?? economics.demandChargeEuroPerKw ?? 0)}
         </DetailItem>
+        {(economics.comparisonBillsEuro ?? []).map((tariff) => (
+          <DetailItem key={tariff.name} term={`Mit PV (${tariff.name})`} numeric>
+            {euroFormatter.format(tariff.year1Euro)}
+          </DetailItem>
+        ))}
       </dl>
+      {economics.comparisonBillsEuro ? (
+        <V2ComparisonBills
+          tariffs={economics.comparisonBillsEuro}
+          horizonYears={economics.horizonYears}
+        />
+      ) : null}
       {economics.annualBillSeriesEuro ? (
         <V2BillSeries
           series={economics.annualBillSeriesEuro}
@@ -697,6 +708,62 @@ function V2BillSeries({
                 <td className="px-4 py-3 text-right">{euroFormatter.format(entry.noPvEuro)}</td>
                 <td className="px-4 py-3 text-right">{euroFormatter.format(entry.currentEuro)}</td>
                 <td className="px-4 py-3 text-right">{euroFormatter.format(entry.newTariffEuro)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function V2ComparisonBills({
+  tariffs,
+  horizonYears,
+}: {
+  tariffs: NonNullable<EconomicsV2["comparisonBillsEuro"]>;
+  horizonYears: number;
+}) {
+  const years = Array.from({ length: horizonYears }, (_, index) => index + 1);
+  return (
+    <div className="mt-5" data-testid="v2-comparison-bills">
+      <h4 className="px-1 text-sm font-semibold text-slate-950">
+        Vergleichstarife je Jahr (gleiche Physik, eigene Sätze)
+      </h4>
+      <div
+        className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+        tabIndex={0}
+        role="region"
+        aria-label="Vergleichstarife je Jahr, horizontal scrollbar"
+      >
+        <table className="min-w-[32rem] w-full border-collapse text-left text-sm tabular-nums">
+          <caption className="px-4 py-3 text-left font-semibold text-slate-950">
+            Vergleichstarife je Jahr
+          </caption>
+          <thead className="bg-slate-50 text-slate-700">
+            <tr>
+              <th scope="col" className="px-4 py-3 font-semibold">Jahr</th>
+              {tariffs.map((tariff) => (
+                <th key={tariff.name} scope="col" className="px-4 py-3 text-right font-semibold">
+                  {`Mit PV (${tariff.name})`}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {years.map((year) => (
+              <tr key={year} className="border-t border-slate-200">
+                <th scope="row" className="px-4 py-3 font-medium text-slate-900">
+                  {year}
+                </th>
+                {tariffs.map((tariff) => {
+                  const value = tariff.seriesEuro[year - 1];
+                  return (
+                    <td key={tariff.name} className="px-4 py-3 text-right">
+                      {value === undefined ? "—" : euroFormatter.format(value)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
