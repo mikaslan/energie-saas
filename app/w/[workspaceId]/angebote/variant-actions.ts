@@ -20,6 +20,7 @@ import {
 import { PermissionDeniedError } from "@/lib/permissions";
 import type {
   ApplyOfferTemplateEditorState,
+  ApplyPackageTemplateEditorState,
   ApplyPlanningTemplateEditorState,
   SetPrimaryVariantEditorState,
   SetTotalOverrideEditorState,
@@ -352,6 +353,61 @@ export async function applyPlanningTemplateEditorAction(
     if (error instanceof offers.OfferValidationError) return { status: "invalid" };
     if (error instanceof planning.PlanningTemplateValidationError) return { status: "invalid" };
     if (error instanceof planning.PlanningTemplateNotFoundError) return { status: "not_found" };
+    if (error instanceof offers.OfferConflictError) return { status: "conflict" };
+    const mapped = mapOfferError(error, offers);
+    if (mapped) return mapped;
+    throw error;
+  }
+}
+
+// F16-11: Paket-Vorlage an einer Variante einsetzen (Custom-Ebene
+// ersetzen). Admission project.write (Revision schreibt die Variante);
+// Preisrechte prüft der Revise-Pfad selbst (denied bei fehlendem
+// price.edit/price.read_purchase). Veraltete Revisionen melden
+// Konflikt, Archiv-Pakete NotFound.
+export async function applyPackageTemplateEditorAction(
+  _previousState: ApplyPackageTemplateEditorState,
+  formData: FormData,
+): Promise<ApplyPackageTemplateEditorState> {
+  const workspaceId = workspaceForAdmission(formData);
+  if (!workspaceId) return { status: "invalid" };
+  const offers = await import("@/modules/offers");
+  const { PACKAGE_TEMPLATE_SCHEMA_VERSION } = await import("@/lib/integrations/offers/package-contract");
+
+  try {
+    const result = await authorizedOfferMutationAction(
+      workspaceId,
+      ["project.write"],
+      "package_template",
+      async (tx, ctx) => {
+        const fields = exactFields(formData, OFFER_TEMPLATE_FIELDS);
+        if (!fields) throw new offers.OfferValidationError();
+        const parsed = z.strictObject({
+          offerId: UUID_SCHEMA,
+          variantId: UUID_SCHEMA,
+          templateId: UUID_SCHEMA,
+          expectedRevision: z.string().regex(/^\d+$/u).transform(Number).refine((value) => Number.isSafeInteger(value) && value >= 1),
+        }).safeParse({
+          offerId: fields.offerId,
+          variantId: fields.variantId,
+          templateId: fields.templateId,
+          expectedRevision: fields.expectedRevision,
+        });
+        if (!parsed.success) throw new offers.OfferValidationError();
+        return offers.applyPackageTemplate(tx, ctx, {
+          schemaVersion: PACKAGE_TEMPLATE_SCHEMA_VERSION,
+          ...parsed.data,
+        });
+      },
+    );
+
+    revalidatePath(`/w/${workspaceId}/angebote/${result.offerId}`);
+    revalidatePath(`/w/${workspaceId}/angebote`);
+    return { status: "success", addedLines: result.addedLines, removedLines: result.removedLines };
+  } catch (error) {
+    if (error instanceof offers.OfferValidationError) return { status: "invalid" };
+    if (error instanceof offers.PackageTemplateValidationError) return { status: "invalid" };
+    if (error instanceof offers.PackageTemplateNotFoundError) return { status: "not_found" };
     if (error instanceof offers.OfferConflictError) return { status: "conflict" };
     const mapped = mapOfferError(error, offers);
     if (mapped) return mapped;

@@ -2539,6 +2539,21 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F16-11 (0148): Paket-Vorlagen — nur workspace-FK, RLS
+  // tenant_isolation, keine Actor-Policies.
+  package_template: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into package_template (
+        id, workspace_id, name, name_normalized, section_title,
+        category, package_lines, active, position, created_by
+      ) values (
+        ${randomUUID()}::uuid, ${wsId}::uuid, 'Fixture Paket',
+        'fixture paket', 'Fixture-Sektion',
+        'other', '[]'::jsonb, true, 0,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
   // F10-12 (0137): Download-Protokoll — workspace-FK + Invite-FK
   // (CASCADE), RLS tenant_isolation, keine Actor-Policies.
   // Eigenständig (Muster portal_view_log): eigener Invite, da die

@@ -77,3 +77,17 @@ export type ApplyPlanningTemplateEditorState =
 export const APPLY_PLANNING_TEMPLATE_INITIAL_STATE = {
   status: "idle",
 } as const satisfies ApplyPlanningTemplateEditorState;
+
+export type ApplyPackageTemplateEditorState =
+  | { status: "idle" }
+  | { status: "invalid" }
+  | { status: "unauthenticated" }
+  | { status: "denied" }
+  | { status: "not_found" }
+  | { status: "conflict" }
+  | { status: "unavailable" }
+  | { status: "success"; addedLines: number; removedLines: number };
+
+export const APPLY_PACKAGE_TEMPLATE_INITIAL_STATE = {
+  status: "idle",
+} as const satisfies ApplyPackageTemplateEditorState;

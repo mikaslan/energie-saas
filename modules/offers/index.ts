@@ -47,6 +47,21 @@ export {
 export type {
   ApplyOfferTemplateResult,
 } from "./templates";
+export {
+  applyPackageTemplate,
+  archivePackageTemplate,
+  createPackageTemplate,
+  listPackageTemplates,
+  normalizePackageTemplateName,
+  PackageTemplateConflictError,
+  PackageTemplateNotFoundError,
+  PackageTemplateValidationError,
+  restorePackageTemplate,
+  updatePackageTemplate,
+} from "./package-templates";
+export type {
+  ApplyPackageTemplateResult,
+} from "./package-templates";
 export type {
   OfferDetailViewModel,
   OfferLeadTimeStats,

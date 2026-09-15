@@ -1232,3 +1232,24 @@ identisch (`983ed67`, 0 unpusht).
 - Belege lokal 2026-09-15: DB f1604e 3/3, Nachbar-DB F1604/A/B/C 15/15,
   E2E F16-04E-E2E-01 1/1, Nachbar-E2E F16-04 6/6, tsc/eslint/depcruise grün.
 - Commit ohne Push (CI läuft: Orakel 34940129955 + Doc-Run; kein Abbruch/Re-Run).
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 38 — F16-11 Paket-Vorlagen, lokal)
+- F16.2-Lücke „Positions-/Paket-Presets" geschlossen (erster Offshoot F16-11):
+  `package_template` per Migration 0148 (RLS tenant_isolation + FORCE, Archiv
+  statt Delete, Journal handgepflegt, generate-check grün), Contract
+  (Sektion + max 50 Zeilen, Stück/Set-ganzzahlig, Cent-Caps), Service
+  (CRUD + Einsetzen: Custom-Ebene ersetzen via Revise-Ops, Add zuerst
+  wegen Positionsarithmetik, Revisions-CAS gegen Halbstand, Steuer fix
+  standard_19, Event payload), Einstellungen-Seite mit dynamischen
+  Positionszeilen (Euro-/Mengen-Parsing fail-closed), Angebots-Panel
+  „Paket einsetzen" (eigene Strings, kein F16-06-Kollisionsraum).
+  Keine neue Permission/Provider.
+- E2E-Befunde dazu: „Name" wieder Teilstring-kollidiert (Positionsname) →
+  „Paketname" (Muster F16-04e); Sektionen brauchen lines min(1) → Seed und
+  Konzept (Add zuerst) in einer Revision. Kein Test-Weakening.
+- Rollenvertrag: 6 Touchpoints + Pin `4c2da239…` per Embedded-Probe
+  geerntet (Methode gegen planning-Pin gegengeprüft), db:roles:verify
+  grün; Tenant-Fixture ergänzt (Invarianten 18/18).
+- Belege lokal 2026-09-15: DB f1611 3/3, E2E F16-11 3/3, Nachbar-E2E
+  F16-06/08/09 9/9, tsc/eslint/depcruise/contract/catalog-import grün.
+- Commit ohne Push (CI läuft; kein Abbruch/Re-Run).

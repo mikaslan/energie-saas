@@ -577,6 +577,10 @@ const PLANNING_TEMPLATE_RELATIONS = [
   "planning_template",
 ] as const;
 
+const PACKAGE_TEMPLATE_RELATIONS = [
+  "package_template",
+] as const;
+
 const EMAIL_TEMPLATE_RELATIONS = [
   "email_template",
 ] as const;
@@ -2940,6 +2944,11 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     PLANNING_TEMPLATE_RELATIONS,
     "Rollen-ACL-Manifest: F16-08-Planungs-Vorlagen",
   );
+  const hasPackageTemplates = await hasAtomicPublicRelationSet(
+    client,
+    PACKAGE_TEMPLATE_RELATIONS,
+    "Rollen-ACL-Manifest: F16-11-Paket-Vorlagen",
+  );
   if (hasPlanningTemplates) {
     await client.query(`
       revoke all privileges on
@@ -2947,6 +2956,17 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.planning_template to app_runtime
+    `);
+  }
+
+  // F16-11: Paket-Vorlagen — Archiv statt Delete (kein DELETE-Grant).
+  if (hasPackageTemplates) {
+    await client.query(`
+      revoke all privileges on
+        public.package_template
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.package_template to app_runtime
     `);
   }
 
@@ -4653,6 +4673,11 @@ export async function verifyRoleContract(
     PLANNING_TEMPLATE_RELATIONS,
     "Rollenvertrag: F16-08-Planungs-Vorlagen",
   );
+  const hasPackageTemplates = await hasAtomicPublicRelationSet(
+    client,
+    PACKAGE_TEMPLATE_RELATIONS,
+    "Rollenvertrag: F16-11-Paket-Vorlagen",
+  );
   const hasEmailTemplates = await hasAtomicPublicRelationSet(
     client,
     EMAIL_TEMPLATE_RELATIONS,
@@ -4983,6 +5008,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPackageTemplates ? PACKAGE_TEMPLATE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasEmailTemplates ? EMAIL_TEMPLATE_RELATIONS.map(
@@ -6326,6 +6354,9 @@ export async function verifyRoleContract(
       ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasPackageTemplates ? PACKAGE_TEMPLATE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasEmailTemplates ? EMAIL_TEMPLATE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6770,6 +6801,11 @@ export async function verifyRoleContract(
         // geerntet, Methode gegen file_request-Pin gegengeprüft).
         ...(hasPlanningTemplates ? [
           "planning_template:tenant_isolation:8be1690547ba95dd467d0f15cb959830845dd929a6de4caff76b5b662d601315",
+        ] : []),
+        // F16-11 (0148): Paket-Vorlagen (Hash per Embedded-Probe
+        // geerntet, Methode gegen planning-Pin gegengeprüft).
+        ...(hasPackageTemplates ? [
+          "package_template:tenant_isolation:4c2da2394f0e8069c557461796462f32112a6d50d9bc2add92d0ba53f7246b6a",
         ] : []),
         // F16-10 (0139): E-Mail-Vorlagen (Hash per Gate-Ist geerntet,
         // Methode gegen file_request-Pin gegengeprüft).
@@ -7366,6 +7402,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasPlanningTemplates ? PLANNING_TEMPLATE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasPackageTemplates ? PACKAGE_TEMPLATE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

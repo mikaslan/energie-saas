@@ -7,6 +7,7 @@ import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import { OfferVariantControlsPanel } from "./offer-variant-controls-panel";
 import { OfferPaymentOptionPanel } from "./offer-payment-option-panel";
 import { OfferTemplateApplyPanel } from "./offer-template-apply-panel";
+import { PackageTemplateApplyPanel } from "./package-template-apply-panel";
 import { PlanningTemplateApplyPanel } from "./planning-template-apply-panel";
 import {
   OfferIssuancePanel,
@@ -197,6 +198,8 @@ export interface OfferDetailSurfaceView {
     canApplyOfferTemplate?: boolean;
     // F16-08: optional, wie canApplyOfferTemplate.
     canApplyPlanningTemplate?: boolean;
+    // F16-11: optional, wie canApplyPlanningTemplate.
+    canApplyPackageTemplate?: boolean;
     canEditPurchasePrice: boolean;
     canGeneratePdf: boolean;
     canPrepareRelease: boolean;
@@ -259,6 +262,12 @@ export interface OfferDetailSurfaceView {
     id: string;
     name: string;
     mode: "quick" | "2d" | "3d";
+  }[];
+  // F16-11: aktive Paket-Vorlagen für das Einsetzen an der Variante.
+  packageTemplates?: readonly {
+    id: string;
+    name: string;
+    lineCount: number;
   }[];
   // F7-09: serverseitig aus dem versiegelten Snapshot projizierte
   // Anlagenkennzahlen (reine Aggregate, keine Rohdaten).
@@ -891,6 +900,15 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
               templates={view.planningTemplates ?? []}
             />
           ) : null}
+          {canEdit && view.permissions?.canApplyPackageTemplate === true && (view.packageTemplates ?? []).length > 0 ? (
+            <PackageTemplateApplyPanel
+              workspaceId={view.workspaceId}
+              offerId={view.offer.id}
+              variantId={snapshot.variantId}
+              expectedRevision={snapshot.revision}
+              templates={view.packageTemplates ?? []}
+            />
+          ) : null}
         </div>
       </div>
     );
@@ -1043,6 +1061,11 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           {(view.planningTemplates ?? []).length > 0 ? (
             <p className="text-sm text-slate-600">
               Planungs-Vorlagen: {(view.planningTemplates ?? []).map((template) => template.name).join(", ")}
+            </p>
+          ) : null}
+          {(view.packageTemplates ?? []).length > 0 ? (
+            <p className="text-sm text-slate-600">
+              Paket-Vorlagen: {(view.packageTemplates ?? []).map((template) => template.name).join(", ")}
             </p>
           ) : null}
         </div>

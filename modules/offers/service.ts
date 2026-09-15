@@ -1762,7 +1762,7 @@ async function lockVariant(
   return variant;
 }
 
-async function readValidatedRevision(
+export async function readValidatedRevision(
   tx: TenantTx,
   ctx: ServiceCtx,
   offerId: string,
