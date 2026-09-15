@@ -25,8 +25,10 @@ import {
   type ArchiveTaskTemplateCommand,
   type CreateTaskTemplateCommand,
   type TaskTemplateDto,
+  type TaskTemplateLabelItem,
   type UpdateTaskTemplateCommand,
 } from "@/lib/integrations/tasks/template-contract";
+import { taskLabelColors } from "@/lib/integrations/tasks/contract";
 import {
   TaskTemplateConflictError,
   TaskTemplateNotFoundError,
@@ -81,6 +83,7 @@ type TemplateRow = {
   due_offset_days: number | null;
   assignee_membership_ids: string[] | null;
   checklist_items: unknown;
+  label_items: unknown;
   position: number;
   active: boolean;
   created_at: string;
@@ -89,7 +92,7 @@ type TemplateRow = {
 
 const TEMPLATE_SELECT = sql`
   select id, name, title, due_offset_days,
-         assignee_membership_ids, checklist_items,
+         assignee_membership_ids, checklist_items, label_items,
          position, active, created_at, updated_at
     from task_template
 `;
@@ -113,6 +116,37 @@ function storedChecklistItems(value: unknown): { text: string }[] {
 
 function checklistJsonLiteral(items: readonly { text: string }[]) {
   return sql`${JSON.stringify(items.map((item) => ({ text: item.text })))}::jsonb`;
+}
+
+// F16-04e: gespeicherte Label-Inhalte lesen (DB-Check sichert Array;
+// fremde Formen entfallen defensiv — Schreiben validiert strikt).
+// Farbe fällt bei unbekanntem Wert auf "slate" (Legacy-Toleranz,
+// Schreiben kennt nur die sechs Farben).
+const LABEL_COLORS = new Set<string>(taskLabelColors);
+function storedLabelItems(value: unknown): TaskTemplateLabelItem[] {
+  if (!Array.isArray(value)) return [];
+  const items: TaskTemplateLabelItem[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const record = entry as { name?: unknown; color?: unknown };
+    if (typeof record.name !== "string") continue;
+    const name = record.name.normalize("NFKC").trim();
+    if (name.length < 1 || name.length > 40) continue;
+    if (/[\u0000-\u001f\u007f-\u009f]/u.test(name)) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const color = typeof record.color === "string" && LABEL_COLORS.has(record.color)
+      ? (record.color as TaskTemplateLabelItem["color"])
+      : "slate";
+    items.push({ name, color });
+  }
+  return items;
+}
+
+function labelJsonLiteral(items: readonly TaskTemplateLabelItem[]) {
+  return sql`${JSON.stringify(items.map((item) => ({ name: item.name, color: item.color })))}::jsonb`;
 }
 
 async function resolveAssigneeOptions(
@@ -162,6 +196,7 @@ async function toDto(
     assignees: resolved.live,
     departedAssigneeMembershipIds: resolved.departedIds,
     checklistItems: storedChecklistItems(row.checklist_items),
+    labelItems: storedLabelItems(row.label_items),
     position: row.position,
     active: row.active,
     createdAt: row.created_at,
@@ -247,13 +282,14 @@ export async function createTaskTemplate(
   const assignees = [...new Set(command.assigneeMembershipIds ?? [])];
   await validateTemplateAssignees(tx, ctx.workspaceId, assignees);
   const checklist = command.checklistItems ?? [];
+  const labels = command.labelItems ?? [];
 
   let row: TemplateRow;
   try {
     const inserted = await tx.execute<TemplateRow>(sql`
       insert into task_template (
         workspace_id, name, name_normalized, title, due_offset_days,
-        assignee_membership_ids, checklist_items, position, created_by
+        assignee_membership_ids, checklist_items, label_items, position, created_by
       ) values (
         ${ctx.workspaceId}::uuid,
         ${command.name},
@@ -262,11 +298,12 @@ export async function createTaskTemplate(
         ${command.dueOffsetDays ?? null},
         ${uuidArrayLiteral(assignees)},
         ${checklistJsonLiteral(checklist)},
+        ${labelJsonLiteral(labels)},
         ${command.position ?? 0},
         ${ctx.actor}::uuid
       )
       returning id, name, title, due_offset_days, assignee_membership_ids,
-                checklist_items, position, active, created_at, updated_at
+                checklist_items, label_items, position, active, created_at, updated_at
     `);
     row = inserted.rows[0]!;
   } catch (error) {
@@ -334,13 +371,14 @@ export async function updateTaskTemplate(
              due_offset_days = ${command.dueOffsetDays ?? null},
              assignee_membership_ids = ${uuidArrayLiteral(assignees)},
              checklist_items = ${checklistJsonLiteral(command.checklistItems ?? [])},
+             label_items = ${labelJsonLiteral(command.labelItems ?? [])},
              position = ${command.position},
              updated_by = ${ctx.actor}::uuid,
              updated_at = statement_timestamp()
        where workspace_id = ${ctx.workspaceId}::uuid
          and id = ${command.id}::uuid
       returning id, name, title, due_offset_days, assignee_membership_ids,
-                checklist_items, position, active, created_at, updated_at
+                checklist_items, label_items, position, active, created_at, updated_at
     `);
     rows = updated.rows;
   } catch (error) {
@@ -498,6 +536,11 @@ export async function applyTaskTemplate(
   // an der eigenen Vorlage).
   const checklist = storedChecklistItems(template.checklist_items)
     .map((item) => ({ text: item.text, done: false }));
+  // F16-04e: Vorlagen-Labels werden als Task-Labels übernommen (Name +
+  // Farbe 1:1, IDs/Positionen vergibt die Task-Anlage; Texte sind
+  // schreibseitig validiert — Anwenden scheitert nie an der Vorlage).
+  const labels = storedLabelItems(template.label_items)
+    .map((item) => ({ name: item.name, color: item.color }));
   const created = await executeProjectTaskCommand(tx, ctx, {
     schemaVersion: PROJECT_TASK_COMMAND_VERSION,
     kind: "create",
@@ -507,7 +550,7 @@ export async function applyTaskTemplate(
     dueDate,
     assigneeMembershipIds,
     checklist,
-    labels: [],
+    labels,
   });
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
@@ -515,7 +558,7 @@ export async function applyTaskTemplate(
     aggregateId: template.id,
     eventType: "task_template.applied",
     actor: ctx.actor,
-    payload: { projectId: created.projectId, taskId: created.taskId, assigneeCount: assigneeMembershipIds.length, checklistCount: checklist.length },
+    payload: { projectId: created.projectId, taskId: created.taskId, assigneeCount: assigneeMembershipIds.length, checklistCount: checklist.length, labelCount: labels.length },
   });
   return { ...created, templateId: template.id };
 }

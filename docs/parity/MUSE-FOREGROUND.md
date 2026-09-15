@@ -1216,3 +1216,19 @@ identisch (`983ed67`, 0 unpusht).
 - Damit DASH-01..10 geschlossen (alle IMPLEMENTIERT/LOKAL VERIFIZIERT,
   Q-DASHBOARD-REFERENZ weiter offen). Nächste unblockierte Lücke: F14-Katalog
   (SPECIFIED) gegen Q-F14-KI-PROVIDER prüfen.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 37 — F16-04e Vorlagen-Labels, lokal)
+- F16-04d-Offenpunkt „Vorlagen mit Label-Inhalt" geschlossen (F16-04e):
+  `label_items` jsonb per Migration 0147 (Generator-SQL + Check Cap 15 =
+  PROJECT_TASK_MAX_LABELS; Journal-Tag/Snapshot nach Konvention benannt),
+  Contract-Schema (Name NFKC/1..40/ohne Steuerzeichen, Farbe eine der sechs
+  Task-Farben, Duplikat-Guard case-insensitiv), Service (CRUD + Apply mit
+  Label-Übernahme 1:1, IDs/Positionen vergibt die Task-Anlage; Event-Payload
+  + labelCount), Actions-Parsing (`Name | Farbe`, Default slate, fail-closed),
+  UI (Textarea + „N Labels"-Kartenzähler). Keine neue Permission/Provider.
+- E2E-Befund dazu: Textarea-Label enthielt „Name" als Teilstring —
+  `getByLabel("Name")` strict-violation (2 Treffer); Label neutral
+  umbenannt („Farbe mit | trennen"), kein Test-Weakening.
+- Belege lokal 2026-09-15: DB f1604e 3/3, Nachbar-DB F1604/A/B/C 15/15,
+  E2E F16-04E-E2E-01 1/1, Nachbar-E2E F16-04 6/6, tsc/eslint/depcruise grün.
+- Commit ohne Push (CI läuft: Orakel 34940129955 + Doc-Run; kein Abbruch/Re-Run).

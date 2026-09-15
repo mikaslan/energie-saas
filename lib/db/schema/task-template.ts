@@ -30,6 +30,8 @@ export const taskTemplate = pgTable(
     assigneeMembershipIds: uuid("assignee_membership_ids").array().notNull().default([]),
     // F16-04d: Checklisten-Inhalt (reine Texte als JSON-Array, leer = ohne).
     checklistItems: jsonb("checklist_items").notNull().default([]),
+    // F16-04e: Label-Inhalt (Name + Farbe als JSON-Array, leer = ohne).
+    labelItems: jsonb("label_items").notNull().default([]),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
     createdBy: uuid("created_by").notNull(),
@@ -49,6 +51,7 @@ export const taskTemplate = pgTable(
     check("task_template_due_offset_ck", sql`${t.dueOffsetDays} is null or (${t.dueOffsetDays} between 0 and 3650)`),
     check("task_template_assignees_ck", sql`pg_catalog.cardinality(${t.assigneeMembershipIds}) <= 50`),
     check("task_template_checklist_ck", sql`jsonb_typeof(${t.checklistItems}) = 'array' and jsonb_array_length(${t.checklistItems}) <= 100`),
+    check("task_template_labels_ck", sql`jsonb_typeof(${t.labelItems}) = 'array' and jsonb_array_length(${t.labelItems}) <= 15`),
     check("task_template_position_ck", sql`${t.position} >= 0`),
     check("task_template_timestamps_ck", sql`${t.updatedAt} >= ${t.createdAt} and pg_catalog.isfinite(${t.createdAt}) and pg_catalog.isfinite(${t.updatedAt})`),
     foreignKey({

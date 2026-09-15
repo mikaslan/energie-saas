@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { PROJECT_TASK_MAX_ASSIGNEES, PROJECT_TASK_MAX_CHECKLIST_ITEMS } from "./contract";
+import { PROJECT_TASK_MAX_ASSIGNEES, PROJECT_TASK_MAX_CHECKLIST_ITEMS, PROJECT_TASK_MAX_LABELS, taskLabelColors } from "./contract";
 
 // F16-04 Aufgaben-Vorlagen — interner DTO-/Command-Vertrag.
 // Titel-Preset + optionaler Fälligkeits-Offset (Tage ab heute,
@@ -61,6 +61,29 @@ const templateChecklistItemsSchema = z.array(templateChecklistItemSchema).max(
   PROJECT_TASK_MAX_CHECKLIST_ITEMS,
 );
 
+// F16-04e: Label-Inhalt je Vorlage (Name + Farbe wie Task-Labels;
+// Duplikate case-insensitiv verweigert wie der Task-Vertrag).
+// IDs entstehen erst beim Anwenden — Vorlagen kennen nur Inhalt.
+const templateLabelItemSchema = z.strictObject({
+  name: z
+    .string()
+    .transform((v) => v.normalize("NFKC").trim())
+    .refine((v) => v.length >= 1 && v.length <= 40, { message: "ungültige Länge" })
+    .refine((v) => !/[\u0000-\u001f\u007f-\u009f]/u.test(v), {
+      message: "control characters are not allowed",
+    }),
+  color: z.enum(taskLabelColors),
+});
+export type TaskTemplateLabelItem = z.infer<typeof templateLabelItemSchema>;
+const templateLabelItemsSchema = z.array(templateLabelItemSchema).max(
+  PROJECT_TASK_MAX_LABELS,
+).superRefine((labels, ctx) => {
+  const keys = labels.map(({ name }) => name.toLowerCase());
+  if (new Set(keys).size !== keys.length) {
+    ctx.addIssue({ code: "custom", message: "duplicate label" });
+  }
+});
+
 export const taskTemplateDtoSchema = z.object({
   schemaVersion: z.literal(TASK_TEMPLATE_SCHEMA_VERSION),
   id: z.string().uuid(),
@@ -71,6 +94,7 @@ export const taskTemplateDtoSchema = z.object({
   assignees: z.array(assigneeOptionSchema).max(PROJECT_TASK_MAX_ASSIGNEES),
   departedAssigneeMembershipIds: assigneeMembershipIdsSchema,
   checklistItems: templateChecklistItemsSchema,
+  labelItems: templateLabelItemsSchema,
   position: z.number().int().min(0),
   active: z.boolean(),
   createdAt: z.string(),
@@ -86,6 +110,7 @@ export const createTaskTemplateCommandSchema = z.object({
   dueOffsetDays: dueOffsetDaysSchema.nullable().optional(),
   assigneeMembershipIds: assigneeMembershipIdsSchema.optional(),
   checklistItems: templateChecklistItemsSchema.optional(),
+  labelItems: templateLabelItemsSchema.optional(),
   position: z.number().int().min(0).optional(),
 });
 export type CreateTaskTemplateCommand = z.infer<typeof createTaskTemplateCommandSchema>;
@@ -98,6 +123,7 @@ export const updateTaskTemplateCommandSchema = z.object({
   dueOffsetDays: dueOffsetDaysSchema.nullable().optional(),
   assigneeMembershipIds: assigneeMembershipIdsSchema.optional(),
   checklistItems: templateChecklistItemsSchema.optional(),
+  labelItems: templateLabelItemsSchema.optional(),
   position: z.number().int().min(0),
 });
 export type UpdateTaskTemplateCommand = z.infer<typeof updateTaskTemplateCommandSchema>;

@@ -261,6 +261,17 @@ function TemplateForm({
           className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
         />
       </label>
+      <label className="grid gap-1 text-sm font-semibold text-slate-800">
+        Labels (eine Zeile je Label, Farbe mit | trennen, leer = ohne)
+        <textarea
+          name="labelText"
+          rows={2}
+          maxLength={1_000}
+          defaultValue={(template?.labelItems ?? []).map((item) => item.color === "slate" ? item.name : `${item.name} | ${item.color}`).join("\n")}
+          placeholder={"z. B.\nDringend | rose\nFörderung | emerald"}
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
+        />
+      </label>
       <div>
         <AssigneePicker
           workspaceId={workspaceId}
@@ -322,6 +333,13 @@ export function TaskTemplateManager({
                 {template.checklistItems.length === 1
                   ? "1 Checklistenpunkt"
                   : `${template.checklistItems.length} Checklistenpunkte`}
+              </p>
+            ) : null}
+            {template.labelItems.length > 0 ? (
+              <p className="mt-1 text-sm text-slate-500">
+                {template.labelItems.length === 1
+                  ? "1 Label"
+                  : `${template.labelItems.length} Labels`}
               </p>
             ) : null}
             {canWrite ? (

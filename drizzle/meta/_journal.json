@@ -1030,6 +1030,13 @@
       "when": 1789387574998,
       "tag": "0146_f16_04d_vorlagen_checkliste",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1789457366201,
+      "tag": "0147_f16_04e_vorlagen_labels",
+      "breakpoints": true
     }
   ]
 }

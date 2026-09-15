@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authorizedAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
-import { PROJECT_TASK_MAX_ASSIGNEES, PROJECT_TASK_MAX_CHECKLIST_ITEMS } from "@/lib/integrations/tasks/contract";
+import { PROJECT_TASK_MAX_ASSIGNEES, PROJECT_TASK_MAX_CHECKLIST_ITEMS, PROJECT_TASK_MAX_LABELS, taskLabelColors, type TaskLabelColor } from "@/lib/integrations/tasks/contract";
 import { TASK_TEMPLATE_SCHEMA_VERSION } from "@/lib/integrations/tasks/template-contract";
 import {
   archiveTaskTemplate,
@@ -94,8 +94,35 @@ function parseChecklistItems(value: FormDataEntryValue | null): { text: string }
   return items;
 }
 
+// F16-04e: Label-Textarea (eine Zeile je Label: `Name` oder
+// `Name | farbe`; Farbe eine der sechs Task-Farben, Default slate).
+// Trim + Leerzeilen-Drop serverseitig; Bereich/Duplikat/Cap prüft der
+// Service fail-closed (nichts still kappen).
+const TEMPLATE_LABEL_COLORS = new Set<string>(taskLabelColors);
+function parseLabelItems(value: FormDataEntryValue | null): { name: string; color: TaskLabelColor }[] | null {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  const items: { name: string; color: TaskLabelColor }[] = [];
+  for (const rawLine of value.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (line === "") continue;
+    const [rawName, rawColor, ...rest] = line.split("|");
+    if (rest.length > 0) return null;
+    const name = (rawName ?? "").normalize("NFKC").trim();
+    if (name.length < 1 || name.length > 40 || /[\p{Cc}\p{Cf}]/u.test(name)) return null;
+    let color: TaskLabelColor = "slate";
+    if (rawColor !== undefined) {
+      const parsed = rawColor.normalize("NFKC").trim().toLowerCase();
+      if (!TEMPLATE_LABEL_COLORS.has(parsed)) return null;
+      color = parsed as TaskLabelColor;
+    }
+    items.push({ name, color });
+  }
+  if (items.length > PROJECT_TASK_MAX_LABELS) return null;
+  return items;
+}
+
 function parseFields(formData: FormData):
-  | { name: string; title: string; dueOffsetDays: number | null; position: number; assigneeMembershipIds: string[]; checklistItems: { text: string }[] }
+  | { name: string; title: string; dueOffsetDays: number | null; position: number; assigneeMembershipIds: string[]; checklistItems: { text: string }[]; labelItems: { name: string; color: TaskLabelColor }[] }
   | null {
   const name = parseText(formData.get("name"), 200);
   const title = parseText(formData.get("title"), 200);
@@ -116,7 +143,9 @@ function parseFields(formData: FormData):
   if (merged.length > PROJECT_TASK_MAX_ASSIGNEES) return null;
   const checklistItems = parseChecklistItems(formData.get("checklistText"));
   if (checklistItems === null) return null;
-  return { name, title, dueOffsetDays, position, assigneeMembershipIds: merged, checklistItems };
+  const labelItems = parseLabelItems(formData.get("labelText"));
+  if (labelItems === null) return null;
+  return { name, title, dueOffsetDays, position, assigneeMembershipIds: merged, checklistItems, labelItems };
 }
 
 function mapError(error: unknown): TaskTemplateActionState {
@@ -146,6 +175,7 @@ export async function createTaskTemplateAction(
         dueOffsetDays: fields.dueOffsetDays,
         assigneeMembershipIds: fields.assigneeMembershipIds,
         checklistItems: fields.checklistItems,
+        labelItems: fields.labelItems,
         position: fields.position,
       }),
     );
@@ -175,6 +205,7 @@ export async function updateTaskTemplateAction(
         dueOffsetDays: fields.dueOffsetDays,
         assigneeMembershipIds: fields.assigneeMembershipIds,
         checklistItems: fields.checklistItems,
+        labelItems: fields.labelItems,
         position: fields.position,
       }),
     );
