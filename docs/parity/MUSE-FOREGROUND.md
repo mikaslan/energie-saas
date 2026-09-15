@@ -1203,3 +1203,16 @@ identisch (`983ed67`, 0 unpusht).
   kein Code-Eingriff. DASH-07-Daten bestand in diesem Run (PASS).
 - Push `86bf385` mit grünem Pre-Push-Hook; CI `34900582752` läuft als
   Re-Orakel (M115B-Fix + m2-04-Flake-Hypothese).
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 36 — DASH-08-Spec-Stand + CI-Orakel läuft)
+- Push `5dc9fe0` (M1-12a-Mitternachts-Fix) via Pre-Push-Gate auf Origin;
+  Branch synchron, Tree clean. CI `34940129955` läuft als Re-Orakel
+  (M115B-Fix + M1-12a-Fix + m2-04-Lastklassen-Hypothese).
+- DASH-01..10-Verifikation: DASH-08 war der einzige Slice ohne Stand-Zeile —
+  Code (`getLeadSourcePipelineStats`, Cap-200-fail-closed, archivierte
+  Quellen lesbar, 0-Bucket ehrlich), DB-Test (DASH08-DB-01/02) und E2E
+  (DASH-01-Leerzustand + DASH-08-Daten) existieren; DB-Datei am 2026-09-15
+  lokal 2/2 beobachtet. Nur Spec-Header nachgetragen, kein Code-Eingriff.
+- Damit DASH-01..10 geschlossen (alle IMPLEMENTIERT/LOKAL VERIFIZIERT,
+  Q-DASHBOARD-REFERENZ weiter offen). Nächste unblockierte Lücke: F14-Katalog
+  (SPECIFIED) gegen Q-F14-KI-PROVIDER prüfen.

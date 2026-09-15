@@ -1,5 +1,12 @@
 # DASH-08 Pipeline nach Quelle
 
+Stand: IMPLEMENTIERT/LOKAL VERIFIZIERT (Scope `getLeadSourcePipelineStats`
+mit Cap-200-fail-closed + UUID-Guard, DB DASH08 2/2 am 2026-09-15 lokal
+beobachtet, E2E DASH-01-Leerzustand + DASH-08-Daten in
+`dashboard-overview.spec.ts`; kein Code-Eingriff). Wie DASH-01–07: kein
+Reonic-Referenzbeleg (Q-DASHBOARD-REFERENZ offen); Auswahl und Layout sind
+reversible eigene Naeherung (ESTIMATE).
+
 Ziel: Offene Board-Projekte je Lead-Quelle (gleiche Menge wie Pipeline),
 aus eigenen Daten, rein lesend.
 
