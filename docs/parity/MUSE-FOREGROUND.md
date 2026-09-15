@@ -1378,3 +1378,24 @@ identisch (`983ed67`, 0 unpusht).
   kein Nachfolge-Push, Timeout nicht erreicht) = reine Runner-Infra.
   Kein Code-Fix; verifizierter Inhalts-Push (M1-08c + Specs) triggert das
   Ersatz-Orakel neu — kein blinder Re-run.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 47 — Push ea27287 raus)
+- Vorderbau 42 via Gate GRÜN auf Origin (lint/typecheck/Volltestsuite,
+  Exit 0). HEAD = Origin = ea27287.
+- Neues Orakel 34961142567 läuft (Start 11:02). Offen: auswerten; bei Grün
+  nächsten F16-Rest-Slice bauen, bei Rot Befund dem Commit zuordnen.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 48 — Orakel 42567: 1 Fix + 2 Flakes)
+- 34961142567 (ea27287): 255/259, Gates grün. Alle eigenen Slices im Verbund
+  grün (F16-11 4/4, F16-12, F16-13, M1-08C 2/2).
+- ECHT (Commit-Reichweite): Triage-Viewer-Axe `scrollable-region-focusable`
+  durch meine Verlaufstabelle (overflow-x-auto ohne Fokus). Fix mit
+  Repo-Präzedenz (role=region/aria-label/tabIndex=0), Triage-File lokal 7/7.
+- FLAKES (außerhalb Reichweite, Blast-Radius ea27287 = Katalog-only):
+  m2-03a-Download (12-s-Timeout vs. 7–12-s-PDF-Render), m2-04-Revoke-Race;
+  beide im Vor-Orakel 34950834932 grün, m2-04-File lokal 5/5.
+  Lokale Einzel-Läufe beweisen hier nichts (serielle Seed-Ketten:
+  m1-05 braucht Board-Karte aus Vortests, m2-03a das Browser-Angebot).
+- Dazu: `npm run handover` (`scripts/handover.mts`) — Gerätewechsel-Check
+  mit Vault-Notiz `Handover-Stand.md` (nur SHAs/Dateinamen/CI-Titel).
+  Commit + Push als Vorderbau 43 (Fix + Tool), kein blinder Re-run.

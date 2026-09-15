@@ -192,7 +192,7 @@ export default async function CatalogComponentPage({
             </Section>
 
             <Section title="Revisionsverlauf" intro="Jede gespeicherte Revision bleibt unveränderlich lesbar; Preis- und Detailstände gelten je Revision.">
-              <div className="overflow-x-auto">
+              <div role="region" aria-label="Revisionsverlauf" tabIndex={0} className="overflow-x-auto rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600">
                 <table className="w-full min-w-135 border-collapse text-sm leading-6" data-testid="catalog-revision-history">
                   <thead>
                     <tr className="border-b border-slate-200 text-left text-xs font-semibold tracking-wide text-slate-500 uppercase">

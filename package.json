@@ -14,6 +14,7 @@
     "test:unit": "tsx scripts/run-tests.mts tests/unit",
     "test:focus": "tsx scripts/run-tests.mts -t",
     "test:e2e": "tsx tests/e2e/run.mts",
+    "handover": "tsx scripts/handover.mts",
     "depcruise": "depcruise modules lib app worker scripts --config .dependency-cruiser.cjs",
     "check": "npm run lint && npm run typecheck && npm run contract:catalog-import && npm run depcruise && npm run test && npm run db:roles:verify",
     "db:generate": "drizzle-kit generate",
