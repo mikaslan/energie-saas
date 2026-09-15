@@ -1253,3 +1253,23 @@ identisch (`983ed67`, 0 unpusht).
 - Belege lokal 2026-09-15: DB f1611 3/3, E2E F16-11 3/3, Nachbar-E2E
   F16-06/08/09 9/9, tsc/eslint/depcruise/contract/catalog-import grün.
 - Commit ohne Push (CI läuft; kein Abbruch/Re-Run).
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 39 — Orakel 34940129955 + Pins + Push)
+- CI 34940129955 (5dc9fe0: M115B-Fix + M1-12a-Fix): Statik GRÜN
+  (M115B-Race-Fix hält im CI, M1-12a-Specs 203–210/250 alle grün),
+  E2E 249/250. Einziger Fehler: m2-03a `toBeFocused` auf das
+  Invalid-Approval-Feedback (12 s „inactive") — Last-Klasse mit
+  Flake-Historie (Fokus-Poll/Suspense, PDF-Poll, OTP), kein Bezug zu
+  den Commits im Run (Kalender-DB, Datums-Assertion, Docs).
+- Gegenprobe lokal 2026-09-15: Kette m2-01-Angebot + exakt dieser
+  m2-03a-Test 2/2 grün (isoliert geht m2-03a nicht — braucht das
+  Browser-Angebot aus m2-01 im selben Run). Kein Code-Eingriff
+  (kein Test-Weakening, keine Helper-Retries).
+- Gate-Befund beim Push: 7 m111a-Tests rot — eine Ursache:
+  Count-/Journal-Pins (147→149, Tail 0146→0148) waren bei 0147/0148
+  nicht nachgezogen (Konvention jeder migrationsbringenden Slice).
+  Pins aktualisiert, m111a 16/16 lokal grün, separater Commit
+  `a35f96b`. Push `d534702..a35f96b` via Gate GRÜN auf Origin.
+- Offen: CI-Orakel für a35f96b abwarten; F16-Rest (Linked amounts,
+  0-%-Pakete, Katalog-Zeilen) + blockierte Fragen (F14, Storage,
+  Funnel, Visual-Baselines).
