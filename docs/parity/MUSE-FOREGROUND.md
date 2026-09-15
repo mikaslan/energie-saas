@@ -1399,3 +1399,37 @@ identisch (`983ed67`, 0 unpusht).
 - Dazu: `npm run handover` (`scripts/handover.mts`) — Gerätewechsel-Check
   mit Vault-Notiz `Handover-Stand.md` (nur SHAs/Dateinamen/CI-Titel).
   Commit + Push als Vorderbau 43 (Fix + Tool), kein blinder Re-run.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 49 — Push 5382028 raus)
+- Vorderbau 43 via Gate GRÜN auf Origin (lint/typecheck/Volltestsuite,
+  Exit 0). HEAD = Origin = 5382028.
+- Neues Orakel 34994695631 läuft (Start 16:23). Offen: auswerten; bei Grün
+  nächsten F16-Rest-Slice bauen, bei Rot Befund dem Commit zuordnen.
+- Vault-Ablage 15.09. gesichert (Datei 25 + 00/01/02/03/04/_index).
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 50 — F16-13b lokal, UNCOMMITTIERT)
+- Echter fehlender Pfad: Paket-Picker lud max. 200 Aktive ins Select —
+  dahinter still unsichtbar. F16-13b Server-Suche: Suchfeld je Zeile
+  (Debounce, min. 2, max. 120, NFKC), Action unter discount_template.read
+  + catalog.read mit Cap 50 und EK-Redaktion, Treffer-Pool im Manager
+  (Anlege- + Bearbeiten-Formulare lösen gesuchte Bindungen auf), Select/
+  Labels/Bindelogik unverändert, bestehende E2E unmodifiziert.
+- Spec docs/spec/F16-13b-paket-picker-suche.md; Unit f1613b 2/2;
+  E2E F16-13B 1/1 (201 Füller + Ziel hinter 200: unsichtbar ohne Suche,
+  1 Treffer mit Suche, binden, speichern, Bearbeiten-Nachweis);
+  Regression F16-13 2/2 + F16-11 4/4, tsc/eslint grün.
+- Echter E2E-Fund unterwegs gefixt: Treffer-Pool erst pro Formular
+  (Bearbeiten fand gesuchte Bindung nicht) → Pool in den Manager gehoben.
+- Commit+Push erst nach grünem Orakel 34994695631.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 51 — Orakel 631: Flake + Infra)
+- 34994695631 (5382028): Gates grün; F301-E2E-04 Content-Lock-Race EINZIGER
+  Testfehler — außerhalb Reichweite (Commit = Katalog-Axe + Tool + Docs),
+  im Vor-Orakel grün, lokal grün (24 s) → Last-Flake, kein Code-Fix.
+  Danach 2. Runner-Shutdown bei [242/257] (Infra, kein Nachfolge-Push).
+- Verifizierter Inhalts-Push (F16-13b, Vollgate 404/2881) als Vorderbau 44 —
+  kein blinder Re-run.
+- Rest-Survey: Katalogliste kappt ehrlich mit Hinweis (data-catalog-list-state
+  capped), Drift läuft über Stale-Banner + Snapshot + M1-08c-Verlauf,
+  einziger Limit-Pfad (list, 200) ist abgedeckt — kein weiterer stiller
+  Schnitt. Volles lokales Gate mit F16-13b GRÜN (404/2881, Exit 0).

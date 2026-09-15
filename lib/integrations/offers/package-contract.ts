@@ -11,6 +11,27 @@ import { z } from "zod";
 
 export const PACKAGE_TEMPLATE_SCHEMA_VERSION = 1;
 
+// F16-13b Picker-Suche: Suchtext für die serverseitige Katalogsuche im
+// Paket-Picker (min. 2 Zeichen wie die Projekt-Katalogsuche, max. 120 wie
+// die Listenfilter; NFKC-Trim, keine Steuerzeichen). Ungültig → null
+// (keine Suche, leere Treffer — kein Fehler-Orakel).
+export const PACKAGE_BINDING_SEARCH_MIN = 2;
+export const PACKAGE_BINDING_SEARCH_MAX = 120;
+export const PACKAGE_BINDING_SEARCH_LIMIT = 50;
+
+export function normalizeBindingSearchQuery(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const query = value.normalize("NFKC").trim();
+  if (
+    query.length < PACKAGE_BINDING_SEARCH_MIN
+    || query.length > PACKAGE_BINDING_SEARCH_MAX
+    || /[\p{Cc}\p{Cf}]/u.test(query)
+  ) {
+    return null;
+  }
+  return query;
+}
+
 export const PACKAGE_TEMPLATE_NAME_MAX = 200;
 export const PACKAGE_TEMPLATE_SECTION_TITLE_MAX = 120;
 export const PACKAGE_TEMPLATE_MAX_LINES = 50;

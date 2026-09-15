@@ -5,12 +5,27 @@ import { z } from "zod";
 import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
+  normalizeBindingSearchQuery,
+  PACKAGE_BINDING_SEARCH_LIMIT,
   PACKAGE_TEMPLATE_MAX_LINES,
   PACKAGE_TEMPLATE_SCHEMA_VERSION,
   packageTemplateCategories,
   packageTemplatePositionTypes,
   packageTemplateUnits,
 } from "@/lib/integrations/offers/package-contract";
+import { listCatalogComponents } from "@/modules/catalog";
+
+// F16-13: optionale Katalogbindung je Zeile (Komponente + Revision;
+// Preise/Einheit stammen beim Speichern aus dem Katalog).
+export interface CatalogBindingOption {
+  id: string;
+  revision: number;
+  sku: string;
+  displayName: string;
+  unit: string;
+  salesEuros: string;
+  purchaseEuros: string | null;
+}
 import {
   archivePackageTemplate,
   createPackageTemplate,
@@ -307,4 +322,53 @@ export async function restorePackageTemplateAction(
   formData: FormData,
 ): Promise<PackageTemplateActionState> {
   return setActive(formData, true, "Paket reaktiviert.");
+}
+
+export type CatalogBindingSearchState =
+  | { status: "ok"; options: CatalogBindingOption[] }
+  | { status: "invalid" }
+  | { status: "denied" }
+  | { status: "unauthenticated" };
+
+// F16-13b: serverseitige Katalogsuche für den Paket-Picker (Produkte hinter
+// der 200er-Preload-Grenze). Gleiches Lese-Gate wie die Seite; EK-Redaktion
+// und Projektion wie der Preload; Treffer-Cap 50 wie die Projekt-Suche.
+export async function searchCatalogBindingOptionsAction(
+  workspaceId: string,
+  query: string,
+): Promise<CatalogBindingSearchState> {
+  const parsedWorkspace = workspaceIdSchema.safeParse(workspaceId);
+  const normalized = normalizeBindingSearchQuery(query);
+  if (!parsedWorkspace.success || normalized === null) return { status: "invalid" };
+  try {
+    const options = await authorizedAction(
+      parsedWorkspace.data,
+      "discount_template.read",
+      "package_template",
+      async (tx, ctx) => {
+        const components = await listCatalogComponents(tx, ctx, {
+          status: "active",
+          query: normalized,
+        });
+        return components.slice(0, PACKAGE_BINDING_SEARCH_LIMIT).map((component) => ({
+          id: component.id,
+          revision: component.currentRevision,
+          sku: component.current.identity.internalSku,
+          displayName: component.current.presentation.displayName,
+          unit: component.current.presentation.unit,
+          salesEuros: String(component.current.commercial?.salesPriceNetCents !== undefined
+            ? component.current.commercial.salesPriceNetCents / 100
+            : 0),
+          purchaseEuros: component.current.commercial?.purchasePriceNetCents !== undefined
+            ? String(component.current.commercial.purchasePriceNetCents / 100)
+            : null,
+        }));
+      },
+    );
+    return { status: "ok", options };
+  } catch (error) {
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    throw error;
+  }
 }

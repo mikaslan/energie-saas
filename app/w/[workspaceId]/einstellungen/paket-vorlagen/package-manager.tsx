@@ -1,13 +1,15 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { PACKAGE_TEMPLATE_MAX_LINES } from "@/lib/integrations/offers/package-contract";
 import type { PackageTemplateDto } from "@/lib/integrations/offers/package-contract";
 import {
   archivePackageTemplateAction,
+  type CatalogBindingOption,
   createPackageTemplateAction,
   type PackageTemplateActionState,
   restorePackageTemplateAction,
+  searchCatalogBindingOptionsAction,
   updatePackageTemplateAction,
 } from "./actions";
 
@@ -44,18 +46,6 @@ const POSITION_TYPE_OPTIONS = [
   { value: "additional", label: "Zusatz" },
   { value: "optional", label: "Optional" },
 ];
-
-// F16-13: optionale Katalogbindung je Zeile (Komponente + Revision;
-// Preise/Einheit stammen beim Speichern aus dem Katalog).
-export interface CatalogBindingOption {
-  id: string;
-  revision: number;
-  sku: string;
-  displayName: string;
-  unit: string;
-  salesEuros: string;
-  purchaseEuros: string | null;
-}
 
 type LineRow = {
   key: string;
@@ -144,6 +134,8 @@ function PackageForm({
   action,
   submitLabel,
   catalogOptions,
+  extraOptions,
+  onExtraOptions,
 }: {
   workspaceId: string;
   template?: PackageTemplateDto;
@@ -153,6 +145,8 @@ function PackageForm({
   ) => Promise<PackageTemplateActionState>;
   submitLabel: string;
   catalogOptions: readonly CatalogBindingOption[];
+  extraOptions: readonly CatalogBindingOption[];
+  onExtraOptions: (options: readonly CatalogBindingOption[]) => void;
 }) {
   const [state, dispatch] = useActionState(action, initialState);
   const [successCount, setSuccessCount] = useState(0);
@@ -165,6 +159,60 @@ function PackageForm({
     ? `${template.id}:${template.updatedAt}:${successCount}`
     : `new:${successCount}`;
   const [rows, setRows] = useState<LineRow[]>(() => rowsFromTemplate(template));
+  // F16-13b: serverseitige Suchtreffer ergänzen den Preload (erste 200);
+  // das Select bleibt die einzige Binde-Fläche (bestehende E2E stabil).
+  // Der Treffer-Pool lebt im Manager, damit auch Bearbeiten-Formulare
+  // gesucht-gebundene Zeilen auflösen können.
+  const [searchState, setSearchState] = useState<Record<string, {
+    query: string;
+    status: "idle" | "searching" | "done" | "error";
+    count: number;
+  }>>({});
+  const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => () => {
+    for (const timer of Object.values(searchTimers.current)) clearTimeout(timer);
+  }, []);
+  const allBindingOptions = useMemo(() => {
+    const seen = new Set(catalogOptions.map((option) => `${option.id}::${option.revision}`));
+    return [
+      ...catalogOptions,
+      ...extraOptions.filter((option) => {
+        const key = `${option.id}::${option.revision}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }),
+    ];
+  }, [catalogOptions, extraOptions]);
+  const runBindingSearch = (rowKey: string, query: string) => {
+    setSearchState((current) => ({
+      ...current,
+      [rowKey]: { query, status: "idle", count: 0 },
+    }));
+    const pending = searchTimers.current[rowKey];
+    if (pending) clearTimeout(pending);
+    if (query.trim().length < 2) return;
+    setSearchState((current) => ({
+      ...current,
+      [rowKey]: { query, status: "searching", count: 0 },
+    }));
+    searchTimers.current[rowKey] = setTimeout(async () => {
+      try {
+        const result = await searchCatalogBindingOptionsAction(workspaceId, query);
+        if (result.status === "ok") {
+          onExtraOptions(result.options);
+          setSearchState((s) => ({
+            ...s,
+            [rowKey]: { query, status: "done", count: result.options.length },
+          }));
+        } else {
+          setSearchState((s) => ({ ...s, [rowKey]: { query, status: "error", count: 0 } }));
+        }
+      } catch {
+        setSearchState((s) => ({ ...s, [rowKey]: { query, status: "error", count: 0 } }));
+      }
+    }, 300);
+  };
   const inputClass = "min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
   const updateRow = (key: string, patch: Partial<LineRow>) => {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -184,7 +232,7 @@ function PackageForm({
     }
     const [optionId, revisionText] = value.split("::");
     const revision = Number(revisionText);
-    const option = catalogOptions.find((entry) => entry.id === optionId && entry.revision === revision);
+    const option = allBindingOptions.find((entry) => entry.id === optionId && entry.revision === revision);
     if (!option || !Number.isSafeInteger(revision) || revision < 1) return;
     setRows((current) => current.map((row) => {
       if (row.key !== key) return row;
@@ -200,7 +248,7 @@ function PackageForm({
     }));
   };
   const boundLabel = (row: LineRow): string => {
-    const option = catalogOptions.find((entry) => entry.id === row.catalogComponentId);
+    const option = allBindingOptions.find((entry) => entry.id === row.catalogComponentId);
     if (!option) return "Komponente nicht mehr aktiv — neu binden oder lösen";
     if (option.revision !== row.catalogComponentRevision) {
       return `veraltet (aktuell Rev. ${option.revision}) — neu binden oder lösen`;
@@ -360,6 +408,29 @@ function PackageForm({
             </div>
             <div className="grid gap-2">
               <label className="grid gap-1 text-sm font-semibold text-slate-800">
+                {`Katalog suchen ${index + 1} (optional)`}
+                <input
+                  type="search"
+                  value={searchState[row.key]?.query ?? ""}
+                  onChange={(event) => runBindingSearch(row.key, event.target.value)}
+                  placeholder="Ab 2 Zeichen serverseitig suchen"
+                  maxLength={120}
+                  autoComplete="off"
+                  className={inputClass}
+                />
+              </label>
+              <p aria-live="polite" className="text-sm text-slate-600">{
+                searchState[row.key]?.status === "searching"
+                  ? "Suche läuft…"
+                  : searchState[row.key]?.status === "error"
+                    ? "Suche fehlgeschlagen — versuch es erneut."
+                    : searchState[row.key]?.status === "done"
+                      ? searchState[row.key].count > 0
+                        ? `${searchState[row.key].count} Treffer — unten im Select wählen.`
+                        : "Keine Treffer — anders formulieren."
+                      : "Ab 2 Zeichen wird serverseitig gesucht (auch hinter Position 200)."
+              }</p>
+              <label className="grid gap-1 text-sm font-semibold text-slate-800">
                 {`Katalogbindung ${index + 1} (optional)`}
                 <select
                   value={rowOptionValue(row)}
@@ -367,12 +438,12 @@ function PackageForm({
                   className={inputClass}
                 >
                   <option value="">Freie Zeile (keine Bindung)</option>
-                  {row.catalogComponentId !== "" && !catalogOptions.some((option) => optionValue(option) === rowOptionValue(row)) ? (
+                  {row.catalogComponentId !== "" && !allBindingOptions.some((option) => optionValue(option) === rowOptionValue(row)) ? (
                     <option value={rowOptionValue(row)} disabled>
                       {`Gebunden Rev. ${row.catalogComponentRevision} (veraltet — neu wählen)`}
                     </option>
                   ) : null}
-                  {catalogOptions.map((option) => (
+                  {allBindingOptions.map((option) => (
                     <option key={`${option.id}::${option.revision}`} value={optionValue(option)}>
                       {`${option.sku} — ${option.displayName} (Rev. ${option.revision})`}
                     </option>
@@ -488,6 +559,20 @@ export function PackageTemplateManager({
 }) {
   const [archiveState, archiveDispatch] = useActionState(archivePackageTemplateAction, initialState);
   const [restoreState, restoreDispatch] = useActionState(restorePackageTemplateAction, initialState);
+  // F16-13b: gemeinsamer Suchtreffer-Pool für Anlege- und alle
+  // Bearbeiten-Formulare (Dedupe Id+Revision).
+  const [extraOptions, setExtraOptions] = useState<readonly CatalogBindingOption[]>([]);
+  const addExtraOptions = (options: readonly CatalogBindingOption[]) => {
+    setExtraOptions((current) => {
+      const seen = new Set([...catalogOptions, ...current].map((option) => `${option.id}::${option.revision}`));
+      return [...current, ...options.filter((option) => {
+        const key = `${option.id}::${option.revision}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })];
+    });
+  };
   return (
     <div className="grid gap-8">
       {canWrite ? (
@@ -499,6 +584,8 @@ export function PackageTemplateManager({
               action={createPackageTemplateAction}
               submitLabel="Anlegen"
               catalogOptions={catalogOptions}
+              extraOptions={extraOptions}
+              onExtraOptions={addExtraOptions}
             />
           </div>
         </section>
@@ -531,6 +618,8 @@ export function PackageTemplateManager({
                     action={updatePackageTemplateAction}
                     submitLabel="Speichern"
                     catalogOptions={catalogOptions}
+                    extraOptions={extraOptions}
+                    onExtraOptions={addExtraOptions}
                   />
                 </div>
               </details>
