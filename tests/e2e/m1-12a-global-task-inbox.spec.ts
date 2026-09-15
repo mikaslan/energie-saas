@@ -319,12 +319,38 @@ test.describe("M1-12a: Projektübergreifende Aufgaben-Inbox", () => {
     await page.goto(inboxPath);
     await loginWithRealOtp(page, data.m112aEditorEmail, inboxLoginNext(data.m112aWorkspaceId));
 
+    // Mitternachtsfest (Berlin) wie im Nachbartest: der Seed legt die
+    // TODAY-Fälligkeit auf 23:59:59 des Seed-Tages; kreuzt der Lauf
+    // Mitternacht (CI 34900582752: Seed 23:47, Assert nach 00:00 Berlin),
+    // ist dieselbe Aufgabe korrekt überfällig. Die Erwartung folgt deshalb
+    // dem gerenderten Fälligkeitsdatum statt einer starren Liste (Ordnung
+    // due_at asc — OVERDUE vor TODAY — ist per Seed stabil).
+    const todayCardBefore = inboxCard(page, M1_12A_TODAY_TITLE);
+    await expect(todayCardBefore).toBeVisible();
+    const seedDueDate = /(\d{2}\.\d{2}\.\d{4})/u.exec(
+      await todayCardBefore.innerText(),
+    )?.[1];
+    expect(seedDueDate, "Fälligkeitsdatum der Heute-Karte lesbar").toBeTruthy();
+    const berlinToday = await page.evaluate(() => new Intl.DateTimeFormat("de-DE", {
+      timeZone: "Europe/Berlin",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date()));
+    const crossedMidnight = seedDueDate !== berlinToday;
+
     await applyInboxFilter(page, { dueBucket: "overdue" });
-    expect(await inboxTitles(page)).toEqual([M1_12A_OVERDUE_TITLE]);
+    expect(await inboxTitles(page)).toEqual(
+      crossedMidnight
+        ? [M1_12A_OVERDUE_TITLE, M1_12A_TODAY_TITLE]
+        : [M1_12A_OVERDUE_TITLE],
+    );
     await expect(page.getByRole("link", { name: "Filter zurücksetzen" })).toBeVisible();
 
     await applyInboxFilter(page, { dueBucket: "today" });
-    expect(await inboxTitles(page)).toEqual([M1_12A_TODAY_TITLE]);
+    expect(await inboxTitles(page)).toEqual(
+      crossedMidnight ? [] : [M1_12A_TODAY_TITLE],
+    );
 
     await applyInboxFilter(page, { dueBucket: "no_due" });
     expect(await inboxTitles(page)).toEqual([M1_12A_NO_DUE_TITLE]);
