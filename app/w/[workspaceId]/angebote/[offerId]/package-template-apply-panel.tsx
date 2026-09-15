@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { applyPackageTemplateEditorAction } from "../variant-actions";
 import {
   APPLY_PACKAGE_TEMPLATE_INITIAL_STATE,
@@ -11,6 +11,7 @@ export interface PackageTemplateEntry {
   id: string;
   name: string;
   lineCount: number;
+  zeroLineCount: number;
 }
 
 function feedback(state: ApplyPackageTemplateEditorState): string | null {
@@ -56,6 +57,11 @@ export function PackageTemplateApplyPanel({
     applyPackageTemplateEditorAction,
     APPLY_PACKAGE_TEMPLATE_INITIAL_STATE,
   );
+  // F16-11b: kontrollierte Selects — unkontrollierte fallen nach
+  // einem Invalid-Roundtrip auf die Defaults zurück (Template-Wahl
+  // weg, Folge-Submit läuft ins Leere); State überlebt Re-Renders.
+  const [templateId, setTemplateId] = useState("");
+  const [zeroConfirmed, setZeroConfirmed] = useState("false");
   const message = feedback(state);
   return (
     <section aria-labelledby="package-template-apply-title" className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -72,11 +78,24 @@ export function PackageTemplateApplyPanel({
         <input type="hidden" name="variantId" value={variantId} />
         <input type="hidden" name="expectedRevision" value={String(expectedRevision)} />
         <label className="grid gap-1 text-sm font-medium text-slate-800">
+          0-%-Steuerentwurf frisch bestätigen
+          <select
+            name="zeroConfirmed"
+            value={zeroConfirmed}
+            onChange={(event) => setZeroConfirmed(event.target.value)}
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600"
+          >
+            <option value="false">Nicht bestätigt (nur 19-%-Pakete)</option>
+            <option value="true">Bestätigt (Paket mit 0-%-Positionen)</option>
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm font-medium text-slate-800">
           Paket wählen
           <select
             name="templateId"
             required
-            defaultValue=""
+            value={templateId}
+            onChange={(event) => setTemplateId(event.target.value)}
             className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600"
           >
             <option value="" disabled>
@@ -84,7 +103,8 @@ export function PackageTemplateApplyPanel({
             </option>
             {templates.map((template) => (
               <option key={template.id} value={template.id}>
-                {template.name} ({template.lineCount} {template.lineCount === 1 ? "Position" : "Positionen"})
+                {template.name} ({template.lineCount} {template.lineCount === 1 ? "Position" : "Positionen"}
+                {template.zeroLineCount > 0 ? `, davon ${template.zeroLineCount} mit 0 %` : ""})
               </option>
             ))}
           </select>

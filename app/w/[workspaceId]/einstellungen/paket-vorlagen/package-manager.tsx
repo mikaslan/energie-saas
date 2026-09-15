@@ -55,6 +55,7 @@ type LineRow = {
   purchaseEuros: string;
   positionType: string;
   isHidden: boolean;
+  taxTreatment: string;
 };
 
 function centsToEuros(cents: number): string {
@@ -76,6 +77,7 @@ function emptyRow(): LineRow {
     purchaseEuros: "",
     positionType: "required",
     isHidden: false,
+    taxTreatment: "standard_19",
   };
 }
 
@@ -91,6 +93,7 @@ function rowsFromTemplate(template?: PackageTemplateDto): LineRow[] {
     purchaseEuros: centsToEuros(line.purchaseUnitNetCents),
     positionType: line.positionType,
     isHidden: line.isHidden,
+    taxTreatment: line.taxTreatment ?? "standard_19",
   }));
 }
 
@@ -160,6 +163,7 @@ function PackageForm({
           purchaseEuros: row.purchaseEuros,
           positionType: row.positionType,
           isHidden: row.isHidden,
+          taxTreatment: row.taxTreatment,
         })))}
       />
       <label className="grid gap-1 text-sm font-semibold text-slate-800">
@@ -274,6 +278,17 @@ function PackageForm({
               </label>
             </div>
             <div className="flex flex-wrap items-center gap-4">
+              <label className="grid gap-1 text-sm font-semibold text-slate-800">
+                {`Steuer ${index + 1}`}
+                <select
+                  value={row.taxTreatment}
+                  onChange={(event) => updateRow(row.key, { taxTreatment: event.target.value })}
+                  className={inputClass}
+                >
+                  <option value="standard_19">19 % USt.</option>
+                  <option value="zero_operator_confirmed">0 % USt. nach Prüfung</option>
+                </select>
+              </label>
               <label className="grid gap-1 text-sm font-semibold text-slate-800">
                 {`Positionsart ${index + 1}`}
                 <select

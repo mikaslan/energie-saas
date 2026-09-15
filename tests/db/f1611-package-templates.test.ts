@@ -541,6 +541,8 @@ type SnapshotSection = {
     source: { kind: string };
     product: { kind: string; displayName?: string };
     quantityMilli: number;
+    taxTreatment: string;
+    taxRateBps: number;
   }>;
 };
 
@@ -586,6 +588,7 @@ async function createPackage(
         purchaseUnitNetCents: 8_000,
         positionType: "required" as const,
         isHidden: false,
+        taxTreatment: "standard_19" as const,
       })),
     }),
   );
@@ -675,6 +678,7 @@ describe("F16-11 Paket-Vorlagen (PostgreSQL)", () => {
         offerId,
         variantId,
         expectedRevision: seeded.revision,
+        zeroConfirmed: false,
       }),
     );
     expect(applied.templateId).toBe(templateId);
@@ -709,6 +713,7 @@ describe("F16-11 Paket-Vorlagen (PostgreSQL)", () => {
         offerId,
         variantId,
         expectedRevision: seeded.revision,
+        zeroConfirmed: false,
       }),
     )).rejects.toBeInstanceOf(OfferConflictError);
   });
@@ -733,6 +738,7 @@ describe("F16-11 Paket-Vorlagen (PostgreSQL)", () => {
           purchaseUnitNetCents: 80,
           positionType: "required",
           isHidden: false,
+          taxTreatment: "standard_19",
         }],
       }),
     )).rejects.toBeInstanceOf(PackageTemplateConflictError);
@@ -753,6 +759,7 @@ describe("F16-11 Paket-Vorlagen (PostgreSQL)", () => {
           purchaseUnitNetCents: 80,
           positionType: "required",
           isHidden: false,
+          taxTreatment: "standard_19",
         }],
       }),
     )).rejects.toBeInstanceOf(PermissionDeniedError);
@@ -774,6 +781,7 @@ describe("F16-11 Paket-Vorlagen (PostgreSQL)", () => {
         offerId,
         variantId,
         expectedRevision: 1,
+        zeroConfirmed: false,
       }),
     )).rejects.toBeInstanceOf(PackageTemplateNotFoundError);
 
@@ -787,8 +795,78 @@ describe("F16-11 Paket-Vorlagen (PostgreSQL)", () => {
         offerId,
         variantId,
         expectedRevision: 1,
+        zeroConfirmed: false,
       }),
     )).rejects.toBeInstanceOf(PackageTemplateNotFoundError);
+  });
+
+  it("F1611-DB-04: 0-%-Zeilen nur mit frischer Bestätigung", async () => {
+    const { members, offerId, variantId } = await createBasisOffer();
+    const templateId = await withAuthorizedTenantOn(
+      testPool, members.operatorId, members.workspaceId,
+      (tx, ctx) => createPackageTemplate(tx, ctx, {
+        schemaVersion: PACKAGE_TEMPLATE_SCHEMA_VERSION,
+        name: "Nullsteuersatz",
+        sectionTitle: "PV ohne USt.",
+        category: "module",
+        lines: [
+          {
+            displayName: "Modul 0 %",
+            description: null,
+            unit: "piece",
+            quantityMilli: 4_000,
+            salesUnitNetCents: 20_000,
+            purchaseUnitNetCents: 15_000,
+            positionType: "required",
+            isHidden: false,
+            taxTreatment: "zero_operator_confirmed",
+          },
+          {
+            displayName: "Kabel 19 %",
+            description: null,
+            unit: "meter",
+            quantityMilli: 2_500,
+            salesUnitNetCents: 300,
+            purchaseUnitNetCents: 200,
+            positionType: "required",
+            isHidden: false,
+            taxTreatment: "standard_19",
+          },
+        ],
+      }).then((created) => created.id),
+    );
+
+    // Ohne frische Bestätigung: fail-closed, keine neue Revision.
+    await expect(withAuthorizedTenantOn(
+      testPool, members.operatorId, members.workspaceId,
+      (tx, ctx) => applyPackageTemplate(tx, ctx, {
+        schemaVersion: PACKAGE_TEMPLATE_SCHEMA_VERSION,
+        templateId,
+        offerId,
+        variantId,
+        expectedRevision: 1,
+        zeroConfirmed: false,
+      }),
+    )).rejects.toBeInstanceOf(PackageTemplateValidationError);
+
+    const applied = await withAuthorizedTenantOn(
+      testPool, members.operatorId, members.workspaceId,
+      (tx, ctx) => applyPackageTemplate(tx, ctx, {
+        schemaVersion: PACKAGE_TEMPLATE_SCHEMA_VERSION,
+        templateId,
+        offerId,
+        variantId,
+        expectedRevision: 1,
+        zeroConfirmed: true,
+      }),
+    );
+    expect(applied.revision).toBe(2);
+    const after = await readSections(members.workspaceId, offerId, variantId, applied.revision);
+    const packageSection = after[after.length - 1]!;
+    expect(packageSection.title).toBe("PV ohne USt.");
+    const byName = new Map(packageSection.lines.map((line) => [line.product.displayName, line]));
+    expect(byName.get("Modul 0 %")).toMatchObject({ taxTreatment: "zero_operator_confirmed", taxRateBps: 0 });
+    expect(byName.get("Kabel 19 %")).toMatchObject({ taxTreatment: "standard_19", taxRateBps: 1_900 });
   });
 
   it("F1611-DB-03: Leere/überlange/ungültige Zeilen fail-closed", async () => {

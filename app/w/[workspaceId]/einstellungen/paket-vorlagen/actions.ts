@@ -77,6 +77,7 @@ function parseQuantityMilli(value: unknown): number | null {
 const CATEGORY_SET = new Set<string>(packageTemplateCategories);
 const UNIT_SET = new Set<string>(packageTemplateUnits);
 const POSITION_TYPE_SET = new Set<string>(packageTemplatePositionTypes);
+const TAX_SET = new Set(["standard_19", "zero_operator_confirmed"]);
 
 type ParsedLine = {
   displayName: string;
@@ -87,6 +88,7 @@ type ParsedLine = {
   purchaseUnitNetCents: number;
   positionType: "required" | "additional" | "optional";
   isHidden: boolean;
+  taxTreatment: "standard_19" | "zero_operator_confirmed";
 };
 
 // F16-11: Paket-Zeilen als JSON-Liste (dynamische Formularzeilen);
@@ -122,10 +124,18 @@ function parseLines(value: FormDataEntryValue | null): ParsedLine[] | null {
     const positionType = typeof record.positionType === "string" && POSITION_TYPE_SET.has(record.positionType)
       ? (record.positionType as ParsedLine["positionType"])
       : null;
+    // F16-11b: Steuer je Zeile (Default 19 %); die 0-%-Bestätigung
+    // gehört zum Einsetzen, nie in die Vorlage.
+    const taxTreatment = record.taxTreatment === undefined || record.taxTreatment === null
+      ? "standard_19"
+      : typeof record.taxTreatment === "string" && TAX_SET.has(record.taxTreatment)
+        ? (record.taxTreatment as ParsedLine["taxTreatment"])
+        : null;
     if (
       displayName === null || description === undefined || unit === null
       || quantityMilli === null || salesUnitNetCents === null
       || purchaseUnitNetCents === null || positionType === null
+      || taxTreatment === null
     ) return null;
     if (unit !== "meter" && quantityMilli % 1_000 !== 0) return null;
     lines.push({
@@ -137,6 +147,7 @@ function parseLines(value: FormDataEntryValue | null): ParsedLine[] | null {
       purchaseUnitNetCents,
       positionType,
       isHidden: record.isHidden === true,
+      taxTreatment,
     });
   }
   return lines;

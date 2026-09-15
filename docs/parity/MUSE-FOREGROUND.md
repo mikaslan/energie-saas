@@ -1273,3 +1273,22 @@ identisch (`983ed67`, 0 unpusht).
 - Offen: CI-Orakel für a35f96b abwarten; F16-Rest (Linked amounts,
   0-%-Pakete, Katalog-Zeilen) + blockierte Fragen (F14, Storage,
   Funnel, Visual-Baselines).
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 40 — F16-11b Paket-Einsetzen + Fixes)
+- F16-11b Paket-Einsetzen gebaut (10 Dateien): Steuer pro Zeile
+  (`standard_19` Default, `zero_operator_confirmed` nur mit frischer
+  `zeroConfirmed`-Bestätigung zur Apply-Zeit, nie persistiert),
+  Revise-Ops Add-first mit Revisions-CAS, Custom-Ebene ersetzt.
+- Debug-Befund E2E-03/04: zweiter Submit nach Invalid-Roundtrip sendete
+  KEIN REQUEST — unkontrollierte Selects fielen auf Defaults zurück
+  (Template-Wahl weg). Fix: kontrollierte Selects (`useState`) im
+  `package-template-apply-panel.tsx`; Debug-Spec `zz-debug-package`
+  wieder gelöscht.
+- E2E-03-Isolation: E2E-04 belegt das F1606-Projekt zuerst (ein Angebot
+  je Projekt versteckt das Create-Widget) — E2E-03 nutzt jetzt ein
+  zweites Ready-Projekt (`seedM201ReadyProject`, Suffix `w3-f1611-*`,
+  selber Workspace, Templates sind Workspace-scoped).
+- Belege lokal 2026-09-15: DB f1611 4/4, E2E F16-11 4/4 (15,1 s),
+  `tsc --noEmit` clean, eslint auf geänderten Dateien clean.
+- Offen: CI-Orakel für a35f96b (34947314457) auswerten; nächster
+  F16-Rest-Katalogpfad (Linked amounts, Katalog-Zeilen).

@@ -312,6 +312,7 @@ function projectOfferDetailView(
     id: string;
     name: string;
     lineCount: number;
+    zeroLineCount: number;
   }[],
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
@@ -612,6 +613,7 @@ export default async function OfferDetailPage(
       id: string;
       name: string;
       lineCount: number;
+      zeroLineCount: number;
     }[];
     recoveryScope: string;
     editorCapabilities: {
@@ -677,6 +679,7 @@ export default async function OfferDetailPage(
           id: string;
           name: string;
           lineCount: number;
+          zeroLineCount: number;
         }[] = [];
         if (view !== null && !externalOnly) {
           // authorizedQuery reicht genau einen transaktionsgebundenen pg-Client
@@ -792,6 +795,9 @@ export default async function OfferDetailPage(
                 id: template.id,
                 name: template.name,
                 lineCount: template.lines.length,
+                zeroLineCount: template.lines.filter(
+                  (line) => line.taxTreatment === "zero_operator_confirmed",
+                ).length,
               });
             }
           }

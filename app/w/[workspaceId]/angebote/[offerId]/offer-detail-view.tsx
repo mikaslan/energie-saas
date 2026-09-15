@@ -268,6 +268,7 @@ export interface OfferDetailSurfaceView {
     id: string;
     name: string;
     lineCount: number;
+    zeroLineCount: number;
   }[];
   // F7-09: serverseitig aus dem versiegelten Snapshot projizierte
   // Anlagenkennzahlen (reine Aggregate, keine Rohdaten).

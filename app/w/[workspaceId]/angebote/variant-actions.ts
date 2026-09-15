@@ -39,6 +39,9 @@ const OVERRIDE_FIELDS = new Set(["workspaceId", "offerId", "overrideEuros"]);
 const BUNDLES_FIELDS = new Set(["workspaceId", "offerId", "variantId", "bundlesJson"]);
 const PAYMENT_OPTION_FIELDS = new Set(["workspaceId", "offerId", "variantId", "paymentOptionId"]);
 const OFFER_TEMPLATE_FIELDS = new Set(["workspaceId", "offerId", "variantId", "templateId", "expectedRevision"]);
+// F16-11b: 0-%-Bestätigung als immer gesendetes Select (Checkbox würde
+// unangehakt fehlen und exactFields fail-closed auslösen).
+const PACKAGE_TEMPLATE_FIELDS = new Set(["workspaceId", "offerId", "variantId", "templateId", "expectedRevision", "zeroConfirmed"]);
 
 function workspaceForAdmission(formData: FormData): string | null {
   const values = formData.getAll("workspaceId");
@@ -380,18 +383,20 @@ export async function applyPackageTemplateEditorAction(
       ["project.write"],
       "package_template",
       async (tx, ctx) => {
-        const fields = exactFields(formData, OFFER_TEMPLATE_FIELDS);
+        const fields = exactFields(formData, PACKAGE_TEMPLATE_FIELDS);
         if (!fields) throw new offers.OfferValidationError();
         const parsed = z.strictObject({
           offerId: UUID_SCHEMA,
           variantId: UUID_SCHEMA,
           templateId: UUID_SCHEMA,
           expectedRevision: z.string().regex(/^\d+$/u).transform(Number).refine((value) => Number.isSafeInteger(value) && value >= 1),
+          zeroConfirmed: z.enum(["true", "false"]).transform((value) => value === "true"),
         }).safeParse({
           offerId: fields.offerId,
           variantId: fields.variantId,
           templateId: fields.templateId,
           expectedRevision: fields.expectedRevision,
+          zeroConfirmed: fields.zeroConfirmed,
         });
         if (!parsed.success) throw new offers.OfferValidationError();
         return offers.applyPackageTemplate(tx, ctx, {

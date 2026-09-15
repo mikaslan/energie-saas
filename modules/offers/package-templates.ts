@@ -348,7 +348,17 @@ function planCustomLayerReplacement(
   lines: readonly PackageTemplateLine[],
   sectionTitle: string,
   category: PackageTemplateCategory,
+  zeroConfirmed: boolean,
 ): PackageApplyPlan {
+  // F16-11b: 0-%-Zeilen nur mit frischer Bestätigung des Einsetzenden
+  // (nie aus der Vorlage gelesen); 19-%-Zeilen bekommen nie eine
+  // Bestätigung mit (Angebots-Regel, fail-closed).
+  if (
+    lines.some((line) => line.taxTreatment === "zero_operator_confirmed")
+    && !zeroConfirmed
+  ) {
+    throw new PackageTemplateValidationError("0-%-Zeilen brauchen eine frische Bestätigung");
+  }
   // Reihenfolge: Add zuerst (Position = Ende der gelesenen Liste, zu
   // dem Zeitpunkt gültig), dann Removes per Domain-ID (positionsfest),
   // dann Zeilen in die neue Sektion (1..n, stabil). Fremdänderung
@@ -390,7 +400,15 @@ function planCustomLayerReplacement(
       purchaseUnitNetCents: line.purchaseUnitNetCents,
       positionType: line.positionType,
       isHidden: line.isHidden,
-      taxTreatment: "standard_19",
+      taxTreatment: line.taxTreatment,
+      ...(line.taxTreatment === "zero_operator_confirmed"
+        ? {
+          zeroConfirmation: {
+            code: "zero_tax_draft_operator_confirmed",
+            confirmed: true,
+          } as const,
+        }
+        : {}),
     });
   });
   return { operations, removedSections, removedLines };
@@ -444,7 +462,7 @@ export async function applyPackageTemplate(
   const snapshot = await readValidatedRevision(
     tx, ctx, command.offerId, command.variantId, revisionRow.current_revision,
   );
-  const plan = planCustomLayerReplacement(snapshot, dto.lines, dto.sectionTitle, dto.category);
+  const plan = planCustomLayerReplacement(snapshot, dto.lines, dto.sectionTitle, dto.category, command.zeroConfirmed);
   const result = await reviseOfferVariant(tx, ctx, {
     schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
     offerId: command.offerId,

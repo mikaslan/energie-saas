@@ -59,6 +59,10 @@ const quantityMilliSchema = z.number().int().min(1).max(100_000_000);
 // Cent-Beträge je Einheit (VK/EK netto, wie add_custom_line).
 const unitNetCentsSchema = z.number().int().min(0).max(9_000_000_000_000_000);
 
+// F16-11b: Steuer je Zeile (19 % oder 0 % nach Prüfung). Bestand
+// ohne Feld fällt auf 19 % (F16-11-Zeilen bleiben lesbar). Die
+// 0-%-Bestätigung ist frisch zum Einsetz-Zeitpunkt fällig (Apply-
+// Command) und wird nie in der Vorlage gespeichert.
 const templatePackageLineSchema = z.strictObject({
   displayName: singleLine(200),
   description: singleLine(1_000).nullable().optional(),
@@ -68,6 +72,7 @@ const templatePackageLineSchema = z.strictObject({
   purchaseUnitNetCents: unitNetCentsSchema,
   positionType: z.enum(packageTemplatePositionTypes),
   isHidden: z.boolean(),
+  taxTreatment: z.enum(["standard_19", "zero_operator_confirmed"]).optional().default("standard_19"),
 }).superRefine((line, ctx) => {
   if (line.unit !== "meter" && line.quantityMilli % 1_000 !== 0) {
     ctx.addIssue({
@@ -132,5 +137,8 @@ export const applyPackageTemplateCommandSchema = z.object({
   offerId: z.string().uuid(),
   variantId: z.string().uuid(),
   expectedRevision: z.number().int().min(1),
+  // F16-11b: frische 0-%-Bestätigung des Einsetzenden (Pflicht, sobald
+  // das Paket 0-%-Zeilen enthält; sonst bedeutungslos).
+  zeroConfirmed: z.boolean().optional().default(false),
 });
 export type ApplyPackageTemplateCommand = z.infer<typeof applyPackageTemplateCommandSchema>;
