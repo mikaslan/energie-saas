@@ -73,12 +73,26 @@ const templatePackageLineSchema = z.strictObject({
   positionType: z.enum(packageTemplatePositionTypes),
   isHidden: z.boolean(),
   taxTreatment: z.enum(["standard_19", "zero_operator_confirmed"]).optional().default("standard_19"),
+  // F16-13 Katalog-Zeile: optionale Bindung an eine Katalogkomponente.
+  // Beide Felder gemeinsam oder keines (Preise/Einheit stammen beim
+  // Speichern/Einsetzen aus der gebundenen Revision — Fail-closed bei Drift).
+  catalogComponentId: z.uuid().optional(),
+  catalogComponentRevision: z.number().int().min(1).max(2_147_483_647).optional(),
 }).superRefine((line, ctx) => {
   if (line.unit !== "meter" && line.quantityMilli % 1_000 !== 0) {
     ctx.addIssue({
       code: "custom",
       path: ["quantityMilli"],
       message: "piece und set erlauben nur ganze Einheiten.",
+    });
+  }
+  const boundId = line.catalogComponentId !== undefined;
+  const boundRev = line.catalogComponentRevision !== undefined;
+  if (boundId !== boundRev) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["catalogComponentId"],
+      message: "Katalogbindung braucht Komponente und Revision gemeinsam.",
     });
   }
 });

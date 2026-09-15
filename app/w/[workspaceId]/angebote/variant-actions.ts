@@ -412,6 +412,9 @@ export async function applyPackageTemplateEditorAction(
   } catch (error) {
     if (error instanceof offers.OfferValidationError) return { status: "invalid" };
     if (error instanceof offers.PackageTemplateValidationError) return { status: "invalid" };
+    if (error instanceof offers.PackageTemplateStaleError) {
+      return { status: "stale", lineName: error.lineDisplayName };
+    }
     if (error instanceof offers.PackageTemplateNotFoundError) return { status: "not_found" };
     if (error instanceof offers.OfferConflictError) return { status: "conflict" };
     const mapped = mapOfferError(error, offers);

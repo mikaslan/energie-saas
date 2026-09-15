@@ -81,6 +81,7 @@ export const APPLY_PLANNING_TEMPLATE_INITIAL_STATE = {
 export type ApplyPackageTemplateEditorState =
   | { status: "idle" }
   | { status: "invalid" }
+  | { status: "stale"; lineName: string }
   | { status: "unauthenticated" }
   | { status: "denied" }
   | { status: "not_found" }

@@ -2031,6 +2031,79 @@ function reindex<T extends { position: number }>(items: T[]): void {
   });
 }
 
+const MAX_QUANTITY_MILLI = 100_000_000;
+
+// F16-12 Mengenverknüpfung („Linked amounts", Katalog F16.2): freie Zeilen
+// folgen einer Quellzeile mal Faktor. Hash-Neutralität: quantityLink wird
+// gesetzt oder per delete entfernt, nie null geschrieben.
+function allSnapshotLines(snapshot: OfferVariantSnapshotV1): SnapshotLine[] {
+  return snapshot.sections.flatMap((section) => section.lines);
+}
+
+function resolveLinkedQuantityMilli(
+  sourceQuantityMilli: number,
+  factorMilli: number,
+  targetUnit: SnapshotLine["product"]["unit"],
+): number {
+  const resolved = Math.round((sourceQuantityMilli * factorMilli) / 1_000);
+  if (!Number.isSafeInteger(resolved) || resolved < 1 || resolved > MAX_QUANTITY_MILLI) {
+    throw new OfferValidationError(["/operations/factorMilli"]);
+  }
+  if (targetUnit !== "meter" && resolved % 1_000 !== 0) {
+    throw new OfferValidationError(["/operations/factorMilli"]);
+  }
+  return resolved;
+}
+
+function assertNoQuantityCycle(
+  snapshot: OfferVariantSnapshotV1,
+  targetLineDomainId: string,
+  sourceLineDomainId: string,
+): void {
+  const byId = new Map(allSnapshotLines(snapshot).map((line) => [line.lineDomainId, line]));
+  let current: string | undefined = sourceLineDomainId;
+  const seen = new Set<string>();
+  while (current !== undefined) {
+    if (current === targetLineDomainId) {
+      throw new OfferValidationError(["/operations/sourceLineDomainId"]);
+    }
+    if (seen.has(current)) break;
+    seen.add(current);
+    current = byId.get(current)?.quantityLink?.sourceLineDomainId;
+  }
+}
+
+function recascadeQuantityLinks(snapshot: OfferVariantSnapshotV1, changedLineDomainId: string): void {
+  const byId = new Map(allSnapshotLines(snapshot).map((line) => [line.lineDomainId, line]));
+  const queue = [changedLineDomainId];
+  const visited = new Set<string>([changedLineDomainId]);
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    for (const line of byId.values()) {
+      const link = line.quantityLink;
+      if (!link || link.sourceLineDomainId !== currentId || visited.has(line.lineDomainId)) continue;
+      visited.add(line.lineDomainId);
+      const source = byId.get(link.sourceLineDomainId);
+      if (!source) throw new OfferValidationError(["/operations/sourceLineDomainId"]);
+      line.quantityMilli = resolveLinkedQuantityMilli(
+        source.quantityMilli,
+        link.factorMilli,
+        line.product.unit,
+      );
+      queue.push(line.lineDomainId);
+    }
+  }
+}
+
+function assertNoQuantityDependents(snapshot: OfferVariantSnapshotV1, removedLineDomainIds: ReadonlySet<string>): void {
+  for (const line of allSnapshotLines(snapshot)) {
+    const source = line.quantityLink?.sourceLineDomainId;
+    if (source && removedLineDomainIds.has(source)) {
+      throw new OfferValidationError(["/operations/lineDomainId"]);
+    }
+  }
+}
+
 function originalProvenance(
   provenance: SnapshotLine["salesPricing"]["provenance"],
 ): Extract<SnapshotLine["salesPricing"]["provenance"], { kind: "catalog_seed" | "custom" }> {
@@ -2098,9 +2171,45 @@ function applyRevisionOperation(
       if (found.section !== target) reindex(target.lines);
       return;
     }
-    case "set_line_quantity":
-      findLine(snapshot, operation.lineDomainId).line.quantityMilli = operation.quantityMilli;
+    case "set_line_quantity": {
+      const line = findLine(snapshot, operation.lineDomainId).line;
+      // F16-12: verknüpfte Menge ist abgeleitet — erst lösen, dann manuell setzen.
+      if (line.quantityLink) throw new OfferValidationError(["/operations/lineDomainId"]);
+      line.quantityMilli = operation.quantityMilli;
+      recascadeQuantityLinks(snapshot, operation.lineDomainId);
       return;
+    }
+    case "set_line_quantity_link": {
+      const found = findLine(snapshot, operation.lineDomainId);
+      const line = found.line;
+      if (line.source.kind !== "custom" || line.product.kind !== "custom") {
+        throw new OfferValidationError(["/operations/lineDomainId"]);
+      }
+      if (operation.sourceLineDomainId === operation.lineDomainId) {
+        throw new OfferValidationError(["/operations/sourceLineDomainId"]);
+      }
+      const source = findLine(snapshot, operation.sourceLineDomainId).line;
+      assertNoQuantityCycle(snapshot, operation.lineDomainId, operation.sourceLineDomainId);
+      line.quantityLink = {
+        sourceLineDomainId: operation.sourceLineDomainId,
+        factorMilli: operation.factorMilli,
+      };
+      line.quantityMilli = resolveLinkedQuantityMilli(
+        source.quantityMilli,
+        operation.factorMilli,
+        line.product.unit,
+      );
+      recascadeQuantityLinks(snapshot, operation.lineDomainId);
+      return;
+    }
+    case "clear_line_quantity_link": {
+      const line = findLine(snapshot, operation.lineDomainId).line;
+      if (!line.quantityLink) throw new OfferValidationError(["/operations/lineDomainId"]);
+      // Aktuelle abgeleitete Menge bleibt als manuelle Menge erhalten;
+      // Key löschen (nie null) für byte-identische linklose Snapshots.
+      delete line.quantityLink;
+      return;
+    }
     case "set_custom_line_details": {
       const line = findLine(snapshot, operation.lineDomainId).line;
       if (line.source.kind !== "custom" || line.product.kind !== "custom") {
@@ -2163,6 +2272,9 @@ function applyRevisionOperation(
       if (found.line.source.kind !== "custom") {
         throw new OfferValidationError(["/operations/lineDomainId"]);
       }
+      // F16-12: Quellzeile mit abhängigen Verknüpfungen fail-closed —
+      // erst lösen, dann löschen (kein stilles Verwaisten).
+      assertNoQuantityDependents(snapshot, new Set([operation.lineDomainId]));
       found.section.lines.splice(found.lineIndex, 1);
       reindex(found.section.lines);
       return;
@@ -2190,6 +2302,11 @@ function applyRevisionOperation(
       if (!section || section.lines.some((line) => line.source.kind !== "custom")) {
         throw new OfferValidationError(["/operations/sectionDomainId"]);
       }
+      // F16-12: Sektion mit verknüpften Quellzeilen fail-closed.
+      assertNoQuantityDependents(
+        snapshot,
+        new Set(section.lines.map((line) => line.lineDomainId)),
+      );
       snapshot.sections.splice(index, 1);
       reindex(snapshot.sections);
       return;

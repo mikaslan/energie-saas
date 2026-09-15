@@ -148,6 +148,11 @@ const publicLineViewSchema = z.object({
   positionType: z.enum(["required", "additional", "optional"]),
   isHidden: z.boolean(),
   quantityMilli: z.int().safe().min(1).max(100_000_000),
+  // F16-12: Mengenverknüpfung (optional — linklose/alte Snapshots ohne Key).
+  quantityLink: z.object({
+    sourceLineDomainId: snapshotUuidSchema,
+    factorMilli: z.int().safe().min(1).max(100_000_000),
+  }).strip().optional(),
   componentCategory: z.enum([
     "module", "inverter", "battery", "wallbox", "heat_pump", "mounting", "other",
   ]),

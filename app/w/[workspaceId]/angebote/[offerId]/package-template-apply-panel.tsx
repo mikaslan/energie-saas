@@ -23,6 +23,8 @@ function feedback(state: ApplyPackageTemplateEditorState): string | null {
         + `${state.removedLines > 0 ? `, ${state.removedLines} freie ${state.removedLines === 1 ? "Position" : "Positionen"} ersetzt` : ""}).`;
     case "not_found":
       return "Paket wurde nicht gefunden oder ist archiviert.";
+    case "stale":
+      return `Katalogbindung veraltet („${state.lineName}“) — Vorlage prüfen (neu binden oder lösen), dann erneut einsetzen.`;
     case "conflict":
       return "Variante wurde zwischenzeitlich geändert; Seite neu laden.";
     case "denied":

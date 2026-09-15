@@ -33,6 +33,10 @@ import {
   type UpdatePackageTemplateCommand,
 } from "@/lib/integrations/offers/package-contract";
 import {
+  catalogComponentRevisionV1Schema,
+  type CatalogCommercialV1,
+} from "@/lib/integrations/catalog/contract";
+import {
   OfferConflictError,
   OfferIntegrityError,
   readValidatedRevision,
@@ -58,6 +62,17 @@ export class PackageTemplateValidationError extends Error {
   constructor(message = "package_template validation failed") {
     super(message);
     this.name = "PackageTemplateValidationError";
+  }
+}
+
+// F16-13 Katalog-Zeile: gebundene Komponente fehlt, ist nicht aktiv oder
+// die Revision driftet (Preis-/Stammdaten geändert oder archiviert).
+// Fail-closed — Vorlage prüfen (neu binden oder lösen), nie still
+// mit veralteten Preisen einsetzen.
+export class PackageTemplateStaleError extends Error {
+  constructor(readonly lineDisplayName: string) {
+    super(`package template line is stale: ${lineDisplayName}`);
+    this.name = "PackageTemplateStaleError";
   }
 }
 
@@ -117,6 +132,85 @@ function linesJsonLiteral(lines: readonly PackageTemplateLine[]) {
   return sql`${JSON.stringify(lines)}::jsonb`;
 }
 
+type LiveCatalogBinding = {
+  revision: number;
+  unit: PackageTemplateLine["unit"];
+  salesUnitNetCents: number;
+  purchaseUnitNetCents: number;
+};
+
+// F16-13: gebundene Zeile gegen den lebenden Katalog prüfen und mit
+// Live-Werten stempeln (Client-Preise/Einheit zählen bei Bindung nicht —
+// Fälschungsschutz; Drift scheitert, damit kein stiller Preiswechsel
+// über einen artfremden Edit (z. B. reine Namensänderung) passiert).
+async function resolveBoundLines(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  lines: readonly PackageTemplateLine[],
+): Promise<PackageTemplateLine[]> {
+  const bound = lines.filter((line) => line.catalogComponentId !== undefined);
+  if (bound.length === 0) return [...lines];
+  if (!can(ctx, "catalog.read")) {
+    throw new PermissionDeniedError("catalog.read", "package_template", undefined, ctx.actor);
+  }
+  const live = new Map<string, LiveCatalogBinding>();
+  for (const line of bound) {
+    const componentId = line.catalogComponentId!;
+    if (!live.has(componentId)) {
+      const found = await tx.execute<{
+        status: string;
+        current_revision: number;
+        revision_snapshot: unknown;
+      }>(sql`
+        select component.status, component.current_revision,
+               revision.revision_snapshot
+          from catalog_component component
+          join catalog_component_revision revision
+            on revision.workspace_id = component.workspace_id
+           and revision.component_id = component.id
+           and revision.revision = component.current_revision
+         where component.workspace_id = ${ctx.workspaceId}::uuid
+           and component.id = ${componentId}::uuid
+         limit 1
+      `);
+      const row = found.rows[0];
+      const parsed = row
+        ? catalogComponentRevisionV1Schema.safeParse(row.revision_snapshot)
+        : null;
+      const commercial: CatalogCommercialV1 | null = parsed && parsed.success
+        ? parsed.data.commercial
+        : null;
+      if (!row || row.status !== "active" || !parsed || !parsed.success || commercial === null) {
+        throw new PackageTemplateStaleError(line.displayName);
+      }
+      const unit = parsed.data.presentation.unit;
+      if (unit !== "piece" && unit !== "set" && unit !== "meter") {
+        throw new PackageTemplateStaleError(line.displayName);
+      }
+      live.set(componentId, {
+        revision: row.current_revision,
+        unit,
+        salesUnitNetCents: commercial.salesPriceNetCents,
+        purchaseUnitNetCents: commercial.purchasePriceNetCents,
+      });
+    }
+    const binding = live.get(componentId)!;
+    if (binding.revision !== line.catalogComponentRevision) {
+      throw new PackageTemplateStaleError(line.displayName);
+    }
+  }
+  return lines.map((line) => {
+    if (line.catalogComponentId === undefined) return line;
+    const binding = live.get(line.catalogComponentId)!;
+    return {
+      ...line,
+      unit: binding.unit,
+      salesUnitNetCents: binding.salesUnitNetCents,
+      purchaseUnitNetCents: binding.purchaseUnitNetCents,
+    };
+  });
+}
+
 function toDto(row: TemplateRow, canWrite: boolean): PackageTemplateDto {
   return packageTemplateDtoSchema.parse({
     schemaVersion: PACKAGE_TEMPLATE_SCHEMA_VERSION,
@@ -159,6 +253,9 @@ export async function createPackageTemplate(
   const parsed = createPackageTemplateCommandSchema.safeParse(input);
   if (!parsed.success) throw new PackageTemplateValidationError();
   const command = parsed.data;
+  // F16-13: Bindungen prüfen + mit Live-Werten stempeln (Fail-closed bei Drift).
+  const lines = await resolveBoundLines(tx, ctx, command.lines);
+  const commandWithLines = { ...command, lines };
 
   let row: TemplateRow;
   try {
@@ -168,12 +265,12 @@ export async function createPackageTemplate(
         package_lines, position, created_by
       ) values (
         ${ctx.workspaceId}::uuid,
-        ${command.name},
-        ${normalizePackageTemplateName(command.name)},
-        ${command.sectionTitle},
-        ${command.category},
-        ${linesJsonLiteral(command.lines)},
-        ${command.position ?? 0},
+        ${commandWithLines.name},
+        ${normalizePackageTemplateName(commandWithLines.name)},
+        ${commandWithLines.sectionTitle},
+        ${commandWithLines.category},
+        ${linesJsonLiteral(commandWithLines.lines)},
+        ${commandWithLines.position ?? 0},
         ${ctx.actor}::uuid
       )
       returning id, name, section_title, category, package_lines,
@@ -214,17 +311,20 @@ export async function updatePackageTemplate(
   const parsed = updatePackageTemplateCommandSchema.safeParse(input);
   if (!parsed.success) throw new PackageTemplateValidationError();
   const command = parsed.data;
+  // F16-13: Bindungen prüfen + mit Live-Werten stempeln (Fail-closed bei Drift).
+  const lines = await resolveBoundLines(tx, ctx, command.lines);
+  const commandWithLines = { ...command, lines };
 
   let rows: TemplateRow[];
   try {
     const updated = await tx.execute<TemplateRow>(sql`
       update package_template
-         set name = ${command.name},
-             name_normalized = ${normalizePackageTemplateName(command.name)},
-             section_title = ${command.sectionTitle},
-             category = ${command.category},
-             package_lines = ${linesJsonLiteral(command.lines)},
-             position = ${command.position},
+         set name = ${commandWithLines.name},
+             name_normalized = ${normalizePackageTemplateName(commandWithLines.name)},
+             section_title = ${commandWithLines.sectionTitle},
+             category = ${commandWithLines.category},
+             package_lines = ${linesJsonLiteral(commandWithLines.lines)},
+             position = ${commandWithLines.position},
              updated_by = ${ctx.actor}::uuid,
              updated_at = statement_timestamp()
        where workspace_id = ${ctx.workspaceId}::uuid
@@ -445,6 +545,10 @@ export async function applyPackageTemplate(
   const template = found.rows[0];
   if (!template) throw new PackageTemplateNotFoundError();
   const dto = toDto(template, true);
+  // F16-13: Bindungen gegen den lebenden Katalog prüfen (Fail-closed bei
+  // Drift — Vorlage prüfen statt still mit veralteten Preisen einsetzen).
+  const freshLines = await resolveBoundLines(tx, ctx, dto.lines);
+  const freshDto = { ...dto, lines: freshLines };
 
   const current = await tx.execute<{ current_revision: number }>(sql`
     select current_revision
@@ -462,7 +566,7 @@ export async function applyPackageTemplate(
   const snapshot = await readValidatedRevision(
     tx, ctx, command.offerId, command.variantId, revisionRow.current_revision,
   );
-  const plan = planCustomLayerReplacement(snapshot, dto.lines, dto.sectionTitle, dto.category, command.zeroConfirmed);
+  const plan = planCustomLayerReplacement(snapshot, freshDto.lines, freshDto.sectionTitle, freshDto.category, command.zeroConfirmed);
   const result = await reviseOfferVariant(tx, ctx, {
     schemaVersion: OFFER_VARIANT_REVISE_COMMAND_VERSION,
     offerId: command.offerId,

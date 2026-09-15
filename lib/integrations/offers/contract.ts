@@ -41,7 +41,7 @@ export const OFFER_VARIANT_SNAPSHOT_VERSION_V1 = "offer-variant-snapshot.v1" as 
 // Artefakts. Der Generator und der Contract-Test verhindern eine zweite
 // Vertragswahrheit.
 export const OFFER_SCHEMA_SHA256 =
-  "b7dfc9234d7fd5184296183ab9f9c0d149040bc373a55b30f0f92c1632e62457" as const;
+  "5aeb1620466d1e4bd89963a0c96c74abd81ecc0e5cb0df069b2c6cfe83efd521" as const;
 
 export const OFFER_MAX_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const OFFER_MAX_PATCH_OPERATIONS = 500 as const;
@@ -185,6 +185,17 @@ const componentCategorySchema = z.enum([
 const unitSchema = z.enum(["piece", "set", "meter"]);
 const positionTypeSchema = z.enum(["required", "additional", "optional"]);
 
+// F16-12 Mengenverknüpfung („Linked amounts", Katalog F16.2): Die Menge
+// einer freien Zeile folgt der Menge einer Quellzeile mal Faktor
+// (Milli-Einheiten: verknuepfteMilli = round(quellMilli * faktorMilli / 1000)).
+// ESTIMATE: Faktorgrenzen spiegeln die Mengengrenzen (Ergebniswächter ist
+// die Mengenobergrenze in der Engine); Quelle beliebig, Ziel nur custom.
+const quantityLinkSchema = z.strictObject({
+  sourceLineDomainId: uuidSchema,
+  factorMilli: z.int().safe().min(1).max(100_000_000),
+});
+export type OfferLineQuantityLinkV1 = z.infer<typeof quantityLinkSchema>;
+
 const setLineTaxOperationSchema = z.discriminatedUnion("taxTreatment", [
   z.strictObject({
     operation: z.literal("set_line_tax"),
@@ -247,6 +258,16 @@ const reviseOperationSchema = z.union([
     operation: z.literal("set_line_quantity"),
     lineDomainId: uuidSchema,
     quantityMilli: z.int().safe().min(1).max(100_000_000),
+  }),
+  z.strictObject({
+    operation: z.literal("set_line_quantity_link"),
+    lineDomainId: uuidSchema,
+    sourceLineDomainId: uuidSchema,
+    factorMilli: z.int().safe().min(1).max(100_000_000),
+  }),
+  z.strictObject({
+    operation: z.literal("clear_line_quantity_link"),
+    lineDomainId: uuidSchema,
   }),
   z.strictObject({
     operation: z.literal("set_custom_line_details"),
@@ -688,6 +709,10 @@ const offerVariantLineSnapshotSchema = z.strictObject({
   positionType: positionTypeSchema,
   isHidden: z.boolean(),
   quantityMilli: z.int().safe().min(1).max(100_000_000),
+  // F16-12: bewusst nur optional (kein Default) — fehlender Key hält
+  // historische Snapshots byte-identisch (f1603-Ketten, gepinnte SHAs).
+  // Die Engine setzt das Objekt oder löscht den Key, nie null.
+  quantityLink: quantityLinkSchema.optional(),
   product: productSnapshotSchema,
   source: z.discriminatedUnion("kind", [catalogLineSourceSchema, customLineSourceSchema]),
   salesPricing: effectiveUnitPricingSchema,
@@ -1278,6 +1303,7 @@ const publicOfferViewKeys: ReadonlySet<string> = new Set([
   // BOM-Struktur und oeffentliche VK-Informationen.
   "sectionDomainId", "position", "category", "title", "discountBps", "lines",
   "lineDomainId", "componentCategory", "positionType", "isHidden", "quantityMilli",
+  "quantityLink", "sourceLineDomainId", "factorMilli",
   "product", "source", "salesPricing", "lineDiscountBps", "taxTreatment", "taxRateBps",
   "computed", "kind", "internalSku", "manufacturer", "model", "unit", "technicalData",
   "image", "datasheet", "technicalProvenance", "catalogComponentId",

@@ -55,6 +55,7 @@ export {
   normalizePackageTemplateName,
   PackageTemplateConflictError,
   PackageTemplateNotFoundError,
+  PackageTemplateStaleError,
   PackageTemplateValidationError,
   restorePackageTemplate,
   updatePackageTemplate,

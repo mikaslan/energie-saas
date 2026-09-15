@@ -13,6 +13,8 @@ export interface OfferEditorSourceLine {
   positionType: OfferPositionType;
   isHidden: boolean;
   quantityMilli: number;
+  // F16-12: Mengenverknüpfung (nur an freien Zeilen gesetzt).
+  quantityLink?: { sourceLineDomainId: string; factorMilli: number };
   salesUnitNetCents: number;
   purchaseUnitNetCents?: number;
   lineDiscountBps: number;
@@ -53,6 +55,10 @@ export interface OfferEditorDraftLine {
   description: string;
   unit: OfferUnit;
   quantity: string;
+  // F16-12: Mengenverknüpfung — Quell-Zeilen-ID ("" = manuelle Menge)
+  // plus Faktor als Dezimaltext (z. B. "2,5" = ×2,5).
+  quantityLinkSourceId: string;
+  quantityLinkFactor: string;
   salesUnitNetEuros: string;
   purchaseUnitNetEuros: string;
   lineDiscountPercent: string;
@@ -98,6 +104,8 @@ export type OfferRevisionOperation =
   | { operation: "move_section"; sectionDomainId: string; position: number }
   | { operation: "move_line"; lineDomainId: string; sectionDomainId: string; position: number }
   | { operation: "set_line_quantity"; lineDomainId: string; quantityMilli: number }
+  | { operation: "set_line_quantity_link"; lineDomainId: string; sourceLineDomainId: string; factorMilli: number }
+  | { operation: "clear_line_quantity_link"; lineDomainId: string }
   | { operation: "set_custom_line_details"; lineDomainId: string; displayName: string; description: string | null; unit: OfferUnit }
   | { operation: "set_line_position_type"; lineDomainId: string; positionType: OfferPositionType }
   | { operation: "set_line_visibility"; lineDomainId: string; isHidden: boolean }
@@ -181,6 +189,8 @@ function draftLineFromSource(line: OfferEditorSourceLine): OfferEditorDraftLine 
     description: line.description ?? "",
     unit,
     quantity: formatScaledInteger(line.quantityMilli, 3),
+    quantityLinkSourceId: line.quantityLink?.sourceLineDomainId ?? "",
+    quantityLinkFactor: line.quantityLink ? formatScaledInteger(line.quantityLink.factorMilli, 3) : "",
     salesUnitNetEuros: formatScaledInteger(line.salesUnitNetCents, 2),
     purchaseUnitNetEuros: line.purchaseUnitNetCents === undefined ? "" : formatScaledInteger(line.purchaseUnitNetCents, 2),
     lineDiscountPercent: formatScaledInteger(line.lineDiscountBps, 2),
@@ -414,6 +424,8 @@ export function addCustomOfferDraftLine(
         description: "",
         unit: "piece",
         quantity: "1",
+        quantityLinkSourceId: "",
+        quantityLinkFactor: "",
         salesUnitNetEuros: "0",
         purchaseUnitNetEuros: "0",
         lineDiscountPercent: "0",
@@ -459,6 +471,83 @@ function parsedLineValues(line: OfferEditorDraftLine, errors: OfferEditorError[]
   if (description !== null && description.length > 1_000) addError(errors, `${prefix}-description`, "Die Positionsbeschreibung darf höchstens 1.000 Zeichen enthalten.");
   if (quantityMilli === null || salesUnitNetCents === null || discountBps === null) return null;
   return { quantityMilli, salesUnitNetCents, purchaseUnitNetCents, discountBps, displayName, description };
+}
+
+// F16-12: Verknüpfungsfelder einer Draft-Zeile gegen den aktuellen Draft
+// validieren. Ergebnis: null = keine Verknüpfung, Objekt = geprüfter Link.
+// Fehler landen auf den Link-Feldern; die Quelle muss eine Draft-Zeile sein
+// (neu+neu geht nur in Add-Reihenfolge — sonst weist der Server mit
+// /operations/sourceLineDomainId ab).
+function parseDraftQuantityLink(
+  line: OfferEditorDraftLine,
+  draftLineIds: readonly string[],
+  errors: OfferEditorError[],
+): { sourceLineDomainId: string; factorMilli: number } | null {
+  const prefix = `line-${line.lineDomainId}`;
+  const sourceId = line.quantityLinkSourceId.trim();
+  if (sourceId === "") return null;
+  let valid = true;
+  if (line.sourceKind !== "custom") {
+    addError(errors, "editor-structure", "Nur freie Positionen können mengenverknüpft werden.");
+    valid = false;
+  }
+  if (sourceId === line.lineDomainId || !draftLineIds.includes(sourceId)) {
+    addError(errors, `${prefix}-quantity-link`, "Die Quellposition der Mengenverknüpfung ist ungültig.");
+    valid = false;
+  }
+  const factorMilli = parseScaledInteger(line.quantityLinkFactor, 3, 100_000_000);
+  if (factorMilli === null || factorMilli < 1) {
+    addError(errors, `${prefix}-quantity-factor`, "Der Verknüpfungsfaktor muss eine positive Zahl sein (z. B. 2,5).");
+    valid = false;
+  }
+  if (!valid || factorMilli === null) return null;
+  return { sourceLineDomainId: sourceId, factorMilli };
+}
+
+// F16-12: abgeleitete Menge aus Draft-Quelltext einstufig vorab prüfen
+// (Tiefen-Kaskaden validiert der Server); gibt die abgeleitete Menge zurück.
+function previewLinkedQuantityMilli(
+  line: OfferEditorDraftLine,
+  link: { sourceLineDomainId: string; factorMilli: number },
+  draftLineById: ReadonlyMap<string, OfferEditorDraftLine>,
+  errors: OfferEditorError[],
+): number | null {
+  const prefix = `line-${line.lineDomainId}`;
+  const source = draftLineById.get(link.sourceLineDomainId);
+  if (!source) return null;
+  const sourceMilli = parseScaledInteger(source.quantity, 3, 100_000_000);
+  if (sourceMilli === null || sourceMilli < 1) return null;
+  const resolved = Math.round((sourceMilli * link.factorMilli) / 1_000);
+  if (!Number.isSafeInteger(resolved) || resolved < 1 || resolved > 100_000_000) {
+    addError(errors, `${prefix}-quantity-factor`, "Die abgeleitete Menge sprengt die Mengengrenzen.");
+    return null;
+  }
+  if (line.unit !== "meter" && resolved % 1_000 !== 0) {
+    addError(errors, `${prefix}-quantity-factor`, "Die abgeleitete Menge muss bei Stück/Set ganzzahlig sein.");
+    return null;
+  }
+  return resolved;
+}
+
+// F16-12: live abgeleitete Menge für die Editor-Vorschau (einstufig,
+// null = nicht darstellbar). Autoritativ bleibt der Server nach Speichern.
+export function formatLinkedQuantityPreview(
+  draft: OfferEditorDraft,
+  line: OfferEditorDraftLine,
+): string | null {
+  const sourceId = line.quantityLinkSourceId.trim();
+  if (sourceId === "") return null;
+  const source = draft.sections
+    .flatMap((section) => section.lines)
+    .find((entry) => entry.lineDomainId === sourceId);
+  if (!source) return null;
+  const sourceMilli = parseScaledInteger(source.quantity, 3, 100_000_000);
+  const factorMilli = parseScaledInteger(line.quantityLinkFactor, 3, 100_000_000);
+  if (sourceMilli === null || sourceMilli < 1 || factorMilli === null || factorMilli < 1) return null;
+  const resolved = Math.round((sourceMilli * factorMilli) / 1_000);
+  if (!Number.isSafeInteger(resolved) || resolved < 1 || resolved > 100_000_000) return null;
+  if (line.unit !== "meter" && resolved % 1_000 !== 0) return null;
+  return formatScaledInteger(resolved, 3);
 }
 
 export function buildOfferRevisionOperations(
@@ -528,10 +617,19 @@ export function buildOfferRevisionOperations(
       operations.push({ operation: "remove_custom_section", sectionDomainId: sourceSection.sectionDomainId });
     }
   }
+  // F16-12: entfernte Zeilen-IDs für den Verknüpfungs-Wächter sammeln.
+  const removedLineIds = new Set<string>();
+  for (const sourceSection of originalSections) {
+    if (!removedSectionIds.has(sourceSection.sectionDomainId)) continue;
+    for (const line of sourceLines(sourceSection)) removedLineIds.add(line.lineDomainId);
+  }
   for (const [lineId, sourceEntry] of sourceLineById) {
     if (removedSectionIds.has(sourceEntry.sectionDomainId) || draftLineIds.includes(lineId)) continue;
     if ((sourceEntry.line.sourceKind ?? "catalog") !== "custom") addError(errors, "editor-structure", "Katalogpositionen können nicht entfernt werden.");
-    else operations.push({ operation: "remove_custom_line", lineDomainId: lineId });
+    else {
+      removedLineIds.add(lineId);
+      operations.push({ operation: "remove_custom_line", lineDomainId: lineId });
+    }
   }
 
   for (const [sectionIndex, section] of draft.sections.entries()) {
@@ -588,6 +686,17 @@ export function buildOfferRevisionOperations(
       if (values.discountBps !== 0) {
         if (!capabilities.canApplyDiscount) addError(errors, `line-${line.lineDomainId}-discount`, "Für Rabatte fehlt die Berechtigung.");
         else operations.push({ operation: "set_line_discount", lineDomainId: line.lineDomainId, discountBps: values.discountBps });
+      }
+      // F16-12: Verknüpfung direkt nach dem Anlegen setzen (Add-Reihenfolge:
+      // Quelle muss serverseitig bereits existieren).
+      if (line.quantityLinkSourceId.trim() !== "") {
+        const freshLink = parseDraftQuantityLink(line, draftLineIds, errors);
+        if (freshLink) {
+          const draftLineById = new Map(draftLines.map((entry) => [entry.lineDomainId, entry]));
+          if (previewLinkedQuantityMilli(line, freshLink, draftLineById, errors) !== null) {
+            operations.push({ operation: "set_line_quantity_link", lineDomainId: line.lineDomainId, sourceLineDomainId: freshLink.sourceLineDomainId, factorMilli: freshLink.factorMilli });
+          }
+        }
       }
     }
   }
@@ -655,7 +764,28 @@ export function buildOfferRevisionOperations(
           });
         }
       }
-      if (values.quantityMilli !== originalLine.quantityMilli) operations.push({ operation: "set_line_quantity", lineDomainId: line.lineDomainId, quantityMilli: values.quantityMilli });
+      // F16-12: Mengenverknüpfung vor der Mengen-Op — verknüpfte Mengen
+      // setzt der Server abgeleitet, manuelle Mengen-Ops entfallen dann.
+      const draftLinkById = new Map(draftLines.map((entry) => [entry.lineDomainId, entry]));
+      const originalLink = originalLine.quantityLink ?? null;
+      const linkIntended = line.quantityLinkSourceId.trim() !== "";
+      const draftLink = linkIntended ? parseDraftQuantityLink(line, draftLineIds, errors) : null;
+      if (linkIntended && draftLink && removedLineIds.has(draftLink.sourceLineDomainId)) {
+        addError(errors, "editor-structure", "Verknüpfte Quellpositionen müssen erst gelöst werden, bevor sie entfernt werden.");
+      } else if (linkIntended && draftLink) {
+        const linkChanged = originalLink === null
+          || originalLink.sourceLineDomainId !== draftLink.sourceLineDomainId
+          || originalLink.factorMilli !== draftLink.factorMilli;
+        if (linkChanged) {
+          if (previewLinkedQuantityMilli(line, draftLink, draftLinkById, errors) !== null) {
+            operations.push({ operation: "set_line_quantity_link", lineDomainId: line.lineDomainId, sourceLineDomainId: draftLink.sourceLineDomainId, factorMilli: draftLink.factorMilli });
+          }
+        }
+      } else if (!linkIntended && originalLink !== null) {
+        operations.push({ operation: "clear_line_quantity_link", lineDomainId: line.lineDomainId });
+      }
+      const linkActive = linkIntended && draftLink !== null;
+      if (!linkActive && values.quantityMilli !== originalLine.quantityMilli) operations.push({ operation: "set_line_quantity", lineDomainId: line.lineDomainId, quantityMilli: values.quantityMilli });
       if (line.positionType !== originalLine.positionType) operations.push({ operation: "set_line_position_type", lineDomainId: line.lineDomainId, positionType: line.positionType });
       if (line.isHidden !== originalLine.isHidden) operations.push({ operation: "set_line_visibility", lineDomainId: line.lineDomainId, isHidden: line.isHidden });
       if (values.salesUnitNetCents !== originalLine.salesUnitNetCents) {
@@ -856,6 +986,7 @@ export function rebaseOfferEditorDraft(
     "displayName", "description", "unit", "quantity", "salesUnitNetEuros",
     "purchaseUnitNetEuros", "lineDiscountPercent", "positionType", "isHidden",
     "salesPriceReason", "purchasePriceReason", "taxTreatment", "zeroTaxConfirmed",
+    "quantityLinkSourceId", "quantityLinkFactor",
   ] as const;
   for (const [lineId, localLine] of localLines) {
     const baseLine = baseLines.get(lineId);

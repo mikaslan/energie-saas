@@ -16,6 +16,7 @@ import {
   createPackageTemplate,
   PackageTemplateConflictError,
   PackageTemplateNotFoundError,
+  PackageTemplateStaleError,
   PackageTemplateValidationError,
   restorePackageTemplate,
   updatePackageTemplate,
@@ -28,6 +29,7 @@ export type PackageTemplateActionState =
   | { status: "idle" }
   | { status: "success"; message: string }
   | { status: "invalid" }
+  | { status: "stale"; lineName: string }
   | { status: "conflict" }
   | { status: "not_found" }
   | { status: "denied" }
@@ -89,6 +91,8 @@ type ParsedLine = {
   positionType: "required" | "additional" | "optional";
   isHidden: boolean;
   taxTreatment: "standard_19" | "zero_operator_confirmed";
+  catalogComponentId?: string;
+  catalogComponentRevision?: number;
 };
 
 // F16-11: Paket-Zeilen als JSON-Liste (dynamische Formularzeilen);
@@ -131,11 +135,33 @@ function parseLines(value: FormDataEntryValue | null): ParsedLine[] | null {
       : typeof record.taxTreatment === "string" && TAX_SET.has(record.taxTreatment)
         ? (record.taxTreatment as ParsedLine["taxTreatment"])
         : null;
+    // F16-13 Katalogbindung (beide Felder gemeinsam oder keines;
+    // Preise/Einheit stammen beim Speichern aus dem Katalog).
+    const rawComponentId = record.catalogComponentId === undefined || record.catalogComponentId === null
+      || record.catalogComponentId === ""
+      ? undefined
+      : record.catalogComponentId;
+    const catalogComponentId = rawComponentId === undefined
+      ? undefined
+      : typeof rawComponentId === "string" && idSchema.safeParse(rawComponentId).success
+        ? rawComponentId
+        : null;
+    const rawRevision = record.catalogComponentRevision === undefined || record.catalogComponentRevision === null
+      || record.catalogComponentRevision === ""
+      ? undefined
+      : record.catalogComponentRevision;
+    const catalogComponentRevision = rawRevision === undefined
+      ? undefined
+      : typeof rawRevision === "number" && Number.isSafeInteger(rawRevision) && rawRevision >= 1
+        ? rawRevision
+        : null;
     if (
       displayName === null || description === undefined || unit === null
       || quantityMilli === null || salesUnitNetCents === null
       || purchaseUnitNetCents === null || positionType === null
       || taxTreatment === null
+      || catalogComponentId === null || catalogComponentRevision === null
+      || (catalogComponentId === undefined) !== (catalogComponentRevision === undefined)
     ) return null;
     if (unit !== "meter" && quantityMilli % 1_000 !== 0) return null;
     lines.push({
@@ -148,6 +174,9 @@ function parseLines(value: FormDataEntryValue | null): ParsedLine[] | null {
       positionType,
       isHidden: record.isHidden === true,
       taxTreatment,
+      ...(catalogComponentId !== undefined
+        ? { catalogComponentId, catalogComponentRevision: catalogComponentRevision! }
+        : {}),
     });
   }
   return lines;
@@ -173,6 +202,7 @@ function parseFields(formData: FormData):
 
 function mapError(error: unknown): PackageTemplateActionState {
   if (error instanceof PackageTemplateValidationError) return { status: "invalid" };
+  if (error instanceof PackageTemplateStaleError) return { status: "stale", lineName: error.lineDisplayName };
   if (error instanceof PackageTemplateConflictError) return { status: "conflict" };
   if (error instanceof PackageTemplateNotFoundError) return { status: "not_found" };
   if (error instanceof PermissionDeniedError) return { status: "denied" };

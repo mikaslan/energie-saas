@@ -146,11 +146,14 @@ async function fillLine(
 }
 
 test.describe("F16-11 Paket-Vorlagen", () => {
-  // F16-11b E2E-03: eigenes angebotsfähiges Projekt im selben Workspace —
-  // jede Angebotsanlage versteckt das Create-Widget, und E2E-04 belegt das
-  // F1606-Projekt zuerst (Templates sind Workspace-scoped, daher kein
-  // zweiter Workspace nötig).
+  // F16-11b Isolation: jede Angebotsanlage versteckt das Create-Widget —
+  // das F1606-Projekt belegt F16-06-E2E-03 im Vollverbund zuerst (lokal
+  // fokussiert unsichtbar), daher bekommt JEDER Angebotspfad ein eigenes
+  // frisches Projekt (Templates sind Workspace-scoped, daher kein zweiter
+  // Workspace nötig). Lehre aus CI 34950834932 (E2E-04 rot): fokussiert
+  // grün beweist keine Vollverbund-Fähigkeit bei geteilten Fixture-IDs.
   let isolatedProjectId = "";
+  let isolatedProjectId04 = "";
   test.beforeAll(async () => {
     const data = runtimeState();
     const isolated = await seedM201ReadyProject(data.databaseUrl, {
@@ -159,6 +162,12 @@ test.describe("F16-11 Paket-Vorlagen", () => {
       skuSuffix: `w3-f1611-${randomUUID().slice(0, 8)}`,
     });
     isolatedProjectId = isolated.projectId;
+    const isolated04 = await seedM201ReadyProject(data.databaseUrl, {
+      workspaceId: data.w3WorkspaceId,
+      editorIdentityId: data.editorIdentityId,
+      skuSuffix: `w3-f1611b-${randomUUID().slice(0, 8)}`,
+    });
+    isolatedProjectId04 = isolated04.projectId;
   });
 
   test("F16-11-E2E-04: 0-%-Paket nur mit frischer Bestätigung einsetzen", async ({ page }) => {
@@ -186,7 +195,7 @@ test.describe("F16-11 Paket-Vorlagen", () => {
     await creator.getByRole("button", { name: "Anlegen", exact: true }).click();
     await expect(page.locator("section[aria-label=\"Pakete\"] article").filter({ hasText: packageName })).toHaveCount(1);
 
-    const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f1606ProjectId}`;
+    const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${isolatedProjectId04}`;
     await page.goto(projectPath);
     await expect(page.getByRole("heading", { name: M2_01_E2E_CONTACT, level: 1 })).toBeVisible();
     const createEntry = page.locator('[data-offer-create-state="ready"]');
@@ -198,7 +207,7 @@ test.describe("F16-11 Paket-Vorlagen", () => {
     await page.waitForURL((url) =>
       /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
       && url.searchParams.has("variante"));
-    const w3State = { ...data, workspaceId: data.w3WorkspaceId, m201ProjectId: data.f1606ProjectId };
+    const w3State = { ...data, workspaceId: data.w3WorkspaceId, m201ProjectId: isolatedProjectId04 };
     const initial = await readM201Offer(w3State);
     const variantId = new URL(page.url()).searchParams.get("variante");
     expect(variantId).toBe(initial.variantId);

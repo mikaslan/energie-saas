@@ -45,6 +45,18 @@ const POSITION_TYPE_OPTIONS = [
   { value: "optional", label: "Optional" },
 ];
 
+// F16-13: optionale Katalogbindung je Zeile (Komponente + Revision;
+// Preise/Einheit stammen beim Speichern aus dem Katalog).
+export interface CatalogBindingOption {
+  id: string;
+  revision: number;
+  sku: string;
+  displayName: string;
+  unit: string;
+  salesEuros: string;
+  purchaseEuros: string | null;
+}
+
 type LineRow = {
   key: string;
   displayName: string;
@@ -56,6 +68,8 @@ type LineRow = {
   positionType: string;
   isHidden: boolean;
   taxTreatment: string;
+  catalogComponentId: string;
+  catalogComponentRevision: number | null;
 };
 
 function centsToEuros(cents: number): string {
@@ -78,6 +92,8 @@ function emptyRow(): LineRow {
     positionType: "required",
     isHidden: false,
     taxTreatment: "standard_19",
+    catalogComponentId: "",
+    catalogComponentRevision: null,
   };
 }
 
@@ -94,6 +110,8 @@ function rowsFromTemplate(template?: PackageTemplateDto): LineRow[] {
     positionType: line.positionType,
     isHidden: line.isHidden,
     taxTreatment: line.taxTreatment ?? "standard_19",
+    catalogComponentId: line.catalogComponentId ?? "",
+    catalogComponentRevision: line.catalogComponentRevision ?? null,
   }));
 }
 
@@ -103,7 +121,9 @@ function Feedback({ state }: { state: PackageTemplateActionState }) {
     return <p role="status" className="mt-2 text-sm font-medium text-green-700">{state.message}</p>;
   }
   const message =
-    state.status === "conflict"
+    state.status === "stale"
+      ? `Katalogbindung veraltet („${state.lineName}“) — Komponente neu binden oder Bindung lösen, dann erneut speichern.`
+      : state.status === "conflict"
       ? "Ein aktives Paket mit diesem Namen existiert bereits."
       : state.status === "denied"
         ? "Dafür fehlt dir die Rabatt-Freigabe."
@@ -123,6 +143,7 @@ function PackageForm({
   template,
   action,
   submitLabel,
+  catalogOptions,
 }: {
   workspaceId: string;
   template?: PackageTemplateDto;
@@ -131,6 +152,7 @@ function PackageForm({
     formData: FormData,
   ) => Promise<PackageTemplateActionState>;
   submitLabel: string;
+  catalogOptions: readonly CatalogBindingOption[];
 }) {
   const [state, dispatch] = useActionState(action, initialState);
   const [successCount, setSuccessCount] = useState(0);
@@ -146,6 +168,44 @@ function PackageForm({
   const inputClass = "min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
   const updateRow = (key: string, patch: Partial<LineRow>) => {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  };
+  // F16-13: Komponente binden (Name nur vorbelegen, Preise/Einheit werden
+  // beim Speichern aus dem Katalog übernommen). Options-Value trägt Id +
+  // Revision, damit ein Rebind auf neue Revision ein Change-Event auslöst.
+  const optionValue = (option: CatalogBindingOption): string => `${option.id}::${option.revision}`;
+  const rowOptionValue = (row: LineRow): string =>
+    row.catalogComponentId !== "" && row.catalogComponentRevision !== null
+      ? `${row.catalogComponentId}::${row.catalogComponentRevision}`
+      : "";
+  const bindRow = (key: string, value: string) => {
+    if (value === "") {
+      updateRow(key, { catalogComponentId: "", catalogComponentRevision: null });
+      return;
+    }
+    const [optionId, revisionText] = value.split("::");
+    const revision = Number(revisionText);
+    const option = catalogOptions.find((entry) => entry.id === optionId && entry.revision === revision);
+    if (!option || !Number.isSafeInteger(revision) || revision < 1) return;
+    setRows((current) => current.map((row) => {
+      if (row.key !== key) return row;
+      return {
+        ...row,
+        catalogComponentId: option.id,
+        catalogComponentRevision: option.revision,
+        displayName: row.displayName === "" ? option.displayName : row.displayName,
+        unit: option.unit,
+        salesEuros: option.salesEuros,
+        purchaseEuros: option.purchaseEuros ?? row.purchaseEuros,
+      };
+    }));
+  };
+  const boundLabel = (row: LineRow): string => {
+    const option = catalogOptions.find((entry) => entry.id === row.catalogComponentId);
+    if (!option) return "Komponente nicht mehr aktiv — neu binden oder lösen";
+    if (option.revision !== row.catalogComponentRevision) {
+      return `veraltet (aktuell Rev. ${option.revision}) — neu binden oder lösen`;
+    }
+    return `${option.sku} (Rev. ${option.revision})`;
   };
   return (
     <form action={dispatch} key={formKey} className="grid gap-3">
@@ -164,6 +224,12 @@ function PackageForm({
           positionType: row.positionType,
           isHidden: row.isHidden,
           taxTreatment: row.taxTreatment,
+          ...(row.catalogComponentId !== "" && row.catalogComponentRevision !== null
+            ? {
+                catalogComponentId: row.catalogComponentId,
+                catalogComponentRevision: row.catalogComponentRevision,
+              }
+            : {}),
         })))}
       />
       <label className="grid gap-1 text-sm font-semibold text-slate-800">
@@ -232,7 +298,12 @@ function PackageForm({
                 {`Einheit ${index + 1}`}
                 <select
                   value={row.unit}
-                  onChange={(event) => updateRow(row.key, { unit: event.target.value })}
+                  onChange={(event) => updateRow(row.key, {
+                    unit: event.target.value,
+                    ...(row.catalogComponentId !== ""
+                      ? { catalogComponentId: "", catalogComponentRevision: null }
+                      : {}),
+                  })}
                   className={inputClass}
                 >
                   {UNIT_OPTIONS.map((option) => (
@@ -258,7 +329,12 @@ function PackageForm({
                   type="text"
                   inputMode="decimal"
                   value={row.salesEuros}
-                  onChange={(event) => updateRow(row.key, { salesEuros: event.target.value })}
+                  onChange={(event) => updateRow(row.key, {
+                    salesEuros: event.target.value,
+                    ...(row.catalogComponentId !== ""
+                      ? { catalogComponentId: "", catalogComponentRevision: null }
+                      : {}),
+                  })}
                   required
                   placeholder="z. B. 250,00"
                   className={inputClass}
@@ -270,12 +346,54 @@ function PackageForm({
                   type="text"
                   inputMode="decimal"
                   value={row.purchaseEuros}
-                  onChange={(event) => updateRow(row.key, { purchaseEuros: event.target.value })}
+                  onChange={(event) => updateRow(row.key, {
+                    purchaseEuros: event.target.value,
+                    ...(row.catalogComponentId !== ""
+                      ? { catalogComponentId: "", catalogComponentRevision: null }
+                      : {}),
+                  })}
                   required
                   placeholder="z. B. 150,00"
                   className={inputClass}
                 />
               </label>
+            </div>
+            <div className="grid gap-2">
+              <label className="grid gap-1 text-sm font-semibold text-slate-800">
+                {`Katalogbindung ${index + 1} (optional)`}
+                <select
+                  value={rowOptionValue(row)}
+                  onChange={(event) => bindRow(row.key, event.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Freie Zeile (keine Bindung)</option>
+                  {row.catalogComponentId !== "" && !catalogOptions.some((option) => optionValue(option) === rowOptionValue(row)) ? (
+                    <option value={rowOptionValue(row)} disabled>
+                      {`Gebunden Rev. ${row.catalogComponentRevision} (veraltet — neu wählen)`}
+                    </option>
+                  ) : null}
+                  {catalogOptions.map((option) => (
+                    <option key={`${option.id}::${option.revision}`} value={optionValue(option)}>
+                      {`${option.sku} — ${option.displayName} (Rev. ${option.revision})`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {row.catalogComponentId !== "" ? (
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <p className="text-slate-700">
+                    Gebunden: {boundLabel(row)} · VK/EK/Einheit werden beim Speichern aus dem Katalog
+                    übernommen; manuelle Preis-/Einheitsänderung löst die Bindung.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => updateRow(row.key, { catalogComponentId: "", catalogComponentRevision: null })}
+                    className="min-h-11 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600"
+                  >
+                    Bindung lösen
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <label className="grid gap-1 text-sm font-semibold text-slate-800">
@@ -361,10 +479,12 @@ export function PackageTemplateManager({
   workspaceId,
   templates,
   canWrite,
+  catalogOptions,
 }: {
   workspaceId: string;
   templates: PackageTemplateDto[];
   canWrite: boolean;
+  catalogOptions: readonly CatalogBindingOption[];
 }) {
   const [archiveState, archiveDispatch] = useActionState(archivePackageTemplateAction, initialState);
   const [restoreState, restoreDispatch] = useActionState(restorePackageTemplateAction, initialState);
@@ -378,6 +498,7 @@ export function PackageTemplateManager({
               workspaceId={workspaceId}
               action={createPackageTemplateAction}
               submitLabel="Anlegen"
+              catalogOptions={catalogOptions}
             />
           </div>
         </section>
@@ -409,6 +530,7 @@ export function PackageTemplateManager({
                     template={template}
                     action={updatePackageTemplateAction}
                     submitLabel="Speichern"
+                    catalogOptions={catalogOptions}
                   />
                 </div>
               </details>

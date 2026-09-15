@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type { PackageTemplateDto } from "@/lib/integrations/offers/package-contract";
+import { listCatalogComponents } from "@/modules/catalog";
 import { listPackageTemplates } from "@/modules/offers";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { DeniedState } from "../../_ui";
@@ -25,6 +26,15 @@ export default async function PackageTemplatesPage(
     | {
       templates: PackageTemplateDto[];
       canWrite: boolean;
+      catalogOptions: {
+        id: string;
+        revision: number;
+        sku: string;
+        displayName: string;
+        unit: string;
+        salesEuros: string;
+        purchaseEuros: string | null;
+      }[];
     }
     | undefined;
   try {
@@ -32,10 +42,29 @@ export default async function PackageTemplatesPage(
       workspaceId,
       "discount_template.read",
       "package_template",
-      async (tx, ctx) => ({
-        templates: await listPackageTemplates(tx, ctx, { includeArchived: true }),
-        canWrite: can(ctx, "discount_template.write"),
-      }),
+      async (tx, ctx) => {
+        const templates = await listPackageTemplates(tx, ctx, { includeArchived: true });
+        // F16-13: aktive Katalogkomponenten für die Zeilenbindung
+        // (EK nur mit Leserecht — sonst manuell, Server stempelt).
+        const components = await listCatalogComponents(tx, ctx, { status: "active" });
+        return {
+          templates,
+          canWrite: can(ctx, "discount_template.write"),
+          catalogOptions: components.map((component) => ({
+            id: component.id,
+            revision: component.currentRevision,
+            sku: component.current.identity.internalSku,
+            displayName: component.current.presentation.displayName,
+            unit: component.current.presentation.unit,
+            salesEuros: String(component.current.commercial?.salesPriceNetCents !== undefined
+              ? component.current.commercial.salesPriceNetCents / 100
+              : 0),
+            purchaseEuros: component.current.commercial?.purchasePriceNetCents !== undefined
+              ? String(component.current.commercial.purchasePriceNetCents / 100)
+              : null,
+          })),
+        };
+      },
     );
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
@@ -68,6 +97,7 @@ export default async function PackageTemplatesPage(
         workspaceId={workspaceId}
         templates={result.templates}
         canWrite={result.canWrite}
+        catalogOptions={result.catalogOptions}
       />
     </main>
   );

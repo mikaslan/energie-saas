@@ -1292,3 +1292,45 @@ identisch (`983ed67`, 0 unpusht).
   `tsc --noEmit` clean, eslint auf geänderten Dateien clean.
 - Offen: CI-Orakel für a35f96b (34947314457) auswerten; nächster
   F16-Rest-Katalogpfad (Linked amounts, Katalog-Zeilen).
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 41 — F16-12 lokal, UNPUSHT)
+- F16-12 Mengenverknüpfung gebaut (Contract + Engine + Editor + Karte,
+  DB 6/6 + E2E 1/1 lokal grün, Nachbarn grün, tsc/eslint/generate grün).
+  Bewusst UNCOMMITTIERT: CI 34950834932 (Vorderbau 40) läuft — kein Push,
+  kein Re-Run, kein Abbruch.
+- CI-Befund 2026-09-15: 34947314457 (a35f96b) per Concurrency als
+  `cancelled` beendet (Supersede durch Vorderbau-40-Push, kein manueller
+  Eingriff); 34940129955 final `failure` = bekannte 249/250 mit
+  m2-03a-Last-Flake; 34950834932 (2bbc8b9) in_progress.
+- Offen: 34950834932-Orakel abwarten, dann F16-12 committen/pushen;
+  F16-Rest: Katalog-Zeilen, echte Produkte/Feeds, Visual-Baselines.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 42 — F16-13 lokal, UNPUSHT)
+- F16-13 Katalog-Zeilen gebaut (Contract-Bindungsfelder + StaleError,
+  Verify+Stamp im Service, Picker/Rebind im Manager, Stale-Feedbacks in
+  beiden Panels, synthetische Disabled-Option gegen React-console.error,
+  Editor-Link-Select ebenso gehärtet; DB 5/5 + E2E 1/1 lokal grün,
+  Regression F16-11 4/4 + F16-12 1/1, Nachbarn 54/54, tsc/eslint grün).
+  Bewusst UNCOMMITTIERT (mit F16-12 gestapelt): CI läuft — kein Push,
+  kein Re-Run, kein Abbruch.
+- E2E-Lehre: Katalog-SKUs werden normalisiert (UPPERCASE — `W3-F1613`
+  statt `w3-f1613`); Drift kippt Angebotsseite in „outdated" (E2E sät
+  Projekt B nach der Drift); Angebotsseite redirectet nicht auf /login.
+- Offen: 34950834932-Orakel abwarten, dann F16-12+F16-13 committen/pushen;
+  F16-Rest: echte Produkte/Feeds, Visual-Baselines.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 43 — CI-Befund 34950834932 + Fix-Push)
+- Befund: `failure` = genau 1/255 rot — F16-11-E2E-04
+  (`[data-offer-create-state="ready"]` auf F1606 nicht gefunden).
+  Ursache: F16-06-E2E-03 belegt das geteilte F1606-Projekt im Vollverbund
+  immer zuerst; E2E-04 forderte ein frisches Projekt. Lokal fokussiert
+  unsichtbar — F16-11 war zuvor nie im Vollverbund (34940129955 lief ohne
+  f16-11-Spec). Statik/DB/Unit im Run grün.
+- Fix: E2E-04 nutzt zweites isoliertes Seed-Projekt (`w3-f1611b-*`);
+  Regel: kein Angebotspfad teilt sich Fixture-Projekte (F16-12/13 waren
+  bereits isoliert). Interferenzbeweis lokal: f16-06+f16-11 gemeinsam
+  7/7 auf einer DB (CI-Reihenfolge).
+- Vorderbau-41-Push enthält Fix + F16-12 + F16-13 (ein Orakel statt zwei);
+  F16-12/13 je lokal voll verifiziert (DB 6/6+5/5, E2E, Nachbarn, Gates).
+- Offen: Orakel am neuen HEAD auswerten, dann F16-Rest (echte
+  Produkte/Feeds, Visual-Baselines).

@@ -102,6 +102,8 @@ export interface OfferLineView {
   positionType: "required" | "additional" | "optional" | string;
   isHidden: boolean;
   quantityMilli: number;
+  // F16-12: Mengenverknüpfung (nur an freien Zeilen gesetzt).
+  quantityLink?: { sourceLineDomainId: string; factorMilli: number };
   componentCategory: OfferComponentCategory;
   source: { kind: "catalog" | "custom" };
   product: OfferProductView;
@@ -518,9 +520,11 @@ function PurchaseValues({ line }: { line: OfferLineView }) {
 
 function OfferLineCard({
   line,
+  linkSourceName,
   canReadPurchasePrice,
 }: {
   line: OfferLineView;
+  linkSourceName: string | null;
   canReadPurchasePrice: boolean;
 }) {
   return (
@@ -558,6 +562,12 @@ function OfferLineCard({
           <dd className="mt-1 font-semibold tabular-nums text-slate-900">
             {formatQuantity(line.quantityMilli, line.product.unit)}
           </dd>
+          {line.quantityLink ? (
+            <p className="mt-1 text-xs font-normal text-slate-500">
+              Verknüpft mit {linkSourceName ?? "unbekannter Position"} ×{" "}
+              {(line.quantityLink.factorMilli / 1_000).toLocaleString("de-DE", { maximumFractionDigits: 3 })}
+            </p>
+          ) : null}
         </div>
         <div>
           <dt className="text-slate-500">VK je Einheit</dt>
@@ -631,9 +641,11 @@ function SchematicCard({
 
 function OfferSectionCard({
   section,
+  lineNameById,
   canReadPurchasePrice,
 }: {
   section: OfferSectionView;
+  lineNameById: ReadonlyMap<string, string>;
   canReadPurchasePrice: boolean;
 }) {
   return (
@@ -656,6 +668,7 @@ function OfferSectionCard({
           <OfferLineCard
             key={line.lineDomainId}
             line={line}
+            linkSourceName={line.quantityLink ? (lineNameById.get(line.quantityLink.sourceLineDomainId) ?? null) : null}
             canReadPurchasePrice={canReadPurchasePrice}
           />
         ))}
@@ -1098,6 +1111,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                 <OfferSectionCard
                   key={section.sectionDomainId}
                   section={section}
+                  lineNameById={new Map(snapshot.sections.flatMap((entry) => entry.lines.map((line) => [line.lineDomainId, line.product.displayName] as const)))}
                   canReadPurchasePrice={canReadPurchasePrice}
                 />
               ))}

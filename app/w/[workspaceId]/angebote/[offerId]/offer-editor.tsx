@@ -24,6 +24,7 @@ import {
   canRemoveOfferDraftSection,
   calculateOfferEditorPreview,
   createOfferEditorDraft,
+  formatLinkedQuantityPreview,
   createOfferEditorRecoveryEnvelope,
   isOfferEditorDraftDirty,
   isOfferEditorPriceInputChanged,
@@ -111,6 +112,7 @@ function sourceFromSnapshot(snapshot: OfferVariantSnapshotView): OfferEditorSour
         positionType: line.positionType as OfferPositionType,
         isHidden: line.isHidden,
         quantityMilli: line.quantityMilli,
+        quantityLink: line.quantityLink ? { ...line.quantityLink } : undefined,
         sourceKind: line.source.kind,
         componentCategory: line.componentCategory,
         displayName: line.product.displayName,
@@ -1296,10 +1298,37 @@ export function OfferVariantEditor({
                             : false;
                           const needsZeroConfirmation = draftLine.taxTreatment === "zero_operator_confirmed"
                             && (draftLine.isNew || line?.taxTreatment !== "zero_operator_confirmed");
+                          // F16-12: Mengenverknüpfung — Quellauswahl über alle
+                          // Draft-Positionen außer der eigenen Zeile.
+                          const linkSourceOptions = draft.sections.flatMap((entry) => entry.lines
+                            .filter((candidate) => candidate.lineDomainId !== draftLine.lineDomainId)
+                            .map((candidate) => ({
+                              id: candidate.lineDomainId,
+                              label: `${entry.title} – ${candidate.displayName} (Menge ${candidate.quantity})`,
+                            })));
+                          const quantityLinked = draftLine.quantityLinkSourceId !== "";
+                          const linkedPreview = quantityLinked ? formatLinkedQuantityPreview(draft, draftLine) : null;
+                          const linkValueMatched = draftLine.quantityLinkSourceId === ""
+                            || linkSourceOptions.some((option) => option.id === draftLine.quantityLinkSourceId);
+                          const linkedSourceName = quantityLinked
+                            ? (draft.sections.flatMap((entry) => entry.lines).find((candidate) => candidate.lineDomainId === draftLine.quantityLinkSourceId)?.displayName ?? null)
+                            : null;
+                          const applyQuantityLink = (sourceId: string, factorText: string) => {
+                            const preview = formatLinkedQuantityPreview(draft, {
+                              ...draftLine,
+                              quantityLinkSourceId: sourceId,
+                              quantityLinkFactor: factorText,
+                            });
+                            updateDraftLine(draftSection.sectionDomainId, draftLine.lineDomainId, {
+                              quantityLinkSourceId: sourceId,
+                              quantityLinkFactor: factorText,
+                              ...(preview !== null ? { quantity: preview } : {}),
+                            });
+                          };
                           return (
                             <li id={`${prefix}-editor`} key={draftLine.lineDomainId} tabIndex={-1} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2">
                               <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="min-w-0"><p className="break-words font-semibold">{displayName}</p>{line && productSubtitle(line) ? <p className="mt-1 text-xs text-slate-500">{productSubtitle(line)}</p> : null}<p className="mt-1 text-xs text-slate-500">Quelle: {draftLine.sourceKind === "catalog" ? "Katalog-Snapshot" : "freie Position"}</p>{line ? <><p className="mt-1 text-xs text-slate-500">VK-Preisprovenienz: {pricingProvenanceLabel(line.salesPricing.provenance)}</p><p className="mt-1 text-xs text-slate-500">Gespeicherte Zeilensumme netto: {formatCents(line.computed.finalSalesNetCents)}</p></> : <p className="mt-1 text-xs text-slate-500">Noch nicht serverseitig berechnet</p>}</div>
+                                <div className="min-w-0"><p className="break-words font-semibold">{displayName}</p>{line && productSubtitle(line) ? <p className="mt-1 text-xs text-slate-500">{productSubtitle(line)}</p> : null}<p className="mt-1 text-xs text-slate-500">Quelle: {draftLine.sourceKind === "catalog" ? "Katalog-Snapshot" : "freie Position"}</p>{quantityLinked ? <p className="mt-1 text-xs text-slate-500">Menge verknüpft mit {linkedSourceName ?? "unbekannter Position"}</p> : null}{line ? <><p className="mt-1 text-xs text-slate-500">VK-Preisprovenienz: {pricingProvenanceLabel(line.salesPricing.provenance)}</p><p className="mt-1 text-xs text-slate-500">Gespeicherte Zeilensumme netto: {formatCents(line.computed.finalSalesNetCents)}</p></> : <p className="mt-1 text-xs text-slate-500">Noch nicht serverseitig berechnet</p>}</div>
                                 <div className="flex flex-wrap gap-2" aria-label={`Position von ${displayName}`}>
                                   <button type="button" aria-label={`${displayName} in ${sectionTitle} nach oben verschieben`} disabled={lineIndex === 0 || navigationPending} onClick={(event) => { setDraft((current) => moveOfferDraftLine(current, draftSection.sectionDomainId, draftLine.lineDomainId, "up")); setReorderAnnouncement(`${displayName} in ${sectionTitle} ist jetzt Position ${lineIndex}.`); event.currentTarget.focus(); }} className="min-h-11 min-w-11 rounded-md border border-slate-300 px-2 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">Hoch</button>
                                   <button type="button" aria-label={`${displayName} in ${sectionTitle} nach unten verschieben`} disabled={lineIndex === draftSection.lines.length - 1 || navigationPending} onClick={(event) => { setDraft((current) => moveOfferDraftLine(current, draftSection.sectionDomainId, draftLine.lineDomainId, "down")); setReorderAnnouncement(`${displayName} in ${sectionTitle} ist jetzt Position ${lineIndex + 2}.`); event.currentTarget.focus(); }} className="min-h-11 min-w-11 rounded-md border border-slate-300 px-2 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">Runter</button>
@@ -1309,7 +1338,9 @@ export function OfferVariantEditor({
                               {draftLine.sourceKind === "custom" ? <div className="mt-4 grid gap-4 sm:grid-cols-2"><div><label htmlFor={`${prefix}-name`} className="text-xs font-semibold">Positionsname</label><input id={`${prefix}-name`} value={draftLine.displayName} aria-invalid={invalidFields.has(`${prefix}-name`) || undefined} aria-describedby={errorDescription(`${prefix}-name`)} onChange={(event) => updateDraftLine(draftSection.sectionDomainId, draftLine.lineDomainId, { displayName: event.target.value })} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError(`${prefix}-name`)}</div><div><label htmlFor={`${prefix}-description`} className="text-xs font-semibold">Positionsbeschreibung</label><input id={`${prefix}-description`} value={draftLine.description} aria-invalid={invalidFields.has(`${prefix}-description`) || undefined} aria-describedby={errorDescription(`${prefix}-description`)} onChange={(event) => updateDraftLine(draftSection.sectionDomainId, draftLine.lineDomainId, { description: event.target.value })} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError(`${prefix}-description`)}</div></div> : line?.product.description ? <p className="mt-3 text-sm text-slate-600">{line.product.description}</p> : null}
                               <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                                 {draftLine.sourceKind === "custom" ? <div><label htmlFor={`${prefix}-unit`} className="text-xs font-semibold">Einheit</label><select id={`${prefix}-unit`} value={draftLine.unit} aria-invalid={invalidFields.has(`${prefix}-unit`) || undefined} aria-describedby={errorDescription(`${prefix}-unit`)} onChange={(event) => updateDraftLine(draftSection.sectionDomainId, draftLine.lineDomainId, { unit: event.target.value as OfferUnit })} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"><option value="piece">Stück</option><option value="set">Set</option><option value="meter">Meter</option></select>{fieldError(`${prefix}-unit`)}</div> : null}
-                                <div><label htmlFor={`${prefix}-quantity`} className="text-xs font-semibold">Menge</label><input id={`${prefix}-quantity`} inputMode="decimal" value={draftLine.quantity} aria-invalid={invalidFields.has(`${prefix}-quantity`) || undefined} aria-describedby={errorDescription(`${prefix}-quantity`)} onChange={(event) => updateDraftLine(draftSection.sectionDomainId, draftLine.lineDomainId, { quantity: event.target.value })} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError(`${prefix}-quantity`)}</div>
+                                <div><label htmlFor={`${prefix}-quantity`} className="text-xs font-semibold">Menge{quantityLinked ? " (verknüpft, abgeleitet)" : ""}</label><input id={`${prefix}-quantity`} inputMode="decimal" value={draftLine.quantity} disabled={quantityLinked} aria-invalid={invalidFields.has(`${prefix}-quantity`) || undefined} aria-describedby={errorDescription(`${prefix}-quantity`)} onChange={(event) => updateDraftLine(draftSection.sectionDomainId, draftLine.lineDomainId, { quantity: event.target.value })} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 disabled:bg-slate-100 disabled:text-slate-500" />{fieldError(`${prefix}-quantity`)}{quantityLinked ? <p className="mt-1 text-xs text-slate-600">Abgeleitet: {linkedPreview ?? "–"} (Quelle × Faktor; Server berechnet autoritativ).</p> : null}</div>
+                                {draftLine.sourceKind === "custom" ? <div><label htmlFor={`${prefix}-quantity-link`} className="text-xs font-semibold">Menge verknüpft mit</label><select id={`${prefix}-quantity-link`} value={draftLine.quantityLinkSourceId} aria-invalid={invalidFields.has(`${prefix}-quantity-link`) || undefined} aria-describedby={errorDescription(`${prefix}-quantity-link`)} onChange={(event) => applyQuantityLink(event.target.value, draftLine.quantityLinkFactor.trim() === "" ? "1" : draftLine.quantityLinkFactor)} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"><option value="">Manuelle Menge</option>{!linkValueMatched ? <option value={draftLine.quantityLinkSourceId} disabled>Quellposition entfernt — neu wählen</option> : null}{linkSourceOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>{fieldError(`${prefix}-quantity-link`)}</div> : null}
+                                {draftLine.sourceKind === "custom" && quantityLinked ? <div><label htmlFor={`${prefix}-quantity-factor`} className="text-xs font-semibold">Faktor ×</label><input id={`${prefix}-quantity-factor`} inputMode="decimal" value={draftLine.quantityLinkFactor} aria-invalid={invalidFields.has(`${prefix}-quantity-factor`) || undefined} aria-describedby={errorDescription(`${prefix}-quantity-factor`)} onChange={(event) => applyQuantityLink(draftLine.quantityLinkSourceId, event.target.value)} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError(`${prefix}-quantity-factor`)}</div> : null}
                                 {view.permissions.canEditPrice ? (
                                   <>
                                     <div><label htmlFor={`${prefix}-sales-price`} className="text-xs font-semibold">VK je Einheit €</label><input id={`${prefix}-sales-price`} inputMode="decimal" value={draftLine.salesUnitNetEuros} aria-invalid={invalidFields.has(`${prefix}-sales-price`) || undefined} aria-describedby={errorDescription(`${prefix}-sales-price`)} onChange={(event) => { const value = event.target.value; updateDraftLine(draftSection.sectionDomainId, draftLine.lineDomainId, { salesUnitNetEuros: value, ...(line && !isOfferEditorPriceInputChanged(value, line.salesPricing.effectiveUnitNetCents) ? { salesPriceReason: "correction" as const } : {}) }); }} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 text-right tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError(`${prefix}-sales-price`)}</div>
