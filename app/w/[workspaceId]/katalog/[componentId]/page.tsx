@@ -10,7 +10,12 @@ import type {
   CatalogProvenanceV1,
 } from "@/lib/integrations/catalog/contract";
 import { PermissionDeniedError } from "@/lib/permissions";
-import { getCatalogComponent, type CatalogComponentReadModel } from "@/modules/catalog";
+import {
+  getCatalogComponent,
+  listCatalogComponentRevisions,
+  type CatalogComponentReadModel,
+  type CatalogComponentRevisionEntry,
+} from "@/modules/catalog";
 import { ProductForm } from "../product-form";
 import { LifecycleForm } from "./lifecycle-form";
 import { PricingForm } from "./pricing-form";
@@ -40,19 +45,26 @@ const rightsLabels: Record<CatalogProvenanceV1["rightsBasis"], string> = {
 };
 
 type LoadResult =
-  | { kind: "loaded"; component: CatalogComponentReadModel | null }
+  | {
+    kind: "loaded";
+    component: CatalogComponentReadModel | null;
+    revisions: CatalogComponentRevisionEntry[];
+  }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
 async function loadComponent(workspaceId: string, componentId: string): Promise<LoadResult> {
   try {
-    const component = await authorizedQuery(
+    const loaded = await authorizedQuery(
       workspaceId,
       "catalog.read",
       "catalog_component",
-      (tx, ctx) => getCatalogComponent(tx, ctx, componentId),
+      async (tx, ctx) => ({
+        component: await getCatalogComponent(tx, ctx, componentId),
+        revisions: await listCatalogComponentRevisions(tx, ctx, componentId),
+      }),
     );
-    return { kind: "loaded", component };
+    return { kind: "loaded", component: loaded.component, revisions: loaded.revisions ?? [] };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -177,6 +189,35 @@ export default async function CatalogComponentPage({
                   </div>
                 </>
               ) : <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">Noch kein vollständiger Preisstand. Das Produkt kann deshalb nicht aktiviert werden.</p>}
+            </Section>
+
+            <Section title="Revisionsverlauf" intro="Jede gespeicherte Revision bleibt unveränderlich lesbar; Preis- und Detailstände gelten je Revision.">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-135 border-collapse text-sm leading-6" data-testid="catalog-revision-history">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                      <th scope="col" className="px-2 py-2">Revision</th>
+                      <th scope="col" className="px-2 py-2">Zeitpunkt</th>
+                      <th scope="col" className="px-2 py-2">Bezeichnung</th>
+                      <th scope="col" className="px-2 py-2 text-right">VK netto</th>
+                      {purchasePrice !== undefined ? <th scope="col" className="px-2 py-2 text-right">EK netto</th> : null}
+                      <th scope="col" className="px-2 py-2">Snapshot</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.revisions.map((entry) => (
+                      <tr key={entry.revision} className="border-b border-slate-100 last:border-0">
+                        <td className="px-2 py-2 font-semibold text-slate-950 tabular-nums">{entry.revision}</td>
+                        <td className="px-2 py-2 whitespace-nowrap text-slate-700">{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Berlin" }).format(new Date(entry.createdAt))}</td>
+                        <td className="px-2 py-2 text-slate-700">{entry.displayName}</td>
+                        <td className="px-2 py-2 text-right text-slate-700 tabular-nums">{entry.salesPriceNetCents !== null ? formatCents(entry.salesPriceNetCents) : "—"}</td>
+                        {purchasePrice !== undefined ? <td className="px-2 py-2 text-right text-slate-700 tabular-nums">{entry.purchasePriceNetCents !== null ? formatCents(entry.purchasePriceNetCents) : "—"}</td> : null}
+                        <td className="px-2 py-2 font-mono text-xs text-slate-500">{entry.snapshotSha256.slice(0, 12)}…</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </Section>
 
             {component.permissions.canManage && component.status !== "archived" ? (

@@ -76,6 +76,16 @@ export type CatalogLifecycleCommand = {
   expectedStatus: CatalogComponentStatus;
 };
 
+export type CatalogComponentRevisionEntry = {
+  revision: number;
+  createdAt: string;
+  snapshotSha256: string;
+  displayName: string;
+  unit: CatalogComponentViewV1["presentation"]["unit"];
+  salesPriceNetCents: number | null;
+  purchasePriceNetCents: number | null;
+};
+
 export type CatalogMutationResult = {
   componentId: string;
   revision: number;
@@ -418,6 +428,64 @@ export async function getCatalogComponent(
   `);
   const row = result.rows[0];
   return row ? toReadModel(row, ctx) : null;
+}
+
+type RevisionHistoryRow = {
+  revision: number;
+  created_at: Date | string;
+  revision_snapshot: unknown;
+  snapshot_sha256_hex: string;
+  [key: string]: unknown;
+};
+
+export async function listCatalogComponentRevisions(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  componentId: string,
+): Promise<CatalogComponentRevisionEntry[] | null> {
+  requireCatalogAccess(ctx, "catalog.read", "catalog_component");
+  const id = z.uuid().safeParse(componentId);
+  if (!id.success) throw new CatalogInputError(["/componentId"]);
+  const canManage = can(ctx, "catalog.manage");
+  const canReadPurchasePrice = can(ctx, "price.read_purchase");
+  const result = await tx.execute<RevisionHistoryRow>(sql`
+    select revision.revision, revision.created_at,
+           revision.revision_snapshot,
+           encode(revision.snapshot_sha256, 'hex') as snapshot_sha256_hex
+      from catalog_component component
+      join catalog_component_revision revision
+        on revision.workspace_id = component.workspace_id
+       and revision.component_id = component.id
+     where component.workspace_id = ${ctx.workspaceId}::uuid
+       and component.id = ${id.data}::uuid
+       and (${canManage}::boolean or component.status <> 'draft')
+     order by revision.revision asc
+  `);
+  if (result.rows.length === 0) return null;
+  return result.rows.map((row) => {
+    const validated = validateCatalogComponentRevision(row.revision_snapshot);
+    if (
+      !validated.ok
+      || validated.value.snapshotSha256 !== row.snapshot_sha256_hex
+      || validated.value.identity.workspaceId !== ctx.workspaceId
+      || validated.value.identity.componentId !== id.data
+      || validated.value.identity.revision !== row.revision
+    ) {
+      throw new CatalogIntegrityError();
+    }
+    const snapshot = validated.value;
+    return {
+      revision: row.revision,
+      createdAt: iso(row.created_at),
+      snapshotSha256: row.snapshot_sha256_hex,
+      displayName: snapshot.presentation.displayName,
+      unit: snapshot.presentation.unit,
+      salesPriceNetCents: snapshot.commercial?.salesPriceNetCents ?? null,
+      purchasePriceNetCents: canReadPurchasePrice
+        ? (snapshot.commercial?.purchasePriceNetCents ?? null)
+        : null,
+    };
+  });
 }
 
 export async function searchActiveProjectCatalogComponents(

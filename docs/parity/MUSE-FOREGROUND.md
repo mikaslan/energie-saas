@@ -1334,3 +1334,47 @@ identisch (`983ed67`, 0 unpusht).
   F16-12/13 je lokal voll verifiziert (DB 6/6+5/5, E2E, Nachbarn, Gates).
 - Offen: Orakel am neuen HEAD auswerten, dann F16-Rest (echte
   Produkte/Feeds, Visual-Baselines).
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 44 — Fix-Push c175729 raus)
+- Push via Gate GRÜN auf Origin (lint/typecheck/Volltestsuite inkl.
+  F1612 6/6 + F1613 5/5; Exit 0). Neues Orakel 34956398162 läuft.
+- Offen: 34956398162 auswerten; F16-Rest + DASH-Lücken weiterbauen
+  (kein Push während CI läuft).
+- Blocker-Analyse 10:15 (alle F16-„Bewusst offen"-Punkte geprüft, keine
+  unabhängige Lücke mehr baubar — nichts erfunden, kein Gate angerührt):
+  Öffentlich-Flag/Energiehaus → Q-F12-FUNNEL-REF­ERENZ offen (Dead-Schema
+  ohne Funnel-Fläche, nicht gebaut); echte Produkte → reale Daten nötig
+  (Clean-Room-Verbot erfundener Preise); Visual-Baselines → Mikail-Freigabe
+  offen; Bearbeiter-Rollen je Vorlage → neue Permission nötig (verboten);
+  renderer-skipIfs (m202/m203a/m203b1) → plattformbedingt korrekt, kein Gap.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 45 — M1-08c lokal, UNCOMMITTIERT)
+- Unabhängiger Katalogpfad gebaut (kein Push während CI 34956398162 läuft):
+  M1-08c Revisionsverlauf — `listCatalogComponentRevisions` (catalog.read,
+  Draft-Versteck + EK-Redaktion wie get, Integritäts-Fail-closed),
+  Detail-Sektion mit Tabelle (data-testid catalog-revision-history),
+  Spec docs/spec/M1-08c-katalog-revisionsverlauf.md.
+- Lokal beobachtet: DB M108C 3/3, E2E M1-08C 2/2 (Preisrevision→Verlauf,
+  Reload-Preistreue), Nachbarn DB M108 18/18 + E2E M1-08B 7/7,
+  tsc/eslint grün. Commit+Push erst nach grünem Orakel 34956398162.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 46 — Retro-Specs, UNCOMMITTIERT)
+- Prozesslücke geschlossen: F16-12/F16-13 hatten als einzige F16-Slices keine
+  Spec-Datei (alle Aussagen am Code verifiziert: Custom-Ziel-Guard,
+  Self/Zyklus/Orphan-Fail-closed, Clear erhält Menge per Key-Delete,
+  StaleError mit Zeilennamen, Verify-and-Stamp bei Speichern+Einsetzen).
+  docs/spec/F16-12-mengenverknuepfung.md + F16-13-katalog-zeilen.md,
+  ehrlich als ex post markiert.
+- Picker-Hinweis (nicht gebaut — fertige Slices nicht neu bauen): Paket-Seite
+  lädt alle aktiven Komponenten (Limit 200) ins Select; Server-Suche wäre
+  Folgeslice mit eigener Spec.
+- Volles lokales Gate (`npm test`) mit gestapeltem Stand angestoßen zur
+  Interferenz-Vorschau vor dem Post-CI-Push.
+- Lokales Vollgate GRÜN: 403 Files, 2879 Tests passed, 1 skipped (bekannter
+  bedingter Visual-Kandidaten-Skip), Exit 0 — inkl. M1-08c DB 3/3.
+- Orakel 34956398162 ROT nach 38 Min — Befund zugeordnet: KEIN Testfehler.
+  Gates-Job grün; E2E-04 (Vorderbau-41-Fix) im Verbund bestanden [82/257];
+  Abbruch bei [240/257] durch Runner-Shutdown („operation was canceled",
+  kein Nachfolge-Push, Timeout nicht erreicht) = reine Runner-Infra.
+  Kein Code-Fix; verifizierter Inhalts-Push (M1-08c + Specs) triggert das
+  Ersatz-Orakel neu — kein blinder Re-run.

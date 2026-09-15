@@ -16,6 +16,7 @@ export {
   CatalogStateError,
   createCatalogComponent,
   getCatalogComponent,
+  listCatalogComponentRevisions,
   listCatalogComponents,
   getProjectCatalogResolutionContext,
   ProjectCatalogBlockedError,
@@ -28,6 +29,7 @@ export {
 } from "./service";
 export type {
   CatalogComponentReadModel,
+  CatalogComponentRevisionEntry,
   CatalogListFilters,
   CatalogLifecycleCommand,
   CatalogMutationResult,
