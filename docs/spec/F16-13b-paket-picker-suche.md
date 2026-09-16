@@ -43,6 +43,9 @@ Treffer erscheinen im bestehenden Select (Labelform unverändert:
   eindeutiger SKU seeden, Ziel per Suche finden (unter 202 unsichtbar ohne
   Suche), binden, Paket speichern, „Gebunden:"-Nachweis; Regression
   F16-13-E2E unverändert grün.
+- Isolation (Vorderbau-41-Regel): eigener Workspace statt w3 — die Füller
+  verdrängten sonst `F7-3-WR` aus dem 200er-Checklist-Select (Orakel-Rot
+  35000268644, F7-03 ×2). Beweis: F7-03 + F16-13B gemeinsam 5/5.
 
 ## Bewusst offen
 

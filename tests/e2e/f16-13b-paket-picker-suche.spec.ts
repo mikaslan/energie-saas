@@ -1,5 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { expect, test, type Page } from "playwright/test";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
 import {
   CATALOG_COMPONENT_CREATE_COMMAND_VERSION,
   type CatalogComponentCreateCommandV1,
@@ -183,13 +188,42 @@ function fillerCommand(sku: string, stamp: number): CatalogComponentCreateComman
 test.describe("F16-13b Paket-Picker-Suche", () => {
   let targetSku = "";
   let targetName = "";
+  let isolatedWorkspaceId = "";
 
   test.beforeAll(async () => {
     const data = runtimeState();
     const stamp = Date.now();
     targetSku = `ZZZ-F1613B-TARGET-${stamp}`;
     targetName = `Zielprodukt ${stamp}`;
-    await withM201Database(data, async (tx, ctx) => {
+    // Eigener isolierter Workspace (Vorderbau-41-Regel): Die 201 Füller
+    // dürfen fremde Workspaces (F7-3-WR im w3-Checklist-Select, Limit 200)
+    // nicht verdrängen — das war das Orakel-Rot 35000268644.
+    isolatedWorkspaceId = randomUUID();
+    const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
+    const client = await pool.connect();
+    try {
+      await client.query("insert into workspace (id, name) values ($1::uuid, $2)", [
+        isolatedWorkspaceId,
+        "F16-13b isolierter Picker-Workspace",
+      ]);
+      // Membership-DML verlangt Workspace-Kontext (RLS) auf derselben Verbindung.
+      await client.query(
+        "select set_config('app.actor_id', '', false), set_config('app.workspace_id', $1, false)",
+        [isolatedWorkspaceId],
+      );
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor',
+           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
+              "assign_projects":true,"convert_phase":true,"discounts":true}'::jsonb)`,
+        [isolatedWorkspaceId, data.editorIdentityId],
+      );
+    } finally {
+      client.release();
+      await endPoolAndWaitForClientRemoval(pool);
+    }
+    const isolated = { ...data, workspaceId: isolatedWorkspaceId };
+    await withM201Database(isolated, async (tx, ctx) => {
       for (let index = 0; index < 201; index += 1) {
         const created = await createCatalogComponent(tx, ctx, fillerCommand(
           `AAA-F1613B-FILL-${stamp}-${String(index).padStart(3, "0")}`,
@@ -222,7 +256,7 @@ test.describe("F16-13b Paket-Picker-Suche", () => {
     const errors = browserErrors.get(page) ?? [];
     const stamp = Date.now();
     const packageName = `F1613B Paket ${stamp}`;
-    const settingsPath = `/w/${data.workspaceId}/einstellungen/paket-vorlagen`;
+    const settingsPath = `/w/${isolatedWorkspaceId}/einstellungen/paket-vorlagen`;
 
     await page.goto(settingsPath);
     await loginWithRealOtp(page, data.editorEmail, settingsPath);

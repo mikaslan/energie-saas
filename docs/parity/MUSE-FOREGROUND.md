@@ -1429,6 +1429,24 @@ identisch (`983ed67`, 0 unpusht).
   Danach 2. Runner-Shutdown bei [242/257] (Infra, kein Nachfolge-Push).
 - Verifizierter Inhalts-Push (F16-13b, Vollgate 404/2881) als Vorderbau 44 —
   kein blinder Re-run.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 52 — Push 9f36f25 raus)
+- Vorderbau 44 via Gate GRÜN auf Origin (lint/typecheck/Volltestsuite,
+  Exit 0). HEAD = Origin = 9f36f25.
+- Neues Orakel 35000268644 läuft (Start 17:16). Offen: auswerten; bei Grün
+  nächsten Slice bauen, bei Rot Befund dem Commit zuordnen.
+
+## Vorderbau 2026-09-15 (Muse, Fortsetzung 53 — Orakel 644: eigene Interferenz)
+- 35000268644 (9f36f25): Gates grün, Suite durch (260/260), 2 Fehler —
+  BEIDE MEIN EIGENER TEST: F16-13b-Füller (AAA-…) im Shared-w3-Workspace
+  verdrängen `F7-3-WR`/`F7-3B-WR*` aus dem 200er-Checklist-Select
+  (SKU-aufsteigend, Limit 200). Lokal unsichtbar (nur F16-13B lief),
+  im Verbund rot — dieselbe Bug-Klasse wie F16-06/F16-11, diesmal
+  selbst verursacht.
+- Fix (nur Test, kein Prod-Code): eigener isolierter Workspace
+  (Vorderbau-41-Regel; Membership-RLS braucht dedizierten Client +
+  Workspace-Kontext). Beweis: F7-03 + F16-13B gemeinsam 5/5.
+- Commit + Push als Vorderbau 45 (Orakel terminal + zugeordnet).
 - Rest-Survey: Katalogliste kappt ehrlich mit Hinweis (data-catalog-list-state
   capped), Drift läuft über Stale-Banner + Snapshot + M1-08c-Verlauf,
   einziger Limit-Pfad (list, 200) ist abgedeckt — kein weiterer stiller
