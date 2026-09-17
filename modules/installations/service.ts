@@ -1,6 +1,7 @@
 // F7.1 Slice A: Ausführungsphase je Projekt (Direktanlage, Basic-Lesen,
 // Abschluss). Hinweis: KEIN "server-only"-Import — Muster
 // modules/lead-sources.
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
@@ -8,6 +9,7 @@ import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { OfferNotFoundError } from "@/modules/offers/errors";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
+import { immutableKey, resolveObjectStorage } from "@/lib/storage";
 
 export class InstallationNotFoundError extends Error {
   constructor(public readonly projectId: string) {
@@ -57,6 +59,10 @@ export type InstallationDto = {
   handoverAt: string | null;
   handoverByName: string | null;
   handoverNote: string | null;
+  // F7-07B Gegenzeichnung: NULL = keine. Der Storage-Key steht bewusst
+  // NICHT im DTO (nur Service-intern lesbar).
+  handoverCustomerName: string | null;
+  handoverCustomerSignedAt: string | null;
   // F7-05 Slice 3: Lead Installer (Installations-Ebene), NULL = nicht
   // zugewiesen; Label nur über den Read-Pfad (kein PII-Leak).
   leadInstallerMembershipId: string | null;
@@ -91,6 +97,9 @@ type InstallationRow = {
   handover_at: string | null;
   handover_by_name: string | null;
   handover_note: string | null;
+  handover_customer_name: string | null;
+  handover_customer_signature_key: string | null;
+  handover_customer_signed_at: string | null;
   lead_installer_membership_id: string | null;
   lead_installer_label: string | null;
   created_at: string;
@@ -115,6 +124,8 @@ function toDto(row: InstallationRow, canWrite: boolean): InstallationDto {
     handoverAt: row.handover_at,
     handoverByName: row.handover_by_name,
     handoverNote: row.handover_note,
+    handoverCustomerName: row.handover_customer_name,
+    handoverCustomerSignedAt: row.handover_customer_signed_at,
     leadInstallerMembershipId: row.lead_installer_membership_id,
     leadInstallerLabel: row.lead_installer_label,
     createdAt: row.created_at,
@@ -137,7 +148,7 @@ function requireWrite(ctx: ServiceCtx): void {
 
 // F7-05 Slice 3: Label per korrelierter Subquery (auch in RETURNING
 // legal) — alle Lese-/Schreibpfade liefern das vollständige DTO.
-const ROW_COLUMNS = sql`id, project_id, source, status, offer_id, variant_id, lead_installer_membership_id, (select identity_record.email from membership membership_record join user_identity identity_record on identity_record.id = membership_record.user_id where membership_record.workspace_id = installation.workspace_id and membership_record.id = installation.lead_installer_membership_id) as lead_installer_label, completed_at, handover_at, handover_by_name, handover_note, created_at, updated_at`;
+const ROW_COLUMNS = sql`id, project_id, source, status, offer_id, variant_id, lead_installer_membership_id, (select identity_record.email from membership membership_record join user_identity identity_record on identity_record.id = membership_record.user_id where membership_record.workspace_id = installation.workspace_id and membership_record.id = installation.lead_installer_membership_id) as lead_installer_label, completed_at, handover_at, handover_by_name, handover_note, handover_customer_name, handover_customer_signature_key, handover_customer_signed_at, created_at, updated_at`;
 
 export async function getInstallation(
   tx: TenantTx,
@@ -400,6 +411,189 @@ export async function recordHandover(
   });
 
   return toDto(updated.rows[0]!, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F7-07B Gegenzeichnung: Kunden-Name + Unterschrift-PNG + Zeit am Kopf
+// (on-screen, intern; Portal-Pfad bleibt per F7-05-Spec blockiert).
+// PNG-only (Canvas), 10 MiB (ESTIMATE wie Datei-Anfragen), Keys nur
+// Service-seitig, eigene Domain (kein Checklist-Format). Korrigierbar
+// wie die Abnahme (erneutes Gegenzeichnen ueberschreibt).
+// ═══════════════════════════════════════════════════════════════════════
+
+export const HANDOVER_COUNTERSIGN_MAX_BYTES = 10_485_760;
+const HANDOVER_COUNTERSIGN_KEY_PATTERN =
+  /^immutable\/[0-9a-f-]{36}\/installation-signatures\/[0-9a-f-]{36}_[0-9a-f]{8}\.png$/;
+
+const recordHandoverCountersignatureCommandSchema = z.strictObject({
+  projectId: uuidSchema,
+  byName: z.string().trim().min(1).max(160),
+  filename: z.string().trim().min(1).max(255),
+  contentType: z.string().min(1).max(128),
+});
+
+export type RecordHandoverCountersignatureInput = {
+  projectId: string;
+  byName: string;
+  bytes: Uint8Array;
+  filename: string;
+  contentType: string;
+};
+
+export async function recordHandoverCountersignature(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: RecordHandoverCountersignatureInput,
+): Promise<InstallationDto> {
+  requireWrite(ctx);
+  const parsed = recordHandoverCountersignatureCommandSchema.safeParse({
+    projectId: input.projectId,
+    byName: input.byName,
+    filename: input.filename,
+    contentType: input.contentType,
+  });
+  if (!parsed.success) throw new InstallationValidationError();
+  const command = parsed.data;
+  const contentType = command.contentType.toLowerCase();
+  if (contentType !== "image/png") {
+    throw new InstallationValidationError("content type not allowed");
+  }
+  if (input.bytes.byteLength < 1 || input.bytes.byteLength > HANDOVER_COUNTERSIGN_MAX_BYTES) {
+    throw new InstallationValidationError("byte size out of range");
+  }
+  if (!command.filename.toLowerCase().endsWith(".png")) {
+    throw new InstallationValidationError("filename extension mismatch");
+  }
+
+  const current = await tx.execute<InstallationRow>(sql`
+    select ${ROW_COLUMNS} from installation
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${command.projectId}::uuid
+     for update
+  `);
+  const row = current.rows[0];
+  if (!row) throw new InstallationNotFoundError(command.projectId);
+  if (row.status !== "completed") {
+    throw new InstallationValidationError("countersign requires completed installation");
+  }
+  if (row.handover_at === null) {
+    throw new InstallationValidationError("countersign requires recorded handover");
+  }
+
+  const sha256 = createHash("sha256").update(input.bytes).digest("hex");
+  const signatureKey = immutableKey(
+    command.projectId,
+    "installation-signatures",
+    `${row.id.toLowerCase()}_${sha256.slice(0, 8)}.png`,
+  );
+  try {
+    const stored = await resolveObjectStorage().putImmutable(
+      signatureKey, Buffer.from(input.bytes), contentType,
+    );
+    if (stored.sha256 !== sha256) {
+      throw new InstallationValidationError("receipt integrity mismatch");
+    }
+  } catch (error) {
+    if (error instanceof InstallationValidationError) throw error;
+    // WORM-Idempotenz mit Read-back-Beleg (F7-02G-Spiegel): gleicher
+    // Key + voller Hash = identischer Inhalt (Retry/Doppelklick).
+    const statusCode = (error as { $metadata?: { httpStatusCode?: unknown } })
+      ?.$metadata?.httpStatusCode;
+    const isConflict = error instanceof Error
+      && (error.message.includes("existiert bereits")
+        || error.message.includes("PreconditionFailed")
+        || error.message.includes("412")
+        || statusCode === 412);
+    if (!isConflict) throw error;
+    const existing = await resolveObjectStorage().get(signatureKey).catch(() => null);
+    const existingSha = existing === null
+      ? null
+      : createHash("sha256").update(existing.body).digest("hex");
+    if (existingSha !== sha256) {
+      throw new InstallationValidationError("receipt integrity mismatch");
+    }
+  }
+
+  const updated = await tx.execute<InstallationRow>(sql`
+    update installation
+       set handover_customer_name = ${command.byName},
+           handover_customer_signature_key = ${signatureKey},
+           handover_customer_signed_at = statement_timestamp(),
+           updated_at = statement_timestamp()
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${command.projectId}::uuid
+    returning ${ROW_COLUMNS}
+  `);
+  const head = updated.rows[0];
+  if (!head) throw new InstallationValidationError();
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "installation",
+    aggregateId: row.id,
+    eventType: "installation.handover_countersigned",
+    actor: ctx.actor,
+    payload: { projectId: command.projectId },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "installation.handover.countersign",
+    resource: "installation",
+    allowed: true,
+    details: { projectId: command.projectId },
+  });
+
+  return toDto(head, true);
+}
+
+export type ReadHandoverCountersignatureResult = {
+  byName: string;
+  signedAt: string;
+  contentType: string;
+  body: Buffer;
+};
+
+// F7-07B: Gegenzeichnung dienend lesen (Vorschau; kein signierter
+// URL-Umweg). installation.read (Viewer sieht Name/Zeit/Bytes).
+// Key fail-closed aufs Domain-Muster; fehlendes Objekt = NotFound.
+export async function readHandoverCountersignature(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string },
+): Promise<ReadHandoverCountersignatureResult> {
+  requireRead(ctx);
+  const parsed = z.strictObject({ projectId: uuidSchema }).safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+  const found = await tx.execute<InstallationRow>(sql`
+    select ${ROW_COLUMNS} from installation
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${parsed.data.projectId}::uuid
+     limit 1
+  `);
+  const row = found.rows[0];
+  if (!row
+    || row.handover_customer_name === null
+    || row.handover_customer_signature_key === null
+    || row.handover_customer_signed_at === null
+  ) {
+    throw new InstallationNotFoundError(parsed.data.projectId);
+  }
+  if (!HANDOVER_COUNTERSIGN_KEY_PATTERN.test(row.handover_customer_signature_key)) {
+    throw new InstallationValidationError("receipt key mismatch");
+  }
+  try {
+    const got = await resolveObjectStorage().get(row.handover_customer_signature_key);
+    return {
+      byName: row.handover_customer_name,
+      signedAt: row.handover_customer_signed_at,
+      contentType: got.contentType,
+      body: got.body,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Integritätsbruch")) throw error;
+    throw new InstallationNotFoundError(parsed.data.projectId);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef, useState } from "react";
 import type {
   InstallationDto,
   InstallationHandoverHistoryEntry,
@@ -56,6 +57,219 @@ function Feedback({ state }: { state: InstallationActionState }) {
     <p role="alert" className="mt-3 text-sm font-semibold text-rose-800">
       {text}
     </p>
+  );
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("canvas leer"));
+    }, "image/png");
+  });
+}
+
+// F7-07B: Vorschau der Gegenzeichnung (Server-Bytes als Daten-URL).
+function CountersignPreview({ workspaceId, projectId }: {
+  workspaceId: string;
+  projectId: string;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    // no-store: Nach Korrektur darf kein 60-s-Cache die alte Vorschau liefern.
+    fetch(`/api/workspaces/${workspaceId}/projects/${projectId}/installation/gegenzeichnung`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`gegenzeichnung GET ${response.status}`);
+        const dataUrl = await blobToDataUrl(await response.blob());
+        if (!cancelled) setSrc(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setSrc(null);
+      });
+    return () => { cancelled = true; };
+  }, [workspaceId, projectId]);
+  if (src === null) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- Daten-URL-Vorschau, Optimierer n/a.
+    <img
+      src={src}
+      alt="Gegenzeichnung-Vorschau"
+      className="mt-1 max-h-32 rounded-md border border-slate-300 bg-white"
+    />
+  );
+}
+
+// F7-07B: Gegenzeichnung erfassen (Name + Canvas, on-screen, intern).
+// Canvas-Logik bewusst wie F7-02I (klein, kein app-cross-Import).
+function CountersignForm({ workspaceId, projectId, defaultName }: {
+  workspaceId: string;
+  projectId: string;
+  defaultName: string;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState(defaultName);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawingRef = useRef(false);
+
+  const canvasPoint = (event: { clientX: number; clientY: number }): { x: number; y: number } => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * (canvas.width / rect.width),
+      y: (event.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawn(false);
+    setNotice(null);
+  };
+
+  const save = async () => {
+    if (name.trim() === "") {
+      setNotice("Bitte zuerst einen Namen eingeben.");
+      return;
+    }
+    const canvas = canvasRef.current;
+    if (!canvas || !hasDrawn) {
+      setNotice("Bitte zuerst unterschreiben.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    setSaved(false);
+    try {
+      const blob = await canvasToPng(canvas);
+      const form = new FormData();
+      form.set("byName", name.trim());
+      form.set("datei", blob, "gegenzeichnung.png");
+      const response = await fetch(
+        `/api/workspaces/${workspaceId}/projects/${projectId}/installation/gegenzeichnung`,
+        { method: "POST", body: form },
+      );
+      if (!response.ok) {
+        setError(
+          response.status === 400
+            ? "Gegenzeichnung abgelehnt (Name und PNG-Unterschrift bis 10 MB erforderlich)."
+            : response.status === 404
+              ? "Installation nicht gefunden (Seite neu laden)."
+              : response.status === 401 || response.status === 403
+                ? "Keine Berechtigung für diese Gegenzeichnung."
+                : "Gegenzeichnung ist fehlgeschlagen.",
+        );
+        return;
+      }
+      clearCanvas();
+      setSaved(true);
+      router.refresh();
+    } catch {
+      setError("Gegenzeichnung ist fehlgeschlagen.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-semibold text-slate-950">
+        {defaultName === "" ? "Gegenzeichnung festhalten" : "Gegenzeichnung korrigieren"}
+      </h3>
+      <label className="mt-2 block">
+        <span className="block text-sm font-semibold text-slate-800">Gegengezeichnet von</span>
+        <input
+          type="text"
+          aria-label="Gegengezeichnet von"
+          value={name}
+          maxLength={160}
+          onChange={(event) => setName(event.target.value)}
+          disabled={saving}
+          className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
+        />
+      </label>
+      <div className="mt-2">
+        <canvas
+          ref={canvasRef}
+          width={300}
+          height={100}
+          aria-label="Gegenzeichnung zeichnen"
+          onPointerDown={(event) => {
+            const context = canvasRef.current?.getContext("2d");
+            if (!context) return;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            drawingRef.current = true;
+            const point = canvasPoint(event);
+            context.beginPath();
+            context.moveTo(point.x, point.y);
+            context.fillStyle = "#000000";
+            context.fillRect(point.x - 1, point.y - 1, 2, 2);
+            context.strokeStyle = "#000000";
+            context.lineWidth = 2;
+            context.lineCap = "round";
+            setHasDrawn(true);
+          }}
+          onPointerMove={(event) => {
+            if (!drawingRef.current) return;
+            const context = canvasRef.current?.getContext("2d");
+            if (!context) return;
+            const point = canvasPoint(event);
+            context.lineTo(point.x, point.y);
+            context.stroke();
+            setHasDrawn(true);
+          }}
+          onPointerUp={() => { drawingRef.current = false; }}
+          onPointerCancel={() => { drawingRef.current = false; }}
+          className="touch-none rounded-md border border-slate-300 bg-white"
+        />
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={clearCanvas}
+            disabled={saving}
+            className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+          >
+            Löschen
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+          >
+            {saving ? "Speichert …" : "Gegenzeichnung speichern"}
+          </button>
+        </div>
+      </div>
+      {notice !== null ? (
+        <p className="mt-1 text-xs font-semibold text-amber-700">{notice}</p>
+      ) : null}
+      {error !== null ? (
+        <p role="alert" className="mt-1 text-xs font-semibold text-red-700">{error}</p>
+      ) : null}
+      {saved ? (
+        <p role="status" className="mt-3 text-sm text-slate-700">Gegenzeichnung festgehalten.</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -152,6 +366,28 @@ export function InstallationSection({
                   <dd>{installation.handoverNote}</dd>
                 </div>
               ) : null}
+              {installation.handoverCustomerName !== null ? (
+                <>
+                  <div className="flex gap-2">
+                    <dt className="font-semibold text-slate-800">Gegengezeichnet von:</dt>
+                    <dd>{installation.handoverCustomerName}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="font-semibold text-slate-800">Gegengezeichnet am:</dt>
+                    <dd>{formatDateTime(installation.handoverCustomerSignedAt)}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="font-semibold text-slate-800">Unterschrift:</dt>
+                    <dd>
+                      <CountersignPreview
+                        key={installation.handoverCustomerSignedAt ?? "none"}
+                        workspaceId={workspaceId}
+                        projectId={projectId}
+                      />
+                    </dd>
+                  </div>
+                </>
+              ) : null}
             </>
           ) : null}
         </dl>
@@ -240,6 +476,17 @@ export function InstallationSection({
             Abnahme speichern
           </button>
         </form>
+      ) : null}
+
+      {installation !== null
+      && installation.status === "completed"
+      && installation.handoverAt !== null
+      && canWrite ? (
+        <CountersignForm
+          workspaceId={workspaceId}
+          projectId={projectId}
+          defaultName={installation.handoverCustomerName ?? ""}
+        />
       ) : null}
 
       {installation !== null && handoverHistory.length > 0 ? (

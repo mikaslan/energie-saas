@@ -3,18 +3,19 @@ import { z } from "zod";
 import { authorizedAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
-  CHECKLIST_PHOTO_MAX_BYTES,
-  ChecklistNotFoundError,
-  ChecklistValidationError,
-  readChecklistItemPhoto,
-  uploadChecklistItemPhoto,
-} from "@/modules/checklists";
+  HANDOVER_COUNTERSIGN_MAX_BYTES,
+  InstallationNotFoundError,
+  InstallationValidationError,
+  readHandoverCountersignature,
+  recordHandoverCountersignature,
+} from "@/modules/installations";
 
-// F7-02G Bild-Punkt: Foto-Upload (POST) und Foto-Lesen (GET) als Route
-// statt Server-Action, weil Uploads bis 10 MiB gehen und das globale
-// 1-MB-Action-Limit unangetastet bleibt (F10-04-Praezedenz). Session-
-// Route (intern): checklist.write fuers Hochladen, checklist.read fuers
-// Lesen (Viewer sieht Fotos). Fehler sind uniform (kein Key-Leak).
+// F7-07B Handover-Gegenzeichnung: Unterschrift-Upload (POST) und Lesen
+// (GET) als Route statt Server-Action, weil Uploads bis 10 MiB gehen
+// und das globale 1-MB-Action-Limit unangetastet bleibt (F10-04-/
+// F7-02G-Praezedenz). Session-Route (intern): installation.write fuers
+// Gegenzeichnen, installation.read fuers Lesen (Viewer sieht Name
+// und Vorschau). Fehler sind uniform (kein Key-Leak).
 const uuidSchema = z.uuid();
 
 type RouteParams = { workspaceId: string; projectId: string };
@@ -32,24 +33,17 @@ export async function POST(
   if (!uuidSchema.safeParse(projectId).success) return invalid();
   const form = await request.formData().catch(() => null);
   if (!form) return invalid();
-  const checklistValue = form.get("checklistId");
-  const itemValue = form.get("itemId");
+  const nameValue = form.get("byName");
   const file = form.get("datei");
   if (
-    (typeof checklistValue !== "string" && checklistValue !== null)
-    || (typeof checklistValue === "string" && checklistValue !== ""
-      && !uuidSchema.safeParse(checklistValue).success)
-    || typeof itemValue !== "string"
-    || !uuidSchema.safeParse(itemValue).success
+    typeof nameValue !== "string"
+    || nameValue.trim() === ""
     || !(file instanceof File)
     || file.size === 0
-    || file.size > CHECKLIST_PHOTO_MAX_BYTES
+    || file.size > HANDOVER_COUNTERSIGN_MAX_BYTES
   ) {
     return invalid();
   }
-  const checklistId = typeof checklistValue === "string" && checklistValue !== ""
-    ? checklistValue
-    : null;
   let bytes: Buffer;
   try {
     bytes = Buffer.from(await file.arrayBuffer());
@@ -59,21 +53,23 @@ export async function POST(
   try {
     const result = await authorizedAction(
       workspaceId,
-      "checklist.write",
-      "project_checklist",
-      (tx, ctx) => uploadChecklistItemPhoto(tx, ctx, {
+      "installation.write",
+      "installation",
+      (tx, ctx) => recordHandoverCountersignature(tx, ctx, {
         projectId,
-        checklistId,
-        itemId: itemValue,
+        byName: nameValue,
         bytes: new Uint8Array(bytes),
         filename: file.name,
         contentType: file.type,
       }),
     );
-    return NextResponse.json({ photoKey: result.photoKey });
+    return NextResponse.json({
+      byName: result.handoverCustomerName,
+      signedAt: result.handoverCustomerSignedAt,
+    });
   } catch (error) {
-    if (error instanceof ChecklistValidationError) return invalid();
-    if (error instanceof ChecklistNotFoundError) {
+    if (error instanceof InstallationValidationError) return invalid();
+    if (error instanceof InstallationNotFoundError) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
     if (error instanceof PermissionDeniedError) {
@@ -82,46 +78,35 @@ export async function POST(
     if (error instanceof NotAuthenticatedError) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
     }
-    console.error("[checkliste] foto POST: unerwarteter Fehler", error);
+    console.error("[installation] gegenzeichnung POST: unerwarteter Fehler", error);
     return NextResponse.json({ error: "error" }, { status: 500 });
   }
 }
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<RouteParams> },
 ): Promise<Response> {
   const { workspaceId, projectId } = await params;
   if (!uuidSchema.safeParse(workspaceId).success) return invalid();
   if (!uuidSchema.safeParse(projectId).success) return invalid();
-  const url = new URL(request.url);
-  const checklistId = url.searchParams.get("checklistId");
-  const itemId = url.searchParams.get("itemId");
-  if (
-    checklistId === null
-    || !uuidSchema.safeParse(checklistId).success
-    || itemId === null
-    || !uuidSchema.safeParse(itemId).success
-  ) {
-    return invalid();
-  }
   try {
-    const photo = await authorizedQuery(
+    const signature = await authorizedQuery(
       workspaceId,
-      "checklist.read",
-      "project_checklist",
-      (tx, ctx) => readChecklistItemPhoto(tx, ctx, { projectId, checklistId, itemId }),
+      "installation.read",
+      "installation",
+      (tx, ctx) => readHandoverCountersignature(tx, ctx, { projectId }),
     );
-    return new Response(new Uint8Array(photo.body), {
+    return new Response(new Uint8Array(signature.body), {
       headers: {
-        "content-type": photo.contentType,
+        "content-type": signature.contentType,
         "cache-control": "private, max-age=60",
         "x-content-type-options": "nosniff",
       },
     });
   } catch (error) {
-    if (error instanceof ChecklistValidationError) return invalid();
-    if (error instanceof ChecklistNotFoundError) {
+    if (error instanceof InstallationValidationError) return invalid();
+    if (error instanceof InstallationNotFoundError) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
     if (error instanceof PermissionDeniedError) {
@@ -130,7 +115,7 @@ export async function GET(
     if (error instanceof NotAuthenticatedError) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
     }
-    console.error("[checkliste] foto GET: unerwarteter Fehler", error);
+    console.error("[installation] gegenzeichnung GET: unerwarteter Fehler", error);
     return NextResponse.json({ error: "error" }, { status: 500 });
   }
 }

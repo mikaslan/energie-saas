@@ -246,10 +246,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0172 F10-15 KfW-Upload-Kontext (nur Resolver-Projektion),
     // 0173 F7-02g Bild-Punkt (Validator-Replaces),
     // 0174 F7-02h Block-Datum (Validator-Replace),
-    // 0175 F7-02i Unterschrift (Validator-Replace)).
+    // 0175 F7-02i Unterschrift (Validator-Replace),
+    // 0176 F7-07b Gegenzeichnung (Spalten + CHECK)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 154,
-      tag: "0175_f7_02i_unterschrift",
+      idx: 155,
+      tag: "0176_f7_07b_gegenzeichnung",
     });
   });
 

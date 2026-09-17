@@ -35,6 +35,11 @@ export const installation = pgTable(
     handoverAt: timestamp("handover_at", { withTimezone: true }),
     handoverByName: text("handover_by_name"),
     handoverNote: text("handover_note"),
+    // F7-07B Gegenzeichnung: NULL-Tripel = keine; nur bei completed MIT
+    // Abnahme belegbar (Service-Guard + CHECK), korrigierbar wie Abnahme.
+    handoverCustomerName: text("handover_customer_name"),
+    handoverCustomerSignatureKey: text("handover_customer_signature_key"),
+    handoverCustomerSignedAt: timestamp("handover_customer_signed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -55,6 +60,10 @@ export const installation = pgTable(
     check(
       "installation_handover_ck",
       sql`(${t.handoverAt} is null and ${t.handoverByName} is null and ${t.handoverNote} is null) or (${t.status} = 'completed' and ${t.handoverAt} is not null and pg_catalog.length(pg_catalog.btrim(${t.handoverByName})) between 1 and 160 and (${t.handoverNote} is null or (pg_catalog.length(${t.handoverNote}) between 1 and 500 and ${t.handoverNote} = pg_catalog.btrim(${t.handoverNote}))))`,
+    ),
+    check(
+      "installation_countersign_ck",
+      sql`(${t.handoverCustomerName} is null and ${t.handoverCustomerSignatureKey} is null and ${t.handoverCustomerSignedAt} is null) or (${t.status} = 'completed' and ${t.handoverAt} is not null and pg_catalog.length(pg_catalog.btrim(${t.handoverCustomerName})) between 1 and 160 and ${t.handoverCustomerName} = pg_catalog.btrim(${t.handoverCustomerName}) and ${t.handoverCustomerSignatureKey} ~ '^immutable/[0-9a-f-]{36}/installation-signatures/[0-9a-f-]{36}_[0-9a-f]{8}\\.png$' and pg_catalog.isfinite(${t.handoverCustomerSignedAt}))`,
     ),
     check(
       "installation_variant_needs_offer_ck",
