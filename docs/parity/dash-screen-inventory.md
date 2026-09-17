@@ -11,9 +11,9 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
   Europe/Berlin). Spec: `tests/e2e/dash-visual-gates.spec.ts`.
 - Mess-Artefakte: `docs/parity/dash-measurements/v1-dashboard-{375,768,1440}.json`
   (11 Boxen je Viewport, Route normalisiert, Laufzeit in `sourceRunCapturedAt`).
-- Re-Capture: E2E-Lauf wiederholen, frische JSONs aus
-  `test-results/e2e/dash-measurements/` gegen `docs/parity/dash-measurements/`
-  diffen (`route`/`sourceRunCapturedAt` ignorieren — Lauf-UUID/Datum).
+- Re-Capture: E2E-Lauf wiederholen, dann
+  `npx tsx scripts/dash-measurements-normalize.mts --head <sha>` (validiert
+  Boxen, normalisiert Routen, schreibt `v1-*.json`); danach `git diff` sichten.
 - Zeitstempel in Agent-5-Berichten vor 2026-09-17 10:00 UTC waren lokale
   Maschinenzeit (UTC+3), ab hier echte UTC.
 
@@ -49,8 +49,9 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
   Abmelden.
 - Keyboard/Fokus (CODE + E2E-Teil): native Links/Buttons mit
   `focus-visible:ring`; volle Tab-Reihenfolge OFFEN.
-- Breakpoints (VERIFIZIERT, DASH-VG-01): 375/768/1440 overflow-frei, 10 Karten
-  sichtbar, Axe WCAG A/AA ohne Verletzung, Console/Page/Netz/Hydration sauber.
+- Breakpoints (VERIFIZIERT, DASH-VG-01): 375/768/1440 overflow-frei, 12 Karten
+  sichtbar (+ Quellenkarte count 0 ohne Daten = 13. Sektion bedingt),
+  Axe WCAG A/AA ohne Verletzung, Console/Page/Netz/Hydration sauber.
 - Klickpfade (VERIFIZIERT, DASH-VG-02): Dashboard → Anfragen → zurueck →
   Aufgaben; Touch-Targets ≥ 44 px bei 375.
 
@@ -90,6 +91,9 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
   um +39 px über („Dateien“-Link, `flex` ohne Wrap). Fix:
   `app/p/[token]/page.tsx:154` `flex gap-2` → `flex flex-wrap gap-2`
   (Desktop unverändert, Wrap nur bei Bedarf; Muster wie Dashboard-Header).
+- BEFUND + FIX 2 (RED→GREEN): Portal-Tabs nur 32 px hoch (Skill-Bar: 44 px)
+  und aktiver Tab ohne `aria-current` → `tabClass` + `min-h-11 inline-flex
+  items-center`, `aria-current="page"` auf aktivem Tab (alle 4 Tabs asserted).
 - Angebots-Detail (DASH-VG-06, `z-dash-offer-detail-gates.spec.ts`): Gates
   im Suite-Kontext (Angebot aus M2-01-Browser-Action, jüngstes lesen wie
   `readM201Offer`); fokussiert ehrlich SKIP statt erfundener Daten.
@@ -101,3 +105,13 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
 - Rollenmatrix (Viewer/Editor/Admin/External) pro Route, Loading-/Error-States,
   Screenshot-Sichtung mit stabilen Testdaten.
 - VG-06-Suite-Nachweis: volle E2E-Suite (CI-Lane) muss DASH-VG-06 passed zeigen.
+
+## 6. Review-Entscheidungen (Agent-5-Review, P2 dokumentiert statt gefixt)
+
+- Helper-Duplikation (z-Spec): bleibt — Repo-Konvention (m1-09/m2-01/f10-01
+  duplizieren OTP-/Axe-Helfer ebenso); Shared-Modul ohne Fremdnutzen.
+- Portal Dokument-/Rechnungszeilen (`:493`, `:549`, flex ohne Wrap): bewusst
+  ungeändert — kein RED ohne befüllte Fixtures (BATCH); offenes Risiko für
+  Folge-Gates mit Datei-/Rechnungsdaten.
+- Repro-Grep/Shared-State: Einwand falsifiziert — VG-03/04/05 laufen fokussiert
+  grün (globales Setup seedet grep-unabhängig); nur VG-06 braucht Suite-Kontext.

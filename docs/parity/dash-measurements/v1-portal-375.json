@@ -5,8 +5,8 @@
     "width": 375,
     "height": 812
   },
-  "head": "0ba8d30",
-  "sourceRunCapturedAt": "2026-09-17T10:09:37.014Z",
+  "head": "f946664",
+  "sourceRunCapturedAt": "2026-09-17T10:25:11.256Z",
   "boxes": [
     {
       "selector": "main",
@@ -18,16 +18,16 @@
     {
       "selector": "h1",
       "x": 49,
-      "y": 122.1875,
+      "y": 110.1875,
       "width": 277,
       "height": 32
     },
     {
       "selector": "nav",
       "x": 49,
-      "y": 170.1875,
+      "y": 158.1875,
       "width": 277,
-      "height": 72
+      "height": 96
     }
   ]
 }

@@ -16,6 +16,8 @@
 - Verwendung: einziger Theme-Akzent (Primäraktionen, Links, Fokus-Ringe) als
   Ersatz für Reonic-Orange. Neutrale Flächen (slate) sowie semantische
   Warn-/Fehler-/Erfolgsfarben (amber/red/emerald) bleiben unangetastet.
+- Praezisierung (Agent 5): „einzig“ gilt ausserhalb des Offer-Scopes; der
+  Offer-Scope nutzt die dunklere Gruen-Familie (s. Abweichung OFFER-SCOPE).
 - Abgeleitete Stufen (Hover, helle Flächen, Ringe) sind per `color-mix` aus
   #218355 gerechnet und als ESTIMATE markiert — der belegte Wert selbst ist
   nur der 700er-Ton (Button-/Link-Farbe).

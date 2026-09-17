@@ -5,8 +5,8 @@
     "width": 375,
     "height": 812
   },
-  "head": "f7f5435",
-  "sourceRunCapturedAt": "2026-09-17T09:58:53.389Z",
+  "head": "f946664",
+  "sourceRunCapturedAt": "2026-09-17T10:24:53.050Z",
   "boxes": [
     {
       "selector": "[data-dashboard=\"true\"]",
@@ -37,6 +37,13 @@
       "height": 158
     },
     {
+      "selector": "[data-dashboard-followups=\"true\"]",
+      "x": 16,
+      "y": 1088,
+      "width": 343,
+      "height": 158
+    },
+    {
       "selector": "[data-dashboard-closures=\"true\"]",
       "x": 16,
       "y": 1270,
@@ -49,6 +56,13 @@
       "y": 1512,
       "width": 343,
       "height": 98
+    },
+    {
+      "selector": "[data-dashboard-funnel=\"true\"]",
+      "x": 16,
+      "y": 1634,
+      "width": 343,
+      "height": 122
     },
     {
       "selector": "[data-dashboard-invoices=\"true\"]",
