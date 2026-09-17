@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "playwright/test";
 import { sql } from "drizzle-orm";
@@ -17,6 +18,7 @@ import {
   projectWorkbookDatasheets,
   setInstallationVariant,
 } from "@/modules/installations";
+import { resolveObjectStorage } from "@/lib/storage";
 import {
   createM201RedactedViewer,
   seedM201AdditionalReadyProject,
@@ -25,30 +27,26 @@ import {
 } from "./m2-01-fixture";
 
 /**
- * F7-02K Datenblatt-Punkt (kind=datasheets) — Chromium-E2E.
- * Setup nach 02j/03e-Präzedenz: M2-01-Zusatzprojekt → Angebot im Browser
+ * F7-02K2 Datenblatt Byte-Download (Katalog F7.2) — Chromium-E2E.
+ * Setup nach 02k-Praezedenz: M2-01-Zusatzprojekt → Angebot im Browser
  * erstellen → Installation per Service anlegen + Variante binden →
- * Checkliste rendert die Datenblätter der gebundenen Variante als
- * Referenz-Liste (Produktname + Dateiname, verlinkt auf die
- * Katalogkomponenten-Seite, read-only). Editor hat ab Version 1 KEINE
- * Struktur-Inputs (M2-01-Harness ohne Admin) — daher post-Save
- * Text-Anker + DB-Read-back wie 02j E-02.
+ * Checkliste rendert je Referenz Katalog-Link (Bestand) + eigenen
+ * Download-Link „PDF herunterladen" auf die Session-Route.
  *
- * E2E-Seeding: Die M2-01-Fixture seedet presentation.datasheet=null
- * (m2-01-fixture.ts). VOR der Browser-Angebotserstellung wird die
- * geteilte Batterie-Komponente per NEUER Katalog-Revision mit einem
- * synthetischen Datenblatt-Asset versehen (Details-Revise + Aktivieren,
- * idempotent); die danach erstellte Zusatzprojekt-Auflösung bindet die
- * aktuelle Revision, der versiegelte Angebots-Snapshot enthält das Asset.
- * Batterie statt Modul: advanceM201Resolution liest nur die Batterie
- * revisions-dynamisch (Modul/Wechselrichter/Wallbox sind dort auf Rev 1
- * gepinnt) — kein Eingriff in fremde Specs.
+ * E2E-Seeding: 02k-Muster (Batterie-Revision mit Datenblatt-Asset VOR der
+ * Angebotserstellung, EIGENER Dateiname — 02k/02k2 sind reihenfolgefrei,
+ * jede Spec bindet die bei IHRER Angebotserstellung aktuelle Revision) +
+ * zusaetzlich Storage-Seed via `put` (NICHT putImmutable — Katalog-Keys
+ * sind nicht immutable-praefiziert) ins Server-Verzeichnis
+ * (<privateDirectory>/storage, neben serverLogPath).
  */
 
-const DATASHEET_FILENAME = "hersteller-datenblatt-batterie.pdf";
-const DATASHEET_SHA256 = createHash("sha256")
-  .update("f702k-synthetisches-batterie-datenblatt")
-  .digest("hex");
+const DATASHEET_FILENAME = "f702k2-datenblatt-batterie.pdf";
+const PDF_BYTES = Buffer.from(
+  "%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n",
+  "utf8",
+);
+const DATASHEET_SHA256 = createHash("sha256").update(PDF_BYTES).digest("hex");
 
 type SerializedM201State = {
   databaseUrl: string;
@@ -159,10 +157,8 @@ async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promi
 
 /**
  * Stellt sicher, dass die geteilte M2-01-Batterie in ihrer AKTUELLEN
- * Revision ein Datenblatt-Asset trägt (Muster advanceM201Resolution:
- * Snapshot per SQL lesen, presentation.datasheet patchen, Revision per
- * Service bumpen, wieder aktivieren). Idempotent: trägt die aktuelle
- * Revision das Asset bereits, bleibt sie unangetastet.
+ * Revision das 02k2-Datenblatt-Asset (sha der echten PDF-Bytes) trägt
+ * (02k-Muster; eigener Dateiname → reihenfolgefrei zu 02k).
  */
 async function ensureM201BatteryDatasheet(m201: M201RuntimeState): Promise<void> {
   await withM201Database(m201, async (tx, ctx) => {
@@ -184,8 +180,12 @@ async function ensureM201BatteryDatasheet(m201: M201RuntimeState): Promise<void>
        for update of component
     `);
     const battery = component.rows[0];
-    if (!battery) throw new Error("F7-02K-E2E: M2-01-Batterie fehlt.");
-    if (battery.revision_snapshot.presentation.datasheet?.originalFilename === DATASHEET_FILENAME) {
+    if (!battery) throw new Error("F7-02K2-E2E: M2-01-Batterie fehlt.");
+    const current = battery.revision_snapshot.presentation.datasheet;
+    if (
+      current?.originalFilename === DATASHEET_FILENAME
+      && current?.sha256 === DATASHEET_SHA256
+    ) {
       if (battery.status !== "active") {
         await activateCatalogComponent(tx, ctx, {
           componentId: m201.m201BatteryId,
@@ -226,7 +226,7 @@ async function ensureM201BatteryDatasheet(m201: M201RuntimeState): Promise<void>
   });
 }
 
-test("F7-02K-E2E: Datenblätter rendern als Referenz-Liste, ehrlicher Fallback", async ({ page }) => {
+test("F7-02K2-E2E: Datenblatt-Download je Referenz, ehrlicher Fallback ohne Bindung", async ({ page }) => {
   test.setTimeout(240_000);
   const m201 = runtimeState();
   const errors: string[] = [];
@@ -234,13 +234,22 @@ test("F7-02K-E2E: Datenblätter rendern als Referenz-Liste, ehrlicher Fallback",
     if (message.type() === "error") errors.push(`console: ${message.text()}`);
   });
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+  const serverLogOffset = statSync(m201.serverLogPath).size;
 
   // Datenblatt-Asset VOR Zusatzprojekt + Angebotserstellung seeden, damit
-  // der versiegelte Snapshot es enthält (siehe Kopfkommentar).
+  // der versiegelte Snapshot es enthält (02k-Muster) …
   await ensureM201BatteryDatasheet(m201);
+  // … und die Bytes ins Server-Storage legen (`put`, NICHT putImmutable).
+  process.env.STORAGE_BACKEND = "local";
+  process.env.STORAGE_LOCAL_DIR = join(dirname(m201.serverLogPath), "storage");
+  const objectKey = [
+    "catalog",
+    m201.workspaceId,
+    m201.m201BatteryId,
+    `${DATASHEET_SHA256}.pdf`,
+  ].join("/");
+  await resolveObjectStorage().put(objectKey, PDF_BYTES, "application/pdf");
 
-  // F7-10-Setup: eigenes Zusatzprojekt (Angebotserstellung kippt die
-  // Projektphase — das geteilte M2-01-Projekt bliebe sonst nicht „ready").
   const projectId = await seedM201AdditionalReadyProject(m201);
   const projectPath = `/w/${m201.workspaceId}/anfragen/${projectId}`;
   await page.goto(projectPath);
@@ -269,7 +278,7 @@ test("F7-02K-E2E: Datenblätter rendern als Referenz-Liste, ehrlicher Fallback",
        limit 1
     `);
     const row = found.rows[0];
-    if (!row) throw new Error("F7-02K-E2E: eigenes Angebot fehlt.");
+    if (!row) throw new Error("F7-02K2-E2E: eigenes Angebot fehlt.");
     return row;
   });
 
@@ -277,11 +286,9 @@ test("F7-02K-E2E: Datenblätter rendern als Referenz-Liste, ehrlicher Fallback",
     await createInstallation(tx, ctx, { projectId });
     await setInstallationVariant(tx, ctx, { projectId, variantId: offer.variantId });
     const workbook = await getInstallationWorkbook(tx, ctx, { projectId });
-    if (!workbook) throw new Error("F7-02K-E2E: Workbook fehlt nach Bindung.");
+    if (!workbook) throw new Error("F7-02K2-E2E: Workbook fehlt nach Bindung.");
     return projectWorkbookDatasheets(workbook.sections);
   });
-  // Ehrlicher Anker aus der versiegelten Kette: genau die Batterie trägt
-  // ein Datenblatt (Modul/Wechselrichter/Wallbox bleiben asset-los).
   const batteryRef = {
     productName: "Synthetische M2-01 battery-Komponente",
     filename: DATASHEET_FILENAME,
@@ -293,6 +300,10 @@ test("F7-02K-E2E: Datenblätter rendern als Referenz-Liste, ehrlicher Fallback",
   expect(JSON.stringify(expectedRefs)).not.toContain(DATASHEET_SHA256);
   const batteryLabel = `${batteryRef.productName} — ${batteryRef.filename}`;
   const batteryHref = `/w/${m201.workspaceId}/katalog/${m201.m201BatteryId}`;
+  const downloadHref =
+    `/api/workspaces/${m201.workspaceId}/projects/${projectId}/checkliste/datenblatt`
+    + `?componentId=${m201.m201BatteryId}`;
+  const downloadLabel = `PDF herunterladen: ${batteryLabel}`;
 
   const url = `/w/${m201.workspaceId}/anfragen/${projectId}/checkliste`;
   await page.goto(url);
@@ -306,73 +317,69 @@ test("F7-02K-E2E: Datenblätter rendern als Referenz-Liste, ehrlicher Fallback",
   await page.getByRole("button", { name: "Punkt hinzufügen" }).click();
   await page.getByLabel("Punkt-Name 1.1").fill(listTitle);
   const item = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.1") });
-  await expect(item.getByLabel("Typ")).toContainText("Datenblätter");
   await item.getByLabel("Typ").selectOption("datasheets");
 
-  // E-01: Typ stellen → Referenz-Liste mit Link sichtbar, kein Fallback.
-  const refLink = item.getByRole("link", { name: batteryLabel, exact: true });
-  await expect(refLink).toBeVisible();
-  await expect(refLink).toHaveAttribute("href", batteryHref);
+  // E-01: Download-Link je Referenz sichtbar neben dem Katalog-Link
+  // (Bestand unveraendert).
+  const catalogLink = item.getByRole("link", { name: batteryLabel, exact: true });
+  await expect(catalogLink).toBeVisible();
+  await expect(catalogLink).toHaveAttribute("href", batteryHref);
+  const downloadLink = item.getByRole("link", { name: downloadLabel, exact: true });
+  await expect(downloadLink).toBeVisible();
+  await expect(downloadLink).toHaveAttribute("href", downloadHref);
+  await expect(downloadLink).toHaveText("PDF herunterladen");
   await expect(item.getByText("Keine Datenblätter verfügbar.", { exact: true })).toHaveCount(0);
 
-  // E-06: kein Abhaken, keine Pflicht angeboten (Anzeige-Art).
-  await expect(item.getByRole("checkbox")).toHaveCount(0);
-  await expect(item.getByText("Pflichtpunkt")).toHaveCount(0);
+  // E-02: Klick → Download-Event, Bytes bytegleich, Dateiname + attachment.
+  const downloadPromise = page.waitForEvent("download");
+  await downloadLink.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(DATASHEET_FILENAME);
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const downloaded = readFileSync(downloadPath as string);
+  expect(downloaded.equals(PDF_BYTES)).toBe(true);
+  expect(createHash("sha256").update(downloaded).digest("hex")).toBe(DATASHEET_SHA256);
+  const headerProbe = await page.request.get(downloadHref);
+  expect(headerProbe.status()).toBe(200);
+  expect(headerProbe.headers()["content-type"]).toBe("application/pdf");
+  expect(headerProbe.headers()["content-disposition"] ?? "").toMatch(/^attachment;/u);
 
   await page.getByRole("button", { name: "Speichern" }).click();
   await expect(page.getByText("Gespeichert (Version 1).", { exact: true })).toBeVisible();
 
-  // E-02: Link führt auf die Katalogkomponenten-Seite.
-  // .first(): Ref-<li> ist im Item-<li> verschachtelt (beide matchen
-  // hasText) — E-04-Muster, Strict-Mode-sicher.
-  const savedItem = page.locator("li", { hasText: batteryLabel }).first();
-  await expect(savedItem.getByRole("link", { name: batteryLabel, exact: true })).toHaveAttribute("href", batteryHref);
-  await savedItem.getByRole("link", { name: batteryLabel, exact: true }).click();
-  await page.waitForURL((target) => target.pathname === batteryHref);
-  await expect(page.getByRole("heading", { name: batteryRef.productName, level: 1 })).toBeVisible();
-  await page.goto(url);
-  await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
-
-  // E-03: Reload stabil (Editor ohne Strukturrecht: Text-Anker, keine
-  // Struktur-Inputs ab Version 1; Tree speichert nur die Art, kein Inhalt).
+  // E-06: Reload stabil (Download-Link + Katalog-Link bleiben).
   await page.reload();
   await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
   const reloaded = page.locator("li", { hasText: batteryLabel }).first();
-  await expect(reloaded.getByRole("link", { name: batteryLabel, exact: true })).toBeVisible();
-  await expect(reloaded.getByText("Keine Datenblätter verfügbar.", { exact: true })).toHaveCount(0);
-  await expect(reloaded.getByRole("checkbox")).toHaveCount(0);
-  await expect(page.getByLabel("Punkt-Name 1.1")).toHaveCount(0);
-  const stored = await withM201Database(m201, async (tx) => {
-    const found = await tx.execute<{ blocks: unknown }>(sql`
-      select blocks from project_checklist
-       where workspace_id = ${m201.workspaceId}::uuid
-         and project_id = ${projectId}::uuid
-         and phase = 'site_documentation'
-       limit 1
-    `);
-    if (!found.rows[0]) throw new Error("F7-02K-E2E: gespeicherte Checkliste fehlt.");
-    return found.rows[0].blocks;
-  });
-  expect(JSON.stringify(stored)).toContain("datasheets");
-  expect(JSON.stringify(stored)).not.toContain(batteryRef.productName);
-  expect(JSON.stringify(stored)).not.toContain(DATASHEET_FILENAME);
+  await expect(reloaded.getByRole("link", { name: downloadLabel, exact: true }))
+    .toHaveAttribute("href", downloadHref);
+  await expect(reloaded.getByRole("link", { name: batteryLabel, exact: true }))
+    .toHaveAttribute("href", batteryHref);
 
-  // E-04: Viewer (lesend) sieht die Liste identisch, keine Struktur-Inputs.
+  // E-03: Viewer (beide Leserechte) laedt die Bytes identisch.
   const viewer = await createM201RedactedViewer(m201);
   await page.context().clearCookies();
   await page.goto(url);
   await loginWithRealOtp(page, viewer.email, url);
   await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
-  const viewerItem = page.locator("li", { hasText: batteryLabel });
-  await expect(viewerItem.first().getByRole("link", { name: batteryLabel, exact: true })).toBeVisible();
-  await expect(viewerItem.first().getByText("Keine Datenblätter verfügbar.", { exact: true })).toHaveCount(0);
-  await expect(viewerItem.first().getByRole("checkbox")).toHaveCount(0);
-  await expect(page.getByLabel("Typ")).toHaveCount(0);
+  const viewerItem = page.locator("li", { hasText: batteryLabel }).first();
+  await expect(viewerItem.getByRole("link", { name: downloadLabel, exact: true })).toBeVisible();
+  const viewerProbe = await page.request.get(downloadHref);
+  expect(viewerProbe.status()).toBe(200);
+  expect(Buffer.from(await viewerProbe.body()).equals(PDF_BYTES)).toBe(true);
 
-  // E-07: Axe auf der Viewer-Sicht (Referenz-Liste).
-  await expectNoWcagAaAxeViolations(page, "F7-02K-Datenblaetter");
+  // E-07: Axe auf der Viewer-Sicht (Referenz-Liste + Download-Link).
+  await expectNoWcagAaAxeViolations(page, "F7-02K2-Datenblatt-Download");
 
-  // E-05: Projekt ohne Bindung → ehrlicher Fallback, kein Phantom-Text.
+  // E-04: fremde componentId → 404 (uniform, kein Orakel).
+  const foreignProbe = await page.request.get(
+    `/api/workspaces/${m201.workspaceId}/projects/${projectId}/checkliste/datenblatt`
+    + `?componentId=${randomUUID()}`,
+  );
+  expect(foreignProbe.status()).toBe(404);
+
+  // E-05: Projekt ohne Bindung → ehrlicher Fallback, kein Link.
   const unboundProjectId = await seedM201AdditionalReadyProject(m201);
   const unboundUrl = `/w/${m201.workspaceId}/anfragen/${unboundProjectId}/checkliste`;
   await page.context().clearCookies();
@@ -388,6 +395,14 @@ test("F7-02K-E2E: Datenblätter rendern als Referenz-Liste, ehrlicher Fallback",
   const unboundItem = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.1") });
   await unboundItem.getByLabel("Typ").selectOption("datasheets");
   await expect(unboundItem.getByText("Keine Datenblätter verfügbar.", { exact: true })).toBeVisible();
+  await expect(unboundItem.getByRole("link", { name: /PDF herunterladen/u })).toHaveCount(0);
 
-  expect(errors, "Browser-Konsole und Page-Errors der Datenblätter").toEqual([]);
+  // E-08: Server-Log ohne Fehler aus diesem Lauf (eigener Offset, F7-16-Muster).
+  const serverTail = readFileSync(m201.serverLogPath)
+    .subarray(Math.min(serverLogOffset, statSync(m201.serverLogPath).size))
+    .toString("utf8");
+  expect(serverTail, "kein Routen-Fehler im Server-Log").not.toMatch(/\[checkliste\] datenblatt/u);
+  expect(serverTail, "kein Uncaught-Fehler im Server-Log").not.toMatch(/uncaughtException|unhandledRejection/u);
+
+  expect(errors, "Browser-Konsole und Page-Errors des Datenblatt-Downloads").toEqual([]);
 });

@@ -776,6 +776,15 @@ function SegmentGroup({
                         >
                           {`${ref.productName} — ${ref.filename}`}
                         </a>
+                        {/* F7-02K2: Byte-Download je Referenz (Katalog-Link oben unveraendert). */}
+                        {" · "}
+                        <a
+                          href={`/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/datenblatt?componentId=${ref.componentId}`}
+                          aria-label={`PDF herunterladen: ${ref.productName} — ${ref.filename}`}
+                          className="font-semibold text-brand-800 underline-offset-2 hover:underline"
+                        >
+                          PDF herunterladen
+                        </a>
                       </li>
                     ))}
                   </ul>

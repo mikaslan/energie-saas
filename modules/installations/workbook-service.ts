@@ -6,6 +6,7 @@
 // Current-Revision-Snapshot. Keine Einkaufspreise (Monteur-Sicht),
 // nur sichtbare Zeilen, keine erfundene Physik (Custom-Positionen
 // tragen keine zertifizierte Leistung).
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
@@ -17,7 +18,11 @@ import {
 } from "@/lib/integrations/offers/certified-capacities";
 import type { SchematicSectionInput } from "@/lib/integrations/schematic/single-line-v1";
 import type { CatalogTechnicalDataV1 } from "@/lib/integrations/catalog/contract";
-import { validateOfferVariantSnapshot } from "@/lib/integrations/offers/contract";
+import {
+  canonicalizeOfferJson,
+  validateOfferVariantSnapshot,
+} from "@/lib/integrations/offers/contract";
+import { resolveObjectStorage } from "@/lib/storage";
 import { OfferIntegrityError, OfferNotFoundError } from "@/modules/offers/errors";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
@@ -444,4 +449,176 @@ export async function getInstallationWorkbook(
     visibleGrossCents,
     capacities,
   };
+}
+
+// F7-02K2: Datenblatt-Bytes der GEBUNDENEN Variante (versiegelter Snapshot,
+// kein Live-Katalog — Snapshot-Konsistenz; keine neue Permission —
+// requireWorkbookRead, die Route gatet zusaetzlich checklist.read).
+export type ReadWorkbookDatasheetInput = {
+  projectId: string;
+  componentId: string;
+};
+
+export type WorkbookDatasheetDownload = {
+  filename: string;
+  body: Buffer;
+};
+
+// 25 MiB (PROJECT_FILE_MAX_BYTES-Praezedenz: Plaene/Datenblaetter-PDFs).
+const WORKBOOK_DATASHEET_MAX_BYTES = 26_214_400;
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+const PDF_MAGIC = "%PDF";
+
+// Struktureller Minimalschnitt statt Voll-Validierung: Asset-Defekte
+// (Rolle/MIME/Key) sind ValidationError (400), kein Integritaetsschaden;
+// das Siegel (kanonischer sha) wird trotzdem hart geprueft.
+const workbookDatasheetSnapshotSchema = z.object({
+  snapshotSha256: z.string(),
+  sections: z.array(z.object({
+    position: z.number(),
+    lines: z.array(z.object({
+      position: z.number(),
+      isHidden: z.boolean(),
+      product: z.object({
+        kind: z.string(),
+        // Custom-Zeilen tragen keinen datasheet-Key (nullish, nie Pflicht).
+        datasheet: z.object({
+          role: z.string(),
+          objectKey: z.string(),
+          sha256: z.string(),
+          mediaType: z.string(),
+          originalFilename: z.string(),
+        }).nullish(),
+      }),
+      source: z.object({
+        kind: z.string(),
+        catalogComponentId: z.string().optional(),
+      }),
+    })),
+  })),
+});
+
+export async function readWorkbookDatasheet(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: ReadWorkbookDatasheetInput,
+): Promise<WorkbookDatasheetDownload> {
+  // Guard 1: uuid (lowercased).
+  const parsed = z.strictObject({
+    projectId: uuidSchema,
+    componentId: uuidSchema,
+  }).safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+  // Guard 2: installation.read VOR dem Snapshot-Read.
+  requireWorkbookRead(ctx);
+  const linked = await tx.execute<{
+    installation_id: string;
+    revision_snapshot: unknown;
+    snapshot_sha256_hex: string;
+    [key: string]: unknown;
+  }>(sql`
+    select installation.id as installation_id,
+           revision.revision_snapshot,
+           encode(revision.snapshot_sha256, 'hex') as snapshot_sha256_hex
+      from installation
+      join offer as offer_record
+        on offer_record.workspace_id = installation.workspace_id
+       and offer_record.id = installation.offer_id
+      join offer_variant as variant
+        on variant.workspace_id = installation.workspace_id
+       and variant.id = installation.variant_id
+       and variant.offer_id = offer_record.id
+      join offer_variant_revision as revision
+        on revision.workspace_id = installation.workspace_id
+       and revision.offer_id = offer_record.id
+       and revision.variant_id = variant.id
+       and revision.revision = variant.current_revision
+     where installation.workspace_id = ${ctx.workspaceId}::uuid
+       and installation.project_id = ${parsed.data.projectId}::uuid
+     limit 1
+  `);
+  const row = linked.rows[0];
+  // Guard 3: Bindung fehlt → NotFound uniform.
+  if (!row) throw new InstallationNotFoundError(parsed.data.projectId);
+  // Siegel + Struktur (Z.374-376-Muster): Bruch/Unlesbarkeit → Integrity.
+  const raw = row.revision_snapshot;
+  if (typeof raw !== "object" || raw === null) throw new OfferIntegrityError();
+  const { snapshotSha256, ...snapshotBody } = raw as Record<string, unknown>;
+  const resealed = createHash("sha256")
+    .update(canonicalizeOfferJson(snapshotBody), "utf8")
+    .digest("hex");
+  if (
+    typeof snapshotSha256 !== "string"
+    || snapshotSha256 !== row.snapshot_sha256_hex
+    || resealed !== row.snapshot_sha256_hex
+  ) {
+    throw new OfferIntegrityError();
+  }
+  const structural = workbookDatasheetSnapshotSchema.safeParse(row.revision_snapshot);
+  if (!structural.success) throw new OfferIntegrityError();
+  // Erster Treffer in Projektionsreihenfolge (positions-sortiert, ohne
+  // versteckte Zeilen — keine Bytes ohne sichtbare Ref).
+  const ordered = structural.data.sections
+    .slice()
+    .sort((left, right) => left.position - right.position)
+    .flatMap((section) => section.lines
+      .filter((line) => !line.isHidden)
+      .slice()
+      .sort((left, right) => left.position - right.position));
+  const hit = ordered.find((line) =>
+    line.product.kind === "catalog"
+    && line.source.kind === "catalog"
+    && line.source.catalogComponentId === parsed.data.componentId);
+  // Guard 3: Zeile/Asset fehlt → NotFound uniform (fremd/fehlend/leer).
+  const asset = hit?.product.datasheet ?? null;
+  if (!hit || asset === null) throw new InstallationNotFoundError(parsed.data.projectId);
+  // Guard 4: MIME-Pin (role=datasheet erzwingt application/pdf).
+  if (asset.role !== "datasheet" || asset.mediaType !== "application/pdf") {
+    throw new InstallationValidationError("datasheet asset mismatch");
+  }
+  // Guard 5: Key-Rebuild (kein Echo fremder Keys, Traversal tot).
+  if (!SHA256_HEX_PATTERN.test(asset.sha256)) {
+    throw new InstallationValidationError("datasheet asset mismatch");
+  }
+  const expectedKey = [
+    "catalog",
+    ctx.workspaceId,
+    parsed.data.componentId,
+    `${asset.sha256}.pdf`,
+  ].join("/");
+  if (asset.objectKey !== expectedKey) {
+    throw new InstallationValidationError("datasheet asset mismatch");
+  }
+  // Guard 6: fehlendes Objekt → NotFound (Normalfall, kein Writer).
+  let stored: { body: Buffer; contentType: string };
+  try {
+    stored = await resolveObjectStorage().get(expectedKey);
+  } catch (error) {
+    // Integritaetsbruch ohne Key-Echo (Key-Leak-Verbot) als Integrity.
+    if (error instanceof Error && error.message.includes("Integritätsbruch")) {
+      throw new OfferIntegrityError();
+    }
+    throw new InstallationNotFoundError(parsed.data.projectId);
+  }
+  const bytes = stored.body;
+  // Guard 7: sha-Rueckvergleich (Katalog-Keys ohne Backend-Pin).
+  if (createHash("sha256").update(bytes).digest("hex") !== asset.sha256) {
+    throw new OfferIntegrityError();
+  }
+  // Guard 8: 1 .. 25 MiB.
+  if (bytes.byteLength < 1 || bytes.byteLength > WORKBOOK_DATASHEET_MAX_BYTES) {
+    throw new OfferIntegrityError();
+  }
+  // Guard 9: Magic-Bytes %PDF.
+  if (
+    bytes.byteLength < PDF_MAGIC.length
+    || bytes.subarray(0, PDF_MAGIC.length).toString("latin1") !== PDF_MAGIC
+  ) {
+    throw new OfferIntegrityError();
+  }
+  // Guard 10: Dateiname 1..180 (Contract-Max).
+  if (asset.originalFilename.length < 1 || asset.originalFilename.length > 180) {
+    throw new OfferIntegrityError();
+  }
+  return { filename: asset.originalFilename, body: bytes };
 }
