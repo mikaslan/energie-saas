@@ -216,6 +216,26 @@ export interface OfferDetailSurfaceView {
     expectedCalculationRevision: number;
     expectedResolutionRevision: number;
   };
+  // F16-14: Bulk-Update auf die aktuelle Katalogbasis. Nur gesetzt bei
+  // canCreateBasis und mindestens einer outdated Variante; rows enthaelt
+  // genau die outdated Varianten (Ordinal-Reihenfolge) mit Skip-Grund.
+  bulkUpdate?: {
+    expectedRequirementRevision: number;
+    expectedCalculationRevision: number;
+    expectedResolutionRevision: number;
+    rows: readonly {
+      variantId: string;
+      name: string;
+      revision: number;
+      outdated: boolean;
+      skipReason:
+        | "variant_signature_pending"
+        | "variant_signed"
+        | "variant_revoked_by_customer"
+        | "variant_current"
+        | null;
+    }[];
+  };
   actionState?: OfferDetailActionState;
   blockers?: readonly { code: string; label: string }[];
   pdfDrafts?: readonly OfferPdfDraftSurfaceView[];

@@ -7,6 +7,7 @@ import { DeniedState } from "../../anfragen/[projectId]/_ui";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { can, isExternalOnly, PermissionDeniedError } from "@/lib/permissions";
 import {
+  getOfferBulkUpdate,
   getOfferDetail,
   listOfferIssuances,
   listOfferPdfDrafts,
@@ -17,6 +18,7 @@ import {
   readCurrentOfferRecipient,
   readCurrentOfferReleaseProfile,
   type CurrentOfferReleaseProfileResult,
+  type OfferBulkUpdateViewModel,
   type OfferDetailViewModel,
   type OfferIssuanceStatusResult,
   type OfferPdfDraftStatusResult,
@@ -319,6 +321,8 @@ function projectOfferDetailView(
     lineCount: number;
     zeroLineCount: number;
   }[],
+  // F16-14: Bulk-Update-Zeilen (nur outdated Varianten) + Batch-CAS.
+  bulkUpdate: OfferBulkUpdateViewModel | null,
   releaseContext: {
     profile: CurrentOfferReleaseProfileResult | null;
     recipient: OfferRecipientRevisionResult | null;
@@ -482,6 +486,18 @@ function projectOfferDetailView(
     basisInput: view.permissions.canCreateBasis && view.newBasisInput ? {
       ...view.newBasisInput,
     } : undefined,
+    bulkUpdate: bulkUpdate ? {
+      expectedRequirementRevision: bulkUpdate.expectedRequirementRevision,
+      expectedCalculationRevision: bulkUpdate.expectedCalculationRevision,
+      expectedResolutionRevision: bulkUpdate.expectedResolutionRevision,
+      rows: bulkUpdate.rows.map((row) => ({
+        variantId: row.variantId,
+        name: row.name,
+        revision: row.revision,
+        outdated: row.outdated,
+        skipReason: row.skipReason,
+      })),
+    } : undefined,
     actionState: { status: view.actionState.status },
     pdfDrafts: pdfDrafts.filter((draft) => (
       draft.variantId === snapshot.variantId
@@ -620,6 +636,8 @@ export default async function OfferDetailPage(
       lineCount: number;
       zeroLineCount: number;
     }[];
+    // F16-14: Bulk-Update-Zeilen, null ohne canCreateBasis/outdated.
+    bulkUpdate: OfferBulkUpdateViewModel | null;
     recoveryScope: string;
     editorCapabilities: {
       canEditPrice: boolean;
@@ -813,6 +831,9 @@ export default async function OfferDetailPage(
             workspaceId,
             offerId,
           }),
+          bulkUpdate: view === null || externalOnly
+            ? null
+            : await getOfferBulkUpdate(tx, ctx, { offerId }),
           recoveryScope: offerRecoveryScope(workspaceId, ctx.actor),
           releaseProfile,
           releaseRecipient,
@@ -874,6 +895,7 @@ export default async function OfferDetailPage(
     result.offerTemplates,
     result.planningTemplates,
     result.packageTemplates,
+    result.bulkUpdate ?? null,
     {
       profile: result.releaseProfile,
       recipient: result.releaseRecipient,

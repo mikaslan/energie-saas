@@ -8,9 +8,11 @@ export {
   OfferPersistenceError,
   OfferRateLimitError,
   OfferValidationError,
+  bulkUpdateVariantsFromCurrentResolution,
   createOfferFromRequest,
   createVariantFromCurrentResolution,
   duplicateOfferVariant,
+  getOfferBulkUpdate,
   getOfferDetail,
   getOfferLeadTimeStats,
   getProjectOfferValues,
@@ -64,6 +66,10 @@ export type {
   ApplyPackageTemplateResult,
 } from "./package-templates";
 export type {
+  OfferBulkUpdateResult,
+  OfferBulkUpdateRowView,
+  OfferBulkUpdateSkipReason,
+  OfferBulkUpdateViewModel,
   OfferDetailViewModel,
   OfferLeadTimeStats,
   OfferListViewModel,

@@ -57,6 +57,7 @@ import type {
   OfferLineView,
   OfferVariantSnapshotView,
 } from "./offer-detail-view";
+import { OfferBulkUpdatePanel } from "./offer-bulk-update-panel";
 import offerThemeStyles from "../offer-theme.module.css";
 import { formatOfferCents, formatOfferCentsTotal, formatOfferRetryDate } from "./offer-format";
 
@@ -1391,6 +1392,14 @@ export function OfferVariantEditor({
               <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-semibold">PDF-Vorschau</h2><p className="mt-1 text-base leading-6 text-slate-600">Rendert den gespeicherten Stand lesend — ohne Entwurf, Warteschlange oder Datenbank-Spuren.</p><button type="button" disabled={navigationPending || previewState.status === "pending"} onClick={() => void loadPreview()} className="mt-3 min-h-11 rounded-md border border-slate-950 px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">{previewState.status === "pending" ? "Rendert …" : "Vorschau laden"}</button>{previewErrorText ? <p role="alert" className="mt-2 text-sm text-red-700">{previewErrorText}</p> : null}</section>
               {view.permissions.canCreateBasis && view.basisInput ? (
                 <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"><h2 className="font-semibold">Neue Basis</h2><p className="mt-1 text-base leading-6 text-slate-600">Kopiert eine ausdrücklich geprüfte Projekt-/Kataloggrundlage in eine neue Variante. Es wird keine Steuerwahl aus der aktiven Variante übernommen.</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><div><label htmlFor="basis-name" className="text-xs font-semibold">Variantenname</label><input id="basis-name" value={basisName} aria-invalid={invalidFields.has("basis-name") || undefined} aria-describedby={errorDescription("basis-name")} onChange={(event) => setBasisName(event.target.value)} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError("basis-name")}</div><div><label htmlFor="basis-tax" className="text-xs font-semibold">Steuerentwurf</label><select id="basis-tax" value={basisTaxTreatment} aria-invalid={invalidFields.has("basis-tax") || undefined} aria-describedby={errorDescription("basis-tax")} onChange={(event) => { setBasisTaxTreatment(event.target.value as "" | "standard_19" | "zero_operator_confirmed"); setZeroTaxConfirmed(false); }} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"><option value="">Bitte ausdrücklich auswählen</option><option value="standard_19">19 % USt.</option><option value="zero_operator_confirmed">0 % USt. bewusst bestätigen</option></select>{fieldError("basis-tax")}</div></div><p className="mt-2 text-base leading-6 text-slate-600">Bei 0 % ist „0-%-Steuerentwurf für diese neue Basis bestätigen“ zusätzlich erforderlich.</p>{basisTaxTreatment === "zero_operator_confirmed" ? <label className="mt-3 flex min-h-11 items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 text-base leading-6"><input id="basis-zero-confirmation" type="checkbox" checked={zeroTaxConfirmed} aria-invalid={invalidFields.has("basis-zero-confirmation") || undefined} aria-describedby={errorDescription("basis-zero-confirmation")} onChange={(event) => setZeroTaxConfirmed(event.target.checked)} className="size-5 accent-emerald-700" /> 0-%-Steuerentwurf für diese neue Basis bestätigen</label> : null}{fieldError("basis-zero-confirmation")}<button type="button" disabled={mutationDisabled} onClick={() => requestIntent({ label: "Neue Basis", execute: createNewBasis })} className="mt-3 min-h-11 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2">Neue Basis anlegen</button></section>
+              ) : null}
+              {view.permissions.canCreateBasis && view.bulkUpdate ? (
+                <OfferBulkUpdatePanel
+                  workspaceId={view.workspaceId}
+                  offerId={view.offer.id}
+                  bulk={view.bulkUpdate}
+                  disabled={mutationDisabled}
+                />
               ) : null}
           </div>
 

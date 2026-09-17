@@ -18,6 +18,8 @@ export const OFFER_VARIANT_DUPLICATE_COMMAND_VERSION =
   "offer-variant-duplicate-command.v1" as const;
 export const OFFER_VARIANT_FROM_RESOLUTION_COMMAND_VERSION =
   "offer-variant-from-resolution-command.v1" as const;
+export const OFFER_VARIANT_BULK_UPDATE_COMMAND_VERSION =
+  "offer-variant-bulk-update-command.v1" as const;
 export const OFFER_VARIANT_SET_PRIMARY_COMMAND_VERSION =
   "offer-variant-set-primary-command.v1" as const;
 export const OFFER_TOTAL_OVERRIDE_COMMAND_VERSION =
@@ -509,6 +511,38 @@ export const createVariantFromResolutionCommandV1Schema = z.discriminatedUnion(
 );
 export type CreateVariantFromResolutionCommandV1 = z.infer<
   typeof createVariantFromResolutionCommandV1Schema
+>;
+
+// F16-14: Batch-Befehl für das Bulk-Update veralteter Varianten auf die
+// aktuelle Katalogbasis. Genau ein Top-Level-CAS pro Batch, pro Zeile eine
+// eigene Quell-Revision und eine ausdrückliche Steuerwahl (keine Vererbung).
+// Der Name ist optional: Fehlt er, vergibt der Service deterministisch
+// `<Quellname> · Kat.-Rev. <R>`.
+const bulkUpdateRowBaseSchema = z.strictObject({
+  sourceVariantId: uuidSchema,
+  expectedSourceRevision: positiveRevisionSchema,
+  name: normalizedRequiredText(120).optional(),
+});
+
+const bulkUpdateRowSchema = z.discriminatedUnion("taxTreatment", [
+  bulkUpdateRowBaseSchema.extend({ taxTreatment: z.literal("standard_19") }),
+  bulkUpdateRowBaseSchema.extend({
+    taxTreatment: z.literal("zero_operator_confirmed"),
+    zeroConfirmation: zeroTaxConfirmationSchema,
+  }),
+]);
+export type BulkUpdateVariantRowV1 = z.infer<typeof bulkUpdateRowSchema>;
+
+export const bulkUpdateVariantsCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(OFFER_VARIANT_BULK_UPDATE_COMMAND_VERSION),
+  offerId: uuidSchema,
+  expectedRequirementRevision: positiveRevisionSchema,
+  expectedCalculationRevision: positiveRevisionSchema,
+  expectedResolutionRevision: positiveRevisionSchema,
+  rows: z.array(bulkUpdateRowSchema).min(1).max(12),
+});
+export type BulkUpdateVariantsCommandV1 = z.infer<
+  typeof bulkUpdateVariantsCommandV1Schema
 >;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/u);

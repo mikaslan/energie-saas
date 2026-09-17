@@ -10,6 +10,7 @@ import { emitEvent } from "@/lib/events";
 import {
   OFFER_CANONICALIZATION_VERSION,
   OFFER_VARIANT_SNAPSHOT_VERSION,
+  bulkUpdateVariantsCommandV1Schema,
   canonicalizeOfferJson,
   createOfferCommandV1Schema,
   createVariantFromResolutionCommandV1Schema,
@@ -29,6 +30,7 @@ import {
   type OptionalBundlesV1,
   type SetVariantPaymentOptionCommandV1,
   validateOfferVariantSnapshot,
+  type BulkUpdateVariantsCommandV1,
   type CreateOfferCommandV1,
   type CreateVariantFromResolutionCommandV1,
   type DuplicateOfferVariantCommandV1,
@@ -69,6 +71,41 @@ export type OfferMutationResult = {
 };
 
 export type OfferVariantContentLock = "pending" | "signed" | "revoked_by_customer";
+
+export type OfferBulkUpdateSkipReason =
+  | "variant_signature_pending"
+  | "variant_signed"
+  | "variant_revoked_by_customer"
+  | "variant_current";
+
+export type OfferBulkUpdateResult = {
+  offerId: string;
+  created: Array<{
+    sourceVariantId: string;
+    variantId: string;
+    revision: number;
+    name: string;
+  }>;
+  skipped: Array<{
+    sourceVariantId: string;
+    reason: OfferBulkUpdateSkipReason;
+  }>;
+};
+
+export type OfferBulkUpdateRowView = {
+  variantId: string;
+  name: string;
+  revision: number;
+  outdated: boolean;
+  skipReason: OfferBulkUpdateSkipReason | null;
+};
+
+export type OfferBulkUpdateViewModel = {
+  expectedRequirementRevision: number;
+  expectedCalculationRevision: number;
+  expectedResolutionRevision: number;
+  rows: OfferBulkUpdateRowView[];
+};
 
 export type OfferListViewModel = {
   state: "loaded" | "empty" | "blocked" | "read_only";
@@ -618,6 +655,54 @@ async function readVariantContentLock(
   return result.rows[0]?.status ?? null;
 }
 
+async function readVariantContentLocks(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  offerId: string,
+  variantIds: readonly string[],
+): Promise<ReadonlyMap<string, OfferVariantContentLock>> {
+  if (variantIds.length === 0) return new Map();
+  const result = await tx.execute<{
+    variant_id: string;
+    status: OfferVariantContentLock;
+    [key: string]: unknown;
+  }>(sql`
+    select distinct on (variant_id) variant_id, status
+      from signature_request
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerId}::uuid
+       and variant_id in (${sql.join(variantIds.map((id) => sql`${id}::uuid`), sql`, `)})
+       and (
+         status in ('signed', 'revoked_by_customer')
+         or (status = 'pending' and expires_at > statement_timestamp())
+       )
+     order by variant_id, case status
+       when 'revoked_by_customer' then 1
+       when 'signed' then 2
+       else 3
+     end, created_at desc, id
+  `);
+  return new Map(result.rows.map((row) => [row.variant_id, row.status]));
+}
+
+function bulkLockSkipReason(lock: OfferVariantContentLock): OfferBulkUpdateSkipReason {
+  return lock === "pending"
+    ? "variant_signature_pending"
+    : lock === "signed"
+      ? "variant_signed"
+      : "variant_revoked_by_customer";
+}
+
+function defaultBulkSuccessorName(sourceName: string, resolutionRevision: number): string {
+  const suffix = ` · Kat.-Rev. ${resolutionRevision}`;
+  // Code-Point-Schnitt (Review-P2): UTF-16-.slice kann Surrogate teilen;
+  // Array.from spaltet nie Surrogate, NFC zuerst komponiert Akzente.
+  const base = Array.from(sourceName.normalize("NFC").trim())
+    .slice(0, Math.max(0, 120 - suffix.length))
+    .join("");
+  return `${base}${suffix}`.normalize("NFC").trim();
+}
+
 export async function getOfferDetail(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -819,6 +904,116 @@ export async function getOfferDetail(
       canReadPurchasePrice,
     },
     actionState: { status: "idle" },
+  };
+}
+
+export async function getOfferBulkUpdate(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { offerId: string },
+): Promise<OfferBulkUpdateViewModel | null> {
+  requireOfferAccess(ctx, "project.read", "offer_bulk_update");
+  const parsed = z.strictObject({
+    offerId: z.uuid().transform((value) => value.toLowerCase()),
+  }).safeParse(input);
+  if (!parsed.success) throw new OfferValidationError(issuePaths(parsed.error));
+  if (!canUseOfferActions(ctx, "project.write", "price.edit")) return null;
+
+  const offerResult = await tx.execute<{
+    id: string;
+    project_id: string;
+    [key: string]: unknown;
+  }>(sql`
+    select id, project_id
+      from offer
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${parsed.data.offerId}::uuid
+     limit 1
+  `);
+  const offerRecord = offerResult.rows[0];
+  if (!offerRecord) return null;
+
+  const variantsResult = await tx.execute<{
+    id: string;
+    ordinal: number;
+    current_revision: number;
+    name: string;
+    [key: string]: unknown;
+  }>(sql`
+    select id, ordinal, current_revision, name
+      from offer_variant
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerRecord.id}::uuid
+     order by ordinal, id
+  `);
+  if (variantsResult.rows.length === 0 || variantsResult.rows.length >= 12) return null;
+
+  const variantIds = variantsResult.rows.map((variant) => variant.id);
+  const bindings = await readCurrentRevisionBindings(tx, ctx, offerRecord.id, variantIds);
+  let freshness: ReadonlyMap<string, boolean>;
+  try {
+    freshness = await readOfferCatalogFreshness(
+      tx,
+      ctx,
+      variantsResult.rows.map((variant) => {
+        const binding = bindings.get(variant.id);
+        if (!binding) throw new OfferIntegrityError();
+        return {
+          requestKey: variant.id,
+          projectId: offerRecord.project_id,
+          bindings: [{
+            resolutionId: binding.resolution_id,
+            resolutionRevision: binding.resolution_revision,
+            resolutionSha256: binding.resolution_sha256_hex,
+          }],
+        };
+      }),
+    );
+  } catch (error) {
+    if (error instanceof CatalogOfferBridgeIntegrityError) {
+      throw new OfferIntegrityError();
+    }
+    throw error;
+  }
+  const outdatedVariants = variantsResult.rows.filter(
+    (variant) => freshness.get(variant.id) ?? true,
+  );
+  if (outdatedVariants.length === 0) return null;
+
+  let basis: {
+    expectedRequirementRevision: number;
+    expectedCalculationRevision: number;
+    expectedResolutionRevision: number;
+  } | null;
+  try {
+    basis = await readCurrentProjectCatalogBasisReference(
+      tx,
+      ctx,
+      offerRecord.project_id,
+    );
+  } catch (error) {
+    if (error instanceof CatalogOfferBridgeIntegrityError) {
+      throw new OfferIntegrityError();
+    }
+    throw error;
+  }
+  if (!basis) return null;
+
+  const locks = await readVariantContentLocks(tx, ctx, offerRecord.id, variantIds);
+  return {
+    expectedRequirementRevision: basis.expectedRequirementRevision,
+    expectedCalculationRevision: basis.expectedCalculationRevision,
+    expectedResolutionRevision: basis.expectedResolutionRevision,
+    rows: outdatedVariants.map((variant) => {
+      const lock = locks.get(variant.id);
+      return {
+        variantId: variant.id,
+        name: variant.name,
+        revision: variant.current_revision,
+        outdated: true,
+        skipReason: lock ? bulkLockSkipReason(lock) : null,
+      };
+    }),
   };
 }
 
@@ -2003,6 +2198,213 @@ export async function createVariantFromCurrentResolution(
     action: "price.edit",
   });
   return { offerId: offerRecord.id, variantId, revision: 1 };
+}
+
+type CurrentRevisionBinding = {
+  variant_id: string;
+  resolution_id: string;
+  resolution_revision: number;
+  resolution_sha256_hex: string;
+  [key: string]: unknown;
+};
+
+async function readCurrentRevisionBindings(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  offerId: string,
+  variantIds: readonly string[],
+): Promise<ReadonlyMap<string, CurrentRevisionBinding>> {
+  if (variantIds.length === 0) return new Map();
+  const result = await tx.execute<CurrentRevisionBinding>(sql`
+    select revision.variant_id, revision.resolution_id, revision.resolution_revision,
+           encode(revision.resolution_sha256, 'hex') as resolution_sha256_hex
+      from offer_variant_revision revision
+      join offer_variant variant
+        on variant.workspace_id = revision.workspace_id
+       and variant.offer_id = revision.offer_id
+       and variant.id = revision.variant_id
+       and variant.current_revision = revision.revision
+     where revision.workspace_id = ${ctx.workspaceId}::uuid
+       and revision.offer_id = ${offerId}::uuid
+       and revision.variant_id in (${sql.join(variantIds.map((id) => sql`${id}::uuid`), sql`, `)})
+  `);
+  return new Map(result.rows.map((row) => [row.variant_id, row]));
+}
+
+export async function bulkUpdateVariantsFromCurrentResolution(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<OfferBulkUpdateResult> {
+  requireOfferAccess(ctx, "project.write", "offer_variant");
+  requireOfferAccess(ctx, "price.edit", "offer_pricing");
+  const parsed = bulkUpdateVariantsCommandV1Schema.safeParse(value);
+  if (!parsed.success) throw new OfferValidationError(issuePaths(parsed.error));
+  const command: BulkUpdateVariantsCommandV1 = parsed.data;
+  const projectId = await readOfferProjectId(tx, ctx, command.offerId);
+  const project = await lockProjectBasis(tx, ctx, projectId);
+  const offerRecord = await lockOffer(tx, ctx, command.offerId);
+
+  const sources = new Map<string, VariantRow>();
+  for (const row of command.rows) {
+    if (!sources.has(row.sourceVariantId)) {
+      sources.set(
+        row.sourceVariantId,
+        await lockVariant(tx, ctx, offerRecord.id, row.sourceVariantId),
+      );
+    }
+  }
+
+  const locks = await readVariantContentLocks(tx, ctx, offerRecord.id, [...sources.keys()]);
+  const unlockedIds = [...sources.keys()].filter((id) => !locks.has(id));
+  const bindings = await readCurrentRevisionBindings(tx, ctx, offerRecord.id, unlockedIds);
+  let freshness: ReadonlyMap<string, boolean>;
+  try {
+    freshness = await readOfferCatalogFreshness(
+      tx,
+      ctx,
+      unlockedIds.map((variantId) => {
+        const binding = bindings.get(variantId);
+        if (!binding) throw new OfferIntegrityError();
+        return {
+          requestKey: variantId,
+          projectId,
+          bindings: [{
+            resolutionId: binding.resolution_id,
+            resolutionRevision: binding.resolution_revision,
+            resolutionSha256: binding.resolution_sha256_hex,
+          }],
+        };
+      }),
+    );
+  } catch (error) {
+    if (error instanceof CatalogOfferBridgeIntegrityError) {
+      throw new OfferIntegrityError();
+    }
+    throw error;
+  }
+
+  const skipped: OfferBulkUpdateResult["skipped"] = [];
+  const executable: BulkUpdateVariantsCommandV1["rows"][number][] = [];
+  for (const row of command.rows) {
+    const lock = locks.get(row.sourceVariantId);
+    if (lock) {
+      skipped.push({ sourceVariantId: row.sourceVariantId, reason: bulkLockSkipReason(lock) });
+      continue;
+    }
+    if ((freshness.get(row.sourceVariantId) ?? true) === false) {
+      skipped.push({ sourceVariantId: row.sourceVariantId, reason: "variant_current" });
+      continue;
+    }
+    executable.push(row);
+  }
+  if (executable.length === 0) {
+    return { offerId: offerRecord.id, created: [], skipped };
+  }
+
+  const existingCount = await tx.execute<{ count: number; [key: string]: unknown }>(sql`
+    select count(*)::int as count
+      from offer_variant
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerRecord.id}::uuid
+  `);
+  if ((existingCount.rows[0]?.count ?? 0) + executable.length > 12) {
+    throw new OfferBlockedError("variant_limit");
+  }
+
+  const basis = await loadCurrentBasis(tx, ctx, project, {
+    requirementRevision: command.expectedRequirementRevision,
+    calculationRevision: command.expectedCalculationRevision,
+    resolutionRevision: command.expectedResolutionRevision,
+  });
+  for (const row of executable) {
+    if (sources.get(row.sourceVariantId)?.current_revision !== row.expectedSourceRevision) {
+      throw new OfferConflictError();
+    }
+  }
+
+  const successorNames = executable.map((row) => {
+    const source = sources.get(row.sourceVariantId);
+    if (!source) throw new OfferIntegrityError();
+    return row.name ?? defaultBulkSuccessorName(
+      source.name,
+      command.expectedResolutionRevision,
+    );
+  });
+  if (new Set(successorNames).size !== successorNames.length) {
+    throw new OfferConflictError();
+  }
+  const existingNames = await tx.execute<{ name: string; [key: string]: unknown }>(sql`
+    select name
+      from offer_variant
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerRecord.id}::uuid
+  `);
+  const taken = new Set(existingNames.rows.map((row) => row.name));
+  if (successorNames.some((name) => taken.has(name))) {
+    throw new OfferConflictError();
+  }
+
+  const planningMode = await getPlanningModeDefaultForVariantCreation(tx, ctx);
+  if (canonicalizeOfferJson(offerRecord.installation_site_context)
+    !== canonicalizeOfferJson(basis.installationSiteContext)) {
+    throw new OfferBlockedError("installation_site_changed");
+  }
+  const priceAudienceDecision = readStoredPriceAudienceDecision(offerRecord);
+  const now = await databaseNow(tx);
+  const created: OfferBulkUpdateResult["created"] = [];
+  for (const [index, row] of executable.entries()) {
+    const ordinal = await nextVariantOrdinal(tx, ctx, offerRecord.id);
+    const variantId = randomUUID();
+    const snapshot = buildResolutionSnapshot({
+      workspaceId: ctx.workspaceId,
+      offerId: offerRecord.id,
+      variantId,
+      revision: 1,
+      variantName: successorNames[index]!,
+      description: null,
+      planningMode,
+      contactContext: offerRecord.contact_context,
+      installationSiteContext: offerRecord.installation_site_context,
+      sourceBindings: basis.sourceBindings,
+      resolution: basis.resolution,
+      priceAudienceDecision,
+      actor: ctx.actor,
+      createdAt: now,
+      taxTreatment: row.taxTreatment,
+    });
+    await insertVariant(tx, ctx, {
+      id: variantId,
+      offerId: offerRecord.id,
+      ordinal,
+      name: snapshot.variantName,
+      description: snapshot.description,
+      isPrimary: false,
+      createdAt: now,
+    });
+    await persistRevision(tx, ctx, snapshot);
+    created.push({
+      sourceVariantId: row.sourceVariantId,
+      variantId,
+      revision: 1,
+      name: snapshot.variantName,
+    });
+  }
+  await touchOfferAndProject(tx, ctx, offerRecord, now);
+  for (const entry of created) {
+    await recordOfferMutation(tx, ctx, {
+      offerId: offerRecord.id,
+      variantId: entry.variantId,
+      revision: 1,
+      previousRevision: null,
+      changeClasses: ["resolution_seed"],
+      previousState: "absent",
+      newState: "draft",
+      eventType: "offer.variant_created",
+      action: "price.edit",
+    });
+  }
+  return { offerId: offerRecord.id, created, skipped };
 }
 
 function findLine(

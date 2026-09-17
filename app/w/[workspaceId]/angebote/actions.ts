@@ -6,6 +6,7 @@ import { z } from "zod";
 import { authorizedAction, authorizedOfferMutationAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { COMMERCIAL_DOCUMENT_OFFER_IMPORT_COMMAND_VERSION } from "@/lib/integrations/invoicing/contract";
 import {
+  bulkUpdateVariantsCommandV1Schema,
   createOfferCommandV1Schema,
   createVariantFromResolutionCommandV1Schema,
   duplicateOfferVariantCommandV1Schema,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/integrations/offers/contract";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
+  bulkUpdateVariantsFromCurrentResolution,
   createOfferFromRequest,
   createVariantFromCurrentResolution,
   duplicateOfferVariant,
@@ -122,6 +124,14 @@ const NEW_BASIS_ZERO_FIELDS = new Set([
   ...NEW_BASIS_STANDARD_FIELDS,
   "zeroConfirmation.code",
   "zeroConfirmation.confirmed",
+]);
+const BULK_UPDATE_FIELDS = new Set([
+  "workspaceId",
+  "offerId",
+  "expectedRequirementRevision",
+  "expectedCalculationRevision",
+  "expectedResolutionRevision",
+  "rows",
 ]);
 
 type ParsedForm = Readonly<Record<string, string>>;
@@ -531,6 +541,71 @@ export async function createVariantFromCurrentResolutionAction(
   revalidatePath(`/w/${workspaceId}/angebote/${result.offerId}`);
   revalidatePath(`/w/${workspaceId}/angebote`);
   redirect(`/w/${workspaceId}/angebote/${result.offerId}?variante=${result.variantId}`);
+}
+
+export type BulkUpdateEditorActionState = OfferActionState | {
+  status: "success";
+  offerId: string;
+  created: ReadonlyArray<{
+    sourceVariantId: string;
+    variantId: string;
+    revision: number;
+    name: string;
+  }>;
+  skipped: ReadonlyArray<{
+    sourceVariantId: string;
+    reason: string;
+  }>;
+};
+
+/**
+ * F16-14: Editor-Action ohne Zwischenredirect fuer das Bulk-Update. Der
+ * Client sendet genau die ausführbaren Zeilen als JSON; Skips meldet der
+ * Service zurueck. Kein Redirect, damit Erfolgs- und Skip-Gruende lesbar
+ * bleiben; der Client refresht das serverautoritativ berechnete Readmodel.
+ */
+export async function bulkUpdateVariantsEditorAction(
+  formData: FormData,
+): Promise<BulkUpdateEditorActionState> {
+  const workspaceId = workspaceForAdmission(formData);
+  if (!workspaceId) return { status: "invalid" };
+
+  let result: {
+    offerId: string;
+    created: { sourceVariantId: string; variantId: string; revision: number; name: string }[];
+    skipped: { sourceVariantId: string; reason: string }[];
+  };
+  try {
+    result = await authorizedOfferMutationAction(
+      workspaceId,
+      ["project.write", "price.edit"],
+      "offer_variant",
+      async (tx, ctx) => {
+        const fields = parseExactForm(formData, [BULK_UPDATE_FIELDS]);
+        if (!fields) throw new OfferValidationError();
+        const rows = parseOperations(fields.rows);
+        if (!rows) throw new OfferValidationError();
+        const parsed = bulkUpdateVariantsCommandV1Schema.safeParse({
+          schemaVersion: "offer-variant-bulk-update-command.v1",
+          offerId: fields.offerId,
+          expectedRequirementRevision: positiveInteger(fields.expectedRequirementRevision),
+          expectedCalculationRevision: positiveInteger(fields.expectedCalculationRevision),
+          expectedResolutionRevision: positiveInteger(fields.expectedResolutionRevision),
+          rows,
+        });
+        if (!parsed.success) throw new OfferValidationError();
+        return bulkUpdateVariantsFromCurrentResolution(tx, ctx, parsed.data);
+      },
+    );
+  } catch (error) {
+    const mapped = mapOfferError(error);
+    if (mapped) return mapped;
+    throw error;
+  }
+
+  revalidatePath(`/w/${workspaceId}/angebote/${result.offerId}`);
+  revalidatePath(`/w/${workspaceId}/angebote`);
+  return { status: "success", ...result };
 }
 
 export type OfferPreviewState =
