@@ -1,5 +1,8 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
+import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
+import { PermissionDeniedError } from "@/lib/permissions";
+import { DeniedState } from "../_ui";
 import { createSiteAction } from "./actions";
 
 const workspaceIdSchema = z.uuid();
@@ -9,6 +12,20 @@ export default async function SitesPage({ params }: PageProps<"/w/[workspaceId]/
   const validWorkspaceId = workspaceIdSchema.safeParse(workspaceId);
   if (!validWorkspaceId.success) notFound();
   const parsedWorkspaceId = validWorkspaceId.data;
+
+  // Render-Gate (Muster rechnungen/aufgaben): Seite war ohne Auth lesbar
+  // (P1-Fund DASH-VG-14). Schreiben bleibt in der Action enforced.
+  try {
+    await authorizedQuery(parsedWorkspaceId, "project.read", "site_form", async () => null);
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) {
+      redirect(`/login?${new URLSearchParams({ next: `/w/${parsedWorkspaceId}/sites` }).toString()}`);
+    }
+    if (error instanceof PermissionDeniedError) {
+      return <DeniedState title="Die Standorte sind für dich nicht freigegeben." />;
+    }
+    throw error;
+  }
 
   async function action(formData: FormData): Promise<void> {
     "use server";

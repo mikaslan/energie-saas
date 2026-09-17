@@ -265,7 +265,7 @@ export default async function PlanningBoardPage(
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
       <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8">
-        <p className="text-sm text-slate-500">Ressourcen-Übersicht</p>
+        <p className="text-sm text-slate-600">Ressourcen-Übersicht</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Plantafel</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
           Termine der Woche je Mitglied, gruppiert nach Team. Einträge tragen

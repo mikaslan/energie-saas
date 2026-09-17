@@ -288,6 +288,7 @@ type SharedE2EState = {
   workspaceId: string;
   mainProjectId: string;
   editorEmail: string;
+  externalEmail: string;
 };
 
 function sharedState(): SharedE2EState {
@@ -299,6 +300,7 @@ function sharedState(): SharedE2EState {
     "workspaceId",
     "mainProjectId",
     "editorEmail",
+    "externalEmail",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
     throw new Error("Der private DASH-VG-E2E-State ist unvollständig.");
@@ -490,4 +492,147 @@ test("DASH-VG-05: Portal-Resolve ist bei 375/768/1440 axe-/konsolen-sauber (Crea
   );
   problems.length = 0;
   problems.push(...kept);
+});
+
+async function freshWorkspacePath(suffix: string): Promise<string> {
+  const workspaceId = await seedIsolatedWorkspace(await resolveEditorId());
+  return `/w/${workspaceId}${suffix}`;
+}
+
+async function gateEmptyRoute(
+  page: Page,
+  options: { path: string; email: string; heading: string; emptyText?: string; artifact: string },
+): Promise<void> {
+  await page.goto(options.path);
+  await loginWithRealOtp(page, options.email, options.path);
+  await expect(page.getByRole("heading", { name: options.heading, level: 1 })).toBeVisible();
+  if (options.emptyText !== undefined) {
+    await expect(page.getByText(options.emptyText).first()).toBeVisible();
+  }
+  for (const viewport of GATE_VIEWPORTS) {
+    await test.step(`Viewport ${viewport.width}`, async () => {
+      await page.setViewportSize(viewport);
+      await expect(page.getByRole("heading", { name: options.heading, level: 1 })).toBeVisible();
+      await expectNoHorizontalOverflow(page, `${options.artifact} ${viewport.width}`);
+      await expectNoWcagAaAxeViolations(page, `${options.artifact} ${viewport.width}`);
+      const boxes = await measureBoxes(page, ["main", "h1"]);
+      writeMeasurementArtifact(options.artifact, options.path, viewport, boxes);
+    });
+  }
+}
+
+test("DASH-VG-07: Unangemeldet leitet Uebersicht auf /login um", async ({ page }) => {
+  test.setTimeout(240_000);
+  const dashboardPath = await freshWorkspacePath("/dashboard");
+  await page.goto(dashboardPath);
+  await page.waitForURL((url) => url.pathname === "/login");
+  expect(new URL(page.url()).searchParams.get("next")).toBe(dashboardPath);
+});
+
+test("DASH-VG-08: Externe sehen RLS-leere Uebersicht (kein Zugriffs-Leck)", async ({ page }) => {
+  test.setTimeout(240_000);
+  const shared = sharedState();
+  const dashboardPath = `/w/${shared.workspaceId}/dashboard`;
+  await page.goto(dashboardPath);
+  await loginWithRealOtp(page, shared.externalEmail, dashboardPath);
+  // Externe ohne Zuweisung: Queries passieren Caps, RLS liefert leer —
+  // Uebersicht rendert mit ehrlichen Leerzustaenden (kein Zahlen-Leck).
+  await expect(page.getByRole("heading", { name: "Übersicht", level: 1 })).toBeVisible();
+  // Partial-Modell (verifiziert): Externe sehen nur Wiedervorlagen + Service;
+  // Pipeline, Aufgaben, Abschluesse, Rechnungen etc. sind denied (kein Leck).
+  const followups = page.locator('[data-dashboard-followups="true"]');
+  await expect(followups).toBeVisible();
+  await expect(followups.getByText("Nichts überfällig oder fällig.")).toBeVisible();
+  const service = page.locator('[data-dashboard-service="true"]');
+  await expect(service).toBeVisible();
+  await expect(service.getByText("Keine Datei-Anfragen.")).toBeVisible();
+  await expect(service.getByText("Servicevorgänge")).toHaveCount(0);
+  await expect(service.getByText("Förderakten")).toHaveCount(0);
+  await expect(page.locator('[data-dashboard-pipeline="true"]')).toHaveCount(0);
+  await expect(page.locator('[data-dashboard-invoices="true"]')).toHaveCount(0);
+  await expect(page.locator('[data-dashboard-closures="true"]')).toHaveCount(0);
+  for (const viewport of GATE_VIEWPORTS) {
+    await test.step(`Viewport ${viewport.width}`, async () => {
+      await page.setViewportSize(viewport);
+      await expect(page.getByRole("heading", { name: "Übersicht", level: 1 })).toBeVisible();
+      await expectNoHorizontalOverflow(page, `dashboard-external ${viewport.width}`);
+      await expectNoWcagAaAxeViolations(page, `dashboard-external ${viewport.width}`);
+      const boxes = await measureBoxes(page, ["main", "h1"]);
+      writeMeasurementArtifact("dashboard-external", dashboardPath, viewport, boxes);
+    });
+  }
+});
+
+test("DASH-VG-09: Rechnungen sind bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await gateEmptyRoute(page, {
+    path: await freshWorkspacePath("/rechnungen"),
+    email: state().editorEmail,
+    heading: "Belege ausstellen, versenden und auswerten",
+    emptyText: "Keine Einträge",
+    artifact: "rechnungen",
+  });
+});
+
+test("DASH-VG-10: Aufgaben sind bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await gateEmptyRoute(page, {
+    path: await freshWorkspacePath("/aufgaben"),
+    email: state().editorEmail,
+    heading: "Aufgaben",
+    artifact: "aufgaben",
+  });
+});
+
+test("DASH-VG-11: Kalender ist bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await gateEmptyRoute(page, {
+    path: await freshWorkspacePath("/kalender"),
+    email: state().editorEmail,
+    heading: "Kalender",
+    artifact: "kalender",
+  });
+});
+
+test("DASH-VG-12: Katalog ist bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await gateEmptyRoute(page, {
+    path: await freshWorkspacePath("/katalog"),
+    email: state().editorEmail,
+    heading: "Produktkatalog",
+    emptyText: "Der Katalog ist noch leer",
+    artifact: "katalog",
+  });
+});
+
+test("DASH-VG-13: Plantafel ist bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await gateEmptyRoute(page, {
+    path: await freshWorkspacePath("/plantafel"),
+    email: state().editorEmail,
+    heading: "Plantafel",
+    artifact: "plantafel",
+  });
+});
+
+test("DASH-VG-14: Standorte sind bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await gateEmptyRoute(page, {
+    path: await freshWorkspacePath("/sites"),
+    email: state().editorEmail,
+    heading: "Standorte",
+    artifact: "sites",
+  });
 });
