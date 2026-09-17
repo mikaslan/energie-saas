@@ -22,12 +22,14 @@ import {
   InvoicingNotFoundError,
   getDocumentDetail,
   listDepositCandidates,
+  listInvoicePdfs,
   listPartialInvoices,
 } from "@/modules/invoicing";
 import { DeniedState } from "../../../_ui";
 import { CiiExportPanel } from "./cii-export-panel";
 import { DepositLinkPanel } from "./deposit-link-panel";
 import { DuplicateDocumentPanel } from "./duplicate-document-panel";
+import { InvoicePdfPanel } from "./invoice-pdf-panel";
 import { PartialInvoicePanel } from "./partial-invoice-panel";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -118,6 +120,30 @@ export default async function InvoicingDocumentDetailPage(
       }
     })()
     : null;
+
+  // M3-02d: PDF-Jobstatus nur fuer Rechnungen/Gutschriften (reine Anzeige;
+  // ohne invoicing.write → leere Liste, Seite bleibt lesbar).
+  const invoicePdfs = (type === "invoice" || type === "credit_note")
+    ? await (async () => {
+      try {
+        return await authorizedQuery(
+          workspaceId,
+          "invoicing.write",
+          "commercial_document_render_job",
+          (tx, ctx) => listInvoicePdfs(tx, ctx, {
+            workspaceId,
+            documentId,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof PermissionDeniedError) return [];
+        throw error;
+      }
+    })()
+    : [];
+  const canRequestPdf = (type === "invoice" || type === "credit_note")
+    && detail.document.status === "issued"
+    && detail.document.permissions.canWrite;
 
   const { document, lines } = detail;
   // F8-04: Gutschrift-Detail zeigt den Block auch ohne eingehende Links,
@@ -260,6 +286,16 @@ export default async function InvoicingDocumentDetailPage(
 
       {(type === "invoice" || type === "credit_note") && document.status === "issued" ? (
         <CiiExportPanel workspaceId={workspaceId} type={type} documentId={documentId} />
+      ) : null}
+
+      {(type === "invoice" || type === "credit_note") && document.status === "issued" ? (
+        <InvoicePdfPanel
+          workspaceId={workspaceId}
+          type={type}
+          documentId={documentId}
+          canGenerate={canRequestPdf}
+          jobs={invoicePdfs}
+        />
       ) : null}
 
       {showDeposits ? (

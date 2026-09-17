@@ -177,7 +177,16 @@ export { exportDocumentCii } from "./cii-service";
 export { exportDatevBatch } from "./datev-service";
 export {
   enqueueInvoicePdfRenderDispatch,
+  getInvoicePdfStatus,
+  InvoicePdfIntegrityError,
+  InvoicePdfNotFoundError,
+  InvoicePdfValidationError,
+  listInvoicePdfs,
+  readInvoicePdfArtifact,
   requestInvoicePdfInput,
+  type InvoicePdfArtifactResult,
+  type InvoicePdfState,
+  type InvoicePdfStatusResult,
   type RequestInvoicePdfInputCommand,
   type RequestInvoicePdfInputResult,
 } from "./pdf-service";
