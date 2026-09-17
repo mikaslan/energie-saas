@@ -105,10 +105,10 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
 
 ## 5. Roadmap (OFFEN, Rest)
 
-- Loading-/Error-Live-States: CODE-verifiziert (Dateien vorhanden, z. B.
-  aufgaben/error.tsx, projektakte/loading.tsx); Live-Trigger braucht
-  Fault-Injection — OFFEN.
-- Portal Dok-/Rechnungszeilen-Wrap (P2-Risiko): braucht befuellte Fixtures.
+- Loading-/Error-Live-States: GESCHLOSSEN (VG-35..37, §9) — NotFound live,
+  RSC-Fallback + Skelett per Fault-Injection belegt.
+- Portal Dok-/Rechnungszeilen-Wrap (P2-Risiko): DOKUMENTE-TEIL GESCHLOSSEN
+  (VG-38, §9); RECHNUNGEN-TEIL begründet offen (§9, w3-gekoppelt).
 - Sites-Palette (zinc statt slate): notiert, kein Redesign (Direktive).
 
 ## 6. Review-Entscheidungen (Agent-5-Review, P2 dokumentiert statt gefixt)
@@ -150,3 +150,23 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
 - angebotsprofile: In-Place-Auth („Anmeldung erforderlich“) statt Redirect
   → Direkt-Login (Muster VG-06). Keine Layout-/Kontrast-Befunde.
 - Evidenz: 25 passed (34.8s, inkl. VG-01/10..14); Mess-JSONs 96 Stk. gesamt.
+
+## 9. VG-35..38 (NotFound, Fault-Injection, Portal befuellt; VERIFIZIERT 2026-09-17)
+
+- VG-35: unbekannte IDs zeigen NotFound-Ansichten (kein Crash).
+- VG-36: RSC-Fallback per Fault-Injection (serviceWorkers block,
+  eigene Spec-Datei); VG-37: Skelett-Ladezustand ebenso.
+- VG-38 (P2-Dokumente GESCHLOSSEN): Portal mit befuellter Dokumentzeile —
+  Projekt + Link per UI, freigegebene Issuance per F10-07-Seed (in
+  `tests/e2e/f10-07-fixture.ts` extrahiert, F10-07-Regression gruen).
+  Zeile voll belegt (Angebot ANG-2026-000071 + Datum + Download-Link);
+  Gates 375/768/1440 gruen OHNE Fix (Zeilen-Box 275x152 bei 375, kein
+  Overflow) — §6-Risiko falsifiziert, kein Wrap-Fix noetig.
+- P2-Rechnungen BEGRUENDET OFFEN: befuellte Rechnungszeilen brauchen die
+  w3/f102-Kette (Draft-Seed + Capability-Grant + UI-Ausstellung, F8-15);
+  Shared-Fixture-Kopplung ist fuer ein Visual-Gate unverhaeltnismaessig.
+  Zeilen-Pattern code-identisch zu Dokumente (`flex justify-between`,
+  ein Link weniger) — P3-Restrisiko.
+- Evidenz: F10-07 + VG-38 je gruen (fokussiert); Messungen
+  `v1-portal-gefuellt-*.json` (main + h1 + Dokumentzeile, 3 Boxen);
+  Mess-JSONs 99 Stk. gesamt.

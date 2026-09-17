@@ -3,6 +3,10 @@ import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "playwright/test";
 import {
+  OFFER_NUMBER as F1007_OFFER_NUMBER,
+  seedApprovedIssuance,
+} from "./f10-07-fixture";
+import {
   resolveEditorId,
   seedIsolatedWorkspace,
   state,
@@ -664,3 +668,64 @@ test("DASH-VG-35: Unbekannte IDs zeigen NotFound-Ansichten (kein Crash)", async 
 /* DASH-VG-36/37 leben in dash-vg-fault-injection.spec.ts (eigene Datei mit
  * serviceWorkers: "block" — der App-Service-Worker (skipWaiting +
  * clients.claim) schluckt sonst die zu injizierenden Netzfehler). */
+
+test("DASH-VG-38: Portal mit befuellter Dokumentzeile ist bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const data = state();
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const listPath = `/w/${workspaceId}/anfragen`;
+  await page.goto(listPath);
+  await loginWithRealOtp(page, data.editorEmail, listPath);
+
+  // Projekt per manueller Anfrage (F10-07-Muster).
+  await page.getByTestId("manual-lead-open").click();
+  const leadForm = page.getByTestId("manual-lead-form");
+  await leadForm.getByLabel("Name *").fill("VG38 Portal");
+  await leadForm.getByLabel("Telefon").fill("0151 45673838");
+  await leadForm.getByRole("button", { name: "Anfrage anlegen" }).click();
+  const success = page.getByTestId("manual-lead-success");
+  await expect(success).toContainText("Anfrage angelegt");
+  await success.getByRole("link", { name: "Projektakte öffnen" }).click();
+  await expect(page).toHaveURL(/\/anfragen\/[0-9a-f-]+$/u);
+  const projectId = new URL(page.url()).pathname.split("/").pop() ?? "";
+  expect(projectId).toMatch(/^[0-9a-f-]{36}$/u);
+
+  // Portal-Link per UI, freigegebene Issuance per F10-07-Seed (isolierter
+  // Workspace, keine Nachbar-Beruehrung).
+  const portal = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Kundenportal", exact: true }),
+  });
+  await portal.getByRole("button", { name: "Link erstellen", exact: true }).click();
+  const tokenPath = (await portal.locator("p.font-mono").textContent())?.trim() ?? "";
+  expect(tokenPath).toMatch(/^\/p\/[A-Za-z0-9_-]+$/u);
+  await seedApprovedIssuance(workspaceId, projectId, actorId);
+
+  // Isolierter Workspace: kein Withdraw-noetig (WS wird verworfen).
+  await page.context().clearCookies();
+  await page.goto(tokenPath);
+  const offerRow = page.locator("li", { hasText: `Angebot ${F1007_OFFER_NUMBER}` });
+  await expect(offerRow).toBeVisible();
+  // Voll befuellte Zeile: Datum + Download-Link muessen rendern (P2-Kern).
+  await expect(offerRow.getByText("2026-09-11")).toBeVisible();
+  await expect(
+    offerRow.getByRole("link", { name: "Herunterladen", exact: true }),
+  ).toHaveAttribute("href", /\/dokumente\/[0-9a-f-]{36}\?lang=de$/u);
+
+  for (const viewport of GATE_VIEWPORTS) {
+    await test.step(`Viewport ${viewport.width}`, async () => {
+      await page.setViewportSize(viewport);
+      await expect(offerRow).toBeVisible();
+      await expectNoHorizontalOverflow(page, `portal-gefuellt ${viewport.width}`);
+      await expectNoWcagAaAxeViolations(page, `portal-gefuellt ${viewport.width}`);
+      const boxes = await measureBoxes(page, [
+        "main",
+        "h1",
+        `li:has-text("Angebot ${F1007_OFFER_NUMBER}")`,
+      ]);
+      writeMeasurementArtifact("portal-gefuellt", tokenPath, viewport, boxes);
+    });
+  }
+});

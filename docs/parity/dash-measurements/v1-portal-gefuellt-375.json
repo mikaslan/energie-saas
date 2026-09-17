@@ -1,0 +1,33 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/p/:token",
+  "viewport": {
+    "width": 375,
+    "height": 812
+  },
+  "head": "f53f293",
+  "sourceRunCapturedAt": "2026-09-17T17:59:50.311Z",
+  "boxes": [
+    {
+      "selector": "main",
+      "x": 0,
+      "y": 0,
+      "width": 375,
+      "height": 656
+    },
+    {
+      "selector": "h1",
+      "x": 49,
+      "y": 101,
+      "width": 277,
+      "height": 32
+    },
+    {
+      "selector": "li:has-text(\"Angebot ANG-2026-000071\")",
+      "x": 50,
+      "y": 346,
+      "width": 275,
+      "height": 152
+    }
+  ]
+}
