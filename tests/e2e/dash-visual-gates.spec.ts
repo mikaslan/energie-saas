@@ -636,3 +636,31 @@ test("DASH-VG-14: Standorte sind bei 375/768/1440 axe-/konsolen-sauber und overf
     artifact: "sites",
   });
 });
+
+test("DASH-VG-35: Unbekannte IDs zeigen NotFound-Ansichten (kein Crash)", async ({ page }) => {
+  test.setTimeout(240_000);
+  const workspaceId = await seedIsolatedWorkspace(await resolveEditorId());
+  const badAkte = `/w/${workspaceId}/anfragen/00000000-0000-4000-8000-000000000000`;
+  await page.goto(badAkte);
+  await loginWithRealOtp(page, state().editorEmail, badAkte);
+  await expect(
+    page.getByRole("heading", { name: "Die Projektakte ist nicht verfügbar.", level: 1 }),
+  ).toBeVisible();
+  const badOffer = `/w/${workspaceId}/angebote/00000000-0000-4000-8000-000000000000`;
+  await page.goto(badOffer);
+  await expect(
+    page.getByRole("heading", { name: "Der Angebotsentwurf ist nicht verfügbar.", level: 1 }),
+  ).toBeVisible();
+  // 404 ist spezifizierter Endzustand (Muster VG-05): Meldungen konsumieren,
+  // falls vorhanden (Dev-Rendering ist teils ohne 404-Response sauber).
+  const problems = browserProblems.get(page) ?? [];
+  const kept = problems.filter(
+    (entry) => !entry.startsWith("http-404: ") && !(entry.startsWith("console-error:") && entry.includes("404")),
+  );
+  problems.length = 0;
+  problems.push(...kept);
+});
+
+/* DASH-VG-36/37 leben in dash-vg-fault-injection.spec.ts (eigene Datei mit
+ * serviceWorkers: "block" — der App-Service-Worker (skipWaiting +
+ * clients.claim) schluckt sonst die zu injizierenden Netzfehler). */
