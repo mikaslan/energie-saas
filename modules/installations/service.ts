@@ -558,14 +558,18 @@ export {
   INSTALLATION_STATUS_LABEL_SCOPE,
   installationStatusLabelCommandSchema as statusLabelCommandSchema,
   installationStatusLabelKeySchema as statusLabelKeySchema,
+  installationStatusVisibilityCommandSchema as statusVisibilityCommandSchema,
   type InstallationStatusLabelKey,
   type InstallationStatusLabels,
+  type InstallationStatusVisibility,
 } from "@/lib/integrations/installations/status-label-contract";
 import {
   INSTALLATION_STATUS_LABEL_SCOPE,
   installationStatusLabelCommandSchema,
   installationStatusLabelKeySchema,
+  installationStatusVisibilityCommandSchema,
   type InstallationStatusLabels,
+  type InstallationStatusVisibility,
 } from "@/lib/integrations/installations/status-label-contract";
 // F10-09: Konstanten/Zod aus dem client-sicheren FAQ-Vertrag (gleiche
 // Quelle für Service, UI und Validierung).
@@ -590,7 +594,7 @@ export async function listInstallationStatusLabels(
   ctx: ServiceCtx,
 ): Promise<InstallationStatusLabels> {
   requireRead(ctx);
-  const result = await tx.execute<{ source_key: string; label: string }>(sql`
+  const result = await tx.execute<{ source_key: string; label: string | null }>(sql`
     select source_key, label
       from portal_status_label
      where workspace_id = ${ctx.workspaceId}::uuid
@@ -598,6 +602,8 @@ export async function listInstallationStatusLabels(
   `);
   const labels: InstallationStatusLabels = { active: null, completed: null, handover: null };
   for (const row of result.rows) {
+    // F10-14: NULL-Label = reine Sichtbarkeits-Zeile (kein Override).
+    if (row.label === null) continue;
     if (row.source_key === "active") labels.active = row.label;
     else if (row.source_key === "completed") labels.completed = row.label;
     else if (row.source_key === "handover") labels.handover = row.label;
@@ -664,6 +670,101 @@ export async function resetInstallationStatusLabel(
     details: { key: parsed.data.key },
   });
   return listInstallationStatusLabels(tx, ctx);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F10-14 Installations-Sichtbarkeit je Anzeigestand (Katalog F10.2
+// „+ Sichtbarkeit"): gleiche Tabelle/Schlüssel/Rechte wie das Label
+// (installation.read/write, keine neue Permission). Fehlende Zeile =
+// sichtbar; NULL-Label = reine Sichtbarkeits-Zeile (kein Override,
+// damit übersetzte Portal-Fallbacks je Sprache greifen — Review P1-1).
+// Normalisierung (Invariante: Zeile ⟺ explizites Label ODER versteckt):
+// Ausblenden = INSERT (NULL, false) mit Conflict-Update auf visible
+// (Label bleibt); Einblenden = DELETE der NULL-Label-Zeile + UPDATE
+// visible (fängt konkurrierend gesetzte Labels ehrlich ein). Absichtlich
+// SELECT-frei: jede Anweisung ist zustandsbedingt, kein stale Read kann
+// ein konkurrierendes Label vernichten (Re-Review P1-1). Reset löscht
+// ⇒ sichtbar + Standard.
+// ═══════════════════════════════════════════════════════════════════════
+export async function listInstallationStatusVisibility(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<InstallationStatusVisibility> {
+  requireRead(ctx);
+  const result = await tx.execute<{ source_key: string; visible: boolean }>(sql`
+    select source_key, visible
+      from portal_status_label
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and scope = ${INSTALLATION_STATUS_LABEL_SCOPE}
+  `);
+  const visibility: InstallationStatusVisibility = { active: true, completed: true, handover: true };
+  for (const row of result.rows) {
+    if (row.source_key === "active") visibility.active = row.visible;
+    else if (row.source_key === "completed") visibility.completed = row.visible;
+    else if (row.source_key === "handover") visibility.handover = row.visible;
+  }
+  return visibility;
+}
+
+export async function setInstallationStatusVisibility(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { key: unknown; visible: unknown },
+): Promise<InstallationStatusVisibility> {
+  requireWrite(ctx);
+  const parsed = installationStatusVisibilityCommandSchema.safeParse(input);
+  if (!parsed.success) throw new InstallationValidationError();
+  const command = parsed.data;
+  if (!command.visible) {
+    // Ausblenden: Zeile anlegen oder verstecken — Label-Spalte
+    // bleibt unangetastet (explizite Labels überleben, NULL bleibt NULL).
+    await tx.execute(sql`
+      insert into portal_status_label (
+        workspace_id, scope, source_key, label, visible, created_by, updated_by
+      ) values (
+        ${ctx.workspaceId}::uuid,
+        ${INSTALLATION_STATUS_LABEL_SCOPE},
+        ${command.key},
+        null,
+        false,
+        ${ctx.actor}::uuid,
+        ${ctx.actor}::uuid
+      )
+      on conflict (workspace_id, scope, source_key) do update set
+        visible = excluded.visible,
+        updated_by = excluded.updated_by,
+        updated_at = statement_timestamp()
+    `);
+  } else {
+    // Einblenden: reine Sichtbarkeits-Zeile entfernen (nur NULL-Labels —
+    // konkurrierend gesetzte Labels sind unbedingt sicher), Rest ehrlich
+    // einblenden. Fehlende Zeile = beide Anweisungen No-Op.
+    await tx.execute(sql`
+      delete from portal_status_label
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and scope = ${INSTALLATION_STATUS_LABEL_SCOPE}
+         and source_key = ${command.key}
+         and label is null
+    `);
+    await tx.execute(sql`
+      update portal_status_label
+         set visible = true,
+             updated_by = ${ctx.actor}::uuid,
+             updated_at = statement_timestamp()
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and scope = ${INSTALLATION_STATUS_LABEL_SCOPE}
+         and source_key = ${command.key}
+    `);
+  }
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "installation.set_status_visibility",
+    resource: "portal_status_label",
+    allowed: true,
+    details: { key: command.key, visible: command.visible },
+  });
+  return listInstallationStatusVisibility(tx, ctx);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -11,6 +11,7 @@ import {
   InstallationValidationError,
   resetInstallationStatusFaq,
   resetInstallationStatusLabel,
+  setInstallationStatusVisibility,
   upsertInstallationStatusFaq,
   upsertInstallationStatusLabel,
 } from "@/modules/installations";
@@ -84,6 +85,29 @@ export async function resetStatusLabelAction(
     );
     revalidatePath(SETTINGS_PATH(workspace));
     return { status: "success", message: "Auf Standard zurückgesetzt." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F10-14: Sichtbarkeit je Anzeigestand (eigene Form, Muster Upsert;
+// Checkbox fehlt = ausgeschaltet, nie invalid).
+export async function setStatusVisibilityAction(
+  _previous: StatusLabelActionState,
+  formData: FormData,
+): Promise<StatusLabelActionState> {
+  const workspace = parseWorkspace(formData);
+  const key = parseKey(formData);
+  if (!workspace || !key) return { status: "invalid" };
+  try {
+    await authorizedAction(workspace, "installation.write", "portal_status_label", (tx, ctx) =>
+      setInstallationStatusVisibility(tx, ctx, {
+        key,
+        visible: formData.get("visible") === "on",
+      }),
+    );
+    revalidatePath(SETTINGS_PATH(workspace));
+    return { status: "success", message: "Sichtbarkeit gespeichert." };
   } catch (error) {
     return mapError(error);
   }

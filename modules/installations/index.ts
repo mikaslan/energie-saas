@@ -15,9 +15,11 @@ export {
   listInstallationHandovers,
   listInstallationStatusFaq,
   listInstallationStatusLabels,
+  listInstallationStatusVisibility,
   recordHandover,
   resetInstallationStatusFaq,
   resetInstallationStatusLabel,
+  setInstallationStatusVisibility,
   setLeadInstaller,
   upsertInstallationStatusFaq,
   upsertInstallationStatusLabel,
@@ -28,6 +30,7 @@ export {
   type InstallationStatusFaqKey,
   type InstallationStatusLabelKey,
   type InstallationStatusLabels,
+  type InstallationStatusVisibility,
 } from "./service";
 export {
   getInstallationWorkbook,

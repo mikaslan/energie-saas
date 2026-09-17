@@ -2,8 +2,16 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
-import { listInstallationStatusFaq, listInstallationStatusLabels } from "@/modules/installations";
-import type { InstallationStatusFaq, InstallationStatusLabels } from "@/modules/installations";
+import {
+  listInstallationStatusFaq,
+  listInstallationStatusLabels,
+  listInstallationStatusVisibility,
+} from "@/modules/installations";
+import type {
+  InstallationStatusFaq,
+  InstallationStatusLabels,
+  InstallationStatusVisibility,
+} from "@/modules/installations";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import { DeniedState } from "../../_ui";
 import { StatusFaqManager } from "./status-faq-manager";
@@ -23,7 +31,12 @@ export default async function PortalStatusPage(
   const workspaceId = parsedWorkspace.data;
 
   let result:
-    | { labels: InstallationStatusLabels; faqs: InstallationStatusFaq; canWrite: boolean }
+    | {
+        labels: InstallationStatusLabels;
+        faqs: InstallationStatusFaq;
+        visibility: InstallationStatusVisibility;
+        canWrite: boolean;
+      }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -33,6 +46,7 @@ export default async function PortalStatusPage(
       async (tx, ctx) => ({
         labels: await listInstallationStatusLabels(tx, ctx),
         faqs: await listInstallationStatusFaq(tx, ctx),
+        visibility: await listInstallationStatusVisibility(tx, ctx),
         canWrite: can(ctx, "installation.write"),
       }),
     );
@@ -57,14 +71,16 @@ export default async function PortalStatusPage(
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Portal-Status</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-          Kundenlesbare Bezeichnungen für den Installationsstand im
-          Kundenportal — das Zurücksetzen stellt den Standardtext wieder her.
+          Kundenlesbare Bezeichnungen und Sichtbarkeit für den
+          Installationsstand im Kundenportal — das Zurücksetzen stellt
+          Standardtext und Sichtbarkeit wieder her.
         </p>
       </div>
 
       <StatusLabelManager
         workspaceId={workspaceId}
         labels={result.labels}
+        visibility={result.visibility}
         canWrite={result.canWrite}
       />
 

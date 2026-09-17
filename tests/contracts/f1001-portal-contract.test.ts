@@ -146,6 +146,8 @@ describe("F10.1 portal command contracts", () => {
       timeline: [],
       statusLabels: {},
       statusFaq: {},
+      // F10-14: Alt-Projektion ohne Schlüssel → ehrlich {}.
+      statusVisibility: {},
     });
     // Namen/Notizen gehören nicht in die Projektion.
     expect(parsePortalPublicView({
@@ -184,6 +186,8 @@ describe("F10.1 portal command contracts", () => {
       timeline: [],
       statusLabels: { active: "Wird montiert" },
       statusFaq: {},
+      // F10-14: Alt-Projektion ohne Schlüssel → ehrlich {}.
+      statusVisibility: {},
     });
     // Deformiert (fremder Schlüssel, Leertext, Kontrollzeichen) = null.
     for (const statusLabels of [
@@ -225,6 +229,8 @@ describe("F10.1 portal command contracts", () => {
       timeline: [],
       statusLabels: {},
       statusFaq: { active: "Die Montage läuft planmäßig." },
+      // F10-14: Alt-Projektion ohne Schlüssel → ehrlich {}.
+      statusVisibility: {},
     });
     // Deformiert (fremder Schlüssel, Leertext, zu lang, Kontrollzeichen) = null.
     for (const statusFaq of [

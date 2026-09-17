@@ -6,9 +6,11 @@ import {
   INSTALLATION_STATUS_LABEL_KEYS,
   type InstallationStatusLabelKey,
   type InstallationStatusLabels,
+  type InstallationStatusVisibility,
 } from "@/lib/integrations/installations/status-label-contract";
 import {
   resetStatusLabelAction,
+  setStatusVisibilityAction,
   upsertStatusLabelAction,
   type StatusLabelActionState,
 } from "./actions";
@@ -21,7 +23,13 @@ const ROW_TITLES: Record<InstallationStatusLabelKey, string> = {
   handover: "Abgenommene Installation",
 };
 
-function Feedback({ state }: { state: StatusLabelActionState }) {
+function Feedback({
+  state,
+  invalidMessage = "Eingaben prüfen (Bezeichnung 1–80 Zeichen, kein Leertext).",
+}: {
+  state: StatusLabelActionState;
+  invalidMessage?: string;
+}) {
   if (state.status === "idle") return null;
   if (state.status === "success") {
     return <p role="status" className="mt-2 text-sm font-medium text-green-700">{state.message}</p>;
@@ -31,7 +39,7 @@ function Feedback({ state }: { state: StatusLabelActionState }) {
       ? "Dafür fehlt dir die Installations-Freigabe."
       : state.status === "unauthenticated"
         ? "Bitte erneut anmelden."
-        : "Eingaben prüfen (Bezeichnung 1–80 Zeichen, kein Leertext).";
+        : invalidMessage;
   return <p role="alert" className="mt-2 text-sm font-medium text-red-700">{message}</p>;
 }
 
@@ -41,24 +49,31 @@ function StatusLabelRow({
   workspaceId,
   stateKey,
   current,
+  visible,
   canWrite,
 }: {
   workspaceId: string;
   stateKey: InstallationStatusLabelKey;
   current: string | null;
+  visible: boolean;
   canWrite: boolean;
 }) {
   const [upsertState, upsertDispatch] = useActionState(upsertStatusLabelAction, initialState);
   const [resetState, resetDispatch] = useActionState(resetStatusLabelAction, initialState);
+  const [visibilityState, visibilityDispatch] = useActionState(setStatusVisibilityAction, initialState);
   // Remount bei Erfolg/Datensatzwechsel (stale-DOM, Muster Aufgaben-Vorlagen).
   const [successCount, setSuccessCount] = useState(0);
   const [prevStatuses, setPrevStatuses] = useState(
-    `${upsertState.status}/${resetState.status}`,
+    `${upsertState.status}/${resetState.status}/${visibilityState.status}`,
   );
-  const combined = `${upsertState.status}/${resetState.status}`;
+  const combined = `${upsertState.status}/${resetState.status}/${visibilityState.status}`;
   if (prevStatuses !== combined) {
     setPrevStatuses(combined);
-    if (upsertState.status === "success" || resetState.status === "success") {
+    if (
+      upsertState.status === "success"
+      || resetState.status === "success"
+      || visibilityState.status === "success"
+    ) {
       setSuccessCount((count) => count + 1);
     }
   }
@@ -71,6 +86,30 @@ function StatusLabelRow({
       </p>
       {canWrite ? (
         <div className="mt-3 grid gap-3">
+          <form
+            action={visibilityDispatch}
+            key={`visible:${stateKey}:${visible}:${successCount}`}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="workspaceId" value={workspaceId} />
+            <input type="hidden" name="key" value={stateKey} />
+            <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-slate-800">
+              <input
+                type="checkbox"
+                name="visible"
+                defaultChecked={visible}
+                data-testid={`portal-status-visible-${stateKey}`}
+                className="min-h-6 min-w-6 accent-slate-900"
+              />
+              Im Portal anzeigen
+            </label>
+            <button
+              type="submit"
+              className="min-h-11 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600"
+            >
+              Sichtbarkeit speichern
+            </button>
+          </form>
           <form action={upsertDispatch} key={`set:${stateKey}:${current ?? ""}:${successCount}`} className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <input type="hidden" name="key" value={stateKey} />
@@ -93,7 +132,7 @@ function StatusLabelRow({
               Speichern
             </button>
           </form>
-          {current !== null ? (
+          {current !== null || !visible ? (
             <form action={resetDispatch}>
               <input type="hidden" name="workspaceId" value={workspaceId} />
               <input type="hidden" name="key" value={stateKey} />
@@ -107,6 +146,10 @@ function StatusLabelRow({
           ) : null}
           <Feedback state={upsertState} />
           <Feedback state={resetState} />
+          <Feedback
+            state={visibilityState}
+            invalidMessage="Sichtbarkeit konnte nicht gespeichert werden."
+          />
         </div>
       ) : (
         <p className="mt-1 text-sm leading-6 text-slate-500">
@@ -120,10 +163,12 @@ function StatusLabelRow({
 export function StatusLabelManager({
   workspaceId,
   labels,
+  visibility,
   canWrite,
 }: {
   workspaceId: string;
   labels: InstallationStatusLabels;
+  visibility: InstallationStatusVisibility;
   canWrite: boolean;
 }) {
   return (
@@ -134,6 +179,7 @@ export function StatusLabelManager({
           workspaceId={workspaceId}
           stateKey={stateKey}
           current={labels[stateKey]}
+          visible={visibility[stateKey]}
           canWrite={canWrite}
         />
       ))}

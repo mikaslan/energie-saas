@@ -1,10 +1,11 @@
-import { check, foreignKey, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { workspace } from "./core";
 
 // F10-05 · Portal-Statusmapping (Installation-Umfang): kundenlesbare
 // Bezeichnung je Anzeigestand. Eine Zeile je (Scope, Schlüssel);
-// fehlende Zeile = Standardtext (ehrlicher Fallback, kein NULL-Label).
+// fehlende Zeile = Standardtext (ehrlicher Fallback). F10-14: NULL-Label
+// = reine Sichtbarkeits-Zeile (ebenfalls Standardtext im Portal).
 export const portalStatusLabel = pgTable(
   "portal_status_label",
   {
@@ -12,7 +13,11 @@ export const portalStatusLabel = pgTable(
     workspaceId: uuid("workspace_id").notNull(),
     scope: text("scope").notNull(),
     sourceKey: text("source_key").notNull(),
-    label: text("label").notNull(),
+    // F10-14: NULL = kein explizites Label (reine Sichtbarkeits-Zeile;
+    // kein deutscher Default-Text, damit uebersetzte Portal-Fallbacks
+    // je Sprache greifen).
+    label: text("label"),
+    visible: boolean("visible").notNull().default(true),
     createdBy: uuid("created_by").notNull(),
     updatedBy: uuid("updated_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

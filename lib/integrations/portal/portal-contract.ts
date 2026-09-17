@@ -202,6 +202,16 @@ export const portalInstallationStatusFaqsSchema = z.strictObject({
 });
 export type PortalInstallationStatusFaqs = z.infer<typeof portalInstallationStatusFaqsSchema>;
 
+// F10-14: Sichtbarkeit je Anzeigestand (Override-Objekt, nur Schluessel
+// mit Zeile; fehlende Schluessel = sichtbar, kein false-Default).
+export const portalInstallationStatusVisibilitySchema = z.strictObject({
+  active: z.boolean().optional(),
+  completed: z.boolean().optional(),
+  handover: z.boolean().optional(),
+});
+export type PortalInstallationStatusVisibility =
+  z.infer<typeof portalInstallationStatusVisibilitySchema>;
+
 const portalInstallationSchema = z.strictObject({
   status: z.enum(["active", "completed"]),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
@@ -212,6 +222,8 @@ const portalInstallationSchema = z.strictObject({
   statusLabels: portalInstallationStatusLabelsSchema,
   // F10-09 Admin-FAQ (Resolver projiziert nur gesetzte Schlüssel).
   statusFaq: portalInstallationStatusFaqsSchema,
+  // F10-14 Sichtbarkeit (Resolver projiziert nur Zeilen-Schlüssel).
+  statusVisibility: portalInstallationStatusVisibilitySchema,
 });
 export type PortalInstallation = z.infer<typeof portalInstallationSchema>;
 
@@ -453,7 +465,7 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     const record = raw as Record<string, unknown>;
     // Nur der DEFINER-Wortschatz; fremde Schlüssel = deformiert.
     for (const key of Object.keys(record)) {
-      if (key !== "status" && key !== "completedAt" && key !== "handoverAt" && key !== "timeline" && key !== "statusLabels" && key !== "statusFaq") {
+      if (key !== "status" && key !== "completedAt" && key !== "handoverAt" && key !== "timeline" && key !== "statusLabels" && key !== "statusFaq" && key !== "statusVisibility") {
         return null;
       }
     }
@@ -486,7 +498,23 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
         ? (record.statusFaq as PortalInstallationStatusFaqs)
         : null;
     if (statusFaq === null) return null;
-    installation = { status: status.data, completedAt, handoverAt, timeline, statusLabels, statusFaq };
+    // F10-14: fehlend = Alt-Projektion ohne Sichtbarkeit → ehrlich
+    // leer (alles sichtbar); deformiert bricht fail-closed ab.
+    const statusVisibility = record.statusVisibility === undefined
+      ? {}
+      : portalInstallationStatusVisibilitySchema.safeParse(record.statusVisibility).success
+        ? (record.statusVisibility as PortalInstallationStatusVisibility)
+        : null;
+    if (statusVisibility === null) return null;
+    installation = {
+      status: status.data,
+      completedAt,
+      handoverAt,
+      timeline,
+      statusLabels,
+      statusFaq,
+      statusVisibility,
+    };
   }
   // F10-03c: Katalog F10.3 — kein Preis-/Signatur-Bereich im
   // Commercial-Portal. Strip nach striktem Parse (deformierte Dokumente

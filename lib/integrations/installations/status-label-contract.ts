@@ -44,3 +44,16 @@ export const installationStatusLabelCommandSchema = z.strictObject({
 export const installationStatusLabelKeySchema = z.strictObject({
   key: z.enum(INSTALLATION_STATUS_LABEL_KEYS),
 });
+
+// F10-14 Installations-Sichtbarkeit je Anzeigestand (Katalog F10.2
+// „+ Sichtbarkeit"): fehlende Zeile = sichtbar (ehrlicher Default).
+export type InstallationStatusVisibility = {
+  active: boolean;
+  completed: boolean;
+  handover: boolean;
+};
+
+export const installationStatusVisibilityCommandSchema = z.strictObject({
+  key: z.enum(INSTALLATION_STATUS_LABEL_KEYS),
+  visible: z.boolean(),
+});

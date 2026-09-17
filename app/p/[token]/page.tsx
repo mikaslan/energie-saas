@@ -84,13 +84,28 @@ export default async function PortalTokenPage({
     if (error instanceof PortalNotFoundError) notFound();
     throw error;
   }
-  const activeTab = rawTab === "termine"
+  // F10-14: Sichtbarkeit des aktuellen Anzeigestands (Abnahme >
+  // Abschluss > laufend). Verborgener Stand ⇒ Tab ehrlich weg
+  // (kein Orakel-Hinweis); Direktaufruf fällt auf die Übersicht zurück.
+  // Ohne Installation bleibt der Leertext-Tab wie bisher.
+  const installationDisplayKey = view.installation === null
+    ? null
+    : resolvePortalInstallationFaqKey(
+      view.installation.status,
+      view.installation.handoverAt,
+    );
+  const installationVisible = installationDisplayKey === null
+    || view.installation?.statusVisibility[installationDisplayKey] !== false;
+  const requestedTab = rawTab === "termine"
     ? "termine"
     : rawTab === "installation"
       ? "installation"
       : rawTab === "dateien"
         ? "dateien"
         : "uebersicht";
+  const activeTab = requestedTab === "installation" && !installationVisible
+    ? "uebersicht"
+    : requestedTab;
   const rawUpload = Array.isArray(query.upload) ? query.upload[0] : query.upload;
   const uploadHint = rawUpload === "erfolg"
     ? t.uploadOk
@@ -134,12 +149,12 @@ export default async function PortalTokenPage({
         : null;
   const nextStep = resolvePortalNextStep(view.project.phase, view.project.outcome, lang);
   // F10-09: FAQ genau des aktuellen Installationsstands (Abnahme >
-  // Abschluss > laufend); ohne Eintrag kein Block.
-  const installationFaq = view.installation === null
+  // Abschluss > laufend); ohne Eintrag kein Block. Schlüssel aus der
+  // F10-14-Ableitung (einmalig, identische Eingaben).
+  const installationFaq = view.installation === null || installationDisplayKey === null
     ? null
-    : (view.installation.statusFaq as PortalInstallationStatusFaqs)[
-      resolvePortalInstallationFaqKey(view.installation.status, view.installation.handoverAt)
-    ] ?? null;
+    : (view.installation.statusFaq as PortalInstallationStatusFaqs)[installationDisplayKey]
+      ?? null;
   // F10-06: Sprache immer explizit weitergeben (stateless, kein JS nötig).
   const langQuery = `lang=${lang}`;
   const tabClass = (active: boolean): string =>
@@ -165,12 +180,14 @@ export default async function PortalTokenPage({
           >
             {t.navAppointments}{view.appointments.length > 0 ? ` (${view.appointments.length})` : ""}
           </Link>
-          <Link
-            href={`/p/${token}?tab=installation&${langQuery}`}
-            className={tabClass(activeTab === "installation")}
-          >
-            {t.navInstallation}
-          </Link>
+          {installationVisible ? (
+            <Link
+              href={`/p/${token}?tab=installation&${langQuery}`}
+              className={tabClass(activeTab === "installation")}
+            >
+              {t.navInstallation}
+            </Link>
+          ) : null}
           <Link
             href={`/p/${token}?tab=dateien&${langQuery}`}
             className={tabClass(activeTab === "dateien")}

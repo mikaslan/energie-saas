@@ -1051,6 +1051,13 @@
       "when": 1789637973646,
       "tag": "0170_f10_13_datei_anfragen_dateityp",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1789640570214,
+      "tag": "0171_f10_14_installations_sichtbarkeit",
+      "breakpoints": true
     }
   ]
 }
