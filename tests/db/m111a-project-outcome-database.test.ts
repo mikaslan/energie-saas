@@ -250,10 +250,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0176 F7-07b Gegenzeichnung (Spalten + CHECK),
     // 0177 F7-02j Komponentenliste (Validator-Replace),
     // 0178 F7-02k Datenblaetter (Validator-Replace),
-    // 0179 F10-16 Gegenzeichnung-Timeline (nur Resolver-Projektion)).
+    // 0179 F10-16 Gegenzeichnung-Timeline (nur Resolver-Projektion),
+    // 0180 F7-15 Fotodoku-Batch (Validator-Replaces)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 158,
-      tag: "0179_f10_16_gegenzeichnung_timeline",
+      idx: 159,
+      tag: "0180_f7_15_fotodoku_batch",
     });
   });
 

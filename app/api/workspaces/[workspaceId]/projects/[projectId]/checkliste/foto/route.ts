@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authorizedAction, authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
+import { CHECKLIST_ITEM_PHOTOS_MAX } from "@/lib/integrations/checklists/contract";
 import {
   CHECKLIST_PHOTO_MAX_BYTES,
   ChecklistNotFoundError,
@@ -97,6 +98,15 @@ export async function GET(
   const url = new URL(request.url);
   const checklistId = url.searchParams.get("checklistId");
   const itemId = url.searchParams.get("itemId");
+  // F7-15: optionaler Galerie-Index (Default 0); Ziffern unter dem
+  // Galerie-Maximum, sonst invalid (nie adressierbar = 400, OOB = 404).
+  const indexRaw = url.searchParams.get("index");
+  let index = 0;
+  if (indexRaw !== null) {
+    if (!/^[0-9]+$/.test(indexRaw)) return invalid();
+    index = Number(indexRaw);
+    if (!Number.isSafeInteger(index) || index >= CHECKLIST_ITEM_PHOTOS_MAX) return invalid();
+  }
   if (
     checklistId === null
     || !uuidSchema.safeParse(checklistId).success
@@ -110,12 +120,16 @@ export async function GET(
       workspaceId,
       "checklist.read",
       "project_checklist",
-      (tx, ctx) => readChecklistItemPhoto(tx, ctx, { projectId, checklistId, itemId }),
+      (tx, ctx) => readChecklistItemPhoto(tx, ctx, { projectId, checklistId, itemId, index }),
     );
     return new Response(new Uint8Array(photo.body), {
       headers: {
         "content-type": photo.contentType,
-        "cache-control": "private, max-age=60",
+        // F7-15: no-store — index-adressierte Galerie-URLs aendern ihre
+        // Bytes bei jedem Tree-Write (Version/Remove/Reorder); max-age
+        // wuerde nach Reload/Back-Navigation veraltete Vorgaenger-Bytes
+        // liefern (E-03-Befund: Foto 1 zeigte Cover-v1 statt Rot-v2).
+        "cache-control": "no-store",
         "x-content-type-options": "nosniff",
       },
     });

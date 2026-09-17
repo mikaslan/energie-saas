@@ -4,10 +4,10 @@ import { expect, test, type Page } from "playwright/test";
 import { poolOne, seedIsolatedWorkspace, state as fixtureState } from "./m1-11g-fixture";
 
 /**
- * F7-02G Bild-Punkt (Katalog F7.2) — Chromium-E2E (isolierter Workspace).
- * Admin legt einen Bildpunkt an, laedt ein Foto hoch (Galerie), speichert
- * (Reload-fest), haengt ein zweites an (F7-15-Batch statt Ersetzen);
- * PDF-Upload scheitert sichtbar; Viewer sieht die Galerie lesend.
+ * F7-15 Fotodoku-Batch (Katalog F7.8) — Chromium-E2E (isolierter Workspace).
+ * Admin haengt 3 Fotos in einem Vorgang an (Galerie mit Cover), Reload-fest,
+ * Duplikat deduped, Entfernen mit Cover-Promotion; Legacy-Einzelfoto lesbar;
+ * Viewer liest die Galerie.
  */
 
 const PNG_1X1_TRANSPARENT = Buffer.from(
@@ -16,6 +16,10 @@ const PNG_1X1_TRANSPARENT = Buffer.from(
 );
 const PNG_1X1_RED = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+const PNG_1X1_BLUE = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC",
   "base64",
 );
 
@@ -31,7 +35,7 @@ function state(): E2EState {
   const full = fixtureState() as unknown as Record<string, unknown>;
   for (const key of ["baseURL", "databaseUrl", "serverLogPath", "adminEmail", "viewerEmail"] as const) {
     if (typeof full[key] !== "string" || full[key] === "") {
-      throw new Error(`Der private F7-02G-E2E-State ist unvollständig (${key}).`);
+      throw new Error(`Der private F7-15-E2E-State ist unvollständig (${key}).`);
     }
   }
   return full as unknown as E2EState;
@@ -69,6 +73,35 @@ async function grantViewerMembership(workspaceId: string): Promise<void> {
          values ($1::uuid, $2::uuid, 'viewer', '{}'::jsonb)`,
         [workspaceId, viewerId],
       );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+}
+
+// E-04: Legacy-Bestand simulieren — `photos` direkt aus dem gespeicherten
+// Baum streichen (`photo` bleibt); ehrlicher 02g-Lesepfad, kein UI-Trick.
+async function stripPhotosToLegacy(projectId: string, workspaceId: string): Promise<void> {
+  const adminId = await resolveAdminId();
+  await poolOne(async (pool) => {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        "select pg_catalog.set_config('app.workspace_id', $1, true), pg_catalog.set_config('app.actor_id', $2, true)",
+        [workspaceId, adminId],
+      );
+      const updated = await client.query(
+        `update public.project_checklist
+            set blocks = blocks #- '{0,segments,0,items,0,photos}'
+          where project_id = $1::uuid`,
+        [projectId],
+      );
+      if (updated.rowCount !== 1) throw new Error("Legacy-Strip traf keine Checkliste.");
       await client.query("commit");
     } catch (error) {
       await client.query("rollback").catch(() => undefined);
@@ -137,7 +170,7 @@ async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promi
   })), `${stateName}: keine automatisiert prüfbare WCAG-A/AA-Verletzung`).toEqual([]);
 }
 
-test("F7-02G-E2E-01: Bild-Punkt mit Foto-Upload ist persistent, Galerie statt Ersetzen", async ({ page }) => {
+test("F7-15-E2E-01: Fotodoku-Batch mit Galerie, Entfernen und Legacy", async ({ page }) => {
   test.setTimeout(240_000);
   const data = state();
   const errors: string[] = [];
@@ -154,7 +187,7 @@ test("F7-02G-E2E-01: Bild-Punkt mit Foto-Upload ist persistent, Galerie statt Er
 
   await page.getByTestId("manual-lead-open").click();
   const form = page.getByTestId("manual-lead-form");
-  await form.getByLabel("Name *").fill("E2E Bild-Punkt");
+  await form.getByLabel("Name *").fill("E2E Fotodoku-Batch");
   await form.getByLabel("Telefon").fill("0151 45678910");
   await form.getByRole("button", { name: "Anfrage anlegen" }).click();
   const success = page.getByTestId("manual-lead-success");
@@ -169,7 +202,6 @@ test("F7-02G-E2E-01: Bild-Punkt mit Foto-Upload ist persistent, Galerie statt Er
 
   const stamp = Date.now();
   const photoTitle = `Zählerfoto ${stamp}`;
-  const taskTitle = `Dachfläche ${stamp}`;
   await page.getByRole("button", { name: "Block hinzufügen" }).click();
   await page.getByLabel("Block-Name 1").fill("PV");
   await page.getByRole("button", { name: "Segment hinzufügen" }).click();
@@ -178,69 +210,64 @@ test("F7-02G-E2E-01: Bild-Punkt mit Foto-Upload ist persistent, Galerie statt Er
   await page.getByLabel("Punkt-Name 1.1").fill(photoTitle);
   const photoItem = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.1") });
   await photoItem.getByLabel("Typ").selectOption("image");
-  await photoItem.getByLabel(`${photoTitle}: Pflichtpunkt`).check();
-  await page.getByRole("button", { name: "Punkt hinzufügen" }).click();
-  await page.getByLabel("Punkt-Name 1.2").fill(taskTitle);
 
-  // Fehltyp scheitert sichtbar (kein stilles Ignorieren).
-  const fotoInput = photoItem.getByLabel(`${photoTitle}: Foto`, { exact: true });
-  await fotoInput.setInputFiles({
-    name: "zaehler.pdf",
-    mimeType: "application/pdf",
-    buffer: Buffer.from("%PDF-1.4 fake", "utf8"),
-  });
+  // E-01: Ein Upload-Vorgang mit 3 Dateien → Galerie mit Cover.
+  const thumbs = photoItem.getByRole("img", { name: photoTitle });
+  await photoItem.getByLabel(`${photoTitle}: Foto`, { exact: true }).setInputFiles([
+    { name: "a.png", mimeType: "image/png", buffer: PNG_1X1_TRANSPARENT },
+    { name: "b.png", mimeType: "image/png", buffer: PNG_1X1_RED },
+    { name: "c.png", mimeType: "image/png", buffer: PNG_1X1_BLUE },
+  ]);
   await photoItem.getByRole("button", { name: "Foto hochladen" }).click();
-  await expect(photoItem.getByRole("alert")).toContainText("Nur JPEG- oder PNG-Bilder");
-
-  await fotoInput.setInputFiles({
-    name: "zaehler.png",
-    mimeType: "image/png",
-    buffer: PNG_1X1_TRANSPARENT,
-  });
-  await photoItem.getByRole("button", { name: "Foto hochladen" }).click();
-  const preview = photoItem.getByRole("img", { name: `${photoTitle}: Foto 1 von 1` });
-  await expect(preview).toBeVisible();
-  const firstSrc = await preview.getAttribute("src");
-  expect(firstSrc).toMatch(/^data:image\/png;base64,/u);
-  await expect(photoItem.getByText("1 von 8 Fotos.", { exact: true })).toBeVisible();
-
-  // Pflicht-Gate zählt den offenen Bildpunkt wie eine Aufgabe.
-  await expect(page.getByText("Noch 1 Pflichtpunkt offen.", { exact: true })).toBeVisible();
-  const photoCheckbox = photoItem.getByRole("checkbox", { name: photoTitle, exact: true });
-  await photoCheckbox.check();
-  await expect(page.getByText("Noch 1 Pflichtpunkt offen.", { exact: true })).toHaveCount(0);
+  await expect(thumbs).toHaveCount(3);
+  const cover = photoItem.getByRole("img", { name: `${photoTitle}: Foto 1 von 3` });
+  await expect(cover).toBeVisible();
+  const coverSrc = await cover.getAttribute("src");
+  expect(coverSrc).toMatch(/^data:image\/png;base64,/u);
+  const redSrc = await photoItem.getByRole("img", { name: `${photoTitle}: Foto 2 von 3` }).getAttribute("src");
+  expect(redSrc).toMatch(/^data:image\/png;base64,/u);
+  expect(redSrc).not.toBe(coverSrc);
+  await expect(photoItem.getByText("3 von 8 Fotos.", { exact: true })).toBeVisible();
+  await expect(photoItem.getByText("Titelbild", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Speichern" }).click();
   await expect(page.getByText("Gespeichert (Version 1).", { exact: true })).toBeVisible();
 
+  // E-02: Reload-fest (Server-Bytes = lokale Bytes).
   await page.reload();
   await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
   const photoReloaded = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.1") });
-  await expect(photoReloaded.getByRole("checkbox", { name: photoTitle, exact: true })).toBeChecked();
-  const previewReloaded = photoReloaded.getByRole("img", { name: `${photoTitle}: Foto 1 von 1` });
-  await expect(previewReloaded).toBeVisible();
-  await expect(previewReloaded).toHaveAttribute("src", firstSrc!);
-  await expect(page.getByText("Punkte: 1/2", { exact: true })).toBeVisible();
+  const thumbsReloaded = photoReloaded.getByRole("img", { name: photoTitle });
+  await expect(thumbsReloaded).toHaveCount(3);
+  await expect(photoReloaded.getByRole("img", { name: `${photoTitle}: Foto 1 von 3` }))
+    .toHaveAttribute("src", coverSrc!);
 
-  // Anhaengen (F7-15): zweiter Upload ergaenzt die Galerie, Cover bleibt.
+  // E-07: Duplikat-Bytes (anderer Dateiname) → deduped, kein 4. Thumb.
   await photoReloaded.getByLabel(`${photoTitle}: Foto`, { exact: true }).setInputFiles({
-    name: "zaehler-neu.png",
+    name: "rot-kopie.png",
     mimeType: "image/png",
     buffer: PNG_1X1_RED,
   });
   await photoReloaded.getByRole("button", { name: "Foto hochladen" }).click();
-  await expect(photoReloaded.getByRole("img", { name: photoTitle })).toHaveCount(2);
+  await expect(photoReloaded.getByText("3 von 8 Fotos.", { exact: true })).toBeVisible();
+  await expect(photoReloaded.getByRole("img", { name: photoTitle })).toHaveCount(3);
+
+  // E-03: Cover entfernen → naechstes Foto wird Cover (Promotion).
+  await photoReloaded.getByRole("button", { name: `${photoTitle}: Foto 1 entfernen` }).click();
+  const thumbsAfterRemove = photoReloaded.getByRole("img", { name: photoTitle });
+  await expect(thumbsAfterRemove).toHaveCount(2);
   await expect(photoReloaded.getByRole("img", { name: `${photoTitle}: Foto 1 von 2` }))
-    .toHaveAttribute("src", firstSrc!);
-  const secondSrc = await photoReloaded
-    .getByRole("img", { name: `${photoTitle}: Foto 2 von 2` })
-    .getAttribute("src");
-  expect(secondSrc).toMatch(/^data:image\/png;base64,/u);
-  expect(secondSrc).not.toBe(firstSrc);
+    .toHaveAttribute("src", redSrc!);
   await page.getByRole("button", { name: "Speichern" }).click();
   await expect(page.getByText("Gespeichert (Version 2).", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
+  const photoPromoted = page.locator("li").filter({ has: page.getByLabel("Punkt-Name 1.1") });
+  await expect(photoPromoted.getByRole("img", { name: photoTitle })).toHaveCount(2);
+  await expect(photoPromoted.getByRole("img", { name: `${photoTitle}: Foto 1 von 2` }))
+    .toHaveAttribute("src", redSrc!);
 
-  // Viewer (lesend): Galerie sichtbar, kein Upload, kein Editor.
+  // E-05: Viewer (lesend) sieht die Galerie, kein Upload/Entfernen.
   await page.context().clearCookies();
   await page.goto(url);
   await loginWithRealOtp(page, data.viewerEmail, url);
@@ -248,24 +275,22 @@ test("F7-02G-E2E-01: Bild-Punkt mit Foto-Upload ist persistent, Galerie statt Er
   const viewerPhoto = page.locator("li", { hasText: photoTitle });
   await expect(viewerPhoto.getByRole("img", { name: photoTitle })).toHaveCount(2);
   await expect(viewerPhoto.getByRole("img", { name: `${photoTitle}: Foto 1 von 2` })).toBeVisible();
-  await expect(viewerPhoto.getByRole("checkbox", { name: photoTitle, exact: true })).toBeChecked();
-  await expect(viewerPhoto.getByRole("checkbox", { name: photoTitle, exact: true })).toBeDisabled();
   await expect(viewerPhoto.getByLabel(`${photoTitle}: Foto`, { exact: true })).toHaveCount(0);
-  await expect(viewerPhoto.getByLabel("Typ")).toHaveCount(0);
-  await expect(page.getByText("Punkte: 1/2", { exact: true })).toBeVisible();
+  await expect(viewerPhoto.getByRole("button", { name: /entfernen/u })).toHaveCount(0);
 
-  await expectNoWcagAaAxeViolations(page, "F7-02G-Bild");
+  // E-06: Axe (Viewer-Sicht mit Galerie).
+  await expectNoWcagAaAxeViolations(page, "F7-15-Batch");
 
-  // Der bewusste PDF-Fehltyp erzeugt eine Chromium-Konsolenmeldung
-  // ("Failed to load resource: 400") — das ist der SPEZIFIZIERTE
-  // Negativ-Endzustand, kein Defekt. Muster f10-01 (erwartete 404):
-  // erwartete Meldung gezielt konsumieren, Rest bleibt Fehler.
-  const expected400 = "console: Failed to load resource: the server responded with a status of 400 (Bad Request)";
-  const consumed = errors.filter((error) => error === expected400).length;
-  expect(consumed, "Erwartete 400-Konsolenmeldung nach PDF-Fehltyp").toBeGreaterThan(0);
-  const kept = errors.filter((error) => error !== expected400);
-  errors.length = 0;
-  errors.push(...kept);
+  // E-04: Legacy-Einzelfoto (photos gestrichen, photo bleibt) lesbar.
+  await stripPhotosToLegacy(projectId, workspaceId);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Checkliste", level: 1 })).toBeVisible();
+  const viewerLegacy = page.locator("li", { hasText: photoTitle });
+  await expect(viewerLegacy.getByRole("img", { name: photoTitle })).toHaveCount(1);
+  const legacySrc = await viewerLegacy
+    .getByRole("img", { name: `${photoTitle}: Foto 1 von 1` })
+    .getAttribute("src");
+  expect(legacySrc).toMatch(/^data:image\/png;base64,/u);
 
-  expect(errors, "Browser-Konsole und Page-Errors des Bild-Punkts").toEqual([]);
+  expect(errors, "Browser-Konsole und Page-Errors des Fotodoku-Batch").toEqual([]);
 });

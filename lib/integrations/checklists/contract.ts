@@ -21,6 +21,9 @@ export const CHECKLIST_ITEM_VALUE_MAX = 2000;
 export const CHECKLIST_ITEM_PHOTO_MAX = 500;
 export const CHECKLIST_ITEM_PHOTO_KEY_PATTERN =
   /^immutable\/[0-9a-f-]{36}\/checklist-photos\/[0-9a-f-]{36}_[0-9a-f]{8}\.(jpg|jpeg|png)$/;
+// F7-15: Galerie-Maximum je Bild-Punkt (ESTIMATE, reversibel; spiegelt den
+// DB-Validator 0180 — ~1.2 KB Worstcase, weit unter dem Transportlimit).
+export const CHECKLIST_ITEM_PHOTOS_MAX = 8;
 // F7-04b: Begründungs-Maximum (UTF-16-Einheiten, spiegelt
 // public._f704_valid_clean_text(..., 500) in Migration 0127).
 export const CHECKLIST_ITEM_IRRELEVANT_REASON_MAX = 500;
@@ -99,6 +102,7 @@ export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSche
 // abhakbar wie Aufgabe und trägt optional `value` (Antworttext, nur dort).
 // F7-02G: Bild-Punkt (Katalog F7.2). `image` ist abhakbar wie Aufgabe und
 // trägt optional `photo` (Foto-Key, nur dort).
+// F7-15: plus optionale Galerie `photos` (nur dort; Cover = photos[0]).
 // F7-02I: Unterschrift-Punkt (Katalog F7.2). `signature` ist abhakbar wie
 // Aufgabe, nutzt `photo` für das Signatur-PNG und trägt optional
 // `signerRole` (Rollen-Typ, nur dort, Struktur).
@@ -109,6 +113,10 @@ export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSche
 // title/description (gleiche Allowlist: weder Pflicht noch abhakbar,
 // keine Nutzlast — Tree speichert nur die Art).
 export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text", "multi", "image", "signature", "component-list", "datasheets"]);
+// F7-15: Foto-Key-Regel als geteiltes Element-Schema (photo single +
+// photos-Elemente folgen identisch der 02g-Regel).
+const checklistItemPhotoKeySchema = z.string().min(1).max(CHECKLIST_ITEM_PHOTO_MAX)
+  .regex(CHECKLIST_ITEM_PHOTO_KEY_PATTERN);
 export const checklistItemSignerRoleSchema = z.enum(["kunde", "techniker", "dritter"]);
 export type ChecklistItemSignerRoleV1 = z.infer<typeof checklistItemSignerRoleSchema>;
 export type ChecklistItemKindV1 = z.infer<typeof checklistItemKindSchema>;
@@ -131,8 +139,12 @@ export const editableChecklistItemSchema = z.object({
   // F7-02G: Foto-Key nur am Bildpunkt (Regel unten; Spiegel zu value).
   // F7-02I: am Signaturpunkt wiederverwendet (Signatur-PNG).
   // Kein cleanText: Der Key ist ein ASCII-Format mit eigenem Muster.
-  photo: z.string().min(1).max(CHECKLIST_ITEM_PHOTO_MAX)
-    .regex(CHECKLIST_ITEM_PHOTO_KEY_PATTERN).nullish(),
+  photo: checklistItemPhotoKeySchema.nullish(),
+  // F7-15: Galerie nur am Bildpunkt (Regel unten; Antwort-Nutzlast wie
+  // photo — nie in Vorlagen). Jedes Element folgt der photo-Regel;
+  // non-empty photos bindet photo = photos[0] (Cover). `[]`/Duplikate
+  // weist der DB-Validator 0180 ab (UI emittiert nie) — Fail-late ok.
+  photos: z.array(checklistItemPhotoKeySchema).max(CHECKLIST_ITEM_PHOTOS_MAX).nullish(),
   // F7-02I: Rollen-Typ nur am Signaturpunkt (Regel unten; Struktur).
   signerRole: checklistItemSignerRoleSchema.nullish(),
 }).strict();
@@ -275,6 +287,7 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
           description?: string | null;
           value?: string | null;
           photo?: string | null;
+          photos?: string[] | null;
           signerRole?: string | null;
           visibleIf?: { itemId: string } | null;
         }>;
@@ -333,6 +346,21 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
             context.addIssue({
               code: "custom",
               message: "Foto verlangt einen Bild- oder Unterschrift-Punkt",
+            });
+          }
+          // F7-15: Galerie verlangt einen Bildpunkt (Spiegel-Regel);
+          // Signatur traegt nie photos (Single-photo wie heute).
+          if (item.photos != null && item.kind !== "image") {
+            context.addIssue({
+              code: "custom",
+              message: "Fotos verlangen einen Bildpunkt",
+            });
+          }
+          // F7-15: Non-empty Galerie bindet das Cover (photo = photos[0]).
+          if (item.photos != null && item.photos.length > 0 && item.photo !== item.photos[0]) {
+            context.addIssue({
+              code: "custom",
+              message: "Titelbild muss das erste Galerie-Foto sein",
             });
           }
           // F7-02I: Rollen-Typ verlangt einen Unterschrift-Punkt.

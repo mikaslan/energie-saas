@@ -545,12 +545,15 @@ export type ReadChecklistItemPhotoInput = {
   projectId: string;
   checklistId: string;
   itemId: string;
+  index?: number;
 };
 
 // F7-02G: Foto-Bytes dienend lesen (Server-Action baut die Vorschau;
 // kein signierter URL-Umweg — F10-04-Praezedenz). Key fail-closed aufs
 // Foto-Muster; fehlendes Objekt = NotFound (kein Orakel). Genutzte
 // Permission: checklist.read (Viewer sieht Fotos lesend).
+// F7-15: + Galerie-Index (Default 0; Liste photos ?? [photo];
+// OOB/fehlend = NotFound, korrupter Key = ValidationError).
 export async function readChecklistItemPhoto(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -561,6 +564,7 @@ export async function readChecklistItemPhoto(
     projectId: photoUuidSchema,
     checklistId: photoUuidSchema,
     itemId: photoUuidSchema,
+    index: z.number().int().min(0).nullish(),
   }).strict().safeParse(input);
   if (!parsed.success) throw new ChecklistValidationError();
   const row = await readChecklistById(tx, ctx, parsed.data.projectId, parsed.data.checklistId);
@@ -572,8 +576,11 @@ export async function readChecklistItemPhoto(
     throw new ChecklistValidationError("checklist tree is corrupt");
   }
   const item = findChecklistItem(stored, parsed.data.itemId);
-  const photo = item?.photo ?? null;
-  if (!item || photo === null) throw new ChecklistNotFoundError(parsed.data.projectId);
+  if (!item) throw new ChecklistNotFoundError(parsed.data.projectId);
+  const cover = item.photo ?? null;
+  const gallery = item.photos ?? (cover === null ? [] : [cover]);
+  const photo = gallery[parsed.data.index ?? 0] ?? null;
+  if (photo === null) throw new ChecklistNotFoundError(parsed.data.projectId);
   if (!CHECKLIST_ITEM_PHOTO_KEY_PATTERN.test(photo)) {
     throw new ChecklistValidationError("receipt key mismatch");
   }

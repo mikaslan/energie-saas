@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import {
   CHECKLIST_BLOCKS_TRANSPORT_MAX_BYTES,
+  CHECKLIST_ITEM_PHOTOS_MAX,
   checklistProgress,
   isChecklistWorkItem,
   isItemEffectivelyVisible,
@@ -168,7 +169,15 @@ export function ProjectChecklistManager({
     updater: (value: ChecklistBlocksV1) => ChecklistBlocksV1,
   ): void {
     if (!allowed || savePending) return;
-    setBlocksState({ version: checklist.version, blocks: updater(blocks) });
+    // F7-15: Funktionales Update — async Aufrufer (Foto-Upload mit Awaits)
+    // rechnen auf dem AKTUELLEN Stand, nicht auf Render-Scope (E-03-Befund:
+    // spaet landendes Upload-Set hat ein Entfernen zurueckgesetzt).
+    const versionTag = checklist.version;
+    const serverBlocks = checklist.blocks;
+    setBlocksState((prev) => ({
+      version: versionTag,
+      blocks: updater(prev.version === versionTag ? prev.blocks : serverBlocks),
+    }));
   }
 
   const addBlock = () => patchBlocks(canEditStructure, (value) => [
@@ -245,6 +254,34 @@ export function ProjectChecklistManager({
           ...segment,
           items: segment.items.map((item, currentItemIndex) =>
             currentItemIndex === itemIndex ? { ...item, ...patch } : item),
+        };
+      }),
+    };
+  }));
+
+  // F7-15: Galerie-Aenderung als Updater auf AKTUELLEM Stand (funktional,
+  // s. patchBlocks) — Anhaengen/Entfernen ueberleben async Races und
+  // Doppelklicks; Cover-Re-Derivation inklusive (photo = photos[0]).
+  const changeItemPhotos = (
+    blockIndex: number,
+    segmentIndex: number,
+    itemIndex: number,
+    update: (current: string[]) => string[],
+    allowed: boolean,
+  ) => patchBlocks(allowed, (value) => value.map((block, index) => {
+    if (index !== blockIndex) return block;
+    return {
+      ...block,
+      segments: block.segments.map((segment, currentSegmentIndex) => {
+        if (currentSegmentIndex !== segmentIndex || segment.completedAt !== null) return segment;
+        return {
+          ...segment,
+          items: segment.items.map((item, currentItemIndex) => {
+            if (currentItemIndex !== itemIndex) return item;
+            const base = item.photos ?? (item.photo == null ? [] : [item.photo]);
+            const next = update(base);
+            return { ...item, photos: next.length > 0 ? next : null, photo: next[0] ?? null };
+          }),
         };
       }),
     };
@@ -354,6 +391,8 @@ export function ProjectChecklistManager({
                   onRenameSegment={(segmentIndex, name) => renameSegment(blockIndex, segmentIndex, name)}
                   onSetItem={(segmentIndex, itemIndex, patch, allowed) =>
                     setItem(blockIndex, segmentIndex, itemIndex, patch, allowed)}
+                  onChangeItemPhotos={(segmentIndex, itemIndex, update, allowed) =>
+                    changeItemPhotos(blockIndex, segmentIndex, itemIndex, update, allowed)}
                   onToggleRadioItem={(segmentIndex, itemIndex, checked) =>
                     toggleRadioItem(blockIndex, segmentIndex, itemIndex, checked)}
                   displayText={displayText}
@@ -418,6 +457,14 @@ type SetItem = (
   allowed: boolean,
 ) => void;
 
+// F7-15: Galerie-Updater (funktional, s. changeItemPhotos).
+type ChangeItemPhotos = (
+  segmentIndex: number,
+  itemIndex: number,
+  update: (current: string[]) => string[],
+  allowed: boolean,
+) => void;
+
 // F7-02D: exklusives Radio-Toggle je Segment (optimistisch; Server
 // validiert erneut, Whole-Tree-Save persistiert).
 type ToggleRadioItem = (
@@ -430,7 +477,8 @@ function BlockCard({
   block, blockIndex, workspaceId, projectId, checklistId, baseVersion,
   canWrite, canEditStructure, canConfigure, canComplete, canUnlock,
   hasUnsavedChanges, teamOptions,
-  onRename, onSetDueDate, onAddSegment, onAddItem, onRenameSegment, onSetItem, onToggleRadioItem,
+  onRename, onSetDueDate, onAddSegment, onAddItem, onRenameSegment, onSetItem, onChangeItemPhotos,
+  onToggleRadioItem,
   displayText,
   componentSections,
   datasheetRefs,
@@ -454,6 +502,7 @@ function BlockCard({
   onAddItem: (segmentIndex: number) => void;
   onRenameSegment: (segmentIndex: number, name: string) => void;
   onSetItem: SetItem;
+  onChangeItemPhotos: ChangeItemPhotos;
   onToggleRadioItem: ToggleRadioItem;
   displayText: (text: string) => string;
   componentSections: WorkbookComponentSection[] | null;
@@ -528,6 +577,7 @@ function BlockCard({
               onRename={(name) => onRenameSegment(segmentIndex, name)}
               onAddItem={() => onAddItem(segmentIndex)}
               onSetItem={(itemIndex, patch, allowed) => onSetItem(segmentIndex, itemIndex, patch, allowed)}
+              onChangePhotos={(itemIndex, update, allowed) => onChangeItemPhotos(segmentIndex, itemIndex, update, allowed)}
               onToggleRadioItem={(itemIndex, checked) => onToggleRadioItem(segmentIndex, itemIndex, checked)}
               displayText={displayText}
               componentSections={componentSections}
@@ -557,6 +607,7 @@ function BlockCard({
 function SegmentGroup({
   segment, segmentIndex, workspaceId, projectId, checklistId, baseVersion,
   canWrite, canEditStructure, canConfigure, canComplete, canUnlock, onRename, onAddItem, onSetItem,
+  onChangePhotos,
   onToggleRadioItem,
   hasUnsavedChanges,
   displayText,
@@ -578,6 +629,7 @@ function SegmentGroup({
   onRename: (name: string) => void;
   onAddItem: () => void;
   onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+  onChangePhotos: (itemIndex: number, update: (current: string[]) => string[], allowed: boolean) => void;
   onToggleRadioItem: (itemIndex: number, checked: boolean) => void;
   displayText: (text: string) => string;
   componentSections: WorkbookComponentSection[] | null;
@@ -678,6 +730,7 @@ function SegmentGroup({
                   canEditStructure={canEditStructure}
                   canWrite={canWrite}
                   onSetItem={onSetItem}
+                  onChangePhotos={onChangePhotos}
                   displayText={displayText}
                 />
               ) : null}
@@ -757,7 +810,7 @@ function SegmentGroup({
                   title={displayText(item.title || `Punkt ${itemIndex + 1}`)}
                   itemIndex={itemIndex}
                   canWrite={canWrite && !completed}
-                  onSetItem={onSetItem}
+                  onChangePhotos={onChangePhotos}
                 />
               ) : null}
               {item.kind === "signature" && !(canEditStructure && !completed) && checklistId !== null ? (
@@ -1218,12 +1271,22 @@ function itemPhotoUploadErrorText(error: ItemPhotoUploadError, noun: string): st
   return `${noun} ist fehlgeschlagen.`;
 }
 
-// F7-02G: Foto-Upload + Vorschau am Bild-Punkt. Upload per Route (10 MiB,
-// F10-04-Praezedenz); der Key landet im lokalen Baum (Whole-Tree-Save
-// persistiert). Die Vorschau ist eine Daten-URL: lokal sofort aus der
-// Datei, nach Reload vom Server (identische Bytes = identische URL).
-// Lesende (Viewer) sehen nur die Vorschau.
-function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, itemIndex, canWrite, onSetItem }: {
+// F7-15: Galerie-Keys am Bild-Punkt — Antwort-Nutzlast (`photos`);
+// Legacy (nur `photo`) als Ein-Foto-Galerie.
+function galleryKeys(item: ChecklistItemV1): string[] {
+  if (item.photos != null) return item.photos;
+  const cover = item.photo ?? null;
+  return cover === null ? [] : [cover];
+}
+
+// F7-15: Batch-Upload + Galerie am Bild-Punkt (Vorgaenger 02g: Single-Foto
+// mit Ersetzen). Upload per Route (10 MiB, F10-04-Praezedenz; 1 Datei pro
+// Request, Client-Loop ueber `input multiple`); die Keys landen im lokalen
+// Baum (Whole-Tree-Save persistiert), `photo` bleibt das Cover. Die
+// Vorschau je Foto ist eine Daten-URL: lokal sofort aus der Datei, nach
+// Reload vom Server via GET+index (identische Bytes = identische URL).
+// Lesende (Viewer) sehen nur die Galerie.
+function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, itemIndex, canWrite, onChangePhotos }: {
   workspaceId: string;
   projectId: string;
   checklistId: string | null;
@@ -1231,66 +1294,173 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
   title: string;
   itemIndex: number;
   canWrite: boolean;
-  onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+  onChangePhotos: (itemIndex: number, update: (current: string[]) => string[], allowed: boolean) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const photo = item.photo ?? null;
-  const { preview, setLocalPreview, loadError, clearLoadError } = useItemPhotoPreview({
-    workspaceId,
-    projectId,
-    checklistId,
-    itemId: item.id,
-    photo,
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const fetchedRef = useRef<Set<string>>(new Set());
+  // F7-15: Ref-Spiegel der Previews — der Fetch-Guard unten braucht den
+  // aktuellen Stand ohne Effect-Re-Runs (Keys sind inhalts-deterministisch:
+  // gleicher Key = gleiche Bytes, Cache nie stale). Sync per Effect
+  // (Ref-Zugriff im Render verbietet react-hooks/refs), VOR dem
+  // Fetch-Effect deklariert (Effects laufen in Deklarations-Reihenfolge).
+  const previewsRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    previewsRef.current = previews;
   });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const keys = galleryKeys(item);
   const shownError = error ?? loadError;
 
+  // Server-Vorschau je Galerie-Key (Index adressiert die Route); lokale
+  // Vorschau steht sofort (Upload), Server-Bytes sind identisch.
+  // BEMERKUNG: bewusst KEIN cancelled-Flag — der Ref-Guard holt jeden
+  // (index:key) genau einmal; ein Cleanup-Abbruch wuerde im StrictMode
+  // (Mount→Cleanup→Mount) beide Durchgaenge entwerten: Durchgang 1
+  // fetcht, Cleanup bricht ab, Durchgang 2 sieht nur die Marks und holt
+  // nichts — die Galerie bliebe nach Reload leer (F7-15-E2E-Befund).
+  // setState nach Unmount ist in React 18 harmlos (keine Warnung).
+  // BEMERKUNG 2: Keys MIT Preview werden nie gefetcht — der Index gilt
+  // nur gegen den gespeicherten Baum; nach ungespeichertem Entfernen
+  // wuerde Index-Fetch fremde Bytes unter dem lokalen Key cachen und
+  // die Galerie vergiften (Foto-1-von-2-Befund).
+  const keyList = keys.join("\n");
+  useEffect(() => {
+    if (checklistId === null || keyList === "") return;
+    keyList.split("\n").forEach((key, galleryIndex) => {
+      if (previewsRef.current[key] !== undefined) return;
+      const mark = `${galleryIndex}:${key}`;
+      if (fetchedRef.current.has(mark)) return;
+      fetchedRef.current.add(mark);
+      fetch(
+        `/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/foto`
+        + `?checklistId=${encodeURIComponent(checklistId)}&itemId=${encodeURIComponent(item.id)}`
+        + `&index=${galleryIndex}`,
+      ).then(async (response) => {
+        if (!response.ok) throw new Error(`foto GET ${response.status}`);
+        const dataUrl = await blobToDataUrl(await response.blob());
+        setPreviews((prev) => ({ ...prev, [key]: dataUrl }));
+        setLoadError(null);
+      }).catch(() => {
+        setLoadError("Foto konnte nicht geladen werden.");
+      });
+    });
+  }, [keyList, checklistId, workspaceId, projectId, item.id]);
+
   const upload = async () => {
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
+    const files = Array.from(fileInputRef.current?.files ?? []);
+    if (files.length === 0) {
       setError("Bitte zuerst eine Bilddatei wählen.");
+      return;
+    }
+    const existing = galleryKeys(item);
+    if (existing.length + files.length > CHECKLIST_ITEM_PHOTOS_MAX) {
+      setError(`Höchstens ${CHECKLIST_ITEM_PHOTOS_MAX} Fotos je Bildpunkt.`);
       return;
     }
     setUploading(true);
     setError(null);
-    clearLoadError();
+    setLoadError(null);
     try {
-      const photoKey = await postItemPhoto({
-        workspaceId,
-        projectId,
-        checklistId,
-        itemId: item.id,
-        file,
-        filename: file.name,
-      });
-      setLocalPreview(await blobToDataUrl(file), photoKey);
-      onSetItem(itemIndex, { photo: photoKey }, canWrite);
-    } catch (thrown) {
-      setError(itemPhotoUploadErrorText(
-        (thrown as ItemPhotoUploadError | null) ?? { status: "network" },
-        "Foto-Upload",
-      ));
+      // Teilerfolg ist ehrlich: Gelungene Uploads landen in der Galerie,
+      // der erste Fehlschlag bricht ab und meldet deutsch (kein Key-Leak).
+      const uploadedKeys: string[] = [];
+      let failed: ItemPhotoUploadError | null = null;
+      for (const file of files) {
+        try {
+          const photoKey = await postItemPhoto({
+            workspaceId,
+            projectId,
+            checklistId,
+            itemId: item.id,
+            file,
+            filename: file.name,
+          });
+          uploadedKeys.push(photoKey);
+          const dataUrl = await blobToDataUrl(file);
+          setPreviews((prev) => ({ ...prev, [photoKey]: dataUrl }));
+        } catch (thrown) {
+          failed = (thrown as ItemPhotoUploadError | null) ?? { status: "network" };
+          break;
+        }
+      }
+      // Funktionaler Merge in den AKTUELLEN Stand (kein absolutes Setzen
+      // aus Render-Scope — sonst ueberschreibt ein spaet landender Upload
+      // ein zwischenzeitliches Entfernen; E-03-Race). Duplikat-Bytes teilen
+      // den Key (inhalts-deterministisch) — Dedupe im Updater.
+      if (uploadedKeys.length > 0) {
+        onChangePhotos(itemIndex, (current) => {
+          const merged = [...current];
+          for (const photoKey of uploadedKeys) {
+            if (!merged.includes(photoKey)) merged.push(photoKey);
+          }
+          return merged;
+        }, canWrite);
+      }
+      // F7-15/P2-3: Input nach Vollerfolg leeren (Re-Klick waere idempotent
+      // + deduped, aber Leeren ist ehrlicher; bei Teilfehler bleibt die
+      // Auswahl fuer Retry bestehen).
+      if (failed === null && fileInputRef.current) fileInputRef.current.value = "";
+      if (failed !== null) {
+        setError(itemPhotoUploadErrorText(failed, "Foto-Upload"));
+      }
     } finally {
       setUploading(false);
     }
   };
 
+  const removeAt = (removalIndex: number) => {
+    // Funktional (Doppelklick-sicher); Cover-Re-Derivation im Updater.
+    onChangePhotos(itemIndex, (current) =>
+      current.filter((_, galleryIndex) => galleryIndex !== removalIndex), canWrite);
+  };
+
   return (
     <div className="mt-1">
-      {preview !== null ? (
-        // eslint-disable-next-line @next/next/no-img-element -- Daten-URL-Vorschau, Optimierer n/a.
-        <img
-          src={preview}
-          alt={`${title}: Foto-Vorschau`}
-          className="mt-1 max-h-48 rounded-md border border-slate-300"
-        />
+      {keys.length > 0 ? (
+        <ul className="mt-1 flex flex-wrap gap-2">
+          {keys.map((key, galleryIndex) => {
+            const preview = previews[key] ?? null;
+            const position = galleryIndex + 1;
+            return (
+              <li key={key}>
+                {preview !== null ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- Daten-URL-Vorschau, Optimierer n/a.
+                  <img
+                    src={preview}
+                    alt={`${title}: Foto ${position} von ${keys.length}`}
+                    className="max-h-48 rounded-md border border-slate-300"
+                  />
+                ) : null}
+                {galleryIndex === 0 ? (
+                  <p className="mt-0.5 text-xs font-semibold text-slate-600">Titelbild</p>
+                ) : null}
+                {canWrite ? (
+                  <button
+                    type="button"
+                    onClick={() => removeAt(galleryIndex)}
+                    aria-label={`${title}: Foto ${position} entfernen`}
+                    className="mt-0.5 min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  >
+                    Entfernen
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {keys.length > 0 ? (
+        <p className="mt-1 text-xs text-slate-500">{`${keys.length} von ${CHECKLIST_ITEM_PHOTOS_MAX} Fotos.`}</p>
       ) : null}
       {canWrite ? (
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             accept="image/jpeg,image/png"
             aria-label={`${title}: Foto`}
             disabled={uploading}
@@ -1305,9 +1475,6 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
             {uploading ? "Lädt hoch …" : "Foto hochladen"}
           </button>
         </div>
-      ) : null}
-      {photo !== null && canWrite ? (
-        <p className="mt-1 text-xs text-slate-500">Erneutes Hochladen ersetzt das Foto.</p>
       ) : null}
       {shownError !== null ? (
         <p role="alert" className="mt-1 text-xs font-semibold text-red-700">{shownError}</p>
@@ -1502,7 +1669,7 @@ function ItemSignatureControl({ workspaceId, projectId, checklistId, item, title
 }
 
 // Standard-Checkbox-Zweig, Zähler/Gates wie Aufgabe.
-function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex, canEditStructure, canWrite, onSetItem, displayText }: {
+function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex, canEditStructure, canWrite, onSetItem, onChangePhotos, displayText }: {
   workspaceId: string;
   projectId: string;
   checklistId: string | null;
@@ -1511,6 +1678,7 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
   canEditStructure: boolean;
   canWrite: boolean;
   onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+  onChangePhotos: (itemIndex: number, update: (current: string[]) => string[], allowed: boolean) => void;
   displayText: (text: string) => string;
 }) {
   const title = displayText(item.title || "Punkt");
@@ -1523,38 +1691,38 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
         onChange={(event) => {
           const next = event.target.value;
           if (next === "description") {
-            onSetItem(itemIndex, { kind: "description", done: false, required: false, value: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "description", done: false, required: false, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else if (next === "title") {
-            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else if (next === "radio") {
             // F7-02D: ehrliches Umschreiben wie Anzeige-Punkte — done fällt,
             // damit der Wechsel nie einen speicherbaren Doppel-done erzeugt
             // (Exklusivität wählt der Radio-Input selbst).
-            onSetItem(itemIndex, { kind: "radio", done: false, description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "radio", done: false, description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else if (next === "text") {
-            onSetItem(itemIndex, { kind: "text", description: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "text", description: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else if (next === "multi") {
             // F7-02F: ehrliches Umschreiben — Flags bleiben (mehrere
             // erledigte Multis sind speicherbar), Nutzlast fällt.
-            onSetItem(itemIndex, { kind: "multi", description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "multi", description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else if (next === "image") {
             // F7-02G: ehrliches Umschreiben wie Multi — Flags bleiben,
             // fremde Nutzlast fällt (F7-02I: auch Signatur-Bytes/Rolle).
-            onSetItem(itemIndex, { kind: "image", description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "image", description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else if (next === "signature") {
             // F7-02I: ehrliches Umschreiben wie Bild — Flags bleiben,
             // fremde Nutzlast fällt (Foto ist keine Unterschrift).
-            onSetItem(itemIndex, { kind: "signature", description: null, value: null, photo: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "signature", description: null, value: null, photo: null, photos: null }, canEditStructure);
           } else if (next === "component-list") {
             // F7-02J: ehrliches Umschreiben wie Titel — Anzeige ohne
             // Inhalt: Flags fallen, jede Nutzlast fällt.
-            onSetItem(itemIndex, { kind: "component-list", done: false, required: false, description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "component-list", done: false, required: false, description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else if (next === "datasheets") {
             // F7-02K: ehrliches Umschreiben wie Titel — Anzeige ohne
             // Inhalt: Flags fallen, jede Nutzlast fällt.
-            onSetItem(itemIndex, { kind: "datasheets", done: false, required: false, description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "datasheets", done: false, required: false, description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else {
-            onSetItem(itemIndex, { kind: "task", description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "task", description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           }
         }}
         className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
@@ -1605,7 +1773,7 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
           title={title}
           itemIndex={itemIndex}
           canWrite={canWrite}
-          onSetItem={onSetItem}
+          onChangePhotos={onChangePhotos}
         />
       ) : null}
       {item.kind === "signature" ? (
