@@ -1,0 +1,26 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/w/:workspaceId/einstellungen/angebotsprofile",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "head": "3437162",
+  "sourceRunCapturedAt": "2026-09-17T17:37:05.048Z",
+  "boxes": [
+    {
+      "selector": "main",
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 2308.5
+    },
+    {
+      "selector": "h1",
+      "x": 208,
+      "y": 116,
+      "width": 1024,
+      "height": 36
+    }
+  ]
+}

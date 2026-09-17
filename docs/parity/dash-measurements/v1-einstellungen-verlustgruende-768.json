@@ -1,0 +1,26 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/w/:workspaceId/einstellungen/verlustgruende",
+  "viewport": {
+    "width": 768,
+    "height": 1024
+  },
+  "head": "3437162",
+  "sourceRunCapturedAt": "2026-09-17T17:37:25.596Z",
+  "boxes": [
+    {
+      "selector": "main",
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 1024
+    },
+    {
+      "selector": "h1",
+      "x": 24,
+      "y": 181,
+      "width": 720,
+      "height": 36
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/w/:workspaceId/einstellungen/checklisten-vorlagen",
+  "viewport": {
+    "width": 375,
+    "height": 812
+  },
+  "head": "3437162",
+  "sourceRunCapturedAt": "2026-09-17T17:37:07.150Z",
+  "boxes": [
+    {
+      "selector": "main",
+      "x": 0,
+      "y": 0,
+      "width": 375,
+      "height": 860
+    },
+    {
+      "selector": "h1",
+      "x": 16,
+      "y": 44,
+      "width": 343,
+      "height": 36
+    }
+  ]
+}

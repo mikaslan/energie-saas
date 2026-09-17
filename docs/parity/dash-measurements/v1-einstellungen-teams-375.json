@@ -1,0 +1,26 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/w/:workspaceId/einstellungen/teams",
+  "viewport": {
+    "width": 375,
+    "height": 812
+  },
+  "head": "3437162",
+  "sourceRunCapturedAt": "2026-09-17T17:37:22.436Z",
+  "boxes": [
+    {
+      "selector": "main",
+      "x": 0,
+      "y": 0,
+      "width": 375,
+      "height": 812
+    },
+    {
+      "selector": "h1",
+      "x": 16,
+      "y": 181,
+      "width": 343,
+      "height": 36
+    }
+  ]
+}

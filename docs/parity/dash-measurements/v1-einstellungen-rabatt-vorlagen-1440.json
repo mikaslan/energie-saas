@@ -1,0 +1,26 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/w/:workspaceId/einstellungen/rabatt-vorlagen",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "head": "3437162",
+  "sourceRunCapturedAt": "2026-09-17T17:37:20.107Z",
+  "boxes": [
+    {
+      "selector": "main",
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 658
+    },
+    {
+      "selector": "h1",
+      "x": 32,
+      "y": 52,
+      "width": 1376,
+      "height": 36
+    }
+  ]
+}

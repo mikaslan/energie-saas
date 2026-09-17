@@ -5,8 +5,8 @@
     "width": 768,
     "height": 1024
   },
-  "head": "f6f323f",
-  "sourceRunCapturedAt": "2026-09-17T14:59:45.820Z",
+  "head": "3437162",
+  "sourceRunCapturedAt": "2026-09-17T15:01:31.472Z",
   "boxes": [
     {
       "selector": "main",
@@ -26,7 +26,7 @@
       "selector": "h1",
       "x": 24,
       "y": 132,
-      "width": 301.09375,
+      "width": 297.15625,
       "height": 36
     },
     {

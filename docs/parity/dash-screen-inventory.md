@@ -15,7 +15,7 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
   `npx tsx scripts/dash-measurements-normalize.mts --head <sha>` (validiert
   Boxen, normalisiert Routen, schreibt `v1-*.json`); danach `git diff` sichten.
 - Heads: je Artefakt im Feld `head` (angebotdetail: a4fbf2e aus Suite-Lauf;
-  Rest: f6f323f; Routen-Code seitdem unveraendert, 0 Box-Drift).
+  Rest: 3437162; Delta seit f6f323f nur Spec-Datei, 0 Box-Drift verifiziert).
 - Zeitstempel in Agent-5-Berichten vor 2026-09-17 10:00 UTC waren lokale
   Maschinenzeit (UTC+3), ab hier echte UTC.
 
@@ -105,8 +105,6 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
 
 ## 5. Roadmap (OFFEN, Rest)
 
-- Einstellungen (19 Seiten): CODE-inventoriert (Routenbaum), keine Live-Gates
-  (Template-CRUD, je Seite eigene Fixtures noetig — Folgeauftrag).
 - Loading-/Error-Live-States: CODE-verifiziert (Dateien vorhanden, z. B.
   aufgaben/error.tsx, projektakte/loading.tsx); Live-Trigger braucht
   Fault-Injection — OFFEN.
@@ -139,3 +137,16 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
 - BEFUND + FIX 4 (RED→GREEN): Plantafel-Eyebrow slate-500 auf slate-100 =
   4.34 (Axe) → slate-600 wie Geschwister-Zeile.
 - Evidenz: DASH-VG 13 passed + 1 skipped (21.7s); Mess-JSONs 36 Stk. gesamt.
+
+## 8. VG-15..34 (Einstellungen, VERIFIZIERT 2026-09-17)
+
+- Alle 20 Seiten (Korrektur: 20, nicht 19) datengesteuert gegatet:
+  Angebots-Vorlagen, Angebotsprofile, Aufgaben-Vorlagen,
+  Checklisten-Vorlagen, Datei-Anfragen-Vorlagen, E-Mail-Vorlagen,
+  Ereignistypen, Foerder-Vorlagen, Lead-Quellen, Paket-Vorlagen, Planung,
+  Planungs-Vorlagen, Portal-Status, Rabatt-Vorlagen, Rechnungsstellung,
+  Teams, Termin-Vorlagen, Verlustgruende, Wirtschaftlichkeit, Zahlarten.
+- Je Seite: 375/768/1440, Axe, Console/Hydration, Messungen (main + h1).
+- angebotsprofile: In-Place-Auth („Anmeldung erforderlich“) statt Redirect
+  → Direkt-Login (Muster VG-06). Keine Layout-/Kontrast-Befunde.
+- Evidenz: 25 passed (34.8s, inkl. VG-01/10..14); Mess-JSONs 96 Stk. gesamt.
