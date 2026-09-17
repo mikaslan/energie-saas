@@ -266,6 +266,18 @@ test("F913-E2E-01: Timer an Projekt A starten, Widget auf Projekt B, Stopp per W
   await expect(widget).toBeVisible();
   await expect(widget.getByText(projectNameA, { exact: false })).toBeVisible();
 
+  // CI-Regression (F9-07/F9-08/M3-01): Die Widget-Hülle darf Klicks auf
+  // darunterliegenden Content nicht abfangen — Hit-Test links in der
+  // Pille (ausserhalb des Stopp-Links) muss Seiten-Content treffen.
+  const passThrough = await page.evaluate(() => {
+    const pill = document.querySelector('[data-testid="floating-timer-widget"]');
+    if (!pill) return false;
+    const rect = pill.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + 8, rect.top + rect.height / 2);
+    return hit !== null && !pill.contains(hit);
+  });
+  expect(passThrough, "Widget-Hülle lässt Klicks durch (kein Overlay)").toBe(true);
+
   // Viewports ohne horizontales Scrollen + Axe mit sichtbarem Widget.
   for (const width of [375, 768, 1440]) {
     await page.setViewportSize({ width, height: 800 });
