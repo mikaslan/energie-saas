@@ -126,17 +126,56 @@ async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promi
     .toEqual([]);
 }
 
+type ReflowEvidence = {
+  clientWidth: number;
+  scrollWidth: number;
+  offenders: string[];
+};
+
+async function reflowEvidence(page: Page): Promise<ReflowEvidence> {
+  return page.evaluate(() => {
+    const root = document.documentElement;
+    const viewportRight = root.clientWidth;
+    const offenders = Array.from(document.body.querySelectorAll<HTMLElement>("*"))
+      .filter((element) => {
+        const style = window.getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden") return false;
+        const rect = element.getBoundingClientRect();
+        return rect.right > viewportRight + 1 || rect.left < -1;
+      })
+      .slice(0, 8)
+      .map((element) => {
+        const id = element.id ? `#${element.id}` : "";
+        const cls = element.className && typeof element.className === "string"
+          ? `.${element.className.trim().split(/\s+/).slice(0, 3).join(".")}`
+          : "";
+        const text = (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+        return `${element.tagName.toLowerCase()}${id}${cls} :: ${JSON.stringify(text)}`;
+      });
+    return {
+      clientWidth: root.clientWidth,
+      scrollWidth: root.scrollWidth,
+      offenders,
+    };
+  });
+}
+
 async function expectNoHorizontalOverflow(page: Page, label: string): Promise<void> {
-  await expect.poll(
-    async () => {
-      const evidence = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth,
-      }));
-      return evidence.scrollWidth - evidence.clientWidth;
-    },
-    { message: `${label}: kein horizontaler Dokumentueberlauf` },
-  ).toBeLessThanOrEqual(0);
+  try {
+    await expect.poll(
+      async () => {
+        const evidence = await reflowEvidence(page);
+        return evidence.scrollWidth - evidence.clientWidth;
+      },
+      { message: `${label}: kein horizontaler Dokumentueberlauf` },
+    ).toBeLessThanOrEqual(0);
+  } catch (error) {
+    const evidence = await reflowEvidence(page);
+    throw new Error(
+      `${label}: Ueberlauf +${evidence.scrollWidth - evidence.clientWidth}px; Taeter: ${JSON.stringify(evidence.offenders)}`,
+      { cause: error },
+    );
+  }
 }
 
 type MeasuredBox = {
@@ -162,7 +201,12 @@ async function measureBoxes(page: Page, selectors: readonly string[]): Promise<M
   return boxes;
 }
 
-function writeMeasurementArtifact(route: string, viewport: Viewport, boxes: MeasuredBox[]): void {
+function writeMeasurementArtifact(
+  name: string,
+  route: string,
+  viewport: Viewport,
+  boxes: MeasuredBox[],
+): void {
   const outputDir = process.env.M1_05_E2E_OUTPUT_DIR ?? "test-results/e2e";
   const dir = join(outputDir, "dash-measurements");
   mkdirSync(dir, { recursive: true });
@@ -173,7 +217,7 @@ function writeMeasurementArtifact(route: string, viewport: Viewport, boxes: Meas
     boxes,
   };
   writeFileSync(
-    join(dir, `dashboard-${viewport.width}.json`),
+    join(dir, `${name}-${viewport.width}.json`),
     `${JSON.stringify(payload, null, 2)}\n`,
     "utf8",
   );
@@ -203,7 +247,7 @@ test("DASH-VG-01: Uebersicht ist bei 375/768/1440 axe-/konsolen-sauber und overf
         '[data-dashboard="true"]',
         ...DASHBOARD_CARDS,
       ]);
-      writeMeasurementArtifact(dashboardPath, viewport, boxes);
+      writeMeasurementArtifact("dashboard", dashboardPath, viewport, boxes);
     });
   }
 });
@@ -232,4 +276,162 @@ test("DASH-VG-02: mobile Touch-Targets und Klickpfade ab Uebersicht", async ({ p
   await page.waitForURL((url) => url.pathname === dashboardPath);
   await page.getByRole("link", { name: "Aufgaben", exact: true }).click();
   await page.waitForURL((url) => url.pathname === `/w/${workspaceId}/aufgaben`);
+});
+
+type SharedE2EState = {
+  serverLogPath: string;
+  workspaceId: string;
+  mainProjectId: string;
+  editorEmail: string;
+};
+
+function sharedState(): SharedE2EState {
+  const path = process.env.M1_05_E2E_STATE;
+  if (!path) throw new Error("M1_05_E2E_STATE fehlt; bitte über npm run test:e2e starten.");
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<SharedE2EState>;
+  const required: Array<keyof SharedE2EState> = [
+    "serverLogPath",
+    "workspaceId",
+    "mainProjectId",
+    "editorEmail",
+  ];
+  if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
+    throw new Error("Der private DASH-VG-E2E-State ist unvollständig.");
+  }
+  return parsed as SharedE2EState;
+}
+
+test("DASH-VG-03: Projektakte ist bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const shared = sharedState();
+  const aktePath = `/w/${shared.workspaceId}/anfragen/${shared.mainProjectId}`;
+  await page.goto(aktePath);
+  await loginWithRealOtp(page, shared.editorEmail, aktePath);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Brotkrumen" })).toBeVisible();
+
+  for (const viewport of GATE_VIEWPORTS) {
+    await test.step(`Viewport ${viewport.width}`, async () => {
+      await page.setViewportSize(viewport);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expectNoHorizontalOverflow(page, `Projektakte ${viewport.width}`);
+      await expectNoWcagAaAxeViolations(page, `Projektakte ${viewport.width}`);
+      const boxes = await measureBoxes(page, [
+        "main",
+        'nav[aria-label="Brotkrumen"]',
+        "h1",
+        '[aria-label="Projektstatus"]',
+      ]);
+      writeMeasurementArtifact("projektakte", aktePath, viewport, boxes);
+    });
+  }
+});
+
+test("DASH-VG-04: Angebotsliste ist bei 375/768/1440 axe-/konsolen-sauber und overflow-frei", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const listPath = `/w/${workspaceId}/angebote`;
+  await page.goto(listPath);
+  await loginWithRealOtp(page, state().editorEmail, listPath);
+  await expect(page.getByRole("heading", { name: "Angebote", level: 1 })).toBeVisible();
+  await expect(page.getByText("Noch keine Angebote")).toBeVisible();
+
+  for (const viewport of GATE_VIEWPORTS) {
+    await test.step(`Viewport ${viewport.width}`, async () => {
+      await page.setViewportSize(viewport);
+      await expect(page.getByRole("heading", { name: "Angebote", level: 1 })).toBeVisible();
+      await expectNoHorizontalOverflow(page, `Angebotsliste ${viewport.width}`);
+      await expectNoWcagAaAxeViolations(page, `Angebotsliste ${viewport.width}`);
+      const boxes = await measureBoxes(page, ["main", "h1"]);
+      writeMeasurementArtifact("angebotsliste", listPath, viewport, boxes);
+    });
+  }
+});
+
+type PortalE2EState = {
+  serverLogPath: string;
+  w3WorkspaceId: string;
+  f101ProjectId: string;
+  editorEmail: string;
+};
+
+function portalState(): PortalE2EState {
+  const path = process.env.M1_05_E2E_STATE;
+  if (!path) throw new Error("M1_05_E2E_STATE fehlt; bitte über npm run test:e2e starten.");
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<PortalE2EState>;
+  const required: Array<keyof PortalE2EState> = [
+    "serverLogPath",
+    "w3WorkspaceId",
+    "f101ProjectId",
+    "editorEmail",
+  ];
+  if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
+    throw new Error("Der private DASH-VG-Portal-State ist unvollständig.");
+  }
+  return parsed as PortalE2EState;
+}
+
+test("DASH-VG-05: Portal-Resolve ist bei 375/768/1440 axe-/konsolen-sauber (Create/Withdraw)", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const data = portalState();
+  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f101ProjectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, data.editorEmail, projectPath);
+
+  const portal = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Kundenportal", exact: true }),
+  });
+  await expect(portal.getByText("Kein aktiver Link.", { exact: false })).toBeVisible();
+  await portal.getByRole("button", { name: "Link erstellen", exact: true }).click();
+  await expect(portal.getByText("Der Portal-Link wurde erstellt und die E-Mail an den Kunden queued. Kopiere ihn jetzt — er wird nicht erneut angezeigt.", { exact: true }))
+    .toBeVisible();
+  const tokenText = await portal.locator("p.font-mono").textContent();
+  const tokenPath = tokenText?.trim() ?? "";
+  expect(tokenPath).toMatch(/^\/p\/[A-Za-z0-9_-]+$/u);
+
+  await page.context().clearCookies();
+  await page.goto(tokenPath);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dokumente", exact: true })).toBeVisible();
+
+  for (const viewport of GATE_VIEWPORTS) {
+    await test.step(`Viewport ${viewport.width}`, async () => {
+      await page.setViewportSize(viewport);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await expectNoHorizontalOverflow(page, `Portal ${viewport.width}`);
+      await expectNoWcagAaAxeViolations(page, `Portal ${viewport.width}`);
+      const boxes = await measureBoxes(page, ["main", "h1", "nav"]);
+      writeMeasurementArtifact("portal", tokenPath, viewport, boxes);
+    });
+  }
+
+  // Cleanup: Link zurückziehen, damit f10-01 weiter „Kein aktiver Link“ sieht.
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, data.editorEmail, projectPath);
+  await page.reload();
+  await expect(portal.getByText("Aktiver Link", { exact: false })).toBeVisible();
+  await portal.getByRole("button", { name: "Link zurückziehen", exact: true }).click();
+  await expect(portal.getByText("Der Portal-Link wurde zurückgezogen.", { exact: true }))
+    .toBeVisible();
+
+  // Ungültig-Ansicht: spezifizierter 404-Endzustand (Muster m1-08b/f10-01:
+  // erwartete Meldungen gezielt konsumieren, Rest bleibt Fehler).
+  await page.context().clearCookies();
+  await page.goto(tokenPath);
+  await expect(page.getByRole("heading", { name: "Dieser Link ist ungültig.", exact: true }))
+    .toBeVisible();
+  const problems = browserProblems.get(page) ?? [];
+  const expectedConsole = "console-error: Failed to load resource: the server responded with a status of 404 (Not Found)";
+  const consumed = problems.filter((entry) => entry === expectedConsole || entry.startsWith("http-404: "));
+  expect(consumed.length, "Erwartete 404-Meldungen nach Withdraw").toBeGreaterThan(0);
+  const kept = problems.filter((entry) => entry !== expectedConsole && !entry.startsWith("http-404: "));
+  problems.length = 0;
+  problems.push(...kept);
 });
