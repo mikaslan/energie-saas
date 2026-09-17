@@ -14,6 +14,7 @@ import {
   type ProjectCatalogResolutionContext,
 } from "@/modules/catalog";
 import { listFileRequests, listFileRequestTemplates } from "@/modules/file-requests";
+import { listProjectFiles } from "@/modules/project-files";
 import { getGridRegistration } from "@/modules/grid-registration";
 import { getSubsidyCase, getSubsidyProgramSuggestion, listSubsidyMessages } from "@/modules/subsidy-cases";
 import { isSubsidyCaseBelegState } from "@/lib/subsidy-case";
@@ -92,6 +93,7 @@ import { ProductResolutionSection } from "./product-resolution-section";
 import { ProjectActivityPanel } from "./project-activity-panel";
 import { FollowUpSection } from "./follow-up-section";
 import { FileRequestSection } from "./file-request-section";
+import { ProjectFileSection } from "./project-file-section";
 import { GridRegistrationSection } from "./grid-registration-section";
 import { SubsidyCaseSection } from "./subsidy-case-section";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
@@ -1027,6 +1029,41 @@ export default async function ProjectTriagePage({
     redirectToProjectLogin(detailPath);
   }
 
+  // F7-16: Projekt-Dateien (intern-nur — Externe sehen weder Sektion
+  // noch Bytes; denied-Pfad verbirgt die Sektion statt 403-Seite).
+  const projectFileResult = await (async (): Promise<
+    | {
+        kind: "loaded";
+        files: Awaited<ReturnType<typeof listProjectFiles>>;
+        canWrite: boolean;
+      }
+    | { kind: "unauthenticated" }
+    | { kind: "denied" }
+  > => {
+    try {
+      const files = await authorizedQuery(
+        workspaceId,
+        "project.read",
+        "project_file",
+        (tx, ctx) => listProjectFiles(tx, ctx, { projectId }),
+      );
+      const writable = await authorizedQuery(
+        workspaceId,
+        "project.read",
+        "project_file_write_gate",
+        async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "project.write"),
+      );
+      return { kind: "loaded", files, canWrite: writable };
+    } catch (error) {
+      if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+      if (error instanceof PermissionDeniedError) return { kind: "denied" };
+      throw error;
+    }
+  })();
+  if (projectFileResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+
   const taskPageResult = await loadProjectTaskPage(
     workspaceId,
     projectId,
@@ -1338,6 +1375,17 @@ export default async function ProjectTriagePage({
               requests={fileRequestResult.requests}
               canWrite={fileRequestResult.canWrite}
               templates={fileRequestResult.templates}
+            />
+          </div>
+        ) : null}
+
+        {projectFileResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <ProjectFileSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              files={projectFileResult.files}
+              canWrite={projectFileResult.canWrite}
             />
           </div>
         ) : null}

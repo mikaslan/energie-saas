@@ -411,16 +411,20 @@ export function OfferCreateEntry({ view }: { view: OfferCreateEntryView }) {
         <p className="mt-2 text-sm leading-6 text-slate-600">
           Schließe die folgenden Voraussetzungen. Der Server prüft sie bei der Konvertierung erneut.
         </p>
-        <ul role="alert" className="mt-5 grid gap-3">
-          {view.blockers.map((blocker) => (
-            <li key={blocker.code} className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
-              <p className="text-sm font-semibold text-amber-950">{blocker.label}</p>
-              <Link href={blocker.href} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-900 underline decoration-2 underline-offset-4 outline-none">
-                {blocker.actionLabel}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {/* A11y: role=alert darf die Listen-Rolle nicht ueberschreiben
+            (axe listitem) — Rolle auf Wrapper, Liste bleibt Liste. */}
+        <div role="alert" className="mt-5">
+          <ul className="grid gap-3">
+            {view.blockers.map((blocker) => (
+              <li key={blocker.code} className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-950">{blocker.label}</p>
+                <Link href={blocker.href} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-900 underline decoration-2 underline-offset-4 outline-none">
+                  {blocker.actionLabel}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
     );
   }

@@ -2742,6 +2742,23 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F7-16 (0181): Projekt-Datei zu echtem Projektgraphen (Key muss den
+  // project-files-CHECK erfuellen).
+  project_file: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`
+      insert into project_file (
+        workspace_id, project_id, storage_key, file_sha256,
+        content_type, byte_size, original_filename, created_by
+      ) values (
+        ${wsId}::uuid, ${projectId}::uuid,
+        'immutable/00000000-0000-0000-0000-000000000000/project-files/00000000-0000-0000-0000-000000000001_deadbeef.pdf',
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        'application/pdf', 8, 'f716-fixture.pdf', ${userId}::uuid
+      )
+    `);
+  },
   // F13-03 (0105): Förderakte zu einem echten Projektgraphen.
   subsidy_case: async (tx, wsId) => {
     const { projectId } = await fixtureProjectGraph(tx, wsId);

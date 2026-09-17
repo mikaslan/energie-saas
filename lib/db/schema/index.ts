@@ -51,6 +51,7 @@ export * from "./portal-status-label";
 export * from "./portal-status-faq";
 export * from "./grid-registration";
 export * from "./file-request";
+export * from "./project-file";
 export * from "./subsidy-case";
 export * from "./subsidy-case-message";
 export * from "./signatures";

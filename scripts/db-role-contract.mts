@@ -774,6 +774,12 @@ const SUBSIDY_CASE_MESSAGE_RELATIONS = [
 const FILE_REQUEST_UPLOAD_RELATIONS = [
   "file_request_upload",
 ] as const;
+
+// F7-16: Projekt-Dateien je Projekt (nur Anlage + Lesen; kein
+// Update/Delete — Muster subsidy_case_message).
+const PROJECT_FILE_RELATIONS = [
+  "project_file",
+] as const;
 const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
   "public._m301_actor_invoicing_role(uuid)",
   "public._m301_actor_can_read_invoicing(uuid)",
@@ -3442,6 +3448,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F7-16: Projekt-Dateien unveränderlich — Anlage + Lesen (kein
+  // Update/Delete; Muster subsidy_case_message).
+  const hasProjectFilesForAcl = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_FILE_RELATIONS,
+    "Rollen-ACL-Manifest: F7-16-Projekt-Dateien",
+  );
+  if (hasProjectFilesForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.project_file
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert on public.project_file to app_runtime
+    `);
+  }
+
   const energyRelations = [
     "project_calculation_job",
     "project_calculation_revision",
@@ -4581,6 +4604,13 @@ export async function verifyRoleContract(
     FILE_REQUEST_UPLOAD_RELATIONS,
     "Rollenvertrag: F10-10-Folge-Belege",
   );
+  // F7-16 (0181): eigene Gate-Menge — Projekt-Dateien je Projekt
+  // (Muster hasSubsidyCaseMessages).
+  const hasProjectFiles = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_FILE_RELATIONS,
+    "Rollenvertrag: F7-16-Projekt-Dateien",
+  );
   // F10-13 (0170): Dateityp-Spaltenpaar auf Anfrage + Vorlage (Spalten-
   // vertrag wie hasInvoiceSkontoTerms); gate-t die drei geaenderten
   // Funktionsruempfe (Resolver-Projektion + beide Fulfill-Guards).
@@ -5140,6 +5170,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasProjectFiles ? PROJECT_FILE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
     ],
@@ -6500,6 +6533,9 @@ export async function verifyRoleContract(
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasProjectFiles ? PROJECT_FILE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
     ],
     "Live-RLS/FORCE-Vertrag",
   );
@@ -6782,6 +6818,12 @@ export async function verifyRoleContract(
         // F10-10 (0120): Folge-Beleg-Tabelle (Hash per Probe geerntet).
         ...(hasFileRequestUploads ? [
           "file_request_upload:tenant_isolation:c189aa771ea9a74da5d7899a5f6bc69da8e0cd1a22e7b01a3913d2c872a68a48",
+        ] : []),
+        // F7-16 (0181): Projekt-Dateien (Hash per Embedded-Probe
+        // geerntet, Methode gegen file_request/file_request_upload/
+        // package_template-Pins gegengeprueft, alle exakt reproduziert).
+        ...(hasProjectFiles ? [
+          "project_file:tenant_isolation:944ffa4abfcdae4fd5d8e72b02f3bd790beb3df4a9bfd13e0413a436d6b8426c",
         ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
@@ -7619,6 +7661,12 @@ export async function verifyRoleContract(
       // F10-10: nur Lesen (unveränderliche Folge-Belege; Anlage nur per
       // DEFINER-Kapsel als Owner).
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+      ]) : []),
+      // F7-16: Anlage/Lesen, nie Ändern/Löschen (unveränderliche
+      // Projekt-Dateien; Muster subsidy_case_message).
+      ...(hasProjectFiles ? PROJECT_FILE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
       ]) : []),
       "app_system:audit_log:INSERT:app_owner:false",
