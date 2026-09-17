@@ -765,6 +765,11 @@ const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
 const COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES = [
   "public._m301_guard_issued_immutable()",
 ] as const;
+// M3-02a (0191): Zeilen-Freeze-Guard — eigene Routine-Menge, weil alte
+// Prefixe die Funktion nicht kennen (F1008-Muster).
+const M302A_LINE_FREEZE_PRIVATE_ROUTINES = [
+  "public._m301_guard_line_parent_immutable()",
+] as const;
 const COMMERCIAL_DOCUMENT_FUNCTION_NAMES = [
   ...COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES,
   ...COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES,
@@ -2225,6 +2230,44 @@ async function hasAtomicF1008NotificationContract(
   return true;
 }
 
+// M3-02a (0191): Zeilen-Freeze-Guard + 3 Trigger existieren nur ab 0191.
+// Existenzgeprueft wie F1008, damit Upgrade-Prefixe ohne 0190er-Reihe
+// gruen bleiben. Teilstand ist fail-closed.
+async function hasAtomicM302aLineFreezeContract(
+  client: PoolClient,
+  hasCommercialDocuments: boolean,
+  label: string,
+): Promise<boolean> {
+  if (!hasCommercialDocuments) return false;
+  const presence = await client.query<{ fn: boolean; trigs: boolean }>(`
+    select
+      pg_catalog.to_regprocedure(
+        'public._m301_guard_line_parent_immutable()'
+      ) is not null as fn,
+      (
+        select count(*) = 3
+          from pg_catalog.pg_trigger
+         where tgrelid = 'public.commercial_document_line'::regclass
+           and tgname in (
+             'commercial_document_line_parent_immutable_ins',
+             'commercial_document_line_parent_immutable_upd',
+             'commercial_document_line_parent_immutable_del'
+           )
+      ) as trigs
+  `);
+  const row = presence.rows[0];
+  const fn = row?.fn === true;
+  const trigs = row?.trigs === true;
+  if (!fn && !trigs) return false;
+  if (!fn || !trigs) {
+    throw new Error(
+      `${label} ist nur teilweise vorhanden ` +
+        `(Funktion=${String(fn)}, Trigger=${String(trigs)}).`,
+    );
+  }
+  return true;
+}
+
 async function hasAtomicPublicColumnSet(
   client: PoolClient,
   columns: readonly string[],
@@ -3279,6 +3322,11 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     COMMERCIAL_DOCUMENT_RELATIONS,
     "Rollen-ACL-Manifest: M3-01-Rechnungs-Kern",
   );
+  const hasLineFreezeGuardForAcl = await hasAtomicM302aLineFreezeContract(
+    client,
+    hasCommercialDocuments,
+    "Rollen-ACL-Manifest: M3-02a-Zeilen-Freeze",
+  );
   if (hasCommercialDocuments) {
     await client.query(`
       revoke all privileges on
@@ -3294,7 +3342,7 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       grant select, insert, update on public.commercial_document_number_series to app_runtime;
 
       revoke execute on function
-        ${[...COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES, ...COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES].join(",\n        ")}
+        ${[...COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES, ...COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES, ...(hasLineFreezeGuardForAcl ? M302A_LINE_FREEZE_PRIVATE_ROUTINES : [])].join(",\n        ")}
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant execute on function
@@ -4512,6 +4560,13 @@ export async function verifyRoleContract(
     COMMERCIAL_DOCUMENT_LINK_RELATIONS,
     "Rollenvertrag: F8-01-Anzahlung-Link",
   );
+  // M3-02a (0191): eigene Gate-Menge — alte Prefixe ohne Zeilen-Freeze
+  // bleiben grün (atomar: Funktion + 3 Trigger).
+  const hasLineFreezeGuard = await hasAtomicM302aLineFreezeContract(
+    client,
+    hasCommercialDocuments,
+    "Rollenvertrag: M3-02a-Zeilen-Freeze",
+  );
   // F8-05 (0102): eigene Gate-Menge — alte Prefixe ohne Kettentabellen
   // bleiben grün (atomar je Menge).
   const hasCommercialDocumentPartials = await hasAtomicPublicRelationSet(
@@ -5405,6 +5460,9 @@ export async function verifyRoleContract(
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
+      ...(hasLineFreezeGuard ? [
+        "_m301_guard_line_parent_immutable:app_owner",
+      ] : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -5784,6 +5842,13 @@ export async function verifyRoleContract(
             : hasInvoiceSkontoTerms
               ? "518f9c93a0e72f65ea9b7f96b1d08754073bd8844b20e82fb3f08553331a571a"
               : "b3d5ec893a41767ec5afe0be70c21ca81343985f55bce9a29b5beb838cc51f32"),
+        // M3-02a (0191): Zeilen-Freeze-Guard (Hash-Methode gegen 0082-Pin
+        // kalibriert: sha256 ueber Dollar-Quoting-Inhalt inkl. Raender).
+        ...(hasLineFreezeGuard ? [
+          "_m301_guard_line_parent_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+            "search_path=pg_catalog:" +
+            "e6e052743504d8900cbd6aa1e368065fd64227850d661977581fa0dfa87a0589",
+        ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
         "_m300_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
@@ -7192,6 +7257,11 @@ export async function verifyRoleContract(
         "commercial_document_group:commercial_document_group_no_truncate:34:O:public:forbid_mutation::-:0",
         "commercial_document_line:commercial_document_line_no_truncate:34:O:public:forbid_mutation::-:0",
         "commercial_document_number_series:commercial_document_number_series_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
+      ...(hasLineFreezeGuard ? [
+        "commercial_document_line:commercial_document_line_parent_immutable_ins:7:O:public:_m301_guard_line_parent_immutable::-:0",
+        "commercial_document_line:commercial_document_line_parent_immutable_upd:19:O:public:_m301_guard_line_parent_immutable::-:0",
+        "commercial_document_line:commercial_document_line_parent_immutable_del:11:O:public:_m301_guard_line_parent_immutable::-:0",
       ] : []),
       ...(hasCommercialDocumentLinks ? [
         "commercial_document_link:commercial_document_link_no_truncate:34:O:public:forbid_mutation::-:0",

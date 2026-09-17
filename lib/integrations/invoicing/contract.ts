@@ -415,6 +415,86 @@ const commercialLineUnitSchema = z.enum(commercialLineUnits);
 const commercialCreditNoteTypeSchema = z.enum(commercialCreditNoteTypes);
 const commercialInvoiceKindSchema = z.enum(commercialInvoiceKinds);
 
+// M3-02a: Empfänger-Snapshot bei Ausstellung (Rechnungsadresse, minimal).
+// Spiegel der M2-02-Textdisziplin: wohlgeformtes Unicode, NFC + Trim,
+// Längen-Caps. Leere Optionale werden null (kein Leerstring im Siegel);
+// Kanäle (Mail/Telefon) gehören nicht hierher.
+function hasWellFormedSnapshotText(value: string): boolean {
+  if (value.includes("\0")) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// PG-Semantik-Spiegel (crm.ts-CHECKs): btrim() kürzt nur Spaces, length()
+// zählt Zeichen (Codepoints), nicht UTF-16-Units. JS-trim/.length würden
+// legale Kontakte fälschlich verwerfen (non-BMP-Text, Tab-Namen).
+function snapshotNormalize(value: string): string {
+  return value.normalize("NFC").replace(/^ +| +$/gu, "");
+}
+
+function snapshotCodePoints(value: string): number {
+  return Array.from(value).length;
+}
+
+function snapshotRequiredText(maxLength: number) {
+  return z.string().superRefine((value, context) => {
+    if (!hasWellFormedSnapshotText(value)) {
+      context.addIssue({ code: "custom", message: "Text contains invalid Unicode." });
+      return;
+    }
+    const normalized = snapshotNormalize(value);
+    if (snapshotCodePoints(normalized) < 1 || snapshotCodePoints(normalized) > maxLength) {
+      context.addIssue({
+        code: "custom",
+        message: `Text must be 1 to ${maxLength} characters long.`,
+      });
+    }
+  }).transform((value) => snapshotNormalize(value));
+}
+
+function snapshotOptionalText(maxLength: number) {
+  return z.string().nullable().superRefine((value, context) => {
+    if (value === null) return;
+    if (!hasWellFormedSnapshotText(value)) {
+      context.addIssue({ code: "custom", message: "Text contains invalid Unicode." });
+      return;
+    }
+    if (snapshotCodePoints(snapshotNormalize(value)) > maxLength) {
+      context.addIssue({
+        code: "custom",
+        message: `Text must be at most ${maxLength} characters long.`,
+      });
+    }
+  }).transform((value) => {
+    if (value === null) return null;
+    const normalized = snapshotNormalize(value);
+    return normalized.length === 0 ? null : normalized;
+  });
+}
+
+// Caps spiegeln exakt die Kontakt-CHECKs (crm.ts) — kein legaler Kontakt
+// darf die Ausstellung brechen; strengere Caps wären False-Rejects.
+export const commercialRecipientSnapshotV1Schema = z.strictObject({
+  displayName: snapshotRequiredText(200),
+  street: snapshotOptionalText(200),
+  houseNumber: snapshotOptionalText(30),
+  postalCode: snapshotOptionalText(20),
+  city: snapshotOptionalText(200),
+  country: snapshotOptionalText(20),
+});
+export type CommercialRecipientSnapshotV1 = z.infer<
+  typeof commercialRecipientSnapshotV1Schema
+>;
+
 const groupNameSchema = z.string().trim().min(1).max(120).refine(
   (value) => value.trim().length >= 1,
   "group name must not be blank",

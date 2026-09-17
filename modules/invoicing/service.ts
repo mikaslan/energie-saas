@@ -36,6 +36,7 @@ import {
   commercialDocumentSentCommandV1Schema,
   commercialDocumentTermsCommandV1Schema,
   commercialDocumentInvoiceKindCommandV1Schema,
+  commercialRecipientSnapshotV1Schema,
   commercialDocumentV1Schema,
   commercialDocumentVoidCommandV1Schema,
   commercialDocumentGroupV1Schema,
@@ -74,6 +75,7 @@ import {
   type CommercialDocumentSentCommandV1,
   type CommercialDocumentTermsCommandV1,
   type CommercialDocumentInvoiceKindCommandV1,
+  type CommercialRecipientSnapshotV1,
   type CommercialDocumentV1,
   type CommercialDocumentVoidCommandV1,
   type CommercialDocumentGroupV1,
@@ -603,7 +605,6 @@ type IssueDocumentRow = {
   planned_service_date: string | null;
   credit_note_type: string | null;
   invoice_kind: string | null;
-  recipient_snapshot: unknown;
   created_by: string;
   [key: string]: unknown;
 };
@@ -921,6 +922,48 @@ async function assignDocumentNumber(
   return { number, numberYear: year, numberSequence: Number(row.last_sequence) };
 }
 
+// M3-02a: Empfängeradresse aus lebendem Kontakt lesen + validieren.
+// Stale Referenz (gelöscht/fremd) oder unzulässiger Text → Validation
+// (fail-closed, Ausstellung bricht ab). Kein Kontakt → null.
+async function freezeRecipientSnapshot(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  contactId: string | null,
+): Promise<CommercialRecipientSnapshotV1 | null> {
+  if (contactId === null) return null;
+  // FOR SHARE gegen TOCTOU: blockt konkurrierende Kontakt-Schreiber bis
+  // zum Siegel-Commit, Leser bleiben frei.
+  const contact = await tx.execute<{
+    display_name: string;
+    address_street: string | null;
+    address_house_number: string | null;
+    address_postal_code: string | null;
+    address_city: string | null;
+    address_country: string | null;
+  }>(sql`
+    select display_name, address_street, address_house_number,
+           address_postal_code, address_city, address_country
+      from contact
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${contactId}::uuid
+       and deleted_at is null
+     limit 1
+     for share
+  `);
+  const row = contact.rows[0];
+  if (!row) throw new InvoicingValidationError();
+  const parsed = commercialRecipientSnapshotV1Schema.safeParse({
+    displayName: row.display_name,
+    street: row.address_street,
+    houseNumber: row.address_house_number,
+    postalCode: row.address_postal_code,
+    city: row.address_city,
+    country: row.address_country,
+  });
+  if (!parsed.success) throw new InvoicingValidationError();
+  return parsed.data;
+}
+
 export async function issueDocument(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -936,7 +979,7 @@ export async function issueDocument(
            currency, net_cents, tax_cents, gross_cents, due_date,
            skonto_percent_bps, skonto_days,
            delivery_date, validity_date, planned_delivery_date,
-           planned_service_date, credit_note_type, invoice_kind, recipient_snapshot,
+           planned_service_date, credit_note_type, invoice_kind,
            created_by
       from commercial_document
      where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
@@ -990,6 +1033,9 @@ export async function issueDocument(
      order by position asc
   `);
 
+  // M3-02a: Empfängeradresse aus lebendem Kontakt einfrieren (versiegelt).
+  const recipientSnapshot = await freezeRecipientSnapshot(tx, ctx, document.contact_id);
+
   const snapshot = {
     schemaVersion: GOEBD_SNAPSHOT_SCHEMA_VERSION,
     canonicalizationVersion: GOEBD_SNAPSHOT_CANONICALIZATION_VERSION,
@@ -1012,7 +1058,7 @@ export async function issueDocument(
     creditNoteType: document.credit_note_type,
     invoiceKind: document.invoice_kind,
     name: document.name,
-    recipientSnapshot: document.recipient_snapshot,
+    recipientSnapshot,
     lines: lines.rows.map((line) => ({
       position: Number(line.position),
       name: line.name,
@@ -1037,6 +1083,7 @@ export async function issueDocument(
            issued_by = ${ctx.actor}::uuid,
            issued_snapshot = ${canonical}::jsonb,
            snapshot_sha256 = ${snapshotSha256}::bytea,
+           recipient_snapshot = ${recipientSnapshot === null ? null : JSON.stringify(recipientSnapshot)}::jsonb,
            goebd_retention_until = ${retentionUntil.rows[0]?.date}::date,
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
