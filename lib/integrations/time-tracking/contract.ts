@@ -94,7 +94,7 @@ export const timeEntryListDtoSchema = z.object({
 export type TimeEntryListDto = z.infer<typeof timeEntryListDtoSchema>;
 
 // F9.3 Fremdnutzer-Filter: userIds wie live (UUID, max 50); null/fehlend = kein Filter.
-const calendarDaySchema = z
+export const calendarDaySchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/u, { message: "kein Kalendertag" })
   .refine((v) => {
@@ -179,6 +179,16 @@ export const timeUtilizationDtoSchema = z.object({
   rows: z.array(timeUtilizationRowDtoSchema),
 });
 export type TimeUtilizationDto = z.infer<typeof timeUtilizationDtoSchema>;
+
+// F9-11 Workspace-Team-Auslastung: gleiche Zeilen-/DTO-Shape wie F9.4-D
+// (timeUtilizationRowDtoSchema / timeUtilizationDtoSchema, kein Dialekt).
+// KEIN projectId, KEIN includeArchived — Archiv ist fix ausgeschlossen.
+export const workspaceTimeUtilizationQuerySchema = z.object({
+  userIds: z.array(z.string().uuid()).max(50).nullish(),
+  startDate: calendarDaySchema.optional(),
+  endDate: calendarDaySchema.optional(),
+}).refine((v) => v.startDate === undefined || v.endDate === undefined || v.startDate <= v.endDate, { message: "Start nach Ende" });
+export type WorkspaceTimeUtilizationQuery = z.infer<typeof workspaceTimeUtilizationQuerySchema>;
 
 // F9.4 Slice A CSV-Export: Filter = List-Filter wiederverwendet
 // (timeEntryListQuerySchema, kein neuer Dialekt).

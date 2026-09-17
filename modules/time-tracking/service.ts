@@ -21,6 +21,7 @@ import {
   timeEntryRevisionListQuerySchema,
   timeMemberOptionSchema,
   timeUtilizationDtoSchema,
+  workspaceTimeUtilizationQuerySchema,
   timeEventTypeDtoSchema,
   updateTimeEntryCommandSchema,
   updateTimeEventTypeCommandSchema,
@@ -1227,6 +1228,70 @@ export async function getTimeUtilization(
        and e.project_id = ${parsed.data.projectId}::uuid
        ${includeArchived ? sql`` : sql`and e.archived_at is null`}
        ${userFilter}
+     group by e.user_id
+     order by coalesce(sum(e.working_time_minutes), 0) desc, e.user_id asc
+  `);
+  return timeUtilizationDtoSchema.parse({
+    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+    rows: result.rows.map((row) => ({
+      schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+      userId: row.user_id,
+      label: labelByUserId.get(row.user_id) ?? "Unbekannt",
+      entryCount: row.entry_count,
+      totalWorkingMinutes: row.total_minutes,
+      running: row.running,
+    })),
+  });
+}
+
+// F9-11 Workspace-Team-Auslastung: gleiche Aggregation wie
+// getTimeUtilization (je user_id: entryCount, Summe gestoppter Minuten,
+// running-Flag), aber workspace-weit ohne projectId. Reiner Lese-Pfad
+// (requireRead), Archiv fix ausgeschlossen, Zeitraum nach F9-09-Muster
+// (Berlin-Tage auf Beginn), keine Migration.
+export async function getWorkspaceTimeUtilization(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { userIds?: readonly string[] | null; startDate?: string; endDate?: string },
+): Promise<TimeUtilizationDto> {
+  requireRead(ctx);
+  const parsed = workspaceTimeUtilizationQuerySchema.safeParse({
+    ...query,
+    userIds: query.userIds === undefined || query.userIds === null ? query.userIds : [...query.userIds],
+  });
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const members = await listTimeMemberOptions(tx, ctx);
+  const labelByUserId = new Map(members.map((member) => [member.userId, member.label]));
+  // F9.3-Semantik wie listTimeEntries/getTimeUtilization/Export: reine
+  // IN-Liste, KEIN JS-Schnitt mit den (auf 200 limitierten) Member-Options.
+  // Die Schnittmenge mit bekannten Workspace-Usern fällt aus der
+  // Workspace-Bindung der Zeilen: Fremd-UUIDs matchen keine Zeile.
+  const userIds = parsed.data.userIds ?? [];
+  const userFilter = userIds.length === 0
+    ? sql``
+    : sql`and e.user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const startFilter = parsed.data.startDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date >= ${parsed.data.startDate}::date`;
+  const endFilter = parsed.data.endDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date <= ${parsed.data.endDate}::date`;
+  const result = await tx.execute<{
+    user_id: string;
+    entry_count: number;
+    total_minutes: number;
+    running: boolean;
+  }>(sql`
+    select e.user_id,
+           count(*)::int as entry_count,
+           coalesce(sum(e.working_time_minutes), 0)::int as total_minutes,
+           bool_or(e.end_at is null) as running
+      from time_entry e
+     where e.workspace_id = ${ctx.workspaceId}::uuid
+       and e.archived_at is null
+       ${userFilter}
+       ${startFilter}
+       ${endFilter}
      group by e.user_id
      order by coalesce(sum(e.working_time_minutes), 0) desc, e.user_id asc
   `);
