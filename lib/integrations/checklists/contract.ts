@@ -500,18 +500,24 @@ function segmentItemsById(
 // F7-03C: Anzeige-Platzhalter (Katalog F7.2). {{kunde}}/{{datum}} in
 // Punkt-Texten werden BEIM ANZEIGEN ersetzt; der Tree speichert den
 // Rohtext. Case-insensitiv, Whitespace-tolerant, mehrfach. Unbekannte
-// Muster (inkl. {{komponenten}} — deferred, keine eindeutige Quelle)
-// bleiben stehen; leerer Kundenname ersetzt nicht (kein Phantom-Text).
-const CHECKLIST_PLACEHOLDER_PATTERN = /\{\{\s*(kunde|datum)\s*\}\}/giu;
+// Muster bleiben stehen; leerer Kundenname ersetzt nicht (kein
+// Phantom-Text).
+// F7-03E: {{komponenten}} ergänzt (Quelle: Workbook-Stückliste F7-08,
+// optional — fehlend/leer lässt das Muster ehrlich stehen).
+const CHECKLIST_PLACEHOLDER_PATTERN = /\{\{\s*(kunde|datum|komponenten)\s*\}\}/giu;
 
 export function substituteChecklistPlaceholders(
   text: string,
-  values: { customerName: string; today: string },
+  values: { customerName: string; today: string; componentsText?: string },
 ): string {
   if (text === "" || !text.includes("{{")) return text;
   return text.replace(CHECKLIST_PLACEHOLDER_PATTERN, (_match, name: string) => {
     const key = name.toLowerCase();
     if (key === "kunde") return values.customerName === "" ? _match : values.customerName;
+    if (key === "komponenten") {
+      if (!values.componentsText) return _match;
+      return values.componentsText;
+    }
     return values.today;
   });
 }

@@ -100,6 +100,7 @@ export function ProjectChecklistManager({
   teamOptions,
   customerName,
   today,
+  componentsText,
 }: {
   workspaceId: string;
   projectId: string;
@@ -107,10 +108,12 @@ export function ProjectChecklistManager({
   teamOptions: TeamOption[];
   customerName: string;
   today: string;
+  componentsText: string;
 }) {
   // F7-03C: Anzeige-Platzhalter (Rohtext bleibt gespeichert).
+  // F7-03E: componentsText ergänzt (gleiche Anzeige-Kontexte wie 03c).
   const displayText = (text: string): string =>
-    substituteChecklistPlaceholders(text, { customerName, today });
+    substituteChecklistPlaceholders(text, { customerName, today, componentsText });
   const { canWrite, canConfigure, canComplete, canUnlock } = checklist.permissions;
   const canEditStructure = canConfigure || (checklist.version === 0 && canWrite);
   const [blocksState, setBlocksState] = useState<{

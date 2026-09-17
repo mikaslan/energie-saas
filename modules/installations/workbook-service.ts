@@ -205,6 +205,15 @@ function formatQuantity(quantityMilli: number, unit: string): string {
   return `${(quantityMilli / 1000).toLocaleString("de-DE")} ${unit}`;
 }
 
+// F7-03E: flache Stückliste für {{komponenten}} (Anzeige-Substitution).
+// Projektions-Reihenfolge (positions-sortiert, F7-08), nur Menge+Name,
+// keine Preise (Monteur-Sicht). Leere Liste → "" (Muster steht ehrlich).
+export function formatWorkbookComponentsText(sections: WorkbookSection[]): string {
+  return sections
+    .flatMap((section) => section.lines.map((line) => `${line.quantity} ${line.name}`))
+    .join(", ");
+}
+
 // F7-10: flache Watt-Sicht auf die diskriminierten Katalogdaten; der
 // Projektor validiert Schema-Passung und Wertebereiche fail-closed.
 function capacityWatts(data: CatalogTechnicalDataV1): {

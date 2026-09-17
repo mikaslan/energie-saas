@@ -36,6 +36,7 @@ export {
   type InstallationStatusVisibility,
 } from "./service";
 export {
+  formatWorkbookComponentsText,
   getInstallationWorkbook,
   listInstallableVariants,
   setInstallationVariant,
