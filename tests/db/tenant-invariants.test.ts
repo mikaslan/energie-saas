@@ -103,6 +103,8 @@ const ACTOR_SCOPED_TABLES = new Set([
   "commercial_document_line",
   "commercial_document_number_series",
   "commercial_document_link",
+  // M3-02b: RESTRICTIVE Actor-Policies verlangen viewer+ fuer SELECT.
+  "commercial_document_render_job",
 ]);
 const actorByWorkspace = new Map<string, string>();
 

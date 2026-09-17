@@ -748,3 +748,71 @@ export const commercialDocumentPartialLine = pgTable(
     ),
   ],
 );
+
+// M3-02b · Render-Job-Zeile: versiegelter invoice-pdf-input.v1 je
+// (Workspace, Dokument, Template, Rezept). Replay-idempotent per UNIQUE;
+// Input ist nach Insert immutable (kein Update-Pfad in M3-02b).
+export const commercialDocumentRenderJob = pgTable(
+  "commercial_document_render_job",
+  {
+    id: uuid("id").notNull().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    documentId: uuid("document_id").notNull(),
+    inputJson: jsonb("input_json").notNull(),
+    inputSha256: bytea("input_sha256").notNull(),
+    templateVersion: text("template_version").notNull(),
+    rendererRecipe: text("renderer_recipe").notNull(),
+    status: text("status").notNull().default("requested"),
+    createdBy: uuid("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("commercial_document_render_job_ws_id_uq").on(t.workspaceId, t.id),
+    unique("commercial_document_render_job_ws_doc_tpl_uq").on(
+      t.workspaceId,
+      t.documentId,
+      t.templateVersion,
+      t.rendererRecipe,
+    ),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "commercial_document_render_job_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.documentId],
+      foreignColumns: [commercialDocument.workspaceId, commercialDocument.id],
+      name: "commercial_document_render_job_document_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.createdBy],
+      foreignColumns: [membership.workspaceId, membership.userId],
+      name: "commercial_document_render_job_created_by_fk",
+    }),
+    index("commercial_document_render_job_ws_doc_idx").on(
+      t.workspaceId,
+      t.documentId,
+    ),
+    check(
+      "commercial_document_render_job_status_ck",
+      sql`${t.status} = 'requested'`,
+    ),
+    check(
+      "commercial_document_render_job_template_ck",
+      sql`${t.templateVersion} = 'invoice-pdf-template.v1'`,
+    ),
+    check(
+      "commercial_document_render_job_recipe_ck",
+      sql`${t.rendererRecipe} = 'invoice-pdf-renderer-recipe.v1'`,
+    ),
+    check(
+      "commercial_document_render_job_input_ck",
+      sql`jsonb_typeof(${t.inputJson}) = 'object'`,
+    ),
+    check(
+      "commercial_document_render_job_sha_ck",
+      sql`octet_length(${t.inputSha256}) = 32`,
+    ),
+  ],
+);

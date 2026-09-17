@@ -175,3 +175,8 @@ export {
 } from "./partial-service";
 export { exportDocumentCii } from "./cii-service";
 export { exportDatevBatch } from "./datev-service";
+export {
+  requestInvoicePdfInput,
+  type RequestInvoicePdfInputCommand,
+  type RequestInvoicePdfInputResult,
+} from "./pdf-service";

@@ -731,6 +731,12 @@ const COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS = [
   "commercial_document_partial_line",
 ] as const;
 
+// M3-02b (0192): eigene Menge — Render-Job-Zeile (versiegelter
+// invoice-pdf-input.v1). Kern-, Link- und Partial-Menge bleiben stabil.
+const COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS = [
+  "commercial_document_render_job",
+] as const;
+
 // F13-01 (0103): eigene Menge — Netzanmeldung je Projekt (Statusmaschine).
 const GRID_REGISTRATION_RELATIONS = [
   "grid_registration",
@@ -3387,6 +3393,24 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // M3-02b (0192): eigene ACL-Menge — Jobs werden angelegt/gelesen, nie
+  // geaendert/geloescht (versiegelter Input; DELETE nur app_owner per RLS;
+  // Muster appointment_template: select/insert/update, bewusst kein DELETE).
+  const hasCommercialDocumentRenderJobsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS,
+    "Rollen-ACL-Manifest: M3-02b-Render-Job",
+  );
+  if (hasCommercialDocumentRenderJobsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.commercial_document_render_job
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.commercial_document_render_job to app_runtime
+    `);
+  }
+
   // F13-01 (0103): eigene ACL-Menge — Anlage/Lesen/Schreiben, nie Löschen
   // (Storno logisch über Status; Muster appointment_template).
   const hasGridRegistrationsForAcl = await hasAtomicPublicRelationSet(
@@ -4574,6 +4598,13 @@ export async function verifyRoleContract(
     COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS,
     "Rollenvertrag: F8-05-Teilrechnung-Kette",
   );
+  // M3-02b (0192): eigene Gate-Menge — alte Prefixe ohne Job-Tabelle
+  // bleiben grün (atomar je Menge).
+  const hasCommercialDocumentRenderJobs = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS,
+    "Rollenvertrag: M3-02b-Render-Job",
+  );
   // F13-01 (0103): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben grün.
   const hasGridRegistrations = await hasAtomicPublicRelationSet(
     client,
@@ -5145,6 +5176,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasCommercialDocumentRenderJobs ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.map(
@@ -6506,6 +6540,9 @@ export async function verifyRoleContract(
       ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasCommercialDocumentRenderJobs ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6784,6 +6821,20 @@ export async function verifyRoleContract(
           "f3a73abc00f11c80fd5e5ef7b60d4ad853e562217ae6bcffedbfab9d1ccfd0c2",
         "commercial_document_partial_line:tenant_isolation:" +
           "2c5b808091a8f0ae804196556f451525a893b1d27fd60954c8eca3b2a4ccdb71",
+        ] : []),
+        // M3-02b (0192): Hashes per Probe geerntet (0083-identische
+        // Policies + owner-only DELETE wie M3-01-Kern).
+        ...(hasCommercialDocumentRenderJobs ? [
+        "commercial_document_render_job:tenant_isolation:" +
+          "cc319114a501b3c51b857fdf69dc4c4eb7c8ca09a7d05519db643bdfba9a4e1f",
+        "commercial_document_render_job:commercial_document_render_job_actor_select:" +
+          "0a149fab0ab4a2ba414510a3db54366861b0349d56a83988a60b620bb137b610",
+        "commercial_document_render_job:commercial_document_render_job_actor_insert:" +
+          "8e8e65faa88617e125c9c00cdd72726120182fe91e38c1f9971c4d6b259abe24",
+        "commercial_document_render_job:commercial_document_render_job_actor_update:" +
+          "d47d4e7457887ad95343e252b705e32359a93b56753630a25a7d67e8a1b8e245",
+        "commercial_document_render_job:commercial_document_render_job_actor_delete:" +
+          "8b7ff5773dcdd9282fdd06f94482ad043722772503d0722bee203ba801bad7ca",
         ] : []),
         ...(hasGridRegistrations ? [
         "grid_registration:tenant_isolation:" +
@@ -7266,6 +7317,9 @@ export async function verifyRoleContract(
       ...(hasCommercialDocumentLinks ? [
         "commercial_document_link:commercial_document_link_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
+      ...(hasCommercialDocumentRenderJobs ? [
+        "commercial_document_render_job:commercial_document_render_job_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
     ],
     "Live-Triggervertrag",
   );
@@ -7615,6 +7669,12 @@ export async function verifyRoleContract(
       ]) : []),
       // F8-05: Kette ohne DELETE (Storno logisch über Belegstatus).
       ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      // M3-02b: Jobs ohne DELETE (versiegelter Input; Storno gibt es nicht).
+      ...(hasCommercialDocumentRenderJobs ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

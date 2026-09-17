@@ -2096,6 +2096,30 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // M3-02b (0192): Render-Job-Zeile (Beleg inline; CHECK-gepinnte
+  // Template-/Rezept-Werte, 32-Byte-SHA, JSON-Objekt).
+  commercial_document_render_job: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const documentId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, status, name, created_by, due_date, payment_status
+      ) values (
+        ${documentId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+        'M3-02b Rechnung (Render-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid'
+      )
+    `);
+    await tx.execute(sql`
+      insert into commercial_document_render_job (
+        workspace_id, document_id, input_json, input_sha256,
+        template_version, renderer_recipe, created_by
+      ) values (
+        ${wsId}::uuid, ${documentId}::uuid, '{}'::jsonb, decode(repeat('00', 32), 'hex'),
+        'invoice-pdf-template.v1', 'invoice-pdf-renderer-recipe.v1', ${userId}::uuid
+      )
+    `);
+  },
   // F1-12 (0114): benanntes Team (Muster: normalisiert kleingeschrieben).
   team: async (tx, wsId) => {
     const { userId } = await fixtureMembership(tx, wsId, "editor", '{"settings":true}');

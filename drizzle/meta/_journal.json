@@ -1058,6 +1058,13 @@
       "when": 1789642157418,
       "tag": "0191_m302a_line_freeze",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1789656894422,
+      "tag": "0192_m302b_render_job",
+      "breakpoints": true
     }
   ]
 }
