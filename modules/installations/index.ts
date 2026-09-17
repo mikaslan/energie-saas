@@ -36,12 +36,14 @@ export {
   type InstallationStatusVisibility,
 } from "./service";
 export {
+  deriveSectionQuantityLabel,
   formatWorkbookComponentsText,
   getInstallationWorkbook,
   listInstallableVariants,
   projectWorkbookComponentSections,
   projectWorkbookDatasheets,
   setInstallationVariant,
+  toSchematicInputs,
   type InstallableVariantOption,
   type InstallationWorkbook,
   type WorkbookComponentSection,

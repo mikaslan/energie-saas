@@ -15,6 +15,7 @@ import {
   deriveCertifiedCapacities,
   type CertifiedCapacities,
 } from "@/lib/integrations/offers/certified-capacities";
+import type { SchematicSectionInput } from "@/lib/integrations/schematic/single-line-v1";
 import type { CatalogTechnicalDataV1 } from "@/lib/integrations/catalog/contract";
 import { validateOfferVariantSnapshot } from "@/lib/integrations/offers/contract";
 import { OfferIntegrityError, OfferNotFoundError } from "@/modules/offers/errors";
@@ -195,6 +196,9 @@ export type WorkbookSection = {
   position: number;
   category: string;
   title: string;
+  // F7-11: summiertes Mengenlabel aus Rohwerten (serverseitig befüllt,
+  // Regel wie Angebots-SchematicCard; gemischt/leer → null).
+  quantityLabel: string | null;
   lines: WorkbookLine[];
 };
 
@@ -215,6 +219,22 @@ export type InstallationWorkbook = {
 function formatQuantity(quantityMilli: number, unit: string): string {
   if (unit === "meter") return `${(quantityMilli / 1000).toLocaleString("de-DE")} m`;
   return `${(quantityMilli / 1000).toLocaleString("de-DE")} ${unit}`;
+}
+
+// F7-11: Mengenlabel aus Rohwerten (Regel wie Angebots-SchematicCard:
+// genau eine Einheit über SICHTBARE Zeilen → summiertes Label;
+// gemischt/leer/nur versteckt → null). Eingabe sind Milli-Mengen +
+// Einheiten aus dem Snapshot-Mapping — nie aus formatierten Strings.
+export function deriveSectionQuantityLabel(
+  lines: ReadonlyArray<{ quantityMilli: number; unit: string; isHidden: boolean }>,
+): string | null {
+  const visible = lines.filter((line) => !line.isHidden);
+  const units = new Set(visible.map((line) => line.unit));
+  if (units.size !== 1) return null;
+  return formatQuantity(
+    visible.reduce((sum, line) => sum + line.quantityMilli, 0),
+    visible[0]!.unit,
+  );
 }
 
 // F7-03E: flache Stückliste für {{komponenten}} (Anzeige-Substitution).
@@ -245,6 +265,36 @@ export function projectWorkbookComponentSections(
         quantity: line.quantity,
         name: line.name,
       })),
+    }));
+}
+
+// F7-11: reiner Mapper Workbook → Schaltplan-Eingaben (nah am Typ,
+// neben projectWorkbookComponentSections, keine neue Schicht):
+// zeilenlose Sektionen raus (Angebots-Präzedenz); unbekannte Kategorie
+// fail-closed → "other" (landet in der unwired-Hinweisliste, nie Crash);
+// keine Preise, keine Keys, keine PII.
+function toSchematicCategory(category: string): SchematicSectionInput["category"] {
+  switch (category) {
+    case "module":
+    case "inverter":
+    case "battery":
+    case "wallbox":
+    case "heat_pump":
+    case "mounting":
+    case "other":
+      return category;
+    default:
+      return "other";
+  }
+}
+
+export function toSchematicInputs(sections: WorkbookSection[]): SchematicSectionInput[] {
+  return sections
+    .filter((section) => section.lines.length > 0)
+    .map((section) => ({
+      category: toSchematicCategory(section.category),
+      title: section.title,
+      quantityLabel: section.quantityLabel,
     }));
 }
 
@@ -332,6 +382,13 @@ export async function getInstallationWorkbook(
       position: section.position,
       category: section.category,
       title: section.title,
+      // F7-11: Label aus Rohwerten des versiegelten Snapshots (der Helper
+      // filtert versteckte Zeilen selbst — Regel wie SchematicCard).
+      quantityLabel: deriveSectionQuantityLabel(section.lines.map((line) => ({
+        quantityMilli: line.quantityMilli,
+        unit: line.product.unit,
+        isHidden: line.isHidden,
+      }))),
       lines: section.lines
         .filter((line) => !line.isHidden)
         .slice()

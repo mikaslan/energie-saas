@@ -83,7 +83,7 @@ function section(
   title: string,
   lines: WorkbookSection["lines"],
 ): WorkbookSection {
-  return { position, category: "pv", title, lines };
+  return { position, category: "pv", title, quantityLabel: null, lines };
 }
 
 describe("F7-02K Datenblatt-Punkt", () => {

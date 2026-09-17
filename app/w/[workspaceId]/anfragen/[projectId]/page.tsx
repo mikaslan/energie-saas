@@ -63,7 +63,7 @@ import {
   type AppointmentTemplateDto,
   type ProjectAppointmentRangeV1,
 } from "@/modules/calendar";
-import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallationHandovers, listInstallerOptions, type InstallableVariantOption, type InstallationDto, type InstallationHandoverHistoryEntry, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
+import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallationHandovers, listInstallerOptions, toSchematicInputs, type InstallableVariantOption, type InstallationDto, type InstallationHandoverHistoryEntry, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
 import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
 import { listOrderParts, type OrderPartDto } from "@/modules/order-parts";
 import {
@@ -1274,6 +1274,7 @@ export default async function ProjectTriagePage({
             installation={installationResult.installation}
             variants={installationResult.variants}
             workbook={installationResult.workbook}
+            schematicInputs={installationResult.workbook === null ? [] : toSchematicInputs(installationResult.workbook.sections)}
             canWrite={installationResult.canWrite}
           />
           {orderPartResult.kind === "loaded" && installationResult.installation ? (

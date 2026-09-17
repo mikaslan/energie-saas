@@ -1,6 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
+import { SingleLineDiagram } from "@/app/_components/single-line-diagram";
+import {
+  buildSingleLineSchematic,
+  type SchematicSectionInput,
+} from "@/lib/integrations/schematic/single-line-v1";
 import type {
   InstallableVariantOption,
   InstallationDto,
@@ -52,6 +57,8 @@ function optionLabel(option: InstallableVariantOption): string {
  * F7-08 · Workbook: zu installierende Variante binden (signierte
  * Variante vorausgewählt, Mensch bestätigt) + Stückliste je Kategorie
  * aus dem versiegelten Snapshot (VK-Summen, keine Einkaufspreise).
+ * F7-11 · Einlinien-Schaltplan der gebundenen Variante read-only
+ * (F6-01-Renderer, ESTIMATE-Layout wie Angebotsansicht).
  */
 export function InstallationWorkbookPanel({
   workspaceId,
@@ -59,6 +66,7 @@ export function InstallationWorkbookPanel({
   installation,
   variants,
   workbook,
+  schematicInputs,
   canWrite,
 }: {
   workspaceId: string;
@@ -66,10 +74,18 @@ export function InstallationWorkbookPanel({
   installation: InstallationDto | null;
   variants: InstallableVariantOption[];
   workbook: InstallationWorkbook | null;
+  // F7-11: serverseitig via toSchematicInputs(workbook.sections) projiziert
+  // (reine Funktion, kein Fetch, keine neue Permission). Der Client ruft
+  // den Modul-Mapper bewusst NICHT selbst auf — Client-Komponenten
+  // importieren aus @/modules/* nur Typen (Server-Code mit node/drizzle
+  // dürfte sonst ins Browser-Bundle); Muster checkliste/page.tsx →
+  // project-checklist-manager.tsx.
+  schematicInputs: SchematicSectionInput[];
   canWrite: boolean;
 }) {
   const [state, dispatch] = useActionState(setInstallationVariantAction, initialState);
   if (installation === null) return null;
+  const schematic = buildSingleLineSchematic(schematicInputs);
   const suggested = variants.find((option) => option.signed) ?? variants[0] ?? null;
   const frozen = installation.status === "completed";
 
@@ -211,6 +227,21 @@ export function InstallationWorkbookPanel({
               </p>
             ) : null}
           </div>
+          <section
+            aria-label="Schaltplan"
+            data-testid="workbook-schematic"
+            className="mt-3 rounded-lg border border-slate-200 bg-white p-4"
+          >
+            {/* F7-11: Fallback bei JEDEM leeren Schaltplan (Ziel schlägt
+                unwired-Bedingung — sonst stünde bei nur-other-Sektionen
+                eine leere Hülle, da SingleLineDiagram bei empty null
+                rendert; Angebots-Präzedenz blendet dort ganz aus). */}
+            {schematic.empty ? (
+              <p className="text-sm leading-6 text-slate-600">Kein Schaltplan verfügbar.</p>
+            ) : (
+              <SingleLineDiagram schematic={schematic} />
+            )}
+          </section>
         </div>
       )}
     </section>

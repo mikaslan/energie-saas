@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
-import { SingleLineDiagram } from "./single-line-diagram";
+import { SingleLineDiagram } from "@/app/_components/single-line-diagram";
 import { SchematicExport } from "./schematic-export";
 import { buildSingleLineSchematic } from "@/lib/integrations/schematic/single-line-v1";
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
