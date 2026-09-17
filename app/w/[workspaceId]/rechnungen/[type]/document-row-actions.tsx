@@ -7,12 +7,16 @@ import {
   sendDocumentAction,
   setDocumentArchivedAction,
   setDocumentTermsAction,
+  setInvoiceKindAction,
   voidDocumentAction,
   type InvoicingUiActionState,
 } from "../actions";
-import { VOID_REASON_LABELS } from "../labels";
+import { INVOICE_KIND_LABELS, VOID_REASON_LABELS } from "../labels";
 import type { CommercialDocumentV1 } from "@/lib/integrations/invoicing/contract";
-import { commercialVoidReasons } from "@/lib/integrations/invoicing/contract";
+import {
+  commercialInvoiceKinds,
+  commercialVoidReasons,
+} from "@/lib/integrations/invoicing/contract";
 
 const initialState: InvoicingUiActionState = { status: "idle" };
 
@@ -184,6 +188,78 @@ function SkontoTermsDialog({
   );
 }
 
+// F8-16: Kennung am Rechnungs-Entwurf (Spiegel zum Skonto-Dialog).
+function InvoiceKindDialog({
+  workspaceId,
+  document,
+  onClose,
+  triggerRef,
+}: {
+  workspaceId: string;
+  document: CommercialDocumentV1;
+  onClose: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const [state, dispatch] = useActionState(setInvoiceKindAction, initialState);
+  const dialogRef = useModalDialog(onClose, triggerRef);
+  // Schließen über Server-Wahrheit: bei Erfolg rendert der Dialog nichts mehr.
+  if (state.status === "success") return null;
+  const error = errorText(state);
+  return (
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="invoice-kind-dialog-title"
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4"
+    >
+      <form action={dispatch} className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-lg">
+        <h2 id="invoice-kind-dialog-title" className="text-lg font-semibold text-slate-950">
+          Rechnungsart festlegen
+        </h2>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          Nur im Entwurf änderbar; ab Ausstellung eingefroren.
+        </p>
+        <input type="hidden" name="workspaceId" value={workspaceId} />
+        <input type="hidden" name="documentId" value={document.id} />
+        <label className="mt-4 block">
+          <span className="block text-sm font-semibold text-slate-800">Rechnungsart</span>
+          <select
+            name="invoiceKind"
+            defaultValue={document.invoiceKind ?? ""}
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
+          >
+            <option value="">Einfache Rechnung</option>
+            {commercialInvoiceKinds.map((kind) => (
+              <option key={kind} value={kind}>{INVOICE_KIND_LABELS[kind]}</option>
+            ))}
+          </select>
+        </label>
+        {error ? (
+          <p role="alert" className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {error}
+          </p>
+        ) : null}
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className={buttonClass}
+          >
+            Abbrechen
+          </button>
+          <button
+            type="submit"
+            className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+          >
+            Speichern
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function DocumentRowActions({
   workspaceId,
   document,
@@ -202,6 +278,9 @@ export function DocumentRowActions({
   const [skontoOpen, setSkontoOpen] = useState(false);
   const [skontoKey, setSkontoKey] = useState(0);
   const skontoTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [kindOpen, setKindOpen] = useState(false);
+  const [kindKey, setKindKey] = useState(0);
+  const kindTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const anyError = errorText(issueState) ?? errorText(sendState)
     ?? errorText(archiveState);
@@ -229,6 +308,20 @@ export function DocumentRowActions({
           className={buttonClass}
         >
           Skonto
+        </button>
+      ) : null}
+
+      {document.status === "draft" && document.type === "invoice" ? (
+        <button
+          ref={kindTriggerRef}
+          type="button"
+          onClick={() => {
+            setKindOpen(true);
+            setKindKey((key) => key + 1);
+          }}
+          className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+        >
+          Art
         </button>
       ) : null}
 
@@ -290,6 +383,16 @@ export function DocumentRowActions({
           document={document}
           onClose={() => setSkontoOpen(false)}
           triggerRef={skontoTriggerRef}
+        />
+      ) : null}
+
+      {kindOpen ? (
+        <InvoiceKindDialog
+          key={`kind-${kindKey}`}
+          workspaceId={workspaceId}
+          document={document}
+          onClose={() => setKindOpen(false)}
+          triggerRef={kindTriggerRef}
         />
       ) : null}
     </div>

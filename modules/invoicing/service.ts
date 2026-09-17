@@ -35,6 +35,7 @@ import {
   commercialDocumentPaymentStatusCommandV1Schema,
   commercialDocumentSentCommandV1Schema,
   commercialDocumentTermsCommandV1Schema,
+  commercialDocumentInvoiceKindCommandV1Schema,
   commercialDocumentV1Schema,
   commercialDocumentVoidCommandV1Schema,
   commercialDocumentGroupV1Schema,
@@ -72,6 +73,7 @@ import {
   type CommercialDocumentPaymentStatusCommandV1,
   type CommercialDocumentSentCommandV1,
   type CommercialDocumentTermsCommandV1,
+  type CommercialDocumentInvoiceKindCommandV1,
   type CommercialDocumentV1,
   type CommercialDocumentVoidCommandV1,
   type CommercialDocumentGroupV1,
@@ -501,6 +503,7 @@ type DocumentDtoRow = {
   planned_delivery_date: string | null;
   planned_service_date: string | null;
   credit_note_type: string | null;
+  invoice_kind: string | null;
   payment_status: string | null;
   number: string | null;
   number_year: number | null;
@@ -519,7 +522,7 @@ const DOCUMENT_DTO_SELECT = sql`
          archived_at, currency, net_cents, tax_cents, gross_cents, due_date,
          skonto_percent_bps, skonto_days,
          delivery_date, validity_date, planned_delivery_date,
-         planned_service_date, credit_note_type, payment_status, number,
+         planned_service_date, credit_note_type, invoice_kind, payment_status, number,
          number_year, number_sequence, issued_at, sent_at, voided_at,
          void_reason, paid_cents, created_at
     from commercial_document
@@ -566,6 +569,7 @@ function toDocumentV1(row: DocumentDtoRow, canWrite: boolean): CommercialDocumen
     plannedDeliveryDate: row.planned_delivery_date,
     plannedServiceDate: row.planned_service_date,
     creditNoteType: row.credit_note_type,
+    invoiceKind: row.invoice_kind,
     number: row.number,
     numberYear: row.number_year === null ? null : Number(row.number_year),
     numberSequence: row.number_sequence === null ? null : Number(row.number_sequence),
@@ -598,6 +602,7 @@ type IssueDocumentRow = {
   planned_delivery_date: string | null;
   planned_service_date: string | null;
   credit_note_type: string | null;
+  invoice_kind: string | null;
   recipient_snapshot: unknown;
   created_by: string;
   [key: string]: unknown;
@@ -801,7 +806,7 @@ export async function createDocument(
         payment_status, paid_cents, due_date, skonto_percent_bps, skonto_days,
         delivery_date, validity_date,
         planned_delivery_date, planned_service_date, credit_note_type,
-        created_by
+        invoice_kind, created_by
       ) values (
         ${documentId}::uuid, ${ctx.workspaceId}::uuid, ${type},
         ${command.groupId}::uuid, ${command.projectId}::uuid, ${command.contactId}::uuid,
@@ -814,6 +819,7 @@ export async function createDocument(
         ${command.plannedDeliveryDate ? sql`${command.plannedDeliveryDate}::date` : null},
         ${command.plannedServiceDate ? sql`${command.plannedServiceDate}::date` : null},
         ${command.creditNoteType},
+        ${command.invoiceKind ?? null},
         ${ctx.actor}::uuid
       )
     `);
@@ -822,7 +828,14 @@ export async function createDocument(
     if (code === "23514") throw new InvoicingValidationError();
     throw error;
   }
-  const evidence = { workspaceId: ctx.workspaceId, documentId, type };
+  // F8-16: Kennung ins Erstellungs-Evidence (Anlage-mit-Kennung sonst
+  // unauditiert; IDs+Kennung-Budget, kein PII).
+  const evidence = {
+    workspaceId: ctx.workspaceId,
+    documentId,
+    type,
+    invoiceKind: command.invoiceKind ?? null,
+  };
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
     aggregateType: "commercial_document",
@@ -923,7 +936,7 @@ export async function issueDocument(
            currency, net_cents, tax_cents, gross_cents, due_date,
            skonto_percent_bps, skonto_days,
            delivery_date, validity_date, planned_delivery_date,
-           planned_service_date, credit_note_type, recipient_snapshot,
+           planned_service_date, credit_note_type, invoice_kind, recipient_snapshot,
            created_by
       from commercial_document
      where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
@@ -997,6 +1010,7 @@ export async function issueDocument(
     plannedDeliveryDate: document.planned_delivery_date,
     plannedServiceDate: document.planned_service_date,
     creditNoteType: document.credit_note_type,
+    invoiceKind: document.invoice_kind,
     name: document.name,
     recipientSnapshot: document.recipient_snapshot,
     lines: lines.rows.map((line) => ({
@@ -1054,7 +1068,7 @@ export async function issueDocument(
            currency, net_cents, tax_cents, gross_cents, due_date,
            skonto_percent_bps, skonto_days,
            delivery_date, validity_date, planned_delivery_date,
-           planned_service_date, credit_note_type, payment_status, number,
+           planned_service_date, credit_note_type, invoice_kind, payment_status, number,
            number_year, number_sequence, issued_at, sent_at, voided_at,
            void_reason, paid_cents
       from commercial_document
@@ -1085,6 +1099,7 @@ export async function issueDocument(
     plannedDeliveryDate: issuedRow.planned_delivery_date,
     plannedServiceDate: issuedRow.planned_service_date,
     creditNoteType: issuedRow.credit_note_type,
+    invoiceKind: issuedRow.invoice_kind,
     number: issuedRow.number,
     numberYear: issuedRow.number_year === null ? null : Number(issuedRow.number_year),
     numberSequence: issuedRow.number_sequence === null ? null : Number(issuedRow.number_sequence),
@@ -1372,6 +1387,63 @@ export async function setDocumentTerms(
   return readDocument(tx, ctx, documentId);
 }
 
+// F8-16: Kennung am Rechnungs-Entwurf setzen/loeschen (Spiegel zu
+// setDocumentTerms: FOR UPDATE-Lock, Typ-Gate invoice, Freeze ab issue).
+export async function setInvoiceKind(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentInvoiceKindCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentInvoiceKindCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const documentId = parsed.data.documentId;
+
+  const document = await tx.execute<{ type: string; status: string }>(sql`
+    select type, status
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+     for update
+  `);
+  const row = document.rows[0];
+  if (!row) throw new InvoicingNotFoundError();
+  if (row.type !== "invoice") throw new InvoicingValidationError();
+  if (row.status !== "draft") throw new InvoicingConflictError();
+
+  try {
+    await tx.execute(sql`
+      update commercial_document
+         set invoice_kind = ${parsed.data.invoiceKind},
+             updated_at = statement_timestamp()
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${documentId}::uuid
+         and status = 'draft'
+    `);
+  } catch (error) {
+    if (postgresErrorCode(error) === "23514") throw new InvoicingValidationError();
+    throw error;
+  }
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.kind_set",
+    actor: ctx.actor,
+    payload: { documentId, invoiceKind: parsed.data.invoiceKind },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.kind_set",
+    resource: "commercial_document",
+    allowed: true,
+    details: { documentId, invoiceKind: parsed.data.invoiceKind },
+  });
+  return readDocument(tx, ctx, documentId);
+}
+
 export async function createDocumentLine(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -1593,6 +1665,9 @@ export async function listDocuments(
   }
   if (filters.creditNoteType !== undefined) {
     conditions.push(sql`credit_note_type = ${filters.creditNoteType}`);
+  }
+  if (filters.invoiceKind !== undefined) {
+    conditions.push(sql`invoice_kind = ${filters.invoiceKind}`);
   }
   // Archiv-Achse (Spec §5.4): active = Standard (nur nicht archivierte).
   if (filters.archived === undefined || filters.archived === "active") {

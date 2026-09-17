@@ -5,6 +5,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
   DOCUMENT_TYPE_SINGULAR_LABELS,
+  INVOICE_KIND_LABELS,
   PAYMENT_STATUS_LABELS,
   VOID_REASON_LABELS,
   formatBerlinDate,
@@ -162,6 +163,14 @@ export default async function InvoicingDocumentDetailPage(
             <dt className="text-slate-600">Status</dt>
             <dd className="font-semibold text-slate-900">{DOCUMENT_STATUS_LABELS[document.status] ?? document.status}</dd>
           </div>
+          {type === "invoice" ? (
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-600">Rechnungsart</dt>
+              <dd data-testid="invoice-kind-badge" className="font-semibold text-slate-900">
+                {document.invoiceKind === null ? "Einfache Rechnung" : (INVOICE_KIND_LABELS[document.invoiceKind] ?? document.invoiceKind)}
+              </dd>
+            </div>
+          ) : null}
           <div className="flex justify-between gap-4">
             <dt className="text-slate-600">Zahlstatus</dt>
             <dd className="font-semibold text-slate-900">

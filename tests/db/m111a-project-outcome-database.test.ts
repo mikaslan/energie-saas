@@ -240,10 +240,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0145 F16-04b Vorlagen-Bearbeiter (Spalte + CHECK),
     // 0146 F16-04d Vorlagen-Checkliste (Spalte + CHECK),
     // 0147 F16-04e Vorlagen-Labels (Spalte + CHECK),
-    // 0148 F16-11 Paket-Vorlagen (Tabelle + RLS)).
+    // 0148 F16-11 Paket-Vorlagen (Tabelle + RLS),
+    // 0190 F8-16 Teilrechnungstypen-Kennung (Spalte + CHECKs + Guard)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 148,
-      tag: "0148_f16_11_paket_vorlagen",
+      idx: 149,
+      tag: "0190_f8_16_teilrechnungstypen",
     });
   });
 

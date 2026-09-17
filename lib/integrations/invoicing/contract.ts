@@ -236,6 +236,9 @@ export const COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION =
   "commercial-document-issue-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION =
   "commercial-document-terms-command.v1" as const;
+// F8-16: Kennung setzen/loeschen am Rechnungs-Entwurf (invoice-only).
+export const COMMERCIAL_DOCUMENT_INVOICE_KIND_COMMAND_VERSION =
+  "commercial-document-invoice-kind-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION =
   "commercial-document-archive-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION =
@@ -328,7 +331,9 @@ export const INVOICING_DATEV_BATCH_VERSION = "invoicing-datev-batch.v1" as const
 // F5-01: v2 versiegelt zusaetzlich die Skonto-Konditionen (Paar
 // skontoPercentBps/skontoDays, null = kein Skonto). v1-Snapshots bleiben
 // lesbar (Seeds/History), neue Ausstellungen siegeln v2.
-export const GOEBD_SNAPSHOT_SCHEMA_VERSION = "document-snapshot.v2" as const;
+// F8-16: v3 versiegelt zusaetzlich die Teilrechnungstypen-Kennung
+// (invoiceKind, null = einfache Rechnung). v1/v2 bleiben lesbar.
+export const GOEBD_SNAPSHOT_SCHEMA_VERSION = "document-snapshot.v3" as const;
 export const GOEBD_SNAPSHOT_CANONICALIZATION_VERSION = "document-jcs.v1" as const;
 
 // 6 Dokumenttypen (Spec §2/§4, ADR 0023). Der Diskriminator ist genau dieser
@@ -375,6 +380,16 @@ export const commercialCreditNoteTypes = [
 ] as const;
 export type CommercialCreditNoteType = (typeof commercialCreditNoteTypes)[number];
 
+// F8-16: Teilrechnungstypen-Kennung (Katalog F8.1). Deutsche DB-Codes wie
+// creditNoteType-Praezedenz; exakte Reonic-Typnamen UNKNOWN (ESTIMATE).
+export const commercialInvoiceKinds = [
+  "anzahlung",
+  "abschlag",
+  "teilrechnung",
+  "schlussrechnung",
+] as const;
+export type CommercialInvoiceKind = (typeof commercialInvoiceKinds)[number];
+
 // Nummernserien-Defaults je Typ (Spec §6, OBSERVED-Templates). prefix/padding
 // modellieren nur den {NUMBER}-Anteil; die vollständigen Datums-Platzhalter
 // ({YEAR}/{MONTH}/{DAY}) liegen im M3-00-Format-Template.
@@ -398,6 +413,7 @@ const commercialPaymentStatusSchema = z.enum(commercialPaymentStatuses);
 const commercialVoidReasonSchema = z.enum(commercialVoidReasons);
 const commercialLineUnitSchema = z.enum(commercialLineUnits);
 const commercialCreditNoteTypeSchema = z.enum(commercialCreditNoteTypes);
+const commercialInvoiceKindSchema = z.enum(commercialInvoiceKinds);
 
 const groupNameSchema = z.string().trim().min(1).max(120).refine(
   (value) => value.trim().length >= 1,
@@ -435,6 +451,8 @@ const documentDraftInputFields = {
   plannedDeliveryDate: optionalDate,
   plannedServiceDate: optionalDate,
   creditNoteType: commercialCreditNoteTypeSchema.nullable(),
+  // F8-16: optional (fehlend = null = einfache Rechnung), nur invoice.
+  invoiceKind: commercialInvoiceKindSchema.nullable().optional(),
 } as const;
 
 // Typ-bedingte Pflicht-Datumfelder (Spec §4/M301-01): je Typ die Spalten aus
@@ -475,6 +493,14 @@ export const commercialDocumentDraftInputV1Schema = z
         code: "custom",
         path: ["creditNoteType"],
         message: "creditNoteType is only valid for credit_note",
+      });
+    }
+    // F8-16: Kennung nur an Rechnungen (DB-Scope-CHECK spiegeln).
+    if ((value.invoiceKind ?? null) !== null && value.type !== "invoice") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["invoiceKind"],
+        message: "invoiceKind is only valid for invoice",
       });
     }
     // F5-01b: Skonto nur als Paar und nur fuer Rechnungen (fehlende Keys
@@ -533,6 +559,17 @@ export const commercialDocumentTermsCommandV1Schema = z
   });
 export type CommercialDocumentTermsCommandV1 = z.infer<
   typeof commercialDocumentTermsCommandV1Schema
+>;
+
+// F8-16: Kennung am Rechnungs-Entwurf setzen (null = loeschen). Typ- und
+// Status-Gates prueft der Service (Validation/Conflict), wie Terms.
+export const commercialDocumentInvoiceKindCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_INVOICE_KIND_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+  invoiceKind: commercialInvoiceKindSchema.nullable(),
+});
+export type CommercialDocumentInvoiceKindCommandV1 = z.infer<
+  typeof commercialDocumentInvoiceKindCommandV1Schema
 >;
 export type CommercialDocumentSentCommandV1 = z.infer<
   typeof commercialDocumentSentCommandV1Schema
@@ -678,6 +715,7 @@ export const commercialDocumentV1Schema = z.strictObject({
   plannedDeliveryDate: z.string().nullable(),
   plannedServiceDate: z.string().nullable(),
   creditNoteType: commercialCreditNoteTypeSchema.nullable(),
+  invoiceKind: commercialInvoiceKindSchema.nullable(),
   number: z.string().nullable(),
   numberYear: z.number().int().nullable(),
   numberSequence: z.number().int().nullable(),
@@ -811,6 +849,8 @@ export const commercialDocumentListFiltersV1Schema = z
     typeDateFrom: isoDateOnlySchema.optional(),
     typeDateTo: isoDateOnlySchema.optional(),
     creditNoteType: commercialCreditNoteTypeSchema.optional(),
+    // F8-16: Kennungsfilter (Scope nur Typ invoice, s. Refine unten).
+    invoiceKind: commercialInvoiceKindSchema.optional(),
     archived: z.enum(["active", "archived", "all"]).optional(),
     search: z.string().trim().min(1).max(160).optional(),
   })
@@ -847,6 +887,9 @@ export const commercialDocumentListCommandV1Schema = z
     }
     if (filters.creditNoteType !== undefined && value.type !== "credit_note") {
       issue("creditNoteType", "creditNoteType is only valid for credit_note");
+    }
+    if (filters.invoiceKind !== undefined && value.type !== "invoice") {
+      issue("invoiceKind", "invoiceKind is only valid for invoice");
     }
     if ((filters.typeDateFrom !== undefined || filters.typeDateTo !== undefined)
       && value.type !== "invoice" && value.type !== "credit_note") {

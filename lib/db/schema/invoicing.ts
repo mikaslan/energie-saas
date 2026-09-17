@@ -306,6 +306,8 @@ export const commercialDocument = pgTable(
     numberSequence: integer("number_sequence"),
     issuedAt: timestamp("issued_at", { withTimezone: true }),
     creditNoteType: text("credit_note_type"),
+    // F8-16 · Teilrechnungstypen-Kennung (nur invoice, sonst null).
+    invoiceKind: text("invoice_kind"),
     goebdRetentionUntil: date("goebd_retention_until"),
     currency: text("currency").notNull().default("EUR"),
     netCents: bigint("net_cents", { mode: "number" }).notNull().default(0),
@@ -408,6 +410,15 @@ export const commercialDocument = pgTable(
     check(
       "commercial_document_credit_note_type_scope_ck",
       sql`${t.creditNoteType} is null or ${t.type} = 'credit_note'`,
+    ),
+    check(
+      "commercial_document_invoice_kind_ck",
+      sql`${t.invoiceKind} is null
+        or ${t.invoiceKind} in ('anzahlung', 'abschlag', 'teilrechnung', 'schlussrechnung')`,
+    ),
+    check(
+      "commercial_document_invoice_kind_scope_ck",
+      sql`${t.invoiceKind} is null or ${t.type} = 'invoice'`,
     ),
     check(
       "commercial_document_letter_ck",

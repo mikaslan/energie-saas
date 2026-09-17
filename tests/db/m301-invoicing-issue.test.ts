@@ -341,6 +341,8 @@ describe("M3-01 Ausstellen + Nummernkreis (PostgreSQL)", () => {
       plannedDeliveryDate: stored?.plannedDeliveryDate,
       plannedServiceDate: stored?.plannedServiceDate,
       creditNoteType: stored?.creditNoteType,
+      // F8-16: Service siegelt die Kennung mit (v3) — Spiegel der kanonischen Form.
+      invoiceKind: stored?.invoiceKind ?? null,
       name: stored?.name,
       recipientSnapshot: stored?.recipientSnapshot ?? null,
       lines: ((stored?.lines ?? []) as Array<Record<string, unknown>>).map((line) => ({

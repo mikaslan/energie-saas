@@ -3,10 +3,11 @@
 import { useActionState, useRef, useState } from "react";
 import { useModalDialog } from "../dialog-focus";
 import { createDocumentAction, type InvoicingUiActionState } from "../actions";
-import { DOCUMENT_TYPE_SINGULAR_LABELS } from "../labels";
-import type {
-  CommercialDocumentGroupV1,
-  CommercialDocumentType,
+import { DOCUMENT_TYPE_SINGULAR_LABELS, INVOICE_KIND_LABELS } from "../labels";
+import {
+  commercialInvoiceKinds,
+  type CommercialDocumentGroupV1,
+  type CommercialDocumentType,
 } from "@/lib/integrations/invoicing/contract";
 
 const initialState: InvoicingUiActionState = { status: "idle" };
@@ -88,6 +89,15 @@ function CreateDocumentForm({
             <label className="mt-4 block">
               <span className="block text-sm font-semibold text-slate-800">Fällig am</span>
               <input type="date" name="dueDate" required className={inputClass} />
+            </label>
+            <label className="mt-4 block">
+              <span className="block text-sm font-semibold text-slate-800">Rechnungsart (optional)</span>
+              <select name="invoiceKind" defaultValue="" className={inputClass}>
+                <option value="">Einfache Rechnung</option>
+                {commercialInvoiceKinds.map((kind) => (
+                  <option key={kind} value={kind}>{INVOICE_KIND_LABELS[kind]}</option>
+                ))}
+              </select>
             </label>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <label className="block">

@@ -4561,6 +4561,15 @@ export async function verifyRoleContract(
       ],
       "Rollenvertrag: F5-01-Skonto",
     );
+  // F8-16 Kennung (Migration 0190) erweitert den M301-Guard um
+  // invoice_kind; historische Prefixe ohne 0190 behalten die aelteren
+  // Pins (Spaltenvertrag wie F5-01).
+  const hasInvoiceKind = hasCommercialDocuments
+    && await hasAtomicPublicColumnSet(
+      client,
+      ["commercial_document.invoice_kind"],
+      "Rollenvertrag: F8-16-Kennung",
+    );
   const hasEconomicsSettings = await hasAtomicPublicRelationSet(
     client,
     ECONOMICS_RELATIONS,
@@ -5765,11 +5774,16 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
         // F5-01 (0082): Guard friert zusaetzlich skonto_* ein — Pin
         // versionsbedingt (historische Prefixe ohne 0082 behalten v1-Pin).
+        // F8-16 (0190): Guard friert zusaetzlich invoice_kind ein —
+        // dritter Pin (Methode gegen 0082-Pin kalibriert, Delta exakt
+        // eine Freeze-Zeile).
         "_m301_guard_issued_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:" +
-          (hasInvoiceSkontoTerms
-            ? "518f9c93a0e72f65ea9b7f96b1d08754073bd8844b20e82fb3f08553331a571a"
-            : "b3d5ec893a41767ec5afe0be70c21ca81343985f55bce9a29b5beb838cc51f32"),
+          (hasInvoiceKind
+            ? "1495ab8dd11a6793f7ddd85d62e71ca6933f28d60d890781b36edbc9210a7ec2"
+            : hasInvoiceSkontoTerms
+              ? "518f9c93a0e72f65ea9b7f96b1d08754073bd8844b20e82fb3f08553331a571a"
+              : "b3d5ec893a41767ec5afe0be70c21ca81343985f55bce9a29b5beb838cc51f32"),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
         "_m300_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
