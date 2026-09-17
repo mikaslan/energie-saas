@@ -3,6 +3,18 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-17 — F16-14 integriert (Flotten-Lane, Leitstand)
+
+- `codex/muse-fleet-2-f16` (`8d48ab1`) per Fast-Forward in `codex/m1-wave-02`:
+  F16-14 Angebots-Bulk-Update auf aktuelle Katalogbasis (Blaupause F16.1),
+  migrationsfrei, keine neuen Permissions.
+- Belege: Lane-CI Run `35216719975` success (beide Jobs); Integrations-Gates
+  auf dem Merge-HEAD: `npm run check` mit 404/405 Testdateien (einziger Ausfall
+  `backup-automation` = belegter Last-Flake unter Parallellast, isoliert 16/16
+  gruen), lint/typecheck/depcruise gruen.
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## Bedeutung dieses Dokuments
 
 Die Prozentwerte sind eine grobe Programmprognose, **kein** Ersatz für die
