@@ -1536,6 +1536,32 @@ async function main(): Promise<number> {
     mainCredential,
     intakePayload(seedData.mainContactName, `main-${randomUUID()}`, true),
   );
+  // CI-35098476611-Kaltstart (m1-05-triage.spec.ts:653/658): POST
+  // .../address-candidates wird suite-weit genau einmal getroffen (Test
+  // [163/260]); der Dev-Kaltstart der Route ließ waitForResponse ins
+  // 12-s-Timeout laufen, der CI-Snapshot belegt "Compiling" während der
+  // laufenden Anfrage. Unauthentifizierter POST kompiliert die Route bis
+  // zur Auth-Grenze (401): keine Sitzung, kein Rate-Limit-Verbrauch,
+  // kein Provider-Aufruf — der Geoapify-1/1-Vertrag bleibt unberührt,
+  // der Test selbst bleibt die harte Prüfung.
+  try {
+    const warmCandidates = await fetch(
+      `${server.baseURL}/api/workspaces/${seedData.workspaceId}/projects/${mainLead.projectId}/address-candidates`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: server.baseURL,
+        },
+        body: JSON.stringify({ query: "Routen-Warmup" }),
+        redirect: "manual",
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
+    await warmCandidates.arrayBuffer();
+  } catch (error) {
+    console.log(`[e2e] Adresskandidaten-Warmup übersprungen: ${safeMessage(error)}`);
+  }
   const foreignLead = await submitSignedLead(
     server,
     embedded.superuserUrl,
