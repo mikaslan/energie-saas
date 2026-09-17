@@ -1,12 +1,12 @@
 {
   "artifact": "dash-measurements/v1",
-  "route": "/w/:workspaceId/angebote",
+  "route": "/w/:workspaceId/plantafel",
   "viewport": {
     "width": 375,
     "height": 812
   },
   "head": "f6f323f",
-  "sourceRunCapturedAt": "2026-09-17T14:59:47.603Z",
+  "sourceRunCapturedAt": "2026-09-17T14:59:58.751Z",
   "boxes": [
     {
       "selector": "main",
@@ -18,7 +18,7 @@
     {
       "selector": "h1",
       "x": 16,
-      "y": 229,
+      "y": 48,
       "width": 343,
       "height": 36
     }

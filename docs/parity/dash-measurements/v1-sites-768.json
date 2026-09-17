@@ -1,26 +1,26 @@
 {
   "artifact": "dash-measurements/v1",
-  "route": "/w/:workspaceId/angebote",
+  "route": "/w/:workspaceId/sites",
   "viewport": {
     "width": 768,
     "height": 1024
   },
   "head": "f6f323f",
-  "sourceRunCapturedAt": "2026-09-17T14:59:47.730Z",
+  "sourceRunCapturedAt": "2026-09-17T15:00:00.093Z",
   "boxes": [
     {
       "selector": "main",
-      "x": 0,
+      "x": 48,
       "y": 0,
-      "width": 768,
+      "width": 672,
       "height": 1024
     },
     {
       "selector": "h1",
-      "x": 24,
-      "y": 121,
-      "width": 600.109375,
-      "height": 36
+      "x": 72,
+      "y": 40,
+      "width": 624,
+      "height": 32
     }
   ]
 }

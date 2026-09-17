@@ -14,6 +14,8 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
 - Re-Capture: E2E-Lauf wiederholen, dann
   `npx tsx scripts/dash-measurements-normalize.mts --head <sha>` (validiert
   Boxen, normalisiert Routen, schreibt `v1-*.json`); danach `git diff` sichten.
+- Heads: je Artefakt im Feld `head` (angebotdetail: a4fbf2e aus Suite-Lauf;
+  Rest: f6f323f; Routen-Code seitdem unveraendert, 0 Box-Drift).
 - Zeitstempel in Agent-5-Berichten vor 2026-09-17 10:00 UTC waren lokale
   Maschinenzeit (UTC+3), ab hier echte UTC.
 
@@ -101,13 +103,15 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
 - VERIFIZIERT im Suite-Lauf 2026-09-17 (265 passed, 0 failed, 12.2 Min):
   VG-06 Gates gruen, Messungen `v1-angebotdetail-*.json` (4 Boxen).
 
-## 5. Roadmap (OFFEN)
+## 5. Roadmap (OFFEN, Rest)
 
-- Rechnungen, restliche Routen: derselbe Gate-Satz plus Mess-Artefakte.
-- Rollenmatrix (Viewer/Editor/Admin/External) pro Route, Loading-/Error-States,
-  Screenshot-Sichtung mit stabilen Testdaten.
-- CI-Lane-Nachweis: volle E2E-Suite in CI muss ebenfalls gruen sein
-  (lokal bereits 265/265, nur Fremd-Flakes als Restrisiko).
+- Einstellungen (19 Seiten): CODE-inventoriert (Routenbaum), keine Live-Gates
+  (Template-CRUD, je Seite eigene Fixtures noetig — Folgeauftrag).
+- Loading-/Error-Live-States: CODE-verifiziert (Dateien vorhanden, z. B.
+  aufgaben/error.tsx, projektakte/loading.tsx); Live-Trigger braucht
+  Fault-Injection — OFFEN.
+- Portal Dok-/Rechnungszeilen-Wrap (P2-Risiko): braucht befuellte Fixtures.
+- Sites-Palette (zinc statt slate): notiert, kein Redesign (Direktive).
 
 ## 6. Review-Entscheidungen (Agent-5-Review, P2 dokumentiert statt gefixt)
 
@@ -118,3 +122,20 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
   Folge-Gates mit Datei-/Rechnungsdaten.
 - Repro-Grep/Shared-State: Einwand falsifiziert — VG-03/04/05 laufen fokussiert
   grün (globales Setup seedet grep-unabhängig); nur VG-06 braucht Suite-Kontext.
+
+## 7. VG-07..14 (Rollen + 6 Routen, VERIFIZIERT 2026-09-17)
+
+- VG-07: Unangemeldet → /login-Redirect mit next-Param (Dashboard).
+- VG-08: External-Partial-Modell — nur Wiedervorlagen (leer) + Service-Rumpf
+  (nur Datei-Anfragen leer; Vorgaenge/Foerderakten absent), Pipeline/
+  Rechnungen/Abschluesse denied (count 0). Kein Zahlen-Leck.
+- VG-09 Rechnungen (h1 + „Keine Einträge“), VG-10 Aufgaben, VG-11 Kalender,
+  VG-12 Katalog („Der Katalog ist noch leer“), VG-13 Plantafel,
+  VG-14 Standorte: je 375/768/1440, Axe, Console/Hydration, Messungen
+  (main + h1, 2 Boxen je Viewport).
+- BEFUND + FIX 3 (P1, RED→GREEN): Sites-Seite ohne Auth lesbar (UUID-Leak,
+  Formular; Schreiben war Action-enforced) → Render-Gate im Sibling-Muster
+  (project.read + Redirect + DeniedState).
+- BEFUND + FIX 4 (RED→GREEN): Plantafel-Eyebrow slate-500 auf slate-100 =
+  4.34 (Axe) → slate-600 wie Geschwister-Zeile.
+- Evidenz: DASH-VG 13 passed + 1 skipped (21.7s); Mess-JSONs 36 Stk. gesamt.

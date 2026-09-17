@@ -1,24 +1,24 @@
 {
   "artifact": "dash-measurements/v1",
-  "route": "/w/:workspaceId/angebote",
+  "route": "/w/:workspaceId/aufgaben",
   "viewport": {
     "width": 375,
     "height": 812
   },
   "head": "f6f323f",
-  "sourceRunCapturedAt": "2026-09-17T14:59:47.603Z",
+  "sourceRunCapturedAt": "2026-09-17T14:59:54.819Z",
   "boxes": [
     {
       "selector": "main",
       "x": 0,
       "y": 0,
       "width": 375,
-      "height": 812
+      "height": 1274
     },
     {
       "selector": "h1",
       "x": 16,
-      "y": 229,
+      "y": 277,
       "width": 343,
       "height": 36
     }

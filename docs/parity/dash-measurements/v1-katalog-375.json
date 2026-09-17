@@ -1,33 +1,26 @@
 {
   "artifact": "dash-measurements/v1",
-  "route": "/p/:token",
+  "route": "/w/:workspaceId/katalog",
   "viewport": {
     "width": 375,
     "height": 812
   },
   "head": "f6f323f",
-  "sourceRunCapturedAt": "2026-09-17T14:59:49.642Z",
+  "sourceRunCapturedAt": "2026-09-17T14:59:57.530Z",
   "boxes": [
     {
       "selector": "main",
       "x": 0,
       "y": 0,
       "width": 375,
-      "height": 568.390625
+      "height": 1383
     },
     {
       "selector": "h1",
-      "x": 49,
-      "y": 110.1875,
-      "width": 277,
+      "x": 16,
+      "y": 124,
+      "width": 343,
       "height": 32
-    },
-    {
-      "selector": "nav",
-      "x": 49,
-      "y": 158.1875,
-      "width": 277,
-      "height": 96
     }
   ]
 }

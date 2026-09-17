@@ -1,25 +1,25 @@
 {
   "artifact": "dash-measurements/v1",
-  "route": "/w/:workspaceId/angebote",
+  "route": "/w/:workspaceId/rechnungen",
   "viewport": {
     "width": 1440,
     "height": 1000
   },
   "head": "f6f323f",
-  "sourceRunCapturedAt": "2026-09-17T14:59:47.854Z",
+  "sourceRunCapturedAt": "2026-09-17T14:59:53.949Z",
   "boxes": [
     {
       "selector": "main",
       "x": 0,
       "y": 0,
       "width": 1440,
-      "height": 1000
+      "height": 465
     },
     {
       "selector": "h1",
       "x": 32,
-      "y": 129,
-      "width": 600.109375,
+      "y": 52,
+      "width": 1376,
       "height": 36
     }
   ]
