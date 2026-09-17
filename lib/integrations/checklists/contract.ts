@@ -142,11 +142,32 @@ export const checklistSegmentSchema = editableChecklistSegmentSchema.extend({
 );
 export type ChecklistSegmentV1 = z.infer<typeof checklistSegmentSchema>;
 
+// F7-02H: Block-Fälligkeitsdatum (Kalendertag, Katalog F7.2). Format
+// plus Echtheit (weist 2026-02-31 ab); spiegelt DB-Validator 0174.
+export const CHECKLIST_BLOCK_DUE_DATE_PATTERN =
+  /^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
+
+export function isChecklistCalendarDate(value: string): boolean {
+  if (!CHECKLIST_BLOCK_DUE_DATE_PATTERN.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const probe = new Date(Date.UTC(year!, month! - 1, day!));
+  return probe.getUTCFullYear() === year
+    && probe.getUTCMonth() === month! - 1
+    && probe.getUTCDate() === day;
+}
+
+export const checklistBlockDueDateSchema = z.string()
+  .regex(CHECKLIST_BLOCK_DUE_DATE_PATTERN)
+  .refine(isChecklistCalendarDate, { message: "Fälligkeitsdatum ist kein Kalendertag" })
+  .nullish();
+
 export const editableChecklistBlockSchema = z.object({
   id: stableUuidSchema,
   name: cleanText(CHECKLIST_BLOCK_NAME_MAX),
   position: checklistPositionSchema,
   visible: z.boolean(),
+  // F7-02H: Struktur-Metadatum (kein Gate, kein Strip).
+  dueDate: checklistBlockDueDateSchema,
   segments: z.array(editableChecklistSegmentSchema).max(CHECKLIST_SEGMENTS_MAX),
 }).strict();
 export type EditableChecklistBlockV2 = z.infer<typeof editableChecklistBlockSchema>;
@@ -168,6 +189,8 @@ export const checklistBlockSchema = z.object({
   name: cleanText(CHECKLIST_BLOCK_NAME_MAX),
   position: checklistPositionSchema,
   visible: z.boolean(),
+  // F7-02H: Struktur-Metadatum (Lesesicht wie Edit-Sicht).
+  dueDate: checklistBlockDueDateSchema,
   segments: z.array(checklistSegmentSchema).max(CHECKLIST_SEGMENTS_MAX),
   assignedTeams: z.array(checklistBlockAssignedTeamSchema).max(50),
 }).strict();
@@ -417,6 +440,8 @@ export function toEditableChecklistBlocks(
     name: block.name,
     position: block.position,
     visible: block.visible,
+    // F7-02H: Struktur-Metadatum mittragen (sonst stiller Verlust).
+    dueDate: block.dueDate,
     segments: block.segments.map((segment) => ({
       id: segment.id,
       name: segment.name,

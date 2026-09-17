@@ -261,6 +261,10 @@ export function ProjectChecklistManager({
   const renameBlock = (blockIndex: number, name: string) =>
     patchBlocks(canEditStructure, (value) => value.map((block, index) =>
       index === blockIndex ? { ...block, name } : block));
+  // F7-02H: Struktur-Metadatum wie der Block-Name (leerer String = null).
+  const setBlockDueDate = (blockIndex: number, dueDate: string | null) =>
+    patchBlocks(canEditStructure, (value) => value.map((block, index) =>
+      index === blockIndex ? { ...block, dueDate } : block));
   const renameSegment = (blockIndex: number, segmentIndex: number, name: string) =>
     patchBlocks(canEditStructure, (value) => value.map((block, index) => {
       if (index !== blockIndex) return block;
@@ -326,6 +330,7 @@ export function ProjectChecklistManager({
                   canUnlock={canUnlock}
                   hasUnsavedChanges={hasUnsavedChanges}
                   onRename={(name) => renameBlock(blockIndex, name)}
+                  onSetDueDate={(dueDate) => setBlockDueDate(blockIndex, dueDate)}
                   onAddSegment={() => addSegment(blockIndex)}
                   onAddItem={(segmentIndex) => addItem(blockIndex, segmentIndex)}
                   onRenameSegment={(segmentIndex, name) => renameSegment(blockIndex, segmentIndex, name)}
@@ -404,7 +409,7 @@ function BlockCard({
   block, blockIndex, workspaceId, projectId, checklistId, baseVersion,
   canWrite, canEditStructure, canConfigure, canComplete, canUnlock,
   hasUnsavedChanges, teamOptions,
-  onRename, onAddSegment, onAddItem, onRenameSegment, onSetItem, onToggleRadioItem,
+  onRename, onSetDueDate, onAddSegment, onAddItem, onRenameSegment, onSetItem, onToggleRadioItem,
 }: {
   block: ChecklistBlockV1;
   blockIndex: number;
@@ -420,6 +425,7 @@ function BlockCard({
   hasUnsavedChanges: boolean;
   teamOptions: TeamOption[];
   onRename: (name: string) => void;
+  onSetDueDate: (dueDate: string | null) => void;
   onAddSegment: () => void;
   onAddItem: (segmentIndex: number) => void;
   onRenameSegment: (segmentIndex: number, name: string) => void;
@@ -440,6 +446,29 @@ function BlockCard({
       ) : (
         <h3 className="text-sm font-semibold text-slate-900">{block.name}</h3>
       )}
+      {canEditStructure ? (
+        <label className="mt-2 flex min-h-11 w-fit flex-wrap items-center gap-2 px-1 text-xs text-slate-600">
+          {`Block ${blockIndex + 1}: Fälligkeitsdatum`}
+          <input
+            type="date"
+            aria-label={`Block ${blockIndex + 1}: Fälligkeitsdatum`}
+            value={block.dueDate ?? ""}
+            onChange={(event) => onSetDueDate(
+              event.target.value === "" ? null : event.target.value,
+            )}
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+          />
+        </label>
+      ) : block.dueDate ? (
+        <p className="mt-1 text-xs text-slate-500">
+          {`Fällig: ${new Date(`${block.dueDate}T00:00:00Z`).toLocaleDateString("de-DE", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            timeZone: "UTC",
+          })}`}
+        </p>
+      ) : null}
       {checklistId !== null ? (
         <BlockTeamControl
           workspaceId={workspaceId}

@@ -1072,6 +1072,13 @@
       "when": 1789645161281,
       "tag": "0173_f7_02g_bild_punkt",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1789648043402,
+      "tag": "0174_f7_02h_block_datum",
+      "breakpoints": true
     }
   ]
 }

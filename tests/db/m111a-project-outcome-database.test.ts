@@ -244,10 +244,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0170 F10-13 Datei-Anfragen Dateityp (Spalten + CHECKs + DEFINER-Replaces),
     // 0171 F10-14 Installations-Sichtbarkeit (Spalte + Resolver-Projektion),
     // 0172 F10-15 KfW-Upload-Kontext (nur Resolver-Projektion),
-    // 0173 F7-02g Bild-Punkt (Validator-Replaces)).
+    // 0173 F7-02g Bild-Punkt (Validator-Replaces),
+    // 0174 F7-02h Block-Datum (Validator-Replace)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 152,
-      tag: "0173_f7_02g_bild_punkt",
+      idx: 153,
+      tag: "0174_f7_02h_block_datum",
     });
   });
 
