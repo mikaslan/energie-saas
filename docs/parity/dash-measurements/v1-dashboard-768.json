@@ -1,0 +1,89 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/w/:workspaceId/dashboard",
+  "viewport": {
+    "width": 768,
+    "height": 1024
+  },
+  "head": "f7f5435",
+  "sourceRunCapturedAt": "2026-09-17T09:58:53.584Z",
+  "boxes": [
+    {
+      "selector": "[data-dashboard=\"true\"]",
+      "x": 0,
+      "y": 77,
+      "width": 768,
+      "height": 2637
+    },
+    {
+      "selector": "[data-dashboard-pipeline=\"true\"]",
+      "x": 24,
+      "y": 209,
+      "width": 720,
+      "height": 395
+    },
+    {
+      "selector": "[data-dashboard-overdue=\"true\"]",
+      "x": 24,
+      "y": 628,
+      "width": 720,
+      "height": 158
+    },
+    {
+      "selector": "[data-dashboard-today=\"true\"]",
+      "x": 24,
+      "y": 810,
+      "width": 720,
+      "height": 158
+    },
+    {
+      "selector": "[data-dashboard-closures=\"true\"]",
+      "x": 24,
+      "y": 1174,
+      "width": 720,
+      "height": 218
+    },
+    {
+      "selector": "[data-dashboard-trend=\"true\"]",
+      "x": 24,
+      "y": 1416,
+      "width": 720,
+      "height": 98
+    },
+    {
+      "selector": "[data-dashboard-invoices=\"true\"]",
+      "x": 24,
+      "y": 1660,
+      "width": 720,
+      "height": 214
+    },
+    {
+      "selector": "[data-dashboard-leadtime=\"true\"]",
+      "x": 24,
+      "y": 1898,
+      "width": 720,
+      "height": 158
+    },
+    {
+      "selector": "[data-dashboard-offer-leadtime=\"true\"]",
+      "x": 24,
+      "y": 2080,
+      "width": 720,
+      "height": 158
+    },
+    {
+      "selector": "[data-dashboard-appointments=\"true\"]",
+      "x": 24,
+      "y": 2262,
+      "width": 720,
+      "height": 158
+    },
+    {
+      "selector": "[data-dashboard-service=\"true\"]",
+      "x": 24,
+      "y": 2444,
+      "width": 720,
+      "height": 246
+    }
+  ]
+}
