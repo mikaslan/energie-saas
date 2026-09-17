@@ -213,7 +213,9 @@ function PackageForm({
       }
     }, 300);
   };
-  const inputClass = "min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
+  // w-full min-w-0 (Agent5 FIX 5, RED→GREEN): Geschwister-Manager nutzen
+  // w-full; ohne schob ein Input bei 768 um +2px ueber (CI-Befund VG-24).
+  const inputClass = "min-h-11 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
   const updateRow = (key: string, patch: Partial<LineRow>) => {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   };
