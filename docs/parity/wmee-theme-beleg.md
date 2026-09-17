@@ -56,3 +56,30 @@ Kanban-Punkt bg-brand-600 ist dekorativ (aria-hidden) und bleibt.
   (`public/offline.html`) → #218355.
 - Mitgezogene Wert-Pins (befohlene Vertragsänderung, Assertions exakt):
   `tests/unit/pwa-manifest.test.ts`, `tests/e2e/f11-01-pwa.spec.ts`.
+
+## Re-Verifikation (Agent 5, 2026-09-17)
+
+- Quelle: https://wmee.de/ (HTML) + https://wmee.de/assets/index-BBLnrcIc.css,
+  abgerufen **2026-09-17** (Darstellung als FACT, keine Schaetzung).
+- Befund (woertlich): `--primary:152 60% 32%`, `--accent:152 60% 32%`,
+  `--ring:152 60% 32%`, `--sidebar-primary/--sidebar-ring:152 60% 32%`;
+  Konsum via `hsl(var(--primary))` u. a.
+- `hsl(152 60% 32%)` = **#218355** (Python colorsys, nachgerechnet) —
+  Wert stabil seit 11.09.2026.
+- Vollstaendigkeit (HEAD `ded7581`): keine Orange-Akzente ausser
+  Tou-Chart `#ea580c` (Datenreihe, belegt); keine Blue-Akzente ausser
+  Offer-Scope-Selektor-Mapping (s. u.); `text-brand-700`-Reste: 0;
+  Kanban-Punkt `bg-brand-600` mit `aria-hidden` verifiziert
+  (`app/w/[workspaceId]/anfragen/page.tsx:473`).
+
+## Abweichung OFFER-SCOPE (JUSTIFIED_DEVIATION, technisch begruendet)
+
+- `app/w/[workspaceId]/angebote/offer-theme.module.css` (M2-01) nutzt eine
+  eigene dunklere Gruen-Familie (Kern `#0f7550` statt belegt `#218355`),
+  gemischt mit `brand-*` (Ringe/Texte) in 4 Views.
+- Messung (sRGB, AA normal >= 4.5): `#218355` auf Offer-Canvas `#f4f7f5` =
+  **4.38 (Fail)**; `#0f7550` auf `#f4f7f5` = 5.29, auf Weiss 5.71 (ok).
+  `#218355` auf Weiss 4.73, auf slate-100 4.32 (reproduziert).
+- Begruendung: Angleichung an `#218355` wuerde das blockierende
+  WCAG-AA-Gate im Offer-Scope brechen; gleiche Hue-Familie (~152),
+  dunklere Lightness, kein Orange. Kein Redesign vorgenommen.
