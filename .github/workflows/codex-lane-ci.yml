@@ -186,7 +186,9 @@ jobs:
   e2e:
     name: Chromium-E2E (blockierend, 90/90)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Agent5 DECIDED 2026-09-17: Suite wuchs ueber 45 Min (Basis ~44 Min +
+    # VG-15..38), 2x Timeout-Cancel auf HEAD — 60 gibt Luft, kein Test-Relax.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
