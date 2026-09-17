@@ -1519,11 +1519,19 @@ async function main(): Promise<number> {
   // /einstellungen/angebotsprofile (m2-03a-offer-release-ui.spec.ts:1095,
   // suite-weit einziger Besucher, Test [243/260]): page.goto lief ins
   // 30-s-Timeout, die Navigation erreichte nie "load".
-  // Routen vorab kompilieren (Redirect nicht folgen) — die Tests selbst
-  // bleiben die harte Prüfung, Aufwärmen ist nur Timing-Determinismus.
+  // CI 35211558464 Versuch 4 belegt die dritte Instanz für die privaten
+  // PDF-Downloads (m2-03a-offer-release-ui.spec.ts:1930/1709, suite-weit
+  // einzige Besucher): Die staged-Bytes-Routen (Kandidat + Fassung)
+  // kompilieren kalt erst beim Klick; unter 42,7-Min-Last blieb die
+  // GET-Response zweimal über 12 s aus. Unauthentifiziertes GET endet
+  // vor jedem Artefakt-Zugriff an der Auth-Grenze (401) — der Test
+  // bleibt die harte Prüfung, Aufwärmen ist nur Timing-Determinismus.
+  // Routen vorab kompilieren (Redirect nicht folgen).
   for (const warmPath of [
     `/w/${seedData.workspaceId}/einstellungen/rechnungsstellung`,
     `/w/${seedData.m201WorkspaceId}/einstellungen/angebotsprofile`,
+    `/w/${seedData.workspaceId}/angebote/${randomUUID()}/freigabekandidaten/${randomUUID()}/pdf`,
+    `/w/${seedData.workspaceId}/angebote/${randomUUID()}/ausstellungsfassungen/${randomUUID()}/pdf`,
   ]) {
     try {
       const warmResponse = await fetch(`${server.baseURL}${warmPath}`, {
