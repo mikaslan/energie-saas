@@ -39,9 +39,11 @@ export {
   formatWorkbookComponentsText,
   getInstallationWorkbook,
   listInstallableVariants,
+  projectWorkbookComponentSections,
   setInstallationVariant,
   type InstallableVariantOption,
   type InstallationWorkbook,
+  type WorkbookComponentSection,
   type WorkbookLine,
   type WorkbookSection,
 } from "./workbook-service";

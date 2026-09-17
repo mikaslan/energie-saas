@@ -247,10 +247,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0173 F7-02g Bild-Punkt (Validator-Replaces),
     // 0174 F7-02h Block-Datum (Validator-Replace),
     // 0175 F7-02i Unterschrift (Validator-Replace),
-    // 0176 F7-07b Gegenzeichnung (Spalten + CHECK)).
+    // 0176 F7-07b Gegenzeichnung (Spalten + CHECK),
+    // 0177 F7-02j Komponentenliste (Validator-Replace)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 155,
-      tag: "0176_f7_07b_gegenzeichnung",
+      idx: 156,
+      tag: "0177_f7_02j_komponentenliste",
     });
   });
 

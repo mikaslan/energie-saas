@@ -5,7 +5,12 @@ import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import type { ProjectChecklistDto } from "@/lib/integrations/checklists/contract";
 import { getProjectChecklist, listChecklistTemplates } from "@/modules/checklists";
-import { formatWorkbookComponentsText, getInstallationWorkbook } from "@/modules/installations";
+import {
+  formatWorkbookComponentsText,
+  getInstallationWorkbook,
+  projectWorkbookComponentSections,
+  type WorkbookComponentSection,
+} from "@/modules/installations";
 import { OfferIntegrityError } from "@/modules/offers";
 import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
 import type { TeamOption } from "@/lib/integrations/teams/contract";
@@ -126,6 +131,32 @@ export default async function ProjectChecklistPage(
     }
   }
 
+  // F7-02J: strukturierte Stückliste für den Komponentenlisten-Punkt
+  // (eigene Query im 03e-Muster). Ohne Bindung, ohne Recht oder bei
+  // Integritätsfehler null — der Manager zeigt ehrlich den Fallback.
+  let componentSections: WorkbookComponentSection[] | null = null;
+  try {
+    componentSections = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation",
+      async (tx, ctx) => {
+        const workbook = await getInstallationWorkbook(tx, ctx, { projectId });
+        if (!workbook) return null;
+        return projectWorkbookComponentSections(workbook.sections);
+      },
+    );
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) {
+      redirect(`/login?${new URLSearchParams({
+        next: `/w/${workspaceId}/anfragen/${projectId}/checkliste`,
+      }).toString()}`);
+    }
+    if (!(error instanceof PermissionDeniedError) && !(error instanceof OfferIntegrityError)) {
+      throw error;
+    }
+  }
+
   return (
     <main className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6">
@@ -163,6 +194,7 @@ export default async function ProjectChecklistPage(
         customerName={result.customerName}
         today={result.today}
         componentsText={componentsText}
+        componentSections={componentSections}
       />
 
       <div className="mt-6">

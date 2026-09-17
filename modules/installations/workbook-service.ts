@@ -214,6 +214,28 @@ export function formatWorkbookComponentsText(sections: WorkbookSection[]): strin
     .join(", ");
 }
 
+// F7-02J: strukturierte Stückliste für den Komponentenlisten-Punkt
+// (Anzeige-Projektion wie 03e: Titel + je Zeile Menge+Name, keine Preise,
+// keine IDs). Leere Sektionen fallen raus (ehrlicher Fallback oben).
+export type WorkbookComponentSection = {
+  section: string;
+  lines: Array<{ quantity: string; name: string }>;
+};
+
+export function projectWorkbookComponentSections(
+  sections: WorkbookSection[],
+): WorkbookComponentSection[] {
+  return sections
+    .filter((section) => section.lines.length > 0)
+    .map((section) => ({
+      section: section.title,
+      lines: section.lines.map((line) => ({
+        quantity: line.quantity,
+        name: line.name,
+      })),
+    }));
+}
+
 // F7-10: flache Watt-Sicht auf die diskriminierten Katalogdaten; der
 // Projektor validiert Schema-Passung und Wertebereiche fail-closed.
 function capacityWatts(data: CatalogTechnicalDataV1): {

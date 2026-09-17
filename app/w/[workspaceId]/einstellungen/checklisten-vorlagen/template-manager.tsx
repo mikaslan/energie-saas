@@ -226,6 +226,7 @@ function ItemEditor({
               <option value="multi">Mehrfachauswahl</option>
               <option value="image">Bild</option>
               <option value="signature">Unterschrift</option>
+              <option value="component-list">Komponentenliste</option>
             </select>
           </label>
           <label className="flex items-center gap-1 text-sm text-slate-700">
