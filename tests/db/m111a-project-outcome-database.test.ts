@@ -253,10 +253,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0179 F10-16 Gegenzeichnung-Timeline (nur Resolver-Projektion),
     // 0180 F7-15 Fotodoku-Batch (Validator-Replaces),
     // 0181 F7-16 Projekt-Dateien (Tabelle + RLS),
-    // 0182 F10-17 Portal My-Files (Spalte + Resolver-Projektion + Kapsel)).
+    // 0182 F10-17 Portal My-Files (Spalte + Resolver-Projektion + Kapsel),
+    // 0183 F10-18 My-Files-Download-Protokoll (Spalte + CHECK + FK + Index + Kapsel-Replace)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 161,
-      tag: "0182_f10_17_portal_my_files",
+      idx: 162,
+      tag: "0183_f10_18_my_files_download_protokoll",
     });
   });
 

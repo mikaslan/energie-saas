@@ -125,8 +125,9 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F7-15 Fotodoku-Batch (0180, Validator-Replaces)
 //   F7-16 Projekt-Dateien (0181, Tabelle + RLS)
 //   F10-17 Portal My-Files (0182, Spalte + Resolver-Projektion + Kapsel)
-// => 162 Migrationen (idx 0..161).
-const TOTAL_MIGRATION_COUNT = 162;
+//   F10-18 My-Files-Download-Protokoll (0183, Spalte + CHECK + FK + Index + Kapsel-Replace)
+// => 163 Migrationen (idx 0..162).
+const TOTAL_MIGRATION_COUNT = 163;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -442,8 +443,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 161,
-        tag: "0182_f10_17_portal_my_files",
+        idx: 162,
+        tag: "0183_f10_18_my_files_download_protokoll",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

@@ -2844,8 +2844,9 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         public.portal_download_log
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
-      -- F10-12 portal_download_log: gleiche Form wie view_log (einziger
-      -- Schreiber ist read_portal_issuance_artifact, SECURITY DEFINER).
+      -- F10-12 portal_download_log: gleiche Form wie view_log (Schreiber
+      -- sind read_portal_issuance_artifact + read_portal_project_file_artifact,
+      -- beide SECURITY DEFINER — F10-18).
       grant select on public.portal_download_log to app_runtime
     `);
   }
@@ -4501,6 +4502,19 @@ export async function verifyRoleContract(
        and routine.proname = 'read_portal_project_file_artifact'
   `);
   const hasPortalProjectFileDownload = portalProjectFileDownloadProbe.rows.length > 0;
+  // F10-18 (0183): Stufenmarker für den Download-Insert in der
+  // Datei-Kapsel (prosrc enthält portal_download_log, Muster F10-12).
+  const portalProjectFileDownloadLogProbe = await client.query<{ source: string | null }>(`
+    select routine.prosrc as source
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'public'
+       and routine.proname = 'read_portal_project_file_artifact'
+  `);
+  const hasPortalProjectFileDownloadLog = portalProjectFileDownloadLogProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("portal_download_log"),
+  );
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -5982,12 +5996,16 @@ export async function verifyRoleContract(
         ] : []),
         // F10-17 (0182): Portal-Datei-Download (Muster issuance-Kapsel,
         // Hash per Probe geerntet).
+        // F10-18 (0183): Download-Insert (Marker portal_download_log;
+        // neuer Hash per Probe geerntet, Methode gegen 0182-Pin bewiesen).
         ...(hasPortalProjectFileDownload ? [
         "read_portal_project_file_artifact(bytea, uuid):" +
           "TABLE(original_filename text, content_type text, byte_size integer, " +
           "file_sha256 text, storage_key text):" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
-          "bec8c5ea49df8c8d8009a92621ca815438492e7a0b5c40f8dbe575c1ee696050",
+          (hasPortalProjectFileDownloadLog
+            ? "2e4e2be4e753d03caa1ed75d8dc5362d831934187685152e31ee8d484b23f09b"
+            : "bec8c5ea49df8c8d8009a92621ca815438492e7a0b5c40f8dbe575c1ee696050"),
         ] : []),
         // F13-06 (0107): Kundenbestätigung (Muster fulfill, Marker
         // hasPortalService — gleiche Migration wie die Projektion).
@@ -7646,8 +7664,9 @@ export async function verifyRoleContract(
         "app_runtime:portal_view_log:SELECT:app_owner:false",
       ] : []),
       ...(hasPortalDownloadLogRelations ? [
-        // F10-12: Download-Protokoll (Runtime liest, einziger Schreiber
-        // ist read_portal_issuance_artifact, SECURITY DEFINER).
+        // F10-12: Download-Protokoll (Runtime liest, Schreiber sind
+        // read_portal_issuance_artifact + read_portal_project_file_artifact,
+        // beide SECURITY DEFINER — F10-18).
         "app_runtime:portal_download_log:SELECT:app_owner:false",
       ] : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RELATIONS.flatMap((relation) => [
