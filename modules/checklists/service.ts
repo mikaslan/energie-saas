@@ -494,7 +494,10 @@ export async function uploadChecklistItemPhoto(
     }
     const item = findChecklistItem(stored, itemId);
     if (!item) throw new ChecklistNotFoundError(projectId);
-    if (item.kind !== "image") throw new ChecklistValidationError("photo requires image item");
+    // F7-02I: Signatur-PNG nutzt denselben Key (wiederverwendet).
+    if (item.kind !== "image" && item.kind !== "signature") {
+      throw new ChecklistValidationError("photo requires image or signature item");
+    }
   }
 
   const sha256 = createHash("sha256").update(input.bytes).digest("hex");

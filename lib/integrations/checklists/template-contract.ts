@@ -28,7 +28,7 @@ export const checklistTemplateItemSchema = z.strictObject({
   position: z.number().int().min(0),
   visibleToCustomer: z.boolean(),
   priceOverridesComponent: z.boolean(),
-  // F7-03B: Art des Punkts, den das Anwenden erzeugt (alle sieben
+  // F7-03B: Art des Punkts, den das Anwenden erzeugt (alle acht
   // Projekt-Arten; fehlend = Legacy = Aufgabe wie bisher).
   kind: checklistItemKindSchema.nullish(),
 });

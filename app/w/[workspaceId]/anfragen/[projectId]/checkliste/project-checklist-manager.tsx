@@ -677,6 +677,19 @@ function SegmentGroup({
                   onSetItem={onSetItem}
                 />
               ) : null}
+              {item.kind === "signature" && !(canEditStructure && !completed) && checklistId !== null ? (
+                <ItemSignatureControl
+                  workspaceId={workspaceId}
+                  projectId={projectId}
+                  checklistId={checklistId}
+                  item={item}
+                  title={item.title || `Punkt ${itemIndex + 1}`}
+                  itemIndex={itemIndex}
+                  canWrite={canWrite && !completed}
+                  canEditStructure={false}
+                  onSetItem={onSetItem}
+                />
+              ) : null}
               {canConfigure && !completed && isChecklistWorkItem(item) ? (
                 <label className="mt-1 flex min-h-11 w-fit cursor-pointer items-center gap-2 px-1 text-xs text-slate-600">
                   <input
@@ -1011,6 +1024,114 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("canvas leer"));
+    }, "image/png");
+  });
+}
+
+const SIGNER_ROLE_LABELS: Record<string, string> = {
+  kunde: "Kunde",
+  techniker: "Techniker",
+  dritter: "Dritter",
+};
+
+// F7-02G/F7-02I: Server-Vorschau zum `photo`-Key (Foto wie Signatur).
+// Lokale Vorschau (direkt nach Upload) gewinnt per Key-Vergleich.
+function useItemPhotoPreview({ workspaceId, projectId, checklistId, itemId, photo }: {
+  workspaceId: string;
+  projectId: string;
+  checklistId: string | null;
+  itemId: string;
+  photo: string | null;
+}): {
+  preview: string | null;
+  setLocalPreview: (dataUrl: string, key: string) => void;
+  loadError: string | null;
+  clearLoadError: () => void;
+} {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (photo === null || photo === previewKey || checklistId === null) return;
+    let cancelled = false;
+    fetch(
+      `/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/foto`
+      + `?checklistId=${encodeURIComponent(checklistId)}&itemId=${encodeURIComponent(itemId)}`,
+    ).then(async (response) => {
+      if (!response.ok) throw new Error(`foto GET ${response.status}`);
+      const dataUrl = await blobToDataUrl(await response.blob());
+      if (!cancelled) {
+        setPreview(dataUrl);
+        setPreviewKey(photo);
+        setLoadError(null);
+      }
+    }).catch(() => {
+      if (!cancelled) setLoadError("Foto konnte nicht geladen werden.");
+    });
+    return () => { cancelled = true; };
+  }, [photo, previewKey, checklistId, workspaceId, projectId, itemId]);
+
+  return {
+    preview,
+    setLocalPreview: (dataUrl, key) => {
+      setPreview(dataUrl);
+      setPreviewKey(key);
+      setLoadError(null);
+    },
+    loadError,
+    clearLoadError: () => setLoadError(null),
+  };
+}
+
+type ItemPhotoUploadError = { status: number } | { status: "network" | "shape" };
+
+// F7-02G/F7-02I: Foto-/Signatur-Upload per Route (10 MiB). Wirft
+// ItemPhotoUploadError mit Status (Aufrufer mappt auf Text).
+async function postItemPhoto({ workspaceId, projectId, checklistId, itemId, file, filename }: {
+  workspaceId: string;
+  projectId: string;
+  checklistId: string | null;
+  itemId: string;
+  file: Blob;
+  filename: string;
+}): Promise<string> {
+  const form = new FormData();
+  form.set("checklistId", checklistId ?? "");
+  form.set("itemId", itemId);
+  // Dateiname explizit (Route prüft die Endung; Blob-Default "blob" fiele durch).
+  form.set("datei", file, filename);
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/foto`,
+      { method: "POST", body: form },
+    );
+  } catch {
+    throw { status: "network" } satisfies ItemPhotoUploadError;
+  }
+  if (!response.ok) throw { status: response.status } satisfies ItemPhotoUploadError;
+  const data = await response.json().catch(() => null) as { photoKey?: unknown } | null;
+  if (!data || typeof data.photoKey !== "string" || data.photoKey === "") {
+    throw { status: "shape" } satisfies ItemPhotoUploadError;
+  }
+  return data.photoKey;
+}
+
+function itemPhotoUploadErrorText(error: ItemPhotoUploadError, noun: string): string {
+  if (error.status === 400) return "Nur JPEG- oder PNG-Bilder bis 10 MB sind erlaubt.";
+  if (error.status === 404) return "Foto nicht gefunden (Checkliste neu laden).";
+  if (error.status === 401 || error.status === 403) {
+    return "Keine Berechtigung für diesen Upload.";
+  }
+  return `${noun} ist fehlgeschlagen.`;
+}
+
 // F7-02G: Foto-Upload + Vorschau am Bild-Punkt. Upload per Route (10 MiB,
 // F10-04-Praezedenz); der Key landet im lokalen Baum (Whole-Tree-Save
 // persistiert). Die Vorschau ist eine Daten-URL: lokal sofort aus der
@@ -1026,32 +1147,18 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
   canWrite: boolean;
   onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
 }) {
-  const [preview, setPreview] = useState<string | null>(null);
-  const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photo = item.photo ?? null;
-
-  useEffect(() => {
-    if (photo === null || photo === previewKey || checklistId === null) return;
-    let cancelled = false;
-    fetch(
-      `/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/foto`
-      + `?checklistId=${encodeURIComponent(checklistId)}&itemId=${encodeURIComponent(item.id)}`,
-    ).then(async (response) => {
-      if (!response.ok) throw new Error(`foto GET ${response.status}`);
-      const dataUrl = await blobToDataUrl(await response.blob());
-      if (!cancelled) {
-        setPreview(dataUrl);
-        setPreviewKey(photo);
-        setError(null);
-      }
-    }).catch(() => {
-      if (!cancelled) setError("Foto konnte nicht geladen werden.");
-    });
-    return () => { cancelled = true; };
-  }, [photo, previewKey, checklistId, workspaceId, projectId, item.id]);
+  const { preview, setLocalPreview, loadError, clearLoadError } = useItemPhotoPreview({
+    workspaceId,
+    projectId,
+    checklistId,
+    itemId: item.id,
+    photo,
+  });
+  const shownError = error ?? loadError;
 
   const upload = async () => {
     const file = fileInputRef.current?.files?.[0];
@@ -1061,37 +1168,23 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
     }
     setUploading(true);
     setError(null);
+    clearLoadError();
     try {
-      const form = new FormData();
-      form.set("checklistId", checklistId ?? "");
-      form.set("itemId", item.id);
-      form.set("datei", file);
-      const response = await fetch(
-        `/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/foto`,
-        { method: "POST", body: form },
-      );
-      if (!response.ok) {
-        setError(
-          response.status === 400
-            ? "Nur JPEG- oder PNG-Bilder bis 10 MB sind erlaubt."
-            : response.status === 404
-              ? "Foto nicht gefunden (Checkliste neu laden)."
-              : response.status === 401 || response.status === 403
-                ? "Keine Berechtigung für diesen Upload."
-                : "Foto-Upload ist fehlgeschlagen.",
-        );
-        return;
-      }
-      const data = await response.json() as { photoKey?: unknown };
-      if (typeof data.photoKey !== "string" || data.photoKey === "") {
-        setError("Foto-Upload ist fehlgeschlagen.");
-        return;
-      }
-      setPreview(await blobToDataUrl(file));
-      setPreviewKey(data.photoKey);
-      onSetItem(itemIndex, { photo: data.photoKey }, canWrite);
-    } catch {
-      setError("Foto-Upload ist fehlgeschlagen.");
+      const photoKey = await postItemPhoto({
+        workspaceId,
+        projectId,
+        checklistId,
+        itemId: item.id,
+        file,
+        filename: file.name,
+      });
+      setLocalPreview(await blobToDataUrl(file), photoKey);
+      onSetItem(itemIndex, { photo: photoKey }, canWrite);
+    } catch (thrown) {
+      setError(itemPhotoUploadErrorText(
+        (thrown as ItemPhotoUploadError | null) ?? { status: "network" },
+        "Foto-Upload",
+      ));
     } finally {
       setUploading(false);
     }
@@ -1130,8 +1223,193 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
       {photo !== null && canWrite ? (
         <p className="mt-1 text-xs text-slate-500">Erneutes Hochladen ersetzt das Foto.</p>
       ) : null}
-      {error !== null ? (
-        <p role="alert" className="mt-1 text-xs font-semibold text-red-700">{error}</p>
+      {shownError !== null ? (
+        <p role="alert" className="mt-1 text-xs font-semibold text-red-700">{shownError}</p>
+      ) : null}
+    </div>
+  );
+}
+
+// F7-02I: Unterschrift per Zeichenfläche am Signaturpunkt. Canvas-PNG
+// über dieselbe Route wie Fotos (wiederverwendeter `photo`-Key);
+// Rollen-Typ nur mit Strukturrecht (Struktur wie dueDate). Lesende
+// (Viewer) sehen nur die Vorschau.
+function ItemSignatureControl({ workspaceId, projectId, checklistId, item, title, itemIndex, canWrite, canEditStructure, onSetItem }: {
+  workspaceId: string;
+  projectId: string;
+  checklistId: string | null;
+  item: ChecklistItemV1;
+  title: string;
+  itemIndex: number;
+  canWrite: boolean;
+  canEditStructure: boolean;
+  onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+}) {
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawingRef = useRef(false);
+  const photo = item.photo ?? null;
+  const { preview, setLocalPreview, loadError, clearLoadError } = useItemPhotoPreview({
+    workspaceId,
+    projectId,
+    checklistId,
+    itemId: item.id,
+    photo,
+  });
+  const shownError = error ?? loadError;
+
+  const canvasPoint = (event: { clientX: number; clientY: number }): { x: number; y: number } => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * (canvas.width / rect.width),
+      y: (event.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawn(false);
+    setNotice(null);
+  };
+
+  const save = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !hasDrawn) {
+      setNotice("Bitte zuerst unterschreiben.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    clearLoadError();
+    try {
+      const blob = await canvasToPng(canvas);
+      const photoKey = await postItemPhoto({
+        workspaceId,
+        projectId,
+        checklistId,
+        itemId: item.id,
+        file: blob,
+        filename: "unterschrift.png",
+      });
+      setLocalPreview(await blobToDataUrl(blob), photoKey);
+      onSetItem(itemIndex, { photo: photoKey }, canWrite);
+      clearCanvas();
+    } catch (thrown) {
+      setError(itemPhotoUploadErrorText(
+        (thrown as ItemPhotoUploadError | null) ?? { status: "network" },
+        "Unterschrift speichern",
+      ));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-1">
+      {preview !== null ? (
+        // eslint-disable-next-line @next/next/no-img-element -- Daten-URL-Vorschau, Optimierer n/a.
+        <img
+          src={preview}
+          alt={`${title}: Unterschrift-Vorschau`}
+          className="mt-1 max-h-32 rounded-md border border-slate-300 bg-white"
+        />
+      ) : null}
+      {canEditStructure ? (
+        <label className="mt-1 flex min-h-11 w-fit flex-wrap items-center gap-2 px-1 text-xs text-slate-600">
+          {`${title}: Rollentyp`}
+          <select
+            aria-label={`${title}: Rollentyp`}
+            value={item.signerRole ?? ""}
+            onChange={(event) => onSetItem(itemIndex, {
+              signerRole: event.target.value === ""
+                ? null
+                : event.target.value as ChecklistItemV1["signerRole"],
+            }, canEditStructure)}
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+          >
+            <option value="">Bitte wählen</option>
+            <option value="kunde">Kunde</option>
+            <option value="techniker">Techniker</option>
+            <option value="dritter">Dritter</option>
+          </select>
+        </label>
+      ) : item.signerRole ? (
+        <p className="mt-1 text-xs text-slate-500">
+          {`Rolle: ${SIGNER_ROLE_LABELS[item.signerRole] ?? item.signerRole}`}
+        </p>
+      ) : null}
+      {canWrite ? (
+        <div className="mt-1">
+          <canvas
+            ref={canvasRef}
+            width={300}
+            height={100}
+            aria-label={`${title}: Unterschrift zeichnen`}
+            onPointerDown={(event) => {
+              const context = canvasRef.current?.getContext("2d");
+              if (!context) return;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              drawingRef.current = true;
+              const point = canvasPoint(event);
+              context.beginPath();
+              context.moveTo(point.x, point.y);
+              // Tap-Punkt: Auch ein Tippser ohne Zug ist eine (punktförmige)
+              // Unterschrift und speicherbar.
+              context.fillStyle = "#000000";
+              context.fillRect(point.x - 1, point.y - 1, 2, 2);
+              context.strokeStyle = "#000000";
+              context.lineWidth = 2;
+              context.lineCap = "round";
+              setHasDrawn(true);
+            }}
+            onPointerMove={(event) => {
+              if (!drawingRef.current) return;
+              const context = canvasRef.current?.getContext("2d");
+              if (!context) return;
+              const point = canvasPoint(event);
+              context.lineTo(point.x, point.y);
+              context.stroke();
+              setHasDrawn(true);
+            }}
+            onPointerUp={() => { drawingRef.current = false; }}
+            onPointerCancel={() => { drawingRef.current = false; }}
+            className="touch-none rounded-md border border-slate-300 bg-white"
+          />
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={clearCanvas}
+              disabled={saving}
+              className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              Löschen
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              {saving ? "Speichert …" : "Unterschrift speichern"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {photo !== null && canWrite ? (
+        <p className="mt-1 text-xs text-slate-500">Erneutes Speichern ersetzt die Unterschrift.</p>
+      ) : null}
+      {notice !== null ? (
+        <p className="mt-1 text-xs font-semibold text-amber-700">{notice}</p>
+      ) : null}
+      {shownError !== null ? (
+        <p role="alert" className="mt-1 text-xs font-semibold text-red-700">{shownError}</p>
       ) : null}
     </div>
   );
@@ -1158,26 +1436,30 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
         onChange={(event) => {
           const next = event.target.value;
           if (next === "description") {
-            onSetItem(itemIndex, { kind: "description", done: false, required: false, value: null, photo: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "description", done: false, required: false, value: null, photo: null, signerRole: null }, canEditStructure);
           } else if (next === "title") {
-            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null, value: null, photo: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null, value: null, photo: null, signerRole: null }, canEditStructure);
           } else if (next === "radio") {
             // F7-02D: ehrliches Umschreiben wie Anzeige-Punkte — done fällt,
             // damit der Wechsel nie einen speicherbaren Doppel-done erzeugt
             // (Exklusivität wählt der Radio-Input selbst).
-            onSetItem(itemIndex, { kind: "radio", done: false, description: null, value: null, photo: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "radio", done: false, description: null, value: null, photo: null, signerRole: null }, canEditStructure);
           } else if (next === "text") {
-            onSetItem(itemIndex, { kind: "text", description: null, photo: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "text", description: null, photo: null, signerRole: null }, canEditStructure);
           } else if (next === "multi") {
             // F7-02F: ehrliches Umschreiben — Flags bleiben (mehrere
             // erledigte Multis sind speicherbar), Nutzlast fällt.
-            onSetItem(itemIndex, { kind: "multi", description: null, value: null, photo: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "multi", description: null, value: null, photo: null, signerRole: null }, canEditStructure);
           } else if (next === "image") {
             // F7-02G: ehrliches Umschreiben wie Multi — Flags bleiben,
-            // fremde Nutzlast fällt.
-            onSetItem(itemIndex, { kind: "image", description: null, value: null }, canEditStructure);
+            // fremde Nutzlast fällt (F7-02I: auch Signatur-Bytes/Rolle).
+            onSetItem(itemIndex, { kind: "image", description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+          } else if (next === "signature") {
+            // F7-02I: ehrliches Umschreiben wie Bild — Flags bleiben,
+            // fremde Nutzlast fällt (Foto ist keine Unterschrift).
+            onSetItem(itemIndex, { kind: "signature", description: null, value: null, photo: null }, canEditStructure);
           } else {
-            onSetItem(itemIndex, { kind: "task", description: null, value: null, photo: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "task", description: null, value: null, photo: null, signerRole: null }, canEditStructure);
           }
         }}
         className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
@@ -1189,6 +1471,7 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
         <option value="text">Textantwort</option>
         <option value="multi">Mehrfachauswahl</option>
         <option value="image">Bild</option>
+        <option value="signature">Unterschrift</option>
       </select>
       {item.kind === "text" ? (
         <textarea
@@ -1225,6 +1508,19 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
           title={title}
           itemIndex={itemIndex}
           canWrite={canWrite}
+          onSetItem={onSetItem}
+        />
+      ) : null}
+      {item.kind === "signature" ? (
+        <ItemSignatureControl
+          workspaceId={workspaceId}
+          projectId={projectId}
+          checklistId={checklistId}
+          item={item}
+          title={title}
+          itemIndex={itemIndex}
+          canWrite={canWrite}
+          canEditStructure={canEditStructure}
           onSetItem={onSetItem}
         />
       ) : null}

@@ -279,6 +279,53 @@ describe("F7-02G Foto-Upload/-Lesen (Service)", () => {
     expect(repeated.photoKey).toBe(uploaded.photoKey);
   });
 
+  it("F702I-SVC-01: Upload an Signaturpunkt gelingt (wiederverwendeter Foto-Key)", async () => {
+    const signatureId = randomUUID();
+    const seeded = await withAuthorizedTenantOn(
+      testPool, fixture.adminId, fixture.workspaceId,
+      (tx, ctx) => saveProjectChecklist(tx, ctx, {
+        schemaVersion: CHECKLIST_SCHEMA_VERSION,
+        checklistId: fixture.checklistId,
+        projectId: fixture.projectId,
+        phase: "site_documentation",
+        title: "Baustellendokumentation",
+        baseVersion: 1,
+        blocks: [{
+          id: fixture.blockId,
+          name: "PV",
+          position: 0,
+          visible: true,
+          segments: [{
+            id: fixture.segmentId,
+            name: "Protokoll",
+            position: 0,
+            visible: true,
+            items: [
+              { id: fixture.imageId, title: "Zaehlerfoto", done: false, required: true, visible: true, kind: "image", photo: null },
+              { id: fixture.taskId, title: "Dach geprüft", done: false, required: false, visible: true },
+              { id: signatureId, title: "Abnahme", done: false, required: true, visible: true, kind: "signature", photo: null, signerRole: "kunde" },
+            ],
+          }],
+        }],
+      }),
+    );
+    expect(seeded.version).toBe(2);
+    const uploaded = await withAuthorizedTenantOn(
+      testPool, fixture.adminId, fixture.workspaceId,
+      (tx, ctx) => uploadChecklistItemPhoto(tx, ctx, {
+        projectId: fixture.projectId,
+        checklistId: fixture.checklistId,
+        itemId: signatureId,
+        bytes: new Uint8Array(PNG_1X1),
+        filename: "unterschrift.png",
+        contentType: "image/png",
+      }),
+    );
+    expect(uploaded.photoKey).toBe(
+      `immutable/${fixture.projectId}/checklist-photos/${signatureId}_${sha8(PNG_1X1)}.png`,
+    );
+  });
+
   it("F702G-SVC-05: Fehler enthalten keinen Storage-Key", async () => {
     const failure = await withAuthorizedTenantOn(
       testPool, fixture.adminId, fixture.workspaceId,

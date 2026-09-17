@@ -220,6 +220,7 @@ function ItemEditor({
               <option value="text">Textantwort</option>
               <option value="multi">Mehrfachauswahl</option>
               <option value="image">Bild</option>
+              <option value="signature">Unterschrift</option>
             </select>
           </label>
           <button

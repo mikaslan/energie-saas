@@ -99,7 +99,12 @@ export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSche
 // abhakbar wie Aufgabe und trägt optional `value` (Antworttext, nur dort).
 // F7-02G: Bild-Punkt (Katalog F7.2). `image` ist abhakbar wie Aufgabe und
 // trägt optional `photo` (Foto-Key, nur dort).
-export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text", "multi", "image"]);
+// F7-02I: Unterschrift-Punkt (Katalog F7.2). `signature` ist abhakbar wie
+// Aufgabe, nutzt `photo` für das Signatur-PNG und trägt optional
+// `signerRole` (Rollen-Typ, nur dort, Struktur).
+export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text", "multi", "image", "signature"]);
+export const checklistItemSignerRoleSchema = z.enum(["kunde", "techniker", "dritter"]);
+export type ChecklistItemSignerRoleV1 = z.infer<typeof checklistItemSignerRoleSchema>;
 export type ChecklistItemKindV1 = z.infer<typeof checklistItemKindSchema>;
 
 export const editableChecklistItemSchema = z.object({
@@ -118,9 +123,12 @@ export const editableChecklistItemSchema = z.object({
   // F7-02E: Antworttext nur am Textpunkt (Regel unten; Spiegel zu description).
   value: cleanText(CHECKLIST_ITEM_VALUE_MAX).nullish(),
   // F7-02G: Foto-Key nur am Bildpunkt (Regel unten; Spiegel zu value).
+  // F7-02I: am Signaturpunkt wiederverwendet (Signatur-PNG).
   // Kein cleanText: Der Key ist ein ASCII-Format mit eigenem Muster.
   photo: z.string().min(1).max(CHECKLIST_ITEM_PHOTO_MAX)
     .regex(CHECKLIST_ITEM_PHOTO_KEY_PATTERN).nullish(),
+  // F7-02I: Rollen-Typ nur am Signaturpunkt (Regel unten; Struktur).
+  signerRole: checklistItemSignerRoleSchema.nullish(),
 }).strict();
 export type ChecklistItemV1 = z.infer<typeof editableChecklistItemSchema>;
 
@@ -261,6 +269,7 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
           description?: string | null;
           value?: string | null;
           photo?: string | null;
+          signerRole?: string | null;
           visibleIf?: { itemId: string } | null;
         }>;
       }>;
@@ -313,15 +322,23 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
             });
           }
           // F7-02G: Foto verlangt einen Bildpunkt (Spiegel-Regel).
-          if (item.photo != null && item.kind !== "image") {
+          // F7-02I: am Signaturpunkt wiederverwendet (Signatur-PNG).
+          if (item.photo != null && item.kind !== "image" && item.kind !== "signature") {
             context.addIssue({
               code: "custom",
-              message: "Foto verlangt einen Bildpunkt",
+              message: "Foto verlangt einen Bild- oder Unterschrift-Punkt",
+            });
+          }
+          // F7-02I: Rollen-Typ verlangt einen Unterschrift-Punkt.
+          if (item.signerRole != null && item.kind !== "signature") {
+            context.addIssue({
+              code: "custom",
+              message: "Rollen-Typ verlangt einen Unterschrift-Punkt",
             });
           }
           if (item.kind != null && item.kind !== "task" && item.kind !== "radio"
             && item.kind !== "text" && item.kind !== "multi" && item.kind !== "image"
-            && (item.required || item.done)) {
+            && item.kind !== "signature" && (item.required || item.done)) {
             context.addIssue({
               code: "custom",
               message: "Anzeigepunkte sind weder Pflicht noch abhakbar",
@@ -481,11 +498,13 @@ function segmentItemsById(
 // F7-02F: Multi-Punkte ebenso (mehrere erledigte je Segment legal —
 // ohne Exklusivität, Gegenstück zu `radio`).
 // F7-02G: Bildpunkte ebenso (Foto ist Nutzlast, kein Gate).
+// F7-02I: Unterschrift-Punkte ebenso (Signatur ist Nutzlast).
 export function isChecklistWorkItem(
   item: Pick<ChecklistItemV1, "kind">,
 ): boolean {
   return item.kind == null || item.kind === "task" || item.kind === "radio"
-    || item.kind === "text" || item.kind === "multi" || item.kind === "image";
+    || item.kind === "text" || item.kind === "multi" || item.kind === "image"
+    || item.kind === "signature";
 }
 
 export function segmentRequiredRemaining(
