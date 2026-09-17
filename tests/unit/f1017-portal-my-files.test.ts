@@ -1,9 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/action", () => ({
+  publicTokenCapsule: vi.fn(),
+}));
+vi.mock("@/modules/project-files", () => ({
+  PROJECT_FILE_CONTENT_TYPES: {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+  },
+  PROJECT_FILE_NAME_MAX: 180,
+  ProjectFileIntegrityError: class ProjectFileIntegrityError extends Error {},
+  ProjectFileNotFoundError: class ProjectFileNotFoundError extends Error {},
+  ProjectFilePersistenceError: class ProjectFilePersistenceError extends Error {},
+  readPortalProjectFileByToken: vi.fn(),
+}));
 
 import {
   parsePortalPublicView,
   portalProjectFileSchema,
 } from "@/lib/integrations/portal/portal-contract";
+import {
+  isPortalProjectFilenameSafe,
+  portalProjectFileDisposition,
+} from "@/app/p/[token]/dateien/[fileId]/route";
 
 /**
  * F10-17 Portal My-Files — Contract-Units C-01..C-03 (rein, kein DB).
@@ -109,5 +130,53 @@ describe("F10-17 Portal My-Files Contract (rein)", () => {
         `fail-closed: ${entry.name}`,
       ).toBeNull();
     }
+  });
+});
+
+describe("F10-17 Portal-Download Dateinamen-Guard (rein, Review-Fund)", () => {
+  it("C-04: echte Upload-Namen passieren (Leerzeichen, Umlaute, Gross-Endung)", () => {
+    // Upload prueft nur Laenge+Endung (case-insensitiv) — diese Namen sind
+    // alle DB-legal und muessen im Portal ladbar sein (kein 503).
+    for (const name of [
+      "freigabe.pdf",
+      "Freigabe Angebot.PDF",
+      "Rechnung März.pdf",
+      "Foto vom Dach.JPG",
+      "a.png",
+      `${"n".repeat(176)}.pdf`,
+    ]) {
+      expect(isPortalProjectFilenameSafe(name), `erlaubt: ${name}`).toBe(true);
+    }
+  });
+
+  it("C-05: gefaehrliche/fremde Namen fallen fail-closed heraus", () => {
+    for (const name of [
+      "",
+      "   ",
+      "keine-endung",
+      "plan.pdf ",
+      " plan.pdf",
+      " setup.exe",
+      "rechnung.pdf.exe",
+      `x${"n".repeat(180)}.pdf`,
+      "boese\".pdf",
+      "zeilen\numbruch.pdf",
+      "tab\tname.pdf",
+      "null\0byte.pdf",
+    ]) {
+      expect(isPortalProjectFilenameSafe(name), `verworfen: ${JSON.stringify(name)}`).toBe(false);
+    }
+  });
+
+  it("C-06: Disposition neutralisiert Anführungszeichen/Steuerzeichen (intern-Muster)", () => {
+    const disposition = portalProjectFileDisposition("Angebot \"final\"\r\n.pdf");
+    expect(disposition.startsWith("attachment;")).toBe(true);
+    const fallback = disposition.split(";")[1] ?? "";
+    expect(fallback).not.toContain("\"final\"");
+    expect(fallback).not.toMatch(/[\r\n]/u);
+    expect(disposition).toContain("filename*=UTF-8''");
+    expect(portalProjectFileDisposition("Freigabe Angebot.PDF")).toContain(
+      "filename*=UTF-8''Freigabe%20Angebot.PDF",
+    );
   });
 });

@@ -222,11 +222,11 @@ neue Permission, kein neuer Provider.
   no-store/no-cache/nosniff/no-referrer/DENY/
   sandbox) + `privateFailure(404/503)`; Kapsel
   `publicTokenCapsule((pool) => readPortalProject
-  FileByToken(...))`; Guards: Dateiname-Pattern
-  auf pdf/jpg/jpeg/png erweitert (F10-07-Pattern
-  ist pdf-only — neuer `SAFE_PROJECT_FILE_PATTERN`
-  mit gleicher Strenge: ASCII-Start, 1..200,
-  Allowlist-Endung), MIME aus Allowlist
+  FileByToken(...))`; Guards: Dateiname-Guard
+  `isPortalProjectFilenameSafe` (Laenge 1..180
+  getrimmt + Allowlist-Endung pdf/jpg/jpeg/png
+  case-insensitiv + keine Steuerzeichen/`"`),
+  MIME aus Allowlist
   (`PROJECT_FILE_CONTENT_TYPES`-Spiegel, kein
   Echo ungepruefter DB-Werte), Magic-Bytes je Typ
   (%PDF / JPEG-SOI / PNG-Signatur statt F10-07-
@@ -237,6 +237,17 @@ neue Permission, kein neuer Provider.
   Muster). Keine `lang`-Pflicht (Link traegt sie).
   Verworfen: Session-Route — Portal ist anonym per
   Token-Kapsel (kein Session-Kontext, F10-07-Regel).
+
+  Review-Fix (P1, 2026-09-18): urspruenglich war ein
+  F10-07-ASCII-Pattern (`SAFE_PROJECT_FILE_PATTERN`)
+  vorgesehen — verworfen, weil der Upload nur
+  Laenge+Endung (case-insensitiv) prueft und echte
+  Namen („Rechnung März.PDF") sonst portal-seitig
+  503 lieferten (intern kein Charset-Guard). Guard
+  prueft nur Gefahrenpotenzial (s.o.); Disposition
+  maskiert wie die interne Route (Fallback ohne
+  `"`/`\`/Steuerzeichen + RFC-5987). Unit C-04..C-06
+  + E2E-Realname („Freigabe Angebot.PDF") pinnen das.
 
 ## Sicherheit
 - Sichtbarkeit doppelt geschlossen: Resolver-WHERE

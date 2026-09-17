@@ -179,14 +179,14 @@ test("F10-17-E2E-01: Portal My-Files freischalten, laden und zurueckziehen", asy
   // E-01: Upload → Portal zeigt die Datei NICHT (Default unsichtbar).
   const section = page.getByTestId("project-files-section");
   await section.getByTestId("project-file-input").setInputFiles({
-    name: "freigabe.pdf",
+    name: "Freigabe Angebot.PDF",
     mimeType: "application/pdf",
     buffer: PDF_MINIMAL,
   });
   await section.getByRole("button", { name: "Hochladen", exact: true }).click();
   await expect(section.getByTestId("project-file-success")).toContainText("Datei hochgeladen");
   const row = section.getByTestId("project-file-row").nth(0);
-  await expect(row).toContainText("freigabe.pdf");
+  await expect(row).toContainText("Freigabe Angebot.PDF");
   const toggle = row.getByTestId("project-file-visibility-toggle");
   await expect(toggle).not.toBeChecked();
 
@@ -194,7 +194,7 @@ test("F10-17-E2E-01: Portal My-Files freischalten, laden und zurueckziehen", asy
   const provided = page.getByTestId("portal-provided-files");
   await expect(provided.getByRole("heading", { name: "Vom Anbieter bereitgestellt" })).toBeVisible();
   await expect(provided).toContainText("Aktuell liegen keine Dateien vom Anbieter vor.");
-  await expect(provided).not.toContainText("freigabe.pdf");
+  await expect(provided).not.toContainText("Freigabe Angebot.PDF");
 
   // E-02: Toggle sichtbar → Portal zeigt Name/Größe/Datum + Download.
   await page.goto(detailUrl);
@@ -206,7 +206,7 @@ test("F10-17-E2E-01: Portal My-Files freischalten, laden und zurueckziehen", asy
 
   await page.goto(filesTab);
   const entry = provided.getByTestId("portal-provided-file-row").nth(0);
-  await expect(entry).toContainText("freigabe.pdf");
+  await expect(entry).toContainText("Freigabe Angebot.PDF");
   await expect(entry).toContainText(`${PDF_MINIMAL.byteLength} B`);
   const today = new Intl.DateTimeFormat("de-DE", {
     day: "2-digit",
@@ -247,7 +247,7 @@ test("F10-17-E2E-01: Portal My-Files freischalten, laden und zurueckziehen", asy
   const viewerSection = page.getByTestId("project-files-section");
   await expect(viewerSection.getByTestId("project-file-row")).toHaveCount(1);
   await expect(viewerSection.getByTestId("project-file-row").nth(0))
-    .toContainText("freigabe.pdf");
+    .toContainText("Freigabe Angebot.PDF");
   await expect(viewerSection.getByTestId("project-file-visibility-state"))
     .toContainText("Für Kunden sichtbar: Nein");
   await expect(viewerSection.getByTestId("project-file-visibility-toggle")).toHaveCount(0);
