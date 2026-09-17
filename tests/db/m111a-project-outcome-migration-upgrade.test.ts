@@ -121,8 +121,9 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F7-07b Gegenzeichnung (0176, Spalten + CHECK)
 //   F7-02j Komponentenliste (0177, Validator-Replace)
 //   F7-02k Datenblaetter (0178, Validator-Replace)
-// => 158 Migrationen (idx 0..157).
-const TOTAL_MIGRATION_COUNT = 158;
+//   F10-16 Gegenzeichnung-Timeline (0179, nur Resolver-Projektion)
+// => 159 Migrationen (idx 0..158).
+const TOTAL_MIGRATION_COUNT = 159;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -438,8 +439,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 157,
-        tag: "0178_f7_02k_datenblaetter",
+        idx: 158,
+        tag: "0179_f10_16_gegenzeichnung_timeline",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

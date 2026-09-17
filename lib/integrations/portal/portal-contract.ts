@@ -169,7 +169,7 @@ export type PortalFileRequest = z.infer<typeof portalFileRequestSchema>;
 
 // F10-03: Installationsstand (nur Stand + Daten, nie Namen/Notizen).
 export const portalInstallationTimelineEntrySchema = z.strictObject({
-  type: z.enum(["created", "completed", "handover_recorded"]),
+  type: z.enum(["created", "completed", "handover_recorded", "handover_countersigned"]),
   at: z.iso.datetime({ offset: true }),
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
 });

@@ -373,21 +373,22 @@ export const PORTAL_SERVICE_STATUS_WORD: Record<PortalLang, Record<PortalService
 };
 
 // F10-03b: Timeline-Worte je Sprache (Allowlist-Typen wie bisher, ESTIMATE).
+// F10-16: + Gegenzeichnung (countersigned, DE/EN exakt, Rest ESTIMATE).
 const PORTAL_TIMELINE_WORD: Record<
   PortalLang,
-  { created: string; completed: string; handover: string; other: string }
+  { created: string; completed: string; handover: string; countersigned: string; other: string }
 > = {
-  de: { created: "Angelegt", completed: "Abgeschlossen", handover: "Abgenommen", other: "Ereignis" },
-  en: { created: "Created", completed: "Completed", handover: "Accepted", other: "Event" },
-  cs: { created: "Vytvořeno", completed: "Dokončeno", handover: "Převzato", other: "Událost" },
-  el: { created: "Δημιουργήθηκε", completed: "Ολοκληρώθηκε", handover: "Παραλήφθηκε", other: "Συμβάν" },
-  es: { created: "Creado", completed: "Completado", handover: "Aceptado", other: "Evento" },
-  fr: { created: "Créé", completed: "Terminé", handover: "Accepté", other: "Événement" },
-  hu: { created: "Létrehozva", completed: "Befejezve", handover: "Átvéve", other: "Esemény" },
-  it: { created: "Creato", completed: "Completato", handover: "Accettato", other: "Evento" },
-  nl: { created: "Aangemaakt", completed: "Voltooid", handover: "Geaccepteerd", other: "Gebeurtenis" },
-  pl: { created: "Utworzono", completed: "Ukończono", handover: "Odebrano", other: "Zdarzenie" },
-  ro: { created: "Creat", completed: "Finalizat", handover: "Acceptat", other: "Eveniment" },
+  de: { created: "Angelegt", completed: "Abgeschlossen", handover: "Abgenommen", countersigned: "Gegengezeichnet", other: "Ereignis" },
+  en: { created: "Created", completed: "Completed", handover: "Accepted", countersigned: "Countersigned", other: "Event" },
+  cs: { created: "Vytvořeno", completed: "Dokončeno", handover: "Převzato", countersigned: "Spolupodepsáno", other: "Událost" },
+  el: { created: "Δημιουργήθηκε", completed: "Ολοκληρώθηκε", handover: "Παραλήφθηκε", countersigned: "Συνυπογράφηκε", other: "Συμβάν" },
+  es: { created: "Creado", completed: "Completado", handover: "Aceptado", countersigned: "Refrendado", other: "Evento" },
+  fr: { created: "Créé", completed: "Terminé", handover: "Accepté", countersigned: "Contresigné", other: "Événement" },
+  hu: { created: "Létrehozva", completed: "Befejezve", handover: "Átvéve", countersigned: "Ellenjegyezve", other: "Esemény" },
+  it: { created: "Creato", completed: "Completato", handover: "Accettato", countersigned: "Controfirmato", other: "Evento" },
+  nl: { created: "Aangemaakt", completed: "Voltooid", handover: "Geaccepteerd", countersigned: "Medeondertekend", other: "Gebeurtenis" },
+  pl: { created: "Utworzono", completed: "Ukończono", handover: "Odebrano", countersigned: "Kontrasygnowano", other: "Zdarzenie" },
+  ro: { created: "Creat", completed: "Finalizat", handover: "Acceptat", countersigned: "Contrasemnat", other: "Eveniment" },
 };
 
 export function formatPortalTimelineEntry(lang: PortalLang, type: string, day: string): string {
@@ -398,7 +399,9 @@ export function formatPortalTimelineEntry(lang: PortalLang, type: string, day: s
       ? words.completed
       : type === "handover_recorded"
         ? words.handover
-        : words.other;
+        : type === "handover_countersigned"
+          ? words.countersigned
+          : words.other;
   const joiner = PORTAL_DATE_JOINER[lang];
   return joiner === "" ? `${word} ${day}` : `${word} ${joiner} ${day}`;
 }
