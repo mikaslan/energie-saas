@@ -1515,9 +1515,16 @@ async function main(): Promise<number> {
   // M3-00-Flake (CI 34600738237): Die Rechnungsstellungs-Seite wird im Lauf
   // erst spät erstmals getroffen; der Dev-Kaltstart genau dieser Route ließ
   // page.goto ins 30-s-Timeout laufen, der Zweitbesuch (Test 2) war grün.
-  // Route vorab kompilieren (Redirect nicht folgen) — der Test selbst bleibt
-  // die harte Prüfung, Aufwärmen ist nur Timing-Determinismus.
-  for (const warmPath of [`/w/${seedData.workspaceId}/einstellungen/rechnungsstellung`]) {
+  // CI 35098476611 belegt dieselbe Klasse für
+  // /einstellungen/angebotsprofile (m2-03a-offer-release-ui.spec.ts:1095,
+  // suite-weit einziger Besucher, Test [243/260]): page.goto lief ins
+  // 30-s-Timeout, die Navigation erreichte nie "load".
+  // Routen vorab kompilieren (Redirect nicht folgen) — die Tests selbst
+  // bleiben die harte Prüfung, Aufwärmen ist nur Timing-Determinismus.
+  for (const warmPath of [
+    `/w/${seedData.workspaceId}/einstellungen/rechnungsstellung`,
+    `/w/${seedData.m201WorkspaceId}/einstellungen/angebotsprofile`,
+  ]) {
     try {
       const warmResponse = await fetch(`${server.baseURL}${warmPath}`, {
         redirect: "manual",
