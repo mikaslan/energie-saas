@@ -203,7 +203,10 @@ test("F9.1-E2E-01: Editor legt Ereignistyp an, erfasst Zeiteintrag, sieht Summe,
   // (Kimi-P2-2), die Option erscheint im Edit-Select als „(archiviert)".
   await page.goto(settingsPath());
   await expect(page.getByRole("heading", { name: "Ereignistypen", level: 1 })).toBeVisible();
-  await page.getByRole("button", { name: "Archivieren" }).click();
+  // F9-12: 4 Default-Typen + Montage → Archivieren auf die erstellte Zeile einschränken.
+  await page.locator("li", { hasText: "Montage" })
+    .getByRole("button", { name: "Archivieren" })
+    .click();
   await expect(page.getByText("Ereignistyp archiviert.", { exact: true })).toBeVisible();
 
   await page.goto(path);
