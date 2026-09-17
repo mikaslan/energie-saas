@@ -8,9 +8,11 @@ import {
   FILE_REQUEST_FILE_TYPE_HINT,
 } from "@/lib/file-request";
 import type {
+  PortalFileRequest,
   PortalInstallationStatusFaqs,
   PortalInstallationStatusLabels,
 } from "@/lib/integrations/portal/portal-contract";
+import type { PortalLang, PortalStrings } from "@/lib/integrations/portal/portal-language";
 import {
   formatPortalDate,
   formatPortalEuro,
@@ -30,6 +32,103 @@ import {
   resolvePortalNextStep,
 } from "@/lib/integrations/portal/portal-language";
 import { PortalNotFoundError, resolvePortalByToken } from "@/modules/portal";
+
+// F10-15: Datei-Anfrage als geteiltes Item (Dateien-Tab + Foerdersektion
+// rendern exklusiv je aktivem Tab — keine doppelten IDs/Testids).
+// showBadge nur im Dateien-Tab (in der Foerdersektion ist der Kontext
+// klar); returnTab steuert den Ruecksprung nach Upload.
+function PortalFileRequestItem({
+  req,
+  token,
+  lang,
+  t,
+  returnTab,
+  showBadge,
+}: {
+  req: PortalFileRequest;
+  token: string;
+  lang: PortalLang;
+  t: PortalStrings;
+  returnTab: "uebersicht" | "dateien";
+  showBadge: boolean;
+}) {
+  return (
+    <li className="px-4 py-3">
+      <span className="block text-sm font-medium text-slate-800">
+        {req.title}
+      </span>
+      {showBadge && req.subsidyLinked ? (
+        <span
+          data-testid="file-request-subsidy-badge"
+          className="mt-1 inline-block rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-800"
+        >
+          {t.subsidyHeading}
+        </span>
+      ) : null}
+      {req.description ? (
+        <span className="block text-sm text-slate-500">{req.description}</span>
+      ) : null}
+      {req.status === "hochgeladen" ? (
+        <span className="mt-1 block text-sm font-semibold text-emerald-700">
+          {t.uploadedWord}{req.originalFilename ? ` (${req.originalFilename})` : ""}
+          {req.allowMany && req.uploadCount > 0
+            ? ` · ${req.uploadCount + 1} ${t.uploadedCountWord}`
+            : ""}
+        </span>
+      ) : null}
+      {req.allowMany && req.status === "hochgeladen" && req.filenames.length > 0 ? (
+        <ul className="mt-1 space-y-0.5">
+          {req.filenames.map((name, index) => (
+            <li key={`${index}-${name}`} className="text-sm text-slate-500">
+              {name}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {req.fileType !== "any" ? (
+        <span
+          id={`file-type-hint-${req.id}`}
+          className="mt-1 block text-sm text-slate-500"
+          data-testid="file-request-file-type-hint"
+        >
+          {FILE_REQUEST_FILE_TYPE_HINT[req.fileType]}
+        </span>
+      ) : null}
+      {req.status === "offen" || req.allowMany ? (
+        <form
+          action={`/p/${token}/file-requests`}
+          method="post"
+          encType="multipart/form-data"
+          className="mt-2 flex flex-wrap items-center gap-2"
+        >
+          <input type="hidden" name="requestId" value={req.id} />
+          <input type="hidden" name="lang" value={lang} />
+          <input type="hidden" name="returnTab" value={returnTab} />
+          <input
+            type="file"
+            name="datei"
+            required
+            accept={FILE_REQUEST_FILE_TYPE_ACCEPT[req.fileType]}
+            aria-label={`${t.uploadFileAriaPrefix} ${req.title}`}
+            aria-describedby={req.fileType !== "any" ? `file-type-hint-${req.id}` : undefined}
+            className="text-sm text-slate-600"
+          />
+          <button
+            type="submit"
+            className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+          >
+            {t.uploadButton}
+          </button>
+        </form>
+      ) : null}
+      {req.allowMany && req.status === "hochgeladen" ? (
+        <span className="mt-1 block text-sm text-slate-500">
+          {t.uploadMoreHint}
+        </span>
+      ) : null}
+    </li>
+  );
+}
 
 // F10-06 Portal-Sprachen (Slice 1, ESTIMATE): Titel je Sprache (?lang=,
 // sonst Cookie, sonst Deutsch).
@@ -283,71 +382,15 @@ export default async function PortalTokenPage({
             ) : (
               <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
                 {view.fileRequests.map((req) => (
-                  <li key={req.id} className="px-4 py-3">
-                    <span className="block text-sm font-medium text-slate-800">
-                      {req.title}
-                    </span>
-                    {req.description ? (
-                      <span className="block text-sm text-slate-500">{req.description}</span>
-                    ) : null}
-                    {req.status === "hochgeladen" ? (
-                      <span className="mt-1 block text-sm font-semibold text-emerald-700">
-                        {t.uploadedWord}{req.originalFilename ? ` (${req.originalFilename})` : ""}
-                        {req.allowMany && req.uploadCount > 0
-                          ? ` · ${req.uploadCount + 1} ${t.uploadedCountWord}`
-                          : ""}
-                      </span>
-                    ) : null}
-                    {req.allowMany && req.status === "hochgeladen" && req.filenames.length > 0 ? (
-                      <ul className="mt-1 space-y-0.5">
-                        {req.filenames.map((name, index) => (
-                          <li key={`${index}-${name}`} className="text-sm text-slate-500">
-                            {name}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    {req.fileType !== "any" ? (
-                      <span
-                        id={`file-type-hint-${req.id}`}
-                        className="mt-1 block text-sm text-slate-500"
-                        data-testid="file-request-file-type-hint"
-                      >
-                        {FILE_REQUEST_FILE_TYPE_HINT[req.fileType]}
-                      </span>
-                    ) : null}
-                    {req.status === "offen" || req.allowMany ? (
-                      <form
-                        action={`/p/${token}/file-requests`}
-                        method="post"
-                        encType="multipart/form-data"
-                        className="mt-2 flex flex-wrap items-center gap-2"
-                      >
-                        <input type="hidden" name="requestId" value={req.id} />
-                        <input type="hidden" name="lang" value={lang} />
-                        <input
-                          type="file"
-                          name="datei"
-                          required
-                          accept={FILE_REQUEST_FILE_TYPE_ACCEPT[req.fileType]}
-                          aria-label={`${t.uploadFileAriaPrefix} ${req.title}`}
-                          aria-describedby={req.fileType !== "any" ? `file-type-hint-${req.id}` : undefined}
-                          className="text-sm text-slate-600"
-                        />
-                        <button
-                          type="submit"
-                          className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
-                        >
-                          {t.uploadButton}
-                        </button>
-                      </form>
-                    ) : null}
-                    {req.allowMany && req.status === "hochgeladen" ? (
-                      <span className="mt-1 block text-sm text-slate-500">
-                        {t.uploadMoreHint}
-                      </span>
-                    ) : null}
-                  </li>
+                  <PortalFileRequestItem
+                    key={req.id}
+                    req={req}
+                    token={token}
+                    lang={lang}
+                    t={t}
+                    returnTab="dateien"
+                    showBadge
+                  />
                 ))}
               </ul>
             )}
@@ -360,6 +403,17 @@ export default async function PortalTokenPage({
                 <dd>{nextStep}</dd>
               </div>
             </dl>
+            {uploadHint && !view.fileRequests.some((req) => req.subsidyLinked) ? (
+              <p
+                role={rawUpload === "erfolg" ? "status" : "alert"}
+                data-testid="file-request-upload-feedback"
+                className={`mt-2 text-sm font-semibold ${
+                  rawUpload === "erfolg" ? "text-emerald-700" : "text-red-700"
+                }`}
+              >
+                {uploadHint}
+              </p>
+            ) : null}
             {view.subsidy === null ? null : (
               <div className="mt-6" data-testid="portal-subsidy-section">
                 <h2 className="text-lg font-semibold text-slate-950">{t.subsidyHeading}</h2>
@@ -421,6 +475,37 @@ export default async function PortalTokenPage({
                     {t.chatSend}
                   </button>
                 </form>
+                {view.fileRequests.some((req) => req.subsidyLinked) ? (
+                  <div className="mt-4" data-testid="portal-subsidy-files">
+                    <h3 className="text-sm font-semibold text-slate-950">{t.filesHeading}</h3>
+                    {uploadHint ? (
+                      <p
+                        role={rawUpload === "erfolg" ? "status" : "alert"}
+                        data-testid="file-request-upload-feedback"
+                        className={`mt-2 text-sm font-semibold ${
+                          rawUpload === "erfolg" ? "text-emerald-700" : "text-red-700"
+                        }`}
+                      >
+                        {uploadHint}
+                      </p>
+                    ) : null}
+                    <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
+                      {view.fileRequests
+                        .filter((req) => req.subsidyLinked)
+                        .map((req) => (
+                          <PortalFileRequestItem
+                            key={req.id}
+                            req={req}
+                            token={token}
+                            lang={lang}
+                            t={t}
+                            returnTab="uebersicht"
+                            showBadge={false}
+                          />
+                        ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             )}
             {view.gridRegistration === null ? null : (

@@ -4409,6 +4409,11 @@ export async function verifyRoleContract(
   const hasPortalStatusVisibilityProjection = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("status_visibility_map"),
   );
+  // F10-15 (0172): Stufenmarker für subsidyLinked im Portal-Resolver
+  // (Muster 0171).
+  const hasPortalFileRequestSubsidyLinked = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("subsidy_case_id IS NOT NULL"),
+  );
   // F10-07 (0116): Stufenmarker für den Portal-Dokument-Download
   // (eigene DEFINER-Funktion, Muster 0104).
   const portalDocumentDownloadProbe = await client.query<{ name: string | null }>(`
@@ -5828,14 +5833,15 @@ export async function verifyRoleContract(
           `search_path=pg_catalog:${hasF1008Notification
             ? "a49661be591f013d15fea7fc6169fc344311badbaeb1879c6e09713195373e7e"
             : "def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf"}`,
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15/F10-13/F10-14:
-        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135/0170/0171
-        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein vierzehnter Rumpf
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15/F10-13/F10-14/F10-15:
+        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135/0170/0171/0172
+        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein fünfzehnter Rumpf
         // bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          // F10-14 (0171): statusVisibility-Projektion + NULL-Label-Filter
-          // (Hash per Probe geerntet).
-          `search_path=pg_catalog:${hasPortalStatusVisibilityProjection
+          // F10-15 (0172): subsidyLinked-Projektion (Hash per Probe geerntet).
+          `search_path=pg_catalog:${hasPortalFileRequestSubsidyLinked
+            ? "0dca4b3caaeb4f81317cd187ef44f324cfba34b9893fd36f5493fb390535e21c"
+            : hasPortalStatusVisibilityProjection
             ? "6b287e05f3d0d983f92d6902de20fbb9405d0626894dbeb37717245fcb297e3b"
             : hasFileRequestFileType
             ? "a5a9549b3b079888078c3dd0180e1f4641ce559c769e13c9f815d8be50592871"

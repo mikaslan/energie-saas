@@ -68,8 +68,12 @@ export async function POST(
   // F10-06: Sprache aus dem Formular (Allowlist) in Redirect + Cookie
   // übernehmen, damit Upload-Feedback und Folgebesuche sprachstabil sind.
   const lang = parsePortalLang(form?.get("lang"));
+  // F10-15: Rücksprung-Tab (Allowlist, Default Dateien-Tab).
+  const returnTabRaw = form?.get("returnTab");
+  const returnTab = returnTabRaw === "uebersicht" ? "uebersicht" : "dateien";
+  const tabQuery = returnTab === "uebersicht" ? "" : `tab=${returnTab}&`;
   const response = NextResponse.redirect(
-    new URL(`/p/${token}?tab=dateien&upload=${outcome}&lang=${lang}`, request.url),
+    new URL(`/p/${token}?${tabQuery}upload=${outcome}&lang=${lang}`, request.url),
     // 303 wie redirect(): Der Browser lädt die Zielseite per GET neu;
     // 307 würde den POST (inkl. Datei) erneut senden.
     303,

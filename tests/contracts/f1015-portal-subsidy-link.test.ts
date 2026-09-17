@@ -21,7 +21,7 @@ const BASE_VIEW = {
 function fileRequestEntry(patch: Record<string, unknown> = {}) {
   return {
     id: INVITE,
-    title: "Rechnung",
+    title: "KfW-Nachweis",
     description: null,
     status: "offen",
     createdAt: "2026-09-01T10:00:00.000Z",
@@ -30,52 +30,44 @@ function fileRequestEntry(patch: Record<string, unknown> = {}) {
     allowMany: false,
     uploadCount: 0,
     filenames: [],
-    subsidyLinked: false,
+    fileType: "any",
     ...patch,
   };
 }
 
-describe("F10-13 Datei-Anfragen Dateityp (Portal-Contract)", () => {
-  it("F1013-CONTRACT-01: parst any/pdf/image, fehlend = any, fremd = null", () => {
-    for (const fileType of ["any", "pdf", "image"]) {
+describe("F10-15 KfW-Upload-Kontext (Portal-Contract)", () => {
+  it("F1015-CONTRACT-01: subsidyLinked gesetzt/fehlend/deformiert", () => {
+    for (const subsidyLinked of [true, false]) {
       const view = parsePortalPublicView({
         ...BASE_VIEW,
-        fileRequests: [fileRequestEntry({ fileType })],
+        fileRequests: [fileRequestEntry({ subsidyLinked })],
       });
-      expect(view?.fileRequests).toEqual([
-        expect.objectContaining({ fileType }),
-      ]);
+      expect(view?.fileRequests).toEqual([expect.objectContaining({ subsidyLinked })]);
     }
 
-    // Alt-Projektion ohne Schlüssel → ehrlich 'any' (Muster allowMany).
+    // Alt-Projektion ohne Schlüssel → ehrlich false (Muster fileType).
     const legacy = parsePortalPublicView({
       ...BASE_VIEW,
       fileRequests: [fileRequestEntry()],
     });
-    expect(legacy?.fileRequests).toEqual([
-      expect.objectContaining({ fileType: "any" }),
-    ]);
+    expect(legacy?.fileRequests).toEqual([expect.objectContaining({ subsidyLinked: false })]);
 
-    // Fremde Typen brechen fail-closed ab (kein stiller Fallback).
-    for (const fileType of ["exe", "PDF", "", null, 42]) {
+    // Deformiert bricht fail-closed ab.
+    for (const subsidyLinked of ["ja", 1, null, { linked: true }]) {
       expect(
         parsePortalPublicView({
           ...BASE_VIEW,
-          fileRequests: [fileRequestEntry({ fileType })],
+          fileRequests: [fileRequestEntry({ subsidyLinked })],
         }),
       ).toBeNull();
     }
   });
 
-  it("F1013-CONTRACT-02: striktes Schema kennt nur den geschlossenen Wortschatz", () => {
-    const valid = fileRequestEntry({ fileType: "pdf" });
+  it("F1015-CONTRACT-02: striktes Schema kennt nur Boolean", () => {
+    const valid = fileRequestEntry({ subsidyLinked: true });
     expect(portalFileRequestSchema.safeParse(valid).success).toBe(true);
     expect(
-      portalFileRequestSchema.safeParse({ ...valid, fileType: "video" }).success,
-    ).toBe(false);
-    // Unbekannte Schlüssel bleiben verboten (Allowlist-Vertrag).
-    expect(
-      portalFileRequestSchema.safeParse({ ...valid, storageKey: "immutable/x" }).success,
+      portalFileRequestSchema.safeParse({ ...valid, subsidyLinked: "ja" }).success,
     ).toBe(false);
   });
 });

@@ -149,6 +149,8 @@ export type PortalAppointment = z.infer<typeof portalAppointmentSchema>;
 // Dateinamen weiterer Belege, nie Keys; fehlend = Alt-Projektion).
 // F10-13: Dateityp — zusaetzlich fileType (geschlossen any/pdf/image,
 // minimiertes Wort, keine Interna; fehlend = Alt-Projektion → any).
+// F10-15: KfW-Kontext — zusaetzlich subsidyLinked (nur das Bit, nie die
+// Akten-ID; fehlend = Alt-Projektion → false).
 export const portalFileRequestSchema = z.strictObject({
   id: z.uuid(),
   title: z.string(),
@@ -161,6 +163,7 @@ export const portalFileRequestSchema = z.strictObject({
   uploadCount: z.number().int().min(0),
   filenames: z.array(z.string()),
   fileType: z.enum(["any", "pdf", "image"]),
+  subsidyLinked: z.boolean(),
 });
 export type PortalFileRequest = z.infer<typeof portalFileRequestSchema>;
 
@@ -534,7 +537,8 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
           key !== "id" && key !== "title" && key !== "description" &&
           key !== "status" && key !== "createdAt" && key !== "uploadedAt" &&
           key !== "originalFilename" && key !== "allowMany" &&
-          key !== "uploadCount" && key !== "filenames" && key !== "fileType"
+          key !== "uploadCount" && key !== "filenames" && key !== "fileType" &&
+          key !== "subsidyLinked"
         ) {
           return null;
         }
@@ -568,6 +572,10 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       const fileType = record.fileType === undefined ? "any" : record.fileType;
       const parsedFileType = portalFileRequestSchema.shape.fileType.safeParse(fileType);
       if (!parsedFileType.success) return null;
+      // F10-15: KfW-Verknuepfung (fehlend = Alt-Projektion → false;
+      // nicht-boolean → null, kein stiller Fallback).
+      const subsidyLinked = record.subsidyLinked === undefined ? false : record.subsidyLinked;
+      if (typeof subsidyLinked !== "boolean") return null;
       fileRequests.push({
         id,
         title,
@@ -580,6 +588,7 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
         uploadCount,
         filenames: filenames as string[],
         fileType: parsedFileType.data,
+        subsidyLinked,
       });
     }
   }

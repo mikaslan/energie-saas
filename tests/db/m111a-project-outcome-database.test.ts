@@ -242,10 +242,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0147 F16-04e Vorlagen-Labels (Spalte + CHECK),
     // 0148 F16-11 Paket-Vorlagen (Tabelle + RLS),
     // 0170 F10-13 Datei-Anfragen Dateityp (Spalten + CHECKs + DEFINER-Replaces),
-    // 0171 F10-14 Installations-Sichtbarkeit (Spalte + Resolver-Projektion)).
+    // 0171 F10-14 Installations-Sichtbarkeit (Spalte + Resolver-Projektion),
+    // 0172 F10-15 KfW-Upload-Kontext (nur Resolver-Projektion)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 150,
-      tag: "0171_f10_14_installations_sichtbarkeit",
+      idx: 151,
+      tag: "0172_f10_15_kfw_upload_kontext",
     });
   });
 
