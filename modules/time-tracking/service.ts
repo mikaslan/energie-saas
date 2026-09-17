@@ -12,6 +12,7 @@ import {
   createTimeEventTypeCommandSchema,
   stopTimeEntryCommandSchema,
   timeEntryDtoSchema,
+  myRunningTimeEntryDtoSchema,
   timeEntryExportResultSchema,
   timeEntryListDtoSchema,
   timeEntryListQuerySchema,
@@ -29,6 +30,7 @@ import {
   type CreateTimeEventTypeCommand,
   type StartTimeEntryCommand,
   type StopTimeEntryCommand,
+  type MyRunningTimeEntryDto,
   type TimeEntryDto,
   type TimeEntryExportResult,
   type TimeEntryListDto,
@@ -1192,6 +1194,54 @@ export async function discardTimeEntry(
     payload: {},
   });
   await writeAuditFor(tx, ctx, "time.entry.discard", { id });
+}
+
+// F9-13 Floating-Timer: eigener laufender Eintrag des Actors (genau einer,
+// partieller Unique) mit Anzeige-Namen. Reiner Lese-Pfad (requireRead),
+// Tenant-RLS aus 0050, keine Migration.
+export async function getMyRunningTimeEntry(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<MyRunningTimeEntryDto | null> {
+  requireRead(ctx);
+  const result = await tx.execute<{
+    id: string;
+    project_id: string;
+    project_name: string;
+    type_id: string | null;
+    type_name: string | null;
+    start_at: string;
+    comment: string | null;
+  }>(sql`
+    select e.id, e.project_id, p.name as project_name,
+           e.type_id, t.name as type_name, e.start_at, e.comment
+      from time_entry e
+      join project p
+        on p.workspace_id = e.workspace_id
+       and p.id = e.project_id
+      left join time_event_type t
+        on t.workspace_id = e.workspace_id
+       and t.id = e.type_id
+     where e.workspace_id = ${ctx.workspaceId}::uuid
+       and e.user_id = ${ctx.actor}::uuid
+       and e.end_at is null
+       and e.archived_at is null
+     order by e.start_at desc
+     limit 1
+  `);
+  const row = result.rows[0];
+  if (!row) return null;
+  return myRunningTimeEntryDtoSchema.parse({
+    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+    id: row.id,
+    projectId: row.project_id,
+    projectName: row.project_name,
+    typeId: row.type_id,
+    typeName: row.type_name,
+    startAt: row.start_at,
+    comment: row.comment,
+    running: true,
+  });
 }
 
 // F9.4 Slice D Team-Auslastung: Aggregation je Mitglied, gleiche

@@ -86,6 +86,22 @@ export const timeEntryDtoSchema = z.object({
 });
 export type TimeEntryDto = z.infer<typeof timeEntryDtoSchema>;
 
+// F9-13 Floating-Timer: Widget-Sicht auf den eigenen laufenden Eintrag
+// (genau einer je Actor, partieller Unique). Namen sind denormalisierte
+// Join-Ergebnisse für die Anzeige — IDs bleiben authoritative.
+export const myRunningTimeEntryDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  id: z.string().uuid(),
+  projectId: z.string().uuid(),
+  projectName: z.string(),
+  typeId: z.string().uuid().nullable(),
+  typeName: z.string().nullable(),
+  startAt: z.string(),
+  comment: z.string().nullable(),
+  running: z.literal(true),
+});
+export type MyRunningTimeEntryDto = z.infer<typeof myRunningTimeEntryDtoSchema>;
+
 export const timeEntryListDtoSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
   entries: z.array(timeEntryDtoSchema),
