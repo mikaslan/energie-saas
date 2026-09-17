@@ -31,12 +31,46 @@ export const checklistTemplateItemSchema = z.strictObject({
   // F7-03B: Art des Punkts, den das Anwenden erzeugt (alle acht
   // Projekt-Arten; fehlend = Legacy = Aufgabe wie bisher).
   kind: checklistItemKindSchema.nullish(),
+  // F7-03D: Bedingung „Sichtbar, wenn Komponente erledigt" (Regel unten;
+  // Anwenden mappt auf die erzeugte Punkt-ID).
+  visibleIfComponentId: z.string().uuid().nullish(),
 });
 export type ChecklistTemplateItemV1 = z.infer<typeof checklistTemplateItemSchema>;
 
 export const checklistTemplateItemsSchema = z
   .array(checklistTemplateItemSchema)
-  .max(TEMPLATE_ITEMS_MAX);
+  .max(TEMPLATE_ITEMS_MAX)
+  // F7-03D: Regelziel muss eine ANDERE Position derselben Vorlage sein
+  // (fail-closed: baumelnd/Selbst = ungueltig). Keine Ketten-Pruefung:
+  // Single-Hop gilt erst im Projekt (F7-02B).
+  .refine(
+    (items) => {
+      const known = new Set(items.map((entry) => entry.componentId));
+      return items.every(
+        (entry) => entry.visibleIfComponentId == null
+          || (entry.visibleIfComponentId !== entry.componentId
+            && known.has(entry.visibleIfComponentId)),
+      );
+    },
+    { message: "Bedingung verlangt eine andere Position derselben Vorlage" },
+  );
+
+// F7-03D: Editor-Sanitize — nach Entfernen/Ummappen einer Position
+// werden Regeln ohne (fremdes) Ziel auf null gesetzt statt beim
+// Speichern generisch zu scheitern. Rein (keine Mutation);
+// Duplikat-Komponenten bleiben erlaubt (last-wins beim Anwenden).
+export function sanitizeTemplateRuleTargets(
+  items: ChecklistTemplateItemV1[],
+): ChecklistTemplateItemV1[] {
+  const known = new Set(items.map((entry) => entry.componentId));
+  return items.map((entry) =>
+    entry.visibleIfComponentId != null
+    && (entry.visibleIfComponentId === entry.componentId
+      || !known.has(entry.visibleIfComponentId))
+      ? { ...entry, visibleIfComponentId: null }
+      : entry,
+  );
+}
 
 export const checklistTemplateTargetsSchema = z
   .array(

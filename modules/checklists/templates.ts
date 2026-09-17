@@ -318,10 +318,30 @@ export function restoreChecklistTemplate(
 // als gemeinsame Basis für Erst-Anlage, Merge und Reset.
 // F7-03B: Positionen tragen die Punkt-Art (null = Legacy = Aufgabe);
 // Bild-Typen bleiben Q-STORAGE-UPLOADS.
+// F7-03D: Positionen tragen die Bedingungs-Komponente (null = keine
+// Regel); Anwenden mappt auf die erzeugte Punkt-ID.
 type RenderedTemplate = {
   name: string;
-  items: Array<{ componentId: string; title: string; kind: ChecklistItemKindV1 | null }>;
+  items: Array<{
+    componentId: string;
+    title: string;
+    kind: ChecklistItemKindV1 | null;
+    visibleIfComponentId: string | null;
+  }>;
 };
+
+// F7-03D: Regel → Punkt-ID (fail-closed bei unauflösbarem Ziel —
+// nach Save-Refine nur im Titel-Match-Grenzfall des Merges möglich).
+// Semantik „Sichtbar, wenn erledigt" (equals: true, F7-02B).
+function resolveTemplateRule(
+  rule: string | null,
+  idByComponent: ReadonlyMap<string, string>,
+): { itemId: string; equals: boolean } | null {
+  if (rule === null) return null;
+  const itemId = idByComponent.get(rule);
+  if (!itemId) throw new ChecklistValidationError("template rule target missing");
+  return { itemId, equals: true };
+}
 
 async function loadTemplateRender(
   tx: TenantTx,
@@ -369,11 +389,31 @@ async function loadTemplateRender(
       title: `${nameById.get(item.componentId) ?? "Komponente"} × ${item.quantity}`,
       // F7-03B: Punkt-Art je Position (nullish = Legacy = Aufgabe).
       kind: item.kind ?? null,
+      // F7-03D: Bedingungs-Komponente je Position (null = keine Regel).
+      visibleIfComponentId: item.visibleIfComponentId ?? null,
     })),
   };
 }
 
 function renderFreshBlocks(render: RenderedTemplate, position: number): EditableChecklistBlocksV2 {
+  // F7-03D: Zwei Phasen (IDs zuerst, Regeln danach — Ziel-IDs muessen
+  // existieren, bevor visibleIf zeigt).
+  const fresh = render.items.map((item) => ({
+    id: randomUUID(),
+    title: item.title,
+    done: false,
+    required: false,
+    visible: true,
+    componentId: item.componentId,
+    // F7-03B: Art aus der Vorlage (null = Aufgabe); Inhalt/Antwort
+    // trägt die Vorlage nie (description/value bleiben null).
+    kind: item.kind,
+    visibleIf: null as { itemId: string; equals: boolean } | null,
+  }));
+  const idByComponent = new Map(fresh.map((entry) => [entry.componentId, entry.id]));
+  render.items.forEach((item, index) => {
+    fresh[index]!.visibleIf = resolveTemplateRule(item.visibleIfComponentId, idByComponent);
+  });
   const blocks: EditableChecklistBlocksV2 = [{
     id: randomUUID(),
     name: render.name,
@@ -384,17 +424,7 @@ function renderFreshBlocks(render: RenderedTemplate, position: number): Editable
       name: "Material",
       position: 0,
       visible: true,
-      items: render.items.map((item) => ({
-        id: randomUUID(),
-        title: item.title,
-        done: false,
-        required: false,
-        visible: true,
-        componentId: item.componentId,
-        // F7-03B: Art aus der Vorlage (null = Aufgabe); Inhalt/Antwort
-        // trägt die Vorlage nie (description/value bleiben null).
-        kind: item.kind,
-      })),
+      items: fresh,
     }],
   }];
   return editableChecklistBlocksSchema.parse(blocks);
@@ -563,8 +593,15 @@ export async function reapplyChecklistTemplate(
       };
       target.segments.push(segment);
     }
+    // F7-03D: Zwei Phasen (Regel-Ziele duerfen Bestand ODER Nachschub
+    // sein); nur NEUE Punkte erhalten Regeln (Werterhalt wie bei kind).
+    // Referenzen statt find: Duplikat-Komponenten erhalten je eigene Regel.
+    const addedRules: Array<{
+      entry: (typeof segment.items)[number];
+      visibleIfComponentId: string | null;
+    }> = [];
     for (const item of missing) {
-      segment.items.push({
+      const entry = {
         id: randomUUID(),
         title: item.title,
         done: false,
@@ -574,7 +611,34 @@ export async function reapplyChecklistTemplate(
         // F7-03B: Nachschub mit Art; vorhandene Punkte (Match oben)
         // behalten ihre Art — kein Overwrite (Werterhalt).
         kind: item.kind,
-      });
+        visibleIf: null as { itemId: string; equals: boolean } | null,
+      };
+      segment.items.push(entry);
+      addedRules.push({ entry, visibleIfComponentId: item.visibleIfComponentId });
+    }
+    const idByComponent = new Map<string, string>();
+    const idByTitle = new Map<string, string>();
+    for (const entry of segment.items) {
+      if (entry.componentId != null) idByComponent.set(entry.componentId, entry.id);
+      idByTitle.set(entry.title, entry.id);
+    }
+    // Titel-Fallback (Segment-Scope): Regelziel per Titel gematcht
+    // (Legacy/umbenannte Vorlage, andere Komponente) — der Merge darf
+    // nicht aborten (Werterhalt wie ohne F7-03D). Unauffindbar bleibt
+    // fail-closed per Throw in resolveTemplateRule.
+    const titleByComponent = new Map(
+      render.items.map((item) => [item.componentId, item.title] as const),
+    );
+    for (const added of addedRules) {
+      const rule = added.visibleIfComponentId;
+      if (rule !== null && !idByComponent.has(rule)) {
+        const fallbackTitle = titleByComponent.get(rule);
+        const fallbackId = fallbackTitle === undefined
+          ? undefined
+          : idByTitle.get(fallbackTitle);
+        if (fallbackId !== undefined) idByComponent.set(rule, fallbackId);
+      }
+      added.entry.visibleIf = resolveTemplateRule(added.visibleIfComponentId, idByComponent);
     }
     const merged = editableChecklistBlocksSchema.safeParse(blocks);
     if (!merged.success) throw new ChecklistValidationError();

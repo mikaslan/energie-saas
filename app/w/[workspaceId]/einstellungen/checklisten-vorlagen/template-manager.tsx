@@ -5,6 +5,7 @@ import type {
   ChecklistTemplateDto,
   ChecklistTemplateItemV1,
 } from "@/lib/integrations/checklists/template-contract";
+import { sanitizeTemplateRuleTargets } from "@/lib/integrations/checklists/template-contract";
 import {
   archiveTemplateAction,
   createTemplateAction,
@@ -166,13 +167,17 @@ function ItemEditor({
   items: ChecklistTemplateItemV1[];
   onChange: (items: ChecklistTemplateItemV1[]) => void;
 }) {
-  const addItem = () => onChange([
+  // F7-03D: Jede Aenderung sanitisiert Regeln (baumelnd/Selbst nach
+  // Entfernen/Ummappen -> null statt generischem Save-Fehler).
+  const emit = (next: ChecklistTemplateItemV1[]) =>
+    onChange(sanitizeTemplateRuleTargets(next));
+  const addItem = () => emit([
     ...items,
-    { componentId: components[0]?.id ?? "", quantity: 1, position: items.length, visibleToCustomer: true, priceOverridesComponent: false, kind: null },
+    { componentId: components[0]?.id ?? "", quantity: 1, position: items.length, visibleToCustomer: true, priceOverridesComponent: false, kind: null, visibleIfComponentId: null },
   ]);
   const setItem = (index: number, patch: Partial<ChecklistTemplateItemV1>) =>
-    onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
-  const removeItem = (index: number) => onChange(
+    emit(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  const removeItem = (index: number) => emit(
     items.filter((_, i) => i !== index).map((item, i) => ({ ...item, position: i })),
   );
 
@@ -221,6 +226,31 @@ function ItemEditor({
               <option value="multi">Mehrfachauswahl</option>
               <option value="image">Bild</option>
               <option value="signature">Unterschrift</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-sm text-slate-700">
+            Sichtbar, wenn
+            <select
+              aria-label={`Regel ${index + 1}`}
+              value={item.visibleIfComponentId ?? ""}
+              onChange={(event) => setItem(index, {
+                visibleIfComponentId: event.target.value === "" ? null : event.target.value,
+              })}
+              className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-600"
+            >
+              <option value="">Keine Regel</option>
+              {items
+                .filter((candidate) => candidate.componentId !== ""
+                  && candidate.componentId !== item.componentId)
+                .map((candidate, candidateIndex) => {
+                  const sku = components.find((entry) => entry.id === candidate.componentId)?.sku
+                    ?? "Komponente";
+                  return (
+                    <option key={`${candidate.componentId}-${candidateIndex}`} value={candidate.componentId}>
+                      {`${sku} erledigt`}
+                    </option>
+                  );
+                })}
             </select>
           </label>
           <button
