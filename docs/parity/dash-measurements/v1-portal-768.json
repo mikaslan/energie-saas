@@ -1,0 +1,33 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/p/:token",
+  "viewport": {
+    "width": 768,
+    "height": 1024
+  },
+  "head": "0ba8d30",
+  "sourceRunCapturedAt": "2026-09-17T10:09:37.141Z",
+  "boxes": [
+    {
+      "selector": "main",
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 716.796875
+    },
+    {
+      "selector": "h1",
+      "x": 57,
+      "y": 228.390625,
+      "width": 654,
+      "height": 32
+    },
+    {
+      "selector": "nav",
+      "x": 57,
+      "y": 276.390625,
+      "width": 654,
+      "height": 32
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "artifact": "dash-measurements/v1",
+  "route": "/w/:workspaceId/anfragen/:projectId",
+  "viewport": {
+    "width": 375,
+    "height": 812
+  },
+  "head": "0ba8d30",
+  "sourceRunCapturedAt": "2026-09-17T10:09:32.560Z",
+  "boxes": [
+    {
+      "selector": "main",
+      "x": 0,
+      "y": 0,
+      "width": 375,
+      "height": 10823.875
+    },
+    {
+      "selector": "nav[aria-label=\"Brotkrumen\"]",
+      "x": 16,
+      "y": 32,
+      "width": 343,
+      "height": 88
+    },
+    {
+      "selector": "h1",
+      "x": 16,
+      "y": 168,
+      "width": 343,
+      "height": 32
+    },
+    {
+      "selector": "[aria-label=\"Projektstatus\"]",
+      "x": 16,
+      "y": 244,
+      "width": 343,
+      "height": 30
+    }
+  ]
+}

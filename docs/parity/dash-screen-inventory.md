@@ -1,4 +1,4 @@
-# DASH Screen-Inventory v1 (Agent 5, 2026-09-17)
+# DASH Screen-Inventory v2 (Agent 5, 2026-09-17)
 
 Live-Inventar pro Route (Entry, Navigation/Breadcrumb/Tabs, Modal/Drawer,
 Tabelle/Kanban/Chart, Empty/Loading/Error/Forbidden, Primaeraktionen,
@@ -72,10 +72,32 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
   abgebildet. Kein Redesign (Direktive); Abweichung bleibt als ESTIMATE mit
   offener Referenzfrage bestehen, kein erfundener Chart wird ergänzt.
 
-## 4. Roadmap (OFFEN)
+## 4. Weitere Kernrouten (VERIFIZIERT, DASH-VG-03..06)
 
-- Projektakte (`anfragen/[projectId]` + Tabs), Angebotsliste + Offer-Detail
-  (Offer-Scope!), Rechnungen, Portal `p/[token]`, restliche Routen: derselbe
-  Gate-Satz (Viewport/Axe/Console/Klickpfade) plus Mess-Artefakte.
+- Projektakte `/w/:id/anfragen/:projectId` (DASH-VG-03): Editor,
+  Breadcrumb-Nav „Brotkrumen“ + h1 + Projektstatus; 375/768/1440
+  overflow-frei, Axe sauber, Console/Hydration sauber. Messungen:
+  `v1-projektakte-{375,768,1440}.json` (4 Boxen). Eigene
+  `loading.tsx`/`error.tsx`/`not-found.tsx` vorhanden (Live-States OFFEN).
+- Angebotsliste `/w/:id/angebote` (DASH-VG-04): isolierter Workspace,
+  h1 „Angebote“ + „Noch keine Angebote“; Gates wie oben.
+  Messungen: `v1-angebotsliste-*.json` (2 Boxen).
+- Portal `/p/:token` (DASH-VG-05): Create → Resolve → Withdraw im
+  f101-Projekt (selbstreinigend, f10-01 sieht weiter „Kein aktiver Link“);
+  Resolve-Gates bei 375/768/1440; Ungültig-Ansicht mit 404-Consume
+  (Muster m1-08b/f10-01). Messungen: `v1-portal-*.json` (3 Boxen).
+- BEFUND + FIX (RED→GREEN, kein Test-Relax): Portal-Tab-Nav lief bei 375
+  um +39 px über („Dateien“-Link, `flex` ohne Wrap). Fix:
+  `app/p/[token]/page.tsx:154` `flex gap-2` → `flex flex-wrap gap-2`
+  (Desktop unverändert, Wrap nur bei Bedarf; Muster wie Dashboard-Header).
+- Angebots-Detail (DASH-VG-06, `z-dash-offer-detail-gates.spec.ts`): Gates
+  im Suite-Kontext (Angebot aus M2-01-Browser-Action, jüngstes lesen wie
+  `readM201Offer`); fokussiert ehrlich SKIP statt erfundener Daten.
+  Offer-Scope-Selektor `[data-wmee-scope="offer"]` asserted.
+
+## 5. Roadmap (OFFEN)
+
+- Rechnungen, restliche Routen: derselbe Gate-Satz plus Mess-Artefakte.
 - Rollenmatrix (Viewer/Editor/Admin/External) pro Route, Loading-/Error-States,
   Screenshot-Sichtung mit stabilen Testdaten.
+- VG-06-Suite-Nachweis: volle E2E-Suite (CI-Lane) muss DASH-VG-06 passed zeigen.
