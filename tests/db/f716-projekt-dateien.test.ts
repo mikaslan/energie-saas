@@ -421,9 +421,11 @@ describe("F7-16 Projekt-Dateien (PostgreSQL + LocalStorage)", () => {
     );
     expect(listed.map((entry) => entry.id)).toEqual([second.fileId, first.fileId]);
     for (const entry of listed) {
+      // F10-17: DTO traegt zusaetzlich visibleToCustomer (Default false).
       expect(Object.keys(entry).sort()).toEqual(
-        ["byteSize", "contentType", "createdAt", "id", "originalFilename"],
+        ["byteSize", "contentType", "createdAt", "id", "originalFilename", "visibleToCustomer"],
       );
+      expect(entry.visibleToCustomer).toBe(false);
     }
     expect(listed[0]).toMatchObject({
       originalFilename: "b.pdf",

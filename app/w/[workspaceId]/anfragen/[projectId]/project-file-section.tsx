@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectFileDto } from "@/modules/project-files";
+import {
+  setProjectFileVisibilityAction,
+  type ProjectFileActionState,
+} from "./project-file-actions";
 
 const dateFormatter = new Intl.DateTimeFormat("de-DE", {
   day: "2-digit",
@@ -59,8 +63,84 @@ function uploadErrorText(error: UploadError): string {
   return "Der Upload ist fehlgeschlagen.";
 }
 
+function visibilityErrorText(state: ProjectFileActionState): string | null {
+  if (state.status === "invalid") return "Ungültige Auswahl (Seite neu laden).";
+  if (state.status === "not_found") return "Datei nicht gefunden (Seite neu laden).";
+  if (state.status === "denied") return "Keine Berechtigung für diese Änderung.";
+  if (state.status === "unauthenticated") return "Sitzung abgelaufen (neu anmelden).";
+  return null;
+}
+
+// F10-17: Sichtbarkeits-Toggle je Zeile (nur canWrite). Checkbox sendet
+// beim Umschalten sofort (Zielwert im Hidden-Feld, kein Extra-Klick);
+// Erfolg aktualisiert die Liste per Refresh (Hidden-Zielwert +
+// Checkbox-Grundzustand folgen den neuen Server-Props).
+function ProjectFileVisibilityToggle({
+  workspaceId,
+  projectId,
+  file,
+}: {
+  workspaceId: string;
+  projectId: string;
+  file: ProjectFileDto;
+}) {
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(setProjectFileVisibilityAction, {
+    status: "idle",
+  });
+  useEffect(() => {
+    if (state.status === "success") router.refresh();
+  }, [state, router]);
+  const error = visibilityErrorText(state);
+  return (
+    <span className="flex shrink-0 flex-col items-end gap-1">
+      <form action={formAction}>
+        <input type="hidden" name="workspaceId" value={workspaceId} />
+        <input type="hidden" name="projectId" value={projectId} />
+        <input type="hidden" name="fileId" value={file.id} />
+        <input
+          type="hidden"
+          name="visible"
+          value={file.visibleToCustomer ? "false" : "true"}
+        />
+        <label className="flex cursor-pointer items-center gap-1 text-xs font-medium text-slate-600">
+          <input
+            type="checkbox"
+            data-testid="project-file-visibility-toggle"
+            defaultChecked={file.visibleToCustomer}
+            disabled={pending}
+            onChange={(event) => event.currentTarget.form?.requestSubmit()}
+            className="h-4 w-4 accent-slate-900"
+          />
+          Für Kunden sichtbar
+        </label>
+      </form>
+      {state.status === "success" ? (
+        <span
+          role="status"
+          data-testid="project-file-visibility-feedback"
+          className="text-xs font-semibold text-emerald-700"
+        >
+          {state.message}
+        </span>
+      ) : null}
+      {error ? (
+        <span
+          role="alert"
+          data-testid="project-file-visibility-feedback"
+          className="text-xs font-semibold text-red-700"
+        >
+          {error}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 // F7-16 Projekt-Dateien: interne Ablage (nur canWrite sieht das Formular;
 // Externe bekommen die Sektion gar nicht erst — Loader-Gate in page.tsx).
+// F10-17: Toggle „Für Kunden sichtbar" je Zeile (canWrite); Leser sehen
+// den Zustand als Text.
 export function ProjectFileSection({
   workspaceId,
   projectId,
@@ -175,13 +255,29 @@ export function ProjectFileSection({
                   {formatBytes(file.byteSize)} · {dateFormatter.format(new Date(file.createdAt))}
                 </span>
               </span>
-              <a
-                data-testid="project-file-download"
-                href={`/api/workspaces/${workspaceId}/projects/${projectId}/dateien?fileId=${encodeURIComponent(file.id)}`}
-                className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700"
-              >
-                Herunterladen
-              </a>
+              <span className="flex shrink-0 items-center gap-2">
+                {canWrite ? (
+                  <ProjectFileVisibilityToggle
+                    workspaceId={workspaceId}
+                    projectId={projectId}
+                    file={file}
+                  />
+                ) : (
+                  <span
+                    data-testid="project-file-visibility-state"
+                    className="text-xs text-slate-500"
+                  >
+                    {`Für Kunden sichtbar: ${file.visibleToCustomer ? "Ja" : "Nein"}`}
+                  </span>
+                )}
+                <a
+                  data-testid="project-file-download"
+                  href={`/api/workspaces/${workspaceId}/projects/${projectId}/dateien?fileId=${encodeURIComponent(file.id)}`}
+                  className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700"
+                >
+                  Herunterladen
+                </a>
+              </span>
             </li>
           ))}
         </ul>

@@ -1,23 +1,33 @@
 // F7-16 Projekt-Dateien: interner Upload + Liste + Download je Projekt
 // (PDF/JPEG/PNG, 25 MiB, WORM unter immutable/<projekt>/project-files/).
-// INTERN-NUR auf Service-Ebene (alle 3 Ops): project.read ist NICHT
-// internalOnly — ohne explizites Gate saehen externe Projektleser interne
-// Dateien (Visible-Flag-Folgeslice). Berechtigung: project.read/write
-// (KEINE neuen Keys). Re-Upload derselben Bytes = NEUE Zeile (kein
-// Dedupe, kein Ueberschreiben — append-only; WORM-Konflikt faellt
-// fail-closed, nur bei UUID-Kollision moeglich).
+// INTERN-NUR auf Service-Ebene (alle internen Ops): project.read ist
+// NICHT internalOnly — ohne explizites Gate saehen externe Projektleser
+// interne Dateien. Berechtigung: project.read/write (KEINE neuen Keys).
+// Re-Upload derselben Bytes = NEUE Zeile (kein Dedupe, kein
+// Ueberschreiben — append-only; WORM-Konflikt faellt fail-closed, nur
+// bei UUID-Kollision moeglich).
+// F10-17: Kunden-Sichtbarkeit je Datei (Toggle, Default unsichtbar) +
+// rollenloser Portal-Download per Token-Kapsel (F10-07-Muster).
 import "server-only";
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { sql } from "drizzle-orm";
+import type { Pool } from "pg";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { can, isExternalOnly, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { immutableKey, resolveObjectStorage } from "@/lib/storage";
+import {
+  hashPortalToken,
+  PortalNotFoundError,
+  resolvePortalByToken,
+} from "@/modules/portal";
 
 export class ProjectFileNotFoundError extends Error {
-  constructor(public readonly projectId: string) {
+  // F10-17: Default für den rollenlosen Portal-Pfad (dort ist kein
+  // Projektkontext bekannt — F10-07-Muster, uniforme Meldung).
+  constructor(public readonly projectId: string = "") {
     super("project file not found");
     this.name = "ProjectFileNotFoundError";
   }
@@ -27,6 +37,20 @@ export class ProjectFileValidationError extends Error {
   constructor(message = "project file validation failed") {
     super(message);
     this.name = "ProjectFileValidationError";
+  }
+}
+
+export class ProjectFileIntegrityError extends Error {
+  constructor(message = "project file integrity mismatch") {
+    super(message);
+    this.name = "ProjectFileIntegrityError";
+  }
+}
+
+export class ProjectFilePersistenceError extends Error {
+  constructor(message = "project file persistence failed") {
+    super(message);
+    this.name = "ProjectFilePersistenceError";
   }
 }
 
@@ -50,6 +74,7 @@ export type ProjectFileDto = {
   contentType: string;
   byteSize: number;
   createdAt: string;
+  visibleToCustomer: boolean;
 };
 
 type ProjectFileRow = {
@@ -58,6 +83,7 @@ type ProjectFileRow = {
   content_type: string;
   byte_size: number;
   created_at: Date | string;
+  visible_to_customer: boolean;
   [key: string]: unknown;
 };
 
@@ -200,7 +226,8 @@ export async function listProjectFiles(
   // Key/Pruefsumme nie in die Liste (F10-04-QR-Muster: Empfangs-QR nur
   // intern); newest-first (Ablage-UX, Gegenpol zu file_request_upload).
   const found = await tx.execute<ProjectFileRow>(sql`
-    select id, original_filename, content_type, byte_size, created_at
+    select id, original_filename, content_type, byte_size, created_at,
+           visible_to_customer
       from project_file
      where workspace_id = ${ctx.workspaceId}::uuid
        and project_id = ${input.projectId}::uuid
@@ -212,6 +239,7 @@ export async function listProjectFiles(
     contentType: row.content_type,
     byteSize: row.byte_size,
     createdAt: toIso(row.created_at),
+    visibleToCustomer: row.visible_to_customer,
   }));
 }
 
@@ -246,5 +274,140 @@ export async function downloadProjectFile(
     filename: row.original_filename,
     contentType: row.content_type,
     body: got.body,
+  };
+}
+
+const visibilitySchema = z.strictObject({
+  projectId: uuidSchema,
+  fileId: uuidSchema,
+  visible: z.boolean(),
+});
+
+const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+
+// F10-17: Kunden-Sichtbarkeit je Datei (intern-nur, project.write).
+// Plain UPDATE per (workspace, projekt, id) — die Zeile existiert immer
+// (kein Upsert-Tanz); fehlende Zeile = uniform NotFound. Audit je Flip
+// (kein PII), KEIN Domain-Event (kein Konsument).
+export async function setProjectFileVisibility(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string; fileId: string; visible: boolean },
+): Promise<{ fileId: string; visibleToCustomer: boolean }> {
+  requireWrite(ctx, input.projectId);
+  const parsed = visibilitySchema.safeParse(input);
+  if (!parsed.success) throw new ProjectFileValidationError();
+  const command = parsed.data;
+  const updated = await tx.execute<{ id: string }>(sql`
+    update project_file
+       set visible_to_customer = ${command.visible}
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${command.projectId}::uuid
+       and id = ${command.fileId}::uuid
+    returning id
+  `);
+  if (!updated.rows[0]) throw new ProjectFileNotFoundError(command.projectId);
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "project_file.visibility_set",
+    resource: "project",
+    allowed: true,
+    details: { projectId: command.projectId, fileId: command.fileId, visible: command.visible },
+  });
+  return { fileId: command.fileId, visibleToCustomer: command.visible };
+}
+
+export type PortalProjectFileArtifactResult = {
+  fileId: string;
+  filename: string;
+  mimeType: "application/pdf" | "image/jpeg" | "image/png";
+  sha256: string;
+  sizeBytes: number;
+  bytes: Buffer;
+};
+
+const portalArtifactRowSchema = z.strictObject({
+  original_filename: z.string().min(1).max(PROJECT_FILE_NAME_MAX),
+  content_type: z.string(),
+  byte_size: z.number(),
+  file_sha256: z.string(),
+  storage_key: z.string(),
+});
+
+// F10-17 Portal-Datei-Download (My-Files): token-gebundener Lesezugriff
+// auf freigeschaltete Projekt-Dateien (Dateiname aus der Ablage,
+// Inhalt exakt die versiegelten Bytes). Autorisierung ist allein das
+// Portal-Token (publicTokenCapsule, kein Mandantenkontext — F10-07-
+// Muster 1:1): erst die Portal-Projektion (uniform NotFound, kein
+// Orakel), dann Zugehoerigkeit zur projizierten Datei-Liste (gleicher
+// Fehler — unsichtbar faellt hier automatisch heraus), dann die
+// DEFINER-Funktion 0182 (eigener Sichtbarkeits-WHERE). Integritaet
+// (SHA/Groesse/Key) wie am internen Pfad. Keine neue Permission
+// (rollenloser Token-Pfad).
+export async function readPortalProjectFileByToken(
+  pool: Pool,
+  value: unknown,
+): Promise<PortalProjectFileArtifactResult> {
+  const parsed = z.strictObject({ token: z.string().min(1), fileId: uuidSchema })
+    .safeParse(value);
+  if (!parsed.success) throw new ProjectFileValidationError();
+  const command = parsed.data;
+  let view;
+  try {
+    view = await resolvePortalByToken(pool, { token: command.token });
+  } catch (error) {
+    if (error instanceof PortalNotFoundError) throw new ProjectFileNotFoundError();
+    throw error;
+  }
+  if (!view.projectFiles.some((entry) => entry.id === command.fileId)) {
+    throw new ProjectFileNotFoundError();
+  }
+  const tokenHash = hashPortalToken(command.token);
+  if (tokenHash === null) throw new ProjectFileNotFoundError();
+  let rows: unknown[];
+  try {
+    const result = await pool.query(
+      `select * from public.read_portal_project_file_artifact($1::bytea, $2::uuid)`,
+      [tokenHash, command.fileId],
+    );
+    rows = result.rows;
+  } catch {
+    throw new ProjectFilePersistenceError();
+  }
+  if (rows.length === 0) throw new ProjectFileNotFoundError();
+  if (rows.length !== 1) throw new ProjectFileIntegrityError();
+  const rowParsed = portalArtifactRowSchema.safeParse(rows[0]);
+  if (!rowParsed.success) throw new ProjectFileIntegrityError();
+  const row = rowParsed.data;
+  const mimeType = row.content_type.toLowerCase() as PortalProjectFileArtifactResult["mimeType"];
+  if (
+    !Object.prototype.hasOwnProperty.call(PROJECT_FILE_CONTENT_TYPES, mimeType)
+    || !SHA256_PATTERN.test(row.file_sha256)
+    || !Number.isSafeInteger(row.byte_size)
+    || row.byte_size < 1
+    || row.byte_size > PROJECT_FILE_MAX_BYTES
+    || !row.storage_key.startsWith("immutable/")
+    || !PROJECT_FILE_KEY_PATTERN.test(row.storage_key)
+  ) throw new ProjectFileIntegrityError();
+  let body: Buffer;
+  try {
+    body = (await resolveObjectStorage().get(row.storage_key)).body;
+  } catch {
+    throw new ProjectFileIntegrityError("storage read mismatch");
+  }
+  if (body.length !== row.byte_size) throw new ProjectFileIntegrityError("size mismatch");
+  const actual = createHash("sha256").update(body).digest();
+  const expected = Buffer.from(row.file_sha256, "hex");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw new ProjectFileIntegrityError("sha256 mismatch");
+  }
+  return {
+    fileId: command.fileId,
+    filename: row.original_filename,
+    mimeType,
+    sha256: row.file_sha256,
+    sizeBytes: row.byte_size,
+    bytes: Buffer.from(body),
   };
 }

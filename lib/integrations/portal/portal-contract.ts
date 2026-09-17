@@ -167,6 +167,18 @@ export const portalFileRequestSchema = z.strictObject({
 });
 export type PortalFileRequest = z.infer<typeof portalFileRequestSchema>;
 
+// F10-17: Kunden-Dateien (nur freigeschaltete Projekt-Dateien —
+// Metadaten zum Anzeigen + id-Adressierung für den Download; nie
+// Storage-Key/Prüfsumme — F10-04-QR-Muster).
+export const portalProjectFileSchema = z.strictObject({
+  id: z.uuid(),
+  originalFilename: z.string(),
+  contentType: z.string(),
+  byteSize: z.number().int().min(1),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type PortalProjectFile = z.infer<typeof portalProjectFileSchema>;
+
 // F10-03: Installationsstand (nur Stand + Daten, nie Namen/Notizen).
 export const portalInstallationTimelineEntrySchema = z.strictObject({
   type: z.enum(["created", "completed", "handover_recorded", "handover_countersigned"]),
@@ -302,6 +314,8 @@ export const portalPublicViewV1Schema = z.strictObject({
   appointments: z.array(portalAppointmentSchema),
   installation: portalInstallationSchema.nullable(),
   fileRequests: z.array(portalFileRequestSchema),
+  // F10-17: Kunden-Dateien (Resolver projiziert nur freigeschaltete).
+  projectFiles: z.array(portalProjectFileSchema),
   subsidy: portalSubsidySchema.nullable(),
   service: z.array(portalServiceCaseSchema),
   gridRegistration: portalGridSchema.nullable(),
@@ -345,6 +359,8 @@ const portalResolveOkSchema = z.strictObject({
   installation: z.unknown().optional(),
   // F10-04: optional — alte Projektionen ohne Schlüssel parsen wie leer.
   fileRequests: z.unknown().optional(),
+  // F10-17: optional — alte Projektionen ohne Schlüssel parsen wie leer.
+  projectFiles: z.unknown().optional(),
   // F13-04: optional — alte Projektionen ohne Schlüssel parsen wie null.
   subsidy: z.unknown().optional(),
   // F13-06: optional — alte Projektionen ohne Schlüssel parsen wie leer.
@@ -592,6 +608,42 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       });
     }
   }
+  // F10-17: Kunden-Dateien — strikter 5-Felder-Shape je Eintrag
+  // (id/Dateiname/MIME/Größe/Zeit, nie Key/Hash); fehlend =
+  // Alt-Projektion (F10-04-Muster) → ehrlich leer; deformiert → null
+  // fail-closed (kein Teil-Render, F10-14-Muster).
+  const projectFiles: PortalPublicViewV1["projectFiles"] = [];
+  if (parsed.data.projectFiles !== undefined) {
+    const raw = parsed.data.projectFiles;
+    if (!Array.isArray(raw)) return null;
+    for (const entry of raw) {
+      if (typeof entry !== "object" || entry === null) return null;
+      const record = entry as Record<string, unknown>;
+      for (const key of Object.keys(record)) {
+        if (
+          key !== "id" && key !== "originalFilename" && key !== "contentType" &&
+          key !== "byteSize" && key !== "createdAt"
+        ) {
+          return null;
+        }
+      }
+      const id = portalProjectFileSchema.shape.id.safeParse(record.id);
+      if (!id.success) return null;
+      if (typeof record.originalFilename !== "string") return null;
+      if (typeof record.contentType !== "string") return null;
+      const byteSize = portalProjectFileSchema.shape.byteSize.safeParse(record.byteSize);
+      if (!byteSize.success) return null;
+      const createdAt = toInstant(record.createdAt);
+      if (createdAt === null) return null;
+      projectFiles.push({
+        id: id.data,
+        originalFilename: record.originalFilename,
+        contentType: record.contentType,
+        byteSize: byteSize.data,
+        createdAt,
+      });
+    }
+  }
   // F13-04: Förderstand — Allowlist wie Installation (F10-03-Muster);
   // fehlend = Alt-Projektion → ehrlich null.
   let subsidy: PortalPublicViewV1["subsidy"] = null;
@@ -729,6 +781,7 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     appointments,
     installation,
     fileRequests,
+    projectFiles,
     subsidy,
     service,
     gridRegistration,

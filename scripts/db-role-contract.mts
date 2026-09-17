@@ -3448,8 +3448,10 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
-  // F7-16: Projekt-Dateien unveränderlich — Anlage + Lesen (kein
-  // Update/Delete; Muster subsidy_case_message).
+  // F7-16: Projekt-Dateien — Anlage + Lesen (Muster subsidy_case_message).
+  // F10-17: + UPDATE nur fuers Sichtbarkeits-Flag (Toggle; Bytes/Key bleiben
+  // immutabel, kein Delete). Ohne UPDATE schlaegt der Toggle mit
+  // permission-denied fehl (F10-17-E2E-Befund).
   const hasProjectFilesForAcl = await hasAtomicPublicRelationSet(
     client,
     PROJECT_FILE_RELATIONS,
@@ -3461,7 +3463,7 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         public.project_file
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
-      grant select, insert on public.project_file to app_runtime
+      grant select, insert, update on public.project_file to app_runtime
     `);
   }
 
@@ -4459,6 +4461,11 @@ export async function verifyRoleContract(
   const hasPortalTimelineCountersigned = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("installation.handover_countersigned"),
   );
+  // F10-17 (0182): Stufenmarker für projectFiles im Portal-Resolver
+  // (Muster 0179).
+  const hasPortalProjectFilesProjection = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("project_files_list"),
+  );
   // F10-07 (0116): Stufenmarker für den Portal-Dokument-Download
   // (eigene DEFINER-Funktion, Muster 0104).
   const portalDocumentDownloadProbe = await client.query<{ name: string | null }>(`
@@ -4483,6 +4490,17 @@ export async function verifyRoleContract(
   const hasPortalDownloadLog = portalDownloadLogProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("portal_download_log"),
   );
+  // F10-17 (0182): Stufenmarker für den Portal-Datei-Download
+  // (eigene DEFINER-Funktion, Muster 0116).
+  const portalProjectFileDownloadProbe = await client.query<{ name: string | null }>(`
+    select routine.proname as name
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'public'
+       and routine.proname = 'read_portal_project_file_artifact'
+  `);
+  const hasPortalProjectFileDownload = portalProjectFileDownloadProbe.rows.length > 0;
   const hasOfferRelease = await hasAtomicPublicRelationSet(
     client,
     OFFER_RELEASE_RELATIONS,
@@ -5373,6 +5391,10 @@ export async function verifyRoleContract(
       ...(hasPortalDocumentDownload ? [
         "read_portal_issuance_artifact:app_owner",
       ] : []),
+      // F10-17 (0182): Portal-Datei-Kapsel (Muster issuance-Kapsel).
+      ...(hasPortalProjectFileDownload ? [
+        "read_portal_project_file_artifact:app_owner",
+      ] : []),
       ...(hasPortalService ? [
         "confirm_service_case:app_owner",
       ] : []),
@@ -5888,13 +5910,15 @@ export async function verifyRoleContract(
           `search_path=pg_catalog:${hasF1008Notification
             ? "a49661be591f013d15fea7fc6169fc344311badbaeb1879c6e09713195373e7e"
             : "def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf"}`,
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15/F10-13/F10-14/F10-15/F10-16:
-        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135/0170/0171/0172/0179
-        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein sechzehnter Rumpf
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15/F10-13/F10-14/F10-15/F10-16/F10-17:
+        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135/0170/0171/0172/0179/0182
+        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein siebzehnter Rumpf
         // bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          // F10-16 (0179): Gegenzeichnung in der Timeline-Allowlist (Hash per Probe geerntet).
-          `search_path=pg_catalog:${hasPortalTimelineCountersigned
+          // F10-17 (0182): Kunden-Dateien-Projektion (Hash per Probe geerntet).
+          `search_path=pg_catalog:${hasPortalProjectFilesProjection
+            ? "5a8abb767632df014ee64dace8936940896ef07f1c185124f308d177dde62007"
+            : hasPortalTimelineCountersigned
             ? "622e73c72702ab974fc3dda444099cf46c1b372561d0ea8b1f93140109a2fd32"
             : hasPortalFileRequestSubsidyLinked
             ? "0dca4b3caaeb4f81317cd187ef44f324cfba34b9893fd36f5493fb390535e21c"
@@ -5955,6 +5979,15 @@ export async function verifyRoleContract(
           (hasPortalDownloadLog
             ? "0c42e75eab8371ffc1fdc085d67fa393dfd70b4b1e7a350a2d8f23154116ba03"
             : "840724837e6fed12d9778416d7d8b4c1d9cd39c8d77cc79d116c09ed447e6eaf"),
+        ] : []),
+        // F10-17 (0182): Portal-Datei-Download (Muster issuance-Kapsel,
+        // Hash per Probe geerntet).
+        ...(hasPortalProjectFileDownload ? [
+        "read_portal_project_file_artifact(bytea, uuid):" +
+          "TABLE(original_filename text, content_type text, byte_size integer, " +
+          "file_sha256 text, storage_key text):" +
+          "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "bec8c5ea49df8c8d8009a92621ca815438492e7a0b5c40f8dbe575c1ee696050",
         ] : []),
         // F13-06 (0107): Kundenbestätigung (Muster fulfill, Marker
         // hasPortalService — gleiche Migration wie die Projektion).
@@ -7663,11 +7696,12 @@ export async function verifyRoleContract(
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:SELECT:app_owner:false`,
       ]) : []),
-      // F7-16: Anlage/Lesen, nie Ändern/Löschen (unveränderliche
-      // Projekt-Dateien; Muster subsidy_case_message).
+      // F7-16: Anlage/Lesen (Muster subsidy_case_message).
+      // F10-17: + UPDATE nur fuers Sichtbarkeits-Flag (Toggle).
       ...(hasProjectFiles ? PROJECT_FILE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       "app_system:audit_log:INSERT:app_owner:false",
       "app_system:audit_log:SELECT:app_owner:false",
@@ -7909,6 +7943,10 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasPortalDocumentDownload ? [
         "app_runtime:read_portal_issuance_artifact(bytea, uuid):EXECUTE:app_owner:false",
+      ] : []),
+      // F10-17 (0182): Portal-Datei-Kapsel (Muster issuance-Kapsel).
+      ...(hasPortalProjectFileDownload ? [
+        "app_runtime:read_portal_project_file_artifact(bytea, uuid):EXECUTE:app_owner:false",
       ] : []),
       ...(hasPortalService ? [
         "app_runtime:confirm_service_case(bytea, uuid):EXECUTE:app_owner:false",

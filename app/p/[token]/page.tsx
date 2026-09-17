@@ -14,6 +14,7 @@ import type {
 } from "@/lib/integrations/portal/portal-contract";
 import type { PortalLang, PortalStrings } from "@/lib/integrations/portal/portal-language";
 import {
+  formatPortalBytes,
   formatPortalDate,
   formatPortalEuro,
   formatPortalInstallationStatus,
@@ -362,39 +363,76 @@ export default async function PortalTokenPage({
             )}
           </div>
         ) : activeTab === "dateien" ? (
-          <div className="mt-4" data-testid="file-requests-section">
-            <h2 className="text-lg font-semibold text-slate-950">{t.filesHeading}</h2>
-            {uploadHint ? (
-              <p
-                role={rawUpload === "erfolg" ? "status" : "alert"}
-                data-testid="file-request-upload-feedback"
-                className={`mt-2 text-sm font-semibold ${
-                  rawUpload === "erfolg" ? "text-emerald-700" : "text-red-700"
-                }`}
-              >
-                {uploadHint}
-              </p>
-            ) : null}
-            {view.fileRequests.length === 0 ? (
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                {t.filesEmpty}
-              </p>
-            ) : (
-              <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
-                {view.fileRequests.map((req) => (
-                  <PortalFileRequestItem
-                    key={req.id}
-                    req={req}
-                    token={token}
-                    lang={lang}
-                    t={t}
-                    returnTab="dateien"
-                    showBadge
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
+          <>
+            <div className="mt-4" data-testid="file-requests-section">
+              <h2 className="text-lg font-semibold text-slate-950">{t.filesHeading}</h2>
+              {uploadHint ? (
+                <p
+                  role={rawUpload === "erfolg" ? "status" : "alert"}
+                  data-testid="file-request-upload-feedback"
+                  className={`mt-2 text-sm font-semibold ${
+                    rawUpload === "erfolg" ? "text-emerald-700" : "text-red-700"
+                  }`}
+                >
+                  {uploadHint}
+                </p>
+              ) : null}
+              {view.fileRequests.length === 0 ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {t.filesEmpty}
+                </p>
+              ) : (
+                <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
+                  {view.fileRequests.map((req) => (
+                    <PortalFileRequestItem
+                      key={req.id}
+                      req={req}
+                      token={token}
+                      lang={lang}
+                      t={t}
+                      returnTab="dateien"
+                      showBadge
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+            {/* F10-17: Vom Anbieter bereitgestellte Dateien (nur
+                freigeschaltete, Download je Zeile — kein neuer Tab). */}
+            <div className="mt-6" data-testid="portal-provided-files">
+              <h2 className="text-lg font-semibold text-slate-950">{t.providedFilesHeading}</h2>
+              {view.projectFiles.length === 0 ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {t.providedFilesEmpty}
+                </p>
+              ) : (
+                <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
+                  {view.projectFiles.map((file) => (
+                    <li
+                      key={file.id}
+                      data-testid="portal-provided-file-row"
+                      className="flex items-center justify-between gap-4 px-4 py-3"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-slate-800">
+                          {file.originalFilename}
+                        </span>
+                        <span className="block text-sm text-slate-500">
+                          {formatPortalBytes(lang, file.byteSize)} · {formatPortalDate(lang, file.createdAt)}
+                        </span>
+                      </span>
+                      <Link
+                        href={`/p/${token}/dateien/${file.id}?lang=${lang}`}
+                        className="inline-flex min-h-11 shrink-0 items-center rounded-md border border-slate-300 px-3 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                      >
+                        {t.downloadWord}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
         ) : (
           <>
             <dl className="mt-4 space-y-2 text-sm leading-6 text-slate-600">

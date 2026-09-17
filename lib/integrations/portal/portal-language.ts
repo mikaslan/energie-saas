@@ -74,6 +74,9 @@ export interface PortalStrings {
   allDayWord: string;
   filesHeading: string;
   filesEmpty: string;
+  // F10-17: Kunden-Dateien (vom Anbieter bereitgestellt).
+  providedFilesHeading: string;
+  providedFilesEmpty: string;
   uploadedWord: string;
   // F10-10: Allow-many — Zähler + Hinweis auf weitere Dateien.
   uploadedCountWord: string;
@@ -141,10 +144,12 @@ function buildFormatters(): {
   date: Record<PortalLang, Intl.DateTimeFormat>;
   time: Record<PortalLang, Intl.DateTimeFormat>;
   euro: Record<PortalLang, Intl.NumberFormat>;
+  decimal: Record<PortalLang, Intl.NumberFormat>;
 } {
   const date = {} as Record<PortalLang, Intl.DateTimeFormat>;
   const time = {} as Record<PortalLang, Intl.DateTimeFormat>;
   const euro = {} as Record<PortalLang, Intl.NumberFormat>;
+  const decimal = {} as Record<PortalLang, Intl.NumberFormat>;
   for (const lang of portalLangs) {
     const locale = PORTAL_LOCALES[lang];
     date[lang] = new Intl.DateTimeFormat(locale, {
@@ -159,11 +164,17 @@ function buildFormatters(): {
       minute: "2-digit",
     });
     euro[lang] = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" });
+    decimal[lang] = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
   }
-  return { date, time, euro };
+  return { date, time, euro, decimal };
 }
 
-const { date: dateFormatters, time: timeFormatters, euro: euroFormatters } = buildFormatters();
+const {
+  date: dateFormatters,
+  time: timeFormatters,
+  euro: euroFormatters,
+  decimal: decimalFormatters,
+} = buildFormatters();
 
 export function formatPortalDate(lang: PortalLang, at: string | Date): string {
   return dateFormatters[lang].format(new Date(at));
@@ -172,6 +183,12 @@ export function formatPortalDate(lang: PortalLang, at: string | Date): string {
 // F8-15: Brutto-Anzeige je Portal-Rechnung (Cent → Euro, Sprach-Locale).
 export function formatPortalEuro(lang: PortalLang, cents: number): string {
   return euroFormatters[lang].format(cents / 100);
+}
+
+// F10-17: Datei-Anzeige je Kunden-Datei (Byte/KB, Sprach-Locale).
+export function formatPortalBytes(lang: PortalLang, bytes: number): string {
+  if (bytes < 1024) return `${decimalFormatters[lang].format(bytes)} B`;
+  return `${decimalFormatters[lang].format(bytes / 1024)} KB`;
 }
 
 // F8-15: Zahlstand-Wort je Portal-Rechnung (null = ehrlich unbekannt).
@@ -746,6 +763,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "ganztägig",
     filesHeading: "Dateien",
     filesEmpty: "Aktuell werden keine Dateien benötigt.",
+    providedFilesHeading: "Vom Anbieter bereitgestellt",
+    providedFilesEmpty: "Aktuell liegen keine Dateien vom Anbieter vor.",
     uploadedWord: "Hochgeladen",
     uploadedCountWord: "Dateien erhalten",
     uploadMoreHint: "Sie können weitere Dateien nachreichen.",
@@ -816,6 +835,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "all day",
     filesHeading: "Files",
     filesEmpty: "No files are currently required.",
+    providedFilesHeading: "Provided by your supplier",
+    providedFilesEmpty: "No supplier files are currently available.",
     uploadedWord: "Uploaded",
     uploadedCountWord: "files received",
     uploadMoreHint: "You may submit additional files.",
@@ -886,6 +907,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "celý den",
     filesHeading: "Soubory",
     filesEmpty: "Momentálně nejsou vyžadovány žádné soubory.",
+    providedFilesHeading: "Poskytnuto dodavatelem",
+    providedFilesEmpty: "Momentálně nejsou k dispozici žádné soubory od dodavatele.",
     uploadedWord: "Nahráno",
     uploadedCountWord: "obdržených souborů",
     uploadMoreHint: "Můžete doplnit další soubory.",
@@ -956,6 +979,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "ολοήμερο",
     filesHeading: "Αρχεία",
     filesEmpty: "Δεν απαιτούνται προς το παρόν αρχεία.",
+    providedFilesHeading: "Παρέχεται από τον προμηθευτή",
+    providedFilesEmpty: "Δεν υπάρχουν προς το παρόν αρχεία από τον προμηθευτή.",
     uploadedWord: "Μεταφορτώθηκε",
     uploadedCountWord: "αρχεία που ελήφθησαν",
     uploadMoreHint: "Μπορείτε να προσθέσετε επιπλέον αρχεία.",
@@ -1026,6 +1051,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "todo el día",
     filesHeading: "Archivos",
     filesEmpty: "Actualmente no se requieren archivos.",
+    providedFilesHeading: "Proporcionado por el proveedor",
+    providedFilesEmpty: "Actualmente no hay archivos del proveedor disponibles.",
     uploadedWord: "Subido",
     uploadedCountWord: "archivos recibidos",
     uploadMoreHint: "Puede añadir más archivos.",
@@ -1096,6 +1123,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "toute la journée",
     filesHeading: "Fichiers",
     filesEmpty: "Aucun fichier requis pour le moment.",
+    providedFilesHeading: "Fourni par le prestataire",
+    providedFilesEmpty: "Aucun fichier du prestataire disponible pour le moment.",
     uploadedWord: "Téléversé",
     uploadedCountWord: "fichiers reçus",
     uploadMoreHint: "Vous pouvez ajouter d'autres fichiers.",
@@ -1166,6 +1195,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "egész napos",
     filesHeading: "Fájlok",
     filesEmpty: "Jelenleg nincs szükség fájlra.",
+    providedFilesHeading: "A szolgáltató által biztosítva",
+    providedFilesEmpty: "Jelenleg nincsenek elérhető fájlok a szolgáltatótól.",
     uploadedWord: "Feltöltve",
     uploadedCountWord: "beérkezett fájl",
     uploadMoreHint: "További fájlokat is hozzáadhat.",
@@ -1236,6 +1267,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "tutto il giorno",
     filesHeading: "File",
     filesEmpty: "Al momento non sono richiesti file.",
+    providedFilesHeading: "Fornito dal fornitore",
+    providedFilesEmpty: "Al momento non sono disponibili file del fornitore.",
     uploadedWord: "Caricato",
     uploadedCountWord: "file ricevuti",
     uploadMoreHint: "È possibile aggiungere altri file.",
@@ -1306,6 +1339,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "hele dag",
     filesHeading: "Bestanden",
     filesEmpty: "Er zijn momenteel geen bestanden vereist.",
+    providedFilesHeading: "Aangeleverd door de leverancier",
+    providedFilesEmpty: "Er zijn momenteel geen bestanden van de leverancier beschikbaar.",
     uploadedWord: "Geüpload",
     uploadedCountWord: "ontvangen bestanden",
     uploadMoreHint: "U kunt extra bestanden toevoegen.",
@@ -1376,6 +1411,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "całodniowy",
     filesHeading: "Pliki",
     filesEmpty: "Obecnie nie są wymagane żadne pliki.",
+    providedFilesHeading: "Udostępnione przez dostawcę",
+    providedFilesEmpty: "Aktualnie brak plików od dostawcy.",
     uploadedWord: "Przesłano",
     uploadedCountWord: "otrzymanych plików",
     uploadMoreHint: "Można dodać dodatkowe pliki.",
@@ -1446,6 +1483,8 @@ export const PORTAL_STRINGS: Record<PortalLang, PortalStrings> = {
     allDayWord: "toată ziua",
     filesHeading: "Fișiere",
     filesEmpty: "Nu sunt necesare fișiere momentan.",
+    providedFilesHeading: "Furnizat de furnizor",
+    providedFilesEmpty: "Momentan nu există fișiere disponibile de la furnizor.",
     uploadedWord: "Încărcat",
     uploadedCountWord: "fișiere primite",
     uploadMoreHint: "Puteți adăuga fișiere suplimentare.",

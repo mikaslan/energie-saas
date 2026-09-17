@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   foreignKey,
   index,
@@ -15,9 +16,11 @@ import { project } from "./project";
 
 // F7-16 Projekt-Dateien: interne Dateiablage je Projekt (PDF/JPEG/PNG,
 // 25 MiB, WORM unter immutable/<projekt>/project-files/). Zeilen sind
-// immutabel (kein updated_at, kein UPDATE-Pfad — file_request_upload-
-// Muster); Liste newest-first. Rechte im Service-Layer (keine neue
-// Permission, keine Grants — Rollenvertrag wie 0104).
+// immutabel (kein updated_at — file_request_upload-Muster); einziger
+// UPDATE-Pfad seit F10-17: visible_to_customer (nur diese Spalte;
+// Bytes/Key bleiben immutabel). Liste newest-first. Rechte im
+// Service-Layer (keine neue Permission, keine Grants — Rollenvertrag
+// wie 0104).
 export const projectFile = pgTable(
   "project_file",
   {
@@ -29,6 +32,9 @@ export const projectFile = pgTable(
     contentType: text("content_type").notNull(),
     byteSize: integer("byte_size").notNull(),
     originalFilename: text("original_filename").notNull(),
+    // F10-17: Kunden-Sichtbarkeit je Datei (DEFAULT false = sicherer
+    // Default: nichts wird versehentlich sichtbar).
+    visibleToCustomer: boolean("visible_to_customer").notNull().default(false),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
