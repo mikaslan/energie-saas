@@ -18,7 +18,7 @@ import {
 } from "@/lib/integrations/checklists/contract";
 import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
 import type { TeamOption } from "@/lib/integrations/teams/contract";
-import type { WorkbookComponentSection } from "@/modules/installations";
+import type { WorkbookComponentSection, WorkbookDatasheetRef } from "@/modules/installations";
 import {
   applyTemplateAction,
   assignChecklistBlockTeamAction,
@@ -103,6 +103,7 @@ export function ProjectChecklistManager({
   today,
   componentsText,
   componentSections,
+  datasheetRefs,
 }: {
   workspaceId: string;
   projectId: string;
@@ -113,6 +114,8 @@ export function ProjectChecklistManager({
   componentsText: string;
   // F7-02J: strukturierte Stückliste (null = Fallback, 03e-Muster).
   componentSections: WorkbookComponentSection[] | null;
+  // F7-02K: Datenblatt-Referenzen (null = Fallback, 02j-Muster).
+  datasheetRefs: WorkbookDatasheetRef[] | null;
 }) {
   // F7-03C: Anzeige-Platzhalter (Rohtext bleibt gespeichert).
   // F7-03E: componentsText ergänzt (gleiche Anzeige-Kontexte wie 03c).
@@ -356,6 +359,7 @@ export function ProjectChecklistManager({
                   displayText={displayText}
                   teamOptions={teamOptions}
                   componentSections={componentSections}
+                  datasheetRefs={datasheetRefs}
                 />
               );
             })}
@@ -429,6 +433,7 @@ function BlockCard({
   onRename, onSetDueDate, onAddSegment, onAddItem, onRenameSegment, onSetItem, onToggleRadioItem,
   displayText,
   componentSections,
+  datasheetRefs,
 }: {
   block: ChecklistBlockV1;
   blockIndex: number;
@@ -452,6 +457,7 @@ function BlockCard({
   onToggleRadioItem: ToggleRadioItem;
   displayText: (text: string) => string;
   componentSections: WorkbookComponentSection[] | null;
+  datasheetRefs: WorkbookDatasheetRef[] | null;
 }) {
   const visibleSegments = block.segments.filter((segment) => segment.visible);
   return (
@@ -525,6 +531,7 @@ function BlockCard({
               onToggleRadioItem={(itemIndex, checked) => onToggleRadioItem(segmentIndex, itemIndex, checked)}
               displayText={displayText}
               componentSections={componentSections}
+              datasheetRefs={datasheetRefs}
             />
           );
         })}
@@ -554,6 +561,7 @@ function SegmentGroup({
   hasUnsavedChanges,
   displayText,
   componentSections,
+  datasheetRefs,
 }: {
   segment: ChecklistSegmentV1;
   segmentIndex: number;
@@ -573,6 +581,7 @@ function SegmentGroup({
   onToggleRadioItem: (itemIndex: number, checked: boolean) => void;
   displayText: (text: string) => string;
   componentSections: WorkbookComponentSection[] | null;
+  datasheetRefs: WorkbookDatasheetRef[] | null;
 }) {
   const [mutationState, mutationDispatch, mutationPending] = useActionState(
     mutateChecklistSegmentAction,
@@ -697,6 +706,28 @@ function SegmentGroup({
                   </div>
                 ) : (
                   <p className="mt-1 text-sm leading-6 text-slate-600">Keine Stückliste verfügbar.</p>
+                )
+              ) : null}
+              {/* F7-02K: Datenblätter im 02j-Muster (Titel oben via
+                  displayText + Referenz-Liste oder ehrlicher Fallback).
+                  Bewusst AUCH im Strukturmodus sichtbar: Die Art hat keine
+                  Zusatz-Inputs, mit denen die Anzeige kollidieren koennte. */}
+              {item.kind === "datasheets" ? (
+                datasheetRefs !== null && datasheetRefs.length > 0 ? (
+                  <ul className="mt-1 list-disc pl-5 text-sm leading-6 text-slate-600">
+                    {datasheetRefs.map((ref) => (
+                      <li key={`${ref.componentId}-${ref.filename}`}>
+                        <a
+                          href={`/w/${workspaceId}/katalog/${ref.componentId}`}
+                          className="font-semibold text-brand-800 underline-offset-2 hover:underline"
+                        >
+                          {`${ref.productName} — ${ref.filename}`}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-sm leading-6 text-slate-600">Keine Datenblätter verfügbar.</p>
                 )
               ) : null}
               {item.kind === "text" && !(canEditStructure && !completed) ? (
@@ -1518,6 +1549,10 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
             // F7-02J: ehrliches Umschreiben wie Titel — Anzeige ohne
             // Inhalt: Flags fallen, jede Nutzlast fällt.
             onSetItem(itemIndex, { kind: "component-list", done: false, required: false, description: null, value: null, photo: null, signerRole: null }, canEditStructure);
+          } else if (next === "datasheets") {
+            // F7-02K: ehrliches Umschreiben wie Titel — Anzeige ohne
+            // Inhalt: Flags fallen, jede Nutzlast fällt.
+            onSetItem(itemIndex, { kind: "datasheets", done: false, required: false, description: null, value: null, photo: null, signerRole: null }, canEditStructure);
           } else {
             onSetItem(itemIndex, { kind: "task", description: null, value: null, photo: null, signerRole: null }, canEditStructure);
           }
@@ -1533,6 +1568,7 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
         <option value="image">Bild</option>
         <option value="signature">Unterschrift</option>
         <option value="component-list">Komponentenliste</option>
+        <option value="datasheets">Datenblätter</option>
       </select>
       {item.kind === "text" ? (
         <textarea

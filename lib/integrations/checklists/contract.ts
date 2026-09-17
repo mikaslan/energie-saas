@@ -105,7 +105,10 @@ export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSche
 // F7-02J: Komponentenlisten-Punkt (Katalog F7.2). `component-list` ist
 // Anzeige wie title/description (Allowlist unten: weder Pflicht noch
 // abhakbar, keine Nutzlast — Tree speichert nur die Art).
-export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text", "multi", "image", "signature", "component-list"]);
+// F7-02K: Datenblatt-Punkt (Katalog F7.2). `datasheets` ist Anzeige wie
+// title/description (gleiche Allowlist: weder Pflicht noch abhakbar,
+// keine Nutzlast — Tree speichert nur die Art).
+export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text", "multi", "image", "signature", "component-list", "datasheets"]);
 export const checklistItemSignerRoleSchema = z.enum(["kunde", "techniker", "dritter"]);
 export type ChecklistItemSignerRoleV1 = z.infer<typeof checklistItemSignerRoleSchema>;
 export type ChecklistItemKindV1 = z.infer<typeof checklistItemKindSchema>;
@@ -341,6 +344,7 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
           }
           // F7-02J: `component-list` faellt bewusst aus der Arbeits-
           // Allowlist (Anzeige wie title/description — kein Regel-Code).
+          // F7-02K: `datasheets` ebenso (Anzeige — kein Regel-Code).
           if (item.kind != null && item.kind !== "task" && item.kind !== "radio"
             && item.kind !== "text" && item.kind !== "multi" && item.kind !== "image"
             && item.kind !== "signature" && (item.required || item.done)) {
@@ -531,6 +535,7 @@ export function substituteChecklistPlaceholders(
 // F7-02I: Unterschrift-Punkte ebenso (Signatur ist Nutzlast).
 // F7-02J: `component-list` ist KEIN Arbeitsgegenstand (Anzeige-Art,
 // faellt aus der Allowlist — kein Code, Tests pinnen das).
+// F7-02K: `datasheets` ebenso (Anzeige-Art — kein Code).
 export function isChecklistWorkItem(
   item: Pick<ChecklistItemV1, "kind">,
 ): boolean {

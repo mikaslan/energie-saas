@@ -64,6 +64,7 @@ function line(
     quantity,
     unit: "piece",
     grossCents: 100 * position,
+    datasheet: null,
   };
 }
 

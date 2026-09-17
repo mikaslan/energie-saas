@@ -9,7 +9,9 @@ import {
   formatWorkbookComponentsText,
   getInstallationWorkbook,
   projectWorkbookComponentSections,
+  projectWorkbookDatasheets,
   type WorkbookComponentSection,
+  type WorkbookDatasheetRef,
 } from "@/modules/installations";
 import { OfferIntegrityError } from "@/modules/offers";
 import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
@@ -157,6 +159,32 @@ export default async function ProjectChecklistPage(
     }
   }
 
+  // F7-02K: Datenblatt-Referenzen für den Datenblatt-Punkt (eigene
+  // Query im 02j-Muster). Ohne Bindung, ohne Recht oder bei
+  // Integritätsfehler null — der Manager zeigt ehrlich den Fallback.
+  let datasheetRefs: WorkbookDatasheetRef[] | null = null;
+  try {
+    datasheetRefs = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "installation",
+      async (tx, ctx) => {
+        const workbook = await getInstallationWorkbook(tx, ctx, { projectId });
+        if (!workbook) return null;
+        return projectWorkbookDatasheets(workbook.sections);
+      },
+    );
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) {
+      redirect(`/login?${new URLSearchParams({
+        next: `/w/${workspaceId}/anfragen/${projectId}/checkliste`,
+      }).toString()}`);
+    }
+    if (!(error instanceof PermissionDeniedError) && !(error instanceof OfferIntegrityError)) {
+      throw error;
+    }
+  }
+
   return (
     <main className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6">
@@ -195,6 +223,7 @@ export default async function ProjectChecklistPage(
         today={result.today}
         componentsText={componentsText}
         componentSections={componentSections}
+        datasheetRefs={datasheetRefs}
       />
 
       <div className="mt-6">

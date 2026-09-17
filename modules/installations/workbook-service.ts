@@ -169,6 +169,15 @@ export async function setInstallationVariant(
   return { installationId: installation.id, offerId: hit.offer_id, variantId: hit.variant_id };
 }
 
+// F7-02K: Datenblatt-Referenz für den Datenblatt-Punkt (Anzeige-
+// Projektion wie 02j: Produktname + Dateiname + Komponenten-ID für den
+// Link auf die Katalogseite; keine Storage-Keys, kein sha, keine Preise).
+export type WorkbookDatasheetRef = {
+  productName: string;
+  filename: string;
+  componentId: string;
+};
+
 export type WorkbookLine = {
   position: number;
   // F7-12: Domain-Referenz für Nachbestellungen (UUID, kein Geheimnis).
@@ -177,6 +186,9 @@ export type WorkbookLine = {
   quantity: string;
   unit: string;
   grossCents: number;
+  // F7-02K: Datenblatt-Referenz (nur Anzeige — NIE objectKey/sha; Custom-
+  // und asset-lose Zeilen tragen null, versteckte Zeilen entfallen oben).
+  datasheet: WorkbookDatasheetRef | null;
 };
 
 export type WorkbookSection = {
@@ -234,6 +246,17 @@ export function projectWorkbookComponentSections(
         name: line.name,
       })),
     }));
+}
+
+// F7-02K: flache Datenblatt-Referenzen für den Datenblatt-Punkt (nur
+// Zeilen mit Referenz, in Projektions-Reihenfolge; keine Keys, kein
+// sha, keine Preise — Links zeigen auf die berechtigungsgeprüfte
+// Katalogseite).
+export function projectWorkbookDatasheets(
+  sections: WorkbookSection[],
+): WorkbookDatasheetRef[] {
+  return sections.flatMap((section) => section.lines.flatMap((line) =>
+    line.datasheet === null ? [] : [line.datasheet]));
 }
 
 // F7-10: flache Watt-Sicht auf die diskriminierten Katalogdaten; der
@@ -320,6 +343,17 @@ export async function getInstallationWorkbook(
           quantity: formatQuantity(line.quantityMilli, line.product.unit),
           unit: line.product.unit,
           grossCents: line.computed.salesGrossCents,
+          // F7-02K: nur Katalogzeilen mit Datenblatt-Asset tragen eine
+          // Referenz (Custom-/asset-lose Zeilen → null; NIE Keys/sha).
+          datasheet: line.product.kind === "catalog"
+            && line.source.kind === "catalog"
+            && line.product.datasheet !== null
+            ? {
+              productName: line.product.displayName,
+              filename: line.product.datasheet.originalFilename,
+              componentId: line.source.catalogComponentId,
+            }
+            : null,
         })),
     }));
   const visibleGrossCents = sections.reduce(

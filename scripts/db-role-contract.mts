@@ -497,6 +497,9 @@ const F704_CHECKLIST_INDEX_ROWS = [
 // F7-02J (0177): validBlocks erneut geerntet (component-list-Art in
 // kind-IN + Anzeige-Regel); checklistStructure unveraendert (Art ohne
 // Nutzlast, kein Strip).
+// F7-02K (0178): validBlocks erneut geerntet (datasheets-Art in
+// kind-IN + Anzeige-Regel); checklistStructure unveraendert (Art ohne
+// Nutzlast, kein Strip — Pin reproduziert exakt, Methode verifiziert).
 const F704_CHECKLIST_FUNCTION_SHA256 = {
   actorRole: "2327d748e395d0a596c129657a32bfc255e74a681459036f612ddcd5a0e2a050",
   assertWorkspace: "b726ed4b961b6e583e11179e32a8f34a10e76330352e5fc5c54c86cc6bc9b633",
@@ -506,7 +509,7 @@ const F704_CHECKLIST_FUNCTION_SHA256 = {
   saveChecklist: "8090f3ff4e3a3b79a513147a4cc2d3fd03f2a270757c4a7f6309a4f263aed470",
   setIrrelevant: "e37e70b04c9c0ae912fd58ab4349b6063b34c96a50da7aa684a462fe56f536f2",
   unlockSegment: "328076b50403adaa2a571f9b640058b49122d2bb9978ad969ad0048590588f27",
-  validBlocks: "2c9f6428f9fd1985ff262f39492f15995c271d17041701ad124a9a857cbb92c5",
+  validBlocks: "adca3aff69fff06b1711f3ffa6e1d4316fbd3d364e18ac7750015017f4692d75",
 } as const;
 const F704_CHECKLIST_FUNCTION_SECURITY_ROWS = [
   "_f704_actor_checklist_role(uuid):text:app_owner:plpgsql:f:s:" +

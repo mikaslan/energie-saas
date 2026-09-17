@@ -40,10 +40,12 @@ export {
   getInstallationWorkbook,
   listInstallableVariants,
   projectWorkbookComponentSections,
+  projectWorkbookDatasheets,
   setInstallationVariant,
   type InstallableVariantOption,
   type InstallationWorkbook,
   type WorkbookComponentSection,
+  type WorkbookDatasheetRef,
   type WorkbookLine,
   type WorkbookSection,
 } from "./workbook-service";

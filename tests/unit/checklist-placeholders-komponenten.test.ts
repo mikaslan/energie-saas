@@ -25,6 +25,7 @@ function line(
     quantity,
     unit,
     grossCents: 100 * position,
+    datasheet: null,
   };
 }
 
