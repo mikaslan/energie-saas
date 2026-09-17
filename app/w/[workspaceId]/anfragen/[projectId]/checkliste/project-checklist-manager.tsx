@@ -8,6 +8,7 @@ import {
   isItemEffectivelyVisible,
   segmentItemProgress,
   segmentRequiredRemaining,
+  substituteChecklistPlaceholders,
   toEditableChecklistBlocks,
   type ChecklistBlockV1,
   type ChecklistBlocksV1,
@@ -97,12 +98,19 @@ export function ProjectChecklistManager({
   projectId,
   checklist,
   teamOptions,
+  customerName,
+  today,
 }: {
   workspaceId: string;
   projectId: string;
   checklist: ProjectChecklistDto;
   teamOptions: TeamOption[];
+  customerName: string;
+  today: string;
 }) {
+  // F7-03C: Anzeige-Platzhalter (Rohtext bleibt gespeichert).
+  const displayText = (text: string): string =>
+    substituteChecklistPlaceholders(text, { customerName, today });
   const { canWrite, canConfigure, canComplete, canUnlock } = checklist.permissions;
   const canEditStructure = canConfigure || (checklist.version === 0 && canWrite);
   const [blocksState, setBlocksState] = useState<{
@@ -338,6 +346,7 @@ export function ProjectChecklistManager({
                     setItem(blockIndex, segmentIndex, itemIndex, patch, allowed)}
                   onToggleRadioItem={(segmentIndex, itemIndex, checked) =>
                     toggleRadioItem(blockIndex, segmentIndex, itemIndex, checked)}
+                  displayText={displayText}
                   teamOptions={teamOptions}
                 />
               );
@@ -410,6 +419,7 @@ function BlockCard({
   canWrite, canEditStructure, canConfigure, canComplete, canUnlock,
   hasUnsavedChanges, teamOptions,
   onRename, onSetDueDate, onAddSegment, onAddItem, onRenameSegment, onSetItem, onToggleRadioItem,
+  displayText,
 }: {
   block: ChecklistBlockV1;
   blockIndex: number;
@@ -431,6 +441,7 @@ function BlockCard({
   onRenameSegment: (segmentIndex: number, name: string) => void;
   onSetItem: SetItem;
   onToggleRadioItem: ToggleRadioItem;
+  displayText: (text: string) => string;
 }) {
   const visibleSegments = block.segments.filter((segment) => segment.visible);
   return (
@@ -502,6 +513,7 @@ function BlockCard({
               onAddItem={() => onAddItem(segmentIndex)}
               onSetItem={(itemIndex, patch, allowed) => onSetItem(segmentIndex, itemIndex, patch, allowed)}
               onToggleRadioItem={(itemIndex, checked) => onToggleRadioItem(segmentIndex, itemIndex, checked)}
+              displayText={displayText}
             />
           );
         })}
@@ -529,6 +541,7 @@ function SegmentGroup({
   canWrite, canEditStructure, canConfigure, canComplete, canUnlock, onRename, onAddItem, onSetItem,
   onToggleRadioItem,
   hasUnsavedChanges,
+  displayText,
 }: {
   segment: ChecklistSegmentV1;
   segmentIndex: number;
@@ -546,6 +559,7 @@ function SegmentGroup({
   onAddItem: () => void;
   onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
   onToggleRadioItem: (itemIndex: number, checked: boolean) => void;
+  displayText: (text: string) => string;
 }) {
   const [mutationState, mutationDispatch, mutationPending] = useActionState(
     mutateChecklistSegmentAction,
@@ -599,7 +613,7 @@ function SegmentGroup({
                   <input
                     type="radio"
                     name={`segment-radio-${segment.id}`}
-                    aria-label={item.title || `Punkt ${itemIndex + 1}`}
+                    aria-label={displayText(item.title || `Punkt ${itemIndex + 1}`)}
                     checked={item.done}
                     disabled={!canWrite || completed || pending}
                     onChange={(event) => onToggleRadioItem(itemIndex, event.target.checked)}
@@ -608,7 +622,7 @@ function SegmentGroup({
                 ) : (
                   <input
                     type="checkbox"
-                    aria-label={item.title || `Punkt ${itemIndex + 1}`}
+                    aria-label={displayText(item.title || `Punkt ${itemIndex + 1}`)}
                     checked={item.done}
                     disabled={!canWrite || completed || pending}
                     onChange={(event) => onSetItem(itemIndex, { done: event.target.checked }, canWrite)}
@@ -629,7 +643,7 @@ function SegmentGroup({
                 />
               ) : (
                 <span className={`text-sm ${item.done ? "text-slate-500 line-through" : "text-slate-800"}${item.kind === "title" ? " font-semibold" : ""}`}>
-                  {item.title}
+                  {displayText(item.title)}
                 </span>
               )}
               {canEditStructure && !completed ? (
@@ -642,15 +656,16 @@ function SegmentGroup({
                   canEditStructure={canEditStructure}
                   canWrite={canWrite}
                   onSetItem={onSetItem}
+                  displayText={displayText}
                 />
               ) : null}
               {item.kind === "description" && item.description && !(canEditStructure && !completed) ? (
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{item.description}</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{displayText(item.description)}</p>
               ) : null}
               {item.kind === "text" && !(canEditStructure && !completed) ? (
                 canWrite && !completed ? (
                   <textarea
-                    aria-label={`${item.title || `Punkt ${itemIndex + 1}`}: Antworttext`}
+                    aria-label={`${displayText(item.title || `Punkt ${itemIndex + 1}`)}: Antworttext`}
                     value={item.value ?? ""}
                     disabled={pending}
                     onChange={(event) => {
@@ -662,7 +677,7 @@ function SegmentGroup({
                     className="mt-1 min-h-11 w-full max-w-md rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
                   />
                 ) : item.value ? (
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{item.value}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{displayText(item.value)}</p>
                 ) : null
               ) : null}
               {item.kind === "image" && !(canEditStructure && !completed) && checklistId !== null ? (
@@ -671,7 +686,7 @@ function SegmentGroup({
                   projectId={projectId}
                   checklistId={checklistId}
                   item={item}
-                  title={item.title || `Punkt ${itemIndex + 1}`}
+                  title={displayText(item.title || `Punkt ${itemIndex + 1}`)}
                   itemIndex={itemIndex}
                   canWrite={canWrite && !completed}
                   onSetItem={onSetItem}
@@ -683,7 +698,7 @@ function SegmentGroup({
                   projectId={projectId}
                   checklistId={checklistId}
                   item={item}
-                  title={item.title || `Punkt ${itemIndex + 1}`}
+                  title={displayText(item.title || `Punkt ${itemIndex + 1}`)}
                   itemIndex={itemIndex}
                   canWrite={canWrite && !completed}
                   canEditStructure={false}
@@ -694,7 +709,7 @@ function SegmentGroup({
                 <label className="mt-1 flex min-h-11 w-fit cursor-pointer items-center gap-2 px-1 text-xs text-slate-600">
                   <input
                     type="checkbox"
-                    aria-label={`${item.title || `Punkt ${itemIndex + 1}`}: Pflichtpunkt`}
+                    aria-label={`${displayText(item.title || `Punkt ${itemIndex + 1}`)}: Pflichtpunkt`}
                     checked={item.required}
                     onChange={(event) => onSetItem(itemIndex, { required: event.target.checked }, canConfigure)}
                     className="h-5 w-5 rounded border-slate-300 text-brand-800 focus:ring-2 focus:ring-brand-600"
@@ -711,6 +726,7 @@ function SegmentGroup({
                   segment={segment}
                   canConfigure={canConfigure}
                   onSetItem={onSetItem}
+                  displayText={displayText}
                 />
               ) : null}
               {checklistId !== null ? (
@@ -723,6 +739,7 @@ function SegmentGroup({
                   baseVersion={baseVersion}
                   canWrite={canWrite}
                   completed={completed}
+                  displayText={displayText}
                 />
               ) : null}
             </div>
@@ -899,7 +916,7 @@ function BlockTeamControl({ workspaceId, projectId, checklistId, block, teamOpti
 // F7-04b: Irrelevant-Markierung je Pflichtpunkt. Eigene Server-Action
 // (sofort wirksam, eigene Version) statt Whole-Tree-Save — Begründungspflicht
 // und Gate-Skip kommen aus der Kapsel, nicht aus lokalem State.
-function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId, item, baseVersion, canWrite, completed }: {
+function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId, item, baseVersion, canWrite, completed, displayText }: {
   workspaceId: string;
   projectId: string;
   checklistId: string;
@@ -908,13 +925,14 @@ function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId,
   baseVersion: number;
   canWrite: boolean;
   completed: boolean;
+  displayText: (text: string) => string;
 }) {
+  const title = displayText(item.title || "Punkt");
   const [markState, markDispatch, markPending] = useActionState(
     setChecklistItemIrrelevantAction,
     initialState,
   );
   const [formOpen, setFormOpen] = useState(false);
-  const title = item.title || "Punkt";
   if (!canWrite || completed) return null;
 
   if (item.irrelevant != null) {
@@ -1416,7 +1434,7 @@ function ItemSignatureControl({ workspaceId, projectId, checklistId, item, title
 }
 
 // Standard-Checkbox-Zweig, Zähler/Gates wie Aufgabe.
-function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex, canEditStructure, canWrite, onSetItem }: {
+function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex, canEditStructure, canWrite, onSetItem, displayText }: {
   workspaceId: string;
   projectId: string;
   checklistId: string | null;
@@ -1425,8 +1443,9 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
   canEditStructure: boolean;
   canWrite: boolean;
   onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+  displayText: (text: string) => string;
 }) {
-  const title = item.title || "Punkt";
+  const title = displayText(item.title || "Punkt");
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-slate-600">
       <label htmlFor={`item-kind-${item.id}`}>Typ</label>
@@ -1533,14 +1552,15 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
 // (Zod) und der DB-Validator (0129) verweigern baumelnde Regeln
 // fail-closed — eine verwaiste Referenz bleibt als deaktivierte Option
 // sichtbar, statt still auf „Immer" zu fallen.
-function ItemVisibilityRuleControl({ item, itemIndex, segment, canConfigure, onSetItem }: {
+function ItemVisibilityRuleControl({ item, itemIndex, segment, canConfigure, onSetItem, displayText }: {
   item: ChecklistItemV1;
   itemIndex: number;
   segment: ChecklistSegmentV1;
   canConfigure: boolean;
   onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+  displayText: (text: string) => string;
 }) {
-  const title = item.title || "Punkt";
+  const title = displayText(item.title || "Punkt");
   const rule = item.visibleIf ?? null;
   const siblings = segment.items.filter((candidate) => candidate.id !== item.id);
   const dangling = rule !== null && !siblings.some((candidate) => candidate.id === rule.itemId);

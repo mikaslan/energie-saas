@@ -30,7 +30,7 @@ export default async function ProjectChecklistPage(
   const { workspaceId, projectId } = params.data;
 
   let result:
-    | { projectName: string; checklist: ProjectChecklistDto; templates: ChecklistTemplateDto[] }
+    | { projectName: string; customerName: string; today: string; checklist: ProjectChecklistDto; templates: ChecklistTemplateDto[] }
     | undefined;
   try {
     result = await authorizedQuery(
@@ -40,10 +40,14 @@ export default async function ProjectChecklistPage(
       async (tx, ctx) => {
         // Permission-Gate ZUERST (M1-09-external_select_scope-Falle, vgl. F9.1).
         const checklist = await getProjectChecklist(tx, ctx, projectId);
-        const projectRow = await tx.execute<{ name: string }>(sql`
-          select name from project
-           where workspace_id = ${ctx.workspaceId}::uuid
-             and id = ${projectId}::uuid
+        const projectRow = await tx.execute<{ name: string; customer_name: string | null }>(sql`
+          select project_record.name, contact_record.display_name as customer_name
+            from project project_record
+            left join contact contact_record
+              on contact_record.id = project_record.contact_id
+             and contact_record.workspace_id = project_record.workspace_id
+           where project_record.workspace_id = ${ctx.workspaceId}::uuid
+             and project_record.id = ${projectId}::uuid
            limit 1
         `);
         if (!projectRow.rows[0]) {
@@ -51,6 +55,15 @@ export default async function ProjectChecklistPage(
         }
         return {
           projectName: projectRow.rows[0].name,
+          // F7-03C: Platzhalter-Kontext (Server-seitig = hydrationssicher).
+          // Fehlender Kontakt → "" (Muster bleiben ehrlich stehen).
+          customerName: projectRow.rows[0].customer_name ?? "",
+          today: new Date().toLocaleDateString("de-DE", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            timeZone: "Europe/Berlin",
+          }),
           checklist,
           templates: await listChecklistTemplates(tx, ctx),
         };
@@ -119,6 +132,8 @@ export default async function ProjectChecklistPage(
         projectId={projectId}
         checklist={result.checklist}
         teamOptions={teamOptions}
+        customerName={result.customerName}
+        today={result.today}
       />
 
       <div className="mt-6">

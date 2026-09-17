@@ -497,6 +497,25 @@ function segmentItemsById(
 // F7-02E: Textpunkte ebenso (Antworttext ist Nutzlast, kein Gate).
 // F7-02F: Multi-Punkte ebenso (mehrere erledigte je Segment legal —
 // ohne Exklusivität, Gegenstück zu `radio`).
+// F7-03C: Anzeige-Platzhalter (Katalog F7.2). {{kunde}}/{{datum}} in
+// Punkt-Texten werden BEIM ANZEIGEN ersetzt; der Tree speichert den
+// Rohtext. Case-insensitiv, Whitespace-tolerant, mehrfach. Unbekannte
+// Muster (inkl. {{komponenten}} — deferred, keine eindeutige Quelle)
+// bleiben stehen; leerer Kundenname ersetzt nicht (kein Phantom-Text).
+const CHECKLIST_PLACEHOLDER_PATTERN = /\{\{\s*(kunde|datum)\s*\}\}/giu;
+
+export function substituteChecklistPlaceholders(
+  text: string,
+  values: { customerName: string; today: string },
+): string {
+  if (text === "" || !text.includes("{{")) return text;
+  return text.replace(CHECKLIST_PLACEHOLDER_PATTERN, (_match, name: string) => {
+    const key = name.toLowerCase();
+    if (key === "kunde") return values.customerName === "" ? _match : values.customerName;
+    return values.today;
+  });
+}
+
 // F7-02G: Bildpunkte ebenso (Foto ist Nutzlast, kein Gate).
 // F7-02I: Unterschrift-Punkte ebenso (Signatur ist Nutzlast).
 export function isChecklistWorkItem(
