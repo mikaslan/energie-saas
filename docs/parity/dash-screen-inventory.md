@@ -98,13 +98,16 @@ E2E) / CODE (nur Code gelesen) / OFFEN.
   im Suite-Kontext (Angebot aus M2-01-Browser-Action, jüngstes lesen wie
   `readM201Offer`); fokussiert ehrlich SKIP statt erfundener Daten.
   Offer-Scope-Selektor `[data-wmee-scope="offer"]` asserted.
+- VERIFIZIERT im Suite-Lauf 2026-09-17 (265 passed, 0 failed, 12.2 Min):
+  VG-06 Gates gruen, Messungen `v1-angebotdetail-*.json` (4 Boxen).
 
 ## 5. Roadmap (OFFEN)
 
 - Rechnungen, restliche Routen: derselbe Gate-Satz plus Mess-Artefakte.
 - Rollenmatrix (Viewer/Editor/Admin/External) pro Route, Loading-/Error-States,
   Screenshot-Sichtung mit stabilen Testdaten.
-- VG-06-Suite-Nachweis: volle E2E-Suite (CI-Lane) muss DASH-VG-06 passed zeigen.
+- CI-Lane-Nachweis: volle E2E-Suite in CI muss ebenfalls gruen sein
+  (lokal bereits 265/265, nur Fremd-Flakes als Restrisiko).
 
 ## 6. Review-Entscheidungen (Agent-5-Review, P2 dokumentiert statt gefixt)
 

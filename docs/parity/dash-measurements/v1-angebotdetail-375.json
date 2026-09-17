@@ -1,40 +1,40 @@
 {
   "artifact": "dash-measurements/v1",
-  "route": "/w/:workspaceId/anfragen/:projectId",
+  "route": "/w/:workspaceId/angebote/:offerId",
   "viewport": {
     "width": 375,
     "height": 812
   },
   "head": "a4fbf2e",
-  "sourceRunCapturedAt": "2026-09-17T10:49:39.620Z",
+  "sourceRunCapturedAt": "2026-09-17T11:01:43.393Z",
   "boxes": [
     {
       "selector": "main",
       "x": 0,
       "y": 0,
       "width": 375,
-      "height": 10823.875
+      "height": 17967.59375
     },
     {
       "selector": "nav[aria-label=\"Brotkrumen\"]",
       "x": 16,
-      "y": 32,
-      "width": 343,
-      "height": 88
+      "y": 24,
+      "width": 175.625,
+      "height": 44
     },
     {
       "selector": "h1",
       "x": 16,
-      "y": 168,
+      "y": 112,
       "width": 343,
       "height": 32
     },
     {
-      "selector": "[aria-label=\"Projektstatus\"]",
-      "x": 16,
-      "y": 244,
-      "width": 343,
-      "height": 30
+      "selector": "[data-wmee-scope=\"offer\"]",
+      "x": 0,
+      "y": 0,
+      "width": 375,
+      "height": 17967.59375
     }
   ]
 }

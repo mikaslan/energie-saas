@@ -25,12 +25,14 @@ type RawArtifact = {
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu;
 const ROUTE_WORKSPACE_PATTERN = /\/w\/[0-9a-f-]{36}/giu;
 const ROUTE_PROJECT_PATTERN = /\/anfragen\/[0-9a-f-]{36}/giu;
+const ROUTE_OFFER_PATTERN = /\/angebote\/[0-9a-f-]{36}/giu;
 const ROUTE_PORTAL_PATTERN = /\/p\/[A-Za-z0-9_-]+/gu;
 
 function normalizeRoute(route: string): string {
   return route
     .replace(ROUTE_WORKSPACE_PATTERN, "/w/:workspaceId")
     .replace(ROUTE_PROJECT_PATTERN, "/anfragen/:projectId")
+    .replace(ROUTE_OFFER_PATTERN, "/angebote/:offerId")
     .replace(ROUTE_PORTAL_PATTERN, "/p/:token");
 }
 
