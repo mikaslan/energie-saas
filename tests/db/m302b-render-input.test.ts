@@ -22,7 +22,6 @@ import {
   issueDocument,
   upsertInvoicingSettings,
   voidDocument,
-  InvoicingIntegrityError,
   InvoicingNotFoundError,
   InvoicingValidationError,
   type InvoicingSettingsCommandV1,
@@ -347,15 +346,22 @@ describe("M3-02b Render-Input (PostgreSQL)", () => {
       documentId,
     } as const;
     const sealed = await asEditor(fixture, (tx, ctx) => requestInvoicePdfInput(tx, ctx, command));
-    // Tamper: JSON aendern, Hash stehen lassen → Replay muss Integrity werfen.
-    await asEditor(fixture, (tx) => tx.execute(sql`
-      update commercial_document_render_job
-         set input_json = '{"tampered":true}'::jsonb
-       where id = ${sealed.jobId}::uuid
-    `).then(() => undefined));
-    await expect(asEditor(fixture, (tx, ctx) =>
-      requestInvoicePdfInput(tx, ctx, command),
-    )).rejects.toBeInstanceOf(InvoicingIntegrityError);
+    // M3-02c-Evolution: Der Immutability-Trigger blockt das UPDATE direkt
+    // (23514) — der Replay-Integrity-Pfad bleibt Defense-in-depth.
+    let code: string | undefined;
+    try {
+      await asEditor(fixture, (tx) => tx.execute(sql`
+        update commercial_document_render_job
+           set input_json = '{"tampered":true}'::jsonb
+         where id = ${sealed.jobId}::uuid
+      `).then(() => undefined));
+    } catch (error) {
+      code = pgCode(error);
+    }
+    expect(code).toBe("23514");
+    // Unveraenderter Job: Replay bleibt idempotent.
+    const replay = await asEditor(fixture, (tx, ctx) => requestInvoicePdfInput(tx, ctx, command));
+    expect(replay.jobId).toBe(sealed.jobId);
   });
 
   it("M302B-CT-06-DBb: schema-valider Werte-Tamper → Hash-Mismatch fail-closed", async () => {
@@ -366,15 +372,20 @@ describe("M3-02b Render-Input (PostgreSQL)", () => {
       documentId,
     } as const;
     const sealed = await asEditor(fixture, (tx, ctx) => requestInvoicePdfInput(tx, ctx, command));
-    // Schema-valider Tamper: nur ein Datumswert aendern (Parse ok, Hash tot).
-    await asEditor(fixture, (tx) => tx.execute(sql`
-      update commercial_document_render_job
-         set input_json = jsonb_set(input_json, '{preparedAt}', '"2026-01-01T00:00:00Z"')
-       where id = ${sealed.jobId}::uuid
-    `).then(() => undefined));
-    await expect(asEditor(fixture, (tx, ctx) =>
-      requestInvoicePdfInput(tx, ctx, command),
-    )).rejects.toBeInstanceOf(InvoicingIntegrityError);
+    // M3-02c-Evolution: Trigger blockt (23514); Replay bleibt idempotent.
+    let code: string | undefined;
+    try {
+      await asEditor(fixture, (tx) => tx.execute(sql`
+        update commercial_document_render_job
+           set input_json = jsonb_set(input_json, '{preparedAt}', '"2026-01-01T00:00:00Z"')
+         where id = ${sealed.jobId}::uuid
+      `).then(() => undefined));
+    } catch (error) {
+      code = pgCode(error);
+    }
+    expect(code).toBe("23514");
+    const replay = await asEditor(fixture, (tx, ctx) => requestInvoicePdfInput(tx, ctx, command));
+    expect(replay.jobId).toBe(sealed.jobId);
   });
 
   it("M302B-CT-02d: Gutschrift wird versiegelt (Typ-Zweig credit_note)", async () => {
@@ -512,7 +523,8 @@ describe("M3-02b Render-Input (PostgreSQL)", () => {
     // Eigener Beleg, damit nie UNIQUE (23505) statt CHECK (23514) feuert.
     const checkDocId = await seedIssuedInvoice(fixture, null);
     const badRows = [
-      { status: "queued", template: "invoice-pdf-template.v1", recipe: "invoice-pdf-renderer-recipe.v1", json: "'{}'::jsonb", sha: "decode(repeat('00', 32), 'hex')" },
+      // M3-02c: 'queued' ist legal (Statusmaschine) → 'drafting' als Bad-Status.
+      { status: "drafting", template: "invoice-pdf-template.v1", recipe: "invoice-pdf-renderer-recipe.v1", json: "'{}'::jsonb", sha: "decode(repeat('00', 32), 'hex')" },
       { status: "requested", template: "other-template.v9", recipe: "invoice-pdf-renderer-recipe.v1", json: "'{}'::jsonb", sha: "decode(repeat('00', 32), 'hex')" },
       { status: "requested", template: "invoice-pdf-template.v1", recipe: "other-recipe.v9", json: "'{}'::jsonb", sha: "decode(repeat('00', 32), 'hex')" },
       { status: "requested", template: "invoice-pdf-template.v1", recipe: "invoice-pdf-renderer-recipe.v1", json: "'[]'::jsonb", sha: "decode(repeat('00', 32), 'hex')" },

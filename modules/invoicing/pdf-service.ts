@@ -54,6 +54,49 @@ function postgresErrorCode(error: unknown): string | null {
   return null;
 }
 
+// M3-02c: pgboss-Dispatch mit Test-Skip (M2-02-Muster). Ohne pgboss in
+// Nicht-Test-DBs fail-closed (Persistence), in Test-DBs still skip.
+export async function enqueueInvoicePdfRenderDispatch(
+  tx: TenantTx,
+  workspaceId: string,
+  jobId: string,
+): Promise<void> {
+  const parsed = z.strictObject({ workspaceId: z.uuid(), jobId: z.uuid() })
+    .safeParse({ workspaceId, jobId });
+  if (!parsed.success) {
+    throw new InvoicingValidationError();
+  }
+  const gate = await tx.execute<{
+    dispatch_signature: string | null;
+    current_role: string;
+    session_role: string;
+    database_name: string;
+    [key: string]: unknown;
+  }>(sql`
+    select pg_catalog.to_regprocedure(
+             'pgboss.enqueue_invoice_pdf_render(uuid,uuid)'
+           )::text as dispatch_signature,
+           current_user::text as current_role,
+           session_user::text as session_role,
+           pg_catalog.current_database()::text as database_name
+  `);
+  const row = gate.rows[0];
+  if (!row?.dispatch_signature) {
+    const explicitTestSkip = row !== undefined
+      && row.current_role === row.session_role
+      && (row.current_role === "app_test" || row.current_role === "app_ci")
+      && row.database_name.includes("test");
+    if (explicitTestSkip) return;
+    throw new InvoicingIntegrityError();
+  }
+  await tx.execute(sql`
+    select pgboss.enqueue_invoice_pdf_render(
+      ${workspaceId}::uuid,
+      ${jobId}::uuid
+    )
+  `);
+}
+
 type DocumentRow = {
   id: string;
   type: string;
@@ -266,6 +309,7 @@ export async function requestInvoicePdfInput(
     `);
     const row = inserted.rows[0];
     if (row) {
+      await enqueueInvoicePdfRenderDispatch(tx, ctx.workspaceId, row.id);
       return { jobId: row.id, inputSha256Hex, status: "requested" };
     }
   } catch (error) {
@@ -276,8 +320,8 @@ export async function requestInvoicePdfInput(
     }
   }
   // Replay: existierenden versiegelten Job lesen + Hash rueckpruefen.
-  const existing = await tx.execute<{ id: string; input_json: unknown; hex: string }>(sql`
-    select id, input_json, encode(input_sha256, 'hex') as hex
+  const existing = await tx.execute<{ id: string; input_json: unknown; hex: string; status: string }>(sql`
+    select id, input_json, encode(input_sha256, 'hex') as hex, status
       from commercial_document_render_job
      where workspace_id = ${ctx.workspaceId}::uuid
        and document_id = ${documentId}::uuid
@@ -296,6 +340,10 @@ export async function requestInvoicePdfInput(
   }
   if (replayHash !== found.hex) {
     throw new InvoicingIntegrityError();
+  }
+  // M3-02c: Dispatch-Reparatur fuer nicht-terminale Jobs (M2-02-Muster).
+  if (found.status !== "succeeded" && found.status !== "failed_final") {
+    await enqueueInvoicePdfRenderDispatch(tx, ctx.workspaceId, found.id);
   }
   return { jobId: found.id, inputSha256Hex: found.hex, status: "requested" };
 }

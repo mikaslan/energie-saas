@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   date,
   foreignKey,
@@ -752,6 +753,8 @@ export const commercialDocumentPartialLine = pgTable(
 // M3-02b · Render-Job-Zeile: versiegelter invoice-pdf-input.v1 je
 // (Workspace, Dokument, Template, Rezept). Replay-idempotent per UNIQUE;
 // Input ist nach Insert immutable (kein Update-Pfad in M3-02b).
+// M3-02c · Worker-Lebenszyklus: requested → queued → running →
+// retry_wait / succeeded / failed_final; Lease-Claim, Fehler, Artefakt.
 export const commercialDocumentRenderJob = pgTable(
   "commercial_document_render_job",
   {
@@ -763,6 +766,18 @@ export const commercialDocumentRenderJob = pgTable(
     templateVersion: text("template_version").notNull(),
     rendererRecipe: text("renderer_recipe").notNull(),
     status: text("status").notNull().default("requested"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    errorCode: text("error_code"),
+    errorRetryable: boolean("error_retryable"),
+    artifactMimeType: text("artifact_mime_type"),
+    artifactSha256: bytea("artifact_sha256"),
+    artifactSizeBytes: integer("artifact_size_bytes"),
+    artifactBytes: bytea("artifact_bytes"),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -796,7 +811,69 @@ export const commercialDocumentRenderJob = pgTable(
     ),
     check(
       "commercial_document_render_job_status_ck",
-      sql`${t.status} = 'requested'`,
+      sql`${t.status} in (
+        'requested', 'queued', 'running', 'retry_wait', 'succeeded', 'failed_final'
+      )`,
+    ),
+    check(
+      "commercial_document_render_job_attempt_ck",
+      sql`${t.attemptCount} between 0 and 3`,
+    ),
+    check(
+      "commercial_document_render_job_error_ck",
+      sql`(
+        ${t.errorCode} is null and ${t.errorRetryable} is null
+      ) or (
+        ${t.errorCode} ~ '^[a-z][a-z0-9_]{0,79}$' and ${t.errorRetryable} is not null
+      )`,
+    ),
+    check(
+      "commercial_document_render_job_artifact_ck",
+      sql`(
+        ${t.artifactMimeType} is null
+        and ${t.artifactSha256} is null
+        and ${t.artifactSizeBytes} is null
+        and ${t.artifactBytes} is null
+      ) or (
+        ${t.artifactMimeType} = 'application/pdf'
+        and octet_length(${t.artifactSha256}) = 32
+        and ${t.artifactSizeBytes} between 100 and 8388608
+        and octet_length(${t.artifactBytes}) = ${t.artifactSizeBytes}
+        and ${t.artifactSha256} = pg_catalog.sha256(${t.artifactBytes})
+      )`,
+    ),
+    check(
+      "commercial_document_render_job_shape_ck",
+      sql`case ${t.status}
+        when 'requested' then
+          ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+          and ${t.finishedAt} is null and ${t.errorCode} is null
+          and ${t.errorRetryable} is null and ${t.artifactBytes} is null
+        when 'queued' then
+          ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+          and ${t.finishedAt} is null and ${t.errorCode} is null
+          and ${t.errorRetryable} is null and ${t.artifactBytes} is null
+        when 'running' then
+          ${t.leaseToken} is not null and ${t.leaseExpiresAt} is not null
+          and ${t.startedAt} is not null and ${t.finishedAt} is null
+          and ${t.errorCode} is null and ${t.errorRetryable} is null
+          and ${t.artifactBytes} is null
+        when 'retry_wait' then
+          ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+          and ${t.startedAt} is not null and ${t.finishedAt} is null
+          and ${t.errorCode} is not null and ${t.errorRetryable} = true
+          and ${t.artifactBytes} is null
+        when 'succeeded' then
+          ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+          and ${t.startedAt} is not null and ${t.finishedAt} is not null
+          and ${t.errorCode} is null and ${t.errorRetryable} is null
+          and ${t.artifactBytes} is not null
+        when 'failed_final' then
+          ${t.leaseToken} is null and ${t.leaseExpiresAt} is null
+          and ${t.startedAt} is not null and ${t.finishedAt} is not null
+          and ${t.errorCode} is not null and ${t.errorRetryable} = false
+          and ${t.artifactBytes} is null
+        else false end`,
     ),
     check(
       "commercial_document_render_job_template_ck",

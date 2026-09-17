@@ -49,6 +49,13 @@ import { CUSTOMER_NOTIFICATION_QUEUE } from "../lib/integrations/notifications/c
 import { NoopCustomerNotificationTransport } from "../lib/integrations/notifications/resend-transport";
 import { createHealthProbe, createHealthServer, startHeartbeat } from "./health";
 import {
+  createInvoicePdfRenderHandler,
+  startInvoicePdfRecoverySweep,
+  type InvoicePdfRecoveryController,
+} from "./invoice-pdf";
+import { createInvoicePdfDatabaseGateway } from "./invoice-pdf-database";
+import { createPlaywrightInvoicePdfRenderer } from "./invoice-pdf-renderer";
+import {
   createOfferPdfRenderHandler,
   startOfferPdfRecoverySweep,
   type OfferPdfRecoveryController,
@@ -87,6 +94,7 @@ const STARTED = new Date().toISOString();
 const CALCULATION_QUEUE = "calculation.execute";
 const CALCULATION_V2_QUEUE = "calculation.execute.v2";
 const OFFER_PDF_QUEUE = "pdf.render";
+const INVOICE_PDF_QUEUE = "invoice-pdf.render";
 const OFFER_RELEASE_CANDIDATE_QUEUE = "offer.release-candidate.render";
 const OFFER_ISSUANCE_QUEUE = "offer-issuance.render.v1";
 const CATALOG_IMPORT_QUEUE = "catalog.import.v1";
@@ -129,6 +137,7 @@ const WORKER_URL = requireServiceDatabaseUrl("POSTGRES_URL_WORKER", "app_worker"
 let sentry: typeof import("@sentry/node") | undefined;
 let stopHeartbeat: (() => void) | undefined;
 let offerPdfRecovery: OfferPdfRecoveryController | undefined;
+let invoicePdfRecovery: InvoicePdfRecoveryController | undefined;
 let offerReleaseCandidateRecovery:
   | OfferReleaseCandidateRecoveryController
   | undefined;
@@ -167,6 +176,11 @@ const calculationV2Gateway = createCalculationV2DatabaseGateway(
 const offerPdfGateway = createOfferPdfDatabaseGateway(
   WORKER_URL,
   (error) => reportFatalWorkerError("offer-pdf-pool", error),
+  2,
+);
+const invoicePdfGateway = createInvoicePdfDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("invoice-pdf-pool", error),
   2,
 );
 const offerReleaseCandidateGateway = createOfferReleaseCandidateDatabaseGateway(
@@ -251,6 +265,14 @@ const offerPdfHandler = createOfferPdfRenderHandler({
     reportFatalWorkerError("offer-pdf-integrity", error);
   },
 });
+const invoicePdfHandler = createInvoicePdfRenderHandler({
+  database: invoicePdfGateway.database,
+  renderer: createPlaywrightInvoicePdfRenderer(),
+  createLeaseToken: randomUUID,
+  onIntegrityIncident: (error) => {
+    reportFatalWorkerError("invoice-pdf-integrity", error);
+  },
+});
 const offerReleaseCandidateHandler = createOfferReleaseCandidateRenderHandler({
   database: offerReleaseCandidateGateway.database,
   renderer: createPlaywrightOfferReleaseCandidateRenderer(),
@@ -305,6 +327,9 @@ function shutdown(signal: string, fatal = false): Promise<void> {
     stopHeartbeat = undefined;
     const recoveryStopped = offerPdfRecovery?.stop() ?? Promise.resolve();
     offerPdfRecovery = undefined;
+    const invoicePdfRecoveryStopped = invoicePdfRecovery?.stop()
+      ?? Promise.resolve();
+    invoicePdfRecovery = undefined;
     const releaseRecoveryStopped = offerReleaseCandidateRecovery?.stop()
       ?? Promise.resolve();
     offerReleaseCandidateRecovery = undefined;
@@ -324,6 +349,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
         // weiteren Dispatches erzeugen. stop() wartet auf genau den laufenden,
         // begrenzten Sweep; es gibt wegen rekursivem Timeout nie einen zweiten.
         await recoveryStopped;
+        await invoicePdfRecoveryStopped;
         await releaseRecoveryStopped;
         await issuanceRecoveryStopped;
         await catalogImportMaintenanceStopped;
@@ -338,6 +364,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
           calculationGateway.close(),
           calculationV2Gateway.close(),
           offerPdfGateway.close(),
+          invoicePdfGateway.close(),
           offerReleaseCandidateGateway.close(),
           offerIssuanceGateway.close(),
           catalogImportGateway.close(),
@@ -385,6 +412,8 @@ async function main() {
     await calculationV2Gateway.probe();
     startupGate.assertOpen();
     await offerPdfGateway.probe();
+    startupGate.assertOpen();
+    await invoicePdfGateway.probe();
     startupGate.assertOpen();
     await offerReleaseCandidateGateway.probe();
     startupGate.assertOpen();
@@ -446,6 +475,28 @@ async function main() {
       database: offerPdfGateway,
       onFatal: (error) => {
         reportFatalWorkerError("offer-pdf-recovery", error);
+      },
+    });
+    startupGate.assertOpen();
+    await boss.createQueue(INVOICE_PDF_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    startupGate.assertOpen();
+    await boss.work(
+      INVOICE_PDF_QUEUE,
+      { batchSize: 1, localConcurrency: 2 },
+      invoicePdfHandler,
+    );
+    startupGate.assertOpen();
+    invoicePdfRecovery = startInvoicePdfRecoverySweep({
+      database: invoicePdfGateway,
+      onFatal: (error) => {
+        reportFatalWorkerError("invoice-pdf-recovery", error);
       },
     });
     startupGate.assertOpen();

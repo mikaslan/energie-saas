@@ -736,6 +736,11 @@ const COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS = [
 const COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS = [
   "commercial_document_render_job",
 ] as const;
+// M3-02c (0193): Input-Immutability-Guard — eigene Routine-Menge, weil
+// alte Prefixe die Funktion nicht kennen (M3-02a-Muster).
+const M302C_RENDER_INPUT_PRIVATE_ROUTINES = [
+  "public._m302c_guard_render_input_immutable()",
+] as const;
 
 // F13-01 (0103): eigene Menge — Netzanmeldung je Projekt (Statusmaschine).
 const GRID_REGISTRATION_RELATIONS = [
@@ -2274,6 +2279,41 @@ async function hasAtomicM302aLineFreezeContract(
   return true;
 }
 
+// M3-02c (0193): Input-Immutability-Guard + Trigger existieren nur ab 0193.
+// Existenzgeprueft wie M3-02a, damit 0192-Prefixe gruen bleiben.
+async function hasAtomicM302cRenderInputContract(
+  client: PoolClient,
+  hasCommercialDocumentRenderJobs: boolean,
+  label: string,
+): Promise<boolean> {
+  if (!hasCommercialDocumentRenderJobs) return false;
+  const presence = await client.query<{ fn: boolean; trigs: boolean }>(`
+    select
+      pg_catalog.to_regprocedure(
+        'public._m302c_guard_render_input_immutable()'
+      ) is not null as fn,
+      (
+        select count(*) = 1
+          from pg_catalog.pg_trigger
+         where tgrelid = 'public.commercial_document_render_job'::regclass
+           and tgname in (
+             'commercial_document_render_job_input_immutable'
+           )
+      ) as trigs
+  `);
+  const row = presence.rows[0];
+  const fn = row?.fn === true;
+  const trigs = row?.trigs === true;
+  if (!fn && !trigs) return false;
+  if (!fn || !trigs) {
+    throw new Error(
+      `${label} ist nur teilweise vorhanden ` +
+        `(Funktion=${String(fn)}, Trigger=${String(trigs)}).`,
+    );
+  }
+  return true;
+}
+
 async function hasAtomicPublicColumnSet(
   client: PoolClient,
   columns: readonly string[],
@@ -3393,22 +3433,58 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
-  // M3-02b (0192): eigene ACL-Menge — Jobs werden angelegt/gelesen, nie
-  // geaendert/geloescht (versiegelter Input; DELETE nur app_owner per RLS;
-  // Muster appointment_template: select/insert/update, bewusst kein DELETE).
+    // M3-02b (0192) + M3-02c (0193): eigene ACL-Menge — spaltenfeine
+  // Grants (M2-02-Muster). Runtime legt versiegelte Jobs an und liest;
+  // der Worker schreibt genau den Lease-/Artefakt-Automaten. DELETE und
+  // TRUNCATE bleiben fuer beide verboten (nur app_owner per RLS).
   const hasCommercialDocumentRenderJobsForAcl = await hasAtomicPublicRelationSet(
     client,
     COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS,
     "Rollen-ACL-Manifest: M3-02b-Render-Job",
   );
   if (hasCommercialDocumentRenderJobsForAcl) {
-    await client.query(`
-      revoke all privileges on
-        public.commercial_document_render_job
-        from public, app_migrator, app_runtime, app_system, app_auth,
-          app_worker, app_erasure, app_membership_writer, identity_reconciler;
-      grant select, insert, update on public.commercial_document_render_job to app_runtime
+    // 0193-Anwesenheit (Trigger-Funktion) staffelt Tabellen- vs.
+    // Spalten-Grants, damit 0192-Prefixe ohne Worker-Spalten gruen bleiben.
+    const renderInputGuardForAcl = await client.query<{ present: boolean }>(`
+      select pg_catalog.to_regprocedure(
+               'public._m302c_guard_render_input_immutable()'
+             ) is not null as present
     `);
+    if (renderInputGuardForAcl.rows[0]?.present === true) {
+      await client.query(`
+        revoke all privileges on
+          public.commercial_document_render_job
+          from public, app_migrator, app_runtime, app_system, app_auth,
+            app_worker, app_erasure, app_membership_writer, identity_reconciler;
+        grant select on public.commercial_document_render_job to app_runtime;
+        revoke insert, update, delete, truncate
+          on public.commercial_document_render_job from app_runtime;
+        grant insert (
+          id, workspace_id, document_id, input_json, input_sha256,
+          template_version, renderer_recipe, created_by
+        ) on public.commercial_document_render_job to app_runtime;
+        grant update (id) on public.commercial_document_render_job to app_runtime;
+        grant select on public.commercial_document_render_job to app_worker;
+        revoke update, insert, delete, truncate
+          on public.commercial_document_render_job from app_worker;
+        grant update (
+          status, attempt_count, next_attempt_at, lease_token, lease_expires_at,
+          error_code, error_retryable, artifact_mime_type, artifact_sha256,
+          artifact_size_bytes, artifact_bytes, updated_at, started_at, finished_at
+        ) on public.commercial_document_render_job to app_worker;
+        revoke execute on function
+          ${M302C_RENDER_INPUT_PRIVATE_ROUTINES.join(",\n          ")}
+          from public, app_runtime, app_system, app_auth, app_worker, app_erasure
+      `);
+    } else {
+      await client.query(`
+        revoke all privileges on
+          public.commercial_document_render_job
+          from public, app_migrator, app_runtime, app_system, app_auth,
+            app_worker, app_erasure, app_membership_writer, identity_reconciler;
+        grant select, insert, update on public.commercial_document_render_job to app_runtime
+      `);
+    }
   }
 
   // F13-01 (0103): eigene ACL-Menge — Anlage/Lesen/Schreiben, nie Löschen
@@ -4100,6 +4176,30 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       set role app_owner
     `);
   }
+
+  // M3-02c (0193): Invoice-Dispatch — Runtime dispatched bei Anforderung,
+  // Worker bei Recovery/Replay (beide EXECUTE, Existenz-geprueft).
+  const invoicePdfDispatch = await client.query<{ present: boolean }>(`
+    select pg_catalog.count(*) = 1 as present
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'pgboss'
+       and routine.proname = 'enqueue_invoice_pdf_render'
+       and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+  `);
+  if (invoicePdfDispatch.rows[0]?.present) {
+    await client.query(`
+      set role app_worker;
+      grant usage on schema pgboss to app_runtime;
+      grant usage on schema pgboss to app_worker;
+      grant execute on function pgboss.enqueue_invoice_pdf_render(uuid, uuid)
+        to app_runtime;
+      grant execute on function pgboss.enqueue_invoice_pdf_render(uuid, uuid)
+        to app_worker;
+      set role app_owner
+    `);
+  }
 }
 
 export async function applyDefaultPrivilegeContract(client: PoolClient): Promise<void> {
@@ -4604,6 +4704,12 @@ export async function verifyRoleContract(
     client,
     COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS,
     "Rollenvertrag: M3-02b-Render-Job",
+  );
+  // M3-02c (0193): Guard + Trigger nur ab 0193 (0192-Prefixe bleiben gruen).
+  const hasRenderInputGuard = await hasAtomicM302cRenderInputContract(
+    client,
+    hasCommercialDocumentRenderJobs,
+    "Rollenvertrag: M3-02c-Render-Input",
   );
   // F13-01 (0103): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben grün.
   const hasGridRegistrations = await hasAtomicPublicRelationSet(
@@ -5497,6 +5603,9 @@ export async function verifyRoleContract(
       ...(hasLineFreezeGuard ? [
         "_m301_guard_line_parent_immutable:app_owner",
       ] : []),
+      ...(hasRenderInputGuard ? [
+        "_m302c_guard_render_input_immutable:app_owner",
+      ] : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -5882,6 +5991,13 @@ export async function verifyRoleContract(
           "_m301_guard_line_parent_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
             "search_path=pg_catalog:" +
             "e6e052743504d8900cbd6aa1e368065fd64227850d661977581fa0dfa87a0589",
+        ] : []),
+        // M3-02c (0193): Input-Immutability-Guard (sha256 ueber prosrc,
+        // per Probe im Rollenvertrags-Kontext geerntet).
+        ...(hasRenderInputGuard ? [
+          "_m302c_guard_render_input_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+            "search_path=pg_catalog:" +
+            "d73df3df7ce44a1c4f466c3d3404b320dc104d49431e781509e1af97e07882e1",
         ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
@@ -6824,11 +6940,16 @@ export async function verifyRoleContract(
         ] : []),
         // M3-02b (0192): Hashes per Probe geerntet (0083-identische
         // Policies + owner-only DELETE wie M3-01-Kern).
+        // M3-02c (0193): SELECT-Policy auf Write-Schranke verschaerft
+        // (Hash per Probe im Rollenvertrags-Kontext geerntet; 0192-Prefix
+        // behaelt den alten Pin).
         ...(hasCommercialDocumentRenderJobs ? [
         "commercial_document_render_job:tenant_isolation:" +
           "cc319114a501b3c51b857fdf69dc4c4eb7c8ca09a7d05519db643bdfba9a4e1f",
         "commercial_document_render_job:commercial_document_render_job_actor_select:" +
-          "0a149fab0ab4a2ba414510a3db54366861b0349d56a83988a60b620bb137b610",
+          (hasRenderInputGuard
+            ? "e5a64fdccebf3d23ca43898eb14a7e03ec41fc1549eccc1ac09cb751b45a650d"
+            : "0a149fab0ab4a2ba414510a3db54366861b0349d56a83988a60b620bb137b610"),
         "commercial_document_render_job:commercial_document_render_job_actor_insert:" +
           "8e8e65faa88617e125c9c00cdd72726120182fe91e38c1f9971c4d6b259abe24",
         "commercial_document_render_job:commercial_document_render_job_actor_update:" +
@@ -7320,6 +7441,9 @@ export async function verifyRoleContract(
       ...(hasCommercialDocumentRenderJobs ? [
         "commercial_document_render_job:commercial_document_render_job_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
+      ...(hasRenderInputGuard ? [
+        "commercial_document_render_job:commercial_document_render_job_input_immutable:19:O:public:_m302c_guard_render_input_immutable::-:0",
+      ] : []),
     ],
     "Live-Triggervertrag",
   );
@@ -7673,11 +7797,16 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
-      // M3-02b: Jobs ohne DELETE (versiegelter Input; Storno gibt es nicht).
-      ...(hasCommercialDocumentRenderJobs ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.flatMap((relation) => [
-        `app_runtime:${relation}:INSERT:app_owner:false`,
+      // M3-02b: Tabellen-Grants nur ohne 0193 (mit 0193 spaltenfein).
+      ...(hasCommercialDocumentRenderJobs && !hasRenderInputGuard
+        ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.flatMap((relation) => [
+          `app_runtime:${relation}:INSERT:app_owner:false`,
+          `app_runtime:${relation}:SELECT:app_owner:false`,
+          `app_runtime:${relation}:UPDATE:app_owner:false`,
+        ]) : []),
+      // M3-02c: Tabellen-Ebene nur SELECT (Spalten separat gepinnt).
+      ...(hasRenderInputGuard ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:SELECT:app_owner:false`,
-        `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       // F13-01: Anlage/Lesen/Schreiben, nie Löschen.
       ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.flatMap((relation) => [
@@ -7726,6 +7855,9 @@ export async function verifyRoleContract(
       "app_worker:membership:SELECT:app_owner:false",
       ...(hasOfferPdfDraft ? [
         "app_worker:offer_pdf_draft:SELECT:app_owner:false",
+      ] : []),
+      ...(hasRenderInputGuard ? [
+        "app_worker:commercial_document_render_job:SELECT:app_owner:false",
       ] : []),
       ...(hasOfferRelease ? [
         "app_worker:offer_release_candidate:SELECT:app_owner:false",
@@ -7805,6 +7937,18 @@ export async function verifyRoleContract(
       ...(hasOfferVariantDeepening ? [
         "app_runtime:offer_variant.optional_bundles:UPDATE:app_owner:false",
       ] : []),
+      // M3-02c (0193): Runtime-Insert-Spalten + Update(id) (M2-02-Muster).
+      ...(hasRenderInputGuard ? [
+        "app_runtime:commercial_document_render_job.created_by:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.document_id:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.id:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.id:UPDATE:app_owner:false",
+        "app_runtime:commercial_document_render_job.input_json:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.input_sha256:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.renderer_recipe:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.template_version:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.workspace_id:INSERT:app_owner:false",
+      ] : []),
       ...(hasVariantPaymentWriteContract ? [
         "app_runtime:offer_variant.payment_option_id:UPDATE:app_owner:false",
       ] : []),
@@ -7842,6 +7986,23 @@ export async function verifyRoleContract(
         "app_worker:offer_pdf_draft.started_at:UPDATE:app_owner:false",
         "app_worker:offer_pdf_draft.state:UPDATE:app_owner:false",
         "app_worker:offer_pdf_draft.updated_at:UPDATE:app_owner:false",
+      ] : []),
+      // M3-02c (0193): Worker-Automat-Spalten (M2-02-Muster, status statt state).
+      ...(hasRenderInputGuard ? [
+        "app_worker:commercial_document_render_job.artifact_bytes:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.artifact_mime_type:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.artifact_sha256:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.artifact_size_bytes:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.attempt_count:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.error_code:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.error_retryable:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.finished_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.lease_expires_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.lease_token:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.next_attempt_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.started_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.status:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.updated_at:UPDATE:app_owner:false",
       ] : []),
       ...(hasOfferRelease ? OFFER_RELEASE_WORKER_UPDATE_COLUMNS.map(
         (column) =>
@@ -8117,6 +8278,10 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasCustomerNotification ? [
         "app_runtime:enqueue_customer_notification(uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
+      // M3-02c (0193): Invoice-Dispatch — Runtime-EXECUTE wie Offer-Dispatch.
+      ...(hasRenderInputGuard ? [
+        "app_runtime:enqueue_invoice_pdf_render(uuid, uuid):EXECUTE:app_worker:false",
       ] : []),
     ],
     "pg-boss-Funktions-Grants",

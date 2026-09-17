@@ -243,10 +243,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0148 F16-11 Paket-Vorlagen (Tabelle + RLS),
     // 0190 F8-16 Teilrechnungstypen-Kennung (Spalte + CHECKs + Guard),
     // 0191 M3-02a Zeilen-Freeze-Guard (Funktion + 3 Trigger),
-    // 0192 M3-02b Render-Job (Tabelle + RLS)).
+    // 0192 M3-02b Render-Job (Tabelle + RLS),
+    // 0193 M3-02c Worker-Lebenszyklus (Spalten + Trigger + RLS-Schranke)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 151,
-      tag: "0192_m302b_render_job",
+      idx: 152,
+      tag: "0193_m302c_pdf_worker",
     });
   });
 

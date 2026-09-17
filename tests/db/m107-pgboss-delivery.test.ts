@@ -700,6 +700,13 @@ describe.sequential("M1-07: enge pg-boss-Zustellung", () => {
       {
         grantee: "app_runtime",
         grantor: "app_worker",
+        signature: "enqueue_invoice_pdf_render(uuid, uuid)",
+        privilege_type: "EXECUTE",
+        is_grantable: false,
+      },
+      {
+        grantee: "app_runtime",
+        grantor: "app_worker",
         signature: "enqueue_offer_issuance(uuid, uuid)",
         privilege_type: "EXECUTE",
         is_grantable: false,

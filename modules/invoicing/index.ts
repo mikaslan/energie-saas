@@ -176,6 +176,7 @@ export {
 export { exportDocumentCii } from "./cii-service";
 export { exportDatevBatch } from "./datev-service";
 export {
+  enqueueInvoicePdfRenderDispatch,
   requestInvoicePdfInput,
   type RequestInvoicePdfInputCommand,
   type RequestInvoicePdfInputResult,
