@@ -152,8 +152,12 @@ describe("F9.1 Zeiterfassung (PostgreSQL)", () => {
       testPool, fixture.viewerId, fixture.workspaceId,
       (tx, ctx) => listTimeEventTypes(tx, ctx),
     );
-    // Position 0 zweimal → Name entscheidet (Büro < Montage).
-    expect(list.map((t) => t.name)).toEqual(["Büro", "Montage"]);
+    // Position 0 dreimal (Büro, Montage + Default Travel) → Name
+    // entscheidet (Büro < Montage < Travel); dann On-site/Office/Other
+    // auf Positionen 1-3 (F9-12-Defaults).
+    expect(list.map((t) => t.name)).toEqual([
+      "Büro", "Montage", "Travel", "On-site", "Office", "Other",
+    ]);
 
     const updated = await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
@@ -211,12 +215,18 @@ describe("F9.1 Zeiterfassung (PostgreSQL)", () => {
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => listTimeEventTypes(tx, ctx),
     );
-    expect(active.map((t) => t.id)).toEqual([recreated.id]);
+    expect(active).toHaveLength(5); // 4 Defaults + recreated
+    expect(active.filter((t) => t.id === recreated.id)).toHaveLength(1);
+    expect(
+      active.filter((t) =>
+        ["Travel", "On-site", "Office", "Other"].includes(t.name),
+      ),
+    ).toHaveLength(4);
     const all = await withAuthorizedTenantOn(
       testPool, fixture.editorId, fixture.workspaceId,
       (tx, ctx) => listTimeEventTypes(tx, ctx, { includeArchived: true }),
     );
-    expect(all).toHaveLength(2);
+    expect(all).toHaveLength(6); // 4 Defaults + archiviert + recreated
   });
 
   it("F901-DB-03: Zeiteintrag create/list/update/archive + Summe nur aktiver Einträge", async () => {
@@ -383,7 +393,11 @@ describe("F9.1 Zeiterfassung (PostgreSQL)", () => {
       testPool, other.viewerId, other.workspaceId,
       (tx, ctx) => listTimeEventTypes(tx, ctx, { includeArchived: true }),
     );
-    expect(foreignList).toHaveLength(0);
+    expect(foreignList).toHaveLength(4);
+    expect(foreignList.map((t) => t.name).sort()).toEqual(
+      ["Office", "On-site", "Other", "Travel"],
+    );
+    expect(foreignList.some((t) => t.name === "Montage")).toBe(false);
 
     await expect(withAuthorizedTenantOn(
       testPool, fixture.viewerId, fixture.workspaceId,

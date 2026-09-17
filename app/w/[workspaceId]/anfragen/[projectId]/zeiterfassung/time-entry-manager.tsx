@@ -733,7 +733,7 @@ export function TimeEntryManager({
             {list.entries.map((entry) => (
               <li key={entry.id} className="flex flex-wrap items-center gap-3 py-3">
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-slate-900">
+                  <span className="block break-words text-sm font-semibold text-slate-900">
                     {typeName(entry.typeId) ?? "Ohne Ereignistyp"}
                   </span>
                   <span className="block text-xs text-slate-500">
@@ -741,7 +741,7 @@ export function TimeEntryManager({
                     {entry.running ? "" : ` · ${formatDuration(entry.workingTimeMinutes)}${entry.breakDurationMinutes > 0 ? ` · Pause ${formatDuration(entry.breakDurationMinutes)}` : ""}`}
                   </span>
                   {entry.comment ? (
-                    <span className="block text-xs text-slate-500">{entry.comment}</span>
+                    <span className="block break-words text-xs text-slate-500">{entry.comment}</span>
                   ) : null}
                   {entry.startLat !== null && entry.startLng !== null ? (
                     <span className="block text-xs text-slate-500">
@@ -848,7 +848,8 @@ export function TimeEntryManager({
             Keine Einträge im Filter.
           </p>
         ) : (
-          <table className="mt-3 w-full text-left text-sm">
+          <div className="overflow-x-auto">
+          <table className="mt-3 w-full min-w-[560px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th scope="col" className="py-2 pr-3 font-semibold">Mitglied</th>
@@ -868,6 +869,7 @@ export function TimeEntryManager({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
