@@ -180,12 +180,13 @@ async function measureBoxes(page: Page, selectors: readonly string[]): Promise<M
   const boxes: MeasuredBox[] = [];
   for (const selector of selectors) {
     const box = await page.locator(selector).first().boundingBox();
+    expect(box, `Messung: ${selector} hat eine sichtbare Box`).not.toBeNull();
     boxes.push({
       selector,
-      x: box?.x ?? -1,
-      y: box?.y ?? -1,
-      width: box?.width ?? -1,
-      height: box?.height ?? -1,
+      x: box!.x,
+      y: box!.y,
+      width: box!.width,
+      height: box!.height,
     });
   }
   return boxes;

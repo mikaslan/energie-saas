@@ -27,8 +27,10 @@ const DASHBOARD_CARDS: readonly string[] = [
   '[data-dashboard-pipeline="true"]',
   '[data-dashboard-overdue="true"]',
   '[data-dashboard-today="true"]',
+  '[data-dashboard-followups="true"]',
   '[data-dashboard-closures="true"]',
   '[data-dashboard-trend="true"]',
+  '[data-dashboard-funnel="true"]',
   '[data-dashboard-invoices="true"]',
   '[data-dashboard-leadtime="true"]',
   '[data-dashboard-offer-leadtime="true"]',
@@ -190,12 +192,13 @@ async function measureBoxes(page: Page, selectors: readonly string[]): Promise<M
   const boxes: MeasuredBox[] = [];
   for (const selector of selectors) {
     const box = await page.locator(selector).first().boundingBox();
+    expect(box, `Messung: ${selector} hat eine sichtbare Box`).not.toBeNull();
     boxes.push({
       selector,
-      x: box?.x ?? -1,
-      y: box?.y ?? -1,
-      width: box?.width ?? -1,
-      height: box?.height ?? -1,
+      x: box!.x,
+      y: box!.y,
+      width: box!.width,
+      height: box!.height,
     });
   }
   return boxes;
@@ -233,6 +236,8 @@ test("DASH-VG-01: Uebersicht ist bei 375/768/1440 axe-/konsolen-sauber und overf
   await page.goto(dashboardPath);
   await loginWithRealOtp(page, state().editorEmail, dashboardPath);
   await expect(page.getByRole("heading", { name: "Übersicht", level: 1 })).toBeVisible();
+  // 13. Sektion (Quellenkarte) fehlt ohne Daten — bedingte Karte.
+  await expect(page.locator('[data-dashboard-sources="true"]')).toHaveCount(0);
 
   for (const viewport of GATE_VIEWPORTS) {
     await test.step(`Viewport ${viewport.width}`, async () => {
@@ -388,50 +393,101 @@ test("DASH-VG-05: Portal-Resolve ist bei 375/768/1440 axe-/konsolen-sauber (Crea
   const portal = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Kundenportal", exact: true }),
   });
-  await expect(portal.getByText("Kein aktiver Link.", { exact: false })).toBeVisible();
-  await portal.getByRole("button", { name: "Link erstellen", exact: true }).click();
-  await expect(portal.getByText("Der Portal-Link wurde erstellt und die E-Mail an den Kunden queued. Kopiere ihn jetzt — er wird nicht erneut angezeigt.", { exact: true }))
-    .toBeVisible();
-  const tokenText = await portal.locator("p.font-mono").textContent();
-  const tokenPath = tokenText?.trim() ?? "";
-  expect(tokenPath).toMatch(/^\/p\/[A-Za-z0-9_-]+$/u);
+  let created = false;
+  let tokenPath = "";
+  let stepError: unknown = null;
+  let cleanupError: unknown = null;
+  try {
+    await expect(portal.getByText("Kein aktiver Link.", { exact: false })).toBeVisible();
+    await portal.getByRole("button", { name: "Link erstellen", exact: true }).click();
+    await expect(portal.getByText("Der Portal-Link wurde erstellt und die E-Mail an den Kunden queued. Kopiere ihn jetzt — er wird nicht erneut angezeigt.", { exact: true }))
+      .toBeVisible();
+    created = true;
+    const tokenText = await portal.locator("p.font-mono").textContent();
+    tokenPath = tokenText?.trim() ?? "";
+    expect(tokenPath).toMatch(/^\/p\/[A-Za-z0-9_-]+$/u);
 
-  await page.context().clearCookies();
-  await page.goto(tokenPath);
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Dokumente", exact: true })).toBeVisible();
+    await page.context().clearCookies();
+    await page.goto(tokenPath);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dokumente", exact: true })).toBeVisible();
 
-  for (const viewport of GATE_VIEWPORTS) {
-    await test.step(`Viewport ${viewport.width}`, async () => {
-      await page.setViewportSize(viewport);
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await expectNoHorizontalOverflow(page, `Portal ${viewport.width}`);
-      await expectNoWcagAaAxeViolations(page, `Portal ${viewport.width}`);
-      const boxes = await measureBoxes(page, ["main", "h1", "nav"]);
-      writeMeasurementArtifact("portal", tokenPath, viewport, boxes);
+    for (const viewport of GATE_VIEWPORTS) {
+      await test.step(`Viewport ${viewport.width}`, async () => {
+        await page.setViewportSize(viewport);
+        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        await expectNoHorizontalOverflow(page, `Portal ${viewport.width}`);
+        await expectNoWcagAaAxeViolations(page, `Portal ${viewport.width}`);
+        const boxes = await measureBoxes(page, ["main", "h1", "nav"]);
+        writeMeasurementArtifact("portal", tokenPath, viewport, boxes);
+      });
+    }
+
+    await test.step("Portal-Tabs: 44px-Targets und aria-current", async () => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      for (const tabName of ["Übersicht", "Termine", "Installation", "Dateien"] as const) {
+        const tab = page.getByRole("link", { name: tabName, exact: true });
+        await expect(tab, `Portal-Tab ${tabName} sichtbar`).toBeVisible();
+        const tabBox = await tab.boundingBox();
+        expect(tabBox, `Portal-Tab ${tabName} hat messbare Box`).not.toBeNull();
+        expect(tabBox!.height, `Portal-Tab ${tabName} mind. 44 px hoch`).toBeGreaterThanOrEqual(44);
+      }
+      await expect(
+        page.getByRole("link", { name: "Übersicht", exact: true }),
+        "aktiver Portal-Tab meldet aria-current",
+      ).toHaveAttribute("aria-current", "page");
     });
+  } catch (error) {
+    stepError = error;
   }
+  // Garantierter Withdraw (f10-01-Hygiene), ohne den Originalfehler zu maskieren.
+  if (created) {
+    try {
+      await page.goto(projectPath);
+      // Login-Seite kommt per async Redirect: bis 12 s abwarten (schnell, wenn
+      // abgemeldet; volle Zeit nur im seltenen Noch-angemeldet-Fall).
+      const needsLogin = await page
+        .waitForURL((url) => url.pathname === "/login", { timeout: 12_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (needsLogin) {
+        await loginWithRealOtp(page, data.editorEmail, projectPath);
+      } else {
+        await page.waitForURL((url) => url.pathname === projectPath);
+      }
+      await page.reload();
+      await expect(portal.getByText("Aktiver Link", { exact: false })).toBeVisible();
+      await portal.getByRole("button", { name: "Link zurückziehen", exact: true }).click();
+      await expect(portal.getByText("Der Portal-Link wurde zurückgezogen.", { exact: true }))
+        .toBeVisible();
+    } catch (error) {
+      cleanupError = error;
+    }
+  }
+  if (stepError) {
+    if (cleanupError) {
+      throw new Error(
+        `Portal-Gates fehlgeschlagen UND Cleanup fehlgeschlagen: ${cleanupError instanceof Error ? (cleanupError.message.split("\n")[0] ?? "") : String(cleanupError)}`,
+        { cause: stepError },
+      );
+    }
+    throw stepError;
+  }
+  if (cleanupError) throw cleanupError;
 
-  // Cleanup: Link zurückziehen, damit f10-01 weiter „Kein aktiver Link“ sieht.
-  await page.goto(projectPath);
-  await loginWithRealOtp(page, data.editorEmail, projectPath);
-  await page.reload();
-  await expect(portal.getByText("Aktiver Link", { exact: false })).toBeVisible();
-  await portal.getByRole("button", { name: "Link zurückziehen", exact: true }).click();
-  await expect(portal.getByText("Der Portal-Link wurde zurückgezogen.", { exact: true }))
-    .toBeVisible();
-
-  // Ungültig-Ansicht: spezifizierter 404-Endzustand (Muster m1-08b/f10-01:
-  // erwartete Meldungen gezielt konsumieren, Rest bleibt Fehler).
+  // Ungültig-Ansicht (nur nach grünen Gates): spezifizierter 404-Endzustand
+  // (Muster m1-08b/f10-01: erwartete Meldungen gezielt konsumieren, Rest bleibt
+  // Fehler). Locale-unabhängig über eigene http-404-Einträge belegt.
   await page.context().clearCookies();
   await page.goto(tokenPath);
   await expect(page.getByRole("heading", { name: "Dieser Link ist ungültig.", exact: true }))
     .toBeVisible();
   const problems = browserProblems.get(page) ?? [];
-  const expectedConsole = "console-error: Failed to load resource: the server responded with a status of 404 (Not Found)";
-  const consumed = problems.filter((entry) => entry === expectedConsole || entry.startsWith("http-404: "));
-  expect(consumed.length, "Erwartete 404-Meldungen nach Withdraw").toBeGreaterThan(0);
-  const kept = problems.filter((entry) => entry !== expectedConsole && !entry.startsWith("http-404: "));
+  const http404 = problems.filter((entry) => entry.startsWith("http-404: "));
+  expect(http404.length, "Erwartete http-404-Meldung nach Withdraw").toBeGreaterThan(0);
+  const kept = problems.filter(
+    (entry) => !entry.startsWith("http-404: ") && !(entry.startsWith("console-error:") && entry.includes("404")),
+  );
   problems.length = 0;
   problems.push(...kept);
 });

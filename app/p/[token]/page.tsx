@@ -139,7 +139,7 @@ export default async function PortalTokenPage({
   // F10-06: Sprache immer explizit weitergeben (stateless, kein JS nötig).
   const langQuery = `lang=${lang}`;
   const tabClass = (active: boolean): string =>
-    `rounded-md px-3 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 ${
+    `inline-flex min-h-11 items-center rounded-md px-3 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 ${
       active ? "bg-brand-700 text-white" : "text-brand-800 hover:bg-brand-50"
     }`;
   return (
@@ -152,23 +152,30 @@ export default async function PortalTokenPage({
         <p className="text-sm font-semibold text-brand-800">{t.brand}</p>
         <h1 className="mt-2 text-2xl font-semibold text-slate-950">{view.project.name}</h1>
         <nav aria-label={t.navAria} className="mt-4 flex flex-wrap gap-2">
-          <Link href={`/p/${token}?${langQuery}`} className={tabClass(activeTab === "uebersicht")}>
+          <Link
+            href={`/p/${token}?${langQuery}`}
+            aria-current={activeTab === "uebersicht" ? "page" : undefined}
+            className={tabClass(activeTab === "uebersicht")}
+          >
             {t.navOverview}
           </Link>
           <Link
             href={`/p/${token}?tab=termine&${langQuery}`}
+            aria-current={activeTab === "termine" ? "page" : undefined}
             className={tabClass(activeTab === "termine")}
           >
             {t.navAppointments}{view.appointments.length > 0 ? ` (${view.appointments.length})` : ""}
           </Link>
           <Link
             href={`/p/${token}?tab=installation&${langQuery}`}
+            aria-current={activeTab === "installation" ? "page" : undefined}
             className={tabClass(activeTab === "installation")}
           >
             {t.navInstallation}
           </Link>
           <Link
             href={`/p/${token}?tab=dateien&${langQuery}`}
+            aria-current={activeTab === "dateien" ? "page" : undefined}
             className={tabClass(activeTab === "dateien")}
           >
             {t.navFiles}{view.fileRequests.length > 0 ? ` (${view.fileRequests.length})` : ""}
