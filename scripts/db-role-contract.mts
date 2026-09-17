@@ -4549,6 +4549,18 @@ export async function verifyRoleContract(
     FILE_REQUEST_UPLOAD_RELATIONS,
     "Rollenvertrag: F10-10-Folge-Belege",
   );
+  // F10-13 (0170): Dateityp-Spaltenpaar auf Anfrage + Vorlage (Spalten-
+  // vertrag wie hasInvoiceSkontoTerms); gate-t die drei geaenderten
+  // Funktionsruempfe (Resolver-Projektion + beide Fulfill-Guards).
+  const hasFileRequestFileType = hasFileRequests
+    && await hasAtomicPublicColumnSet(
+      client,
+      [
+        "file_request.file_type",
+        "file_request_template.file_type",
+      ],
+      "Rollenvertrag: F10-13-Dateityp",
+    );
   // F5-01 Skonto (Migration 0082) erweitert den M301-Guard um skonto_*;
   // historische Prefixe ohne 0082 bleiben ueber den alten Pin gruen
   // (Spaltenpaar atomar je Migration — Spaltenvertrag wie Relationen).
@@ -5811,13 +5823,15 @@ export async function verifyRoleContract(
           `search_path=pg_catalog:${hasF1008Notification
             ? "a49661be591f013d15fea7fc6169fc344311badbaeb1879c6e09713195373e7e"
             : "def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf"}`,
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15:
-        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135
-        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein zwoelfter Rumpf
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15/F10-13:
+        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135/0170
+        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein dreizehnter Rumpf
         // bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          // F8-15 (0135): Geldbeleg-Projektion (Hash per Probe geerntet).
-          `search_path=pg_catalog:${hasPortalInvoices
+          // F10-13 (0170): fileType-Projektion (Hash per Probe geerntet).
+          `search_path=pg_catalog:${hasFileRequestFileType
+            ? "a5a9549b3b079888078c3dd0180e1f4641ce559c769e13c9f815d8be50592871"
+            : hasPortalInvoices
             ? "b78e7ca07f4ef1617db40599ddf680ca4559cd0920e3a2b28b0abb4e3d67191a"
             : hasPortalFileUploads
             ? "dc56f5b6f3af6b1774497783d07913c342074582364b5509e6ff92671ae2edfa"
@@ -5845,13 +5859,19 @@ export async function verifyRoleContract(
         ...(hasFileRequests ? [
         "fulfill_file_request(bytea, uuid, text, text, text, integer, text):text:" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
-          "541069e4c8a5bead1d1fd14f1e74226d2f4da7af677f53731abc6c53d7d3f9c9",
+          // F10-13 (0170): Dateityp-Guard (Hash per Probe geerntet).
+          (hasFileRequestFileType
+            ? "0dc38756e21e24a97ae1366608e81139b6c7339acc23b6840b5572695c9a6111"
+            : "541069e4c8a5bead1d1fd14f1e74226d2f4da7af677f53731abc6c53d7d3f9c9"),
         ] : []),
         // F10-10 (0120): Folge-Beleg-Kapsel (Hash per Probe geerntet).
         ...(hasFileRequestUploads ? [
         "fulfill_file_request_followup(bytea, uuid, text, text, text, integer, text):text:" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
-          "3de3363d0bc92738bea5a02a28373e736fae762dd9783b470b9ad423c7123ca9",
+          // F10-13 (0170): Dateityp-Guard (Hash per Probe geerntet).
+          (hasFileRequestFileType
+            ? "6dd984e87ef1eead1bda2a1b434968ead82e8fde9fc5be1a2c7a850a3d05a3c3"
+            : "3de3363d0bc92738bea5a02a28373e736fae762dd9783b470b9ad423c7123ca9"),
         ] : []),
         // F10-07 (0116): Portal-Dokument-Download (Muster fulfill).
         // F10-12 (0137): Download-Insert (Marker portal_download_log;

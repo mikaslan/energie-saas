@@ -3,6 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { publicTokenCapsule } from "@/lib/action";
+import {
+  FILE_REQUEST_FILE_TYPE_ACCEPT,
+  FILE_REQUEST_FILE_TYPE_HINT,
+} from "@/lib/file-request";
 import type {
   PortalInstallationStatusFaqs,
   PortalInstallationStatusLabels,
@@ -286,6 +290,15 @@ export default async function PortalTokenPage({
                         ))}
                       </ul>
                     ) : null}
+                    {req.fileType !== "any" ? (
+                      <span
+                        id={`file-type-hint-${req.id}`}
+                        className="mt-1 block text-sm text-slate-500"
+                        data-testid="file-request-file-type-hint"
+                      >
+                        {FILE_REQUEST_FILE_TYPE_HINT[req.fileType]}
+                      </span>
+                    ) : null}
                     {req.status === "offen" || req.allowMany ? (
                       <form
                         action={`/p/${token}/file-requests`}
@@ -299,8 +312,9 @@ export default async function PortalTokenPage({
                           type="file"
                           name="datei"
                           required
-                          accept=".pdf,.jpg,.jpeg,.png"
+                          accept={FILE_REQUEST_FILE_TYPE_ACCEPT[req.fileType]}
                           aria-label={`${t.uploadFileAriaPrefix} ${req.title}`}
+                          aria-describedby={req.fileType !== "any" ? `file-type-hint-${req.id}` : undefined}
                           className="text-sm text-slate-600"
                         />
                         <button

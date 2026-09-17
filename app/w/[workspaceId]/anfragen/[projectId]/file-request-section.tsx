@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import {
+  FILE_REQUEST_FILE_TYPE_LABEL,
   FILE_REQUEST_STATUS_LABEL,
   nextFileRequestStatuses,
   type FileRequestDto,
@@ -215,6 +216,7 @@ export function FileRequestSection({
                 >
                   {FILE_REQUEST_STATUS_LABEL[request.status]}
                   {request.allowMany ? " · Mehrere Dateien" : ""}
+                  {request.fileType !== "any" ? ` · ${FILE_REQUEST_FILE_TYPE_LABEL[request.fileType]}` : ""}
                 </span>
                 {request.storageKey !== null ? (
                   <ReceiptRow workspaceId={workspaceId} projectId={projectId} request={request} />
@@ -289,6 +291,19 @@ export function FileRequestSection({
               className="min-h-6 min-w-6 accent-slate-900"
             />
             Mehrere Dateien erlauben
+          </label>
+          <label className="grid gap-1 text-sm text-slate-600">
+            Dateityp
+            <select
+              name="fileType"
+              defaultValue="any"
+              data-testid="file-request-file-type"
+              className="min-h-11 max-w-64 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 outline-none focus:border-brand-600"
+            >
+              <option value="any">{FILE_REQUEST_FILE_TYPE_LABEL.any}</option>
+              <option value="pdf">{FILE_REQUEST_FILE_TYPE_LABEL.pdf}</option>
+              <option value="image">{FILE_REQUEST_FILE_TYPE_LABEL.image}</option>
+            </select>
           </label>
           <button
             type="submit"

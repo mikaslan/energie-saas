@@ -50,7 +50,7 @@ function parseOptionalText(value: FormDataEntryValue | null, max: number): strin
 }
 
 function parseFields(formData: FormData):
-  | { name: string; title: string; description: string | null; allowMany: boolean; position: number }
+  | { name: string; title: string; description: string | null; allowMany: boolean; fileType: "any" | "pdf" | "image"; position: number }
   | null {
   const name = parseText(formData.get("name"), 200);
   const title = parseText(formData.get("title"), 160);
@@ -60,8 +60,21 @@ function parseFields(formData: FormData):
   if (typeof positionValue !== "string" || !/^\d+$/u.test(positionValue)) return null;
   const position = Number(positionValue);
   if (!Number.isSafeInteger(position) || position < 0) return null;
+  // F10-13: Dateityp je Vorlage (geschlossen; fehlend/fremd = invalid,
+  // kein stiller Fallback — das Formular liefert immer einen Wert).
+  const fileTypeValue = formData.get("fileType");
+  if (fileTypeValue !== "any" && fileTypeValue !== "pdf" && fileTypeValue !== "image") {
+    return null;
+  }
   // F10-10: Allow-many je Vorlage (Checkbox; fehlend = single).
-  return { name, title, description, allowMany: formData.get("allowMany") === "on", position };
+  return {
+    name,
+    title,
+    description,
+    allowMany: formData.get("allowMany") === "on",
+    fileType: fileTypeValue,
+    position,
+  };
 }
 
 function mapError(error: unknown): FileRequestTemplateActionState {

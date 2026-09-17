@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { FILE_REQUEST_FILE_TYPE_LABEL } from "@/lib/file-request";
 import type { FileRequestTemplateDto } from "@/lib/file-request-template";
 import {
   archiveFileRequestTemplateAction,
@@ -103,6 +104,19 @@ function TemplateForm({
         Mehrere Dateien erlauben
       </label>
       <label className="grid gap-1 text-sm font-semibold text-slate-800">
+        Dateityp
+        <select
+          name="fileType"
+          defaultValue={template?.fileType ?? "any"}
+          data-testid="file-request-template-file-type"
+          className="min-h-11 max-w-64 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30"
+        >
+          <option value="any">{FILE_REQUEST_FILE_TYPE_LABEL.any}</option>
+          <option value="pdf">{FILE_REQUEST_FILE_TYPE_LABEL.pdf}</option>
+          <option value="image">{FILE_REQUEST_FILE_TYPE_LABEL.image}</option>
+        </select>
+      </label>
+      <label className="grid gap-1 text-sm font-semibold text-slate-800">
         Reihenfolge
         <input
           type="text"
@@ -166,6 +180,11 @@ export function FileRequestTemplateManager({
             <p className="mt-1 text-sm text-slate-700">{template.title}</p>
             {template.allowMany ? (
               <p className="mt-1 text-xs font-semibold text-slate-600">Mehrere Dateien</p>
+            ) : null}
+            {template.fileType !== "any" ? (
+              <p className="mt-1 text-xs font-semibold text-slate-600">
+                {FILE_REQUEST_FILE_TYPE_LABEL[template.fileType]}
+              </p>
             ) : null}
             {template.description ? (
               <p className="mt-1 text-sm text-slate-500">{template.description}</p>

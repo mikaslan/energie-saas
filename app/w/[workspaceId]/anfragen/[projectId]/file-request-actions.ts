@@ -94,6 +94,8 @@ export async function applyFileRequestTemplateAction(
 
 // F10-04: Anfrage anlegen (Titel + optionale Beschreibung).
 // F10-10: Allow-many je Anfrage (Checkbox „Mehrere Dateien erlauben").
+// F10-13: Dateityp je Anfrage (geschlossen; fehlend = Default 'any',
+// fremd = invalid — kein stiller Fallback).
 export async function createFileRequestAction(
   _previous: FileRequestActionState,
   formData: FormData,
@@ -104,6 +106,15 @@ export async function createFileRequestAction(
   const description = formData.get("description");
   if (typeof title !== "string") return { status: "invalid" };
   if (description !== null && typeof description !== "string") return { status: "invalid" };
+  const fileTypeValue = formData.get("fileType");
+  if (
+    fileTypeValue !== null
+    && fileTypeValue !== "any"
+    && fileTypeValue !== "pdf"
+    && fileTypeValue !== "image"
+  ) {
+    return { status: "invalid" };
+  }
   try {
     await authorizedAction(ids.workspaceId, "project.write", "file_request", (tx, ctx) =>
       createFileRequest(tx, ctx, {
@@ -111,6 +122,7 @@ export async function createFileRequestAction(
         title,
         description: description && description.trim().length > 0 ? description : null,
         allowMany: formData.get("allowMany") === "on",
+        fileType: fileTypeValue ?? undefined,
       }),
     );
     revalidatePath(detailPath(ids.workspaceId, ids.projectId));

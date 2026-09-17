@@ -430,6 +430,8 @@ describe("F10.1 portal command contracts", () => {
       allowMany: false,
       uploadCount: 0,
       filenames: [],
+      // F10-13: Alt-Projektion ohne Schlüssel → ehrlich 'any'.
+      fileType: "any",
     }]);
     // F10-10: Allow-many mit Folge-Belegen.
     const shown = parsePortalPublicView({
@@ -458,6 +460,8 @@ describe("F10.1 portal command contracts", () => {
       allowMany: true,
       uploadCount: 2,
       filenames: ["foto-2.pdf", "foto-3.pdf"],
+      // F10-13: Alt-Projektion ohne Schlüssel → ehrlich 'any'.
+      fileType: "any",
     }]);
     // Deformierte Allow-many-Felder + fremde Schlüssel brechen fail-closed ab.
     for (const patch of [

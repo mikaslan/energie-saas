@@ -70,6 +70,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
         title: "Stromrechnung hochladen",
         description: "Jahresabrechnung als PDF",
         allowMany: false,
+        fileType: "any",
         position: 0,
       }));
     expect(created.title).toBe("Stromrechnung hochladen");
@@ -84,6 +85,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
           name: "  STROMRECHNUNG ",
           title: "Duplikat",
           allowMany: true,
+        fileType: "any",
           position: 1,
         })),
     ).rejects.toBeInstanceOf(FileRequestTemplateConflictError);
@@ -96,6 +98,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
         title: "Stromrechnung (aktuell) hochladen",
         description: null,
         allowMany: true,
+        fileType: "any",
         position: 2,
       }));
     expect(updated.title).toBe("Stromrechnung (aktuell) hochladen");
@@ -116,6 +119,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
         name: "Zaehlerfoto",
         title: "Zählerfoto hochladen",
         allowMany: true,
+        fileType: "any",
         position: 0,
       }));
 
@@ -168,6 +172,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
           name: "Viewer-Versuch",
           title: "Titel",
           allowMany: false,
+        fileType: "any",
           position: 0,
         })),
     ).rejects.toBeInstanceOf(PermissionDeniedError);
@@ -178,6 +183,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
         name: "Privat",
         title: "Privater Titel",
         allowMany: false,
+        fileType: "any",
         position: 0,
       }));
     const foreign = await seedFixture("F16-07 fremd");
@@ -192,6 +198,7 @@ describe("F16-07 Datei-Anfragen-Vorlagen (PostgreSQL)", () => {
           title: "Fremder Titel",
           description: null,
           allowMany: false,
+        fileType: "any",
           position: 0,
         })),
     ).rejects.toBeInstanceOf(FileRequestTemplateNotFoundError);

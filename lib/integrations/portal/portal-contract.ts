@@ -147,6 +147,8 @@ export type PortalAppointment = z.infer<typeof portalAppointmentSchema>;
 // Dateiname — nie Storage-Key/Prüfsumme/Größe; rein interne Belegdaten).
 // F10-10: Allow-many — zusaetzlich allowMany/uploadCount/filenames (nur
 // Dateinamen weiterer Belege, nie Keys; fehlend = Alt-Projektion).
+// F10-13: Dateityp — zusaetzlich fileType (geschlossen any/pdf/image,
+// minimiertes Wort, keine Interna; fehlend = Alt-Projektion → any).
 export const portalFileRequestSchema = z.strictObject({
   id: z.uuid(),
   title: z.string(),
@@ -158,6 +160,7 @@ export const portalFileRequestSchema = z.strictObject({
   allowMany: z.boolean(),
   uploadCount: z.number().int().min(0),
   filenames: z.array(z.string()),
+  fileType: z.enum(["any", "pdf", "image"]),
 });
 export type PortalFileRequest = z.infer<typeof portalFileRequestSchema>;
 
@@ -503,7 +506,7 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
           key !== "id" && key !== "title" && key !== "description" &&
           key !== "status" && key !== "createdAt" && key !== "uploadedAt" &&
           key !== "originalFilename" && key !== "allowMany" &&
-          key !== "uploadCount" && key !== "filenames"
+          key !== "uploadCount" && key !== "filenames" && key !== "fileType"
         ) {
           return null;
         }
@@ -532,6 +535,11 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       if (!Array.isArray(filenames) || filenames.some((name) => typeof name !== "string")) {
         return null;
       }
+      // F10-13: Dateityp (Muster allowMany: fehlend = Alt-Projektion →
+      // 'any'; fremd → null, kein stiller Fallback).
+      const fileType = record.fileType === undefined ? "any" : record.fileType;
+      const parsedFileType = portalFileRequestSchema.shape.fileType.safeParse(fileType);
+      if (!parsedFileType.success) return null;
       fileRequests.push({
         id,
         title,
@@ -543,6 +551,7 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
         allowMany,
         uploadCount,
         filenames: filenames as string[],
+        fileType: parsedFileType.data,
       });
     }
   }

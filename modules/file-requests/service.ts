@@ -38,9 +38,11 @@ export class FileRequestConflictError extends Error {
 }
 
 import {
+  fileRequestFileTypes,
   fileRequestStatuses,
   nextFileRequestStatuses,
   type FileRequestDto,
+  type FileRequestFileType,
   type FileRequestStatus,
   type FileRequestUploadDto,
 } from "@/lib/file-request";
@@ -66,6 +68,7 @@ type FileRequestRow = {
   subsidy_case_id: string | null;
   title: string;
   description: string | null;
+  file_type: string;
   allow_many: boolean;
   status: string;
   storage_key: string | null;
@@ -81,7 +84,7 @@ type FileRequestRow = {
 };
 
 const ROW_COLUMNS = sql`
-  id, project_id, subsidy_case_id, title, description, allow_many, status,
+  id, project_id, subsidy_case_id, title, description, file_type, allow_many, status,
   storage_key, file_sha256, content_type, byte_size, original_filename,
   uploaded_at, completed_at, created_at, updated_at
 `;
@@ -146,12 +149,18 @@ function toDto(
   ctx: ServiceCtx,
   uploads: FileRequestUploadDto[] = [],
 ): FileRequestDto {
+  // file_type ist DB-seitig CHECK-gebunden; Fremdwerte waeren ein
+  // Integritaetsbruch (kein stiller Fallback).
+  if (!(fileRequestFileTypes as readonly string[]).includes(row.file_type)) {
+    throw new FileRequestValidationError("file type integrity mismatch");
+  }
   return {
     id: row.id,
     projectId: row.project_id,
     subsidyCaseId: row.subsidy_case_id,
     title: row.title,
     description: row.description,
+    fileType: row.file_type as FileRequestFileType,
     allowMany: row.allow_many,
     uploads,
     status: row.status as FileRequestStatus,
@@ -200,6 +209,7 @@ export async function createFileRequest(
     description: unknown;
     subsidyCaseId?: unknown;
     allowMany?: unknown;
+    fileType?: unknown;
   },
 ): Promise<FileRequestDto> {
   requireWrite(ctx, input.projectId);
@@ -214,6 +224,15 @@ export async function createFileRequest(
     throw new FileRequestValidationError();
   }
   const allowMany = input.allowMany === true;
+  // F10-13: Dateityp je Anfrage (geschlossen, Default 'any' —
+  // verhaltenserhaltend; Fremdwerte fail-closed).
+  if (
+    input.fileType !== undefined
+    && !(fileRequestFileTypes as readonly string[]).includes(input.fileType as string)
+  ) {
+    throw new FileRequestValidationError();
+  }
+  const fileType = (input.fileType ?? "any") as FileRequestFileType;
   // F13-07: optionale Akten-Verknüpfung — die Akte muss zum Projekt
   // gehören (uniform NotFound statt Orakel über fremde Akten).
   let subsidyCaseId: string | null = null;
@@ -232,10 +251,10 @@ export async function createFileRequest(
     subsidyCaseId = input.subsidyCaseId as string;
   }
   const inserted = await tx.execute<FileRequestRow>(sql`
-    insert into file_request (workspace_id, project_id, subsidy_case_id, title, description, allow_many, created_by)
+    insert into file_request (workspace_id, project_id, subsidy_case_id, title, description, file_type, allow_many, created_by)
     values (
       ${ctx.workspaceId}::uuid, ${input.projectId}::uuid, ${subsidyCaseId}::uuid,
-      ${parsed.data.title}, ${parsed.data.description}, ${allowMany},
+      ${parsed.data.title}, ${parsed.data.description}, ${fileType}, ${allowMany},
       ${ctx.actor}::uuid
     )
     returning ${ROW_COLUMNS}
@@ -538,6 +557,20 @@ export async function fulfillFileRequestByToken(
   }
   const tokenHash = hashPortalToken(token);
   if (tokenHash === null) throw new FileRequestValidationError("token rejected");
+
+  // F10-13: Dateityp-Vorabpruefung aus der bereits aufgeloesten Sicht
+  // (kein Extra-Query, kein Storage-Orphan bei Fehltyp). Fehlende
+  // Anfrage = Sache der Kapsel (not_found/conflict); die DEFINER-Guards
+  // bleiben die autoritative Ebene.
+  const projected = view.fileRequests.find((entry) => entry.id === requestId);
+  if (projected !== undefined) {
+    const typeOk =
+      projected.fileType === "any"
+      || (projected.fileType === "pdf" && contentType === "application/pdf")
+      || (projected.fileType === "image"
+        && (contentType === "image/jpeg" || contentType === "image/png"));
+    if (!typeOk) throw new FileRequestValidationError("file type mismatch");
+  }
 
   // F10-10: Key ist inhalts-deterministisch (Request + Dateiname + Kurz-Hash
   // der Bytes): gleiche Datei erneut → gleicher Key → WORM-Conflict

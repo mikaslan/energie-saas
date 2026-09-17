@@ -32,6 +32,7 @@ export const fileRequest = pgTable(
     subsidyCaseId: uuid("subsidy_case_id"),
     title: text("title").notNull(),
     description: text("description"),
+    fileType: text("file_type").notNull().default("any"),
     allowMany: boolean("allow_many").notNull().default(false),
     status: text("status").notNull().default("offen"),
     storageKey: text("storage_key"),
@@ -80,6 +81,10 @@ export const fileRequest = pgTable(
     check(
       "file_request_description_ck",
       sql`${t.description} is null or pg_catalog.length(${t.description}) between 1 and 2000`,
+    ),
+    check(
+      "file_request_file_type_ck",
+      sql`${t.fileType} in ('any', 'pdf', 'image')`,
     ),
     check(
       "file_request_receipt_ck",

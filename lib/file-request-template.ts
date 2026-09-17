@@ -6,7 +6,8 @@
 import { z } from "zod";
 
 // F10-10: Version 2 — allowMany je Vorlage (Allow-many aus Katalog F10-04).
-export const FILE_REQUEST_TEMPLATE_SCHEMA_VERSION = 2;
+// F10-13: Version 3 — fileType je Vorlage (Dateityp aus Katalog F10.2).
+export const FILE_REQUEST_TEMPLATE_SCHEMA_VERSION = 3;
 
 export const FILE_REQUEST_TEMPLATE_NAME_MAX = 200;
 export const FILE_REQUEST_TEMPLATE_TITLE_MAX = 160;
@@ -31,6 +32,9 @@ const cleanDescription = z
   .refine((v) => !/[\p{Cc}\p{Cf}]/u.test(v), { message: "Steuerzeichen" })
   .nullable();
 
+export const fileRequestTemplateFileTypeSchema = z.enum(["any", "pdf", "image"]);
+export type FileRequestTemplateFileType = z.infer<typeof fileRequestTemplateFileTypeSchema>;
+
 export const fileRequestTemplateDtoSchema = z.object({
   schemaVersion: z.literal(FILE_REQUEST_TEMPLATE_SCHEMA_VERSION),
   id: z.string().uuid(),
@@ -38,6 +42,7 @@ export const fileRequestTemplateDtoSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
   allowMany: z.boolean(),
+  fileType: fileRequestTemplateFileTypeSchema,
   position: z.number().int().min(0),
   active: z.boolean(),
   createdAt: z.string(),
@@ -52,6 +57,7 @@ export const createFileRequestTemplateCommandSchema = z.object({
   title: cleanTitle,
   description: cleanDescription.optional(),
   allowMany: z.boolean(),
+  fileType: fileRequestTemplateFileTypeSchema,
   position: z.number().int().min(0).optional(),
 });
 export type CreateFileRequestTemplateCommand = z.infer<typeof createFileRequestTemplateCommandSchema>;
@@ -63,6 +69,7 @@ export const updateFileRequestTemplateCommandSchema = z.object({
   title: cleanTitle,
   description: cleanDescription.optional(),
   allowMany: z.boolean(),
+  fileType: fileRequestTemplateFileTypeSchema,
   position: z.number().int().min(0),
 });
 export type UpdateFileRequestTemplateCommand = z.infer<typeof updateFileRequestTemplateCommandSchema>;
