@@ -1065,6 +1065,13 @@
       "when": 1789643234155,
       "tag": "0172_f10_15_kfw_upload_kontext",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1789645161281,
+      "tag": "0173_f7_02g_bild_punkt",
+      "breakpoints": true
     }
   ]
 }

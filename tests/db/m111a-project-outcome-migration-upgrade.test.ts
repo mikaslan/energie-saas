@@ -115,8 +115,9 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F10-13 Datei-Anfragen Dateityp (0170, Spalten + CHECKs + DEFINER-Replaces)
 //   F10-14 Installations-Sichtbarkeit (0171, Spalte + Resolver-Projektion)
 //   F10-15 KfW-Upload-Kontext (0172, nur Resolver-Projektion)
-// => 152 Migrationen (idx 0..151).
-const TOTAL_MIGRATION_COUNT = 152;
+//   F7-02g Bild-Punkt (0173, Validator-Replaces)
+// => 153 Migrationen (idx 0..152).
+const TOTAL_MIGRATION_COUNT = 153;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -432,8 +433,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 151,
-        tag: "0172_f10_15_kfw_upload_kontext",
+        idx: 152,
+        tag: "0173_f7_02g_bild_punkt",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

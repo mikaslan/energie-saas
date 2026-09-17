@@ -219,6 +219,7 @@ function ItemEditor({
               <option value="radio">Einfachauswahl</option>
               <option value="text">Textantwort</option>
               <option value="multi">Mehrfachauswahl</option>
+              <option value="image">Bild</option>
             </select>
           </label>
           <button

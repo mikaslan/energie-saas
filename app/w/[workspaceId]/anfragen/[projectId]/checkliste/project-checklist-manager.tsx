@@ -605,9 +605,13 @@ function SegmentGroup({
               )}
               {canEditStructure && !completed ? (
                 <ItemKindControl
+                  workspaceId={workspaceId}
+                  projectId={projectId}
+                  checklistId={checklistId}
                   item={item}
                   itemIndex={itemIndex}
                   canEditStructure={canEditStructure}
+                  canWrite={canWrite}
                   onSetItem={onSetItem}
                 />
               ) : null}
@@ -631,6 +635,18 @@ function SegmentGroup({
                 ) : item.value ? (
                   <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-800">{item.value}</p>
                 ) : null
+              ) : null}
+              {item.kind === "image" && !(canEditStructure && !completed) && checklistId !== null ? (
+                <ItemPhotoControl
+                  workspaceId={workspaceId}
+                  projectId={projectId}
+                  checklistId={checklistId}
+                  item={item}
+                  title={item.title || `Punkt ${itemIndex + 1}`}
+                  itemIndex={itemIndex}
+                  canWrite={canWrite && !completed}
+                  onSetItem={onSetItem}
+                />
               ) : null}
               {canConfigure && !completed && isChecklistWorkItem(item) ? (
                 <label className="mt-1 flex min-h-11 w-fit cursor-pointer items-center gap-2 px-1 text-xs text-slate-600">
@@ -957,11 +973,150 @@ function ItemIrrelevantControl({ workspaceId, projectId, checklistId, segmentId,
 // F7-02F: `multi` (Mehrfachauswahl, Slice B neben Radio/Freitext);
 // Wechsel nach Multi behält Flags (Doppel-done ist legal, anders als
 // Radio), löscht `description`/`value`; Rendering über den
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+// F7-02G: Foto-Upload + Vorschau am Bild-Punkt. Upload per Route (10 MiB,
+// F10-04-Praezedenz); der Key landet im lokalen Baum (Whole-Tree-Save
+// persistiert). Die Vorschau ist eine Daten-URL: lokal sofort aus der
+// Datei, nach Reload vom Server (identische Bytes = identische URL).
+// Lesende (Viewer) sehen nur die Vorschau.
+function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, itemIndex, canWrite, onSetItem }: {
+  workspaceId: string;
+  projectId: string;
+  checklistId: string | null;
+  item: ChecklistItemV1;
+  title: string;
+  itemIndex: number;
+  canWrite: boolean;
+  onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
+}) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const photo = item.photo ?? null;
+
+  useEffect(() => {
+    if (photo === null || photo === previewKey || checklistId === null) return;
+    let cancelled = false;
+    fetch(
+      `/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/foto`
+      + `?checklistId=${encodeURIComponent(checklistId)}&itemId=${encodeURIComponent(item.id)}`,
+    ).then(async (response) => {
+      if (!response.ok) throw new Error(`foto GET ${response.status}`);
+      const dataUrl = await blobToDataUrl(await response.blob());
+      if (!cancelled) {
+        setPreview(dataUrl);
+        setPreviewKey(photo);
+        setError(null);
+      }
+    }).catch(() => {
+      if (!cancelled) setError("Foto konnte nicht geladen werden.");
+    });
+    return () => { cancelled = true; };
+  }, [photo, previewKey, checklistId, workspaceId, projectId, item.id]);
+
+  const upload = async () => {
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      setError("Bitte zuerst eine Bilddatei wählen.");
+      return;
+    }
+    setUploading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("checklistId", checklistId ?? "");
+      form.set("itemId", item.id);
+      form.set("datei", file);
+      const response = await fetch(
+        `/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/foto`,
+        { method: "POST", body: form },
+      );
+      if (!response.ok) {
+        setError(
+          response.status === 400
+            ? "Nur JPEG- oder PNG-Bilder bis 10 MB sind erlaubt."
+            : response.status === 404
+              ? "Foto nicht gefunden (Checkliste neu laden)."
+              : response.status === 401 || response.status === 403
+                ? "Keine Berechtigung für diesen Upload."
+                : "Foto-Upload ist fehlgeschlagen.",
+        );
+        return;
+      }
+      const data = await response.json() as { photoKey?: unknown };
+      if (typeof data.photoKey !== "string" || data.photoKey === "") {
+        setError("Foto-Upload ist fehlgeschlagen.");
+        return;
+      }
+      setPreview(await blobToDataUrl(file));
+      setPreviewKey(data.photoKey);
+      onSetItem(itemIndex, { photo: data.photoKey }, canWrite);
+    } catch {
+      setError("Foto-Upload ist fehlgeschlagen.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="mt-1">
+      {preview !== null ? (
+        // eslint-disable-next-line @next/next/no-img-element -- Daten-URL-Vorschau, Optimierer n/a.
+        <img
+          src={preview}
+          alt={`${title}: Foto-Vorschau`}
+          className="mt-1 max-h-48 rounded-md border border-slate-300"
+        />
+      ) : null}
+      {canWrite ? (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png"
+            aria-label={`${title}: Foto`}
+            disabled={uploading}
+            className="max-w-full text-xs text-slate-700"
+          />
+          <button
+            type="button"
+            onClick={() => void upload()}
+            disabled={uploading}
+            className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+          >
+            {uploading ? "Lädt hoch …" : "Foto hochladen"}
+          </button>
+        </div>
+      ) : null}
+      {photo !== null && canWrite ? (
+        <p className="mt-1 text-xs text-slate-500">Erneutes Hochladen ersetzt das Foto.</p>
+      ) : null}
+      {error !== null ? (
+        <p role="alert" className="mt-1 text-xs font-semibold text-red-700">{error}</p>
+      ) : null}
+    </div>
+  );
+}
+
 // Standard-Checkbox-Zweig, Zähler/Gates wie Aufgabe.
-function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
+function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex, canEditStructure, canWrite, onSetItem }: {
+  workspaceId: string;
+  projectId: string;
+  checklistId: string | null;
   item: ChecklistItemV1;
   itemIndex: number;
   canEditStructure: boolean;
+  canWrite: boolean;
   onSetItem: (itemIndex: number, patch: Partial<ChecklistItemV1>, allowed: boolean) => void;
 }) {
   const title = item.title || "Punkt";
@@ -974,22 +1129,26 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
         onChange={(event) => {
           const next = event.target.value;
           if (next === "description") {
-            onSetItem(itemIndex, { kind: "description", done: false, required: false, value: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "description", done: false, required: false, value: null, photo: null }, canEditStructure);
           } else if (next === "title") {
-            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null, value: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "title", done: false, required: false, description: null, value: null, photo: null }, canEditStructure);
           } else if (next === "radio") {
             // F7-02D: ehrliches Umschreiben wie Anzeige-Punkte — done fällt,
             // damit der Wechsel nie einen speicherbaren Doppel-done erzeugt
             // (Exklusivität wählt der Radio-Input selbst).
-            onSetItem(itemIndex, { kind: "radio", done: false, description: null, value: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "radio", done: false, description: null, value: null, photo: null }, canEditStructure);
           } else if (next === "text") {
-            onSetItem(itemIndex, { kind: "text", description: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "text", description: null, photo: null }, canEditStructure);
           } else if (next === "multi") {
             // F7-02F: ehrliches Umschreiben — Flags bleiben (mehrere
             // erledigte Multis sind speicherbar), Nutzlast fällt.
-            onSetItem(itemIndex, { kind: "multi", description: null, value: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "multi", description: null, value: null, photo: null }, canEditStructure);
+          } else if (next === "image") {
+            // F7-02G: ehrliches Umschreiben wie Multi — Flags bleiben,
+            // fremde Nutzlast fällt.
+            onSetItem(itemIndex, { kind: "image", description: null, value: null }, canEditStructure);
           } else {
-            onSetItem(itemIndex, { kind: "task", description: null, value: null }, canEditStructure);
+            onSetItem(itemIndex, { kind: "task", description: null, value: null, photo: null }, canEditStructure);
           }
         }}
         className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
@@ -1000,6 +1159,7 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
         <option value="radio">Einfachauswahl</option>
         <option value="text">Textantwort</option>
         <option value="multi">Mehrfachauswahl</option>
+        <option value="image">Bild</option>
       </select>
       {item.kind === "text" ? (
         <textarea
@@ -1025,6 +1185,18 @@ function ItemKindControl({ item, itemIndex, canEditStructure, onSetItem }: {
           rows={2}
           placeholder="Beschreibungstext"
           className="min-h-11 w-full max-w-md rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+        />
+      ) : null}
+      {item.kind === "image" ? (
+        <ItemPhotoControl
+          workspaceId={workspaceId}
+          projectId={projectId}
+          checklistId={checklistId}
+          item={item}
+          title={title}
+          itemIndex={itemIndex}
+          canWrite={canWrite}
+          onSetItem={onSetItem}
         />
       ) : null}
     </div>

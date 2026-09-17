@@ -486,16 +486,19 @@ const F704_CHECKLIST_INDEX_ROWS = [
 // done aus der Struktur — Antwort ist Nutzlast); validBlocks wortgleich
 // zu 0143 (Hash verifiziert unveraendert). Ist-Werte aus Gate-Lauf nach
 // 0144-Anwendung, Gate verifiziert erneut.
+// F7-02G (0173): validBlocks erneut geerntet (image-Art + photo-Spiegel)
+// plus checklistStructure erneut geerntet (photo faellt wie done/value).
+// Ist-Werte aus Gate-Lauf nach 0173-Anwendung, Gate verifiziert erneut.
 const F704_CHECKLIST_FUNCTION_SHA256 = {
   actorRole: "2327d748e395d0a596c129657a32bfc255e74a681459036f612ddcd5a0e2a050",
   assertWorkspace: "b726ed4b961b6e583e11179e32a8f34a10e76330352e5fc5c54c86cc6bc9b633",
-  checklistStructure: "43291b3d8486e8167995ffda7f08ba6182f260261225fb3b27a15422286e4267",
+  checklistStructure: "80c8950d1db8fe4b23dba4f74231a9713850fcc1cc33151b00cd134ad87f50ac",
   cleanText: "f29466a887843140336a98a1398b916d4d6ec3554f1db864dad1a5b9c5fba345",
   completeSegment: "0fdf278e26f449a326cf32f7d5c7c2f012fdabf99d9f7482eeda8d957d2a18e7",
   saveChecklist: "8090f3ff4e3a3b79a513147a4cc2d3fd03f2a270757c4a7f6309a4f263aed470",
   setIrrelevant: "e37e70b04c9c0ae912fd58ab4349b6063b34c96a50da7aa684a462fe56f536f2",
   unlockSegment: "328076b50403adaa2a571f9b640058b49122d2bb9978ad969ad0048590588f27",
-  validBlocks: "162958fbf9f4404e407b34de0f9ac615e64b06d9cd7bb96e0320de4cd9d20f25",
+  validBlocks: "3e3ef6d5cd5bed5fe26d8638df393e5e5a213140f877aca0aabfc7e34745923a",
 } as const;
 const F704_CHECKLIST_FUNCTION_SECURITY_ROWS = [
   "_f704_actor_checklist_role(uuid):text:app_owner:plpgsql:f:s:" +

@@ -1,11 +1,14 @@
 // Kein "server-only"-Import: Der Projekt-Seitengraph bleibt build-importierbar.
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import type { TenantTx } from "@/lib/db/types";
 import { emitEvent } from "@/lib/events";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
+import { immutableKey, resolveObjectStorage } from "@/lib/storage";
 import {
+  CHECKLIST_ITEM_PHOTO_KEY_PATTERN,
   CHECKLIST_SCHEMA_VERSION,
   checklistBlocksSchema,
   editableChecklistBlocksSchema,
@@ -17,6 +20,7 @@ import {
   withOpenSegmentMetadata,
   type ChecklistBlockAssignedTeamV1,
   type ChecklistBlocksV1,
+  type EditableChecklistBlocksV2,
   type MutateChecklistSegmentCommand,
   type ProjectChecklistDto,
   type SaveProjectChecklistCommand,
@@ -381,6 +385,201 @@ export async function setChecklistItemIrrelevant(
   const row = await readChecklistById(tx, ctx, command.projectId, capsule.checklistId);
   if (!row) throw new ChecklistNotFoundError(command.projectId);
   return toDto(row, command.projectId, ctx);
+}
+
+// F7-02G: Foto-Upload/-Lesen am Bild-Punkt (Katalog F7.2).
+// Upload-Grenzen (ESTIMATE, reversibel): 10 MiB, JPEG/PNG. Der Key ist
+// projekt-skoped und enthaelt NUR Service-seitig gebaute Bestandteile
+// (Projekt-/Punkt-ID, Kurz-Hash der Bytes, Allowlist-Endung): Der
+// Dateiname des Clients landet nie im Key (Traversal tot).
+export const CHECKLIST_PHOTO_MAX_BYTES = 10_485_760;
+const CHECKLIST_PHOTO_CONTENT_TYPES = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+} as const;
+
+const photoUuidSchema = z.uuid().transform((value) => value.toLowerCase());
+
+const uploadChecklistItemPhotoInputSchema = z.object({
+  projectId: photoUuidSchema,
+  checklistId: photoUuidSchema.nullable(),
+  itemId: photoUuidSchema,
+  filename: z.string().trim().min(1).max(255),
+  contentType: z.string().min(1).max(128),
+}).strict();
+
+export type UploadChecklistItemPhotoInput = {
+  projectId: string;
+  checklistId: string | null;
+  itemId: string;
+  bytes: Uint8Array;
+  filename: string;
+  contentType: string;
+};
+
+async function requireVisibleProject(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+): Promise<void> {
+  const found = await tx.execute<{ id: string }>(sql`
+    select id from project
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${projectId}::uuid
+     limit 1
+  `);
+  if (found.rows.length !== 1) throw new ChecklistNotFoundError(projectId);
+}
+
+type ChecklistTreeItem =
+  EditableChecklistBlocksV2[number]["segments"][number]["items"][number];
+
+function findChecklistItem(
+  blocks: EditableChecklistBlocksV2,
+  itemId: string,
+): ChecklistTreeItem | undefined {
+  for (const block of blocks) {
+    for (const segment of block.segments) {
+      const found = segment.items.find((item) => item.id === itemId);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+// F7-02G: Foto-Bytes pruefen und unveraenderlich ablegen; gibt den Key
+// zurueck, den der naechste Whole-Tree-Save (Version-CAS) persistiert.
+// checklistId null = Upload vor dem ersten Save (keine Existenzpruefung;
+// der Save-Guard validiert Art+Key); sonst Fail-fast am Tree (kein
+// Orphan bei Fremd-Punkt). Gleiche Bytes erneut = idempotenter Erfolg
+// (Key ist inhalts-deterministisch; WORM-Conflict heisst identischer
+// Inhalt). Keine neue Permission (checklist.write).
+export async function uploadChecklistItemPhoto(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: UploadChecklistItemPhotoInput,
+): Promise<{ photoKey: string }> {
+  requireWrite(ctx);
+  const parsed = uploadChecklistItemPhotoInputSchema.safeParse({
+    projectId: input.projectId,
+    checklistId: input.checklistId,
+    itemId: input.itemId,
+    filename: input.filename,
+    contentType: input.contentType,
+  });
+  if (!parsed.success) throw new ChecklistValidationError();
+  const { projectId, checklistId, itemId, filename } = parsed.data;
+  const contentType = parsed.data.contentType.toLowerCase();
+  const expectedExt = (CHECKLIST_PHOTO_CONTENT_TYPES as Record<string, string>)[contentType];
+  if (!expectedExt) throw new ChecklistValidationError("content type not allowed");
+  if (input.bytes.byteLength < 1 || input.bytes.byteLength > CHECKLIST_PHOTO_MAX_BYTES) {
+    throw new ChecklistValidationError("byte size out of range");
+  }
+  const lowerName = filename.toLowerCase();
+  const extensionOk = contentType === "image/jpeg"
+    ? lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")
+    : lowerName.endsWith(`.${expectedExt}`);
+  if (!extensionOk) throw new ChecklistValidationError("filename extension mismatch");
+
+  // Fail-fast VOR dem Storage-Put: Projekt-Sicht (RLS) plus ggf. Tree.
+  await requireVisibleProject(tx, ctx, projectId);
+  if (checklistId !== null) {
+    const row = await readChecklistById(tx, ctx, projectId, checklistId);
+    if (!row) throw new ChecklistNotFoundError(projectId);
+    let stored: EditableChecklistBlocksV2;
+    try {
+      stored = editableChecklistBlocksSchema.parse(row.blocks);
+    } catch {
+      throw new ChecklistValidationError("checklist tree is corrupt");
+    }
+    const item = findChecklistItem(stored, itemId);
+    if (!item) throw new ChecklistNotFoundError(projectId);
+    if (item.kind !== "image") throw new ChecklistValidationError("photo requires image item");
+  }
+
+  const sha256 = createHash("sha256").update(input.bytes).digest("hex");
+  const photoKey = immutableKey(
+    projectId,
+    "checklist-photos",
+    `${itemId}_${sha256.slice(0, 8)}.${expectedExt}`,
+  );
+  try {
+    const stored = await resolveObjectStorage().putImmutable(
+      photoKey, Buffer.from(input.bytes), contentType,
+    );
+    if (stored.sha256 !== sha256) {
+      throw new ChecklistValidationError("receipt integrity mismatch");
+    }
+  } catch (error) {
+    if (error instanceof ChecklistValidationError) throw error;
+    // WORM-Konflikt (LocalStorage) oder S3-Conditional-Write-Race
+    // (412 PreconditionFailed, s3.ts IfNoneMatch): Kandidat fuer
+    // idempotenten Erfolg — erst der Read-back-Beleg entscheidet.
+    const statusCode = (error as { $metadata?: { httpStatusCode?: unknown } })
+      ?.$metadata?.httpStatusCode;
+    const isConflict = error instanceof Error
+      && (error.message.includes("existiert bereits")
+        || error.message.includes("PreconditionFailed")
+        || error.message.includes("412")
+        || statusCode === 412);
+    if (isConflict) {
+      // Idempotenz mit Beleg: Gleicher Key heisst gleiche Punkt-ID plus
+      // gleichen Kurz-Hash — der volle Hash des liegenden Objekts muss
+      // trotzdem stimmen (kein blindes Vertrauen in 32 Bit).
+      const existing = await resolveObjectStorage().get(photoKey).catch(() => null);
+      const existingSha = existing === null
+        ? null
+        : createHash("sha256").update(existing.body).digest("hex");
+      if (existingSha === sha256) return { photoKey };
+      throw new ChecklistValidationError("receipt integrity mismatch");
+    }
+    throw error;
+  }
+  return { photoKey };
+}
+
+export type ReadChecklistItemPhotoInput = {
+  projectId: string;
+  checklistId: string;
+  itemId: string;
+};
+
+// F7-02G: Foto-Bytes dienend lesen (Server-Action baut die Vorschau;
+// kein signierter URL-Umweg — F10-04-Praezedenz). Key fail-closed aufs
+// Foto-Muster; fehlendes Objekt = NotFound (kein Orakel). Genutzte
+// Permission: checklist.read (Viewer sieht Fotos lesend).
+export async function readChecklistItemPhoto(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: ReadChecklistItemPhotoInput,
+): Promise<{ contentType: string; body: Buffer }> {
+  requireRead(ctx);
+  const parsed = z.object({
+    projectId: photoUuidSchema,
+    checklistId: photoUuidSchema,
+    itemId: photoUuidSchema,
+  }).strict().safeParse(input);
+  if (!parsed.success) throw new ChecklistValidationError();
+  const row = await readChecklistById(tx, ctx, parsed.data.projectId, parsed.data.checklistId);
+  if (!row) throw new ChecklistNotFoundError(parsed.data.projectId);
+  let stored: EditableChecklistBlocksV2;
+  try {
+    stored = editableChecklistBlocksSchema.parse(row.blocks);
+  } catch {
+    throw new ChecklistValidationError("checklist tree is corrupt");
+  }
+  const item = findChecklistItem(stored, parsed.data.itemId);
+  const photo = item?.photo ?? null;
+  if (!item || photo === null) throw new ChecklistNotFoundError(parsed.data.projectId);
+  if (!CHECKLIST_ITEM_PHOTO_KEY_PATTERN.test(photo)) {
+    throw new ChecklistValidationError("receipt key mismatch");
+  }
+  try {
+    return await resolveObjectStorage().get(photo);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Integritätsbruch")) throw error;
+    throw new ChecklistNotFoundError(parsed.data.projectId);
+  }
 }
 
 // F7-05b: Teams parallel je Block zuweisen/entfernen (Katalog F7.5).

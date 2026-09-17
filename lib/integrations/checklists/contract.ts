@@ -16,6 +16,11 @@ export const CHECKLIST_ITEM_DESCRIPTION_MAX = 2000;
 // bewusst eigene Konstante statt Alias, damit beide Schranken getrennt
 // versionierbar bleiben).
 export const CHECKLIST_ITEM_VALUE_MAX = 2000;
+// F7-02G: Foto-Key (Service-seitig gebaut, projekt-skoped). Das Format
+// spiegelt den DB-Validator 0173 (max. 500 Zeichen).
+export const CHECKLIST_ITEM_PHOTO_MAX = 500;
+export const CHECKLIST_ITEM_PHOTO_KEY_PATTERN =
+  /^immutable\/[0-9a-f-]{36}\/checklist-photos\/[0-9a-f-]{36}_[0-9a-f]{8}\.(jpg|jpeg|png)$/;
 // F7-04b: Begründungs-Maximum (UTF-16-Einheiten, spiegelt
 // public._f704_valid_clean_text(..., 500) in Migration 0127).
 export const CHECKLIST_ITEM_IRRELEVANT_REASON_MAX = 500;
@@ -92,7 +97,9 @@ export type ChecklistItemVisibleIfV1 = z.infer<typeof checklistItemVisibleIfSche
 // prueft die Baumvalidierung unten (Scope spiegelt visibleIf-Regeln).
 // F7-02E: Freitext-Antwort (Katalog F7.2, Slice B ohne Diktat). `text` ist
 // abhakbar wie Aufgabe und trägt optional `value` (Antworttext, nur dort).
-export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text", "multi"]);
+// F7-02G: Bild-Punkt (Katalog F7.2). `image` ist abhakbar wie Aufgabe und
+// trägt optional `photo` (Foto-Key, nur dort).
+export const checklistItemKindSchema = z.enum(["task", "title", "description", "radio", "text", "multi", "image"]);
 export type ChecklistItemKindV1 = z.infer<typeof checklistItemKindSchema>;
 
 export const editableChecklistItemSchema = z.object({
@@ -110,6 +117,10 @@ export const editableChecklistItemSchema = z.object({
   description: cleanText(CHECKLIST_ITEM_DESCRIPTION_MAX).nullish(),
   // F7-02E: Antworttext nur am Textpunkt (Regel unten; Spiegel zu description).
   value: cleanText(CHECKLIST_ITEM_VALUE_MAX).nullish(),
+  // F7-02G: Foto-Key nur am Bildpunkt (Regel unten; Spiegel zu value).
+  // Kein cleanText: Der Key ist ein ASCII-Format mit eigenem Muster.
+  photo: z.string().min(1).max(CHECKLIST_ITEM_PHOTO_MAX)
+    .regex(CHECKLIST_ITEM_PHOTO_KEY_PATTERN).nullish(),
 }).strict();
 export type ChecklistItemV1 = z.infer<typeof editableChecklistItemSchema>;
 
@@ -226,6 +237,7 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
           kind?: string | null;
           description?: string | null;
           value?: string | null;
+          photo?: string | null;
           visibleIf?: { itemId: string } | null;
         }>;
       }>;
@@ -277,8 +289,16 @@ function addChecklistTreeValidation<T extends z.ZodTypeAny>(schema: T) {
               message: "Antworttext verlangt einen Textpunkt",
             });
           }
+          // F7-02G: Foto verlangt einen Bildpunkt (Spiegel-Regel).
+          if (item.photo != null && item.kind !== "image") {
+            context.addIssue({
+              code: "custom",
+              message: "Foto verlangt einen Bildpunkt",
+            });
+          }
           if (item.kind != null && item.kind !== "task" && item.kind !== "radio"
-            && item.kind !== "text" && item.kind !== "multi" && (item.required || item.done)) {
+            && item.kind !== "text" && item.kind !== "multi" && item.kind !== "image"
+            && (item.required || item.done)) {
             context.addIssue({
               code: "custom",
               message: "Anzeigepunkte sind weder Pflicht noch abhakbar",
@@ -435,11 +455,12 @@ function segmentItemsById(
 // F7-02E: Textpunkte ebenso (Antworttext ist Nutzlast, kein Gate).
 // F7-02F: Multi-Punkte ebenso (mehrere erledigte je Segment legal —
 // ohne Exklusivität, Gegenstück zu `radio`).
+// F7-02G: Bildpunkte ebenso (Foto ist Nutzlast, kein Gate).
 export function isChecklistWorkItem(
   item: Pick<ChecklistItemV1, "kind">,
 ): boolean {
   return item.kind == null || item.kind === "task" || item.kind === "radio"
-    || item.kind === "text" || item.kind === "multi";
+    || item.kind === "text" || item.kind === "multi" || item.kind === "image";
 }
 
 export function segmentRequiredRemaining(
