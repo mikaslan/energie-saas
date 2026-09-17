@@ -82,6 +82,9 @@ async function loginWithRealOtp(
   expectedPath: string,
   serverLogPath: string,
 ): Promise<void> {
+  // Offer-Seite rendert DeniedState statt Redirect (page.tsx:849) — direkt zum
+  // Login mit next-Ziel (Muster m2-01-z-a11y).
+  await page.goto(`/login?next=${encodeURIComponent(expectedPath)}`);
   await page.waitForURL((url) => url.pathname === "/login");
   const logOffset = statSync(serverLogPath).size;
   await page.getByLabel("E-Mail-Adresse").fill(email);
@@ -274,7 +277,6 @@ test("DASH-VG-06: Angebots-Detail ist bei 375/768/1440 axe-/konsolen-sauber und 
     return;
   }
   const detailPath = `/w/${data.m201WorkspaceId}/angebote/${offerId}`;
-  await page.goto(detailPath);
   await loginWithRealOtp(page, data.m201EditorEmail, detailPath, data.serverLogPath);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.locator('[data-wmee-scope="offer"]').first()).toBeVisible();
