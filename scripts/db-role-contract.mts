@@ -702,6 +702,12 @@ const PROJECT_TEAM_ASSIGNMENT_RELATIONS = [
   "project_team_assignment",
 ] as const;
 
+// F1-15 (0230): Broker-Intake-Receipt — ACL-Form wie inbound_receipt
+// (SELECT/INSERT + UPDATE(id) für FOR-SHARE-Locks, kein DELETE/UPDATE).
+const INBOUND_BROKER_RECEIPT_RELATIONS = [
+  "inbound_broker_receipt",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -3259,6 +3265,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F1-15 (0230): Broker-Intake-Receipt — ACL-Form wie inbound_receipt.
+  const hasInboundBrokerReceiptForAcl = await hasAtomicPublicRelationSet(
+    client,
+    INBOUND_BROKER_RECEIPT_RELATIONS,
+    "Rollen-ACL-Manifest: F1-15-Broker-Intake-Receipt",
+  );
+  if (hasInboundBrokerReceiptForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.inbound_broker_receipt
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert on public.inbound_broker_receipt to app_runtime;
+      grant update (id) on public.inbound_broker_receipt to app_runtime
+    `);
+  }
+
   // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
   // daher zusaetzlich DELETE (Muster commercial_document_link).
   const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
@@ -4839,6 +4862,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F1-14-Projekt-Team-Zuweisung",
   );
 
+  const hasInboundBrokerReceipt = await hasAtomicPublicRelationSet(
+    client,
+    INBOUND_BROKER_RECEIPT_RELATIONS,
+    "Rollenvertrag: F1-15-Broker-Intake-Receipt",
+  );
+
   const hasLeadRouting = await hasAtomicPublicRelationSet(
     client,
     LEAD_ROUTING_RELATIONS,
@@ -5131,6 +5160,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasProjectTeamAssignment ? PROJECT_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -6486,6 +6518,9 @@ export async function verifyRoleContract(
       ...(hasProjectTeamAssignment ? PROJECT_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6851,6 +6886,12 @@ export async function verifyRoleContract(
         ...(hasProjectTeamAssignment ? [
           "project_team_assignment:tenant_isolation:" +
             "48e96c404b636e314a52f1ad66b72de38380ad82ccfefc72a478300c3b77b117",
+        ] : []),
+        // F1-15 (0230): Hash per Probe geerntet (Methode gegen
+        // F1-14-Pin gegengeprüft).
+        ...(hasInboundBrokerReceipt ? [
+          "inbound_broker_receipt:tenant_isolation:" +
+            "66e9186cfa9c8b5918f762aed5f9a01c1e553b9a5fb1c99f2ce13c8e42e27aa7",
         ] : []),
         ...(hasCalendars ? [
           "calendar:tenant_isolation:57296ca13f33ffe335cd1cde9f96a0024470521481da054313e6843d9ca6ce25",
@@ -7591,6 +7632,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:DELETE:app_owner:false`,
       ]) : []),
+      // F1-15 (0230): Receipt-Form wie inbound_receipt (INSERT/SELECT;
+      // UPDATE(id) ist Spalten-Grant und wird nicht enumeriert).
+      ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+      ]) : []),
       ...(hasPortal ? [
         "app_runtime:portal_invite:INSERT:app_owner:false",
         "app_runtime:portal_invite:SELECT:app_owner:false",
@@ -7751,6 +7798,10 @@ export async function verifyRoleContract(
       ] : []),
       "app_runtime:offer_variant.updated_at:UPDATE:app_owner:false",
       "app_runtime:inbound_receipt.id:UPDATE:app_owner:false",
+      // F1-15 (0230): Receipt-Form wie inbound_receipt.
+      ...(hasInboundBrokerReceipt ? [
+        "app_runtime:inbound_broker_receipt.id:UPDATE:app_owner:false",
+      ] : []),
       "app_runtime:project_calculation_job.id:UPDATE:app_owner:false",
       "app_runtime:project_calculation_revision.id:UPDATE:app_owner:false",
       "app_runtime:project_catalog_resolution.id:UPDATE:app_owner:false",

@@ -27,6 +27,7 @@ export * from "./erasure";
 export * from "./installation";
 export * from "./installation-handover";
 export * from "./intake";
+export * from "./inbound-broker-receipt";
 export * from "./invoicing";
 export * from "./lead-source";
 export * from "./funnel-campaign";
