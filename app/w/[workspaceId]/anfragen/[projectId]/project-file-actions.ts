@@ -8,6 +8,7 @@ import {
   ProjectFileNotFoundError,
   ProjectFileValidationError,
   setProjectFileVisibility,
+  withdrawProjectFile,
 } from "@/modules/project-files";
 
 const uuidSchema = z.uuid();
@@ -70,6 +71,34 @@ export async function setProjectFileVisibilityAction(
     return {
       status: "success",
       message: visible ? "Für Kunden sichtbar." : "Nicht mehr für Kunden sichtbar.",
+    };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F7-16b: Datei zurückziehen (one-way, kein Undo in diesem Slice; nur
+// canWrite sieht den Button — Loader-Gate in page.tsx).
+export async function withdrawProjectFileAction(
+  _previous: ProjectFileActionState,
+  formData: FormData,
+): Promise<ProjectFileActionState> {
+  const ids = parseIds(formData);
+  const fileId = parseFileId(formData);
+  if (!ids || !fileId) {
+    return { status: "invalid" };
+  }
+  try {
+    await authorizedAction(ids.workspaceId, "project.write", "project_file", (tx, ctx) =>
+      withdrawProjectFile(tx, ctx, {
+        projectId: ids.projectId,
+        fileId,
+      }),
+    );
+    revalidatePath(detailPath(ids.workspaceId, ids.projectId));
+    return {
+      status: "success",
+      message: "Datei zurückgezogen.",
     };
   } catch (error) {
     return mapError(error);

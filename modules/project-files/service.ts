@@ -75,6 +75,7 @@ export type ProjectFileDto = {
   byteSize: number;
   createdAt: string;
   visibleToCustomer: boolean;
+  withdrawn: boolean;
 };
 
 type ProjectFileRow = {
@@ -84,6 +85,7 @@ type ProjectFileRow = {
   byte_size: number;
   created_at: Date | string;
   visible_to_customer: boolean;
+  withdrawn: boolean;
   [key: string]: unknown;
 };
 
@@ -227,7 +229,7 @@ export async function listProjectFiles(
   // intern); newest-first (Ablage-UX, Gegenpol zu file_request_upload).
   const found = await tx.execute<ProjectFileRow>(sql`
     select id, original_filename, content_type, byte_size, created_at,
-           visible_to_customer
+           visible_to_customer, withdrawn
       from project_file
      where workspace_id = ${ctx.workspaceId}::uuid
        and project_id = ${input.projectId}::uuid
@@ -240,6 +242,7 @@ export async function listProjectFiles(
     byteSize: row.byte_size,
     createdAt: toIso(row.created_at),
     visibleToCustomer: row.visible_to_customer,
+    withdrawn: row.withdrawn,
   }));
 }
 
@@ -316,6 +319,55 @@ export async function setProjectFileVisibility(
     details: { projectId: command.projectId, fileId: command.fileId, visible: command.visible },
   });
   return { fileId: command.fileId, visibleToCustomer: command.visible };
+}
+
+const withdrawSchema = z.strictObject({
+  projectId: uuidSchema,
+  fileId: uuidSchema,
+});
+
+// F7-16b: Datei-Zurückziehung (intern-nur, project.write). One-way,
+// terminal (kein Re-Activate in diesem Slice — storniert-Muster);
+// SELECT FOR UPDATE per (workspace, projekt, id), 0 Zeilen = uniform
+// NotFound. Idempotent: bereits zurückgezogen → Erfolg OHNE Audit
+// (Flip-only, kein Rauschen bei Retry). Audit je Flip (kein PII),
+// KEIN Domain-Event (kein Konsument, F10-17-Muster).
+export async function withdrawProjectFile(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string; fileId: string },
+): Promise<{ fileId: string; withdrawn: true }> {
+  requireWrite(ctx, input.projectId);
+  const parsed = withdrawSchema.safeParse(input);
+  if (!parsed.success) throw new ProjectFileValidationError();
+  const command = parsed.data;
+  const found = await tx.execute<{ withdrawn: boolean }>(sql`
+    select withdrawn from project_file
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${command.projectId}::uuid
+       and id = ${command.fileId}::uuid
+     limit 1
+     for update
+  `);
+  const row = found.rows[0];
+  if (!row) throw new ProjectFileNotFoundError(command.projectId);
+  if (row.withdrawn) return { fileId: command.fileId, withdrawn: true };
+  await tx.execute(sql`
+    update project_file
+       set withdrawn = true
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${command.projectId}::uuid
+       and id = ${command.fileId}::uuid
+  `);
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "project_file.withdrawn",
+    resource: "project",
+    allowed: true,
+    details: { projectId: command.projectId, fileId: command.fileId },
+  });
+  return { fileId: command.fileId, withdrawn: true };
 }
 
 export type PortalProjectFileArtifactResult = {

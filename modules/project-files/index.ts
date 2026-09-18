@@ -12,6 +12,7 @@ export {
   readPortalProjectFileByToken,
   setProjectFileVisibility,
   uploadProjectFile,
+  withdrawProjectFile,
   type PortalProjectFileArtifactResult,
   type ProjectFileDto,
   type UploadProjectFileInput,

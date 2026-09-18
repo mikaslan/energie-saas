@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectFileDto } from "@/modules/project-files";
 import {
   setProjectFileVisibilityAction,
+  withdrawProjectFileAction,
   type ProjectFileActionState,
 } from "./project-file-actions";
 
@@ -64,6 +65,14 @@ function uploadErrorText(error: UploadError): string {
 }
 
 function visibilityErrorText(state: ProjectFileActionState): string | null {
+  if (state.status === "invalid") return "Ungültige Auswahl (Seite neu laden).";
+  if (state.status === "not_found") return "Datei nicht gefunden (Seite neu laden).";
+  if (state.status === "denied") return "Keine Berechtigung für diese Änderung.";
+  if (state.status === "unauthenticated") return "Sitzung abgelaufen (neu anmelden).";
+  return null;
+}
+
+function withdrawErrorText(state: ProjectFileActionState): string | null {
   if (state.status === "invalid") return "Ungültige Auswahl (Seite neu laden).";
   if (state.status === "not_found") return "Datei nicht gefunden (Seite neu laden).";
   if (state.status === "denied") return "Keine Berechtigung für diese Änderung.";
@@ -137,10 +146,78 @@ function ProjectFileVisibilityToggle({
   );
 }
 
+// F7-16b: Zurückziehen-Button je aktiver Zeile (nur canWrite).
+// Zwei-Klick-Bestaetigung (one-way, kein Undo in diesem Slice).
+// Direkter Action-Call statt Form-Submit (E2E-Befund: JEDER
+// formularbasierte Submit — confirm-Dialog, requestSubmit, nativer
+// type=submit, Checkbox-Relais — landete nativ mit Reload statt im
+// Action-State; useActionState sah nie pending/success, obwohl der
+// Server die Action ausführte). Der direkte Call umgeht die
+// Submit-Interception vollständig (Upload-Muster: fetch → State).
+// Feedback auf Zeilenebene (onDone → Parent-Notes): Der Button
+// demountet nach dem Refresh (nur aktive Zeilen).
+function ProjectFileWithdrawButton({
+  workspaceId,
+  projectId,
+  file,
+  onDone,
+}: {
+  workspaceId: string;
+  projectId: string;
+  file: ProjectFileDto;
+  onDone: (note: { ok: boolean; text: string }) => void;
+}) {
+  const router = useRouter();
+  const [armed, setArmed] = useState(false);
+  const [pending, startTransition] = useTransition();
+  return armed ? (
+    <button
+      type="button"
+      data-testid="project-file-withdraw"
+      disabled={pending}
+      aria-label={`Wirklich zurückziehen: ${file.originalFilename}`}
+      onClick={() => {
+        const formData = new FormData();
+        formData.set("workspaceId", workspaceId);
+        formData.set("projectId", projectId);
+        formData.set("fileId", file.id);
+        startTransition(async () => {
+          const result = await withdrawProjectFileAction({ status: "idle" }, formData);
+          if (result.status === "success") {
+            onDone({ ok: true, text: result.message });
+            router.refresh();
+          } else {
+            onDone({
+              ok: false,
+              text: withdrawErrorText(result) ?? "Das Zurückziehen ist fehlgeschlagen.",
+            });
+          }
+        });
+      }}
+      className="shrink-0 rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-50"
+    >
+      Wirklich zurückziehen
+    </button>
+  ) : (
+    <button
+      type="button"
+      data-testid="project-file-withdraw"
+      disabled={pending}
+      aria-label={`Zurückziehen: ${file.originalFilename}`}
+      onClick={() => setArmed(true)}
+      className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+    >
+      Zurückziehen
+    </button>
+  );
+}
+
 // F7-16 Projekt-Dateien: interne Ablage (nur canWrite sieht das Formular;
 // Externe bekommen die Sektion gar nicht erst — Loader-Gate in page.tsx).
 // F10-17: Toggle „Für Kunden sichtbar" je Zeile (canWrite); Leser sehen
 // den Zustand als Text.
+// F7-16b: „Zurückgezogen"-Badge je Zeile für ALLE internen Leser;
+// canWrite sieht den Zurückziehen-Button nur bei aktiven Zeilen.
 export function ProjectFileSection({
   workspaceId,
   projectId,
@@ -157,6 +234,9 @@ export function ProjectFileSection({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // F7-16b: Withdraw-Feedback je Datei (Zeilenebene — überlebt den
+  // Refresh, der den Button demountet; Loop-geschützt via Gleichheit).
+  const [withdrawNotes, setWithdrawNotes] = useState<Record<string, { ok: boolean; text: string }>>({});
 
   async function handleUpload(): Promise<void> {
     if (pending.length === 0 || uploading) return;
@@ -254,6 +334,14 @@ export function ProjectFileSection({
                 <span className="block text-xs text-slate-500">
                   {formatBytes(file.byteSize)} · {dateFormatter.format(new Date(file.createdAt))}
                 </span>
+                {file.withdrawn ? (
+                  <span
+                    data-testid="project-file-withdrawn-badge"
+                    className="mt-0.5 inline-block rounded bg-slate-200 px-1.5 py-0.5 text-xs font-semibold text-slate-700"
+                  >
+                    Zurückgezogen
+                  </span>
+                ) : null}
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 {canWrite ? (
@@ -270,6 +358,30 @@ export function ProjectFileSection({
                     {`Für Kunden sichtbar: ${file.visibleToCustomer ? "Ja" : "Nein"}`}
                   </span>
                 )}
+                {canWrite && !file.withdrawn ? (
+                  <ProjectFileWithdrawButton
+                    workspaceId={workspaceId}
+                    projectId={projectId}
+                    file={file}
+                    onDone={(note) => {
+                      const fileId = file.id;
+                      setWithdrawNotes((prev) => {
+                        const current = prev[fileId];
+                        if (current?.ok === note.ok && current?.text === note.text) return prev;
+                        return { ...prev, [fileId]: note };
+                      });
+                    }}
+                  />
+                ) : null}
+                {withdrawNotes[file.id] ? (
+                  <span
+                    role={withdrawNotes[file.id]!.ok ? "status" : "alert"}
+                    data-testid="project-file-withdraw-feedback"
+                    className={`text-xs font-semibold ${withdrawNotes[file.id]!.ok ? "text-emerald-700" : "text-red-700"}`}
+                  >
+                    {withdrawNotes[file.id]!.text}
+                  </span>
+                ) : null}
                 <a
                   data-testid="project-file-download"
                   href={`/api/workspaces/${workspaceId}/projects/${projectId}/dateien?fileId=${encodeURIComponent(file.id)}`}
