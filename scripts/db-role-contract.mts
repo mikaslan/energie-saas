@@ -691,6 +691,12 @@ const BLOCK_TEAM_ASSIGNMENT_RELATIONS = [
   "project_checklist_block_assignment",
 ] as const;
 
+// F1-14 (0210): Projekt-Team-Zuweisung — ACL-Form wie
+// BLOCK_TEAM_ASSIGNMENT_RELATIONS (INSERT/SELECT/DELETE, kein UPDATE).
+const PROJECT_TEAM_ASSIGNMENT_RELATIONS = [
+  "project_team_assignment",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -3208,6 +3214,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F1-14 (0210): Projekt-Team-Zuweisung — ACL-Form wie F7-05b.
+  const hasProjectTeamAssignmentForAcl = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_TEAM_ASSIGNMENT_RELATIONS,
+    "Rollen-ACL-Manifest: F1-14-Projekt-Team-Zuweisung",
+  );
+  if (hasProjectTeamAssignmentForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.project_team_assignment
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, delete on public.project_team_assignment to app_runtime
+    `);
+  }
+
   // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
   // daher zusaetzlich DELETE (Muster commercial_document_link).
   const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
@@ -4776,6 +4798,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F7-05b-Block-Team-Zuweisung",
   );
 
+  const hasProjectTeamAssignment = await hasAtomicPublicRelationSet(
+    client,
+    PROJECT_TEAM_ASSIGNMENT_RELATIONS,
+    "Rollenvertrag: F1-14-Projekt-Team-Zuweisung",
+  );
+
   const hasLeadRouting = await hasAtomicPublicRelationSet(
     client,
     LEAD_ROUTING_RELATIONS,
@@ -5065,6 +5093,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasBlockTeamAssignment ? BLOCK_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasProjectTeamAssignment ? PROJECT_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -6411,6 +6442,9 @@ export async function verifyRoleContract(
       ...(hasBlockTeamAssignment ? BLOCK_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasProjectTeamAssignment ? PROJECT_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6771,6 +6805,11 @@ export async function verifyRoleContract(
         ...(hasBlockTeamAssignment ? [
           "project_checklist_block_assignment:tenant_isolation:" +
             "886d4ec2f4800cc15341f2cc1792c1a3b0f784d80db565927416335b76ffa812",
+        ] : []),
+        // F1-14 (0210): Hash per Probe geerntet.
+        ...(hasProjectTeamAssignment ? [
+          "project_team_assignment:tenant_isolation:" +
+            "48e96c404b636e314a52f1ad66b72de38380ad82ccfefc72a478300c3b77b117",
         ] : []),
         ...(hasCalendars ? [
           "calendar:tenant_isolation:57296ca13f33ffe335cd1cde9f96a0024470521481da054313e6843d9ca6ce25",
@@ -7502,6 +7541,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:DELETE:app_owner:false`,
       ]) : []),
       ...(hasBlockTeamAssignment ? BLOCK_TEAM_ASSIGNMENT_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
+      ]) : []),
+      ...(hasProjectTeamAssignment ? PROJECT_TEAM_ASSIGNMENT_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:DELETE:app_owner:false`,

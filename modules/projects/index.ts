@@ -27,6 +27,12 @@ export type {
   ProjectAssignmentSearchV1,
 } from "./assignment-contract";
 export {
+  PROJECT_TEAM_ASSIGNMENT_COMMAND_VERSION,
+  PROJECT_TEAM_ASSIGNMENT_MAX_TEAMS,
+  projectTeamAssignmentCommandV1Schema,
+} from "./team-assignment-contract";
+export type { ProjectTeamAssignmentCommandV1 } from "./team-assignment-contract";
+export {
   PROJECT_CLOSED_REQUEST_CURSOR_MAX_LENGTH,
   PROJECT_CLOSED_REQUEST_PAGE_LIMIT,
   PROJECT_LOSS_REASON_COMMAND_VERSION,
@@ -83,6 +89,17 @@ export {
   ProjectAssignmentTargetError,
   ProjectAssignmentValidationError,
 } from "./assignment-service";
+export {
+  changeProjectTeamAssignment,
+  getProjectTeamAssignmentContext,
+  ProjectTeamAssignmentConflictError,
+  ProjectTeamAssignmentLimitError,
+  ProjectTeamAssignmentNotFoundError,
+  ProjectTeamAssignmentTargetError,
+  ProjectTeamAssignmentValidationError,
+  type ProjectTeamAssignmentContext,
+  type ProjectTeamAssignmentResult,
+} from "./team-assignment-service";
 export {
   createManualLead,
   ManualLeadLaneError,

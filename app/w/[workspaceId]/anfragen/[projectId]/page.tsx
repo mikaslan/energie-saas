@@ -22,12 +22,16 @@ import {
   getProjectFollowUp,
   getProjectOutcomeContext,
   getProjectPageDetail,
+  getProjectTeamAssignmentContext,
   PROJECT_ASSIGNMENT_COMMAND_VERSION,
   PROJECT_OUTCOME_COMMAND_VERSION,
+  PROJECT_TEAM_ASSIGNMENT_COMMAND_VERSION,
   type ProjectAssignmentContext,
   type ProjectOutcomeContext,
   type ProjectPageDetail,
+  type ProjectTeamAssignmentContext,
 } from "@/modules/projects";
+import { listTeamOptions, type TeamOption } from "@/modules/teams";
 import {
   getProjectEnergyContext,
   type ProjectEnergyContext,
@@ -95,6 +99,7 @@ import { FileRequestSection } from "./file-request-section";
 import { GridRegistrationSection } from "./grid-registration-section";
 import { SubsidyCaseSection } from "./subsidy-case-section";
 import { ProjectAssignmentPanel } from "./project-assignment-panel";
+import { ProjectTeamAssignmentPanel } from "./project-team-assignment-panel";
 import { ProjectNotesSection } from "./project-notes-section";
 import { ProjectOutcomePanel } from "./project-outcome-panel";
 import { ProjectTasksSection } from "./project-tasks-section";
@@ -174,6 +179,15 @@ type AssignmentLoadResult =
     kind: "loaded";
     context: ProjectAssignmentContext | null;
     routingSuggestion: LeadRoutingSuggestion | null;
+  }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
+type TeamAssignmentLoadResult =
+  | {
+    kind: "loaded";
+    context: ProjectTeamAssignmentContext | null;
+    teamOptions: TeamOption[];
   }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
@@ -494,6 +508,33 @@ async function loadProjectAssignmentContext(
       }),
     );
     return { kind: "loaded", context: loaded.context, routingSuggestion: loaded.routingSuggestion };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+async function loadProjectTeamAssignmentContext(
+  workspaceId: string,
+  projectId: string,
+): Promise<TeamAssignmentLoadResult> {
+  try {
+    const loaded = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "project_team_assignment",
+      async (tx, ctx) => ({
+        context: await getProjectTeamAssignmentContext(tx, ctx, projectId),
+        // F1-12-Guard: nur aktive Teams — ohne Leserecht bleibt die
+        // Liste leer statt hart zu scheitern (Panel zeigt Hinweis).
+        teamOptions: await listTeamOptions(tx, ctx).catch((error: unknown) => {
+          if (error instanceof PermissionDeniedError) return [];
+          throw error;
+        }),
+      }),
+    );
+    return { kind: "loaded", context: loaded.context, teamOptions: loaded.teamOptions };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1102,6 +1143,16 @@ export default async function ProjectTriagePage({
   const assignmentContext = assignmentResult.context;
   const routingSuggestion = assignmentResult.routingSuggestion;
 
+  // F1-14: additive Teams-Sektion — null blendet aus (kein 404;
+  // Projektsichtbarkeit entscheidet der Detail-Loader).
+  const teamAssignmentResult = await loadProjectTeamAssignmentContext(workspaceId, projectId);
+  if (teamAssignmentResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+  if (teamAssignmentResult.kind === "denied") return <DeniedState />;
+  const teamAssignmentContext = teamAssignmentResult.context;
+  const teamAssignmentOptions = teamAssignmentResult.teamOptions;
+
   // Die Projektakte und das Energie-Readmodel werden bewusst nacheinander
   // autorisiert. So entsteht weder ein paralleler Session-Race noch ein
   // Energie-Read vor der bestehenden Projektgrenze.
@@ -1535,6 +1586,16 @@ export default async function ProjectTriagePage({
               assignment={assignmentContext}
               routingSuggestion={routingSuggestion}
             />
+
+            {teamAssignmentContext === null ? null : (
+              <ProjectTeamAssignmentPanel
+                workspaceId={workspaceId}
+                projectId={projectId}
+                commandVersion={PROJECT_TEAM_ASSIGNMENT_COMMAND_VERSION}
+                assignment={teamAssignmentContext}
+                teamOptions={teamAssignmentOptions}
+              />
+            )}
 
             <Section title="Blocker">
               {activeBlockers.length > 0 ? (

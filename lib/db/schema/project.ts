@@ -39,6 +39,7 @@ export const project = pgTable(
     catalogResolutionStatus: text("catalog_resolution_status").notNull().default("pending"),
     assignmentRevision: integer("assignment_revision").notNull().default(0),
     outcomeRevision: integer("outcome_revision").notNull().default(0),
+    teamAssignmentRevision: integer("team_assignment_revision").notNull().default(0),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     lossReasonId: uuid("loss_reason_id"),
     lossReasonText: text("loss_reason_text"),
@@ -128,6 +129,10 @@ export const project = pgTable(
       sql`${t.catalogResolutionStatus} in ('pending', 'resolved')`,
     ),
     check("project_assignment_revision_ck", sql`${t.assignmentRevision} >= 0`),
+    check(
+      "project_team_assignment_revision_ck",
+      sql`${t.teamAssignmentRevision} between 0 and 2147483647`,
+    ),
     check(
       "project_outcome_revision_ck",
       sql`${t.outcomeRevision} between 0 and 2147483647`,

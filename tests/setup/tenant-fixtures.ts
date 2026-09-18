@@ -2921,6 +2921,29 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F1-14 (0210): Projekt-Team-Zuweisung (Projekt-Graph + Team inline).
+  project_team_assignment: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"settings":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const teamId = randomUUID();
+    await tx.execute(sql`
+      insert into team (id, workspace_id, name, name_normalized, created_by)
+      values (
+        ${teamId}::uuid, ${wsId}::uuid,
+        ${`Fixture-Team-Zuweisung ${teamId.slice(0, 8)}`},
+        ${`fixture-team-zuweisung-${teamId.slice(0, 8)}`},
+        ${userId}::uuid
+      )
+    `);
+    await tx.execute(sql`
+      insert into project_team_assignment (
+        workspace_id, project_id, team_id, assigned_by
+      ) values (
+        ${wsId}::uuid, ${projectId}::uuid, ${teamId}::uuid, ${userId}::uuid
+      )
+    `);
+  },
   project_task: fixtureProjectTaskGraph,
   project_task_assignee: fixtureProjectTaskGraph,
   project_task_checklist_item: fixtureProjectTaskGraph,
@@ -3239,6 +3262,17 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
       ) values (
         ${randomUUID()}::uuid, ${randomUUID()}::uuid,
         ${randomUUID()}::uuid, 'user'
+      )
+    `);
+  },
+  // F1-14 (0210): Cross-Write scheitert an der RLS (WITH CHECK feuert vor FK).
+  project_team_assignment: async (tx) => {
+    await tx.execute(sql`
+      insert into project_team_assignment (
+        workspace_id, project_id, team_id, assigned_by
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid
       )
     `);
   },
