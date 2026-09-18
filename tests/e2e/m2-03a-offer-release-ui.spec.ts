@@ -340,8 +340,12 @@ async function loginWithRealOtp(
 // CI 34774616172/34788038921 (m2-03a Download-Schritte): GET-Response auf
 // private PDF-Downloads bleibt unter CI-Last aus (M3-00-/F1609-Klasse: Link
 // mit Ziel vorhanden, Erstrender 10–15 s serverseitig, kein Commit-Bezug).
-// Verlorenen Klick einmal wiederholen; Status, Header und Byte-Identitaet
-// bleiben die volle harte Pruefung (kein aufgeweichtes Gate).
+// CI 35211558464 Versuch 4 (m2-03a:1930): staged-Bytes-Fassung blieb unter
+// 42,7-Min-Last zweimal über 12 s aus (kalter Routen-Ersttreffer plus Last;
+// Orakel-34961142567-Praezedenz derselben Klasse). Budget 12 s → 30 s je
+// Versuch deckt die belegte Tail-Latenz; Verlorenen Klick einmal
+// wiederholen; Status, Header und Byte-Identitaet bleiben die volle harte
+// Pruefung (kein aufgeweichtes Gate).
 async function clickPrivateDownloadAndWait(
   page: Page,
   downloadLink: Locator,
@@ -355,7 +359,7 @@ async function clickPrivateDownloadAndWait(
       page.waitForResponse((response) => (
         response.request().method() === "GET"
         && new URL(response.url()).pathname === downloadPath
-      )),
+      ), { timeout: 30_000 }),
       page.waitForEvent("download"),
       downloadLink.click(),
     ]);

@@ -1515,9 +1515,24 @@ async function main(): Promise<number> {
   // M3-00-Flake (CI 34600738237): Die Rechnungsstellungs-Seite wird im Lauf
   // erst spät erstmals getroffen; der Dev-Kaltstart genau dieser Route ließ
   // page.goto ins 30-s-Timeout laufen, der Zweitbesuch (Test 2) war grün.
-  // Route vorab kompilieren (Redirect nicht folgen) — der Test selbst bleibt
-  // die harte Prüfung, Aufwärmen ist nur Timing-Determinismus.
-  for (const warmPath of [`/w/${seedData.workspaceId}/einstellungen/rechnungsstellung`]) {
+  // CI 35098476611 belegt dieselbe Klasse für
+  // /einstellungen/angebotsprofile (m2-03a-offer-release-ui.spec.ts:1095,
+  // suite-weit einziger Besucher, Test [243/260]): page.goto lief ins
+  // 30-s-Timeout, die Navigation erreichte nie "load".
+  // CI 35211558464 Versuch 4 belegt die dritte Instanz für die privaten
+  // PDF-Downloads (m2-03a-offer-release-ui.spec.ts:1930/1709, suite-weit
+  // einzige Besucher): Die staged-Bytes-Routen (Kandidat + Fassung)
+  // kompilieren kalt erst beim Klick; unter 42,7-Min-Last blieb die
+  // GET-Response zweimal über 12 s aus. Unauthentifiziertes GET endet
+  // vor jedem Artefakt-Zugriff an der Auth-Grenze (401) — der Test
+  // bleibt die harte Prüfung, Aufwärmen ist nur Timing-Determinismus.
+  // Routen vorab kompilieren (Redirect nicht folgen).
+  for (const warmPath of [
+    `/w/${seedData.workspaceId}/einstellungen/rechnungsstellung`,
+    `/w/${seedData.m201WorkspaceId}/einstellungen/angebotsprofile`,
+    `/w/${seedData.workspaceId}/angebote/${randomUUID()}/freigabekandidaten/${randomUUID()}/pdf`,
+    `/w/${seedData.workspaceId}/angebote/${randomUUID()}/ausstellungsfassungen/${randomUUID()}/pdf`,
+  ]) {
     try {
       const warmResponse = await fetch(`${server.baseURL}${warmPath}`, {
         redirect: "manual",
@@ -1536,6 +1551,32 @@ async function main(): Promise<number> {
     mainCredential,
     intakePayload(seedData.mainContactName, `main-${randomUUID()}`, true),
   );
+  // CI-35098476611-Kaltstart (m1-05-triage.spec.ts:653/658): POST
+  // .../address-candidates wird suite-weit genau einmal getroffen (Test
+  // [163/260]); der Dev-Kaltstart der Route ließ waitForResponse ins
+  // 12-s-Timeout laufen, der CI-Snapshot belegt "Compiling" während der
+  // laufenden Anfrage. Unauthentifizierter POST kompiliert die Route bis
+  // zur Auth-Grenze (401): keine Sitzung, kein Rate-Limit-Verbrauch,
+  // kein Provider-Aufruf — der Geoapify-1/1-Vertrag bleibt unberührt,
+  // der Test selbst bleibt die harte Prüfung.
+  try {
+    const warmCandidates = await fetch(
+      `${server.baseURL}/api/workspaces/${seedData.workspaceId}/projects/${mainLead.projectId}/address-candidates`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: server.baseURL,
+        },
+        body: JSON.stringify({ query: "Routen-Warmup" }),
+        redirect: "manual",
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
+    await warmCandidates.arrayBuffer();
+  } catch (error) {
+    console.log(`[e2e] Adresskandidaten-Warmup übersprungen: ${safeMessage(error)}`);
+  }
   const foreignLead = await submitSignedLead(
     server,
     embedded.superuserUrl,
