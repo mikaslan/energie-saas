@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { DrawSignatureForm } from "./draw-signature-form";
+
 import { publicTokenCapsule } from "@/lib/action";
 import type {
   PortalInstallationStatusFaqs,
@@ -151,7 +153,7 @@ export default async function PortalTokenPage({
       >
         <p className="text-sm font-semibold text-brand-800">{t.brand}</p>
         <h1 className="mt-2 text-2xl font-semibold text-slate-950">{view.project.name}</h1>
-        <nav aria-label={t.navAria} className="mt-4 flex gap-2">
+        <nav aria-label={t.navAria} className="mt-4 flex flex-wrap gap-2">
           <Link href={`/p/${token}?${langQuery}`} className={tabClass(activeTab === "uebersicht")}>
             {t.navOverview}
           </Link>
@@ -490,7 +492,7 @@ export default async function PortalTokenPage({
                 ) : (
                   <ul className="mt-2 divide-y divide-slate-200 rounded-md border border-slate-200">
                     {view.documents.map((doc) => (
-                      <li key={doc.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                      <li key={doc.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-3">
                         <span className="text-sm font-medium text-slate-800">
                           {t.offerWord} {doc.offerNumber}
                           <span className="block text-xs font-normal text-slate-500">
@@ -532,6 +534,19 @@ export default async function PortalTokenPage({
                             {t.downloadWord}
                           </Link>
                         </span>
+                        {doc.signatureStatus === "pending" ? (
+                          <DrawSignatureForm
+                            token={token}
+                            issuanceId={doc.id}
+                            lang={lang}
+                            disclosure={t.drawDisclosure}
+                            clearLabel={t.drawClear}
+                            submitLabel={t.drawSubmit}
+                            emptyHint={t.drawEmptyHint}
+                            keyboardHint={t.drawKeyboardHint}
+                            clickLabel={t.signButton}
+                          />
+                        ) : null}
                       </li>
                     ))}
                   </ul>

@@ -15,6 +15,7 @@ export {
   revokeSignatureByInviteToken,
   signSignatureByInviteToken,
   signSignatureByToken,
+  signSignatureDrawByInviteToken,
   uploadAnalogSignature,
   withdrawSignatureRequest,
 } from "./service";
