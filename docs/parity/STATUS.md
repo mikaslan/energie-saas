@@ -3,6 +3,17 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-18 — CI-GRUEN-Lane integriert (Flotten-Lane, Leitstand)
+
+- `codex/muse-fleet-1-ci-gruen` (`b5fe781`) in `codex/m1-wave-02` gemergt
+  (Merge `2834674`, konfliktfrei, 2 Dateien: E2E-Harness-Warmups +
+  m2-03a-Spec-Budget): beide CI-Failures aus Run 35098476611
+  (m1-05:614, m2-03a:1076) auf Lane-CI Run `35256642920` (259/0) gruen
+  belegt, Fix-3-Stelle ebenso.
+- Integrations-Gates auf dem Merge-HEAD: `npm run check` EXIT 0.
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-17 — F16-14 integriert (Flotten-Lane, Leitstand)
 
 - `codex/muse-fleet-2-f16` (`8d48ab1`) per Fast-Forward in `codex/m1-wave-02`:
