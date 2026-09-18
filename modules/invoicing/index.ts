@@ -183,10 +183,13 @@ export {
   InvoicePdfValidationError,
   listInvoicePdfs,
   readInvoicePdfArtifact,
+  requestInvoicePaymentInput,
   requestInvoicePdfInput,
   type InvoicePdfArtifactResult,
   type InvoicePdfState,
   type InvoicePdfStatusResult,
+  type RequestInvoicePaymentInputCommand,
+  type RequestInvoicePaymentInputResult,
   type RequestInvoicePdfInputCommand,
   type RequestInvoicePdfInputResult,
 } from "./pdf-service";

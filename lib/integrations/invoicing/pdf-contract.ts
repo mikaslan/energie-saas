@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { isValidIban, validateEpcPayload } from "./epc-contract";
 import {
   commercialRecipientSnapshotV1Schema,
   companyCountries,
@@ -340,6 +341,119 @@ export function hashInvoicePdfInput(value: unknown): string {
   const parsed = invoicePdfInputV1Schema.safeParse(value);
   if (!parsed.success) {
     throw new TypeError("Nur valide Render-Inputs sind hashbar.");
+  }
+  return createHash("sha256").update(canonicalizeInvoiceJson(parsed.data), "utf8").digest("hex");
+}
+
+// F8-17: Zahlungsbeleg-Input (zweite Template-Spur, gleiche Kanonisierung).
+export const INVOICE_PAYMENT_INPUT_VERSION = "invoice-payment-input.v1" as const;
+export const INVOICE_PAYMENT_TEMPLATE_VERSION = "invoice-payment-template.v1" as const;
+export const INVOICE_PAYMENT_RENDERER_RECIPE_VERSION =
+  "invoice-payment-renderer-recipe.v1" as const;
+
+const paymentCreditorSchema = z.strictObject({
+  name: z.string().min(1).max(70),
+  iban: z.string().refine(isValidIban, "IBAN-Pruefziffern ungueltig"),
+  bic: z.string().refine(
+    (bic) => bic === "" || /^[A-Z0-9]{8}([A-Z0-9]{3})?$/u.test(bic),
+    "BIC-Format ungueltig",
+  ),
+});
+
+const paymentReferenceSchema = z.string().regex(/^RF[0-9]{2}[A-Z0-9]{1,21}$/u);
+
+export const invoicePaymentInputV1Schema = z.strictObject({
+  schemaVersion: z.literal(INVOICE_PAYMENT_INPUT_VERSION),
+  canonicalizationVersion: z.literal(INVOICE_PDF_CANONICALIZATION_VERSION),
+  templateVersion: z.literal(INVOICE_PAYMENT_TEMPLATE_VERSION),
+  rendererRecipeVersion: z.literal(INVOICE_PAYMENT_RENDERER_RECIPE_VERSION),
+  preparedAt: utcDateTimeSchema,
+  creditor: paymentCreditorSchema,
+  amountCents: z.number().int().min(1).max(99999999999),
+  currency: z.literal("EUR"),
+  reference: paymentReferenceSchema,
+  documentNumber: z.string().min(1).max(64),
+  epcPayload: z.string().min(1),
+}).superRefine((input, context) => {
+  // Versiegelte Konsistenz: eingebetteter EPC-Payload muss exakt zu den
+  // Feldern passen (kein Drift zwischen Anzeige und QR).
+  const validated = validateEpcPayload(input.epcPayload);
+  if (!validated.ok) {
+    context.addIssue({ code: "custom", path: ["epcPayload"], message: "EPC-Payload ungueltig." });
+    return;
+  }
+  const lines = validated.value.split("\n");
+  const [, , , , bic, name, iban, amount, , reference] = lines;
+  const euros = Math.floor(input.amountCents / 100);
+  const cents = String(input.amountCents % 100).padStart(2, "0");
+  if (
+    bic !== input.creditor.bic
+    || name !== input.creditor.name
+    || iban !== input.creditor.iban
+    || amount !== `EUR${euros}.${cents}`
+    || reference !== input.reference
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["epcPayload"],
+      message: "EPC-Payload stimmt nicht mit den Zahlungsfeldern ueberein.",
+    });
+  }
+});
+
+export type InvoicePaymentInputV1 = z.infer<typeof invoicePaymentInputV1Schema>;
+
+export type InvoicePaymentContractResult =
+  | { ok: true; value: InvoicePaymentInputV1 }
+  | { ok: false; error: string };
+
+export interface BuildInvoicePaymentInputOptions {
+  creditor: unknown;
+  amountCents: number;
+  reference: string;
+  documentNumber: string;
+  epcPayload: string;
+  preparedAt: string;
+}
+
+export function validateInvoicePaymentInput(value: unknown): InvoicePaymentContractResult {
+  const parsed = invoicePaymentInputV1Schema.safeParse(value);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Ungueltiger Payment-Input." };
+  }
+  return { ok: true, value: parsed.data };
+}
+
+export function buildInvoicePaymentInput(
+  options: BuildInvoicePaymentInputOptions,
+): InvoicePaymentContractResult {
+  const allowed = new Set([
+    "creditor", "amountCents", "reference", "documentNumber", "epcPayload", "preparedAt",
+  ]);
+  for (const key of Object.keys(options)) {
+    if (!allowed.has(key)) {
+      return { ok: false, error: `Unbekanntes Bau-Feld: ${key}.` };
+    }
+  }
+  return validateInvoicePaymentInput({
+    schemaVersion: INVOICE_PAYMENT_INPUT_VERSION,
+    canonicalizationVersion: INVOICE_PDF_CANONICALIZATION_VERSION,
+    templateVersion: INVOICE_PAYMENT_TEMPLATE_VERSION,
+    rendererRecipeVersion: INVOICE_PAYMENT_RENDERER_RECIPE_VERSION,
+    preparedAt: options.preparedAt,
+    creditor: options.creditor,
+    amountCents: options.amountCents,
+    currency: "EUR",
+    reference: options.reference,
+    documentNumber: options.documentNumber,
+    epcPayload: options.epcPayload,
+  });
+}
+
+export function hashInvoicePaymentInput(value: unknown): string {
+  const parsed = invoicePaymentInputV1Schema.safeParse(value);
+  if (!parsed.success) {
+    throw new TypeError("Nur valide Payment-Inputs sind hashbar.");
   }
   return createHash("sha256").update(canonicalizeInvoiceJson(parsed.data), "utf8").digest("hex");
 }

@@ -13,11 +13,17 @@ import {
   type ServiceCtx,
 } from "@/lib/permissions";
 import {
+  COMMERCIAL_DOCUMENT_PAYMENT_RENDER_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_RENDER_COMMAND_VERSION,
 } from "@/lib/integrations/invoicing/contract";
+import { buildEpcPayload, EpcPayloadError } from "@/lib/integrations/invoicing/epc-contract";
 import {
+  buildInvoicePaymentInput,
   buildInvoicePdfInput,
+  hashInvoicePaymentInput,
   hashInvoicePdfInput,
+  INVOICE_PAYMENT_RENDERER_RECIPE_VERSION,
+  INVOICE_PAYMENT_TEMPLATE_VERSION,
   INVOICE_PDF_RENDERER_RECIPE_VERSION,
   INVOICE_PDF_TEMPLATE_VERSION,
 } from "@/lib/integrations/invoicing/pdf-contract";
@@ -38,6 +44,20 @@ export interface RequestInvoicePdfInputResult {
   jobId: string;
   inputSha256Hex: string;
   status: "requested";
+}
+
+const paymentRenderCommandSchema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_PAYMENT_RENDER_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+});
+
+export type RequestInvoicePaymentInputCommand = z.infer<typeof paymentRenderCommandSchema>;
+
+export interface RequestInvoicePaymentInputResult {
+  jobId: string;
+  inputSha256Hex: string;
+  status: "requested";
+  amountCents: number;
 }
 
 function requireInvoicingWrite(ctx: ServiceCtx): void {
@@ -117,6 +137,7 @@ type DocumentRow = {
   net_cents: number | string;
   tax_cents: number | string;
   gross_cents: number | string;
+  paid_cents?: number | string;
   due_date: string | null;
   delivery_date: string | null;
   planned_service_date: string | null;
@@ -354,6 +375,160 @@ export async function requestInvoicePdfInput(
     await enqueueInvoicePdfRenderDispatch(tx, ctx.workspaceId, found.id);
   }
   return { jobId: found.id, inputSha256Hex: found.hex, status: "requested" };
+}
+
+export async function requestInvoicePaymentInput(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  command: RequestInvoicePaymentInputCommand,
+): Promise<RequestInvoicePaymentInputResult> {
+  requireInvoicingWrite(ctx);
+  const parsed = paymentRenderCommandSchema.safeParse(command);
+  if (!parsed.success) {
+    throw new InvoicingValidationError();
+  }
+  const { documentId } = parsed.data;
+
+  const documentRows = await tx.execute<DocumentRow>(sql`
+    select id, type, status, number, number_year, number_sequence,
+           issued_at, invoice_kind, credit_note_type,
+           net_cents, tax_cents, gross_cents, paid_cents,
+           due_date::text as due_date,
+           delivery_date::text as delivery_date,
+           planned_service_date::text as planned_service_date,
+           skonto_percent_bps, skonto_days, recipient_snapshot
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${documentId}::uuid
+  `);
+  const document = documentRows.rows[0];
+  // Zahlungsbeleg nur fuer ausgestellte Rechnungen (keine Gutschriften:
+  // dort schuldet der Workspace, kein QR an uns).
+  if (!document) throw new InvoicingNotFoundError();
+  if (
+    document.type !== "invoice"
+    || document.status !== "issued"
+    || document.number === null
+  ) {
+    throw new InvoicingValidationError();
+  }
+  if (document.paid_cents === undefined) throw new InvoicingIntegrityError();
+  const openCents = asMoneyCents(document.gross_cents) - asMoneyCents(document.paid_cents);
+  if (openCents <= 0) {
+    throw new InvoicingValidationError();
+  }
+
+  const settingsRows = await tx.execute<SettingsRow>(sql`
+    select company_name, company_email, company_authority,
+           company_register_number, company_tax_id,
+           company_address_line1, company_address_line2,
+           company_postal_code, company_city, company_country,
+           payment_account_holder, payment_iban, payment_bic, revision
+      from workspace_invoicing_settings
+     where workspace_id = ${ctx.workspaceId}::uuid
+  `);
+  const settings = settingsRows.rows[0];
+  if (!settings || settings.payment_iban === null) {
+    throw new InvoicingValidationError();
+  }
+
+  const preparedRows = await tx.execute<{ now: Date }>(sql`
+    select pg_catalog.transaction_timestamp() as now
+  `);
+  const preparedNow = preparedRows.rows[0]?.now;
+  if (!preparedNow) throw new InvoicingIntegrityError();
+  const preparedAt = asIsoUtc(preparedNow);
+
+  let epcPayload: string;
+  try {
+    epcPayload = buildEpcPayload({
+      creditorName: settings.payment_account_holder ?? settings.company_name,
+      creditorIban: settings.payment_iban,
+      creditorBic: settings.payment_bic ?? "",
+      amountCents: openCents,
+      documentNumber: document.number,
+    });
+  } catch (error) {
+    if (error instanceof EpcPayloadError) throw new InvoicingValidationError();
+    throw error;
+  }
+  const reference = epcPayload.split("\n")[9] ?? "";
+  const built = buildInvoicePaymentInput({
+    creditor: {
+      name: settings.payment_account_holder ?? settings.company_name,
+      iban: settings.payment_iban,
+      bic: settings.payment_bic ?? "",
+    },
+    amountCents: openCents,
+    reference,
+    documentNumber: document.number,
+    epcPayload,
+    preparedAt,
+  });
+  if (!built.ok) {
+    throw new InvoicingValidationError();
+  }
+  const input = built.value;
+  let inputSha256Hex: string;
+  try {
+    inputSha256Hex = hashInvoicePaymentInput(input);
+  } catch {
+    throw new InvoicingIntegrityError();
+  }
+
+  const jobId = randomUUID();
+  try {
+    const inserted = await tx.execute<{ id: string }>(sql`
+      insert into commercial_document_render_job (
+        id, workspace_id, document_id, input_json, input_sha256,
+        template_version, renderer_recipe, created_by
+      ) values (
+        ${jobId}::uuid, ${ctx.workspaceId}::uuid, ${documentId}::uuid,
+        ${JSON.stringify(input)}::jsonb, decode(${inputSha256Hex}, 'hex'),
+        ${INVOICE_PAYMENT_TEMPLATE_VERSION}, ${INVOICE_PAYMENT_RENDERER_RECIPE_VERSION},
+        ${ctx.actor}::uuid
+      )
+      on conflict (workspace_id, document_id, template_version, renderer_recipe)
+      do nothing
+      returning id
+    `);
+    const row = inserted.rows[0];
+    if (row) {
+      await enqueueInvoicePdfRenderDispatch(tx, ctx.workspaceId, row.id);
+      return { jobId: row.id, inputSha256Hex, status: "requested", amountCents: openCents };
+    }
+  } catch (error) {
+    if (postgresErrorCode(error) === "23505") {
+      // Race unterhalb der WITH-CHECK-Sichtbarkeit: Replay lesen.
+    } else {
+      throw error;
+    }
+  }
+  const existing = await tx.execute<{ id: string; input_json: unknown; hex: string; status: string }>(sql`
+    select id, input_json, encode(input_sha256, 'hex') as hex, status
+      from commercial_document_render_job
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and document_id = ${documentId}::uuid
+       and template_version = ${INVOICE_PAYMENT_TEMPLATE_VERSION}
+       and renderer_recipe = ${INVOICE_PAYMENT_RENDERER_RECIPE_VERSION}
+  `);
+  const found = existing.rows[0];
+  if (!found) {
+    throw new InvoicingIntegrityError();
+  }
+  let replayHash: string;
+  try {
+    replayHash = hashInvoicePaymentInput(found.input_json);
+  } catch {
+    throw new InvoicingIntegrityError();
+  }
+  if (replayHash !== found.hex) {
+    throw new InvoicingIntegrityError();
+  }
+  if (found.status !== "succeeded" && found.status !== "failed_final") {
+    await enqueueInvoicePdfRenderDispatch(tx, ctx.workspaceId, found.id);
+  }
+  return { jobId: found.id, inputSha256Hex: found.hex, status: "requested", amountCents: openCents };
 }
 
 export class InvoicePdfValidationError extends Error {

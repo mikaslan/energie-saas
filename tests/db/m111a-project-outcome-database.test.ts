@@ -244,10 +244,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0190 F8-16 Teilrechnungstypen-Kennung (Spalte + CHECKs + Guard),
     // 0191 M3-02a Zeilen-Freeze-Guard (Funktion + 3 Trigger),
     // 0192 M3-02b Render-Job (Tabelle + RLS),
-    // 0193 M3-02c Worker-Lebenszyklus (Spalten + Trigger + RLS-Schranke)).
+    // 0193 M3-02c Worker-Lebenszyklus (Spalten + Trigger + RLS-Schranke),
+    // 0194 F8-17 Zahlungsbeleg-Tripel (CHECKs + Dispatch-Gate)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 152,
-      tag: "0193_m302c_pdf_worker",
+      idx: 153,
+      tag: "0194_f817_payment_triple",
     });
   });
 

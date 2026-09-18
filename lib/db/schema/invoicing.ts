@@ -877,11 +877,15 @@ export const commercialDocumentRenderJob = pgTable(
     ),
     check(
       "commercial_document_render_job_template_ck",
-      sql`${t.templateVersion} = 'invoice-pdf-template.v1'`,
+      sql`${t.templateVersion} in ('invoice-pdf-template.v1', 'invoice-payment-template.v1')`,
     ),
     check(
       "commercial_document_render_job_recipe_ck",
-      sql`${t.rendererRecipe} = 'invoice-pdf-renderer-recipe.v1'`,
+      sql`${t.rendererRecipe} in ('invoice-pdf-renderer-recipe.v1', 'invoice-payment-renderer-recipe.v1')`,
+    ),
+    check(
+      "commercial_document_render_job_pair_ck",
+      sql`((${t.templateVersion} = 'invoice-pdf-template.v1') and (${t.rendererRecipe} = 'invoice-pdf-renderer-recipe.v1')) or ((${t.templateVersion} = 'invoice-payment-template.v1') and (${t.rendererRecipe} = 'invoice-payment-renderer-recipe.v1'))`,
     ),
     check(
       "commercial_document_render_job_input_ck",

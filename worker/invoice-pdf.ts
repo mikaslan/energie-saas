@@ -2,10 +2,15 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import {
+  INVOICE_PAYMENT_INPUT_VERSION,
+  INVOICE_PAYMENT_RENDERER_RECIPE_VERSION,
+  INVOICE_PAYMENT_TEMPLATE_VERSION,
   INVOICE_PDF_INPUT_VERSION,
   INVOICE_PDF_RENDERER_RECIPE_VERSION,
   INVOICE_PDF_TEMPLATE_VERSION,
+  validateInvoicePaymentInput,
   validateInvoicePdfInput,
+  type InvoicePaymentInputV1,
   type InvoicePdfInputV1,
 } from "../lib/integrations/invoicing/pdf-contract";
 import {
@@ -65,7 +70,7 @@ export type InvoicePdfClaim = {
   templateVersion: string;
   rendererRecipeVersion: string;
   inputSha256: string;
-  input: InvoicePdfInputV1;
+  input: InvoicePdfInputV1 | InvoicePaymentInputV1;
 };
 
 export type InvoicePdfDatabase = {
@@ -253,12 +258,17 @@ export function startInvoicePdfRecoverySweep(
 }
 
 function claimIsPinned(claim: InvoicePdfClaim): boolean {
-  if (
-    claim.inputVersion !== INVOICE_PDF_INPUT_VERSION
-    || claim.templateVersion !== INVOICE_PDF_TEMPLATE_VERSION
-    || claim.rendererRecipeVersion !== INVOICE_PDF_RENDERER_RECIPE_VERSION
-  ) return false;
-  const parsed = validateInvoicePdfInput(claim.input);
+  // F8-17: Invoice- oder Payment-Tripel, nie Kreuzmix, nie Unbekanntes.
+  const isInvoiceTriple = claim.inputVersion === INVOICE_PDF_INPUT_VERSION
+    && claim.templateVersion === INVOICE_PDF_TEMPLATE_VERSION
+    && claim.rendererRecipeVersion === INVOICE_PDF_RENDERER_RECIPE_VERSION;
+  const isPaymentTriple = claim.inputVersion === INVOICE_PAYMENT_INPUT_VERSION
+    && claim.templateVersion === INVOICE_PAYMENT_TEMPLATE_VERSION
+    && claim.rendererRecipeVersion === INVOICE_PAYMENT_RENDERER_RECIPE_VERSION;
+  if (!isInvoiceTriple && !isPaymentTriple) return false;
+  const parsed = isPaymentTriple
+    ? validateInvoicePaymentInput(claim.input)
+    : validateInvoicePdfInput(claim.input);
   return parsed.ok
     && parsed.value.schemaVersion === claim.inputVersion
     && parsed.value.templateVersion === claim.templateVersion

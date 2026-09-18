@@ -9,12 +9,18 @@ import { withTenantOn } from "../lib/db/tenant";
 import type { TenantTx } from "../lib/db/types";
 import { emitEvent } from "../lib/events";
 import {
+  INVOICE_PAYMENT_INPUT_VERSION,
+  INVOICE_PAYMENT_RENDERER_RECIPE_VERSION,
+  INVOICE_PAYMENT_TEMPLATE_VERSION,
   INVOICE_PDF_CANONICALIZATION_VERSION,
   INVOICE_PDF_INPUT_VERSION,
   INVOICE_PDF_RENDERER_RECIPE_VERSION,
   INVOICE_PDF_TEMPLATE_VERSION,
+  hashInvoicePaymentInput,
   hashInvoicePdfInput,
+  validateInvoicePaymentInput,
   validateInvoicePdfInput,
+  type InvoicePaymentInputV1,
   type InvoicePdfInputV1,
 } from "../lib/integrations/invoicing/pdf-contract";
 import { INVOICE_PDF_DISPATCH_SCHEMA_VERSION } from "./invoice-pdf";
@@ -178,12 +184,30 @@ function parseDate(value: Date | string | null): Date | null {
   return parsed;
 }
 
-function parseStoredInput(row: JobRow): InvoicePdfInputV1 {
+function parseStoredInput(row: JobRow): InvoicePdfInputV1 | InvoicePaymentInputV1 {
+  // F8-17: Invoice- oder Payment-Tripel; alles andere (inkl. Kreuzmix)
+  // fail-closed invalid_input.
+  const isPaymentRow = row.template_version === INVOICE_PAYMENT_TEMPLATE_VERSION
+    && row.renderer_recipe === INVOICE_PAYMENT_RENDERER_RECIPE_VERSION;
+  const isInvoiceRow = row.template_version === INVOICE_PDF_TEMPLATE_VERSION
+    && row.renderer_recipe === INVOICE_PDF_RENDERER_RECIPE_VERSION;
+  if (!isPaymentRow && !isInvoiceRow) invalidInput();
+  if (isPaymentRow) {
+    const parsed = validateInvoicePaymentInput(row.input_json);
+    if (
+      !parsed.ok
+      || parsed.value.schemaVersion !== INVOICE_PAYMENT_INPUT_VERSION
+      || parsed.value.canonicalizationVersion !== INVOICE_PDF_CANONICALIZATION_VERSION
+      || parsed.value.templateVersion !== row.template_version
+      || parsed.value.rendererRecipeVersion !== row.renderer_recipe
+      || !SHA256_PATTERN.test(row.input_sha256_hex)
+      || hashInvoicePaymentInput(parsed.value) !== row.input_sha256_hex
+    ) invalidInput();
+    return parsed.value;
+  }
   const parsed = validateInvoicePdfInput(row.input_json);
   if (
     !parsed.ok
-    || row.template_version !== INVOICE_PDF_TEMPLATE_VERSION
-    || row.renderer_recipe !== INVOICE_PDF_RENDERER_RECIPE_VERSION
     || parsed.value.schemaVersion !== INVOICE_PDF_INPUT_VERSION
     || parsed.value.canonicalizationVersion !== INVOICE_PDF_CANONICALIZATION_VERSION
     || parsed.value.templateVersion !== row.template_version
@@ -211,7 +235,7 @@ function claimResult(row: JobRow, input = parseStoredInput(row)): InvoicePdfClai
     jobId: row.id,
     leaseToken: row.lease_token,
     attemptCount: row.attempt_count,
-    inputVersion: INVOICE_PDF_INPUT_VERSION,
+    inputVersion: input.schemaVersion,
     templateVersion: row.template_version,
     rendererRecipeVersion: row.renderer_recipe,
     inputSha256: row.input_sha256_hex,

@@ -1,11 +1,16 @@
 import { createHash } from "node:crypto";
 import { chromium } from "playwright";
+import QRCode from "qrcode-generator";
 
 import {
+  INVOICE_PAYMENT_RENDERER_RECIPE_VERSION,
   INVOICE_PDF_RENDERER_RECIPE_VERSION,
+  validateInvoicePaymentInput,
   validateInvoicePdfInput,
+  type InvoicePaymentInputV1,
   type InvoicePdfInputV1,
 } from "../lib/integrations/invoicing/pdf-contract";
+import { renderInvoicePaymentHtml } from "../lib/integrations/invoicing/payment-template";
 import { renderInvoicePdfHtml } from "../lib/integrations/invoicing/pdf-template";
 
 export const MAX_INVOICE_PDF_BYTES = 8 * 1024 * 1024;
@@ -36,16 +41,34 @@ export type RenderedInvoicePdf = {
   mimeType: "application/pdf";
 };
 
+export type InvoicePdfRenderInput = InvoicePdfInputV1 | InvoicePaymentInputV1;
+
 export type InvoicePdfRenderer = {
-  render(input: InvoicePdfInputV1): Promise<RenderedInvoicePdf>;
+  render(input: InvoicePdfRenderInput): Promise<RenderedInvoicePdf>;
 };
 
 export type InvoicePdfRendererOptions = Readonly<{
   /** Verification-only seam. Production callers use the sealed template. */
-  htmlRenderer?: (input: InvoicePdfInputV1) => string;
+  htmlRenderer?: (input: InvoicePdfRenderInput) => string;
   /** Host-only diagnostics. Production and the container smoke never set it. */
   allowUnpinnedRuntimeForVerification?: boolean;
 }>;
+
+/**
+ * F8-17: deterministischer EPC-QR (qrcode-generator@2.0.4, ECC M,
+ * Auto-Version). Reine Funktion des versiegelten Payloads — keine
+ * Zeit, kein Zufall, kein Netz.
+ */
+export function renderEpcQrSvg(epcPayload: string): string {
+  try {
+    const qr = QRCode(0, "M");
+    qr.addData(epcPayload);
+    qr.make();
+    return qr.createSvgTag({});
+  } catch (error) {
+    throw new InvoicePdfRenderError("invalid_input", false, { cause: error });
+  }
+}
 
 const PINNED_RENDERER_PLATFORM = "linux";
 const PINNED_RENDERER_ARCH = "x64";
@@ -132,15 +155,25 @@ export function validateRenderedInvoicePdf(
 export function createPlaywrightInvoicePdfRenderer(
   options: InvoicePdfRendererOptions = {},
 ): InvoicePdfRenderer {
-  const htmlRenderer = options.htmlRenderer ?? renderInvoicePdfHtml;
+  const htmlOverride = options.htmlRenderer;
   const allowUnpinnedRuntimeForVerification =
     options.allowUnpinnedRuntimeForVerification ?? false;
   return {
     async render(value) {
-      const validated = validateInvoicePdfInput(value);
+      const schemaVersion = (value as { schemaVersion?: unknown } | null | undefined)
+        ?.schemaVersion;
+      // F8-17: Template-Dispatch per versiegelter Schema-Version; alles
+      // andere fail-closed (kein Fallback-Rendering).
+      const isPayment = schemaVersion === "invoice-payment-input.v1";
+      const validated = isPayment
+        ? validateInvoicePaymentInput(value)
+        : validateInvoicePdfInput(value);
       if (!validated.ok) throw new InvoicePdfRenderError("invalid_input", false);
       const input = validated.value;
-      if (input.rendererRecipeVersion !== INVOICE_PDF_RENDERER_RECIPE_VERSION) {
+      const expectedRecipe = isPayment
+        ? INVOICE_PAYMENT_RENDERER_RECIPE_VERSION
+        : INVOICE_PDF_RENDERER_RECIPE_VERSION;
+      if (input.rendererRecipeVersion !== expectedRecipe) {
         throw new InvoicePdfRenderError("invalid_input", false);
       }
       if (!isPinnedRendererRuntime() && !allowUnpinnedRuntimeForVerification) {
@@ -151,8 +184,13 @@ export function createPlaywrightInvoicePdfRenderer(
       }
       let html: string;
       try {
-        html = htmlRenderer(input);
-      } catch {
+        html = htmlOverride !== undefined
+          ? htmlOverride(input)
+          : input.schemaVersion === "invoice-payment-input.v1"
+            ? renderInvoicePaymentHtml(input, renderEpcQrSvg(input.epcPayload))
+            : renderInvoicePdfHtml(input);
+      } catch (error) {
+        if (error instanceof InvoicePdfRenderError) throw error;
         throw new InvoicePdfRenderError("invalid_input", false);
       }
       let browser;
