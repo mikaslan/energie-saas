@@ -3,6 +3,19 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-18 — F1-14 + F2.8 integriert (Flotten-Lanes, Leitstand)
+
+- `codex/muse-fleet-1b-f1` (`2af5544`, F1-14 Team-Zuweisung, Migration 0210)
+  und `codex/muse-fleet-5b-f2` (`5e5256c`, F2.8 Draw-Signatur, Migration 0220)
+  in `codex/m1-wave-02` gemergt (Merge `ee2ee5e`).
+- Integrationskonflikt additiv geloest: beide Lanes beanspruchten Journal-idx
+  149 → 0210@149, 0220@150 (TOTAL 151), `when` strikt aufsteigend
+  nachgezogen; CI-Timeout 45→60 aus Lane-Beleg uebernommen.
+- Belege: Lane-CIs `35301226788` (F1-14) + `35271562458`/`35298979820` (F2.8)
+  success; Integrations-Gates `npm run check` EXIT 0 auf dem Merge-HEAD.
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-18 — CI-GRUEN-Lane integriert (Flotten-Lane, Leitstand)
 
 - `codex/muse-fleet-1-ci-gruen` (`b5fe781`) in `codex/m1-wave-02` gemergt
