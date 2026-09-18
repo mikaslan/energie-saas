@@ -1149,6 +1149,13 @@
       "when": 1789688420744,
       "tag": "0184_f7_16b_datei_zurueckziehung",
       "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1789691606551,
+      "tag": "0185_f7_02l_circuit_plan",
+      "breakpoints": true
     }
   ]
 }

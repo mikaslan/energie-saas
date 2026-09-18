@@ -19,6 +19,11 @@ import {
 } from "@/lib/integrations/checklists/contract";
 import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
 import type { TeamOption } from "@/lib/integrations/teams/contract";
+import { SingleLineDiagram } from "@/app/_components/single-line-diagram";
+import {
+  buildSingleLineSchematic,
+  type SchematicSectionInput,
+} from "@/lib/integrations/schematic/single-line-v1";
 import type { WorkbookComponentSection, WorkbookDatasheetRef } from "@/modules/installations";
 import {
   applyTemplateAction,
@@ -105,6 +110,7 @@ export function ProjectChecklistManager({
   componentsText,
   componentSections,
   datasheetRefs,
+  schematicInputs,
 }: {
   workspaceId: string;
   projectId: string;
@@ -117,6 +123,10 @@ export function ProjectChecklistManager({
   componentSections: WorkbookComponentSection[] | null;
   // F7-02K: Datenblatt-Referenzen (null = Fallback, 02j-Muster).
   datasheetRefs: WorkbookDatasheetRef[] | null;
+  // F7-02L: Schaltplan-Inputs (null = Fallback, 02k-Muster; reine
+  // F7-11-Funktion, kein Fetch — Client importiert aus @/modules/*
+  // nur Typen, installation-workbook-panel.tsx:77-82).
+  schematicInputs: SchematicSectionInput[] | null;
 }) {
   // F7-03C: Anzeige-Platzhalter (Rohtext bleibt gespeichert).
   // F7-03E: componentsText ergänzt (gleiche Anzeige-Kontexte wie 03c).
@@ -399,6 +409,7 @@ export function ProjectChecklistManager({
                   teamOptions={teamOptions}
                   componentSections={componentSections}
                   datasheetRefs={datasheetRefs}
+                  schematicInputs={schematicInputs}
                 />
               );
             })}
@@ -482,6 +493,7 @@ function BlockCard({
   displayText,
   componentSections,
   datasheetRefs,
+  schematicInputs,
 }: {
   block: ChecklistBlockV1;
   blockIndex: number;
@@ -507,6 +519,7 @@ function BlockCard({
   displayText: (text: string) => string;
   componentSections: WorkbookComponentSection[] | null;
   datasheetRefs: WorkbookDatasheetRef[] | null;
+  schematicInputs: SchematicSectionInput[] | null;
 }) {
   const visibleSegments = block.segments.filter((segment) => segment.visible);
   return (
@@ -582,6 +595,7 @@ function BlockCard({
               displayText={displayText}
               componentSections={componentSections}
               datasheetRefs={datasheetRefs}
+              schematicInputs={schematicInputs}
             />
           );
         })}
@@ -613,6 +627,7 @@ function SegmentGroup({
   displayText,
   componentSections,
   datasheetRefs,
+  schematicInputs,
 }: {
   segment: ChecklistSegmentV1;
   segmentIndex: number;
@@ -634,6 +649,7 @@ function SegmentGroup({
   displayText: (text: string) => string;
   componentSections: WorkbookComponentSection[] | null;
   datasheetRefs: WorkbookDatasheetRef[] | null;
+  schematicInputs: SchematicSectionInput[] | null;
 }) {
   const [mutationState, mutationDispatch, mutationPending] = useActionState(
     mutateChecklistSegmentAction,
@@ -790,6 +806,20 @@ function SegmentGroup({
                   </ul>
                 ) : (
                   <p className="mt-1 text-sm leading-6 text-slate-600">Keine Datenblätter verfügbar.</p>
+                )
+              ) : null}
+              {/* F7-02L: Schaltplan im 02k-Muster (Titel oben via
+                  displayText + F7-11-SVG oder ehrlicher Fallback).
+                  Bewusst AUCH im Strukturmodus sichtbar: Die Art hat keine
+                  Zusatz-Inputs, mit denen die Anzeige kollidieren koennte. */}
+              {item.kind === "circuit-plan" ? (
+                schematicInputs !== null
+                && !buildSingleLineSchematic(schematicInputs).empty ? (
+                  <div data-testid="checklist-schematic" className="mt-1">
+                    <SingleLineDiagram schematic={buildSingleLineSchematic(schematicInputs)} />
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm leading-6 text-slate-600">Kein Schaltplan verfügbar.</p>
                 )
               ) : null}
               {item.kind === "text" && !(canEditStructure && !completed) ? (
@@ -1730,6 +1760,10 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
             // F7-02K: ehrliches Umschreiben wie Titel — Anzeige ohne
             // Inhalt: Flags fallen, jede Nutzlast fällt.
             onSetItem(itemIndex, { kind: "datasheets", done: false, required: false, description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
+          } else if (next === "circuit-plan") {
+            // F7-02L: ehrliches Umschreiben wie Titel — Anzeige ohne
+            // Inhalt: Flags fallen, jede Nutzlast fällt.
+            onSetItem(itemIndex, { kind: "circuit-plan", done: false, required: false, description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           } else {
             onSetItem(itemIndex, { kind: "task", description: null, value: null, photo: null, photos: null, signerRole: null }, canEditStructure);
           }
@@ -1746,6 +1780,7 @@ function ItemKindControl({ workspaceId, projectId, checklistId, item, itemIndex,
         <option value="signature">Unterschrift</option>
         <option value="component-list">Komponentenliste</option>
         <option value="datasheets">Datenblätter</option>
+        <option value="circuit-plan">Schaltplan</option>
       </select>
       {item.kind === "text" ? (
         <textarea

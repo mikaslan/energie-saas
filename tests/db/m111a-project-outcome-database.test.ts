@@ -255,10 +255,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0181 F7-16 Projekt-Dateien (Tabelle + RLS),
     // 0182 F10-17 Portal My-Files (Spalte + Resolver-Projektion + Kapsel),
     // 0183 F10-18 My-Files-Download-Protokoll (Spalte + CHECK + FK + Index + Kapsel-Replace),
-    // 0184 F7-16b Datei-Zurueckziehung (Spalte + Resolver-Replace + Kapsel-Replace)).
+    // 0184 F7-16b Datei-Zurueckziehung (Spalte + Resolver-Replace + Kapsel-Replace),
+    // 0185 F7-02l Schaltplan-Punkt (Validator-Replace)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 163,
-      tag: "0184_f7_16b_datei_zurueckziehung",
+      idx: 164,
+      tag: "0185_f7_02l_circuit_plan",
     });
   });
 

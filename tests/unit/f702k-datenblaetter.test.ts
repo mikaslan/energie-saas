@@ -161,7 +161,7 @@ describe("F7-02K Datenblatt-Punkt", () => {
     expect(isChecklistWorkItem(item({ kind: "datasheets" }))).toBe(false);
   });
 
-  it("F702K-U-06: alle zehn Arten bleiben bekannt (Projekt + Vorlage)", () => {
+  it("F702K-U-06: alle elf Arten bleiben bekannt (Projekt + Vorlage)", () => {
     const kinds = [
       "task",
       "title",
@@ -173,8 +173,9 @@ describe("F7-02K Datenblatt-Punkt", () => {
       "signature",
       "component-list",
       "datasheets",
+      "circuit-plan",
     ] as const;
-    expect(checklistItemKindSchema.options).toHaveLength(10);
+    expect(checklistItemKindSchema.options).toHaveLength(11);
     for (const kind of kinds) {
       expect(checklistItemKindSchema.safeParse(kind).success).toBe(true);
       const template = checklistTemplateItemSchema.safeParse({

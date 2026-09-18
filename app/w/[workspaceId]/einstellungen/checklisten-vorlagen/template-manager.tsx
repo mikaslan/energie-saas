@@ -228,6 +228,7 @@ function ItemEditor({
               <option value="signature">Unterschrift</option>
               <option value="component-list">Komponentenliste</option>
               <option value="datasheets">Datenblätter</option>
+              <option value="circuit-plan">Schaltplan</option>
             </select>
           </label>
           <label className="flex items-center gap-1 text-sm text-slate-700">
