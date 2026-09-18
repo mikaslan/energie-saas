@@ -556,7 +556,7 @@ export const offerReleaseCandidate = pgTable(
       ${t.variantRevision} > 0
       and ${t.profileRevision} > 0
       and ${t.recipientRevision} > 0
-      and ${t.offerNumber} ~ '^ANG-[0-9]{4}-[0-9]{6}$'
+      and ${t.offerNumber} ~ '^[A-Z0-9-]{2,8}-[0-9]{4}-[0-9]{4,8}$'
       and ${t.sourcePdfDraftState} = 'succeeded'
       and ${t.sourcePdfDraftMimeType} = 'application/pdf'
       and ${t.sourcePdfDraftSizeBytes} between 100 and 8388608

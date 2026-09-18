@@ -34,6 +34,13 @@ export {
   updatePaymentOption,
 } from "./payment-options";
 export {
+  getOfferNumberFormat,
+  OfferNumberFormatConflictError,
+  OfferNumberFormatNotFoundError,
+  OfferNumberFormatValidationError,
+  setOfferNumberFormat,
+} from "./number-format";
+export {
   applyOfferTemplate,
   applyPlanningTemplate,
   archiveOfferTemplate,

@@ -37,7 +37,8 @@ export const OFFER_RELEASE_CANDIDATE_RENDERER_RECIPE_VERSION =
 
 const MAX_DOCUMENT_LINES = 500;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
-const OFFER_NUMBER_PATTERN = /^ANG-[0-9]{4}-[0-9]{6}$/u;
+// F2.1 (0240): Obermenge — Legacy ANG/6 plus konfigurierte Prefixe/Padding.
+const OFFER_NUMBER_PATTERN = /^[A-Z0-9-]{2,8}-[0-9]{4}-[0-9]{4,8}$/u;
 const E164_PATTERN = /^\+[1-9][0-9]{1,14}$/u;
 const POSTAL_CODE_PATTERN = /^[0-9]{5}$/u;
 

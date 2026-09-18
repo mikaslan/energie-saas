@@ -242,10 +242,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0147 F16-04e Vorlagen-Labels (Spalte + CHECK),
     // 0148 F16-11 Paket-Vorlagen (Tabelle + RLS),
     // 0210 F1-14 Projekt-Team-Zuweisung (Tabelle + RLS),
-    // 0220 F2.8 Portal-Draw-Signatur (Invite-Kapsel + ACL)).
+    // 0220 F2.8 Portal-Draw-Signatur (Invite-Kapsel + ACL),
+    // 0240 F2.1 Angebotsnummernformat (Tabelle + RLS + CHECK-Weitung)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 150,
-      tag: "0220_f208_draw_signature_invite",
+      idx: 151,
+      tag: "0240_f201_offer_number_format",
     });
   });
 

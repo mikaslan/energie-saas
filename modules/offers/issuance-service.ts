@@ -31,7 +31,8 @@ import {
 const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const SAFE_ERROR_CODE_PATTERN = /^[a-z][a-z0-9_]{0,79}$/u;
-const OFFER_NUMBER_PATTERN = /^ANG-[0-9]{4}-[0-9]{6}$/u;
+// F2.1 (0240): Obermenge — Legacy ANG/6 plus konfigurierte Prefixe/Padding.
+const OFFER_NUMBER_PATTERN = /^[A-Z0-9-]{2,8}-[0-9]{4}-[0-9]{4,8}$/u;
 
 const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
 const nonnegativeAttemptSchema = z.int().safe().min(0).max(3);

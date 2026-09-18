@@ -2636,6 +2636,14 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       values (${randomUUID()}::uuid, ${wsId}::uuid, 'purchase', 'Kauf', 'purchase')
     `);
   },
+  // F2.1 Slice (0240): Angebotsnummernformat-Singleton — nur workspace-FK,
+  // RLS tenant_isolation, keine Actor-Policies.
+  workspace_offer_number_format: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into workspace_offer_number_format (workspace_id, prefix, padding, created_by)
+      values (${wsId}::uuid, 'ANG', 6, ${randomUUID()}::uuid)
+    `);
+  },
   // F7.1 Slice A (0069): genau eine Ausfuehrungsphase je Projekt.
   installation: async (tx, wsId) => {
     const { projectId } = await fixtureProjectGraph(tx, wsId);
@@ -3091,6 +3099,17 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
         workspace_id, default_planning_mode, revision, updated_by
       ) values (
         ${randomUUID()}::uuid, '3d', 1, ${randomUUID()}::uuid
+      )
+    `);
+  },
+  // F2.1 (0240): workspace_id-PK-Singleton — frische UUID statt wsA-Key,
+  // damit der Cross-Write an RLS (nicht an der PK) scheitert.
+  workspace_offer_number_format: async (tx) => {
+    await tx.execute(sql`
+      insert into workspace_offer_number_format (
+        workspace_id, prefix, padding, created_by
+      ) values (
+        ${randomUUID()}::uuid, 'ANG', 6, ${randomUUID()}::uuid
       )
     `);
   },

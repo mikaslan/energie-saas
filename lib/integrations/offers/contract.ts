@@ -1477,3 +1477,31 @@ export function renderOfferJsonSchema(): string {
   };
   return `${JSON.stringify(document, null, 2)}\n`;
 }
+
+// F2.1: Angebotsnummernformat je Workspace (Migration 0240). Prefix und
+// Padding gelten fuer neu angelegte Serien-Jahre; bestehende Nummern
+// (Legacy ANG/6) bleiben gueltig (CHECKs als Obermenge gewitet).
+export const OFFER_NUMBER_FORMAT_COMMAND_VERSION = "offer-number-format-command.v1" as const;
+export const OFFER_NUMBER_FORMAT_SCHEMA_VERSION = 1 as const;
+export const OFFER_NUMBER_FORMAT_DEFAULT_PREFIX = "ANG" as const;
+export const OFFER_NUMBER_FORMAT_DEFAULT_PADDING = 6 as const;
+export const OFFER_NUMBER_PREFIX_PATTERN = /^[A-Z0-9-]{2,8}$/u;
+
+export const offerNumberFormatDtoSchema = z.strictObject({
+  schemaVersion: z.literal(OFFER_NUMBER_FORMAT_SCHEMA_VERSION),
+  prefix: z.string().regex(OFFER_NUMBER_PREFIX_PATTERN),
+  padding: z.number().int().min(4).max(8),
+  revision: positiveRevisionSchema,
+  isDefault: z.boolean(),
+  preview: z.string(),
+  permissions: z.strictObject({ canWrite: z.boolean() }),
+});
+export type OfferNumberFormatDto = z.infer<typeof offerNumberFormatDtoSchema>;
+
+export const setOfferNumberFormatCommandSchema = z.strictObject({
+  schemaVersion: z.literal(OFFER_NUMBER_FORMAT_COMMAND_VERSION),
+  prefix: z.string().trim().toUpperCase().pipe(z.string().regex(OFFER_NUMBER_PREFIX_PATTERN)),
+  padding: z.number().int().min(4).max(8),
+  expectedRevision: positiveRevisionSchema.nullable(),
+});
+export type SetOfferNumberFormatCommand = z.infer<typeof setOfferNumberFormatCommandSchema>;

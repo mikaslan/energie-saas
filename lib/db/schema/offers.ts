@@ -59,8 +59,52 @@ export const offerNumberSeries = pgTable(
       name: "offer_number_series_workspace_id_fk",
     }),
     check("offer_number_series_year_ck", sql`${t.seriesYear} between 2000 and 9999`),
-    check("offer_number_series_format_ck", sql`${t.prefix} = 'ANG' and ${t.padding} = 6`),
+    check(
+      "offer_number_series_format_ck",
+      sql`${t.prefix} ~ '^[A-Z0-9-]{2,8}$' and ${t.padding} between 4 and 8`,
+    ),
     check("offer_number_series_sequence_ck", sql`${t.lastSequence} >= 0`),
+  ],
+);
+
+export const workspaceOfferNumberFormat = pgTable(
+  "workspace_offer_number_format",
+  {
+    id: uuid("id").defaultRandom(),
+    workspaceId: uuid("workspace_id").primaryKey().notNull(),
+    prefix: text("prefix").notNull().default("ANG"),
+    padding: integer("padding").notNull().default(6),
+    revision: integer("revision").notNull().default(1),
+    createdBy: uuid("created_by").notNull(),
+    updatedBy: uuid("updated_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("workspace_offer_number_format_ws_id_uq").on(t.workspaceId, t.id),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "workspace_offer_number_format_workspace_id_fk",
+    }),
+    check(
+      "workspace_offer_number_format_prefix_ck",
+      sql`${t.prefix} ~ '^[A-Z0-9-]{2,8}$'`,
+    ),
+    check(
+      "workspace_offer_number_format_padding_ck",
+      sql`${t.padding} between 4 and 8`,
+    ),
+    check(
+      "workspace_offer_number_format_revision_ck",
+      sql`${t.revision} between 1 and 2147483647`,
+    ),
+    check(
+      "workspace_offer_number_format_timestamps_ck",
+      sql`${t.updatedAt} >= ${t.createdAt}
+        and isfinite(${t.createdAt})
+        and isfinite(${t.updatedAt})`,
+    ),
   ],
 );
 
@@ -192,9 +236,9 @@ export const offer = pgTable(
       and ${t.priceAudienceDecision}->>'confirmationCode' = 'b2c_operator_confirmed'
       and (${t.priceAudienceDecision}->>'confirmedBy')::uuid = ${t.createdBy}
       and (${t.priceAudienceDecision}->>'confirmedAt')::timestamptz = ${t.createdAt}`),
-    check("offer_number_ck", sql`${t.offerNumber} ~ '^ANG-[0-9]{4}-[0-9]{6}$'`),
+    check("offer_number_ck", sql`${t.offerNumber} ~ '^[A-Z0-9-]{2,8}-[0-9]{4}-[0-9]{4,8}$'`),
     check("offer_number_parts_ck", sql`${t.numberYear} between 2000 and 9999
-      and ${t.numberSequence} between 1 and 999999`),
+      and ${t.numberSequence} between 1 and 99999999`),
     check("offer_forecast_ck", sql`${t.forecastValueNetCents} is null
       or ${moneyCheck(t.forecastValueNetCents)}`),
     check("offer_total_override_ck", sql`${t.totalPriceOverrideNetCents} is null

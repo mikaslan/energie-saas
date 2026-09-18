@@ -136,7 +136,7 @@ export const offerPdfDraftInputV1Schema = z.strictObject({
   templateVersion: z.literal(OFFER_PDF_DRAFT_TEMPLATE_VERSION),
   rendererRecipeVersion: z.literal(OFFER_PDF_DRAFT_RENDERER_RECIPE_VERSION),
   offerNumber: normalizedRequiredText(120).pipe(
-    z.string().regex(/^ANG-[0-9]{4}-[0-9]{6}$/u),
+    z.string().regex(/^[A-Z0-9-]{2,8}-[0-9]{4}-[0-9]{4,8}$/u),
   ),
   preparedAt: utcDateTimeSchema,
   recipient: z.strictObject({

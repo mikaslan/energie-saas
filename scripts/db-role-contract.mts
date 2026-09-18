@@ -235,6 +235,10 @@ const INVOICING_RELATIONS = [
   "workspace_invoicing_settings",
   "workspace_document_number_format",
 ] as const;
+// F2.1 (0240): Angebotsnummernformat — eigene Gate-Menge (atomar).
+const OFFER_NUMBER_FORMAT_RELATIONS = [
+  "workspace_offer_number_format",
+] as const;
 const INVOICING_RUNTIME_ROUTINES = [
   "public._m300_actor_invoicing_role(uuid)",
   "public._m300_actor_can_read_invoicing(uuid)",
@@ -2685,6 +2689,21 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     INVOICING_RELATIONS,
     "Rollen-ACL-Manifest: M3-00-Workspace-Invoicing",
   );
+  // F2.1 (0240): Angebotsnummernformat.
+  const hasOfferNumberFormat = await hasAtomicPublicRelationSet(
+    client,
+    OFFER_NUMBER_FORMAT_RELATIONS,
+    "Rollen-ACL-Manifest: F2.1-Angebotsnummernformat",
+  );
+  if (hasOfferNumberFormat) {
+    await client.query(`
+      revoke all privileges on
+        public.workspace_offer_number_format
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.workspace_offer_number_format to app_runtime;
+    `);
+  }
   if (hasWorkspaceInvoicing) {
     await client.query(`
       revoke all privileges on
@@ -4557,6 +4576,12 @@ export async function verifyRoleContract(
     INVOICING_RELATIONS,
     "Rollenvertrag: M3-00-Workspace-Invoicing",
   );
+  // F2.1 (0240): Angebotsnummernformat.
+  const hasOfferNumberFormat = await hasAtomicPublicRelationSet(
+    client,
+    OFFER_NUMBER_FORMAT_RELATIONS,
+    "Rollenvertrag: F2.1-Angebotsnummernformat",
+  );
   const hasCommercialDocuments = await hasAtomicPublicRelationSet(
     client,
     COMMERCIAL_DOCUMENT_RELATIONS,
@@ -5032,6 +5057,9 @@ export async function verifyRoleContract(
         "r:workspace_document_number_format",
         "r:workspace_invoicing_settings",
       ] : []),
+      ...(hasOfferNumberFormat ? OFFER_NUMBER_FORMAT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
       ...(hasEconomicsSettings ? ECONOMICS_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
@@ -6385,6 +6413,9 @@ export async function verifyRoleContract(
         "workspace_document_number_format:true:true",
         "workspace_invoicing_settings:true:true",
       ] : []),
+      ...(hasOfferNumberFormat ? OFFER_NUMBER_FORMAT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasEconomicsSettings ? ECONOMICS_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6828,6 +6859,10 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasLeadSources ? [
           "lead_source:tenant_isolation:a9f87b293bf7af190aa1baee3f1ca08c3198ed6accbd6fe1e10482f82817a450",
+        ] : []),
+        // F2.1 (0240): Angebotsnummernformat (Hash per Gate-Ist geerntet).
+        ...(hasOfferNumberFormat ? [
+          "workspace_offer_number_format:tenant_isolation:82764268d31d0c362321b105402d07ca52d3a67daafc86416a75c4cff4355010",
         ] : []),
         ...(hasTimeTracking ? [
           "time_event_type:tenant_isolation:3e74ed81c41e7311f7725bcc268f1408148780cb500d798998bd9e3c873e45c3",
@@ -7530,6 +7565,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasPaymentOptions ? PAYMENT_OPTION_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      ...(hasOfferNumberFormat ? OFFER_NUMBER_FORMAT_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

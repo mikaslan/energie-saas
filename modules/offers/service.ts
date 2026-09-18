@@ -1758,13 +1758,20 @@ export async function createOfferFromRequest(
     last_sequence: number;
     [key: string]: unknown;
   }>(sql`
+    -- F2.1 (0240): Neue Serien-Jahre uebernehmen das Workspace-Format
+    -- (Default ANG/6); bestehende Serien-Jahre bleiben unveraendert.
+    -- Ein Statement (kein Read-Modify-Write), Cap aus Zeilen-Padding.
     insert into offer_number_series (
       workspace_id, series_year, prefix, padding, last_sequence,
       created_at, updated_at
-    ) values (
-      ${ctx.workspaceId}::uuid, ${year}, 'ANG', 6, 1,
-      ${now}::timestamptz, ${now}::timestamptz
     )
+    select
+      ${ctx.workspaceId}::uuid, ${year},
+      coalesce(format.prefix, 'ANG'), coalesce(format.padding, 6), 1,
+      ${now}::timestamptz, ${now}::timestamptz
+      from (select 1) as one
+      left join workspace_offer_number_format as format
+        on format.workspace_id = ${ctx.workspaceId}::uuid
     on conflict (workspace_id, series_year)
     do update set last_sequence = offer_number_series.last_sequence + 1,
                   -- The conflict update acquires the shared series row only
@@ -1772,7 +1779,7 @@ export async function createOfferFromRequest(
                   -- at that point; reusing the pre-wait Offer timestamp could
                   -- otherwise move this monotone counter timestamp backwards.
                   updated_at = clock_timestamp()
-      where offer_number_series.last_sequence < 999999
+      where offer_number_series.last_sequence < (power(10, offer_number_series.padding)::integer - 1)
     returning prefix, padding, last_sequence
   `);
   const number = numberResult.rows[0];

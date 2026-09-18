@@ -257,9 +257,15 @@ describe("offer-pdf-draft-input.v1 contract", () => {
     expect(OFFER_PDF_DRAFT_RENDERER_RECIPE_VERSION)
       .toBe("offer-pdf-draft-renderer-recipe.v1-linux-amd64-pw1.62.1-c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac");
     expect(offerPdfDraftInputV1Schema.safeParse(directInput()).success).toBe(true);
+    // F2.1 (0240): Padding 4-8 ist konfigurierbar — "ANG-2026-0042" ist
+    // seither gueltig. Negativ-Probe bleibt auf 3-stelliger Folge.
     expect(offerPdfDraftInputV1Schema.safeParse({
       ...directInput(),
       offerNumber: "ANG-2026-0042",
+    }).success).toBe(true);
+    expect(offerPdfDraftInputV1Schema.safeParse({
+      ...directInput(),
+      offerNumber: "ANG-2026-042",
     }).success).toBe(false);
 
     for (const preparedAt of [

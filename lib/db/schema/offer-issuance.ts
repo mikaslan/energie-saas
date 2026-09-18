@@ -259,7 +259,7 @@ export const offerIssuance = pgTable(
       name: "offer_issuance_created_by_fk",
     }),
     check("offer_issuance_source_ck", sql`
-      ${t.offerNumber} ~ '^ANG-[0-9]{4}-[0-9]{6}$'
+      ${t.offerNumber} ~ '^[A-Z0-9-]{2,8}-[0-9]{4}-[0-9]{4,8}$'
       and ${t.variantRevision} > 0
       and ${t.profileRevision} > 0
       and ${t.recipientRevision} > 0
