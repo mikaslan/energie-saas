@@ -7,12 +7,14 @@ import {
   PORTAL_LANG_COOKIE_MAX_AGE,
 } from "@/lib/integrations/portal/portal-language";
 import { PortalNotFoundError } from "@/modules/portal";
+import { SIGNATURE_PNG_MAX_BYTES } from "@/lib/integrations/offers/signature-contract";
 import {
   revokeSignatureByInviteToken,
   SignatureConflictError,
   SignatureNotFoundError,
   SignatureValidationError,
   signSignatureByInviteToken,
+  signSignatureDrawByInviteToken,
 } from "@/modules/signatures";
 
 // F10-02c Portal-Signatur schreiben (dritter anonymer Schreibpfad des
@@ -37,6 +39,39 @@ async function signOutcome(
   try {
     const signed = await publicTokenCapsule((pool) =>
       signSignatureByInviteToken(pool, { token, issuanceId: issuance }),
+    );
+    return signed.status === "already_signed" ? "bereits" : "ok";
+  } catch (error) {
+    if (error instanceof SignatureNotFoundError) return "fehler";
+    if (error instanceof SignatureValidationError) return "fehler";
+    if (error instanceof SignatureConflictError) return "fehler";
+    if (error instanceof PortalNotFoundError) return "fehler";
+    throw error;
+  }
+}
+
+async function signDrawOutcome(
+  token: string,
+  form: FormData | null,
+): Promise<Outcome> {
+  if (!form) return "fehler";
+  const issuance = form.get("issuanceId");
+  if (typeof issuance !== "string" || !uuidSchema.safeParse(issuance).success) return "fehler";
+  // F2.8 Draw: PNG der gezeichneten Unterschrift als Multipart-Datei.
+  // Alles Unsaubere faellt uniform auf "fehler" (kein Orakel).
+  const file = form.get("signature");
+  if (!(file instanceof File) || file.type !== "image/png") return "fehler";
+  if (file.size < 1 || file.size > SIGNATURE_PNG_MAX_BYTES) return "fehler";
+  const artifactBytes = Buffer.from(await file.arrayBuffer());
+  if (artifactBytes.byteLength !== file.size) return "fehler";
+  try {
+    const signed = await publicTokenCapsule((pool) =>
+      signSignatureDrawByInviteToken(pool, {
+        token,
+        issuanceId: issuance,
+        artifactMimeType: "image/png",
+        artifactBytes,
+      }),
     );
     return signed.status === "already_signed" ? "bereits" : "ok";
   } catch (error) {
@@ -80,7 +115,9 @@ export async function POST(
     ? await revokeOutcome(token, form)
     : action === "sign"
       ? await signOutcome(token, form)
-      : ("fehler" as Outcome);
+      : action === "sign_draw"
+        ? await signDrawOutcome(token, form)
+        : ("fehler" as Outcome);
   const param = action === "revoke" ? "revoke" : "sign";
   // F10-06: Sprache aus dem Formular (Allowlist) in Redirect + Cookie
   // übernehmen, damit Feedback und Folgebesuche sprachstabil sind.

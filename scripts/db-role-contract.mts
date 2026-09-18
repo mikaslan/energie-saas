@@ -225,6 +225,11 @@ const F1002C_SIGNATURE_RUNTIME_ROUTINES = [
   "public.revoke_signature_by_invite(bytea,uuid)",
   "public.sign_signature_by_invite(bytea,uuid)",
 ] as const;
+// F2.8 (0220): Portal-Draw-Signatur — eigene Gate-Menge, damit alte
+// Prefixe ohne diese Funktion grün bleiben (atomar je Menge).
+const F208_SIGNATURE_RUNTIME_ROUTINES = [
+  "public.sign_signature_draw_by_invite(bytea,uuid,text,bytea)",
+] as const;
 
 const INVOICING_RELATIONS = [
   "workspace_invoicing_settings",
@@ -1561,6 +1566,23 @@ async function hasAtomicSignaturePortalWriteContract(
   return true;
 }
 
+async function hasAtomicSignatureDrawInviteContract(
+  client: PoolClient,
+  hasSignatures: boolean,
+  label: string,
+): Promise<boolean> {
+  if (!hasSignatures) return false;
+  const presence = await client.query<{ draw: boolean }>(`
+    select
+      pg_catalog.to_regprocedure(
+        'public.sign_signature_draw_by_invite(bytea,uuid,text,bytea)'
+      ) is not null as draw
+  `);
+  const row = presence.rows[0];
+  void label;
+  return row?.draw === true;
+}
+
 async function hasAtomicF704ChecklistContract(
   client: PoolClient,
   hasChecklists: boolean,
@@ -2609,11 +2631,18 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     hasSignatures,
     "Rollen-ACL-Manifest: F10-02c-Portal-Signatur-Schreiben",
   );
+  // F2.8 (0220): eigene Gate-Menge Draw-per-Invite.
+  const hasSignatureDrawInvite = await hasAtomicSignatureDrawInviteContract(
+    client,
+    hasSignatures,
+    "Rollen-ACL-Manifest: F2.8-Portal-Draw-Signatur",
+  );
   if (hasSignatures) {
     const signatureRuntimeRoutines = [
       ...SIGNATURE_RUNTIME_ROUTINES,
       ...(hasSignatureAcceptanceWon ? F208B_SIGNATURE_RUNTIME_ROUTINES : []),
       ...(hasSignaturePortalWrite ? F1002C_SIGNATURE_RUNTIME_ROUTINES : []),
+      ...(hasSignatureDrawInvite ? F208_SIGNATURE_RUNTIME_ROUTINES : []),
     ];
     const signaturePrivateRoutines = [
       ...SIGNATURE_PRIVATE_ROUTINES,
@@ -4495,6 +4524,12 @@ export async function verifyRoleContract(
     hasSignatures,
     "Rollenvertrag: F10-02c-Portal-Signatur-Schreiben",
   );
+  // F2.8 (0220): eigene Gate-Menge Draw-per-Invite.
+  const hasSignatureDrawInvite = await hasAtomicSignatureDrawInviteContract(
+    client,
+    hasSignatures,
+    "Rollenvertrag: F2.8-Portal-Draw-Signatur",
+  );
   const hasWorkspaceInvoicing = await hasAtomicPublicRelationSet(
     client,
     INVOICING_RELATIONS,
@@ -5453,6 +5488,7 @@ export async function verifyRoleContract(
         "revoke_signature_by_customer:app_owner",
         ...(hasSignaturePortalWrite ? ["revoke_signature_by_invite:app_owner"] : []),
         ...(hasSignaturePortalWrite ? ["sign_signature_by_invite:app_owner"] : []),
+        ...(hasSignatureDrawInvite ? ["sign_signature_draw_by_invite:app_owner"] : []),
         ...(hasSignatureAcceptanceWon ? ["sign_signature_analog:app_owner"] : []),
         "sign_signature_by_token:app_owner",
       ] : []),
@@ -5742,6 +5778,11 @@ export async function verifyRoleContract(
             "search_path=pg_catalog:9c22c63865f730ff04fa1e5a2c63b630671b2200065275cf6087a3bec7f2e668",
           "sign_signature_by_invite(bytea, uuid):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
             "search_path=pg_catalog:bb7477c724814748b5af92860fea285aae84222ea8b67a8eab47b246d2dd43dd",
+        ] : []),
+        // F2.8 (0220): Portal-Draw-Signatur (Hash aus Migrationstext).
+        ...(hasSignatureDrawInvite ? [
+          "sign_signature_draw_by_invite(bytea, uuid, text, bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
+            "search_path=pg_catalog:fd7e50a536da46fb692d0755bf3e1a0e9e92341d5ed61797b30ecf65089486c7",
         ] : []),
         ...(hasSignatureAcceptanceWon ? [
           "sign_signature_analog(uuid, uuid, timestamp with time zone, text, bytea):jsonb:" +
@@ -7877,6 +7918,9 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasSignaturePortalWrite ? [
           "app_runtime:sign_signature_by_invite(bytea, uuid):EXECUTE:app_owner:false",
+        ] : []),
+        ...(hasSignatureDrawInvite ? [
+          "app_runtime:sign_signature_draw_by_invite(bytea, uuid, text, bytea):EXECUTE:app_owner:false",
         ] : []),
         "app_runtime:sign_signature_by_token(bytea, text, text, bytea):EXECUTE:app_owner:false",
       ] : []),

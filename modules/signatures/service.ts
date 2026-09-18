@@ -15,6 +15,7 @@ import {
   signatureRequestCreateV1Schema,
   signatureRequestSignV1Schema,
   signatureRequestWithdrawV1Schema,
+  SIGNATURE_PNG_MAX_BYTES,
   SIGNATURE_STATUS,
   SIGNATURE_MODE,
   SIGNATURE_WITHDRAWAL_REASON,
@@ -742,6 +743,16 @@ const inviteCapsuleInputSchema = z.strictObject({
   issuanceId: uuidSchema,
 });
 
+// F2.8 Draw per Invite (0220): PNG-Artefakt der gezeichneten Unterschrift.
+// MIME fix image/png, Groesse 1..512 KiB (DB-Check spiegelt die Caps).
+const inviteCapsuleDrawInputSchema = z.strictObject({
+  token: z.string().min(1),
+  issuanceId: uuidSchema,
+  artifactMimeType: z.literal("image/png"),
+  artifactBytes: z.custom<Buffer>((value) => Buffer.isBuffer(value))
+    .refine((value) => value.byteLength >= 1 && value.byteLength <= SIGNATURE_PNG_MAX_BYTES),
+});
+
 async function resolveInviteTokenHash(pool: Pool, token: string): Promise<Buffer> {
   try {
     await resolvePortalByToken(pool, { token });
@@ -767,6 +778,44 @@ export async function signSignatureByInviteToken(
   if (!raw.success || rows.length !== 1) throw new SignatureIntegrityError();
   const parsed = signResultSchema.safeParse(raw.data.result);
   if (!parsed.success) return mapNonSuccess(raw.data.result);
+  // Falscher Stand (weder signiert noch Replay) fällt uniform auf
+  // NotFound — kein Orakel über Request-Existenz oder -Stand.
+  if (parsed.data.status !== "signed" && parsed.data.status !== "already_signed") {
+    throw new SignatureNotFoundError();
+  }
+  return {
+    requestId: parsed.data.requestId,
+    projectId: parsed.data.projectId ?? null,
+    offerId: parsed.data.offerId ?? null,
+    attestationId: parsed.data.attestationId ?? null,
+    status: parsed.data.status,
+    signerName: parsed.data.signerName ?? null,
+    signedAt: parsed.data.signedAt ?? null,
+  };
+}
+
+export async function signSignatureDrawByInviteToken(
+  pool: Pool,
+  value: unknown,
+): Promise<SignatureSignResult> {
+  // Reihenfolge (Artefakt vor Invite) wie Token-Pfad: Fehlertypen sind auf
+  // Service-Ebene unterscheidbar, die Route bleibt uniform (fehler).
+  const command = parseCommand(inviteCapsuleDrawInputSchema, value);
+  assertArtifactMagic(command.artifactMimeType, command.artifactBytes);
+  const tokenHash = await resolveInviteTokenHash(pool, command.token);
+  const rows = await poolRows(pool, `
+    select public.sign_signature_draw_by_invite($1::bytea, $2::uuid, $3::text, $4::bytea) as result
+  `, [tokenHash, command.issuanceId, command.artifactMimeType, command.artifactBytes]);
+  const raw = z.strictObject({ result: z.unknown() }).safeParse(rows[0]);
+  if (!raw.success || rows.length !== 1) throw new SignatureIntegrityError();
+  const parsed = signResultSchema.safeParse(raw.data.result);
+  if (!parsed.success) {
+    // Fail-soft der Kapsel (falscher MIME/Magic/Size bei Direktaufruf):
+    // Validation, keine Integritaetsverletzung.
+    const soft = z.strictObject({ status: z.literal("validation_error") }).safeParse(raw.data.result);
+    if (soft.success) throw new SignatureValidationError(["/artifactBytes"]);
+    return mapNonSuccess(raw.data.result);
+  }
   // Falscher Stand (weder signiert noch Replay) fällt uniform auf
   // NotFound — kein Orakel über Request-Existenz oder -Stand.
   if (parsed.data.status !== "signed" && parsed.data.status !== "already_signed") {
