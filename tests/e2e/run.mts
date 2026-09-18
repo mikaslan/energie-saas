@@ -154,6 +154,7 @@ type E2EState = Pick<
   f703bProjectId: string;
   f704ProjectId: string;
   f704cProjectId: string;
+  f114ProjectId: string;
   f22ProjectId: string;
   f22ControlProjectId: string;
   f25ProjectId: string;
@@ -1586,6 +1587,13 @@ async function main(): Promise<number> {
     w3Credential,
     intakePayload("Klara W3 Outbox", `w3-f704c-${randomUUID()}`, true),
   );
+  // F1-14: eigenes Projekt (M1-11b-Muster).
+  const w3F114Lead = await submitSignedLead(
+    server,
+    embedded.superuserUrl,
+    w3Credential,
+    intakePayload("Wilma W3 Projekt-Teams", `w3-f114-${randomUUID()}`, true),
+  );
   const w3F22Seed = await seedM201ReadyProject(embedded.superuserUrl, {
     workspaceId: seedData.w3WorkspaceId,
     editorIdentityId: seedData.editorIdentityId,
@@ -1709,6 +1717,7 @@ async function main(): Promise<number> {
     visualWorkspaceId: seedData.visualWorkspaceId,
     f704ProjectId: w3F704Lead.projectId,
     f704cProjectId: w3F704cLead.projectId,
+    f114ProjectId: w3F114Lead.projectId,
     f22ProjectId: w3F22Seed.projectId,
     f22ControlProjectId: w3F22ControlSeed.projectId,
     f25ProjectId: w3F25Seed.projectId,
