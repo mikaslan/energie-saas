@@ -18,6 +18,8 @@ import { listTeamMemberships, listTeamOptions, type TeamMembership, type TeamOpt
 import { DeniedState } from "../_ui";
 import { PlanningBoardAssignForm } from "./planning-board-assign-form";
 import { PlanningBoardCreateForm } from "./planning-board-create-form";
+import { PlanningBoardDragLayer } from "./planning-board-drag-layer";
+import { resolveEndDate } from "./drag-span";
 
 export const metadata: Metadata = {
   title: "Plantafel",
@@ -171,6 +173,7 @@ export default async function PlanningBoardPage(
     : null;
   const rawCreate = Array.isArray(query.create) ? query.create[0] : query.create;
   const rawMember = Array.isArray(query.member) ? query.member[0] : query.member;
+  const rawEnd = Array.isArray(query.end) ? query.end[0] : query.end;
   const createDate = rawCreate !== undefined && calendarDaySchema.safeParse(rawCreate).success
     ? rawCreate
     : null;
@@ -260,12 +263,20 @@ export default async function PlanningBoardPage(
   const createDay = createDate === null || createRow === null
     ? null
     : createRow.days.find((day) => day.date === createDate) ?? null;
+  // F7-05c: &end= nur valide (Kalendertag, >= create, Spanne <= 7 Tage),
+  // sonst Fallback end = create (tolerant, kein Fehler).
+  const createEndDate = createDay === null
+    ? null
+    : resolveEndDate(
+        createDay.date,
+        rawEnd !== undefined && calendarDaySchema.safeParse(rawEnd).success ? rawEnd : null,
+      );
   const showCreateForm = canWrite && createRow !== null && createDay !== null;
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
       <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8">
-        <p className="text-sm text-slate-500">Ressourcen-Übersicht</p>
+        <p className="text-sm text-slate-600">Ressourcen-Übersicht</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Plantafel</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
           Termine der Woche je Mitglied, gruppiert nach Team. Einträge tragen
@@ -301,6 +312,7 @@ export default async function PlanningBoardPage(
             Keine Mitglieder gefunden.
           </p>
         ) : (
+          <PlanningBoardDragLayer canWrite={canWrite} weekStart={board.weekStart} basePath={basePath}>
           <div className="mt-4 overflow-x-auto rounded-md border border-slate-200 bg-white">
             <table className="w-full min-w-[880px] border-collapse text-sm">
               <thead>
@@ -339,7 +351,12 @@ export default async function PlanningBoardPage(
                       {row.label}
                     </th>
                     {row.days.map((day) => (
-                      <td key={day.date} className="px-2 py-2 align-top">
+                      <td
+                        key={day.date}
+                        className="px-2 py-2 align-top"
+                        data-member={canWrite && row.membershipId !== null ? row.membershipId : undefined}
+                        data-date={canWrite && row.membershipId !== null ? day.date : undefined}
+                      >
                         {day.entries.length === 0 && !(canWrite && row.membershipId !== null) ? (
                           <span className="text-xs text-slate-400">—</span>
                         ) : (
@@ -388,12 +405,14 @@ export default async function PlanningBoardPage(
               </tbody>
             </table>
           </div>
+          </PlanningBoardDragLayer>
         )}
 
         {showCreateForm && (
           <PlanningBoardCreateForm
             workspaceId={workspaceId}
             date={createDay!.date}
+            endDate={createEndDate!}
             memberId={createRow!.membershipId!}
             memberLabel={createRow!.label}
             projects={projectOptions}

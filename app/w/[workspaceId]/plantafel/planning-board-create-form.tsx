@@ -44,6 +44,7 @@ function feedback(state: PlanningBoardCreateState): string | null {
 export function PlanningBoardCreateForm({
   workspaceId,
   date,
+  endDate,
   memberId,
   memberLabel,
   projects,
@@ -53,6 +54,7 @@ export function PlanningBoardCreateForm({
 }: {
   workspaceId: string;
   date: string;
+  endDate: string;
   memberId: string;
   memberLabel: string;
   projects: PlanningBoardProjectOption[];
@@ -68,7 +70,9 @@ export function PlanningBoardCreateForm({
   return (
     <section aria-label="Termin anlegen" className="mt-6 rounded-md border border-slate-200 bg-white px-4 py-4">
       <h2 className="text-lg font-semibold text-slate-900">
-        Neuer Termin am {date} für {memberLabel}
+        {endDate === date
+          ? <>Neuer Termin am {date} für {memberLabel}</>
+          : <>Neuer Termin vom {date} bis {endDate} für {memberLabel}</>}
       </h2>
       {projects.length === 0 || calendars.length === 0 ? (
         <p className="mt-2 text-sm text-slate-600">
@@ -86,6 +90,10 @@ export function PlanningBoardCreateForm({
           <label className={labelClass}>
             Ende (Uhrzeit)
             <input type="time" name="endTime" required defaultValue="11:00" className={inputClass} />
+          </label>
+          <label className={labelClass}>
+            Enddatum
+            <input type="date" name="endDate" required defaultValue={endDate} className={inputClass} />
           </label>
           <label className={`${labelClass} sm:col-span-2`}>
             Titel

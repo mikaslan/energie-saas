@@ -12,6 +12,7 @@ import {
   listProjectAppointments,
   PROJECT_APPOINTMENT_COMMAND_VERSION,
 } from "@/modules/calendar";
+import { composeEndWall, isValidEndDate } from "./drag-span";
 
 const uuidSchema = z.uuid();
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -62,6 +63,7 @@ export async function createPlanningBoardEntryAction(
   const calendarId = uuidSchema.safeParse(formData.get("calendarId"));
   const memberId = uuidSchema.safeParse(formData.get("attendeeMembershipId"));
   const date = daySchema.safeParse(formData.get("date"));
+  const endDate = daySchema.safeParse(formData.get("endDate"));
   const startTime = timeSchema.safeParse(formData.get("startTime"));
   const endTime = timeSchema.safeParse(formData.get("endTime"));
   const title = text(formData.get("title"));
@@ -80,8 +82,11 @@ export async function createPlanningBoardEntryAction(
     || !calendarId.success
     || !memberId.success
     || !date.success
+    || !endDate.success
     || !startTime.success
     || !endTime.success
+    // F7-05c: endDate >= date und Spanne <= 7 Tage, sonst invalid.
+    || !isValidEndDate(date.data, endDate.data)
     || title === null
     || title.length > 2000
     || !type.success
@@ -101,7 +106,7 @@ export async function createPlanningBoardEntryAction(
         projectId: projectId.data,
         title,
         start: `${date.data}T${startTime.data}:00`,
-        end: `${date.data}T${endTime.data}:00`,
+        end: composeEndWall(endDate.data, endTime.data),
         allDay: false,
         type: type.data,
         location,
