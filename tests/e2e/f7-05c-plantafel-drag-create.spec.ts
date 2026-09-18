@@ -231,9 +231,29 @@ async function dragCells(
   const fromBox = await from.boundingBox();
   const toBox = await to.boundingBox();
   if (!fromBox || !toBox) throw new Error("Drag-Zellen nicht vermessen.");
-  await page.mouse.move(fromBox.x + fromBox.width / 2, fromBox.y + fromBox.height / 2);
+  // CI-Flake-Haertung (Run 35296129611): Der Zellenmittelpunkt kann auf dem
+  // ＋-Link liegen — dort startet per Design kein Drag (Links bleiben
+  // klickbar), und Down-auf-Link + Up-woanders feuert auch keinen Klick →
+  // keine Navigation. Punkt so lange nach oben schieben, bis er ausserhalb
+  // jedes Links liegt (fail-fast statt Flake).
+  const offLinkPoint = async (box: { x: number; y: number; width: number; height: number }) => {
+    const px = box.x + box.width / 2;
+    let py = box.y + box.height / 2;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const onLink = await page.evaluate(([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit instanceof Element && hit.closest("a") !== null;
+      }, [px, py] as const);
+      if (!onLink) return { x: px, y: py };
+      py = Math.max(box.y + 2, py - 8);
+    }
+    throw new Error("Kein linkfreier Drag-Punkt in der Zelle.");
+  };
+  const start = await offLinkPoint(fromBox);
+  const end = await offLinkPoint(toBox);
+  await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(toBox.x + toBox.width / 2, toBox.y + toBox.height / 2, { steps: 8 });
+  await page.mouse.move(end.x, end.y, { steps: 8 });
   await page.mouse.up();
 }
 
