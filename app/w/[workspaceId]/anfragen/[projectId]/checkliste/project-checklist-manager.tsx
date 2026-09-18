@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import {
   CHECKLIST_BLOCKS_TRANSPORT_MAX_BYTES,
   CHECKLIST_ITEM_PHOTOS_MAX,
@@ -35,6 +35,27 @@ import {
   unassignChecklistBlockTeamAction,
   type ChecklistActionState,
 } from "./actions";
+import {
+  PHOTO_MARKUP_ARROW_COLOR,
+  PHOTO_MARKUP_ARROW_HEAD_LENGTH,
+  PHOTO_MARKUP_DISPLAY_MAX_EDGE,
+  PHOTO_MARKUP_EXPORT_MAX_EDGE,
+  PHOTO_MARKUP_FONT_SIZE,
+  PHOTO_MARKUP_LINE_WIDTH,
+  PHOTO_MARKUP_MAX_BYTES,
+  PHOTO_MARKUP_TEXT_MAX,
+  arrowHeadPoints,
+  capMarkupText,
+  clampPoint,
+  fitSize,
+  photoMarkupFont,
+  scaleLength,
+  scalePoint,
+  type MarkupAnnotations,
+  type MarkupArrow,
+  type MarkupPoint,
+  type MarkupSize,
+} from "./photo-markup";
 import { enqueueSegmentComplete } from "./segment-outbox";
 import { SegmentOutboxSync } from "./segment-outbox-sync";
 
@@ -1318,6 +1339,291 @@ function galleryKeys(item: ChecklistItemV1): string[] {
   return cover === null ? [] : [cover];
 }
 
+// F7-15b: Annotationen (Pfeile + Texte, Display-Koords) auf einen 2D-Kontext
+// zeichnen — Display (Faktor 1) wie Export (Faktor > 1); Farbe/Schrift fix.
+function drawMarkupAnnotations(
+  context: CanvasRenderingContext2D,
+  annotations: MarkupAnnotations,
+  factor: number,
+): void {
+  context.save();
+  context.strokeStyle = PHOTO_MARKUP_ARROW_COLOR;
+  context.fillStyle = PHOTO_MARKUP_ARROW_COLOR;
+  context.lineWidth = scaleLength(PHOTO_MARKUP_LINE_WIDTH, factor);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.font = photoMarkupFont(scaleLength(PHOTO_MARKUP_FONT_SIZE, factor));
+  context.textBaseline = "top";
+  for (const arrow of annotations.arrows) {
+    const from = scalePoint(arrow.from, factor);
+    const to = scalePoint(arrow.to, factor);
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.lineTo(to.x, to.y);
+    context.stroke();
+    const [first, second] = arrowHeadPoints(
+      from, to, scaleLength(PHOTO_MARKUP_ARROW_HEAD_LENGTH, factor),
+    );
+    context.beginPath();
+    context.moveTo(to.x, to.y);
+    context.lineTo(first.x, first.y);
+    context.moveTo(to.x, to.y);
+    context.lineTo(second.x, second.y);
+    context.stroke();
+  }
+  for (const entry of annotations.texts) {
+    const at = scalePoint(entry.at, factor);
+    context.fillText(entry.text, at.x, at.y);
+  }
+  context.restore();
+}
+
+// F7-15b Fotodoku-Markup — Editor-Dialog am Galerie-Foto (client-only).
+// Bildquelle ist die Vorschau-Daten-URL (kein Server-Roundtrip vor Save);
+// Pfeil per Drag (02i-Pointer-Muster), Text-Anker per Klick; Save brennt auf
+// Export-Kante (max 2048) ein und liefert das PNG-Blob an onSave (Upload +
+// Append dort). Abbrechen/Escape: kein Upload, kein Tree-Touch.
+function ItemPhotoMarkupDialog({ title, position, total, dataUrl, onSave, onClose }: {
+  title: string;
+  position: number;
+  total: number;
+  dataUrl: string;
+  onSave: (blob: Blob) => Promise<void>;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const draftFromRef = useRef<MarkupPoint | null>(null);
+  const [photo, setPhoto] = useState<HTMLImageElement | null>(null);
+  const [displaySize, setDisplaySize] = useState<MarkupSize | null>(null);
+  const [exportSize, setExportSize] = useState<MarkupSize | null>(null);
+  const [tool, setTool] = useState<"arrow" | "text">("arrow");
+  const [annotations, setAnnotations] = useState<MarkupAnnotations>({ arrows: [], texts: [] });
+  const [draft, setDraft] = useState<MarkupArrow | null>(null);
+  const [textInput, setTextInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const markedCount = annotations.arrows.length + annotations.texts.length;
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const image = new Image();
+    image.onload = () => {
+      setDisplaySize(fitSize(image.naturalWidth, image.naturalHeight, PHOTO_MARKUP_DISPLAY_MAX_EDGE));
+      setExportSize(fitSize(image.naturalWidth, image.naturalHeight, PHOTO_MARKUP_EXPORT_MAX_EDGE));
+      setPhoto(image);
+    };
+    image.onerror = () => setError("Foto konnte nicht geladen werden.");
+    image.src = dataUrl;
+    return () => {
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [dataUrl]);
+
+  // Display-Composit: Foto + Annotationen (+ Entwurf beim Ziehen).
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !photo || !displaySize) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, displaySize.width, displaySize.height);
+    context.drawImage(photo, 0, 0, displaySize.width, displaySize.height);
+    drawMarkupAnnotations(context, {
+      arrows: draft ? [...annotations.arrows, draft] : annotations.arrows,
+      texts: annotations.texts,
+    }, 1);
+  }, [photo, displaySize, annotations, draft]);
+
+  const canvasPoint = (event: { clientX: number; clientY: number }): MarkupPoint | null => {
+    const canvas = canvasRef.current;
+    if (!canvas || !displaySize) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return clampPoint({
+      x: Math.round((event.clientX - rect.left) * (canvas.width / rect.width)),
+      y: Math.round((event.clientY - rect.top) * (canvas.height / rect.height)),
+    }, displaySize.width, displaySize.height);
+  };
+
+  const placeText = (at: MarkupPoint) => {
+    const text = capMarkupText(textInput).trim();
+    if (text === "") {
+      setNotice("Bitte zuerst einen Markierungstext eingeben.");
+      return;
+    }
+    setNotice(null);
+    setAnnotations((prev) => ({ ...prev, texts: [...prev.texts, { at, text }] }));
+    setTextInput("");
+  };
+
+  const save = async () => {
+    if (markedCount === 0) {
+      setNotice("Bitte zuerst markieren.");
+      return;
+    }
+    const currentPhoto = photo;
+    const currentDisplay = displaySize;
+    const currentExport = exportSize;
+    if (!currentPhoto || !currentDisplay || !currentExport) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = currentExport.width;
+      canvas.height = currentExport.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Markiertes Foto speichern ist fehlgeschlagen.");
+      context.drawImage(currentPhoto, 0, 0, currentExport.width, currentExport.height);
+      drawMarkupAnnotations(context, annotations, currentExport.width / currentDisplay.width);
+      await onSave(await canvasToPng(canvas));
+      onClose();
+    } catch (thrown) {
+      setError(thrown instanceof Error ? thrown.message : "Markiertes Foto speichern ist fehlgeschlagen.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusText = markedCount === 0
+    ? "Keine Markierungen."
+    : markedCount === 1 ? "1 Markierung." : `${markedCount} Markierungen.`;
+  const toolClass = (active: boolean) => active
+    ? "min-h-11 rounded-md border border-slate-400 bg-slate-200 px-3 text-xs font-semibold text-slate-900 outline-none hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+    : "min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100";
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-2 sm:p-4">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !saving) onClose();
+        }}
+        className="max-h-[calc(100dvh-1rem)] w-full max-w-3xl overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6"
+      >
+        <h2 id={titleId} className="break-words text-lg font-semibold text-slate-950">
+          Foto markieren
+        </h2>
+        <p id={descriptionId} className="mt-1 text-xs leading-5 text-slate-600">
+          {`${title}: Foto ${position} von ${total}. Pfeil ziehen oder Text-Werkzeug wählen, Text eingeben und die Stelle anklicken. Speichern legt eine markierte Kopie als zusätzliches Galerie-Foto an; das Original bleibt unverändert.`}
+        </p>
+        {photo !== null && displaySize !== null ? (
+          <canvas
+            ref={canvasRef}
+            width={displaySize.width}
+            height={displaySize.height}
+            aria-label={`${title}: Markierung zeichnen`}
+            onPointerDown={(event) => {
+              if (saving) return;
+              const point = canvasPoint(event);
+              if (!point) return;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              if (tool === "text") placeText(point);
+              else {
+                draftFromRef.current = point;
+                setDraft({ from: point, to: point });
+              }
+            }}
+            onPointerMove={(event) => {
+              const from = draftFromRef.current;
+              if (tool !== "arrow" || !from) return;
+              const point = canvasPoint(event);
+              if (point) setDraft({ from, to: point });
+            }}
+            onPointerUp={(event) => {
+              const from = draftFromRef.current;
+              draftFromRef.current = null;
+              setDraft(null);
+              if (tool !== "arrow" || !from) return;
+              const point = canvasPoint(event);
+              if (point && Math.hypot(point.x - from.x, point.y - from.y) >= 2) {
+                setAnnotations((prev) => ({ ...prev, arrows: [...prev.arrows, { from, to: point }] }));
+                setNotice(null);
+              }
+            }}
+            onPointerCancel={() => {
+              draftFromRef.current = null;
+              setDraft(null);
+            }}
+            className="mt-2 max-w-full touch-none rounded-md border border-slate-300 bg-white"
+          />
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">Foto wird geladen …</p>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTool("arrow")}
+            aria-pressed={tool === "arrow"}
+            disabled={saving}
+            className={toolClass(tool === "arrow")}
+          >
+            Pfeil
+          </button>
+          <button
+            type="button"
+            onClick={() => setTool("text")}
+            aria-pressed={tool === "text"}
+            disabled={saving}
+            className={toolClass(tool === "text")}
+          >
+            Text
+          </button>
+        </div>
+        <label className="mt-2 flex min-h-11 w-fit max-w-full flex-wrap items-center gap-2 text-xs text-slate-600">
+          Markierungstext
+          <input
+            aria-label="Markierungstext"
+            value={textInput}
+            maxLength={PHOTO_MARKUP_TEXT_MAX}
+            onChange={(event) => setTextInput(event.target.value)}
+            disabled={saving}
+            placeholder="z. B. Riss hier"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-800 outline-none focus:border-brand-600 focus-visible:ring-2 focus-visible:ring-brand-600"
+          />
+        </label>
+        <p role="status" className="mt-1 text-xs text-slate-500">{statusText}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || photo === null}
+            className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+          >
+            {saving ? "Speichert …" : "Markierung speichern"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+          >
+            Abbrechen
+          </button>
+        </div>
+        {notice !== null ? (
+          <p className="mt-1 text-xs font-semibold text-amber-700">{notice}</p>
+        ) : null}
+        {error !== null ? (
+          <p role="alert" className="mt-1 text-xs font-semibold text-red-700">{error}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 // F7-15: Batch-Upload + Galerie am Bild-Punkt (Vorgaenger 02g: Single-Foto
 // mit Ersetzen). Upload per Route (10 MiB, F10-04-Praezedenz; 1 Datei pro
 // Request, Client-Loop ueber `input multiple`); die Keys landen im lokalen
@@ -1339,6 +1645,8 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
   const [uploading, setUploading] = useState(false);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [markup, setMarkup] = useState<{ dataUrl: string; position: number } | null>(null);
+  const [markupLoading, setMarkupLoading] = useState(false);
   const fetchedRef = useRef<Set<string>>(new Set());
   // F7-15: Ref-Spiegel der Previews — der Fetch-Guard unten braucht den
   // aktuellen Stand ohne Effect-Re-Runs (Keys sind inhalts-deterministisch:
@@ -1456,6 +1764,71 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
       current.filter((_, galleryIndex) => galleryIndex !== removalIndex), canWrite);
   };
 
+  // F7-15b: Editor-Einstieg je Galerie-Foto — Quelle ist der lokale Preview
+  // (kein Server-Roundtrip vor Save); fehlt er (li ohne Bild), EIN
+  // GET+index-Fetch (Lese-Pfad; Mark im Ref gegen Doppel-Fetch).
+  const openMarkup = async (galleryIndex: number, key: string) => {
+    const cached = previews[key];
+    if (cached !== undefined) {
+      setMarkup({ dataUrl: cached, position: galleryIndex + 1 });
+      return;
+    }
+    if (checklistId === null) {
+      setLoadError("Foto konnte nicht geladen werden.");
+      return;
+    }
+    fetchedRef.current.add(`${galleryIndex}:${key}`);
+    setMarkupLoading(true);
+    try {
+      const response = await fetch(
+        `/api/workspaces/${workspaceId}/projects/${projectId}/checkliste/foto`
+        + `?checklistId=${encodeURIComponent(checklistId)}&itemId=${encodeURIComponent(item.id)}`
+        + `&index=${galleryIndex}`,
+      );
+      if (!response.ok) throw new Error(`foto GET ${response.status}`);
+      const dataUrl = await blobToDataUrl(await response.blob());
+      setPreviews((prev) => ({ ...prev, [key]: dataUrl }));
+      setLoadError(null);
+      setMarkup({ dataUrl, position: galleryIndex + 1 });
+    } catch {
+      setLoadError("Foto konnte nicht geladen werden.");
+    } finally {
+      setMarkupLoading(false);
+    }
+  };
+
+  // F7-15b: Save-Flow — Size-Pre-Check (deutsch) → Upload als „markiert.png"
+  // → lokaler Preview → Append+Dedupe (Updater-Muster). Original unberuehrt,
+  // Cover bleibt photos[0] (Cover-Regel unveraendert).
+  const saveMarkup = async (blob: Blob) => {
+    if (blob.size > PHOTO_MARKUP_MAX_BYTES) {
+      throw new Error("Markiertes Foto zu gross (max. 10 MB).");
+    }
+    if (galleryKeys(item).length >= CHECKLIST_ITEM_PHOTOS_MAX) {
+      throw new Error(`Höchstens ${CHECKLIST_ITEM_PHOTOS_MAX} Fotos je Bildpunkt.`);
+    }
+    let photoKey: string;
+    try {
+      photoKey = await postItemPhoto({
+        workspaceId,
+        projectId,
+        checklistId,
+        itemId: item.id,
+        file: blob,
+        filename: "markiert.png",
+      });
+    } catch (thrown) {
+      throw new Error(itemPhotoUploadErrorText(
+        (thrown as ItemPhotoUploadError | null) ?? { status: "network" },
+        "Markiertes Foto speichern",
+      ));
+    }
+    const dataUrl = await blobToDataUrl(blob);
+    setPreviews((prev) => ({ ...prev, [photoKey]: dataUrl }));
+    onChangePhotos(itemIndex, (current) =>
+      (current.includes(photoKey) ? current : [...current, photoKey]), canWrite);
+  };
+
   return (
     <div className="mt-1">
       {keys.length > 0 ? (
@@ -1484,6 +1857,18 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
                     className="mt-0.5 min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
                   >
                     Entfernen
+                  </button>
+                ) : null}
+                {canWrite ? (
+                  <button
+                    type="button"
+                    onClick={() => void openMarkup(galleryIndex, key)}
+                    disabled={keys.length >= CHECKLIST_ITEM_PHOTOS_MAX || markupLoading}
+                    title={keys.length >= CHECKLIST_ITEM_PHOTOS_MAX ? "Galerie voll" : undefined}
+                    aria-label={`${title}: Foto ${position} markieren`}
+                    className="ml-2 mt-0.5 min-h-11 rounded-md border border-slate-300 px-3 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  >
+                    Markieren
                   </button>
                 ) : null}
               </li>
@@ -1517,6 +1902,16 @@ function ItemPhotoControl({ workspaceId, projectId, checklistId, item, title, it
       ) : null}
       {shownError !== null ? (
         <p role="alert" className="mt-1 text-xs font-semibold text-red-700">{shownError}</p>
+      ) : null}
+      {markup !== null ? (
+        <ItemPhotoMarkupDialog
+          title={title}
+          position={markup.position}
+          total={keys.length}
+          dataUrl={markup.dataUrl}
+          onSave={saveMarkup}
+          onClose={() => setMarkup(null)}
+        />
       ) : null}
     </div>
   );
