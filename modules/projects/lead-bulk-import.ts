@@ -1,20 +1,31 @@
-// F1-02 Lead-Bulk-CSV-Import: mehrere manuelle Anfragen aus einer
-// CSV-Datei (Semikolon oder Komma) anlegen — inkl. Dry-Run-Prüfung.
-// Berechtigung: bestehendes project.write (KEIN neuer Key).
+// F1-02 Lead-Bulk-Import (F1-17: CSV + xlsx): mehrere manuelle Anfragen
+// aus einer Datei anlegen — CSV (Semikolon oder Komma) oder xlsx (erstes
+// Blatt) — inkl. Dry-Run-Prüfung. Berechtigung: bestehendes project.write
+// (KEIN neuer Key).
 //
 // Architektur: Modulgrenzen (depcruise) — jede gültige Zeile läuft durch
 // createManualLead (Dedupe, Intake-Lane, Audit, Events); die optionale
 // Notiz schreibt NICHT dieser Service, sondern der injizierte writeNote-
-// Callback der Server Action (gleiche Grenze wie F1-11). Dry-Run legt alle
-// Zeilen in einem SAVEPOINT an und rollt zurück: Validierung (inkl.
-// Markdown-Vorabprüfung und Quellennamen) ohne Writes, Events oder Audit.
+// Callback der Server Action (gleiche Grenze wie F1-11). Qualifizierte
+// Zeilen (residential + 4 Adresszellen) werden danach automatisch
+// geocodiert (lead-bulk-geocode, fail-closed je Zeile, sequentiell, kein
+// Retry — Commercial nie). Dry-Run legt alle Zeilen in einem SAVEPOINT an
+// und rollt zurück: Validierung (inkl. Markdown-Vorabprüfung und
+// Quellennamen) ohne Writes, Events, Audit oder Geocode-Calls.
 // Nicht-atomar: gültige Zeilen werden angelegt, ungültige landen mit
 // stabilen Fehlercodes im Bericht (kein stiller Drop).
 import { sql } from "drizzle-orm";
+import * as XLSX from "xlsx";
 import { z } from "zod";
 import type { TenantTx } from "@/lib/db/types";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { normalizeLeadSourceName } from "@/modules/lead-sources";
+import {
+  type BulkGeocodeDeps,
+  geocodeBulkLeadSite,
+  isBulkGeocodeQualified,
+  type ManualLeadBulkGeocodeError,
+} from "./lead-bulk-geocode";
 import {
   createManualLead,
   ManualLeadLaneError,
@@ -22,9 +33,19 @@ import {
 } from "./manual-lead-service";
 
 export const MANUAL_LEAD_BULK_VERSION = 1;
-export const MANUAL_LEAD_BULK_REPORT_VERSION = 1;
-/** Reversibles ESTIMATE-Limit: max. Datenzeilen pro Datei. */
+export const MANUAL_LEAD_BULK_REPORT_VERSION = 2;
+/** Reversibles ESTIMATE-Limit: max. Datenzeilen pro Datei (CSV + xlsx). */
 export const MANUAL_LEAD_BULK_MAX_ROWS = 500;
+/** Reversibles ESTIMATE-Limit: max. xlsx-Dateigröße in Bytes. */
+export const MANUAL_LEAD_BULK_XLSX_MAX_BYTES = 5 * 1024 * 1024;
+/** Reversibles ESTIMATE-Limit: max. xlsx-Spalten (Kopfbreite). */
+export const MANUAL_LEAD_BULK_XLSX_MAX_COLUMNS = 10;
+/** Reversibles ESTIMATE-Limit: max. Zeichen je xlsx-Kopfzelle. */
+export const MANUAL_LEAD_BULK_XLSX_HEADER_MAX_CHARS = 100;
+/** Reversibles ESTIMATE-Limit: max. Zeichen je xlsx-Datenzelle. */
+export const MANUAL_LEAD_BULK_XLSX_CELL_MAX_CHARS = 2000;
+
+export type ManualLeadBulkFileKind = "csv" | "xlsx";
 
 export class ManualLeadBulkFileError extends Error {
   constructor(
@@ -34,7 +55,12 @@ export class ManualLeadBulkFileError extends Error {
       | "missing-name-column"
       | "unknown-column"
       | "duplicate-column"
-      | "too-many-rows",
+      | "too-many-rows"
+      | "too-large"
+      | "too-many-columns"
+      | "header-too-long"
+      | "cell-too-long"
+      | "invalid-xlsx",
     public readonly detail?: string,
   ) {
     super(`manual lead bulk file error: ${code}${detail ? ` (${detail})` : ""}`);
@@ -54,6 +80,12 @@ export type ManualLeadBulkRowError =
   | "note-denied"
   | "note-failed";
 
+const manualLeadBulkGeocodeErrorSchema = z.enum([
+  "no-candidate",
+  "provider-error",
+  "collision",
+]);
+
 const manualLeadBulkRowSchema = z.strictObject({
   line: z.number().int().positive(),
   displayName: z.string().nullable(),
@@ -72,6 +104,10 @@ const manualLeadBulkRowSchema = z.strictObject({
       "note-failed",
     ]),
   ),
+  // Report v2 (additiv): null = kein Versuch (Dry-Run, ungültige Zeile,
+  // Commercial, unvollständige Adresse).
+  geocoded: z.boolean().nullable(),
+  geocodeError: manualLeadBulkGeocodeErrorSchema.nullable(),
 });
 
 export const manualLeadBulkReportSchema = z.strictObject({
@@ -82,6 +118,8 @@ export const manualLeadBulkReportSchema = z.strictObject({
   createdCount: z.number().int().nonnegative(),
   reusedCount: z.number().int().nonnegative(),
   noteFailedProjectIds: z.array(z.string()),
+  geocodedCount: z.number().int().nonnegative(),
+  geocodeFailedCount: z.number().int().nonnegative(),
   rows: z.array(manualLeadBulkRowSchema),
 });
 
@@ -225,7 +263,7 @@ function parseScopeCell(
 }
 
 type ParsedBulkFile = {
-  delimiter: string;
+  fileKind: ManualLeadBulkFileKind;
   columns: CanonicalColumn[];
   rows: Array<{ line: number; cells: Record<CanonicalColumn, string | undefined> }>;
 };
@@ -240,6 +278,26 @@ function parseBulkCsv(csvText: string): ParsedBulkFile {
   const delimiter = detectDelimiter(header.text);
   const headerCells = splitCsvLine(header.text, delimiter);
   if (headerCells === null) throw new ManualLeadBulkFileError("no-delimiter", "Kopfzeile");
+  const columns = mapHeaderCells(headerCells);
+  const rows = nonEmpty.slice(1).map(({ text, line }) => {
+    const cells = splitCsvLine(text, delimiter) ?? [];
+    const record = {} as Record<CanonicalColumn, string | undefined>;
+    for (let index = 0; index < columns.length; index += 1) {
+      const value = cells[index]?.trim() ?? "";
+      record[columns[index]!] = value === "" ? undefined : value;
+    }
+    return { line, cells: record };
+  });
+  if (rows.length > MANUAL_LEAD_BULK_MAX_ROWS) {
+    throw new ManualLeadBulkFileError("too-many-rows", `${rows.length}`);
+  }
+  if (rows.length === 0) throw new ManualLeadBulkFileError("empty-file");
+  return { fileKind: "csv", columns, rows };
+}
+
+function mapHeaderCells(
+  headerCells: string[],
+): CanonicalColumn[] {
   const columns: CanonicalColumn[] = [];
   const seen = new Set<CanonicalColumn>();
   for (const cell of headerCells) {
@@ -258,34 +316,113 @@ function parseBulkCsv(csvText: string): ParsedBulkFile {
     columns.push(canonical);
   }
   if (!seen.has("displayName")) throw new ManualLeadBulkFileError("missing-name-column");
-  const rows = nonEmpty.slice(1).map(({ text, line }) => {
-    const cells = splitCsvLine(text, delimiter) ?? [];
-    const record = {} as Record<CanonicalColumn, string | undefined>;
-    for (let index = 0; index < columns.length; index += 1) {
-      const value = cells[index]?.trim() ?? "";
-      record[columns[index]!] = value === "" ? undefined : value;
+  return columns;
+}
+
+/**
+ * Zelltext ohne Typ-Überraschungen: formatierte Anzeige (`w`) bevorzugen,
+ * damit als Zahl gespeicherte Inhalte (Telefon, PLZ) ihre Darstellung
+ * behalten; leer oder fehlend → undefined.
+ */
+function xlsxCellText(cell: XLSX.CellObject | undefined): string | undefined {
+  if (!cell) return undefined;
+  const raw = typeof cell.w === "string" ? cell.w : cell.v;
+  if (raw === null || raw === undefined) return undefined;
+  const text = String(raw).trim();
+  return text === "" ? undefined : text;
+}
+
+function parseBulkXlsx(bytes: Uint8Array): ParsedBulkFile {
+  if (bytes.byteLength > MANUAL_LEAD_BULK_XLSX_MAX_BYTES) {
+    throw new ManualLeadBulkFileError("too-large", `${bytes.byteLength}`);
+  }
+  if (bytes.byteLength === 0) throw new ManualLeadBulkFileError("empty-file");
+  // xlsx ist ein ZIP-Container: ohne PK-Magie ist es garantiert kein xlsx
+  // (der Parser selbst würde Text still als Blatt deuten).
+  if (bytes.byteLength < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    throw new ManualLeadBulkFileError("invalid-xlsx");
+  }
+  let workbook: XLSX.WorkBook;
+  try {
+    // Nur erstes Blatt, nur lesend; sheetRows deckelt die Parser-Arbeit:
+    // Kopf + alle Datenzeilen + eine Zeile Überlauf-Erkennung.
+    workbook = XLSX.read(bytes, {
+      type: "buffer",
+      sheetRows: MANUAL_LEAD_BULK_MAX_ROWS + 2,
+    });
+  } catch {
+    throw new ManualLeadBulkFileError("invalid-xlsx");
+  }
+  const firstName = workbook.SheetNames[0];
+  const sheet = firstName === undefined ? undefined : workbook.Sheets[firstName];
+  if (!sheet || typeof sheet["!ref"] !== "string") {
+    throw new ManualLeadBulkFileError("empty-file");
+  }
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+
+  const rawHeader: Array<string | undefined> = [];
+  for (let c = range.s.c; c <= range.e.c; c += 1) {
+    rawHeader.push(xlsxCellText(sheet[XLSX.utils.encode_cell({ r: range.s.r, c })]));
+  }
+  while (rawHeader.length > 0 && rawHeader[rawHeader.length - 1] === undefined) {
+    rawHeader.pop();
+  }
+  if (rawHeader.length > MANUAL_LEAD_BULK_XLSX_MAX_COLUMNS) {
+    throw new ManualLeadBulkFileError("too-many-columns", `${rawHeader.length}`);
+  }
+  const headerCells = rawHeader.map((cell) => {
+    const text = cell ?? "";
+    if (text.length > MANUAL_LEAD_BULK_XLSX_HEADER_MAX_CHARS) {
+      throw new ManualLeadBulkFileError("header-too-long", text.slice(0, 50));
     }
-    return { line, cells: record };
+    return text;
   });
+  if (headerCells.length === 0) throw new ManualLeadBulkFileError("empty-file");
+  const columns = mapHeaderCells(headerCells);
+
+  const rows: ParsedBulkFile["rows"] = [];
+  for (let r = range.s.r + 1; r <= range.e.r; r += 1) {
+    const record = {} as Record<CanonicalColumn, string | undefined>;
+    let hasCell = false;
+    for (let index = 0; index < columns.length; index += 1) {
+      const text = xlsxCellText(
+        sheet[XLSX.utils.encode_cell({ r, c: range.s.c + index })],
+      );
+      if (text === undefined) continue;
+      if (text.length > MANUAL_LEAD_BULK_XLSX_CELL_MAX_CHARS) {
+        throw new ManualLeadBulkFileError("cell-too-long", `Zeile ${r + 1}`);
+      }
+      hasCell = true;
+      record[columns[index]!] = text;
+    }
+    if (hasCell) rows.push({ line: r + 1, cells: record });
+  }
   if (rows.length > MANUAL_LEAD_BULK_MAX_ROWS) {
     throw new ManualLeadBulkFileError("too-many-rows", `${rows.length}`);
   }
   if (rows.length === 0) throw new ManualLeadBulkFileError("empty-file");
-  return { delimiter, columns, rows };
+  return { fileKind: "xlsx", columns, rows };
 }
 
 export async function importManualLeadBulk(
   tx: TenantTx,
   ctx: ServiceCtx,
   input: {
-    csvText: string;
+    fileKind?: ManualLeadBulkFileKind;
+    csvText?: string;
+    bytes?: Uint8Array;
     defaultScope: "residential" | "commercial";
     dryRun: boolean;
     writeNote?: (projectId: string, textMarkdown: string) => Promise<void>;
+    geocode?: BulkGeocodeDeps;
   },
 ): Promise<ManualLeadBulkReport> {
   requireManualLeadBulkWrite(ctx);
-  const parsed = parseBulkCsv(input.csvText);
+  const fileKind = input.fileKind
+    ?? (input.bytes !== undefined ? "xlsx" : "csv");
+  const parsed = fileKind === "xlsx"
+    ? parseBulkXlsx(input.bytes ?? new Uint8Array(0))
+    : parseBulkCsv(input.csvText ?? "");
 
   // Quellennamen einmalig auflösen (nur aktive Quellen; Treffer per
   // normalisiertem Namen — gleiche Normalisierung wie F1-08).
@@ -313,6 +450,8 @@ export async function importManualLeadBulk(
   const reportRows: ManualLeadBulkRow[] = [];
   let createdCount = 0;
   let reusedCount = 0;
+  let geocodedCount = 0;
+  let geocodeFailedCount = 0;
   const noteFailedProjectIds: string[] = [];
 
   if (input.dryRun) {
@@ -325,6 +464,7 @@ export async function importManualLeadBulk(
         reportRows.push({
           line: row.line, displayName: null, status: "invalid",
           projectId: null, contactReused: null, errors: ["missing-name"],
+          geocoded: null, geocodeError: null,
         });
         continue;
       }
@@ -332,6 +472,7 @@ export async function importManualLeadBulk(
         reportRows.push({
           line: row.line, displayName, status: "invalid",
           projectId: null, contactReused: null, errors: ["missing-contact"],
+          geocoded: null, geocodeError: null,
         });
         continue;
       }
@@ -340,6 +481,7 @@ export async function importManualLeadBulk(
         reportRows.push({
           line: row.line, displayName, status: "invalid",
           projectId: null, contactReused: null, errors: [scopeResult.error],
+          geocoded: null, geocodeError: null,
         });
         continue;
       }
@@ -352,6 +494,7 @@ export async function importManualLeadBulk(
           reportRows.push({
             line: row.line, displayName, status: "invalid",
             projectId: null, contactReused: null, errors: ["unknown-source"],
+            geocoded: null, geocodeError: null,
           });
           continue;
         }
@@ -374,10 +517,34 @@ export async function importManualLeadBulk(
           reportRows.push({
             line: row.line, displayName, status: "valid",
             projectId: null, contactReused: null, errors: [],
+            geocoded: null, geocodeError: null,
           });
         } else {
           createdCount += 1;
           if (created.contactReused) reusedCount += 1;
+          // Auto-Geocoding NACH der Anlage, sequentiell, ohne Retry:
+          // fail-closed je Zeile (created+legacy + Code), nie Commercial.
+          let geocoded: boolean | null = null;
+          let geocodeError: ManualLeadBulkGeocodeError | null = null;
+          if (isBulkGeocodeQualified(scopeResult.scope, row.cells)) {
+            const outcome = await geocodeBulkLeadSite(tx, ctx, {
+              projectId: created.projectId,
+              siteId: created.siteId,
+              contactId: created.contactId,
+              street: row.cells.street,
+              houseNumber: row.cells.houseNumber,
+              postalCode: row.cells.postalCode,
+              city: row.cells.city,
+            }, input.geocode);
+            if (outcome.ok) {
+              geocoded = true;
+              geocodedCount += 1;
+            } else {
+              geocoded = false;
+              geocodeError = outcome.code;
+              geocodeFailedCount += 1;
+            }
+          }
           if (row.cells.note !== undefined && input.writeNote) {
             try {
               await input.writeNote(created.projectId, row.cells.note);
@@ -387,6 +554,7 @@ export async function importManualLeadBulk(
                 line: row.line, displayName, status: "note-failed",
                 projectId: created.projectId, contactReused: created.contactReused,
                 errors: ["note-failed"],
+                geocoded, geocodeError,
               });
               continue;
             }
@@ -394,6 +562,7 @@ export async function importManualLeadBulk(
           reportRows.push({
             line: row.line, displayName, status: "created",
             projectId: created.projectId, contactReused: created.contactReused, errors: [],
+            geocoded, geocodeError,
           });
         }
       } catch (error) {
@@ -401,11 +570,13 @@ export async function importManualLeadBulk(
           reportRows.push({
             line: row.line, displayName, status: "invalid",
             projectId: null, contactReused: null, errors: ["invalid-row"],
+            geocoded: null, geocodeError: null,
           });
         } else if (error instanceof ManualLeadLaneError) {
           reportRows.push({
             line: row.line, displayName, status: "invalid",
             projectId: null, contactReused: null, errors: ["lane-missing"],
+            geocoded: null, geocodeError: null,
           });
         } else if (
           error instanceof PermissionDeniedError && row.cells.note !== undefined
@@ -413,6 +584,7 @@ export async function importManualLeadBulk(
           reportRows.push({
             line: row.line, displayName, status: "invalid",
             projectId: null, contactReused: null, errors: ["note-denied"],
+            geocoded: null, geocodeError: null,
           });
         } else {
           throw error;
@@ -434,6 +606,8 @@ export async function importManualLeadBulk(
     createdCount,
     reusedCount,
     noteFailedProjectIds,
+    geocodedCount,
+    geocodeFailedCount,
     rows: reportRows,
   });
 }

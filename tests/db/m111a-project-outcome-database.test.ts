@@ -243,10 +243,13 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0148 F16-11 Paket-Vorlagen (Tabelle + RLS),
     // 0210 F1-14 Projekt-Team-Zuweisung (Tabelle + RLS),
     // 0220 F2.8 Portal-Draw-Signatur (Invite-Kapsel + ACL),
-    // 0230 F1-15 Broker-Intake (Tabelle + RLS + Site-Check)).
+    // 0230 F1-15 Broker-Intake (Tabelle + RLS + Site-Check),
+    // 0232 F1-19 Energie-Modi+Pakete (CHECKs),
+    // 0233 F1-20 Task-Team-Zuweisung (Tabelle + RLS + Guard),
+    // 0234 F1-21 Lead-Score (Spalten + Kapseln)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 151,
-      tag: "0230_f1_15_broker_intake",
+      idx: 154,
+      tag: "0234_f1_21_lead_score_deepening",
     });
   });
 

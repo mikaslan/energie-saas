@@ -112,6 +112,23 @@ export {
   searchProjectTaskMembers,
 } from "./service";
 export {
+  PROJECT_TASK_TEAM_ASSIGNMENT_COMMAND_VERSION,
+  PROJECT_TASK_TEAM_ASSIGNMENT_MAX_TEAMS,
+  projectTaskTeamAssignmentCommandV1Schema,
+} from "./team-assignment-contract";
+export type { ProjectTaskTeamAssignmentCommandV1 } from "./team-assignment-contract";
+export {
+  changeTaskTeamAssignment,
+  getTaskTeamAssignmentContext,
+  TaskTeamAssignmentConflictError,
+  TaskTeamAssignmentLimitError,
+  TaskTeamAssignmentNotFoundError,
+  TaskTeamAssignmentTargetError,
+  TaskTeamAssignmentValidationError,
+  type TaskTeamAssignmentContext,
+  type TaskTeamAssignmentResult,
+} from "./team-assignment-service";
+export {
   applyTaskTemplate,
   archiveTaskTemplate,
   berlinDatePlusDays,

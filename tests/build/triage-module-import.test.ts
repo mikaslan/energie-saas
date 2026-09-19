@@ -31,6 +31,7 @@ describe("M1-05 Modulgrenzen", () => {
       "MANUAL_LEAD_BULK_MAX_ROWS",
       "MANUAL_LEAD_BULK_REPORT_VERSION",
       "MANUAL_LEAD_BULK_VERSION",
+      "MANUAL_LEAD_BULK_XLSX_MAX_BYTES",
       "ManualLeadBulkFileError",
       "ManualLeadLaneError",
       "ManualLeadValidationError",

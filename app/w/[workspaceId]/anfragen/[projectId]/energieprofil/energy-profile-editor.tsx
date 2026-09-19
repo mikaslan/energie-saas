@@ -153,9 +153,66 @@ function messageFor(state: SaveProjectEnergyProfileState): string {
       return "Prüfe jedes veränderte Dach. Eine Default-Geometrie muss als bewusst neue Ersatzgeometrie erfasst werden.";
     case "unsupported_source":
       return "Die Rechnerquelle kann für dieses Energieprofil nicht verlässlich verarbeitet werden.";
+    case "packages_unsupported":
+      return "Für dieses Projekt liegt keine Rechner-Anforderung vor, an die sich Zielpakete hängen ließen. Das Profil wurde nicht gespeichert.";
     default:
       return "";
   }
+}
+
+// F1-19 Eingabemodus- und Paket-Labels (Anzeige; Werte sind Contract-Enums).
+const INPUT_MODE_OPTIONS = [
+  { value: "consumption", label: "Verbrauch (Rechnerwerte)" },
+  { value: "property", label: "Objekt-Schätzung" },
+  { value: "roomwise", label: "Raumweise Erfassung" },
+  { value: "manual", label: "Manuelle Eingabe" },
+] as const;
+
+const HEATING_TYPE_OPTIONS = [
+  { value: "gas", label: "Gas" },
+  { value: "oil", label: "Öl" },
+  { value: "heat_pump", label: "Wärmepumpe" },
+  { value: "district_heating", label: "Fernwärme" },
+  { value: "direct_electric", label: "Direktstrom" },
+  { value: "biomass", label: "Biomasse" },
+  { value: "other", label: "Sonstige" },
+] as const;
+
+const ROOM_USAGE_OPTIONS = [
+  { value: "living", label: "Wohnen" },
+  { value: "bedroom", label: "Schlafen" },
+  { value: "kitchen", label: "Küche" },
+  { value: "bathroom", label: "Bad" },
+  { value: "hallway", label: "Flur" },
+  { value: "office", label: "Büro" },
+  { value: "commercial", label: "Gewerbe" },
+  { value: "storage", label: "Abstellraum" },
+  { value: "other", label: "Sonstiges" },
+] as const;
+
+const PACKAGE_ROWS = [
+  { key: "Solar", label: "Solar" },
+  { key: "Storage", label: "Speicher" },
+  { key: "Wallbox", label: "Wallbox" },
+  { key: "Heating", label: "Heizung" },
+] as const;
+
+const PACKAGE_PAYMENT_OPTIONS = [
+  { value: "purchase", label: "Kauf" },
+  { value: "leasing", label: "Leasing" },
+  { value: "financing", label: "Finanzierung" },
+] as const;
+
+type RoomDraft = { name: string; areaM2: string; usage: string; radiators: string };
+
+function roomDraftsFromProfile(profile: EnergyProfile): RoomDraft[] {
+  const rooms = profile.rooms ?? [];
+  return rooms.map((room) => ({
+    name: room.name,
+    areaM2: String(room.areaM2),
+    usage: room.usage,
+    radiators: String(room.radiatorCount),
+  }));
 }
 
 function AssetStatusSelect({
@@ -201,6 +258,33 @@ export function EnergyProfileEditor({
     initialState,
   );
   const formRef = useRef<HTMLFormElement | null>(null);
+  // F1-19 Eingabemodus (kontrolliert: Wechsel verlangt Bestätigung, kein
+  // stilles Verwerfen von Modus-Eingaben).
+  const [mode, setMode] = useState<string>(profile.inputMode);
+  const [roomDrafts, setRoomDrafts] = useState<RoomDraft[]>(() =>
+    roomDraftsFromProfile(profile),
+  );
+  const modeChanged = mode !== profile.inputMode;
+  const changeMode = (next: string) => {
+    if (next === mode) return;
+    if (
+      next !== profile.inputMode
+      && typeof window !== "undefined"
+      && !window.confirm(
+        "Eingabemodus wechseln? Modus-spezifische Eingaben anderer Modi gehen beim Speichern verloren.",
+      )
+    ) {
+      return;
+    }
+    if (next === "roomwise") {
+      setRoomDrafts((current) =>
+        current.length === 0
+          ? [{ name: "", areaM2: "", usage: "", radiators: "" }]
+          : current,
+      );
+    }
+    setMode(next);
+  };
   const [loadProfile, setLoadProfile] = useState(() =>
     profile.consumption.loadProfile.status === "known"
       ? String(profile.consumption.loadProfile.value)
@@ -274,6 +358,7 @@ export function EnergyProfileEditor({
       <input type="hidden" name="expectedAddressRevision" value={addressRevision} />
       <input type="hidden" name="expectedLatestRevision" value={expectedLatestRevision} />
       <input type="hidden" name="roofCount" value={profile.roofs.length} />
+      <input type="hidden" name="roomCount" value={mode === "roomwise" ? roomDrafts.length : 0} />
 
       <div
         role="note"
@@ -286,6 +371,39 @@ export function EnergyProfileEditor({
           dieses Profils und werden hier nicht als Serverwahrheit übernommen.
         </p>
       </div>
+
+      <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5" data-testid="input-mode-section">
+        <legend className="px-1 text-base font-semibold text-slate-950">Eingabemodus</legend>
+        <div className="mt-3 grid min-w-0 gap-4 sm:grid-cols-2">
+          <label htmlFor="energy-input-mode" className={labelClass}>
+            Erfassungsart
+            <select
+              id="energy-input-mode"
+              name="inputMode"
+              data-testid="input-mode"
+              value={mode}
+              onChange={(event) => changeMode(event.currentTarget.value)}
+              className={inputClass}
+            >
+              {INPUT_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {modeChanged ? (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950" role="note">
+            Moduswechsel: Beim Speichern ersetzt der neue Modus den bisherigen;
+            Modus-Eingaben anderer Modi entfallen.
+          </p>
+        ) : null}
+        {mode === "manual" ? (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Manuelle Eingabe: Das Profil wird mit der Provenance „manuell erfasst“
+            gespeichert, nicht als Rechner-Import.
+          </p>
+        ) : null}
+      </fieldset>
 
       <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5">
         <legend className="px-1 text-base font-semibold text-slate-950">Gebäude</legend>
@@ -335,6 +453,170 @@ export function EnergyProfileEditor({
           </label>
         </div>
       </fieldset>
+
+      {mode === "property" ? (
+        <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5" data-testid="property-section">
+          <legend className="px-1 text-base font-semibold text-slate-950">Objekt-Schätzung</legend>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Heizart und Bewohnerzahl sind im Objekt-Modus Pflicht (1–20 Bewohner).
+          </p>
+          <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
+            <label htmlFor="energy-heating-type" className={labelClass}>
+              Heizart
+              <select
+                id="energy-heating-type"
+                name="heatingType"
+                data-testid="heating-type"
+                defaultValue={profile.propertyEstimate?.heatingType ?? ""}
+                className={inputClass}
+              >
+                <option value="">Bitte wählen</option>
+                {HEATING_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label htmlFor="energy-resident-count" className={labelClass}>
+              Bewohner (1–20)
+              <input
+                id="energy-resident-count"
+                name="residentCount"
+                data-testid="resident-count"
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max="20"
+                step="1"
+                defaultValue={profile.propertyEstimate?.residentCount ?? ""}
+                className={inputClass}
+              />
+            </label>
+          </div>
+        </fieldset>
+      ) : null}
+
+      {mode === "roomwise" ? (
+        <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5" data-testid="rooms-section">
+          <legend className="px-1 text-base font-semibold text-slate-950">Raumliste (1–40 Räume)</legend>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Je Raum sind Name, Fläche, Nutzung und Heizkörper-Anzahl Pflicht
+            (0 = unbeheizt). Halb erfasste Räume verweigert das Speichern.
+          </p>
+          <div className="mt-4 grid min-w-0 gap-5">
+            {roomDrafts.map((room, index) => (
+              <fieldset
+                key={`room-${index}`}
+                className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4"
+              >
+                <legend className="max-w-full break-words px-1 text-sm font-semibold text-slate-950">
+                  Raum {index + 1}
+                </legend>
+                <div className="mt-2 grid min-w-0 gap-4 sm:grid-cols-2">
+                  <label htmlFor={`room-${index}-name`} className={labelClass}>
+                    Name
+                    <input
+                      id={`room-${index}-name`}
+                      name={`room.${index}.name`}
+                      type="text"
+                      maxLength={64}
+                      required
+                      aria-required="true"
+                      value={room.name}
+                      onChange={(event) => setRoomDrafts((current) =>
+                        current.map((draft, draftIndex) => draftIndex === index
+                          ? { ...draft, name: event.currentTarget.value }
+                          : draft),
+                      )}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label htmlFor={`room-${index}-area`} className={labelClass}>
+                    Fläche (m²)
+                    <input
+                      id={`room-${index}-area`}
+                      name={`room.${index}.areaM2`}
+                      type="number"
+                      inputMode="decimal"
+                      min="0.000001"
+                      max="2000"
+                      step="any"
+                      required
+                      aria-required="true"
+                      value={room.areaM2}
+                      onChange={(event) => setRoomDrafts((current) =>
+                        current.map((draft, draftIndex) => draftIndex === index
+                          ? { ...draft, areaM2: event.currentTarget.value }
+                          : draft),
+                      )}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label htmlFor={`room-${index}-usage`} className={labelClass}>
+                    Nutzung
+                    <select
+                      id={`room-${index}-usage`}
+                      name={`room.${index}.usage`}
+                      required
+                      aria-required="true"
+                      value={room.usage}
+                      onChange={(event) => setRoomDrafts((current) =>
+                        current.map((draft, draftIndex) => draftIndex === index
+                          ? { ...draft, usage: event.currentTarget.value }
+                          : draft),
+                      )}
+                      className={inputClass}
+                    >
+                      <option value="">Bitte wählen</option>
+                      {ROOM_USAGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label htmlFor={`room-${index}-radiators`} className={labelClass}>
+                    Heizkörper (0–50)
+                    <input
+                      id={`room-${index}-radiators`}
+                      name={`room.${index}.radiators`}
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      max="50"
+                      step="1"
+                      required
+                      aria-required="true"
+                      value={room.radiators}
+                      onChange={(event) => setRoomDrafts((current) =>
+                        current.map((draft, draftIndex) => draftIndex === index
+                          ? { ...draft, radiators: event.currentTarget.value }
+                          : draft),
+                      )}
+                      className={inputClass}
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  disabled={roomDrafts.length <= 1}
+                  onClick={() => setRoomDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))}
+                  className="mt-3 min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                >
+                  Raum {index + 1} entfernen
+                </button>
+              </fieldset>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={roomDrafts.length >= 40}
+            onClick={() => setRoomDrafts((current) => current.length >= 40
+              ? current
+              : [...current, { name: "", areaM2: "", usage: "", radiators: "" }])}
+            className="mt-4 min-h-11 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+          >
+            Weiteren Raum erfassen
+          </button>
+        </fieldset>
+      ) : null}
 
       <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5">
         <legend className="px-1 text-base font-semibold text-slate-950">
@@ -638,6 +920,58 @@ export function EnergyProfileEditor({
               </fieldset>
             );
           })}
+        </div>
+      </fieldset>
+
+      <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5" data-testid="packages-section">
+        <legend className="px-1 text-base font-semibold text-slate-950">Zielpakete (Kaufabsicht)</legend>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Qualifizierung ohne Rechen-Einfluss: „Ja“ verlangt eine Zahlart,
+          „Nein“ löscht sie, „Unverändert“ lässt den gespeicherten Stand.
+          Geänderte Pakete schreiben eine neue Anforderungsrevision.
+        </p>
+        <div className="mt-4 grid min-w-0 gap-5">
+          {PACKAGE_ROWS.map((row) => (
+            <fieldset
+              key={row.key}
+              className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4"
+            >
+              <legend className="max-w-full break-words px-1 text-sm font-semibold text-slate-950">
+                {row.label}
+              </legend>
+              <div className="mt-2 grid min-w-0 gap-4 sm:grid-cols-2">
+                <label htmlFor={`energy-pkg-${row.key}-wanted`} className={labelClass}>
+                  {row.label} gewünscht?
+                  <select
+                    id={`energy-pkg-${row.key}-wanted`}
+                    name={`pkg${row.key}Wanted`}
+                    data-testid={`pkg-${row.key.toLowerCase()}-wanted`}
+                    defaultValue=""
+                    className={inputClass}
+                  >
+                    <option value="">Unverändert</option>
+                    <option value="true">Ja</option>
+                    <option value="false">Nein</option>
+                  </select>
+                </label>
+                <label htmlFor={`energy-pkg-${row.key}-payment`} className={labelClass}>
+                  Zahlart bei „Ja“
+                  <select
+                    id={`energy-pkg-${row.key}-payment`}
+                    name={`pkg${row.key}Payment`}
+                    data-testid={`pkg-${row.key.toLowerCase()}-payment`}
+                    defaultValue=""
+                    className={inputClass}
+                  >
+                    <option value="">Unverändert</option>
+                    {PACKAGE_PAYMENT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </fieldset>
+          ))}
         </div>
       </fieldset>
 

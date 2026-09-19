@@ -139,1216 +139,31 @@
           "type": "object",
           "properties": {
             "schemaVersion": {
-              "type": "string",
-              "const": "site-energy-profile.v1"
+              "$ref": "#/$defs/__schema2"
             },
             "inputMode": {
-              "type": "string",
-              "const": "consumption"
+              "$ref": "#/$defs/__schema3"
             },
             "building": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "string",
-                          "enum": [
-                            "single_family",
-                            "two_family",
-                            "multi_family",
-                            "commercial"
-                          ]
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "year": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "integer",
-                          "minimum": 1800,
-                          "maximum": 2200
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "heatedAreaM2": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 10000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "type",
-                "year",
-                "heatedAreaM2"
-              ],
-              "additionalProperties": false
+              "$ref": "#/$defs/__schema4"
             },
             "roofs": {
-              "minItems": 1,
-              "maxItems": 4,
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/__schema4"
-              }
+              "$ref": "#/$defs/__schema7"
             },
             "consumption": {
-              "type": "object",
-              "properties": {
-                "householdKwhPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "electricityPriceCentsPerKwh": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 1,
-                          "maximum": 200
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "annualPriceIncreasePercent": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": -10,
-                          "maximum": 25
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "loadProfile": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "string",
-                          "enum": [
-                            "wmee_household_hourly.v1",
-                            "customer_monthly_hourly.v1",
-                            "commercial_interval.v1",
-                            "customer_csv.v1"
-                          ]
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "evKmPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 200000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "evChargingPattern": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "$ref": "#/$defs/__schema5"
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "heatPumpKwhPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "coolingKwhPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "heatingAcKwhPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "hotWaterKwhPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 20000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "customLoadProfile": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "object",
-                          "properties": {
-                            "monthlyKwh": {
-                              "$ref": "#/$defs/__schema6"
-                            },
-                            "weekdayHourlyKwh": {
-                              "$ref": "#/$defs/__schema8"
-                            },
-                            "weekendHourlyKwh": {
-                              "$ref": "#/$defs/__schema10"
-                            }
-                          },
-                          "required": [
-                            "monthlyKwh",
-                            "weekdayHourlyKwh",
-                            "weekendHourlyKwh"
-                          ],
-                          "additionalProperties": false
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "customCsvKwh": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "minItems": 8760,
-                          "maxItems": 35040,
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/$defs/__schema12"
-                          }
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "groundAlbedo": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "heatPumpThermalKwhPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "heatPumpCopNominal": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 1,
-                          "maximum": 8
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "heatPumpBivalenceTempC": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": -25,
-                          "maximum": 15
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "heatPumpHotWaterShare": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "investmentEuro": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 10000000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "feedInTariffCtPerKwh": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "feedInCommissioningYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "integer",
-                          "minimum": 1990,
-                          "maximum": 2100
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "alternativeImportPriceCtPerKwh": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 1,
-                          "maximum": 200
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "alternativeImportPriceEscalationPct": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": -10,
-                          "maximum": 25
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "baseFeeEuroPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "alternativeBaseFeeEuroPerYear": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 100000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "demandChargeEuroPerKw": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 10000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "alternativeDemandChargeEuroPerKw": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 10000
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "comparisonTariffs": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "minItems": 1,
-                          "maxItems": 3,
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/$defs/__schema13"
-                          }
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                },
-                "touImportPricesCtPerKwh": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known"
-                        },
-                        "value": {
-                          "minItems": 24,
-                          "maxItems": 24,
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/$defs/__schema14"
-                          }
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema2"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "value",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "$ref": "#/$defs/__schema3"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "householdKwhPerYear",
-                "electricityPriceCentsPerKwh",
-                "annualPriceIncreasePercent",
-                "loadProfile",
-                "evKmPerYear",
-                "evChargingPattern",
-                "heatPumpKwhPerYear",
-                "coolingKwhPerYear",
-                "heatingAcKwhPerYear",
-                "hotWaterKwhPerYear"
-              ],
-              "additionalProperties": false
+              "$ref": "#/$defs/__schema9"
             },
             "existingAssets": {
-              "type": "object",
-              "properties": {
-                "pv": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known_present"
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema15"
-                        },
-                        "peakPowerKwp": {
-                          "type": "number",
-                          "exclusiveMinimum": 0,
-                          "maximum": 1000
-                        },
-                        "commissioningYear": {
-                          "type": "integer",
-                          "minimum": 1900,
-                          "maximum": 2200
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "source",
-                        "peakPowerKwp",
-                        "commissioningYear"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known_absent"
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema15"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "unknown"
-                        },
-                        "source": {
-                          "type": "string",
-                          "const": "not_collected"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    }
-                  ]
-                },
-                "storage": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known_present"
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema15"
-                        },
-                        "capacityKwh": {
-                          "type": "number",
-                          "exclusiveMinimum": 0,
-                          "maximum": 1000
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "source",
-                        "capacityKwh"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "known_absent"
-                        },
-                        "source": {
-                          "$ref": "#/$defs/__schema15"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "string",
-                          "const": "unknown"
-                        },
-                        "source": {
-                          "type": "string",
-                          "const": "not_collected"
-                        }
-                      },
-                      "required": [
-                        "status",
-                        "source"
-                      ],
-                      "additionalProperties": false
-                    }
-                  ]
-                },
-                "wallbox": {
-                  "$ref": "#/$defs/__schema16"
-                },
-                "ev": {
-                  "$ref": "#/$defs/__schema16"
-                }
-              },
-              "required": [
-                "pv",
-                "storage",
-                "wallbox",
-                "ev"
-              ],
-              "additionalProperties": false
+              "$ref": "#/$defs/__schema20"
             },
             "provenance": {
-              "type": "object",
-              "properties": {
-                "source": {
-                  "type": "string",
-                  "const": "rechner_snapshot"
-                },
-                "sourceSchemaVersion": {
-                  "type": "string",
-                  "const": "wmee-solar-snapshot.v1"
-                },
-                "sourceEngine": {
-                  "type": "string",
-                  "const": "wmee-solar.v1"
-                },
-                "roof": {
-                  "type": "string",
-                  "enum": [
-                    "lod2",
-                    "user_drawn",
-                    "osm",
-                    "default"
-                  ]
-                },
-                "consumption": {
-                  "type": "string",
-                  "enum": [
-                    "metered_kwh",
-                    "derived_from_cost",
-                    "estimated_people",
-                    "default"
-                  ]
-                },
-                "electricityPrice": {
-                  "type": "string",
-                  "enum": [
-                    "customer",
-                    "default"
-                  ]
-                },
-                "annualPriceIncrease": {
-                  "type": "string",
-                  "enum": [
-                    "customer",
-                    "default"
-                  ]
-                }
-              },
-              "required": [
-                "source",
-                "sourceSchemaVersion",
-                "sourceEngine",
-                "roof",
-                "consumption",
-                "electricityPrice",
-                "annualPriceIncrease"
-              ],
-              "additionalProperties": false
+              "$ref": "#/$defs/__schema23"
+            },
+            "propertyEstimate": {
+              "$ref": "#/$defs/__schema24"
+            },
+            "rooms": {
+              "$ref": "#/$defs/__schema25"
             }
           },
           "required": [
@@ -1405,6 +220,30 @@
                 "backupPower"
               ],
               "additionalProperties": false
+            },
+            "requestedPackages": {
+              "type": "object",
+              "properties": {
+                "solar": {
+                  "$ref": "#/$defs/__schema27"
+                },
+                "storage": {
+                  "$ref": "#/$defs/__schema27"
+                },
+                "wallbox": {
+                  "$ref": "#/$defs/__schema27"
+                },
+                "heating": {
+                  "$ref": "#/$defs/__schema27"
+                }
+              },
+              "required": [
+                "solar",
+                "storage",
+                "wallbox",
+                "heating"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -1452,7 +291,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema17"
+                      "$ref": "#/$defs/__schema30"
                     },
                     "profileField": {
                       "type": "string",
@@ -1474,14 +313,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema17"
+                      "$ref": "#/$defs/__schema30"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "loadProfile"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1504,7 +343,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema19"
+                      "$ref": "#/$defs/__schema32"
                     },
                     "profileField": {
                       "type": "string",
@@ -1526,14 +365,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema19"
+                      "$ref": "#/$defs/__schema32"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "evKmPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1556,7 +395,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema5"
+                      "$ref": "#/$defs/__schema10"
                     },
                     "profileField": {
                       "type": "string",
@@ -1578,14 +417,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema5"
+                      "$ref": "#/$defs/__schema10"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "evChargingPattern"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1608,7 +447,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema20"
+                      "$ref": "#/$defs/__schema33"
                     },
                     "profileField": {
                       "type": "string",
@@ -1630,14 +469,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema20"
+                      "$ref": "#/$defs/__schema33"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "heatPumpKwhPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1660,7 +499,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema21"
+                      "$ref": "#/$defs/__schema34"
                     },
                     "profileField": {
                       "type": "string",
@@ -1682,14 +521,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema21"
+                      "$ref": "#/$defs/__schema34"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "coolingKwhPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1712,7 +551,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema22"
+                      "$ref": "#/$defs/__schema35"
                     },
                     "profileField": {
                       "type": "string",
@@ -1734,14 +573,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema22"
+                      "$ref": "#/$defs/__schema35"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "heatingAcKwhPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1764,7 +603,7 @@
                       "const": "profile_value"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema23"
+                      "$ref": "#/$defs/__schema36"
                     },
                     "profileField": {
                       "type": "string",
@@ -1786,14 +625,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema23"
+                      "$ref": "#/$defs/__schema36"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "hotWaterKwhPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1864,7 +703,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema24"
+                      "$ref": "#/$defs/__schema37"
                     },
                     "source": {
                       "type": "string",
@@ -1891,14 +730,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema24"
+                      "$ref": "#/$defs/__schema37"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "systemLossPercent"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1921,7 +760,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema25"
+                      "$ref": "#/$defs/__schema38"
                     },
                     "source": {
                       "type": "string",
@@ -1948,14 +787,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema25"
+                      "$ref": "#/$defs/__schema38"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "storageRoundtripEfficiency"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -1978,7 +817,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema26"
+                      "$ref": "#/$defs/__schema39"
                     },
                     "source": {
                       "type": "string",
@@ -2005,14 +844,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema26"
+                      "$ref": "#/$defs/__schema39"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "storageDepthOfDischarge"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -2035,7 +874,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema27"
+                      "$ref": "#/$defs/__schema40"
                     },
                     "source": {
                       "type": "string",
@@ -2062,14 +901,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema27"
+                      "$ref": "#/$defs/__schema40"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "moduleDegradationPerYear"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -2092,7 +931,7 @@
                       "const": "rechner_input"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema28"
+                      "$ref": "#/$defs/__schema41"
                     },
                     "source": {
                       "type": "string",
@@ -2119,14 +958,14 @@
                       "const": "versioned_default"
                     },
                     "value": {
-                      "$ref": "#/$defs/__schema28"
+                      "$ref": "#/$defs/__schema41"
                     },
                     "defaultKey": {
                       "type": "string",
                       "const": "horizonYears"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -2183,7 +1022,7 @@
                       "const": "commissioningDate"
                     },
                     "defaultsVersion": {
-                      "$ref": "#/$defs/__schema18"
+                      "$ref": "#/$defs/__schema31"
                     }
                   },
                   "required": [
@@ -2212,7 +1051,7 @@
           "maxItems": 4,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema29"
+            "$ref": "#/$defs/__schema42"
           }
         }
       },
@@ -2245,6 +1084,124 @@
         },
         "__schema2": {
           "type": "string",
+          "const": "site-energy-profile.v1"
+        },
+        "__schema3": {
+          "type": "string",
+          "enum": [
+            "consumption",
+            "property",
+            "roomwise",
+            "manual"
+          ]
+        },
+        "__schema4": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "string",
+                      "enum": [
+                        "single_family",
+                        "two_family",
+                        "multi_family",
+                        "commercial"
+                      ]
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "year": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": 1800,
+                      "maximum": 2200
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "heatedAreaM2": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "year",
+            "heatedAreaM2"
+          ],
+          "additionalProperties": false
+        },
+        "__schema5": {
+          "type": "string",
           "enum": [
             "operator_reviewed",
             "rechner_input",
@@ -2252,7 +1209,7 @@
             "customer_input"
           ]
         },
-        "__schema3": {
+        "__schema6": {
           "type": "object",
           "properties": {
             "status": {
@@ -2274,7 +1231,15 @@
           ],
           "additionalProperties": false
         },
-        "__schema4": {
+        "__schema7": {
+          "minItems": 1,
+          "maxItems": 4,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema8"
+          }
+        },
+        "__schema8": {
           "type": "object",
           "properties": {
             "id": {
@@ -2323,7 +1288,7 @@
                       ]
                     },
                     "source": {
-                      "$ref": "#/$defs/__schema2"
+                      "$ref": "#/$defs/__schema5"
                     }
                   },
                   "required": [
@@ -2334,7 +1299,7 @@
                   "additionalProperties": false
                 },
                 {
-                  "$ref": "#/$defs/__schema3"
+                  "$ref": "#/$defs/__schema6"
                 }
               ]
             },
@@ -2360,7 +1325,891 @@
           ],
           "additionalProperties": false
         },
-        "__schema5": {
+        "__schema9": {
+          "type": "object",
+          "properties": {
+            "householdKwhPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "electricityPriceCentsPerKwh": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 200
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "annualPriceIncreasePercent": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": -10,
+                      "maximum": 25
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "loadProfile": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "string",
+                      "enum": [
+                        "wmee_household_hourly.v1",
+                        "customer_monthly_hourly.v1",
+                        "commercial_interval.v1",
+                        "customer_csv.v1"
+                      ]
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "evKmPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 200000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "evChargingPattern": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "$ref": "#/$defs/__schema10"
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "heatPumpKwhPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "coolingKwhPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "heatingAcKwhPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "hotWaterKwhPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 20000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "customLoadProfile": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "object",
+                      "properties": {
+                        "monthlyKwh": {
+                          "$ref": "#/$defs/__schema11"
+                        },
+                        "weekdayHourlyKwh": {
+                          "$ref": "#/$defs/__schema13"
+                        },
+                        "weekendHourlyKwh": {
+                          "$ref": "#/$defs/__schema15"
+                        }
+                      },
+                      "required": [
+                        "monthlyKwh",
+                        "weekdayHourlyKwh",
+                        "weekendHourlyKwh"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "customCsvKwh": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "minItems": 8760,
+                      "maxItems": 35040,
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema17"
+                      }
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "groundAlbedo": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "heatPumpThermalKwhPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "heatPumpCopNominal": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 8
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "heatPumpBivalenceTempC": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": -25,
+                      "maximum": 15
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "heatPumpHotWaterShare": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "investmentEuro": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 10000000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "feedInTariffCtPerKwh": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "feedInCommissioningYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": 1990,
+                      "maximum": 2100
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "alternativeImportPriceCtPerKwh": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 200
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "alternativeImportPriceEscalationPct": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": -10,
+                      "maximum": 25
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "baseFeeEuroPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "alternativeBaseFeeEuroPerYear": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "demandChargeEuroPerKw": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "alternativeDemandChargeEuroPerKw": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "comparisonTariffs": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "minItems": 1,
+                      "maxItems": 3,
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema18"
+                      }
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            },
+            "touImportPricesCtPerKwh": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known"
+                    },
+                    "value": {
+                      "minItems": 24,
+                      "maxItems": 24,
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema19"
+                      }
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema5"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "value",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "$ref": "#/$defs/__schema6"
+                }
+              ]
+            }
+          },
+          "required": [
+            "householdKwhPerYear",
+            "electricityPriceCentsPerKwh",
+            "annualPriceIncreasePercent",
+            "loadProfile",
+            "evKmPerYear",
+            "evChargingPattern",
+            "heatPumpKwhPerYear",
+            "coolingKwhPerYear",
+            "heatingAcKwhPerYear",
+            "hotWaterKwhPerYear"
+          ],
+          "additionalProperties": false
+        },
+        "__schema10": {
           "type": "string",
           "enum": [
             "evening",
@@ -2368,65 +2217,65 @@
             "away"
           ]
         },
-        "__schema6": {
+        "__schema11": {
           "minItems": 12,
           "maxItems": 12,
           "type": "array",
           "items": {
-            "$ref": "#/$defs/__schema7"
+            "$ref": "#/$defs/__schema12"
           }
-        },
-        "__schema7": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100000
-        },
-        "__schema8": {
-          "anyOf": [
-            {
-              "minItems": 24,
-              "maxItems": 24,
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/__schema9"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "__schema9": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100000
-        },
-        "__schema10": {
-          "anyOf": [
-            {
-              "minItems": 24,
-              "maxItems": 24,
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/__schema11"
-              }
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "__schema11": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 100000
         },
         "__schema12": {
           "type": "number",
           "minimum": 0,
-          "maximum": 1000000
+          "maximum": 100000
         },
         "__schema13": {
+          "anyOf": [
+            {
+              "minItems": 24,
+              "maxItems": 24,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema14"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema14": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "__schema15": {
+          "anyOf": [
+            {
+              "minItems": 24,
+              "maxItems": 24,
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/__schema16"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema16": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "__schema17": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "__schema18": {
           "type": "object",
           "properties": {
             "name": {
@@ -2461,12 +2310,160 @@
           ],
           "additionalProperties": false
         },
-        "__schema14": {
+        "__schema19": {
           "type": "number",
           "minimum": 0,
           "maximum": 200
         },
-        "__schema15": {
+        "__schema20": {
+          "type": "object",
+          "properties": {
+            "pv": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known_present"
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema21"
+                    },
+                    "peakPowerKwp": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 1000
+                    },
+                    "commissioningYear": {
+                      "type": "integer",
+                      "minimum": 1900,
+                      "maximum": 2200
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "source",
+                    "peakPowerKwp",
+                    "commissioningYear"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known_absent"
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema21"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "unknown"
+                    },
+                    "source": {
+                      "type": "string",
+                      "const": "not_collected"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "storage": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known_present"
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema21"
+                    },
+                    "capacityKwh": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 1000
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "source",
+                    "capacityKwh"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "known_absent"
+                    },
+                    "source": {
+                      "$ref": "#/$defs/__schema21"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "unknown"
+                    },
+                    "source": {
+                      "type": "string",
+                      "const": "not_collected"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "source"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "wallbox": {
+              "$ref": "#/$defs/__schema22"
+            },
+            "ev": {
+              "$ref": "#/$defs/__schema22"
+            }
+          },
+          "required": [
+            "pv",
+            "storage",
+            "wallbox",
+            "ev"
+          ],
+          "additionalProperties": false
+        },
+        "__schema21": {
           "type": "string",
           "enum": [
             "operator_reviewed",
@@ -2475,7 +2472,7 @@
             "rechner_consumption"
           ]
         },
-        "__schema16": {
+        "__schema22": {
           "oneOf": [
             {
               "type": "object",
@@ -2485,7 +2482,7 @@
                   "const": "known_present"
                 },
                 "source": {
-                  "$ref": "#/$defs/__schema15"
+                  "$ref": "#/$defs/__schema21"
                 }
               },
               "required": [
@@ -2502,7 +2499,7 @@
                   "const": "known_absent"
                 },
                 "source": {
-                  "$ref": "#/$defs/__schema15"
+                  "$ref": "#/$defs/__schema21"
                 }
               },
               "required": [
@@ -2531,7 +2528,179 @@
             }
           ]
         },
-        "__schema17": {
+        "__schema23": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": [
+                "rechner_snapshot",
+                "operator_manual"
+              ]
+            },
+            "sourceSchemaVersion": {
+              "type": "string",
+              "const": "wmee-solar-snapshot.v1"
+            },
+            "sourceEngine": {
+              "type": "string",
+              "const": "wmee-solar.v1"
+            },
+            "roof": {
+              "type": "string",
+              "enum": [
+                "lod2",
+                "user_drawn",
+                "osm",
+                "default"
+              ]
+            },
+            "consumption": {
+              "type": "string",
+              "enum": [
+                "metered_kwh",
+                "derived_from_cost",
+                "estimated_people",
+                "default"
+              ]
+            },
+            "electricityPrice": {
+              "type": "string",
+              "enum": [
+                "customer",
+                "default"
+              ]
+            },
+            "annualPriceIncrease": {
+              "type": "string",
+              "enum": [
+                "customer",
+                "default"
+              ]
+            }
+          },
+          "required": [
+            "source",
+            "sourceSchemaVersion",
+            "sourceEngine",
+            "roof",
+            "consumption",
+            "electricityPrice",
+            "annualPriceIncrease"
+          ],
+          "additionalProperties": false
+        },
+        "__schema24": {
+          "type": "object",
+          "properties": {
+            "heatingType": {
+              "type": "string",
+              "enum": [
+                "gas",
+                "oil",
+                "heat_pump",
+                "district_heating",
+                "direct_electric",
+                "biomass",
+                "other"
+              ]
+            },
+            "residentCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            }
+          },
+          "required": [
+            "heatingType",
+            "residentCount"
+          ],
+          "additionalProperties": false
+        },
+        "__schema25": {
+          "minItems": 1,
+          "maxItems": 40,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema26"
+          }
+        },
+        "__schema26": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "areaM2": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 2000
+            },
+            "usage": {
+              "type": "string",
+              "enum": [
+                "living",
+                "bedroom",
+                "kitchen",
+                "bathroom",
+                "hallway",
+                "office",
+                "commercial",
+                "storage",
+                "other"
+              ]
+            },
+            "radiatorCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "name",
+            "areaM2",
+            "usage",
+            "radiatorCount"
+          ],
+          "additionalProperties": false
+        },
+        "__schema27": {
+          "type": "object",
+          "properties": {
+            "wanted": {
+              "$ref": "#/$defs/__schema28"
+            },
+            "paymentKind": {
+              "$ref": "#/$defs/__schema29"
+            }
+          },
+          "required": [
+            "wanted",
+            "paymentKind"
+          ],
+          "additionalProperties": false
+        },
+        "__schema28": {
+          "type": "boolean"
+        },
+        "__schema29": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "purchase",
+                "leasing",
+                "financing"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "__schema30": {
           "type": "string",
           "enum": [
             "wmee_household_hourly.v1",
@@ -2539,61 +2708,61 @@
             "commercial_interval.v1"
           ]
         },
-        "__schema18": {
+        "__schema31": {
           "type": "string",
           "const": "wmee-planning-defaults.v1"
         },
-        "__schema19": {
+        "__schema32": {
           "type": "number",
           "minimum": 0,
           "maximum": 200000
         },
-        "__schema20": {
+        "__schema33": {
           "type": "number",
           "minimum": 0,
           "maximum": 100000
         },
-        "__schema21": {
+        "__schema34": {
           "type": "number",
           "minimum": 0,
           "maximum": 100000
         },
-        "__schema22": {
+        "__schema35": {
           "type": "number",
           "minimum": 0,
           "maximum": 100000
         },
-        "__schema23": {
+        "__schema36": {
           "type": "number",
           "minimum": 0,
           "maximum": 20000
         },
-        "__schema24": {
+        "__schema37": {
           "type": "number",
           "minimum": 0,
           "maximum": 60
         },
-        "__schema25": {
+        "__schema38": {
           "type": "number",
           "minimum": 0.01,
           "maximum": 1
         },
-        "__schema26": {
+        "__schema39": {
           "type": "number",
           "minimum": 0.01,
           "maximum": 1
         },
-        "__schema27": {
+        "__schema40": {
           "type": "number",
           "minimum": 0,
           "maximum": 0.2
         },
-        "__schema28": {
+        "__schema41": {
           "type": "integer",
           "minimum": 1,
           "maximum": 40
         },
-        "__schema29": {
+        "__schema42": {
           "type": "object",
           "properties": {
             "roofId": {
@@ -2708,10 +2877,10 @@
                   "const": "PVcalc"
                 },
                 "fetchedAt": {
-                  "$ref": "#/$defs/__schema30"
+                  "$ref": "#/$defs/__schema43"
                 },
                 "rawResponseSha256": {
-                  "$ref": "#/$defs/__schema31"
+                  "$ref": "#/$defs/__schema44"
                 },
                 "annualYieldKwhPerKwp": {
                   "type": "number",
@@ -2723,7 +2892,7 @@
                   "maxItems": 12,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema32"
+                    "$ref": "#/$defs/__schema45"
                   }
                 }
               },
@@ -2756,10 +2925,10 @@
                   "const": 2020
                 },
                 "fetchedAt": {
-                  "$ref": "#/$defs/__schema30"
+                  "$ref": "#/$defs/__schema43"
                 },
                 "rawResponseSha256": {
-                  "$ref": "#/$defs/__schema31"
+                  "$ref": "#/$defs/__schema44"
                 },
                 "sourceLength": {
                   "type": "number",
@@ -2774,7 +2943,7 @@
                   "maxItems": 8784,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema30"
+                    "$ref": "#/$defs/__schema43"
                   }
                 },
                 "normalization": {
@@ -2798,7 +2967,7 @@
                   "maxItems": 8760,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema33"
+                    "$ref": "#/$defs/__schema46"
                   }
                 },
                 "hourlyTemperatureC": {
@@ -2806,7 +2975,7 @@
                   "maxItems": 8760,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/__schema34"
+                    "$ref": "#/$defs/__schema47"
                   }
                 }
               },
@@ -2841,7 +3010,7 @@
           ],
           "additionalProperties": false
         },
-        "__schema30": {
+        "__schema43": {
           "type": "string",
           "allOf": [
             {
@@ -2852,21 +3021,21 @@
             }
           ]
         },
-        "__schema31": {
+        "__schema44": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },
-        "__schema32": {
+        "__schema45": {
           "type": "number",
           "minimum": 0,
           "maximum": 2000
         },
-        "__schema33": {
+        "__schema46": {
           "type": "number",
           "minimum": 0,
           "maximum": 10000
         },
-        "__schema34": {
+        "__schema47": {
           "type": "number",
           "minimum": -100,
           "maximum": 100

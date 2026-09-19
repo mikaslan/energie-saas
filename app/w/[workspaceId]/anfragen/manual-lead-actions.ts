@@ -34,6 +34,8 @@ const manualLeadFormSchema = z.strictObject({
   leadSourceId: z.string().trim().max(100).optional(),
   funnelCampaignId: z.string().trim().max(100).optional(),
   note: z.string().trim().max(2000).optional(),
+  // F1-16: explizite Kontakt-Auswahl (hidden contactId, UUID-Format prüft der Service fail-closed).
+  contactId: z.string().trim().max(100).optional(),
 });
 
 export type ManualLeadActionState =
@@ -69,6 +71,7 @@ export async function createManualLeadAction(
     leadSourceId: emptyToUndefined(formData.get("leadSourceId")),
     funnelCampaignId: emptyToUndefined(formData.get("funnelCampaignId")),
     note: emptyToUndefined(formData.get("note")),
+    contactId: emptyToUndefined(formData.get("contactId")),
   });
   if (!parsed.success) return { status: "invalid" };
   const input = parsed.data;
@@ -90,6 +93,7 @@ export async function createManualLeadAction(
         leadSourceId: input.leadSourceId,
         funnelCampaignId: input.funnelCampaignId,
         note: input.note,
+        contactId: input.contactId,
       }),
     );
     // Notiz nachgelagert in eigener Transaktion (Modulgrenze: der Service

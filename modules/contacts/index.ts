@@ -29,3 +29,10 @@ export {
   ContactValidationError,
 } from "./errors";
 export { getContactDataset, updateContact } from "./service";
+export {
+  CONTACT_SUGGEST_LIMIT,
+  CONTACT_SUGGEST_MAX_QUERY,
+  CONTACT_SUGGEST_MIN_QUERY,
+  suggestContacts,
+} from "./contact-suggest";
+export type { ContactSuggestion } from "./contact-suggest";

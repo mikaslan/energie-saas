@@ -248,14 +248,21 @@ async function validateTeam(
 }
 
 // M1-15b §6: calendar_id muss für den Actor SICHTBAR und active=true sein,
-// sonst `invalid` (keine Existenz-/Scope-Leaks).
+// sonst `invalid` (keine Existenz-/Scope-Leaks). F1-12-Folgenachweis S2
+// (T9): Team-Kalender nur bei AKTIVEM Team buchbar — sonst `invalid`,
+// konsistent zum F1-12-`validateTeam`. Lesen bleibt unberührt (Historie).
 async function validateCalendar(
   tx: TenantTx,
   ctx: ServiceCtx,
   calendarId: string,
 ): Promise<void> {
-  const result = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
-    select calendar_record.id
+  const result = await tx.execute<{
+    id: string;
+    calendar_type: string;
+    team_id: string | null;
+    [key: string]: unknown;
+  }>(sql`
+    select calendar_record.id, calendar_record.calendar_type, calendar_record.team_id
       from calendar calendar_record
      where calendar_record.workspace_id = ${ctx.workspaceId}::uuid
        and calendar_record.id = ${calendarId}::uuid
@@ -263,7 +270,12 @@ async function validateCalendar(
        and ${calendarVisibleFragment(ctx)}
       for share
   `);
-  if (result.rows.length !== 1) throw new AppointmentValidationError();
+  const row = result.rows[0];
+  if (!row) throw new AppointmentValidationError();
+  if (row.calendar_type === "team") {
+    if (row.team_id === null) throw new AppointmentValidationError();
+    await validateTeam(tx, ctx, row.team_id);
+  }
 }
 
 async function mapAppointmentMutationError(error: unknown): Promise<never> {

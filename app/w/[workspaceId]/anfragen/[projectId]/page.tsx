@@ -32,6 +32,7 @@ import {
   type ProjectTeamAssignmentContext,
 } from "@/modules/projects";
 import { listTeamOptions, type TeamOption } from "@/modules/teams";
+import { DedupeNotFoundError, getDedupeDetail } from "@/modules/dedupe";
 import {
   getProjectEnergyContext,
   type ProjectEnergyContext,
@@ -482,6 +483,34 @@ async function loadProjectDetail(
     if (error instanceof PermissionDeniedError) {
       return { kind: "denied" };
     }
+    throw error;
+  }
+}
+
+// F1-22: Dubletten-Blocker verlinkt auf die Triage — Projekt-Detail bei
+// gesetztem Projekt-Flag, sonst die Queue (Kontakt-Flag-Fall).
+async function loadDedupeBlockerHref(
+  workspaceId: string,
+  projectId: string,
+): Promise<string | null> {
+  try {
+    return await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "project",
+      async (tx, ctx) => {
+        try {
+          await getDedupeDetail(tx, ctx, { entity: "project", id: projectId });
+          return `/w/${workspaceId}/dubletten/projekt/${projectId}`;
+        } catch (error) {
+          if (error instanceof DedupeNotFoundError) return `/w/${workspaceId}/dubletten`;
+          throw error;
+        }
+      },
+    );
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return null;
+    if (error instanceof PermissionDeniedError) return null;
     throw error;
   }
 }
@@ -1184,6 +1213,9 @@ export default async function ProjectTriagePage({
     },
     gate: offerCreationResult.gate,
   });
+  const dedupeBlockerHref = detail.blockers.dedupeReviewRequired
+    ? await loadDedupeBlockerHref(workspaceId, projectId)
+    : null;
   const activeBlockers = [
     detail.blockers.dedupeReviewRequired
       ? "Mögliche Dublette muss geprüft werden"
@@ -1499,6 +1531,7 @@ export default async function ProjectTriagePage({
               workspaceId={workspaceId}
               projectId={projectId}
               context={energyContext}
+              requestedPackages={detail.requirements.requestedPackages}
             />
 
             <EnergyCalculationSection context={energyContext} />
@@ -1606,7 +1639,16 @@ export default async function ProjectTriagePage({
                       className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm leading-5 text-amber-950"
                     >
                       <span aria-hidden="true" className="font-bold">!</span>
-                      <span>{blocker}</span>
+                      {blocker === "Mögliche Dublette muss geprüft werden" && dedupeBlockerHref !== null ? (
+                        <Link
+                          href={dedupeBlockerHref}
+                          className="font-semibold text-amber-900 underline decoration-amber-400 underline-offset-2 outline-none hover:text-amber-950 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2"
+                        >
+                          {blocker}
+                        </Link>
+                      ) : (
+                        <span>{blocker}</span>
+                      )}
                     </li>
                   ))}
                 </ul>

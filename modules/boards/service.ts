@@ -7,14 +7,19 @@ import { kanbanColumnColors, kanbanColumnTypes } from "@/lib/db/schema/boards";
 import { getProjectOfferValues } from "@/modules/offers";
 import {
   computeLeadScore,
-  type LeadScore,
+  leadScoreSnapshotFromStored,
   type LeadScoreBand,
+  type LeadScoreSnapshot,
 } from "@/lib/lead-score";
 import {
   followUpBandForDate,
   parseFollowUpAt,
   type FollowUpBand,
 } from "@/lib/follow-up";
+import {
+  requestedPackagesSchema,
+  type RequestedPackages,
+} from "@/lib/integrations/calculation/contract";
 import {
   can,
   isExternalOnly,
@@ -36,6 +41,8 @@ export type RequestBoardCard = {
     bidirectionalCharging: boolean;
     backupPower: boolean;
   };
+  // F1-19 Zielpakete (Operateur-Qualifizierung, null ohne Stand).
+  requestedPackages: RequestedPackages | null;
   blockers: {
     dedupeReviewRequired: boolean;
     addressFollowUpRequired: boolean;
@@ -47,8 +54,10 @@ export type RequestBoardCard = {
     keyAccountLabel: string | null;
   } | null;
   // F1-07 Lead-Score (Regel-Score v1, ESTIMATE): null für externe
-  // Leser — internes Qualifizierungssignal, kein Kunden-Datum.
-  score: LeadScore | null;
+  // Leser — internes Qualifizierungssignal, kein Kunden-Datum. F1-21:
+  // gespeicherter Wert (frisch) oder synchroner Fallback (stale → Badge
+  // „wird aktualisiert" + Refresh).
+  score: LeadScoreSnapshot | null;
   // F1-06 Wiedervorlage: null ohne Termin oder für externe Leser
   // (internes Arbeitsdatum, kein Kunden-Datum).
   followUp: { at: string; band: FollowUpBand } | null;
@@ -57,6 +66,14 @@ export type RequestBoardCard = {
 // F1-06 Filter-Preset: "due" = anstehend + fällig, "overdue" =
 // überfällig + eskaliert.
 export type RequestBoardFollowUpFilter = "due" | "overdue";
+
+// F1-21 Filter-Presets (fail-closed, kombinierbar, nur intern):
+// "active" = Kundenaktivität vorhanden (?intent=aktiv),
+// "ready" = heiß/warm + E-Mail + Telefon (?ansprache=bereit),
+// "profile" = Energieprofil fehlt (?luecke=profil).
+export type RequestBoardIntentFilter = "active";
+export type RequestBoardAnspracheFilter = "ready";
+export type RequestBoardLueckeFilter = "profile";
 
 export type RequestBoardColumn = {
   id: string;
@@ -105,12 +122,19 @@ type CardRow = {
   wallbox: boolean | null;
   bidirectional_charging: boolean | null;
   backup_power: boolean | null;
+  requested_packages: unknown;
   contact_email: string | null;
   contact_phone: string | null;
   site_lat: number | string | null;
   site_lng: number | string | null;
   lead_source_id: string | null;
   follow_up_at: Date | string | null;
+  lead_score_value: number | null;
+  lead_score_band: string | null;
+  lead_score_signals: string[] | null;
+  lead_score_computed_at: Date | string | null;
+  lead_score_status: string | null;
+  has_intent: boolean;
   profile_id: string | null;
   profile_confirmed: boolean | null;
   has_requirements: boolean;
@@ -160,6 +184,63 @@ class RequestBoardConfigurationError extends Error {
   }
 }
 
+// F1-21: Der Async-Tier (pg-boss-Queue lead.score.recompute.v1) ist nicht
+// verfügbar. Der Board-Lesepfad schluckt genau diesen Fehler (Sync-Fallback
+// + Stale-Badge); echte Fehler propagieren.
+export class LeadScoreDispatchError extends Error {
+  readonly code = "dispatch_unavailable" as const;
+
+  constructor() {
+    super("lead score dispatch is unavailable");
+    this.name = "LeadScoreDispatchError";
+  }
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+// F1-21: Service-seitiger Auslöser für den Async-Recompute (ID-only,
+// singletonKey = Projekt, Definer-Kapsel — Muster pdf-service). Ohne
+// pg-boss in Testrollen stiller No-Op, sonst fail-closed.
+export async function enqueueLeadScoreRecompute(
+  tx: TenantTx,
+  workspaceId: string,
+  projectId: string,
+): Promise<void> {
+  if (!UUID_PATTERN.test(workspaceId) || !UUID_PATTERN.test(projectId)) {
+    throw new RequestBoardConfigurationError("lead score dispatch key is invalid");
+  }
+  const gate = await tx.execute<{
+    dispatch_signature: string | null;
+    current_role: string;
+    session_role: string;
+    database_name: string;
+    [key: string]: unknown;
+  }>(sql`
+    select pg_catalog.to_regprocedure(
+             'pgboss.enqueue_lead_score_recompute(uuid,uuid)'
+           )::text as dispatch_signature,
+           current_user::text as current_role,
+           session_user::text as session_role,
+           pg_catalog.current_database()::text as database_name
+  `);
+  const row = gate.rows[0];
+  if (!row?.dispatch_signature) {
+    const explicitTestSkip = row !== undefined
+      && row.current_role === row.session_role
+      && (row.current_role === "app_test" || row.current_role === "app_ci")
+      && row.database_name.includes("test");
+    if (explicitTestSkip) return;
+    throw new LeadScoreDispatchError();
+  }
+  await tx.execute(sql`
+    select pgboss.enqueue_lead_score_recompute(
+      ${workspaceId}::uuid,
+      ${projectId}::uuid
+    )
+  `);
+}
+
 function requireProjectAccess(
   ctx: ServiceCtx,
   action: "project.read" | "project.write",
@@ -190,6 +271,14 @@ function numberOrNull(value: number | string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// F1-19: Zielpakete aus der neuesten Anforderungsrevision (fail-closed:
+// ungültig oder fehlend → null, kein Karten-Fehler).
+function parseRequestedPackages(value: unknown): RequestedPackages | null {
+  if (value === null || value === undefined) return null;
+  const parsed = requestedPackagesSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 function isNonEmpty(value: string | null): boolean {
   return value !== null && value.trim() !== "";
 }
@@ -218,6 +307,51 @@ function followUpMatchesFilter(
     : followUp.band === "overdue" || followUp.band === "escalated";
 }
 
+// F1-21: Gespeichertes computed_at → ISO; unparsbar → null (Validator fällt
+// fail-closed auf den synchronen Fallback zurück, statt zu werfen).
+function storedScoreIso(value: Date | string | null): string | null {
+  if (value === null) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+type LeadFilterFacts = {
+  hasIntentSignal: boolean;
+  band: LeadScoreBand | null;
+  hasEmail: boolean;
+  hasPhone: boolean;
+  hasProfile: boolean;
+};
+
+// F1-21: Preset-Linsen über angezeigtem Score + Live-Kontaktdaten
+// (kombinierbar per AND mit Score-Band und Wiedervorlage).
+function leadFiltersMatch(
+  facts: LeadFilterFacts | undefined,
+  input: {
+    intentFilter: RequestBoardIntentFilter | undefined;
+    anspracheFilter: RequestBoardAnspracheFilter | undefined;
+    lueckeFilter: RequestBoardLueckeFilter | undefined;
+  },
+): boolean {
+  if (
+    input.intentFilter === undefined
+    && input.anspracheFilter === undefined
+    && input.lueckeFilter === undefined
+  ) {
+    return true;
+  }
+  if (facts === undefined) return false;
+  if (input.intentFilter === "active" && !facts.hasIntentSignal) return false;
+  if (
+    input.anspracheFilter === "ready"
+    && !((facts.band === "hot" || facts.band === "warm") && facts.hasEmail && facts.hasPhone)
+  ) {
+    return false;
+  }
+  if (input.lueckeFilter === "profile" && facts.hasProfile) return false;
+  return true;
+}
+
 function locationLabel(row: CardRow): string {
   const locality = [row.postal_code, row.city].filter(Boolean).join(" ");
   if (locality) return locality;
@@ -241,7 +375,14 @@ export async function getDefaultRequestBoard(
 export async function getRequestBoard(
   tx: TenantTx,
   ctx: ServiceCtx,
-  input: { scope: RequestBoardScope; scoreBand?: LeadScoreBand; followUpFilter?: RequestBoardFollowUpFilter },
+  input: {
+    scope: RequestBoardScope;
+    scoreBand?: LeadScoreBand;
+    followUpFilter?: RequestBoardFollowUpFilter;
+    intentFilter?: RequestBoardIntentFilter;
+    anspracheFilter?: RequestBoardAnspracheFilter;
+    lueckeFilter?: RequestBoardLueckeFilter;
+  },
 ): Promise<RequestBoard> {
   requireProjectAccess(ctx, "project.read", "kanban_board");
   const scope = input.scope;
@@ -266,6 +407,29 @@ export async function getRequestBoard(
   }
   if (external && followUpFilter !== undefined) {
     throw new RequestBoardConfigurationError("follow-up filter is not available for external readers");
+  }
+  // F1-21 Filter-Presets: unbekannte Werte fail-closed; extern ohne Score
+  // (internes Signal, wie scoreBand).
+  const intentFilter = input.intentFilter;
+  if (intentFilter !== undefined && intentFilter !== "active") {
+    throw new RequestBoardConfigurationError(`unknown intent filter ${JSON.stringify(intentFilter)}`);
+  }
+  if (external && intentFilter !== undefined) {
+    throw new RequestBoardConfigurationError("intent filter is not available for external readers");
+  }
+  const anspracheFilter = input.anspracheFilter;
+  if (anspracheFilter !== undefined && anspracheFilter !== "ready") {
+    throw new RequestBoardConfigurationError(`unknown ansprache filter ${JSON.stringify(anspracheFilter)}`);
+  }
+  if (external && anspracheFilter !== undefined) {
+    throw new RequestBoardConfigurationError("ansprache filter is not available for external readers");
+  }
+  const lueckeFilter = input.lueckeFilter;
+  if (lueckeFilter !== undefined && lueckeFilter !== "profile") {
+    throw new RequestBoardConfigurationError(`unknown luecke filter ${JSON.stringify(lueckeFilter)}`);
+  }
+  if (external && lueckeFilter !== undefined) {
+    throw new RequestBoardConfigurationError("luecke filter is not available for external readers");
   }
 
   const boardResult = await tx.execute<BoardRow>(sql`
@@ -306,6 +470,44 @@ export async function getRequestBoard(
            case when ${external} then null else s.lng end as site_lng,
            case when ${external} then null else p.lead_source_id end as lead_source_id,
            case when ${external} then null else p.follow_up_at end as follow_up_at,
+           case when ${external} then null else p.lead_score_value end as lead_score_value,
+           case when ${external} then null else p.lead_score_band end as lead_score_band,
+           case when ${external} then null else p.lead_score_signals end as lead_score_signals,
+           case when ${external} then null else p.lead_score_computed_at end as lead_score_computed_at,
+           case when ${external} then null else p.lead_score_status end as lead_score_status,
+           -- F1-21 Intent-OR über 4 kundeninitiierte Quellen (kein Tracking).
+           case when ${external} then false else (
+             exists (
+               select 1
+                 from portal_view_log portal_view
+                 join portal_invite invite
+                   on invite.workspace_id = portal_view.workspace_id
+                  and invite.id = portal_view.portal_invite_id
+                where portal_view.workspace_id = p.workspace_id
+                  and invite.project_id = p.id
+             )
+             or exists (
+               select 1
+                 from project_appointment appointment
+                where appointment.workspace_id = p.workspace_id
+                  and appointment.project_id = p.id
+             )
+             or exists (
+               select 1
+                 from signature_view_log signature_view
+                 join signature_request sig_request
+                   on sig_request.workspace_id = signature_view.workspace_id
+                  and sig_request.id = signature_view.signature_request_id
+                where signature_view.workspace_id = p.workspace_id
+                  and sig_request.project_id = p.id
+             )
+             or exists (
+               select 1
+                 from file_request_upload upload
+                where upload.workspace_id = p.workspace_id
+                  and upload.project_id = p.id
+             )
+           ) end as has_intent,
            prof.profile_id as profile_id,
            (prof.confirmed_at is not null) as profile_confirmed,
            pr.requirements is not null as has_requirements,
@@ -321,6 +523,7 @@ export async function getRequestBoard(
            (pr.requirements #>> '{requestedProducts,bidirectionalCharging}')::boolean
              as bidirectional_charging,
            (pr.requirements #>> '{requestedProducts,backupPower}')::boolean as backup_power,
+           pr.requirements #> '{requestedPackages}' as requested_packages,
            key_account.label as key_account_label
     from project p
     join contact c
@@ -381,13 +584,82 @@ export async function getRequestBoard(
 
   const activeColumnIds = new Set(boardResult.rows.map((row) => row.column_id));
   const cardsByColumn = new Map<string, RequestBoardCard[]>();
+  // F1-21: Filter-Fakten je Karte (angezeigter Score + Live-Kontaktdaten).
+  const leadFactsByCard = new Map<string, LeadFilterFacts>();
   // F1-06: ein Lesezeitpunkt je Board-Aufruf (stabile Bänder über alle Karten).
   const boardNow = new Date();
+  // F1-21: Async-Tier fehlt (Dev/E2E/Test ohne pg-boss) → nach dem ersten
+  // Fehlschlag keine weiteren Dispatch-Versuche in diesem Aufruf; der
+  // Recovery-Sweep deckt verwaiste pendings ab.
+  let dispatchAvailable: boolean | undefined;
+  const triggerRecompute = async (projectId: string): Promise<void> => {
+    if (dispatchAvailable === false) return;
+    try {
+      await enqueueLeadScoreRecompute(tx, ctx.workspaceId, projectId);
+      dispatchAvailable = true;
+      // F1-21: Pending-Flip im Aufrufer (Dispatch-Kapsel ist worker-owned
+      // und darf public.project nicht anfassen; RLS-geltend wie Zeile 765).
+      await tx.execute(sql`
+        update project
+           set lead_score_status = 'pending'
+         where workspace_id = ${ctx.workspaceId}::uuid
+           and id = ${projectId}::uuid
+           and lead_score_status is distinct from 'pending'
+      `);
+    } catch (error) {
+      if (error instanceof LeadScoreDispatchError) {
+        dispatchAvailable = false;
+        return;
+      }
+      throw error;
+    }
+  };
   for (const row of cardResult.rows) {
     if (!activeColumnIds.has(row.column_id)) {
       throw new RequestBoardConfigurationError(
         "an open request project references an inactive board column",
       );
+    }
+    // F1-21: gespeicherter Score (frisch) oder synchroner Fallback (stale);
+    // stale + nicht-pending stößt genau einen Async-Recompute an.
+    const liveEmail = isNonEmpty(row.contact_email);
+    const livePhone = isNonEmpty(row.contact_phone);
+    const liveProfile = row.profile_id !== null;
+    const live = external ? null : computeLeadScore({
+      hasEmail: liveEmail,
+      hasPhone: livePhone,
+      hasAddress: isNonEmpty(row.postal_code) && isNonEmpty(row.city),
+      hasGeo: row.site_lat !== null && row.site_lng !== null,
+      hasProfile: liveProfile,
+      profileConfirmed: row.profile_id !== null && row.profile_confirmed === true,
+      hasRequirements: row.has_requirements === true,
+      hasKeyAccount: row.key_account_label !== null,
+      hasSource: row.lead_source_id !== null,
+      hasIntent: row.has_intent === true,
+    });
+    const stored = external || live === null ? null : leadScoreSnapshotFromStored({
+      value: row.lead_score_value,
+      band: row.lead_score_band,
+      signals: row.lead_score_signals,
+      computedAt: storedScoreIso(row.lead_score_computed_at),
+      status: row.lead_score_status,
+    }, boardNow);
+    const score: RequestBoardCard["score"] = live === null
+      ? null
+      : stored !== null && !stored.stale
+        ? stored
+        : { ...live, stale: true, computedAt: stored?.computedAt ?? null };
+    if (score !== null && score.stale && row.lead_score_status !== "pending") {
+      await triggerRecompute(row.project_id);
+    }
+    if (score !== null) {
+      leadFactsByCard.set(row.project_id, {
+        hasIntentSignal: score.signals.includes("intent"),
+        band: score.band,
+        hasEmail: liveEmail,
+        hasPhone: livePhone,
+        hasProfile: liveProfile,
+      });
     }
     const cards = cardsByColumn.get(row.column_id) ?? [];
     cards.push({
@@ -406,6 +678,7 @@ export async function getRequestBoard(
         bidirectionalCharging: row.bidirectional_charging === true,
         backupPower: row.backup_power === true,
       },
+      requestedPackages: parseRequestedPackages(row.requested_packages),
       blockers: {
         dedupeReviewRequired: row.dedupe_review_required,
         addressFollowUpRequired: row.address_follow_up_required,
@@ -417,17 +690,7 @@ export async function getRequestBoard(
         keyAccountLabel: row.key_account_label,
       },
       followUp: followUpForCard(row, external, boardNow),
-      score: external ? null : computeLeadScore({
-        hasEmail: isNonEmpty(row.contact_email),
-        hasPhone: isNonEmpty(row.contact_phone),
-        hasAddress: isNonEmpty(row.postal_code) && isNonEmpty(row.city),
-        hasGeo: row.site_lat !== null && row.site_lng !== null,
-        hasProfile: row.profile_id !== null,
-        profileConfirmed: row.profile_id !== null && row.profile_confirmed === true,
-        hasRequirements: row.has_requirements === true,
-        hasKeyAccount: row.key_account_label !== null,
-        hasSource: row.lead_source_id !== null,
-      }),
+      score,
     });
     cardsByColumn.set(row.column_id, cards);
   }
@@ -447,10 +710,16 @@ export async function getRequestBoard(
       isIntake: row.is_intake,
       // F1-07 Filter-Preset: Ansichtslinse über Bänder; leere Spalten
       // bleiben stehen (stabile Struktur, keine Definitionsänderung).
+      // F1-21: Intent-/Ansprache-/Lücke-Presets kombinierbar per AND.
       cards: (cardsByColumn.get(row.column_id) ?? []).filter(
         (card) =>
           (scoreBand === undefined || card.score?.band === scoreBand)
-          && followUpMatchesFilter(card.followUp, followUpFilter),
+          && followUpMatchesFilter(card.followUp, followUpFilter)
+          && leadFiltersMatch(leadFactsByCard.get(card.id), {
+            intentFilter,
+            anspracheFilter,
+            lueckeFilter,
+          }),
       ),
     })),
     permissions: external

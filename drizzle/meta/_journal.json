@@ -1065,6 +1065,34 @@
       "when": 1789758554989,
       "tag": "0230_f1_15_broker_intake",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1789803006025,
+      "tag": "0232_f1_19_energy_modes_packages",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1789803084885,
+      "tag": "0233_f1_20_task_team_assignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1789803336704,
+      "tag": "0234_f1_21_lead_score_deepening",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1789808503198,
+      "tag": "0236_f1_19_energy_mode_switch",
+      "breakpoints": true
     }
   ]
 }

@@ -38,7 +38,17 @@ function FileErrorMessage({ code, detail }: { code: string; detail?: string }) {
               ? `Spalte ist doppelt vorhanden: ${detail ?? "?"}.`
               : code === "too-many-rows"
                 ? `Zu viele Zeilen (${detail ?? "?"}; max. 500).`
-                : "Die Datei konnte nicht gelesen werden.";
+                : code === "too-large"
+                  ? "Die XLSX-Datei ist zu groß (max. 5 MB)."
+                  : code === "too-many-columns"
+                    ? `Zu viele Spalten (${detail ?? "?"}; max. 10).`
+                    : code === "header-too-long"
+                      ? "Eine Spaltenüberschrift ist zu lang (max. 100 Zeichen)."
+                      : code === "cell-too-long"
+                        ? "Eine Zelle ist zu lang (max. 2000 Zeichen)."
+                        : code === "invalid-xlsx"
+                          ? "Die XLSX-Datei konnte nicht gelesen werden."
+                          : "Die Datei konnte nicht gelesen werden.";
   return (
     <p role="alert" data-testid="manual-lead-bulk-file-error" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
       {message}
@@ -48,12 +58,15 @@ function FileErrorMessage({ code, detail }: { code: string; detail?: string }) {
 
 function Report({ report }: { report: ManualLeadBulkReport }) {
   const invalidRows = report.rows.filter((row) => row.status === "invalid" || row.status === "note-failed");
+  const geocodeSuffix = report.dryRun
+    ? ""
+    : `${report.geocodedCount > 0 ? `, ${report.geocodedCount} geocodiert` : ""}${report.geocodeFailedCount > 0 ? `, ${report.geocodeFailedCount} nicht geocodiert` : ""}`;
   return (
     <div data-testid="manual-lead-bulk-report" className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
       <p role="status" className="text-sm font-semibold text-slate-900">
         {report.dryRun
           ? `Prüfung: ${report.totalRows} ${report.totalRows === 1 ? "Zeile" : "Zeilen"} gelesen — ${report.rows.filter((row) => row.status === "valid").length} gültig, ${invalidRows.length} fehlerhaft. Es wurde nichts angelegt.`
-          : `Import: ${report.createdCount} von ${report.totalRows} ${report.totalRows === 1 ? "Anfrage" : "Anfragen"} angelegt${report.reusedCount > 0 ? ` (${report.reusedCount} bestehende Kontakte)` : ""}${report.noteFailedProjectIds.length > 0 ? `, ${report.noteFailedProjectIds.length} Notizen offen` : ""}.`}
+          : `Import: ${report.createdCount} von ${report.totalRows} ${report.totalRows === 1 ? "Anfrage" : "Anfragen"} angelegt${report.reusedCount > 0 ? ` (${report.reusedCount} bestehende Kontakte)` : ""}${report.noteFailedProjectIds.length > 0 ? `, ${report.noteFailedProjectIds.length} Notizen offen` : ""}${geocodeSuffix}.`}
       </p>
       {invalidRows.length > 0 ? (
         <table data-testid="manual-lead-bulk-errors" className="w-full border-collapse text-left text-sm">
@@ -88,9 +101,9 @@ function Feedback({ state }: { state: ManualLeadBulkActionState }) {
   if (state.status === "file-error") return <FileErrorMessage code={state.code} detail={state.detail} />;
   const message =
     state.status === "too-large"
-      ? "Die Datei ist zu groß (max. 1 MB Text)."
+      ? "Die Datei ist zu groß (CSV max. 1 MB Text, XLSX max. 5 MB)."
       : state.status === "invalid"
-        ? "Bitte prüfen: CSV-Text und Modus sind Pflicht."
+        ? "Bitte prüfen: CSV-Text oder XLSX-Datei und Modus sind Pflicht (nicht beides)."
         : state.status === "denied"
           ? "Keine Berechtigung zum Anlegen."
           : "Bitte erneut anmelden.";
@@ -102,9 +115,10 @@ function Feedback({ state }: { state: ManualLeadBulkActionState }) {
 }
 
 /**
- * F1-02 · CSV-Bulk-Import manueller Anfragen (Editoren). Prüfen (Dry-Run)
- * validiert ohne Writes; Importieren legt gültige Zeilen über
- * createManualLead an und meldet ungültige Zeilen einzeln zurück.
+ * F1-02 · Bulk-Import manueller Anfragen (Editoren, F1-17: CSV + xlsx).
+ * Prüfen (Dry-Run) validiert ohne Writes; Importieren legt gültige Zeilen
+ * über createManualLead an und meldet ungültige Zeilen einzeln zurück.
+ * Qualifizierte Wohnbau-Zeilen werden automatisch geocodiert.
  */
 export function ManualLeadBulkForm({
   workspaceId,
@@ -117,7 +131,12 @@ export function ManualLeadBulkForm({
 }) {
   const [open, setOpen] = useState(false);
   const [csvText, setCsvText] = useState("");
+  // F1-17: Datei-Inputs überleben keinen useActionState-Submit (unkontrolliert).
+  // Die gelesenen Bytes bleiben als Hidden-Payload erhalten, damit Prüfen →
+  // Importieren ohne erneute Auswahl funktioniert (Server prüft alles erneut).
+  const [xlsxPayload, setXlsxPayload] = useState<{ name: string; bytes: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const xlsxRef = useRef<HTMLInputElement>(null);
   const [state, dispatch] = useActionState(
     importManualLeadBulkAction.bind(null, workspaceId),
     initialState,
@@ -129,6 +148,31 @@ export function ManualLeadBulkForm({
     setCsvText(await file.text());
   }
 
+  // CSV-Text und XLSX-Datei schließen einander aus (Server: invalid).
+  function onXlsxChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setXlsxPayload(null);
+      return;
+    }
+    setCsvText("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      const base64 = dataUrl.includes(",") ? dataUrl.slice(dataUrl.indexOf(",") + 1) : "";
+      setXlsxPayload(base64 === "" ? null : { name: file.name, bytes: base64 });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function onCsvTextChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
+    setCsvText(event.target.value);
+    if (event.target.value !== "") {
+      if (xlsxRef.current) xlsxRef.current.value = "";
+      setXlsxPayload(null);
+    }
+  }
+
   if (!open) {
     return (
       <button
@@ -137,7 +181,7 @@ export function ManualLeadBulkForm({
         data-testid="manual-lead-bulk-open"
         className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
       >
-        CSV-Import
+        CSV-/XLSX-Import
       </button>
     );
   }
@@ -149,8 +193,14 @@ export function ManualLeadBulkForm({
       className="grid max-w-2xl gap-3 rounded-lg border border-slate-200 bg-white p-4"
     >
       <input type="hidden" name="defaultScope" value={scope} />
+      {xlsxPayload ? (
+        <>
+          <input type="hidden" name="xlsxName" value={xlsxPayload.name} />
+          <input type="hidden" name="xlsxBytes" value={xlsxPayload.bytes} />
+        </>
+      ) : null}
       <p className="text-sm text-slate-600">
-        {`Mehrere Anfragen als CSV (Semikolon oder Komma) — leere Bereichs-Spalte übernimmt „${scopeLabel}“. Spalten: Name*; E-Mail; Telefon; Straße; Hausnummer; PLZ; Ort; Bereich; Quelle; Notiz.`}
+        {`Mehrere Anfragen als CSV (Semikolon oder Komma) oder XLSX (erstes Blatt, max. 500 Zeilen, max. 5 MB) — leere Bereichs-Spalte übernimmt „${scopeLabel}“. Spalten: Name*; E-Mail; Telefon; Straße; Hausnummer; PLZ; Ort; Bereich; Quelle; Notiz.`}
       </p>
       <label className={labelClass}>
         CSV-Datei (optional, füllt das Textfeld)
@@ -163,13 +213,24 @@ export function ManualLeadBulkForm({
         />
       </label>
       <label className={labelClass}>
+        XLSX-Datei (Alternative zum CSV-Text)
+        <input
+          ref={xlsxRef}
+          type="file"
+          name="xlsxFile"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={onXlsxChange}
+          data-testid="manual-lead-bulk-xlsx"
+          className="text-sm text-slate-700"
+        />
+      </label>
+      <label className={labelClass}>
         CSV-Text
         <textarea
           name="csvText"
           rows={6}
-          required
           value={csvText}
-          onChange={(event) => setCsvText(event.target.value)}
+          onChange={onCsvTextChange}
           placeholder="Name;E-Mail;Telefon;PLZ;Ort&#10;Max Sonne;max@beispiel.de;0151 23456789;10115;Berlin"
           className={`${inputClass} font-mono`}
         />

@@ -11,7 +11,9 @@ export {
   EnergyProfileUnsupportedSourceError,
   getProjectEnergyContext,
   getProjectEnergyProfileCandidate,
+  readLatestProjectRequirement,
   saveProjectEnergyProfile,
+  type LatestProjectRequirement,
 } from "./service";
 
 export {

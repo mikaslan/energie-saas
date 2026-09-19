@@ -55,6 +55,8 @@ const manualLeadCommandSchema = z.strictObject({
   displayName: z.string().trim().min(1).max(200),
   email: z.email().trim().max(200).optional(),
   phone: z.string().trim().min(1).max(40).optional(),
+  // F1-16: explizite Kontakt-Auswahl aus dem Modal (hidden contactId).
+  contactId: uuidSchema.optional(),
   street: optionalText(200),
   houseNumber: optionalText(30),
   postalCode: z.string().trim().regex(/^[0-9]{5}$/).optional(),
@@ -91,6 +93,9 @@ function normalizedEmail(value: string | undefined): string | null {
  * Manuelle Anfrage anlegen. Kontakt-Dedupe per normalisierter E-Mail oder
  * E164-Nummer: Treffer nutzt den bestehenden Kontakt und markiert das
  * Projekt zur Nachprüfung (keine Blockade, keine stillen Überschreibungen).
+ * F1-16: eine explizite `contactId` (Modal-Auswahl) gewinnt über den
+ * impliziten Abgleich — außer bei Vorbefüllungs-Drift (Formular-E-Mail
+ * weicht ab), dann wird sie ignoriert und Dedupe läuft normal.
  */
 export async function createManualLead(
   tx: TenantTx,
@@ -100,6 +105,7 @@ export async function createManualLead(
     displayName: string;
     email?: string;
     phone?: string;
+    contactId?: string;
     street?: string;
     houseNumber?: string;
     postalCode?: string;
@@ -165,6 +171,26 @@ export async function createManualLead(
     leadSourceId = command.leadSourceId;
   }
 
+  // F1-16: explizite Kontakt-Auswahl. Fremd, gelöscht oder unbekannt →
+  // fail-closed (invalid). Bei Drift (Formular-E-Mail weicht vom Kontakt
+  // ab) gewinnt der Formularwert: contactId wird ignoriert, Dedupe läuft
+  // normal. Eingabeprüfung vor Umgebungsprüfung (Lane), wie Quelle/Kampagne.
+  let explicitContactId: string | null = null;
+  if (command.contactId !== undefined) {
+    const contact = await tx.execute<{ id: string; email_normalized: string | null }>(sql`
+      select id, email_normalized from contact
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${command.contactId}::uuid
+         and deleted_at is null
+       limit 1
+    `);
+    const row = contact.rows[0];
+    if (!row) throw new ManualLeadValidationError("contactId unknown, foreign or deleted");
+    if ((row.email_normalized ?? null) === emailNormalized) {
+      explicitContactId = row.id;
+    }
+  }
+
   // Intake-Lane des Bereichs (fail-closed, kein Scope-Fallback).
   const lane = await tx.execute<{ board_id: string; column_id: string }>(sql`
     select board.id as board_id, intake.id as column_id
@@ -185,22 +211,30 @@ export async function createManualLead(
     throw new ManualLeadLaneError(`default ${command.scope} intake lane is missing or ambiguous`);
   }
 
-  // Dedupe: existierender Kontakt wird wiederverwendet.
-  const duplicate = await tx.execute<{ id: string }>(sql`
-    select id from contact
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and deleted_at is null
-       and (
-         (${emailNormalized}::text is not null and email_normalized = ${emailNormalized}::text)
-         or (${phoneE164}::text is not null and phone_e164 = ${phoneE164}::text)
-       )
-     order by created_at asc
-     limit 1
-  `);
-  const contactReused = duplicate.rows.length > 0;
+  // Dedupe: existierender Kontakt wird wiederverwendet. Die explizite
+  // F1-16-Auswahl gewinnt über den impliziten E-Mail/Telefon-Abgleich.
+  let contactId: string;
+  let contactReused: boolean;
+  if (explicitContactId !== null) {
+    contactId = explicitContactId;
+    contactReused = true;
+  } else {
+    const duplicate = await tx.execute<{ id: string }>(sql`
+      select id from contact
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and deleted_at is null
+         and (
+           (${emailNormalized}::text is not null and email_normalized = ${emailNormalized}::text)
+           or (${phoneE164}::text is not null and phone_e164 = ${phoneE164}::text)
+         )
+       order by created_at asc
+       limit 1
+    `);
+    contactReused = duplicate.rows.length > 0;
+    contactId = duplicate.rows[0]?.id ?? randomUUID();
+  }
 
   const names = contactNameSplitV1(command.displayName);
-  const contactId = duplicate.rows[0]?.id ?? randomUUID();
   if (!contactReused) {
     await tx.execute(sql`
       insert into contact (

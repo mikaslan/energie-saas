@@ -1,5 +1,9 @@
 import Link from "next/link";
 import type { ProjectEnergyContext } from "@/modules/energy";
+import {
+  requestedPackageKeys,
+  type RequestedPackages,
+} from "@/lib/integrations/calculation/contract";
 import { DetailItem, Section } from "./_ui";
 import { EnergyConfirmForm } from "./energy-confirm-form";
 
@@ -20,6 +24,53 @@ function assetLabel(asset: Profile["existingAssets"][keyof Profile["existingAsse
   if (asset.status === "known_present") return "Vorhanden";
   if (asset.status === "known_absent") return "Nicht vorhanden";
   return "Unbekannt";
+}
+
+// F1-19 Eingabemodus-Anzeige (Akte). Werte sind Contract-Enums.
+function inputModeLabel(mode: Profile["inputMode"]): string {
+  if (mode === "property") return "Objekt-Schätzung";
+  if (mode === "roomwise") return "Raumweise Erfassung";
+  if (mode === "manual") return "Manuelle Eingabe";
+  return "Verbrauch (Rechnerwerte)";
+}
+
+function heatingTypeLabel(heatingType: string): string {
+  const labels: Record<string, string> = {
+    gas: "Gas",
+    oil: "Öl",
+    heat_pump: "Wärmepumpe",
+    district_heating: "Fernwärme",
+    direct_electric: "Direktstrom",
+    biomass: "Biomasse",
+    other: "Sonstige",
+  };
+  return labels[heatingType] ?? heatingType;
+}
+
+function provenanceLabel(source: Profile["provenance"]["source"]): string {
+  return source === "operator_manual" ? "Manuell erfasst" : "Rechner-Import";
+}
+
+// F1-19 Zielpakete (Akte): Kaufabsicht je Paket mit Zahlart.
+function packageLabel(key: (typeof requestedPackageKeys)[number]): string {
+  if (key === "solar") return "Solar";
+  if (key === "storage") return "Speicher";
+  if (key === "wallbox") return "Wallbox";
+  return "Heizung";
+}
+
+function paymentKindLabel(paymentKind: string | null): string {
+  if (paymentKind === "purchase") return "Kauf";
+  if (paymentKind === "leasing") return "Leasing";
+  if (paymentKind === "financing") return "Finanzierung";
+  return "Offen";
+}
+
+function packagesLabel(packages: RequestedPackages): string {
+  const wanted = requestedPackageKeys
+    .filter((key) => packages[key].wanted)
+    .map((key) => `${packageLabel(key)} (${paymentKindLabel(packages[key].paymentKind)})`);
+  return wanted.length > 0 ? wanted.join(", ") : "Keine Pakete gewünscht";
 }
 
 function profileState(context: ProjectEnergyContext):
@@ -82,10 +133,13 @@ export function EnergyProfileSection({
   workspaceId,
   projectId,
   context,
+  requestedPackages,
 }: {
   workspaceId: string;
   projectId: string;
   context: ProjectEnergyContext | null;
+  // F1-19 Zielpakete aus der Akte (optional: Alt-Caller ohne Stand).
+  requestedPackages?: RequestedPackages | null;
 }) {
   if (context === null) {
     return (
@@ -134,11 +188,32 @@ export function EnergyProfileSection({
             <DetailItem term="Quelle">
               Importierte Rechner-Eingaben, fachlich prüfbar
             </DetailItem>
+            <DetailItem term="Eingabemodus">
+              <span data-testid="energy-input-mode">{inputModeLabel(profile.value.inputMode)}</span>
+            </DetailItem>
+            <DetailItem term="Erfassungsquelle">
+              <span data-testid="energy-provenance">{provenanceLabel(profile.value.provenance.source)}</span>
+            </DetailItem>
             <DetailItem term="Profilrevision" numeric>{profile.revision}</DetailItem>
             <DetailItem term="Adressrevision" numeric>{profile.addressRevision}</DetailItem>
             <DetailItem term="Haushaltsverbrauch" numeric>
               {knownValue(profile.value.consumption.householdKwhPerYear, "kWh/Jahr")}
             </DetailItem>
+            {profile.value.propertyEstimate !== undefined ? (
+              <DetailItem term="Objekt-Schätzung">
+                <span data-testid="energy-property-estimate">{`${heatingTypeLabel(profile.value.propertyEstimate.heatingType)}, ${profile.value.propertyEstimate.residentCount} Bewohner`}</span>
+              </DetailItem>
+            ) : null}
+            {profile.value.rooms !== undefined ? (
+              <DetailItem term="Räume" numeric>
+                <span data-testid="energy-rooms">{`${profile.value.rooms.length} Räume, ${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(profile.value.rooms.reduce((sum, room) => sum + room.areaM2, 0))} m²`}</span>
+              </DetailItem>
+            ) : null}
+            {requestedPackages !== undefined && requestedPackages !== null ? (
+              <DetailItem term="Zielpakete">
+                <span data-testid="energy-packages">{packagesLabel(requestedPackages)}</span>
+              </DetailItem>
+            ) : null}
             <DetailItem term="Dachflächen" numeric>{profile.value.roofs.length}</DetailItem>
             <DetailItem term="Bestands-PV">
               {assetLabel(profile.value.existingAssets.pv)}

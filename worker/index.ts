@@ -45,6 +45,13 @@ import {
   createCustomerNotificationDatabaseGateway,
   createCustomerNotificationHandler,
 } from "./customer-notification";
+import { createLeadScoreDatabaseGateway } from "./lead-score-database";
+import {
+  createLeadScoreRecomputeHandler,
+  LEAD_SCORE_RECOMPUTE_QUEUE,
+  startLeadScoreRecoverySweep,
+  type LeadScoreRecoveryController,
+} from "./lead-score";
 import { CUSTOMER_NOTIFICATION_QUEUE } from "../lib/integrations/notifications/contract";
 import { NoopCustomerNotificationTransport } from "../lib/integrations/notifications/resend-transport";
 import { createHealthProbe, createHealthServer, startHeartbeat } from "./health";
@@ -133,6 +140,7 @@ let offerReleaseCandidateRecovery:
   | OfferReleaseCandidateRecoveryController
   | undefined;
 let offerIssuanceRecovery: OfferIssuanceRecoveryController | undefined;
+let leadScoreRecovery: LeadScoreRecoveryController | undefined;
 let catalogImportMaintenance: CatalogImportMaintenanceController | undefined;
 let shutdownPromise: Promise<void> | undefined;
 let fatalShutdown = false;
@@ -187,6 +195,11 @@ const catalogImportGateway = createCatalogImportDatabaseGateway(
 const customerNotificationGateway = createCustomerNotificationDatabaseGateway(
   WORKER_URL,
   (error) => reportFatalWorkerError("customer-notification-pool", error),
+  2,
+);
+const leadScoreGateway = createLeadScoreDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("lead-score-pool", error),
   2,
 );
 const boss = new PgBoss({
@@ -277,6 +290,9 @@ const customerNotificationHandler = createCustomerNotificationHandler({
   database: customerNotificationGateway.database,
   transport: new NoopCustomerNotificationTransport(),
 });
+const leadScoreHandler = createLeadScoreRecomputeHandler({
+  database: leadScoreGateway.database,
+});
 
 // Readiness braucht eine AKTUELLE Probe, nicht nur "hat mal gestartet" — und
 // diese Probe braucht Timeouts, die tatsächlich abbrechen. Beides steckt in
@@ -311,6 +327,9 @@ function shutdown(signal: string, fatal = false): Promise<void> {
     const issuanceRecoveryStopped = offerIssuanceRecovery?.stop()
       ?? Promise.resolve();
     offerIssuanceRecovery = undefined;
+    const leadScoreRecoveryStopped = leadScoreRecovery?.stop()
+      ?? Promise.resolve();
+    leadScoreRecovery = undefined;
     const catalogImportMaintenanceStopped = catalogImportMaintenance?.stop()
       ?? Promise.resolve();
     catalogImportMaintenance = undefined;
@@ -326,6 +345,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
         await recoveryStopped;
         await releaseRecoveryStopped;
         await issuanceRecoveryStopped;
+        await leadScoreRecoveryStopped;
         await catalogImportMaintenanceStopped;
         await boss.stop({ graceful: true, timeout: 15_000 });
       } finally {
@@ -342,6 +362,7 @@ function shutdown(signal: string, fatal = false): Promise<void> {
           offerIssuanceGateway.close(),
           catalogImportGateway.close(),
           customerNotificationGateway.close(),
+          leadScoreGateway.close(),
         ]);
       }
     };
@@ -391,6 +412,8 @@ async function main() {
     await offerIssuanceGateway.probe();
     startupGate.assertOpen();
     await customerNotificationGateway.probe();
+    startupGate.assertOpen();
+    await leadScoreGateway.probe();
     startupGate.assertOpen();
   } else {
     console.log("[worker] E2E-Katalogisolierung aktiv");
@@ -507,6 +530,31 @@ async function main() {
       { batchSize: 1, localConcurrency: 2 },
       customerNotificationHandler,
     );
+    startupGate.assertOpen();
+    // F1-21 Lead-Score-Recompute: derselbe technische Queuevertrag wie
+    // pdf.render (exclusive, Retry 10, Backoff max. 60 s, Ablauf 180 s) —
+    // 0234 attestiert ihn, der Bootstrap legt die Queue vorab an.
+    await boss.createQueue(LEAD_SCORE_RECOMPUTE_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    startupGate.assertOpen();
+    await boss.work(
+      LEAD_SCORE_RECOMPUTE_QUEUE,
+      { batchSize: 1, localConcurrency: 2 },
+      leadScoreHandler,
+    );
+    startupGate.assertOpen();
+    leadScoreRecovery = startLeadScoreRecoverySweep({
+      database: leadScoreGateway.database,
+      onFatal: (error) => {
+        reportFatalWorkerError("lead-score-recovery", error);
+      },
+    });
     startupGate.assertOpen();
   }
   await boss.createQueue(CATALOG_IMPORT_QUEUE, {

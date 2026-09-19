@@ -120,6 +120,7 @@ export {
   MANUAL_LEAD_BULK_MAX_ROWS,
   MANUAL_LEAD_BULK_REPORT_VERSION,
   MANUAL_LEAD_BULK_VERSION,
+  MANUAL_LEAD_BULK_XLSX_MAX_BYTES,
   manualLeadBulkReportSchema,
   ManualLeadBulkFileError,
   type ManualLeadBulkReport,
@@ -127,6 +128,9 @@ export {
   type ManualLeadBulkRowError,
   type ManualLeadBulkRowStatus,
 } from "./lead-bulk-import";
+export {
+  type ManualLeadBulkGeocodeError,
+} from "./lead-bulk-geocode";
 export type {
   AssignedExternalRequestDetail,
   ProjectAssignmentContext,

@@ -153,6 +153,14 @@ const F1008_NOTIFICATION_FUNCTION_NAMES = [
   ...F1008_NOTIFICATION_WORKER_ROUTINES,
   ...F1008_NOTIFICATION_RUNTIME_ROUTINES,
 ].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+// F1-21 (0234): Lead-Score-Recompute-Kapsel (Worker; Dispatch-Kapsel liegt
+// worker-owned in pgboss und wird dort gepinnt).
+const F121_LEAD_SCORE_WORKER_ROUTINES = [
+  "public._f121_recompute_lead_score(uuid,uuid)",
+] as const;
+const F121_LEAD_SCORE_FUNCTION_NAMES = [
+  ...F121_LEAD_SCORE_WORKER_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
 
 const PROJECT_NOTE_RELATIONS = ["project_note"] as const;
 const PROJECT_NOTE_RUNTIME_ROUTINES = [
@@ -700,6 +708,12 @@ const BLOCK_TEAM_ASSIGNMENT_RELATIONS = [
 // BLOCK_TEAM_ASSIGNMENT_RELATIONS (INSERT/SELECT/DELETE, kein UPDATE).
 const PROJECT_TEAM_ASSIGNMENT_RELATIONS = [
   "project_team_assignment",
+] as const;
+
+// F1-20 (0233): Aufgaben-Team-Zuweisung — ACL-Form wie
+// PROJECT_TEAM_ASSIGNMENT_RELATIONS (INSERT/SELECT/DELETE, kein UPDATE).
+const TASK_TEAM_ASSIGNMENT_RELATIONS = [
+  "project_task_team_assignment",
 ] as const;
 
 // F1-15 (0230): Broker-Intake-Receipt — ACL-Form wie inbound_receipt
@@ -3265,6 +3279,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F1-20 (0233): Aufgaben-Team-Zuweisung — ACL-Form wie F1-14.
+  const hasTaskTeamAssignmentForAcl = await hasAtomicPublicRelationSet(
+    client,
+    TASK_TEAM_ASSIGNMENT_RELATIONS,
+    "Rollen-ACL-Manifest: F1-20-Aufgaben-Team-Zuweisung",
+  );
+  if (hasTaskTeamAssignmentForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.project_task_team_assignment
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, delete on public.project_task_team_assignment to app_runtime
+    `);
+  }
+
   // F1-15 (0230): Broker-Intake-Receipt — ACL-Form wie inbound_receipt.
   const hasInboundBrokerReceiptForAcl = await hasAtomicPublicRelationSet(
     client,
@@ -4040,6 +4070,16 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F1-21 (0234): Dispatch-Kapsel ist genau dann vorhanden, wenn die
+  // Public-Recompute-Kapsel derselben Migration existiert (0234 bricht ohne
+  // Bootstrap-Queue fail-closed ab; pgboss-Sonde unmoeglich als Migrator).
+  const f121ApplyPresence = await client.query<{ present: boolean }>(`
+    select pg_catalog.to_regprocedure(
+      'public._f121_recompute_lead_score(uuid,uuid)'
+    ) is not null as present
+  `);
+  const hasF121LeadScoreApply =
+    f121ApplyPresence.rows[0]?.present === true;
   // pg-boss bleibt vollstaendig worker-owned. Nur der SET-only-Migrator darf
   // fuer das nach jeder Migration wiederholte ACL-Manifest kurz in diesen
   // Owner wechseln; app_owner und app_worker erhalten keine gegenseitige
@@ -4080,6 +4120,10 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     ` : ""}
     ${hasCustomerNotification ? `
       grant execute on function pgboss.enqueue_customer_notification(uuid, uuid)
+        to app_runtime;
+    ` : ""}
+    ${hasF121LeadScoreApply ? `
+      grant execute on function pgboss.enqueue_lead_score_recompute(uuid, uuid)
         to app_runtime;
     ` : ""}
     set role app_owner
@@ -4393,6 +4437,24 @@ export async function verifyRoleContract(
     select pg_catalog.to_regclass('public.offer_pdf_draft') is not null as present
   `);
   const hasOfferPdfDraft = offerPdfPresence.rows[0]?.present === true;
+  // F1-21 (0234): Recompute-Kapsel (public). Die pgboss-Dispatch-Kapsel
+  // derselben Migration ist dadurch impliziert (0234 bricht ohne
+  // Bootstrap-Queue fail-closed ab; Verify laeuft nur strict).
+  const f121Presence = await client.query<{ present: boolean }>(`
+    select pg_catalog.to_regprocedure(
+      'public._f121_recompute_lead_score(uuid,uuid)'
+    ) is not null as present
+  `);
+  const hasF121LeadScore = f121Presence.rows[0]?.present === true;
+  // F1-19 (0232/0236): Contract-CHECK = Stufenmarker fuer den M1-07-Guard
+  // nach der Modus-Evolution (input_mode kein Identitaetsmerkmal mehr).
+  const f119Presence = await client.query<{ present: boolean }>(`
+    select exists(
+      select 1 from pg_catalog.pg_constraint
+      where conname = 'site_energy_profile_contract_ck'
+    ) as present
+  `);
+  const hasF119EnergyModes = f119Presence.rows[0]?.present === true;
   // F15-01 (0088): Stufenmarker für den Provisionierungs-Rumpf (eigene
   // Sonde: die Funktionsliste weiter unten ist namensbegrenzt). Nur der
   // exakte Marker wählt den neuen Pin — ein dritter Rumpf bricht
@@ -4862,6 +4924,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F1-14-Projekt-Team-Zuweisung",
   );
 
+  const hasTaskTeamAssignment = await hasAtomicPublicRelationSet(
+    client,
+    TASK_TEAM_ASSIGNMENT_RELATIONS,
+    "Rollenvertrag: F1-20-Aufgaben-Team-Zuweisung",
+  );
+
   const hasInboundBrokerReceipt = await hasAtomicPublicRelationSet(
     client,
     INBOUND_BROKER_RECEIPT_RELATIONS,
@@ -5162,6 +5230,9 @@ export async function verifyRoleContract(
       ...(hasProjectTeamAssignment ? PROJECT_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
+      ...(hasTaskTeamAssignment ? TASK_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
@@ -5294,6 +5365,7 @@ export async function verifyRoleContract(
         'enqueue_catalog_import_cleanup_v1',
         'enqueue_catalog_import_v1',
         'enqueue_customer_notification',
+        'enqueue_lead_score_recompute',
         'enqueue_offer_issuance',
         'enqueue_offer_pdf_draft',
         'enqueue_offer_release_candidate',
@@ -5356,6 +5428,10 @@ export async function verifyRoleContract(
       ...(hasCustomerNotification ? [
         "enqueue_customer_notification(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
           "search_path=pg_catalog:15705e053ce84cc9bfc4b2d5dfed00b377fb1d445be718d6e9801358df1adf1c",
+      ] : []),
+      ...(hasF121LeadScore ? [
+        "enqueue_lead_score_recompute(uuid, uuid):void:app_worker:plpgsql:f:v:true:false:false:u:" +
+          "search_path=pg_catalog:bc8e76c6e785a2350f205fb69dd89e74a3747299cc36f16e2b4254ee285b1268",
       ] : []),
     ],
     "Worker-Dispatch-Sicherheitsvertrag",
@@ -5465,6 +5541,9 @@ export async function verifyRoleContract(
         (name) => `${name}:app_owner`,
       ) : []),
       ...(hasF1008Notification ? F1008_NOTIFICATION_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
+      ...(hasF121LeadScore ? F121_LEAD_SCORE_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
       ...(hasProjectNotes ? PROJECT_NOTE_FUNCTION_NAMES.map(
@@ -5688,7 +5767,11 @@ export async function verifyRoleContract(
           "false:false:false:u:search_path=pg_catalog:" +
           "2d578a95578ffed5bd7e23693039bb419d0cffbc05617f61be903642961e3605",
         "_m110_guard_project_task():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:1e1d9edfe6566822ee3dceed4a14f7158687cba647a12b779dccdb58603ca97f",
+          // F1-20 (0233): Teamzuweisungs-Carve-out (eigene CAS-Domaene ohne
+          // Fach-Revisions-Bump); alte Prefixe tragen den alten Rumpf.
+          `search_path=pg_catalog:${hasTaskTeamAssignment
+            ? "cbebd24e14c4f1142cb65b85235011444b27bf7f87aa79c1491055f0a59adfc9"
+            : "1e1d9edfe6566822ee3dceed4a14f7158687cba647a12b779dccdb58603ca97f"}`,
         "_m110_guard_project_task_child():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:82c359b25fc6f07467d09724285682147a92c4bfd8bc0239b24777f7ff1872ff",
         "_m110_guard_project_task_positions():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -5767,6 +5850,12 @@ export async function verifyRoleContract(
             "true:false:false:u:search_path=pg_catalog:" +
             "ed869102297798d62a4fd3dac35696870492df5a79acc1c614c371fd638635a8",
         ] : []),
+      ] : []),
+      // F1-21 (0234): Lead-Score-Recompute-Kapsel (Worker, SECURITY DEFINER).
+      ...(hasF121LeadScore ? [
+        "_f121_recompute_lead_score(uuid, uuid):TABLE(score_value integer, score_band text, score_signals text[], score_computed_at timestamp with time zone):app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "febc36f107a06f3c79af9ba502daaee77ee4ba391b362c07f85f5cfe31adb19a",
       ] : []),
       ...(hasProjectNotes ? [
         "_m113_actor_can_read_notes(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
@@ -6298,7 +6387,10 @@ export async function verifyRoleContract(
       "guard_project_calculation_revision():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
         "search_path=pg_catalog:9ae6f5da4bca2d394e687c50c7be25cc0ebaab763ebaefd9f11cf4d20644a07a",
       "guard_site_energy_profile_mutation():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-        "search_path=pg_catalog:02cefc1ea9fab360ae6dbe31a77095f20a2fd75025ba1e6b41508c32a00d8eab",
+        // F1-19 (0236): Modus-Evolution (input_mode wechselbar); alte Prefixe tragen den alten Rumpf.
+        `search_path=pg_catalog:${hasF119EnergyModes
+          ? "8c49da6938722886a6fe59850c1a24adde4d5afc68309e6c14c1f6e9ce649475"
+          : "02cefc1ea9fab360ae6dbe31a77095f20a2fd75025ba1e6b41508c32a00d8eab"}`,
       "lock_project_calculation_finalization(uuid, uuid):uuid:app_owner:plpgsql:f:v:true:false:true:u:" +
         "search_path=pg_catalog:8946ebb3b0a89e846a67582608458897717ba76d26292b48e7d78077402a820c",
       "mark_catalog_component_projects_stale():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
@@ -6516,6 +6608,9 @@ export async function verifyRoleContract(
         (relation) => `${relation}:true:true`,
       ) : []),
       ...(hasProjectTeamAssignment ? PROJECT_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasTaskTeamAssignment ? TASK_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
@@ -6886,6 +6981,12 @@ export async function verifyRoleContract(
         ...(hasProjectTeamAssignment ? [
           "project_team_assignment:tenant_isolation:" +
             "48e96c404b636e314a52f1ad66b72de38380ad82ccfefc72a478300c3b77b117",
+        ] : []),
+        // F1-20 (0233): Hash per Probe geerntet (Methode gegen
+        // F1-14-Pin gegengeprüft).
+        ...(hasTaskTeamAssignment ? [
+          "project_task_team_assignment:tenant_isolation:" +
+            "46e626a8a0e3547975489e8040466ddb7d92ca8609afea18f0e25d5e15882b93",
         ] : []),
         // F1-15 (0230): Hash per Probe geerntet (Methode gegen
         // F1-14-Pin gegengeprüft).
@@ -7632,6 +7733,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:DELETE:app_owner:false`,
       ]) : []),
+      ...(hasTaskTeamAssignment ? TASK_TEAM_ASSIGNMENT_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
+      ]) : []),
       // F1-15 (0230): Receipt-Form wie inbound_receipt (INSERT/SELECT;
       // UPDATE(id) ist Spalten-Grant und wird nicht enumeriert).
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.flatMap((relation) => [
@@ -7991,6 +8097,10 @@ export async function verifyRoleContract(
         "app_worker:_m111b_worker_deliver(uuid, uuid, integer, text, text):EXECUTE:app_owner:false",
         "app_worker:_m111b_worker_resolve_recipient(uuid, uuid):EXECUTE:app_owner:false",
       ] : []),
+      // F1-21 (0234): Recompute-Kapsel nur für Worker.
+      ...(hasF121LeadScore ? [
+        "app_worker:_f121_recompute_lead_score(uuid, uuid):EXECUTE:app_owner:false",
+      ] : []),
       ...(hasProjectNotes ? PROJECT_NOTE_RUNTIME_ROUTINES.map((signature) =>
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
@@ -8112,6 +8222,9 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasCustomerNotification ? [
         "app_runtime:enqueue_customer_notification(uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
+      ...(hasF121LeadScore ? [
+        "app_runtime:enqueue_lead_score_recompute(uuid, uuid):EXECUTE:app_worker:false",
       ] : []),
     ],
     "pg-boss-Funktions-Grants",

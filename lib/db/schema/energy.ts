@@ -100,7 +100,8 @@ export const siteEnergyProfile = pgTable(
     check("site_energy_profile_address_revision_ck", sql`${t.addressRevision} > 0`),
     check(
       "site_energy_profile_contract_ck",
-      sql`${t.schemaVersion} = 'site-energy-profile.v1' and ${t.inputMode} = 'consumption'`,
+      sql`${t.schemaVersion} = 'site-energy-profile.v1'
+        and ${t.inputMode} in ('consumption', 'property', 'roomwise', 'manual')`,
     ),
     check(
       "site_energy_profile_source_ck",
@@ -115,13 +116,18 @@ export const siteEnergyProfile = pgTable(
       ) is true`,
     ),
     check("site_energy_profile_hash_ck", sql`octet_length(${t.profileSha256}) = 32`),
+    // F1-19: Die DB prueft Strukturminima (Whitelist, Modus-Schluessel,
+    // Skalar-Bereiche); die volle Form (inkl. Pflicht-Provenance je Modus)
+    // validiert Zod auf dem Schreibpfad. Eine fehlende Provenance-Quelle
+    // bleibt in Nicht-manual-Modi DB-gueltig (Minimal-Fixtures/Altzeilen);
+    // operator_manual gehoert exklusiv zum manual-Modus.
     check(
       "site_energy_profile_json_ck",
       sql`(
         jsonb_typeof(${t.profile}) = 'object'
         and (${t.profile} - array[
           'schemaVersion', 'inputMode', 'building', 'roofs', 'consumption',
-          'existingAssets', 'provenance'
+          'existingAssets', 'provenance', 'propertyEstimate', 'rooms'
         ]::text[]) = '{}'::jsonb
         and ${t.profile}->>'schemaVersion' = ${t.schemaVersion}
         and ${t.profile}->>'inputMode' = ${t.inputMode}
@@ -131,6 +137,43 @@ export const siteEnergyProfile = pgTable(
         and jsonb_typeof(${t.profile}->'consumption') = 'object'
         and jsonb_typeof(${t.profile}->'existingAssets') = 'object'
         and jsonb_typeof(${t.profile}->'provenance') = 'object'
+        and case ${t.profile}->>'inputMode'
+          when 'property' then (
+            jsonb_typeof(${t.profile}->'propertyEstimate') = 'object'
+            and ((${t.profile}->'propertyEstimate') - array[
+              'heatingType', 'residentCount'
+            ]::text[]) = '{}'::jsonb
+            and (${t.profile}->'propertyEstimate') ?& array['heatingType', 'residentCount']
+            and ${t.profile}#>>'{propertyEstimate,heatingType}' in (
+              'gas', 'oil', 'heat_pump', 'district_heating', 'direct_electric',
+              'biomass', 'other'
+            )
+            and jsonb_typeof(${t.profile}#>'{propertyEstimate,residentCount}') = 'number'
+            and ${t.profile}#>>'{propertyEstimate,residentCount}' ~ '^[0-9]+$'
+            and (${t.profile}#>>'{propertyEstimate,residentCount}')::integer between 1 and 20
+            and not (${t.profile} ? 'rooms')
+            and (${t.profile}#>>'{provenance,source}' is null
+              or ${t.profile}#>>'{provenance,source}' = 'rechner_snapshot')
+          )
+          when 'roomwise' then (
+            jsonb_typeof(${t.profile}->'rooms') = 'array'
+            and jsonb_array_length(${t.profile}->'rooms') between 1 and 40
+            and not (${t.profile} ? 'propertyEstimate')
+            and (${t.profile}#>>'{provenance,source}' is null
+              or ${t.profile}#>>'{provenance,source}' = 'rechner_snapshot')
+          )
+          when 'manual' then (
+            not (${t.profile} ? 'propertyEstimate')
+            and not (${t.profile} ? 'rooms')
+            and ${t.profile}#>>'{provenance,source}' = 'operator_manual'
+          )
+          else (
+            not (${t.profile} ? 'propertyEstimate')
+            and not (${t.profile} ? 'rooms')
+            and (${t.profile}#>>'{provenance,source}' is null
+              or ${t.profile}#>>'{provenance,source}' = 'rechner_snapshot')
+          )
+        end
       ) is true`,
     ),
     check(

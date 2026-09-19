@@ -1,12 +1,24 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   authorizedAction,
   authorizedQuery,
   NotAuthenticatedError,
 } from "@/lib/action";
+import {
+  canonicalizeCalculationJson,
+  mergeRequestedPackages,
+  ProjectRequirementsRechnerV1Schema,
+  REQUESTED_PACKAGES_UNSET,
+  requestedPackageKeys,
+  type PackageFormDelta,
+  type PackagePaymentKind,
+  type RequestedPackages,
+} from "@/lib/integrations/calculation/contract";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
   confirmProjectEnergyProfile,
@@ -19,7 +31,9 @@ import {
   EnergyProfileRoofAcknowledgementError,
   EnergyProfileUnsupportedSourceError,
   getProjectEnergyProfileCandidate,
+  readLatestProjectRequirement,
   saveProjectEnergyProfile,
+  type LatestProjectRequirement,
   type ProjectEnergyProfileCandidate,
 } from "@/modules/energy";
 
@@ -35,7 +49,8 @@ export type SaveProjectEnergyProfileState =
   | { status: "address_not_ready" }
   | { status: "profile_missing" }
   | { status: "roof_review_required" }
-  | { status: "unsupported_source" };
+  | { status: "unsupported_source" }
+  | { status: "packages_unsupported" };
 
 export type ConfirmProjectEnergyProfileState =
   | { status: "idle" }
@@ -113,12 +128,64 @@ const customProfileFieldNames = [
 const MONTHLY_LOAD_PROFILE_FORM_VALUE = "customer_monthly_hourly.v1";
 const CSV_LOAD_PROFILE_FORM_VALUE = "customer_csv.v1";
 
+// F1-19 Eingabemodus: consumption (Rechner), property (Objekt-Schaetzung),
+// roomwise (Raumliste), manual (freie Operateur-Eingabe). Modus-Sektionen
+// sind branch-abhaengig exakt erlaubt (Allowlist unten + Refine).
+const inputModeSchema = z.enum(["consumption", "property", "roomwise", "manual"]);
+const heatingTypeSchema = z.enum([
+  "gas",
+  "oil",
+  "heat_pump",
+  "district_heating",
+  "direct_electric",
+  "biomass",
+  "other",
+]);
+const roomUsageSchema = z.enum([
+  "living",
+  "bedroom",
+  "kitchen",
+  "bathroom",
+  "hallway",
+  "office",
+  "commercial",
+  "storage",
+  "other",
+]);
+const roomCountSchema = z.string().regex(/^(?:0|[1-9]|[1-3][0-9]|40)$/u).transform(Number);
+// Paket-Matrix: "" = unveraendert (Merge serverseitig), sonst explizit.
+const packageWantedSchema = z.enum(["", "true", "false"]).transform((value) =>
+  value === "" ? null : value === "true",
+);
+const packagePaymentSchema = z.enum(["", "purchase", "leasing", "financing"]).transform(
+  (value) => (value === "" ? null : value),
+);
+
 const profileFormSchema = z.strictObject({
   workspaceId: z.uuid(),
   projectId: z.uuid(),
   expectedAddressRevision: positiveRevision,
   expectedLatestRevision: nonNegativeRevision,
   roofCount: z.string().regex(/^[1-4]$/u).transform(Number),
+  // F1-19: prefault statt required — alte Formulare/Tests ohne neue Felder
+  // bleiben gueltig (consumption, keine Raeume, Pakete unveraendert).
+  inputMode: inputModeSchema.prefault("consumption"),
+  roomCount: roomCountSchema.prefault("0"),
+  // F1-19 property-Sektion (nur im property-Branch erlaubt, dort Pflicht;
+  // .optional() wie Custom-Felder: fehlende Keys zählen als leer).
+  heatingType: z.union([z.literal(""), heatingTypeSchema]).transform((value) =>
+    value === "" ? null : value,
+  ).optional(),
+  residentCount: optionalNumber(1, 20, true).optional(),
+  // F1-19 Paket-Matrix (alle Modi; leer/fehlend = unveraendert).
+  pkgSolarWanted: packageWantedSchema.prefault(""),
+  pkgSolarPayment: packagePaymentSchema.prefault(""),
+  pkgStorageWanted: packageWantedSchema.prefault(""),
+  pkgStoragePayment: packagePaymentSchema.prefault(""),
+  pkgWallboxWanted: packageWantedSchema.prefault(""),
+  pkgWallboxPayment: packagePaymentSchema.prefault(""),
+  pkgHeatingWanted: packageWantedSchema.prefault(""),
+  pkgHeatingPayment: packagePaymentSchema.prefault(""),
   buildingType: optionalEnum([
     "single_family",
     "two_family",
@@ -253,6 +320,23 @@ const profileFormSchema = z.strictObject({
   ) {
     ctx.addIssue({ code: "custom", path: ["heatPumpThermalKwhPerYear"], message: "COP parameters without thermal demand" });
   }
+  // F1-19 Modus-Kopplung: property verlangt Heizart + Bewohner, roomwise
+  // 1..40 Raeume, andere Modi keine Modus-Sektion (Allowlist verhindert
+  // fremde Felder; halb belegte Modi scheitern hier, nicht still).
+  if (value.inputMode === "property") {
+    if ((value.heatingType ?? null) === null || (value.residentCount ?? null) === null) {
+      ctx.addIssue({ code: "custom", path: ["inputMode"], message: "property needs heating type and residents" });
+    }
+    if (value.roomCount !== 0) {
+      ctx.addIssue({ code: "custom", path: ["inputMode"], message: "rooms only in roomwise mode" });
+    }
+  } else if (value.inputMode === "roomwise") {
+    if (value.roomCount < 1 || value.roomCount > 40) {
+      ctx.addIssue({ code: "custom", path: ["inputMode"], message: "roomwise needs 1..40 rooms" });
+    }
+  } else if (value.roomCount !== 0) {
+    ctx.addIssue({ code: "custom", path: ["inputMode"], message: "rooms only in roomwise mode" });
+  }
 });
 
 const roofFormSchema = z.strictObject({
@@ -265,6 +349,32 @@ const roofFormSchema = z.strictObject({
   reviewed: z.enum(["true", "false"]).transform((value) => value === "true"),
   replaceDefault: z.enum(["true", "false"]).transform((value) => value === "true"),
 });
+
+// F1-19 Raumzeile (roomwise-Modus): Name/Flaeche/Nutzung/Heizkoerper,
+// je Zeile vollstaendig oder gar nicht (halb fail-closed).
+const roomFormSchema = z.strictObject({
+  name: z.string().min(1).max(64).refine((value) => value === value.trim()),
+  areaM2: optionalNumber(0.000_001, 2_000).pipe(z.number()),
+  usage: roomUsageSchema,
+  radiators: optionalNumber(0, 50, true).pipe(z.number()),
+});
+
+const propertyBranchFields = ["heatingType", "residentCount"] as const;
+
+// F1-19: erlaubt, aber nicht Pflicht (alte Formulare ohne diese Felder
+// bleiben gueltig; Schema-Prefaults liefern die Defaults).
+const optionalProfileFields = [
+  "inputMode",
+  "roomCount",
+  "pkgSolarWanted",
+  "pkgSolarPayment",
+  "pkgStorageWanted",
+  "pkgStoragePayment",
+  "pkgWallboxWanted",
+  "pkgWallboxPayment",
+  "pkgHeatingWanted",
+  "pkgHeatingPayment",
+] as const;
 
 const baseProfileFields = [
   "workspaceId",
@@ -333,9 +443,11 @@ const roofFieldSuffixes = [
   "reviewed",
   "replaceDefault",
 ] as const;
+const roomFieldSuffixes = ["name", "areaM2", "usage", "radiators"] as const;
 
 type ParsedProfileForm = z.infer<typeof profileFormSchema> & {
   roofs: Array<z.infer<typeof roofFormSchema>>;
+  rooms: Array<z.infer<typeof roomFormSchema>>;
 };
 
 function exactFormValue(formData: FormData, name: string): FormDataEntryValue | null {
@@ -349,10 +461,16 @@ function parseProfileForm(formData: FormData): ParsedProfileForm | null {
     rawRoofCount,
   );
   if (!parsedRoofCount.success) return null;
+  const rawRoomCount = exactFormValue(formData, "roomCount");
+  const parsedRoomCount = roomCountSchema.safeParse(rawRoomCount ?? "0");
+  if (!parsedRoomCount.success) return null;
 
   const allowed = new Set<string>(baseProfileFields);
   for (let index = 0; index < parsedRoofCount.data; index += 1) {
     for (const suffix of roofFieldSuffixes) allowed.add(`roof.${index}.${suffix}`);
+  }
+  for (let index = 0; index < parsedRoomCount.data; index += 1) {
+    for (const suffix of roomFieldSuffixes) allowed.add(`room.${index}.${suffix}`);
   }
   // F4.2: Custom-Felder nur bei Monatsprofil-Option (exakt, branchabhängig).
   const rawLoadProfile = exactFormValue(formData, "loadProfile");
@@ -365,12 +483,28 @@ function parseProfileForm(formData: FormData): ParsedProfileForm | null {
   if (csvBranch) {
     allowed.add("loadProfileCsv");
   }
+  // F1-19: property-Felder nur im property-Branch (exakt, branchabhängig).
+  const rawInputMode = exactFormValue(formData, "inputMode");
+  const propertyBranch = rawInputMode === "property";
+  if (propertyBranch) {
+    for (const name of propertyBranchFields) allowed.add(name);
+  }
+  // F1-19: optionale Felder (inputMode/roomCount/Paket-Matrix) sind
+  // erlaubt, aber nicht Pflicht — alte Formulare bleiben gültig. Sie
+  // laufen über eine eigene Allowlist; die Pflichtmenge bleibt exakt.
+  const optionalAllowed = new Set<string>(optionalProfileFields);
 
   const seen = new Set<string>();
+  const seenOptional = new Set<string>();
   for (const name of formData.keys()) {
     // Next/React ergänzt verschlüsselte Action-Metadaten. Sie sind keine
     // Fachfelder und werden nie an Parser oder Service weitergereicht.
     if (name.startsWith("$ACTION_")) continue;
+    if (optionalAllowed.has(name)) {
+      if (seenOptional.has(name)) return null;
+      seenOptional.add(name);
+      continue;
+    }
     if (!allowed.has(name) || seen.has(name)) return null;
     seen.add(name);
   }
@@ -379,14 +513,25 @@ function parseProfileForm(formData: FormData): ParsedProfileForm | null {
   const rawBase = Object.fromEntries(
     [
       ...baseProfileFields,
+      ...optionalProfileFields,
       ...(monthlyBranch ? customProfileFieldNames : []),
       ...(csvBranch ? ["loadProfileCsv"] : []),
-    ].map(
-      (name) => [name, exactFormValue(formData, name)],
-    ),
+      ...(propertyBranch ? [...propertyBranchFields] : []),
+    ].map((name) => {
+      const value = exactFormValue(formData, name);
+      // Fehlende optionale Felder: undefined (Prefault-Defaults greifen).
+      if (value === null && (optionalProfileFields as readonly string[]).includes(name)) {
+        return [name, undefined];
+      }
+      return [name, value];
+    }),
   );
   const parsedBase = profileFormSchema.safeParse(rawBase);
-  if (!parsedBase.success || parsedBase.data.roofCount !== parsedRoofCount.data) return null;
+  if (
+    !parsedBase.success
+    || parsedBase.data.roofCount !== parsedRoofCount.data
+    || parsedBase.data.roomCount !== parsedRoomCount.data
+  ) return null;
 
   const roofs = [];
   for (let index = 0; index < parsedRoofCount.data; index += 1) {
@@ -400,7 +545,19 @@ function parseProfileForm(formData: FormData): ParsedProfileForm | null {
     if (!parsedRoof.success) return null;
     roofs.push(parsedRoof.data);
   }
-  return { ...parsedBase.data, roofs };
+  const rooms = [];
+  for (let index = 0; index < parsedRoomCount.data; index += 1) {
+    const rawRoom = Object.fromEntries(
+      roomFieldSuffixes.map((suffix) => [
+        suffix,
+        exactFormValue(formData, `room.${index}.${suffix}`),
+      ]),
+    );
+    const parsedRoom = roomFormSchema.safeParse(rawRoom);
+    if (!parsedRoom.success) return null;
+    rooms.push(parsedRoom.data);
+  }
+  return { ...parsedBase.data, roofs, rooms };
 }
 
 const confirmFormFields = new Set([
@@ -578,6 +735,29 @@ function buildSubmittedProfile(
   const comparisonTariffs = comparisonTariffsFromForm(input);
   if (comparisonTariffs === null) return null;
   const comparisonTariffsOrAbort = comparisonTariffs.length === 0 ? null : comparisonTariffs;
+  // F1-19 Modus: Refine garantiert Modus-Sektionen (Vollstaendigkeit je
+  // Branch); fremde Sektionen werden explizit entfernt, nie mitgeschleppt.
+  profile.inputMode = input.inputMode;
+  delete profile.propertyEstimate;
+  delete profile.rooms;
+  if (input.inputMode === "property") {
+    const heatingType = input.heatingType ?? null;
+    const residentCount = input.residentCount ?? null;
+    if (heatingType === null || residentCount === null) return null;
+    profile.propertyEstimate = { heatingType, residentCount };
+  } else if (input.inputMode === "roomwise") {
+    if (input.rooms.length < 1) return null;
+    profile.rooms = input.rooms.map((room) => ({
+      name: room.name,
+      areaM2: room.areaM2,
+      usage: room.usage,
+      radiatorCount: room.radiators,
+    }));
+  }
+  profile.provenance = {
+    ...profile.provenance,
+    source: input.inputMode === "manual" ? "operator_manual" : "rechner_snapshot",
+  };
   profile.building = {
     type: knownOrUnknown(input.buildingType),
     year: knownOrUnknown(input.buildingYear),
@@ -703,6 +883,44 @@ function revalidateEnergyPaths(workspaceId: string, projectId: string): void {
   revalidatePath(`${projectPath}/energieprofil`);
 }
 
+// F1-19 Zielpakete: Der Editor traegt "leer = unveraendert"; der Merge
+// laeuft gegen die juengste Anforderungsrevision und schreibt bei
+// Aenderung eine neue Revision (requestedProducts unangetastet, nur
+// requestedPackages ersetzt). Neue Revision = neue Bindung, d. h. die
+// Planungsrechnung wird stale und laesst sich erneut bestaetigen.
+class PackagesUnsupportedError extends Error {}
+
+function packageDeltaFromForm(input: ParsedProfileForm): PackageFormDelta {
+  return {
+    solar: { wanted: input.pkgSolarWanted, paymentKind: input.pkgSolarPayment as PackagePaymentKind | null },
+    storage: { wanted: input.pkgStorageWanted, paymentKind: input.pkgStoragePayment as PackagePaymentKind | null },
+    wallbox: { wanted: input.pkgWallboxWanted, paymentKind: input.pkgWallboxPayment as PackagePaymentKind | null },
+    heating: { wanted: input.pkgHeatingWanted, paymentKind: input.pkgHeatingPayment as PackagePaymentKind | null },
+  };
+}
+
+function packagesUpdatePlan(
+  latest: LatestProjectRequirement | null,
+  delta: PackageFormDelta,
+): { changed: false } | { changed: true; requirements: unknown } {
+  const touched = requestedPackageKeys.some(
+    (key) => delta[key].wanted !== null || delta[key].paymentKind !== null,
+  );
+  if (latest === null) {
+    if (!touched) return { changed: false };
+    throw new PackagesUnsupportedError();
+  }
+  const parsed = ProjectRequirementsRechnerV1Schema.safeParse(latest.requirements);
+  if (!parsed.success) throw new EnergyProfileInvalidError();
+  const merged = mergeRequestedPackages(parsed.data.requestedPackages, delta);
+  if (merged === null) throw new EnergyProfileInvalidError();
+  const before: RequestedPackages = parsed.data.requestedPackages ?? REQUESTED_PACKAGES_UNSET;
+  if (canonicalizeCalculationJson(before) === canonicalizeCalculationJson(merged)) {
+    return { changed: false };
+  }
+  return { changed: true, requirements: { ...parsed.data, requestedPackages: merged } };
+}
+
 function saveKnownError(error: unknown): SharedEnergyActionErrorState | null {
   if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
   if (error instanceof PermissionDeniedError) return { status: "denied" };
@@ -767,19 +985,50 @@ export async function saveProjectEnergyProfileAction(
 
   const submitted = buildSubmittedProfile(candidate, input);
   if (submitted === null) return { status: "invalid" };
+  const packageDelta = packageDeltaFromForm(input);
 
   try {
     const result = await authorizedAction(
       input.workspaceId,
       "project.write",
       "energy_profile",
-      (tx, ctx) => saveProjectEnergyProfile(tx, ctx, {
-        projectId: input.projectId,
-        expectedAddressRevision: input.expectedAddressRevision,
-        expectedLatestRevision: input.expectedLatestRevision,
-        profile: submitted.profile,
-        roofAcknowledgements: submitted.roofAcknowledgements,
-      }),
+      async (tx, ctx) => {
+        const saved = await saveProjectEnergyProfile(tx, ctx, {
+          projectId: input.projectId,
+          expectedAddressRevision: input.expectedAddressRevision,
+          expectedLatestRevision: input.expectedLatestRevision,
+          profile: submitted.profile,
+          roofAcknowledgements: submitted.roofAcknowledgements,
+        });
+        // F1-19: Pakete in derselben Transaktion (Projekt-Lock zuerst,
+        // dann Anforderungs-Sperre — keine partielle Speicherung). Ohne
+        // gesetzte Paketfelder kein Anforderungs-Zugriff: alte Formulare
+        // und reine Profil-Saves bleiben reine Profil-Saves.
+        const touched = requestedPackageKeys.some(
+          (key) => packageDelta[key].wanted !== null || packageDelta[key].paymentKind !== null,
+        );
+        if (touched) {
+          const latest = await readLatestProjectRequirement(tx, input.workspaceId, input.projectId);
+          const plan = packagesUpdatePlan(latest, packageDelta);
+          // changed=true impliziert latest!=null (Plan wirft sonst); die
+          // Wache ist nur Typverengung, kein fachlicher Zweig.
+          if (plan.changed && latest !== null) {
+            await tx.execute(sql`
+              insert into project_requirement (
+                id, workspace_id, project_id, revision, schema_version,
+                source_snapshot_id, requirements
+              ) values (
+                ${randomUUID()}::uuid, ${input.workspaceId}::uuid,
+                ${input.projectId}::uuid, ${latest.revision + 1},
+                ${latest.schemaVersion},
+                ${latest.sourceSnapshotId}::uuid,
+                ${JSON.stringify(plan.requirements)}::jsonb
+              )
+            `);
+          }
+        }
+        return saved;
+      },
     );
     revalidateEnergyPaths(input.workspaceId, input.projectId);
     return {
@@ -789,6 +1038,7 @@ export async function saveProjectEnergyProfileAction(
       confirmed: result.confirmed,
     };
   } catch (error) {
+    if (error instanceof PackagesUnsupportedError) return { status: "packages_unsupported" };
     const known = saveKnownError(error);
     if (known !== null) return known;
     throw error;
