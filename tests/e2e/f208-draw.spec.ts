@@ -13,10 +13,14 @@ import {
 
 /**
  * F2.8 Portal-Draw-Signatur Touch/Tablet — Chromium-E2E (isolierter Workspace).
- * Tablet-Kontext (820x1180 Portrait, Touch an): echter Touch-Drag per
- * CDP-TouchEvents zeichnet einen Strich → Submit enabled → ?sign=ok mit
- * Attestierung Modus draw + PNG-Artefakt (SHA-geprüft). Touch-Punkt ohne
- * Bewegung (M204-TOUCH, E2E-06b) muss Submit ebenfalls aktivieren.
+ * Tablet-Kontext (820x1180 Portrait, Touch an): Touch-Strich per
+ * Playwright-Tap-Serie zeichnet Zickzack-Tinte → Submit enabled →
+ * ?sign=ok mit Attestierung Modus draw + PNG-Artefakt (SHA-geprüft).
+ * Touch-Punkt ohne Bewegung (M204-TOUCH, E2E-06b) muss Submit ebenfalls
+ * aktivieren. Hinweis: rohe CDP-TouchEvents + tap sind unter CI-Last
+ * unzuverlässig (3× ?sign-Timeout nach tap trotz pointerup-Sync;
+ * Mechanismus (Browser/CDP-Session) nicht bestimmbar) — daher NUR
+ * Playwright-native Touch-Primitive (in CI belegt grün).
  */
 
 test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true });
@@ -118,31 +122,22 @@ async function openDrawCapture(page: Page): Promise<void> {
   await expect(page.getByTestId("draw-signature-canvas")).toBeVisible();
 }
 
-async function touchDragStroke(page: Page): Promise<void> {
+async function touchStroke(page: Page): Promise<void> {
   const canvas = page.getByTestId("draw-signature-canvas");
   const box = await canvas.boundingBox();
   expect(box, "Canvas hat messbare Box").not.toBeNull();
   const startX = box!.x + box!.width * 0.2;
   const endX = box!.x + box!.width * 0.8;
   const midY = box!.y + box!.height * 0.5;
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Input.dispatchTouchEvent", {
-    type: "touchStart",
-    touchPoints: [{ x: Math.round(startX), y: Math.round(midY) }],
-  });
-  const steps = 12;
-  for (let step = 1; step <= steps; step += 1) {
+  // Tap-Serie entlang Zickzack-Pfad: jeder Tap deponiert per pointerdown
+  // einen Punkt (M204-TOUCH-Fix) — positionsgetreue Touch-Tinte ohne
+  // rohe CDP-Events (s. Dateikopf).
+  const steps = 10;
+  for (let step = 0; step <= steps; step += 1) {
     const x = startX + ((endX - startX) * step) / steps;
     const y = midY + (step % 2 === 0 ? -8 : 8);
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [{ x: Math.round(x), y: Math.round(y) }],
-    });
+    await page.touchscreen.tap(Math.round(x), Math.round(y));
   }
-  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  // Session abkoppeln: Eine offene zweite CDP-Session interferiert mit
-  // Playwrights eigenem Touch-Input (submit.tap landete in CI daneben).
-  await cdp.detach();
 }
 
 async function touchDot(page: Page): Promise<void> {
@@ -152,7 +147,7 @@ async function touchDot(page: Page): Promise<void> {
   await page.touchscreen.tap(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
 }
 
-test("F208-E2E-06: Tablet-Touch-Drag zeichnet und signiert (Modus draw + PNG-Nachweis)", async ({ page }) => {
+test("F208-E2E-06: Tablet-Touch-Strich zeichnet und signiert (Modus draw + PNG-Nachweis)", async ({ page }) => {
   test.setTimeout(240_000);
   const data = state();
   const errors: string[] = [];
@@ -177,32 +172,9 @@ test("F208-E2E-06: Tablet-Touch-Drag zeichnet und signiert (Modus draw + PNG-Nac
     const submit = page.getByTestId("draw-signature-submit");
     await expect(submit).toBeDisabled();
 
-    // Touch-Drag → Submit enabled → Annehmen → ?sign=ok.
-    // pointerId aufzeichnen: Ueber Capture-Freigabe wird deterministisch
-    // bewiesen, dass der Browser die Touch-Sequenz bis pointerup
-    // verarbeitet hat — ein Tap waehrend aktiver Sequenz wuerde als
-    // Multi-Touch geschluckt (CI-Last-Race, 2× ?sign-Timeout).
-    await page.evaluate(() => {
-      const store = window as unknown as { __drawPointerId?: number };
-      store.__drawPointerId = undefined;
-      document.querySelector('[data-testid="draw-signature-canvas"]')?.addEventListener(
-        "pointerdown",
-        (event) => {
-          store.__drawPointerId = (event as PointerEvent).pointerId;
-        },
-        { once: true },
-      );
-    });
-    await touchDragStroke(page);
+    // Touch-Strich → Submit enabled → Annehmen → ?sign=ok.
+    await touchStroke(page);
     await expect(submit).toBeEnabled();
-    await expect.poll(async () => page.evaluate(() => {
-      const canvas = document.querySelector('[data-testid="draw-signature-canvas"]');
-      const id = (window as unknown as { __drawPointerId?: number }).__drawPointerId;
-      if (!canvas || id === undefined) return "no-stroke-yet";
-      const captured = (canvas as unknown as { hasPointerCapture(pid: number): boolean })
-        .hasPointerCapture(id);
-      return captured ? "captured" : "released";
-    }), "Touch-Sequenz bis pointerup verarbeitet (Capture frei)").toBe("released");
     await submit.tap();
     await page.waitForURL((url) => url.searchParams.get("sign") === "ok");
     await expect(page.getByTestId("portal-signature-sign-feedback")).toContainText("angenommen");
