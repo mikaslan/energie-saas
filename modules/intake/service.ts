@@ -902,15 +902,43 @@ async function persistBrokerContact(
   });
 }
 
+async function brokerSelectOrAllocateSite(
+  tx: TenantTx,
+  workspaceId: string,
+  contactId: string,
+  addressMode: string,
+  fingerprint: Buffer | null,
+): Promise<{ siteId: string; existing: boolean }> {
+  // Rechner-Parität: gleiche selected-Adresse desselben Kontakts wird
+  // wiederverwendet, sonst verletzt der zweite Record das Partial-Unique
+  // site_ws_contact_address_fingerprint_uq mit rohem 500.
+  if (addressMode === "selected" && fingerprint) {
+    const [existing] = await tx
+      .select({ id: site.id })
+      .from(site)
+      .where(and(
+        eq(site.workspaceId, workspaceId),
+        eq(site.contactId, contactId),
+        eq(site.addressFingerprintVersion, ADDRESS_FINGERPRINT_VERSION),
+        eq(site.addressFingerprint, fingerprint),
+      ))
+      .limit(1);
+    if (existing) return { siteId: existing.id, existing: true };
+  }
+  return { siteId: randomUUID(), existing: false };
+}
+
 async function persistBrokerSite(
   tx: TenantTx,
   ctx: VerifiedBrokerIdentity,
-  siteId: string,
+  selected: { siteId: string; existing: boolean },
   contactId: string,
   payload: BrokerIntakeV1,
   fingerprint: Buffer | null,
   now: Date,
 ): Promise<void> {
+  if (selected.existing) return;
+  const siteId = selected.siteId;
   const exact = payload.site.addressMode === "selected";
   await tx.insert(site).values({
     id: siteId,
@@ -952,22 +980,25 @@ export async function processBrokerIntake(
 ): Promise<BrokerIntakeReceiptV1> {
   // Der Modulrand bleibt auch bei einem spaeteren zweiten Aufrufer strikt.
   if (!validateBrokerIntake(payload).ok) throw new BrokerInvalidRequestError();
+  // Kanonische Record-ID (NFKC-Trim): Padding erzeugt keine eigenen
+  // Dedupe-Zeilen; Lock, Lookup, Receipt und Response nutzen dieselbe Form.
+  const brokerRecordId = brokerNormalizedRequiredText(payload.brokerRecordId, 1, 128);
   const hash = brokerRequestHash(meta);
 
-  const firstReplay = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, payload.brokerRecordId);
+  const firstReplay = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
   if (firstReplay) return brokerReplayOrConflict(firstReplay, hash);
 
   // Wie Rechner: Receipt-Namespace vor Fachlimit und Dedupe-Sperre
   // serialisieren, danach den persistierten Hash erneut lesen.
   await advisoryLock(
     tx,
-    `broker-receipt:v1:${ctx.workspaceId}:${payload.brokerKey}:${payload.brokerRecordId}`,
+    `broker-receipt:v1:${ctx.workspaceId}:${payload.brokerKey}:${brokerRecordId}`,
   );
-  const replayAfterReceiptLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, payload.brokerRecordId);
+  const replayAfterReceiptLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
   if (replayAfterReceiptLock) return brokerReplayOrConflict(replayAfterReceiptLock, hash);
 
   await enforceBrokerRateLimit(tx, ctx, meta.receivedAt);
-  const replayAfterRateLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, payload.brokerRecordId);
+  const replayAfterRateLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
   if (replayAfterRateLock) return brokerReplayOrConflict(replayAfterRateLock, hash);
 
   const displayName = brokerNormalizedRequiredText(payload.customer.displayName, 1, 200);
@@ -979,23 +1010,29 @@ export async function processBrokerIntake(
   // zeitgleichen Rechner-Intake derselben Person überholt.
   await lockContactIdentities(tx, ctx.workspaceId, email, phoneE164);
 
-  const replayAfterIdentityLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, payload.brokerRecordId);
+  const replayAfterIdentityLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
   if (replayAfterIdentityLock) return brokerReplayOrConflict(replayAfterIdentityLock, hash);
 
   const candidates = await contactCandidates(tx, ctx.workspaceId, email, phoneE164);
   const contactDecision = decideContact(candidates, email, phoneE164);
   const fingerprint = brokerSelectedAddressFingerprint(payload);
+  const selectedSite = await brokerSelectOrAllocateSite(
+    tx,
+    ctx.workspaceId,
+    contactDecision.contactId,
+    payload.site.addressMode,
+    fingerprint,
+  );
 
   const receiptId = randomUUID();
   const projectId = randomUUID();
-  const siteId = randomUUID();
   const [claimed] = await tx
     .insert(inboundBrokerReceipt)
     .values({
       id: receiptId,
       workspaceId: ctx.workspaceId,
       brokerKey: payload.brokerKey,
-      brokerRecordId: payload.brokerRecordId,
+      brokerRecordId,
       contractVersion: payload.contractVersion,
       bodySha256: hash,
       authKeyId: ctx.keyId,
@@ -1005,7 +1042,7 @@ export async function processBrokerIntake(
       contactId: contactDecision.contactId,
       emailMatchContactId: contactDecision.emailMatchContactId,
       phoneMatchContactId: contactDecision.phoneMatchContactId,
-      siteId,
+      siteId: selectedSite.siteId,
       projectId,
       note: payload.note,
     })
@@ -1019,7 +1056,7 @@ export async function processBrokerIntake(
     .returning({ id: inboundBrokerReceipt.id });
 
   if (!claimed) {
-    const replay = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, payload.brokerRecordId);
+    const replay = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
     if (!replay) throw new BrokerIdempotencyConflictError();
     return brokerReplayOrConflict(replay, hash);
   }
@@ -1040,7 +1077,7 @@ export async function processBrokerIntake(
   await persistBrokerSite(
     tx,
     ctx,
-    siteId,
+    selectedSite,
     contactDecision.contactId,
     payload,
     fingerprint,
@@ -1051,7 +1088,7 @@ export async function processBrokerIntake(
     id: projectId,
     workspaceId: ctx.workspaceId,
     contactId: contactDecision.contactId,
-    siteId,
+    siteId: selectedSite.siteId,
     kanbanBoardId: requestLane.boardId,
     kanbanColumnId: requestLane.columnId,
     name: "Broker-Anfrage",
@@ -1073,7 +1110,7 @@ export async function processBrokerIntake(
     aggregateId: projectId,
     eventType: "project.requested_from_broker",
     actor: ctx.actor,
-    payload: { projectId, contactId: contactDecision.contactId, siteId },
+    payload: { projectId, contactId: contactDecision.contactId, siteId: selectedSite.siteId },
   });
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId,
@@ -1085,14 +1122,14 @@ export async function processBrokerIntake(
       receiptId,
       projectId,
       contactId: contactDecision.contactId,
-      siteId,
+      siteId: selectedSite.siteId,
       brokerKey: payload.brokerKey,
-      brokerRecordId: payload.brokerRecordId,
+      brokerRecordId,
     },
   });
 
   return brokerReceiptResponse(
-    { id: receiptId, brokerKey: payload.brokerKey, brokerRecordId: payload.brokerRecordId, bodySha256: hash },
+    { id: receiptId, brokerKey: payload.brokerKey, brokerRecordId, bodySha256: hash },
     false,
   );
 }

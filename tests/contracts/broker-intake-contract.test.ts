@@ -69,6 +69,14 @@ describe("broker-intake.v1 contract", () => {
     expect(validateBrokerIntake(boundary).ok).toBe(true);
   });
 
+  it("weist Whitespace-nur-Adressfelder am Schema ab (kein DB-500)", () => {
+    for (const field of ["street", "houseNumber", "city"] as const) {
+      const value = fixture();
+      ((value.site as Record<string, unknown>)[field] as unknown) = "   ";
+      expect(validateBrokerIntake(value).ok, field).toBe(false);
+    }
+  });
+
   it("OpenAPI referenziert genau das kanonische Schema und alle Statuscodes", () => {
     const document = parseYaml(readFileSync(openapiPath, "utf8")) as Record<string, unknown>;
     const paths = document.paths as Record<string, Record<string, unknown>>;

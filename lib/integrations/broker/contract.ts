@@ -6,7 +6,7 @@ import type { BrokerIntakeV1 } from "./types";
 // Provideradapter pinnen exakt diese Datei. Eine Vertragsänderung verlangt
 // damit bewusst einen neuen Review statt stillschweigender Drift.
 export const BROKER_INTAKE_SCHEMA_SHA256 =
-  "72a92e8ef5404fa16eb22a9cabf181f7150c20e7f907de2c1b9cdd99bdcf049c" as const;
+  "564fc7e560c56291b31a344027b4f6f4204ab702564253cee69b4c06effb1068" as const;
 
 const ajv = new Ajv2020({
   allErrors: true,

@@ -215,12 +215,14 @@
               "street": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 200
+                "maxLength": 200,
+                "pattern": "\\S"
               },
               "houseNumber": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 30
+                "maxLength": 30,
+                "pattern": "\\S"
               },
               "postalCode": {
                 "type": "string",
@@ -229,7 +231,8 @@
               "city": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 200
+                "maxLength": 200,
+                "pattern": "\\S"
               },
               "geocodeSource": {
                 "const": "broker"

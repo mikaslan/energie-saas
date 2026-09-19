@@ -61,6 +61,9 @@ export const inboundBrokerReceipt = pgTable(
       foreignColumns: [workspace.id],
       name: "inbound_broker_receipt_workspace_id_fk",
     }),
+    // Der Receipt wird vor dem Projekt-Graphen beansprucht; die FK ist in
+    // der SQL-Migration DEFERRABLE INITIALLY DEFERRED (Muster
+    // inbound_receipt, Drizzle kann Deferrability nicht ausdrücken).
     foreignKey({
       columns: [t.workspaceId, t.projectId, t.contactId, t.siteId],
       foreignColumns: [project.workspaceId, project.id, project.contactId, project.siteId],
