@@ -3,6 +3,21 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-19 — F9-Lane integriert (Flotten-Lane, Leitstand)
+
+- `codex/muse-fleet-2b-f9` (`185f78f`: F9-14 + F9-15, Migrationen 0149/0150)
+  in `codex/m1-wave-02` gemergt (Merge `f65da34`).
+- Integrationskonflikt additiv geloest: 0149/0150 beanspruchten idx 149/150
+  (laengst vergeben) → ans Kettenende gehaengt (idx 158/159, TOTAL 160,
+  `when` strikt aufsteigend, Snapshot-prevId auf 0235). Lehre: Lanes mit
+  eigenem Journal muessen am Integrationstag frisch sein — Staleness kostet
+  Umarbeitung.
+- Belege: Lane-CI `35432311043` success; Integrations-Gates `npm run check`
+  EXIT 0 auf dem Merge-HEAD (nach `npm ci`-Refresh im Integrations-Worktree —
+  Protokoll-Lehre: install nach jedem Merge).
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-19 — F4-SPEC-PAKET integriert (Flotten-Lane, Leitstand, Jev-geprueft)
 
 - `codex/muse-fleet-3b-f4spec` (`1bd8424`: ADR-0025 Rechenkern + F4-01d/02d/03b/
