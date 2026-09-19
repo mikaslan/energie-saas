@@ -333,6 +333,10 @@ export const INVOICING_REPORT_VERSION = "invoicing-report.v1" as const;
 export const INVOICING_REPORT_CSV_VERSION = "invoicing-report-csv.v1" as const;
 export const INVOICING_DATEV_COMMAND_VERSION = "invoicing-datev-command.v1" as const;
 export const INVOICING_DATEV_BATCH_VERSION = "invoicing-datev-batch.v1" as const;
+export const INVOICING_MONATS_ZIP_COMMAND_VERSION =
+  "invoicing-monats-zip-command.v1" as const;
+export const INVOICING_MONATS_ZIP_BATCH_VERSION =
+  "invoicing-monats-zip-batch.v1" as const;
 
 // F5-01: v2 versiegelt zusaetzlich die Skonto-Konditionen (Paar
 // skontoPercentBps/skontoDays, null = kein Skonto). v1-Snapshots bleiben
@@ -514,6 +518,17 @@ const documentNameSchema = z.string().trim().min(1).max(160).refine(
 const moneyCentsSchema = z.number().int().min(0).max(MAX_DOCUMENT_MONEY_CENTS);
 const quantityMilliSchema = z.number().int().min(1).max(MAX_DOCUMENT_QUANTITY_MILLI);
 const taxRateBpsSchema = z.union([z.literal(0), z.literal(1900)]);
+
+// F8-22 Steuerbehandlung je Zeile (DATEV-Matrix): 1900 bps → nur
+// standard_19; 0 bps → zero_12_3 (§12 Abs. 3, Default) oder
+// reverse_13b (§13b, explizit zu waehlen). Service validiert die
+// Kopplung (DB-CHECK spiegelt sie).
+export const datevTaxTreatmentSchema = z.enum([
+  "standard_19",
+  "zero_12_3",
+  "reverse_13b",
+]);
+export type DatevTaxTreatment = z.infer<typeof datevTaxTreatmentSchema>;
 const optionalUuid = z.string().uuid().nullable();
 const optionalDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).nullable();
 
@@ -737,6 +752,7 @@ const lineInputFields = {
   unit: commercialLineUnitSchema,
   netCents: moneyCentsSchema,
   taxRateBps: taxRateBpsSchema,
+  taxTreatment: datevTaxTreatmentSchema.optional(),
 } as const;
 
 export const commercialDocumentLineInputV1Schema = z.strictObject(lineInputFields);
@@ -1087,6 +1103,29 @@ export const invoicingDatevCommandV1Schema = z.strictObject({
 });
 export type InvoicingDatevCommandV1 = z.infer<typeof invoicingDatevCommandV1Schema>;
 
+// F8-22 Datenservice-Vorstufe: maschinenlesbare Belegsicht je Stapel
+// (Spiegel DatevBatchDocument aus datev-export.ts, dort typisiert).
+export const datevBatchDocumentGroupV1Schema = z.strictObject({
+  taxTreatment: datevTaxTreatmentSchema,
+  netCents: z.number().int(),
+  taxCents: z.number().int(),
+  grossCents: z.number().int(),
+  buKey: z.string().max(8),
+  revenueAccount: z.string().min(1).max(16),
+});
+export type DatevBatchDocumentGroupV1 = z.infer<
+  typeof datevBatchDocumentGroupV1Schema
+>;
+
+export const datevBatchDocumentV1Schema = z.strictObject({
+  number: z.string().min(1).max(64),
+  kind: z.enum(["invoice", "credit_note"]),
+  issueDate: z.string().min(1).max(32),
+  grossCents: z.number().int(),
+  groups: z.array(datevBatchDocumentGroupV1Schema).min(1),
+});
+export type DatevBatchDocumentV1 = z.infer<typeof datevBatchDocumentV1Schema>;
+
 export const invoicingDatevBatchV1Schema = z.strictObject({
   schemaVersion: z.literal(INVOICING_DATEV_BATCH_VERSION),
   month: invoicingReportMonthSchema,
@@ -1094,5 +1133,13 @@ export const invoicingDatevBatchV1Schema = z.strictObject({
   fileName: z.string().min(1).max(120),
   contentType: z.literal("text/csv; charset=utf-8"),
   content: z.string().min(1),
+  documents: z.array(datevBatchDocumentV1Schema),
 });
 export type InvoicingDatevBatchV1 = z.infer<typeof invoicingDatevBatchV1Schema>;
+
+// F8-20 Monats-ZIP (summary.csv + versiegelte Rechnungs-PDFs).
+export const monatsZipCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(INVOICING_MONATS_ZIP_COMMAND_VERSION),
+  month: invoicingReportMonthSchema,
+});
+export type MonatsZipCommandV1 = z.infer<typeof monatsZipCommandV1Schema>;

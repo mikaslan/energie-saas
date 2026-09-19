@@ -1535,6 +1535,18 @@ export async function createDocumentLine(
   const line = command.input;
   const taxCents = roundHalfUpCents(line.netCents, line.taxRateBps);
   const grossCents = line.netCents + taxCents;
+  // F8-22 Steuerbehandlung: 1900 bps → standard_19 (einzige Wahl);
+  // 0 bps → Default zero_12_3, explizit reverse_13b waehlbar.
+  // Fehl-Kopplung ist Eingabefehler (DB-CHECK spiegelt sie).
+  const taxTreatment = line.taxRateBps === 1900
+    ? "standard_19"
+    : (line.taxTreatment ?? "zero_12_3");
+  if (
+    (line.taxRateBps === 1900 && line.taxTreatment !== undefined && line.taxTreatment !== "standard_19")
+    || (line.taxRateBps === 0 && taxTreatment !== "zero_12_3" && taxTreatment !== "reverse_13b")
+  ) {
+    throw new InvoicingValidationError();
+  }
   const lineId = randomUUID();
   const lineSnapshot = JSON.stringify({
     schemaVersion: COMMERCIAL_DOCUMENT_LINE_VERSION,
@@ -1551,11 +1563,11 @@ export async function createDocumentLine(
     await tx.execute(sql`
       insert into commercial_document_line (
         id, workspace_id, document_id, position, name, quantity_milli, unit,
-        net_cents, tax_cents, gross_cents, tax_rate_bps, line_snapshot
+        net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment, line_snapshot
       ) values (
         ${lineId}::uuid, ${ctx.workspaceId}::uuid, ${command.documentId}::uuid,
         ${line.position}, ${line.name}, ${line.quantityMilli}, ${line.unit},
-        ${line.netCents}, ${taxCents}, ${grossCents}, ${line.taxRateBps},
+        ${line.netCents}, ${taxCents}, ${grossCents}, ${line.taxRateBps}, ${taxTreatment},
         ${lineSnapshot}::jsonb
       )
     `);

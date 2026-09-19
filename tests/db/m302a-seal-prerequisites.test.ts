@@ -189,10 +189,10 @@ function rawLineInsert(
   return (tx) => tx.execute(sql`
     insert into commercial_document_line (
       workspace_id, document_id, position, name, quantity_milli,
-      unit, net_cents, tax_cents, gross_cents, tax_rate_bps
+      unit, net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
     ) values (
       ${fixture.workspaceId}::uuid, ${documentId}::uuid, ${position},
-      'Roh-Position', 1000, 'piece', 10000, 1900, 11900, 1900
+      'Roh-Position', 1000, 'piece', 10000, 1900, 11900, 1900, 'standard_19'
     )
   `);
 }
@@ -276,10 +276,10 @@ describe("M3-02a Siegel-Voraussetzungen (PostgreSQL)", () => {
     await expectPgReject(fixture, (tx) => tx.execute(sql`
       insert into commercial_document_line (
         workspace_id, document_id, position, name, quantity_milli,
-        unit, net_cents, tax_cents, gross_cents, tax_rate_bps
+        unit, net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
       ) values (
         ${fixture.workspaceId}::uuid, ${randomUUID()}::uuid, 1,
-        'Orphan', 1000, 'piece', 10000, 1900, 11900, 1900
+        'Orphan', 1000, 'piece', 10000, 1900, 11900, 1900, 'standard_19'
       )
     `), "23514", "line_parent_not_found");
 

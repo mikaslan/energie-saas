@@ -1079,6 +1079,27 @@
       "when": 1789757852515,
       "tag": "0194_f817_payment_triple",
       "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1789805100112,
+      "tag": "0195_f819_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1789805158381,
+      "tag": "0196_f821_accounting_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1789805190994,
+      "tag": "0197_f822_tax_treatment",
+      "breakpoints": true
     }
   ]
 }

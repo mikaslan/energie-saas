@@ -237,13 +237,13 @@ async function seedDraftLine(documentName: string, netCents: number, taxCents: n
     await client.query(
       `insert into commercial_document_line (
          workspace_id, document_id, position, name, quantity_milli, unit,
-         net_cents, tax_cents, gross_cents, tax_rate_bps
+         net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
        ) values (
          $1::uuid,
          (select id from commercial_document
            where workspace_id = $1::uuid and name = $2 and status = 'draft' limit 1),
          1, 'E2E-Position', 1000, 'piece', $3::bigint, $4::bigint,
-         $3::bigint + $4::bigint, 1900
+         $3::bigint + $4::bigint, 1900, 'standard_19'
        )`,
       [data.workspaceId, documentName, netCents, taxCents],
     );

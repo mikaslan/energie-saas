@@ -220,15 +220,15 @@ async function seedOrderConfirmationDraft(): Promise<void> {
     await client.query(
       `insert into commercial_document_line (
          workspace_id, document_id, position, name, quantity_milli, unit,
-         net_cents, tax_cents, gross_cents, tax_rate_bps
+         net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
        )
        select $1::uuid, doc.id, line.position, line.name, line.quantity_milli, line.unit,
-              line.net_cents, line.tax_cents, line.gross_cents, line.tax_rate_bps
+              line.net_cents, line.tax_cents, line.gross_cents, line.tax_rate_bps, line.tax_treatment
          from commercial_document doc
          join (values
-           (1, 'PV-Module', 20000, 'piece', 800000, 152000, 952000, 1900),
-           (2, 'Montage', 1000, 'set', 150000, 28500, 178500, 1900)
-         ) as line(position, name, quantity_milli, unit, net_cents, tax_cents, gross_cents, tax_rate_bps)
+           (1, 'PV-Module', 20000, 'piece', 800000, 152000, 952000, 1900, 'standard_19'),
+           (2, 'Montage', 1000, 'set', 150000, 28500, 178500, 1900, 'standard_19')
+         ) as line(position, name, quantity_milli, unit, net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment)
            on true
         where doc.workspace_id = $1::uuid and doc.name = $2`,
       [data.workspaceId, AB_NAME],

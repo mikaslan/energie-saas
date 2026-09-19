@@ -245,10 +245,13 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0191 M3-02a Zeilen-Freeze-Guard (Funktion + 3 Trigger),
     // 0192 M3-02b Render-Job (Tabelle + RLS),
     // 0193 M3-02c Worker-Lebenszyklus (Spalten + Trigger + RLS-Schranke),
-    // 0194 F8-17 Zahlungsbeleg-Tripel (CHECKs + Dispatch-Gate)).
+    // 0194 F8-17 Zahlungsbeleg-Tripel (CHECKs + Dispatch-Gate),
+    // 0195 F8-19 Versand-Nachweis (Tabelle + RLS),
+    // 0196 F8-21 Accounting-Sync-Satz (Tabelle + RLS),
+    // 0197 F8-22 Steuerbehandlung (Spalte + CHECK-Kopplung)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 153,
-      tag: "0194_f817_payment_triple",
+      idx: 156,
+      tag: "0197_f822_tax_treatment",
     });
   });
 

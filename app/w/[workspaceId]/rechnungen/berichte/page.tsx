@@ -117,6 +117,7 @@ export default async function InvoicingReportsPage(
   const csvUrl = `/w/${workspaceId}/rechnungen/berichte/csv?monat=${encodeURIComponent(month)}`;
   const datevUrl03 = `/w/${workspaceId}/rechnungen/berichte/datev?monat=${encodeURIComponent(month)}&skr=03`;
   const datevUrl04 = `/w/${workspaceId}/rechnungen/berichte/datev?monat=${encodeURIComponent(month)}&skr=04`;
+  const monatsZipUrl = `/w/${workspaceId}/rechnungen/berichte/monats-zip?monat=${encodeURIComponent(month)}`;
 
   return (
     <div>
@@ -165,6 +166,13 @@ export default async function InvoicingReportsPage(
           >
             DATEV-Stapel (SKR04)
           </Link>
+          <Link
+            href={monatsZipUrl}
+            data-testid="monats-zip-download"
+            className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+          >
+            Monats-ZIP (PDFs + Übersicht)
+          </Link>
         </div>
       </div>
 
@@ -191,10 +199,12 @@ export default async function InvoicingReportsPage(
         />
       </div>
       <p className="mt-3 max-w-2xl text-xs leading-5 text-slate-600">
-        DATEV-Stapel (ESTIMATE-Subset): nur 19-%-Belege in Euro, Forderung an
-        Erlös (SKR03 1400 → 8400, SKR04 1200 → 4400). Berater- und
-        Mandantennummer beim DATEV-Import setzen; 0-%-/§13b-Fälle sind
-        ausgenommen.
+        DATEV-Stapel (ESTIMATE-Subset): 19-%-, 0-%- (§12 Abs. 3) und
+        §13b-Belege in Euro, Forderung an Erlös (SKR03 1400 → 8400,
+        SKR04 1200 → 4400). Berater- und Mandantennummer beim
+        DATEV-Import setzen. Monats-ZIP: nur ausgestellte Belege mit
+        versiegeltem PDF; fehlende PDFs sind in der Übersicht als
+        leere Spalten sichtbar.
       </p>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">

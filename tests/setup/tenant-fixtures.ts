@@ -1994,10 +1994,10 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     await tx.execute(sql`
       insert into commercial_document_line (
         id, workspace_id, document_id, position, name, quantity_milli, unit,
-        net_cents, tax_cents, gross_cents, tax_rate_bps
+        net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
       ) values (
         ${randomUUID()}::uuid, ${wsId}::uuid, ${documentId}::uuid, 1,
-        'Position', 1000, 'piece', 100, 19, 119, 1900
+        'Position', 1000, 'piece', 100, 19, 119, 1900, 'standard_19'
       )
     `);
   },
@@ -2082,10 +2082,10 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     await tx.execute(sql`
       insert into commercial_document_line (
         id, workspace_id, document_id, position, name, quantity_milli, unit,
-        net_cents, tax_cents, gross_cents, tax_rate_bps
+        net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
       ) values (
         ${sourceLineId}::uuid, ${wsId}::uuid, ${orderId}::uuid, 1,
-        'Position', 1000, 'piece', 100, 19, 119, 1900
+        'Position', 1000, 'piece', 100, 19, 119, 1900, 'standard_19'
       )
     `);
     await tx.execute(sql`

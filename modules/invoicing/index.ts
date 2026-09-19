@@ -49,9 +49,13 @@ export {
   commercialDocumentUnlinkCommandV1Schema,
   commercialDocumentLineCommandV1Schema,
   commercialDocumentLineInputV1Schema,
+  datevBatchDocumentGroupV1Schema,
+  datevBatchDocumentV1Schema,
   datevSkrSchema,
+  datevTaxTreatmentSchema,
   invoicingDatevBatchV1Schema,
   invoicingDatevCommandV1Schema,
+  monatsZipCommandV1Schema,
   commercialDocumentTermsCommandV1Schema,
   commercialDocumentInvoiceKindCommandV1Schema,
   commercialDocumentArchiveCommandV1Schema,
@@ -96,9 +100,13 @@ export type {
   CommercialDocumentArchiveCommandV1,
   CommercialDocumentLineCommandV1,
   CommercialDocumentLineInputV1,
+  DatevBatchDocumentGroupV1,
+  DatevBatchDocumentV1,
   DatevSkr,
+  DatevTaxTreatment,
   InvoicingDatevBatchV1,
   InvoicingDatevCommandV1,
+  MonatsZipCommandV1,
   CommercialDocumentLineV1,
   CommercialDocumentGroupArchiveCommandV1,
   CommercialDocumentListCommandV1,
@@ -175,6 +183,26 @@ export {
 } from "./partial-service";
 export { exportDocumentCii } from "./cii-service";
 export { exportDatevBatch } from "./datev-service";
+export {
+  getAccountingSyncStatus,
+  listAccountingSyncs,
+  queueAccountingSync,
+  runAccountingSync,
+} from "./accounting-sync-service";
+export {
+  COMMERCIAL_DOCUMENT_DELIVERY_COMMAND_VERSION,
+  DELIVERY_CHANNELS,
+  getDocumentDelivery,
+  markSentWithDelivery,
+  type DeliveryChannel,
+  type DocumentDeliveryRecord,
+  type MarkSentWithDeliveryCommand,
+  type MarkSentWithDeliveryResult,
+} from "./delivery-service";
+export {
+  exportMonatsZip,
+  type MonatsZipBatchV1,
+} from "./month-zip-service";
 export {
   enqueueInvoicePdfRenderDispatch,
   getInvoicePdfStatus,

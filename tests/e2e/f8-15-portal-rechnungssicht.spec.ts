@@ -113,10 +113,10 @@ async function seedDraftInvoice(): Promise<void> {
     await client.query(
       `insert into commercial_document_line (
          workspace_id, document_id, position, name, quantity_milli, unit,
-         net_cents, tax_cents, gross_cents, tax_rate_bps
+         net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
        )
        select $1::uuid, doc.id, 1, 'Position', 1000, 'piece',
-              10000, 1900, 11900, 1900
+              10000, 1900, 11900, 1900, 'standard_19'
          from commercial_document doc
         where doc.workspace_id = $1::uuid and doc.project_id = $2::uuid and doc.name = $3`,
       [data.w3WorkspaceId, data.f102ProjectId, INVOICE_NAME],

@@ -18,7 +18,6 @@ import {
   exportDatevBatch,
   issueDocument,
   upsertInvoicingSettings,
-  InvoicingValidationError,
   type InvoicingSettingsCommandV1,
 } from "@/modules/invoicing";
 import { testPool } from "../setup/test-db";
@@ -150,13 +149,17 @@ describe("F8-11 DATEV-EXTF Buchungsstapel (PostgreSQL)", () => {
     expect(result.content).toContain("1190,00");
   });
 
-  it("F811-DB-02: 0-%-Beleg verweigert den Monatsstapel fail-closed", async () => {
+  it("F811-DB-02: 0-%-Beleg bucht seit F8-22 mit BU 43 (SKR04, §12 Abs. 3)", async () => {
     const contactId = await seedContact(fixture);
     await seedIssuedInvoice(fixture, "F811-Rechnung-Null", contactId, 0);
-    await expect(asEditor(fixture, (tx, ctx) => exportDatevBatch(tx, ctx, {
+    const result = await asEditor(fixture, (tx, ctx) => exportDatevBatch(tx, ctx, {
       schemaVersion: INVOICING_DATEV_COMMAND_VERSION,
       month: berlinMonth(),
       skr: "04",
-    }))).rejects.toBeInstanceOf(InvoicingValidationError);
+    }));
+    expect(result.content).toContain(";S;1200;4340;43;");
+    expect(result.content).toContain("1000,00");
+    expect(result.documents).toHaveLength(1);
+    expect(result.documents[0]?.groups[0]?.taxTreatment).toBe("zero_12_3");
   });
 });

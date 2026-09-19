@@ -579,9 +579,45 @@ const stateSchema = z.enum([
 
 export type InvoicePdfState = z.infer<typeof stateSchema>;
 
+// F8-18: Status-Diskriminator (reine Lese-Projektion, keine Migration).
+// Der Download-Pfad bleibt jobId-schluesselig und template-agnostisch.
+export const INVOICE_PDF_TRACK_TEMPLATE_VERSIONS = [
+  INVOICE_PDF_TEMPLATE_VERSION,
+  INVOICE_PAYMENT_TEMPLATE_VERSION,
+] as const;
+
+export type InvoicePdfTemplateVersion =
+  (typeof INVOICE_PDF_TRACK_TEMPLATE_VERSIONS)[number];
+
+const PAYMENT_ARTIFACT_FILENAME_SUFFIX = "-zahlung";
+
+export function parseInvoicePdfTemplateVersion(value: unknown): InvoicePdfTemplateVersion {
+  if (
+    value === INVOICE_PDF_TEMPLATE_VERSION
+    || value === INVOICE_PAYMENT_TEMPLATE_VERSION
+  ) {
+    return value;
+  }
+  throw new InvoicePdfIntegrityError();
+}
+
+export function resolveInvoicePdfArtifactFilename(
+  documentNumber: string,
+  templateVersion: InvoicePdfTemplateVersion,
+): string {
+  if (!DOCUMENT_NUMBER_PATTERN.test(documentNumber)) {
+    throw new InvoicePdfIntegrityError();
+  }
+  if (templateVersion === INVOICE_PAYMENT_TEMPLATE_VERSION) {
+    return `${documentNumber}${PAYMENT_ARTIFACT_FILENAME_SUFFIX}.pdf`;
+  }
+  return `${documentNumber}.pdf`;
+}
+
 export type InvoicePdfStatusResult = {
   jobId: string;
   documentId: string;
+  templateVersion: InvoicePdfTemplateVersion;
   state: InvoicePdfState;
   attemptCount: number;
   nextAttemptAt: string;
@@ -606,6 +642,7 @@ type StoredJobRow = {
   id: string;
   workspace_id: string;
   document_id: string;
+  template_version: string;
   status: string;
   attempt_count: number;
   next_attempt_at: Date | string;
@@ -620,6 +657,7 @@ type ArtifactRow = {
   id: string;
   document_id: string;
   document_number: string | null;
+  template_version: string;
   status: string;
   artifact_mime_type: string | null;
   artifact_sha256_hex: string | null;
@@ -690,6 +728,7 @@ function statusResult(row: StoredJobRow): InvoicePdfStatusResult {
   return {
     jobId: row.id,
     documentId: row.document_id,
+    templateVersion: parseInvoicePdfTemplateVersion(row.template_version),
     state,
     attemptCount: row.attempt_count,
     nextAttemptAt: asIso(row.next_attempt_at),
@@ -718,7 +757,7 @@ export async function listInvoicePdfs(
   `);
   if (exists.rows.length !== 1) throw new InvoicePdfNotFoundError();
   const result = await tx.execute<StoredJobRow>(sql`
-    select id, workspace_id, document_id, status, attempt_count,
+    select id, workspace_id, document_id, template_version, status, attempt_count,
            next_attempt_at, created_at, started_at, finished_at, error_code
       from commercial_document_render_job
      where workspace_id = ${key.workspaceId}::uuid
@@ -737,7 +776,7 @@ export async function getInvoicePdfStatus(
   const key = parseKey(jobKeySchema, value);
   requireSameWorkspace(ctx, key.workspaceId);
   const result = await tx.execute<StoredJobRow>(sql`
-    select id, workspace_id, document_id, status, attempt_count,
+    select id, workspace_id, document_id, template_version, status, attempt_count,
            next_attempt_at, created_at, started_at, finished_at, error_code
       from commercial_document_render_job
      where workspace_id = ${key.workspaceId}::uuid
@@ -760,7 +799,7 @@ export async function readInvoicePdfArtifact(
   requireSameWorkspace(ctx, key.workspaceId);
   const result = await tx.execute<ArtifactRow>(sql`
     select job.id, job.document_id, document.number as document_number,
-           job.status, job.artifact_mime_type,
+           job.template_version, job.status, job.artifact_mime_type,
            encode(job.artifact_sha256, 'hex') as artifact_sha256_hex,
            job.artifact_size_bytes, job.artifact_bytes
       from commercial_document_render_job job
@@ -793,10 +832,11 @@ export async function readInvoicePdfArtifact(
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     throw new InvoicePdfIntegrityError();
   }
+  const templateVersion = parseInvoicePdfTemplateVersion(row.template_version);
   return {
     jobId: row.id,
     documentId: row.document_id,
-    filename: `${row.document_number}.pdf`,
+    filename: resolveInvoicePdfArtifactFilename(row.document_number, templateVersion),
     mimeType: "application/pdf",
     sha256: row.artifact_sha256_hex,
     sizeBytes: row.artifact_size_bytes,

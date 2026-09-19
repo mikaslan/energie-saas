@@ -176,9 +176,9 @@ async function seedPdfFixture(): Promise<string> {
     await client.query(
       `insert into commercial_document_line (
          id, workspace_id, document_id, position, name, quantity_milli,
-         unit, net_cents, tax_cents, gross_cents, tax_rate_bps
+         unit, net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
        ) select gen_random_uuid(), $1::uuid, $2::uuid, 1, 'E2E-Position', 1000,
-         'piece', 100000, 19000, 119000, 1900
+         'piece', 100000, 19000, 119000, 1900, 'standard_19'
        where not exists (
          select 1 from commercial_document_line
           where workspace_id = $1::uuid and document_id = $2::uuid

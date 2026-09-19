@@ -211,10 +211,10 @@ async function seedDraftInvoice(): Promise<void> {
     await client.query(
       `insert into commercial_document_line (
          workspace_id, document_id, position, name, quantity_milli, unit,
-         net_cents, tax_cents, gross_cents, tax_rate_bps
+         net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment
        ) values
-         ($1::uuid, $2::uuid, 1, 'PV-Module', 20000, 'piece', 800000, 152000, 952000, 1900),
-         ($1::uuid, $2::uuid, 2, 'Montage', 1000, 'set', 150000, 28500, 178500, 1900)`,
+         ($1::uuid, $2::uuid, 1, 'PV-Module', 20000, 'piece', 800000, 152000, 952000, 1900, 'standard_19'),
+         ($1::uuid, $2::uuid, 2, 'Montage', 1000, 'set', 150000, 28500, 178500, 1900, 'standard_19')`,
       [data.workspaceId, documentId],
     );
     await client.query("commit");

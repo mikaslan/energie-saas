@@ -527,6 +527,7 @@ export const commercialDocumentLine = pgTable(
     taxCents: bigint("tax_cents", { mode: "number" }).notNull(),
     grossCents: bigint("gross_cents", { mode: "number" }).notNull(),
     taxRateBps: integer("tax_rate_bps").notNull(),
+    taxTreatment: text("tax_treatment").notNull(),
     lineSnapshot: jsonb("line_snapshot"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -577,6 +578,10 @@ export const commercialDocumentLine = pgTable(
     check(
       "commercial_document_line_snapshot_ck",
       sql`${t.lineSnapshot} is null or jsonb_typeof(${t.lineSnapshot}) = 'object'`,
+    ),
+    check(
+      "commercial_document_line_tax_treatment_ck",
+      sql`(${t.taxRateBps} = 1900 and ${t.taxTreatment} = 'standard_19') or (${t.taxRateBps} = 0 and ${t.taxTreatment} in ('zero_12_3', 'reverse_13b'))`,
     ),
   ],
 );
@@ -894,6 +899,145 @@ export const commercialDocumentRenderJob = pgTable(
     check(
       "commercial_document_render_job_sha_ck",
       sql`octet_length(${t.inputSha256}) = 32`,
+    ),
+  ],
+);
+
+// F8-19 · Versand-Nachweis: welche versiegelten PDF-Bytes (Invoice,
+// optional Payment) wurden versendet. Append-only (kein Update-Pfad
+// im Service, UNIQUE faengt parallele Versuche als conflict).
+export const commercialDocumentDelivery = pgTable(
+  "commercial_document_delivery",
+  {
+    workspaceId: uuid("workspace_id").notNull(),
+    documentId: uuid("document_id").notNull(),
+    channel: text("channel").notNull(),
+    invoiceJobId: uuid("invoice_job_id").notNull(),
+    invoiceArtifactSha256: bytea("invoice_artifact_sha256").notNull(),
+    paymentJobId: uuid("payment_job_id"),
+    paymentArtifactSha256: bytea("payment_artifact_sha256"),
+    sentBy: uuid("sent_by").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    unique("commercial_document_delivery_ws_doc_uq").on(
+      t.workspaceId,
+      t.documentId,
+    ),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "commercial_document_delivery_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.documentId],
+      foreignColumns: [commercialDocument.workspaceId, commercialDocument.id],
+      name: "commercial_document_delivery_document_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.invoiceJobId],
+      foreignColumns: [
+        commercialDocumentRenderJob.workspaceId,
+        commercialDocumentRenderJob.id,
+      ],
+      name: "commercial_document_delivery_invoice_job_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.paymentJobId],
+      foreignColumns: [
+        commercialDocumentRenderJob.workspaceId,
+        commercialDocumentRenderJob.id,
+      ],
+      name: "commercial_document_delivery_payment_job_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.sentBy],
+      foreignColumns: [membership.workspaceId, membership.userId],
+      name: "commercial_document_delivery_sent_by_fk",
+    }),
+    index("commercial_document_delivery_ws_doc_idx").on(
+      t.workspaceId,
+      t.documentId,
+    ),
+    check(
+      "commercial_document_delivery_channel_ck",
+      sql`${t.channel} in ('manual')`,
+    ),
+    check(
+      "commercial_document_delivery_sha_ck",
+      sql`octet_length(${t.invoiceArtifactSha256}) = 32 and (${t.paymentArtifactSha256} is null or octet_length(${t.paymentArtifactSha256}) = 32)`,
+    ),
+    check(
+      "commercial_document_delivery_payment_ck",
+      sql`(${t.paymentJobId} is null) = (${t.paymentArtifactSha256} is null)`,
+    ),
+  ],
+);
+
+// F8-21 · Accounting-Sync-Satz je (Beleg, Vendor): State-Machine
+// queued → exported → acknowledged | failed, Payload-Hash als
+// Idempotenz- und Drift-Anker. Keine Secrets in der Zeile.
+export const accountingSyncRecord = pgTable(
+  "accounting_sync_record",
+  {
+    workspaceId: uuid("workspace_id").notNull(),
+    documentId: uuid("document_id").notNull(),
+    vendor: text("vendor").notNull(),
+    state: text("state").notNull(),
+    payloadSha256: text("payload_sha256").notNull(),
+    externalId: text("external_id"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique("accounting_sync_record_ws_doc_vendor_uq").on(
+      t.workspaceId,
+      t.documentId,
+      t.vendor,
+    ),
+    foreignKey({
+      columns: [t.workspaceId],
+      foreignColumns: [workspace.id],
+      name: "accounting_sync_record_workspace_id_fk",
+    }),
+    foreignKey({
+      columns: [t.workspaceId, t.documentId],
+      foreignColumns: [commercialDocument.workspaceId, commercialDocument.id],
+      name: "accounting_sync_record_document_fk",
+    }),
+    index("accounting_sync_record_ws_doc_idx").on(
+      t.workspaceId,
+      t.documentId,
+    ),
+    check(
+      "accounting_sync_record_vendor_ck",
+      sql`${t.vendor} in ('lexoffice', 'sevdesk', 'bexio')`,
+    ),
+    check(
+      "accounting_sync_record_state_ck",
+      sql`${t.state} in ('queued', 'exported', 'acknowledged', 'failed')`,
+    ),
+    check(
+      "accounting_sync_record_sha_ck",
+      sql`${t.payloadSha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "accounting_sync_record_external_ck",
+      sql`${t.externalId} is null or char_length(${t.externalId}) <= 200`,
+    ),
+    check(
+      "accounting_sync_record_attempts_ck",
+      sql`${t.attempts} >= 0`,
+    ),
+    check(
+      "accounting_sync_record_error_ck",
+      sql`${t.lastError} is null or char_length(${t.lastError}) <= 500`,
     ),
   ],
 );
