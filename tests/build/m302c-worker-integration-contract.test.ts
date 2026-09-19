@@ -69,6 +69,8 @@ describe("M3-02c invoice worker integration", () => {
     const runbook = await readFile("docs/runbooks/worker.md", "utf8");
 
     expect(runbook).toContain("invoice-pdf.render");
-    expect(runbook).toContain("sieben aktuelle Queueverträge");
+    expect(runbook).toContain("draft-pdf.render");
+    expect(runbook).toContain("overdue.sweep");
+    expect(runbook).toContain("neun aktuelle Queueverträge");
   });
 });

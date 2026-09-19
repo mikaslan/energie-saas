@@ -55,6 +55,17 @@ import {
 } from "./invoice-pdf";
 import { createInvoicePdfDatabaseGateway } from "./invoice-pdf-database";
 import { createPlaywrightInvoicePdfRenderer } from "./invoice-pdf-renderer";
+import { createDraftPdfRenderHandler, DRAFT_PDF_QUEUE } from "./draft-pdf";
+import { createDraftPdfDatabaseGateway } from "./draft-pdf-database";
+import { createPlaywrightDraftPdfRenderer } from "./draft-pdf-renderer";
+import {
+  createOverdueSweepDatabaseGateway,
+  createOverdueSweepHandler,
+  OVERDUE_SWEEP_DISPATCH_SCHEMA_VERSION,
+  OVERDUE_SWEEP_QUEUE,
+  OVERDUE_SWEEP_SCHEDULE_CRON,
+  OVERDUE_SWEEP_SCHEDULE_TIMEZONE,
+} from "./overdue-sweep";
 import {
   createOfferPdfRenderHandler,
   startOfferPdfRecoverySweep,
@@ -183,6 +194,16 @@ const invoicePdfGateway = createInvoicePdfDatabaseGateway(
   (error) => reportFatalWorkerError("invoice-pdf-pool", error),
   2,
 );
+const draftPdfGateway = createDraftPdfDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("draft-pdf-pool", error),
+  2,
+);
+const overdueSweepGateway = createOverdueSweepDatabaseGateway(
+  WORKER_URL,
+  (error) => reportFatalWorkerError("overdue-sweep-pool", error),
+  2,
+);
 const offerReleaseCandidateGateway = createOfferReleaseCandidateDatabaseGateway(
   WORKER_URL,
   (error) => reportFatalWorkerError("offer-release-candidate-pool", error),
@@ -272,6 +293,17 @@ const invoicePdfHandler = createInvoicePdfRenderHandler({
   onIntegrityIncident: (error) => {
     reportFatalWorkerError("invoice-pdf-integrity", error);
   },
+});
+const draftPdfHandler = createDraftPdfRenderHandler({
+  database: draftPdfGateway.database,
+  renderer: createPlaywrightDraftPdfRenderer(),
+  createLeaseToken: randomUUID,
+  onIntegrityIncident: (error) => {
+    reportFatalWorkerError("draft-pdf-integrity", error);
+  },
+});
+const overdueSweepHandler = createOverdueSweepHandler({
+  runner: overdueSweepGateway.runner,
 });
 const offerReleaseCandidateHandler = createOfferReleaseCandidateRenderHandler({
   database: offerReleaseCandidateGateway.database,
@@ -365,6 +397,8 @@ function shutdown(signal: string, fatal = false): Promise<void> {
           calculationV2Gateway.close(),
           offerPdfGateway.close(),
           invoicePdfGateway.close(),
+          draftPdfGateway.close(),
+          overdueSweepGateway.close(),
           offerReleaseCandidateGateway.close(),
           offerIssuanceGateway.close(),
           catalogImportGateway.close(),
@@ -414,6 +448,10 @@ async function main() {
     await offerPdfGateway.probe();
     startupGate.assertOpen();
     await invoicePdfGateway.probe();
+    startupGate.assertOpen();
+    await draftPdfGateway.probe();
+    startupGate.assertOpen();
+    await overdueSweepGateway.probe();
     startupGate.assertOpen();
     await offerReleaseCandidateGateway.probe();
     startupGate.assertOpen();
@@ -499,6 +537,45 @@ async function main() {
         reportFatalWorkerError("invoice-pdf-recovery", error);
       },
     });
+    startupGate.assertOpen();
+    await boss.createQueue(DRAFT_PDF_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    startupGate.assertOpen();
+    await boss.work(
+      DRAFT_PDF_QUEUE,
+      { batchSize: 1, localConcurrency: 2 },
+      draftPdfHandler,
+    );
+    startupGate.assertOpen();
+    await boss.createQueue(OVERDUE_SWEEP_QUEUE, {
+      policy: "exclusive",
+      retryLimit: 3,
+      retryDelay: 60,
+      retryBackoff: true,
+      retryDelayMax: 600,
+      expireInSeconds: 900,
+    });
+    startupGate.assertOpen();
+    await boss.work(
+      OVERDUE_SWEEP_QUEUE,
+      { batchSize: 1, localConcurrency: 1 },
+      overdueSweepHandler,
+    );
+    startupGate.assertOpen();
+    // F8-24a: taeglicher Sweep 06:00 Europe/Berlin (alle Workspaces,
+    // Handler paginiert selbst; idempotent, CAS pro Zeile).
+    await boss.schedule(
+      OVERDUE_SWEEP_QUEUE,
+      OVERDUE_SWEEP_SCHEDULE_CRON,
+      { schemaVersion: OVERDUE_SWEEP_DISPATCH_SCHEMA_VERSION },
+      { tz: OVERDUE_SWEEP_SCHEDULE_TIMEZONE },
+    );
     startupGate.assertOpen();
     await boss.createQueue(OFFER_RELEASE_CANDIDATE_QUEUE, {
       policy: "exclusive",

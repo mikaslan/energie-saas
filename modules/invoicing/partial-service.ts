@@ -507,6 +507,10 @@ export type PartialChain = {
   billedGrossCents: number;
   remainingGrossCents: number;
   consumedLineIds: string[];
+  // F8-24b: Eltern-Zahlstatus — rein lesende Projektion (kein Schema).
+  paidGrossCents: number;
+  openGrossCents: number;
+  parentPaymentStatus: "unpaid" | "partially_paid" | "paid";
 };
 
 function toIso(value: Date | string): string {
@@ -544,6 +548,7 @@ export async function listPartialInvoices(
     invoice_net: number | string;
     invoice_skonto_percent: number | null;
     invoice_skonto_days: number | null;
+    invoice_paid: number | string | null;
     [key: string]: unknown;
   }>(sql`
     select partial.id as partial_id, partial.ordinal, partial.mode,
@@ -552,7 +557,8 @@ export async function listPartialInvoices(
            invoice.name as invoice_name, invoice.status as invoice_status,
            invoice.gross_cents as invoice_gross, invoice.net_cents as invoice_net,
            invoice.skonto_percent_bps as invoice_skonto_percent,
-           invoice.skonto_days as invoice_skonto_days
+           invoice.skonto_days as invoice_skonto_days,
+           invoice.paid_cents as invoice_paid
       from commercial_document_partial partial
       join commercial_document invoice
         on invoice.workspace_id = partial.workspace_id
@@ -587,6 +593,18 @@ export async function listPartialInvoices(
   const billedGrossCents = partials
     .filter((entry) => entry.status !== "voided")
     .reduce((sum, entry) => sum + entry.grossCents, 0);
+  // F8-24b: bezahlte Summe nur aus NICHT-stornierten Kindern; Ableitung
+  // spiegelt recordPayment (M301-05) — 0-EUR-Ketten bleiben unpaid.
+  const paidGrossCents = rows.rows
+    .filter((row) => row.invoice_status !== "voided")
+    .reduce((sum, row) => sum + Number(row.invoice_paid ?? 0), 0);
+  const openGrossCents = Math.max(billedGrossCents - paidGrossCents, 0);
+  const parentPaymentStatus: PartialChain["parentPaymentStatus"] =
+    billedGrossCents > 0 && openGrossCents === 0
+      ? "paid"
+      : paidGrossCents > 0
+        ? "partially_paid"
+        : "unpaid";
   const { consumedLineIds } = await readActivePartials(tx, ctx, input.orderId);
   const consumed = new Set(consumedLineIds);
   const orderLineRows = await readOrderLines(tx, ctx, input.orderId);
@@ -605,5 +623,8 @@ export async function listPartialInvoices(
     billedGrossCents,
     remainingGrossCents: Math.max(orderGross - billedGrossCents, 0),
     consumedLineIds,
+    paidGrossCents,
+    openGrossCents,
+    parentPaymentStatus,
   };
 }

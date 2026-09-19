@@ -1,11 +1,13 @@
 import { z } from "zod";
+
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
-import { InvoicingNotFoundError, InvoicingValidationError } from "@/modules/invoicing/errors";
 import {
   exportMonatsZip,
+  InvoicingNotFoundError,
+  InvoicingValidationError,
   INVOICING_MONATS_ZIP_COMMAND_VERSION,
-} from "@/modules/invoicing/month-zip-service";
+} from "@/modules/invoicing";
 
 export const dynamic = "force-dynamic";
 

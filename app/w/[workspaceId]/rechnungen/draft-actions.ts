@@ -9,24 +9,24 @@ import {
 } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 
-import type { MarkSentWithDeliveryActionState } from "./pdf-action-state";
+// F8-24c: Draft-Vorschau anfordern (Spiegel pdf-actions, schlank).
+import type { RequestDraftPdfActionState } from "./pdf-action-state";
 
-type DeliveryServiceModule = typeof import("@/modules/invoicing");
+type DraftPdfServiceModule = typeof import("@/modules/invoicing");
 
 const REACT_ACTION_FIELD_PATTERN = /^(?:\$ACTION_KEY|\$ACTION_(?:ID|REF)_[A-Za-z0-9_-]+|\$ACTION_[A-Za-z0-9_-]+:\d+)$/u;
 const WORKSPACE_ID_SCHEMA = z.uuid().transform((value) => value.toLowerCase());
-// F8-19: exakte Domänenfelder (workspaceId/documentId/channel, keine
-// Extrafelder). Der Dokumenttyp für die Revalidierung kommt aus dem
-// Service-Ergebnis, nicht aus dem Formular.
-const DELIVERY_FIELDS = new Set([
+const DRAFT_PDF_FIELDS = new Set([
   "workspaceId",
+  "type",
   "documentId",
-  "channel",
 ]);
-const deliveryFormSchema = z.strictObject({
+// Nur invoice/credit_note — letter fail-closed bereits beim Parsen
+// (der Service verweigert zusaetzlich: nie auf eine Schicht verlassen).
+const draftPdfFormSchema = z.strictObject({
   workspaceId: WORKSPACE_ID_SCHEMA,
+  type: z.enum(["invoice", "credit_note"]),
   documentId: z.uuid().transform((value) => value.toLowerCase()),
-  channel: z.literal("manual"),
 });
 
 function workspaceForAdmission(formData: FormData): string | null {
@@ -36,7 +36,7 @@ function workspaceForAdmission(formData: FormData): string | null {
   return parsed.success ? parsed.data : null;
 }
 
-function parseExactForm(formData: FormData): z.infer<typeof deliveryFormSchema> | null {
+function parseExactForm(formData: FormData): z.infer<typeof draftPdfFormSchema> | null {
   const values = new Map<string, string>();
   for (const [name, value] of formData.entries()) {
     if (typeof value !== "string" || values.has(name)) return null;
@@ -45,67 +45,64 @@ function parseExactForm(formData: FormData): z.infer<typeof deliveryFormSchema> 
       values.set(name, value);
       continue;
     }
-    if (!DELIVERY_FIELDS.has(name)) return null;
+    if (!DRAFT_PDF_FIELDS.has(name)) return null;
     values.set(name, value);
   }
 
   const domainEntries = [...values].filter(([name]) => !name.startsWith("$ACTION"));
   if (
-    domainEntries.length !== DELIVERY_FIELDS.size
-    || ![...DELIVERY_FIELDS].every((name) => values.has(name))
+    domainEntries.length !== DRAFT_PDF_FIELDS.size
+    || ![...DRAFT_PDF_FIELDS].every((name) => values.has(name))
   ) return null;
 
-  const parsed = deliveryFormSchema.safeParse(Object.fromEntries(domainEntries));
+  const parsed = draftPdfFormSchema.safeParse(Object.fromEntries(domainEntries));
   return parsed.success ? parsed.data : null;
 }
 
-function mapDeliveryError(
+function mapDraftPdfError(
   error: unknown,
-  deliveryService: DeliveryServiceModule,
-): MarkSentWithDeliveryActionState | null {
+  pdfService: DraftPdfServiceModule,
+): RequestDraftPdfActionState | null {
   if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
   if (error instanceof PermissionDeniedError) return { status: "denied" };
-  if (error instanceof deliveryService.InvoicingValidationError) return { status: "invalid" };
-  if (error instanceof deliveryService.InvoicingNotFoundError) return { status: "not_found" };
-  if (error instanceof deliveryService.InvoicingConflictError) return { status: "conflict" };
-  if (error instanceof deliveryService.InvoicingIntegrityError) return { status: "unavailable" };
+  if (error instanceof pdfService.InvoicingValidationError) return { status: "invalid" };
+  if (error instanceof pdfService.InvoicingNotFoundError) return { status: "not_found" };
+  if (error instanceof pdfService.InvoicingIntegrityError) return { status: "unavailable" };
   return null;
 }
 
-export async function markSentWithDeliveryAction(
-  _previousState: MarkSentWithDeliveryActionState,
+export async function requestDraftPdfAction(
+  _previousState: RequestDraftPdfActionState,
   formData: FormData,
-): Promise<MarkSentWithDeliveryActionState> {
+): Promise<RequestDraftPdfActionState> {
   const workspaceId = workspaceForAdmission(formData);
   if (!workspaceId) return { status: "invalid" };
   // Erst beim tatsächlichen Server-Action-Aufruf laden. So bleibt die Client-
   // Referenz frei von der server-only DAL; Next ersetzt diese Funktion im
   // Browser ohnehin durch die verschlüsselte Action-Referenz.
-  const deliveryService: DeliveryServiceModule = await import("@/modules/invoicing");
+  const pdfService: DraftPdfServiceModule = await import("@/modules/invoicing");
 
   try {
     const command = parseExactForm(formData);
-    if (!command) throw new deliveryService.InvoicingValidationError();
+    if (!command) throw new pdfService.InvoicingValidationError();
     const result = await authorizedAction(
       workspaceId,
       "invoicing.write",
-      "commercial_document_delivery",
-      async (tx, ctx) => deliveryService.markSentWithDelivery(tx, ctx, {
-        schemaVersion: deliveryService.COMMERCIAL_DOCUMENT_DELIVERY_COMMAND_VERSION,
+      "draft_pdf",
+      async (tx, ctx) => pdfService.requestDraftPdfInput(tx, ctx, {
+        schemaVersion: pdfService.COMMERCIAL_DOCUMENT_DRAFT_RENDER_COMMAND_VERSION,
         documentId: command.documentId,
-        channel: command.channel,
       }),
     );
 
-    revalidatePath(`/w/${workspaceId}/rechnungen/${result.type}/${command.documentId}`);
+    revalidatePath(`/w/${workspaceId}/rechnungen/${command.type}/${command.documentId}`);
     return {
       status: "success",
-      sentAt: result.sentAt,
-      invoiceJobId: result.invoiceJobId,
-      paymentJobId: result.paymentJobId,
+      state: result.status,
+      jobId: result.jobId,
     };
   } catch (error) {
-    const mapped = mapDeliveryError(error, deliveryService);
+    const mapped = mapDraftPdfError(error, pdfService);
     if (mapped) return mapped;
     throw error;
   }

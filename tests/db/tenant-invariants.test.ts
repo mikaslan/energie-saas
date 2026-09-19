@@ -27,6 +27,11 @@ const RLS_FREE_WORKSPACE_EXEMPT = new Set<string>([
   // F10.1 Kundenportal: baugleich M2-04, RLS-freier Token-Locator im
   // TENANT_EXEMPT (Zugriff ausschliesslich ueber SECURITY-DEFINER-Kapseln).
   "portal_token_locator",
+  // F8-24a Sweep-Arbeitsvorrat: baugleich Locator, RLS-freier
+  // Trigger-Spiegel aller Workspace-IDs im TENANT_EXEMPT. Der Sweep
+  // muss Workspaces aufzaehlen, BEVOR app.workspace_id existiert;
+  // Zugriff nur lesend durch app_worker (Rollenvertrag).
+  "overdue_sweep_workspace",
 ]);
 
 interface Relation {
@@ -103,6 +108,10 @@ const ACTOR_SCOPED_TABLES = new Set([
   "commercial_document_line",
   "commercial_document_number_series",
   "commercial_document_link",
+  // F8-19 (0195)/F8-21 (0196): RESTRICTIVE Actor-Policies, read-gated
+  // SELECT (Muster commercial_document) — Zaehlen als Viewer.
+  "commercial_document_delivery",
+  "accounting_sync_record",
 ]);
 // M3-02c: Write-gated SELECT (P1: Issuing-PII) — Zaehlen als Editor.
 const EDITOR_SCOPED_TABLES = new Set([

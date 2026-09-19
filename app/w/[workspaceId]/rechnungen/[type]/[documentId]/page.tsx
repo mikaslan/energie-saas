@@ -19,6 +19,7 @@ import {
 } from "@/lib/integrations/invoicing/contract";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
+  DRAFT_PDF_TEMPLATE_VERSION,
   INVOICE_PAYMENT_TEMPLATE_VERSION,
   INVOICE_PDF_TEMPLATE_VERSION,
 } from "@/lib/integrations/invoicing/pdf-contract";
@@ -35,6 +36,7 @@ import { DeniedState } from "../../../_ui";
 import { CiiExportPanel } from "./cii-export-panel";
 import { DepositLinkPanel } from "./deposit-link-panel";
 import { DuplicateDocumentPanel } from "./duplicate-document-panel";
+import { DraftPdfPanel } from "./draft-pdf-panel";
 import { InvoicePaymentPanel } from "./invoice-payment-panel";
 import { InvoicePdfPanel } from "./invoice-pdf-panel";
 import { VersandPanel } from "./versand-panel";
@@ -162,6 +164,13 @@ export default async function InvoicingDocumentDetailPage(
   const paymentPdfJobs = invoicePdfs.filter(
     (job) => job.templateVersion === INVOICE_PAYMENT_TEMPLATE_VERSION,
   );
+  // F8-24c: Draft-Track (reine Anzeige; Vorschau nur im Entwurf).
+  const draftPdfJobs = invoicePdfs.filter(
+    (job) => job.templateVersion === DRAFT_PDF_TEMPLATE_VERSION,
+  );
+  const canRequestDraft = (type === "invoice" || type === "credit_note")
+    && detail.document.status === "draft"
+    && detail.document.permissions.canWrite;
 
   // F8-19: Versand-Nachweis (reine Anzeige; ohne invoicing.write →
   // null, Seite bleibt lesbar).
@@ -372,6 +381,16 @@ export default async function InvoicingDocumentDetailPage(
           </ul>
         )}
       </section>
+
+      {(type === "invoice" || type === "credit_note") && document.status === "draft" ? (
+        <DraftPdfPanel
+          workspaceId={workspaceId}
+          type={type}
+          documentId={documentId}
+          canGenerate={canRequestDraft}
+          jobs={draftPdfJobs}
+        />
+      ) : null}
 
       {(type === "invoice" || type === "credit_note") && document.status === "issued" ? (
         <CiiExportPanel workspaceId={workspaceId} type={type} documentId={documentId} />

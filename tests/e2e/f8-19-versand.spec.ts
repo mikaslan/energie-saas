@@ -445,10 +445,11 @@ test.describe("F8-19 Versand/Sent", () => {
     });
 
     // Download-Bytes beider Belege stimmen (Hashabgleich wie M302D-E2E-01).
-    const expectedFilename = `${DOCUMENT_NUMBER}.pdf`;
-    for (const [name, jobId, artifact] of [
-      ["Rechnungs-PDF laden", invoiceJob.jobId, invoiceArtifact],
-      ["Zahlungsbeleg laden", paymentJobId, paymentArtifact],
+    // Der Zahlungsbeleg traegt per pdf-service-Konvention `-zahlung` im
+    // Dateinamen (DECIDED, Spiegel F818-E2E-01).
+    for (const [name, jobId, artifact, expectedFilename] of [
+      ["Rechnungs-PDF laden", invoiceJob.jobId, invoiceArtifact, `${DOCUMENT_NUMBER}.pdf`],
+      ["Zahlungsbeleg laden", paymentJobId, paymentArtifact, `${DOCUMENT_NUMBER}-zahlung.pdf`],
     ] as const) {
       const link = versandPanel.getByRole("link", { name, exact: true });
       await expect(link).toBeVisible();

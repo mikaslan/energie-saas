@@ -28,6 +28,7 @@ import {
 } from "@/lib/integrations/invoicing/accounting-provider";
 import {
   InvoicingConflictError,
+  InvoicingIntegrityError,
   InvoicingNotFoundError,
   InvoicingValidationError,
 } from "./errors";
@@ -86,17 +87,24 @@ function toIsoDateTime(value: Date | string): string {
 }
 
 function toSyncDto(row: SyncRow): AccountingSyncV1 {
-  return accountingSyncV1Schema.parse({
-    schemaVersion: ACCOUNTING_SYNC_VERSION,
-    documentId: row.document_id,
-    vendor: row.vendor,
-    state: row.state,
-    payloadSha256: row.payload_sha256,
-    externalId: row.external_id,
-    attempts: Number(row.attempts),
-    lastError: row.last_error,
-    updatedAt: toIsoDateTime(row.updated_at),
-  });
+  // CHECK-gestuetzte Zeilen passieren immer; scheitert das DTO trotzdem
+  // (manueller DB-Eingriff), ist das Integritaet, nie 500-Rohfehler.
+  try {
+    return accountingSyncV1Schema.parse({
+      schemaVersion: ACCOUNTING_SYNC_VERSION,
+      documentId: row.document_id,
+      vendor: row.vendor,
+      state: row.state,
+      payloadSha256: row.payload_sha256,
+      externalId: row.external_id,
+      attempts: Number(row.attempts),
+      lastError: row.last_error,
+      updatedAt: toIsoDateTime(row.updated_at),
+    });
+  } catch (error) {
+    if (error instanceof InvoicingIntegrityError) throw error;
+    throw new InvoicingIntegrityError();
+  }
 }
 
 function parseCommand(input: AccountingSyncCommandV1): { documentId: string; vendor: AccountingVendor } {
@@ -106,7 +114,9 @@ function parseCommand(input: AccountingSyncCommandV1): { documentId: string; ven
 }
 
 function capError(detail: string): string {
-  return detail.slice(0, 500);
+  // Code-Point-Schnitt (kein UTF-16-slice): sonst spaltet ein astrales
+  // Zeichen und der INSERT scheitert an der Textkodierung.
+  return [...detail].slice(0, 500).join("");
 }
 
 // SQL-Reihenfolge je Funktion (fix, für stubbare Contract-Tests):
@@ -179,7 +189,15 @@ function payloadForDocument(row: DocumentRow, lines: SyncLineRow[]): {
     if (error instanceof AccountingExportError) throw new InvoicingValidationError();
     throw error;
   }
-  return { payload, payloadSha256: hashAccountingExportPayload(payload) };
+  // Der Hash wirft TypeError auf unsicheren Ganzzahlen/Surrogaten
+  // (DB-CHECKs schliessen das aus; faellt er doch, sind die
+  // gespeicherten Daten korrupt — Integritaet, nie 500).
+  try {
+    return { payload, payloadSha256: hashAccountingExportPayload(payload) };
+  } catch (error) {
+    if (error instanceof TypeError) throw new InvoicingIntegrityError();
+    throw error;
+  }
 }
 
 async function readSync(
@@ -203,8 +221,10 @@ async function readSync(
 /**
  * F8-21 Queue: legt den Sync-Satz je (Beleg, Vendor) an oder gibt den
  * bestehenden zurück. Idempotenz-Key = Vendor + Payload-Hash: gleicher
- * Stand → gleicher Satz; neuer Stand → Re-Queue aus failed/exported
- * (queued bleibt queued mit neuem Hash). acknowledged ist terminal.
+ * Stand → gleicher Satz; neuer Stand → Hash-Auffrischung nur aus queued
+ * (CAS), Re-Queue aus failed. exported + Drift verweigert Konflikt
+ * (exported→queued ist kein Maschinen-Uebergang; Pfad: run markiert
+ * failed mit Drift-Hinweis, dann Re-Queue). acknowledged ist terminal.
  */
 export async function queueAccountingSync(
   tx: TenantTx,
@@ -275,15 +295,19 @@ export async function queueAccountingSync(
     return toSyncDto(row);
   }
   if (existing.payload_sha256 === payloadSha256) return toSyncDto(existing);
+  // Hier nur noch queued/exported mit Drift: exported→queued ist kein
+  // Maschinen-Uebergang (ACCOUNTING_SYNC_TRANSITIONS) — der alte
+  // external_id wuerde sonst auf die neue Payload zeigen (GoBD-Drift).
+  if (state !== "queued") throw new InvoicingConflictError();
   const updated = await tx.execute<SyncRow>(sql`
     update accounting_sync_record
-       set state = 'queued',
-           payload_sha256 = ${payloadSha256},
+       set payload_sha256 = ${payloadSha256},
            last_error = null,
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
        and document_id = ${documentId}::uuid
        and vendor = ${vendor}
+       and state = 'queued'
     returning document_id, vendor, state, payload_sha256, external_id,
               attempts, last_error, updated_at
   `);
@@ -412,6 +436,13 @@ export async function runAccountingSync(
       : "provider-fehler";
     return toSyncDto(await markFailed(tx, ctx, documentId, vendor, detail));
   }
+  // Provider-Antwort ist Fremddaten: leer oder >200 Zeichen wuerde den
+  // CHECK sprengen (23514 → 500) — stattdessen failed mit Hinweis.
+  if (typeof externalId !== "string" || externalId.length === 0 || externalId.length > 200) {
+    return toSyncDto(
+      await markFailed(tx, ctx, documentId, vendor, "provider-external-id ungueltig"),
+    );
+  }
 
   const target: AccountingSyncState = state === "queued" ? "exported" : "acknowledged";
   try {
@@ -420,6 +451,8 @@ export async function runAccountingSync(
     if (error instanceof AccountingSyncTransitionError) throw new InvoicingConflictError();
     throw error;
   }
+  // CAS auf den gelesenen Zustand: parallele Doppel-Runs gewinnen nur
+  // einmal (sonst Doppel-Export, last-wins external_id, attempts +2).
   const updated = state === "queued"
     ? await tx.execute<SyncRow>(sql`
       update accounting_sync_record
@@ -431,6 +464,7 @@ export async function runAccountingSync(
        where workspace_id = ${ctx.workspaceId}::uuid
          and document_id = ${documentId}::uuid
          and vendor = ${vendor}
+         and state = 'queued'
       returning document_id, vendor, state, payload_sha256, external_id,
                 attempts, last_error, updated_at
     `)
@@ -443,6 +477,7 @@ export async function runAccountingSync(
        where workspace_id = ${ctx.workspaceId}::uuid
          and document_id = ${documentId}::uuid
          and vendor = ${vendor}
+         and state = 'exported'
       returning document_id, vendor, state, payload_sha256, external_id,
                 attempts, last_error, updated_at
     `);

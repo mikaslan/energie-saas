@@ -234,16 +234,19 @@ describe("F8-21 Idempotenz + Re-Queue (F821-CT-04)", () => {
     expect(harness.execute).toHaveBeenCalledTimes(3);
   });
 
-  it("neuer Stand → Re-Queue aus exported mit neuem Hash", async () => {
+  it("neuer Stand → exported + Drift verweigert Konflikt (kein Maschinen-Uebergang)", async () => {
+    // exported→queued ist kein Uebergang (F821-CT-03): stilles Re-Queue
+    // liesse den alten external_id auf die neue Payload zeigen
+    // (GoBD-Drift). Pfad: run markiert failed, dann Re-Queue aus failed.
     const harness = makeTx([
       { rows: [changedDocRow()] },
       { rows: changedLineRows() },
       { rows: [syncRow({ state: "exported", payload_sha256: CURRENT_SHA, external_id: "fake-lexoffice-000001", attempts: 1 })] },
-      { rows: [syncRow({ state: "queued", payload_sha256: CHANGED_SHA, external_id: "fake-lexoffice-000001", attempts: 1 })] },
     ]);
-    const result = await queueAccountingSync(harness.tx, editorCtx(), { ...command });
-    expect(result).toMatchObject({ state: "queued", payloadSha256: CHANGED_SHA });
-    expect(harness.execute).toHaveBeenCalledTimes(4);
+    await expect(
+      queueAccountingSync(harness.tx, editorCtx(), { ...command }),
+    ).rejects.toThrowError(InvoicingConflictError);
+    expect(harness.execute).toHaveBeenCalledTimes(3);
   });
 
   it("Retry über Re-Queue aus failed mit attempts+1", async () => {

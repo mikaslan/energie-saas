@@ -3,11 +3,11 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
+import { markSentWithDeliveryAction } from "../../delivery-actions";
 import {
   MARK_SENT_WITH_DELIVERY_INITIAL_STATE,
-  markSentWithDeliveryAction,
   type MarkSentWithDeliveryActionState,
-} from "../../delivery-actions";
+} from "../../pdf-action-state";
 
 export type DeliverySurfaceView = {
   sentAt: string;

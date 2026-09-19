@@ -293,4 +293,93 @@ describe("F8-21 Accounting-Sync (PostgreSQL)", () => {
         getAccountingSyncStatus(tx, ctx, syncCommand(documentId, "lexoffice"))),
     ).rejects.toBeInstanceOf(InvoicingNotFoundError);
   });
+
+  it("F821-DB-06: exported + Drift verweigert Konflikt (kein stilles exported→queued)", async () => {
+    const documentId = await seedIssuedInvoice(fixture, "F821-exportdrift");
+    await asEditor(fixture, (tx, ctx) =>
+      queueAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice")));
+    const provider = new FakeAccountingProvider("lexoffice");
+    const exported = await asEditor(fixture, (tx, ctx) =>
+      runAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice"), provider));
+    expect(exported.state).toBe("exported");
+    await withTenantOn(testPool, fixture.workspaceId, async (tx) => {
+      await tx.execute(sql`select set_config('app.actor_id', ${fixture.editorId}, true)`);
+      await tx.execute(sql`
+        update accounting_sync_record
+           set payload_sha256 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and document_id = ${documentId}::uuid
+           and vendor = 'lexoffice'
+      `);
+    });
+    // exported→queued ist kein Maschinen-Uebergang: der alte external_id
+    // wuerde auf die neue Payload zeigen (GoBD-Drift). Pfad: run
+    // markiert failed, dann Re-Queue aus failed.
+    await expect(asEditor(fixture, (tx, ctx) =>
+      queueAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice"))
+    )).rejects.toBeInstanceOf(InvoicingConflictError);
+    const drifted = await asEditor(fixture, (tx, ctx) =>
+      runAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice"), provider));
+    expect(drifted.state).toBe("failed");
+    expect(drifted.lastError).toContain("payload-drift");
+    const requeued = await asEditor(fixture, (tx, ctx) =>
+      queueAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice")));
+    expect(requeued.state).toBe("queued");
+    expect(requeued.payloadSha256).toBe(exported.payloadSha256);
+  });
+
+  it("F821-DB-07: queued + Drift frischt den Hash auf (CAS, Zustand bleibt queued)", async () => {
+    const documentId = await seedIssuedInvoice(fixture, "F821-queuedrift");
+    const queued = await asEditor(fixture, (tx, ctx) =>
+      queueAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice")));
+    await withTenantOn(testPool, fixture.workspaceId, async (tx) => {
+      await tx.execute(sql`select set_config('app.actor_id', ${fixture.editorId}, true)`);
+      await tx.execute(sql`
+        update accounting_sync_record
+           set payload_sha256 = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and document_id = ${documentId}::uuid
+           and vendor = 'lexoffice'
+      `);
+    });
+    const refreshed = await asEditor(fixture, (tx, ctx) =>
+      queueAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice")));
+    expect(refreshed.state).toBe("queued");
+    expect(refreshed.payloadSha256).toBe(queued.payloadSha256);
+    expect(refreshed.attempts).toBe(0);
+  });
+
+  it("F821-DB-08: ungueltige Provider-external-id markiert failed statt 500", async () => {
+    const documentId = await seedIssuedInvoice(fixture, "F821-badexternal");
+    await asEditor(fixture, (tx, ctx) =>
+      queueAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice")));
+    for (const externalId of ["", "x".repeat(201)]) {
+      const badProvider = {
+        vendor: "lexoffice",
+        exportVoucher: async () => ({ externalId, rawStatus: "accepted" }),
+      } as const;
+      const failed = await asEditor(fixture, (tx, ctx) =>
+        runAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice"), badProvider));
+      expect(failed.state).toBe("failed");
+      expect(failed.lastError).toContain("provider-external-id ungueltig");
+      await asEditor(fixture, (tx, ctx) =>
+        queueAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice")));
+    }
+  });
+
+  it("F821-DB-09: astraler Provider-Fehler wird code-point-sicher gekappt (kein Surrogat-Bruch)", async () => {
+    const documentId = await seedIssuedInvoice(fixture, "F821-astral");
+    await asEditor(fixture, (tx, ctx) =>
+      queueAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice")));
+    const provider = new FakeAccountingProvider("lexoffice");
+    // 32-Zeichen-Prefix + 467 x + Emojis: UTF-16-slice(0,500) endet auf
+    // dem High-Surrogat des ersten Emojis (stilles Ersatzzeichen statt
+    // 💥); Code-Point-Schnitt haelt das Paar zusammen.
+    provider.failNext(`${"x".repeat(467)}${"💥".repeat(100)}`);
+    const failed = await asEditor(fixture, (tx, ctx) =>
+      runAccountingSync(tx, ctx, syncCommand(documentId, "lexoffice"), provider));
+    expect(failed.state).toBe("failed");
+    expect([...(failed.lastError ?? "")].length).toBeLessThanOrEqual(500);
+    expect(failed.lastError).toContain("💥");
+  });
 });

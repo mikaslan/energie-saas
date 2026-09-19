@@ -6,7 +6,7 @@ import {
   createPartialInvoiceAction,
   type PartialInvoiceActionState,
 } from "../../actions";
-import { formatEuro } from "../../labels";
+import { formatEuro, PAYMENT_STATUS_LABELS } from "../../labels";
 import type { PartialChain } from "@/modules/invoicing";
 
 const initialState: PartialInvoiceActionState = { status: "idle" };
@@ -56,8 +56,9 @@ function Feedback({
  * Ketten-Rest). F8-12 · Teil-Rest (Modus remainder, Prozentanteil vom
  * aktuellen Rest, Kette bleibt offen). F8-13 · Betrag-Teilrechnung
  * (Modus amount, fester Netto-Betrag, cent-exakt). F8-14 · Skonto je
- * Teilrechnung (eigene Kind-Kondition als Ketten-Anzeige). Reine
- * Darstellung gespeicherter Kette + Summen.
+ * Teilrechnung (eigene Kind-Kondition als Ketten-Anzeige). F8-24b ·
+ * Eltern-Zahlstatus im Ketten-Kopf (Offen/bezahlt + Status-Label, rein
+ * lesende Projektion). Reine Darstellung gespeicherter Kette + Summen.
  */
 export function PartialInvoicePanel({
   workspaceId,
@@ -87,6 +88,10 @@ export function PartialInvoicePanel({
           ? `Noch keine Teilrechnung zu ${chain.order.number ?? chain.order.name}.`
           : `${chain.partials.length} ${chain.partials.length === 1 ? "Teilrechnung" : "Teilrechnungen"} gestellt.`}{" "}
         Rest: {formatEuro(chain.remainingGrossCents)} von {formatEuro(chain.order.grossCents)}.
+      </p>
+      <p className="mt-1 text-sm leading-6 text-slate-600" data-testid="partial-payment-summary">
+        Offen {formatEuro(chain.openGrossCents)} / bezahlt {formatEuro(chain.paidGrossCents)}
+        {" · "}{PAYMENT_STATUS_LABELS[chain.parentPaymentStatus] ?? chain.parentPaymentStatus}
       </p>
       {chain.partials.length > 0 ? (
         <ul className="mt-3 grid gap-2" aria-label="Gestellte Teilrechnungen">

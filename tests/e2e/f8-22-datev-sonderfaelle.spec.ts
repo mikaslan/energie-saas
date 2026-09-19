@@ -218,22 +218,8 @@ async function seedZeroRateDraftInvoice(): Promise<void> {
          ($1::uuid, $2::uuid, 1, 'PV-Module (§12 Abs. 3)', 20000, 'piece', 500000, 0, 500000, 0, 'zero_12_3')`,
       [data.workspaceId, documentId],
     );
-    // Steuerbehandlung nur wenn Migration 0197 gefahren ist (Owner-Gate);
-    // ohne die Spalte verweigert der Export fail-closed (erwartbar).
-    await client.query(
-      `do $$ begin
-         if exists (
-           select 1 from information_schema.columns
-            where table_name = 'commercial_document_line'
-              and column_name = 'tax_treatment'
-         ) then
-           update commercial_document_line
-              set tax_treatment = 'zero_12_3'
-            where workspace_id = $1::uuid and document_id = $2::uuid;
-         end if;
-       end $$`,
-      [data.workspaceId, documentId],
-    );
+    // Der INSERT oben setzt die 0197-Spalte tax_treatment voraus (der
+    // Spec braucht Migration 0197; ohne sie faellt der INSERT fail-closed).
     await client.query("commit");
   } finally {
     await client.release();

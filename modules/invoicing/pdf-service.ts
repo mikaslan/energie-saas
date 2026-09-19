@@ -13,19 +13,26 @@ import {
   type ServiceCtx,
 } from "@/lib/permissions";
 import {
+  COMMERCIAL_DOCUMENT_DRAFT_RENDER_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_PAYMENT_RENDER_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_RENDER_COMMAND_VERSION,
+  commercialRecipientSnapshotV1Schema,
 } from "@/lib/integrations/invoicing/contract";
 import { buildEpcPayload, EpcPayloadError } from "@/lib/integrations/invoicing/epc-contract";
 import {
+  buildDraftPdfInput,
   buildInvoicePaymentInput,
   buildInvoicePdfInput,
+  DRAFT_PDF_RENDERER_RECIPE_VERSION,
+  DRAFT_PDF_TEMPLATE_VERSION,
+  hashDraftPdfInput,
   hashInvoicePaymentInput,
   hashInvoicePdfInput,
   INVOICE_PAYMENT_RENDERER_RECIPE_VERSION,
   INVOICE_PAYMENT_TEMPLATE_VERSION,
   INVOICE_PDF_RENDERER_RECIPE_VERSION,
   INVOICE_PDF_TEMPLATE_VERSION,
+  resolveDraftPdfArtifactFilename,
 } from "@/lib/integrations/invoicing/pdf-contract";
 import {
   InvoicingIntegrityError,
@@ -117,6 +124,49 @@ export async function enqueueInvoicePdfRenderDispatch(
   }
   await tx.execute(sql`
     select pgboss.enqueue_invoice_pdf_render(
+      ${workspaceId}::uuid,
+      ${jobId}::uuid
+    )
+  `);
+}
+
+// F8-24c: Draft-Dispatch (Spiegel invoice; Test-Skip wie dort, weil die
+// pgboss-Dispatch-Funktion nur in Prod/CI existiert).
+export async function enqueueDraftPdfRenderDispatch(
+  tx: TenantTx,
+  workspaceId: string,
+  jobId: string,
+): Promise<void> {
+  const parsed = z.strictObject({ workspaceId: z.uuid(), jobId: z.uuid() })
+    .safeParse({ workspaceId, jobId });
+  if (!parsed.success) {
+    throw new InvoicingValidationError();
+  }
+  const gate = await tx.execute<{
+    dispatch_signature: string | null;
+    current_role: string;
+    session_role: string;
+    database_name: string;
+    [key: string]: unknown;
+  }>(sql`
+    select pg_catalog.to_regprocedure(
+             'pgboss.enqueue_draft_pdf_render(uuid,uuid)'
+           )::text as dispatch_signature,
+           current_user::text as current_role,
+           session_user::text as session_role,
+           pg_catalog.current_database()::text as database_name
+  `);
+  const row = gate.rows[0];
+  if (!row?.dispatch_signature) {
+    const explicitTestSkip = row !== undefined
+      && row.current_role === row.session_role
+      && (row.current_role === "app_test" || row.current_role === "app_ci")
+      && row.database_name.includes("test");
+    if (explicitTestSkip) return;
+    throw new InvoicingIntegrityError();
+  }
+  await tx.execute(sql`
+    select pgboss.enqueue_draft_pdf_render(
       ${workspaceId}::uuid,
       ${jobId}::uuid
     )
@@ -531,6 +581,250 @@ export async function requestInvoicePaymentInput(
   return { jobId: found.id, inputSha256Hex: found.hex, status: "requested", amountCents: openCents };
 }
 
+// F8-24c: Draft-Vorschau anfordern (drittes Render-Paar, on-demand).
+const draftRenderCommandSchema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_DRAFT_RENDER_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+});
+
+export type RequestDraftPdfInputCommand = z.infer<typeof draftRenderCommandSchema>;
+
+export interface RequestDraftPdfInputResult {
+  jobId: string;
+  inputSha256Hex: string;
+  status: "requested";
+}
+
+type DraftDocumentRow = {
+  id: string;
+  type: string;
+  status: string;
+  name: string;
+  invoice_kind: string | null;
+  credit_note_type: string | null;
+  net_cents: number | string;
+  tax_cents: number | string;
+  gross_cents: number | string;
+  contact_id: string | null;
+  due_date: string | null;
+  delivery_date: string | null;
+  planned_service_date: string | null;
+  skonto_percent_bps: number | null;
+  skonto_days: number | null;
+};
+
+async function readDraftRecipientSnapshot(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  contactId: string | null,
+): Promise<unknown> {
+  if (contactId === null) return null;
+  const contact = await tx.execute<{
+    display_name: string;
+    address_street: string | null;
+    address_house_number: string | null;
+    address_postal_code: string | null;
+    address_city: string | null;
+    address_country: string | null;
+  }>(sql`
+    select display_name, address_street, address_house_number,
+           address_postal_code, address_city, address_country
+      from contact
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${contactId}::uuid
+       and deleted_at is null
+     limit 1
+     for share
+  `);
+  const row = contact.rows[0];
+  if (!row) throw new InvoicingValidationError();
+  const parsed = commercialRecipientSnapshotV1Schema.safeParse({
+    displayName: row.display_name,
+    street: row.address_street,
+    houseNumber: row.address_house_number,
+    postalCode: row.address_postal_code,
+    city: row.address_city,
+    country: row.address_country,
+  });
+  if (!parsed.success) throw new InvoicingValidationError();
+  return parsed.data;
+}
+
+export async function requestDraftPdfInput(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  command: RequestDraftPdfInputCommand,
+): Promise<RequestDraftPdfInputResult> {
+  requireInvoicingWrite(ctx);
+  const parsed = draftRenderCommandSchema.safeParse(command);
+  if (!parsed.success) {
+    throw new InvoicingValidationError();
+  }
+  const { documentId } = parsed.data;
+
+  const documentRows = await tx.execute<DraftDocumentRow>(sql`
+    select id, type, status, name, invoice_kind, credit_note_type,
+           net_cents, tax_cents, gross_cents, contact_id,
+           due_date::text as due_date,
+           delivery_date::text as delivery_date,
+           planned_service_date::text as planned_service_date,
+           skonto_percent_bps, skonto_days
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${documentId}::uuid
+  `);
+  const document = documentRows.rows[0];
+  if (!document) throw new InvoicingNotFoundError();
+  if (
+    (document.type !== "invoice" && document.type !== "credit_note")
+    || document.status !== "draft"
+  ) {
+    throw new InvoicingValidationError();
+  }
+
+  const lineRows = await tx.execute<LineRow>(sql`
+    select position, name, quantity_milli, unit,
+           net_cents, tax_cents, gross_cents, tax_rate_bps
+      from commercial_document_line
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and document_id = ${documentId}::uuid
+     order by position asc
+  `);
+
+  const settingsRows = await tx.execute<SettingsRow>(sql`
+    select company_name, company_email, company_authority,
+           company_register_number, company_tax_id,
+           company_address_line1, company_address_line2,
+           company_postal_code, company_city, company_country,
+           payment_account_holder, payment_iban, payment_bic, revision
+      from workspace_invoicing_settings
+     where workspace_id = ${ctx.workspaceId}::uuid
+  `);
+  const settings = settingsRows.rows[0];
+  if (!settings) {
+    throw new InvoicingValidationError();
+  }
+
+  const preparedRows = await tx.execute<{ now: Date }>(sql`
+    select pg_catalog.transaction_timestamp() as now
+  `);
+  const preparedNow = preparedRows.rows[0]?.now;
+  if (!preparedNow) throw new InvoicingIntegrityError();
+  const preparedAt = asIsoUtc(preparedNow);
+
+  const recipient = await readDraftRecipientSnapshot(tx, ctx, document.contact_id);
+
+  const built = buildDraftPdfInput({
+    document: {
+      type: document.type,
+      name: document.name,
+      invoiceKind: document.invoice_kind,
+      creditNoteType: document.credit_note_type,
+      dueDate: document.due_date,
+      // Leistungsdatum: Ist-Datum, sonst geplantes Leistungsdatum.
+      serviceDate: document.delivery_date ?? document.planned_service_date,
+      skontoPercentBps: document.skonto_percent_bps,
+      skontoDays: document.skonto_days,
+    },
+    recipient,
+    sender: {
+      companyName: settings.company_name,
+      companyEmail: settings.company_email,
+      companyAuthority: settings.company_authority,
+      companyRegisterNumber: settings.company_register_number,
+      companyTaxId: settings.company_tax_id,
+      companyAddressLine1: settings.company_address_line1,
+      companyAddressLine2: settings.company_address_line2,
+      companyPostalCode: settings.company_postal_code,
+      companyCity: settings.company_city,
+      companyCountry: settings.company_country,
+      paymentAccountHolder: settings.payment_account_holder,
+      paymentIban: settings.payment_iban,
+      paymentBic: settings.payment_bic,
+      settingsRevision: settings.revision,
+    },
+    lines: lineRows.rows.map((line) => ({
+      position: line.position,
+      title: line.name,
+      quantityMilli: line.quantity_milli,
+      unit: line.unit,
+      netCents: asMoneyCents(line.net_cents),
+      taxCents: asMoneyCents(line.tax_cents),
+      grossCents: asMoneyCents(line.gross_cents),
+      taxRateBps: line.tax_rate_bps,
+    })),
+    headTotals: {
+      netCents: asMoneyCents(document.net_cents),
+      taxCents: asMoneyCents(document.tax_cents),
+      grossCents: asMoneyCents(document.gross_cents),
+    },
+    preparedAt,
+  });
+  if (!built.ok) {
+    throw new InvoicingValidationError();
+  }
+  const input = built.value;
+  let inputSha256Hex: string;
+  try {
+    inputSha256Hex = hashDraftPdfInput(input);
+  } catch {
+    throw new InvoicingIntegrityError();
+  }
+
+  const jobId = randomUUID();
+  try {
+    const inserted = await tx.execute<{ id: string }>(sql`
+      insert into commercial_document_render_job (
+        id, workspace_id, document_id, input_json, input_sha256,
+        template_version, renderer_recipe, created_by
+      ) values (
+        ${jobId}::uuid, ${ctx.workspaceId}::uuid, ${documentId}::uuid,
+        ${JSON.stringify(input)}::jsonb, decode(${inputSha256Hex}, 'hex'),
+        ${DRAFT_PDF_TEMPLATE_VERSION}, ${DRAFT_PDF_RENDERER_RECIPE_VERSION},
+        ${ctx.actor}::uuid
+      )
+      on conflict (workspace_id, document_id, template_version, renderer_recipe)
+      do nothing
+      returning id
+    `);
+    const row = inserted.rows[0];
+    if (row) {
+      await enqueueDraftPdfRenderDispatch(tx, ctx.workspaceId, row.id);
+      return { jobId: row.id, inputSha256Hex, status: "requested" };
+    }
+  } catch (error) {
+    if (postgresErrorCode(error) === "23505") {
+      // Race unterhalb der WITH-CHECK-Sichtbarkeit: Replay lesen.
+    } else {
+      throw error;
+    }
+  }
+  // Replay: existierenden Draft-Job lesen + Hash rueckpruefen.
+  const existing = await tx.execute<{ id: string; input_json: unknown; hex: string; status: string }>(sql`
+    select id, input_json, encode(input_sha256, 'hex') as hex, status
+      from commercial_document_render_job
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and document_id = ${documentId}::uuid
+       and template_version = ${DRAFT_PDF_TEMPLATE_VERSION}
+       and renderer_recipe = ${DRAFT_PDF_RENDERER_RECIPE_VERSION}
+  `);
+  const found = existing.rows[0];
+  if (!found) {
+    throw new InvoicingIntegrityError();
+  }
+  let replayHash: string;
+  try {
+    replayHash = hashDraftPdfInput(found.input_json);
+  } catch {
+    throw new InvoicingIntegrityError();
+  }
+  if (replayHash !== found.hex) {
+    throw new InvoicingIntegrityError();
+  }
+  await enqueueDraftPdfRenderDispatch(tx, ctx.workspaceId, found.id);
+  return { jobId: found.id, inputSha256Hex: found.hex, status: "requested" };
+}
+
 export class InvoicePdfValidationError extends Error {
   constructor(public readonly paths: string[] = []) {
     super("invoice PDF request is invalid");
@@ -581,9 +875,11 @@ export type InvoicePdfState = z.infer<typeof stateSchema>;
 
 // F8-18: Status-Diskriminator (reine Lese-Projektion, keine Migration).
 // Der Download-Pfad bleibt jobId-schluesselig und template-agnostisch.
+// F8-24c: Draft-Track gehoert dazu (eigener Dateiname, s. Resolver).
 export const INVOICE_PDF_TRACK_TEMPLATE_VERSIONS = [
   INVOICE_PDF_TEMPLATE_VERSION,
   INVOICE_PAYMENT_TEMPLATE_VERSION,
+  DRAFT_PDF_TEMPLATE_VERSION,
 ] as const;
 
 export type InvoicePdfTemplateVersion =
@@ -595,6 +891,7 @@ export function parseInvoicePdfTemplateVersion(value: unknown): InvoicePdfTempla
   if (
     value === INVOICE_PDF_TEMPLATE_VERSION
     || value === INVOICE_PAYMENT_TEMPLATE_VERSION
+    || value === DRAFT_PDF_TEMPLATE_VERSION
   ) {
     return value;
   }
@@ -604,7 +901,17 @@ export function parseInvoicePdfTemplateVersion(value: unknown): InvoicePdfTempla
 export function resolveInvoicePdfArtifactFilename(
   documentNumber: string,
   templateVersion: InvoicePdfTemplateVersion,
+  documentName?: string,
 ): string {
+  if (templateVersion === DRAFT_PDF_TEMPLATE_VERSION) {
+    // F8-24c: Drafts haben keine Nummer — Name-Slug aus pdf-contract
+    // (dort Safe-Pattern-verifiziert, hier nur Integrity-Mapping).
+    try {
+      return resolveDraftPdfArtifactFilename(documentName as string);
+    } catch {
+      throw new InvoicePdfIntegrityError();
+    }
+  }
   if (!DOCUMENT_NUMBER_PATTERN.test(documentNumber)) {
     throw new InvoicePdfIntegrityError();
   }
@@ -657,6 +964,7 @@ type ArtifactRow = {
   id: string;
   document_id: string;
   document_number: string | null;
+  document_name?: string | null;
   template_version: string;
   status: string;
   artifact_mime_type: string | null;
@@ -799,6 +1107,7 @@ export async function readInvoicePdfArtifact(
   requireSameWorkspace(ctx, key.workspaceId);
   const result = await tx.execute<ArtifactRow>(sql`
     select job.id, job.document_id, document.number as document_number,
+           document.name as document_name,
            job.template_version, job.status, job.artifact_mime_type,
            encode(job.artifact_sha256, 'hex') as artifact_sha256_hex,
            job.artifact_size_bytes, job.artifact_bytes
@@ -814,6 +1123,8 @@ export async function readInvoicePdfArtifact(
   `);
   const row = result.rows[0];
   if (!row) throw new InvoicePdfNotFoundError();
+  const templateVersion = parseInvoicePdfTemplateVersion(row.template_version);
+  const isDraftTrack = templateVersion === DRAFT_PDF_TEMPLATE_VERSION;
   if (
     row.status !== "succeeded"
     || row.artifact_mime_type !== "application/pdf"
@@ -824,19 +1135,22 @@ export async function readInvoicePdfArtifact(
     || (row.artifact_size_bytes as number) > MAX_INVOICE_PDF_ARTIFACT_BYTES
     || !Buffer.isBuffer(row.artifact_bytes)
     || row.artifact_bytes.length !== row.artifact_size_bytes
-    || typeof row.document_number !== "string"
-    || !DOCUMENT_NUMBER_PATTERN.test(row.document_number)
+    || (!isDraftTrack && (typeof row.document_number !== "string" || !DOCUMENT_NUMBER_PATTERN.test(row.document_number)))
+    || (isDraftTrack && (typeof row.document_name !== "string" || row.document_name.trim() === ""))
   ) throw new InvoicePdfIntegrityError();
   const actual = createHash("sha256").update(row.artifact_bytes).digest();
   const expected = Buffer.from(row.artifact_sha256_hex, "hex");
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     throw new InvoicePdfIntegrityError();
   }
-  const templateVersion = parseInvoicePdfTemplateVersion(row.template_version);
   return {
     jobId: row.id,
     documentId: row.document_id,
-    filename: resolveInvoicePdfArtifactFilename(row.document_number, templateVersion),
+    filename: resolveInvoicePdfArtifactFilename(
+      isDraftTrack ? "" : (row.document_number as string),
+      templateVersion,
+      isDraftTrack ? (row.document_name as string) : undefined,
+    ),
     mimeType: "application/pdf",
     sha256: row.artifact_sha256_hex,
     sizeBytes: row.artifact_size_bytes,

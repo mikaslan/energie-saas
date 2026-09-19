@@ -229,6 +229,9 @@ export async function markSentWithDelivery(
   // Zahlungs-Job nur bei offenem Rest > 0 auf Rechnungen und nur wenn ein
   // `succeeded`-Beleg vorhanden ist (DECIDED — sonst Rechnung-ohne-Beleg).
   const openCents = asMoneyCents(document.gross_cents) - asMoneyCents(document.paid_cents);
+  // Korrupter Stand (mehr bezahlt als brutto): kein stiller Versand ohne
+  // Beleg — Integritaet statt Heuristik.
+  if (openCents < 0) throw new InvoicingIntegrityError();
   const paymentJob = document.type === "invoice" && openCents > 0
     ? await readSucceededJobArtifact(
       tx,
@@ -273,6 +276,11 @@ export async function markSentWithDelivery(
     `);
   } catch (error) {
     if (postgresErrorCode(error) === "23505") {
+      throw new InvoicingConflictError();
+    }
+    // 23503: Job-/Membership-Zeile parallel verschwunden (mikroskopisches
+    // Fenster) — Zustandskonflikt, nie 500.
+    if (postgresErrorCode(error) === "23503") {
       throw new InvoicingConflictError();
     }
     throw error;

@@ -2120,6 +2120,64 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F8-19 (0195): Versand-Nachweis (Beleg + Render-Job inline; Kanal
+  // manuell, 32-Byte-SHA, ohne Zahlungsbeleg-Paar).
+  commercial_document_delivery: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const documentId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, status, name, created_by, due_date, payment_status
+      ) values (
+        ${documentId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+        'F8-19 Rechnung (Delivery-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid'
+      )
+    `);
+    const jobId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document_render_job (
+        id, workspace_id, document_id, input_json, input_sha256,
+        template_version, renderer_recipe, created_by
+      ) values (
+        ${jobId}::uuid, ${wsId}::uuid, ${documentId}::uuid, '{}'::jsonb,
+        decode(repeat('00', 32), 'hex'),
+        'invoice-pdf-template.v1', 'invoice-pdf-renderer-recipe.v1', ${userId}::uuid
+      )
+    `);
+    await tx.execute(sql`
+      insert into commercial_document_delivery (
+        workspace_id, document_id, channel, invoice_job_id,
+        invoice_artifact_sha256, sent_by, sent_at
+      ) values (
+        ${wsId}::uuid, ${documentId}::uuid, 'manual', ${jobId}::uuid,
+        decode(repeat('11', 32), 'hex'), ${userId}::uuid, statement_timestamp()
+      )
+    `);
+  },
+  // F8-21 (0196): Buchhaltungs-Sync-Satz (Beleg inline; Anbieter
+  // lexoffice, Zustand queued, 64-Hex-Payload-Hash).
+  accounting_sync_record: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"invoicing":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const documentId = randomUUID();
+    await tx.execute(sql`
+      insert into commercial_document (
+        id, workspace_id, type, status, name, created_by, due_date, payment_status
+      ) values (
+        ${documentId}::uuid, ${wsId}::uuid, 'invoice', 'draft',
+        'F8-21 Rechnung (Sync-Fixture)', ${userId}::uuid, (now()::date + 14), 'unpaid'
+      )
+    `);
+    await tx.execute(sql`
+      insert into accounting_sync_record (
+        workspace_id, document_id, vendor, state, payload_sha256
+      ) values (
+        ${wsId}::uuid, ${documentId}::uuid, 'lexoffice', 'queued',
+        repeat('0123456789abcdef', 4)
+      )
+    `);
+  },
   // F1-12 (0114): benanntes Team (Muster: normalisiert kleingeschrieben).
   team: async (tx, wsId) => {
     const { userId } = await fixtureMembership(tx, wsId, "editor", '{"settings":true}');
@@ -3481,6 +3539,13 @@ export const TENANT_EXEMPT = new Set<string>([
   // ausschließlich über SECURITY-DEFINER-Kapseln (resolve_portal_public_view,
   // Portal-Erzeugung) in drizzle/0056.
   "portal_token_locator",
+  // RLS-FREIER Sweep-Arbeitsvorrat (F8-24a, 0200): Trigger-Spiegel aller
+  // Workspace-IDs (eine Spalte, keine Fachdaten, keine workspace_id-
+  // Spalte). Der Overdue-Sweep muss Workspaces aufzählen, BEVOR ein
+  // Tenant-Kontext existiert — `workspace` selbst ist FORCE-RLS und
+  // liefert ohne Kontext null Zeilen. Nur app_worker liest (SELECT,
+  // Rollenvertrag); befüllt per Trigger, nie per App-Schreibpfad.
+  "overdue_sweep_workspace",
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════

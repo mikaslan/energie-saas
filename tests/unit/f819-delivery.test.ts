@@ -52,10 +52,8 @@ vi.mock("@/modules/invoicing", () => ({
   InvoicingIntegrityError: deps.InvoicingIntegrityError,
 }));
 
-import {
-  MARK_SENT_WITH_DELIVERY_INITIAL_STATE,
-  markSentWithDeliveryAction,
-} from "@/app/w/[workspaceId]/rechnungen/delivery-actions";
+import { markSentWithDeliveryAction } from "@/app/w/[workspaceId]/rechnungen/delivery-actions";
+import { MARK_SENT_WITH_DELIVERY_INITIAL_STATE } from "@/app/w/[workspaceId]/rechnungen/pdf-action-state";
 import {
   VersandPanel,
   type DeliverySurfaceView,

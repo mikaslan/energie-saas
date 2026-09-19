@@ -248,10 +248,13 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0194 F8-17 Zahlungsbeleg-Tripel (CHECKs + Dispatch-Gate),
     // 0195 F8-19 Versand-Nachweis (Tabelle + RLS),
     // 0196 F8-21 Accounting-Sync-Satz (Tabelle + RLS),
-    // 0197 F8-22 Steuerbehandlung (Spalte + CHECK-Kopplung)).
+    // 0197 F8-22 Steuerbehandlung (Spalte + CHECK-Kopplung),
+    // 0198 F8-24c Draft-Render-Paar (CHECKs),
+    // 0199 F8 Nachweis-/Sync-IDs (id + UNIQUE (workspace_id, id)),
+    // 0200 F8-24a Sweep-Arbeitsvorrat (Tabelle + Spiegel-Trigger)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 156,
-      tag: "0197_f822_tax_treatment",
+      idx: 159,
+      tag: "0200_f824a_sweep_workspace_registry",
     });
   });
 

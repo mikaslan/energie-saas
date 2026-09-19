@@ -535,7 +535,11 @@ export const accountingSyncV1Schema = z.strictObject({
   payloadSha256: z.string().regex(/^[0-9a-f]{64}$/u),
   externalId: z.string().max(200).nullable(),
   attempts: z.number().int().min(0),
-  lastError: z.string().max(500).nullable(),
+  // CHECK-Spiegel: char_length zaehlt Zeichen, nicht UTF-16-Units —
+  // .max(500) wuerde gueltige astrale Texte verwerfen.
+  lastError: z.string().refine((value) => [...value].length <= 500, {
+    message: "lastError: max 500 Zeichen",
+  }).nullable(),
   updatedAt: z.iso.datetime({ offset: true }),
 });
 export type AccountingSyncV1 = z.infer<typeof accountingSyncV1Schema>;

@@ -1100,6 +1100,27 @@
       "when": 1789805190994,
       "tag": "0197_f822_tax_treatment",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1789844345642,
+      "tag": "0198_f824c_draft_pair",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1789847154974,
+      "tag": "0199_f8_delivery_sync_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1789847154975,
+      "tag": "0200_f824a_sweep_workspace_registry",
+      "breakpoints": true
     }
   ]
 }

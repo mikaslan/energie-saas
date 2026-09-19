@@ -75,8 +75,12 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    `invoice-pdf.render` für Rechnungs-PDFs aus versiegeltem Render-Input,
    ebenfalls Retry 10, maximal 60 Sekunden Backoff, 180 Sekunden Ablauf;
    drei fachliche Versuche werden davon getrennt in
-   `commercial_document_render_job` per Lease/CAS erzwungen. Der normale
-   Worker pinnt damit sieben aktuelle Queueverträge. Das npm-Paket bleibt pg-boss **12.28.0**;
+   `commercial_document_render_job` per Lease/CAS erzwungen. F8-24c ergänzt
+   `draft-pdf.render` für ENTWURF-Vorschauen ohne Siegel (gleicher
+   technischer Vertrag, eigenes Render-Tripel mit Wasserzeichen),
+   F8-24a `overdue.sweep` für den täglichen Sweep (Schedule 06:00
+   Europe/Berlin, Retry 3, Backoff bis 600 Sekunden, 900 Sekunden Ablauf).
+   Der normale Worker pinnt damit neun aktuelle Queueverträge. Das npm-Paket bleibt pg-boss **12.28.0**;
    die in Migration 0036 attestierte Zahl `38` ist die interne
    `pgboss.version`-Datenbankschemaversion, nicht die npm-Paketversion.
 4. **`fetch(name, options?)`** liefert ein Array (`Job<T>[]`); `complete(name,

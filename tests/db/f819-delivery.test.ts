@@ -29,6 +29,7 @@ import {
   upsertInvoicingSettings,
   voidDocument,
   InvoicingConflictError,
+  InvoicingIntegrityError,
   InvoicingNotFoundError,
   type InvoicingSettingsCommandV1,
 } from "@/modules/invoicing";
@@ -366,5 +367,26 @@ describe("F8-19 Versand-Nachweis (PostgreSQL)", () => {
       withAuthorizedTenantOn(testPool, fixture.editorId, foreignWorkspaceId, (tx, ctx) =>
         getDocumentDelivery(tx, ctx, { workspaceId: foreignWorkspaceId, documentId })),
     ).rejects.toBeInstanceOf(InvoicingNotFoundError);
+  });
+
+  it("F819-DB-07: korrupter Stand (mehr bezahlt als brutto) verweigert Integritaet statt Heuristik", async () => {
+    const documentId = await seedIssuedInvoice(fixture, "F819-ueberzahlt");
+    await seedSucceededJob(fixture, documentId, "invoice");
+    // CHECK-konsistent korrumpiert: paid_ck erlaubt paid >= gross bei 'paid'.
+    await withTenantOn(testPool, fixture.workspaceId, async (tx) => {
+      await tx.execute(sql`select set_config('app.actor_id', ${fixture.editorId}, true)`);
+      await tx.execute(sql`
+        update commercial_document
+           set paid_cents = gross_cents + 1,
+               payment_status = 'paid'
+         where workspace_id = ${fixture.workspaceId}::uuid
+           and id = ${documentId}::uuid
+      `);
+    });
+    await expect(asEditor(fixture, (tx, ctx) => markSentWithDelivery(tx, ctx, {
+      schemaVersion: "commercial-document-delivery-command.v1",
+      documentId,
+      channel: "manual",
+    }))).rejects.toBeInstanceOf(InvoicingIntegrityError);
   });
 });

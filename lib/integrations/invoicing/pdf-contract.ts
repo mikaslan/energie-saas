@@ -458,4 +458,167 @@ export function hashInvoicePaymentInput(value: unknown): string {
   return createHash("sha256").update(canonicalizeInvoiceJson(parsed.data), "utf8").digest("hex");
 }
 
+// F8-24c: Draft-Vorschau-Input (drittes Render-Paar, gleiche Kanonisierung).
+// Vorschau ist on-demand, kein Versand-Artefakt: keine Nummer, kein
+// Ausstellungs-Zeitpunkt, kein Siegel-Bezug. Letter fail-closed.
+export const DRAFT_PDF_INPUT_VERSION = "draft-pdf-input.v1" as const;
+export const DRAFT_PDF_TEMPLATE_VERSION = "draft-pdf-template.v1" as const;
+export const DRAFT_PDF_RENDERER_RECIPE_VERSION =
+  "draft-pdf-renderer-recipe.v1" as const;
+
+const draftPdfDocumentSchema = z.strictObject({
+  type: z.enum(["invoice", "credit_note"]),
+  name: normalizedRequiredText(160),
+  invoiceKind: invoiceKindSchema.nullable(),
+  creditNoteType: creditNoteTypeSchema.nullable(),
+  dueDate: isoDateSchema.nullable(),
+  serviceDate: isoDateSchema.nullable(),
+  skontoPercentBps: z.number().int().min(0).max(10_000).nullable(),
+  skontoDays: z.number().int().min(0).max(365).nullable(),
+}).superRefine((document, context) => {
+  if (document.type === "invoice" && document.creditNoteType !== null) {
+    context.addIssue({
+      code: "custom",
+      path: ["creditNoteType"],
+      message: "Gutschrift-Typ nur bei credit_note.",
+    });
+  }
+  if (document.type === "credit_note" && document.invoiceKind !== null) {
+    context.addIssue({
+      code: "custom",
+      path: ["invoiceKind"],
+      message: "Rechnungsart-Kennung nur bei invoice.",
+    });
+  }
+});
+
+export const draftPdfInputV1Schema = z.strictObject({
+  schemaVersion: z.literal(DRAFT_PDF_INPUT_VERSION),
+  canonicalizationVersion: z.literal(INVOICE_PDF_CANONICALIZATION_VERSION),
+  templateVersion: z.literal(DRAFT_PDF_TEMPLATE_VERSION),
+  rendererRecipeVersion: z.literal(DRAFT_PDF_RENDERER_RECIPE_VERSION),
+  preparedAt: utcDateTimeSchema,
+  document: draftPdfDocumentSchema,
+  recipient: commercialRecipientSnapshotV1Schema.nullable(),
+  sender: pdfSenderSchema,
+  // Drafts duerfen leer sein (keine Positionen): Summen muessen dann 0 sein.
+  lines: z.array(pdfLineSchema).max(MAX_DOCUMENT_LINE_POSITION),
+  totals: pdfTotalsSchema,
+}).superRefine((input, context) => {
+  for (const [index, line] of input.lines.entries()) {
+    if (line.position !== index + 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["lines", index, "position"],
+        message: "Positionen muessen lueckenlos ab 1 sortiert sein.",
+      });
+    }
+  }
+  let net = BigInt(0);
+  let tax = BigInt(0);
+  let gross = BigInt(0);
+  for (const line of input.lines) {
+    net += BigInt(line.netCents);
+    tax += BigInt(line.taxCents);
+    gross += BigInt(line.grossCents);
+  }
+  if (
+    net !== BigInt(input.totals.netCents)
+    || tax !== BigInt(input.totals.taxCents)
+    || gross !== BigInt(input.totals.grossCents)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["totals"],
+      message: "Kopf-Summen muessen der Zeilensumme entsprechen.",
+    });
+  }
+});
+
+export type DraftPdfInputV1 = z.infer<typeof draftPdfInputV1Schema>;
+
+export type DraftPdfContractResult =
+  | { ok: true; value: DraftPdfInputV1 }
+  | { ok: false; error: string };
+
+export interface BuildDraftPdfInputOptions {
+  document: unknown;
+  recipient: unknown;
+  sender: unknown;
+  lines: unknown;
+  headTotals: { netCents: number; taxCents: number; grossCents: number };
+  preparedAt: string;
+}
+
+export function validateDraftPdfInput(value: unknown): DraftPdfContractResult {
+  const parsed = draftPdfInputV1Schema.safeParse(value);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Ungueltiger Draft-Render-Input." };
+  }
+  return { ok: true, value: parsed.data };
+}
+
+export function buildDraftPdfInput(options: BuildDraftPdfInputOptions): DraftPdfContractResult {
+  // Strikte Allowlist: nur bekannte Bau-Schluessel, keine Leak-Weitergabe.
+  const allowed = new Set([
+    "document", "recipient", "sender", "lines", "headTotals", "preparedAt",
+  ]);
+  for (const key of Object.keys(options)) {
+    if (!allowed.has(key)) {
+      return { ok: false, error: `Unbekanntes Bau-Feld: ${key}.` };
+    }
+  }
+  return validateDraftPdfInput({
+    schemaVersion: DRAFT_PDF_INPUT_VERSION,
+    canonicalizationVersion: INVOICE_PDF_CANONICALIZATION_VERSION,
+    templateVersion: DRAFT_PDF_TEMPLATE_VERSION,
+    rendererRecipeVersion: DRAFT_PDF_RENDERER_RECIPE_VERSION,
+    preparedAt: options.preparedAt,
+    document: options.document,
+    recipient: options.recipient,
+    sender: options.sender,
+    lines: options.lines,
+    totals: options.headTotals,
+  });
+}
+
+export function hashDraftPdfInput(value: unknown): string {
+  const parsed = draftPdfInputV1Schema.safeParse(value);
+  if (!parsed.success) {
+    throw new TypeError("Nur valide Draft-Render-Inputs sind hashbar.");
+  }
+  return createHash("sha256").update(canonicalizeInvoiceJson(parsed.data), "utf8").digest("hex");
+}
+
+// F8-24c: Drafts haben keine Nummer — der Download heisst
+// `<name>-entwurf.pdf` (DECIDED). Das Ergebnis besteht immer das
+// Routen-Safe-Pattern (Route bleibt fail-closed Gate).
+export const DRAFT_PDF_ARTIFACT_FILENAME_SUFFIX = "-entwurf" as const;
+const DRAFT_FILENAME_SAFE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}\.pdf$/u;
+
+export function resolveDraftPdfArtifactFilename(documentName: string): string {
+  if (
+    typeof documentName !== "string"
+    || documentName.normalize("NFC").replace(/^ +| +$/gu, "").length === 0
+  ) {
+    throw new TypeError("Draft-Dateiname braucht einen nicht-leeren Belegnamen.");
+  }
+  const spaced = documentName.normalize("NFC").replace(/\s+/gu, "-");
+  let slug = "";
+  for (const character of spaced) {
+    slug += /[A-Za-z0-9._-]/u.test(character) ? character : "-";
+  }
+  slug = slug.replace(/-+/gu, "-").replace(/^[-.]+|[-.]+$/gu, "");
+  if (slug.length === 0 || !/^[A-Za-z0-9]/u.test(slug)) {
+    slug = slug.length === 0 ? "entwurf" : `entwurf-${slug}`;
+  }
+  slug = slug.slice(0, 192).replace(/[-.]+$/gu, "");
+  if (slug.length === 0) slug = "entwurf";
+  const filename = `${slug}${DRAFT_PDF_ARTIFACT_FILENAME_SUFFIX}.pdf`;
+  if (!DRAFT_FILENAME_SAFE_PATTERN.test(filename)) {
+    throw new TypeError("Draft-Dateiname ist nicht Safe-Pattern-faehig.");
+  }
+  return filename;
+}
+
 export type { CommercialRecipientSnapshotV1 };

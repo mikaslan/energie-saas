@@ -882,15 +882,15 @@ export const commercialDocumentRenderJob = pgTable(
     ),
     check(
       "commercial_document_render_job_template_ck",
-      sql`${t.templateVersion} in ('invoice-pdf-template.v1', 'invoice-payment-template.v1')`,
+      sql`${t.templateVersion} in ('invoice-pdf-template.v1', 'invoice-payment-template.v1', 'draft-pdf-template.v1')`,
     ),
     check(
       "commercial_document_render_job_recipe_ck",
-      sql`${t.rendererRecipe} in ('invoice-pdf-renderer-recipe.v1', 'invoice-payment-renderer-recipe.v1')`,
+      sql`${t.rendererRecipe} in ('invoice-pdf-renderer-recipe.v1', 'invoice-payment-renderer-recipe.v1', 'draft-pdf-renderer-recipe.v1')`,
     ),
     check(
       "commercial_document_render_job_pair_ck",
-      sql`((${t.templateVersion} = 'invoice-pdf-template.v1') and (${t.rendererRecipe} = 'invoice-pdf-renderer-recipe.v1')) or ((${t.templateVersion} = 'invoice-payment-template.v1') and (${t.rendererRecipe} = 'invoice-payment-renderer-recipe.v1'))`,
+      sql`((${t.templateVersion} = 'invoice-pdf-template.v1') and (${t.rendererRecipe} = 'invoice-pdf-renderer-recipe.v1')) or ((${t.templateVersion} = 'invoice-payment-template.v1') and (${t.rendererRecipe} = 'invoice-payment-renderer-recipe.v1')) or ((${t.templateVersion} = 'draft-pdf-template.v1') and (${t.rendererRecipe} = 'draft-pdf-renderer-recipe.v1'))`,
     ),
     check(
       "commercial_document_render_job_input_ck",
@@ -909,6 +909,7 @@ export const commercialDocumentRenderJob = pgTable(
 export const commercialDocumentDelivery = pgTable(
   "commercial_document_delivery",
   {
+    id: uuid("id").notNull().defaultRandom(),
     workspaceId: uuid("workspace_id").notNull(),
     documentId: uuid("document_id").notNull(),
     channel: text("channel").notNull(),
@@ -920,6 +921,7 @@ export const commercialDocumentDelivery = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
   },
   (t) => [
+    unique("commercial_document_delivery_ws_id_uq").on(t.workspaceId, t.id),
     unique("commercial_document_delivery_ws_doc_uq").on(
       t.workspaceId,
       t.documentId,
@@ -980,6 +982,7 @@ export const commercialDocumentDelivery = pgTable(
 export const accountingSyncRecord = pgTable(
   "accounting_sync_record",
   {
+    id: uuid("id").notNull().defaultRandom(),
     workspaceId: uuid("workspace_id").notNull(),
     documentId: uuid("document_id").notNull(),
     vendor: text("vendor").notNull(),
@@ -996,6 +999,7 @@ export const accountingSyncRecord = pgTable(
       .defaultNow(),
   },
   (t) => [
+    unique("accounting_sync_record_ws_id_uq").on(t.workspaceId, t.id),
     unique("accounting_sync_record_ws_doc_vendor_uq").on(
       t.workspaceId,
       t.documentId,

@@ -102,7 +102,8 @@ export async function exportDatevBatch(
     : await tx.execute<{ present: number }>(sql`
       select 1 as present
         from information_schema.columns
-       where table_name = 'commercial_document_line'
+       where table_schema = 'public'
+         and table_name = 'commercial_document_line'
          and column_name = 'tax_treatment'
        limit 1
     `);

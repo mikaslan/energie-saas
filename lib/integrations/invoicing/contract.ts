@@ -277,6 +277,9 @@ export const COMMERCIAL_DOCUMENT_RENDER_COMMAND_VERSION =
 // F8-17: Zahlungsbeleg anfordern (versiegelter invoice-payment-input.v1).
 export const COMMERCIAL_DOCUMENT_PAYMENT_RENDER_COMMAND_VERSION =
   "commercial-document-payment-render-command.v1" as const;
+// F8-24c: ENTWURF-Vorschau anfordern (draft-pdf-input.v1, kein Siegel).
+export const COMMERCIAL_DOCUMENT_DRAFT_RENDER_COMMAND_VERSION =
+  "commercial-document-draft-render-command.v1" as const;
 export const MAX_DOCUMENT_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const MAX_DOCUMENT_QUANTITY_MILLI = 100_000_000 as const;
 export const MAX_DOCUMENT_LINE_POSITION = 500 as const;
