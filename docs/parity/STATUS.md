@@ -10,10 +10,16 @@ Stand: 2026-09-06 · kanonische Abnahmequelle:
   Fast-Forward in `codex/m1-wave-02`.
 - Jev-Urteil: Disposition `spec_kontrakt` 0.96 — ehrliche Spec-Arbeit, keine
   Paritaet behauptet; Leitstand-Entscheid nach Aktenlage (Verfahren JEV-GATE.md).
-- Belege: Lane-CI in progress als Zusatzsignal; Integrations-Gates
-  `npm run check` 408/409 Dateien (einziger Ausfall Backup-Automation:
-  5-s-Timeouts unter Flotten-Parallellast, Datei seit `f0e6a18` unberuehrt,
-  kein Lane-Bezug — Umwelt-Flake, kein Integrations-Veto).
+- Belege: Lane-CI Statik-Job (faehrt voll `npm run test`) SUCCESS auf 3B-HEAD —
+  backup-automation dort GRUEN; Integrations-Gates lokal 408/409 (einziger
+  Ausfall Backup-Automation: 5-s-Timeouts NUR auf diesem Mac, auch ruhig;
+  Datei seit `f0e6a18` unberuehrt, kein Lane-Bezug — macOS-lokal zu langsam
+  fuers Budget, CI-Referenz gruen; Harness-Fix als Backlog vermerkt, kein
+  Integrations-Veto).
+- Jev-Zweitpruefung des Merges (mit Gegenbeweisen): Disposition
+  `spec_kontrakt` 0.96→0.66, Urteil beide Male UNSICHER (Confidence < 0.5) —
+  Leitstand-Entscheid nach Aktenlage: Push bleibt (0 Produktcode), Regel
+  verschaerft (JEV-GATE.md).
 - Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
   Integrationswelle.
 
