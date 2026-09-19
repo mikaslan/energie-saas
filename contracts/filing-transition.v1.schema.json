@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/filing-transition.v1.schema.json",
+  "title": "WMEE filing transition v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "filing-transition.v1"
+    },
+    "from": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "in_progress",
+        "awaiting_info",
+        "approved",
+        "rejected",
+        "done",
+        "cancelled"
+      ]
+    },
+    "to": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "in_progress",
+        "awaiting_info",
+        "approved",
+        "rejected",
+        "done",
+        "cancelled"
+      ]
+    },
+    "transitionedBy": {
+      "type": "string",
+      "enum": ["intern", "customer", "system"]
+    },
+    "reasonCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "notifyCustomer": {
+      "type": "boolean"
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    }
+  },
+  "required": [
+    "contractVersion",
+    "from",
+    "to",
+    "transitionedBy",
+    "reasonCode",
+    "notifyCustomer",
+    "idempotencyKey"
+  ],
+  "additionalProperties": false
+}

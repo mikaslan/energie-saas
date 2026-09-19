@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/service-price.v1.schema.json",
+  "title": "WMEE service price v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "service-price.v1"
+    },
+    "serviceType": {
+      "type": "string",
+      "enum": [
+        "netz_pv",
+        "netz_wp",
+        "foerderung",
+        "planung_standard",
+        "planung_express"
+      ]
+    },
+    "amountCents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "const": "EUR"
+    },
+    "validFrom": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "validTo": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sourceEstimate": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contractVersion",
+    "serviceType",
+    "amountCents",
+    "currency",
+    "validFrom",
+    "validTo",
+    "revision",
+    "sourceEstimate"
+  ],
+  "additionalProperties": false
+}

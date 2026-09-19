@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/typed-file-slot.v1.schema.json",
+  "title": "WMEE typed file slot v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "typed-file-slot.v1"
+    },
+    "slot": {
+      "type": "string",
+      "enum": [
+        "vollmacht",
+        "zaehlerfoto",
+        "planungs_pdf",
+        "fertigmeldung_foto",
+        "typenschild",
+        "bza_nachweis",
+        "bnd_beleg",
+        "sonstiges"
+      ]
+    },
+    "required": {
+      "type": "boolean"
+    },
+    "minCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "mimeAllowlist": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "maxBytes": {
+      "type": "integer",
+      "exclusiveMinimum": 0
+    }
+  },
+  "required": [
+    "contractVersion",
+    "slot",
+    "required",
+    "minCount",
+    "mimeAllowlist",
+    "maxBytes"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/filing-core.v1.schema.json",
+  "title": "WMEE filing core v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "filing-core.v1"
+    },
+    "capability": {
+      "type": "string",
+      "enum": [
+        "grid_registration",
+        "subsidy_case",
+        "planning_request",
+        "financing_request"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "in_progress",
+        "awaiting_info",
+        "approved",
+        "rejected",
+        "done",
+        "cancelled"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "frozenAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "priceSnapshot": {
+      "type": "object",
+      "properties": {
+        "amountCents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "const": "EUR"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["service_price", "estimate", "manual"]
+        }
+      },
+      "required": ["amountCents", "currency", "source"],
+      "additionalProperties": false
+    },
+    "auditRef": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
+  "required": [
+    "contractVersion",
+    "capability",
+    "status",
+    "projectId",
+    "frozenAt",
+    "priceSnapshot",
+    "auditRef"
+  ],
+  "additionalProperties": false
+}
