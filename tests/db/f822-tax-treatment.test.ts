@@ -252,4 +252,25 @@ describe("F8-22 Steuerbehandlung (PostgreSQL)", () => {
     expect(result.documents).toHaveLength(1);
     expect(result.documents[0]?.groups[0]?.taxTreatment).toBe("reverse_13b");
   });
+
+  it("F822-DB-05: zeilenloser 0-€-Kopf (F816-Abschlag) bricht den Stapel nicht", async () => {
+    // F816 stellt zeilenlose 0-€-Abschlaege per UI aus (produkt-legal);
+    // der Stapel bucht sie als zero_12_3-Nullzeile statt fail-closed
+    // (Spec §F8-22 kennt keinen >0-Vorbehalt).
+    const { documentId } = await seedDraftInvoice(fixture, "F822-nullkopf");
+    await asEditor(fixture, (tx, ctx) => issueDocument(tx, ctx, {
+      schemaVersion: COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION,
+      documentId,
+    }));
+    const result = await asEditor(fixture, (tx, ctx) => exportDatevBatch(tx, ctx, {
+      schemaVersion: INVOICING_DATEV_COMMAND_VERSION,
+      month: berlinMonth(),
+      skr: "03",
+    }));
+    expect(result.documents).toHaveLength(1);
+    expect(result.documents[0]?.groups).toHaveLength(1);
+    expect(result.documents[0]?.groups[0]?.taxTreatment).toBe("zero_12_3");
+    expect(result.documents[0]?.groups[0]?.grossCents).toBe(0);
+    expect(result.content).toContain("0,00;S;1400;8340;43;");
+  });
 });

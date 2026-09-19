@@ -159,13 +159,16 @@ export async function exportDatevBatch(
       // Kopf-only-Belege sind produkt-legal (issue verlangt keine Zeilen).
       // Exakt-19-%-Kopf (ganzzahliger Quotient) wird als EINE 19-%-Zeile
       // aus Kopfbeträgen gebucht (ESTIMATE-Ableitung, Spec §F8-11);
-      // reiner 0-%-Kopf (Steuer 0, Brutto = Netto) als EINE zero_12_3-
-      // Zeile (DECIDED, Spec §F8-22); alles andere verweigert der
-      // Builder fail-closed mit Belegnummer.
+      // reiner 0-%-Kopf (Steuer 0, Brutto = Netto, EINSCHLIESSLICH 0-€-
+      // Kopf: F816 stellt zeilenlose 0-€-Abschlaege aus, Spec §F8-22
+      // kennt keinen >0-Vorbehalt) als EINE zero_12_3-Zeile (DECIDED);
+      // alles andere verweigert der Builder fail-closed mit Belegnummer.
+      // (CHECKs binden Betraege >= 0; gross = net + tax schliesst
+      // negative/krumme 0-Faelle aus.)
       const ratioExact = netCents > 0 && taxCents * 100 === 19 * netCents;
       if (ratioExact) {
         lines = [{ taxRateBps: 1900, taxTreatment: "standard_19", netCents, taxCents, grossCents }];
-      } else if (taxCents === 0 && grossCents === netCents && grossCents > 0) {
+      } else if (taxCents === 0 && grossCents === netCents) {
         lines = [{ taxRateBps: 0, taxTreatment: "zero_12_3", netCents, taxCents: 0, grossCents }];
       }
     }

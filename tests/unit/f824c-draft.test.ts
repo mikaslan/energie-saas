@@ -282,11 +282,27 @@ describe("F824C-CT-01: Draft-Renderer (Chromium-Pfad, schlank)", () => {
 
   it("F824C-UT-14: ungepinnte Runtime rendert nicht unter Rezept-Version", async () => {
     const renderer = createPlaywrightDraftPdfRenderer();
-    const promise = renderer.render(validInput());
+    const outcome = await renderer.render(validInput()).then(
+      (artifact) => ({ ok: true as const, artifact }),
+      (error) => ({ ok: false as const, error }),
+    );
     if (process.platform === "linux" && process.arch === "x64") {
-      await expect(promise).rejects.toBeInstanceOf(DraftPdfRenderError);
+      // Gepinnte Runtime: mit echtem Chromium (CI stellt ihn bereit,
+      // m202/m203a-Muster) MUSS echtes Rendern gelingen — mit
+      // ENTWURF-Wasserzeichen im Byte-Strom; ohne Browser sauberer
+      // DraftPdfRenderError statt Rohfehler.
+      if (outcome.ok) {
+        expect(outcome.artifact.mimeType).toBe("application/pdf");
+        expect(outcome.artifact.bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+        expect(outcome.artifact.bytes.toString("latin1")).toContain("ENTWURF");
+      } else {
+        expect(outcome.error).toBeInstanceOf(DraftPdfRenderError);
+      }
     } else {
-      await expect(promise).rejects.toMatchObject({ code: "browser_unavailable", retryable: true });
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect(outcome.error).toMatchObject({ code: "browser_unavailable", retryable: true });
+      }
     }
   });
 
