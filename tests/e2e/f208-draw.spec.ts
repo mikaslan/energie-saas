@@ -140,6 +140,9 @@ async function touchDragStroke(page: Page): Promise<void> {
     });
   }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  // Session abkoppeln: Eine offene zweite CDP-Session interferiert mit
+  // Playwrights eigenem Touch-Input (submit.tap landete in CI daneben).
+  await cdp.detach();
 }
 
 async function touchDot(page: Page): Promise<void> {
