@@ -178,8 +178,31 @@ test("F208-E2E-06: Tablet-Touch-Drag zeichnet und signiert (Modus draw + PNG-Nac
     await expect(submit).toBeDisabled();
 
     // Touch-Drag → Submit enabled → Annehmen → ?sign=ok.
+    // pointerId aufzeichnen: Ueber Capture-Freigabe wird deterministisch
+    // bewiesen, dass der Browser die Touch-Sequenz bis pointerup
+    // verarbeitet hat — ein Tap waehrend aktiver Sequenz wuerde als
+    // Multi-Touch geschluckt (CI-Last-Race, 2× ?sign-Timeout).
+    await page.evaluate(() => {
+      const store = window as unknown as { __drawPointerId?: number };
+      store.__drawPointerId = undefined;
+      document.querySelector('[data-testid="draw-signature-canvas"]')?.addEventListener(
+        "pointerdown",
+        (event) => {
+          store.__drawPointerId = (event as PointerEvent).pointerId;
+        },
+        { once: true },
+      );
+    });
     await touchDragStroke(page);
     await expect(submit).toBeEnabled();
+    await expect.poll(async () => page.evaluate(() => {
+      const canvas = document.querySelector('[data-testid="draw-signature-canvas"]');
+      const id = (window as unknown as { __drawPointerId?: number }).__drawPointerId;
+      if (!canvas || id === undefined) return "no-stroke-yet";
+      const captured = (canvas as unknown as { hasPointerCapture(pid: number): boolean })
+        .hasPointerCapture(id);
+      return captured ? "captured" : "released";
+    }), "Touch-Sequenz bis pointerup verarbeitet (Capture frei)").toBe("released");
     await submit.tap();
     await page.waitForURL((url) => url.searchParams.get("sign") === "ok");
     await expect(page.getByTestId("portal-signature-sign-feedback")).toContainText("angenommen");
