@@ -6,9 +6,12 @@ import type {
   TimeEventTypeDto,
 } from "@/lib/integrations/time-tracking/contract";
 import {
+  approveTimeEntryAction,
+  archiveTimeEntryAction,
   createTimeEntryAction,
   startTimeEntryAction,
   stopTimeEntryAction,
+  unapproveTimeEntryAction,
   type TimeEntryActionState,
 } from "../anfragen/[projectId]/zeiterfassung/actions";
 import {
@@ -41,6 +44,11 @@ export function ProjectlessTimeManager({
   const [createState, createDispatch] = useActionState(createTimeEntryAction, initialState);
   const [startState, startDispatch] = useActionState(startTimeEntryAction, initialState);
   const [stopState, stopDispatch] = useActionState(stopTimeEntryAction, initialState);
+  // F9-15 R1a: Archiv/Freigabe-State auf Manager-Ebene (Projektseiten-Muster) —
+  // die Zeile demontiert nach Archivierung, zeilenlokales Feedback ginge verloren.
+  const [archiveState, archiveDispatch] = useActionState(archiveTimeEntryAction, initialState);
+  const [approveState, approveDispatch] = useActionState(approveTimeEntryAction, initialState);
+  const [unapproveState, unapproveDispatch] = useActionState(unapproveTimeEntryAction, initialState);
   // F9-15 R1c: Offline-Anlage (Hook aus Track R1c, Verdrahtung Lead).
   const offline = useProjectlessOffline({ workspaceId, canWrite, createDispatch });
 
@@ -154,12 +162,18 @@ export function ProjectlessTimeManager({
                     types={activeTypes}
                     archivedType={archivedTypeOf(entry.typeId)}
                     canWrite={canWrite}
+                    archiveDispatch={archiveDispatch}
+                    approveDispatch={approveDispatch}
+                    unapproveDispatch={unapproveDispatch}
                   />
                 </span>
               </li>
             ))}
           </ul>
         )}
+        <Feedback state={archiveState} />
+        <Feedback state={approveState} />
+        <Feedback state={unapproveState} />
       </section>
 
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

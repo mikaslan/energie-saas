@@ -7,9 +7,6 @@ import type {
 } from "@/lib/integrations/time-tracking/contract";
 import { isoToBerlinLocalInput } from "@/lib/integrations/time-tracking/berlin-wall-clock";
 import {
-  approveTimeEntryAction,
-  archiveTimeEntryAction,
-  unapproveTimeEntryAction,
   updateTimeEntryAction,
   type TimeEntryActionState,
 } from "../anfragen/[projectId]/zeiterfassung/actions";
@@ -19,6 +16,8 @@ import {
 } from "../anfragen/[projectId]/zeiterfassung/time-entry-manager";
 
 const initialState: TimeEntryActionState = { status: "idle" };
+
+type RowDispatch = (formData: FormData) => void;
 
 const buttonClass =
   "rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-600";
@@ -33,17 +32,19 @@ export function ProjectlessEditArchiveSection({
   types,
   archivedType,
   canWrite,
+  archiveDispatch,
+  approveDispatch,
+  unapproveDispatch,
 }: {
   workspaceId: string;
   entry: TimeEntryDto;
   types: TimeEventTypeDto[];
   archivedType?: TimeEventTypeDto;
   canWrite: boolean;
+  archiveDispatch: RowDispatch;
+  approveDispatch: RowDispatch;
+  unapproveDispatch: RowDispatch;
 }) {
-  const [archiveState, archiveDispatch] = useActionState(archiveTimeEntryAction, initialState);
-  const [approveState, approveDispatch] = useActionState(approveTimeEntryAction, initialState);
-  const [unapproveState, unapproveDispatch] = useActionState(unapproveTimeEntryAction, initialState);
-
   if (!canWrite) return null;
 
   return (
@@ -82,9 +83,6 @@ export function ProjectlessEditArchiveSection({
           </form>
         )
       ) : null}
-      <Feedback state={archiveState} />
-      <Feedback state={approveState} />
-      <Feedback state={unapproveState} />
     </>
   );
 }
