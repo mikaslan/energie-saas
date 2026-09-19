@@ -522,11 +522,16 @@ export function EnergyProfileEditor({
                       required
                       aria-required="true"
                       value={room.name}
-                      onChange={(event) => setRoomDrafts((current) =>
-                        current.map((draft, draftIndex) => draftIndex === index
-                          ? { ...draft, name: event.currentTarget.value }
-                          : draft),
-                      )}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setRoomDrafts((current) =>
+                          current.map((draft, draftIndex) =>
+                            draftIndex === index
+                              ? { ...draft, name: value }
+                              : draft,
+                          ),
+                        );
+                      }}
                       className={inputClass}
                     />
                   </label>
@@ -543,11 +548,16 @@ export function EnergyProfileEditor({
                       required
                       aria-required="true"
                       value={room.areaM2}
-                      onChange={(event) => setRoomDrafts((current) =>
-                        current.map((draft, draftIndex) => draftIndex === index
-                          ? { ...draft, areaM2: event.currentTarget.value }
-                          : draft),
-                      )}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setRoomDrafts((current) =>
+                          current.map((draft, draftIndex) =>
+                            draftIndex === index
+                              ? { ...draft, areaM2: value }
+                              : draft,
+                          ),
+                        );
+                      }}
                       className={inputClass}
                     />
                   </label>
@@ -559,11 +569,16 @@ export function EnergyProfileEditor({
                       required
                       aria-required="true"
                       value={room.usage}
-                      onChange={(event) => setRoomDrafts((current) =>
-                        current.map((draft, draftIndex) => draftIndex === index
-                          ? { ...draft, usage: event.currentTarget.value }
-                          : draft),
-                      )}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setRoomDrafts((current) =>
+                          current.map((draft, draftIndex) =>
+                            draftIndex === index
+                              ? { ...draft, usage: value }
+                              : draft,
+                          ),
+                        );
+                      }}
                       className={inputClass}
                     >
                       <option value="">Bitte wählen</option>
@@ -585,11 +600,16 @@ export function EnergyProfileEditor({
                       required
                       aria-required="true"
                       value={room.radiators}
-                      onChange={(event) => setRoomDrafts((current) =>
-                        current.map((draft, draftIndex) => draftIndex === index
-                          ? { ...draft, radiators: event.currentTarget.value }
-                          : draft),
-                      )}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setRoomDrafts((current) =>
+                          current.map((draft, draftIndex) =>
+                            draftIndex === index
+                              ? { ...draft, radiators: value }
+                              : draft,
+                          ),
+                        );
+                      }}
                       className={inputClass}
                     />
                   </label>

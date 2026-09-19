@@ -251,6 +251,26 @@ test("F1-19-E2E-03: stale→current überlebt Paket-Revisionen", async ({ page }
 
   await page.goto(editorPath);
   await page.getByRole("button", { name: "Eingaben bestätigen" }).click();
+  // Zweit-Bestaetigung kann die Neu-Reservations-Quota treffen (M1-07):
+  // dann Wartezeit abwarten und erneut bestaetigen (M1-05-Muster).
+  // Erfolg prueft ueber die stabile Bestaetigungs-Notiz: das Formular
+  // unmountet nach Erfolg (needsConfirmation=false), die Message waere fluechtig.
+  const confirmedNote = page.getByText(/ist für Adressrevision .* bestätigt/u);
+  const rateLimitFeedback = page.getByRole("alert").filter({
+    hasText: "Zu viele neue Berechnungen",
+  });
+  await expect(confirmedNote.or(rateLimitFeedback)).toBeVisible();
+  if (await rateLimitFeedback.isVisible()) {
+    const rateLimitText = await rateLimitFeedback.textContent();
+    const retryAfter = /Bitte in (\d+) Sekunden erneut versuchen\./u.exec(
+      rateLimitText ?? "",
+    );
+    if (!retryAfter) throw new Error("F1-19-E2E-03-Quota-Wartezeit fehlt.");
+    await page.waitForTimeout(Number(retryAfter[1]) * 1_000 + 250);
+    await page.getByRole("button", { name: "Eingaben bestätigen" }).click();
+    await expect(confirmedNote).toBeVisible();
+  }
+  await page.goto(projectPath);
   await expect(page.locator('[data-energy-calculation-state="queued"]')).toBeVisible();
   await completeCalculation(ids, await latestCalculationJobId(ids));
   await page.goto(projectPath);

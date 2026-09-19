@@ -4446,12 +4446,16 @@ export async function verifyRoleContract(
     ) is not null as present
   `);
   const hasF121LeadScore = f121Presence.rows[0]?.present === true;
-  // F1-19 (0232/0236): Contract-CHECK = Stufenmarker fuer den M1-07-Guard
-  // nach der Modus-Evolution (input_mode kein Identitaetsmerkmal mehr).
+  // F1-19 (0232/0236): Contract-CHECK in der 0232-Fassung (4 Modi) =
+  // Stufenmarker fuer den M1-07-Guard nach der Modus-Evolution
+  // (input_mode kein Identitaetsmerkmal mehr). Der CHECK-Name allein
+  // taugt nicht (stammt aus 0024, Ein-Modus-Aera) — die Definition
+  // muss die 0232-Modi enthalten.
   const f119Presence = await client.query<{ present: boolean }>(`
     select exists(
-      select 1 from pg_catalog.pg_constraint
-      where conname = 'site_energy_profile_contract_ck'
+      select 1 from pg_catalog.pg_constraint c
+      where c.conname = 'site_energy_profile_contract_ck'
+        and pg_catalog.pg_get_constraintdef(c.oid) like '%roomwise%'
     ) as present
   `);
   const hasF119EnergyModes = f119Presence.rows[0]?.present === true;

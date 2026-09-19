@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
@@ -51,17 +50,6 @@ function emptyToUndefined(value: FormDataEntryValue | null): string | undefined 
   return value.trim().length > 0 ? value : undefined;
 }
 
-function revalidateDedupe(workspaceId: string, entity: string, id: string): void {
-  revalidatePath(`/w/${workspaceId}/dubletten`);
-  // KEIN Revalidate des Detail-Pfads: Aufgelöste Einträge fallen aus
-  // getDedupeDetail (404) — das würde das Erfolgs-Feedback des gerade
-  // abgeschickten Formulars durch die 404-Seite ersetzen. Queue/Board/Akte
-  // sind die weiterführenden Sichten und werden stale.
-  // Triage löst Blocker auf Board und Akte — beide werden stale.
-  revalidatePath(`/w/${workspaceId}/anfragen`);
-  if (entity === "projekt") revalidatePath(`/w/${workspaceId}/anfragen/${id}`);
-}
-
 export async function markDedupeReviewedAction(
   workspaceId: string,
   entity: "contact" | "project",
@@ -91,11 +79,10 @@ export async function markDedupeReviewedAction(
         expectedRevision: input.expectedRevision,
       }),
     );
-    revalidateDedupe(
-      input.workspaceId,
-      input.entity === "contact" ? "kontakt" : "projekt",
-      input.id,
-    );
+    // F1-22: KEIN Revalidate — jede Pfad-Anweisung rendert die AKTUELLE
+    // Route (Detail) per RSC neu und aufgeloeste Eintraege fallen aus
+    // getDedupeDetail (404); das Erfolgs-Feedback bliebe nicht stehen.
+    // Queue/Board/Akte lesen bei Weiter-Navigation frisch.
     return { status: "success", changed: result.changed };
   } catch (error) {
     if (error instanceof DedupeValidationError) return { status: "invalid" };
@@ -131,7 +118,7 @@ export async function linkDedupeProjectAction(
         canonicalContactId: input.canonicalContactId,
       }),
     );
-    revalidateDedupe(input.workspaceId, "projekt", input.projectId);
+    // F1-22: KEIN Revalidate (siehe markDedupeReviewedAction).
     return { status: "success", changed: result.changed };
   } catch (error) {
     if (error instanceof DedupeValidationError) return { status: "invalid" };
