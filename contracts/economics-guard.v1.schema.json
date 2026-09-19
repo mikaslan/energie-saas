@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/economics-guard.v1.schema.json",
+  "title": "WMEE economics guard v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "economics-guard.v1"
+    },
+    "eegOverrideCents": {
+      "type": "number",
+      "minimum": 0
+    },
+    "commissioningYear": {
+      "type": "integer",
+      "minimum": 1990,
+      "maximum": 2100
+    },
+    "country": {
+      "type": "string",
+      "const": "DE"
+    },
+    "liabilityNoticeRequired": {
+      "type": "boolean"
+    },
+    "basis": {
+      "type": "string",
+      "enum": [
+        "gesamtanlage",
+        "zubau_delta"
+      ]
+    }
+  },
+  "required": [
+    "contractVersion",
+    "commissioningYear",
+    "country",
+    "liabilityNoticeRequired",
+    "basis"
+  ],
+  "additionalProperties": false
+}

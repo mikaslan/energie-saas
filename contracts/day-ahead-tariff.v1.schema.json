@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/day-ahead-tariff.v1.schema.json",
+  "title": "WMEE day-ahead tariff v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "day-ahead-tariff.v1"
+    },
+    "priceSeriesCentsPerKwh": {
+      "type": "array",
+      "minItems": 8760,
+      "maxItems": 8760,
+      "items": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Endliche Cent/kWh-Preise je Stunde eines 8760-Stunden-Jahres."
+      }
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "csv_import"
+      ]
+    },
+    "importedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "switchTimes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "required": [
+    "contractVersion",
+    "priceSeriesCentsPerKwh",
+    "source",
+    "importedAt"
+  ],
+  "additionalProperties": false
+}

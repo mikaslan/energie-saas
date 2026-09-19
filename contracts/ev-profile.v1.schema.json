@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/ev-profile.v1.schema.json",
+  "title": "WMEE EV profile v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "ev-profile.v1"
+    },
+    "segment": {
+      "type": "string",
+      "enum": [
+        "kompakt",
+        "mittel",
+        "gross"
+      ]
+    },
+    "kwhPerKm": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "jahresKm": {
+      "type": "number",
+      "minimum": 0
+    },
+    "wallboxMaxKw": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 11,
+      "description": "Optionale Wallbox-Grenze in kW. Dokumentierter Default 11, wird vom Schema nicht erzwungen."
+    },
+    "knownAbsent": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contractVersion",
+    "segment",
+    "kwhPerKm",
+    "jahresKm",
+    "knownAbsent"
+  ],
+  "additionalProperties": false
+}
