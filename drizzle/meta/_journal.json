@@ -1058,6 +1058,13 @@
       "when": 1789696007465,
       "tag": "0220_f208_draw_signature_invite",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1789853774369,
+      "tag": "0290_f15_02_gewerbe_workflow_stufen",
+      "breakpoints": true
     }
   ]
 }

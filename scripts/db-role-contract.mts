@@ -4372,7 +4372,7 @@ export async function verifyRoleContract(
   const hasOfferPdfDraft = offerPdfPresence.rows[0]?.present === true;
   // F15-01 (0088): Stufenmarker für den Provisionierungs-Rumpf (eigene
   // Sonde: die Funktionsliste weiter unten ist namensbegrenzt). Nur der
-  // exakte Marker wählt den neuen Pin — ein dritter Rumpf bricht
+  // exakte Marker wählt den neuen Pin — fremde Rümpfe brechen
   // fail-closed über den Hashvergleich.
   const gewerbeProvisioningProbe = await client.query<{ source: string | null }>(`
     select routine.prosrc as source
@@ -4384,6 +4384,13 @@ export async function verifyRoleContract(
   `);
   const hasGewerbeBoardProvisioning = gewerbeProvisioningProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("Anfragen Gewerbe"),
+  );
+  // F15-02 (0290): Stufenmarker für die eigenen Gewerbe-Stufen im
+  // Provisionierungs-Rumpf (Muster 0088: Marker wählt den exakten Pin, kein
+  // Selbstabgleich — ein vierter Rumpf bricht fail-closed über den
+  // Hashvergleich).
+  const hasGewerbeStufen0290 = gewerbeProvisioningProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("Bedarfsanalyse"),
   );
   // F10-03 (0091): Stufenmarker für die Installation-Projektion im
   // Portal-Resolver (Muster 0088: Marker wählt den exakten Pin, kein
@@ -6274,13 +6281,19 @@ export async function verifyRoleContract(
       "mark_project_catalog_resolution_stale():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
         "search_path=pg_catalog:7c6bd9b9f83040ae9d697aaa6b81012a7a9101d388f9ef1e107564410de1edd0",
       // F15-01 (0088): Rumpf provisioniert das Commercial-Board mit.
+      // F15-02 (0290): Rumpf provisioniert die eigenen Gewerbe-Stufen.
       // Historische Stände (m204 prüft 0076) tragen den alten Rumpf —
       // Stufenauswahl wie guard_erasure_tombstone_worm (feste Pins,
-      // kein Selbstabgleich: der Hash muss exakt einer der beiden sein).
+      // kein Selbstabgleich: der Hash muss exakt einer der drei sein).
+      // 0290-Pin per sha256(prosrc) aus der gelandeten Migration geerntet;
+      // Methode per 0088-Pin kalibriert (0088-prosrc trifft exakt den alten
+      // Pin); Gate verifiziert den Pin bei jedem Lauf erneut.
       "provision_default_request_board():trigger:app_owner:plpgsql:f:v:true:false:false:u:" +
-        `search_path=pg_catalog:${hasGewerbeBoardProvisioning
-          ? "082280a4f4e35fb42979e6ffba65c5e0a1438b3ebc7eeb55079c271234352a42"
-          : "c226d08f9a70eb36bd1eb7ef25e1afcc4fadae383cebef03bcc08b55de663138"}`,
+        `search_path=pg_catalog:${hasGewerbeStufen0290
+          ? "aa85b3ea5feccb621b4999dd76b3872e1ff8ad30bbc240ba906e6303329b3ac4"
+          : hasGewerbeBoardProvisioning
+            ? "082280a4f4e35fb42979e6ffba65c5e0a1438b3ebc7eeb55079c271234352a42"
+            : "c226d08f9a70eb36bd1eb7ef25e1afcc4fadae383cebef03bcc08b55de663138"}`,
       "reconcile_user_identity(text, text):uuid:identity_reconciler:plpgsql:f:v:true:false:false:u:" +
         "search_path=public, pg_temp:ae576295ddea09162013c29d5828512764cecbe3c39bbcaa0cdd5d45307f2ac3",
       "replay_erasure_tombstone(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
