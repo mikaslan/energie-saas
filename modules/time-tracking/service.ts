@@ -609,14 +609,13 @@ async function upsertTimeEntry(
 
   // F11-03b Replay-Guard: bekannter clientKey → Bestand zurückgeben,
   // ohne Events/Audits zu duplizieren (Offline-Replay ist sicher).
+  // F9-15 R1c: Key-gewinnt-Semantik — client_key ist per
+  // time_entry_ws_client_key_uq workspace-weit eindeutig, daher bewusst
+  // KEIN Projektfilter (ein projektlos erfasster Offline-Eintrag bleibt
+  // auch nach Projekt-Zuordnung per Manage-UI unter seinem Key replaybar).
   async function findTimeEntryByClientKey(
-    projectId: string | null,
     clientKey: string,
   ): Promise<TimeEntryRow | null> {
-    // F9-14: projektlose Replays matchen per IS NULL (nicht per Gleichheit).
-    const projectFilter = projectId === null
-      ? sql`and project_id is null`
-      : sql`and project_id = ${projectId}::uuid`;
     const found = await tx.execute<TimeEntryRow>(sql`
       select id, user_id, project_id, type_id, start_at, end_at,
              start_lat, start_lng,
@@ -625,7 +624,6 @@ async function upsertTimeEntry(
              ${billedExistsClause(ctx.workspaceId)}
         from time_entry
        where workspace_id = ${ctx.workspaceId}::uuid
-         ${projectFilter}
          and client_key = ${clientKey}::uuid
          and archived_at is null
        limit 1
@@ -638,7 +636,7 @@ async function upsertTimeEntry(
     if (mode === "create") {
       const create = command as CreateTimeEntryCommand;
       if (create.clientKey !== undefined) {
-        const known = await findTimeEntryByClientKey(create.projectId, create.clientKey);
+        const known = await findTimeEntryByClientKey(create.clientKey);
         if (known) return toTimeEntryDto(known, true);
       }
       try {
@@ -672,7 +670,7 @@ async function upsertTimeEntry(
         // (Trifft die 23505 den Laufzeit-Unique statt client_key, findet
         // die Nachsuche nichts und der Fehler fällt unten durch.)
         if (create.clientKey !== undefined && postgresErrorCode(error) === "23505") {
-          const raced = await findTimeEntryByClientKey(create.projectId, create.clientKey);
+          const raced = await findTimeEntryByClientKey(create.clientKey);
           if (raced) return toTimeEntryDto(raced, true);
         }
         throw error;
@@ -1530,5 +1528,74 @@ export async function exportTimeEntries(
     content: `\uFEFF${lines.join("\r\n")}\r\n`,
     contentType: "text/csv; charset=utf-8",
     fileName: `zeiterfassung-${parsed.data.projectId.slice(0, 8)}-${stamp}.csv`,
+  });
+}
+
+// F9-15 (R1b) projektloser CSV-Export: gleiche Spalten/BOM/Trennzeichen/
+// Injection-Guard und gleiche Filter-Semantik wie exportTimeEntries
+// (WYSIWYG zu listProjectlessTimeEntries), aber fix `project_id IS NULL`
+// (strikte Trennung, kein Misch-Verhalten). Kein Mapper-Extract: die
+// Bestandfunktion bleibt Zeile für Zeile unangetastet.
+export async function exportProjectlessTimeEntries(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { includeArchived?: boolean; userIds?: string[] | null; startDate?: string; endDate?: string; eventTypeIds?: string[] | null },
+): Promise<TimeEntryExportResult> {
+  requireRead(ctx);
+  const parsed = projectlessTimeEntryListQuerySchema.safeParse(query);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const includeArchived = parsed.data.includeArchived === true;
+  const userIds = parsed.data.userIds ?? [];
+  const userFilter = userIds.length === 0
+    ? sql``
+    : sql`and e.user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const eventTypeIds = parsed.data.eventTypeIds ?? [];
+  const startFilter = parsed.data.startDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date >= ${parsed.data.startDate}::date`;
+  const endFilter = parsed.data.endDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date <= ${parsed.data.endDate}::date`;
+  const typeFilter = eventTypeIds.length === 0
+    ? sql``
+    : sql`and e.type_id in (${sql.join(eventTypeIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const result = await tx.execute<TimeExportRow>(sql`
+    select e.start_at, e.end_at, e.working_time_minutes, e.break_duration_minutes,
+           t.name as type_name, e.comment, e.user_id
+      from time_entry e
+      left join time_event_type t
+        on t.workspace_id = e.workspace_id
+       and t.id = e.type_id
+     where e.workspace_id = ${ctx.workspaceId}::uuid
+       and e.project_id is null
+       ${includeArchived ? sql`` : sql`and e.archived_at is null`}
+       ${userFilter}
+       ${startFilter}
+       ${endFilter}
+       ${typeFilter}
+     order by (e.end_at is null) desc, e.start_at desc, e.id asc
+  `);
+  const lines = [
+    "datum;beginn;ende;minuten;pause_minuten;ereignistyp;kommentar;nutzer_id",
+  ];
+  for (const row of result.rows) {
+    const start = new Date(row.start_at);
+    const end = row.end_at === null ? null : new Date(row.end_at);
+    lines.push([
+      EXPORT_DATE_FORMAT.format(start),
+      EXPORT_TIME_FORMAT.format(start),
+      end === null ? "" : EXPORT_TIME_FORMAT.format(end),
+      row.working_time_minutes === null ? "" : String(row.working_time_minutes),
+      row.break_duration_minutes === null ? "" : String(row.break_duration_minutes),
+      row.type_name ?? "",
+      row.comment ?? "",
+      row.user_id,
+    ].map(exportCell).join(";"));
+  }
+  const stamp = EXPORT_DATE_FORMAT.format(new Date()).replaceAll("-", "");
+  return timeEntryExportResultSchema.parse({
+    content: `\uFEFF${lines.join("\r\n")}\r\n`,
+    contentType: "text/csv; charset=utf-8",
+    fileName: `zeiterfassung-ohne-projekt-${stamp}.csv`,
   });
 }

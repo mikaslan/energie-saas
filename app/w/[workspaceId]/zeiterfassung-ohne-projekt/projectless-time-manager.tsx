@@ -17,6 +17,9 @@ import {
   formatTimeEntryRange,
   inputClass,
 } from "../anfragen/[projectId]/zeiterfassung/time-entry-manager";
+import { ProjectlessEditArchiveSection } from "./edit-archive-section";
+import { ProjectlessExportButton } from "./export-button";
+import { useProjectlessOffline } from "./use-projectless-offline";
 
 const initialState: TimeEntryActionState = { status: "idle" };
 
@@ -38,10 +41,14 @@ export function ProjectlessTimeManager({
   const [createState, createDispatch] = useActionState(createTimeEntryAction, initialState);
   const [startState, startDispatch] = useActionState(startTimeEntryAction, initialState);
   const [stopState, stopDispatch] = useActionState(stopTimeEntryAction, initialState);
+  // F9-15 R1c: Offline-Anlage (Hook aus Track R1c, Verdrahtung Lead).
+  const offline = useProjectlessOffline({ workspaceId, canWrite, createDispatch });
 
   const typeName = (typeId: string | null): string | null =>
     types.find((type) => type.id === typeId)?.name ?? null;
   const activeTypes = types.filter((type) => type.archivedAt === null);
+  const archivedTypeOf = (typeId: string | null) =>
+    typeId !== null ? types.find((type) => type.id === typeId && type.archivedAt !== null) : undefined;
   const runningEntry = list.entries.find((entry) => entry.running) ?? null;
 
   return (
@@ -112,9 +119,12 @@ export function ProjectlessTimeManager({
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-semibold text-slate-950">Zeiteinträge</h2>
-          <p className="text-sm font-semibold text-slate-800">
-            Summe: {formatDuration(list.totalWorkingMinutes)}
-          </p>
+          <div className="flex items-baseline gap-3">
+            <p className="text-sm font-semibold text-slate-800">
+              Summe: {formatDuration(list.totalWorkingMinutes)}
+            </p>
+            <ProjectlessExportButton workspaceId={workspaceId} />
+          </div>
         </div>
 
         {list.entries.length === 0 ? (
@@ -137,6 +147,15 @@ export function ProjectlessTimeManager({
                     <span className="block break-words text-xs text-slate-500">{entry.comment}</span>
                   ) : null}
                 </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <ProjectlessEditArchiveSection
+                    workspaceId={workspaceId}
+                    entry={entry}
+                    types={activeTypes}
+                    archivedType={archivedTypeOf(entry.typeId)}
+                    canWrite={canWrite}
+                  />
+                </span>
               </li>
             ))}
           </ul>
@@ -150,7 +169,7 @@ export function ProjectlessTimeManager({
             Du hast Lesezugriff. Zum Erfassen brauchst du Editor-Rechte.
           </p>
         ) : (
-          <form action={createDispatch}>
+          <form action={createDispatch} onSubmit={offline.onSubmit}>
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <label className="block">
@@ -185,6 +204,26 @@ export function ProjectlessTimeManager({
             </div>
 
             <Feedback state={createState} />
+            {offline.syncState.notice !== "" ? (
+              <p role="status" className="mt-3 text-sm font-semibold text-green-700">
+                {offline.syncState.notice}
+              </p>
+            ) : null}
+            {offline.syncState.message !== "" ? (
+              <p role="status" className="mt-3 text-sm font-semibold text-green-700">
+                {offline.syncState.message}
+              </p>
+            ) : null}
+            {offline.syncState.queueError ? (
+              <p role="alert" className="mt-3 text-sm font-semibold text-red-700">
+                Offline-Speichern ist fehlgeschlagen.
+              </p>
+            ) : null}
+            {offline.pendingCount > 0 ? (
+              <p className="mt-1 text-xs text-slate-500">
+                {offline.pendingCount} Eintrag wartet auf Synchronisierung.
+              </p>
+            ) : null}
 
             <div className="mt-5">
               <button

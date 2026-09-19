@@ -191,12 +191,12 @@ export async function updateTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
   // Vor Autorisierung nur Form/Syntax prüfen. In der doppelten Herbststunde
   // kann eine legitime End-Wandzeit kleiner als die Start-Wandzeit aussehen.
   const submittedFields = parseFields(formData, undefined, false);
-  if (!workspace || !projectId || !id || !submittedFields) return { status: "invalid" };
+  if (!workspace || projectId === null || !id || !submittedFields) return { status: "invalid" };
 
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", async (tx, ctx) => {
@@ -224,9 +224,9 @@ export async function archiveTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
-  if (!workspace || !projectId || !id) return { status: "invalid" };
+  if (!workspace || projectId === null || !id) return { status: "invalid" };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
       archiveTimeEntry(tx, ctx, id),
@@ -244,9 +244,9 @@ export async function approveTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
-  if (!workspace || !projectId || !id) return { status: "invalid" };
+  if (!workspace || projectId === null || !id) return { status: "invalid" };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
       approveTimeEntry(tx, ctx, id),
@@ -264,9 +264,9 @@ export async function unapproveTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
-  if (!workspace || !projectId || !id) return { status: "invalid" };
+  if (!workspace || projectId === null || !id) return { status: "invalid" };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
       unapproveTimeEntry(tx, ctx, id),
