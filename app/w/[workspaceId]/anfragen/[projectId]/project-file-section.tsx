@@ -283,7 +283,7 @@ export function ProjectFileSection({
           >
             Datei hochladen
           </label>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <input
               id="project-file-input"
               data-testid="project-file-input"
@@ -296,7 +296,7 @@ export function ProjectFileSection({
                 setError(null);
                 setSuccess(null);
               }}
-              className="text-sm text-slate-600"
+              className="min-w-0 max-w-full flex-1 text-sm text-slate-600"
             />
             <button
               type="button"
@@ -343,7 +343,7 @@ export function ProjectFileSection({
                   </span>
                 ) : null}
               </span>
-              <span className="flex shrink-0 items-center gap-2">
+              <span className="flex max-w-full flex-wrap items-center justify-end gap-2">
                 {canWrite ? (
                   <ProjectFileVisibilityToggle
                     workspaceId={workspaceId}
