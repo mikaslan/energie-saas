@@ -52,6 +52,7 @@ export const projectTask = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     revision: integer("revision").notNull().default(1),
+    teamAssignmentRevision: integer("team_assignment_revision").notNull().default(0),
     createdBy: uuid("created_by").notNull(),
     updatedBy: uuid("updated_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -113,6 +114,10 @@ export const projectTask = pgTable(
     check(
       "project_task_revision_ck",
       sql`${t.revision} between 1 and 2147483647`,
+    ),
+    check(
+      "project_task_team_assignment_revision_ck",
+      sql`${t.teamAssignmentRevision} between 0 and 2147483647`,
     ),
     check(
       "project_task_timestamps_ck",

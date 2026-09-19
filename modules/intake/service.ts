@@ -3,6 +3,7 @@ import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import {
   calculatorSnapshot,
   contact,
+  inboundBrokerReceipt,
   inboundReceipt,
   kanbanBoard,
   kanbanColumn,
@@ -33,7 +34,20 @@ import {
   type RechnerIntakeReceiptV1,
   type RechnerIntakeV1,
 } from "@/lib/integrations/rechner/types";
-import { resolveLeadSourceForProducer } from "@/modules/lead-sources";
+import { validateBrokerIntake } from "@/lib/integrations/broker/contract";
+import {
+  BrokerIdempotencyConflictError,
+  BrokerInvalidRequestError,
+  BrokerRateLimitError,
+} from "@/lib/integrations/broker/errors";
+import type { VerifiedBrokerIdentity } from "@/lib/integrations/broker/signature";
+import {
+  BROKER_SOURCE_KEY,
+  type BrokerIntakeMeta,
+  type BrokerIntakeReceiptV1,
+  type BrokerIntakeV1,
+} from "@/lib/integrations/broker/types";
+import { applyIntakeAutoRouting, resolveLeadSourceForProducer } from "@/modules/lead-sources";
 
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_RECEIPTS = 120;
@@ -620,6 +634,17 @@ export async function processRechnerIntake(
     meta.receivedAt,
   );
 
+  // F1.8: aktive Lead-Quelle mit Name = Producer-Anwendung (z. B.
+  // "wmee-rechner-v5") zuordnen; ohne Treffer bleibt die Quelle leer.
+  // Kimi-P3-1 (bewusst akzeptiert): Resolve und Insert sind nicht
+  // zeilen-gesperrt — ein exakt dazwischen committetes Archivieren
+  // attribuiert historisch an die gerade archivierte Quelle. Impact
+  // minimal (Quelle bleibt referenzierbar, kein Sicherheitspfad).
+  const intakeLeadSourceId = await resolveLeadSourceForProducer(
+    tx,
+    ctx,
+    payload.producer.application,
+  );
   await tx.insert(project).values({
     id: projectId,
     workspaceId: ctx.workspaceId,
@@ -631,17 +656,7 @@ export async function processRechnerIntake(
     phase: "request",
     outcome: "open",
     sourceKey: RECHNER_SOURCE_KEY,
-    // F1.8: aktive Lead-Quelle mit Name = Producer-Anwendung (z. B.
-    // "wmee-rechner-v5") zuordnen; ohne Treffer bleibt die Quelle leer.
-    // Kimi-P3-1 (bewusst akzeptiert): Resolve und Insert sind nicht
-    // zeilen-gesperrt — ein exakt dazwischen committetes Archivieren
-    // attribuiert historisch an die gerade archivierte Quelle. Impact
-    // minimal (Quelle bleibt referenzierbar, kein Sicherheitspfad).
-    leadSourceId: await resolveLeadSourceForProducer(
-      tx,
-      ctx,
-      payload.producer.application,
-    ),
+    leadSourceId: intakeLeadSourceId,
     dedupeReviewRequired: contactDecision.reviewRequired,
     catalogResolutionStatus: "pending",
     createdAt: meta.receivedAt,
@@ -680,6 +695,10 @@ export async function processRechnerIntake(
     });
   }
 
+  // F1-23: Intake-Auto-Routing (Opt-in per Regel, default aus). Drift →
+  // unzugewiesen + lead_routing.failed; wirft nie (kein 500 an Sender).
+  await applyIntakeAutoRouting(tx, ctx, { projectId, leadSourceId: intakeLeadSourceId });
+
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
     aggregateType: "project",
@@ -705,4 +724,422 @@ export async function processRechnerIntake(
   });
 
   return receiptResponse({ id: receiptId, submissionId: payload.submissionId, bodySha256: hash }, false);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F1-15 Broker-Intake via REST (Katalog F1.2). Spiegel des Rechner-Flows mit
+// eigener Dedupe-Domäne (Workspace, Broker-Key, Broker-Record-ID) und
+// eigenen Fehlern. Kontakt-Entscheidung, Site-Vergabe, Default-Lane und
+// Lead-Source-Auflösung werden geteilt; alles Broker-Spezifische steht hier,
+// damit der Rechner-Pfad unangetastet bleibt.
+// ═══════════════════════════════════════════════════════════════════════
+type ExistingBrokerReceipt = {
+  id: string;
+  brokerKey: string;
+  brokerRecordId: string;
+  bodySha256: Buffer;
+};
+
+function brokerRequestHash(meta: BrokerIntakeMeta): Buffer {
+  if (!/^[0-9a-f]{64}$/.test(meta.payloadSha256)) throw new BrokerInvalidRequestError();
+  if (
+    !Number.isFinite(meta.receivedAt.getTime())
+    || !Number.isFinite(meta.signedAt.getTime())
+  ) {
+    throw new BrokerInvalidRequestError();
+  }
+  return Buffer.from(meta.payloadSha256, "hex");
+}
+
+function brokerNormalizedRequiredText(value: string, minLength: number, maxLength: number): string {
+  const normalized = value.normalize("NFKC").trim();
+  const length = Array.from(normalized).length;
+  if (length < minLength || length > maxLength) {
+    throw new BrokerInvalidRequestError();
+  }
+  return normalized;
+}
+
+function brokerReceiptResponse(row: ExistingBrokerReceipt, duplicate: boolean): BrokerIntakeReceiptV1 {
+  return {
+    contractVersion: "broker-intake-receipt.v1",
+    receiptId: row.id,
+    brokerKey: row.brokerKey as BrokerIntakeV1["brokerKey"],
+    brokerRecordId: row.brokerRecordId,
+    status: "processed",
+    duplicate,
+  };
+}
+
+async function findBrokerReceipt(
+  tx: TenantTx,
+  workspaceId: string,
+  brokerKey: string,
+  brokerRecordId: string,
+): Promise<ExistingBrokerReceipt | null> {
+  const [row] = await tx
+    .select({
+      id: inboundBrokerReceipt.id,
+      brokerKey: inboundBrokerReceipt.brokerKey,
+      brokerRecordId: inboundBrokerReceipt.brokerRecordId,
+      bodySha256: inboundBrokerReceipt.bodySha256,
+    })
+    .from(inboundBrokerReceipt)
+    .where(and(
+      eq(inboundBrokerReceipt.workspaceId, workspaceId),
+      eq(inboundBrokerReceipt.brokerKey, brokerKey),
+      eq(inboundBrokerReceipt.brokerRecordId, brokerRecordId),
+    ))
+    .limit(1);
+  return row ?? null;
+}
+
+function brokerReplayOrConflict(row: ExistingBrokerReceipt, hash: Buffer): BrokerIntakeReceiptV1 {
+  if (!sameHash(row.bodySha256, hash)) throw new BrokerIdempotencyConflictError();
+  return brokerReceiptResponse(row, true);
+}
+
+async function enforceBrokerRateLimit(
+  tx: TenantTx,
+  ctx: VerifiedBrokerIdentity,
+  receivedAt: Date,
+): Promise<void> {
+  await advisoryLock(tx, `broker-rate:v1:${ctx.workspaceId}:${ctx.keyId}`);
+  const windowStart = new Date(receivedAt.getTime() - RATE_LIMIT_WINDOW_MS);
+  const result = await tx.execute<{ n: number; oldest: Date | null; [key: string]: unknown }>(sql`
+    select count(*)::int as n, min(received_at) as oldest
+    from inbound_broker_receipt
+    where workspace_id = ${ctx.workspaceId}::uuid
+      and auth_key_id = ${ctx.keyId}
+      and received_at >= ${windowStart}
+  `);
+  const row = result.rows[0];
+  if (!row || row.n < RATE_LIMIT_MAX_RECEIPTS) return;
+
+  const oldest = row.oldest instanceof Date ? row.oldest : new Date(String(row.oldest));
+  const retryAt = oldest.getTime() + RATE_LIMIT_WINDOW_MS;
+  const retryAfterSeconds = Number.isFinite(retryAt)
+    ? Math.max(1, Math.ceil((retryAt - receivedAt.getTime()) / 1000))
+    : 60;
+  throw new BrokerRateLimitError(retryAfterSeconds);
+}
+
+function brokerSelectedAddressFingerprint(payload: BrokerIntakeV1): Buffer | null {
+  if (payload.site.addressMode !== "selected") return null;
+  const { street, houseNumber, postalCode, city, countryCode } = payload.site;
+  if (!street || !houseNumber || !postalCode || !city) throw new BrokerInvalidRequestError();
+
+  return addressFingerprint({
+    countryCode,
+    postalCode,
+    city,
+    street,
+    houseNumber,
+  });
+}
+
+async function persistBrokerContact(
+  tx: TenantTx,
+  ctx: VerifiedBrokerIdentity,
+  decision: ContactDecision,
+  phoneRaw: string | null,
+  displayName: string,
+  emailPrimary: string,
+  email: string,
+  phoneE164: string | null,
+  now: Date,
+): Promise<void> {
+  if (!decision.existing) {
+    const nameSplit = contactNameSplitV1(displayName);
+    await tx.insert(contact).values({
+      id: decision.contactId,
+      workspaceId: ctx.workspaceId,
+      displayName,
+      firstName: nameSplit.firstName,
+      lastName: nameSplit.lastName,
+      emailPrimary,
+      emailNormalized: email,
+      phoneRaw,
+      phoneE164,
+      marketingConsent: false,
+      dedupeReviewRequired: decision.reviewRequired,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await emitEvent(tx, {
+      workspaceId: ctx.workspaceId,
+      aggregateType: "contact",
+      aggregateId: decision.contactId,
+      eventType: "contact.created",
+      actor: ctx.actor,
+      payload: { contactId: decision.contactId },
+    });
+    return;
+  }
+
+  const update: {
+    emailPrimary?: string;
+    emailNormalized?: string;
+    phoneRaw?: string;
+    phoneE164?: string;
+    updatedAt?: Date;
+  } = {};
+  if (decision.existing.emailNormalized === null) {
+    update.emailPrimary = emailPrimary;
+    update.emailNormalized = email;
+  }
+  if (decision.existing.phoneRaw === null && phoneRaw !== null) update.phoneRaw = phoneRaw;
+  if (phoneE164 && decision.existing.phoneE164 === null) update.phoneE164 = phoneE164;
+  if (Object.keys(update).length === 0) return;
+
+  update.updatedAt = now;
+  await tx
+    .update(contact)
+    .set(update)
+    .where(and(eq(contact.workspaceId, ctx.workspaceId), eq(contact.id, decision.contactId)));
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "contact",
+    aggregateId: decision.contactId,
+    eventType: "contact.enriched",
+    actor: ctx.actor,
+    payload: { contactId: decision.contactId },
+  });
+}
+
+async function brokerSelectOrAllocateSite(
+  tx: TenantTx,
+  workspaceId: string,
+  contactId: string,
+  addressMode: string,
+  fingerprint: Buffer | null,
+): Promise<{ siteId: string; existing: boolean }> {
+  // Rechner-Parität: gleiche selected-Adresse desselben Kontakts wird
+  // wiederverwendet, sonst verletzt der zweite Record das Partial-Unique
+  // site_ws_contact_address_fingerprint_uq mit rohem 500.
+  if (addressMode === "selected" && fingerprint) {
+    const [existing] = await tx
+      .select({ id: site.id })
+      .from(site)
+      .where(and(
+        eq(site.workspaceId, workspaceId),
+        eq(site.contactId, contactId),
+        eq(site.addressFingerprintVersion, ADDRESS_FINGERPRINT_VERSION),
+        eq(site.addressFingerprint, fingerprint),
+      ))
+      .limit(1);
+    if (existing) return { siteId: existing.id, existing: true };
+  }
+  return { siteId: randomUUID(), existing: false };
+}
+
+async function persistBrokerSite(
+  tx: TenantTx,
+  ctx: VerifiedBrokerIdentity,
+  selected: { siteId: string; existing: boolean },
+  contactId: string,
+  payload: BrokerIntakeV1,
+  fingerprint: Buffer | null,
+  now: Date,
+): Promise<void> {
+  if (selected.existing) return;
+  const siteId = selected.siteId;
+  const exact = payload.site.addressMode === "selected";
+  await tx.insert(site).values({
+    id: siteId,
+    workspaceId: ctx.workspaceId,
+    contactId,
+    label: "Broker-Standort",
+    formattedAddress: payload.site.formattedAddress,
+    addressFingerprint: fingerprint,
+    addressFingerprintVersion: exact ? ADDRESS_FINGERPRINT_VERSION : null,
+    addressMode: payload.site.addressMode,
+    street: exact ? payload.site.street : null,
+    houseNumber: exact ? payload.site.houseNumber : null,
+    postalCode: exact ? payload.site.postalCode : null,
+    city: exact ? payload.site.city : null,
+    country: payload.site.countryCode,
+    lat: payload.site.latitude,
+    lng: payload.site.longitude,
+    geocodeSource: payload.site.geocodeSource,
+    geocodePrecision: payload.site.precision,
+    addressFollowUpRequired: !exact,
+    pinConfirmed: false,
+    createdAt: now,
+  });
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "site",
+    aggregateId: siteId,
+    eventType: "site.created",
+    actor: ctx.actor,
+    payload: { siteId },
+  });
+}
+
+export async function processBrokerIntake(
+  tx: TenantTx,
+  ctx: VerifiedBrokerIdentity,
+  payload: BrokerIntakeV1,
+  meta: BrokerIntakeMeta,
+): Promise<BrokerIntakeReceiptV1> {
+  // Der Modulrand bleibt auch bei einem spaeteren zweiten Aufrufer strikt.
+  if (!validateBrokerIntake(payload).ok) throw new BrokerInvalidRequestError();
+  // Kanonische Record-ID (NFKC-Trim): Padding erzeugt keine eigenen
+  // Dedupe-Zeilen; Lock, Lookup, Receipt und Response nutzen dieselbe Form.
+  const brokerRecordId = brokerNormalizedRequiredText(payload.brokerRecordId, 1, 128);
+  const hash = brokerRequestHash(meta);
+
+  const firstReplay = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
+  if (firstReplay) return brokerReplayOrConflict(firstReplay, hash);
+
+  // Wie Rechner: Receipt-Namespace vor Fachlimit und Dedupe-Sperre
+  // serialisieren, danach den persistierten Hash erneut lesen.
+  await advisoryLock(
+    tx,
+    `broker-receipt:v1:${ctx.workspaceId}:${payload.brokerKey}:${brokerRecordId}`,
+  );
+  const replayAfterReceiptLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
+  if (replayAfterReceiptLock) return brokerReplayOrConflict(replayAfterReceiptLock, hash);
+
+  await enforceBrokerRateLimit(tx, ctx, meta.receivedAt);
+  const replayAfterRateLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
+  if (replayAfterRateLock) return brokerReplayOrConflict(replayAfterRateLock, hash);
+
+  const displayName = brokerNormalizedRequiredText(payload.customer.displayName, 1, 200);
+  const emailPrimary = brokerNormalizedRequiredText(payload.customer.email, 3, 254);
+  const email = emailPrimary.toLowerCase();
+  const phoneE164 = payload.customer.phoneRaw ? normalizeRechnerPhone(payload.customer.phoneRaw) : null;
+  // Bewusst derselbe Advisory-Namespace wie Rechner: Kontakt-Identitäten
+  // werden pfadübergreifend serialisiert, damit kein Broker-Lead einen
+  // zeitgleichen Rechner-Intake derselben Person überholt.
+  await lockContactIdentities(tx, ctx.workspaceId, email, phoneE164);
+
+  const replayAfterIdentityLock = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
+  if (replayAfterIdentityLock) return brokerReplayOrConflict(replayAfterIdentityLock, hash);
+
+  const candidates = await contactCandidates(tx, ctx.workspaceId, email, phoneE164);
+  const contactDecision = decideContact(candidates, email, phoneE164);
+  const fingerprint = brokerSelectedAddressFingerprint(payload);
+  const selectedSite = await brokerSelectOrAllocateSite(
+    tx,
+    ctx.workspaceId,
+    contactDecision.contactId,
+    payload.site.addressMode,
+    fingerprint,
+  );
+
+  const receiptId = randomUUID();
+  const projectId = randomUUID();
+  const [claimed] = await tx
+    .insert(inboundBrokerReceipt)
+    .values({
+      id: receiptId,
+      workspaceId: ctx.workspaceId,
+      brokerKey: payload.brokerKey,
+      brokerRecordId,
+      contractVersion: payload.contractVersion,
+      bodySha256: hash,
+      authKeyId: ctx.keyId,
+      signedAt: meta.signedAt,
+      receivedAt: meta.receivedAt,
+      contactResolution: contactDecision.resolution,
+      contactId: contactDecision.contactId,
+      emailMatchContactId: contactDecision.emailMatchContactId,
+      phoneMatchContactId: contactDecision.phoneMatchContactId,
+      siteId: selectedSite.siteId,
+      projectId,
+      note: payload.note,
+    })
+    .onConflictDoNothing({
+      target: [
+        inboundBrokerReceipt.workspaceId,
+        inboundBrokerReceipt.brokerKey,
+        inboundBrokerReceipt.brokerRecordId,
+      ],
+    })
+    .returning({ id: inboundBrokerReceipt.id });
+
+  if (!claimed) {
+    const replay = await findBrokerReceipt(tx, ctx.workspaceId, payload.brokerKey, brokerRecordId);
+    if (!replay) throw new BrokerIdempotencyConflictError();
+    return brokerReplayOrConflict(replay, hash);
+  }
+
+  const requestLane = await resolveDefaultRequestLane(tx, ctx.workspaceId);
+
+  await persistBrokerContact(
+    tx,
+    ctx,
+    contactDecision,
+    payload.customer.phoneRaw,
+    displayName,
+    emailPrimary,
+    email,
+    phoneE164,
+    meta.receivedAt,
+  );
+  await persistBrokerSite(
+    tx,
+    ctx,
+    selectedSite,
+    contactDecision.contactId,
+    payload,
+    fingerprint,
+    meta.receivedAt,
+  );
+
+  // F1.8: aktive Lead-Quelle mit Broker-Namen zuordnen; ohne Treffer
+  // bleibt die Quelle ehrlich leer (keine implizite Anlage).
+  const brokerLeadSourceId = await resolveLeadSourceForProducer(tx, ctx, payload.brokerKey);
+  await tx.insert(project).values({
+    id: projectId,
+    workspaceId: ctx.workspaceId,
+    contactId: contactDecision.contactId,
+    siteId: selectedSite.siteId,
+    kanbanBoardId: requestLane.boardId,
+    kanbanColumnId: requestLane.columnId,
+    name: "Broker-Anfrage",
+    phase: "request",
+    outcome: "open",
+    sourceKey: BROKER_SOURCE_KEY,
+    leadSourceId: brokerLeadSourceId,
+    dedupeReviewRequired: contactDecision.reviewRequired,
+    catalogResolutionStatus: "pending",
+    createdAt: meta.receivedAt,
+    updatedAt: meta.receivedAt,
+  });
+
+  // F1-23: Intake-Auto-Routing (Opt-in per Regel, default aus). Drift →
+  // unzugewiesen + lead_routing.failed; wirft nie (kein 500 an Sender).
+  await applyIntakeAutoRouting(tx, ctx, { projectId, leadSourceId: brokerLeadSourceId });
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "project",
+    aggregateId: projectId,
+    eventType: "project.requested_from_broker",
+    actor: ctx.actor,
+    payload: { projectId, contactId: contactDecision.contactId, siteId: selectedSite.siteId },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "broker.intake.write",
+    resource: "project",
+    allowed: true,
+    details: {
+      receiptId,
+      projectId,
+      contactId: contactDecision.contactId,
+      siteId: selectedSite.siteId,
+      brokerKey: payload.brokerKey,
+      brokerRecordId,
+    },
+  });
+
+  return brokerReceiptResponse(
+    { id: receiptId, brokerKey: payload.brokerKey, brokerRecordId, bodySha256: hash },
+    false,
+  );
 }

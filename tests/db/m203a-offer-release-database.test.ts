@@ -23,6 +23,7 @@ import {
   CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
   CATALOG_IMPORT_QUEUE_OPTIONS,
   CUSTOMER_NOTIFICATION_QUEUE_OPTIONS,
+  LEAD_SCORE_RECOMPUTE_QUEUE_OPTIONS,
   CALCULATION_V2_QUEUE_OPTIONS,
   LEGACY_CALCULATION_QUEUE_OPTIONS,
   OFFER_ISSUANCE_QUEUE_OPTIONS,
@@ -321,6 +322,10 @@ async function bootstrapStrictRolesAndPgBoss(
     await boss.createQueue(
       "notification.customer",
       CUSTOMER_NOTIFICATION_QUEUE_OPTIONS,
+    );
+    await boss.createQueue(
+      "lead.score.recompute.v1",
+      LEAD_SCORE_RECOMPUTE_QUEUE_OPTIONS,
     );
   } finally {
     await boss.stop({ graceful: false }).catch(() => undefined);

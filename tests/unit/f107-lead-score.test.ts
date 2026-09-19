@@ -17,6 +17,7 @@ const EMPTY: LeadScoreInput = {
   hasRequirements: false,
   hasKeyAccount: false,
   hasSource: false,
+  hasIntent: false,
 };
 
 const FULL: LeadScoreInput = {
@@ -29,6 +30,7 @@ const FULL: LeadScoreInput = {
   hasRequirements: true,
   hasKeyAccount: true,
   hasSource: true,
+  hasIntent: true,
 };
 
 describe("F1-07 Lead-Score (Unit)", () => {
@@ -36,13 +38,14 @@ describe("F1-07 Lead-Score (Unit)", () => {
     expect(computeLeadScore(EMPTY)).toEqual({ value: 0, band: "cold", signals: [] });
   });
 
-  it("F107-U-02: vollständiger Lead = 100, heiß, alle Signale", () => {
+  it("F107-U-02: vollständiger Lead = 100 (Clamp), heiß, alle Signale", () => {
     const score = computeLeadScore(FULL);
+    // F1-21: 10 Signale summieren auf 110 → Clamp min(100,·), Bänder fix.
     const total = Object.values(LEAD_SCORE_WEIGHTS).reduce((a, b) => a + b, 0);
-    expect(total).toBe(100);
+    expect(total).toBe(110);
     expect(score.value).toBe(100);
     expect(score.band).toBe("hot");
-    expect(score.signals).toHaveLength(9);
+    expect(score.signals).toHaveLength(10);
   });
 
   it("F107-U-03: Schwellen 70/40 (heiß ab 70, warm ab 40)", () => {

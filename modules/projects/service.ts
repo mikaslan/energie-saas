@@ -11,6 +11,10 @@ import {
   type AddressCandidate,
 } from "@/lib/integrations/geocoding/contract";
 import {
+  requestedPackagesSchema,
+  type RequestedPackages,
+} from "@/lib/integrations/calculation/contract";
+import {
   can,
   isExternalOnly,
   PermissionDeniedError,
@@ -59,6 +63,8 @@ export type ProjectTriageDetail = {
     wallbox: boolean;
     bidirectionalCharging: boolean;
     backupPower: boolean;
+    // F1-19 Zielpakete (Operateur-Qualifizierung, null ohne Stand).
+    requestedPackages: RequestedPackages | null;
   };
   calculatorEstimate: {
     label: "Unverifizierter Richtwert – kein Angebotspreis";
@@ -117,6 +123,7 @@ type DetailRow = {
   wallbox: boolean | null;
   bidirectional_charging: boolean | null;
   backup_power: boolean | null;
+  requested_packages: unknown;
   result_integrity: string | null;
   price_source: string | null;
   system_peak_power_kwp: number | string | null;
@@ -256,6 +263,14 @@ function isoOrNull(value: Date | string | null): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+// F1-19: Zielpakete aus der neuesten Anforderungsrevision (fail-closed:
+// ungültig oder fehlend → null, kein Detail-Fehler).
+function parseRequestedPackages(value: unknown): RequestedPackages | null {
+  if (value === null || value === undefined) return null;
+  const parsed = requestedPackagesSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 export async function getProjectTriageDetail(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -282,6 +297,7 @@ export async function getProjectTriageDetail(
            (pr.requirements #>> '{requestedProducts,bidirectionalCharging}')::boolean
              as bidirectional_charging,
            (pr.requirements #>> '{requestedProducts,backupPower}')::boolean as backup_power,
+           pr.requirements #> '{requestedPackages}' as requested_packages,
            cs.result_integrity,
            cs.investment_source as price_source,
            fc.name as funnel_campaign_name,
@@ -385,6 +401,7 @@ export async function getProjectTriageDetail(
       wallbox: row.wallbox === true,
       bidirectionalCharging: row.bidirectional_charging === true,
       backupPower: row.backup_power === true,
+      requestedPackages: parseRequestedPackages(row.requested_packages),
     },
     calculatorEstimate: {
       label: "Unverifizierter Richtwert – kein Angebotspreis",

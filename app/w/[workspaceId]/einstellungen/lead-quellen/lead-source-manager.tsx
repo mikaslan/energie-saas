@@ -8,8 +8,10 @@ import type {
 } from "@/modules/lead-sources";
 import {
   archiveLeadSourceAction,
+  archiveRoutingRuleAction,
   clearRoutingRuleAction,
   createLeadSourceAction,
+  reactivateRoutingRuleAction,
   restoreLeadSourceAction,
   setRoutingRuleAction,
   updateLeadSourceAction,
@@ -79,15 +81,30 @@ export function LeadSourceManager({
   const [updateState, updateDispatch] = useActionState(updateLeadSourceAction, initialState);
   const [archiveState, archiveDispatch] = useActionState(archiveLeadSourceAction, initialState);
   const [restoreState, restoreDispatch] = useActionState(restoreLeadSourceAction, initialState);
-  const [routingState, routingDispatch] = useActionState(setRoutingRuleAction, initialState);
-  const [routingClearState, routingClearDispatch] = useActionState(clearRoutingRuleAction, initialState);
-  const ruleBySource = new Map(rules.map((rule) => [rule.leadSourceId, rule]));
+  // F1-23: Regeln je Quelle (Kampagnen-Regeln pflegt der Kampagnen-Block),
+  // sortiert nach Priorität aufsteigend, dann Änderungsstand.
+  const rulesBySource = new Map<string, LeadRoutingRuleDto[]>();
+  for (const rule of rules) {
+    if (!rule.leadSourceId) continue;
+    const list = rulesBySource.get(rule.leadSourceId) ?? [];
+    list.push(rule);
+    rulesBySource.set(rule.leadSourceId, list);
+  }
+  for (const list of rulesBySource.values()) {
+    list.sort((a, b) => a.priority - b.priority || (a.updatedAt < b.updatedAt ? -1 : 1));
+  }
 
   const active = sources.filter((source) => source.archivedAt === null);
   const archived = sources.filter((source) => source.archivedAt !== null);
 
   return (
     <div className="space-y-6">
+      <RoutingRuleFormSection
+        workspaceId={workspaceId}
+        sources={active}
+        members={members}
+        canWrite={canWrite}
+      />
       <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-950">Neue Lead-Quelle</h2>
@@ -187,17 +204,13 @@ export function LeadSourceManager({
                     </>
                   ) : null}
                 </div>
-                <RoutingForm
+                <SourceRoutingSection
                   workspaceId={workspaceId}
                   sourceId={source.id}
                   sourceName={source.name}
-                  rule={ruleBySource.get(source.id) ?? null}
+                  rules={rulesBySource.get(source.id) ?? []}
                   members={members}
                   canWrite={canWrite}
-                  setState={routingState}
-                  setDispatch={routingDispatch}
-                  clearState={routingClearState}
-                  clearDispatch={routingClearDispatch}
                 />
               </li>
             ))}
@@ -316,62 +329,379 @@ function EditForm({
   );
 }
 
-// F1-10 Lead-Routing: Standard-Betreuer je Quelle. Leser sehen die Regel,
-// Schreiber pflegen sie über das Mitglieder-Dropdown.
-function RoutingForm({
+function describeAutoTriggers(rule: { autoOnManual: boolean; autoOnIntake: boolean }): string {
+  const triggers = [
+    rule.autoOnManual ? "manueller Erfassung" : null,
+    rule.autoOnIntake ? "Intake" : null,
+  ].filter((trigger): trigger is string => trigger !== null);
+  return triggers.length > 0 ? triggers.join(" und ") : "keinem Auslöser";
+}
+
+function modeLabel(mode: string): string {
+  return mode === "auto" ? "Auto" : "Vorschlag";
+}
+
+// F1-23: Modus/Priorität/Auslöser-Felder, geteilt von Neu- und Edit-Formular.
+// Labels wie das zentrale Regelformular (T8-Tests-E2E-Vertrag). Das Hidden
+// steht als Sibling NACH dem Label — get() liefert "true" nur bei
+// gesetzter Box, getByLabel trifft eindeutig die Checkbox.
+function RuleFields({
+  modeDefault,
+  priorityDefault,
+  autoOnManualDefault,
+  autoOnIntakeDefault,
+}: {
+  modeDefault: string;
+  priorityDefault: number;
+  autoOnManualDefault: boolean;
+  autoOnIntakeDefault: boolean;
+}) {
+  return (
+    <>
+      <label className="grid gap-1 text-xs font-medium text-slate-700">
+        Modus
+        <select
+          name="mode"
+          defaultValue={modeDefault}
+          aria-label="Modus"
+          className="min-h-11 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-600"
+        >
+          <option value="suggest">Vorschlag</option>
+          <option value="auto">Automatisch</option>
+        </select>
+      </label>
+      <label className="grid gap-1 text-xs font-medium text-slate-700">
+        Priorität
+        <input
+          type="number"
+          name="priority"
+          min={0}
+          max={9999}
+          defaultValue={priorityDefault}
+          aria-label="Priorität"
+          className="min-h-11 w-28 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-600"
+        />
+      </label>
+      <label className="flex min-h-11 items-center gap-2 text-xs font-medium text-slate-700">
+        <input
+          type="checkbox"
+          name="autoOnManual"
+          value="true"
+          defaultChecked={autoOnManualDefault}
+          className="h-4 w-4 accent-brand-700"
+        />
+        Auto bei manueller Erfassung
+      </label>
+      <input type="hidden" name="autoOnManual" value="false" />
+      <label className="flex min-h-11 items-center gap-2 text-xs font-medium text-slate-700">
+        <input
+          type="checkbox"
+          name="autoOnIntake"
+          value="true"
+          defaultChecked={autoOnIntakeDefault}
+          className="h-4 w-4 accent-brand-700"
+        />
+        Auto bei Intake
+      </label>
+      <input type="hidden" name="autoOnIntake" value="false" />
+    </>
+  );
+}
+
+function AssigneeOptions({ members }: { members: RoutableMember[] }) {
+  return (
+    <>
+      <option value="">Bitte wählen</option>
+      {members.map((member) => (
+        <option key={member.membershipId} value={member.membershipId}>
+          {member.label}
+        </option>
+      ))}
+    </>
+  );
+}
+
+// F1-23 (T8-UI + T8-Tests-E2E-Vertrag): zentrales Regelformular für
+// Quellen-Regeln — Labels und Test-IDs sind E2E-gepinnt (Lead-Quelle,
+// Betreuer, Modus, Priorität, Auto-Trigger, "Regel speichern").
+function RoutingRuleFormSection({
+  workspaceId,
+  sources,
+  members,
+  canWrite,
+}: {
+  workspaceId: string;
+  sources: LeadSourceDto[];
+  members: RoutableMember[];
+  canWrite: boolean;
+}) {
+  const [ruleState, ruleDispatch] = useActionState(setRoutingRuleAction, initialState);
+
+  return (
+    <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-slate-950">Neue Routing-Regel</h2>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          Regeln steuern Vorschläge und automatische Zuweisungen je
+          Lead-Quelle — niedrigere Priorität feuert zuerst.
+        </p>
+      </div>
+
+      {!canWrite ? (
+        <p className="text-sm leading-6 text-slate-500">
+          Du hast Lesezugriff. Zum Anlegen brauchst du Editor-Rechte.
+        </p>
+      ) : (
+        <form action={ruleDispatch} data-testid="routing-rule-form">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="formVariant" value="rule-form" />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="block">
+              <span className="block text-sm font-semibold text-slate-800">Lead-Quelle</span>
+              <select name="leadSourceId" required defaultValue="" className={inputClass}>
+                <option value="">Bitte wählen</option>
+                {sources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-sm font-semibold text-slate-800">Betreuer</span>
+              <select name="assigneeMembershipId" required defaultValue="" className={inputClass}>
+                <AssigneeOptions members={members} />
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-sm font-semibold text-slate-800">Modus</span>
+              <select name="mode" defaultValue="suggest" className={inputClass}>
+                <option value="suggest">Vorschlag</option>
+                <option value="auto">Automatisch</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-sm font-semibold text-slate-800">Priorität</span>
+              <input
+                type="number"
+                name="priority"
+                min={0}
+                max={9999}
+                defaultValue={0}
+                className={inputClass}
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+            <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-slate-800">
+              <input
+                type="checkbox"
+                name="autoOnManual"
+                value="true"
+                defaultChecked
+                className="h-4 w-4 accent-brand-700"
+              />
+              Auto bei manueller Erfassung
+            </label>
+            <input type="hidden" name="autoOnManual" value="false" />
+            <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-slate-800">
+              <input
+                type="checkbox"
+                name="autoOnIntake"
+                value="true"
+                defaultChecked={false}
+                className="h-4 w-4 accent-brand-700"
+              />
+              Auto bei Intake
+            </label>
+            <input type="hidden" name="autoOnIntake" value="false" />
+          </div>
+
+          <Feedback state={ruleState} />
+
+          <div className="mt-5">
+            <button
+              type="submit"
+              className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-4 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+            >
+              Regel speichern
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
+// F1-23 (T8-UI): Regelpflege je Quelle — mehrere Regeln mit Modus,
+// Priorität und Auto-Auslösern. Leser sehen die Regeln, Schreiber pflegen
+// sie (Suggest bleibt Ein-Klick im Zuweisungs-Panel). Eigener
+// useActionState je Quelle, damit Feedback lokal bleibt.
+function SourceRoutingSection({
   workspaceId,
   sourceId,
   sourceName,
-  rule,
+  rules,
   members,
   canWrite,
-  setState,
-  setDispatch,
-  clearState,
-  clearDispatch,
 }: {
   workspaceId: string;
   sourceId: string;
   sourceName: string;
-  rule: LeadRoutingRuleDto | null;
+  rules: LeadRoutingRuleDto[];
   members: RoutableMember[];
   canWrite: boolean;
-  setState: LeadSourceActionState;
-  setDispatch: (formData: FormData) => void;
-  clearState: LeadSourceActionState;
-  clearDispatch: (formData: FormData) => void;
 }) {
+  const [setState, setDispatch] = useActionState(setRoutingRuleAction, initialState);
+  const [clearState, clearDispatch] = useActionState(clearRoutingRuleAction, initialState);
+  const [archiveState, archiveDispatch] = useActionState(archiveRoutingRuleAction, initialState);
+  const [reactivateState, reactivateDispatch] = useActionState(reactivateRoutingRuleAction, initialState);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   if (!canWrite) {
+    if (rules.length === 0) {
+      return (
+        <p className="text-xs leading-5 text-slate-500" data-testid={`routing-readonly-${sourceId}`}>
+          Kein Standard-Betreuer hinterlegt.
+        </p>
+      );
+    }
     return (
-      <p className="text-xs leading-5 text-slate-500" data-testid={`routing-readonly-${sourceId}`}>
-        {rule
-          ? `Standard-Betreuer: ${rule.assigneeLabel}`
-          : "Kein Standard-Betreuer hinterlegt."}
-      </p>
+      <ul
+        className="grid gap-1 text-xs leading-5 text-slate-500"
+        data-testid={`routing-readonly-${sourceId}`}
+        aria-label={`Routing-Regeln für ${sourceName}`}
+      >
+        {rules.map((rule) => (
+          <li key={rule.id}>
+            {`Standard-Betreuer: ${rule.assigneeLabel} · ${modeLabel(rule.mode)} · Priorität ${rule.priority}`}
+          </li>
+        ))}
+      </ul>
     );
   }
   return (
     <div className="rounded-md bg-slate-50 px-3 py-2" data-testid={`routing-form-${sourceId}`}>
-      <form action={setDispatch} className="flex flex-wrap items-center gap-2">
+      {rules.length > 0 ? (
+        <ul className="mb-2 divide-y divide-slate-200" aria-label={`Routing-Regeln für ${sourceName}`}>
+          {rules.map((rule) => (
+            <li key={rule.id} data-testid={`routing-rule-${rule.id}`} className="grid gap-2 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 text-xs text-slate-600">
+                  {`Aktuell: ${rule.assigneeLabel} · ${modeLabel(rule.mode)} · Priorität ${rule.priority}`}
+                  {rule.mode === "auto" ? ` · Auto bei ${describeAutoTriggers(rule)}` : ""}
+                  {rule.archivedAt !== null ? " · Archiviert" : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEditingId(editingId === rule.id ? null : rule.id)}
+                  aria-expanded={editingId === rule.id}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600"
+                >
+                  Bearbeiten
+                </button>
+                <form action={clearDispatch}>
+                  <input type="hidden" name="workspaceId" value={workspaceId} />
+                  <input type="hidden" name="ruleId" value={rule.id} />
+                  <input type="hidden" name="leadSourceId" value={sourceId} />
+                  <button
+                    type="submit"
+                    aria-label={`Standard-Betreuer für ${sourceName} entfernen`}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600"
+                  >
+                    Standard-Betreuer entfernen
+                  </button>
+                </form>
+                {rule.archivedAt === null ? (
+                  <form action={archiveDispatch}>
+                    <input type="hidden" name="workspaceId" value={workspaceId} />
+                    <input type="hidden" name="ruleId" value={rule.id} />
+                    <button
+                      type="submit"
+                      aria-label={`Routing-Regel für ${sourceName} archivieren`}
+                      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600"
+                    >
+                      Archivieren
+                    </button>
+                  </form>
+                ) : (
+                  <form action={reactivateDispatch}>
+                    <input type="hidden" name="workspaceId" value={workspaceId} />
+                    <input type="hidden" name="ruleId" value={rule.id} />
+                    <button
+                      type="submit"
+                      aria-label={`Routing-Regel für ${sourceName} reaktivieren`}
+                      className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600"
+                    >
+                      Reaktivieren
+                    </button>
+                  </form>
+                )}
+              </div>
+              {editingId === rule.id ? (
+                <form action={setDispatch} className="flex flex-wrap items-end gap-2 rounded-md border border-slate-200 bg-white px-2 py-2">
+                  <input type="hidden" name="workspaceId" value={workspaceId} />
+                  <input type="hidden" name="ruleId" value={rule.id} />
+                  <input type="hidden" name="leadSourceId" value={sourceId} />
+                  <label className="grid min-w-0 flex-1 gap-1 text-xs font-medium text-slate-700">
+                    Betreuer
+                    <select
+                      name="assigneeMembershipId"
+                      defaultValue={rule.assigneeMembershipId}
+                      required
+                      aria-label={`Standard-Betreuer für ${sourceName} bearbeiten`}
+                      className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-600"
+                    >
+                      <AssigneeOptions members={members} />
+                    </select>
+                  </label>
+                  <RuleFields
+                    modeDefault={rule.mode}
+                    priorityDefault={rule.priority}
+                    autoOnManualDefault={rule.autoOnManual}
+                    autoOnIntakeDefault={rule.autoOnIntake}
+                  />
+                  <button
+                    type="submit"
+                    aria-label={`Routing-Regel für ${sourceName} speichern`}
+                    className="min-h-11 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-brand-600"
+                  >
+                    Speichern
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(null)}
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600"
+                  >
+                    Abbrechen
+                  </button>
+                </form>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <form action={setDispatch} className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="workspaceId" value={workspaceId} />
         <input type="hidden" name="leadSourceId" value={sourceId} />
         <label className="grid min-w-0 flex-1 gap-1 text-xs font-medium text-slate-700">
           {`Standard-Betreuer für „${sourceName}“`}
           <select
             name="assigneeMembershipId"
-            defaultValue={rule?.assigneeMembershipId ?? ""}
+            defaultValue=""
             required
             aria-label={`Standard-Betreuer für ${sourceName}`}
             className="min-h-11 min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-brand-600"
           >
-            <option value="">Bitte wählen</option>
-            {members.map((member) => (
-              <option key={member.membershipId} value={member.membershipId}>
-                {member.label}
-              </option>
-            ))}
+            <AssigneeOptions members={members} />
           </select>
         </label>
+        <RuleFields
+          modeDefault="suggest"
+          priorityDefault={0}
+          autoOnManualDefault
+          autoOnIntakeDefault={false}
+        />
         <button
           type="submit"
           aria-label={`Standard-Betreuer für ${sourceName} speichern`}
@@ -379,27 +709,11 @@ function RoutingForm({
         >
           Speichern
         </button>
-        {rule ? (
-          <span className="text-xs text-slate-600">
-            {`Aktuell: ${rule.assigneeLabel}`}
-          </span>
-        ) : null}
       </form>
-      {rule ? (
-        <form action={clearDispatch} className="mt-2">
-          <input type="hidden" name="workspaceId" value={workspaceId} />
-          <input type="hidden" name="leadSourceId" value={sourceId} />
-          <button
-            type="submit"
-            aria-label={`Standard-Betreuer für ${sourceName} entfernen`}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-600"
-          >
-            Standard-Betreuer entfernen
-          </button>
-        </form>
-      ) : null}
       <Feedback state={setState} />
       <Feedback state={clearState} />
+      <Feedback state={archiveState} />
+      <Feedback state={reactivateState} />
     </div>
   );
 }

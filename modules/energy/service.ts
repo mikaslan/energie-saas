@@ -919,9 +919,11 @@ function normalizeProfile(
     };
   });
 
+  // F1-19: Der Modus kommt aus dem geprüften Submit (alle vier
+  // Contract-Modi), nicht aus dem Rechner-Kandidaten.
   const profile: SiteEnergyProfileV1 = {
     schemaVersion: SITE_ENERGY_PROFILE_SCHEMA_VERSION,
-    inputMode: "consumption",
+    inputMode: submitted.inputMode,
     building: {
       type: normalizeKnownField(submitted.building.type, candidate.building.type) as SiteEnergyProfileV1["building"]["type"],
       year: normalizeKnownField(submitted.building.year, candidate.building.year) as SiteEnergyProfileV1["building"]["year"],
@@ -1212,8 +1214,21 @@ function normalizeProfile(
       ) as SiteEnergyProfileV1["existingAssets"]["wallbox"],
       ev: normalizeAsset(submitted.existingAssets.ev, candidate.existingAssets.ev) as SiteEnergyProfileV1["existingAssets"]["ev"],
     },
-    provenance: structuredClone(candidate.provenance),
+    // F1-19 Provenance-Regel: Die Quelle kommt aus dem geprüften
+    // Submit (operator_manual nur im manuellen Modus, sonst
+    // rechner_snapshot) — kein Klon der Rechner-Provenance.
+    provenance: structuredClone(submitted.provenance),
   };
+
+  // F1-19 Modus-Sektionen: nur im zugehörigen Modus gesetzt (der
+  // Submit ist bereits contract-validiert; das finale Parse unten
+  // erzwingt die Kopplung erneut).
+  if (submitted.propertyEstimate !== undefined) {
+    profile.propertyEstimate = structuredClone(submitted.propertyEstimate);
+  }
+  if (submitted.rooms !== undefined) {
+    profile.rooms = structuredClone(submitted.rooms);
+  }
 
   const validated = siteEnergyProfileV1Schema.safeParse(profile);
   if (!validated.success) throw new EnergyProfileInvalidError();
@@ -1299,7 +1314,7 @@ export async function saveProjectEnergyProfile(
         profile, profile_sha256
       ) values (
         ${profileId}::uuid, ${ctx.workspaceId}::uuid, ${projectSite.site_id}::uuid,
-        1, ${SITE_ENERGY_PROFILE_SCHEMA_VERSION}, 'consumption',
+        1, ${SITE_ENERGY_PROFILE_SCHEMA_VERSION}, ${profile.inputMode},
         'rechner_snapshot', ${candidate.sourceSnapshotId}::uuid,
         ${validatedInput.projectId}::uuid, ${projectSite.address_revision},
         ${JSON.stringify(profile)}::jsonb, ${profileSha256}
@@ -1309,6 +1324,7 @@ export async function saveProjectEnergyProfile(
     const updated = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
       update site_energy_profile
          set revision = ${revision},
+             input_mode = ${profile.inputMode},
              source_kind = 'rechner_snapshot',
              source_snapshot_id = ${candidate.sourceSnapshotId}::uuid,
              source_project_id = ${validatedInput.projectId}::uuid,
@@ -2596,5 +2612,52 @@ export async function confirmProjectEnergyProfileV2(
     reservationKey,
     battery: batterySource,
     replayed: profileAlreadyConfirmed && !jobCreated,
+  };
+}
+
+// F1-19 Zielpakete: juengste Anforderungsrevision unter Sperre lesen
+// (Merge-Basis fuer requestedPackages; Schreiber liegt im Aufrufer).
+export type LatestProjectRequirement = {
+  id: string;
+  revision: number;
+  schemaVersion: string;
+  sourceSnapshotId: string;
+  requirements: unknown;
+};
+
+type LatestRequirementRow = {
+  id: string;
+  revision: number;
+  schema_version: string;
+  source_snapshot_id: string;
+  requirements: unknown;
+};
+
+export async function readLatestProjectRequirement(
+  tx: TenantTx,
+  workspaceId: string,
+  projectId: string,
+): Promise<LatestProjectRequirement | null> {
+  const rows = await tx.execute<LatestRequirementRow>(sql`
+    select requirement.id as id,
+           requirement.revision as revision,
+           requirement.schema_version as schema_version,
+           requirement.source_snapshot_id as source_snapshot_id,
+           requirement.requirements as requirements
+      from project_requirement requirement
+     where requirement.workspace_id = ${workspaceId}::uuid
+       and requirement.project_id = ${projectId}::uuid
+     order by requirement.revision desc
+     limit 1
+     for update
+  `);
+  const row = rows.rows[0] ?? null;
+  if (row === null) return null;
+  return {
+    id: row.id,
+    revision: row.revision,
+    schemaVersion: row.schema_version,
+    sourceSnapshotId: row.source_snapshot_id,
+    requirements: row.requirements,
   };
 }

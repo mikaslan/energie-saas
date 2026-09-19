@@ -26,6 +26,20 @@ export type RechnerAcquisitionSnapshot = {
   utm: Record<"source" | "medium" | "campaign" | "term" | "content", string | null>;
 };
 
+export type RechnerRequestedPackagePaymentKind = "purchase" | "leasing" | "financing";
+
+export type RechnerRequestedPackage = {
+  wanted: boolean;
+  paymentKind: RechnerRequestedPackagePaymentKind | null;
+};
+
+export type RechnerRequestedPackages = {
+  solar: RechnerRequestedPackage;
+  storage: RechnerRequestedPackage;
+  wallbox: RechnerRequestedPackage;
+  heating: RechnerRequestedPackage;
+};
+
 export type RechnerProjectRequirementsV1 = {
   schemaVersion: "project-requirements.rechner.v1";
   source: "wmee-rechner-v3";
@@ -36,6 +50,9 @@ export type RechnerProjectRequirementsV1 = {
     bidirectionalCharging: boolean;
     backupPower: boolean;
   };
+  // F1-19 Zielpakete (Operateur-Qualifizierung, kein Rechen-Einfluss).
+  // Additiv-optional: Rechner-Zeilen ohne Schlüssel bleiben gültig.
+  requestedPackages?: RechnerRequestedPackages;
 };
 
 export const inboundReceipt = pgTable(
@@ -255,7 +272,7 @@ export const projectRequirement = pgTable(
       sql`(
         jsonb_typeof(${t.requirements}) = 'object'
         and (${t.requirements} - array[
-          'schemaVersion', 'source', 'branch', 'requestedProducts'
+          'schemaVersion', 'source', 'branch', 'requestedProducts', 'requestedPackages'
         ]::text[]) = '{}'::jsonb
         and ${t.requirements}->>'schemaVersion' = ${t.schemaVersion}
         and ${t.requirements}->>'source' = 'wmee-rechner-v3'
@@ -268,6 +285,66 @@ export const projectRequirement = pgTable(
         and jsonb_typeof(${t.requirements}#>'{requestedProducts,wallbox}') = 'boolean'
         and jsonb_typeof(${t.requirements}#>'{requestedProducts,bidirectionalCharging}') = 'boolean'
         and jsonb_typeof(${t.requirements}#>'{requestedProducts,backupPower}') = 'boolean'
+        and (
+          not (${t.requirements} ? 'requestedPackages')
+          or (
+            jsonb_typeof(${t.requirements}->'requestedPackages') = 'object'
+            and ((${t.requirements}->'requestedPackages') - array[
+              'solar', 'storage', 'wallbox', 'heating'
+            ]::text[]) = '{}'::jsonb
+            and (${t.requirements}->'requestedPackages') ?& array[
+              'solar', 'storage', 'wallbox', 'heating'
+            ]
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,solar}') = 'object'
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,storage}') = 'object'
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,wallbox}') = 'object'
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,heating}') = 'object'
+            and ((${t.requirements}#>'{requestedPackages,solar}') - array[
+              'wanted', 'paymentKind'
+            ]::text[]) = '{}'::jsonb
+            and ((${t.requirements}#>'{requestedPackages,storage}') - array[
+              'wanted', 'paymentKind'
+            ]::text[]) = '{}'::jsonb
+            and ((${t.requirements}#>'{requestedPackages,wallbox}') - array[
+              'wanted', 'paymentKind'
+            ]::text[]) = '{}'::jsonb
+            and ((${t.requirements}#>'{requestedPackages,heating}') - array[
+              'wanted', 'paymentKind'
+            ]::text[]) = '{}'::jsonb
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,solar,wanted}') = 'boolean'
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,storage,wanted}') = 'boolean'
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,wallbox,wanted}') = 'boolean'
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,heating,wanted}') = 'boolean'
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,solar,paymentKind}') in ('string', 'null')
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,storage,paymentKind}') in ('string', 'null')
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,wallbox,paymentKind}') in ('string', 'null')
+            and jsonb_typeof(${t.requirements}#>'{requestedPackages,heating,paymentKind}') in ('string', 'null')
+            and case ${t.requirements}#>>'{requestedPackages,solar,wanted}'
+              when 'true' then ${t.requirements}#>>'{requestedPackages,solar,paymentKind}'
+                in ('purchase', 'leasing', 'financing')
+              else (${t.requirements}#>>'{requestedPackages,solar,wanted}')::boolean = false
+                and (${t.requirements}#>'{requestedPackages,solar,paymentKind}') = 'null'::jsonb
+            end
+            and case ${t.requirements}#>>'{requestedPackages,storage,wanted}'
+              when 'true' then ${t.requirements}#>>'{requestedPackages,storage,paymentKind}'
+                in ('purchase', 'leasing', 'financing')
+              else (${t.requirements}#>>'{requestedPackages,storage,wanted}')::boolean = false
+                and (${t.requirements}#>'{requestedPackages,storage,paymentKind}') = 'null'::jsonb
+            end
+            and case ${t.requirements}#>>'{requestedPackages,wallbox,wanted}'
+              when 'true' then ${t.requirements}#>>'{requestedPackages,wallbox,paymentKind}'
+                in ('purchase', 'leasing', 'financing')
+              else (${t.requirements}#>>'{requestedPackages,wallbox,wanted}')::boolean = false
+                and (${t.requirements}#>'{requestedPackages,wallbox,paymentKind}') = 'null'::jsonb
+            end
+            and case ${t.requirements}#>>'{requestedPackages,heating,wanted}'
+              when 'true' then ${t.requirements}#>>'{requestedPackages,heating,paymentKind}'
+                in ('purchase', 'leasing', 'financing')
+              else (${t.requirements}#>>'{requestedPackages,heating,wanted}')::boolean = false
+                and (${t.requirements}#>'{requestedPackages,heating,paymentKind}') = 'null'::jsonb
+            end
+          )
+        )
       ) is true`,
     ),
   ],

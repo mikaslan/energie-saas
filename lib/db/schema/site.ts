@@ -149,6 +149,8 @@ export const site = pgTable("site", {
               and ${t.geocodePlaceId} is not null
               and length(btrim(${t.geocodePlaceId})) between 1 and 300
             )
+            or (${t.geocodeSource} = 'broker' and ${t.geocodePlaceId} is null)
+            or (${t.geocodeSource} = 'rest' and ${t.geocodePlaceId} is null)
           ))
         or
         (${t.addressMode} = 'regional_estimate'

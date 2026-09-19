@@ -17,6 +17,7 @@ import {
   seedIsolatedWorkspace,
   seedProjectGraph,
   state,
+  writeCandidateSnapshot,
   type SeedIds,
 } from "./m1-11g-fixture";
 
@@ -495,63 +496,6 @@ test("M1-11g: F4.2-Monatsprofil formt die v2-Last nach Monatswerten", async ({ p
     "Axe serious/critical in der v2-Monatsprofilansicht",
   ).toEqual([]);
 });
-
-// Kandidaturfähiger Snapshot (Projektion braucht echte Rechner-Inputs;
-// Minimal-Snapshot des Ketten-Fixtures projiziert nicht).
-async function writeCandidateSnapshot(
-  workspaceId: string,
-  projectId: string,
-  provenancePatch: Record<string, string> = {},
-): Promise<void> {
-  await poolOne(async (pool) => withTenantOn(pool, workspaceId, async (tx) => {
-    const snapshot = {
-      schemaVersion: "wmee-solar-snapshot.v1",
-      calculatedAt: new Date().toISOString(),
-      branch: "new_installation",
-      questionnaireVariant: "short",
-      resultIntegrity: "client_reported_unverified",
-      inputs: {
-        roofs: [{
-          id: "dach-sued",
-          areaM2: 52,
-          azimuthDeg: 5,
-          tiltDeg: 35,
-          type: "pitched",
-          shading: "light",
-        }],
-        consumption: {
-          householdKwhPerYear: 4200,
-          electricityPriceCentsPerKwh: 36,
-          annualPriceIncreasePercent: 3,
-          evKmPerYear: 12000,
-          evChargingPattern: "evening",
-          heatPumpKwhPerYear: 0,
-          coolingKwhPerYear: 0,
-          heatingAcKwhPerYear: 0,
-          hotWaterKwhPerYear: null,
-          buildingType: null,
-          buildingYear: null,
-          heatedAreaM2: null,
-        },
-        existingInstallation: null,
-        answeredFieldIds: ["stromverbrauch", "eauto", "ladeort", "waermepumpe", "klimaKuehlen", "klimaHeizen", "warmwasser", "verschattung"],
-      },
-      provenance: {
-        roof: "user_drawn",
-        consumption: "metered_kwh",
-        electricityPrice: "customer",
-        annualPriceIncrease: "customer",
-        investment: "market_estimate",
-        ...provenancePatch,
-      },
-      result: { mode: "new_installation" },
-    };
-    await tx.execute(
-      `update calculator_snapshot set snapshot = '${JSON.stringify(snapshot)}'::jsonb
-       where workspace_id = '${workspaceId}'::uuid and project_id = '${projectId}'::uuid`,
-    );
-  }));
-}
 
 test("M1-11g: F4.2-Monatsformular speichert Monatswerte als known-Profil", async ({ page }) => {
   const actorId = await resolveEditorId();

@@ -18,7 +18,7 @@ import { emitEvent } from "@/lib/events";
 import { validateNoteMarkdown } from "@/lib/integrations/notes/note-markdown";
 import { can, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import { normalizeRechnerPhone } from "@/modules/intake";
-import { LeadSourceNotFoundError } from "@/modules/lead-sources";
+import { applyAutoRouting, LeadSourceNotFoundError } from "@/modules/lead-sources";
 import {
   FunnelCampaignNotFoundError,
   FunnelCampaignValidationError,
@@ -55,6 +55,8 @@ const manualLeadCommandSchema = z.strictObject({
   displayName: z.string().trim().min(1).max(200),
   email: z.email().trim().max(200).optional(),
   phone: z.string().trim().min(1).max(40).optional(),
+  // F1-16: explizite Kontakt-Auswahl aus dem Modal (hidden contactId).
+  contactId: uuidSchema.optional(),
   street: optionalText(200),
   houseNumber: optionalText(30),
   postalCode: z.string().trim().regex(/^[0-9]{5}$/).optional(),
@@ -91,6 +93,9 @@ function normalizedEmail(value: string | undefined): string | null {
  * Manuelle Anfrage anlegen. Kontakt-Dedupe per normalisierter E-Mail oder
  * E164-Nummer: Treffer nutzt den bestehenden Kontakt und markiert das
  * Projekt zur Nachprüfung (keine Blockade, keine stillen Überschreibungen).
+ * F1-16: eine explizite `contactId` (Modal-Auswahl) gewinnt über den
+ * impliziten Abgleich — außer bei Vorbefüllungs-Drift (Formular-E-Mail
+ * weicht ab), dann wird sie ignoriert und Dedupe läuft normal.
  */
 export async function createManualLead(
   tx: TenantTx,
@@ -100,6 +105,7 @@ export async function createManualLead(
     displayName: string;
     email?: string;
     phone?: string;
+    contactId?: string;
     street?: string;
     houseNumber?: string;
     postalCode?: string;
@@ -165,6 +171,26 @@ export async function createManualLead(
     leadSourceId = command.leadSourceId;
   }
 
+  // F1-16: explizite Kontakt-Auswahl. Fremd, gelöscht oder unbekannt →
+  // fail-closed (invalid). Bei Drift (Formular-E-Mail weicht vom Kontakt
+  // ab) gewinnt der Formularwert: contactId wird ignoriert, Dedupe läuft
+  // normal. Eingabeprüfung vor Umgebungsprüfung (Lane), wie Quelle/Kampagne.
+  let explicitContactId: string | null = null;
+  if (command.contactId !== undefined) {
+    const contact = await tx.execute<{ id: string; email_normalized: string | null }>(sql`
+      select id, email_normalized from contact
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${command.contactId}::uuid
+         and deleted_at is null
+       limit 1
+    `);
+    const row = contact.rows[0];
+    if (!row) throw new ManualLeadValidationError("contactId unknown, foreign or deleted");
+    if ((row.email_normalized ?? null) === emailNormalized) {
+      explicitContactId = row.id;
+    }
+  }
+
   // Intake-Lane des Bereichs (fail-closed, kein Scope-Fallback).
   const lane = await tx.execute<{ board_id: string; column_id: string }>(sql`
     select board.id as board_id, intake.id as column_id
@@ -185,22 +211,30 @@ export async function createManualLead(
     throw new ManualLeadLaneError(`default ${command.scope} intake lane is missing or ambiguous`);
   }
 
-  // Dedupe: existierender Kontakt wird wiederverwendet.
-  const duplicate = await tx.execute<{ id: string }>(sql`
-    select id from contact
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and deleted_at is null
-       and (
-         (${emailNormalized}::text is not null and email_normalized = ${emailNormalized}::text)
-         or (${phoneE164}::text is not null and phone_e164 = ${phoneE164}::text)
-       )
-     order by created_at asc
-     limit 1
-  `);
-  const contactReused = duplicate.rows.length > 0;
+  // Dedupe: existierender Kontakt wird wiederverwendet. Die explizite
+  // F1-16-Auswahl gewinnt über den impliziten E-Mail/Telefon-Abgleich.
+  let contactId: string;
+  let contactReused: boolean;
+  if (explicitContactId !== null) {
+    contactId = explicitContactId;
+    contactReused = true;
+  } else {
+    const duplicate = await tx.execute<{ id: string }>(sql`
+      select id from contact
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and deleted_at is null
+         and (
+           (${emailNormalized}::text is not null and email_normalized = ${emailNormalized}::text)
+           or (${phoneE164}::text is not null and phone_e164 = ${phoneE164}::text)
+         )
+       order by created_at asc
+       limit 1
+    `);
+    contactReused = duplicate.rows.length > 0;
+    contactId = duplicate.rows[0]?.id ?? randomUUID();
+  }
 
   const names = contactNameSplitV1(command.displayName);
-  const contactId = duplicate.rows[0]?.id ?? randomUUID();
   if (!contactReused) {
     await tx.execute(sql`
       insert into contact (
@@ -251,62 +285,37 @@ export async function createManualLead(
     )
   `);
 
-  // F12-02 Auto-Routing: Kampagnen-Beauftragter wird Key Account des neuen
-  // Projekts. Regelvollzug unter project.write (kein Zuweisungsrecht des
-  // Erfassers nötig) — vollständig belegt durch Event (autoRouted: true)
-  // und Audit. Fehlt die Mitgliedschaft (Race/offboardet trotz RESTRICT),
-  // wird die gesamte Erfassung verweigert statt still ohne Zuweisung.
-  if (campaignAssigneeMembershipId !== null) {
-    const target = await tx.execute<{ id: string }>(sql`
-      select id from membership
-       where workspace_id = ${ctx.workspaceId}::uuid
-         and id = ${campaignAssigneeMembershipId}::uuid
-       limit 1
-    `);
-    if (!target.rows[0]) {
+  // F1-23 Auto-Routing am Erfassungszeitpunkt (F12-02-Beauftragter >
+  // Kampagnen-suggest > Quellen-Auto). Regelvollzug unter project.write
+  // (kein Zuweisungsrecht des Erfassers nötig) — vollständig belegt durch
+  // Event (autoRouted: true, +ruleId/trigger) und Audit. Fehlt das Ziel
+  // (Race/offboardet trotz RESTRICT), wird die gesamte Erfassung
+  // verweigert statt still ohne Zuweisung.
+  const routingOutcome = await applyAutoRouting(
+    tx,
+    { workspaceId: ctx.workspaceId, actor: ctx.actor },
+    {
+      projectId,
+      leadSourceId,
+      funnelCampaignId,
+      campaignAssigneeMembershipId,
+      trigger: "manual",
+    },
+  );
+  if (
+    routingOutcome.status === "unassigned"
+    && (routingOutcome.reason === "assignee_gone" || routingOutcome.reason === "revision_conflict")
+  ) {
+    if (routingOutcome.via === "campaign_assignee" && routingOutcome.reason === "assignee_gone") {
       throw new FunnelCampaignValidationError(
-        `funnel_campaign assignee gone: ${campaignAssigneeMembershipId}`,
+        `funnel_campaign assignee gone: ${routingOutcome.membershipId}`,
       );
     }
-    await tx.execute(sql`
-      insert into project_assignment (
-        workspace_id, project_id, membership_id, assignment_role
-      ) values (
-        ${ctx.workspaceId}::uuid, ${projectId}::uuid,
-        ${campaignAssigneeMembershipId}::uuid, 'key_account'
-      )
-    `);
-    await tx.execute(sql`
-      update project
-         set assignment_revision = 1, updated_at = now()
-       where workspace_id = ${ctx.workspaceId}::uuid
-         and id = ${projectId}::uuid
-         and assignment_revision = 0
-    `);
-    const routingEvidence = {
-      projectId,
-      assignmentRevision: 1,
-      commandKind: "set_key_account",
-      membershipId: campaignAssigneeMembershipId,
-      autoRouted: true,
-      funnelCampaignId,
-    };
-    await emitEvent(tx, {
-      workspaceId: ctx.workspaceId,
-      aggregateType: "project",
-      aggregateId: projectId,
-      eventType: "project.assignment_key_account_changed",
-      actor: ctx.actor,
-      payload: routingEvidence,
-    });
-    await writeAudit(tx, {
-      workspaceId: ctx.workspaceId,
-      actor: ctx.actor,
-      action: "project.assign",
-      resource: "project_assignment",
-      allowed: true,
-      details: routingEvidence,
-    });
+    throw new ManualLeadValidationError(
+      routingOutcome.reason === "revision_conflict"
+        ? `routing revision conflict: ${routingOutcome.ruleId}`
+        : `routing assignee gone: ${routingOutcome.ruleId}`,
+    );
   }
 
   // Hinweis: die Notiz hängt die Server Action nachgelagert an (siehe

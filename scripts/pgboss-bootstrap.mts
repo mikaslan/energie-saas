@@ -14,6 +14,7 @@ const OFFER_ISSUANCE_QUEUE_NAME = "offer-issuance.render.v1";
 const CATALOG_IMPORT_QUEUE_NAME = "catalog.import.v1";
 const CATALOG_IMPORT_CLEANUP_QUEUE_NAME = "catalog.import.cleanup.v1";
 const CUSTOMER_NOTIFICATION_QUEUE_NAME = "notification.customer";
+const LEAD_SCORE_RECOMPUTE_QUEUE_NAME = "lead.score.recompute.v1";
 const BOOTSTRAP_LOCK = [1701734769, 7] as const;
 
 export const LEGACY_CALCULATION_QUEUE_OPTIONS = Object.freeze({
@@ -77,6 +78,18 @@ export const CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS = Object.freeze({
 });
 
 export const CUSTOMER_NOTIFICATION_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
+});
+
+// F1-21: Lead-Score-Recompute läuft async über pg-boss (eigene Queue,
+// technischer Standard-Retry-Vertrag; fachliche Versuche/Status in
+// lead_score_status, Stale-Anzeige per TTL im Lesepfad).
+export const LEAD_SCORE_RECOMPUTE_QUEUE_OPTIONS = Object.freeze({
   policy: "exclusive" as const,
   retryLimit: 10,
   retryDelay: 1,
@@ -430,6 +443,31 @@ export async function bootstrapCalculationQueue(
       || Number(customerNotification.retry_delay_max) !== 60
       || Number(customerNotification.expire_seconds) !== 180
       || customerNotification.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    await boss.createQueue(
+      LEAD_SCORE_RECOMPUTE_QUEUE_NAME,
+      LEAD_SCORE_RECOMPUTE_QUEUE_OPTIONS,
+    );
+    const leadScoreRecomputeQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${LEAD_SCORE_RECOMPUTE_QUEUE_NAME}'
+    `);
+    const leadScoreRecompute = leadScoreRecomputeQueue.rows[0] as
+      | Record<string, unknown>
+      | undefined;
+    if (
+      leadScoreRecompute === undefined
+      || leadScoreRecompute.policy !== "exclusive"
+      || Number(leadScoreRecompute.retry_limit) !== 10
+      || Number(leadScoreRecompute.retry_delay) !== 1
+      || leadScoreRecompute.retry_backoff !== true
+      || Number(leadScoreRecompute.retry_delay_max) !== 60
+      || Number(leadScoreRecompute.expire_seconds) !== 180
+      || leadScoreRecompute.notify !== false
     ) {
       throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
     }

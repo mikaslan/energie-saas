@@ -12,13 +12,16 @@ import {
   type CreateLeadSourceCommand,
   type UpdateLeadSourceCommand,
 } from "@/lib/integrations/lead-sources/contract";
+import { FunnelCampaignNotFoundError } from "@/modules/funnel-campaigns";
 import {
   archiveLeadSource,
+  archiveRoutingRule,
   clearRoutingRule,
   createLeadSource,
   LeadSourceConflictError,
   LeadSourceNotFoundError,
   LeadSourceValidationError,
+  reactivateRoutingRule,
   restoreLeadSource,
   setRoutingRule,
   updateLeadSource,
@@ -64,6 +67,8 @@ function mapError(error: unknown): LeadSourceActionState {
   if (error instanceof LeadSourceValidationError) return { status: "invalid" };
   if (error instanceof LeadSourceConflictError) return { status: "conflict" };
   if (error instanceof LeadSourceNotFoundError) return { status: "not_found" };
+  // F1-23: unbekannte Kampagne fail-closed (T8-Tests-DB-Vertrag).
+  if (error instanceof FunnelCampaignNotFoundError) return { status: "not_found" };
   if (error instanceof PermissionDeniedError) return { status: "denied" };
   if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
   throw error;
@@ -185,27 +190,109 @@ export async function restoreLeadSourceAction(
   return toggleArchived(workspace, id.data, false);
 }
 
-// F1-10 Lead-Routing: Standard-Betreuer je Quelle setzen/entfernen.
-// Gleiche Schranke (lead_source.write) wie alle Quellen-Aktionen.
+// F1-23 Routing-Vertiefung (T8-UI): Regeln mit Dimension (Quelle XOR
+// Kampagne), Modus, Priorität und Auto-Auslösern. Gleiche Schranke
+// (lead_source.write) wie alle Quellen-Aktionen. Angenommene
+// T8-IMPL-Signatur: setRoutingRule mit optionaler ruleId (Update statt
+// Neuanlage) plus Dimensions-/Feld-Parametern; clearRoutingRule per ruleId.
+const ROUTING_MODES = ["suggest", "auto"] as const;
+type RoutingRuleModeInput = (typeof ROUTING_MODES)[number];
+
+function parseOptionalId(value: FormDataEntryValue | null): string | undefined | null {
+  if (typeof value !== "string" || value === "") return undefined;
+  const parsed = idSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function parseRequiredId(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string" || value === "") return null;
+  const parsed = idSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function parseMode(value: FormDataEntryValue | null): RoutingRuleModeInput | null {
+  if (typeof value !== "string" || value === "") return "suggest";
+  return (ROUTING_MODES as readonly string[]).includes(value)
+    ? (value as RoutingRuleModeInput)
+    : null;
+}
+
+function parsePriority(value: FormDataEntryValue | null): number | null {
+  if (typeof value !== "string" || value.trim() === "") return 0;
+  if (!/^(?:0|[1-9]\d*)$/u.test(value.trim())) return null;
+  const parsed = Number(value.trim());
+  return Number.isSafeInteger(parsed) && parsed <= 9999 ? parsed : null;
+}
+
+// Checkbox-Paar (Checkbox value="true" zuerst, Hidden value="false"
+// danach): get() liefert "true" nur bei gesetzter Box. Crafted values
+// werden invalid statt koerziert; fehlt das Feld ganz, gilt der Default.
+function parseToggle(value: FormDataEntryValue | null, defaultValue: boolean): boolean | null {
+  if (value === null) return defaultValue;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
+}
+
 export async function setRoutingRuleAction(
   _previous: LeadSourceActionState,
   formData: FormData,
 ): Promise<LeadSourceActionState> {
   const workspace = parseWorkspace(formData);
-  const sourceValue = formData.get("leadSourceId");
-  const memberValue = formData.get("assigneeMembershipId");
-  const sourceId = typeof sourceValue === "string" ? idSchema.safeParse(sourceValue) : null;
-  const membershipId = typeof memberValue === "string" ? idSchema.safeParse(memberValue) : null;
-  if (!workspace || !sourceId?.success || !membershipId?.success) return { status: "invalid" };
+  const ruleId = parseOptionalId(formData.get("ruleId"));
+  const leadSourceId = parseOptionalId(formData.get("leadSourceId"));
+  const funnelCampaignId = parseOptionalId(formData.get("funnelCampaignId"));
+  const assigneeMembershipId = parseRequiredId(formData.get("assigneeMembershipId"));
+  const mode = parseMode(formData.get("mode"));
+  const priority = parsePriority(formData.get("priority"));
+  const autoOnManual = parseToggle(formData.get("autoOnManual"), true);
+  const autoOnIntake = parseToggle(formData.get("autoOnIntake"), false);
+  if (
+    !workspace
+    || ruleId === null
+    || leadSourceId === null
+    || funnelCampaignId === null
+    || assigneeMembershipId === null
+    || mode === null
+    || priority === null
+    || autoOnManual === null
+    || autoOnIntake === null
+  ) {
+    return { status: "invalid" };
+  }
+  // Dimension: Quelle XOR Kampagne.
+  const hasSource = leadSourceId !== undefined;
+  const hasCampaign = funnelCampaignId !== undefined;
+  if (hasSource === hasCampaign) return { status: "invalid" };
+  // Kampagnen-Regeln NUR suggest — Guard auch serverseitig.
+  if (hasCampaign && mode === "auto") {
+    return { status: "invalid", message: "Kampagnen-Regeln sind immer Vorschläge." };
+  }
+  // Zentrales Regelformular (T8-Tests-E2E-Vertrag) meldet neutral.
+  const variantValue = formData.get("formVariant");
+  const isRuleForm = variantValue === "rule-form";
   try {
     await authorizedAction(workspace, "lead_source.write", "lead_source", (tx, ctx) =>
       setRoutingRule(tx, ctx, {
-        leadSourceId: sourceId.data,
-        assigneeMembershipId: membershipId.data,
+        ...(ruleId === undefined ? {} : { ruleId }),
+        ...(leadSourceId === undefined ? {} : { leadSourceId }),
+        ...(funnelCampaignId === undefined ? {} : { funnelCampaignId }),
+        assigneeMembershipId,
+        mode,
+        priority,
+        autoOnManual,
+        autoOnIntake,
       }),
     );
     revalidatePath(`/w/${workspace}/einstellungen/lead-quellen`);
-    return { status: "success", message: "Standard-Betreuer gespeichert." };
+    return {
+      status: "success",
+      message: isRuleForm
+        ? "Routing-Regel gespeichert."
+        : hasCampaign
+          ? "Routing-Vorschlag gespeichert."
+          : "Standard-Betreuer gespeichert.",
+    };
   } catch (error) {
     return mapError(error);
   }
@@ -216,23 +303,73 @@ export async function clearRoutingRuleAction(
   formData: FormData,
 ): Promise<LeadSourceActionState> {
   const workspace = parseWorkspace(formData);
-  const sourceValue = formData.get("leadSourceId");
-  const sourceId = typeof sourceValue === "string" ? idSchema.safeParse(sourceValue) : null;
-  if (!workspace || !sourceId?.success) return { status: "invalid" };
+  const ruleId = parseRequiredId(formData.get("ruleId"));
+  if (!workspace || ruleId === null) return { status: "invalid" };
+  // Dimensions-Echo nur für die Erfolgsmeldung (kein Teil des Löschpfads).
+  const campaignValue = formData.get("funnelCampaignId");
+  const hasCampaign = typeof campaignValue === "string" && campaignValue !== "";
   try {
     const result = await authorizedAction(
       workspace,
       "lead_source.write",
       "lead_source",
-      (tx, ctx) => clearRoutingRule(tx, ctx, { leadSourceId: sourceId.data }),
+      (tx, ctx) => clearRoutingRule(tx, ctx, { ruleId }),
     );
     revalidatePath(`/w/${workspace}/einstellungen/lead-quellen`);
+    if (!result.deleted) {
+      return {
+        status: "success",
+        message: hasCampaign
+          ? "Für diese Kampagne war kein Routing-Vorschlag hinterlegt."
+          : "Für diese Quelle war kein Standard-Betreuer hinterlegt.",
+      };
+    }
     return {
       status: "success",
-      message: result.deleted
-        ? "Standard-Betreuer entfernt."
-        : "Für diese Quelle war kein Standard-Betreuer hinterlegt.",
+      message: hasCampaign ? "Routing-Vorschlag entfernt." : "Standard-Betreuer entfernt.",
     };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function archiveRoutingRuleAction(
+  _previous: LeadSourceActionState,
+  formData: FormData,
+): Promise<LeadSourceActionState> {
+  const workspace = parseWorkspace(formData);
+  const ruleId = parseRequiredId(formData.get("ruleId"));
+  if (!workspace || ruleId === null) return { status: "invalid" };
+  try {
+    await authorizedAction(
+      workspace,
+      "lead_source.write",
+      "lead_source",
+      (tx, ctx) => archiveRoutingRule(tx, ctx, { ruleId }),
+    );
+    revalidatePath(`/w/${workspace}/einstellungen/lead-quellen`);
+    return { status: "success", message: "Routing-Regel archiviert." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+export async function reactivateRoutingRuleAction(
+  _previous: LeadSourceActionState,
+  formData: FormData,
+): Promise<LeadSourceActionState> {
+  const workspace = parseWorkspace(formData);
+  const ruleId = parseRequiredId(formData.get("ruleId"));
+  if (!workspace || ruleId === null) return { status: "invalid" };
+  try {
+    await authorizedAction(
+      workspace,
+      "lead_source.write",
+      "lead_source",
+      (tx, ctx) => reactivateRoutingRule(tx, ctx, { ruleId }),
+    );
+    revalidatePath(`/w/${workspace}/einstellungen/lead-quellen`);
+    return { status: "success", message: "Routing-Regel reaktiviert." };
   } catch (error) {
     return mapError(error);
   }

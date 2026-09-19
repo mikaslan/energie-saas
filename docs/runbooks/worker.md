@@ -296,3 +296,39 @@ aus.
   getestet. Der reale Provider-/IAM-Nachweis und ein echter Restore-Drill bleiben
   Pilot-NO-GO. Host-Pakete: PostgreSQL-18-Client (`psql`, `pg_dump`), zstd, age,
   AWS CLI v2, curl, openssl und GNU coreutils (`date`, `timeout`, `sha256sum`).
+
+## Lead-Score-Recompute (F1-21)
+
+- Queue `lead.score.recompute.v1` (exclusive, Retry 10, 1 s Startverzug mit
+  Backoff max. 60 s, Ablauf 180 s — derselbe technische Vertrag wie
+  `pdf.render`, attestiert in Migration 0234). Payload strikt ID-only:
+  `{schemaVersion: "lead-score-recompute-dispatch.v1", workspaceId,
+  projectId}`; `singleton_key` ist die Projekt-ID (genau ein aktiver Job je
+  Projekt). `batchSize: 1`, lokale Parallelität 2.
+- Zwei Definer-Kapseln: `public._f121_recompute_lead_score(ws, projekt)`
+  (10-Signal-Regelscore inkl. Intent-OR über Portalaufruf, Termin,
+  Signaturaufruf und Datei-Upload; Summe → Clamp `min(100,·)`, Bänder fix;
+  `FOR UPDATE`, idempotent, fehlendes Projekt = stiller No-Op, `updated_at`
+  bleibt unangetastet) und `pgboss.enqueue_lead_score_recompute(ws, projekt)`
+  (setzt `lead_score_status = 'pending'`, ein aktiver Job genügt).
+- Frische: `ready` + `computed_at` innerhalb 15 Minuten → gespeicherter Wert;
+  sonst (`pending`, fehlend oder älter) synchroner Fallback + Badge „wird
+  aktualisiert" + Refresh-Link. Cold-Start (alles NULL, kein Backfill in der
+  Migration) zeigt sofort den Fallback und stößt genau einen Recompute an;
+  `pending` stößt nicht erneut an (Bound: ein Enqueue je Projekt je TTL).
+- Der Board-Lesepfad schluckt ausschließlich `dispatch_unavailable` (Umgebung
+  ohne pg-boss: Dev/E2E/Test) und zeigt weiter den Fallback; echte Fehler
+  propagieren. Externe Leser sehen nie Score, Intent oder Presets.
+- Der Recovery-Sweep läuft sofort nach Registrierung und danach alle
+  60 Sekunden (25 Workspaces × 25 Jobs, ohne Overlap). Er stellt nur
+  `failed`/`cancelled`-Terminale ohne aktiven Nachfolgejob wieder zu;
+  erfolgreiche Jobs rührt er nie an (kein Refresh-Churn). Kandidaten stammen
+  ausschließlich aus der pg-boss-Historie — nach deren Verlust (Retention)
+  greift wie bei PDF nur noch der leseseitige Re-Trigger.
+- Deploy-Reihenfolge: `db:pgboss:bootstrap` muss die Queue im aktuellen
+  Vertrag anlegen, BEVOR `db:migrate` 0234 attestiert (Fresh-Install- und
+  Upgrade-Reihenfolge oben gilt entsprechend; siebter Queuevertrag im
+  normalen Worker).
+- Alarm: ausbleibende Frische (dauerhaft „wird aktualisiert") deutet auf
+  Worker-Stillstand oder Queue-Drift — Worker-Logs und pg-boss-Jobzustand
+  (`failed`) prüfen; die Ampel selbst ist unverändert (hot≥70/warm≥40).

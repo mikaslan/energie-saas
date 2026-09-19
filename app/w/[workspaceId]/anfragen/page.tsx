@@ -16,6 +16,7 @@ import {
   type RequestBoardScope,
 } from "@/modules/boards";
 import { listLeadSources } from "@/modules/lead-sources";
+import { listDedupeQueue } from "@/modules/dedupe";
 import { listFunnelCampaigns } from "@/modules/funnel-campaigns";
 import { FOLLOW_UP_BAND_LABEL, type FollowUpBand } from "@/lib/follow-up";
 import {
@@ -176,10 +177,36 @@ export default async function RequestsPage({
     else if (followUpValue === "ueberfaellig") followUpFilter = "overdue";
     else notFound();
   }
+  // F1-21: Preset-Trio (?intent=aktiv, ?ansprache=bereit, ?luecke=profil).
+  // Unbekannte Werte brechen fail-closed ab; alle Presets kombinierbar.
+  const rawIntent = (await searchParams)?.intent;
+  const intentValue = Array.isArray(rawIntent) ? rawIntent[0] : rawIntent;
+  let intentFilter: "active" | undefined;
+  if (intentValue !== undefined) {
+    if (intentValue === "aktiv") intentFilter = "active";
+    else notFound();
+  }
+  const rawAnsprache = (await searchParams)?.ansprache;
+  const anspracheValue = Array.isArray(rawAnsprache) ? rawAnsprache[0] : rawAnsprache;
+  let anspracheFilter: "ready" | undefined;
+  if (anspracheValue !== undefined) {
+    if (anspracheValue === "bereit") anspracheFilter = "ready";
+    else notFound();
+  }
+  const rawLuecke = (await searchParams)?.luecke;
+  const lueckeValue = Array.isArray(rawLuecke) ? rawLuecke[0] : rawLuecke;
+  let lueckeFilter: "profile" | undefined;
+  if (lueckeValue !== undefined) {
+    if (lueckeValue === "profil") lueckeFilter = "profile";
+    else notFound();
+  }
   const boardHref = (
     targetScope: RequestBoardScope,
     band: LeadScoreBand | undefined,
     followUp: RequestBoardFollowUpFilter | undefined,
+    intent: "active" | undefined,
+    ansprache: "ready" | undefined,
+    luecke: "profile" | undefined,
   ): string => {
     const params = new URLSearchParams();
     if (targetScope === "commercial") params.set("bereich", "gewerbe");
@@ -188,6 +215,9 @@ export default async function RequestsPage({
     else if (band === "cold") params.set("score", "kalt");
     if (followUp === "due") params.set("wiedervorlage", "anstehend");
     else if (followUp === "overdue") params.set("wiedervorlage", "ueberfaellig");
+    if (intent === "active") params.set("intent", "aktiv");
+    if (ansprache === "ready") params.set("ansprache", "bereit");
+    if (luecke === "profile") params.set("luecke", "profil");
     const query = params.toString();
     return `/w/${validWorkspaceId}/anfragen${query ? `?${query}` : ""}`;
   };
@@ -199,6 +229,7 @@ export default async function RequestsPage({
     id: string; name: string; leadSourceName: string; assigneeLabel: string | null;
   }> = [];
   let adminColumns: BoardColumnAdminEntry[] = [];
+  let dedupeFlaggedProjectIds: string[] = [];
   let pipelineSummary: BoardPipelineSummary | undefined;
   let unauthenticated = false;
   let denied = false;
@@ -208,17 +239,34 @@ export default async function RequestsPage({
       "project.read",
       "kanban_board",
       async (tx, ctx) => {
-        const board = await getRequestBoard(tx, ctx, { scope, scoreBand, followUpFilter });
+        const board = await getRequestBoard(tx, ctx, {
+          scope,
+          scoreBand,
+          followUpFilter,
+          intentFilter,
+          anspracheFilter,
+          lueckeFilter,
+        });
         const canCreate = can(ctx, "project.write");
         // F1-05a: Spaltenverwaltung (nur Editoren; gleiche Schranke wie
         // die Anlage; ohne Recht leere Liste, Board bleibt nutzbar).
         const adminColumns = canCreate
           ? await listBoardColumnsForAdmin(tx, ctx, { boardId: board.id })
           : [];
+        // F1-22: Dubletten-Blocker verlinken — ein Queue-Lauf pro Board
+        // (nur intern; extern sieht die Triage-Fläche nicht).
+        const hasDedupeBlocker = board.audience === "internal"
+          && board.columns.some((column) => column.cards.some(
+            (card) => card.blockers.dedupeReviewRequired,
+          ));
+        const dedupeFlaggedProjectIds = hasDedupeBlocker
+          ? (await listDedupeQueue(tx, ctx, { entity: "project" })).map((entry) => entry.id)
+          : [];
         return {
           board,
           canCreate,
           adminColumns,
+          dedupeFlaggedProjectIds,
           pipelineSummary: await getBoardPipelineSummary(tx, ctx, { boardId: board.id }),
           // F1-11: Quellen-Dropdown (gleiche Leseschranke wie die
           // Verwaltung; ohne Recht leere Liste, Formular bleibt nutzbar).
@@ -241,6 +289,7 @@ export default async function RequestsPage({
     board = loaded.board;
     canCreateManualLead = loaded.canCreate;
     adminColumns = loaded.adminColumns;
+    dedupeFlaggedProjectIds = loaded.dedupeFlaggedProjectIds;
     pipelineSummary = loaded.pipelineSummary;
     leadSourceOptions = loaded.sources.map((source) => ({ id: source.id, name: source.name }));
     campaignOptions = loaded.campaigns.map((campaign) => ({
@@ -256,7 +305,7 @@ export default async function RequestsPage({
   }
 
   if (unauthenticated) {
-    redirect(`/login?${new URLSearchParams({ next: boardHref(scope, scoreBand, followUpFilter) }).toString()}`);
+    redirect(`/login?${new URLSearchParams({ next: boardHref(scope, scoreBand, followUpFilter, intentFilter, anspracheFilter, lueckeFilter) }).toString()}`);
   }
   if (denied) return <AccessDenied />;
   if (!board) throw new Error("Anfrage-Board konnte nicht geladen werden");
@@ -267,6 +316,18 @@ export default async function RequestsPage({
     column.cards.map((card) => ({ id: card.id, label: card.contactName })),
   );
   const totalCards = cards.length;
+  // F1-21: Stale-Zähler für das „wird aktualisiert"-Banner (Preset-Bereich).
+  const staleScoreCount = board.columns.flatMap((column) => column.cards)
+    .filter((card) => card.score?.stale === true).length;
+  // F1-22: Dubletten-Blocker verlinkt — Projekt-Detail bei gesetztem
+  // Projekt-Flag, sonst die Queue (Kontakt-Flag-Fall).
+  const dedupeFlaggedProjects = new Set(dedupeFlaggedProjectIds);
+  const dedupeBlockerHref = (card: RequestBoardCard): string | null => {
+    if (!card.blockers.dedupeReviewRequired) return null;
+    return dedupeFlaggedProjects.has(card.id)
+      ? `/w/${validWorkspaceId}/dubletten/projekt/${card.id}`
+      : `/w/${validWorkspaceId}/dubletten`;
+  };
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
@@ -320,7 +381,7 @@ export default async function RequestsPage({
         <nav aria-label="Anfrageansichten" className="mb-6 flex flex-wrap gap-2 border-b border-slate-300">
           <Link
             aria-current="page"
-            href={boardHref(scope, scoreBand, followUpFilter)}
+            href={boardHref(scope, scoreBand, followUpFilter, intentFilter, anspracheFilter, lueckeFilter)}
             className="inline-flex min-h-11 items-center border-b-2 border-brand-700 px-3 text-sm font-semibold text-brand-800 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
           >
             Offen
@@ -335,14 +396,14 @@ export default async function RequestsPage({
         <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-scope-toggle">
           <Link
             aria-current={scope === "residential" ? "page" : undefined}
-            href={boardHref("residential", scoreBand, followUpFilter)}
+            href={boardHref("residential", scoreBand, followUpFilter, intentFilter, anspracheFilter, lueckeFilter)}
             className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${scope === "residential" ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
           >
             Wohnbau
           </Link>
           <Link
             aria-current={scope === "commercial" ? "page" : undefined}
-            href={boardHref("commercial", scoreBand, followUpFilter)}
+            href={boardHref("commercial", scoreBand, followUpFilter, intentFilter, anspracheFilter, lueckeFilter)}
             className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${scope === "commercial" ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
           >
             Gewerbe
@@ -368,7 +429,7 @@ export default async function RequestsPage({
               <Link
                 key={preset.label}
                 aria-current={scoreBand === preset.band ? "page" : undefined}
-                href={boardHref(scope, preset.band, followUpFilter)}
+                href={boardHref(scope, preset.band, followUpFilter, intentFilter, anspracheFilter, lueckeFilter)}
                 className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${scoreBand === preset.band ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
               >
                 {preset.label}
@@ -394,7 +455,7 @@ export default async function RequestsPage({
               <Link
                 key={preset.label}
                 aria-current={followUpFilter === preset.filter ? "page" : undefined}
-                href={boardHref(scope, scoreBand, preset.filter)}
+                href={boardHref(scope, scoreBand, preset.filter, intentFilter, anspracheFilter, lueckeFilter)}
                 className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${followUpFilter === preset.filter ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
               >
                 {preset.label}
@@ -406,6 +467,101 @@ export default async function RequestsPage({
               </span>
             ) : null}
           </div>
+          <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-intent-presets">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+              Kundenaktivität
+            </span>
+            {(
+              [
+                { filter: undefined, label: "Alle" },
+                { filter: "active", label: "Aktiv" },
+              ] as Array<{ filter: "active" | undefined; label: string }>
+            ).map((preset) => (
+              <Link
+                key={preset.label}
+                aria-current={intentFilter === preset.filter ? "page" : undefined}
+                href={boardHref(scope, scoreBand, followUpFilter, preset.filter, anspracheFilter, lueckeFilter)}
+                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${intentFilter === preset.filter ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+              >
+                {preset.label}
+              </Link>
+            ))}
+            {intentFilter !== undefined ? (
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">
+                Filter aktiv: Aktiv
+              </span>
+            ) : null}
+          </div>
+          <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-ansprache-presets">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+              Ansprache
+            </span>
+            {(
+              [
+                { filter: undefined, label: "Alle" },
+                { filter: "ready", label: "Bereit" },
+              ] as Array<{ filter: "ready" | undefined; label: string }>
+            ).map((preset) => (
+              <Link
+                key={preset.label}
+                aria-current={anspracheFilter === preset.filter ? "page" : undefined}
+                href={boardHref(scope, scoreBand, followUpFilter, intentFilter, preset.filter, lueckeFilter)}
+                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${anspracheFilter === preset.filter ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+              >
+                {preset.label}
+              </Link>
+            ))}
+            {anspracheFilter !== undefined ? (
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">
+                Filter aktiv: Bereit
+              </span>
+            ) : null}
+          </div>
+          <div className="mb-6 flex flex-wrap items-center gap-2" data-testid="board-luecke-presets">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+              Energieprofil
+            </span>
+            {(
+              [
+                { filter: undefined, label: "Alle" },
+                { filter: "profile", label: "Fehlt" },
+              ] as Array<{ filter: "profile" | undefined; label: string }>
+            ).map((preset) => (
+              <Link
+                key={preset.label}
+                aria-current={lueckeFilter === preset.filter ? "page" : undefined}
+                href={boardHref(scope, scoreBand, followUpFilter, intentFilter, anspracheFilter, preset.filter)}
+                className={`inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${lueckeFilter === preset.filter ? "border-brand-700 bg-brand-700 text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+              >
+                {preset.label}
+              </Link>
+            ))}
+            {lueckeFilter !== undefined ? (
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800">
+                Filter aktiv: Profil fehlt
+              </span>
+            ) : null}
+          </div>
+          {staleScoreCount > 0 ? (
+            <div
+              data-testid="lead-score-stale"
+              className="mb-6 flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3"
+            >
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">
+                <span aria-hidden="true">◷</span>
+                wird aktualisiert
+              </span>
+              <span className="text-xs text-slate-600">
+                {staleScoreCount} {staleScoreCount === 1 ? "Lead-Score ist" : "Lead-Scores sind"} noch nicht frisch berechnet.
+              </span>
+              <Link
+                href={boardHref(scope, scoreBand, followUpFilter, intentFilter, anspracheFilter, lueckeFilter)}
+                className="rounded text-xs font-semibold text-brand-800 outline-none hover:text-brand-900 hover:underline focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+              >
+                Aktualisieren
+              </Link>
+            </div>
+          ) : null}
           </>
         ) : null}
         {canCreateManualLead ? (
@@ -547,11 +703,24 @@ export default async function RequestsPage({
                           ) : null}
                           {blockers.length > 0 ? (
                             <ul className="mt-3 grid list-none gap-1.5" aria-label="Offene Prüfungen">
-                              {blockers.map((label) => (
-                                <li key={label} className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
-                                  <span aria-hidden="true">△</span>{label}
-                                </li>
-                              ))}
+                              {blockers.map((label) => {
+                                const href = label === "Kontakt prüfen"
+                                  ? dedupeBlockerHref(card)
+                                  : null;
+                                return (
+                                  <li key={label} className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+                                    <span aria-hidden="true">△</span>
+                                    {href !== null ? (
+                                      <Link
+                                        href={href}
+                                        className="font-semibold underline decoration-amber-400 underline-offset-2 outline-none hover:text-amber-950 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2"
+                                      >
+                                        {label}
+                                      </Link>
+                                    ) : label}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           ) : null}
                           <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">

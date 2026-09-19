@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "71d6eda0f682a3a56b770cf3f4e4fde8756d7d746f30ddd88a25fec9401475c4" as const;
+  "0bd00f4fe2d96dcaa713698c3ea2c0c9eeed8a8719538c979d5c2210fc953bb5" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -141,11 +141,76 @@ export const customLoadProfileValueSchema = z.strictObject({
   }
 });
 
+// F1-19 Energiedaten-Vertiefung: vier Eingabemodi. consumption bleibt der
+// Rechner-Modus; property (Objekt-Schaetzung), roomwise (Raumliste) und
+// manual (freie Operateur-Eingabe) sind additive Slices: Altzeilen ohne die
+// neuen Schluessel bleiben gueltig, unbekannte oder halb belegte Modi
+// verweigert das Schema (Fail-closed, kein stilles effectiveConsumption).
+export const siteEnergyProfileInputModes = [
+  "consumption",
+  "property",
+  "roomwise",
+  "manual",
+] as const;
+export type SiteEnergyProfileInputMode = (typeof siteEnergyProfileInputModes)[number];
+
+export const heatingTypeSchema = z.enum([
+  "gas",
+  "oil",
+  "heat_pump",
+  "district_heating",
+  "direct_electric",
+  "biomass",
+  "other",
+]);
+export type HeatingType = z.infer<typeof heatingTypeSchema>;
+
+// Objekt-Schaetzung (property-Modus): Heizart-Enum + Bewohner 1..20.
+// Pflicht und vollstaendig genau in diesem Modus.
+export const propertyEstimateSchema = z.strictObject({
+  heatingType: heatingTypeSchema,
+  residentCount: z.int().min(1).max(20),
+});
+export type PropertyEstimate = z.infer<typeof propertyEstimateSchema>;
+
+export const roomUsageSchema = z.enum([
+  "living",
+  "bedroom",
+  "kitchen",
+  "bathroom",
+  "hallway",
+  "office",
+  "commercial",
+  "storage",
+  "other",
+]);
+export type RoomUsage = z.infer<typeof roomUsageSchema>;
+
+// Raumliste (roomwise-Modus): 1..40 Raeume mit Name/Flaeche/Nutzung und
+// Heizkoerper-Anzahl (0 = unbeheizt). Pflicht und vollstaendig genau in
+// diesem Modus; Halb-Listen verweigert das Schema.
+export const energyRoomSchema = z.strictObject({
+  name: z.string().trim().min(1).max(64),
+  areaM2: positive(2_000),
+  usage: roomUsageSchema,
+  radiatorCount: z.int().min(0).max(50),
+});
+export type EnergyRoom = z.infer<typeof energyRoomSchema>;
+
+export const energyProfileProvenanceSourceSchema = z.enum([
+  "rechner_snapshot",
+  "operator_manual",
+]);
+export type EnergyProfileProvenanceSource = z.infer<
+  typeof energyProfileProvenanceSourceSchema
+>;
+
 export const siteEnergyProfileV1Schema = z.strictObject({
   schemaVersion: z.literal(SITE_ENERGY_PROFILE_SCHEMA_VERSION),
-  // property/roomwise/manual erhalten je einen eigenen Contract-Slice. Ein
-  // unbekannter oder nur halb implementierter Modus passiert v1 nicht.
-  inputMode: z.literal("consumption"),
+  // F1-19: vier Modi (consumption/property/roomwise/manual). Die
+  // Modus-Kopplung (Pflicht-Sektion je Modus, Provenance) prueft die
+  // Refine unten: unbekannt oder halb belegt passiert v1 nicht.
+  inputMode: z.enum(siteEnergyProfileInputModes),
   building: z.strictObject({
     type: knownOrUnknown(buildingTypeSchema),
     year: knownOrUnknown(z.int().min(1800).max(2200)),
@@ -245,7 +310,7 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     ev: simpleAssetSchema,
   }),
   provenance: z.strictObject({
-    source: z.literal("rechner_snapshot"),
+    source: energyProfileProvenanceSourceSchema,
     sourceSchemaVersion: z.literal("wmee-solar-snapshot.v1"),
     sourceEngine: z.literal("wmee-solar.v1"),
     roof: z.enum(["lod2", "user_drawn", "osm", "default"]),
@@ -253,7 +318,133 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     electricityPrice: z.enum(["customer", "default"]),
     annualPriceIncrease: z.enum(["customer", "default"]),
   }),
+  // F1-19 Modus-Sektionen (additiv-optional; Altzeilen ohne Schluessel
+  // bleiben consumption-gueltig). Modus-Kopplung s. Refine unten.
+  propertyEstimate: propertyEstimateSchema.optional(),
+  rooms: z.array(energyRoomSchema).min(1).max(40).optional(),
+}).superRefine((value, ctx) => {
+  const hasPropertyEstimate = value.propertyEstimate !== undefined;
+  const hasRooms = value.rooms !== undefined;
+  const isManualProvenance = value.provenance.source === "operator_manual";
+  if (value.inputMode === "property") {
+    if (!hasPropertyEstimate) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["propertyEstimate"],
+        message: "propertyEstimate ist im property-Modus Pflicht",
+      });
+    }
+    if (hasRooms) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rooms"],
+        message: "rooms gehoert nur zum roomwise-Modus",
+      });
+    }
+    if (isManualProvenance) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["provenance", "source"],
+        message: "operator_manual gehoert nur zum manual-Modus",
+      });
+    }
+    return;
+  }
+  if (value.inputMode === "roomwise") {
+    if (!hasRooms) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rooms"],
+        message: "rooms ist im roomwise-Modus Pflicht (1..40)",
+      });
+    }
+    if (hasPropertyEstimate) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["propertyEstimate"],
+        message: "propertyEstimate gehoert nur zum property-Modus",
+      });
+    }
+    if (isManualProvenance) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["provenance", "source"],
+        message: "operator_manual gehoert nur zum manual-Modus",
+      });
+    }
+    return;
+  }
+  if (value.inputMode === "manual") {
+    if (!isManualProvenance) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["provenance", "source"],
+        message: "manual-Modus verlangt Provenance operator_manual",
+      });
+    }
+    if (hasPropertyEstimate || hasRooms) {
+      ctx.addIssue({
+        code: "custom",
+        path: hasPropertyEstimate ? ["propertyEstimate"] : ["rooms"],
+        message: "manual-Modus traegt keine Modus-Sektion",
+      });
+    }
+    return;
+  }
+  if (hasPropertyEstimate || hasRooms) {
+    ctx.addIssue({
+      code: "custom",
+      path: hasPropertyEstimate ? ["propertyEstimate"] : ["rooms"],
+      message: "consumption-Modus traegt keine Modus-Sektion",
+    });
+  }
+  if (isManualProvenance) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["provenance", "source"],
+      message: "operator_manual gehoert nur zum manual-Modus",
+    });
+  }
 });
+
+// F1-19 Zielpakete (Operateur-Qualifizierung, kein Rechen-Einfluss):
+// Solar/Speicher/Wallbox/Heizung je mit Kaufabsicht und Zahlart.
+// Kopplung: wanted=true verlangt eine Zahlart, wanted=false keine
+// (kein schwebender Zahlungsmodus ohne Kaufabsicht).
+export const packagePaymentKindSchema = z.enum(["purchase", "leasing", "financing"]);
+export type PackagePaymentKind = z.infer<typeof packagePaymentKindSchema>;
+
+export const requestedPackageSchema = z.strictObject({
+  wanted: z.boolean(),
+  paymentKind: packagePaymentKindSchema.nullable(),
+}).superRefine((value, ctx) => {
+  if (value.wanted !== (value.paymentKind !== null)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["paymentKind"],
+      message: "wanted=true verlangt eine Zahlart, wanted=false keine",
+    });
+  }
+});
+export type RequestedPackage = z.infer<typeof requestedPackageSchema>;
+
+export const requestedPackageKeys = ["solar", "storage", "wallbox", "heating"] as const;
+export type RequestedPackageKey = (typeof requestedPackageKeys)[number];
+
+export const requestedPackagesSchema = z.strictObject({
+  solar: requestedPackageSchema,
+  storage: requestedPackageSchema,
+  wallbox: requestedPackageSchema,
+  heating: requestedPackageSchema,
+});
+export type RequestedPackages = z.infer<typeof requestedPackagesSchema>;
+
+export const REQUESTED_PACKAGES_UNSET: RequestedPackages = {
+  solar: { wanted: false, paymentKind: null },
+  storage: { wanted: false, paymentKind: null },
+  wallbox: { wanted: false, paymentKind: null },
+  heating: { wanted: false, paymentKind: null },
+};
 
 const projectRequirementsSchema = z.strictObject({
   schemaVersion: z.literal("project-requirements.rechner.v1"),
@@ -265,10 +456,50 @@ const projectRequirementsSchema = z.strictObject({
     bidirectionalCharging: z.boolean(),
     backupPower: z.boolean(),
   }),
+  // F1-19: additiv-optional; Rechner-Zeilen ohne Schluessel bleiben gueltig.
+  requestedPackages: requestedPackagesSchema.optional(),
 });
 
 export const ProjectRequirementsRechnerV1Schema = projectRequirementsSchema;
 export type ProjectRequirementsRechnerV1 = z.infer<typeof projectRequirementsSchema>;
+
+// F1-19 Paket-Merge (Editor-Semantik "leer = unveraendert"): Der Operateur
+// setzt je Paket wanted und/oder paymentKind oder laesst beides leer. Der
+// Merge startet beim gespeicherten Stand (ohne Stand: alles ungewollt),
+// wendet gesetzte Felder an und validiert die Kopplung. Gueltig heisst:
+// Rueckgabe ungleich null; unveraendert heisst: deep-equal zum Stand.
+export type PackageFormDelta = Record<
+  RequestedPackageKey,
+  { wanted: boolean | null; paymentKind: PackagePaymentKind | null }
+>;
+
+export function mergeRequestedPackages(
+  current: unknown,
+  delta: PackageFormDelta,
+): RequestedPackages | null {
+  const base = requestedPackagesSchema.safeParse(current);
+  const merged: Record<RequestedPackageKey, { wanted: boolean; paymentKind: PackagePaymentKind | null }> = {
+    solar: { wanted: false, paymentKind: null },
+    storage: { wanted: false, paymentKind: null },
+    wallbox: { wanted: false, paymentKind: null },
+    heating: { wanted: false, paymentKind: null },
+  };
+  if (base.success) {
+    for (const key of requestedPackageKeys) merged[key] = { ...base.data[key] };
+  } else if (current !== undefined && current !== null) {
+    return null;
+  }
+  for (const key of requestedPackageKeys) {
+    const change = delta[key];
+    if (change.wanted !== null) {
+      merged[key].wanted = change.wanted;
+      if (!change.wanted) merged[key].paymentKind = null;
+    }
+    if (change.paymentKind !== null) merged[key].paymentKind = change.paymentKind;
+  }
+  const validated = requestedPackagesSchema.safeParse(merged);
+  return validated.success ? validated.data : null;
+}
 
 const defaultsVersionSchema = z.literal("wmee-planning-defaults.v1");
 

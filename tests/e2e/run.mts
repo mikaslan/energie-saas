@@ -52,6 +52,14 @@ const PRIVATE_DIRECTORY_MODE = 0o700;
 const START_TIMEOUT_MS = 90_000;
 const CHILD_STOP_TIMEOUT_MS = 5_000;
 const GEOAPIFY_STUB_API_KEY = "local-m1-06-contract-key";
+// F1-17: Zähler-Parametrisierung des Geoapify-Vertragsstub. Voller Lauf:
+// m1-05-Triage (1 Suche + 1 Details) + F1-17-xlsx-Import mit Pin-Adresse
+// (1+1) + F1-17-Import ohne Stub-Kandidaten (1+0).
+const GEOAPIFY_EXPECTED_AUTOCOMPLETE_REQUESTS = 3;
+const GEOAPIFY_EXPECTED_DETAILS_REQUESTS = 2;
+// F1-17: zweite exakte Stub-Anfrage (leere Trefferliste, 200). Spiegelt die
+// Bulk-Abfrage „Straße Hausnummer, PLZ Ort“ für f1-17-bulk-no-candidates.
+const F1_17_NO_CANDIDATE_QUERY = "Nirgendweg 999, 00000 Nirgendstadt";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 const AMBIENT_DATABASE_VARIABLES = [
@@ -155,6 +163,10 @@ type E2EState = Pick<
   f704ProjectId: string;
   f704cProjectId: string;
   f114ProjectId: string;
+  f115BrokerKeyId: string;
+  f115BrokerSecretBase64: string;
+  f118RestKeyId: string;
+  f118RestSecretBase64: string;
   f22ProjectId: string;
   f22ControlProjectId: string;
   f25ProjectId: string;
@@ -292,7 +304,7 @@ async function startGeoapifyContractStub(): Promise<GeoapifyStub> {
     const validTransport = request.method === "GET"
       && request.headers.accept === "application/json";
     if (url.pathname === "/v1/geocode/autocomplete") {
-      const validContract = validTransport && exactSearchParameters(url, {
+      const validPinContract = validTransport && exactSearchParameters(url, {
         text: M1_06_E2E_ADDRESS.query,
         lang: "de",
         format: "json",
@@ -300,13 +312,25 @@ async function startGeoapifyContractStub(): Promise<GeoapifyStub> {
         filter: "countrycode:de",
         apiKey: GEOAPIFY_STUB_API_KEY,
       });
-      if (!validContract) {
+      const validEmptyContract = !validPinContract && validTransport && exactSearchParameters(url, {
+        text: F1_17_NO_CANDIDATE_QUERY,
+        lang: "de",
+        format: "json",
+        limit: "5",
+        filter: "countrycode:de",
+        apiKey: GEOAPIFY_STUB_API_KEY,
+      });
+      if (!validPinContract && !validEmptyContract) {
         stub.violations.push("autocomplete_contract");
         respondWithJson(response, 400, { error: "invalid_request" });
         return;
       }
 
       stub.autocompleteRequests += 1;
+      if (validEmptyContract) {
+        respondWithJson(response, 200, { results: [] });
+        return;
+      }
       respondWithJson(response, 200, {
         results: [{
           place_id: M1_06_E2E_ADDRESS.placeId,
@@ -386,8 +410,17 @@ async function startGeoapifyContractStub(): Promise<GeoapifyStub> {
 
 function geoapifyContractWasExercised(stub: GeoapifyStub): boolean {
   return stub.violations.length === 0
-    && stub.autocompleteRequests === 1
-    && stub.detailsRequests === 1;
+    && stub.autocompleteRequests === GEOAPIFY_EXPECTED_AUTOCOMPLETE_REQUESTS
+    && stub.detailsRequests === GEOAPIFY_EXPECTED_DETAILS_REQUESTS;
+}
+
+function geoapifySubsetIsPlausible(stub: GeoapifyStub): boolean {
+  // Fokussierte Läufe treffen Teilmengen der Geo-Pfade: keine Verletzung,
+  // jede Auflösung braucht ihre Suche, nie mehr als der volle Lauf.
+  return stub.violations.length === 0
+    && stub.detailsRequests <= stub.autocompleteRequests
+    && stub.autocompleteRequests <= GEOAPIFY_EXPECTED_AUTOCOMPLETE_REQUESTS
+    && stub.detailsRequests <= GEOAPIFY_EXPECTED_DETAILS_REQUESTS;
 }
 
 function signalExitCode(signal: NodeJS.Signals): number {
@@ -471,6 +504,8 @@ function cleanEnvironment(): NodeJS.ProcessEnv {
     "BETTER_AUTH_SECRET",
     "BETTER_AUTH_URL",
     "RECHNER_INTAKE_KEYS_JSON",
+    "BROKER_INTAKE_KEYS_JSON",
+    "REST_INTAKE_KEYS_JSON",
     "RESEND_API_KEY",
     "GEOAPIFY_API_KEY",
     "GEOAPIFY_BASE_URL",
@@ -583,6 +618,8 @@ function nextEnvironment(
   database: Pick<StrictServiceUrls, "auth" | "runtime">,
   authSecret: string,
   credentials: IntakeCredential[],
+  brokerCredentials: IntakeCredential[],
+  restCredentials: IntakeCredential[],
   geocodingStub: GeoapifyStub,
   readyFile: string,
   readyToken: string,
@@ -606,6 +643,20 @@ function nextEnvironment(
       keyId: credential.keyId,
       workspaceId: credential.workspaceId,
       scope: "rechner-intake.write",
+      secretBase64: credential.secret.toString("base64"),
+    }))),
+    // F1-15: Broker-Credentials (gleiche Mint-Disziplin wie Rechner).
+    BROKER_INTAKE_KEYS_JSON: JSON.stringify(brokerCredentials.map((credential) => ({
+      keyId: credential.keyId,
+      workspaceId: credential.workspaceId,
+      scope: "broker-intake.write",
+      secretBase64: credential.secret.toString("base64"),
+    }))),
+    // F1-18: REST-Credentials (gleiche Mint-Disziplin wie Broker).
+    REST_INTAKE_KEYS_JSON: JSON.stringify(restCredentials.map((credential) => ({
+      keyId: credential.keyId,
+      workspaceId: credential.workspaceId,
+      scope: "rest-intake.write",
       secretBase64: credential.secret.toString("base64"),
     }))),
     RESEND_API_KEY: "",
@@ -1473,6 +1524,18 @@ async function main(): Promise<number> {
     workspaceId: seedData.w3WorkspaceId,
     secret: randomBytes(32),
   };
+  // F1-15: eigener Broker-Key für den W3-Workspace (Spec signiert selbst).
+  const brokerW3Credential: IntakeCredential = {
+    keyId: `e2e-broker-w3-${randomUUID()}`,
+    workspaceId: seedData.w3WorkspaceId,
+    secret: randomBytes(32),
+  };
+  // F1-18: eigener REST-Key für den W3-Workspace (Spec signiert selbst).
+  const restW3Credential: IntakeCredential = {
+    keyId: `e2e-rest-w3-${randomUUID()}`,
+    workspaceId: seedData.w3WorkspaceId,
+    secret: randomBytes(32),
+  };
   const visualCredential: IntakeCredential = {
     keyId: `e2e-visual-${randomUUID()}`,
     workspaceId: seedData.visualWorkspaceId,
@@ -1501,6 +1564,8 @@ async function main(): Promise<number> {
         serviceUrls,
         authSecret,
         [mainCredential, foreignCredential, m111bCredential, w3Credential, visualCredential],
+        [brokerW3Credential],
+        [restW3Credential],
         providerStub,
         readyFile,
         readyToken,
@@ -1558,7 +1623,7 @@ async function main(): Promise<number> {
   // 12-s-Timeout laufen, der CI-Snapshot belegt "Compiling" während der
   // laufenden Anfrage. Unauthentifizierter POST kompiliert die Route bis
   // zur Auth-Grenze (401): keine Sitzung, kein Rate-Limit-Verbrauch,
-  // kein Provider-Aufruf — der Geoapify-1/1-Vertrag bleibt unberührt,
+  // kein Provider-Aufruf — der Geoapify-Vertragszähler bleibt unberührt,
   // der Test selbst bleibt die harte Prüfung.
   try {
     const warmCandidates = await fetch(
@@ -1759,6 +1824,10 @@ async function main(): Promise<number> {
     f704ProjectId: w3F704Lead.projectId,
     f704cProjectId: w3F704cLead.projectId,
     f114ProjectId: w3F114Lead.projectId,
+    f115BrokerKeyId: brokerW3Credential.keyId,
+    f115BrokerSecretBase64: brokerW3Credential.secret.toString("base64"),
+    f118RestKeyId: restW3Credential.keyId,
+    f118RestSecretBase64: restW3Credential.secret.toString("base64"),
     f22ProjectId: w3F22Seed.projectId,
     f22ControlProjectId: w3F22ControlSeed.projectId,
     f25ProjectId: w3F25Seed.projectId,
@@ -2016,16 +2085,13 @@ async function main(): Promise<number> {
     // Absichtlich still: der Exit-Status oben bleibt maßgeblich.
   }
   const geoapifyExercised = geoapifyContractWasExercised(providerStub);
-  const geoapifyUntouched = providerStub.violations.length === 0
-    && providerStub.autocompleteRequests === 0
-    && providerStub.detailsRequests === 0;
-  if ((!grep && !geoapifyExercised) || (grep && !geoapifyExercised && !geoapifyUntouched)) {
-    console.error("[e2e] Der lokale Geoapify-Vertrag war weder exakt 1/1 noch in einem fokussierten Lauf unberührt.");
+  if ((!grep && !geoapifyExercised) || (grep && !geoapifySubsetIsPlausible(providerStub))) {
+    console.error(`[e2e] Der lokale Geoapify-Vertrag ist verletzt: ${providerStub.autocompleteRequests}/${providerStub.detailsRequests} Aufrufe, ${providerStub.violations.length} Abweichungen (erwartet ${GEOAPIFY_EXPECTED_AUTOCOMPLETE_REQUESTS}/${GEOAPIFY_EXPECTED_DETAILS_REQUESTS} im vollen Lauf).`);
     return 1;
   }
   console.log(geoapifyExercised
-    ? "[e2e] Lokaler Geoapify-Vertrag: 1 Suche, 1 Detailauflösung, 0 Abweichungen."
-    : "[e2e] Fokussierter Lauf ohne Geoapify-Pfad: 0/0 Aufrufe, 0 Abweichungen.");
+    ? `[e2e] Lokaler Geoapify-Vertrag: ${GEOAPIFY_EXPECTED_AUTOCOMPLETE_REQUESTS} Suchen, ${GEOAPIFY_EXPECTED_DETAILS_REQUESTS} Detailauflösungen, 0 Abweichungen.`
+    : `[e2e] Fokussierter Lauf mit Geoapify-Teilmenge: ${providerStub.autocompleteRequests}/${providerStub.detailsRequests} Aufrufe, 0 Abweichungen.`);
   return playwrightExitCode;
 }
 

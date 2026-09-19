@@ -51,6 +51,14 @@ export const project = pgTable(
     // F1-06 Lead-Wiedervorlage: optionaler Fälligkeitszeitpunkt je Anfrage
     // (In-App-Eskalation, kein Mailversand). NULL = keine Wiedervorlage.
     followUpAt: timestamp("follow_up_at", { withTimezone: true }),
+    // F1-21 Lead-Score-at-rest: asynchron berechneter Wert je Anfrage
+    // (Worker lead.score.recompute.v1, TTL 15 Minuten). Alles NULL = nie
+    // berechnet (Cold-Start: synchroner Fallback + Enqueue).
+    leadScoreValue: integer("lead_score_value"),
+    leadScoreBand: text("lead_score_band").$type<"hot" | "warm" | "cold">(),
+    leadScoreSignals: text("lead_score_signals").array(),
+    leadScoreComputedAt: timestamp("lead_score_computed_at", { withTimezone: true }),
+    leadScoreStatus: text("lead_score_status").$type<"pending" | "ready">(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -68,6 +76,12 @@ export const project = pgTable(
     index("project_ws_request_closed_idx")
       .on(t.workspaceId, t.closedAt.desc().nullsLast(), t.id.desc().nullsLast())
       .where(sql`${t.phase} = 'request' and ${t.outcome} in ('won', 'lost', 'cannot_fulfill')`),
+    // F1-21: Sweep-/Board-Lookup nach Score-Frische je Workspace.
+    index("project_ws_lead_score_idx").on(
+      t.workspaceId,
+      t.leadScoreStatus,
+      t.leadScoreComputedAt,
+    ),
     unique("project_ws_id_uq").on(t.workspaceId, t.id),
     unique("project_ws_id_site_uq").on(t.workspaceId, t.id, t.siteId),
     unique("project_ws_id_contact_site_uq").on(
@@ -127,6 +141,29 @@ export const project = pgTable(
     check(
       "project_catalog_resolution_ck",
       sql`${t.catalogResolutionStatus} in ('pending', 'resolved')`,
+    ),
+    // F1-21 Lead-Score-at-rest: Wertebereich, Bänder, Status; ready verlangt
+    // einen vollständigen Satz (Cold-Start bleibt komplett NULL).
+    check(
+      "project_lead_score_value_ck",
+      sql`${t.leadScoreValue} is null or ${t.leadScoreValue} between 0 and 100`,
+    ),
+    check(
+      "project_lead_score_band_ck",
+      sql`${t.leadScoreBand} is null or ${t.leadScoreBand} in ('hot', 'warm', 'cold')`,
+    ),
+    check(
+      "project_lead_score_status_ck",
+      sql`${t.leadScoreStatus} is null or ${t.leadScoreStatus} in ('pending', 'ready')`,
+    ),
+    check(
+      "project_lead_score_ready_shape_ck",
+      sql`${t.leadScoreStatus} is distinct from 'ready' or (
+        ${t.leadScoreValue} is not null
+        and ${t.leadScoreBand} is not null
+        and ${t.leadScoreSignals} is not null
+        and ${t.leadScoreComputedAt} is not null
+      )`,
     ),
     check("project_assignment_revision_ck", sql`${t.assignmentRevision} >= 0`),
     check(

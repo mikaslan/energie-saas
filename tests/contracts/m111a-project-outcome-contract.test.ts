@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
 import {
   PROJECT_LOSS_REASON_COMMAND_VERSION,
   PROJECT_LOSS_REASON_LABEL_MAX_LENGTH,

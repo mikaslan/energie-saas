@@ -2948,12 +2948,78 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   project_task_assignee: fixtureProjectTaskGraph,
   project_task_checklist_item: fixtureProjectTaskGraph,
   project_task_label: fixtureProjectTaskGraph,
+  // F1-20 (0233): Aufgaben-Team-Zuweisung (Task-Graph + Team inline).
+  project_task_team_assignment: async (tx, wsId) => {
+    const { userId } = await fixtureMembership(tx, wsId, "editor", '{"settings":true}');
+    await tx.execute(sql`select set_config('app.actor_id', ${userId}, true)`);
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const taskId = randomUUID();
+    await tx.execute(sql`
+      insert into project_task (
+        id, workspace_id, project_id, title, body_version, body,
+        created_by, updated_by
+      ) values (
+        ${taskId}::uuid, ${wsId}::uuid, ${projectId}::uuid, 'Fixture Task',
+        'task-rich-text.v1', '{"type":"doc","content":[]}'::jsonb,
+        ${userId}::uuid, ${userId}::uuid
+      )
+    `);
+    const teamId = randomUUID();
+    await tx.execute(sql`
+      insert into team (id, workspace_id, name, name_normalized, created_by)
+      values (
+        ${teamId}::uuid, ${wsId}::uuid,
+        ${`Fixture-Taskteam ${teamId.slice(0, 8)}`},
+        ${`fixture-taskteam-${teamId.slice(0, 8)}`},
+        ${userId}::uuid
+      )
+    `);
+    await tx.execute(sql`
+      insert into project_task_team_assignment (
+        workspace_id, task_id, team_id, assigned_by
+      ) values (
+        ${wsId}::uuid, ${taskId}::uuid, ${teamId}::uuid, ${userId}::uuid
+      )
+    `);
+  },
   project_note: fixtureProjectNoteGraph,
   project_appointment: fixtureProjectAppointmentGraph,
   project_appointment_attendee: fixtureProjectAppointmentGraph,
   calendar_category: fixtureCalendarCategoryGraph,
   inbound_receipt: async (tx, wsId) => {
     await fixtureReceipt(tx, wsId);
+  },
+  // F1-15 (0230): Broker-Receipt (Projekt-Graph inline).
+  inbound_broker_receipt: async (tx, wsId) => {
+    const { contactId, siteId, projectId } = await fixtureProjectGraph(tx, wsId);
+    await tx.execute(sql`
+      insert into inbound_broker_receipt (
+        workspace_id, broker_key, broker_record_id, contract_version,
+        body_sha256, auth_key_id, signed_at, received_at,
+        contact_resolution, contact_id, site_id, project_id, note
+      ) values (
+        ${wsId}::uuid, 'wattfox', ${`FX-${randomUUID()}`},
+        'broker-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
+        now(), now(), 'created', ${contactId}::uuid, ${siteId}::uuid,
+        ${projectId}::uuid, null
+      )
+    `);
+  },
+  // F1-18 (0231): REST-Receipt (Projekt-Graph inline).
+  inbound_rest_receipt: async (tx, wsId) => {
+    const { contactId, siteId, projectId } = await fixtureProjectGraph(tx, wsId);
+    await tx.execute(sql`
+      insert into inbound_rest_receipt (
+        workspace_id, client_record_id, contract_version,
+        body_sha256, auth_key_id, signed_at, received_at,
+        contact_resolution, contact_id, site_id, project_id, note
+      ) values (
+        ${wsId}::uuid, ${`FX-${randomUUID()}`},
+        'rest-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
+        now(), now(), 'created', ${contactId}::uuid, ${siteId}::uuid,
+        ${projectId}::uuid, null
+      )
+    `);
   },
   calculator_snapshot: async (tx, wsId) => {
     await fixtureSnapshot(tx, wsId);
@@ -3276,6 +3342,17 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
       )
     `);
   },
+  // F1-20 (0233): Cross-Write scheitert an der RLS (WITH CHECK feuert vor FK).
+  project_task_team_assignment: async (tx) => {
+    await tx.execute(sql`
+      insert into project_task_team_assignment (
+        workspace_id, task_id, team_id, assigned_by
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid
+      )
+    `);
+  },
   kanban_board: async (tx) => {
     await tx.execute(sql`
       insert into kanban_board (workspace_id, name, scope, is_default)
@@ -3308,6 +3385,36 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
         'wmee-solar.v1', '{}'::jsonb, 'offer_request',
         'art_6_1_b_precontractual', 'fixture', 'https://example.test/privacy',
         'created', ${randomUUID()}::uuid, ${randomUUID()}::uuid, ${randomUUID()}::uuid
+      )
+    `);
+  },
+  // F1-15 (0230): Cross-Write scheitert an der RLS (WITH CHECK feuert vor FK).
+  inbound_broker_receipt: async (tx) => {
+    await tx.execute(sql`
+      insert into inbound_broker_receipt (
+        workspace_id, broker_key, broker_record_id, contract_version,
+        body_sha256, auth_key_id, signed_at, contact_resolution,
+        contact_id, site_id, project_id
+      ) values (
+        ${randomUUID()}::uuid, 'wattfox', ${randomUUID()},
+        'broker-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
+        now(), 'created', ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
+  // F1-18 (0231): Cross-Write scheitert an der RLS (WITH CHECK feuert vor FK).
+  inbound_rest_receipt: async (tx) => {
+    await tx.execute(sql`
+      insert into inbound_rest_receipt (
+        workspace_id, client_record_id, contract_version,
+        body_sha256, auth_key_id, signed_at, contact_resolution,
+        contact_id, site_id, project_id
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()},
+        'rest-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
+        now(), 'created', ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid
       )
     `);
   },

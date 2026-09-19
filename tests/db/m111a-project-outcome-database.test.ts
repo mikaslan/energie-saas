@@ -242,10 +242,17 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0147 F16-04e Vorlagen-Labels (Spalte + CHECK),
     // 0148 F16-11 Paket-Vorlagen (Tabelle + RLS),
     // 0210 F1-14 Projekt-Team-Zuweisung (Tabelle + RLS),
-    // 0220 F2.8 Portal-Draw-Signatur (Invite-Kapsel + ACL)).
+    // 0220 F2.8 Portal-Draw-Signatur (Invite-Kapsel + ACL),
+    // 0230 F1-15 Broker-Intake (Tabelle + RLS + Site-Check),
+    // 0232 F1-19 Energie-Modi+Pakete (CHECKs),
+    // 0233 F1-20 Task-Team-Zuweisung (Tabelle + RLS + Guard),
+    // 0234 F1-21 Lead-Score (Spalten + Kapseln),
+    // 0236 F1-19 Guard-Modus-Evolution (Funktion),
+    // 0231 F1-18 REST-Intake (Tabelle + RLS),
+    // 0235 F1-23 Routing-Vertiefung (Spalten + CHECKs)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 150,
-      tag: "0220_f208_draw_signature_invite",
+      idx: 157,
+      tag: "0235_f1_23_routing_deepening",
     });
   });
 

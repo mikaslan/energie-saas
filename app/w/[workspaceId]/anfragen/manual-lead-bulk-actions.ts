@@ -10,6 +10,7 @@ import {
 } from "@/modules/notes";
 import {
   importManualLeadBulk,
+  MANUAL_LEAD_BULK_XLSX_MAX_BYTES,
   ManualLeadBulkFileError,
   type ManualLeadBulkReport,
 } from "@/modules/projects";
@@ -23,7 +24,7 @@ const manualLeadBulkFormSchema = z.strictObject({
   workspaceId: uuidSchema,
   mode: z.enum(["dry-run", "import"]),
   defaultScope: z.enum(["residential", "commercial"]),
-  csvText: z.string().min(1).max(BULK_CSV_MAX_CHARS),
+  csvText: z.string().min(1).max(BULK_CSV_MAX_CHARS).optional(),
 });
 
 export type ManualLeadBulkActionState =
@@ -44,14 +45,50 @@ export async function importManualLeadBulkAction(
   if (typeof rawCsv === "string" && rawCsv.length > BULK_CSV_MAX_CHARS) {
     return { status: "too-large" };
   }
+  // Leeres File-Feld liefert einen 0-Byte-File — nur angehängte Dateien zählen.
+  const xlsxCandidate = formData.get("xlsxFile");
+  const xlsxFile = xlsxCandidate instanceof File && xlsxCandidate.size > 0
+    ? xlsxCandidate
+    : null;
+  // F1-17: Datei-Inputs überleben keinen Zweitsubmit — der Client hält die
+  // Bytes als Hidden-Payload vor (gleiche Limits, gleiche Mehrdeutigkeit).
+  const rawXlsxBytes = formData.get("xlsxBytes");
+  const xlsxBytesText = typeof rawXlsxBytes === "string" && rawXlsxBytes !== "" ? rawXlsxBytes : null;
+  const csvText = typeof rawCsv === "string" ? rawCsv : "";
+  // CSV-Text UND xlsx-Datei ist mehrdeutig → kein stiller Vorrang.
+  if ((xlsxFile ?? xlsxBytesText) && csvText !== "") return { status: "invalid" };
+  if (xlsxFile && xlsxFile.size > MANUAL_LEAD_BULK_XLSX_MAX_BYTES) {
+    return { status: "too-large" };
+  }
+  const hasXlsx = xlsxFile !== null || xlsxBytesText !== null;
   const parsed = manualLeadBulkFormSchema.safeParse({
     workspaceId,
     mode: formData.get("mode"),
     defaultScope: formData.get("defaultScope"),
-    csvText: typeof rawCsv === "string" ? rawCsv : undefined,
+    csvText: hasXlsx || csvText === "" ? undefined : csvText,
   });
   if (!parsed.success) return { status: "invalid" };
+  if (!hasXlsx && parsed.data.csvText === undefined) return { status: "invalid" };
   const input = parsed.data;
+
+  let bytes: Uint8Array | undefined;
+  if (xlsxFile) {
+    bytes = new Uint8Array(await xlsxFile.arrayBuffer());
+    if (bytes.byteLength > MANUAL_LEAD_BULK_XLSX_MAX_BYTES) {
+      return { status: "too-large" };
+    }
+  } else if (xlsxBytesText) {
+    let decoded: Buffer;
+    try {
+      decoded = Buffer.from(xlsxBytesText, "base64");
+    } catch {
+      return { status: "invalid" };
+    }
+    if (decoded.byteLength === 0 || decoded.byteLength > MANUAL_LEAD_BULK_XLSX_MAX_BYTES) {
+      return decoded.byteLength === 0 ? { status: "invalid" } : { status: "too-large" };
+    }
+    bytes = new Uint8Array(decoded);
+  }
 
   try {
     const report = await authorizedAction(
@@ -59,7 +96,9 @@ export async function importManualLeadBulkAction(
       "project.write",
       "manual_lead_bulk",
       (tx, ctx) => importManualLeadBulk(tx, ctx, {
+        fileKind: hasXlsx ? "xlsx" : "csv",
         csvText: input.csvText,
+        bytes,
         defaultScope: input.defaultScope,
         dryRun: input.mode === "dry-run",
         // Modulgrenze wie F1-11: Notizen schreibt die Action, der Service

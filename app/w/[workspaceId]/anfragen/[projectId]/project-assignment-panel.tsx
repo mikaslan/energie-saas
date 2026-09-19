@@ -176,13 +176,13 @@ export function ProjectAssignmentPanel({
   projectId,
   commandVersion,
   assignment,
-  routingSuggestion,
+  routingSuggestions,
 }: {
   workspaceId: string;
   projectId: string;
   commandVersion: string;
   assignment: AssignmentContext;
-  routingSuggestion: LeadRoutingSuggestion | null;
+  routingSuggestions: LeadRoutingSuggestion[];
 }) {
   const boundMutation = useMemo(
     () => changeProjectAssignment.bind(null, workspaceId),
@@ -204,6 +204,8 @@ export function ProjectAssignmentPanel({
   const message = mutationMessage(mutationState);
   const isError = mutationState.status !== "idle" && mutationState.status !== "success";
   const results = searchState.status === "results" ? searchState.results : [];
+  // F1-23: Suggest-Union in Evaluator-Reihenfolge, Anzeige max 5.
+  const suggestions = routingSuggestions.slice(0, 5);
 
   useEffect(() => {
     if (mutationState.status === "idle") return;
@@ -226,31 +228,47 @@ export function ProjectAssignmentPanel({
         </span>
       </div>
 
-      {assignment.canAssign && routingSuggestion ? (
+      {assignment.canAssign && suggestions.length > 0 ? (
         <div
           className="mt-4 rounded-md border border-brand-200 bg-brand-50 px-3 py-2.5"
           data-testid="routing-suggestion"
         >
           <p className="text-sm font-semibold text-brand-950">
-            {`Routing-Vorschlag (Quelle „${routingSuggestion.sourceName}“): ${routingSuggestion.label}`}
+            {suggestions.length === 1
+              ? "Routing-Vorschlag"
+              : `Routing-Vorschlag (${suggestions.length} Vorschläge)`}
           </p>
-          <form action={mutationAction} className="mt-2">
-            <CommandFields
-              commandVersion={commandVersion}
-              kind="set_key_account"
-              projectId={projectId}
-              expectedAssignmentRevision={assignment.assignmentRevision}
-              membershipId={routingSuggestion.membershipId}
-            />
-            <button
-              type="submit"
-              disabled={mutationPending}
-              aria-label={`${routingSuggestion.label} aus dem Routing-Vorschlag als Key Account festlegen`}
-              className="min-h-11 rounded-md bg-brand-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              Als Key Account festlegen
-            </button>
-          </form>
+          <ul className="mt-2 grid gap-2" data-testid="routing-suggestion-list" aria-label="Routing-Vorschläge">
+            {suggestions.map((suggestion, index) => (
+              <li
+                key={suggestion.ruleId}
+                data-testid="routing-suggestion-item"
+                className="rounded-md border border-brand-200 bg-white/60 px-2.5 py-2"
+              >
+                <p className="text-sm text-brand-950">
+                  {`„${suggestion.sourceName}“: ${suggestion.label}`}
+                </p>
+                <form action={mutationAction} className="mt-1.5">
+                  <CommandFields
+                    commandVersion={commandVersion}
+                    kind="set_key_account"
+                    projectId={projectId}
+                    expectedAssignmentRevision={assignment.assignmentRevision}
+                    membershipId={suggestion.membershipId}
+                  />
+                  <button
+                    type="submit"
+                    disabled={mutationPending}
+                    data-testid={`routing-suggestion-adopt-${index}`}
+                    aria-label={`${suggestion.label} aus dem Routing-Vorschlag als Key Account festlegen`}
+                    className="min-h-11 rounded-md bg-brand-700 px-3 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-800 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    Als Key Account festlegen
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 
