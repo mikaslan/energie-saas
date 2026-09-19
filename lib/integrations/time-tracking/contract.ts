@@ -60,7 +60,8 @@ export const timeEntryDtoSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
   id: z.string().uuid(),
   userId: z.string().uuid(),
-  projectId: z.string().uuid(),
+  // F9-14: NULL = projektloser Eintrag.
+  projectId: z.string().uuid().nullable(),
   typeId: z.string().uuid().nullable(),
   startAt: z.string(),
   // F9.2: laufende Einträge tragen endAt/workingTimeMinutes = null.
@@ -86,6 +87,23 @@ export const timeEntryDtoSchema = z.object({
 });
 export type TimeEntryDto = z.infer<typeof timeEntryDtoSchema>;
 
+// F9-13 Floating-Timer: Widget-Sicht auf den eigenen laufenden Eintrag
+// (genau einer je Actor, partieller Unique). Namen sind denormalisierte
+// Join-Ergebnisse für die Anzeige — IDs bleiben authoritative.
+export const myRunningTimeEntryDtoSchema = z.object({
+  schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
+  id: z.string().uuid(),
+  // F9-14: NULL = projektloser Timer (Widget-Link fällt auf Workspace-Route zurück).
+  projectId: z.string().uuid().nullable(),
+  projectName: z.string().nullable(),
+  typeId: z.string().uuid().nullable(),
+  typeName: z.string().nullable(),
+  startAt: z.string(),
+  comment: z.string().nullable(),
+  running: z.literal(true),
+});
+export type MyRunningTimeEntryDto = z.infer<typeof myRunningTimeEntryDtoSchema>;
+
 export const timeEntryListDtoSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
   entries: z.array(timeEntryDtoSchema),
@@ -94,7 +112,7 @@ export const timeEntryListDtoSchema = z.object({
 export type TimeEntryListDto = z.infer<typeof timeEntryListDtoSchema>;
 
 // F9.3 Fremdnutzer-Filter: userIds wie live (UUID, max 50); null/fehlend = kein Filter.
-const calendarDaySchema = z
+export const calendarDaySchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/u, { message: "kein Kalendertag" })
   .refine((v) => {
@@ -119,6 +137,18 @@ export const timeEntryListQuerySchema = z.object({
 }).refine((v) => v.startDate === undefined || v.endDate === undefined || v.startDate <= v.endDate, { message: "Start nach Ende" });
 export type TimeEntryListQuery = z.infer<typeof timeEntryListQuerySchema>;
 
+// F9-14: projektloser Read — gleiche Filter wie timeEntryListQuerySchema,
+// aber ohne projectId (fix `project_id IS NULL`, strikte Trennung).
+export const projectlessTimeEntryListQuerySchema = z.object({
+  includeArchived: z.boolean().optional(),
+  userIds: z.array(z.string().uuid()).max(50).nullish(),
+  approval: z.enum(["open", "approved"]).optional(),
+  startDate: calendarDaySchema.optional(),
+  endDate: calendarDaySchema.optional(),
+  eventTypeIds: z.array(z.string().uuid()).max(50).nullish(),
+}).refine((v) => v.startDate === undefined || v.endDate === undefined || v.startDate <= v.endDate, { message: "Start nach Ende" });
+export type ProjectlessTimeEntryListQuery = z.infer<typeof projectlessTimeEntryListQuerySchema>;
+
 export const timeMemberOptionSchema = z.object({
   userId: z.string().uuid(),
   label: z.string(),
@@ -132,7 +162,8 @@ export const timeEntryRevisionDtoSchema = z.object({
   id: z.string().uuid(),
   entryId: z.string().uuid(),
   userId: z.string().uuid(),
-  projectId: z.string().uuid(),
+  // F9-14: kopiert NULL aus time_entry.
+  projectId: z.string().uuid().nullable(),
   typeId: z.string().uuid().nullable(),
   startAt: z.string(),
   endAt: z.string().nullable(),
@@ -180,6 +211,16 @@ export const timeUtilizationDtoSchema = z.object({
 });
 export type TimeUtilizationDto = z.infer<typeof timeUtilizationDtoSchema>;
 
+// F9-11 Workspace-Team-Auslastung: gleiche Zeilen-/DTO-Shape wie F9.4-D
+// (timeUtilizationRowDtoSchema / timeUtilizationDtoSchema, kein Dialekt).
+// KEIN projectId, KEIN includeArchived — Archiv ist fix ausgeschlossen.
+export const workspaceTimeUtilizationQuerySchema = z.object({
+  userIds: z.array(z.string().uuid()).max(50).nullish(),
+  startDate: calendarDaySchema.optional(),
+  endDate: calendarDaySchema.optional(),
+}).refine((v) => v.startDate === undefined || v.endDate === undefined || v.startDate <= v.endDate, { message: "Start nach Ende" });
+export type WorkspaceTimeUtilizationQuery = z.infer<typeof workspaceTimeUtilizationQuerySchema>;
+
 // F9.4 Slice A CSV-Export: Filter = List-Filter wiederverwendet
 // (timeEntryListQuerySchema, kein neuer Dialekt).
 export const timeEntryExportResultSchema = z.object({
@@ -210,7 +251,8 @@ export const timeEntryUpsertFieldsSchema = z.object({
 
 export const createTimeEntryCommandSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
-  projectId: z.string().uuid(),
+  // F9-14: NULL = projektlos anlegen.
+  projectId: z.string().uuid().nullable(),
   fields: timeEntryUpsertFieldsSchema,
   // F11-03b: optionaler Idempotenz-Schlüssel für Offline-Replay
   // (je Entwurf genau einmal vergeben; fehlt = klassischer Pfad).
@@ -234,7 +276,8 @@ const startLngSchema = z.number().finite().min(-180).max(180).nullable();
 // F9.2 Stoppuhr-Commands
 export const startTimeEntryCommandSchema = z.object({
   schemaVersion: z.literal(TIME_TRACKING_SCHEMA_VERSION),
-  projectId: z.string().uuid(),
+  // F9-14: NULL = Timer ohne Projekt starten.
+  projectId: z.string().uuid().nullable(),
   startLat: startLatSchema.optional(),
   startLng: startLngSchema.optional(),
   typeId: z.string().uuid().nullable(),

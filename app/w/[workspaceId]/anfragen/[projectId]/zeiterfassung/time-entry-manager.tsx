@@ -44,7 +44,9 @@ import { IdleHint } from "./idle-hint";
 
 const initialState: TimeEntryActionState = { status: "idle" };
 
-const inputClass =
+// F9-14: Export für den projektlosen Manager (gleiche Labels/Feedback,
+// keine Duplikate) — reiner Export, kein Verhaltens-Change.
+export const inputClass =
   "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
 
 function message(state: TimeEntryActionState): { text: string; isError: boolean } | null {
@@ -59,7 +61,7 @@ function message(state: TimeEntryActionState): { text: string; isError: boolean 
   }
 }
 
-function Feedback({ state }: { state: TimeEntryActionState }) {
+export function Feedback({ state }: { state: TimeEntryActionState }) {
   const feedbackRef = useRef<HTMLParagraphElement | null>(null);
   const feedback = message(state);
   useEffect(() => {
@@ -91,7 +93,7 @@ export function formatTimeEntryRange(startAt: string, endAt: string | null): str
   return `${date} · ${from}–${BERLIN_TIME.format(end)} Uhr${formatOffsetTransition(start, end)}`;
 }
 
-function formatDuration(minutes: number | null): string {
+export function formatDuration(minutes: number | null): string {
   if (minutes === null) return "läuft";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -733,7 +735,7 @@ export function TimeEntryManager({
             {list.entries.map((entry) => (
               <li key={entry.id} className="flex flex-wrap items-center gap-3 py-3">
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-slate-900">
+                  <span className="block break-words text-sm font-semibold text-slate-900">
                     {typeName(entry.typeId) ?? "Ohne Ereignistyp"}
                   </span>
                   <span className="block text-xs text-slate-500">
@@ -741,7 +743,7 @@ export function TimeEntryManager({
                     {entry.running ? "" : ` · ${formatDuration(entry.workingTimeMinutes)}${entry.breakDurationMinutes > 0 ? ` · Pause ${formatDuration(entry.breakDurationMinutes)}` : ""}`}
                   </span>
                   {entry.comment ? (
-                    <span className="block text-xs text-slate-500">{entry.comment}</span>
+                    <span className="block break-words text-xs text-slate-500">{entry.comment}</span>
                   ) : null}
                   {entry.startLat !== null && entry.startLng !== null ? (
                     <span className="block text-xs text-slate-500">
@@ -848,7 +850,8 @@ export function TimeEntryManager({
             Keine Einträge im Filter.
           </p>
         ) : (
-          <table className="mt-3 w-full text-left text-sm">
+          <div className="overflow-x-auto">
+          <table className="mt-3 w-full min-w-[560px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th scope="col" className="py-2 pr-3 font-semibold">Mitglied</th>
@@ -868,6 +871,7 @@ export function TimeEntryManager({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 

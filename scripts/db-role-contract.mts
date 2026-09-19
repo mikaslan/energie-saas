@@ -4775,6 +4775,15 @@ export async function verifyRoleContract(
     TIME_TRACKING_RELATIONS,
     "Rollenvertrag: F9-01-Zeiterfassung",
   );
+  // F9-12 (0149): Default-Kategorie-Seed ist Funktion-plus-Trigger ohne
+  // eigene Relationen; Anwesenheit direkt ueber die Seed-Signatur gepinnt
+  // (Muster 0079), damit historische Prefixe ohne 0149 gruen bleiben.
+  const f912SeedPresence = await client.query<{ present: boolean }>(`
+    select pg_catalog.to_regprocedure(
+      'public.seed_default_time_event_types(uuid)'
+    ) is not null as present
+  `);
+  const hasF912EventTypeDefaults = f912SeedPresence.rows[0]?.present === true;
 
   const hasChecklists = await hasAtomicPublicRelationSet(
     client,
@@ -5657,6 +5666,11 @@ export async function verifyRoleContract(
       "mark_catalog_component_projects_stale:app_owner",
       "mark_project_catalog_resolution_stale:app_owner",
       "provision_default_request_board:app_owner",
+      // F9-12 (0149): Default-Kategorie-Seed (0022-Muster).
+      ...(hasF912EventTypeDefaults ? [
+        "provision_default_time_event_types:app_owner",
+        "seed_default_time_event_types:app_owner",
+      ] : []),
       "reconcile_user_identity:identity_reconciler",
       "replay_erasure_tombstone:app_owner",
       ...(hasSignatures ? [
@@ -6441,6 +6455,11 @@ export async function verifyRoleContract(
         `search_path=pg_catalog:${hasGewerbeBoardProvisioning
           ? "082280a4f4e35fb42979e6ffba65c5e0a1438b3ebc7eeb55079c271234352a42"
           : "c226d08f9a70eb36bd1eb7ef25e1afcc4fadae383cebef03bcc08b55de663138"}`,
+      // F9-12 (0149): Default-Kategorie-Seed (0022-Muster).
+      ...(hasF912EventTypeDefaults ? [
+        "provision_default_time_event_types():trigger:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:01e1a48d24b5f08a9f31f977dd5a8bd9525e29d9bc75bd687ad862c0b82bf360",
+        "seed_default_time_event_types(uuid):void:app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:8bd535069c3ccd2147e4b4dc6a7a4c07923be5e0a2aa8d53c20a08b2a18babc7",
+      ] : []),
       "reconcile_user_identity(text, text):uuid:identity_reconciler:plpgsql:f:v:true:false:false:u:" +
         "search_path=public, pg_temp:ae576295ddea09162013c29d5828512764cecbe3c39bbcaa0cdd5d45307f2ac3",
       "replay_erasure_tombstone(uuid):uuid:app_owner:plpgsql:f:v:true:false:false:u:" +
@@ -7429,6 +7448,10 @@ export async function verifyRoleContract(
       "site_energy_profile:site_energy_profile_no_truncate:34:O:public:forbid_mutation::-:0",
       "user_identity:user_identity_link_auth_only:19:O:public:user_identity_link_auth_only::-:0",
       "workspace:workspace_default_request_board:5:O:public:provision_default_request_board::-:0",
+      // F9-12 (0149): Default-Kategorie-Seed (0022-Muster).
+      ...(hasF912EventTypeDefaults ? [
+        "workspace:workspace_default_time_event_types:5:O:public:provision_default_time_event_types::-:0",
+      ] : []),
       ...(hasWorkspaceInvoicing ? [
         "workspace_document_number_format:workspace_document_number_format_no_truncate:34:O:public:forbid_mutation::-:0",
         "workspace_invoicing_settings:workspace_invoicing_settings_no_truncate:34:O:public:forbid_mutation::-:0",

@@ -140,7 +140,22 @@ function mapError(error: unknown): TimeEntryActionState {
   throw error;
 }
 
-function revalidate(workspace: string, projectId: string): void {
+// F9-14: optionale Projekt-Bindung — fehlend = projektlos (undefined),
+// wohlgeformt = Projekt (string), defekt = invalid (null). Nie raten:
+// fehlend und defekt sind unterscheidbar (Muster parseOptionalClientKey).
+function parseOptionalProjectId(formData: FormData): string | undefined | null {
+  const value = formData.get("projectId");
+  if (value === null) return undefined;
+  if (typeof value !== "string") return null;
+  const parsed = uuidSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function revalidate(workspace: string, projectId: string | undefined): void {
+  if (projectId === undefined) {
+    revalidatePath(`/w/${workspace}/zeiterfassung-ohne-projekt`);
+    return;
+  }
   revalidatePath(`/w/${workspace}/anfragen/${projectId}/zeiterfassung`);
 }
 
@@ -149,14 +164,14 @@ export async function createTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const fields = parseFields(formData);
   const clientKey = parseOptionalClientKey(formData);
-  if (!workspace || !projectId || !fields || clientKey === null) return { status: "invalid" };
+  if (!workspace || projectId === null || !fields || clientKey === null) return { status: "invalid" };
 
   const command: CreateTimeEntryCommand = {
     schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
-    projectId,
+    projectId: projectId ?? null,
     fields,
     ...(clientKey === undefined ? {} : { clientKey }),
   };
@@ -176,12 +191,12 @@ export async function updateTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
   // Vor Autorisierung nur Form/Syntax prüfen. In der doppelten Herbststunde
   // kann eine legitime End-Wandzeit kleiner als die Start-Wandzeit aussehen.
   const submittedFields = parseFields(formData, undefined, false);
-  if (!workspace || !projectId || !id || !submittedFields) return { status: "invalid" };
+  if (!workspace || projectId === null || !id || !submittedFields) return { status: "invalid" };
 
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", async (tx, ctx) => {
@@ -209,9 +224,9 @@ export async function archiveTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
-  if (!workspace || !projectId || !id) return { status: "invalid" };
+  if (!workspace || projectId === null || !id) return { status: "invalid" };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
       archiveTimeEntry(tx, ctx, id),
@@ -229,9 +244,9 @@ export async function approveTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
-  if (!workspace || !projectId || !id) return { status: "invalid" };
+  if (!workspace || projectId === null || !id) return { status: "invalid" };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
       approveTimeEntry(tx, ctx, id),
@@ -249,9 +264,9 @@ export async function unapproveTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
-  if (!workspace || !projectId || !id) return { status: "invalid" };
+  if (!workspace || projectId === null || !id) return { status: "invalid" };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
       unapproveTimeEntry(tx, ctx, id),
@@ -276,7 +291,7 @@ export async function startTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const typeValue = formData.get("typeId");
   const typeId = typeValue && typeof typeValue === "string" && typeValue !== ""
     ? parseId(formData, "typeId")
@@ -286,14 +301,14 @@ export async function startTimeEntryAction(
   if (commentValue && typeof commentValue === "string" && commentValue.trim() !== "" && comment === null) {
     return { status: "invalid" };
   }
-  if (!workspace || !projectId) return { status: "invalid" };
+  if (!workspace || projectId === null) return { status: "invalid" };
   const gps = parseGps(formData);
   if (gps === null) return { status: "invalid" };
   try {
     await authorizedAction(workspace, "time.write", "time_tracking", (tx, ctx) =>
       startTimeEntry(tx, ctx, {
         schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
-        projectId,
+        projectId: projectId ?? null,
         typeId,
         comment,
         startLat: gps.startLat,
@@ -315,7 +330,7 @@ export async function stopTimeEntryAction(
   formData: FormData,
 ): Promise<TimeEntryActionState> {
   const workspace = parseWorkspace(formData);
-  const projectId = parseId(formData, "projectId");
+  const projectId = parseOptionalProjectId(formData);
   const id = parseId(formData, "id");
   const workingTimeMinutes = parseMinutes(formData.get("workingTimeMinutes"));
   const breakDurationMinutes = parseMinutes(formData.get("breakDurationMinutes"));
@@ -331,7 +346,7 @@ export async function stopTimeEntryAction(
     endAt = parsed.toISOString();
   }
   if (
-    !workspace || !projectId || !id
+    !workspace || projectId === null || !id
     || workingTimeMinutes === null || workingTimeMinutes < 1
     || breakDurationMinutes === null || breakDurationMinutes > workingTimeMinutes
   ) {

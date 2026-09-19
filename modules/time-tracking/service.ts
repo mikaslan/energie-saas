@@ -12,6 +12,7 @@ import {
   createTimeEventTypeCommandSchema,
   stopTimeEntryCommandSchema,
   timeEntryDtoSchema,
+  myRunningTimeEntryDtoSchema,
   timeEntryExportResultSchema,
   timeEntryListDtoSchema,
   timeEntryListQuerySchema,
@@ -20,7 +21,9 @@ import {
   timeEntryRevisionListDtoSchema,
   timeEntryRevisionListQuerySchema,
   timeMemberOptionSchema,
+  projectlessTimeEntryListQuerySchema,
   timeUtilizationDtoSchema,
+  workspaceTimeUtilizationQuerySchema,
   timeEventTypeDtoSchema,
   updateTimeEntryCommandSchema,
   updateTimeEventTypeCommandSchema,
@@ -28,6 +31,7 @@ import {
   type CreateTimeEventTypeCommand,
   type StartTimeEntryCommand,
   type StopTimeEntryCommand,
+  type MyRunningTimeEntryDto,
   type TimeEntryDto,
   type TimeEntryExportResult,
   type TimeEntryListDto,
@@ -306,7 +310,8 @@ export function restoreTimeEventType(
 type TimeEntryRow = {
   id: string;
   user_id: string;
-  project_id: string;
+  // F9-14: NULL = projektloser Eintrag.
+  project_id: string | null;
   type_id: string | null;
   start_at: string;
   end_at: string | null;
@@ -483,6 +488,73 @@ export async function listTimeEntries(
   });
 }
 
+// F9-14: projektloser Read — gleiche Filter-Semantik wie listTimeEntries,
+// aber fix `project_id IS NULL` (strikte Trennung, kein Misch-Verhalten).
+export async function listProjectlessTimeEntries(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { includeArchived?: boolean; userIds?: string[] | null; approval?: "open" | "approved"; startDate?: string; endDate?: string; eventTypeIds?: string[] | null },
+): Promise<TimeEntryListDto> {
+  requireRead(ctx);
+  const parsed = projectlessTimeEntryListQuerySchema.safeParse(query);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const includeArchived = parsed.data.includeArchived === true;
+  const userIds = parsed.data.userIds ?? [];
+  const approvalFilter = parsed.data.approval === "approved"
+    ? sql`and approved_at is not null`
+    : parsed.data.approval === "open"
+      ? sql`and approved_at is null`
+      : sql``;
+  const userFilter = userIds.length === 0
+    ? sql``
+    : sql`and user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const eventTypeIds = parsed.data.eventTypeIds ?? [];
+  const startFilter = parsed.data.startDate === undefined
+    ? sql``
+    : sql`and (start_at at time zone 'Europe/Berlin')::date >= ${parsed.data.startDate}::date`;
+  const endFilter = parsed.data.endDate === undefined
+    ? sql``
+    : sql`and (start_at at time zone 'Europe/Berlin')::date <= ${parsed.data.endDate}::date`;
+  const typeFilter = eventTypeIds.length === 0
+    ? sql``
+    : sql`and type_id in (${sql.join(eventTypeIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const result = await tx.execute<TimeEntryRow & { total: string }>(sql`
+    select id, user_id, project_id, type_id, start_at, end_at,
+           start_lat, start_lng,
+           working_time_minutes, break_duration_minutes, comment, archived_at, approved_at, approved_by,
+           created_at, updated_at,
+           ${billedExistsClause(ctx.workspaceId)},
+           (select coalesce(sum(working_time_minutes), 0)::text
+              from time_entry total_entries
+             where total_entries.workspace_id = ${ctx.workspaceId}::uuid
+               and total_entries.project_id is null
+               and total_entries.archived_at is null
+               and total_entries.end_at is not null
+               ${userFilter}
+               ${startFilter}
+               ${endFilter}
+               ${typeFilter}) as total
+      from time_entry
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id is null
+       ${includeArchived ? sql`` : sql`and archived_at is null`}
+       ${userFilter}
+       ${approvalFilter}
+       ${startFilter}
+       ${endFilter}
+       ${typeFilter}
+     order by (end_at is null) desc, start_at desc, id asc
+  `);
+  const canWrite = can(ctx, "time.write");
+  const entries = result.rows.map((row) => toTimeEntryDto(row, canWrite));
+  const total = result.rows[0] ? Number(result.rows[0].total) : 0;
+  return timeEntryListDtoSchema.parse({
+    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+    entries,
+    totalWorkingMinutes: total,
+  });
+}
+
 async function upsertTimeEntry(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -537,8 +609,11 @@ async function upsertTimeEntry(
 
   // F11-03b Replay-Guard: bekannter clientKey → Bestand zurückgeben,
   // ohne Events/Audits zu duplizieren (Offline-Replay ist sicher).
+  // F9-15 R1c: Key-gewinnt-Semantik — client_key ist per
+  // time_entry_ws_client_key_uq workspace-weit eindeutig, daher bewusst
+  // KEIN Projektfilter (ein projektlos erfasster Offline-Eintrag bleibt
+  // auch nach Projekt-Zuordnung per Manage-UI unter seinem Key replaybar).
   async function findTimeEntryByClientKey(
-    projectId: string,
     clientKey: string,
   ): Promise<TimeEntryRow | null> {
     const found = await tx.execute<TimeEntryRow>(sql`
@@ -549,7 +624,6 @@ async function upsertTimeEntry(
              ${billedExistsClause(ctx.workspaceId)}
         from time_entry
        where workspace_id = ${ctx.workspaceId}::uuid
-         and project_id = ${projectId}::uuid
          and client_key = ${clientKey}::uuid
          and archived_at is null
        limit 1
@@ -562,7 +636,7 @@ async function upsertTimeEntry(
     if (mode === "create") {
       const create = command as CreateTimeEntryCommand;
       if (create.clientKey !== undefined) {
-        const known = await findTimeEntryByClientKey(create.projectId, create.clientKey);
+        const known = await findTimeEntryByClientKey(create.clientKey);
         if (known) return toTimeEntryDto(known, true);
       }
       try {
@@ -596,7 +670,7 @@ async function upsertTimeEntry(
         // (Trifft die 23505 den Laufzeit-Unique statt client_key, findet
         // die Nachsuche nichts und der Fehler fällt unten durch.)
         if (create.clientKey !== undefined && postgresErrorCode(error) === "23505") {
-          const raced = await findTimeEntryByClientKey(create.projectId, create.clientKey);
+          const raced = await findTimeEntryByClientKey(create.clientKey);
           if (raced) return toTimeEntryDto(raced, true);
         }
         throw error;
@@ -679,7 +753,7 @@ async function upsertTimeEntry(
   if (!row) {
     throw new TimeTrackingNotFoundError(
       "time_entry",
-      mode === "create" ? (command as CreateTimeEntryCommand).projectId : (command as UpdateTimeEntryCommand).id,
+      mode === "create" ? ((command as CreateTimeEntryCommand).projectId ?? "null") : (command as UpdateTimeEntryCommand).id,
     );
   }
 
@@ -1025,13 +1099,16 @@ export async function startTimeEntry(
   if (!parsed.success) throw new TimeTrackingValidationError();
   const command = parsed.data;
 
-  const projectExists = await tx.execute<{ id: string }>(sql`
-    select id from project
-     where workspace_id = ${ctx.workspaceId}::uuid
-       and id = ${command.projectId}::uuid
-     limit 1
-  `);
-  if (!projectExists.rows[0]) throw new TimeTrackingNotFoundError("project", command.projectId);
+  // F9-14: Existenz-Guard nur bei gesetztem Projekt (NULL = projektlos).
+  if (command.projectId !== null) {
+    const projectExists = await tx.execute<{ id: string }>(sql`
+      select id from project
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${command.projectId}::uuid
+       limit 1
+    `);
+    if (!projectExists.rows[0]) throw new TimeTrackingNotFoundError("project", command.projectId);
+  }
 
   let row: TimeEntryRow;
   try {
@@ -1193,6 +1270,55 @@ export async function discardTimeEntry(
   await writeAuditFor(tx, ctx, "time.entry.discard", { id });
 }
 
+// F9-13 Floating-Timer: eigener laufender Eintrag des Actors (genau einer,
+// partieller Unique) mit Anzeige-Namen. Reiner Lese-Pfad (requireRead),
+// Tenant-RLS aus 0050, keine Migration.
+export async function getMyRunningTimeEntry(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+): Promise<MyRunningTimeEntryDto | null> {
+  requireRead(ctx);
+  const result = await tx.execute<{
+    id: string;
+    project_id: string | null;
+    project_name: string | null;
+    type_id: string | null;
+    type_name: string | null;
+    start_at: string;
+    comment: string | null;
+  }>(sql`
+    select e.id, e.project_id, p.name as project_name,
+           e.type_id, t.name as type_name, e.start_at, e.comment
+      from time_entry e
+      -- F9-14: LEFT JOIN — projektlose Timer haben keine Projektzeile.
+      left join project p
+        on p.workspace_id = e.workspace_id
+       and p.id = e.project_id
+      left join time_event_type t
+        on t.workspace_id = e.workspace_id
+       and t.id = e.type_id
+     where e.workspace_id = ${ctx.workspaceId}::uuid
+       and e.user_id = ${ctx.actor}::uuid
+       and e.end_at is null
+       and e.archived_at is null
+     order by e.start_at desc
+     limit 1
+  `);
+  const row = result.rows[0];
+  if (!row) return null;
+  return myRunningTimeEntryDtoSchema.parse({
+    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+    id: row.id,
+    projectId: row.project_id,
+    projectName: row.project_name,
+    typeId: row.type_id,
+    typeName: row.type_name,
+    startAt: row.start_at,
+    comment: row.comment,
+    running: true,
+  });
+}
+
 // F9.4 Slice D Team-Auslastung: Aggregation je Mitglied, gleiche
 // Filter-Semantik wie listTimeEntries (WYSIWYG), reiner Lese-Pfad
 // (requireRead), keine Migration. Summen ignorieren laufende Einträge
@@ -1227,6 +1353,70 @@ export async function getTimeUtilization(
        and e.project_id = ${parsed.data.projectId}::uuid
        ${includeArchived ? sql`` : sql`and e.archived_at is null`}
        ${userFilter}
+     group by e.user_id
+     order by coalesce(sum(e.working_time_minutes), 0) desc, e.user_id asc
+  `);
+  return timeUtilizationDtoSchema.parse({
+    schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+    rows: result.rows.map((row) => ({
+      schemaVersion: TIME_TRACKING_SCHEMA_VERSION,
+      userId: row.user_id,
+      label: labelByUserId.get(row.user_id) ?? "Unbekannt",
+      entryCount: row.entry_count,
+      totalWorkingMinutes: row.total_minutes,
+      running: row.running,
+    })),
+  });
+}
+
+// F9-11 Workspace-Team-Auslastung: gleiche Aggregation wie
+// getTimeUtilization (je user_id: entryCount, Summe gestoppter Minuten,
+// running-Flag), aber workspace-weit ohne projectId. Reiner Lese-Pfad
+// (requireRead), Archiv fix ausgeschlossen, Zeitraum nach F9-09-Muster
+// (Berlin-Tage auf Beginn), keine Migration.
+export async function getWorkspaceTimeUtilization(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { userIds?: readonly string[] | null; startDate?: string; endDate?: string },
+): Promise<TimeUtilizationDto> {
+  requireRead(ctx);
+  const parsed = workspaceTimeUtilizationQuerySchema.safeParse({
+    ...query,
+    userIds: query.userIds === undefined || query.userIds === null ? query.userIds : [...query.userIds],
+  });
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const members = await listTimeMemberOptions(tx, ctx);
+  const labelByUserId = new Map(members.map((member) => [member.userId, member.label]));
+  // F9.3-Semantik wie listTimeEntries/getTimeUtilization/Export: reine
+  // IN-Liste, KEIN JS-Schnitt mit den (auf 200 limitierten) Member-Options.
+  // Die Schnittmenge mit bekannten Workspace-Usern fällt aus der
+  // Workspace-Bindung der Zeilen: Fremd-UUIDs matchen keine Zeile.
+  const userIds = parsed.data.userIds ?? [];
+  const userFilter = userIds.length === 0
+    ? sql``
+    : sql`and e.user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const startFilter = parsed.data.startDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date >= ${parsed.data.startDate}::date`;
+  const endFilter = parsed.data.endDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date <= ${parsed.data.endDate}::date`;
+  const result = await tx.execute<{
+    user_id: string;
+    entry_count: number;
+    total_minutes: number;
+    running: boolean;
+  }>(sql`
+    select e.user_id,
+           count(*)::int as entry_count,
+           coalesce(sum(e.working_time_minutes), 0)::int as total_minutes,
+           bool_or(e.end_at is null) as running
+      from time_entry e
+     where e.workspace_id = ${ctx.workspaceId}::uuid
+       and e.archived_at is null
+       ${userFilter}
+       ${startFilter}
+       ${endFilter}
      group by e.user_id
      order by coalesce(sum(e.working_time_minutes), 0) desc, e.user_id asc
   `);
@@ -1338,5 +1528,74 @@ export async function exportTimeEntries(
     content: `\uFEFF${lines.join("\r\n")}\r\n`,
     contentType: "text/csv; charset=utf-8",
     fileName: `zeiterfassung-${parsed.data.projectId.slice(0, 8)}-${stamp}.csv`,
+  });
+}
+
+// F9-15 (R1b) projektloser CSV-Export: gleiche Spalten/BOM/Trennzeichen/
+// Injection-Guard und gleiche Filter-Semantik wie exportTimeEntries
+// (WYSIWYG zu listProjectlessTimeEntries), aber fix `project_id IS NULL`
+// (strikte Trennung, kein Misch-Verhalten). Kein Mapper-Extract: die
+// Bestandfunktion bleibt Zeile für Zeile unangetastet.
+export async function exportProjectlessTimeEntries(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { includeArchived?: boolean; userIds?: string[] | null; startDate?: string; endDate?: string; eventTypeIds?: string[] | null },
+): Promise<TimeEntryExportResult> {
+  requireRead(ctx);
+  const parsed = projectlessTimeEntryListQuerySchema.safeParse(query);
+  if (!parsed.success) throw new TimeTrackingValidationError();
+  const includeArchived = parsed.data.includeArchived === true;
+  const userIds = parsed.data.userIds ?? [];
+  const userFilter = userIds.length === 0
+    ? sql``
+    : sql`and e.user_id in (${sql.join(userIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const eventTypeIds = parsed.data.eventTypeIds ?? [];
+  const startFilter = parsed.data.startDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date >= ${parsed.data.startDate}::date`;
+  const endFilter = parsed.data.endDate === undefined
+    ? sql``
+    : sql`and (e.start_at at time zone 'Europe/Berlin')::date <= ${parsed.data.endDate}::date`;
+  const typeFilter = eventTypeIds.length === 0
+    ? sql``
+    : sql`and e.type_id in (${sql.join(eventTypeIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+  const result = await tx.execute<TimeExportRow>(sql`
+    select e.start_at, e.end_at, e.working_time_minutes, e.break_duration_minutes,
+           t.name as type_name, e.comment, e.user_id
+      from time_entry e
+      left join time_event_type t
+        on t.workspace_id = e.workspace_id
+       and t.id = e.type_id
+     where e.workspace_id = ${ctx.workspaceId}::uuid
+       and e.project_id is null
+       ${includeArchived ? sql`` : sql`and e.archived_at is null`}
+       ${userFilter}
+       ${startFilter}
+       ${endFilter}
+       ${typeFilter}
+     order by (e.end_at is null) desc, e.start_at desc, e.id asc
+  `);
+  const lines = [
+    "datum;beginn;ende;minuten;pause_minuten;ereignistyp;kommentar;nutzer_id",
+  ];
+  for (const row of result.rows) {
+    const start = new Date(row.start_at);
+    const end = row.end_at === null ? null : new Date(row.end_at);
+    lines.push([
+      EXPORT_DATE_FORMAT.format(start),
+      EXPORT_TIME_FORMAT.format(start),
+      end === null ? "" : EXPORT_TIME_FORMAT.format(end),
+      row.working_time_minutes === null ? "" : String(row.working_time_minutes),
+      row.break_duration_minutes === null ? "" : String(row.break_duration_minutes),
+      row.type_name ?? "",
+      row.comment ?? "",
+      row.user_id,
+    ].map(exportCell).join(";"));
+  }
+  const stamp = EXPORT_DATE_FORMAT.format(new Date()).replaceAll("-", "");
+  return timeEntryExportResultSchema.parse({
+    content: `\uFEFF${lines.join("\r\n")}\r\n`,
+    contentType: "text/csv; charset=utf-8",
+    fileName: `zeiterfassung-ohne-projekt-${stamp}.csv`,
   });
 }
