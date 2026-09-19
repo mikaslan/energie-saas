@@ -3,3 +3,4 @@ export {
   processBrokerIntake,
   processRechnerIntake,
 } from "./service";
+export { processRestIntake } from "./rest-intake";

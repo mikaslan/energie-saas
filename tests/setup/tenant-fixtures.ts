@@ -3005,6 +3005,22 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F1-18 (0231): REST-Receipt (Projekt-Graph inline).
+  inbound_rest_receipt: async (tx, wsId) => {
+    const { contactId, siteId, projectId } = await fixtureProjectGraph(tx, wsId);
+    await tx.execute(sql`
+      insert into inbound_rest_receipt (
+        workspace_id, client_record_id, contract_version,
+        body_sha256, auth_key_id, signed_at, received_at,
+        contact_resolution, contact_id, site_id, project_id, note
+      ) values (
+        ${wsId}::uuid, ${`FX-${randomUUID()}`},
+        'rest-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
+        now(), now(), 'created', ${contactId}::uuid, ${siteId}::uuid,
+        ${projectId}::uuid, null
+      )
+    `);
+  },
   calculator_snapshot: async (tx, wsId) => {
     await fixtureSnapshot(tx, wsId);
   },
@@ -3382,6 +3398,21 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
       ) values (
         ${randomUUID()}::uuid, 'wattfox', ${randomUUID()},
         'broker-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
+        now(), 'created', ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid
+      )
+    `);
+  },
+  // F1-18 (0231): Cross-Write scheitert an der RLS (WITH CHECK feuert vor FK).
+  inbound_rest_receipt: async (tx) => {
+    await tx.execute(sql`
+      insert into inbound_rest_receipt (
+        workspace_id, client_record_id, contract_version,
+        body_sha256, auth_key_id, signed_at, contact_resolution,
+        contact_id, site_id, project_id
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()},
+        'rest-intake.v1', decode(repeat('00', 32), 'hex'), 'fixture-key',
         now(), 'created', ${randomUUID()}::uuid, ${randomUUID()}::uuid,
         ${randomUUID()}::uuid
       )

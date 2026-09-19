@@ -213,7 +213,7 @@ export function ManualLeadBulkForm({
         />
       </label>
       <label className={labelClass}>
-        XLSX-Datei (Alternative zum CSV-Text)
+        XLSX-Datei (Alternative zur Texteingabe)
         <input
           ref={xlsxRef}
           type="file"

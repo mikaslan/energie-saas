@@ -47,7 +47,7 @@ import {
   type BrokerIntakeReceiptV1,
   type BrokerIntakeV1,
 } from "@/lib/integrations/broker/types";
-import { resolveLeadSourceForProducer } from "@/modules/lead-sources";
+import { applyIntakeAutoRouting, resolveLeadSourceForProducer } from "@/modules/lead-sources";
 
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_RECEIPTS = 120;
@@ -634,6 +634,17 @@ export async function processRechnerIntake(
     meta.receivedAt,
   );
 
+  // F1.8: aktive Lead-Quelle mit Name = Producer-Anwendung (z. B.
+  // "wmee-rechner-v5") zuordnen; ohne Treffer bleibt die Quelle leer.
+  // Kimi-P3-1 (bewusst akzeptiert): Resolve und Insert sind nicht
+  // zeilen-gesperrt — ein exakt dazwischen committetes Archivieren
+  // attribuiert historisch an die gerade archivierte Quelle. Impact
+  // minimal (Quelle bleibt referenzierbar, kein Sicherheitspfad).
+  const intakeLeadSourceId = await resolveLeadSourceForProducer(
+    tx,
+    ctx,
+    payload.producer.application,
+  );
   await tx.insert(project).values({
     id: projectId,
     workspaceId: ctx.workspaceId,
@@ -645,17 +656,7 @@ export async function processRechnerIntake(
     phase: "request",
     outcome: "open",
     sourceKey: RECHNER_SOURCE_KEY,
-    // F1.8: aktive Lead-Quelle mit Name = Producer-Anwendung (z. B.
-    // "wmee-rechner-v5") zuordnen; ohne Treffer bleibt die Quelle leer.
-    // Kimi-P3-1 (bewusst akzeptiert): Resolve und Insert sind nicht
-    // zeilen-gesperrt — ein exakt dazwischen committetes Archivieren
-    // attribuiert historisch an die gerade archivierte Quelle. Impact
-    // minimal (Quelle bleibt referenzierbar, kein Sicherheitspfad).
-    leadSourceId: await resolveLeadSourceForProducer(
-      tx,
-      ctx,
-      payload.producer.application,
-    ),
+    leadSourceId: intakeLeadSourceId,
     dedupeReviewRequired: contactDecision.reviewRequired,
     catalogResolutionStatus: "pending",
     createdAt: meta.receivedAt,
@@ -693,6 +694,10 @@ export async function processRechnerIntake(
       createdAt: meta.receivedAt,
     });
   }
+
+  // F1-23: Intake-Auto-Routing (Opt-in per Regel, default aus). Drift →
+  // unzugewiesen + lead_routing.failed; wirft nie (kein 500 an Sender).
+  await applyIntakeAutoRouting(tx, ctx, { projectId, leadSourceId: intakeLeadSourceId });
 
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
@@ -1084,6 +1089,9 @@ export async function processBrokerIntake(
     meta.receivedAt,
   );
 
+  // F1.8: aktive Lead-Quelle mit Broker-Namen zuordnen; ohne Treffer
+  // bleibt die Quelle ehrlich leer (keine implizite Anlage).
+  const brokerLeadSourceId = await resolveLeadSourceForProducer(tx, ctx, payload.brokerKey);
   await tx.insert(project).values({
     id: projectId,
     workspaceId: ctx.workspaceId,
@@ -1095,14 +1103,16 @@ export async function processBrokerIntake(
     phase: "request",
     outcome: "open",
     sourceKey: BROKER_SOURCE_KEY,
-    // F1.8: aktive Lead-Quelle mit Broker-Namen zuordnen; ohne Treffer
-    // bleibt die Quelle ehrlich leer (keine implizite Anlage).
-    leadSourceId: await resolveLeadSourceForProducer(tx, ctx, payload.brokerKey),
+    leadSourceId: brokerLeadSourceId,
     dedupeReviewRequired: contactDecision.reviewRequired,
     catalogResolutionStatus: "pending",
     createdAt: meta.receivedAt,
     updatedAt: meta.receivedAt,
   });
+
+  // F1-23: Intake-Auto-Routing (Opt-in per Regel, default aus). Drift →
+  // unzugewiesen + lead_routing.failed; wirft nie (kein 500 an Sender).
+  await applyIntakeAutoRouting(tx, ctx, { projectId, leadSourceId: brokerLeadSourceId });
 
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,

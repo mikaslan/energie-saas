@@ -165,6 +165,8 @@ type E2EState = Pick<
   f114ProjectId: string;
   f115BrokerKeyId: string;
   f115BrokerSecretBase64: string;
+  f118RestKeyId: string;
+  f118RestSecretBase64: string;
   f22ProjectId: string;
   f22ControlProjectId: string;
   f25ProjectId: string;
@@ -503,6 +505,7 @@ function cleanEnvironment(): NodeJS.ProcessEnv {
     "BETTER_AUTH_URL",
     "RECHNER_INTAKE_KEYS_JSON",
     "BROKER_INTAKE_KEYS_JSON",
+    "REST_INTAKE_KEYS_JSON",
     "RESEND_API_KEY",
     "GEOAPIFY_API_KEY",
     "GEOAPIFY_BASE_URL",
@@ -616,6 +619,7 @@ function nextEnvironment(
   authSecret: string,
   credentials: IntakeCredential[],
   brokerCredentials: IntakeCredential[],
+  restCredentials: IntakeCredential[],
   geocodingStub: GeoapifyStub,
   readyFile: string,
   readyToken: string,
@@ -646,6 +650,13 @@ function nextEnvironment(
       keyId: credential.keyId,
       workspaceId: credential.workspaceId,
       scope: "broker-intake.write",
+      secretBase64: credential.secret.toString("base64"),
+    }))),
+    // F1-18: REST-Credentials (gleiche Mint-Disziplin wie Broker).
+    REST_INTAKE_KEYS_JSON: JSON.stringify(restCredentials.map((credential) => ({
+      keyId: credential.keyId,
+      workspaceId: credential.workspaceId,
+      scope: "rest-intake.write",
       secretBase64: credential.secret.toString("base64"),
     }))),
     RESEND_API_KEY: "",
@@ -1519,6 +1530,12 @@ async function main(): Promise<number> {
     workspaceId: seedData.w3WorkspaceId,
     secret: randomBytes(32),
   };
+  // F1-18: eigener REST-Key für den W3-Workspace (Spec signiert selbst).
+  const restW3Credential: IntakeCredential = {
+    keyId: `e2e-rest-w3-${randomUUID()}`,
+    workspaceId: seedData.w3WorkspaceId,
+    secret: randomBytes(32),
+  };
   const visualCredential: IntakeCredential = {
     keyId: `e2e-visual-${randomUUID()}`,
     workspaceId: seedData.visualWorkspaceId,
@@ -1548,6 +1565,7 @@ async function main(): Promise<number> {
         authSecret,
         [mainCredential, foreignCredential, m111bCredential, w3Credential, visualCredential],
         [brokerW3Credential],
+        [restW3Credential],
         providerStub,
         readyFile,
         readyToken,
@@ -1808,6 +1826,8 @@ async function main(): Promise<number> {
     f114ProjectId: w3F114Lead.projectId,
     f115BrokerKeyId: brokerW3Credential.keyId,
     f115BrokerSecretBase64: brokerW3Credential.secret.toString("base64"),
+    f118RestKeyId: restW3Credential.keyId,
+    f118RestSecretBase64: restW3Credential.secret.toString("base64"),
     f22ProjectId: w3F22Seed.projectId,
     f22ControlProjectId: w3F22ControlSeed.projectId,
     f25ProjectId: w3F25Seed.projectId,

@@ -722,6 +722,12 @@ const INBOUND_BROKER_RECEIPT_RELATIONS = [
   "inbound_broker_receipt",
 ] as const;
 
+// F1-18 (0231): REST-Intake-Receipt — ACL-Form wie Broker-Receipt
+// (SELECT/INSERT + UPDATE(id) für FOR-SHARE-Locks, kein DELETE/UPDATE).
+const INBOUND_REST_RECEIPT_RELATIONS = [
+  "inbound_rest_receipt",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -3312,6 +3318,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F1-18 (0231): REST-Intake-Receipt — ACL-Form wie Broker-Receipt.
+  const hasInboundRestReceiptForAcl = await hasAtomicPublicRelationSet(
+    client,
+    INBOUND_REST_RECEIPT_RELATIONS,
+    "Rollen-ACL-Manifest: F1-18-Rest-Intake-Receipt",
+  );
+  if (hasInboundRestReceiptForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.inbound_rest_receipt
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert on public.inbound_rest_receipt to app_runtime;
+      grant update (id) on public.inbound_rest_receipt to app_runtime
+    `);
+  }
+
   // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
   // daher zusaetzlich DELETE (Muster commercial_document_link).
   const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
@@ -4940,6 +4963,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F1-15-Broker-Intake-Receipt",
   );
 
+  const hasInboundRestReceipt = await hasAtomicPublicRelationSet(
+    client,
+    INBOUND_REST_RECEIPT_RELATIONS,
+    "Rollenvertrag: F1-18-Rest-Intake-Receipt",
+  );
+
   const hasLeadRouting = await hasAtomicPublicRelationSet(
     client,
     LEAD_ROUTING_RELATIONS,
@@ -5238,6 +5267,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasInboundRestReceipt ? INBOUND_REST_RECEIPT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -6620,6 +6652,9 @@ export async function verifyRoleContract(
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasInboundRestReceipt ? INBOUND_REST_RECEIPT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6997,6 +7032,12 @@ export async function verifyRoleContract(
         ...(hasInboundBrokerReceipt ? [
           "inbound_broker_receipt:tenant_isolation:" +
             "66e9186cfa9c8b5918f762aed5f9a01c1e553b9a5fb1c99f2ce13c8e42e27aa7",
+        ] : []),
+        // F1-18 (0231): Hash per Probe geerntet (Hash enthaelt den
+        // Tabellennamen — Broker-Pin war nur Kandidat).
+        ...(hasInboundRestReceipt ? [
+          "inbound_rest_receipt:tenant_isolation:" +
+            "3ff690b18cc3110fbf71b1bacab7e58ed71ead21f323d11b34c755f38b8d427e",
         ] : []),
         ...(hasCalendars ? [
           "calendar:tenant_isolation:57296ca13f33ffe335cd1cde9f96a0024470521481da054313e6843d9ca6ce25",
@@ -7748,6 +7789,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
       ]) : []),
+      // F1-18 (0231): Receipt-Form wie Broker-Receipt.
+      ...(hasInboundRestReceipt ? INBOUND_REST_RECEIPT_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+      ]) : []),
       ...(hasPortal ? [
         "app_runtime:portal_invite:INSERT:app_owner:false",
         "app_runtime:portal_invite:SELECT:app_owner:false",
@@ -7911,6 +7957,10 @@ export async function verifyRoleContract(
       // F1-15 (0230): Receipt-Form wie inbound_receipt.
       ...(hasInboundBrokerReceipt ? [
         "app_runtime:inbound_broker_receipt.id:UPDATE:app_owner:false",
+      ] : []),
+      // F1-18 (0231): Receipt-Form wie Broker-Receipt.
+      ...(hasInboundRestReceipt ? [
+        "app_runtime:inbound_rest_receipt.id:UPDATE:app_owner:false",
       ] : []),
       "app_runtime:project_calculation_job.id:UPDATE:app_owner:false",
       "app_runtime:project_calculation_revision.id:UPDATE:app_owner:false",

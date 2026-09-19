@@ -38,7 +38,7 @@ import {
   type ProjectEnergyContext,
 } from "@/modules/energy";
 import {
-  suggestAssigneeForProject,
+  suggestAssigneesForProject,
   type LeadRoutingSuggestion,
 } from "@/modules/lead-sources";
 import { listOffers } from "@/modules/offers";
@@ -179,7 +179,7 @@ type AssignmentLoadResult =
   | {
     kind: "loaded";
     context: ProjectAssignmentContext | null;
-    routingSuggestion: LeadRoutingSuggestion | null;
+    routingSuggestions: LeadRoutingSuggestion[];
   }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
@@ -526,17 +526,17 @@ async function loadProjectAssignmentContext(
       "project_assignment",
       async (tx, ctx) => ({
         context: await getProjectAssignmentContext(tx, ctx, projectId),
-        // F1-10: Vorschlag nur bei lead_source.read — ohne Leserecht
+        // F1-23: Suggest-Union nur bei lead_source.read — ohne Leserecht
         // bleibt das Panel unverändert (kein harter Fehler).
-        routingSuggestion: await suggestAssigneeForProject(tx, ctx, { projectId }).catch(
+        routingSuggestions: await suggestAssigneesForProject(tx, ctx, { projectId }).catch(
           (error: unknown) => {
-            if (error instanceof PermissionDeniedError) return null;
+            if (error instanceof PermissionDeniedError) return [];
             throw error;
           },
         ),
       }),
     );
-    return { kind: "loaded", context: loaded.context, routingSuggestion: loaded.routingSuggestion };
+    return { kind: "loaded", context: loaded.context, routingSuggestions: loaded.routingSuggestions };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1170,7 +1170,7 @@ export default async function ProjectTriagePage({
   if (assignmentResult.kind === "denied") return <DeniedState />;
   if (assignmentResult.context === null) notFound();
   const assignmentContext = assignmentResult.context;
-  const routingSuggestion = assignmentResult.routingSuggestion;
+  const routingSuggestions = assignmentResult.routingSuggestions;
 
   // F1-14: additive Teams-Sektion — null blendet aus (kein 404;
   // Projektsichtbarkeit entscheidet der Detail-Loader).
@@ -1617,7 +1617,7 @@ export default async function ProjectTriagePage({
               projectId={projectId}
               commandVersion={PROJECT_ASSIGNMENT_COMMAND_VERSION}
               assignment={assignmentContext}
-              routingSuggestion={routingSuggestion}
+              routingSuggestions={routingSuggestions}
             />
 
             {teamAssignmentContext === null ? null : (

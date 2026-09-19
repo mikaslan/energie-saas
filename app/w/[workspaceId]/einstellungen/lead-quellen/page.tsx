@@ -98,6 +98,7 @@ export default async function LeadSourcesPage(
         sources={result.sources}
         members={result.members}
         canWrite={result.canWrite}
+        rules={result.rules}
       />
 
       <div className="mt-6">

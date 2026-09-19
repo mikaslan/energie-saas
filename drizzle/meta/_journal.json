@@ -1093,6 +1093,20 @@
       "when": 1789808503198,
       "tag": "0236_f1_19_energy_mode_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1789844641516,
+      "tag": "0231_f1_18_rest_intake",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1789844641517,
+      "tag": "0235_f1_23_routing_deepening",
+      "breakpoints": true
     }
   ]
 }

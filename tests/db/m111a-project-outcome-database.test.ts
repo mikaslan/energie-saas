@@ -247,10 +247,12 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0232 F1-19 Energie-Modi+Pakete (CHECKs),
     // 0233 F1-20 Task-Team-Zuweisung (Tabelle + RLS + Guard),
     // 0234 F1-21 Lead-Score (Spalten + Kapseln),
-    // 0236 F1-19 Guard-Modus-Evolution (Funktion)).
+    // 0236 F1-19 Guard-Modus-Evolution (Funktion),
+    // 0231 F1-18 REST-Intake (Tabelle + RLS),
+    // 0235 F1-23 Routing-Vertiefung (Spalten + CHECKs)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 155,
-      tag: "0236_f1_19_energy_mode_switch",
+      idx: 157,
+      tag: "0235_f1_23_routing_deepening",
     });
   });
 

@@ -40,6 +40,17 @@ export function verifiedBrokerIntakeAction<T>(
   return withTenant(identity.workspaceId, (tx) => fn(tx, identity));
 }
 
+export function verifiedRestIntakeAction<T>(
+  identity: import("./integrations/rest/signature").VerifiedRestIdentity,
+  fn: (
+    tx: TenantTx,
+    identity: import("./integrations/rest/signature").VerifiedRestIdentity,
+  ) => Promise<T>,
+): Promise<T> {
+  // Wie Rechner-/Broker-Intake: kein kuenstlicher ServiceCtx fuer Integrationen.
+  return withTenant(identity.workspaceId, (tx) => fn(tx, identity));
+}
+
 async function captureUnverifiedWorkspaceAccess(input: {
   authUserId: string;
   workspaceId: string;

@@ -591,6 +591,10 @@ function boardColumn(page: Page, name: string): Locator {
 
 async function pointerDragToColumn(page: Page, card: Locator, targetColumn: Locator): Promise<void> {
   const handle = card.locator('[data-testid^="drag-"]');
+  // Board liegt nach den F1-21-Preset-Reihen ggf. unterhalb des Viewports;
+  // rohe Mauskoordinaten brauchen sichtbare Elemente (kein Auto-Scroll).
+  await handle.scrollIntoViewIfNeeded();
+  await targetColumn.scrollIntoViewIfNeeded();
   await expect(handle).toBeVisible();
   await expect(targetColumn).toBeVisible();
   const handleBox = await handle.boundingBox();

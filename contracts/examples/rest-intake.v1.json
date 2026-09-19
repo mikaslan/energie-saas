@@ -1,0 +1,25 @@
+{
+  "contractVersion": "rest-intake.v1",
+  "clientRecordId": "CL-2026-0001",
+  "sourceName": "webhook-partner",
+  "submittedAt": "2026-09-19T08:00:00.000Z",
+  "customer": {
+    "displayName": "Erika Musterfrau",
+    "email": "erika.musterfrau@example.test",
+    "phoneRaw": "030 123456"
+  },
+  "site": {
+    "addressMode": "selected",
+    "formattedAddress": "Musterstraße 1, 10115 Berlin",
+    "street": "Musterstraße",
+    "houseNumber": "1",
+    "postalCode": "10115",
+    "city": "Berlin",
+    "countryCode": "DE",
+    "latitude": 52.5322,
+    "longitude": 13.3849,
+    "geocodeSource": "rest",
+    "precision": "house"
+  },
+  "note": null
+}
