@@ -3,6 +3,20 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-19 — F4-SPEC-PAKET integriert (Flotten-Lane, Leitstand, Jev-geprueft)
+
+- `codex/muse-fleet-3b-f4spec` (`1bd8424`: ADR-0025 Rechenkern + F4-01d/02d/03b/
+  04g/05c Specs + Contracts + RED-Tests, 0 Migrationen, 0 Produktcode) per
+  Fast-Forward in `codex/m1-wave-02`.
+- Jev-Urteil: Disposition `spec_kontrakt` 0.96 — ehrliche Spec-Arbeit, keine
+  Paritaet behauptet; Leitstand-Entscheid nach Aktenlage (Verfahren JEV-GATE.md).
+- Belege: Lane-CI in progress als Zusatzsignal; Integrations-Gates
+  `npm run check` 408/409 Dateien (einziger Ausfall Backup-Automation:
+  5-s-Timeouts unter Flotten-Parallellast, Datei seit `f0e6a18` unberuehrt,
+  kein Lane-Bezug — Umwelt-Flake, kein Integrations-Veto).
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-18 — F1-14 + F2.8 integriert (Flotten-Lanes, Leitstand)
 
 - `codex/muse-fleet-1b-f1` (`2af5544`, F1-14 Team-Zuweisung, Migration 0210)
