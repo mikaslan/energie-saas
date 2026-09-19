@@ -44,7 +44,9 @@ import { IdleHint } from "./idle-hint";
 
 const initialState: TimeEntryActionState = { status: "idle" };
 
-const inputClass =
+// F9-14: Export für den projektlosen Manager (gleiche Labels/Feedback,
+// keine Duplikate) — reiner Export, kein Verhaltens-Change.
+export const inputClass =
   "mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
 
 function message(state: TimeEntryActionState): { text: string; isError: boolean } | null {
@@ -59,7 +61,7 @@ function message(state: TimeEntryActionState): { text: string; isError: boolean 
   }
 }
 
-function Feedback({ state }: { state: TimeEntryActionState }) {
+export function Feedback({ state }: { state: TimeEntryActionState }) {
   const feedbackRef = useRef<HTMLParagraphElement | null>(null);
   const feedback = message(state);
   useEffect(() => {
@@ -91,7 +93,7 @@ export function formatTimeEntryRange(startAt: string, endAt: string | null): str
   return `${date} · ${from}–${BERLIN_TIME.format(end)} Uhr${formatOffsetTransition(start, end)}`;
 }
 
-function formatDuration(minutes: number | null): string {
+export function formatDuration(minutes: number | null): string {
   if (minutes === null) return "läuft";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;

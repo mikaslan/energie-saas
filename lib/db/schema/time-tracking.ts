@@ -54,7 +54,8 @@ export const timeEntry = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     workspaceId: uuid("workspace_id").notNull(),
     userId: uuid("user_id").notNull(),
-    projectId: uuid("project_id").notNull(),
+    // F9-14: Projekt optional (Blaupause F9.1) — NULL = projektloser Eintrag.
+    projectId: uuid("project_id"),
     typeId: uuid("type_id"),
     startAt: timestamp("start_at", { withTimezone: true }).notNull(),
     // F9.2: laufende Einträge haben end_at = NULL + Minuten = NULL.
@@ -173,7 +174,8 @@ export const timeEntryRevision = pgTable(
     workspaceId: uuid("workspace_id").notNull(),
     entryId: uuid("entry_id").notNull(),
     userId: uuid("user_id").notNull(),
-    projectId: uuid("project_id").notNull(),
+    // F9-14: kopiert NULL aus time_entry (projektlose Revision).
+    projectId: uuid("project_id"),
     typeId: uuid("type_id"),
     startAt: timestamp("start_at", { withTimezone: true }).notNull(),
     endAt: timestamp("end_at", { withTimezone: true }),

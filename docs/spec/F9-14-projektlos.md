@@ -41,13 +41,13 @@ Einträge hätten keine Heimat).
 4. **Timer + manuell**: beide projektlos zulässig (gemeinsames
    Eintrags-Modell; Timer-Guards ausser Projekt-Check
    unverändert).
-5. **Folge-Flächen**: CSV-Export mit leerer Projekt-Spalte;
-   Widget auf LEFT JOIN + Link-Fallback zur neuen Route bei
-   `projectId NULL`; Abrechnungsläufe nehmen projektlose
-   Einträge wie bisher auf (nur beendet + freigegeben —
-   keine Sonderregel); F9-11-Mitglieds-Summen schliessen sie
-   ein (Mitglieds-Sicht ist projektfrei), Slice-D-Projekt-
-   Auslastung exkludiert sie.
+5. **Folge-Flächen**: Widget auf LEFT JOIN + Link-Fallback
+   zur neuen Route bei `projectId NULL`; Abrechnungsläufe
+   nehmen projektlose Einträge wie bisher auf (nur beendet +
+   freigegeben — keine Sonderregel); F9-11-Mitglieds-Summen
+   schliessen sie ein (Mitglieds-Sicht ist projektfrei),
+   Slice-D-Projekt-Auslastung exkludiert sie. KEIN
+   CSV-Export auf der projektlosen Route in F9-14 (s. §5).
 
 ## 3. Vertrag (Migration 0150)
 
@@ -86,9 +86,12 @@ Einträge hätten keine Heimat).
 - **F914-DB-04 widget-read-null-project**: laufender
   projektloser Timer → Widget-Read liefert Zeile mit
   `projectId/projectName NULL`.
-- **F914-DB-05 validation-intact**: `projectId: "keine-uuid"`
-  → ValidationError (nullable heisst nicht validierungsfrei);
-  sowie: nicht-existentes Projekt-UUID → NotFound.
+- **F914-DB-05 validation-intact** (Guard-Erhalt, gruen
+  bei RED wie GREEN): `projectId: "keine-uuid"` → ValidationError
+  (nullable heisst nicht validierungsfrei); Create mit
+  nicht-existentem UUID → ValidationError (FK-23503-Mapping,
+  Bestand); Start mit nicht-existentem UUID → NotFoundError
+  (expliziter Guard, Bestand).
 
 ### 4.2 E2E — `tests/e2e/f9-14-projectless.spec.ts` (neu)
 
@@ -102,8 +105,18 @@ Isolierter Workspace (F9-13-Muster, niemals W3):
 - RED-first: Spec gegen Code ohne Migration/Route laufen
   lassen (Route 404 / Read fehlt → Fail), dann grün.
 
-## 5. Bewusst offen / Nicht-Ziele
+## 5. Bewusst offen / Nicht-Ziele (Follow-up-Slice)
 
+- Keine Bearbeiten-/Archiv-/Freigabe-/Pausen-/Verlauf-UI auf
+  der projektlosen Route (Service ist id-basiert bereit;
+  Actions ausser create/start/stop lehnen projektlose
+  Formulare fail-closed ab).
+- Kein CSV-Export auf der projektlosen Route (CSV ist
+  projektsäulen-frei — Variante ist trivial nachrüstbar,
+  aber ungepinnt und ausserhalb des E2E-Vertrags).
+- Keine Offline-Anlage projektloser Einträge (neue Route ist
+  online-only; Outbox-Replay mit NULL ist service-seitig
+  vorbereitet).
 - Keine nachträgliche Projekt-Zuordnung („Eintrag ans Projekt
   hängen" — eigener Slice, braucht Move-Semantik + Audit).
 - Keine projektlosen Abrechnungslauf-Sichten (Läufe listen

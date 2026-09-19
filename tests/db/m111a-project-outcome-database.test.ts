@@ -241,10 +241,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0146 F16-04d Vorlagen-Checkliste (Spalte + CHECK),
     // 0147 F16-04e Vorlagen-Labels (Spalte + CHECK),
     // 0148 F16-11 Paket-Vorlagen (Tabelle + RLS),
-    // 0149 F9-12 Kategorie-Defaults (Funktionen + Trigger + Backfill)).
+    // 0149 F9-12 Kategorie-Defaults (Funktionen + Trigger + Backfill),
+    // 0150 F9-14 Projekt-optional (2x DROP NOT NULL)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 149,
-      tag: "0149_f9_12_event_type_defaults",
+      idx: 150,
+      tag: "0150_f9_14_project_optional",
     });
   });
 
