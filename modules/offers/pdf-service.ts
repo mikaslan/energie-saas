@@ -23,6 +23,8 @@ import {
   type OfferPdfDraftInputV1,
 } from "@/lib/integrations/offers/pdf-contract";
 import { renderOfferPdfDraftHtml } from "@/lib/integrations/offers/pdf-template";
+import { parseOfferPdfChapterConfig } from "@/lib/integrations/offers/pdf-chapters";
+import { parseForeignPdfDescriptors } from "@/lib/integrations/offers/foreign-pdf";
 import {
   can,
   isExternalOnly,
@@ -41,6 +43,18 @@ const requestSchema = z.strictObject({
   offerId: z.uuid(),
   variantId: z.uuid(),
   expectedVariantRevision: z.int().safe().min(1),
+});
+
+// F2.7 R1: Die zustandslose Vorschau darf Kapitel-Toggles und die
+// Fremd-PDF-Anhangliste rendern. Der versiegelte Draft-Pfad
+// (requestOfferPdfDraft) bleibt bewusst auf requestSchema (Defaults).
+const previewSchema = z.strictObject({
+  workspaceId: z.uuid(),
+  offerId: z.uuid(),
+  variantId: z.uuid(),
+  expectedVariantRevision: z.int().safe().min(1),
+  chapters: z.unknown().optional(),
+  foreignPdfs: z.unknown().optional(),
 });
 
 const offerKeySchema = z.strictObject({
@@ -813,8 +827,21 @@ export async function getOfferPreviewHtml(
   value: unknown,
 ): Promise<OfferPreviewHtmlResult> {
   requireAccess(ctx, "project.read", "offer_preview");
-  const command = parseCommand(requestSchema, value);
+  const command = parseCommand(previewSchema, value);
   requireSameWorkspace(ctx, command.workspaceId);
+  // Optionen vor jedem DB-Read validieren (kein Touch bei invalider Eingabe).
+  let chapters: unknown;
+  try {
+    chapters = command.chapters === undefined ? undefined : parseOfferPdfChapterConfig(command.chapters);
+  } catch {
+    throw new OfferPdfDraftValidationError(["/chapters"]);
+  }
+  let foreignPdfs: unknown;
+  try {
+    foreignPdfs = command.foreignPdfs === undefined ? undefined : parseForeignPdfDescriptors(command.foreignPdfs);
+  } catch {
+    throw new OfferPdfDraftValidationError(["/foreignPdfs"]);
+  }
   // Zustandslos: readSource ohne FOR UPDATE, kein Touch, kein Event, kein Audit.
   const source = await readSource(tx, command);
   const preparedAt = await databaseNow(tx);
@@ -840,6 +867,6 @@ export async function getOfferPreviewHtml(
     offerId: source.offer.id,
     variantId: source.variant.id,
     variantRevision: source.revision.revision,
-    html: renderOfferPdfDraftHtml(input),
+    html: renderOfferPdfDraftHtml(input, { chapters, foreignPdfs }),
   };
 }

@@ -73,6 +73,13 @@ export function DrawSignatureForm(props: DrawSignatureFormProps) {
     drawingRef.current = true;
     context.beginPath();
     context.moveTo(point.x, point.y);
+    // M204-TOUCH (E2E-06b): Touch-Punkt ohne Bewegung hinterlaesst einen
+    // Punkt (runde Kappe) und zaehlt als Strich — sonst bliebe Submit auf
+    // reinen Taps ewig disabled.
+    context.lineTo(point.x, point.y);
+    context.stroke();
+    setHasStrokes(true);
+    setError("");
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLCanvasElement>): void {

@@ -2,6 +2,15 @@ import {
   type OfferPdfDraftInputV1,
   validateOfferPdfDraftInput,
 } from "./pdf-contract";
+import {
+  defaultOfferPdfChapterConfig,
+  parseOfferPdfChapterConfig,
+  resolveOfferPdfChapterLayout,
+} from "./pdf-chapters";
+import {
+  parseForeignPdfDescriptors,
+  type ForeignPdfDescriptor,
+} from "./foreign-pdf";
 
 const DRAFT_STATUS = "Interner Angebotsentwurf · nicht versendet · nicht verbindlich";
 
@@ -188,15 +197,136 @@ function renderSummary(
 </section>`;
 }
 
+// F2.7 R1: optionale Kapitel-Toggles + Fremd-PDF-Anhangliste. Ohne Optionen
+// rendert der Default-Pfad byte-identisch (versiegelte v1-Pipeline).
+export type OfferPdfDraftRenderOptions = {
+  chapters?: unknown;
+  foreignPdfs?: unknown;
+};
+
+function renderForeignAppendix(descriptors: ForeignPdfDescriptor[]): string {
+  if (descriptors.length === 0) return "";
+  const items = descriptors.map((descriptor) => {
+    const pages = descriptor.pageCount === 1 ? "1 Seite" : `${descriptor.pageCount} Seiten`;
+    const size = `${Math.ceil(descriptor.sizeBytes / 1_024)}&nbsp;KB`;
+    return `      <li><strong>${escapeHtml(descriptor.filename)}</strong><span>${pages} · ${size} · SHA-256 <code>${descriptor.sha256Hex}</code></span></li>`;
+  }).join("\n");
+  return `    <section class="foreign-appendix" aria-label="Eingebettete Fremd-PDFs">
+      <h2>Eingebettete Fremd-PDFs (${descriptors.length})</h2>
+      <ol>
+${items}
+      </ol>
+      <p class="appendix-note">Fremddokumente sind unveränderte Anhänge Dritter; Angebotsumfang und Preise stehen im Basisumfang.</p>
+    </section>
+`;
+}
+
+// Nur bei Anhangliste eingebettet — der Default-Pfad bleibt byte-identisch.
+const FOREIGN_APPENDIX_CSS = `    .foreign-appendix { margin-top: 9mm; border: 0.35mm solid #6e7f77; border-radius: 2mm; padding: 4mm; break-inside: avoid; page-break-inside: avoid; }
+    .foreign-appendix h2 { margin-bottom: 2mm; }
+    .foreign-appendix ol { margin: 0 0 2mm; padding-left: 6mm; }
+    .foreign-appendix li { margin-bottom: 1.5mm; }
+    .foreign-appendix li span { display: block; color: #47564f; font-size: 8pt; }
+    .foreign-appendix code { font-size: 7.5pt; overflow-wrap: anywhere; }
+    .appendix-note { margin: 0; color: #47564f; font-size: 8pt; }
+`;
+
 /** Pure deterministic HTML renderer. All dynamic values are text-escaped. */
-export function renderOfferPdfDraftHtml(value: OfferPdfDraftInputV1): string {
+export function renderOfferPdfDraftHtml(value: OfferPdfDraftInputV1, options: OfferPdfDraftRenderOptions = {}): string {
   const validated = validateOfferPdfDraftInput(value);
   if (!validated.ok) {
     throw new TypeError(`Ungueltiger PDF-Dokumentinput: ${validated.paths.join(", ")}`);
   }
   const input = validated.value;
+  const chapters = options.chapters === undefined
+    ? defaultOfferPdfChapterConfig()
+    : parseOfferPdfChapterConfig(options.chapters);
+  const layout = resolveOfferPdfChapterLayout(chapters);
+  const enabled = new Set(
+    layout.chapters.filter((chapter) => chapter.enabled).map((chapter) => chapter.id),
+  );
+  const foreignPdfs = options.foreignPdfs === undefined
+    ? []
+    : parseForeignPdfDescriptors(options.foreignPdfs);
+  const showCover = enabled.has("cover");
+  const showBom = enabled.has("bom");
+  const showLegal = enabled.has("legal");
+  const coverVariantAttr = layout.coverVariant === 1 ? "" : ` data-cover-variant="${layout.coverVariant}"`;
   const status = escapeHtml(DRAFT_STATUS);
   const pageFooterText = `${input.offerNumber} · Revision ${input.variant.revision} · ${DRAFT_STATUS}`;
+
+  const coverHeaderHtml = showCover ? `  <header class="document-header"${coverVariantAttr}>
+    <div>
+      <div class="wordmark">WMEE</div>
+      <div class="document-kind">Angebotsentwurf zur internen Prüfung</div>
+      <p class="document-status" role="status">${status}</p>
+    </div>
+    <div class="offer-number"><span>Angebotsnummer</span><strong>${escapeHtml(input.offerNumber)}</strong></div>
+  </header>
+` : "";
+  const coverContextHtml = showCover ? `    <div class="context-grid">
+      <section class="context-card" aria-labelledby="recipient-heading">
+        <h2 id="recipient-heading">Empfänger</h2>
+        <p><strong>${escapeHtml(input.recipient.displayName)}</strong></p>
+        <p class="billing-note">Eine Rechnungsadresse ist nicht Bestandteil dieses Entwurfs.</p>
+      </section>
+      <section class="context-card" aria-labelledby="site-heading">
+        <h2 id="site-heading">Anlagenstandort</h2>
+        <p>${escapeHtml(input.installationSite.formattedAddress)}</p>
+      </section>
+    </div>
+    <section class="variant-card" aria-labelledby="variant-heading">
+      <h2 id="variant-heading">${escapeHtml(input.variant.name)}</h2>
+      <p class="variant-meta">Revision ${input.variant.revision} · vorbereitet am ${formatPreparedAt(input.preparedAt)}</p>
+    </section>
+` : "";
+  const bomHtml = showBom ? `    <section class="block" aria-labelledby="base-heading">
+      <div class="block-heading">
+        <h2 id="base-heading">Im Entwurf enthaltener Basisumfang</h2>
+        <p>Erforderliche und zusätzliche Positionen</p>
+      </div>
+      ${renderCommercialTerms(input)}
+      ${renderSectionTables(input, false)}
+      <div class="summary-grid">
+        ${renderSummary(
+          "Basissumme",
+          input.totals.basisNetCents,
+          input.totals.basisTaxCents,
+          input.totals.basisGrossCents,
+          "Basis",
+          renderTaxBreakdown(input, false),
+        )}
+      </div>
+    </section>
+    <section class="block optional-block" aria-labelledby="optional-heading">
+      <div class="block-heading">
+        <h2 id="optional-heading">Optionale Positionen</h2>
+        <p class="optional-note">Optionale Leistungen sind nicht in der Basissumme enthalten.</p>
+      </div>
+      ${renderSectionTables(input, true)}
+      <div class="summary-grid">
+        ${renderSummary(
+          "Optionale Summe",
+          input.totals.optionalNetCents,
+          input.totals.optionalTaxCents,
+          input.totals.optionalGrossCents,
+          "Optionen",
+          renderTaxBreakdown(input, true),
+        )}
+      </div>
+    </section>
+` : "";
+  const legalHtml = showLegal ? `    <aside class="disclosure" aria-labelledby="review-heading">
+      <h2 id="review-heading">Interner Prüfhinweis</h2>
+      <p>Dieser Entwurf enthält noch keine Firmen- und Rechtsangaben, keine Rechnungsadresse, keine AGB, keine Widerrufsinformation und keine Gültigkeitsfrist. Steuerbehandlung, Leistungsumfang und Rechtstexte müssen vor einer späteren Ausgabe menschlich geprüft und freigegeben werden.</p>
+    </aside>
+` : "";
+  const appendixHtml = renderForeignAppendix(foreignPdfs);
+  const appendixCss = foreignPdfs.length > 0 ? FOREIGN_APPENDIX_CSS : "";
+  const emptyChaptersHtml = !showCover && !showBom && !showLegal
+    ? `    <p class="empty-block">Alle darstellbaren Kapitel sind deaktiviert.</p>
+`
+    : "";
 
   return `<!doctype html>
 <html lang="de">
@@ -276,74 +406,12 @@ export function renderOfferPdfDraftHtml(value: OfferPdfDraftInputV1): string {
     .disclosure h2 { margin-bottom: 2mm; font-size: 11pt; }
     .disclosure p:last-child { margin-bottom: 0; }
     .document-footer { margin-top: 7mm; border-top: 0.25mm solid #6e7f77; padding-top: 2mm; color: #47564f; font-size: 8pt; break-inside: avoid; page-break-inside: avoid; }
-  </style>
+${appendixCss}  </style>
 </head>
 <body>
-  <header class="document-header">
-    <div>
-      <div class="wordmark">WMEE</div>
-      <div class="document-kind">Angebotsentwurf zur internen Prüfung</div>
-      <p class="document-status" role="status">${status}</p>
-    </div>
-    <div class="offer-number"><span>Angebotsnummer</span><strong>${escapeHtml(input.offerNumber)}</strong></div>
-  </header>
-  <main>
+${coverHeaderHtml}  <main>
     <h1>Angebotsentwurf</h1>
-    <div class="context-grid">
-      <section class="context-card" aria-labelledby="recipient-heading">
-        <h2 id="recipient-heading">Empfänger</h2>
-        <p><strong>${escapeHtml(input.recipient.displayName)}</strong></p>
-        <p class="billing-note">Eine Rechnungsadresse ist nicht Bestandteil dieses Entwurfs.</p>
-      </section>
-      <section class="context-card" aria-labelledby="site-heading">
-        <h2 id="site-heading">Anlagenstandort</h2>
-        <p>${escapeHtml(input.installationSite.formattedAddress)}</p>
-      </section>
-    </div>
-    <section class="variant-card" aria-labelledby="variant-heading">
-      <h2 id="variant-heading">${escapeHtml(input.variant.name)}</h2>
-      <p class="variant-meta">Revision ${input.variant.revision} · vorbereitet am ${formatPreparedAt(input.preparedAt)}</p>
-    </section>
-    <section class="block" aria-labelledby="base-heading">
-      <div class="block-heading">
-        <h2 id="base-heading">Im Entwurf enthaltener Basisumfang</h2>
-        <p>Erforderliche und zusätzliche Positionen</p>
-      </div>
-      ${renderCommercialTerms(input)}
-      ${renderSectionTables(input, false)}
-      <div class="summary-grid">
-        ${renderSummary(
-          "Basissumme",
-          input.totals.basisNetCents,
-          input.totals.basisTaxCents,
-          input.totals.basisGrossCents,
-          "Basis",
-          renderTaxBreakdown(input, false),
-        )}
-      </div>
-    </section>
-    <section class="block optional-block" aria-labelledby="optional-heading">
-      <div class="block-heading">
-        <h2 id="optional-heading">Optionale Positionen</h2>
-        <p class="optional-note">Optionale Leistungen sind nicht in der Basissumme enthalten.</p>
-      </div>
-      ${renderSectionTables(input, true)}
-      <div class="summary-grid">
-        ${renderSummary(
-          "Optionale Summe",
-          input.totals.optionalNetCents,
-          input.totals.optionalTaxCents,
-          input.totals.optionalGrossCents,
-          "Optionen",
-          renderTaxBreakdown(input, true),
-        )}
-      </div>
-    </section>
-    <aside class="disclosure" aria-labelledby="review-heading">
-      <h2 id="review-heading">Interner Prüfhinweis</h2>
-      <p>Dieser Entwurf enthält noch keine Firmen- und Rechtsangaben, keine Rechnungsadresse, keine AGB, keine Widerrufsinformation und keine Gültigkeitsfrist. Steuerbehandlung, Leistungsumfang und Rechtstexte müssen vor einer späteren Ausgabe menschlich geprüft und freigegeben werden.</p>
-    </aside>
-  </main>
+${coverContextHtml}${bomHtml}${legalHtml}${appendixHtml}${emptyChaptersHtml}  </main>
   <footer class="document-footer" aria-label="Dokumentstatus">${escapeHtml(pageFooterText)}</footer>
 </body>
 </html>`;
