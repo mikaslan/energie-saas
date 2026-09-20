@@ -1072,6 +1072,13 @@
       "when": 1789854593960,
       "tag": "0271_f3_03_dach_minimal",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1789900495599,
+      "tag": "0272_f3_03b_sperrzonen",
+      "breakpoints": true
     }
   ]
 }

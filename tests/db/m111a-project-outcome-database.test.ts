@@ -244,10 +244,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0210 F1-14 Projekt-Team-Zuweisung (Tabelle + RLS),
     // 0220 F2.8 Portal-Draw-Signatur (Invite-Kapsel + ACL),
     // 0270 F3-02 Dachquellen-Registry (Tabelle + RLS),
-    // 0271 F3-03 Dach-Minimal (Tabelle + RLS + Tilt-Validator)).
+    // 0271 F3-03 Dach-Minimal (Tabelle + RLS + Tilt-Validator),
+    // 0272 F3-03b Dach-Sperrzonen (Tabelle + RLS)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 152,
-      tag: "0271_f3_03_dach_minimal",
+      idx: 153,
+      tag: "0272_f3_03b_sperrzonen",
     });
   });
 

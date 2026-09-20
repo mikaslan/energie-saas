@@ -86,6 +86,7 @@ import { ServiceCaseSection } from "./service-case-section";
 import { PlanningRequestSection } from "./planning-request-section";
 import { PlanningSourcesPanel } from "./planning-source-panel";
 import { PlanningRoofsPanel } from "./planning-roof-panel";
+import { PlanningRoofRestrictionsPanel } from "./planning-roof-restriction-panel";
 import { OrderPartSection } from "./order-part-section";
 import { OfferCreateEntry } from "./offer-create-entry";
 import {
@@ -1422,6 +1423,9 @@ export default async function ProjectTriagePage({
         </div>
         <div className="mb-6">
           <PlanningRoofsPanel workspaceId={workspaceId} projectId={projectId} />
+        </div>
+        <div className="mb-6">
+          <PlanningRoofRestrictionsPanel workspaceId={workspaceId} projectId={projectId} />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] lg:items-start">

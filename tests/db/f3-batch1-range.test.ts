@@ -1,16 +1,17 @@
-// F3-BATCH-1 — Range-Test 0270-0279 (TDD-RED-WELLE).
+// F3-BATCH-1+2 — Range-Test 0270-0279 (TDD-RED-WELLE).
 //
 // Vertrag: docs/spec/F3-BATCH-1-vertrag.md, Specs F3-02 (0270,
-// planning_source) + F3-03 (0271, planning_roof_min).
+// planning_source) + F3-03 (0271, planning_roof_min) + F3-03b
+// (0272, planning_roof_restriction).
 //
 // Konventionen, die diese Suite festschreibt:
-// - Up-Pfad: genau eine Datei `drizzle/0270_*.sql` bzw.
-//   `drizzle/0271_*.sql` (drizzle-kit-Muster, statement-breakpoint).
+// - Up-Pfad: genau eine Datei je Prefix (drizzle-kit-Muster,
+//   statement-breakpoint).
 // - Down-Pfad: Sibling-Datei `drizzle/<tag>.down.sql` je Migration,
-//   in umgekehrter Reihenfolge (0271 vor 0270) ausführbar.
-// - Range 0270-0279: nur 0270 + 0271 belegt, 0272-0279 bleiben frei.
-// - Journal: idx lückenlos, jede Entry-Tag-Datei existiert, 0270 folgt
-//   unmittelbar auf den bisherigen Head, 0271 unmittelbar auf 0270.
+//   in umgekehrter Reihenfolge (0272 vor 0271 vor 0270) ausführbar.
+// - Range 0270-0279: nur 0270 + 0271 + 0272 belegt, 0273-0279 frei.
+// - Journal: idx lückenlos, jede Entry-Tag-Datei existiert, 0270/0271/
+//   0272 unmittelbar hintereinander (Batch-Atomizität).
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -30,9 +31,11 @@ type MigrationJournal = {
 
 const RANGE_HEAD = "0270";
 const RANGE_NEXT = "0271";
-const RANGE_FREE = ["0272", "0273", "0274", "0275", "0276", "0277", "0278", "0279"];
+const RANGE_THIRD = "0272";
+const RANGE_FREE = ["0273", "0274", "0275", "0276", "0277", "0278", "0279"];
 const SOURCE_TABLE = "planning_source";
 const ROOF_TABLE = "planning_roof_min";
+const RESTRICTION_TABLE = "planning_roof_restriction";
 
 function drizzleDir(): string {
   return resolve("drizzle");
@@ -72,7 +75,7 @@ function requireJournalEntry(prefix: string): { idx: number; tag: string } {
   return entry as { idx: number; tag: string };
 }
 
-describe("F3-Batch-1 Range 0270-0279: nur 0270 + 0271 belegt", () => {
+describe("F3-Batch-1+2 Range 0270-0279: nur 0270 + 0271 + 0272 belegt", () => {
   it("belegt 0270 (F3-02 planning_source) mit genau einer Up-Datei", () => {
     expect(requireSingleUp(RANGE_HEAD)).toMatch(/^0270_.+\.sql$/);
   });
@@ -81,7 +84,11 @@ describe("F3-Batch-1 Range 0270-0279: nur 0270 + 0271 belegt", () => {
     expect(requireSingleUp(RANGE_NEXT)).toMatch(/^0271_.+\.sql$/);
   });
 
-  it("laesst 0272-0279 frei (keine Up- oder Down-Dateien)", () => {
+  it("belegt 0272 (F3-03b planning_roof_restriction) mit genau einer Up-Datei", () => {
+    expect(requireSingleUp(RANGE_THIRD)).toMatch(/^0272_.+\.sql$/);
+  });
+
+  it("laesst 0273-0279 frei (keine Up- oder Down-Dateien)", () => {
     const names = readdirSync(drizzleDir());
     for (const prefix of RANGE_FREE) {
       const belegt = names.filter(
@@ -113,15 +120,18 @@ describe("F3-Batch-1 Journal-Kontinuitaet", () => {
     }
   });
 
-  it("reiht 0270 unmittelbar hinter den bisherigen Head und 0271 direkt danach", () => {
+  it("reiht 0270/0271/0272 unmittelbar hintereinander", () => {
     const head = requireJournalEntry(RANGE_HEAD);
     const next = requireJournalEntry(RANGE_NEXT);
+    const third = requireJournalEntry(RANGE_THIRD);
     expect(next.idx, "0271 muss direkt auf 0270 folgen (Batch-Atomizitaet).").toBe(head.idx + 1);
+    expect(third.idx, "0272 muss direkt auf 0271 folgen (Batch-Atomizitaet).").toBe(next.idx + 1);
     const journal = migrationJournal();
     const headPosition = journal.entries.findIndex((entry) => entry.idx === head.idx);
     expect(headPosition).toBeGreaterThanOrEqual(0);
     expect(journal.entries[headPosition]?.tag).toBe(head.tag);
     expect(journal.entries[headPosition + 1]?.tag).toBe(next.tag);
+    expect(journal.entries[headPosition + 2]?.tag).toBe(third.tag);
   });
 });
 
@@ -139,6 +149,14 @@ describe("F3-Batch-1 Up-Pfade je Migration", () => {
     expect(sql.trim().length).toBeGreaterThan(0);
     expect(sql).toMatch(/create\s+table\s+"?planning_roof_min"?/iu);
     expect(sql).toMatch(/references\s+"?(?:public"\.")?planning_source"?/iu);
+  });
+
+  it("0272-Up erzeugt planning_roof_restriction mit FK auf planning_roof_min (F3-03b)", () => {
+    const file = requireSingleUp(RANGE_THIRD);
+    const sql = readFileSync(resolve("drizzle", file), "utf8");
+    expect(sql.trim().length).toBeGreaterThan(0);
+    expect(sql).toMatch(/create\s+table\s+"?planning_roof_restriction"?/iu);
+    expect(sql).toMatch(/references\s+"?(?:public"\.")?planning_roof_min"?/iu);
   });
 });
 
@@ -160,15 +178,26 @@ describe("F3-Batch-1 Down-Pfade je Migration", () => {
     expect(sql.trim().length).toBeGreaterThan(0);
     expect(sql).toMatch(/drop\s+table[^;]*planning_roof_min/iu);
   });
+
+  it("0272-Down existiert als drizzle/<tag>.down.sql und baut planning_roof_restriction ab", () => {
+    const { tag } = requireJournalEntry(RANGE_THIRD);
+    const downPath = downFileFor(tag);
+    expect(existsSync(downPath), `F3-Batch-2 Down-Pfad fehlt: ${downPath} existiert nicht (RED: Datei fehlt).`).toBe(true);
+    const sql = readFileSync(downPath, "utf8");
+    expect(sql.trim().length).toBeGreaterThan(0);
+    expect(sql).toMatch(/drop\s+table[^;]*planning_roof_restriction/iu);
+  });
 });
 
 describe("F3-Batch-1 Up/Down auf frischer DB", () => {
-  it("migriert 0270/0271 auf frischer DB mit RLS + FORCE (Up)", async () => {
+  it("migriert 0270/0271/0272 auf frischer DB mit RLS + FORCE (Up)", async () => {
     // Fail-fast ohne DB-Boot, solange die Dateien fehlen (RED-Signatur).
     requireJournalEntry(RANGE_HEAD);
     requireJournalEntry(RANGE_NEXT);
+    requireJournalEntry(RANGE_THIRD);
     requireSingleUp(RANGE_HEAD);
     requireSingleUp(RANGE_NEXT);
+    requireSingleUp(RANGE_THIRD);
 
     const embedded = await startEmbeddedPostgres();
     const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
@@ -184,17 +213,18 @@ describe("F3-Batch-1 Up/Down auf frischer DB", () => {
           where relnamespace = 'public'::regnamespace
             and relname = any($1::text[])
           order by relname`,
-        [[SOURCE_TABLE, ROOF_TABLE]],
+        [[SOURCE_TABLE, ROOF_TABLE, RESTRICTION_TABLE]],
       );
       expect(
         [...relations.rows].sort((a, b) => a.relname.localeCompare(b.relname)),
       ).toEqual([
         { relname: ROOF_TABLE, relrowsecurity: true, relforcerowsecurity: true },
+        { relname: RESTRICTION_TABLE, relrowsecurity: true, relforcerowsecurity: true },
         { relname: SOURCE_TABLE, relrowsecurity: true, relforcerowsecurity: true },
       ]);
       // Journal-v7 trackt per id/hash (keine tag-Spalte): voller
       // Migrate-Lauf = Journal-Länge applied; Tabellen-Existenz oben
-      // beweist 0270+0271-Anwendung.
+      // beweist 0270+0271+0272-Anwendung.
       const applied = await pool.query<{ n: number }>(
         "select count(*)::int as n from drizzle.__drizzle_migrations",
       );
@@ -203,19 +233,23 @@ describe("F3-Batch-1 Up/Down auf frischer DB", () => {
       await endPoolsAndStopEmbeddedPostgres(
         [pool],
         embedded,
-        "F3-Batch-1-Up-Teardown fehlgeschlagen",
+        "F3-Batch-1+2-Up-Teardown fehlgeschlagen",
       );
     }
   }, 120_000);
 
-  it("baut 0271 vor 0270 per Down-SQL wieder ab (Down, umgekehrte Reihenfolge)", async () => {
+  it("baut 0272 vor 0271 vor 0270 per Down-SQL wieder ab (Down, umgekehrte Reihenfolge)", async () => {
     // Fail-fast ohne DB-Boot, solange die Dateien fehlen (RED-Signatur).
     const tag0270 = requireJournalEntry(RANGE_HEAD).tag;
     const tag0271 = requireJournalEntry(RANGE_NEXT).tag;
+    const tag0272 = requireJournalEntry(RANGE_THIRD).tag;
     requireSingleUp(RANGE_HEAD);
     requireSingleUp(RANGE_NEXT);
+    requireSingleUp(RANGE_THIRD);
     const down0270 = downFileFor(tag0270);
     const down0271 = downFileFor(tag0271);
+    const down0272 = downFileFor(tag0272);
+    expect(existsSync(down0272), `F3-Batch-2 Down-Pfad fehlt: ${down0272} (RED: Datei fehlt).`).toBe(true);
     expect(existsSync(down0271), `F3-Batch-1 Down-Pfad fehlt: ${down0271} (RED: Datei fehlt).`).toBe(true);
     expect(existsSync(down0270), `F3-Batch-1 Down-Pfad fehlt: ${down0270} (RED: Datei fehlt).`).toBe(true);
 
@@ -223,21 +257,23 @@ describe("F3-Batch-1 Up/Down auf frischer DB", () => {
     const pool = createDrainTrackedPool({ connectionString: embedded.url, max: 2 });
     try {
       await migrate(drizzle(pool), { migrationsFolder: drizzleDir() });
-      // Down in umgekehrter Reihenfolge: erst Dach (FK-Nehmer), dann Quelle.
+      // Down in umgekehrter Reihenfolge: erst Restriktion (FK-Nehmer),
+      // dann Dach, dann Quelle.
+      await pool.query(readFileSync(down0272, "utf8"));
       await pool.query(readFileSync(down0271, "utf8"));
       await pool.query(readFileSync(down0270, "utf8"));
       const remaining = await pool.query<{ relname: string }>(
         `select relname from pg_catalog.pg_class
           where relnamespace = 'public'::regnamespace
             and relname = any($1::text[])`,
-        [[SOURCE_TABLE, ROOF_TABLE]],
+        [[SOURCE_TABLE, ROOF_TABLE, RESTRICTION_TABLE]],
       );
       expect(remaining.rows).toEqual([]);
     } finally {
       await endPoolsAndStopEmbeddedPostgres(
         [pool],
         embedded,
-        "F3-Batch-1-Down-Teardown fehlgeschlagen",
+        "F3-Batch-1+2-Down-Teardown fehlgeschlagen",
       );
     }
   }, 120_000);

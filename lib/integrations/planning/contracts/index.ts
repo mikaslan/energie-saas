@@ -21,3 +21,15 @@ export {
   type PlanningRoofPolygonV1,
   type PlanningRoofTiltDeg,
 } from "./roof";
+export {
+  PLANNING_ROOF_RESTRICTION_HEIGHT_MAX_M,
+  PLANNING_ROOF_RESTRICTION_HEIGHT_MIN_M,
+  PLANNING_ROOF_RESTRICTION_VERSION,
+  planningRoofRestrictionCreateV1Schema,
+  planningRoofRestrictionKindSchema,
+  planningRoofRestrictionRectV1Schema,
+  rectInsidePolygon,
+  type PlanningRoofRestrictionCreateV1,
+  type PlanningRoofRestrictionKind,
+  type PlanningRoofRestrictionRectV1,
+} from "./roof-restriction";
