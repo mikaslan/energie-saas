@@ -667,6 +667,7 @@ const PLANNING_SOURCE_RELATIONS = [
   "planning_source",
   "planning_roof_min",
   "planning_roof_restriction",
+  "planning_panel_group",
 ] as const;
 const PLANNING_SOURCE_RUNTIME_ROUTINES = [
   "public.planning_roof_min_tilt_per_edge_valid(jsonb)",
@@ -3202,12 +3203,14 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       revoke all privileges on
         public.planning_source,
         public.planning_roof_min,
-        public.planning_roof_restriction
+        public.planning_roof_restriction,
+        public.planning_panel_group
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.planning_source to app_runtime;
       grant select, insert, update on public.planning_roof_min to app_runtime;
       grant select, insert, update, delete on public.planning_roof_restriction to app_runtime;
+      grant select, insert, update, delete on public.planning_panel_group to app_runtime;
 
       revoke execute on function
         ${PLANNING_SOURCE_RUNTIME_ROUTINES.join(",\n        ")}
@@ -6981,6 +6984,7 @@ export async function verifyRoleContract(
           "planning_source:tenant_isolation:a4613dec4100b097a8f3f96635d1ea3d20776dada247a83d0e808388b664145a",
           "planning_roof_min:tenant_isolation:733bcb4000ad236be2bbe90941ad75bd3dafe51fbc0d96395a764aa9dd9223a6",
           "planning_roof_restriction:tenant_isolation:f3926d83f059484c89fa6f05075f6a00ed229e5109830c6629aba570dc55f4ed",
+          "planning_panel_group:tenant_isolation:e84c62941581211d23b7391d0ae6693f5add9d92df594b381b6de027c7ed4a8c",
         ] : []),
         ...(hasOrderParts ? [
           "order_part:tenant_isolation:268512a6573eac45e57baff80c9ec88d2eeb1b95a6b7b8bebba57a0ff588193e",
@@ -7619,8 +7623,10 @@ export async function verifyRoleContract(
       ]) : []),
       // F3-03b (0272): Sperrzonen sind frei revidierbar (DELETE analog
       // project_assignment).
+      // F3-04a (0273): Panel-Gruppen ebenso (frei revidierbar).
       ...(hasPlanningSources ? [
         "app_runtime:planning_roof_restriction:DELETE:app_owner:false",
+        "app_runtime:planning_panel_group:DELETE:app_owner:false",
       ] : []),
       ...(hasOrderParts ? ORDER_PART_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,

@@ -49,6 +49,7 @@ export * from "./planning-request";
 export * from "./planning-source";
 export * from "./planning-roof-min";
 export * from "./planning-roof-restriction";
+export * from "./planning-panel-group";
 export * from "./order-part";
 export * from "./team";
 export * from "./portal-status-label";

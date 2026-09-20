@@ -3132,6 +3132,40 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         1.5, ${userId}::uuid)
     `);
   },
+  // F3-04a (0273): H-Rastergruppe zum frisch angelegten Dach.
+  planning_panel_group: async (tx, wsId) => {
+    const { projectId, siteId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    const createdSource = await tx.execute<{ id: string }>(sql`
+      insert into planning_source (workspace_id, project_id, site_id, kind, created_by)
+      values (${wsId}::uuid, ${projectId}::uuid, ${siteId}::uuid,
+        'self_drawn', ${userId}::uuid)
+      returning id
+    `);
+    const sourceId = createdSource.rows[0]?.id;
+    if (!sourceId) throw new Error("planning_source-Fixture lieferte keine ID");
+    const createdRoof = await tx.execute<{ id: string }>(sql`
+      insert into planning_roof_min (
+        workspace_id, source_id, polygon_json, flat_single_tilt, created_by
+      ) values (
+        ${wsId}::uuid, ${sourceId}::uuid,
+        ${JSON.stringify([
+          { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 6 }, { x: 0, y: 6 },
+        ])}::jsonb, 30, ${userId}::uuid)
+      returning id
+    `);
+    const roofId = createdRoof.rows[0]?.id;
+    if (!roofId) throw new Error("planning_roof_min-Fixture lieferte keine ID");
+    await tx.execute(sql`
+      insert into planning_panel_group (
+        workspace_id, roof_id, kind, label, origin_json,
+        rows, cols, module_w_m, module_h_m, gap_m, tilt_deg, created_by
+      ) values (
+        ${wsId}::uuid, ${roofId}::uuid, 'h', 'Fixture-Gruppe',
+        ${JSON.stringify({ x: 1, y: 1 })}::jsonb,
+        4, 6, 1.1, 1.75, 0.02, 30, ${userId}::uuid)
+    `);
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════

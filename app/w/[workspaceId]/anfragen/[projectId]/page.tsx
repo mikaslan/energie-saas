@@ -87,6 +87,7 @@ import { PlanningRequestSection } from "./planning-request-section";
 import { PlanningSourcesPanel } from "./planning-source-panel";
 import { PlanningRoofsPanel } from "./planning-roof-panel";
 import { PlanningRoofRestrictionsPanel } from "./planning-roof-restriction-panel";
+import { PlanningPanelGroupsPanel } from "./planning-panel-group-panel";
 import { PlanningSolarPanel } from "./planning-solar-panel";
 import { OrderPartSection } from "./order-part-section";
 import { OfferCreateEntry } from "./offer-create-entry";
@@ -1427,6 +1428,9 @@ export default async function ProjectTriagePage({
         </div>
         <div className="mb-6">
           <PlanningRoofRestrictionsPanel workspaceId={workspaceId} projectId={projectId} />
+        </div>
+        <div className="mb-6">
+          <PlanningPanelGroupsPanel workspaceId={workspaceId} projectId={projectId} />
         </div>
         <div className="mb-6">
           <PlanningSolarPanel workspaceId={workspaceId} projectId={projectId} />
