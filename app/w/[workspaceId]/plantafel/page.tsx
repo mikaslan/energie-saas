@@ -6,11 +6,12 @@ import { z } from "zod";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import { can, PermissionDeniedError } from "@/lib/permissions";
 import {
+  getAppointmentTeamAssignmentContext,
   getPlanningBoard,
   listAppointmentProjectOptions,
   listVisibleCalendars,
   type CalendarItemV1,
-  type PlanningBoardDto,
+  type PlanningBoardWithTeamsDto,
   type PlanningBoardProjectOption,
 } from "@/modules/calendar";
 import { AppointmentValidationError } from "@/modules/calendar";
@@ -18,6 +19,7 @@ import { listTeamMemberships, listTeamOptions, type TeamMembership, type TeamOpt
 import { DeniedState } from "../_ui";
 import { PlanningBoardAssignForm } from "./planning-board-assign-form";
 import { PlanningBoardCreateForm } from "./planning-board-create-form";
+import { PlanningBoardExtraTeamsForm } from "./planning-board-extra-teams-form";
 
 export const metadata: Metadata = {
   title: "Plantafel",
@@ -26,7 +28,7 @@ export const metadata: Metadata = {
 type BoardSection = {
   key: string;
   title: string;
-  rows: PlanningBoardDto["rows"];
+  rows: PlanningBoardWithTeamsDto["rows"];
 };
 
 // F7-07: Spaltengruppierung je Primär-Team (erster Teamname alphabetisch —
@@ -34,7 +36,7 @@ type BoardSection = {
 // einmal). null = ohne Leserecht → flache Ansicht wie bisher (kein
 // vorgetäuschtes Wissen). Leere Zuordnung → ebenfalls flach (kein Rauschen).
 function groupBoardRows(
-  rows: PlanningBoardDto["rows"],
+  rows: PlanningBoardWithTeamsDto["rows"],
   memberships: TeamMembership[] | null,
 ): BoardSection[] | null {
   if (memberships === null || memberships.length === 0) return null;
@@ -48,7 +50,7 @@ function groupBoardRows(
     }
   }
   const sections = new Map<string, BoardSection>();
-  const unassigned: PlanningBoardDto["rows"] = [];
+  const unassigned: PlanningBoardWithTeamsDto["rows"] = [];
   for (const row of rows) {
     if (row.membershipId === null) {
       unassigned.push(row);
@@ -143,6 +145,23 @@ function wallTime(wall: string): string {
   return wall.length >= 16 ? wall.slice(11, 16) : wall;
 }
 
+// F7-11: Junction-Teams je Tafeleintrag (DTO-additives `teams[]`, lesbar auch
+// ohne das Feld — ein älterer Stand zeigt dann keine Chips statt zu brechen).
+function extraBoardTeams(entry: { teams?: unknown }): { id: string; name: string }[] {
+  if (!Array.isArray(entry.teams)) return [];
+  const teams: { id: string; name: string }[] = [];
+  for (const item of entry.teams) {
+    if (typeof item !== "object" || item === null) continue;
+    const record = item as Record<string, unknown>;
+    const id = record["id"] ?? record["teamId"];
+    const name = record["name"] ?? record["teamName"] ?? record["label"];
+    if (typeof id !== "string" || typeof name !== "string" || id === "" || name === "") continue;
+    if (teams.some((team) => team.id === id)) continue;
+    teams.push({ id, name });
+  }
+  return teams;
+}
+
 const APPOINTMENT_TYPE_LABELS: Record<string, string> = {
   on_site: "Vor Ort",
   phone: "Telefon",
@@ -178,11 +197,12 @@ export default async function PlanningBoardPage(
     ? rawMember.toLowerCase()
     : null;
 
-  let board: PlanningBoardDto;
+  let board: PlanningBoardWithTeamsDto;
   let calendars: CalendarItemV1[];
   let projectOptions: PlanningBoardProjectOption[];
   let teams: TeamOption[];
   let memberships: TeamMembership[] | null;
+  let extraTeamsContext: Awaited<ReturnType<typeof getAppointmentTeamAssignmentContext>>;
   let canWrite = false;
   try {
     const loaded = await authorizedQuery(
@@ -211,12 +231,28 @@ export default async function PlanningBoardPage(
           if (error instanceof PermissionDeniedError) return null;
           throw error;
         });
+        // F7-11: Mehr-Team-Context nur für den Drawer-Termin — und nur, wenn
+        // er in dieser Woche sichtbar ist (kein Orakel für fremde IDs).
+        // External/ohne Leserecht liefert der Service null (keine Sektion).
+        const drawerAppointmentId = selectedEventId !== null
+          && loadedBoard.rows.some((row) =>
+            row.days.some((day) => day.entries.some((entry) => entry.id === selectedEventId)))
+          ? selectedEventId
+          : null;
+        const loadedExtraTeams = drawerAppointmentId === null
+          ? null
+          : await getAppointmentTeamAssignmentContext(tx, ctx, drawerAppointmentId)
+            .catch((error: unknown) => {
+              if (error instanceof PermissionDeniedError) return null;
+              throw error;
+            });
         return {
           board: loadedBoard,
           calendars: loadedCalendars,
           projectOptions: loadedOptions,
           teams: loadedTeams,
           memberships: loadedMemberships,
+          extraTeams: loadedExtraTeams,
           canWrite: can(ctx, "appointment.write"),
         };
       },
@@ -226,6 +262,7 @@ export default async function PlanningBoardPage(
     projectOptions = loaded.projectOptions;
     teams = loaded.teams;
     memberships = loaded.memberships;
+    extraTeamsContext = loaded.extraTeams;
     canWrite = loaded.canWrite;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
@@ -363,6 +400,16 @@ export default async function PlanningBoardPage(
                                       {entry.teamName}
                                     </span>
                                   )}
+                                  {extraBoardTeams(entry).map((extraTeam) => (
+                                    <span
+                                      key={extraTeam.id}
+                                      data-testid={`planning-board-extra-team-chip-${entry.id}-${extraTeam.id}`}
+                                      title={extraTeam.name}
+                                      className="ml-1 inline-block rounded bg-sky-100 px-1 font-semibold text-sky-900"
+                                    >
+                                      {extraTeam.name}
+                                    </span>
+                                  ))}
                                 </Link>
                               </li>
                             ))}
@@ -459,6 +506,17 @@ export default async function PlanningBoardPage(
                     currentTeamId={selected.entry.teamId}
                     currentTeamName={selected.entry.teamName}
                     teams={teams}
+                  />
+                )}
+                {extraTeamsContext !== null && (
+                  <PlanningBoardExtraTeamsForm
+                    workspaceId={workspaceId}
+                    projectId={selected.entry.projectId}
+                    appointmentId={selected.entry.id}
+                    teamAssignmentRevision={extraTeamsContext.teamAssignmentRevision}
+                    assignedTeams={extraTeamsContext.teams}
+                    teams={teams}
+                    canAssign={extraTeamsContext.canAssign}
                   />
                 )}
                 <p className="mt-3 text-sm">

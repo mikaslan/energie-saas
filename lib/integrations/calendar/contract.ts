@@ -365,3 +365,88 @@ export const planningBoardProjectOptionSchema = z.strictObject({
 });
 
 export type PlanningBoardProjectOption = z.infer<typeof planningBoardProjectOptionSchema>;
+
+// F7-11 Termin-Mehr-Team (ADDITIV — strict-Contracts: alle Schemas oberhalb
+// bleiben byte-identisch). Junction-Zuweisung mehrerer Teams je Termin,
+// Muster F1-20 (eigene CAS-Domäne team_assignment_revision, Cap 50).
+export const PROJECT_APPOINTMENT_TEAM_ASSIGNMENT_MAX_TEAMS = 50 as const;
+
+const teamAssignmentRevisionSchema = z.number().int().min(0).max(PROJECT_APPOINTMENT_MAX_REVISION);
+
+export const projectAppointmentTeamAssignmentCommandV1Schema = z.strictObject({
+  appointmentId: uuidSchema,
+  projectId: uuidSchema,
+  kind: z.enum(["assign_team", "unassign_team"]),
+  // Bewusst rohe Zeichenkette statt UUID-Schema: deform/fremd/archiviert
+  // meldet der Service als TargetError (kein Orakel); ein striktes
+  // UUID-Schema würde Validation werfen (Test F711-DB-05).
+  teamId: z.string().min(1).max(200),
+  expectedTeamAssignmentRevision: teamAssignmentRevisionSchema,
+});
+
+export type ProjectAppointmentTeamAssignmentCommandV1 = z.infer<
+  typeof projectAppointmentTeamAssignmentCommandV1Schema
+>;
+
+export const projectAppointmentTeamAssignmentContextV1Schema = z.strictObject({
+  appointmentId: canonicalUuidSchema,
+  teamAssignmentRevision: teamAssignmentRevisionSchema,
+  teams: z.array(teamOptionSchema),
+  canAssign: z.boolean(),
+});
+
+export type ProjectAppointmentTeamAssignmentContextV1 = z.infer<
+  typeof projectAppointmentTeamAssignmentContextV1Schema
+>;
+
+// DTO-additive Read-Projektion teams[] (F7-11): .extend hängt teams[]
+// (aktiv+archiviert lesbar, id+name) an — Bestandsschemas unberührt.
+export const projectAppointmentItemWithTeamsV1Schema =
+  projectAppointmentItemV1Schema.extend({
+    teams: z.array(teamOptionSchema),
+  });
+
+export type ProjectAppointmentItemWithTeamsV1 = z.infer<
+  typeof projectAppointmentItemWithTeamsV1Schema
+>;
+
+export const projectAppointmentRangeWithTeamsV1Schema =
+  projectAppointmentRangeV1Schema.extend({
+    items: z.array(projectAppointmentItemWithTeamsV1Schema),
+  });
+
+export type ProjectAppointmentRangeWithTeamsV1 = z.infer<
+  typeof projectAppointmentRangeWithTeamsV1Schema
+>;
+
+export const planningBoardEntryWithTeamsSchema = planningBoardEntrySchema.extend({
+  teams: z.array(teamOptionSchema),
+});
+
+export type PlanningBoardEntryWithTeams = z.infer<
+  typeof planningBoardEntryWithTeamsSchema
+>;
+
+export const planningBoardDayCellWithTeamsSchema = planningBoardDayCellSchema.extend({
+  entries: z.array(planningBoardEntryWithTeamsSchema),
+});
+
+export type PlanningBoardDayCellWithTeams = z.infer<
+  typeof planningBoardDayCellWithTeamsSchema
+>;
+
+export const planningBoardRowWithTeamsSchema = planningBoardRowSchema.extend({
+  days: z.array(planningBoardDayCellWithTeamsSchema).length(7),
+});
+
+export type PlanningBoardRowWithTeams = z.infer<
+  typeof planningBoardRowWithTeamsSchema
+>;
+
+export const planningBoardWithTeamsDtoSchema = planningBoardDtoSchema.extend({
+  rows: z.array(planningBoardRowWithTeamsSchema).max(PLANNING_BOARD_MAX_ROWS + 1),
+});
+
+export type PlanningBoardWithTeamsDto = z.infer<
+  typeof planningBoardWithTeamsDtoSchema
+>;

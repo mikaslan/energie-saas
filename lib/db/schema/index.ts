@@ -45,6 +45,7 @@ export * from "./project-team-assignment";
 export * from "./project-note";
 export * from "./project-task";
 export * from "./project-task-team-assignment";
+export * from "./project-appointment-team-assignment";
 export * from "./portal";
 export * from "./planning";
 export * from "./service-case";

@@ -81,3 +81,38 @@ export {
   restoreAppointmentTemplate,
   updateAppointmentTemplate,
 } from "./templates";
+// F7-11 Termin-Mehr-Team (additiv).
+export {
+  PROJECT_APPOINTMENT_TEAM_ASSIGNMENT_MAX_TEAMS,
+  planningBoardDayCellWithTeamsSchema,
+  planningBoardEntryWithTeamsSchema,
+  planningBoardRowWithTeamsSchema,
+  planningBoardWithTeamsDtoSchema,
+  projectAppointmentItemWithTeamsV1Schema,
+  projectAppointmentRangeWithTeamsV1Schema,
+  projectAppointmentTeamAssignmentCommandV1Schema,
+  projectAppointmentTeamAssignmentContextV1Schema,
+} from "@/lib/integrations/calendar/contract";
+export type {
+  PlanningBoardDayCellWithTeams,
+  PlanningBoardEntryWithTeams,
+  PlanningBoardRowWithTeams,
+  PlanningBoardWithTeamsDto,
+  ProjectAppointmentItemWithTeamsV1,
+  ProjectAppointmentRangeWithTeamsV1,
+  ProjectAppointmentTeamAssignmentCommandV1,
+  ProjectAppointmentTeamAssignmentContextV1,
+} from "@/lib/integrations/calendar/contract";
+export {
+  AppointmentTeamConflictError,
+  AppointmentTeamLimitError,
+  AppointmentTeamTargetError,
+  AppointmentTeamValidationError,
+  changeAppointmentTeamAssignment,
+  getAppointmentTeamAssignmentContext,
+} from "./team-assignment-service";
+export type {
+  AppointmentTeamAssignment,
+  AppointmentTeamAssignmentContext,
+  AppointmentTeamAssignmentResult,
+} from "./team-assignment-service";

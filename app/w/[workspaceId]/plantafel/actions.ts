@@ -7,11 +7,18 @@ import { PermissionDeniedError } from "@/lib/permissions";
 import {
   AppointmentConflictError,
   AppointmentNotFoundError,
+  AppointmentTeamConflictError,
+  AppointmentTeamLimitError,
+  AppointmentTeamTargetError,
+  AppointmentTeamValidationError,
   AppointmentValidationError,
+  changeAppointmentTeamAssignment,
   executeProjectAppointmentCommand,
+  getAppointmentTeamAssignmentContext,
   listProjectAppointments,
   PROJECT_APPOINTMENT_COMMAND_VERSION,
 } from "@/modules/calendar";
+import { listTeamOptions } from "@/modules/teams";
 
 const uuidSchema = z.uuid();
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -204,4 +211,144 @@ export async function assignPlanningBoardEntryTeamAction(
       ? "Team entzogen — der Eintrag steht ohne Team in der Tafelwoche."
       : "Team zugewiesen — der Eintrag trägt das Team in der Tafelwoche.",
   };
+}
+
+export type PlanningBoardExtraTeamsState =
+  | { status: "idle" }
+  | { status: "success"; message: string }
+  | { status: "invalid" }
+  | { status: "conflict" }
+  | { status: "target_unavailable" }
+  | { status: "limit_reached" }
+  | { status: "not_found" }
+  | { status: "denied" }
+  | { status: "unauthenticated" };
+
+// Defensiv: Der Termin-Scope-Fehler der Team-Zuweisung ist im RED-Test nur als
+// Ablehnung gepinnt (kein Orakel) — jede *NotFoundError-Form mappt ehrlich.
+function isNotFoundNamed(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && typeof (error as { name?: unknown }).name === "string"
+    && (error as { name: string }).name.endsWith("NotFoundError");
+}
+
+// F7-11 Weitere Teams: Checkbox-Menge diff-basiert über einzelne
+// changeAppointmentTeamAssignment-Calls mit CAS-Kette (kein Voll-Replace).
+// Entzüge zuerst (Cap-schonend, sortiert), dann Zuweisungen (sortiert); jede
+// echte Änderung bumpt die Team-Revision (Noops nicht). Entzogen wird nur,
+// was aktiv ist — archivierte Junction-Teams bleiben lesbar und werden nie
+// still entfernt. Jeder Fehler nach Mutationsstart revalidiert (ehrlicher
+// Teilstand), Conflict meldet ehrlich mit Neuladen-Hinweis.
+export async function assignPlanningBoardExtraTeamsAction(
+  _previous: PlanningBoardExtraTeamsState,
+  formData: FormData,
+): Promise<PlanningBoardExtraTeamsState> {
+  const workspaceId = workspaceIdSchema.safeParse(formData.get("workspaceId"));
+  const projectId = uuidSchema.safeParse(formData.get("projectId"));
+  const appointmentId = uuidSchema.safeParse(formData.get("appointmentId"));
+  const expectedRevision = z.coerce.number().int().min(0).safeParse(formData.get("revision"));
+  const rawTeamIds = formData.getAll("teamIds");
+  const desiredIds: string[] = [];
+  for (const raw of rawTeamIds) {
+    const parsed = uuidSchema.safeParse(raw);
+    if (!parsed.success) return { status: "invalid" };
+    if (!desiredIds.includes(parsed.data)) desiredIds.push(parsed.data);
+  }
+  if (
+    !workspaceId.success
+    || !projectId.success
+    || !appointmentId.success
+    || !expectedRevision.success
+  ) {
+    return { status: "invalid" };
+  }
+  const desired = new Set(desiredIds);
+  try {
+    const outcome = await authorizedAction(
+      workspaceId.data,
+      "appointment.write",
+      "planning_board_assign_extra_teams",
+      async (tx, ctx) => {
+        const context = await getAppointmentTeamAssignmentContext(tx, ctx, appointmentId.data);
+        if (context === null) throw new AppointmentNotFoundError();
+        const activeOptions = await listTeamOptions(tx, ctx).catch((error: unknown) => {
+          if (error instanceof PermissionDeniedError) return [];
+          throw error;
+        });
+        const activeIds = new Set(activeOptions.map((option) => option.id));
+        const currentIds = context.teams.map((team) => team.id);
+        const currentSet = new Set(currentIds);
+        const toUnassign = currentIds
+          .filter((id) => !desired.has(id) && activeIds.has(id))
+          .sort();
+        const toAssign = [...desired].filter((id) => !currentSet.has(id)).sort();
+        let runningRevision = expectedRevision.data;
+        for (const teamId of toUnassign) {
+          const result = await changeAppointmentTeamAssignment(tx, ctx, {
+            appointmentId: appointmentId.data,
+            projectId: projectId.data,
+            kind: "unassign_team" as const,
+            teamId,
+            expectedTeamAssignmentRevision: runningRevision,
+          });
+          runningRevision = result.teamAssignmentRevision;
+        }
+        for (const teamId of toAssign) {
+          const result = await changeAppointmentTeamAssignment(tx, ctx, {
+            appointmentId: appointmentId.data,
+            projectId: projectId.data,
+            kind: "assign_team" as const,
+            teamId,
+            expectedTeamAssignmentRevision: runningRevision,
+          });
+          runningRevision = result.teamAssignmentRevision;
+        }
+        return { assigned: toAssign.length, unassigned: toUnassign.length };
+      },
+    );
+    revalidatePath(`/w/${workspaceId.data}/plantafel`);
+    if (outcome.assigned > 0 && outcome.unassigned > 0) {
+      return {
+        status: "success",
+        message: `Weitere Teams aktualisiert — ${outcome.assigned} zugewiesen, ${outcome.unassigned} entzogen.`,
+      };
+    }
+    if (outcome.assigned > 0) {
+      return {
+        status: "success",
+        message: "Weitere Teams zugewiesen — die Chips stehen in der Tafelwoche.",
+      };
+    }
+    if (outcome.unassigned > 0) {
+      return {
+        status: "success",
+        message: "Weitere Teams entzogen — die Chips sind aus der Tafelwoche entfernt.",
+      };
+    }
+    return { status: "success", message: "Weitere Teams gespeichert — keine Änderung nötig." };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { status: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { status: "denied" };
+    if (error instanceof AppointmentNotFoundError || isNotFoundNamed(error)) {
+      return { status: "not_found" };
+    }
+    if (error instanceof AppointmentTeamConflictError) {
+      revalidatePath(`/w/${workspaceId.data}/plantafel`);
+      return { status: "conflict" };
+    }
+    if (error instanceof AppointmentTeamTargetError) {
+      revalidatePath(`/w/${workspaceId.data}/plantafel`);
+      return { status: "target_unavailable" };
+    }
+    if (error instanceof AppointmentTeamLimitError) {
+      revalidatePath(`/w/${workspaceId.data}/plantafel`);
+      return { status: "limit_reached" };
+    }
+    if (error instanceof AppointmentTeamValidationError) {
+      revalidatePath(`/w/${workspaceId.data}/plantafel`);
+      return { status: "invalid" };
+    }
+    throw error;
+  }
 }

@@ -80,6 +80,8 @@ export const projectAppointment = pgTable(
     // API-treu Pflicht (Appointment.calendarId required).
     calendarId: uuid("calendar_id").notNull(),
     revision: integer("revision").notNull().default(1),
+    // F7-11: eigene CAS-Domäne für Team-Zuweisung (F1-20-Muster).
+    teamAssignmentRevision: integer("team_assignment_revision").notNull().default(0),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -149,6 +151,10 @@ export const projectAppointment = pgTable(
     check(
       "project_appointment_revision_ck",
       sql`${t.revision} between 1 and 2147483647`,
+    ),
+    check(
+      "project_appointment_team_assignment_revision_ck",
+      sql`${t.teamAssignmentRevision} between 0 and 2147483647`,
     ),
     check(
       "project_appointment_timestamps_ck",
