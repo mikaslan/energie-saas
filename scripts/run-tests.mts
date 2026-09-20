@@ -1,8 +1,13 @@
-// Vitest 4.1.11 liefert in der hier installierten Node-24-Laufzeit selbst bei
-// fehlgeschlagenen Assertions Prozessstatus 0. Das machte eine `&&`-CI-Kette
-// falsch-grün. Der JSON-Reporter enthält dagegen zuverlässig success=false.
-// Dieser kleine Runner behält die normale Konsolenausgabe, liest zusätzlich
-// den maschinenlesbaren Abschluss und setzt den Prozessstatus selbst.
+// Harter Exit-Gate-Runner fuer Vitest: behaelt die normale Konsolenausgabe,
+// liest zusaetzlich den maschinenlesbaren JSON-Abschluss und setzt den
+// Prozessstatus fail-closed selbst (Kind-Status != 0 ODER success != true
+// ODER failed-Zaehler > 0). Historie: roh `npx vitest run` lieferte EXIT 0
+// trotz Failures — Ursache war NICHT Vitest (Core setzt exitCode=1 korrekt),
+// sondern der transitive `beforeExit`-Hook von `async-exit-hook` (via
+// `embedded-postgres`-Import im globalSetup), der jedes natuerliche
+// Prozessende mit `process.exit(0)` beendete. Agent 9 hat das in
+// tests/setup/global-setup.ts geheilt (Hook nach Teardown entfernt);
+// dieser Runner bleibt als Defense-in-Depth das harte CI-Gate.
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";

@@ -129,5 +129,19 @@ export default async function globalSetup() {
 
   return async () => {
     await stopEmbedded?.();
+    // Agent-9-Befund-1-Fix: `embedded-postgres` registriert beim Import
+    // (transitiv) einen `beforeExit`-Hook via `async-exit-hook`, der jedes
+    // natuerliche Prozessende mit `process.exit(0)` beendet — UNABHAENGIG
+    // vom gesetzten `process.exitCode`. Dadurch lieferte roh
+    // `npx vitest run` EXIT 0 trotz fehlgeschlagener Tests (Vitest-Core
+    // setzt exitCode=1 korrekt, der Hook ueberstimmt ihn; belegt per
+    // Bisektion: ohne globalSetup EXIT 1, mit sleep-Setup EXIT 1, mit
+    // pg-only-Setup EXIT 0). Nach dem Stop ist der Hook nutzlos (keine
+    // Instanz mehr zu stoppen — der Crash-Fall mit laufender Instanz ist
+    // nicht betroffen, dort laeuft dieses Teardown nicht). Vitest/Vite
+    // registrieren selbst keine `beforeExit`-Listener (geprueft in
+    // vitest-4.1.11-Dist), daher trifft das Entfernen nur den Fremd-Hook.
+    // Das JSON-Gate scripts/run-tests.mts bleibt als Defense-in-Depth.
+    process.removeAllListeners("beforeExit");
   };
 }

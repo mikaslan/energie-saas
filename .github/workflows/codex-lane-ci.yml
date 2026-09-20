@@ -148,6 +148,11 @@ jobs:
           });
           NODE
 
+      - name: Exit-Gate-Selbstschutz (Agent 9, Befund 1)
+        run: npm run test:gate
+        env:
+          NODE_ENV: test
+
       - name: Testsuite (Vitest mit eingebettetem Postgres)
         run: npm run test
         env:
