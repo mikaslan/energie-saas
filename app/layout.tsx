@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { PwaInstallHint } from "./_components/pwa-install-hint";
+import { SwUpdateNotice } from "./_components/sw-update-notice";
 import { ServiceWorkerRegister } from "./sw-register";
 
 const geistSans = Geist({
@@ -49,6 +51,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegister />
+        {/*
+          F11-07: PWA-Banner (Install + Update). Notice zuletzt = liegt bei
+          gleichzeitigem Erscheinen oben (selten, transient bis Reload).
+        */}
+        <PwaInstallHint />
+        <SwUpdateNotice />
         {children}
       </body>
     </html>

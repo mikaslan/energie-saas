@@ -1,21 +1,24 @@
-/* F11-02 Service Worker (ESTIMATE, reversibel): Offline-Hülle ohne
- * Sync/Push. Navigation: network-first mit Fallback auf /offline.html.
+/* F11-07 Service Worker (F11-02-Hülle + Update-Protokoll): Offline-Hülle
+ * ohne Sync/Push. Navigation: network-first mit Fallback auf /offline.html.
  * Gleichartige GET-Anfragen (kein /api/*, kein Auth-OTP): stale-while-
  * revalidate. Versionierter Cache, alte Stände werden aufgeräumt.
- * Outbox/Sync/Push bleiben Folge-Slices (F11-03+).
+ * Update: kein Auto-skipWaiting — neuer Worker wartet, bis die Seite per
+ * {type:'SKIP_WAITING'} aktualisiert (Update-Notice). Erstinstallation
+ * aktiviert weiter sofort (kein aktiver Worker → kein Waiting).
  */
-const SW_VERSION = "f11-02-v1";
+const SW_VERSION = "f11-07-v1";
 const STATIC_CACHE = `wmee-static-${SW_VERSION}`;
 const PAGES_CACHE = `wmee-pages-${SW_VERSION}`;
 const PRECACHE = ["/offline.html", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting()),
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE)),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
