@@ -6,6 +6,7 @@ import {
   CONTACT_UPDATE_COMMAND_VERSION,
   type ContactDatasetV1,
 } from "@/lib/integrations/contacts/contract";
+import { quickActionsForDataset } from "@/lib/mobile/quick-actions";
 import { changeContact, type ContactActionState } from "./contact-actions";
 
 const INITIAL_STATE: ContactActionState = { status: "idle" };
@@ -313,6 +314,9 @@ export function ContactSection({
 
   if (!editing) {
     const isDeleted = dataset.deletedAt !== null;
+    // F11-06: Aktionen nur bei vorhandenen Daten (der Helfer liefert
+    // sonst nichts) und nie am gelöschten Kontakt (unit-gepinnt).
+    const quickActions = quickActionsForDataset(dataset);
     return (
       <div className="min-w-0">
         {isDeleted ? (
@@ -364,6 +368,28 @@ export function ContactSection({
               </span>
             </dd>
           </div>
+
+          {quickActions.length > 0 ? (
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Schnellzugriff</dt>
+              <dd className="mt-2">
+                <ul data-testid="quick-actions" className="flex flex-wrap gap-2">
+                  {quickActions.map((action) => (
+                    <li key={action.id}>
+                      <a
+                        href={action.href}
+                        target={action.external ? "_blank" : undefined}
+                        rel={action.external ? "noreferrer" : undefined}
+                        className="inline-flex min-h-11 items-center rounded-full border border-brand-700 bg-white px-4 py-2 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                      >
+                        {action.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          ) : null}
 
           <div className="sm:col-span-2">
             <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Kontaktadresse</dt>
