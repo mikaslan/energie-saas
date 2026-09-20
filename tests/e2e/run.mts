@@ -2123,7 +2123,14 @@ async function main(): Promise<number> {
     // Absichtlich still: der Exit-Status oben bleibt maßgeblich.
   }
   const geoapifyExercised = geoapifyContractWasExercised(providerStub);
-  if ((!grep && !geoapifyExercised) || (grep && !geoapifySubsetIsPlausible(providerStub))) {
+  // Agent 9 (Sharding-Fertigstellung): Shard-Laeufe (M1_05_E2E_FILES-Filter)
+  // treffen wie --grep-Laeufe nur Teilmengen der Geo-Pfade — die exakte
+  // Volllauf-Erwartung 3/2 gilt dort nicht (CI 35505358946: alle 3 Shards
+  // mit 0/0, 2/1, 1/1 Aufrufen am Volllauf-Vertrag gescheitert). Shards
+  // muessen die Subset-Plausibilitaet erfuellen (0 Abweichungen,
+  // details <= autocomplete, je <= Volllauf-Maximum).
+  const subsetRun = Boolean(grep) || specFiles.length > 0;
+  if ((!subsetRun && !geoapifyExercised) || (subsetRun && !geoapifySubsetIsPlausible(providerStub))) {
     console.error(`[e2e] Der lokale Geoapify-Vertrag ist verletzt: ${providerStub.autocompleteRequests}/${providerStub.detailsRequests} Aufrufe, ${providerStub.violations.length} Abweichungen (erwartet ${GEOAPIFY_EXPECTED_AUTOCOMPLETE_REQUESTS}/${GEOAPIFY_EXPECTED_DETAILS_REQUESTS} im vollen Lauf).`);
     return 1;
   }

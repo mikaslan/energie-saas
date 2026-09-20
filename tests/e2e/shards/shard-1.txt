@@ -40,6 +40,8 @@ f8-05-partial-invoice.spec.ts
 f8-08-closing.spec.ts
 f8-12-teil-rest.spec.ts
 f8-15-portal-rechnungssicht.spec.ts
+f8-19-versand.spec.ts
+f8-24-draft-preview.spec.ts
 f9-02b-auto-tag.spec.ts
 f9-04b-zeiterfassung-verlauf.spec.ts
 f9-06-zeiterfassung-pausen.spec.ts

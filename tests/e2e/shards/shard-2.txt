@@ -39,6 +39,8 @@ f8-04-credit-application.spec.ts
 f8-06-angebot-import.spec.ts
 f8-10-erechnung-cii.spec.ts
 f8-13-betrag-teilrechnung.spec.ts
+f8-16-teilrechnungstypen.spec.ts
+f8-20-monats-zip.spec.ts
 f9-01-time-tracking.spec.ts
 f9-03-fremdnutzer-filter.spec.ts
 f9-04c-zeiterfassung-gps.spec.ts
@@ -53,3 +55,4 @@ m1-14-contact-dataset.spec.ts
 m2-01-offer.spec.ts
 m2-01-zzz-visual-candidates.spec.ts
 m2-04-e-signature.spec.ts
+m3-02d-invoice-pdf.spec.ts

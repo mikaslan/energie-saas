@@ -39,6 +39,8 @@ f8-04b-document-duplicate.spec.ts
 f8-07-scheme.spec.ts
 f8-11-datev-extf.spec.ts
 f8-14-skonto-teilrechnung.spec.ts
+f8-18-invoice-payment.spec.ts
+f8-22-datev-sonderfaelle.spec.ts
 f9-02-timer.spec.ts
 f9-04-zeiterfassung-export.spec.ts
 f9-04d-zeiterfassung-auslastung.spec.ts
