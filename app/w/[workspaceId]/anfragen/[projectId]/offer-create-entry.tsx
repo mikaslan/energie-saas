@@ -388,6 +388,11 @@ export function OfferCreateEntry({ view }: { view: OfferCreateEntryView }) {
       >
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-800">Angebotsphase</p>
         <h2 id="offer-create-heading" className="mt-2 text-lg font-semibold text-slate-950">Angebot ist bereits angelegt</h2>
+        {view.hasOffer ? (
+          <span className="mt-3 inline-flex min-h-8 items-center rounded-full border border-emerald-300 bg-emerald-50 px-3 text-xs font-semibold text-emerald-950">
+            Angebot angelegt
+          </span>
+        ) : null}
         <p className="mt-2 text-sm leading-6 text-slate-600">
           Das Projekt befindet sich nicht mehr in der Anfragephase.
         </p>

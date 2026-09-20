@@ -46,6 +46,10 @@ import {
   type SetTotalPriceOverrideCommandV1,
 } from "@/lib/integrations/offers/contract";
 import { calculateOfferPricing } from "@/lib/integrations/offers/money";
+import {
+  contentLockToBlockedCode,
+  dominantContentLock,
+} from "@/lib/integrations/offers/variant-controls";
 import { OfferRateLimitError } from "@/lib/integrations/offers/admission";
 import type { PlanningMode } from "@/lib/integrations/planning/contract";
 import {
@@ -57,9 +61,11 @@ import {
 } from "@/lib/permissions";
 import {
   CatalogOfferBridgeIntegrityError,
+  readCatalogComponentRevisionForOfferLine,
   readCurrentProjectCatalogBasisReference,
   readCurrentProjectCatalogForOfferCopy,
   readOfferCatalogFreshness,
+  type OfferCatalogComponentRevisionSeed,
   type OfferCatalogResolutionSnapshot,
 } from "@/modules/catalog";
 import { getPlanningModeDefaultForVariantCreation } from "@/modules/planning";
@@ -2021,17 +2027,23 @@ async function insertVariant(
     description: string | null;
     isPrimary: boolean;
     createdAt: string;
+    optionalBundles?: OptionalBundlesV1;
+    paymentOptionId?: string | null;
   },
 ): Promise<void> {
   try {
     await tx.execute(sql`
       insert into offer_variant (
         id, workspace_id, offer_id, ordinal, current_revision,
-        name, description, is_primary, created_by, created_at, updated_at
+        name, description, is_primary, optional_bundles, payment_option_id,
+        created_by, created_at, updated_at
       ) values (
         ${input.id}::uuid, ${ctx.workspaceId}::uuid, ${input.offerId}::uuid,
         ${input.ordinal}, 1, ${input.name}, ${input.description},
-        ${input.isPrimary}, ${ctx.actor}::uuid,
+        ${input.isPrimary},
+        ${JSON.stringify(input.optionalBundles ?? [])}::jsonb,
+        ${input.paymentOptionId ?? null},
+        ${ctx.actor}::uuid,
         ${input.createdAt}::timestamptz, ${input.createdAt}::timestamptz
       )
     `);
@@ -2113,6 +2125,12 @@ export async function duplicateOfferVariant(
     description: snapshot.description,
     isPrimary: false,
     createdAt: now,
+    optionalBundles: structuredClone(
+      sourceVariant.optional_bundles === undefined || sourceVariant.optional_bundles === null
+        ? []
+        : readVariantBundles(sourceVariant.optional_bundles),
+    ),
+    paymentOptionId: sourceVariant.payment_option_id,
   });
   await persistRevision(tx, ctx, snapshot);
   await touchOfferAndProject(tx, ctx, offerRecord, now);
@@ -2514,12 +2532,46 @@ function originalProvenance(
     : provenance;
 }
 
-function applyRevisionOperation(
+type CatalogLineSeed = {
+  revision: number;
+  sha: string;
+  component: OfferCatalogComponentRevisionSeed["component"];
+};
+
+// F2-03b D3-02: Ad-hoc-Katalogzeile gegen den lebenden Katalog prüfen —
+// ausschließlich über den engen Katalogexport (Boundary M2-01): kein
+// direktes catalog_-SQL in diesem Modul. Drift scheitert fail-closed,
+// nie stiller Preiswechsel. Der SHA kommt aus der DB (Mirror-Basis).
+async function readCatalogLineSeed(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  componentId: string,
+  expectedRevision: number,
+): Promise<CatalogLineSeed> {
+  const result = await readCatalogComponentRevisionForOfferLine(tx, ctx, {
+    componentId,
+    expectedRevision,
+  });
+  if (result.state === "conflict") {
+    throw new OfferValidationError(["/operations/expectedCatalogRevision"]);
+  }
+  if (result.state === "blocked") {
+    throw new OfferValidationError(["/operations/catalogComponentId"]);
+  }
+  return {
+    revision: result.seed.revision,
+    sha: result.seed.snapshotSha256,
+    component: result.seed.component,
+  };
+}
+
+async function applyRevisionOperation(
+  tx: TenantTx,
   snapshot: OfferVariantSnapshotV1,
   operation: ReviseOfferVariantOperationV1,
   ctx: ServiceCtx,
   at: string,
-): void {
+): Promise<void> {
   switch (operation.operation) {
     case "set_planning_mode":
       snapshot.planningMode = operation.planningMode;
@@ -2696,6 +2748,14 @@ function applyRevisionOperation(
       reindex(snapshot.sections);
       return;
     }
+    case "set_custom_section_title": {
+      const section = findSection(snapshot, operation.sectionDomainId);
+      if (section.lines.some((line) => line.source.kind !== "custom")) {
+        throw new OfferValidationError(["/operations/sectionDomainId"]);
+      }
+      section.title = operation.title;
+      return;
+    }
     case "remove_custom_section": {
       const index = snapshot.sections.findIndex(
         (section) => section.sectionDomainId === operation.sectionDomainId,
@@ -2758,6 +2818,98 @@ function applyRevisionOperation(
         },
       });
       reindex(section.lines);
+      return;
+    }
+    case "add_catalog_line": {
+      const section = findSection(snapshot, operation.sectionDomainId);
+      if (operation.position > section.lines.length + 1) {
+        throw new OfferValidationError(["/operations/position"]);
+      }
+      const seed = await readCatalogLineSeed(
+        tx,
+        ctx,
+        operation.catalogComponentId,
+        operation.expectedCatalogRevision,
+      );
+      const component = seed.component;
+      const commercial = component.commercial;
+      if (commercial === null) {
+        throw new OfferValidationError(["/operations/catalogComponentId"]);
+      }
+      if (component.presentation.unit !== "meter" && operation.quantityMilli % 1_000 !== 0) {
+        throw new OfferValidationError(["/operations/quantityMilli"]);
+      }
+      const decision = taxDecision(operation.taxTreatment, ctx.actor, at);
+      section.lines.splice(operation.position - 1, 0, {
+        lineDomainId: operation.lineDomainId,
+        position: operation.position,
+        // Katalog-Wahrheit (technischer Typ), nicht Sektionskategorie —
+        // sonst verletzt die Ad-hoc-Zeile den technicalData-Refine im Seal.
+        componentCategory: component.identity.componentType,
+        positionType: "required",
+        isHidden: false,
+        quantityMilli: operation.quantityMilli,
+        product: {
+          kind: "catalog",
+          internalSku: component.identity.internalSku,
+          displayName: component.presentation.displayName,
+          manufacturer: component.presentation.manufacturer,
+          model: component.presentation.model,
+          unit: component.presentation.unit,
+          technicalData: component.technicalData,
+          image: component.presentation.image,
+          datasheet: component.presentation.datasheet,
+          technicalProvenance: component.technicalProvenance,
+        },
+        source: {
+          kind: "catalog",
+          catalogComponentId: operation.catalogComponentId,
+          catalogComponentRevision: seed.revision,
+          componentSnapshotSha256: seed.sha,
+          resolutionLineId: null,
+          resolutionId: snapshot.sourceBindings.resolutionId,
+          resolutionRevision: snapshot.sourceBindings.resolutionRevision,
+          resolutionSha256: snapshot.sourceBindings.resolutionSha256,
+          catalogSalesUnitNetCents: commercial.salesPriceNetCents,
+          catalogPurchaseUnitNetCents: commercial.purchasePriceNetCents,
+        },
+        salesPricing: {
+          originalUnitNetCents: commercial.salesPriceNetCents,
+          effectiveUnitNetCents: commercial.salesPriceNetCents,
+          provenance: { kind: "catalog_seed", catalogProvenance: commercial.salesProvenance },
+        },
+        purchasePricing: {
+          originalUnitNetCents: commercial.purchasePriceNetCents,
+          effectiveUnitNetCents: commercial.purchasePriceNetCents,
+          provenance: { kind: "catalog_seed", catalogProvenance: commercial.purchaseProvenance },
+        },
+        lineDiscountBps: 0,
+        taxTreatment: decision.treatment,
+        taxRateBps: decision.rateBps,
+        taxDecision: decision,
+        computed: {
+          lineBaseNetCents: 0,
+          lineDiscountedNetCents: 0,
+          sectionDiscountedNetCents: 0,
+          finalSalesNetCents: 0,
+          salesTaxCents: 0,
+          salesGrossCents: 0,
+          purchaseNetCents: 0,
+        },
+      });
+      reindex(section.lines);
+      return;
+    }
+    case "remove_catalog_line": {
+      const found = findLine(snapshot, operation.lineDomainId);
+      if (found.line.source.kind !== "catalog" || found.line.source.resolutionLineId !== null) {
+        throw new OfferValidationError(["/operations/lineDomainId"]);
+      }
+      // F16-12: Quellzeile mit abhängigen Verknüpfungen fail-closed —
+      // erst lösen, dann löschen (kein stilles Verwaisten).
+      assertNoQuantityDependents(snapshot, new Set([operation.lineDomainId]));
+      found.section.lines.splice(found.lineIndex, 1);
+      reindex(found.section.lines);
       return;
     }
     case "set_line_tax": {
@@ -2859,6 +3011,11 @@ export async function reviseOfferVariant(
         requireOfferAccess(ctx, "price.edit", "offer_pricing");
         requireOfferAccess(ctx, "price.read_purchase", "offer_purchase_pricing");
         break;
+      case "add_catalog_line":
+        requireOfferAccess(ctx, "price.edit", "offer_pricing");
+        requireOfferAccess(ctx, "price.read_purchase", "offer_purchase_pricing");
+        requireOfferAccess(ctx, "catalog.read", "offer_catalog_line");
+        break;
       case "set_global_discount":
       case "set_global_fix_discount":
       case "set_custom_deal":
@@ -2911,7 +3068,7 @@ export async function reviseOfferVariant(
   next.createdBy = ctx.actor;
   next.createdAt = now;
   for (const operation of effectiveOperations) {
-    applyRevisionOperation(next, operation, ctx, now);
+    await applyRevisionOperation(tx, next, operation, ctx, now);
   }
   let snapshot: OfferVariantSnapshotV1;
   try {
@@ -2966,10 +3123,6 @@ export async function setPrimaryVariant(
   await lockProjectBasis(tx, ctx, projectId);
   const offerRecord = await lockOffer(tx, ctx, command.offerId);
   const variant = await lockVariant(tx, ctx, offerRecord.id, command.variantId);
-  if (variant.is_primary) {
-    return { offerId: offerRecord.id, variantId: variant.id, alreadyPrimary: true };
-  }
-  const now = await databaseNow(tx);
   const previous = await tx.execute<{ id: string }>(sql`
     select id from offer_variant
      where workspace_id = ${ctx.workspaceId}::uuid
@@ -2978,6 +3131,25 @@ export async function setPrimaryVariant(
      limit 1
   `);
   const previousPrimaryVariantId = previous.rows[0]?.id ?? null;
+  const targetLock = await readVariantContentLock(tx, ctx, offerRecord.id, variant.id);
+  if (targetLock !== null) {
+    throw new OfferBlockedError(contentLockToBlockedCode(targetLock));
+  }
+  if (previousPrimaryVariantId !== null && previousPrimaryVariantId !== variant.id) {
+    const previousLock = await readVariantContentLock(
+      tx,
+      ctx,
+      offerRecord.id,
+      previousPrimaryVariantId,
+    );
+    if (previousLock !== null) {
+      throw new OfferBlockedError(contentLockToBlockedCode(previousLock));
+    }
+  }
+  if (variant.is_primary) {
+    return { offerId: offerRecord.id, variantId: variant.id, alreadyPrimary: true };
+  }
+  const now = await databaseNow(tx);
   try {
     await tx.execute(sql`
       update offer_variant
@@ -3045,6 +3217,21 @@ export async function setTotalPriceOverride(
   const projectId = await readOfferProjectId(tx, ctx, command.offerId);
   await lockProjectBasis(tx, ctx, projectId);
   const offerRecord = await lockOffer(tx, ctx, command.offerId);
+  const variantIds = await tx.execute<{ id: string }>(sql`
+    select id from offer_variant
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and offer_id = ${offerRecord.id}::uuid
+  `);
+  const contentLocks = await readVariantContentLocks(
+    tx,
+    ctx,
+    offerRecord.id,
+    variantIds.rows.map((row) => row.id),
+  );
+  const dominantLock = dominantContentLock(contentLocks.values());
+  if (dominantLock !== null) {
+    throw new OfferBlockedError(contentLockToBlockedCode(dominantLock));
+  }
   const stored = offerRecord.total_price_override_net_cents === null
     ? null
     : Number(offerRecord.total_price_override_net_cents);
@@ -3116,6 +3303,10 @@ export async function setOptionalBundles(
   await lockProjectBasis(tx, ctx, projectId);
   const offerRecord = await lockOffer(tx, ctx, command.offerId);
   const variant = await lockVariant(tx, ctx, offerRecord.id, command.variantId);
+  const contentLock = await readVariantContentLock(tx, ctx, offerRecord.id, variant.id);
+  if (contentLock !== null) {
+    throw new OfferBlockedError(contentLockToBlockedCode(contentLock));
+  }
   const stored = optionalBundlesSchema.safeParse(variant.optional_bundles);
   if (!stored.success) throw new OfferIntegrityError();
   if (canonicalizeOfferJson(stored.data) === canonicalizeOfferJson(command.bundles)) {
@@ -3178,6 +3369,10 @@ export async function setVariantPaymentOption(
   await lockProjectBasis(tx, ctx, projectId);
   const offerRecord = await lockOffer(tx, ctx, command.offerId);
   const variant = await lockVariant(tx, ctx, offerRecord.id, command.variantId);
+  const contentLock = await readVariantContentLock(tx, ctx, offerRecord.id, variant.id);
+  if (contentLock !== null) {
+    throw new OfferBlockedError(contentLockToBlockedCode(contentLock));
+  }
   const stored = variant.payment_option_id ?? null;
   if (command.paymentOptionId === null) {
     if (stored === null) {

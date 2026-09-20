@@ -39,6 +39,7 @@ function primaryFeedback(state: SetPrimaryVariantEditorState): string | null {
   if (state.status === "unauthenticated") return "Deine Anmeldung ist abgelaufen. Melde dich erneut an.";
   if (state.status === "denied") return "Du darfst die primäre Variante nicht umschalten.";
   if (state.status === "not_found") return "Die gewählte Variante ist nicht mehr verfügbar.";
+  if (state.status === "blocked") return "Das Umschalten ist für die Signatur gesperrt: Eine beteiligte Variante ist signiert oder wartet auf Signatur.";
   return "Das Umschalten ist vorübergehend nicht möglich. Versuche es später erneut.";
 }
 
@@ -54,6 +55,7 @@ function overrideFeedback(state: SetTotalOverrideEditorState): string | null {
   if (state.status === "unauthenticated") return "Deine Anmeldung ist abgelaufen. Melde dich erneut an.";
   if (state.status === "denied") return "Du darfst den Deal-Wert nicht ändern.";
   if (state.status === "not_found") return "Das Angebot ist nicht mehr verfügbar.";
+  if (state.status === "blocked") return "Der Deal-Override ist für die Signatur gesperrt: Mindestens eine Variante ist signiert oder wartet auf Signatur.";
   return "Das Speichern ist vorübergehend nicht möglich. Versuche es später erneut.";
 }
 
@@ -70,6 +72,7 @@ function bundlesFeedback(state: SetVariantBundlesEditorState): string | null {
   if (state.status === "unauthenticated") return "Deine Anmeldung ist abgelaufen. Melde dich erneut an.";
   if (state.status === "denied") return "Du darfst optionale Bundles nicht ändern.";
   if (state.status === "not_found") return "Die Variante ist nicht mehr verfügbar.";
+  if (state.status === "blocked") return "Die Bundles sind für die Signatur gesperrt: Die Variante ist signiert oder wartet auf Signatur.";
   return "Das Speichern ist vorübergehend nicht möglich. Versuche es später erneut.";
 }
 

@@ -43,7 +43,7 @@ export const OFFER_VARIANT_SNAPSHOT_VERSION_V1 = "offer-variant-snapshot.v1" as 
 // Artefakts. Der Generator und der Contract-Test verhindern eine zweite
 // Vertragswahrheit.
 export const OFFER_SCHEMA_SHA256 =
-  "5aeb1620466d1e4bd89963a0c96c74abd81ecc0e5cb0df069b2c6cfe83efd521" as const;
+  "3c1256b3a036906f67eb842708fce35d0f48e8f067bb9f2ced6fb740f587e1c5" as const;
 
 export const OFFER_MAX_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const OFFER_MAX_PATCH_OPERATIONS = 500 as const;
@@ -354,6 +354,42 @@ const reviseOperationSchema = z.union([
       });
     }
   }),
+  // F2-03b D3-01: Titel-Edit nur für Custom-Sektionen (Service-Guard).
+  z.strictObject({
+    operation: z.literal("set_custom_section_title"),
+    sectionDomainId: uuidSchema,
+    title: normalizedRequiredText(120),
+  }),
+  // F2-03b D3-02: Ad-hoc-Katalogzeile als Snapshot-Kopie. Der Client
+  // sendet keine Preise/Stammdaten (strictObject lehnt Fälschung ab).
+  z.strictObject({
+    operation: z.literal("add_catalog_line"),
+    lineDomainId: uuidSchema,
+    sectionDomainId: uuidSchema,
+    position: linePositionSchema,
+    catalogComponentId: uuidSchema,
+    expectedCatalogRevision: positiveRevisionSchema,
+    quantityMilli: z.int().safe().min(1).max(100_000_000),
+    taxTreatment: z.enum(["standard_19", "zero_operator_confirmed"]),
+    zeroConfirmation: zeroTaxConfirmationSchema.optional(),
+  }).superRefine((value, context) => {
+    if (
+      (value.taxTreatment === "zero_operator_confirmed" && value.zeroConfirmation === undefined)
+      || (value.taxTreatment === "standard_19" && value.zeroConfirmation !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["zeroConfirmation"],
+        message: "0-Prozent-Steuer braucht eine frische strukturierte Bestaetigung.",
+      });
+    }
+  }),
+  // F2-03b D3-02: symmetrisches Entfernen nur für Ad-hoc-Zeilen
+  // (Service-Guard: resolutionLineId null).
+  z.strictObject({
+    operation: z.literal("remove_catalog_line"),
+    lineDomainId: uuidSchema,
+  }),
   setLineTaxOperationSchema,
 ]);
 export type ReviseOfferVariantOperationV1 = z.infer<typeof reviseOperationSchema>;
@@ -637,7 +673,9 @@ const catalogLineSourceSchema = z.strictObject({
   catalogComponentId: uuidSchema,
   catalogComponentRevision: positiveRevisionSchema,
   componentSnapshotSha256: sha256Schema,
-  resolutionLineId: uuidSchema,
+  // F2-03b D3-02: null markiert eine Ad-hoc-Katalogzeile ohne
+  // Resolution-Ursprung (additiv; Seed-Zeilen behalten ihre LineId).
+  resolutionLineId: uuidSchema.nullable(),
   resolutionId: uuidSchema,
   resolutionRevision: positiveRevisionSchema,
   resolutionSha256: sha256Schema,
@@ -938,7 +976,12 @@ function semanticSnapshotPaths(
         paths.push(`/sections/${sectionIndex}/lines/${lineIndex}/position`);
       }
       linePositions.add(line.position);
-      if (line.componentCategory !== section.category) {
+      // F2-03b D3-02: Ad-hoc-Katalogzeilen (resolutionLineId null) tragen die
+      // Katalog-Wahrheit als componentCategory und dürfen fachlich in einer
+      // Sektion artfremder Kategorie stehen (F203B-03: Wallbox in Sektion 0).
+      const isAdhocCatalogLine = line.source.kind === "catalog"
+        && line.source.resolutionLineId === null;
+      if (!isAdhocCatalogLine && line.componentCategory !== section.category) {
         paths.push(`/sections/${sectionIndex}/lines/${lineIndex}/componentCategory`);
       }
       if (line.source.kind === "catalog" && (

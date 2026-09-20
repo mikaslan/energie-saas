@@ -4318,6 +4318,45 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F2-07c (0330): Freigabe-Lesekapseln sind eine atomare Dreier-Einheit ohne
+  // eigene Relationen; Anwesenheit direkt ueber den Katalog. Aeltere Prefixe
+  // ohne 0330 bleiben gruen. Reine Reads: nur app_runtime erhaelt EXECUTE,
+  // kein Worker-Grant, keine Tabellen-ACL-Aenderung.
+  const approvalCapsuleManifest = await client.query<{ present: number }>(`
+    select pg_catalog.count(*)::integer as present
+      from pg_catalog.unnest(array[
+        'public.read_offer_approval_ledger(uuid,uuid,uuid)',
+        'public.read_offer_candidate_history(uuid,uuid,uuid)',
+        'public.read_offer_withdraw_history(uuid,uuid)'
+      ]) as expected(signature)
+     where pg_catalog.to_regprocedure(expected.signature) is not null
+  `);
+  const approvalCapsuleManifestCount =
+    approvalCapsuleManifest.rows[0]?.present ?? 0;
+  if (approvalCapsuleManifestCount !== 0 && approvalCapsuleManifestCount !== 3) {
+    throw new Error(
+      "Rollen-ACL-Manifest: F2-07c-Freigabekapseln sind nur teilweise vorhanden " +
+        `(${String(approvalCapsuleManifestCount)}/3).`,
+    );
+  }
+  const hasOfferApprovalCapsules = approvalCapsuleManifestCount === 3;
+  if (hasOfferApprovalCapsules) {
+    await client.query(`
+      revoke execute on function
+        public.read_offer_approval_ledger(uuid, uuid, uuid),
+        public.read_offer_candidate_history(uuid, uuid, uuid),
+        public.read_offer_withdraw_history(uuid, uuid)
+      from public, app_migrator, app_runtime, app_system, app_auth, app_worker,
+        app_erasure, app_membership_writer, identity_reconciler;
+
+      grant execute on function
+        public.read_offer_approval_ledger(uuid, uuid, uuid),
+        public.read_offer_candidate_history(uuid, uuid, uuid),
+        public.read_offer_withdraw_history(uuid, uuid)
+      to app_runtime
+    `);
+  }
+
   // M1-08b ist eine atomare Vierer-Einheit. Runtime und Worker erhalten
   // keinerlei Tabellenrechte; die Web-App arbeitet ueber sechs und der
   // Worker ueber neun getrennte SECURITY-DEFINER-Gateways.
@@ -4927,6 +4966,25 @@ export async function verifyRoleContract(
     OFFER_ISSUANCE_RELATIONS,
     "Rollenvertrag: M2-03b1-Issuance-Relationen",
   );
+  // F2-07c (0330): Freigabe-Lesekapseln nur ab 0330 erwarten; aeltere Prefixe
+  // bleiben gruen (atomare Dreier-Einheit, Anwesenheit ueber den Katalog).
+  const approvalCapsulePresence = await client.query<{ present: number }>(`
+    select pg_catalog.count(*)::integer as present
+      from pg_catalog.unnest(array[
+        'public.read_offer_approval_ledger(uuid,uuid,uuid)',
+        'public.read_offer_candidate_history(uuid,uuid,uuid)',
+        'public.read_offer_withdraw_history(uuid,uuid)'
+      ]) as expected(signature)
+     where pg_catalog.to_regprocedure(expected.signature) is not null
+  `);
+  const approvalCapsuleCount = approvalCapsulePresence.rows[0]?.present ?? 0;
+  if (approvalCapsuleCount !== 0 && approvalCapsuleCount !== 3) {
+    throw new Error(
+      "Rollenvertrag: F2-07c-Freigabekapseln sind nur teilweise vorhanden " +
+        `(${String(approvalCapsuleCount)}/3).`,
+    );
+  }
+  const hasOfferApprovalCapsules = approvalCapsuleCount === 3;
   const hasCatalogImport = await hasAtomicPublicRelationSet(
     client,
     CATALOG_IMPORT_RELATIONS,
@@ -5961,6 +6019,12 @@ export async function verifyRoleContract(
         "recover_offer_issuance_renders:app_owner",
         "withdraw_offer_issuance:app_owner",
       ] : []),
+      // F2-07c (0330): Freigabe-Lesekapseln.
+      ...(hasOfferApprovalCapsules ? [
+        "read_offer_approval_ledger:app_owner",
+        "read_offer_candidate_history:app_owner",
+        "read_offer_withdraw_history:app_owner",
+      ] : []),
       ...(hasCatalogImport ? CATALOG_IMPORT_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
@@ -6739,6 +6803,31 @@ export async function verifyRoleContract(
         "withdraw_offer_issuance(uuid, uuid, text):jsonb:app_owner:plpgsql:f:v:" +
           "true:false:false:u:search_path=pg_catalog:" +
           "cc3f1a3b9956eca75e1a770cb4e8d59cc65bf7598b34454266f744ab6ddf9edb",
+      ] : []),
+      // F2-07c (0330): Freigabe-Lesekapseln (Body-Pin = sha256(prosrc)).
+      ...(hasOfferApprovalCapsules ? [
+        "read_offer_approval_ledger(uuid, uuid, uuid):TABLE(" +
+          "workspace_id uuid, issuance_id uuid, " +
+          "approved_at timestamp with time zone, has_zero_tax_treatment boolean, " +
+          "approval_version text, recipient_and_scope_reviewed boolean, " +
+          "commercial_totals_reviewed boolean, legal_profile_reviewed boolean, " +
+          "final_pdf_for_archive_understood boolean, " +
+          "zero_tax_treatment_reviewed boolean):" +
+          "app_owner:plpgsql:f:s:true:false:false:u:search_path=pg_catalog:" +
+          "79b45bf565f960b434579743502371fd29a21c39e2f264517e9c96f251562764",
+        "read_offer_candidate_history(uuid, uuid, uuid):TABLE(" +
+          "workspace_id uuid, candidate_id uuid, variant_revision integer, " +
+          "profile_revision integer, recipient_revision integer, " +
+          "has_zero_tax_treatment boolean, approved_at timestamp with time zone, " +
+          "recipient_billing_reviewed boolean, commercial_content_reviewed boolean, " +
+          "active_profile_reviewed boolean, not_issued_status_understood boolean):" +
+          "app_owner:plpgsql:f:s:true:false:false:u:search_path=pg_catalog:" +
+          "ea4923543283fe76641c3126a50516095a9cc6499911c20b5f575546fa4392db",
+        "read_offer_withdraw_history(uuid, uuid):TABLE(" +
+          "workspace_id uuid, issuance_id uuid, reason_code text, " +
+          "withdrawn_at timestamp with time zone):" +
+          "app_owner:plpgsql:f:s:true:false:false:u:search_path=pg_catalog:" +
+          "e6a15823c0e1066a33e0d74f3249ffb1c1f014a54402bc370bdce300cf0f3c7e",
       ] : []),
       ...(hasProjectNotes ? [
         "build_inactive_lead_erasure_graph_m113(uuid, uuid):jsonb:app_owner:sql:f:s:" +
@@ -8827,6 +8916,12 @@ export async function verifyRoleContract(
         "app_runtime:read_offer_issuance_status(uuid, uuid, uuid):EXECUTE:app_owner:false",
         "app_runtime:withdraw_offer_issuance(uuid, uuid, text):EXECUTE:app_owner:false",
       ] : []),
+      // F2-07c (0330): Freigabe-Lesekapseln (nur Runtime, kein Worker).
+      ...(hasOfferApprovalCapsules ? [
+        "app_runtime:read_offer_approval_ledger(uuid, uuid, uuid):EXECUTE:app_owner:false",
+        "app_runtime:read_offer_candidate_history(uuid, uuid, uuid):EXECUTE:app_owner:false",
+        "app_runtime:read_offer_withdraw_history(uuid, uuid):EXECUTE:app_owner:false",
+      ] : []),
       ...(hasOfferPdfDraft ? [
         "app_runtime:canonicalize_offer_json_v1(jsonb):EXECUTE:app_owner:false",
       ] : []),
@@ -9343,6 +9438,76 @@ export async function verifyRoleContract(
         return `${principal}:${routine}:${String(isOwner || isRuntimeGrant || isWorkerGrant)}`;
       })),
       "M2-03b1 effektive Funktions-ACLs",
+    );
+  }
+
+  // F2-07c (0330): Freigabe-Lesekapseln — eigene Gate-Menge, damit aeltere
+  // Prefixe ohne 0330 gruen bleiben. Reine Runtime-Reads (kein Worker-Grant).
+  if (hasOfferApprovalCapsules) {
+    const capsuleFunctionAcl = await client.query<{
+      principal: string;
+      routine_signature: string;
+      may_execute: boolean | null;
+    }>(`
+      with principals(principal) as (
+        values
+          ('public'::text),
+          ('app_owner'::text),
+          ('app_migrator'::text),
+          ('app_runtime'::text),
+          ('app_system'::text),
+          ('app_auth'::text),
+          ('app_worker'::text),
+          ('app_erasure'::text),
+          ('app_membership_writer'::text),
+          ('identity_reconciler'::text)
+      ),
+      routines(schema_name, routine_name, routine_arguments, routine_signature) as (
+        values
+          ('public'::text, 'read_offer_approval_ledger'::text,
+            'uuid, uuid, uuid'::text,
+            'read_offer_approval_ledger(uuid,uuid,uuid)'::text),
+          ('public'::text, 'read_offer_candidate_history'::text,
+            'uuid, uuid, uuid'::text,
+            'read_offer_candidate_history(uuid,uuid,uuid)'::text),
+          ('public'::text, 'read_offer_withdraw_history'::text,
+            'uuid, uuid'::text,
+            'read_offer_withdraw_history(uuid,uuid)'::text)
+      )
+      select principal.principal,
+             routine.schema_name || '.' || routine.routine_signature as routine_signature,
+             pg_catalog.has_function_privilege(
+               principal.principal,
+               function_record.oid,
+               'EXECUTE'
+             ) as may_execute
+        from principals as principal
+        cross join routines as routine
+        left join pg_catalog.pg_namespace as function_schema
+          on function_schema.nspname = routine.schema_name
+        left join pg_catalog.pg_proc as function_record
+          on function_record.pronamespace = function_schema.oid
+         and function_record.proname = routine.routine_name
+         and pg_catalog.oidvectortypes(function_record.proargtypes) =
+             routine.routine_arguments
+       order by principal.principal, routine.schema_name, routine.routine_signature
+    `);
+    const capsulePrincipals = ["public", ...APP_ROLES] as const;
+    const capsuleRoutines = [
+      "public.read_offer_approval_ledger(uuid,uuid,uuid)",
+      "public.read_offer_candidate_history(uuid,uuid,uuid)",
+      "public.read_offer_withdraw_history(uuid,uuid)",
+    ] as const;
+    equalRows(
+      capsuleFunctionAcl.rows.map((row) =>
+        `${row.principal}:${row.routine_signature}:` +
+          `${row.may_execute === null ? "NULL" : String(row.may_execute)}`,
+      ),
+      capsulePrincipals.flatMap((principal) => capsuleRoutines.map((routine) => {
+        const mayExecute = principal === "app_runtime" || principal === "app_owner";
+        return `${principal}:${routine}:${String(mayExecute)}`;
+      })),
+      "F2-07c effektive Funktions-ACLs",
     );
   }
 

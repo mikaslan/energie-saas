@@ -2,6 +2,7 @@ import type { TenantTx } from "@/lib/db/types";
 import type { ServiceCtx } from "@/lib/permissions";
 import type {
   OfferCatalogBasisReference,
+  OfferCatalogComponentRevisionResult,
   OfferCatalogCopyResult,
 } from "./offer-copy";
 
@@ -62,6 +63,8 @@ export type {
 } from "./import-service";
 export type {
   OfferCatalogBasisReference,
+  OfferCatalogComponentRevisionResult,
+  OfferCatalogComponentRevisionSeed,
   OfferCatalogCopy,
   OfferCatalogCopyResult,
   OfferCatalogResolutionSnapshot,
@@ -115,4 +118,13 @@ export async function readOfferCatalogFreshness(
 ): Promise<ReadonlyMap<string, boolean>> {
   return mapOfferBridgeIntegrity((bridge) =>
     bridge.readOfferCatalogFreshness(tx, ctx, value));
+}
+
+export async function readCatalogComponentRevisionForOfferLine(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<OfferCatalogComponentRevisionResult> {
+  return mapOfferBridgeIntegrity((bridge) =>
+    bridge.readCatalogComponentRevisionForOfferLine(tx, ctx, value));
 }

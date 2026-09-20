@@ -168,3 +168,20 @@ export type {
   OfferIssuanceWithdrawalResult,
   PortalDocumentArtifactResult,
 } from "./issuance-service";
+export {
+  listApprovalLedger,
+  listCandidateApprovalHistory,
+  listPruefpunkteProtokoll,
+  listReleaseChronik,
+  listWithdrawalHistory,
+} from "./release-views";
+export type {
+  ApprovalLedgerEntry,
+  CandidateApprovalHistoryEntry,
+  Pruefpunkt,
+  ReleaseChronikEntry,
+  WithdrawalHistoryEntry,
+} from "./release-views";
+export {
+  formatVariantPaymentHint,
+} from "./zahlart-hinweise";

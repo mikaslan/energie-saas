@@ -3,6 +3,7 @@ import {
   listSignatureRequests,
   type SignatureRequestDto,
 } from "@/modules/signatures";
+import { formatVariantPaymentHint, getOfferDetail, listPaymentOptions } from "@/modules/offers";
 import { can } from "@/lib/permissions";
 import {
   AnalogSignatureForm,
@@ -27,6 +28,36 @@ function statusLabel(status: SignatureRequestDto["status"]): string {
 function formatInstant(value: string | null): string {
   if (!value) return "—";
   return new Date(value).toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
+}
+
+// F2-05b §3/§4: Zahlart-Hinweis, rein lesend (Detail-paymentOptionId +
+// listPaymentOptions includeArchived). Null/fehlende Rechte/Fehler →
+// Null-Text; niemals Exception an die UI, kein Write.
+async function readVariantPaymentHint(
+  workspaceId: string,
+  offerId: string,
+  variantId: string | null,
+): Promise<string> {
+  try {
+    if (variantId === null) return formatVariantPaymentHint(null, [], "de");
+    return await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "offer_detail",
+      async (tx, ctx) => {
+        const detail = await getOfferDetail(tx, ctx, { offerId, variantId });
+        const paymentOptionId = detail?.variants.find(
+          (variant) => variant.id.toLowerCase() === variantId.toLowerCase(),
+        )?.paymentOptionId ?? null;
+        const options = can(ctx, "payment_option.read")
+          ? await listPaymentOptions(tx, ctx, { includeArchived: true })
+          : [];
+        return formatVariantPaymentHint(paymentOptionId, options, "de");
+      },
+    );
+  } catch {
+    return formatVariantPaymentHint(null, [], "de");
+  }
 }
 
 export async function OfferSignaturePanel(props: {
@@ -60,6 +91,7 @@ export async function OfferSignaturePanel(props: {
     : requests.find((request) => (
       request.variantId === props.variantId && request.status === "pending"
     ))?.requestId ?? null;
+  const paymentHint = await readVariantPaymentHint(props.workspaceId, props.offerId, props.variantId);
 
   return (
     <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -72,6 +104,7 @@ export async function OfferSignaturePanel(props: {
           vorbereitet · nicht versendet
         </p>
       </div>
+      <p className="mt-3 text-sm text-slate-600">{paymentHint}</p>
 
       {requests.length === 0 ? (
         <p className="mt-4 text-sm text-slate-600">

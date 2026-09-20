@@ -1219,6 +1219,13 @@
       "when": 1789913194198,
       "tag": "0320_f7_11_appointment_team_assignment",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1789913194199,
+      "tag": "0330_f2_07c_offer_approval_capsules",
+      "breakpoints": true
     }
   ]
 }

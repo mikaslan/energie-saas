@@ -5,6 +5,7 @@ export type SetPrimaryVariantEditorState =
   | { status: "denied" }
   | { status: "not_found" }
   | { status: "unavailable" }
+  | { status: "blocked" }
   | { status: "success"; alreadyPrimary: boolean };
 
 export const SET_PRIMARY_VARIANT_INITIAL_STATE = {
@@ -18,6 +19,7 @@ export type SetTotalOverrideEditorState =
   | { status: "denied" }
   | { status: "not_found" }
   | { status: "unavailable" }
+  | { status: "blocked" }
   | { status: "success"; changed: boolean; cleared: boolean };
 
 export const SET_TOTAL_OVERRIDE_INITIAL_STATE = {
@@ -31,6 +33,7 @@ export type SetVariantBundlesEditorState =
   | { status: "denied" }
   | { status: "not_found" }
   | { status: "unavailable" }
+  | { status: "blocked" }
   | { status: "success"; changed: boolean };
 
 export const SET_VARIANT_BUNDLES_INITIAL_STATE = {
@@ -44,6 +47,7 @@ export type SetVariantPaymentOptionEditorState =
   | { status: "denied" }
   | { status: "not_found" }
   | { status: "unavailable" }
+  | { status: "blocked" }
   | { status: "success"; changed: boolean };
 
 export const SET_VARIANT_PAYMENT_OPTION_INITIAL_STATE = {

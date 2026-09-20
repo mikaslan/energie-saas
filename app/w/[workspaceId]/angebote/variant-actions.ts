@@ -117,6 +117,7 @@ export async function setPrimaryVariantEditorAction(
     revalidatePath(`/w/${workspaceId}/angebote`);
     return { status: "success", alreadyPrimary: result.alreadyPrimary };
   } catch (error) {
+    if (error instanceof offers.OfferBlockedError) return { status: "blocked" };
     if (error instanceof offers.OfferValidationError) return { status: "invalid" };
     const mapped = mapOfferError(error, offers);
     if (mapped) return mapped;
@@ -159,6 +160,7 @@ export async function setTotalOverrideEditorAction(
       cleared: outcome.totalPriceOverrideNetCents === null,
     };
   } catch (error) {
+    if (error instanceof offers.OfferBlockedError) return { status: "blocked" };
     if (error instanceof offers.OfferValidationError) return { status: "invalid" };
     const mapped = mapOfferError(error, offers);
     if (mapped) return mapped;
@@ -203,6 +205,7 @@ export async function setVariantPaymentOptionEditorAction(
     revalidatePath(`/w/${workspaceId}/angebote`);
     return { status: "success", changed: result.changed };
   } catch (error) {
+    if (error instanceof offers.OfferBlockedError) return { status: "blocked" };
     if (error instanceof offers.OfferValidationError) return { status: "invalid" };
     const mapped = mapOfferError(error, offers);
     if (mapped) return mapped;
@@ -244,6 +247,7 @@ export async function setVariantBundlesEditorAction(
     revalidatePath(`/w/${workspaceId}/angebote`);
     return { status: "success", changed: result.changed };
   } catch (error) {
+    if (error instanceof offers.OfferBlockedError) return { status: "blocked" };
     if (error instanceof offers.OfferValidationError) return { status: "invalid" };
     const mapped = mapOfferError(error, offers);
     if (mapped) return mapped;

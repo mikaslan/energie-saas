@@ -115,6 +115,7 @@ export type OfferRevisionOperation =
   | { operation: "remove_custom_line"; lineDomainId: string }
   | { operation: "add_custom_section"; sectionDomainId: string; position: number; title: string; category: OfferComponentCategory }
   | { operation: "remove_custom_section"; sectionDomainId: string }
+  | { operation: "set_custom_section_title"; sectionDomainId: string; title: string }
   | {
       operation: "add_custom_line";
       lineDomainId: string;
@@ -374,6 +375,38 @@ export function moveOfferDraftLineToSection(
   return inserted ? { ...draft, sections } : draft;
 }
 
+// F203B-09 (D3-03 Stretch): Index-Reorder als UI-Alternative zu den
+// Hoch/Runter-Buttons. Dieselbe Splice-Semantik wie moveOfferDraftSection /
+// moveOfferDraftLineToSection — der Draft-Diff erzeugt identische
+// move_section-/move_line-Ops, Buttons bleiben für Tastatur.
+export function reorderOfferDraftSectionByIndex(
+  draft: OfferEditorDraft,
+  sectionDomainId: string,
+  targetIndex: number,
+): OfferEditorDraft {
+  const index = draft.sections.findIndex((section) => section.sectionDomainId === sectionDomainId);
+  if (index < 0) return draft;
+  const clamped = Math.max(0, Math.min(draft.sections.length - 1, targetIndex));
+  if (clamped === index) return draft;
+  const sections = [...draft.sections];
+  const [section] = sections.splice(index, 1);
+  if (!section) return draft;
+  sections.splice(clamped, 0, section);
+  return { ...draft, sections };
+}
+
+export function reorderOfferDraftLineByIndex(
+  draft: OfferEditorDraft,
+  sectionDomainId: string,
+  lineDomainId: string,
+  targetIndex: number,
+): OfferEditorDraft {
+  const section = draft.sections.find((entry) => entry.sectionDomainId === sectionDomainId);
+  if (!section || !section.lines.some((line) => line.lineDomainId === lineDomainId)) return draft;
+  const clamped = Math.max(0, Math.min(section.lines.length - 1, targetIndex));
+  return moveOfferDraftLineToSection(draft, lineDomainId, sectionDomainId, clamped + 1);
+}
+
 export function canRemoveOfferDraftSection(
   snapshot: OfferEditorSourceSnapshot,
   draft: OfferEditorDraft,
@@ -383,6 +416,18 @@ export function canRemoveOfferDraftSection(
   const draftSection = draft.sections.find((section) => section.sectionDomainId === sectionDomainId);
   if (!draftSection || draftSection.lines.some((line) => line.sourceKind !== "custom")) return false;
   if (draftSection.isNew) return true;
+  const sourceSection = snapshot.sections.find((section) => section.sectionDomainId === sectionDomainId);
+  return sourceSection !== undefined
+    && sourceSection.lines.every((line) => (line.sourceKind ?? "catalog") === "custom");
+}
+
+export function canRenameOfferDraftSection(
+  snapshot: OfferEditorSourceSnapshot,
+  draft: OfferEditorDraft,
+  sectionDomainId: string,
+): boolean {
+  const draftSection = draft.sections.find((section) => section.sectionDomainId === sectionDomainId);
+  if (!draftSection || draftSection.isNew || draftSection.lines.some((line) => line.sourceKind !== "custom")) return false;
   const sourceSection = snapshot.sections.find((section) => section.sectionDomainId === sectionDomainId);
   return sourceSection !== undefined
     && sourceSection.lines.every((line) => (line.sourceKind ?? "catalog") === "custom");
@@ -633,7 +678,16 @@ export function buildOfferRevisionOperations(
   }
 
   for (const [sectionIndex, section] of draft.sections.entries()) {
-    if (sourceSectionById.has(section.sectionDomainId)) continue;
+    const sourceSection = sourceSectionById.get(section.sectionDomainId);
+    if (sourceSection) {
+      // F203B-08: Titeländerung bestehender Sektionen erzeugt genau eine Titel-Op.
+      const title = normalizedText(section.title);
+      if (title !== normalizedText(sourceSection.title ?? "Sektion")) {
+        if (title.length === 0 || title.length > 120) addError(errors, `section-${section.sectionDomainId}-title`, "Der Sektionsname muss 1 bis 120 Zeichen enthalten.");
+        else operations.push({ operation: "set_custom_section_title", sectionDomainId: section.sectionDomainId, title });
+      }
+      continue;
+    }
     const title = normalizedText(section.title);
     if (!section.isNew || title.length === 0 || title.length > 120) addError(errors, `section-${section.sectionDomainId}-title`, "Der Sektionsname muss 1 bis 120 Zeichen enthalten.");
     else operations.push({ operation: "add_custom_section", sectionDomainId: section.sectionDomainId, position: sectionIndex + 1, title, category: section.category });

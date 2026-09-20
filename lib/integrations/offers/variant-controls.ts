@@ -36,3 +36,30 @@ export function parseBundlesJsonInput(value: string): OptionalBundlesV1 | null {
   const result = optionalBundlesSchema.safeParse(parsed);
   return result.success ? result.data : null;
 }
+
+export type VariantContentLock = "pending" | "signed" | "revoked_by_customer";
+
+export type VariantBlockedCode =
+  | "variant_signature_pending"
+  | "variant_signed"
+  | "variant_revoked_by_customer";
+
+export function contentLockToBlockedCode(lock: VariantContentLock): VariantBlockedCode {
+  return lock === "pending"
+    ? "variant_signature_pending"
+    : lock === "signed"
+      ? "variant_signed"
+      : "variant_revoked_by_customer";
+}
+
+export function dominantContentLock(
+  locks: Iterable<VariantContentLock>,
+): VariantContentLock | null {
+  let dominant: VariantContentLock | null = null;
+  for (const lock of locks) {
+    if (lock === "revoked_by_customer") return "revoked_by_customer";
+    if (lock === "signed") dominant = "signed";
+    else if (dominant === null) dominant = "pending";
+  }
+  return dominant;
+}

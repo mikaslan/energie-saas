@@ -33,6 +33,7 @@ function feedback(state: SetVariantPaymentOptionEditorState): string | null {
   if (state.status === "unauthenticated") return "Deine Anmeldung ist abgelaufen. Melde dich erneut an.";
   if (state.status === "denied") return "Du darfst die Zahlart nicht ändern.";
   if (state.status === "not_found") return "Die Variante oder Zahlart ist nicht mehr verfügbar.";
+  if (state.status === "blocked") return "Die Zahlart ist für die Signatur gesperrt: Die Variante ist signiert oder wartet auf Signatur.";
   return "Das Speichern ist vorübergehend nicht möglich. Versuche es später erneut.";
 }
 

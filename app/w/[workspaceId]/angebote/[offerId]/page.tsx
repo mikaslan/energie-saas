@@ -41,6 +41,9 @@ import {
   type OfferDetailSurfaceView,
 } from "./offer-detail-view";
 import { OfferSignaturePanel } from "./offer-signature-panel";
+import { OfferApprovalLedgerPanel } from "./offer-approval-ledger-panel";
+import { OfferCandidateHistoryPanel } from "./offer-candidate-history-panel";
+import { OfferReleaseChronikPanel } from "./offer-release-chronik-panel";
 import { formatUpsellQuantity } from "./offer-format";
 import {
   OfferUpsellPanel,
@@ -924,6 +927,12 @@ export default async function OfferDetailPage(
   return (
     <>
       <OfferDetailView view={projectedView} />
+      {/* F2-07b: rein lesende Freigabe-Ansichten, bewusst UNTERHALB der
+          bestehenden Release-/Issuance-Panels (eigene Server Components,
+          project.read; external_only blendet sich selbst aus). */}
+      <OfferReleaseChronikPanel workspaceId={workspaceId} offerId={offerId} />
+      <OfferApprovalLedgerPanel workspaceId={workspaceId} offerId={offerId} />
+      <OfferCandidateHistoryPanel workspaceId={workspaceId} offerId={offerId} />
       {upsellVariantId !== null && upsellOptions.length > 0 ? (
         <OfferUpsellPanel
           key={upsellVariantId}
