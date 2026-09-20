@@ -1,0 +1,12 @@
+-- 0360 Snapshot-Baseline (Leitstand-Reparatur, 2026-09-20):
+-- Metadaten-Reparatur OHNE Produktwirkung. drizzle-kit waehlt als Diff-Basis stumpf
+-- die lexikografisch letzte Snapshot-Datei (snapshots.sort(), letzte gewinnt) — das war
+-- 0235 (stale, vor F9-14/F8), sodass `db:generate` Phantom-DDL erzeugte und das
+-- Schema-Drift-Gate rot war. Diese Baseline heisst 0360, damit sie sortiert LETZTE ist
+-- (Lane-Ranges enden bei 0359; 0360 ist Leitstand-reserviert, RANGES.md).
+-- Inhalt bewusst KEIN DDL (nur SELECT-No-op): Tabellen/Spalten/Constraints aus
+-- 0150/0192-0199 werden von ihren Original-Migrationen erzeugt. Der mitgenerierte
+-- Snapshot (0360_snapshot_baseline_snapshot.json = vollstaendiger Schema-Stand)
+-- stellt den Tip auf die Schema-Wahrheit. Migrator-sicher, keine Daten-/Rechte-Aenderung.
+SELECT 1 AS baseline_noop;
+--> statement-breakpoint
