@@ -1,3 +1,4 @@
+m2-01-offer.spec.ts
 dedupe-triage.spec.ts
 f1-05b-pipeline-summary.spec.ts
 f1-08-lead-sources.spec.ts
@@ -52,7 +53,6 @@ m1-05-triage.spec.ts
 m1-09-project-assignment.spec.ts
 m1-11b-cannot-fulfil.spec.ts
 m1-14-contact-dataset.spec.ts
-m2-01-offer.spec.ts
-m2-01-zzz-visual-candidates.spec.ts
-m2-04-e-signature.spec.ts
-m3-02d-invoice-pdf.spec.ts
+m2-01-z-a11y.spec.ts
+m2-02-offer-pdf.spec.ts
+m3-00-workspace-master-data.spec.ts

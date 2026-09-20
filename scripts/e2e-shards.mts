@@ -25,8 +25,21 @@ function collect(dir: string, acc: string[]): void {
 
 const specs: string[] = [];
 collect(E2E, specs);
+// Agent 9: Setup-Specs stehen an Position 1 JEDES Shards (sie sind aus dem
+// Round-Robin ausgenommen). Grund: Order-Abhaengigkeit im M2-01-Angebot —
+// readM201Offer() wirft, wenn keine Spec zuvor ein Angebot per Browser-Action
+// fuer m201ProjectId erzeugt hat (m2-01-fixture.ts). CI 35505358946 Shard 3
+// war exakt so rot (m2-01-z-a11y + m2-02 ohne Erzeuger); m2-03a solo lokal
+// reproduziert. m2-01-offer.spec.ts erzeugt unbedingt (1 Test, kein Skip).
+const SETUP_SPECS = ["m2-01-offer.spec.ts"];
+for (const setup of SETUP_SPECS) {
+  if (!specs.includes(setup)) {
+    throw new Error(`[shards] Setup-Spec fehlt (umbenannt/geloescht?): ${setup}`);
+  }
+}
 const groups: string[][] = Array.from({ length: SHARDS }, () => []);
-specs.forEach((s, i) => groups[i % SHARDS]!.push(s));
+specs.filter((s) => !SETUP_SPECS.includes(s)).forEach((s, i) => groups[i % SHARDS]!.push(s));
+groups.forEach((g) => g.unshift(...SETUP_SPECS));
 
 const check = process.argv.includes("--check");
 let dirty = false;

@@ -1077,6 +1077,14 @@ test.afterEach(async ({ page }) => {
 });
 
 test.describe("M2-03a Freigabekandidaten-Oberfläche", () => {
+  // Agent 9 Flake-Einhegung: EIN Retry fuer die Last-Flake-Klasse dieser
+  // Datei (waitForResponse-Timeouts unter CI-Last, M3-00-/F1609-Klasse, kein
+  // Commit-Bezug; belegt: CI-34798657788/34774616172-Doku oben, CI-35098476611
+  // m2-03a:1076, CI-35500128748-Erstlauf M2-03a-A11y — je Re-Run gruen).
+  // Assertions/Budgets unveraendert (kein Relax); Flakes bleiben als
+  // "flaky" im Report sichtbar statt rot. Mechanik-Praezedenz
+  // (configure in m1-09/m1-11a/m1-14/m1-15/m3-00 mit mode serial).
+  test.describe.configure({ retries: 1 });
   test("durchläuft Profil, Empfänger, Rendern und kandidatenlokale Abschlussprüfung vollständig zugänglich", async ({ browser, page }) => {
     test.setTimeout(300_000);
     const state = runtimeState();

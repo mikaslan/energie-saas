@@ -1,3 +1,4 @@
+m2-01-offer.spec.ts
 dashboard-overview.spec.ts
 f1-05a-board-columns.spec.ts
 f1-07-lead-score.spec.ts
@@ -53,6 +54,6 @@ m1-08c-catalog-revisions.spec.ts
 m1-11a-project-outcome.spec.ts
 m1-12a-global-task-inbox.spec.ts
 m1-15b-calendar-scopes.spec.ts
-m2-01-zz-guard-persistence.spec.ts
-m2-03a-offer-release-ui.spec.ts
-m3-01-invoicing-ui.spec.ts
+m2-01-zzz-visual-candidates.spec.ts
+m2-04-e-signature.spec.ts
+m3-02d-invoice-pdf.spec.ts

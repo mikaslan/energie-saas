@@ -1,3 +1,4 @@
+m2-01-offer.spec.ts
 f1-02-lead-bulk-import.spec.ts
 f1-06-follow-up.spec.ts
 f1-09-note-mentions.spec.ts
@@ -52,6 +53,6 @@ m1-08b-catalog-import.spec.ts
 m1-10-project-tasks.spec.ts
 m1-11g-calculation-v2-ui.spec.ts
 m1-15-calendar-appointments.spec.ts
-m2-01-z-a11y.spec.ts
-m2-02-offer-pdf.spec.ts
-m3-00-workspace-master-data.spec.ts
+m2-01-zz-guard-persistence.spec.ts
+m2-03a-offer-release-ui.spec.ts
+m3-01-invoicing-ui.spec.ts
