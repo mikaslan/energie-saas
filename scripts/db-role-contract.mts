@@ -775,6 +775,12 @@ const PLANNING_REQUEST_REVISION_RELATIONS = [
   "planning_request_revision",
 ] as const;
 
+// F13-15 (0264): eigene Menge — Finanzierungs-Vorgang je Projekt (Antrag,
+// Statusmaschine, Portal-Projektion).
+const FINANCING_CASE_RELATIONS = [
+  "financing_case",
+] as const;
+
 // F10-10: Folge-Belege je Datei-Anfrage (nur Anlage + Lesen; kein
 // Update/Delete — Muster subsidy_case_message).
 const FILE_REQUEST_UPLOAD_RELATIONS = [
@@ -3504,6 +3510,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F13-15 (0264): eigene ACL-Menge — Anlage/Lesen/Status-Übergänge
+  // (UPDATE für setFinancingCaseStatus, Service-Gate; nie Löschen).
+  const hasFinancingCaseForAcl = await hasAtomicPublicRelationSet(
+    client,
+    FINANCING_CASE_RELATIONS,
+    "Rollen-ACL-Manifest: F13-15-Finanzierung",
+  );
+  if (hasFinancingCaseForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.financing_case
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.financing_case to app_runtime
+    `);
+  }
+
   // F10-10: Folge-Belege unveränderlich — app_runtime liest nur (Anlage
   // ausschließlich über die DEFINER-Kapsel als Owner; Muster
   // subsidy_case_message, dort ohne insert).
@@ -4662,6 +4685,12 @@ export async function verifyRoleContract(
     PLANNING_REQUEST_REVISION_RELATIONS,
     "Rollenvertrag: F13-14-Revisionsnotiz",
   );
+  // F13-15 (0264): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben grün.
+  const hasFinancingCase = await hasAtomicPublicRelationSet(
+    client,
+    FINANCING_CASE_RELATIONS,
+    "Rollenvertrag: F13-15-Finanzierung",
+  );
   // F10-10 (0120): eigene Gate-Menge — Folge-Belege je Datei-Anfrage
   // (Muster hasSubsidyCaseMessages).
   const hasFileRequestUploads = await hasAtomicPublicRelationSet(
@@ -5230,6 +5259,9 @@ export async function verifyRoleContract(
       ...(hasPlanningRequestRevision ? PLANNING_REQUEST_REVISION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
+      ...(hasFinancingCase ? FINANCING_CASE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
@@ -5433,6 +5465,11 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasPortalService ? [
         "confirm_service_case:app_owner",
+      ] : []),
+      // F13-15 (0264): Antrags-Kapsel (Marker hasFinancingCase —
+      // gleiche Migration wie die Tabelle).
+      ...(hasFinancingCase ? [
+        "request_financing_case_by_token:app_owner",
       ] : []),
       // F13-10 (0119): Chat-Kapsel (gleiche Migration wie die Tabelle).
       ...(hasSubsidyCaseMessages ? [
@@ -5952,13 +5989,16 @@ export async function verifyRoleContract(
           `search_path=pg_catalog:${hasF1008Notification
             ? "a49661be591f013d15fea7fc6169fc344311badbaeb1879c6e09713195373e7e"
             : "def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf"}`,
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15/F13-00:
-        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135/0260
-        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein dreizehnter Rumpf
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15/F13-00/F13-15:
+        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135/0260/0264
+        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein vierzehnter Rumpf
         // bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          // F13-00 (0260): Draft-Filter (Hash per Probe geerntet).
-          `search_path=pg_catalog:${hasPortalDraftFilter
+          // F13-15 (0264): financing-Projektion, nur aktiver Vorgang
+          // (Hash per Probe geerntet, inkl. Owner-P0 Multi-Row-Fix).
+          `search_path=pg_catalog:${hasFinancingCase
+            ? "2ba077a2950970e02a59aea37e86f25d31cf1e8aaa6cc1d6240f7bf2c181e141"
+            : hasPortalDraftFilter
             ? "93c78efbdd4736014709aec3119bc3097412d97bfd9170435bef095928a5527c"
             : hasPortalInvoices
             ? "b78e7ca07f4ef1617db40599ddf680ca4559cd0920e3a2b28b0abb4e3d67191a"
@@ -6014,6 +6054,13 @@ export async function verifyRoleContract(
         "confirm_service_case(bytea, uuid):text:" +
           "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
           "8e1371f38039d2728336ae40d656f9a70b2207121b969bd434befde4c877956f",
+        ] : []),
+        // F13-15 (0264): Antrags-Kapsel (Hash per Probe geerntet,
+        // inkl. Owner-P1 Kredit-Paarung).
+        ...(hasFinancingCase ? [
+        "request_financing_case_by_token(bytea, text, integer, integer, text):uuid:" +
+          "app_owner:plpgsql:f:v:true:false:false:u:search_path=pg_catalog:" +
+          "8819a1a286ea9e6124c250acee8ff115413453c361988340ba335ea55f854153",
         ] : []),
         // F13-10 (0119): Chat-Kapsel (Marker hasSubsidyCaseMessages —
         // gleiche Migration wie die Tabelle).
@@ -6591,6 +6638,9 @@ export async function verifyRoleContract(
       ...(hasPlanningRequestRevision ? PLANNING_REQUEST_REVISION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasFinancingCase ? FINANCING_CASE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6880,6 +6930,10 @@ export async function verifyRoleContract(
         // F13-14 (0263): Revisionsnotiz (Hash per Probe geerntet).
         ...(hasPlanningRequestRevision ? [
           "planning_request_revision:tenant_isolation:844a7c6ddb6af90de99f6da808160d2b52cd6e033841331ca7012ff95db8dfbc",
+        ] : []),
+        // F13-15 (0264): Finanzierungs-Vorgang (Hash per Probe geerntet).
+        ...(hasFinancingCase ? [
+          "financing_case:tenant_isolation:9aea8735b814e26c4fe96cdc725ec2841773b4e17c0e6cede93beaeb6a17d497",
         ] : []),
         // F10-10 (0120): Folge-Beleg-Tabelle (Hash per Probe geerntet).
         ...(hasFileRequestUploads ? [
@@ -7740,6 +7794,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
+      // F13-15: Anlage/Lesen/Status-Übergänge, nie Löschen (Finanzierung).
+      ...(hasFinancingCase ? FINANCING_CASE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
       // F10-10: nur Lesen (unveränderliche Folge-Belege; Anlage nur per
       // DEFINER-Kapsel als Owner).
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.flatMap((relation) => [
@@ -7988,6 +8048,10 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasPortalService ? [
         "app_runtime:confirm_service_case(bytea, uuid):EXECUTE:app_owner:false",
+      ] : []),
+      // F13-15 (0264): Antrags-Kapsel (öffentliche Ausführung, Muster F13-06).
+      ...(hasFinancingCase ? [
+        "app_runtime:request_financing_case_by_token(bytea, text, integer, integer, text):EXECUTE:app_owner:false",
       ] : []),
       ...(hasSubsidyCaseMessages ? [
         "app_runtime:post_subsidy_message(bytea, uuid, text):EXECUTE:app_owner:false",

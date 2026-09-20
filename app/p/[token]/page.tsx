@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { DrawSignatureForm } from "./draw-signature-form";
+import { PortalFinancingSection } from "./financing-section";
 
 import { publicTokenCapsule } from "@/lib/action";
 import type {
@@ -410,6 +411,7 @@ export default async function PortalTokenPage({
                 </dl>
               </div>
             )}
+            <PortalFinancingSection token={token} financing={view.financing} />
             {view.service.length === 0 ? null : (
               <div className="mt-6" data-testid="portal-service-section">
                 <h2 className="text-lg font-semibold text-slate-950">{t.serviceHeading}</h2>

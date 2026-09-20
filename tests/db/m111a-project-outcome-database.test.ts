@@ -246,10 +246,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0260 F13-00 Filing-Kern (Draft + Freeze + Slot-Typ + Portal-Filter),
     // 0261 F13-12 Netz-Vertiefung (Status +2, Frist, Add-ons),
     // 0262 F13-13 Förder-Fristen-Preis (Preis-Snapshot, AT-Fristen, Typenschild),
-    // 0263 F13-14 Planung-Revision (finished_at, Revisionsnotiz, overdue)).
+    // 0263 F13-14 Planung-Revision (finished_at, Revisionsnotiz, overdue),
+    // 0264 F13-15 Finanzierung (Vorgang, Statusmaschine, Portal-Projektion)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 154,
-      tag: "0263_f1314_planung_revision",
+      idx: 155,
+      tag: "0264_f1315_financing_case",
     });
   });
 

@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
 
 import { parsePortalPublicView } from "@/lib/integrations/portal/portal-contract";
 
@@ -17,7 +19,10 @@ const UUID = "11111111-1111-4111-8111-111111111111";
 // Nicht-literales Modulspezifizierer-Fragment: tsc löst dynamische
 // Imports mit Literal statisch auf (TS2307) — per Variable bleibt der
 // Import ein Laufzeit-Reject (= ROT-Beleg), sobald das Modul fehlt.
-const MISSING_FINANCING_MODULE = ["@/lib", "financing-case"].join("/");
+// F13-01-Konvention (Owner-DECIDED, keine Abschwächung): der Service
+// lebt in modules (server-only), lib/financing-case.ts bleibt rein und
+// client-sicher — der Contract hängt am Service-Modul, gleiche Assertions.
+const MISSING_FINANCING_MODULE = ["@/modules", "financing-cases/service"].join("/");
 
 function importFinancingCase(): Promise<Record<string, unknown>> {
   return import(/* @vite-ignore */ MISSING_FINANCING_MODULE) as Promise<
@@ -44,10 +49,9 @@ function resolvePayload(extra: Record<string, unknown> = {}): Record<string, unk
   };
 }
 
-// ROT belegt 6/6 (2026-09-19, Beleg in der Spec); skip bis zum
-// Implementierungs-Slice (Vorbild F4-01d-RED). Re-Aktivierung erst mit
-// Modul + Migration + Contract.
-describe.skip("RED F13-15: SPECIFIED, nicht implementiert (6/6 ROT belegt) — Spec: docs/spec/F13-15-finanzierung-intake.md", () => {
+// F13-15 GREEN-Slice (Migration 0264): entskippt 2026-09-20, muss GRÜN werden.
+// Spec: docs/spec/F13-15-finanzierung-intake.md.
+describe("F13-15 Finanzierung-Intake (GREEN-Slice 0264)", () => {
   it("F1315-SVC-01: Service-Modul financing_case existiert (Import löst auf)", async () => {
     const mod = await importFinancingCase();
     expect(mod).toBeDefined();

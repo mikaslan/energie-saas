@@ -277,6 +277,27 @@ export const portalGridSchema = z.strictObject({
 });
 export type PortalGrid = z.infer<typeof portalGridSchema>;
 
+// F13-15: Finanzierungsstand (nur Stand/Produkttyp/Phasen-Daten — nie
+// Volumen/Laufzeit/Provider/Referenz/Bonitaetsdetails; 6er-Wortschatz
+// ohne storniert — storniert blendet der DEFINER als null aus, wie
+// F13-00 draft; KEIN bonitaetAt, Spec §1 kennt nur 4 Stempel).
+export const portalFinancingSchema = z.strictObject({
+  status: z.enum([
+    "beantragt",
+    "bonitaet",
+    "entschieden",
+    "ausgezahlt",
+    "abgeschlossen",
+    "abgelehnt",
+  ]),
+  produkttyp: z.enum(["ratenkauf", "kredit"]),
+  beantragtAt: z.iso.datetime({ offset: true }).nullable(),
+  entschiedenAt: z.iso.datetime({ offset: true }).nullable(),
+  ausgezahltAt: z.iso.datetime({ offset: true }).nullable(),
+  abgeschlossenAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type PortalFinancing = z.infer<typeof portalFinancingSchema>;
+
 export const portalPublicViewV1Schema = z.strictObject({
   schemaVersion: z.literal(PORTAL_PUBLIC_VIEW_VERSION),
   inviteId: z.uuid(),
@@ -292,6 +313,7 @@ export const portalPublicViewV1Schema = z.strictObject({
   subsidy: portalSubsidySchema.nullable(),
   service: z.array(portalServiceCaseSchema),
   gridRegistration: portalGridSchema.nullable(),
+  financing: portalFinancingSchema.nullable(),
 });
 
 export type PortalPublicViewV1 = z.infer<typeof portalPublicViewV1Schema>;
@@ -338,6 +360,8 @@ const portalResolveOkSchema = z.strictObject({
   service: z.unknown().optional(),
   // F13-09: optional — alte Projektionen ohne Schlüssel parsen wie null.
   gridRegistration: z.unknown().optional(),
+  // F13-15: optional — alte Projektionen ohne Schlüssel parsen wie null.
+  financing: z.unknown().optional(),
 });
 
 // Parst das DEFINER-Resultat; 'not_found' (unbekannt/deformiert/entzogen/
@@ -676,6 +700,48 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
       completedAt: gridStamps.completedAt,
     };
   }
+  // F13-15: Finanzierungsstand — Allowlist wie Netzstand (F13-09-Muster);
+  // Volumen/Laufzeit/Provider/Referenz liefert der DEFINER nie; Fremdes
+  // (inkl. storniert-Status und bonitaetAt) bricht fail-closed ab;
+  // fehlend = Alt-Projektion → ehrlich null.
+  let financing: PortalPublicViewV1["financing"] = null;
+  if (parsed.data.financing !== undefined && parsed.data.financing !== null) {
+    const raw = parsed.data.financing;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+    const record = raw as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (
+        key !== "status" && key !== "produkttyp" &&
+        key !== "beantragtAt" && key !== "entschiedenAt" &&
+        key !== "ausgezahltAt" && key !== "abgeschlossenAt"
+      ) {
+        return null;
+      }
+    }
+    const financingStatus = portalFinancingSchema.shape.status.safeParse(record.status);
+    if (!financingStatus.success) return null;
+    const produkttyp = portalFinancingSchema.shape.produkttyp.safeParse(record.produkttyp);
+    if (!produkttyp.success) return null;
+    const financingStamps: Record<string, string | null> = {};
+    for (const key of ["beantragtAt", "entschiedenAt", "ausgezahltAt", "abgeschlossenAt"]) {
+      const value = record[key];
+      if (value === null) {
+        financingStamps[key] = null;
+        continue;
+      }
+      const instant = toInstant(value);
+      if (instant === null) return null;
+      financingStamps[key] = instant;
+    }
+    financing = {
+      status: financingStatus.data,
+      produkttyp: produkttyp.data,
+      beantragtAt: financingStamps.beantragtAt,
+      entschiedenAt: financingStamps.entschiedenAt,
+      ausgezahltAt: financingStamps.ausgezahltAt,
+      abgeschlossenAt: financingStamps.abgeschlossenAt,
+    };
+  }
   return {
     schemaVersion: PORTAL_PUBLIC_VIEW_VERSION,
     inviteId: parsed.data.inviteId,
@@ -691,5 +757,6 @@ export function parsePortalPublicView(value: unknown): PortalPublicViewV1 | null
     subsidy,
     service,
     gridRegistration,
+    financing,
   };
 }

@@ -641,4 +641,81 @@ describe("F10.1 portal command contracts", () => {
     expect(shown?.documents).toEqual([]);
     expect(shown?.invoices).toEqual([]);
   });
+
+  it("parst F13-15-Finanzierungsstand, fehlend = null, Details/fremd = null", () => {
+    const base = {
+      status: "ok",
+      inviteId: INVITE,
+      expiresAt: "2026-10-01T00:00:00.000Z",
+      viewCount: 0,
+      project: { id: PROJECT, name: "P", phase: "installation", outcome: "open", scope: "residential" },
+      documents: [],
+      appointments: [],
+    };
+    // Alt-Projektion ohne Schlüssel → ehrlich null.
+    expect(parsePortalPublicView(base)?.financing).toBeNull();
+    // Beantragter Ratenkauf parst mit 4 Phasen-Stempeln (kein bonitaetAt).
+    const shown = parsePortalPublicView({
+      ...base,
+      financing: {
+        status: "beantragt",
+        produkttyp: "ratenkauf",
+        beantragtAt: "2026-09-01T10:00:00.000Z",
+        entschiedenAt: null,
+        ausgezahltAt: null,
+        abgeschlossenAt: null,
+      },
+    });
+    expect(shown?.financing).toEqual({
+      status: "beantragt",
+      produkttyp: "ratenkauf",
+      beantragtAt: "2026-09-01T10:00:00.000Z",
+      entschiedenAt: null,
+      ausgezahltAt: null,
+      abgeschlossenAt: null,
+    });
+    // 6er-Wortschatz ohne storniert parst wörtlich durch.
+    for (const status of ["bonitaet", "entschieden", "ausgezahlt", "abgeschlossen", "abgelehnt"]) {
+      expect(parsePortalPublicView({
+        ...base,
+        financing: {
+          status,
+          produkttyp: "kredit",
+          beantragtAt: "2026-09-01T10:00:00.000Z",
+          entschiedenAt: null,
+          ausgezahltAt: null,
+          abgeschlossenAt: null,
+        },
+      })?.financing?.status).toBe(status);
+    }
+    // Fremdschlüssel (Details, Referenz, Bonität, Stempel-5) + storniert
+    // + falscher Produkttyp brechen fail-closed ab (view null).
+    for (const patch of [
+      { providerReferenz: "BB-123" },
+      { provider_referenz: "BB-123" },
+      { volumenEur: 50000 },
+      { volumenCents: 5000000 },
+      { laufzeitJahre: 10 },
+      { provider: "bees_bears" },
+      { bonitaet: "gut" },
+      { bonitaetAt: "2026-09-02T10:00:00.000Z" },
+      { status: "storniert" },
+      { status: "draft" },
+      { produkttyp: "leasing" },
+    ]) {
+      expect(parsePortalPublicView({
+        ...base,
+        financing: {
+          status: "beantragt",
+          produkttyp: "ratenkauf",
+          beantragtAt: "2026-09-01T10:00:00.000Z",
+          entschiedenAt: null,
+          ausgezahltAt: null,
+          abgeschlossenAt: null,
+          ...patch,
+        },
+      })).toBeNull();
+    }
+    expect(parsePortalPublicView({ ...base, financing: "beantragt" })).toBeNull();
+  });
 });

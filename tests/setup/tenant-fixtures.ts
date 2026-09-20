@@ -2720,6 +2720,20 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
               'Fixture-Revision.', ${userId}::uuid)
     `);
   },
+  // F13-15 (0264): Finanzierungs-Vorgang zu einem echten Projektgraphen
+  // (Ratenkauf-Guards-konform, damit Test (a) garantiert an RLS scheitert).
+  financing_case: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`
+      insert into financing_case (
+        workspace_id, project_id, produkttyp, provider,
+        laufzeit_jahre, volumen_eur_cents, created_by
+      )
+      values (${wsId}::uuid, ${projectId}::uuid, 'ratenkauf', 'bees_bears',
+              10, 4500000, ${userId}::uuid)
+    `);
+  },
   // F10-04 (0104): Datei-Anfrage zu einem echten Projektgraphen.
   file_request: async (tx, wsId) => {
     const { projectId } = await fixtureProjectGraph(tx, wsId);

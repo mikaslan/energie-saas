@@ -1,6 +1,6 @@
 # F13-15 Finanzierungs-Intake (Katalog F13.4)
 
-Status: **SPECIFIED** · Lane: `codex/muse-fleet-3c-f13` · Migration: keine (STOPP-Regel)
+Status: **GEBAUT** (Migration 0264, 2026-09-20) · Lane: `codex/muse-fleet-3c-f13`
 Basis: Modulkatalog F13.4 („Finanzierung: Bees & Bears Ratenkauf 1–25 J.,
 bis 70.000 €, Echtzeit-Bonität + PSD-Bankkredit; Antrag im Kundenportal,
 Statusverfolgung, Betrieb ohne Vermittlerrolle") — 0 % implementiert.
@@ -147,3 +147,28 @@ erst mit Implementierungs-Slice (Modul + Migration + Contract).
 - E-Mail je Übergang (RESEND-Blocker wie F13-10).
 - Bepreisung (Amendment zu §6), Vermittlerrollen-Klärung (§5-Frage).
 - PSD-Schranken (Amendment statt erfundener Limits, §1).
+- Portal-Sprache: Anzeige deutsch-only (11-Sprachen-Vertrag ohne
+  Muttersprachler-Review zu riskant; TODO im Code, M2-Rest).
+
+## Bau-Protokoll (2026-09-20, Agent 4 + Schwarm Welle 5)
+
+Migration 0264 (idx 155, TOTAL 156): Tabelle + partial-UQ (genau ein
+aktiver Vorgang) + RLS + Resolver-Amendment + Antrags-Kapsel
+(`request_financing_case_by_token`, dritter anonymer Portal-Schreibpfad).
+Tests: Unit 6/6, DB F1315-DB-01..05 (Guards/Maschine/Projektion/
+Rechte/Kapsel-Pfad), Nachbarn f1001/f1300/f1306 grün, m111a-Pins
+(TOTAL 156), Rollenvertrag (Tabelle + Kapsel + Resolver-Stufe 0264),
+E2E F1315-E2E-01+02 2/2 lokal beobachtet.
+
+Korrekturen ggü. Delegation: (1) P0 Multi-Row — Resolver-Subquery
+projiziert genau den aktiven Vorgang (IN-Menge + LIMIT 1 als Netz),
+terminale Historie blendet als null aus (vorher Crash bei 2 Vorgängen,
+E2E-gefunden); (2) P1 Kredit-Paarung — Kapsel prüft kredit↔psd_bank
+als letzte fail-closed-Linie (Service prüfte, Kapsel nicht);
+(3) `financing_case.requested`-Event BLEIBT (F13-06-Kapsel-Präzedenz
+`service_case.confirmed` schlägt Streich-Überlegung; koexistiert mit
+„KEIN created-Event" im internen Service); (4) RED-Test-Pfad
+lib→modules korrigiert (F13-01-Konvention, gleiche Assertions);
+(5) E2E-01: React-19-Form-Reset (Felder nach Invalid-Submit neu
+füllen) + Status-Assert statt Feedback-Assert (Anlegeformular weicht
+bei Erfolg dem Statusblock).

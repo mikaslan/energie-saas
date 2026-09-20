@@ -69,6 +69,7 @@ import {
 } from "@/modules/calendar";
 import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallationHandovers, listInstallerOptions, type InstallableVariantOption, type InstallationDto, type InstallationHandoverHistoryEntry, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
 import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
+import { listFinancingCases, type FinancingCaseDto } from "@/modules/financing-cases";
 import { listOrderParts, type OrderPartDto } from "@/modules/order-parts";
 import {
   isPlanningRequestOverdue,
@@ -88,6 +89,7 @@ import { EnergyProfileSection } from "./energy-profile-section";
 import { InstallationSection } from "./installation-section";
 import { InstallationWorkbookPanel } from "./installation-workbook-panel";
 import { ServiceCaseSection } from "./service-case-section";
+import { FinancingCaseSection } from "./financing-case-section";
 import { PlanningRequestSection } from "./planning-request-section";
 import { OrderPartSection } from "./order-part-section";
 import { OfferCreateEntry } from "./offer-create-entry";
@@ -310,6 +312,12 @@ type ServiceCaseLoadResult =
   | { kind: "unauthenticated" }
   | { kind: "denied" };
 
+// F13-15: Finanzierung (Sichtbarkeits-Muster Förderakte, UI Agent J).
+type FinancingCaseLoadResult =
+  | { kind: "loaded"; activeCase: FinancingCaseDto | null; history: FinancingCaseDto[]; canWrite: boolean }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" };
+
 type OrderPartLoadResult =
   | { kind: "loaded"; parts: OrderPartDto[]; canWrite: boolean }
   | { kind: "unauthenticated" }
@@ -430,6 +438,39 @@ async function loadServiceCases(
       async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
     );
     return { kind: "loaded", cases, canWrite: writable };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+async function loadFinancingCases(
+  workspaceId: string,
+  projectId: string,
+): Promise<FinancingCaseLoadResult> {
+  try {
+    const cases = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "financing_case",
+      (tx, ctx) => listFinancingCases(tx, ctx, { projectId }),
+    );
+    const writable = await authorizedQuery(
+      workspaceId,
+      "installation.read",
+      "financing_case_write_gate",
+      async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
+    );
+    const TERMINAL = ["abgeschlossen", "abgelehnt", "storniert"] as const;
+    const isTerminal = (s: string): boolean =>
+      (TERMINAL as readonly string[]).includes(s);
+    return {
+      kind: "loaded",
+      activeCase: cases.find((c) => !isTerminal(c.status)) ?? null,
+      history: cases.filter((c) => isTerminal(c.status)),
+      canWrite: writable,
+    };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1051,6 +1092,12 @@ export default async function ProjectTriagePage({
     redirectToProjectLogin(detailPath);
   }
 
+  // F13-15: Finanzierung entkoppelt (eigene Sichtbarkeit, UI Agent J).
+  const financingCaseResult = await loadFinancingCases(workspaceId, projectId);
+  if (financingCaseResult.kind === "unauthenticated") {
+    redirectToProjectLogin(detailPath);
+  }
+
   // F10-04: Datei-Anfragen (eigene Sichtbarkeit wie Netzanmeldung).
   const fileRequestResult = await (async (): Promise<
     | {
@@ -1402,6 +1449,18 @@ export default async function ProjectTriagePage({
               belege={subsidyCaseResult.belege}
               suggestion={subsidyCaseResult.suggestion}
               messages={subsidyCaseResult.messages}
+            />
+          </div>
+        ) : null}
+
+        {financingCaseResult.kind === "loaded" ? (
+          <div className="mb-6">
+            <FinancingCaseSection
+              workspaceId={workspaceId}
+              projectId={projectId}
+              activeCase={financingCaseResult.activeCase}
+              history={financingCaseResult.history}
+              canWrite={financingCaseResult.canWrite}
             />
           </div>
         ) : null}

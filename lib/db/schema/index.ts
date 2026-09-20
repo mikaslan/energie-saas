@@ -45,6 +45,7 @@ export * from "./project-task";
 export * from "./portal";
 export * from "./planning";
 export * from "./service-case";
+export * from "./financing-case";
 export * from "./planning-request";
 export * from "./planning-request-revision";
 export * from "./order-part";
