@@ -53,12 +53,9 @@ export function SwUpdateNotice() {
   }, []);
 
   // Redundant gewordener Warte-Worker (ersetzt/entfernt) → Notice weg.
+  // (Render-Guard statt sync-setState im Effekt — Lint-Regel.)
   useEffect(() => {
-    if (!waiting) return;
-    if (waiting.state === "redundant") {
-      setWaiting(null);
-      return;
-    }
+    if (!waiting || waiting.state === "redundant") return;
     const onStateChange = () => {
       if (waiting.state === "redundant") setWaiting(null);
     };
@@ -74,7 +71,7 @@ export function SwUpdateNotice() {
     return () => navigator.serviceWorker.removeEventListener("controllerchange", reloadOnce);
   }, [waiting]);
 
-  if (!waiting) return null;
+  if (!waiting || waiting.state === "redundant") return null;
 
   const applyUpdate = () => {
     setApplying(true);
