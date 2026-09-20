@@ -4,7 +4,9 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import type { TenantTx } from "@/lib/db/types";
 import {
+  catalogComponentRevisionV1Schema,
   validateProjectCatalogResolution,
+  type CatalogComponentRevisionV1,
   type CatalogComponentStatus,
   type ProjectCatalogResolutionV1,
 } from "@/lib/integrations/catalog/contract";
@@ -471,4 +473,97 @@ export async function readOfferCatalogFreshness(
     }
   }
   return freshness;
+}
+
+export type OfferCatalogComponentRevisionSeed = {
+  componentId: string;
+  revision: number;
+  snapshotSha256: string;
+  component: CatalogComponentRevisionV1;
+};
+
+export type OfferCatalogComponentRevisionResult =
+  | { state: "current"; seed: OfferCatalogComponentRevisionSeed }
+  | { state: "conflict" }
+  | {
+      state: "blocked";
+      code: "component_not_found" | "component_not_current";
+    };
+
+const offerCatalogComponentRevisionRequestSchema = z.strictObject({
+  componentId: z.uuid().transform((value) => value.toLowerCase()),
+  expectedRevision: z.int().safe().min(1),
+});
+
+type OfferCatalogComponentRevisionRow = {
+  id: string;
+  status: string;
+  current_revision: number;
+  revision_snapshot: unknown;
+  snapshot_sha256_hex: string;
+  revision_exists: boolean;
+  [key: string]: unknown;
+};
+
+/**
+ * Purpose-limited, server-only read of one catalog component revision used
+ * while seeding an ad-hoc Offer line (F2-03b D3-02).
+ *
+ * Lock-free by design, like the copy read above: the caller already holds
+ * the Project/Offer lock, so catalog rows are read without row locks to
+ * avoid the inverse Project -> Component lock edge.
+ */
+export async function readCatalogComponentRevisionForOfferLine(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  value: unknown,
+): Promise<OfferCatalogComponentRevisionResult> {
+  requireOfferCatalogAccess(
+    ctx,
+    ["price.edit", "price.read_purchase", "catalog.read"],
+    "offer_catalog_component_revision",
+  );
+  const parsed = offerCatalogComponentRevisionRequestSchema.safeParse(value);
+  if (!parsed.success) throw new CatalogOfferBridgeIntegrityError();
+  const request = parsed.data;
+
+  const result = await tx.execute<OfferCatalogComponentRevisionRow>(sql`
+    select component.id, component.status, component.current_revision,
+           revision.revision_snapshot,
+           encode(revision.snapshot_sha256, 'hex') as snapshot_sha256_hex,
+           revision.revision is not null as revision_exists
+      from catalog_component component
+      left join catalog_component_revision revision
+        on revision.workspace_id = component.workspace_id
+       and revision.component_id = component.id
+       and revision.revision = ${request.expectedRevision}
+     where component.workspace_id = ${ctx.workspaceId}::uuid
+       and component.id = ${request.componentId}::uuid
+     limit 1
+  `);
+  const row = result.rows[0];
+  if (!row) return { state: "blocked", code: "component_not_found" };
+  if (row.current_revision !== request.expectedRevision) {
+    return { state: "conflict" };
+  }
+  if (!row.revision_exists) throw new CatalogOfferBridgeIntegrityError();
+  const snapshot = catalogComponentRevisionV1Schema.safeParse(
+    row.revision_snapshot,
+  );
+  const sha = sha256Schema.safeParse(row.snapshot_sha256_hex);
+  if (!snapshot.success || !sha.success) {
+    throw new CatalogOfferBridgeIntegrityError();
+  }
+  if (row.status !== "active" || snapshot.data.commercial === null) {
+    return { state: "blocked", code: "component_not_current" };
+  }
+  return {
+    state: "current",
+    seed: {
+      componentId: row.id,
+      revision: row.current_revision,
+      snapshotSha256: sha.data,
+      component: snapshot.data,
+    },
+  };
 }

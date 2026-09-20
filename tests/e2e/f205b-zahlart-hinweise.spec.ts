@@ -1,21 +1,33 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { expect, test, type Page } from "playwright/test";
+import { sql } from "drizzle-orm";
+import { withTenantOn } from "../../lib/db/tenant";
+import {
+  createDrainTrackedPool,
+  endPoolAndWaitForClientRemoval,
+} from "../setup/pg-pool-drain";
+import { seedM201ReadyProject } from "./m2-01-fixture";
 
 /**
- * F2-05b Zahlart-Hinweise — Chromium-E2E (Lane 7 Welle 2).
+ * F2-05b Zahlart-Hinweise — Chromium-E2E (isolierter Workspace, Lane 7 Welle 2).
  *
  * F205B-E2E-01 (RED): Zahlart der aktiven Variante erscheint als reiner
  * Lese-Hinweis im OfferSignaturePanel (D5-05, exakte §4-Texte); ohne
  * Zahlart der Null-Text. Scheitert, bis das Panel den Hinweis rendert.
  * F205B-NEG-01 (PIN, erwartet GRÜN): öffentliche Token-Route zeigt kein
  * Zahlart-Label — D5-04 ist verworfen (§5), Gate unverändert.
+ *
+ * Isolation (f12-01-Muster): eigener Workspace + eigenes M2-01-Ready-Projekt.
+ * Der geteilte w3Workspace scheiterte in der Vollsuite an UNIQUE
+ * payment_option_ws_active_key_uq, weil die f2-05-Spec `purchase` zuerst
+ * belegt (CI rot/lokal grün).
  */
 
 type E2EState = {
   databaseUrl: string;
   serverLogPath: string;
-  w3WorkspaceId: string;
-  f25ProjectId: string;
+  adminEmail: string;
   editorEmail: string;
 };
 
@@ -28,8 +40,7 @@ function state(): E2EState {
   const required: Array<keyof E2EState> = [
     "databaseUrl",
     "serverLogPath",
-    "w3WorkspaceId",
-    "f25ProjectId",
+    "adminEmail",
     "editorEmail",
   ];
   if (required.some((key) => typeof parsed[key] !== "string" || parsed[key] === "")) {
@@ -103,6 +114,36 @@ function trackErrors(page: Page): string[] {
   return errors;
 }
 
+async function seedIsolatedWorkspace(): Promise<{ workspaceId: string; editorIdentityId: string }> {
+  const data = state();
+  const workspaceId = randomUUID();
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
+  try {
+    const identities = await pool.query<{ id: string; email: string }>(
+      "select id, email from user_identity where email in ($1, $2)",
+      [data.adminEmail, data.editorEmail],
+    );
+    const adminId = identities.rows.find((row) => row.email === data.adminEmail)?.id;
+    const editorId = identities.rows.find((row) => row.email === data.editorEmail)?.id;
+    if (!adminId) throw new Error("F205B-E2E: Admin-Identität fehlt.");
+    if (!editorId) throw new Error("F205B-E2E: Editor-Identität fehlt.");
+    await withTenantOn(pool, workspaceId, async (tx) => {
+      await tx.execute(sql`
+        insert into workspace (id, name) values (${workspaceId}::uuid, 'F205B isoliert')
+      `);
+      await tx.execute(sql`
+        insert into membership (workspace_id, user_id, role, capabilities)
+        values (${workspaceId}::uuid, ${adminId}::uuid, 'admin', '{}'::jsonb),
+               (${workspaceId}::uuid, ${editorId}::uuid, 'editor',
+                 '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,"assign_projects":true,"convert_phase":true,"discounts":true}'::jsonb)
+      `);
+    });
+    return { workspaceId, editorIdentityId: editorId };
+  } finally {
+    await endPoolAndWaitForClientRemoval(pool);
+  }
+}
+
 function signaturePanel(page: Page) {
   return page.locator("section").filter({
     has: page.getByRole("heading", { name: "Signaturanforderungen", exact: true }),
@@ -113,9 +154,15 @@ test("F205B-E2E-01: Zahlart-Hinweis im Signatur-Panel (gesetzt + Null-Text)", as
   test.setTimeout(180_000);
   const data = state();
   const errors = trackErrors(page);
+  const { workspaceId, editorIdentityId } = await seedIsolatedWorkspace();
+  const seed = await seedM201ReadyProject(data.databaseUrl, {
+    workspaceId,
+    editorIdentityId,
+    skuSuffix: "w3-f205b",
+  });
 
   // Stammdaten-Voraussetzung per UI (eigene Bezeichnung für stabile Selektoren).
-  const settingsPath = `/w/${data.w3WorkspaceId}/einstellungen/zahlarten`;
+  const settingsPath = `/w/${workspaceId}/einstellungen/zahlarten`;
   await page.goto(settingsPath);
   await loginWithRealOtp(page, data.editorEmail, settingsPath);
   await page.getByLabel("Schlüssel").selectOption("purchase");
@@ -123,8 +170,8 @@ test("F205B-E2E-01: Zahlart-Hinweis im Signatur-Panel (gesetzt + Null-Text)", as
   await page.getByRole("button", { name: "Anlegen", exact: true }).click();
   await expect(page.getByText("Zahlart angelegt.")).toBeVisible();
 
-  // Angebot per UI erzeugen (Ready-Status aus dem M2-01-Seed).
-  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${data.f25ProjectId}`;
+  // Angebot per UI erzeugen (Ready-Status aus dem eigenen M2-01-Seed).
+  const projectPath = `/w/${workspaceId}/anfragen/${seed.projectId}`;
   await page.goto(projectPath);
   const createEntry = page.locator('[data-offer-create-state="ready"]');
   await expect(createEntry).toBeVisible();

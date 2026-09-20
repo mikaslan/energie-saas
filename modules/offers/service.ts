@@ -47,10 +47,6 @@ import {
 } from "@/lib/integrations/offers/contract";
 import { calculateOfferPricing } from "@/lib/integrations/offers/money";
 import {
-  catalogComponentRevisionV1Schema,
-  type CatalogComponentRevisionV1,
-} from "@/lib/integrations/catalog/contract";
-import {
   contentLockToBlockedCode,
   dominantContentLock,
 } from "@/lib/integrations/offers/variant-controls";
@@ -65,9 +61,11 @@ import {
 } from "@/lib/permissions";
 import {
   CatalogOfferBridgeIntegrityError,
+  readCatalogComponentRevisionForOfferLine,
   readCurrentProjectCatalogBasisReference,
   readCurrentProjectCatalogForOfferCopy,
   readOfferCatalogFreshness,
+  type OfferCatalogComponentRevisionSeed,
   type OfferCatalogResolutionSnapshot,
 } from "@/modules/catalog";
 import { getPlanningModeDefaultForVariantCreation } from "@/modules/planning";
@@ -2127,7 +2125,11 @@ export async function duplicateOfferVariant(
     description: snapshot.description,
     isPrimary: false,
     createdAt: now,
-    optionalBundles: structuredClone(readVariantBundles(sourceVariant.optional_bundles)),
+    optionalBundles: structuredClone(
+      sourceVariant.optional_bundles === undefined || sourceVariant.optional_bundles === null
+        ? []
+        : readVariantBundles(sourceVariant.optional_bundles),
+    ),
     paymentOptionId: sourceVariant.payment_option_id,
   });
   await persistRevision(tx, ctx, snapshot);
@@ -2533,47 +2535,34 @@ function originalProvenance(
 type CatalogLineSeed = {
   revision: number;
   sha: string;
-  component: CatalogComponentRevisionV1;
+  component: OfferCatalogComponentRevisionSeed["component"];
 };
 
-// F2-03b D3-02: Ad-hoc-Katalogzeile gegen den lebenden Katalog prüfen
-// (Muster resolveBoundLines, package-templates.ts): Tenant-Scope, nur
-// aktiv, nur mit Preis. Drift scheitert fail-closed, nie stiller
-// Preiswechsel. Der SHA kommt aus der DB (Mirror-Vergleichsbasis).
+// F2-03b D3-02: Ad-hoc-Katalogzeile gegen den lebenden Katalog prüfen —
+// ausschließlich über den engen Katalogexport (Boundary M2-01): kein
+// direktes catalog_-SQL in diesem Modul. Drift scheitert fail-closed,
+// nie stiller Preiswechsel. Der SHA kommt aus der DB (Mirror-Basis).
 async function readCatalogLineSeed(
   tx: TenantTx,
   ctx: ServiceCtx,
   componentId: string,
+  expectedRevision: number,
 ): Promise<CatalogLineSeed> {
-  const found = await tx.execute<{
-    status: string;
-    current_revision: number;
-    revision_snapshot: unknown;
-    sha: string;
-  }>(sql`
-    select component.status, component.current_revision,
-           revision.revision_snapshot,
-           encode(revision.snapshot_sha256, 'hex') as sha
-      from catalog_component component
-      join catalog_component_revision revision
-        on revision.workspace_id = component.workspace_id
-       and revision.component_id = component.id
-       and revision.revision = component.current_revision
-     where component.workspace_id = ${ctx.workspaceId}::uuid
-       and component.id = ${componentId}::uuid
-     limit 1
-  `);
-  const row = found.rows[0];
-  const parsed = row
-    ? catalogComponentRevisionV1Schema.safeParse(row.revision_snapshot)
-    : null;
-  if (
-    !row || row.status !== "active" || !parsed || !parsed.success
-    || parsed.data.commercial === null
-  ) {
+  const result = await readCatalogComponentRevisionForOfferLine(tx, ctx, {
+    componentId,
+    expectedRevision,
+  });
+  if (result.state === "conflict") {
+    throw new OfferValidationError(["/operations/expectedCatalogRevision"]);
+  }
+  if (result.state === "blocked") {
     throw new OfferValidationError(["/operations/catalogComponentId"]);
   }
-  return { revision: row.current_revision, sha: row.sha, component: parsed.data };
+  return {
+    revision: result.seed.revision,
+    sha: result.seed.snapshotSha256,
+    component: result.seed.component,
+  };
 }
 
 async function applyRevisionOperation(
@@ -2836,10 +2825,12 @@ async function applyRevisionOperation(
       if (operation.position > section.lines.length + 1) {
         throw new OfferValidationError(["/operations/position"]);
       }
-      const seed = await readCatalogLineSeed(tx, ctx, operation.catalogComponentId);
-      if (seed.revision !== operation.expectedCatalogRevision) {
-        throw new OfferValidationError(["/operations/expectedCatalogRevision"]);
-      }
+      const seed = await readCatalogLineSeed(
+        tx,
+        ctx,
+        operation.catalogComponentId,
+        operation.expectedCatalogRevision,
+      );
       const component = seed.component;
       const commercial = component.commercial;
       if (commercial === null) {

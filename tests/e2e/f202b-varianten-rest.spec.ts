@@ -18,7 +18,8 @@ import { seedM201ReadyProject } from "./m2-01-fixture";
  *
  * Muster: tests/e2e/f2-02-varianten-vertiefung.spec.ts (Login, Offer-Erzeugung,
  * Duplikat, Read-back) + tests/e2e/f2-05-zahlarten.spec.ts (Zahlart-Stammdaten
- * per UI, Varianten-Auswahl). Eigenes W3-Projekt (f7-03-Lehre).
+ * per UI, Varianten-Auswahl). Eigenes Projekt in isoliertem Workspace
+ * (CI-Isolation: kein geteilter W3-Workspace mit F2.5).
  *
  * RED-Gründe: duplicateOfferVariant kopiert weder optional_bundles noch
  * payment_option_id (service.ts insertVariant ohne beide Felder); der
@@ -58,11 +59,53 @@ function state(): E2EState {
 }
 
 let f202bProjectId = "";
+let f202bWorkspaceId = "";
+
+/** Eigener isolierter Workspace + Editor-Membership (F12-01/F9-14-Muster). */
+async function seedIsolatedWorkspace(): Promise<string> {
+  const data = state();
+  const workspaceId = randomUUID();
+  const pool = createDrainTrackedPool({ connectionString: data.databaseUrl, max: 1 });
+  try {
+    const identities = await pool.query<{ id: string; email: string }>(
+      "select id, email from user_identity where email = $1",
+      [data.editorEmail],
+    );
+    const editorId = identities.rows.find((row) => row.email === data.editorEmail)?.id;
+    if (!editorId) throw new Error("F202B: Editor-Identität fehlt.");
+    const client = await pool.connect();
+    try {
+      await client.query("insert into workspace (id, name) values ($1::uuid, $2)", [
+        workspaceId,
+        "F202B isolierter Varianten-Workspace",
+      ]);
+      // Membership-DML verlangt Workspace-Kontext (RLS) auf derselben Verbindung.
+      await client.query(
+        "select set_config('app.actor_id', '', false), set_config('app.workspace_id', $1, false)",
+        [workspaceId],
+      );
+      // W3-Capabilities spiegeln (Zahlart-/Angebot-UI + M2-01-Seed).
+      await client.query(
+        `insert into membership (workspace_id, user_id, role, capabilities)
+         values ($1::uuid, $2::uuid, 'editor',
+           '{"manage_catalog":true,"edit_prices":true,"see_purchase_prices":true,
+              "assign_projects":true,"convert_phase":true,"discounts":true}'::jsonb)`,
+        [workspaceId, editorId],
+      );
+    } finally {
+      client.release();
+    }
+    return workspaceId;
+  } finally {
+    await endPoolAndWaitForClientRemoval(pool);
+  }
+}
 
 test.beforeAll(async () => {
   const data = state();
+  f202bWorkspaceId = await seedIsolatedWorkspace();
   const seed = await seedM201ReadyProject(data.databaseUrl, {
-    workspaceId: data.w3WorkspaceId,
+    workspaceId: f202bWorkspaceId,
     editorIdentityId: data.editorIdentityId,
     skuSuffix: `w3-f202b-${randomUUID().slice(0, 8)}`,
   });
@@ -149,7 +192,7 @@ async function readVariantState(offerId: string): Promise<VariantRow[]> {
         where o.workspace_id = $1::uuid
           and o.id = $2::uuid
         order by v.ordinal asc`,
-      [data.w3WorkspaceId, offerId],
+      [f202bWorkspaceId, offerId],
     );
     return result.rows as VariantRow[];
   } finally {
@@ -189,8 +232,8 @@ async function tenantFn<Row extends QueryResultRow = QueryResultRow>(
  * 2× Approval über produktive SQL-Funktionen, dann create_signature_request.
  * Ein rohes signature_request-INSERT scheitert am M2-04-Trigger (interner
  * Editor/Admin-Akteur + freigegebene Ausstellungsfassung + created_by=Actor).
- * Akteure sind frische Admin-Identitäten (eigene UUIDs, rein additiv — kein
- * Shared-Membership-Umbau im W3-Workspace).
+ * Akteure sind frische Admin-Identitäten (eigene UUIDs, rein additiv —
+ * kein Shared-Membership-Umbau, Workspace ist isoliert).
  */
 async function seedPendingSignatureLock(
   projectId: string,
@@ -202,13 +245,13 @@ async function seedPendingSignatureLock(
   try {
     const revision = await tenantFn<{ id: string; revision: number; snapshot_sha256: Buffer }>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `select id::text as id, revision, snapshot_sha256
          from offer_variant_revision
         where workspace_id = $1::uuid and offer_id = $2::uuid and variant_id = $3::uuid
         order by revision desc limit 1`,
-      [data.w3WorkspaceId, offerId, variantId],
+      [f202bWorkspaceId, offerId, variantId],
     );
     const revisionRow = revision.rows[0];
     if (!revisionRow) throw new Error("F202B: Variantenrevision fehlt.");
@@ -223,26 +266,26 @@ async function seedPendingSignatureLock(
       ]);
       await tenantFn(
         pool,
-        data.w3WorkspaceId,
+        f202bWorkspaceId,
         null,
         "insert into public.membership (workspace_id, user_id, role, capabilities) values ($1::uuid, $2::uuid, 'admin', '{}'::jsonb)",
-        [data.w3WorkspaceId, actor],
+        [f202bWorkspaceId, actor],
       );
     }
 
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       "update public.project set phase = 'offer' where workspace_id = $1::uuid and id = $2::uuid",
-      [data.w3WorkspaceId, projectId],
+      [f202bWorkspaceId, projectId],
     );
 
     // PDF-Entwurf: queued-INSERT (Input leitet der BEFORE-Trigger aus der
     // versiegelten Revision ab), dann running→succeeded mit synthetischem Artefakt.
     const draft = await tenantFn<{ id: string }>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       adminA,
       `insert into offer_pdf_draft (
          workspace_id, project_id, offer_id, variant_id, variant_revision_id,
@@ -257,7 +300,7 @@ async function seedPendingSignatureLock(
          $8::bytea, '{}'::jsonb, $8::bytea, $9::uuid
        ) returning id::text as id`,
       [
-        data.w3WorkspaceId,
+        f202bWorkspaceId,
         projectId,
         offerId,
         variantId,
@@ -272,24 +315,24 @@ async function seedPendingSignatureLock(
     if (!draftId) throw new Error("F202B: PDF-Entwurf fehlt.");
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `update offer_pdf_draft set state = 'running', attempt_count = 1, lease_token = gen_random_uuid(),
               lease_expires_at = clock_timestamp() + interval '5 minutes', started_at = clock_timestamp(),
               updated_at = clock_timestamp()
         where workspace_id = $1::uuid and id = $2::uuid and state = 'queued'`,
-      [data.w3WorkspaceId, draftId],
+      [f202bWorkspaceId, draftId],
     );
     const draftArtifact = Buffer.from(`%PDF-1.7\n${"f202b-draft".repeat(8)}\n%%EOF`, "utf8");
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `update offer_pdf_draft set state = 'succeeded', lease_token = null, lease_expires_at = null,
               artifact_mime_type = 'application/pdf', artifact_bytes = $2::bytea, artifact_sha256 = sha256($2::bytea),
               artifact_size_bytes = octet_length($2::bytea), finished_at = clock_timestamp(), updated_at = clock_timestamp()
         where workspace_id = $1::uuid and id = $3::uuid and state = 'running'`,
-      [data.w3WorkspaceId, draftArtifact, draftId],
+      [f202bWorkspaceId, draftArtifact, draftId],
     );
 
     const sender = {
@@ -311,14 +354,14 @@ async function seedPendingSignatureLock(
     };
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       adminA,
       `select public.revise_offer_release_profile($1::uuid, 0, 'F202B Profil', $2::jsonb, $3::jsonb)`,
-      [data.w3WorkspaceId, JSON.stringify(sender), JSON.stringify(legalDocuments)],
+      [f202bWorkspaceId, JSON.stringify(sender), JSON.stringify(legalDocuments)],
     );
     const profile = await tenantFn<{ profile_id: string; profile_revision_id: string; profile_revision: number }>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `select profile.id as profile_id, revision.id as profile_revision_id, revision.revision as profile_revision
          from offer_release_profile as profile
@@ -327,29 +370,29 @@ async function seedPendingSignatureLock(
           and revision.profile_id = profile.id
           and revision.revision = profile.current_revision
         where profile.workspace_id = $1::uuid limit 1`,
-      [data.w3WorkspaceId],
+      [f202bWorkspaceId],
     );
     const profileHead = profile.rows[0];
     if (!profileHead) throw new Error("F202B: Release-Profil fehlt.");
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       adminA,
       `select public.activate_offer_release_profile($1::uuid, $2::uuid, $3::uuid, $4::integer)`,
-      [data.w3WorkspaceId, profileHead.profile_id, profileHead.profile_revision_id, profileHead.profile_revision],
+      [f202bWorkspaceId, profileHead.profile_id, profileHead.profile_revision_id, profileHead.profile_revision],
     );
 
     const billingAddress = { street: "Rechnungsweg", houseNumber: "8a", postalCode: "10999", city: "Berlin", country: "DE" };
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       adminA,
       `select public.revise_offer_recipient($1::uuid, $2::uuid, 0, 'F202B Rechnungsempfaenger', 'F202B Kundin GmbH', 'rechnung@f202b.invalid', $3::jsonb, true)`,
-      [data.w3WorkspaceId, offerId, JSON.stringify(billingAddress)],
+      [f202bWorkspaceId, offerId, JSON.stringify(billingAddress)],
     );
     const recipient = await tenantFn<{ recipient_revision_id: string; recipient_revision: number }>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `select revision.id as recipient_revision_id, revision.revision as recipient_revision
          from offer_recipient as recipient
@@ -358,18 +401,18 @@ async function seedPendingSignatureLock(
           and revision.recipient_id = recipient.id
           and revision.revision = recipient.current_revision
         where recipient.workspace_id = $1::uuid and recipient.offer_id = $2::uuid limit 1`,
-      [data.w3WorkspaceId, offerId],
+      [f202bWorkspaceId, offerId],
     );
     const recipientHead = recipient.rows[0];
     if (!recipientHead) throw new Error("F202B: Empfaenger fehlt.");
 
     const preparedCandidate = await tenantFn<JsonResult>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       adminA,
       `select public.prepare_offer_release_candidate($1::uuid, $2::uuid, $3::uuid, $4::integer, $5::uuid, $6::uuid, $7::uuid, $8::integer, $9::uuid, $10::integer, ((clock_timestamp() at time zone 'Europe/Berlin')::date + $11::integer)::date) as result`,
       [
-        data.w3WorkspaceId,
+        f202bWorkspaceId,
         offerId,
         variantId,
         revisionRow.revision,
@@ -387,44 +430,44 @@ async function seedPendingSignatureLock(
     }
     const candidate = await tenantFn<{ candidate_id: string }>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `select id as candidate_id from offer_release_candidate
         where workspace_id = $1::uuid and offer_id = $2::uuid
         order by created_at desc, id desc limit 1`,
-      [data.w3WorkspaceId, offerId],
+      [f202bWorkspaceId, offerId],
     );
     const candidateId = candidate.rows[0]?.candidate_id;
     if (!candidateId) throw new Error("F202B: Release-Candidate fehlt.");
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `update offer_release_candidate set state = 'running', attempt_count = 1, lease_token = gen_random_uuid(),
               lease_expires_at = clock_timestamp() + interval '5 minutes', started_at = clock_timestamp(),
               updated_at = clock_timestamp()
         where workspace_id = $1::uuid and id = $2::uuid and state = 'queued'`,
-      [data.w3WorkspaceId, candidateId],
+      [f202bWorkspaceId, candidateId],
     );
     const candidateArtifact = Buffer.from(`%PDF-1.7\n${"f202b-release-candidate".repeat(8)}\n%%EOF`, "utf8");
     const artifactVersion = randomUUID();
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `update offer_release_candidate set state = 'ready_for_approval', lease_token = null, lease_expires_at = null,
               artifact_mime_type = 'application/pdf', artifact_bytes = $2::bytea, artifact_sha256 = sha256($2::bytea),
               artifact_size_bytes = octet_length($2::bytea), artifact_version = $3::uuid, finished_at = clock_timestamp(),
               updated_at = clock_timestamp()
         where workspace_id = $1::uuid and id = $4::uuid and state = 'running'`,
-      [data.w3WorkspaceId, candidateArtifact, artifactVersion, candidateId],
+      [f202bWorkspaceId, candidateArtifact, artifactVersion, candidateId],
     );
     const candidateApproval = await tenantFn<JsonResult>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       adminA,
       `select public.approve_offer_release_candidate($1::uuid, $2::uuid, $3::uuid, $4::uuid, true, true, true, true, null) as result`,
-      [data.w3WorkspaceId, offerId, candidateId, artifactVersion],
+      [f202bWorkspaceId, offerId, candidateId, artifactVersion],
     );
     if (candidateApproval.rows[0]?.result?.status !== "approved") {
       throw new Error(`F202B: Candidate-Freigabe fehlgeschlagen (${JSON.stringify(candidateApproval.rows[0]?.result)}).`);
@@ -432,10 +475,10 @@ async function seedPendingSignatureLock(
 
     const prepared = await tenantFn<JsonResult>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       adminA,
       `select public.prepare_offer_issuance($1::uuid, $2::uuid, $3::uuid) as result`,
-      [data.w3WorkspaceId, offerId, candidateId],
+      [f202bWorkspaceId, offerId, candidateId],
     );
     if (prepared.rows[0]?.result?.status !== "prepared") {
       throw new Error(`F202B: Ausstellungsreservation fehlgeschlagen (${JSON.stringify(prepared.rows[0]?.result)}).`);
@@ -445,26 +488,26 @@ async function seedPendingSignatureLock(
     const lease = randomUUID();
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `select public.claim_offer_issuance_render($1::uuid, $2::uuid, $3::uuid, 120) as result`,
-      [data.w3WorkspaceId, issuanceId, lease],
+      [f202bWorkspaceId, issuanceId, lease],
     );
     const artifact = Buffer.from(`%PDF-1.7\n${"f202b-final-issuance".repeat(8)}\n%%EOF`, "utf8");
     await tenantFn(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       null,
       `select public.finalize_offer_issuance_render_success($1::uuid, $2::uuid, $3::uuid, 1, $4::bytea) as result`,
-      [data.w3WorkspaceId, issuanceId, lease, artifact],
+      [f202bWorkspaceId, issuanceId, lease, artifact],
     );
     for (const approver of [adminA, adminB]) {
       const approval = await tenantFn<JsonResult>(
         pool,
-        data.w3WorkspaceId,
+        f202bWorkspaceId,
         approver,
         `select public.approve_offer_issuance($1::uuid, $2::uuid, true, true, true, true, null) as result`,
-        [data.w3WorkspaceId, issuanceId],
+        [f202bWorkspaceId, issuanceId],
       );
       if (approval.rows[0]?.result?.status !== "approved") {
         throw new Error(`F202B: Ausstellungs-Freigabe fehlgeschlagen (${JSON.stringify(approval.rows[0]?.result)}).`);
@@ -475,10 +518,10 @@ async function seedPendingSignatureLock(
     const tokenHash = createHash("sha256").update(randomBytes(32)).digest();
     const request = await tenantFn<JsonResult>(
       pool,
-      data.w3WorkspaceId,
+      f202bWorkspaceId,
       adminA,
       `select public.create_signature_request($1::uuid, $2::uuid, $3::uuid, 14, $4::bytea) as result`,
-      [data.w3WorkspaceId, offerId, variantId, tokenHash],
+      [f202bWorkspaceId, offerId, variantId, tokenHash],
     );
     if (request.rows[0]?.result?.status !== "pending") {
       throw new Error(`F202B: Signatur-Request fehlt (${JSON.stringify(request.rows[0]?.result)}).`);
@@ -499,7 +542,7 @@ test("F202B-E2E-01: Duplikat kopiert Bundles + Zahlart; Override-Block bei pendi
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
 
   // Zahlart-Stammdaten per UI (eigene Bezeichnung, Muster F2.5-E2E-02).
-  const settingsPath = `/w/${data.w3WorkspaceId}/einstellungen/zahlarten`;
+  const settingsPath = `/w/${f202bWorkspaceId}/einstellungen/zahlarten`;
   await page.goto(settingsPath);
   await loginWithRealOtp(page, data.editorEmail, settingsPath);
   await page.getByLabel("Schlüssel").selectOption("purchase");
@@ -508,8 +551,8 @@ test("F202B-E2E-01: Duplikat kopiert Bundles + Zahlart; Override-Block bei pendi
   await expect(page.getByText("Zahlart angelegt.")).toBeVisible();
 
   // Angebot per UI erzeugen (Ready-Status aus dem M2-01-Seed).
-  if (!f202bProjectId) throw new Error("F202B-Seed fehlt (beforeAll nicht gelaufen?).");
-  const projectPath = `/w/${data.w3WorkspaceId}/anfragen/${f202bProjectId}`;
+  if (!f202bProjectId || !f202bWorkspaceId) throw new Error("F202B-Seed fehlt (beforeAll nicht gelaufen?).");
+  const projectPath = `/w/${f202bWorkspaceId}/anfragen/${f202bProjectId}`;
   await page.goto(projectPath);
   const createEntry = page.locator('[data-offer-create-state="ready"]');
   await expect(createEntry).toBeVisible();

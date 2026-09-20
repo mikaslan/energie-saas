@@ -43,7 +43,7 @@ export const OFFER_VARIANT_SNAPSHOT_VERSION_V1 = "offer-variant-snapshot.v1" as 
 // Artefakts. Der Generator und der Contract-Test verhindern eine zweite
 // Vertragswahrheit.
 export const OFFER_SCHEMA_SHA256 =
-  "5aeb1620466d1e4bd89963a0c96c74abd81ecc0e5cb0df069b2c6cfe83efd521" as const;
+  "3c1256b3a036906f67eb842708fce35d0f48e8f067bb9f2ced6fb740f587e1c5" as const;
 
 export const OFFER_MAX_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const OFFER_MAX_PATCH_OPERATIONS = 500 as const;

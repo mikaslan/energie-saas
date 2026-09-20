@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { expect, test, type Page } from "playwright/test";
 import {
   M2_01_E2E_CONTACT,
   readM201Offer,
   readM201RevisionEvidence,
+  seedM201ReadyProject,
   type M201RuntimeState,
 } from "./m2-01-fixture";
 
@@ -113,13 +115,13 @@ async function loginWithRealOtp(page: Page, expectedTarget: string): Promise<voi
   await page.waitForURL((url) => `${url.pathname}${url.search}` === expectedTarget);
 }
 
-async function createOfferViaBrowser(page: Page): Promise<{
+async function createOfferViaBrowser(page: Page, projectId: string): Promise<{
   offerId: string;
   state: M201RuntimeState;
   variantId: string;
 }> {
   const state = runtimeState();
-  const projectPath = `/w/${state.workspaceId}/anfragen/${state.m201ProjectId}`;
+  const projectPath = `/w/${state.workspaceId}/anfragen/${projectId}`;
   await page.goto(projectPath);
   await loginWithRealOtp(page, projectPath);
 
@@ -143,14 +145,15 @@ async function createOfferViaBrowser(page: Page): Promise<{
     /^\/w\/[0-9a-f-]+\/angebote\/[0-9a-f-]+$/u.test(url.pathname)
     && url.searchParams.has("variante"));
 
-  const offer = await readM201Offer(state);
+  const scopedState = { ...state, m201ProjectId: projectId };
+  const offer = await readM201Offer(scopedState);
   const createdUrl = new URL(page.url());
   expect(createdUrl.pathname).toBe(
     `/w/${state.workspaceId}/angebote/${offer.offerId}`,
   );
   expect(createdUrl.searchParams.get("variante")).toBe(offer.variantId);
   await expect(page.locator('[data-offer-detail-state="loaded"]')).toBeVisible();
-  return { ...offer, state };
+  return { ...offer, state: scopedState };
 }
 
 function trackBrowserErrors(page: Page): void {
@@ -161,6 +164,19 @@ function trackBrowserErrors(page: Page): void {
   });
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
 }
+
+let f203bProjectId = "";
+
+test.beforeAll(async () => {
+  test.setTimeout(120_000);
+  const state = runtimeState();
+  const seed = await seedM201ReadyProject(state.databaseUrl, {
+    workspaceId: state.workspaceId,
+    editorIdentityId: state.editorIdentityId,
+    skuSuffix: `w3-f203b-${randomUUID().slice(0, 8)}`,
+  });
+  f203bProjectId = seed.projectId;
+});
 
 test.beforeEach(async ({ page }) => {
   trackBrowserErrors(page);
@@ -173,7 +189,8 @@ test.afterEach(async ({ page }) => {
 test.describe("F2-03b Kalkulations-Rest (D3-01 Sektionstitel-UI)", () => {
   test("zeigt für bestehende Custom-Sektionen einen Sektionsname-Input", async ({ page }) => {
     test.setTimeout(120_000);
-    const { offerId, state, variantId } = await createOfferViaBrowser(page);
+    if (!f203bProjectId) throw new Error("F203B-Seed fehlt (beforeAll nicht gelaufen?).");
+    const { offerId, state, variantId } = await createOfferViaBrowser(page, f203bProjectId);
     const firstEvidence = await readM201RevisionEvidence(state, offerId, variantId);
     const customTitle = "F203B Titel-Edit Sektion";
 
@@ -211,6 +228,6 @@ test.describe("F2-03b Kalkulations-Rest (D3-01 Sektionstitel-UI)", () => {
       has: page.getByRole("heading", { name: customTitle, exact: true }),
     });
     await expect(persistedSection).toHaveCount(1);
-    await expect(persistedSection.getByLabel("Sektionsname", { exact: true })).toBeVisible();
+    await expect(persistedSection.getByLabel("Sektionsname ändern", { exact: true })).toBeVisible();
   });
 });
