@@ -12,9 +12,16 @@ netzseitigen Pflichtpfad. Bauarbeit, kein Referenzbeleg.
   (fail-closed, nur legale Übergänge):
   `vorbereitung → eingereicht → genehmigt → fertiggemeldet →
   abgeschlossen`; `storniert` aus jedem nicht-abgeschlossenen
-  Zustand; keine Rück Übergänge (erneute Einreichung nach Storno =
+  Zustand; keine Rückübergänge (erneute Einreichung nach Storno =
   neuer Durchlauf per Statuswechsel storniert→vorbereitung? NEIN —
   v1: storniert ist terminal; dokumentierte Grenze).
+  F13-12-UPDATE (2026-09-20, Migration 0261): Kette erweitert um
+  `rueckfrage`-Loop (`eingereicht ↔ rueckfrage`) und `einspeisezusage`
+  (zwischen `genehmigt` und `fertiggemeldet`); `storniert →
+  vorbereitung` als Wiedereröffnung geöffnet (v1-Terminalität damit
+  aufgehoben); `→ fertiggemeldet` mit Guards (Zählernummer + ≥16
+  Fotos); Details-Sperre ab `eingereicht` (außer `rueckfrage`).
+  Details: docs/spec/F13-12-netzanmeldung-vertiefung.md.
 - Felder: Netzbetreiber (frei, optional), Zählernummer (frei,
   optional), submitted/decided/completed-Zeiten (gesetzt per
   Übergang, nie per Hand).
@@ -44,3 +51,8 @@ netzseitigen Pflichtpfad. Bauarbeit, kein Referenzbeleg.
 ## Bewusst offen
 - MaStR-Meldung, tatsächliche Netzbetreiber-Integration, Dokumente,
   Fristen/Erinnerungen, Historie mehrerer Durchläufe, Portal-Sicht.
+- F13-12-UPDATE (2026-09-20): Dokumente als Datei-Slot-Titelvorgaben
+  (§3), Frist-Tracking ohne Automatismus (§4), Add-on-Vormerkung
+  (§5) geschlossen — s. F13-12-Spec. Offen bleiben: echte
+  MaStR-Meldung, Netzbetreiber-Integration, Fristen-Automatik,
+  Mappen-Generator, IT/BR-Pfade.

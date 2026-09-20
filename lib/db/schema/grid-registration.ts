@@ -1,7 +1,10 @@
 import {
+  boolean,
   check,
+  date,
   foreignKey,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -17,6 +20,11 @@ import { project } from "./project";
 // genehmigt → fertiggemeldet → abgeschlossen; storniert aus jedem
 // nicht-abgeschlossenen Zustand, terminal. Zeiten setzt der Service
 // je Übergang (submitted/decided/completed), nie per Hand.
+// F13-12 Vertiefung: + rueckfrage (Loop mit eingereicht) /
+// einspeisezusage (zwischen genehmigt und fertiggemeldet),
+// storniert → vorbereitung (Wiedereröffnung), Frist
+// fertigmeldung_due (Einreichung + 6 Monate), MaStR/Wallbox-Add-ons
+// mit Preis-Snapshot.
 export const gridRegistration = pgTable(
   "grid_registration",
   {
@@ -29,6 +37,11 @@ export const gridRegistration = pgTable(
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    fertigmeldungDue: date("fertigmeldung_due"),
+    mastrAddon: boolean("mastr_addon").notNull().default(false),
+    wallboxAddon: boolean("wallbox_addon").notNull().default(false),
+    addonProdukt: text("addon_produkt"),
+    addonBetragCents: integer("addon_betrag_cents"),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -54,8 +67,8 @@ export const gridRegistration = pgTable(
     check(
       "grid_registration_status_ck",
       sql`${t.status} in (
-        'vorbereitung', 'eingereicht', 'genehmigt',
-        'fertiggemeldet', 'abgeschlossen', 'storniert'
+        'vorbereitung', 'eingereicht', 'rueckfrage', 'genehmigt',
+        'einspeisezusage', 'fertiggemeldet', 'abgeschlossen', 'storniert'
       )`,
     ),
     check(
@@ -65,6 +78,14 @@ export const gridRegistration = pgTable(
     check(
       "grid_registration_meter_ck",
       sql`${t.meterNumber} is null or pg_catalog.length(pg_catalog.btrim(${t.meterNumber})) between 1 and 64`,
+    ),
+    check(
+      "grid_registration_addon_produkt_ck",
+      sql`${t.addonProdukt} is null or ${t.addonProdukt} in ('pv', 'wp')`,
+    ),
+    check(
+      "grid_registration_addon_betrag_ck",
+      sql`${t.addonBetragCents} is null or ${t.addonBetragCents} >= 0`,
     ),
     index("grid_registration_ws_project_idx").on(t.workspaceId, t.projectId, t.status),
   ],

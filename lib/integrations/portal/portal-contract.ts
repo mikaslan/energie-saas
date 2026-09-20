@@ -256,11 +256,16 @@ export type PortalServiceCase = z.infer<typeof portalServiceCaseSchema>;
 
 // F13-09: Netzstand (nur Stand/Betreiber/Phasen-Daten — nie
 // Zaehlernummer/interne Akteure).
+// F13-12: +rueckfrage (Loop mit eingereicht) / +einspeisezusage
+// (zwischen genehmigt und fertiggemeldet); Projektion sonst
+// unveraendert.
 export const portalGridSchema = z.strictObject({
   status: z.enum([
     "vorbereitung",
     "eingereicht",
+    "rueckfrage",
     "genehmigt",
+    "einspeisezusage",
     "fertiggemeldet",
     "abgeschlossen",
     "storniert",

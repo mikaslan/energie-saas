@@ -626,7 +626,9 @@ export const PORTAL_SUBSIDY_PROGRAM_WORD: Record<PortalLang, Record<PortalSubsid
 export type PortalGridStatusWord =
   | "vorbereitung"
   | "eingereicht"
+  | "rueckfrage"
   | "genehmigt"
+  | "einspeisezusage"
   | "fertiggemeldet"
   | "abgeschlossen"
   | "storniert";
@@ -635,7 +637,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   de: {
     vorbereitung: "In Vorbereitung",
     eingereicht: "Eingereicht",
+    rueckfrage: "Rückfrage",
     genehmigt: "Genehmigt",
+    einspeisezusage: "Einspeisezusage",
     fertiggemeldet: "Fertig gemeldet",
     abgeschlossen: "Abgeschlossen",
     storniert: "Storniert",
@@ -643,7 +647,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   en: {
     vorbereitung: "In preparation",
     eingereicht: "Submitted",
+    rueckfrage: "Query",
     genehmigt: "Approved",
+    einspeisezusage: "Feed-in commitment",
     fertiggemeldet: "Completion reported",
     abgeschlossen: "Completed",
     storniert: "Cancelled",
@@ -651,7 +657,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   cs: {
     vorbereitung: "V přípravě",
     eingereicht: "Odesláno",
+    rueckfrage: "Dotaz",
     genehmigt: "Schváleno",
+    einspeisezusage: "Příslib připojení",
     fertiggemeldet: "Nahlášeno dokončení",
     abgeschlossen: "Dokončeno",
     storniert: "Zrušeno",
@@ -659,7 +667,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   el: {
     vorbereitung: "Σε προετοιμασία",
     eingereicht: "Υποβλήθηκε",
+    rueckfrage: "Ερώτημα",
     genehmigt: "Εγκρίθηκε",
+    einspeisezusage: "Δέσμευση σύνδεσης",
     fertiggemeldet: "Δηλώθηκε ολοκλήρωση",
     abgeschlossen: "Ολοκληρώθηκε",
     storniert: "Ακυρώθηκε",
@@ -667,7 +677,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   es: {
     vorbereitung: "En preparación",
     eingereicht: "Enviado",
+    rueckfrage: "Consulta",
     genehmigt: "Aprobado",
+    einspeisezusage: "Compromiso de conexión",
     fertiggemeldet: "Finalización comunicada",
     abgeschlossen: "Completado",
     storniert: "Cancelado",
@@ -675,7 +687,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   fr: {
     vorbereitung: "En préparation",
     eingereicht: "Envoyé",
+    rueckfrage: "Demande",
     genehmigt: "Approuvé",
+    einspeisezusage: "Accord de raccordement",
     fertiggemeldet: "Achèvement signalé",
     abgeschlossen: "Terminé",
     storniert: "Annulé",
@@ -683,7 +697,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   hu: {
     vorbereitung: "Előkészítés alatt",
     eingereicht: "Beküldve",
+    rueckfrage: "Kérdés",
     genehmigt: "Jóváhagyva",
+    einspeisezusage: "Csatlakozási ígéret",
     fertiggemeldet: "Készre jelentve",
     abgeschlossen: "Befejezve",
     storniert: "Törölve",
@@ -691,7 +707,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   it: {
     vorbereitung: "In preparazione",
     eingereicht: "Inviato",
+    rueckfrage: "Richiesta",
     genehmigt: "Approvato",
+    einspeisezusage: "Impegno di connessione",
     fertiggemeldet: "Fine lavori comunicata",
     abgeschlossen: "Completato",
     storniert: "Annullato",
@@ -699,7 +717,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   nl: {
     vorbereitung: "In voorbereiding",
     eingereicht: "Verzonden",
+    rueckfrage: "Vraag",
     genehmigt: "Goedgekeurd",
+    einspeisezusage: "Toezegging aansluiting",
     fertiggemeldet: "Gereed gemeld",
     abgeschlossen: "Voltooid",
     storniert: "Geannuleerd",
@@ -707,7 +727,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   pl: {
     vorbereitung: "W przygotowaniu",
     eingereicht: "Wysłany",
+    rueckfrage: "Zapytanie",
     genehmigt: "Zatwierdzony",
+    einspeisezusage: "Zgoda na przyłączenie",
     fertiggemeldet: "Zgłoszono ukończenie",
     abgeschlossen: "Ukończono",
     storniert: "Anulowano",
@@ -715,7 +737,9 @@ export const PORTAL_GRID_STATUS_WORD: Record<PortalLang, Record<PortalGridStatus
   ro: {
     vorbereitung: "În pregătire",
     eingereicht: "Trimis",
+    rueckfrage: "Solicitare",
     genehmigt: "Aprobat",
+    einspeisezusage: "Acord de racordare",
     fertiggemeldet: "Finalizare comunicată",
     abgeschlossen: "Finalizat",
     storniert: "Anulat",

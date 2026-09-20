@@ -77,19 +77,29 @@ describe("F13-02 Netzanmeldung (PostgreSQL)", () => {
     expect(withDetails.operatorName).toBe("Netze BW");
     expect(withDetails.meterNumber).toBe("1EMH0012345678");
 
-    for (const status of ["eingereicht", "genehmigt", "fertiggemeldet", "abgeschlossen"] as const) {
+    // F13-12: einspeisezusage zwischen genehmigt und fertiggemeldet;
+    // Fertigmeldung mit Zählernummer (oben gesetzt) + 16 Fotos.
+    for (const status of ["eingereicht", "genehmigt", "einspeisezusage"] as const) {
       const next = await asEditor(fixture, (tx, ctx) =>
         transitionGridRegistration(tx, ctx, { projectId, status }),
       );
       expect(next.status).toBe(status);
     }
+    const gemeldet = await asEditor(fixture, (tx, ctx) =>
+      transitionGridRegistration(tx, ctx, { projectId, status: "fertiggemeldet", photoCount: 16 }),
+    );
+    expect(gemeldet.status).toBe("fertiggemeldet");
+    const geschlossen = await asEditor(fixture, (tx, ctx) =>
+      transitionGridRegistration(tx, ctx, { projectId, status: "abgeschlossen" }),
+    );
+    expect(geschlossen.status).toBe("abgeschlossen");
     const done = await asEditor(fixture, (tx, ctx) => getGridRegistration(tx, ctx, projectId));
     expect(done?.submittedAt).not.toBeNull();
     expect(done?.decidedAt).not.toBeNull();
     expect(done?.completedAt).not.toBeNull();
   });
 
-  it("F1302-DB-02: illegale Übergänge und terminaler Storno", async () => {
+  it("F1302-DB-02: illegale Übergänge, Storno mit Wiedereröffnung", async () => {
     const projectId = await seedProject(fixture);
     await asEditor(fixture, (tx, ctx) => ensureGridRegistration(tx, ctx, projectId));
 
@@ -105,7 +115,8 @@ describe("F13-02 Netzanmeldung (PostgreSQL)", () => {
       transitionGridRegistration(tx, ctx, { projectId, status: "vorbereitung" }),
     )).rejects.toBeInstanceOf(GridRegistrationValidationError);
 
-    // Storno aus eingereicht ist terminal.
+    // Storno aus eingereicht; F13-12: Wiedereröffnung nach
+    // vorbereitung statt terminalem Storno.
     const cancelled = await asEditor(fixture, (tx, ctx) =>
       transitionGridRegistration(tx, ctx, { projectId, status: "storniert" }),
     );
@@ -113,6 +124,10 @@ describe("F13-02 Netzanmeldung (PostgreSQL)", () => {
     await expect(asEditor(fixture, (tx, ctx) =>
       transitionGridRegistration(tx, ctx, { projectId, status: "eingereicht" }),
     )).rejects.toBeInstanceOf(GridRegistrationValidationError);
+    const reopened = await asEditor(fixture, (tx, ctx) =>
+      transitionGridRegistration(tx, ctx, { projectId, status: "vorbereitung" }),
+    );
+    expect(reopened.status).toBe("vorbereitung");
   });
 
   it("F1302-DB-03: Validation, NotFound, RBAC, Isolation", async () => {

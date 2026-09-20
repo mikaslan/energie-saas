@@ -1,7 +1,8 @@
 # F13-12 Netzanmeldung-Vertiefung (Katalog F13.1)
 
-Stand: SPECIFIED (nicht implementiert; RED-Beleg unten, Tests geskippt).
-Ref: `tests/unit/f1312-netz.red.test.ts` (6 Tests, `describe.skip`).
+Stand: GEBAUT (Migration 0261, 2026-09-20; Welle 2: Backend/Portal/UI
+als Schwarm, Owner-Integration).
+Ref: `tests/unit/f1312-netz.red.test.ts` (6 Tests, entskippt, grün).
 
 Ziel: Katalog F13.1 als zweite Stufe über F13-02 legen — 2-stufiger
 Netzpfad (Einreichung → Fertigmeldung) mit Rückfrage-Loop,
@@ -148,6 +149,12 @@ Test Files  1 failed (1)
 
 Danach `describe.skip` mit Ref auf diese Spec; der Bau-Slice
 entskippt die 6 Tests und macht sie grün.
+GRÜN-Beleg (2026-09-20, Migration 0261): Unit 6/6, DB F1312-DB-01…04,
+Nachbarn f1302/f1309 + f1001, E2E F1312-E2E-01 (Kette + Guard-Block +
+16-Foto-Seed bis Abschluss) — Belegzahlen im Commit.
+Owner-DECIDED: Fotozählung per photoCount-Parameter (keine
+file_request-Kopplung im Grid-Service); Add-ons jederzeit pflegbar
+(§6 sperrt nur Betreiber/Zähler); Re-Entry löscht nichts.
 
 ## Bewusst offen (Delta zu F13-02 :24-25/:45)
 

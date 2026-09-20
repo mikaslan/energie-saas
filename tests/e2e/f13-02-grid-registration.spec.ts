@@ -131,6 +131,11 @@ test("F13-02-E2E-01: Netzanmeldung anlegen, pflegen, einreichen", async ({ page 
   await expect(page.getByTestId("grid-registration-transition-feedback")).toContainText("Status geändert.");
   await expect(page.getByTestId("grid-registration-current")).toContainText("Eingereicht");
   await expect(page.getByTestId("grid-registration-to-genehmigt")).toBeVisible();
+  // F13-12 §6: Details-Sperre ab Einreichung (Felder readonly + Hinweis).
+  await expect(page.getByTestId("grid-registration-frozen-hint")).toBeVisible();
+  await expect(page.getByTestId("grid-registration-operator")).toBeDisabled();
+  await expect(page.getByTestId("grid-registration-meter")).toBeDisabled();
+  await expect(page.getByTestId("grid-registration-save")).toBeDisabled();
 
   expect(errors, "Browser-Konsole und Page-Errors der Netz-Grenze").toEqual([]);
 });

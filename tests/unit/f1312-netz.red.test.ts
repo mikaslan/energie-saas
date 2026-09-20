@@ -15,11 +15,9 @@ import { portalGridSchema } from "@/lib/integrations/portal/portal-contract";
 // `npx vitest run tests/unit/f1312-netz.red.test.ts` (6 rote Tests, Auszug in
 // der Spec); danach describe.skip bis zur Umsetzung.
 
-// SKIP-Grund: F13-12 ist SPECIFIED, nicht implementiert (6/6 Tests ROT,
-// Beleg in docs/spec/F13-12-netzanmeldung-vertiefung.md „ROT-Beleg").
-// Das Follow-up, das Status-7 + Guards + Datei-Slots + Frist + Add-ons +
-// Details-Sperre baut, entfernt dieses .skip wieder.
-describe.skip("F13-12 Netzanmeldung-Vertiefung (RED)", () => {
+// F13-12 GREEN-Slice (Migration 0261): entskippt 2026-09-20, muss GRÜN werden.
+// Spec: docs/spec/F13-12-netzanmeldung-vertiefung.md.
+describe("F13-12 Netzanmeldung-Vertiefung (GREEN-Slice 0261)", () => {
   it("Rückfrage-Loop: eingereicht ↔ rueckfrage ist begehbar", () => {
     expect(gridRegistrationStatuses as readonly string[]).toContain("rueckfrage");
     expect(nextGridRegistrationStatuses("eingereicht")).toContain("rueckfrage");
