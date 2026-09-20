@@ -19,7 +19,12 @@ export default async function WorkspaceLayout({
 
   return (
     <>
-      <div className="pb-16 md:pb-0">{children}</div>
+      {/*
+        Koexistenz-Vertrag (F11-05): --f11-tabbar-h meldet jeder Seite die
+        Leistenhoehe (45px, im E2E gepinnt), damit Bottom-Toolbars darueber
+        andocken statt darunter zu liegen. Ab md ist die Leiste aus (0px).
+      */}
+      <div className="pb-16 [--f11-tabbar-h:45px] md:pb-0 md:[--f11-tabbar-h:0px]">{children}</div>
       {isWorkspaceIdForTabs(workspaceId) ? <MobileTabBar workspaceId={workspaceId} /> : null}
     </>
   );

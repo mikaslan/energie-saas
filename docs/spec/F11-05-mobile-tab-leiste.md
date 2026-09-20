@@ -43,7 +43,11 @@ jede Seite eigener Header" aus der Discovery-Matrix.
   Leiste verlinkt, sie baut nicht um.
 - Darstellung: fixierte Leiste am unteren Rand, nur unterhalb des
   `md`-Breakpoints sichtbar (`md:hidden`), Inhalt erhält Abstand nach
-  unten, damit nichts verdeckt wird. Aktiver Tab über Pfadpräfix mit
+  unten, damit nichts verdeckt wird. Koexistenz mit Bottom-Toolbars:
+  Das Layout meldet `--f11-tabbar-h` (45px, im E2E gepinnt; 0px ab md),
+  die einzige Bottom-Toolbar der App (Angebots-Editor, per Sweep belegt)
+  dockt darüber an statt darunter zu liegen (F301-Regression).
+  Aktiver Tab über Pfadpräfix mit
   `aria-current="page"` plus nicht-farblichem Signal (fett statt
   semibold), Touch-Ziele ≥ 44 px, 375 px ohne Überlauf.
 - Technik: reines Server-Rendering plus ein Client-Anteil nur für den

@@ -123,6 +123,11 @@ test("F11-05-E2E-01: Tab-Leiste navigiert auf Mobil, Mehr-Seite verlinkt Rest", 
   const tabBar = page.getByTestId("mobile-tab-bar");
   await expect(tabBar).toBeVisible();
   await expect(tabBar.getByRole("link")).toHaveCount(5);
+  // Koexistenz-Pin: Die Leistenhoehe ist der Wert von --f11-tabbar-h im
+  // w-Layout — Bottom-Toolbars (Angebots-Editor) docken darueber an.
+  // Aendert sich die Hoehe, muss die Var im Layout mitwandern.
+  const barBox = await tabBar.boundingBox();
+  expect(Math.round(barBox?.height ?? 0), "Leistenhoehe 45px (Koexistenz-Var)").toBe(45);
   const tabs: Array<[string, string]> = [
     ["Home", "dashboard"],
     ["Projekte", "anfragen"],

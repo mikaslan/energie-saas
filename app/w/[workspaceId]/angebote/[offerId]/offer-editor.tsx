@@ -1403,7 +1403,8 @@ export function OfferVariantEditor({
               ) : null}
           </div>
 
-          <div style={{ bottom: "max(0.5rem, env(safe-area-inset-bottom))", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }} className="sticky z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur motion-reduce:backdrop-blur-none">
+          {/* F11-05-Koexistenz: Toolbar dockt ueber der mobilen Tab-Leiste an (var, ab md 0px) statt darunter zu liegen. */}
+          <div style={{ bottom: "calc(max(0.5rem, env(safe-area-inset-bottom)) + var(--f11-tabbar-h, 0px))", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }} className="sticky z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white/95 p-3 shadow-lg backdrop-blur motion-reduce:backdrop-blur-none">
               <p className="text-sm font-medium" aria-live="polite">{dirty ? "Lokaler Draft: ungespeichert" : `Gespeicherte Revision ${expectedRevision}`}</p>
               <div className="flex flex-wrap gap-2"><button type="button" disabled={!dirty || navigationPending} onClick={() => { setDraft(savedDraft); setFeedback({ status: "idle" }); }} className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">Änderungen verwerfen</button><button type="button" disabled={!dirty || contentMutationDisabled} onClick={() => void saveDraft()} className="min-h-11 rounded-md bg-emerald-800 px-5 text-sm font-semibold text-white outline-none hover:bg-emerald-900 focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2">{pending ? "Speichert …" : "Angebotsentwurf speichern"}</button></div>
           </div>
