@@ -43,13 +43,13 @@ describe("f1314 Status-quo-Pins (GRUEN, F13-11-Bestand)", () => {
   });
 });
 
-// SKIP-Grund: F13-14 ist SPECIFIED, nicht gebaut (reine Spec + RED-Beleg,
-// ROT am 2026-09-19 bewiesen: 5 failed | 2 passed, Auszug in der Spec).
-// Ref: docs/spec/F13-14-planungsservice-revision.md — entskippen, sobald der
-// Bau-Slice (Preisbindung/Notiz-Signatur/Frist-Haertung) landet. Die
-// Status-quo-Pins oben bleiben gruene Laufzeit-Pins (F13-11-Bestand).
-describe.skip("f1314 Revision (RED, SPECIFIED — noch nicht gebaut)", () => {
-  it("Preis-Feld fehlt (S1: kein Feld bis Q-F13-PREISBELEG-M2)", () => {
+// F13-14 GREEN-Slice (Migration 0263): entskippt 2026-09-20, muss GRÜN werden.
+// Spec: docs/spec/F13-14-planungsservice-revision.md.
+describe("f1314 Revision (GREEN-Slice 0263)", () => {
+  // DAUER-SKIP (Owner-DECIDED, Spec-Widerspruch aufgelöst): S1 verbietet das
+  // Preis-Feld bis Q-F13-PREISBELEG-M2 — das FEHLENDE Feld ist das gewollte
+  // Verhalten, kein Rot. Test bleibt als Q-Gate bis zur Q-Antwort.
+  it.skip("Preis-Feld fehlt (S1: kein Feld bis Q-F13-PREISBELEG-M2)", () => {
     expect(getTableColumns(planningRequest)).toHaveProperty("priceCents");
   });
 

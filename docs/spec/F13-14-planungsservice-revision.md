@@ -1,4 +1,4 @@
-# F13-14 Planungsservice-Revision (SPECIFIED, ungebaut)
+# F13-14 Planungsservice-Revision (GEBAUT, Migration 0263, 2026-09-20)
 
 ## Stand
 - Modulkatalog F13.3 (docs/blaupause/01-modulkatalog.md:146): Preisstaffel
@@ -120,5 +120,13 @@
   Nach dem Skip: `1 passed … 2 passed | 5 skipped (7)`.
 - GRÜN-Pins (laufen, nicht geskippt): Draft-Toleranz + kein-Reopen
   (F13-11-Bestand).
-- Bau-Slice (später): DB (`finished_at`-Setzen, UNIQUE-Bestand,
-  Notiz-Signatur-Roundtrip) + E2E (Badge/Event sichtbar).
+- GRÜN-Beleg (2026-09-20, Migration 0263, Welle 4 + Owner): Unit
+  6+1S (Preis-Test DAUER-SKIP als Q-Gate — S1 verbietet das Feld),
+  DB F1314-DB-01/02/02b/03/04, Nachbarn f1311 + tenant + m111a-Pins
+  (TOTAL 155), E2E F1314-E2E-01 + F13-11 2/2.
+  Korrektur ggü. Bau-Brief: Überfällig ab `deadline_at` (F13-11-Bestand,
+  Spec-wörtlich §4) statt Anlage+30d (Planer-Halluzination, im Review
+  gefangen); keine dueDays-Konstante; UI nutzt Bestands-Frist-Anzeige.
+  checkPlanningRequestOverdue idempotent (max 1 Event/Anfrage) + manueller
+  UI-Button (ohne Automatik); Signatur Click-only via eigene
+  Revisions-Tabelle (kein E-Sign-Anbieter).

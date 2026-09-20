@@ -5,6 +5,7 @@ import { z } from "zod";
 import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
+  checkPlanningRequestOverdue,
   PlanningRequestConflictError,
   PlanningRequestNotFoundError,
   PlanningRequestValidationError,
@@ -13,6 +14,15 @@ import {
   type PlanningDeadlineKind,
   type PlanningRequestStatus,
 } from "@/modules/planning-requests";
+// F13-14 Revisions-Service (Backend-Namen, gegen gelandetes
+// modules/planning-request-revisions abgeglichen — kein Conflict-Typ:
+// Zweit-Signatur ist ValidationError, siehe signPlanningRevisionAction).
+import {
+  createPlanningRequestRevision,
+  PlanningRequestRevisionNotFoundError,
+  PlanningRequestRevisionValidationError,
+  signPlanningRequestRevision,
+} from "@/modules/planning-request-revisions";
 
 const uuidSchema = z.uuid();
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -39,6 +49,8 @@ function mapError(error: unknown): PlanningRequestActionState {
   if (error instanceof PlanningRequestNotFoundError) return { status: "not_found" };
   if (error instanceof PlanningRequestConflictError) return { status: "conflict" };
   if (error instanceof PlanningRequestValidationError) return { status: "invalid" };
+  if (error instanceof PlanningRequestRevisionNotFoundError) return { status: "not_found" };
+  if (error instanceof PlanningRequestRevisionValidationError) return { status: "invalid" };
   throw error;
 }
 
@@ -92,6 +104,91 @@ export async function setPlanningStatusAction(
     revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
     return { status: "success", message: "Planungsstatus gesetzt." };
   } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F13-14 Revisionsnotiz anlegen (installation.write; Backend-Regel 1..2000
+// Zeichen, getrimmt — Leertext vorab invalid, Rest prüft der Service).
+export async function createPlanningRevisionAction(
+  _previous: PlanningRequestActionState,
+  formData: FormData,
+): Promise<PlanningRequestActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const planningRequestId = uuidSchema.safeParse(formData.get("planningRequestId"));
+  const note = formData.get("note");
+  if (!planningRequestId.success || typeof note !== "string" || note.trim() === "") {
+    return { status: "invalid" };
+  }
+  try {
+    await authorizedAction(
+      ids.workspaceId,
+      "installation.write",
+      "planning_request_revision",
+      (tx, ctx) =>
+        createPlanningRequestRevision(tx, ctx, {
+          projectId: ids.projectId,
+          planningRequestId: planningRequestId.data,
+          note: note.trim(),
+        }),
+    );
+    revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
+    return { status: "success", message: "Revisionsnotiz angelegt." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F13-14 Revisionsnotiz per Click-Signatur zeichnen (installation.write).
+// Zweit-Signatur meldet der Service als ValidationError („already
+// signed") — Eingaben sind hier vorvalidiert (UUID), daher bedeutet
+// ValidationError aus dem Service immer „bereits signiert" → conflict.
+export async function signPlanningRevisionAction(
+  _previous: PlanningRequestActionState,
+  formData: FormData,
+): Promise<PlanningRequestActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const revisionId = uuidSchema.safeParse(formData.get("revisionId"));
+  if (!revisionId.success) return { status: "invalid" };
+  try {
+    await authorizedAction(
+      ids.workspaceId,
+      "installation.write",
+      "planning_request_revision",
+      (tx, ctx) => signPlanningRequestRevision(tx, ctx, { id: revisionId.data }),
+    );
+    revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
+    return { status: "success", message: "Revisionsnotiz signiert." };
+  } catch (error) {
+    if (error instanceof PlanningRequestRevisionValidationError) return { status: "conflict" };
+    return mapError(error);
+  }
+}
+
+// F13-14 Überfälligkeit manuell prüfen (installation.write; Service wirft
+// ValidationError, wenn (noch) nicht überfällig). Manueller Auslöser, keine
+// Automatik; Ergebnis nur als Feedback (Event-Pin deckt die DB-Seite,
+// kein Event-Pin im E2E). Eingaben sind vorvalidiert (UUID), daher ist
+// Service-ValidationError hier immer der Negativ-Befund → Erfolgs-Feedback.
+export async function checkPlanningOverdueAction(
+  _previous: PlanningRequestActionState,
+  formData: FormData,
+): Promise<PlanningRequestActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const requestId = uuidSchema.safeParse(formData.get("requestId"));
+  if (!requestId.success) return { status: "invalid" };
+  try {
+    await authorizedAction(ids.workspaceId, "installation.write", "planning_request", (tx, ctx) =>
+      checkPlanningRequestOverdue(tx, ctx, { requestId: requestId.data }),);
+    revalidatePath(`/w/${ids.workspaceId}/anfragen/${ids.projectId}`);
+    return { status: "success", message: "Die Planungsanfrage ist überfällig." };
+  } catch (error) {
+    if (error instanceof PlanningRequestValidationError) {
+      return { status: "success", message: "Die Planungsanfrage ist nicht überfällig." };
+    }
     return mapError(error);
   }
 }

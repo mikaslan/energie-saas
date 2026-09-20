@@ -2701,6 +2701,25 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       on conflict (workspace_id, offer_id) do nothing
     `);
   },
+  // F13-14 (0263): Revisionsnotiz zu einer echten Planungsanfrage
+  // (select+values, damit Test (a) garantiert an RLS scheitert).
+  planning_request_revision: async (tx, wsId) => {
+    await tenantFixtures.planning_request(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    const req = await tx.execute<{ id: string; project_id: string }>(sql`
+      select id, project_id from planning_request
+       where workspace_id = ${wsId}::uuid limit 1
+    `);
+    const row = req.rows[0];
+    if (!row) throw new Error("Revisions-Fixture braucht eine Planungsanfrage.");
+    await tx.execute(sql`
+      insert into planning_request_revision (
+        workspace_id, project_id, planning_request_id, note, created_by
+      )
+      values (${wsId}::uuid, ${row.project_id}::uuid, ${row.id}::uuid,
+              'Fixture-Revision.', ${userId}::uuid)
+    `);
+  },
   // F10-04 (0104): Datei-Anfrage zu einem echten Projektgraphen.
   file_request: async (tx, wsId) => {
     const { projectId } = await fixtureProjectGraph(tx, wsId);

@@ -245,10 +245,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0220 F2.8 Portal-Draw-Signatur (Invite-Kapsel + ACL),
     // 0260 F13-00 Filing-Kern (Draft + Freeze + Slot-Typ + Portal-Filter),
     // 0261 F13-12 Netz-Vertiefung (Status +2, Frist, Add-ons),
-    // 0262 F13-13 Förder-Fristen-Preis (Preis-Snapshot, AT-Fristen, Typenschild)).
+    // 0262 F13-13 Förder-Fristen-Preis (Preis-Snapshot, AT-Fristen, Typenschild),
+    // 0263 F13-14 Planung-Revision (finished_at, Revisionsnotiz, overdue)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 153,
-      tag: "0262_f1313_foerder_fristen_preis",
+      idx: 154,
+      tag: "0263_f1314_planung_revision",
     });
   });
 

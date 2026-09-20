@@ -31,6 +31,10 @@ export const planningRequest = pgTable(
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // F13-14 §4: eigener Fertigstellungs-Zeitpunkt (Auswertung liest
+    // finished_at, nie updated_at). KEIN Preisfeld (§1-Verbot bis
+    // Q-F13-PREISBELEG-M2).
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("planning_request_ws_id_uq").on(t.workspaceId, t.id),

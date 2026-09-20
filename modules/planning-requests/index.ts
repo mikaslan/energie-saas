@@ -1,4 +1,6 @@
 export {
+  checkPlanningRequestOverdue,
+  isPlanningRequestOverdue,
   listPlanningRequests,
   PlanningRequestConflictError,
   PlanningRequestNotFoundError,
@@ -7,5 +9,6 @@ export {
   setPlanningStatus,
   type PlanningDeadlineKind,
   type PlanningRequestDto,
+  type PlanningRequestOverdueProbe,
   type PlanningRequestStatus,
 } from "./service";

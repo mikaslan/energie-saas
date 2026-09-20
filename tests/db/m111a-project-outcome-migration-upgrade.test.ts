@@ -112,8 +112,8 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F16-04d Vorlagen-Checkliste (0146, Spalte + CHECK),
 //   F16-04e Vorlagen-Labels (0147, Spalte + CHECK),
 //   F16-11 Paket-Vorlagen (0148, Tabelle + RLS)
-// => 154 Migrationen (idx 0..153; +0262 F13-13 Förder-Fristen-Preis).
-const TOTAL_MIGRATION_COUNT = 154;
+// => 155 Migrationen (idx 0..154; +0263 F13-14 Planung-Revision).
+const TOTAL_MIGRATION_COUNT = 155;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -429,8 +429,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 153,
-        tag: "0262_f1313_foerder_fristen_preis",
+        idx: 154,
+        tag: "0263_f1314_planung_revision",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

@@ -71,9 +71,14 @@ import { getInstallation, getInstallationWorkbook, listInstallableVariants, list
 import { listServiceCases, type ServiceCaseDto } from "@/modules/service-cases";
 import { listOrderParts, type OrderPartDto } from "@/modules/order-parts";
 import {
+  isPlanningRequestOverdue,
   listPlanningRequests,
   type PlanningRequestDto,
 } from "@/modules/planning-requests";
+import {
+  listPlanningRequestRevisions,
+  type PlanningRequestRevisionDto,
+} from "@/modules/planning-request-revisions";
 import { DetailItem, DeniedState, Section, YesNo } from "./_ui";
 import { AddressEditor } from "./address-editor";
 import { AssignedExternalRequestView } from "./assigned-external-request-view";
@@ -342,6 +347,8 @@ type PlanningRequestLoadResult =
     requests: PlanningRequestDto[];
     offers: { id: string; label: string }[];
     canWrite: boolean;
+    revisionsByRequestId: Record<string, PlanningRequestRevisionDto[]>;
+    overdueByRequestId: Record<string, boolean>;
   }
   | { kind: "unauthenticated" }
   | { kind: "denied" };
@@ -378,7 +385,26 @@ async function loadPlanningRequests(
       "planning_request_write_gate",
       async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "installation.write"),
     );
-    return { kind: "loaded", requests, offers, canWrite: writable };
+    // F13-14: Revisionsnotizen je Anfrage + Überfällig-Kennzeichen (rein
+    // lesend aus deadline_at — keine Automatik, kein Event im Lesepfad).
+    const revisionsByRequestId: Record<string, PlanningRequestRevisionDto[]> = {};
+    const overdueByRequestId: Record<string, boolean> = {};
+    for (const request of requests) {
+      revisionsByRequestId[request.id] = await authorizedQuery(
+        workspaceId,
+        "installation.read",
+        "planning_request_revision",
+        (tx, ctx) => listPlanningRequestRevisions(tx, ctx, {
+          projectId,
+          planningRequestId: request.id,
+        }),
+      );
+      overdueByRequestId[request.id] = isPlanningRequestOverdue({
+        status: request.status,
+        deadlineAt: request.deadlineAt,
+      });
+    }
+    return { kind: "loaded", requests, offers, canWrite: writable, revisionsByRequestId, overdueByRequestId };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -1411,6 +1437,8 @@ export default async function ProjectTriagePage({
               requests={planningResult.requests}
               offers={planningResult.offers}
               canWrite={planningResult.canWrite}
+              revisionsByRequestId={planningResult.revisionsByRequestId}
+              overdueByRequestId={planningResult.overdueByRequestId}
             />
           </div>
         ) : null}

@@ -49,6 +49,40 @@ const nextStatus: Record<PlanningRequestStatus, PlanningRequestStatus | null> = 
   accepted: null,
 };
 
+export type PlanningRequestOverdueProbe = {
+  status: string;
+  deadlineAt?: string | Date | null | undefined;
+};
+
+function toIsoDay(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new PlanningRequestValidationError("invalid date");
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * F13-14 §4 Überfällig-Erkennung (rein lesend, KEINE Automatik, KEIN
+ * Event): true, wenn deadline_at (F13-11-Bestand: resolveDeadlineAt —
+ * 24 h/48 h ab Anlage oder Wunschtermin) überschritten ist und die
+ * Anfrage noch in requested/in_progress steht. finished und accepted
+ * sind nie überfällig. Tagesvergleich in UTC (kein stiller Wechsel
+ * auf Werktage — Spec §4).
+ */
+export function isPlanningRequestOverdue(
+  request: PlanningRequestOverdueProbe,
+  todayIso: string = toIsoDay(new Date()),
+): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(todayIso)) {
+    throw new PlanningRequestValidationError("invalid reference date");
+  }
+  if (request.status !== "requested" && request.status !== "in_progress") return false;
+  const at = request.deadlineAt;
+  if (at === undefined || at === null) {
+    throw new PlanningRequestValidationError("missing deadline");
+  }
+  return toIsoDay(at) < todayIso;
+}
+
 const requestPlanningCommandSchema = z.strictObject({
   projectId: uuidSchema,
   offerId: uuidSchema,
@@ -72,6 +106,7 @@ export type PlanningRequestDto = {
   status: PlanningRequestStatus;
   createdAt: string;
   updatedAt: string;
+  finishedAt: string | null;
   permissions: { canWrite: boolean };
 };
 
@@ -85,6 +120,7 @@ type PlanningRequestRow = {
   status: string;
   created_at: string | Date;
   updated_at: string | Date;
+  finished_at: string | Date | null;
 };
 
 function toDto(row: PlanningRequestRow, canWrite: boolean): PlanningRequestDto {
@@ -104,6 +140,7 @@ function toDto(row: PlanningRequestRow, canWrite: boolean): PlanningRequestDto {
     status: row.status as PlanningRequestStatus,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
+    finishedAt: row.finished_at === null ? null : new Date(row.finished_at).toISOString(),
     permissions: { canWrite },
   };
 }
@@ -155,7 +192,7 @@ const BASE_SELECT = sql`
   select request.id, request.project_id, request.offer_id,
          offer_record.offer_number,
          request.deadline_kind, request.deadline_at, request.status,
-         request.created_at, request.updated_at
+         request.created_at, request.updated_at, request.finished_at
     from planning_request as request
     join offer as offer_record
       on offer_record.workspace_id = request.workspace_id
@@ -211,7 +248,7 @@ export async function requestPlanning(
     )
     on conflict (workspace_id, offer_id) do nothing
     returning id, project_id, offer_id, deadline_kind, deadline_at, status,
-              created_at, updated_at
+              created_at, updated_at, finished_at
   `);
   const created = inserted.rows[0];
   if (!created) throw new PlanningRequestConflictError(parsed.data.offerId);
@@ -242,6 +279,49 @@ export async function requestPlanning(
   return toDto(row, true);
 }
 
+// F13-14 §4: Dedupe für planning_request.overdue — max. 1 Event je
+// Anfrage (domain_events-Check auf Aggregat + Event-Typ).
+async function hasOverdueEvent(
+  tx: TenantTx,
+  workspaceId: string,
+  requestId: string,
+): Promise<boolean> {
+  const existing = await tx.execute<{ id: string }>(sql`
+    select id from domain_events
+     where workspace_id = ${workspaceId}::uuid
+       and aggregate_type = 'planning_request'
+       and aggregate_id = ${requestId}::uuid
+       and event_type = 'planning_request.overdue'
+     limit 1
+  `);
+  return Boolean(existing.rows[0]);
+}
+
+async function emitOverdueOnce(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  requestId: string,
+  trigger: "check" | "finished",
+): Promise<void> {
+  if (await hasOverdueEvent(tx, ctx.workspaceId, requestId)) return;
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "planning_request",
+    aggregateId: requestId,
+    eventType: "planning_request.overdue",
+    actor: ctx.actor,
+    payload: { requestId },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "planning_request.check_overdue",
+    resource: "planning_request",
+    allowed: true,
+    details: { requestId, trigger },
+  });
+}
+
 export async function setPlanningStatus(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -250,8 +330,8 @@ export async function setPlanningStatus(
   requireWrite(ctx);
   const parsed = setPlanningStatusCommandSchema.safeParse(input);
   if (!parsed.success) throw new PlanningRequestValidationError();
-  const current = await tx.execute<{ status: string }>(sql`
-    select status from planning_request
+  const current = await tx.execute<{ status: string; deadline_at: string | Date }>(sql`
+    select status, deadline_at from planning_request
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${parsed.data.id}::uuid
      limit 1
@@ -264,15 +344,24 @@ export async function setPlanningStatus(
   if (nextStatus[row.status as PlanningRequestStatus] !== parsed.data.status) {
     throw new PlanningRequestValidationError("illegal status transition");
   }
+  // F13-14 §4: Überfällig-Prüfung VOR dem finished-Setzen (danach wäre der
+  // Status finished und die Probe immer false).
+  const markFinished = parsed.data.status === "finished";
+  const wasOverdue =
+    markFinished &&
+    isPlanningRequestOverdue({ status: row.status, deadlineAt: row.deadline_at });
   const updated = await tx.execute<PlanningRequestRow>(sql`
     update planning_request
        set status = ${parsed.data.status},
+           finished_at = case when ${markFinished}::boolean
+                              then statement_timestamp()
+                              else finished_at end,
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
        and id = ${parsed.data.id}::uuid
        and status = ${row.status}
     returning id, project_id, offer_id, deadline_kind, deadline_at, status,
-              created_at, updated_at
+              created_at, updated_at, finished_at
   `);
   const next = updated.rows[0];
   if (!next) throw new PlanningRequestValidationError("concurrent status change");
@@ -284,6 +373,9 @@ export async function setPlanningStatus(
   `);
   const full = read.rows[0];
   if (!full) throw new PlanningRequestNotFoundError(next.id);
+  if (wasOverdue) {
+    await emitOverdueOnce(tx, ctx, next.id, "finished");
+  }
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
     aggregateType: "planning_request",
@@ -300,6 +392,47 @@ export async function setPlanningStatus(
     allowed: true,
     details: { requestId: next.id, status: parsed.data.status },
   });
+  return toDto(full, true);
+}
+
+const checkPlanningOverdueCommandSchema = z.strictObject({
+  requestId: uuidSchema,
+});
+
+/**
+ * F13-14 §4: explizite Überfällig-Feststellung (IDEMPOTENT, kein Lesepfad,
+ * keine Automatik). Emittiert planning_request.overdue max. 1x je Anfrage
+ * (Dedupe via domain_events). NotFound bei fehlender Anfrage, Validation
+ * wenn (noch) nicht überfällig.
+ */
+export async function checkPlanningRequestOverdue(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { requestId: string },
+): Promise<PlanningRequestDto> {
+  requireWrite(ctx);
+  const parsed = checkPlanningOverdueCommandSchema.safeParse(input);
+  if (!parsed.success) throw new PlanningRequestValidationError();
+  const current = await tx.execute<{ status: string; deadline_at: string | Date }>(sql`
+    select status, deadline_at from planning_request
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${parsed.data.requestId}::uuid
+     limit 1
+  `);
+  const row = current.rows[0];
+  if (!row) throw new PlanningRequestNotFoundError(parsed.data.requestId);
+  if (!isPlanningRequestOverdue({ status: row.status, deadlineAt: row.deadline_at })) {
+    throw new PlanningRequestValidationError("planning request is not overdue");
+  }
+  await emitOverdueOnce(tx, ctx, parsed.data.requestId, "check");
+  const read = await tx.execute<PlanningRequestRow>(sql`
+    ${BASE_SELECT}
+     where request.workspace_id = ${ctx.workspaceId}::uuid
+       and request.id = ${parsed.data.requestId}::uuid
+     limit 1
+  `);
+  const full = read.rows[0];
+  if (!full) throw new PlanningRequestNotFoundError(parsed.data.requestId);
   return toDto(full, true);
 }
 
