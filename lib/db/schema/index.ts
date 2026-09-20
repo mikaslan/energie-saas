@@ -52,6 +52,7 @@ export * from "./planning-roof-restriction";
 export * from "./planning-panel-group";
 export * from "./planning-inverter";
 export * from "./planning-string";
+export * from "./planning-string-equipment";
 export * from "./order-part";
 export * from "./team";
 export * from "./portal-status-label";

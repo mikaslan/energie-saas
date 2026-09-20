@@ -118,9 +118,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F3-03 Dach-Minimal (0271, Tabelle + RLS + Tilt-Validator),
 //   F3-03b Dach-Sperrzonen (0272, Tabelle + RLS),
 //   F3-04a Panel-Gruppen (0273, Tabelle + RLS),
-//   F3-05a Strings (0274, 2 Tabellen + RLS)
-// => 156 Migrationen (idx 0..155).
-const TOTAL_MIGRATION_COUNT = 156;
+//   F3-05a Strings (0274, 2 Tabellen + RLS),
+//   F3-05b Equipment (0275, Tabelle + RLS)
+// => 157 Migrationen (idx 0..156).
+const TOTAL_MIGRATION_COUNT = 157;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -436,8 +437,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 155,
-        tag: "0274_f3_05a_strings",
+        idx: 156,
+        tag: "0275_f3_05b_equipment",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

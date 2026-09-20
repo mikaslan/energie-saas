@@ -75,3 +75,14 @@ export {
   type PlanningStringCreateV1,
   type PlanningStringMemberV1,
 } from "./string-plan";
+export {
+  PLANNING_STRING_EQUIPMENT_VERSION,
+  planningStringEquipmentAttachV1Schema,
+  planningStringEquipmentPanelRefV1Schema,
+  stringEquipmentAdvisories,
+  type PlanningStringEquipmentAdvisoriesInput,
+  type PlanningStringEquipmentAdvisory,
+  type PlanningStringEquipmentAdvisoryCode,
+  type PlanningStringEquipmentAttachV1,
+  type PlanningStringEquipmentPanelRefV1,
+} from "./string-equipment";
