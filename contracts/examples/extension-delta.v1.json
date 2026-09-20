@@ -1,0 +1,53 @@
+{
+  "contractVersion": "extension-delta.v1",
+  "request": {
+    "baselineGridImportKwh": 4000,
+    "plannedGridImportKwh": 2500,
+    "additionalSelfConsumptionKwh": 1500,
+    "baselineFeedInKwh": 4800,
+    "plannedFeedInKwh": 3200,
+    "importPriceCtPerKwh": 36,
+    "feedInTariffCtPerKwh": 8.03,
+    "feedInTariffSource": "eeg_default",
+    "investmentDeltaEuro": 5000,
+    "priceEscalationRate": 0.02,
+    "horizonYears": 20
+  },
+  "result": {
+    "scopeNote": "Zubau-Delta (nicht Gesamtanlage)",
+    "basis": "zubau_delta",
+    "bills": {
+      "baselineEuro": 1440,
+      "plannedEuro": 900,
+      "savingsEuro": 540
+    },
+    "feedInDeltaKwh": -1600,
+    "feedInRevenueDeltaEuro": -128.48,
+    "annualSavingsDeltaEuro": 411.52,
+    "cumulativeCashflowDeltaEuro": [
+      -4588.48,
+      -4168.27,
+      -3739.26,
+      -3301.32,
+      -2854.34,
+      -2398.19,
+      -1932.76,
+      -1457.9,
+      -973.51,
+      -479.44,
+      24.44,
+      538.26,
+      1062.15,
+      1596.25,
+      2140.71,
+      2695.66,
+      3261.26,
+      3837.64,
+      4424.96,
+      5023.36
+    ],
+    "amortizationYearsDelta": 11,
+    "irrDelta": 0.07199086523000686,
+    "doubleCountingGuard": true
+  }
+}

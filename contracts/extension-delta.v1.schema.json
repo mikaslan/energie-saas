@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/extension-delta.v1.schema.json",
+  "title": "WMEE extension delta v1",
+  "description": "F4-05d Zubau-Delta: Anfrage (Bestand-vs.-Planung-Jahreswerte) und Ergebnis (Delta-Geldvergleich, Einspeiserloes-Delta, Zubau-Cashflow/Amortisation/IRR). SPECIFIED, keine Implementierung.",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "extension-delta.v1"
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "baselineGridImportKwh": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Jahres-Netzbezug Bestand (baseline.annual.gridImportKwh)."
+        },
+        "plannedGridImportKwh": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Jahres-Netzbezug Planung (planned.annual.gridImportKwh)."
+        },
+        "additionalSelfConsumptionKwh": {
+          "type": "number",
+          "minimum": -10000000,
+          "maximum": 10000000,
+          "description": "Delta-Eigenverbrauch geplant minus Bestand (kann negativ sein)."
+        },
+        "baselineFeedInKwh": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Jahres-Einspeisung Bestand (baseline.annual.feedInKwh)."
+        },
+        "plannedFeedInKwh": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Jahres-Einspeisung Planung (planned.annual.feedInKwh)."
+        },
+        "importPriceCtPerKwh": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Belegter Bezugspreis (gleiche Schranke wie die Tarifaufloesung)."
+        },
+        "feedInTariffCtPerKwh": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Verguetungssatz fuer das Einspeise-Delta (Override-Kaskade wie resolveEconomics)."
+        },
+        "feedInTariffSource": {
+          "type": "string",
+          "enum": [
+            "override",
+            "eeg_default",
+            "post_eeg"
+          ],
+          "description": "Herkunft des Verguetungssatzes (FeedInTariffSource-Vorbild)."
+        },
+        "investmentDeltaEuro": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000,
+          "description": "Zubau-Investition (nur Delta, nicht Gesamtanlage)."
+        },
+        "priceEscalationRate": {
+          "type": "number",
+          "minimum": -0.1,
+          "maximum": 0.25,
+          "description": "Bezugspreis-Eskalation als Rate (Profil oder 0)."
+        },
+        "horizonYears": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Cashflow-Horizont in Jahren."
+        }
+      },
+      "required": [
+        "baselineGridImportKwh",
+        "plannedGridImportKwh",
+        "additionalSelfConsumptionKwh",
+        "baselineFeedInKwh",
+        "plannedFeedInKwh",
+        "importPriceCtPerKwh",
+        "feedInTariffCtPerKwh",
+        "feedInTariffSource",
+        "investmentDeltaEuro",
+        "priceEscalationRate",
+        "horizonYears"
+      ],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "scopeNote": {
+          "type": "string",
+          "const": "Zubau-Delta (nicht Gesamtanlage)",
+          "description": "scopeNote-Pflicht aus F4-05c: jede Delta-Zahl traegt sichtbar den Zubau-Scope."
+        },
+        "basis": {
+          "type": "string",
+          "const": "zubau_delta",
+          "description": "Maschinenlesbarer Scope (economics-guard.v1-basis-Enum)."
+        },
+        "bills": {
+          "type": "object",
+          "properties": {
+            "baselineEuro": {
+              "type": "number",
+              "minimum": 0
+            },
+            "plannedEuro": {
+              "type": "number",
+              "minimum": 0
+            },
+            "savingsEuro": {
+              "type": "number",
+              "description": "baselineEuro minus plannedEuro (kann negativ sein)."
+            }
+          },
+          "required": [
+            "baselineEuro",
+            "plannedEuro",
+            "savingsEuro"
+          ],
+          "additionalProperties": false
+        },
+        "feedInDeltaKwh": {
+          "type": "number",
+          "description": "Einspeise-Delta geplant minus Bestand (bei Zubau-Speicher meist negativ)."
+        },
+        "feedInRevenueDeltaEuro": {
+          "type": "number",
+          "description": "Einspeiserloes-Delta: feedInDeltaKwh x Verguetungssatz (F4-05b Q2)."
+        },
+        "annualSavingsDeltaEuro": {
+          "type": "number",
+          "description": "Jahr-1-Deltaersparnis: Bezugskosten-Delta plus Einspeiserloes-Delta."
+        },
+        "cumulativeCashflowDeltaEuro": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "description": "Kumulierter Zubau-Cashflow je Jahr (Start: minus investmentDeltaEuro)."
+        },
+        "amortizationYearsDelta": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Erstes Jahr mit kumuliertem Delta-Cashflow >= 0, null wenn nie im Horizont."
+        },
+        "irrDelta": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Interner Zinsfuss der Delta-Reihe (Bisektion wie computeEconomics), null ohne Vorzeichenwechsel."
+        },
+        "doubleCountingGuard": {
+          "type": "boolean",
+          "const": true,
+          "description": "Doppelzaehlungs-Guard: Bestandserzeugung wird nicht neu verguetet (nur Delta-Fluesse fliessen ein)."
+        }
+      },
+      "required": [
+        "scopeNote",
+        "basis",
+        "bills",
+        "feedInDeltaKwh",
+        "feedInRevenueDeltaEuro",
+        "annualSavingsDeltaEuro",
+        "cumulativeCashflowDeltaEuro",
+        "amortizationYearsDelta",
+        "irrDelta",
+        "doubleCountingGuard"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "contractVersion",
+    "request",
+    "result"
+  ],
+  "additionalProperties": false
+}

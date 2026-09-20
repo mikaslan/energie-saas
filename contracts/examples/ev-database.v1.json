@@ -1,0 +1,40 @@
+{
+  "contractVersion": "ev-database.v1",
+  "databaseVersion": "wmee-ev-database.v1",
+  "license": {
+    "kind": "licensed_extract",
+    "extractId": "PLATZHALTER-LIZENZ-001"
+  },
+  "entries": [
+    {
+      "entryId": "PLATZHALTER-DB-001",
+      "modelName": "PLATZHALTER Kompaktmodell A (kein echtes Fahrzeug)",
+      "kwhPerKm": 0.16,
+      "segment": "kompakt",
+      "source": {
+        "kind": "wltp",
+        "ref": "PLATZHALTER-Extraktzeile-001"
+      }
+    },
+    {
+      "entryId": "PLATZHALTER-DB-002",
+      "modelName": "PLATZHALTER Mittelklassemodell B (kein echtes Fahrzeug)",
+      "kwhPerKm": 0.19,
+      "segment": "mittel",
+      "source": {
+        "kind": "adac",
+        "ref": "PLATZHALTER-Prüfbericht-002"
+      }
+    },
+    {
+      "entryId": "PLATZHALTER-DB-003",
+      "modelName": "PLATZHALTER Großmodell C (kein echtes Fahrzeug)",
+      "kwhPerKm": 0.23,
+      "segment": "gross",
+      "source": {
+        "kind": "hersteller",
+        "ref": "PLATZHALTER-Datenblatt-003"
+      }
+    }
+  ]
+}

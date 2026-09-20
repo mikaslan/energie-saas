@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/ev-database.v1.schema.json",
+  "title": "WMEE EV database v1",
+  "description": "Kuratierter EV-Verbrauchs-Extrakt (F4-03c): Modell -> kWh/km aus lizenzierter Quelle. Nur lizenzierte Extrakte, kein Scraping. Segment-Enum folgt ev-profile.v1 (kompakt/mittel/gross).",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "ev-database.v1"
+    },
+    "databaseVersion": {
+      "type": "string",
+      "pattern": "^wmee-ev-database\\.v\\d+$",
+      "description": "Gepinnte DB-Version, wandert in die Quell-Provenienz (SHA)."
+    },
+    "license": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "licensed_extract"
+        },
+        "extractId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Beleg-ID des lizenzierten Extrakts (Lizenz-Gate: Pflicht)."
+        }
+      },
+      "required": [
+        "kind",
+        "extractId"
+      ],
+      "additionalProperties": false
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "entryId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Stabiler DB-Schlüssel, referenziert via consumption.evDatabaseEntryId."
+          },
+          "modelName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "kwhPerKm": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          },
+          "segment": {
+            "type": "string",
+            "enum": [
+              "kompakt",
+              "mittel",
+              "gross"
+            ],
+            "description": "Segment nach ev-profile.v1-Enum (kompakt = 03b-Prose 'klein')."
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "wltp",
+                  "adac",
+                  "hersteller"
+                ]
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240,
+                "description": "Quellenbeleg (Extrakt-Zeile, Datenblatt-ID, Prüfbericht-Nr)."
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "entryId",
+          "modelName",
+          "kwhPerKm",
+          "segment",
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "contractVersion",
+    "databaseVersion",
+    "license",
+    "entries"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,9 @@
+{
+  "contractVersion": "italy-tou-bands.v1",
+  "bandPricesCtPerKwh": {
+    "F1": 32.5,
+    "F2": 28.1,
+    "F3": 24.7
+  },
+  "dayKind": "weekday"
+}

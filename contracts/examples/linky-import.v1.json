@@ -1,0 +1,14 @@
+{
+  "contractVersion": "linky-import.v1",
+  "usagePointId": "TEST-PRM-30000000000000",
+  "consent": {
+    "granted": true,
+    "grantedAt": "2026-09-01T10:00:00+02:00",
+    "source": "enedis_data_connect",
+    "policyVersion": "2026-1",
+    "authorizationReference": "TEST-AUTH-0001"
+  },
+  "intervalStepMinutes": 30,
+  "periodStart": "2025-01-01",
+  "periodEnd": "2025-12-31"
+}

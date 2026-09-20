@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/italy-tou-bands.v1.schema.json",
+  "title": "WMEE Italy TOU bands (ARERA F1/F2/F3) v1",
+  "description": "Italienische Zeitbänder F1/F2/F3 nach ARERA Delibera 181/06 Tab. 1 plus Tagart. Die Abbildung auf den 24h-TOU-Vektor definiert docs/spec/F4-02f-italien-fasce.md (SPECIFIED, kein Code).",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "italy-tou-bands.v1"
+    },
+    "bandPricesCtPerKwh": {
+      "type": "object",
+      "description": "Bandarbeitspreise in Ct/kWh. Genau F1/F2/F3, keine weiteren Schlüssel.",
+      "properties": {
+        "F1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "F2": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "F3": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        }
+      },
+      "required": [
+        "F1",
+        "F2",
+        "F3"
+      ],
+      "additionalProperties": false
+    },
+    "dayKind": {
+      "type": "string",
+      "enum": [
+        "weekday",
+        "saturday",
+        "sunday_holiday"
+      ],
+      "description": "Tagart des abzubildenden Tages: weekday = Mo-Fr ausser Feiertag, saturday = Samstag ausser Feiertag, sunday_holiday = Sonntag oder italienischer Feiertag."
+    }
+  },
+  "required": [
+    "contractVersion",
+    "bandPricesCtPerKwh",
+    "dayKind"
+  ],
+  "additionalProperties": false
+}

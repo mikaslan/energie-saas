@@ -1,0 +1,7 @@
+{
+  "contractVersion": "simulation-clock.v1",
+  "epoch": "frozen-asof.v1",
+  "asOfDate": "2026-08-29",
+  "commissioningDate": "2026-08-29",
+  "source": "frozen_preparation"
+}

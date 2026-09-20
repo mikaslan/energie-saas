@@ -1,0 +1,7 @@
+{
+  "contractVersion": "storage-degradation.v1",
+  "calendarFadePerYear": 0.008,
+  "cycleFadePerFullCycle": 0.00005,
+  "sohFloor": 0.7,
+  "replacementCostEuroPerKwh": 600
+}

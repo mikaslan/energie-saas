@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/storage-degradation.v1.schema.json",
+  "title": "WMEE storage degradation v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "storage-degradation.v1"
+    },
+    "calendarFadePerYear": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.2,
+      "default": 0,
+      "description": "ESTIMATE: kalendarischer Kapazitaetsverlust pro Jahr als Bruchteil der BOL-Nennkapazitaet. Default 0 = keine kalendarische Drift (Status quo, Althashes stabil). Analogie: moduleDegradationPerYear (prepare.ts:77, dort 0,005)."
+    },
+    "cycleFadePerFullCycle": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.05,
+      "default": 0,
+      "description": "ESTIMATE: zyklischer Kapazitaetsverlust pro Vollzyklen-Aequivalent (storageFullCycles-Definition aus Entlade-Durchsatz, run-v2.ts:300-302) als Bruchteil der BOL-Nennkapazitaet. Default 0 = keine zyklische Drift."
+    },
+    "sohFloor": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.7,
+      "description": "ESTIMATE, REVIEW-offen: untere Schranke des SOH (Restkapazitaetsanteil). Default 0,7 = uebliche EOL-Definition 70 % Restkapazitaet (Herstellergarantie-Niveau)."
+    },
+    "replacementCostEuroPerKwh": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional: Wiederbeschaffungskosten je kWh Nennkapazitaet als Anker fuer abgeleitete Durchsatzkosten im Arbitrage-Kalkuel (F4-04h §4). Fehlt der Wert, ist keine Ableitung moeglich — es gilt nur der F4-04g-Fallback."
+    }
+  },
+  "required": [
+    "contractVersion"
+  ],
+  "additionalProperties": false
+}

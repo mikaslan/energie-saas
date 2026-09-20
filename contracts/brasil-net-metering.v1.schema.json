@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/brasil-net-metering.v1.schema.json",
+  "title": "WMEE Brasil Net Metering Gutschrift-Regel v1",
+  "description": "Gutschrift-Regelsatz für BR-Net-Metering (SCEE, Lei 14.300/2022): Kompensationsfaktor und Gutschrift-Verfall. SPECIFIED, kein Code (Ref docs/spec/F4-02g-brasilien-net-metering.md).",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "brasil-net-metering.v1"
+    },
+    "compensationFactor": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Regelsatz-Faktor: Gutschrift-kWh je eingespeister kWh (0..1). Übergangsregime-Staffel (Fio B) ist unbelegt und wird NICHT hartcodiert — der Faktor kommt aus belegtem Regelsatz."
+    },
+    "creditExpiryMonths": {
+      "type": "integer",
+      "const": 60,
+      "description": "Gesetzlicher Gutschrift-Verfall: 60 Monate nach Entstehungs-Fakturierung (Lei 14.300/2022)."
+    }
+  },
+  "required": [
+    "contractVersion",
+    "compensationFactor",
+    "creditExpiryMonths"
+  ],
+  "additionalProperties": false
+}

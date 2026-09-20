@@ -1,0 +1,5 @@
+{
+  "contractVersion": "brasil-net-metering.v1",
+  "compensationFactor": 1.0,
+  "creditExpiryMonths": 60
+}

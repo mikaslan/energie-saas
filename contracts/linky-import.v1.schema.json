@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/linky-import.v1.schema.json",
+  "title": "WMEE Linky import v1",
+  "description": "Import-Request fuer einen FR-Linky-Halbstundenlastgang (Enedis Data Connect, 30-Minuten-Schritt) plus explizitem Kunden-Consent. Geschlossenes Objekt (F1.1-Prinzip): alle Felder vorhanden, fachlich fehlende Werte explizit null. Status SPECIFIED (F4-02e), kein Code.",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "linky-import.v1"
+    },
+    "usagePointId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Enedis-Zaehlpunktreferenz des Linky-Zaehlerpunkts. Exaktes PRM-Format ist OFFEN (F4-02e OFFENE-PUNKTE 1)."
+    },
+    "consent": {
+      "type": "object",
+      "description": "Expliziter Kunden-Consent ueber die Enedis-Autorisierungs-API (F1.1-Consent-Praezedenz contactMarketingConsentV1Schema: granted/grantedAt/source/policyVersion). granted=false oder fehlender Nachweis verweigert den Pull fail-closed.",
+      "properties": {
+        "granted": {
+          "type": "boolean"
+        },
+        "grantedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "source": {
+          "type": ["string", "null"],
+          "maxLength": 200
+        },
+        "policyVersion": {
+          "type": ["string", "null"],
+          "maxLength": 100
+        },
+        "authorizationReference": {
+          "type": ["string", "null"],
+          "maxLength": 200,
+          "description": "Enedis-seitige Referenz der erteilten Autorisierung (Format OFFEN, F4-02e OFFENE-PUNKTE 1)."
+        }
+      },
+      "required": [
+        "granted",
+        "grantedAt",
+        "source",
+        "policyVersion",
+        "authorizationReference"
+      ],
+      "additionalProperties": false
+    },
+    "intervalStepMinutes": {
+      "type": "integer",
+      "const": 30,
+      "description": "Linky-Kurven-Schrittweite: 30 Minuten (courbe de charge, Enedis-Beleg F4-02e §5)."
+    },
+    "periodStart": {
+      "type": "string",
+      "format": "date",
+      "description": "Erster Pull-Tag (inklusive), ISO-Datum."
+    },
+    "periodEnd": {
+      "type": "string",
+      "format": "date",
+      "description": "Letzter Pull-Tag (inklusive), ISO-Datum."
+    }
+  },
+  "required": [
+    "contractVersion",
+    "usagePointId",
+    "consent",
+    "intervalStepMinutes",
+    "periodStart",
+    "periodEnd"
+  ],
+  "additionalProperties": false
+}
