@@ -3,6 +3,21 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-20 — F8-Lane integriert (Flotten-Lane, Leitstand, Jev-geprueft)
+
+- `codex/muse-fleet-4-rechnungen` (`2abac84`: F8-16..F8-24a, Migrationen 0190-0200)
+  in `codex/m1-wave-02` gemergt (Merge `6c5d26e`).
+- Integrationskonflikte additiv geloest: 0190-0200 beanspruchten idx 150-160 (vergeben)
+  → ans Kettenende (idx 161-171, TOTAL 172, `when` strikt); Rollenvertrag-Pins
+  3-seitig zusammengeführt (F1-21 Lead-Score + F8-Dispatches + Runtime-Grants);
+  Snapshot-prevId 0190 auf 0150-Snapshot neu verketet; Test-Pins (TOTAL, Journal-Tail,
+  m107-Grant-Reihenfolge alphabetisch) nachgezogen.
+- Belege: Lane-CI `35500128748` completed/success auf Code-HEAD `b4defab` (FINAL-4B,
+  Jev UNSICHER→Leitstand-Entscheid dokumentiert); Integrations-Gates `npm run check`
+  EXIT 0 auf dem Merge-HEAD (487 Dateien, 3497 Tests).
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-20 — F15-Lane integriert (Flotten-Lane, Leitstand, Jev-geprueft)
 
 - `codex/muse-fleet-5e-f15` (`ea22639`: F15-02 Gewerbe-Stufen, Migration 0290)
