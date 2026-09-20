@@ -307,6 +307,11 @@ function warningText(code: WarningsV2[number]["code"]): string {
   if (code === "bidirectional_charging_not_modeled") {
     return "Bidirektionales Laden ist nicht modelliert.";
   }
+  if (code === "economics_estimate") {
+    return "Geschätzte Vergütung: Diese Wirtschaftlichkeit nutzt "
+      + "ESTIMATE-Vergütungssätze (EEG-Tabelle/Post-EEG-Marktwert, kein "
+      + "Clearingstellen-Beleg).";
+  }
   return "Ersatzstrom ist nicht modelliert.";
 }
 
@@ -539,7 +544,7 @@ function feedInSourceLabel(source: EconomicsV2["feedInTariffSource"]): string {
   return "EEG-Default (ESTIMATE)";
 }
 
-function V2Economics({ economics }: { economics: EconomicsV2 }) {
+function V2Economics({ economics, isExisting = false }: { economics: EconomicsV2; isExisting?: boolean }) {
   // kumuliert[0] enthaelt -Investition: Jahr-1-Basis ist -Investition.
   const yearly = economics.cumulativeCashflowEuro.map((cumulative, index) => {
     const previous = index === 0
@@ -547,14 +552,28 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
       : economics.cumulativeCashflowEuro[index - 1]!;
     return { year: index + 1, savings: cumulative - previous, cumulative };
   });
+  // F4-05c Fehlverkaufs-Schutz: Bestand-Geld bezieht sich auf die Gesamtanlage.
+  const scopeSuffix = "bezogen auf Gesamtanlage, nicht auf Zubau-Delta";
   return (
     <div className="mt-5" data-energy-calculation-v2-economics="true">
       <h3 className="px-1 text-base font-semibold text-slate-950">
         Wirtschaftlichkeit ({economics.horizonYears}-Jahres-Cashflow)
       </h3>
+      <div
+        role="note"
+        data-energy-calculation-v2-liability="true"
+        className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+      >
+        <p>
+          „Unverbindliche Schätzung: Diese Wirtschaftlichkeit nutzt ESTIMATE-Vergütungssätze
+          (EEG-Tabelle/Post-EEG-Marktwert, kein Clearingstellen-Beleg) und Planungsannahmen
+          — keine Rechts- oder Steuerberatung.&quot;
+        </p>
+      </div>
       <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
         <DetailItem term="Jahresersparnis (Jahr 1)" numeric>
           {euroFormatter.format(economics.annualSavingsEuro)}
+          {isExisting ? ` — ${scopeSuffix}` : null}
         </DetailItem>
         <DetailItem term="Amortisation" numeric>
           {economics.amortizationYears === null
@@ -562,9 +581,11 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
             : economics.amortizationYears === 0
               ? "sofort (keine Investition)"
               : `Jahr ${economics.amortizationYears}`}
+          {isExisting ? ` — ${scopeSuffix}` : null}
         </DetailItem>
         <DetailItem term="Interner Zinsfuß (IRR)" numeric>
           {economics.irr === null ? "—" : percentFormatter.format(economics.irr)}
+          {isExisting && economics.irr !== null ? ` — ${scopeSuffix}` : null}
         </DetailItem>
         <DetailItem term="Investition" numeric>
           {euroFormatter.format(economics.investmentEuro)}
@@ -627,6 +648,12 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
         />
       ) : null}
       {economics.tou ? <V2Tou tou={economics.tou} /> : null}
+      {isExisting ? (
+        <p className="mt-3 px-1 text-sm leading-6 text-slate-600">
+          Alle Cashflow-Werte
+          {` ${scopeSuffix}.`}
+        </p>
+      ) : null}
       <div
         className="mt-3 max-w-full overflow-x-auto rounded-md border border-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         tabIndex={0}
@@ -635,7 +662,7 @@ function V2Economics({ economics }: { economics: EconomicsV2 }) {
       >
         <table className="min-w-[32rem] w-full border-collapse text-left text-sm tabular-nums">
           <caption className="px-4 py-3 text-left font-semibold text-slate-950">
-            Cashflow je Jahr
+            {isExisting ? `Cashflow je Jahr (${scopeSuffix})` : "Cashflow je Jahr"}
           </caption>
           <thead className="bg-slate-50 text-slate-700">
             <tr>
@@ -781,9 +808,10 @@ function V2Tou({ tou }: { tou: NonNullable<EconomicsV2["tou"]> }) {
         Zeitvariabler Tarif &amp; Ladefahrplan (Jahr 1)
       </h4>
       <p className="mt-1 px-1 text-sm leading-6 text-slate-600">
-        Preisgeführte Speicherfahrweise zum 24-h-Tarif (ESTIMATE: statischer
-        Tagestarif, täglich wiederholt). Positive Ersparnis heißt günstiger
-        als der Flattarif mit PV.
+        Preisgeführte Speicherfahrweise zum Zeittarif (ESTIMATE:
+        Median/P25-Tagesheuristik; statischer Tarif — 24-h-Profil täglich
+        wiederholt oder Day-ahead-Jahresvektor). Positive Ersparnis heißt
+        günstiger als der Flattarif mit PV.
       </p>
       <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
         <DetailItem term="Mit PV (Zeittarif)" numeric>
@@ -843,7 +871,12 @@ function PlanningResultV2({
       {result.value.existingInstallation ? (
         <V2ExistingComparison existing={result.value.existingInstallation} />
       ) : null}
-      {economics ? <V2Economics economics={economics} /> : null}
+      {economics ? (
+        <V2Economics
+          economics={economics}
+          isExisting={result.value.existingInstallation !== undefined}
+        />
+      ) : null}
       <V2Sankey annual={result.value.annual} />
       <V2MonthlyTable monthly={result.value.monthly} />
       <V2Provenance result={result} />

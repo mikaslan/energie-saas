@@ -241,7 +241,7 @@ beforeEach(() => {
 // Abschnitt 5). Das Commercial-Gate ist SPECIFIED, nicht gebaut: Save und Compose
 // kennen heute keinen Scope (ROT-Beleg: 3 failed | 2 passed am 2026-09-19).
 // Entskippen, sobald der Bau-Slice das Gate implementiert.
-describe.skip("F4-02d Commercial-Gate (Save)", () => {
+describe("F4-02d Commercial-Gate (Save)", () => {
   it("verweigert den CSV-Save bei residential Scope fail-closed", async () => {
     deps.getCandidate.mockResolvedValueOnce(candidate("residential"));
     await expect(saveProjectEnergyProfileAction({ status: "idle" }, csvForm()))
@@ -255,7 +255,7 @@ describe.skip("F4-02d Commercial-Gate (Save)", () => {
   });
 });
 
-describe.skip("F4-02d Commercial-Gate (Compose)", () => {
+describe("F4-02d Commercial-Gate (Compose)", () => {
   it("verweigert die CSV-Basis bei residential Scope", () => {
     expect(() => buildLoadSourcesFromProfileV2(
       { consumption: csvConsumption(), scope: "residential" },
@@ -271,7 +271,7 @@ describe.skip("F4-02d Commercial-Gate (Compose)", () => {
   });
 });
 
-describe.skip("F4-02d Laender-Default (DE-only)", () => {
+describe("F4-02d Laender-Default (DE-only)", () => {
   it("weist synthetische Laenderprofile fail-closed ab (Guard)", () => {
     const context = loadContext();
     for (const profile of ["linky_pull.v1", "it_f1f2f3.v1", "br_netmetering.v1"]) {

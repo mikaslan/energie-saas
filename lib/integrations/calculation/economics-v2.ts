@@ -54,6 +54,15 @@ export const POST_EEG_MARKET_VALUE_CT = 3.5;
 /** EEG-Förderdauer [Jahre] (Anlagenalter-Regel). */
 export const EEG_SUPPORT_YEARS = 20;
 
+/**
+ * F4-05c Break-even ≡ Amortisationsjahr (Spec-Satz §4, kein eigenes Feld).
+ */
+export const BREAK_EVEN_DEFINITION =
+  "Break-even ist das Amortisationsjahr (amortizationYears): erstes Jahr mit kumuliertem Cashflow ≥ 0, null wenn nie im Horizont." as const;
+
+/** F4-05c ESTIMATE-Kennzeichnung bei eeg_default/post_eeg (sonst kein Warning). */
+export type EconomicsWarningV2 = "economics_estimate";
+
 function economicsError(detail: string): never {
   throw new F401EngineError(`Wirtschaftlichkeit v2 verletzt: ${detail}`);
 }
@@ -86,6 +95,14 @@ export type EconomicsInputV2 = {
   priceEscalationRate: number;
   feedInTariffCtPerKwh: number;
   feedInTariffSource: FeedInTariffSource;
+  /**
+   * F4-05c ESTIMATE-Warning bei eeg_default/post_eeg (override trägt keins;
+   * sonst fehlt der Schlüssel und Althashes bleiben stabil). Die
+   * Preparation strippt den Schlüssel vor dem Request (abgeleitete
+   * Kennzeichnung, kein Reproduktionsinput); der Run leitet die
+   * v2-Result-Warnung aus der Quelle ab.
+   */
+  warnings?: EconomicsWarningV2[];
   investmentEuro: number;
   /** Optionaler Neutarif [Ct/kWh] für den Jahr-1-Vergleich (F4.4a). */
   alternativeImportPriceCtPerKwh: number | null;
@@ -138,8 +155,18 @@ function knownNumber(entry: unknown): number | null {
     : null;
 }
 
-/** EEG-Default für ein Inbetriebnahmejahr (nächstkleineres Tabellenjahr). */
+/**
+ * EEG-Default für ein Inbetriebnahmejahr (nächstkleineres Tabellenjahr).
+ * F4-05c fail-closed: außerhalb der Tabelle (2020–2026) wirft statt still
+ * fortgeschriebene Randsätze zu liefern.
+ */
 export function eegDefaultForYear(year: number): number {
+  const tableYears = EEG_FEED_IN_DEFAULT_CT.map(([tableYear]) => tableYear);
+  const minYear = Math.min(...tableYears);
+  const maxYear = Math.max(...tableYears);
+  if (!Number.isFinite(year) || year < minYear || year > maxYear) {
+    economicsError(`EEG-Default ausserhalb ${minYear}..${maxYear} (Jahr ${String(year)})`);
+  }
   let rate = EEG_FEED_IN_DEFAULT_CT[0]![1];
   for (const [tableYear, tableRate] of EEG_FEED_IN_DEFAULT_CT) {
     if (tableYear <= year) rate = tableRate;
@@ -153,10 +180,15 @@ export function eegDefaultForYear(year: number): number {
  * Workspace-Fallback (F4.5b) als Request-Baustein. Profil gewinnt immer;
  * Fallback füllt nur Profil-Lücken (Preis, Eskalation, Horizont).
  * Gibt null zurück, wenn Preis oder Investition unbelegt bleiben.
+ * F4-05c: Randjahr ohne Override → null (wie unbelegter Preis);
+ * eeg_default/post_eeg tragen warnings ["economics_estimate"].
+ * F4-05c DE-only: country default "DE" (Kette ist DE-gepinnt); Nicht-DE
+ * ohne Override → null (Override-Pflicht, greift bei Literal-Aufweitung).
  */
 export function resolveEconomics(
   consumption: unknown,
   workspace?: EconomicsWorkspaceFallbackV2 | null,
+  country?: string,
 ): EconomicsInputV2 | null {
   const holder = (consumption ?? {}) as Record<string, unknown>;
   const fallback = workspace ?? null;
@@ -204,6 +236,11 @@ export function resolveEconomics(
   }
   const overrideCt = knownNumber(holder.feedInTariffCtPerKwh);
   const commissioningYear = knownNumber(holder.feedInCommissioningYear);
+  // F4-05c DE-only: EEG-Tabelle ist DE Überschusseinspeisung ≤10 kWp.
+  // Die v2-Kette ist DE-gepinnt (site.countryCode z.literal("DE")); wird
+  // das Literal je aufgeweitet, gilt für Nicht-DE Override-Pflicht.
+  const countryCode = country ?? "DE";
+  if (countryCode !== "DE" && overrideCt === null) return null;
   let feedInTariffCtPerKwh: number;
   let feedInTariffSource: FeedInTariffSource;
   if (overrideCt !== null) {
@@ -220,6 +257,10 @@ export function resolveEconomics(
       feedInTariffCtPerKwh = POST_EEG_MARKET_VALUE_CT;
       feedInTariffSource = "post_eeg";
     } else {
+      // F4-05c: Randjahr ohne Override → kein Geld (null wie unbelegter
+      // Preis), statt stiller Randsätze. Mit Override → Geld (Zweig oben).
+      const tableYears = EEG_FEED_IN_DEFAULT_CT.map(([tableYear]) => tableYear);
+      if (year < Math.min(...tableYears) || year > Math.max(...tableYears)) return null;
       feedInTariffCtPerKwh = eegDefaultForYear(year);
       feedInTariffSource = "eeg_default";
     }
@@ -260,6 +301,10 @@ export function resolveEconomics(
     priceEscalationRate: escalationPct / 100,
     feedInTariffCtPerKwh,
     feedInTariffSource,
+    // F4-05c: ESTIMATE-Vergütung trägt Economics-Warning (override keins).
+    ...(feedInTariffSource === "override"
+      ? {}
+      : { warnings: ["economics_estimate"] as EconomicsWarningV2[] }),
     investmentEuro,
     alternativeImportPriceCtPerKwh: alternativeCt,
     ...(alternativeEscalationPct === null
@@ -335,14 +380,25 @@ export function resolveComparisonTariffs(
 /**
  * F4.4b TOU-Aufloesung aus belegtem Profil: exakt 24 endliche Preise
  * 0..200 Ct/kWh -> Kopie; sonst null (kein TOU-Block, kein Fehler).
+ * F4-04g Day-ahead: exakt 8760 endliche Preise 0..200 Ct/kWh aus
+ * `touDayAheadPricesCtPerKwh` -> Kopie. Beide zugleich belegt -> null
+ * (keine stille Prioritaet; das Speichern blockt der Formfehler).
  */
 export function resolveTouImportPrices(consumption: unknown): number[] | null {
   const holder = (consumption ?? {}) as Record<string, unknown>;
-  const entry = holder.touImportPricesCtPerKwh as
+  const classic = holder.touImportPricesCtPerKwh as
     | { status?: unknown; value?: unknown }
     | undefined;
+  const dayAhead = holder.touDayAheadPricesCtPerKwh as
+    | { status?: unknown; value?: unknown }
+    | undefined;
+  const classicKnown = classic !== undefined && classic !== null && classic.status === "known";
+  const dayAheadKnown = dayAhead !== undefined && dayAhead !== null && dayAhead.status === "known";
+  if (classicKnown && dayAheadKnown) return null;
+  const entry = dayAheadKnown ? dayAhead : classic;
   if (entry === undefined || entry === null || entry.status !== "known") return null;
-  if (!Array.isArray(entry.value) || entry.value.length !== 24) return null;
+  if (!Array.isArray(entry.value)) return null;
+  if (entry.value.length !== 24 && entry.value.length !== 8760) return null;
   const prices: number[] = [];
   for (const price of entry.value) {
     if (typeof price !== "number" || !Number.isFinite(price)) return null;
@@ -353,24 +409,87 @@ export function resolveTouImportPrices(consumption: unknown): number[] | null {
 }
 
 /**
+ * F4-04g TOU-Fixkosten aus belegtem Profil (eigene optionale TOU-Felder,
+ * nur bei belegtem Preisprofil — sonst fehlt der Schluessel und Althashes
+ * bleiben stabil). Bereichsverletzung ist fail-closed (F4-04e-Vorbild).
+ */
+export function resolveTouFixCosts(
+  consumption: unknown,
+): { touBaseFeeEuro?: number; touDemandChargeEuroPerKw?: number } {
+  const holder = (consumption ?? {}) as Record<string, unknown>;
+  const baseFee = knownNumber(holder.touBaseFeeEuro);
+  if (baseFee !== null && (baseFee < 0 || baseFee > 100_000)) {
+    economicsError("TOU-Grundpreis ausserhalb 0..100000 Euro/Jahr");
+  }
+  const demandCharge = knownNumber(holder.touDemandChargeEuroPerKw);
+  if (demandCharge !== null && (demandCharge < 0 || demandCharge > 10_000)) {
+    economicsError("TOU-Leistungspreis ausserhalb 0..10000 Euro/kW");
+  }
+  return {
+    ...(baseFee === null ? {} : { touBaseFeeEuro: baseFee }),
+    ...(demandCharge === null ? {} : { touDemandChargeEuroPerKw: demandCharge }),
+  };
+}
+
+/**
+ * F4-04g optionale TOU-Fixkosten der TOU-Bill (G3-Fix mit eigenen Feldern).
+ * Unbelegt = nur Arbeitspreis (Althashes stabil); belegter Satz ohne
+ * Spitze wirft (fail-closed wie F4-04e, kein stilles Nullen).
+ */
+export type TouBillFixCosts = {
+  /** TOU-Grundpreis [€/Jahr], 0..100.000. */
+  touBaseFeeEuro?: number;
+  /** TOU-Leistungspreis [€/kW], 0..10.000. */
+  touDemandChargeEuroPerKw?: number;
+  /** TOU-Dispatch-Spitze [kW] = max(TOU-Netzbezugs-Slot) x 4. */
+  touPeakKw?: number;
+};
+
+/**
  * F4.4b TOU-Jahr-1-Rechnung: Summe Slot-Netzbezug x TOU-Stundenpreis
  * (gleiche Bezugskosten-Semantik wie F4.4a-Bills, ohne Einspeiseabloesung).
  * `slotImportKwh` deckt ganze Tage ab (Laenge % 96 == 0).
+ * F4-04g: 24-Preis-Profil (Tagesstunde `(i % 96) / 4`) oder 8760-Vektor
+ * (Jahresstunde `floor(i / 4)`); Fixkosten per `touBillEuro = Arbeit +
+ * Grundpreis + Spitze x Satz` (Cent-genau wie F4.4a-Bills).
  */
 export function computeTouBillEuro(
   slotImportKwh: ArrayLike<number>,
   touPricesCtPerKwh: ArrayLike<number>,
+  fixCosts: TouBillFixCosts = {},
 ): number {
   if (slotImportKwh.length === 0 || slotImportKwh.length % 96 !== 0) {
     economicsError("TOU-Bezugsreihe deckt keine ganzen Tage ab");
   }
-  if (touPricesCtPerKwh.length !== 24) {
-    economicsError("TOU-Profil hat nicht 24 Stundenpreise");
+  const profileLength = touPricesCtPerKwh.length;
+  if (profileLength !== 24 && profileLength !== 8760) {
+    economicsError("TOU-Profil hat weder 24 noch 8760 Stundenpreise");
+  }
+  const baseFee = fixCosts.touBaseFeeEuro ?? 0;
+  if (!Number.isFinite(baseFee) || baseFee < 0 || baseFee > 100_000) {
+    economicsError("TOU-Grundpreis ausserhalb 0..100000 Euro/Jahr");
+  }
+  const demandCharge = fixCosts.touDemandChargeEuroPerKw ?? 0;
+  if (!Number.isFinite(demandCharge) || demandCharge < 0 || demandCharge > 10_000) {
+    economicsError("TOU-Leistungspreis ausserhalb 0..10000 Euro/kW");
+  }
+  const peakKw = fixCosts.touPeakKw;
+  if (demandCharge > 0 && peakKw === undefined) {
+    economicsError("TOU-Leistungspreis ohne TOU-Spitze aus dem Dispatch");
+  }
+  if (peakKw !== undefined && (!Number.isFinite(peakKw) || peakKw < 0)) {
+    economicsError("TOU-Spitze ist ungueltig");
   }
   let totalCt = 0;
   for (let index = 0; index < slotImportKwh.length; index += 1) {
     const energy = slotImportKwh[index]!;
-    const price = touPricesCtPerKwh[Math.floor((index % 96) / 4)]!;
+    const hour = profileLength === 24
+      ? Math.floor((index % 96) / 4)
+      : Math.floor(index / 4);
+    if (hour >= profileLength) {
+      economicsError("TOU-Bezugsreihe reicht ueber den Day-ahead-Vektor hinaus");
+    }
+    const price = touPricesCtPerKwh[hour]!;
     if (typeof energy !== "number" || !Number.isFinite(energy) || energy < 0) {
       economicsError(`TOU-Bezug[${index}] ist ungueltig`);
     }
@@ -379,7 +498,7 @@ export function computeTouBillEuro(
     }
     totalCt += energy * price;
   }
-  return roundMoney(totalCt / 100);
+  return roundMoney(totalCt / 100 + baseFee + demandCharge * (peakKw ?? 0));
 }
 
 export type ExistingBillDeltaV2 = {
@@ -389,6 +508,8 @@ export type ExistingBillDeltaV2 = {
   plannedEuro: number;
   /** Ersparnis Planung gegen Bestand (kann negativ sein). */
   savingsEuro: number;
+  /** F4-05c Fehlverkaufs-Schutz: Geld bezieht sich auf die Gesamtanlage. */
+  scopeNote: "Gesamtanlage (nicht Zubau-Delta)";
 };
 
 /**
@@ -419,7 +540,12 @@ export function computeExistingBillDelta(
   }
   const baselineEuro = roundMoney(baselineGridImportKwh * (importPriceCtPerKwh / 100));
   const plannedEuro = roundMoney(plannedGridImportKwh * (importPriceCtPerKwh / 100));
-  return { baselineEuro, plannedEuro, savingsEuro: roundMoney(baselineEuro - plannedEuro) };
+  return {
+    baselineEuro,
+    plannedEuro,
+    savingsEuro: roundMoney(baselineEuro - plannedEuro),
+    scopeNote: "Gesamtanlage (nicht Zubau-Delta)",
+  };
 }
 
 export type AnnualBillsV2 = {

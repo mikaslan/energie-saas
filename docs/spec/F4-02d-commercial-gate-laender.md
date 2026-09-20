@@ -1,6 +1,6 @@
 # F4-02d Commercial-Gate + Laender-Slices
 
-Stand: SPECIFIED (kein Code). Ergaenzt F4-02c um die
+Stand: IMPLEMENTED (Spec 2026-09-19 Lane `codex/muse-fleet-3b-f4spec`; implementiert 2026-09-20 auf `codex/muse-fleet-8-f4kern`: Save-/Compose-/UI-Gate, scope aus kanban_board typisiert, f402d 5/5 + Nachbarn 32/32; Laender-Slices weiter SPECIFIED/kein Code). Ergaenzt F4-02c um die
 „nur Commercial"-Produktregel als Gate (UI + Save, Rechenkern bewusst
 ungated) und legt die Laender-Slices als SPECIFIED ab (kein Code, kein
 synthetisches Verhalten). Default: DE-only. Keine Migration: Scope kommt

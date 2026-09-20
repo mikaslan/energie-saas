@@ -166,9 +166,13 @@ export async function seedProjectGraph(
     investmentEuro?: number;
     // F4.2c: Lastgang-CSV (8760 Stundenwerte je kWh, customer_csv.v1).
     csvKwhPerHour?: number;
+    // F4-02d: Board-Scope des Projekts (Commercial-Gate: CSV-UI + -Save
+    // nur bei commercial). Default residential (Gate zu).
+    boardScope?: "residential" | "commercial";
   } = {},
 ): Promise<void> {
   const branch = options.branch ?? "new_installation";
+  const boardScope = options.boardScope ?? "residential";
   const profile = {
     ...GOLDEN_REQUEST.energyProfile,
     roofs: GOLDEN_REQUEST.energyProfile.roofs.map((roof) => ({
@@ -308,7 +312,7 @@ export async function seedProjectGraph(
        and intake_column.is_intake = true
        and intake_column.archived_at is null
       where board.workspace_id = ${ids.workspaceId}::uuid
-        and board.scope = 'residential'
+        and board.scope = ${boardScope}
         and board.is_default = true
         and board.archived_at is null
     `);

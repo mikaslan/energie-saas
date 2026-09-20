@@ -321,11 +321,21 @@
           "properties": {
             "importPricesCtPerKwh": {
               "minItems": 24,
-              "maxItems": 24,
+              "maxItems": 8760,
               "type": "array",
               "items": {
                 "$ref": "#/$defs/__schema10"
               }
+            },
+            "touBaseFeeEuro": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "touDemandChargeEuroPerKw": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10000
             }
           },
           "required": [
@@ -564,12 +574,17 @@
                     },
                     "savingsEuro": {
                       "type": "number"
+                    },
+                    "scopeNote": {
+                      "type": "string",
+                      "const": "Gesamtanlage (nicht Zubau-Delta)"
                     }
                   },
                   "required": [
                     "baselineEuro",
                     "plannedEuro",
-                    "savingsEuro"
+                    "savingsEuro",
+                    "scopeNote"
                   ],
                   "additionalProperties": false
                 }
@@ -970,7 +985,8 @@
                 "unknown_profile_field",
                 "existing_installation_limited",
                 "bidirectional_charging_not_modeled",
-                "backup_power_not_modeled"
+                "backup_power_not_modeled",
+                "economics_estimate"
               ]
             },
             "severity": {

@@ -22,6 +22,8 @@ const SLOTS_PER_DAY = 96;
 const SLOTS_PER_HOUR = 4;
 const SLOT_HOURS = 0.25;
 const HOURS_PER_DAY = 24;
+/** F4-04g Day-ahead-Jahresvektor (statischer CSV-Vektor, kein Live-Spot). */
+const HOURS_PER_YEAR = 8760;
 /** Slot-Energiebilanz vor Persistenz (gleich engine-v2). */
 const BALANCE_ATOL_KWH = 1e-9;
 /** Gueltiger TOU-Arbeitspreis [Ct/kWh] (Flattarif kennt 1..200; 0 erlaubt). */
@@ -64,6 +66,27 @@ export function assertTouPrices(value: unknown): number[] {
   return value as number[];
 }
 
+/**
+ * F4-04g TOU-Preisvektor pruefen (24 Tages- oder 8760 Day-ahead-Preise,
+ * je endlich 0..200 Ct/kWh). Fail-closed: jede Verletzung wirft.
+ */
+export function assertTouPricesFlexible(value: unknown): number[] {
+  if (!Array.isArray(value)) touError("TOU-Profil ist kein Array");
+  if (value.length !== HOURS_PER_DAY && value.length !== HOURS_PER_YEAR) {
+    touError(`TOU-Profil hat ${value.length} statt 24 oder 8760 Stundenpreise`);
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const entry = value[index];
+    if (typeof entry !== "number" || !Number.isFinite(entry)) {
+      touError(`TOU-Preis[${index}] ist nicht endlich`);
+    }
+    if (entry < TOU_PRICE_MIN_CT || entry > TOU_PRICE_MAX_CT) {
+      touError(`TOU-Preis[${index}] ausserhalb 0..200 Ct/kWh`);
+    }
+  }
+  return value as number[];
+}
+
 export type TouDayPolicy = {
   /** Netzladung erlaubt (Spanne + Marge + Speicher vorhanden). */
   gridChargeAllowed: boolean;
@@ -79,12 +102,25 @@ export type TouDayPolicy = {
  * Tagespolitik aus den 24 Stundenpreisen: Median als Entladeschwelle,
  * P25 als Netzlade-Obergrenze, Wirtschaftlichkeit gegen
  * Rundungsverluste [ESTIMATE].
+ *
+ * Die Median/P25-Heuristik mit Flach-Tag-Schwelle, Arbitrage-Marge und
+ * Mitternachtsachse ist ESTIMATE bis zum Reonic-Beleg (F4-04b-Frage 1,
+ * REVIEW-pflichtig — keine behauptete Reonic-Paritaet).
+ *
+ * F4-04g `degradationCostCtPerKwhThroughput` (optional, >= 0, Default 0):
+ * linearer Zyklenkosten-Huerdenaufschlag auf die Arbitrage-Marge
+ * [ESTIMATE, REVIEW-offen: Durchsatz statt Zyklenzaehlung].
  */
 export function touDayPolicy(
   pricesCt: readonly number[],
   storage: StorageParams,
+  degradationCostCtPerKwhThroughput = 0,
 ): TouDayPolicy {
   const prices = assertTouPrices(pricesCt);
+  if (!Number.isFinite(degradationCostCtPerKwhThroughput)
+    || degradationCostCtPerKwhThroughput < 0) {
+    touError("degradationCostCtPerKwhThroughput ist ungueltig");
+  }
   const sorted = [...prices].sort((a, b) => a - b);
   const spread = sorted[HOURS_PER_DAY - 1]! - sorted[0]!;
   const usableKwh = storage.socMaxKwh - storage.socMinKwh;
@@ -96,7 +132,7 @@ export function touDayPolicy(
   const flatDay = spread < FLAT_DAY_SPREAD_CT;
   const gridChargeAllowed = !flatDay
     && usableKwh > 0
-    && median * roundTrip - p25 >= ARBITRAGE_MARGIN_CT;
+    && median * roundTrip - p25 >= ARBITRAGE_MARGIN_CT + degradationCostCtPerKwhThroughput;
   return {
     gridChargeAllowed,
     dischargeFromCt: median,
@@ -170,8 +206,8 @@ function desiredFlows(
   pvKwh: number[],
   loadKwh: number[],
   storage: StorageParams,
-  prices: number[],
-  policy: TouDayPolicy,
+  priceAtSlot: (slotIndex: number) => number,
+  policyAtSlot: (slotIndex: number) => TouDayPolicy,
 ): DesiredFlows {
   const chargeLimitKwh = storage.chargeKw * SLOT_HOURS;
   const dischargeLimitKwh = storage.dischargeKw * SLOT_HOURS;
@@ -182,7 +218,8 @@ function desiredFlows(
   for (let index = 0; index < pvKwh.length; index += 1) {
     const pv = pvKwh[index]!;
     const load = loadKwh[index]!;
-    const price = prices[Math.floor((index % SLOTS_PER_DAY) / SLOTS_PER_HOUR)]!;
+    const price = priceAtSlot(index);
+    const policy = policyAtSlot(index);
     const direct = Math.min(pv, load);
     const surplus = pv - direct;
     const deficit = load - direct;
@@ -203,6 +240,48 @@ function desiredFlows(
   return { deltas, pvCharge, charge, discharge };
 }
 
+type TouPricePolicy = {
+  priceAtSlot: (slotIndex: number) => number;
+  policyAtSlot: (slotIndex: number) => TouDayPolicy;
+};
+
+/**
+ * F4-04g Preis-/Politikaufloesung je Slot: 24-Preis-Profil (eine Politik,
+ * Tagesstunde `(i % 96) / 4`) oder 8760-Vektor (Politik des Tages aus
+ * dessen 24 Jahresstunden, Slot-Jahresstunde `floor(i / 4)`).
+ */
+function touPricePolicy(
+  prices: number[],
+  storage: StorageParams,
+  degradationCostCtPerKwhThroughput: number,
+  slotCount: number,
+): TouPricePolicy {
+  if (prices.length === HOURS_PER_DAY) {
+    const policy = touDayPolicy(prices, storage, degradationCostCtPerKwhThroughput);
+    return {
+      priceAtSlot: (slotIndex) =>
+        prices[Math.floor((slotIndex % SLOTS_PER_DAY) / SLOTS_PER_HOUR)]!,
+      policyAtSlot: () => policy,
+    };
+  }
+  const days = slotCount / SLOTS_PER_DAY;
+  if (!Number.isInteger(days) || days > HOURS_PER_YEAR / HOURS_PER_DAY) {
+    touError("TOU-Reihe reicht ueber den Day-ahead-Vektor hinaus");
+  }
+  const policies: TouDayPolicy[] = [];
+  for (let day = 0; day < days; day += 1) {
+    policies.push(touDayPolicy(
+      prices.slice(day * HOURS_PER_DAY, (day + 1) * HOURS_PER_DAY),
+      storage,
+      degradationCostCtPerKwhThroughput,
+    ));
+  }
+  return {
+    priceAtSlot: (slotIndex) => prices[Math.floor(slotIndex / SLOTS_PER_HOUR)]!,
+    policyAtSlot: (slotIndex) => policies[Math.floor(slotIndex / SLOTS_PER_DAY)]!,
+  };
+}
+
 /**
  * Zyklischer Start fuer den TOU-Dispatch: Fixpunkt der
  * SoC-unabhaengigen Wunsch-Deltas (exakt wie engine-v2, da Dynamik
@@ -213,14 +292,21 @@ export function cyclicSocStartTou(input: {
   loadKwh: unknown;
   storage: StorageParams;
   touPricesCt: unknown;
+  /** F4-04g Zyklenkosten [Ct/kWh Durchsatz], >= 0, Default 0. */
+  degradationCostCtPerKwhThroughput?: number;
 }): number {
   const pvKwh = requireTouSeries(input.pvKwh, "pvKwh");
   const loadKwh = requireTouSeries(input.loadKwh, "loadKwh");
   if (pvKwh.length !== loadKwh.length) touError("pv/load-Laengen unterscheiden sich");
-  const prices = assertTouPrices(input.touPricesCt);
-  const policy = touDayPolicy(prices, input.storage);
+  const prices = assertTouPricesFlexible(input.touPricesCt);
+  const resolved = touPricePolicy(
+    prices,
+    input.storage,
+    input.degradationCostCtPerKwhThroughput ?? 0,
+    pvKwh.length,
+  );
   return cyclicSocStart(
-    desiredFlows(pvKwh, loadKwh, input.storage, prices, policy).deltas,
+    desiredFlows(pvKwh, loadKwh, input.storage, resolved.priceAtSlot, resolved.policyAtSlot).deltas,
     input.storage,
   );
 }
@@ -228,6 +314,7 @@ export function cyclicSocStartTou(input: {
 /**
  * Preisgefuehrter Dispatch ueber ganze Tage (Laenge % 96 == 0).
  * Stundenpreis des Slots: Tagesprofil an der Slot-Ortsstunde
+ * (F4-04g: Day-ahead-Jahresstunde `floor(i / 4)`)
  * [ESTIMATE: Slot-Tage beginnen um lokale Mitternacht, Achse ab 1.1.].
  */
 export function dispatchQuarterHoursTou(input: {
@@ -236,18 +323,25 @@ export function dispatchQuarterHoursTou(input: {
   storage: StorageParams;
   socStartKwh: number;
   touPricesCt: unknown;
+  /** F4-04g Zyklenkosten [Ct/kWh Durchsatz], >= 0, Default 0. */
+  degradationCostCtPerKwhThroughput?: number;
 }): { slots: TouSlotResult[]; totals: TouDispatchTotals } {
   const pvKwh = requireTouSeries(input.pvKwh, "pvKwh");
   const loadKwh = requireTouSeries(input.loadKwh, "loadKwh");
   if (pvKwh.length !== loadKwh.length) touError("pv/load-Laengen unterscheiden sich");
-  const prices = assertTouPrices(input.touPricesCt);
+  const prices = assertTouPricesFlexible(input.touPricesCt);
   const { storage, socStartKwh } = input;
   requireFinite(socStartKwh, "socStartKwh");
   if (socStartKwh < storage.socMinKwh || socStartKwh > storage.socMaxKwh) {
     touError("socStartKwh ausserhalb [socMinKwh,socMaxKwh]");
   }
-  const policy = touDayPolicy(prices, storage);
-  const desired = desiredFlows(pvKwh, loadKwh, storage, prices, policy);
+  const resolved = touPricePolicy(
+    prices,
+    storage,
+    input.degradationCostCtPerKwhThroughput ?? 0,
+    pvKwh.length,
+  );
+  const desired = desiredFlows(pvKwh, loadKwh, storage, resolved.priceAtSlot, resolved.policyAtSlot);
   const slots: TouSlotResult[] = new Array(pvKwh.length);
   let soc = socStartKwh;
   for (let index = 0; index < pvKwh.length; index += 1) {

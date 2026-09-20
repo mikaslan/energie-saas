@@ -204,6 +204,7 @@ export default async function EnergyProfilePage({
                 expectedLatestRevision={expectedLatestRevision}
                 profile={baseProfile}
                 saveBlockedReason={saveBlocker(context)}
+                scope={candidate.scope ?? undefined}
               />
             </Section>
           ) : (

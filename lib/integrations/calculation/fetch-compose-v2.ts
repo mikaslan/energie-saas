@@ -45,6 +45,8 @@ import {
   buildEvPatternSourceV2,
   buildHotWaterProfileSourceV2,
   buildMonthlyProfileSourceV2,
+  EV_WALLBOX_MAX_KW_MAX_V2,
+  EV_WALLBOX_MAX_KW_MIN_V2,
 } from "./load-shapes-v2";
 import {
   MUNEER_WEIGHTS_ALBEDO,
@@ -53,8 +55,8 @@ import {
   quarterGeometryForHourV2,
 } from "./muneer-weights-v2";
 import {
-  PLANNING_ASSUMPTIONS_V2,
   PLANNING_ASSUMPTIONS_V2_VERSION,
+  resolveEvKwhPerKmV2,
   resolveRoofProviderInputsV2,
   type ResolvedRoofV2,
 } from "./planning-assumptions-v2";
@@ -118,6 +120,19 @@ const knownValueSchema = z.object({
 });
 
 const evPatternSchema = z.object({
+  status: z.string(),
+  value: z.string().nullish(),
+});
+
+// F4-03b EV-Segment/Wallbox/Modell (belegte Kundenwerte; Detailpruefung im
+// EV-Pfad unten — das Modell ist reine Quellenangabe und bleibt
+// rechenneutral).
+const evSegmentSchema = z.object({
+  status: z.string(),
+  value: z.string().nullish(),
+});
+
+const evVehicleModelSchema = z.object({
   status: z.string(),
   value: z.string().nullish(),
 });
@@ -230,6 +245,40 @@ function parseCustomCsv(consumption: unknown): number[] | null {
   return numbers;
 }
 
+// F4-03b: belegte Fahrzeugklasse (klein/mittel/gross) oder null (unbelegt).
+// Unbekannt/fehlend ist kein Fehler — der belegte Fremdwert bricht erst im
+// EV-Pfad fail-closed ab (resolveEvKwhPerKmV2, kein erfundener Verbrauch).
+function parseEvSegmentV2(consumption: unknown): string | null {
+  const holder = (consumption ?? {}) as Record<string, unknown>;
+  const entry = holder.evSegment as
+    | { status?: unknown; value?: unknown }
+    | undefined;
+  if (entry === undefined || entry.status !== "known") return null;
+  if (typeof entry.value !== "string") composeError("EV-Segment ist nicht belegt");
+  return entry.value;
+}
+
+// F4-03b: belegte Wallbox-Kappung [kW] oder null (unbelegt). Unbekannt/
+// fehlend ist kein Fehler — erst belegte nicht-endliche Werte oder Werte
+// ausserhalb [1,43] brechen fail-closed ab (kein stiller Ersatzwert).
+function parseWallboxMaxKwV2(consumption: unknown): number | null {
+  const holder = (consumption ?? {}) as Record<string, unknown>;
+  const entry = holder.wallboxMaxKw as
+    | { status?: unknown; value?: unknown }
+    | undefined;
+  if (entry === undefined || entry.status !== "known") return null;
+  if (typeof entry.value !== "number" || !Number.isFinite(entry.value)) {
+    composeError("Wallbox-Maximalleistung ist nicht belegt");
+  }
+  if (
+    entry.value < EV_WALLBOX_MAX_KW_MIN_V2
+    || entry.value > EV_WALLBOX_MAX_KW_MAX_V2
+  ) {
+    composeError("Wallbox-Maximalleistung ist ausserhalb [1,43]");
+  }
+  return entry.value;
+}
+
 const consumptionSchema = z.object({
   householdKwhPerYear: knownValueSchema,
   loadProfile: loadProfileSchema.optional(),
@@ -247,6 +296,9 @@ const consumptionSchema = z.object({
   }).optional(),
   evKmPerYear: knownValueSchema.optional(),
   evChargingPattern: evPatternSchema.optional(),
+  evSegment: evSegmentSchema.optional(),
+  wallboxMaxKw: knownValueSchema.optional(),
+  evVehicleModel: evVehicleModelSchema.optional(),
   heatPumpKwhPerYear: knownValueSchema.optional(),
   // F4.3 Waermepumpe mit COP-Kennlinie (thermischer Bedarf + optionale
   // Kennlinienparameter; Detailpruefung in parseHeatPumpCop gegen den
@@ -260,6 +312,13 @@ const consumptionSchema = z.object({
   heatingAcKwhPerYear: knownValueSchema.optional(),
   coolingKwhPerYear: knownValueSchema.optional(),
   hotWaterKwhPerYear: knownValueSchema.optional(),
+});
+
+const profileRequestSchema = z.object({
+  consumption: consumptionSchema,
+  // F4-02d Commercial-Gate: Scope-Pflicht auf dem CSV-Pfad
+  // (residential/fehlend fail-closed, commercial passiert).
+  scope: z.enum(["residential", "commercial"]).optional(),
 });
 
 function knownKwh(
@@ -296,7 +355,9 @@ export type LoadContextV2 = {
  * Pflicht-Basis in BDEW-H0-Form, Gewerbe als v1-exakte Intervall-Basis,
  * Monatsprofil-Option als Monats-Basis aus belegten Monatswerten (F4.2);
  * Waermepumpe nach Heizgradstunden
- * (T2m-Wetterjahr); EV nach belegtem Ladepattern (km x Planungsfaktor),
+ * (T2m-Wetterjahr); EV nach belegtem Ladepattern (km x Planungsfaktor,
+ * F4-03b: Segmentfaktor `wmee-ev-segment.v1` plus optionale
+ * Wallbox-Kappung),
  * Kuehlung nach Kuehlgradstunden, Warmwasser nach Tagesgang (v1-Ports,
  * `wmee-load-shapes.v1`). Zusatzlasten nur bei bekannten Werten > 0.
  * Unbekannte Zusatzlasten werden geskippt (sichtbar in sources[]);
@@ -308,9 +369,10 @@ export function buildLoadSourcesFromProfileV2(
   profile: unknown,
   loadContext: LoadContextV2,
 ): LoadProfileSourceV2[] {
-  const parsed = z.object({ consumption: consumptionSchema }).safeParse(profile);
+  const parsed = profileRequestSchema.safeParse(profile);
   if (!parsed.success) composeError("Profil traegt keinen Verbrauch");
   const consumption = parsed.data.consumption;
+  const scope = parsed.data.scope;
   // Gewerbe laeuft als v1-exakte Intervall-Basis (`commercial_interval.v1`,
   // werktags 7-19h, Winterfaktor); unbekannte oder Wohnformen laufen als
   // H0-Basis (v1-Default ist Haushalt). Fremde Profilwerte bleiben
@@ -338,6 +400,12 @@ export function buildLoadSourcesFromProfileV2(
     && loadProfile.status === "known"
     && loadProfile.value === CSV_LOAD_PROFILE_V2;
   const csv = parseCustomCsv(consumption);
+  // F4-02d Commercial-Gate: CSV-Option oder CSV-Reihe verlangt
+  // scope=commercial; residential oder fehlender Scope bricht
+  // fail-closed ab. Die Formung (buildCsvProfileSourceV2) bleibt ungated.
+  if ((csvOption || csv !== null) && scope !== "commercial") {
+    composeError("Lastgang-CSV verlangt scope=commercial");
+  }
   if (csvOption && csv === null) {
     composeError("CSV-Profil ohne Lastgang-Reihe ist nicht belegt");
   }
@@ -396,15 +464,41 @@ export function buildLoadSourcesFromProfileV2(
         }),
   ];
   const evKm = knownKwh(consumption.evKmPerYear, "EV", false);
+  // F4-03b EV-Segment→Faktor (`wmee-ev-segment.v1`): belegte Klasse waehlt
+  // den ESTIMATE-Faktor, unbelegt rechnet der 0.2-Pin legacy weiter
+  // (byte-identisch, SHA stabil). Segment/Wallbox ohne EV-km und EV-km
+  // gegen belegtes known_absent verweigern fail-closed (kein erfundener
+  // Ladeplan, kein stiller Vorrang). existingAssets ist optional — reine
+  // Verbrauchsprofile ohne Assets bleiben gueltig.
+  const evSegment = parseEvSegmentV2(consumption);
+  const wallboxMaxKw = parseWallboxMaxKwV2(consumption);
+  if (
+    (evSegment !== null || wallboxMaxKw !== null)
+    && (evKm === null || evKm <= 0)
+  ) {
+    composeError("EV-Segment/Wallbox ohne EV-km ist nicht belegt");
+  }
+  const assetsHolder = profile as {
+    existingAssets?: { ev?: { status?: unknown } };
+  };
+  if (
+    evKm !== null
+    && evKm > 0
+    && assetsHolder.existingAssets?.ev?.status === "known_absent"
+  ) {
+    composeError("EV-km widerspricht belegtem known_absent");
+  }
   if (evKm !== null && evKm > 0) {
     const pattern = consumption.evChargingPattern;
     if (pattern === undefined || pattern.status !== "known" || pattern.value == null) {
       composeError("EV-Ladepattern ist nicht belegt");
     }
     sources.push(buildEvPatternSourceV2({
-      annualKwh: evKm * PLANNING_ASSUMPTIONS_V2.load.evKwhPerKm,
+      annualKwh: evKm * resolveEvKwhPerKmV2(evSegment),
       pattern: pattern.value,
       slotLabels: loadContext.slotLabels,
+      evSegment: evSegment ?? undefined,
+      wallboxMaxKw: wallboxMaxKw ?? undefined,
     }));
   }
   // F4.3: belegter thermischer WP-Bedarf laeuft ueber die COP-Kennlinie;
@@ -687,6 +781,9 @@ export async function fetchPlanningSeriesV2(input: {
     branch: z.enum(["new_installation", "existing_installation"]),
     asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     existingPv: z.unknown(),
+    // F4-02d: Board-Scope als Gate-Kontext (nullish; nur commercial
+    // passiert den CSV-Pfad in buildLoadSourcesFromProfileV2).
+    scope: z.enum(["residential", "commercial"]).nullish(),
   }).safeParse(input.request);
   if (!parsed.success) composeError("Fetch-Anfrage ist ungueltig");
   const parsedSite = siteSchema.safeParse({
@@ -755,7 +852,7 @@ export async function fetchPlanningSeriesV2(input: {
   }
   const total = resolveTotalLoadProfile(
     buildLoadSourcesFromProfileV2(
-      { consumption: parsed.data.consumption },
+      { consumption: parsed.data.consumption, scope: parsed.data.scope ?? undefined },
       {
         slotLabels: horizontalSlots.map((slot) => slot.slotLabel),
         hourlyTemperatureC,

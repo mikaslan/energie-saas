@@ -41,6 +41,11 @@ import {
   loadProfileSourceV2Schema,
   type LoadProfileSourceV2,
 } from "./load-v2";
+import {
+  EV_SEGMENT_V2_VERSION,
+  isEvSegmentProfileValueV2,
+  type EvSegmentProfileValueV2,
+} from "./planning-assumptions-v2";
 import { CALCULATION_V2_LOAD_SHAPES_VERSION } from "./versions-v2";
 
 export const LOAD_SHAPES_V2_VERSION = CALCULATION_V2_LOAD_SHAPES_VERSION;
@@ -63,6 +68,10 @@ export function isEvChargingPatternV2(value: unknown): value is EvChargingPatter
 
 /** Kuehlgrenze [°C] (v1-`degreeWeights`, belegt). */
 export const COOLING_LIMIT_DEG_C = 22;
+
+/** F4-03b Wallbox-Kappungsbereich [kW] (Haushaltswallbox bis 43-kW-Lader). */
+export const EV_WALLBOX_MAX_KW_MIN_V2 = 1;
+export const EV_WALLBOX_MAX_KW_MAX_V2 = 43;
 
 function loadShapesError(detail: string): never {
   throw new F401LoadError(`Lastformen v2 verletzt: ${detail}`);
@@ -207,27 +216,81 @@ function buildShapeSourceV2(input: {
 }
 
 /**
+ * F4-03b Wallbox-Kappung (ESTIMATE, optional): unbelegt (undefined) keine
+ * Kappung, belegt endliche kW in [1,43], sonst fail-closed (kein stiller
+ * Ersatzwert).
+ */
+function parseWallboxMaxKwV2(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    loadShapesError("Wallbox-Maximalleistung ist nicht belegt");
+  }
+  if (value < EV_WALLBOX_MAX_KW_MIN_V2 || value > EV_WALLBOX_MAX_KW_MAX_V2) {
+    loadShapesError(
+      `Wallbox-Maximalleistung ausserhalb [${EV_WALLBOX_MAX_KW_MIN_V2},${EV_WALLBOX_MAX_KW_MAX_V2}]`,
+    );
+  }
+  return value;
+}
+
+/**
+ * F4-03b EV-Segment (belegte Fahrzeugklasse, optional): wandert mit der
+ * Annahmenversion in die Quell-SHA; fremde Werte fail-closed.
+ */
+function parseEvSegmentV2(value: unknown): EvSegmentProfileValueV2 | undefined {
+  if (value === undefined) return undefined;
+  if (!isEvSegmentProfileValueV2(value)) {
+    loadShapesError("EV-Segment ist nicht belegt");
+  }
+  return value;
+}
+
+/**
  * EV-Quelle aus Jahres-km x Planungsfaktor, geformt nach belegtem Pattern.
  * Unbekanntes Pattern bricht fail-closed ab (kein erfundener Ladeplan).
+ *
+ * F4-03b Wallbox-Kappung (ESTIMATE, optional): `wallboxMaxKw` kappt jeden
+ * Viertelstunden-Slot auf `wallboxMaxKw × 0.25` kWh; die Mindermenge bleibt
+ * sichtbar (keine Umverteilung, kein stilles Nachladen). Kappung und
+ * belegtes Segment stehen in der Quell-SHA. Unbelegt rechnet der
+ * Legacy-Pfad byte-identisch weiter (keine Kappung, SHA stabil).
  */
 export function buildEvPatternSourceV2(input: {
   annualKwh: number;
   pattern: unknown;
   slotLabels: readonly unknown[];
+  evSegment?: unknown;
+  wallboxMaxKw?: unknown;
 }): LoadProfileSourceV2 {
   const pattern = input.pattern;
   if (!isEvChargingPatternV2(pattern)) {
     loadShapesError("EV-Ladepattern ist nicht belegt");
   }
+  const evSegment = parseEvSegmentV2(input.evSegment);
+  const wallboxMaxKw = parseWallboxMaxKwV2(input.wallboxMaxKw);
   const slots = parseLoadShapeSlotsV2(input.slotLabels);
   const weights = slots.map((slot) => evPatternWeightV2(pattern, slot));
-  return buildShapeSourceV2({
+  const source = buildShapeSourceV2({
     sourceId: EV_PATTERN_V2_SOURCE_ID,
     sourceKind: "ev",
     annualKwh: input.annualKwh,
     weights,
-    detail: { pattern },
+    detail: {
+      pattern,
+      ...(evSegment === undefined
+        ? {}
+        : { evSegment, evSegmentVersion: EV_SEGMENT_V2_VERSION }),
+      ...(wallboxMaxKw === undefined ? {} : { wallboxMaxKw }),
+    },
   });
+  if (wallboxMaxKw === undefined) return source;
+  const capKwh = wallboxMaxKw * 0.25;
+  const slotEnergyKwh = source.slotEnergyKwh.map((slot) => Math.min(slot, capKwh));
+  const parsed = loadProfileSourceV2Schema.safeParse({ ...source, slotEnergyKwh });
+  if (!parsed.success) {
+    loadShapesError("EV-Quelle mit Wallbox-Kappung verletzt das Quellschema");
+  }
+  return parsed.data;
 }
 
 /**

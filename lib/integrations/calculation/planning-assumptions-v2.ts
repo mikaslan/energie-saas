@@ -26,6 +26,11 @@
  *   v1-Ports), je eigene Version/Provenienz.
  * - evKwhPerKm = 0.2: typische 0.15-0.25 kWh/km, Midpoint. Upgrade:
  *   fahrzeug-/profilspezifische Faktoren (F4.2+).
+ *
+ * F4-03b EV-Segmentfaktoren (ESTIMATE, reversibel, ohne Flottenbeleg):
+ * - evKwhPerKmBySegment small/medium/large = 0.15/0.18/0.22: belegte
+ *   Fahrzeugklasse (klein/mittel/gross) waehlt den Faktor, sonst gilt
+ *   weiter der 0.2-Pin. Version `wmee-ev-segment.v1`, in der EV-Quell-SHA.
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -41,6 +46,9 @@ import { F401ProviderError } from "./provider-v2";
 export const PLANNING_ASSUMPTIONS_V2_VERSION =
   "wmee-planning-assumptions.v1" as const;
 
+/** F4-03b EV-Segmentfaktoren (ESTIMATE, reversibel, in EV-Quell-SHA). */
+export const EV_SEGMENT_V2_VERSION = "wmee-ev-segment.v1" as const;
+
 export const PLANNING_ASSUMPTIONS_V2 = Object.freeze({
   version: PLANNING_ASSUMPTIONS_V2_VERSION,
   roof: Object.freeze({
@@ -52,14 +60,57 @@ export const PLANNING_ASSUMPTIONS_V2 = Object.freeze({
   load: Object.freeze({
     basisShape: "uniform",
     evKwhPerKm: 0.2,
+    evKwhPerKmBySegment: Object.freeze({
+      small: 0.15,
+      medium: 0.18,
+      large: 0.22,
+    }),
   }),
 });
 
 export type PlanningRoofAssumptionsV2 =
   typeof PLANNING_ASSUMPTIONS_V2.roof;
 
+/** F4-03b Profil-Fahrzeugklassen (belegte Kundenwerte). */
+export const EV_SEGMENT_PROFILE_VALUES_V2 = ["klein", "mittel", "gross"] as const;
+export type EvSegmentProfileValueV2 =
+  (typeof EV_SEGMENT_PROFILE_VALUES_V2)[number];
+
+const EV_SEGMENT_ASSUMPTION_KEY_V2: Record<
+  EvSegmentProfileValueV2,
+  keyof typeof PLANNING_ASSUMPTIONS_V2.load.evKwhPerKmBySegment
+> = {
+  klein: "small",
+  mittel: "medium",
+  gross: "large",
+};
+
+export function isEvSegmentProfileValueV2(
+  value: unknown,
+): value is EvSegmentProfileValueV2 {
+  return value === "klein" || value === "mittel" || value === "gross";
+}
+
 function assumptionsError(detail: string): never {
   throw new F401ProviderError(`Planungsannahme v2 verletzt: ${detail}`);
+}
+
+/**
+ * F4-03b Segment→Faktor: belegte Fahrzeugklasse waehlt den
+ * ESTIMATE-Faktor (`wmee-ev-segment.v1`), unbelegt (null/undefined) gilt
+ * der pauschale 0.2-Pin weiter. Fremde Werte brechen fail-closed ab (kein
+ * erfundener Verbrauch).
+ */
+export function resolveEvKwhPerKmV2(segment: unknown): number {
+  if (segment === null || segment === undefined) {
+    return PLANNING_ASSUMPTIONS_V2.load.evKwhPerKm;
+  }
+  if (!isEvSegmentProfileValueV2(segment)) {
+    assumptionsError("EV-Segment ist nicht belegt");
+  }
+  return PLANNING_ASSUMPTIONS_V2.load.evKwhPerKmBySegment[
+    EV_SEGMENT_ASSUMPTION_KEY_V2[segment]
+  ];
 }
 
 const profileRoofV2Schema = z.object({

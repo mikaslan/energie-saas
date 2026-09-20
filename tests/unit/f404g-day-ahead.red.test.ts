@@ -13,13 +13,14 @@ import {
   touDayPolicy,
 } from "@/lib/integrations/calculation/tou-dispatch-v2";
 
-// F4-04g Day-ahead + TOU-Haertung (RED, Ref docs/spec/F4-04g-day-ahead-tou-haertung.md):
-// NUR existierende Imports — kein Import aus noch nicht geschriebenem Code.
-// ROT-Beleg per `npx vitest run tests/unit/f404g-day-ahead.red.test.ts`
-// (6 rote Tests, Auszug in der Spec); danach describe.skip bis zur Umsetzung.
-// SKIP-Grund: SPECIFIED, nicht implementiert (G3-Fix + Day-ahead-Slice offen,
-// statisches 24-h-Profil als V1 eingefroren) — Ref F4-04b Offene Fragen 2-4,
-// run-v2.ts:597 (savingsVsFlat), economics-v2.ts:360-383 (computeTouBillEuro).
+// F4-04g Day-ahead + TOU-Haertung (GREEN, Ref docs/spec/F4-04g-day-ahead-tou-haertung.md):
+// ROT-Beleg: 6 failed per `npx tsx scripts/run-tests.mts tests/unit/f404g-day-ahead.red.test.ts`
+// (Log gesichert, Exit 1, Auszug in der Spec §5); danach entskippt + umgesetzt.
+// ANPASSUNG (genehmigt, Leitstand-Veto ausstehend): Test 1 um Day-ahead-Schluessel-
+// Assertion ergaenzt (Original-Zeile unveraendert); Tests 3, 4, 6 uebergeben die neuen
+// Fixkosten-Args (Erwartung Gleichheit mit Flattarif-Rechnung bleibt), Test 5 uebergibt
+// degradationCost=1 (Erwartung gridChargeAllowed=false, gridChargeInKwh=0 bleibt) plus
+// neuer Default-0-Pin (ohne Param erlaubt). Assertions NICHT geschwaecht, nur API-Args.
 
 const STORAGE = {
   capacityKwh: 10,
@@ -83,16 +84,21 @@ function annual96(overrides: Partial<Annual96> = {}): Annual96 {
   };
 }
 
-describe.skip("F4-04g Day-ahead + TOU-Haertung (RED, SPECIFIED)", () => {
+describe("F4-04g Day-ahead + TOU-Haertung (GREEN)", () => {
   it("Day-ahead: 8760-Preisvektor wird aufgeloest (CSV-Import)", () => {
-    // Heute: resolveTouImportPrices nimmt nur exakt 24 Preise (sonst null).
     const vector = new Array(8760).fill(30);
     expect(resolveTouImportPrices({ touImportPricesCtPerKwh: touKnown(vector) })).not.toBeNull();
+    // F4-04g-Eingabe: eigener Day-ahead-Schluessel (exakt 8760, sonst null).
+    expect(resolveTouImportPrices({ touDayAheadPricesCtPerKwh: touKnown(vector) }))
+      .toEqual(vector);
+    expect(resolveTouImportPrices({
+      touImportPricesCtPerKwh: touKnown(FLAT36),
+      touDayAheadPricesCtPerKwh: touKnown(vector),
+    })).toBeNull();
   });
 
   it("Day-ahead: TOU-Bill honoriert 8760-Preisvektor tagesspezifisch", () => {
     // 2 Tage × 96 kWh; Tag 2 faellt in teure Day-ahead-Stunden (60 Ct).
-    // Heute: jede Nicht-24-Laenge wirft (economics-v2.ts:367-369).
     const imports = new Array(2 * 96).fill(1);
     const dayAhead = new Array(8760).fill(20);
     dayAhead.fill(60, 24, 48);
@@ -102,8 +108,8 @@ describe.skip("F4-04g Day-ahead + TOU-Haertung (RED, SPECIFIED)", () => {
 
   it("G3: TOU-Bill enthaelt Grundpreis bei belegtem Grundpreis", () => {
     // Gleiche kWh, gleicher Arbeitspreis: TOU-Bill muss der
-    // Flattarif-Rechnung mit Grundpreis gleichen (heute: nur Arbeit).
-    const touBill = computeTouBillEuro(new Array(96).fill(1), FLAT36);
+    // Flattarif-Rechnung mit Grundpreis gleichen (eigene TOU-Felder).
+    const touBill = computeTouBillEuro(new Array(96).fill(1), FLAT36, { touBaseFeeEuro: 120 });
     const flat = computeEconomics(
       annual96(),
       economicsInput({ baseFeeEuro: 120 }),
@@ -115,7 +121,11 @@ describe.skip("F4-04g Day-ahead + TOU-Haertung (RED, SPECIFIED)", () => {
     // Spec: Bill = Arbeit + TOU-Spitze × Satz (8,5 kW × 100 = 850);
     // die 8,5 kW stehen hier fuer die TOU-Dispatch-Spitze (fail-closed
     // wie F4-04e — fehlende Spitze bei belegtem Satz wirft).
-    const touBill = computeTouBillEuro(new Array(96).fill(1), FLAT36);
+    const touBill = computeTouBillEuro(
+      new Array(96).fill(1),
+      FLAT36,
+      { touDemandChargeEuroPerKw: 100, touPeakKw: 8.5 },
+    );
     const flat = computeEconomics(
       annual96({ peakImportKw: 8.5, noPvPeakImportKw: 12 }),
       economicsInput({ demandChargeEuroPerKw: 100 }),
@@ -124,15 +134,36 @@ describe.skip("F4-04g Day-ahead + TOU-Haertung (RED, SPECIFIED)", () => {
   });
 
   it("Zyklenkosten-Param senkt Netzladung (Marge 0,6 < 0,5 + 1)", () => {
-    const policy = touDayPolicy(MARGINAL_PRICES, STORAGE);
-    // Marge pinnen: Median 40, P25 35,5 → heute ≥ 0,5 erlaubt.
+    const policy = touDayPolicy(MARGINAL_PRICES, STORAGE, 1);
+    // Marge pinnen: Median 40, P25 35,5; mit Param 0,6 < 0,5 + 1 verboten.
     expect(policy.dischargeFromCt).toBe(40);
     expect(policy.gridChargeUpToCt).toBe(35.5);
     expect(policy.flatDay).toBe(false);
-    // F4-04g(c): mit degradationCostCtPerKwhThroughput = 1 (Default 0)
-    // waere 0,6 < 0,5 + 1 → Netzladung verboten. Heute ohne Param erlaubt.
     expect(policy.gridChargeAllowed).toBe(false);
     // Dispatch-Ebene: ohne Netzladung kein Arbitrage-Volumen.
+    const pvKwh = new Array(96).fill(0);
+    const loadKwh = new Array(96).fill(0.25);
+    const { totals } = dispatchQuarterHoursTou({
+      pvKwh,
+      loadKwh,
+      storage: STORAGE,
+      socStartKwh: cyclicSocStartTou({
+        pvKwh,
+        loadKwh,
+        storage: STORAGE,
+        touPricesCt: MARGINAL_PRICES,
+        degradationCostCtPerKwhThroughput: 1,
+      }),
+      touPricesCt: MARGINAL_PRICES,
+      degradationCostCtPerKwhThroughput: 1,
+    });
+    expect(totals.gridChargeInKwh).toBe(0);
+  });
+
+  it("Zyklenkosten-Default 0 erlaubt Netzladung (Marge 0,6 ≥ 0,5)", () => {
+    // Default-Pin: ohne Param gilt 0 = Status quo (Althashes stabil).
+    const policy = touDayPolicy(MARGINAL_PRICES, STORAGE);
+    expect(policy.gridChargeAllowed).toBe(true);
     const pvKwh = new Array(96).fill(0);
     const loadKwh = new Array(96).fill(0.25);
     const { totals } = dispatchQuarterHoursTou({
@@ -147,14 +178,13 @@ describe.skip("F4-04g Day-ahead + TOU-Haertung (RED, SPECIFIED)", () => {
       }),
       touPricesCt: MARGINAL_PRICES,
     });
-    expect(totals.gridChargeInKwh).toBe(0);
+    expect(totals.gridChargeInKwh).toBeGreaterThan(0);
   });
 
   it("savingsVsFlat ohne Fixkosten-Artefakt (gleiche Preise → 0)", () => {
-    // run-v2.ts:597 rechnet currentEuro (mit Grundpreis) minus TOU-Bill
-    // (nur Arbeit): bei gleichen kWh/Preisen ein Phantom-Bonus von 120.
-    // Spec: savingsVsFlat gegen arbeitspreisbereinigte Rechnung.
-    const touBill = computeTouBillEuro(new Array(96).fill(1), FLAT36);
+    // run-v2 zieht die TOU-Bill MIT Fixkosten von currentEuro ab:
+    // bei gleichen kWh/Preisen kein Phantom-Bonus.
+    const touBill = computeTouBillEuro(new Array(96).fill(1), FLAT36, { touBaseFeeEuro: 120 });
     const flat = computeEconomics(
       annual96(),
       economicsInput({ baseFeeEuro: 120 }),

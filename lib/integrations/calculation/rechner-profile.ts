@@ -31,6 +31,11 @@ const consumptionSchema = z.strictObject({
   annualPriceIncreasePercent: finite().min(-10).max(25),
   evKmPerYear: nonNegative(200_000),
   evChargingPattern: z.enum(["evening", "daytime", "away"]).nullable(),
+  // F4-03b EV-Segment/Wallbox/Modell: additiv-optional (Alt-Snapshots ohne
+  // Keys bleiben gueltig), belegte Werte nur mit beantworteter Frage.
+  evSegment: z.enum(["klein", "mittel", "gross"]).nullable().optional(),
+  wallboxMaxKw: finite().min(1).max(43).nullable().optional(),
+  evVehicleModel: z.string().trim().min(1).max(120).nullable().optional(),
   heatPumpKwhPerYear: nonNegative(100_000),
   coolingKwhPerYear: nonNegative(100_000),
   heatingAcKwhPerYear: nonNegative(100_000),
@@ -241,6 +246,23 @@ export function projectRechnerSnapshotToEnergyProfile(
         consumption.evChargingPattern,
         "customer_input",
       ),
+      // F4-03b: Segment/Wallbox/Modell nur mit beantworteter Frage als
+      // Kundenwert; das Modell ist reine Quelle und loest keinen Faktor aus.
+      evSegment: answeredKnownOrUnknown(
+        answered.has("eauto") && answered.has("eautoSegment"),
+        consumption.evSegment ?? null,
+        "customer_input",
+      ),
+      wallboxMaxKw: answeredKnownOrUnknown(
+        answered.has("eauto") && answered.has("wallboxLeistung"),
+        consumption.wallboxMaxKw ?? null,
+        "customer_input",
+      ),
+      evVehicleModel: answeredKnownOrUnknown(
+        answered.has("eauto") && answered.has("eautoModell"),
+        consumption.evVehicleModel ?? null,
+        "customer_input",
+      ),
       heatPumpKwhPerYear: answeredKnownOrUnknown(
         answered.has("waermepumpe"),
         consumption.heatPumpKwhPerYear,
@@ -281,6 +303,19 @@ export function projectRechnerSnapshotToEnergyProfile(
       annualPriceIncrease: source.provenance.annualPriceIncrease,
     },
   };
+
+  // F4-03b Widerspruchs-Check (fail-explicit): EV-km > 0 gegen belegtes
+  // known_absent verweigert die Projektion, statt still eine Seite zu
+  // bevorzugen. Der Intake leitet EV heute konsistent aus km > 0 ab, die
+  // Pruefung sichert die Ableitung explizit ab.
+  const projectedEvKm = candidate.consumption.evKmPerYear;
+  if (
+    projectedEvKm.status === "known"
+    && projectedEvKm.value > 0
+    && candidate.existingAssets.ev.status === "known_absent"
+  ) {
+    return { ok: false, code: "invalid_source" };
+  }
 
   const parsedProfile = siteEnergyProfileV1Schema.safeParse(candidate);
   return parsedProfile.success

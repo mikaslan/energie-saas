@@ -249,6 +249,8 @@ function v2Claim(
       branch: "new_installation",
       asOfDate: "2026-08-29",
       existingPv: { status: "known_absent" },
+      // F4-02d: Board-Scope als Gate-Kontext (Haushalt-Pfad, kein CSV).
+      scope: "residential",
     },
     ...overrides,
   };

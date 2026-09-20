@@ -80,9 +80,17 @@ const economicsInputV2Schema = z.strictObject({
 /**
  * F4.4b TOU-Eingabe im Request (24 Stundenpreise Ct/kWh, taeglich
  * wiederholt; nur bei belegtem Profilfeld, sonst fehlt der Schluessel).
+ * F4-04g: 24-Preis-Profil oder 8760-Day-ahead-Vektor (exakt, Refine —
+ * JSON min/max wie F4.2c-CSV) plus eigene optionale TOU-Fixkosten
+ * (nur bei belegtem Profilfeld, sonst fehlt der Schluessel).
  */
 const touInputV2Schema = z.strictObject({
-  importPricesCtPerKwh: z.array(finite().min(0).max(200)).length(24),
+  importPricesCtPerKwh: z.array(finite().min(0).max(200)).min(24).max(8760).refine(
+    (prices) => prices.length === 24 || prices.length === 8760,
+    { message: "tou braucht 24 oder 8760 Stundenpreise" },
+  ),
+  touBaseFeeEuro: finite().min(0).max(100_000).optional(),
+  touDemandChargeEuroPerKw: finite().min(0).max(10_000).optional(),
 });
 
 /**
@@ -182,6 +190,9 @@ export const planningCalculationRequestV2Schema = z.strictObject({
     sourceCalculatorSnapshotId: uuid().nullable(),
   }),
   site: z.strictObject({
+    // F4-05c DE-only: EEG-Tabelle ist DE Überschusseinspeisung ≤10 kWp.
+    // Wird das Literal je aufgeweitet, gilt für Nicht-DE Override-Pflicht
+    // (resolveEconomics country-Guard: ohne Override kein Geld + UI-Hinweis).
     countryCode: z.literal("DE"),
     latitude: finite().min(-90).max(90),
     longitude: finite().min(-180).max(180),
@@ -245,11 +256,13 @@ const existingInstallationResultV2Schema = z.strictObject({
     additionalSelfConsumptionKwh: finite().min(-10_000_000).max(10_000_000),
     autonomyRatePercentagePoints: finite().min(-100).max(100),
     // F4.5b: Jahr-1-Rechnungsvergleich (nur bei belegtem Importpreis;
-    // sonst fehlt der Schluessel).
+    // sonst fehlt der Schluessel). F4-05c: scopeNote pinnt die
+    // Gesamtanlagen-Basis (Fehlverkaufs-Schutz, kein Zubau-Delta).
     bills: z.strictObject({
       baselineEuro: finite().min(0),
       plannedEuro: finite().min(0),
       savingsEuro: finite(),
+      scopeNote: z.literal("Gesamtanlage (nicht Zubau-Delta)"),
     }).optional(),
   }),
 });
@@ -261,6 +274,9 @@ const warningsV2Schema = z.array(z.strictObject({
     "existing_installation_limited",
     "bidirectional_charging_not_modeled",
     "backup_power_not_modeled",
+    // F4-05c: ESTIMATE-Vergütung (eeg_default/post_eeg) — Enum-Wechsel nur
+    // mit Contract-Pin-Regen (sanctioned Generator + SHA-Pin).
+    "economics_estimate",
   ]),
   severity: z.enum(["info", "warning"]),
 })).max(20);

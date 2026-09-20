@@ -54,6 +54,7 @@ import {
   CALCULATION_V2_SOURCE_REVISION,
   CALCULATION_V2_VALIDATION_STATUS,
 } from "./versions-v2";
+import { attachReferenceValidationProvenance } from "./reference-validation-v2";
 
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 const SLOTS_PER_DAY = 96;
@@ -419,9 +420,24 @@ function touDispatchSection(input: {
   ) {
     runError("TOU-Entladung uebersteigt wirkungsgradbereinigte Ladung");
   }
+  // F4-04g G3-Fix: TOU-Bill mit eigenen optionalen Fixkosten; Spitze
+  // exakt aus dem TOU-Dispatch (Slot-kWh x 4, 2 dp — F4-04e-Vorbild).
+  // Unbelegt = nur Arbeitspreis (savingsVsFlat weiter gegen die Bill).
+  const touImportKwh = slots.map((slot) => slot.importKwh);
   const billEuro = computeTouBillEuro(
-    slots.map((slot) => slot.importKwh),
+    touImportKwh,
     prices,
+    {
+      ...(request.tou.touBaseFeeEuro === undefined
+        ? {}
+        : { touBaseFeeEuro: request.tou.touBaseFeeEuro }),
+      ...(request.tou.touDemandChargeEuroPerKw === undefined
+        ? {}
+        : {
+          touDemandChargeEuroPerKw: request.tou.touDemandChargeEuroPerKw,
+          touPeakKw: roundPeakKw(maxSlot(touImportKwh) * 4),
+        }),
+    },
   );
   const schedule24h = averageDailySchedule(slots).map((row) => ({
     hour: row.hour,
@@ -516,7 +532,7 @@ function runExistingInstallationV2(
   };
   const parsed = planningCalculationResultV2Schema.safeParse(candidate);
   if (!parsed.success) runError("Bestands-Result verletzt planning-calculation-result.v2");
-  return parsed.data;
+  return attachReferenceValidationProvenance(parsed.data);
 }
 
 function assembleResultV2(
@@ -529,6 +545,12 @@ function assembleResultV2(
   const warnings: PlanningCalculationResultV2["warnings"] = [];
   if (providerEstimate) {
     warnings.push({ code: "provider_estimate", severity: "info" });
+  }
+  // F4-05c: ESTIMATE-Vergütung trägt Economics-Warning (Vorbild
+  // provider_estimate; override bleibt ohne Warning).
+  const feedSource = request.economics?.feedInTariffSource;
+  if (feedSource === "eeg_default" || feedSource === "post_eeg") {
+    warnings.push({ code: "economics_estimate", severity: "info" });
   }
   // F4.5: Geldrechnung nur bei belegtem economics-Input (Neuanlage und
   // Bestand teilen die Assembly; Bestand traegt bislang keinen Input und
@@ -634,5 +656,5 @@ function baseResultV2(
   };
   const parsed = planningCalculationResultV2Schema.safeParse(candidate);
   if (!parsed.success) runError("Result verletzt planning-calculation-result.v2");
-  return parsed.data;
+  return attachReferenceValidationProvenance(parsed.data);
 }

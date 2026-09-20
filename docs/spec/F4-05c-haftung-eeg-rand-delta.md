@@ -1,6 +1,6 @@
 # F4-05c Haftung, EEG-Randsätze, Bestands-Delta-Geld
 
-Status: **SPECIFIED** · Lane: `codex/muse-fleet-3b-f4spec` · Stand 2026-09-19
+Status: **IMPLEMENTED** · Spec-Lane: `codex/muse-fleet-3b-f4spec` (2026-09-19) · Implementiert 2026-09-20 auf `codex/muse-fleet-8-f4kern` (EEG-Rand fail-closed, economics_estimate-Warning mit Contract-Pin, Haftungs-Hinweiszeile + Gesamtanlagen-Note, BREAK_EVEN_DEFINITION, f405c 5/5; entskippt; PDF-Hinweiszeile + Delta-Rechnung + Freigabe-Gate weiter offen/Folgeslices)
 
 ## Ziel und Abgrenzung
 

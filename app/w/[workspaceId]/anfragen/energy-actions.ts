@@ -207,6 +207,14 @@ const profileFormSchema = z.strictObject({
   loadProfileCsv: csvValueListField().optional(),
   evKmPerYear: optionalNumber(0, 200_000),
   evChargingPattern: optionalEnum(["evening", "daytime", "away"]),
+  // F4-03b EV-Segment/Wallbox/Modell (alle Modi; leer/fehlend = unbelegt,
+  // kein stiller Wert — der Editor zeigt 11 kW nur als Vorschlag).
+  // .optional() wie Custom-Felder: fehlende Keys zählen als leer.
+  evSegment: optionalEnum(["klein", "mittel", "gross"]).optional(),
+  wallboxMaxKw: optionalNumber(1, 43).optional(),
+  evVehicleModel: z.string().max(120).transform((value) =>
+    value === "" ? null : value,
+  ).optional(),
   heatPumpKwhPerYear: optionalNumber(0, 100_000),
   // F4.3 WP-COP: thermischer Bedarf + optionale Kennlinienparameter.
   // .optional() wie Custom-Felder: fehlende Keys zählen als leer.
@@ -250,6 +258,12 @@ const profileFormSchema = z.strictObject({
   cmp2Demand: optionalNumber(0, 10_000).optional(),
   // F4.4b TOU: 24 Stundenpreise Komma-getrennt (leer = kein TOU).
   touImportPricesCt: touPriceListField().optional(),
+  // F4-04g Day-ahead: 8760 Stundenpreise, eine Zahl pro Zeile
+  // (Granularitaet hourly_8760, leer = kein Day-ahead).
+  touDayAheadCsv: dayAheadCsvValueListField().optional(),
+  // F4-04g TOU-Fixkosten (eigene optionale TOU-Felder, leer = nur Arbeit).
+  touBaseFeeEuro: optionalNumber(0, 100_000).optional(),
+  touDemandChargeEuroPerKw: optionalNumber(0, 10_000).optional(),
   coolingKwhPerYear: optionalNumber(0, 100_000),
   heatingAcKwhPerYear: optionalNumber(0, 100_000),
   hotWaterKwhPerYear: optionalNumber(0, 20_000),
@@ -320,6 +334,23 @@ const profileFormSchema = z.strictObject({
   ) {
     ctx.addIssue({ code: "custom", path: ["heatPumpThermalKwhPerYear"], message: "COP parameters without thermal demand" });
   }
+  // F4-03b EV-Widersprueche (fail-closed, kein stiller Vorrang): km > 0
+  // gegen known_absent, Segment ohne km/Pattern, Kappung ohne km.
+  // .optional()-Felder: fehlende Keys (undefined) zählen wie leere ("").
+  const evKm = value.evKmPerYear;
+  const evKmPositive = evKm !== null && evKm > 0;
+  if (evKmPositive && value.evStatus === "known_absent") {
+    ctx.addIssue({ code: "custom", path: ["evStatus"], message: "EV km conflicts with known absent EV" });
+  }
+  if (
+    (value.evSegment ?? null) !== null
+    && (!evKmPositive || value.evChargingPattern === null)
+  ) {
+    ctx.addIssue({ code: "custom", path: ["evSegment"], message: "EV segment without km/charging pattern" });
+  }
+  if ((value.wallboxMaxKw ?? null) !== null && !evKmPositive) {
+    ctx.addIssue({ code: "custom", path: ["wallboxMaxKw"], message: "wallbox cap without EV km" });
+  }
   // F1-19 Modus-Kopplung: property verlangt Heizart + Bewohner, roomwise
   // 1..40 Raeume, andere Modi keine Modus-Sektion (Allowlist verhindert
   // fremde Felder; halb belegte Modi scheitern hier, nicht still).
@@ -336,6 +367,14 @@ const profileFormSchema = z.strictObject({
     }
   } else if (value.roomCount !== 0) {
     ctx.addIssue({ code: "custom", path: ["inputMode"], message: "rooms only in roomwise mode" });
+  }
+  // F4-04g: 24-h-Profil und 8760-Vektor zugleich ist ein Widerspruch
+  // (keine stille Prioritaet) — fail-closed, kein Speichern.
+  if (
+    (value.touImportPricesCt ?? null) !== null
+    && (value.touDayAheadCsv ?? null) !== null
+  ) {
+    ctx.addIssue({ code: "custom", path: ["touImportPricesCt"], message: "tou 24h and day-ahead conflict" });
   }
 });
 
@@ -363,6 +402,10 @@ const propertyBranchFields = ["heatingType", "residentCount"] as const;
 
 // F1-19: erlaubt, aber nicht Pflicht (alte Formulare ohne diese Felder
 // bleiben gueltig; Schema-Prefaults liefern die Defaults).
+// F4-04g: Day-ahead-CSV + TOU-Fixkosten ebenso optional (.optional() im
+// Schema; fehlende Keys zaehlen als leer).
+// F4-03b: EV-Segment/Wallbox/Modell ebenso optional (fehlende Keys
+// zaehlen als unbelegt, kein stiller Wert).
 const optionalProfileFields = [
   "inputMode",
   "roomCount",
@@ -374,6 +417,12 @@ const optionalProfileFields = [
   "pkgWallboxPayment",
   "pkgHeatingWanted",
   "pkgHeatingPayment",
+  "touDayAheadCsv",
+  "touBaseFeeEuro",
+  "touDemandChargeEuroPerKw",
+  "evSegment",
+  "wallboxMaxKw",
+  "evVehicleModel",
 ] as const;
 
 const baseProfileFields = [
@@ -640,6 +689,38 @@ function touPriceListField() {
   });
 }
 
+// F4-04g: Day-ahead-CSV-Textfeld -> 8760 Stundenpreise (0..200 Ct/kWh)
+// oder null (leer). F4.2c-Vorbild: eine Zahl pro Zeile, Dezimalpunkt
+// oder -komma, exakt 8760 Zeilen (hourly_8760). Ungueltig -> Formfehler,
+// kein Speichern (fail-closed).
+function dayAheadCsvValueListField() {
+  return z.string().max(500_000).refine((value) => value === value.trim()).transform((value, ctx) => {
+    if (value === "") return null;
+    const lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "");
+    if (lines.length !== 8_760) {
+      ctx.addIssue({ code: "custom", message: "day-ahead csv needs 8760 lines" });
+      return z.NEVER;
+    }
+    const numbers: number[] = [];
+    for (const line of lines) {
+      const normalized = line.includes(",") && !line.includes(".")
+        ? line.replace(",", ".")
+        : line;
+      if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/u.test(normalized)) {
+        ctx.addIssue({ code: "custom", message: "day-ahead csv line is not a number" });
+        return z.NEVER;
+      }
+      const number = Number(normalized);
+      if (!Number.isFinite(number) || number < 0 || number > 200) {
+        ctx.addIssue({ code: "custom", message: "day-ahead csv value out of range 0..200" });
+        return z.NEVER;
+      }
+      numbers.push(number);
+    }
+    return numbers;
+  });
+}
+
 function knownOrUnknown<T>(value: T | null):
   | { status: "known"; value: T; source: "operator_reviewed" }
   | { status: "unknown"; value: null; source: "not_collected" } {
@@ -770,6 +851,9 @@ function buildSubmittedProfile(
     loadProfile: knownOrUnknown(input.loadProfile),
     evKmPerYear: knownOrUnknown(input.evKmPerYear),
     evChargingPattern: knownOrUnknown(input.evChargingPattern),
+    evSegment: knownOrUnknown(input.evSegment ?? null),
+    wallboxMaxKw: knownOrUnknown(input.wallboxMaxKw ?? null),
+    evVehicleModel: knownOrUnknown(input.evVehicleModel ?? null),
     heatPumpKwhPerYear: knownOrUnknown(input.heatPumpKwhPerYear),
     heatPumpThermalKwhPerYear: knownOrUnknown(input.heatPumpThermalKwhPerYear ?? null),
     heatPumpCopNominal: knownOrUnknown(input.heatPumpCopNominal ?? null),
@@ -793,6 +877,9 @@ function buildSubmittedProfile(
     ),
     comparisonTariffs: knownOrUnknown(comparisonTariffsOrAbort),
     touImportPricesCtPerKwh: knownOrUnknown(input.touImportPricesCt ?? null),
+    touDayAheadPricesCtPerKwh: knownOrUnknown(input.touDayAheadCsv ?? null),
+    touBaseFeeEuro: knownOrUnknown(input.touBaseFeeEuro ?? null),
+    touDemandChargeEuroPerKw: knownOrUnknown(input.touDemandChargeEuroPerKw ?? null),
     coolingKwhPerYear: knownOrUnknown(input.coolingKwhPerYear),
     heatingAcKwhPerYear: knownOrUnknown(input.heatingAcKwhPerYear),
     hotWaterKwhPerYear: knownOrUnknown(input.hotWaterKwhPerYear),
@@ -982,6 +1069,15 @@ export async function saveProjectEnergyProfileAction(
     candidate.addressRevision !== input.expectedAddressRevision
     || candidate.expectedLatestRevision !== input.expectedLatestRevision
   ) return { status: "stale" };
+
+  // F4-02d Commercial-Gate: Lastgang-CSV nur bei scope=commercial.
+  // CSV-Option oder CSV-Reihe bei residential (oder fehlendem Scope)
+  // verweigert den Save fail-closed — kein Service-Call, keine Mutation.
+  const csvRequested = input.loadProfile === CSV_LOAD_PROFILE_FORM_VALUE
+    || (input as unknown as Record<string, number[] | null | undefined>).loadProfileCsv != null;
+  if (csvRequested) {
+    if (candidate.scope !== "commercial") return { status: "invalid" };
+  }
 
   const submitted = buildSubmittedProfile(candidate, input);
   if (submitted === null) return { status: "invalid" };

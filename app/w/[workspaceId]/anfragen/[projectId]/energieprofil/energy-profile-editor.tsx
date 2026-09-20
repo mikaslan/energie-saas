@@ -220,16 +220,24 @@ function AssetStatusSelect({
   name,
   label,
   defaultValue,
+  onChange,
 }: {
   id: string;
   name: string;
   label: string;
   defaultValue: "unknown" | "known_absent" | "known_present";
+  onChange?: (value: string) => void;
 }) {
   return (
     <label htmlFor={id} className={labelClass}>
       {label}
-      <select id={id} name={name} defaultValue={defaultValue} className={inputClass}>
+      <select
+        id={id}
+        name={name}
+        defaultValue={defaultValue}
+        onChange={onChange === undefined ? undefined : (event) => onChange(event.currentTarget.value)}
+        className={inputClass}
+      >
         {(["unknown", "known_absent", "known_present"] as const).map((value) => (
           <option key={value} value={value}>{assetStatusLabel(value)}</option>
         ))}
@@ -245,6 +253,7 @@ export function EnergyProfileEditor({
   expectedLatestRevision,
   profile,
   saveBlockedReason,
+  scope,
 }: {
   workspaceId: string;
   projectId: string;
@@ -252,6 +261,10 @@ export function EnergyProfileEditor({
   expectedLatestRevision: number;
   profile: EnergyProfile;
   saveBlockedReason: string | null;
+  // F4-02d Commercial-Gate: CSV-Option + Lastgang-Textarea nur bei
+  // scope=commercial; residential oder fehlender Scope blendet beides
+  // aus (fail-closed, kein leeres Gate-Element).
+  scope?: "residential" | "commercial";
 }) {
   const [state, formAction, pending] = useActionState(
     saveProjectEnergyProfileAction,
@@ -290,11 +303,22 @@ export function EnergyProfileEditor({
       ? String(profile.consumption.loadProfile.value)
       : "",
   );
+  // F4-03b Widerspruchshinweis (lesend): EV-km > 0 gegen E-Auto „Nicht
+  // vorhanden" verweigert das Speichern serverseitig — der Hinweis zeigt
+  // den Widerspruch vorab, ohne eine Seite still zu bevorzugen.
+  const [evKm, setEvKm] = useState(() =>
+    String(fieldValue(profile.consumption.evKmPerYear)),
+  );
+  const [evStatus, setEvStatus] = useState<string>(
+    profile.existingAssets.ev.status,
+  );
+  const evContradiction = evStatus === "known_absent" && Number(evKm) > 0;
   const customProfile = (profile.consumption.customLoadProfile ?? {
     status: "unknown",
   }) as CustomLoadProfileField;
   const monthlySelected = loadProfile === "customer_monthly_hourly.v1";
   const csvSelected = loadProfile === "customer_csv.v1";
+  const csvAllowed = scope === "commercial";
   const statusRef = useRef<HTMLParagraphElement | null>(null);
   const message = messageFor(state);
   const failed = state.status !== "idle" && state.status !== "success";
@@ -665,12 +689,14 @@ export function EnergyProfileEditor({
               <option value="wmee_household_hourly.v1">Standard-Haushalt stündlich</option>
               <option value="customer_monthly_hourly.v1">Kunden-Monatsprofil stündlich</option>
               <option value="commercial_interval.v1">Gewerbliches Intervallprofil</option>
-              <option value="customer_csv.v1">Lastgang-CSV (8760/35040 Werte)</option>
+              {csvAllowed ? (
+                <option value="customer_csv.v1">Lastgang-CSV (8760/35040 Werte)</option>
+              ) : null}
             </select>
           </label>
           <label htmlFor="energy-ev-km" className={labelClass}>
             E-Auto-Fahrleistung (km/Jahr)
-            <input id="energy-ev-km" name="evKmPerYear" type="number" inputMode="decimal" min="0" max="200000" step="any" defaultValue={fieldValue(profile.consumption.evKmPerYear)} className={inputClass} />
+            <input id="energy-ev-km" name="evKmPerYear" type="number" inputMode="decimal" min="0" max="200000" step="any" defaultValue={fieldValue(profile.consumption.evKmPerYear)} onChange={(event) => setEvKm(event.currentTarget.value)} className={inputClass} />
           </label>
           <label htmlFor="energy-ev-pattern" className={labelClass}>
             Ladezeitpunkt E-Auto
@@ -681,6 +707,28 @@ export function EnergyProfileEditor({
               <option value="away">Überwiegend außer Haus</option>
             </select>
           </label>
+          <label htmlFor="energy-ev-segment" className={labelClass}>
+            Fahrzeugklasse E-Auto
+            <select id="energy-ev-segment" name="evSegment" defaultValue={fieldValue(profile.consumption.evSegment ?? { status: "unknown" })} className={inputClass}>
+              <option value="">Unbekannt</option>
+              <option value="klein">Klein</option>
+              <option value="mittel">Mittel</option>
+              <option value="gross">Groß</option>
+            </select>
+          </label>
+          <label htmlFor="energy-ev-model" className={labelClass}>
+            Fahrzeugmodell E-Auto (Freitext, keine Verbrauchsableitung)
+            <input id="energy-ev-model" name="evVehicleModel" type="text" maxLength={120} defaultValue={fieldValue(profile.consumption.evVehicleModel ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-wallbox-kw" className={labelClass}>
+            Wallbox-Maximalleistung (kW, Vorschlag 11, leer = keine Kappung)
+            <input id="energy-wallbox-kw" name="wallboxMaxKw" type="number" inputMode="decimal" min="1" max="43" step="any" placeholder="11" defaultValue={fieldValue(profile.consumption.wallboxMaxKw ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          {evContradiction ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950 sm:col-span-2" role="note">
+              Widerspruch: E-Auto-Fahrleistung über 0 km, aber E-Auto als „Nicht vorhanden“ markiert. Das Speichern wird verweigert — bitte abstimmen.
+            </p>
+          ) : null}
           <label htmlFor="energy-heat-pump" className={labelClass}>
             Wärmepumpe Strom (kWh/Jahr, ohne COP-Kennlinie)
             <input id="energy-heat-pump" name="heatPumpKwhPerYear" type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={fieldValue(profile.consumption.heatPumpKwhPerYear)} className={inputClass} />
@@ -785,6 +833,18 @@ export function EnergyProfileEditor({
             TOU-Stundenpreise (24 Werte Komma-getrennt, leer = kein TOU)
             <input id="energy-tou-prices" name="touImportPricesCt" type="text" inputMode="decimal" defaultValue={touPriceListValue(profile.consumption.touImportPricesCtPerKwh ?? { status: "unknown" })} className={inputClass} />
           </label>
+          <label htmlFor="energy-tou-day-ahead" className={labelClass}>
+            Day-ahead-Stundenpreise (8760 Werte, eine Zahl pro Zeile, leer = kein Day-ahead; schließt das 24-h-Profil aus)
+            <textarea id="energy-tou-day-ahead" name="touDayAheadCsv" rows={6} className={inputClass} defaultValue={csvDefaultValue(profile.consumption.touDayAheadPricesCtPerKwh ?? { status: "unknown" })} />
+          </label>
+          <label htmlFor="energy-tou-base-fee" className={labelClass}>
+            TOU-Grundpreis (€/Jahr, leer = nur Arbeitspreis)
+            <input id="energy-tou-base-fee" name="touBaseFeeEuro" type="number" inputMode="decimal" min="0" max="100000" step="any" defaultValue={fieldValue(profile.consumption.touBaseFeeEuro ?? { status: "unknown" })} className={inputClass} />
+          </label>
+          <label htmlFor="energy-tou-demand" className={labelClass}>
+            TOU-Leistungspreis (€/kW TOU-Spitze, leer = nur Arbeitspreis)
+            <input id="energy-tou-demand" name="touDemandChargeEuroPerKw" type="number" inputMode="decimal" min="0" max="10000" step="any" defaultValue={fieldValue(profile.consumption.touDemandChargeEuroPerKw ?? { status: "unknown" })} className={inputClass} />
+          </label>
         </div>
       </fieldset>
 
@@ -826,7 +886,7 @@ export function EnergyProfileEditor({
         </fieldset>
       ) : null}
 
-      {csvSelected ? (
+      {csvSelected && csvAllowed ? (
         <fieldset className="min-w-0 rounded-lg border border-slate-200 p-4 sm:p-5" data-energy-csv-profile="true">
           <legend className="px-1 text-base font-semibold text-slate-950">Lastgang-CSV</legend>
           <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -861,7 +921,7 @@ export function EnergyProfileEditor({
             <input id="energy-storage-capacity" name="storageCapacityKwh" type="number" inputMode="decimal" min="0.000001" max="1000" step="any" defaultValue={profile.existingAssets.storage.status === "known_present" ? profile.existingAssets.storage.capacityKwh : ""} className={inputClass} />
           </label>
           <AssetStatusSelect id="energy-wallbox-status" name="wallboxStatus" label="Vorhandene Wallbox" defaultValue={profile.existingAssets.wallbox.status} />
-          <AssetStatusSelect id="energy-ev-status" name="evStatus" label="Vorhandenes E-Auto" defaultValue={profile.existingAssets.ev.status} />
+          <AssetStatusSelect id="energy-ev-status" name="evStatus" label="Vorhandenes E-Auto" defaultValue={profile.existingAssets.ev.status} onChange={setEvStatus} />
         </div>
       </fieldset>
 

@@ -88,6 +88,7 @@ type ProjectSiteRow = {
   longitude: number | null;
   snapshot_id: string | null;
   snapshot: RechnerCalculationSnapshotV1 | null;
+  board_scope: string | null;
   [key: string]: unknown;
 };
 
@@ -157,6 +158,9 @@ export type ProjectEnergyProfileCandidate = {
   sourceSnapshotId: string;
   addressRevision: number;
   expectedLatestRevision: number;
+  // F4-02d: Board-Scope (residential | commercial), null wenn unbekannt
+  // (fail-closed auf dem CSV-Pfad).
+  scope: "residential" | "commercial" | null;
   profile: SiteEnergyProfileV1;
 };
 
@@ -466,12 +470,15 @@ async function lockProjectSite(
            s.address_mode, s.geocode_precision, s.address_follow_up_required,
            s.address_revision, s.pin_confirmed,
            s.pin_confirmed_address_revision, s.lat as latitude,
-           s.lng as longitude, cs.id as snapshot_id, cs.snapshot
+           s.lng as longitude, cs.id as snapshot_id, cs.snapshot,
+           b.scope as board_scope
       from project p
       join site s
         on s.workspace_id = p.workspace_id and s.id = p.site_id
       left join calculator_snapshot cs
         on cs.workspace_id = p.workspace_id and cs.project_id = p.id
+      left join kanban_board b
+        on b.workspace_id = p.workspace_id and b.id = p.kanban_board_id
      where p.workspace_id = ${workspaceId}::uuid
        and p.id = ${projectId}::uuid
      for update of p, s
@@ -489,12 +496,15 @@ async function readProjectSite(
            s.address_mode, s.geocode_precision, s.address_follow_up_required,
            s.address_revision, s.pin_confirmed,
            s.pin_confirmed_address_revision, s.lat as latitude,
-           s.lng as longitude, cs.id as snapshot_id, cs.snapshot
+           s.lng as longitude, cs.id as snapshot_id, cs.snapshot,
+           b.scope as board_scope
       from project p
       join site s
         on s.workspace_id = p.workspace_id and s.id = p.site_id
       left join calculator_snapshot cs
         on cs.workspace_id = p.workspace_id and cs.project_id = p.id
+      left join kanban_board b
+        on b.workspace_id = p.workspace_id and b.id = p.kanban_board_id
      where p.workspace_id = ${workspaceId}::uuid
        and p.id = ${projectId}::uuid
   `);
@@ -606,13 +616,16 @@ async function readProjectEnergySnapshot(
              s.address_mode, s.geocode_precision, s.address_follow_up_required,
              s.address_revision, s.pin_confirmed,
              s.pin_confirmed_address_revision, s.lat as latitude,
-             s.lng as longitude, snapshot.id as snapshot_id, snapshot.snapshot
+             s.lng as longitude, snapshot.id as snapshot_id, snapshot.snapshot,
+             b.scope as board_scope
         from project p
         join site s
           on s.workspace_id = p.workspace_id and s.id = p.site_id
         left join calculator_snapshot snapshot
           on snapshot.workspace_id = p.workspace_id
          and snapshot.project_id = p.id
+        left join kanban_board b
+          on b.workspace_id = p.workspace_id and b.id = p.kanban_board_id
        where p.workspace_id = ${workspaceId}::uuid
          and p.id = ${projectId}::uuid
     ), latest_requirement as (
@@ -708,6 +721,7 @@ async function readProjectEnergySnapshot(
     longitude: first.longitude,
     snapshot_id: first.snapshot_id,
     snapshot: first.snapshot,
+    board_scope: (first as { board_scope?: string | null }).board_scope ?? null,
   };
   const stored: StoredProfileRow | null = first.stored_id === null
     ? null
@@ -786,12 +800,16 @@ function projectCandidate(
     }
     throw new EnergyProfileInvalidError();
   }
+  const scope = row.board_scope === "residential" || row.board_scope === "commercial"
+    ? row.board_scope
+    : null;
   return {
     projectId: row.project_id,
     siteId: row.site_id,
     sourceSnapshotId: row.snapshot_id,
     addressRevision: row.address_revision,
     expectedLatestRevision,
+    scope,
     profile: projected.value,
   };
 }
@@ -1201,6 +1219,80 @@ function normalizeProfile(
           source: "not_collected",
         },
       ) as SiteEnergyProfileV1["consumption"]["touImportPricesCtPerKwh"],
+      // F4-04g Day-ahead-Vektor + TOU-Fixkosten (optional; fehlt in Altzeilen).
+      touDayAheadPricesCtPerKwh: normalizeKnownField(
+        submitted.consumption.touDayAheadPricesCtPerKwh ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.touDayAheadPricesCtPerKwh ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["touDayAheadPricesCtPerKwh"],
+      touBaseFeeEuro: normalizeKnownField(
+        submitted.consumption.touBaseFeeEuro ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.touBaseFeeEuro ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["touBaseFeeEuro"],
+      touDemandChargeEuroPerKw: normalizeKnownField(
+        submitted.consumption.touDemandChargeEuroPerKw ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.touDemandChargeEuroPerKw ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["touDemandChargeEuroPerKw"],
+      // F4-03b EV-Segment/Wallbox/Modell (optional; fehlt in Altzeilen).
+      evSegment: normalizeKnownField(
+        submitted.consumption.evSegment ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.evSegment ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["evSegment"],
+      wallboxMaxKw: normalizeKnownField(
+        submitted.consumption.wallboxMaxKw ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.wallboxMaxKw ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["wallboxMaxKw"],
+      evVehicleModel: normalizeKnownField(
+        submitted.consumption.evVehicleModel ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+        candidate.consumption.evVehicleModel ?? {
+          status: "unknown",
+          value: null,
+          source: "not_collected",
+        },
+      ) as SiteEnergyProfileV1["consumption"]["evVehicleModel"],
     },
     existingAssets: {
       pv: normalizeAsset(submitted.existingAssets.pv, candidate.existingAssets.pv) as SiteEnergyProfileV1["existingAssets"]["pv"],

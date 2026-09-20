@@ -56,7 +56,7 @@ function request(overrides: Record<string, unknown> = {}): Record<string, unknow
   };
 }
 
-describe.skip("RED F4-01d: Gate SPECIFIED, nicht implementiert (5/5 ROT belegt) — Spec: docs/spec/F4-01d-pvgis-referenzvalidierung-gate.md", () => {
+describe("RED F4-01d: Gate SPECIFIED, nicht implementiert (5/5 ROT belegt) — Spec: docs/spec/F4-01d-pvgis-referenzvalidierung-gate.md", () => {
   it("tilted-Fixture-Matrix 4x4 je Site vorhanden (tilt x aspect x site)", () => {
     const dir = path.resolve(process.cwd(), "tests/fixtures/f401");
     const present = new Set(readdirSync(dir));

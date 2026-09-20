@@ -115,7 +115,7 @@ function contradictionProfile(): Record<string, unknown> {
 // Beleg in docs/spec/F4-03b-ev-wallbox.md „ROT-Beleg"). Das Follow-up,
 // das Segmentfaktoren + Wallbox-Kappung + Widerspruchscheck baut,
 // entfernt dieses .skip wieder.
-describe.skip("F4-03b EV-Segmentfaktoren und Wallbox-Kappung (RED)", () => {
+describe("F4-03b EV-Segmentfaktoren und Wallbox-Kappung (RED)", () => {
   it("bietet Segmentfaktoren klein/mittel/gross als ESTIMATE an", () => {
     const load = PLANNING_ASSUMPTIONS_V2.load as unknown as Record<string, unknown>;
     expect(load.evKwhPerKmBySegment).toEqual({

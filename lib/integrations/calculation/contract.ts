@@ -16,7 +16,7 @@ export const CALCULATION_CANONICALIZATION_VERSION = "planning-jcs.v1" as const;
 // Provider/Worker pinnen den bytegenauen, aus den Runtime-Schemas erzeugten
 // Vertrag. Jede absichtliche Aenderung verlangt einen neuen Review und Hash.
 export const PLANNING_CALCULATION_SCHEMA_SHA256 =
-  "0bd00f4fe2d96dcaa713698c3ea2c0c9eeed8a8719538c979d5c2210fc953bb5" as const;
+  "0415e073e54b718b0a3c8794cbe05943850498841b21da307ad1006320503b3b" as const;
 
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const gitRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/);
@@ -116,6 +116,9 @@ const buildingTypeSchema = z.enum([
 const roofTypeSchema = z.enum(["pitched", "flat"]);
 const shadingSchema = z.enum(["none", "light", "medium", "strong"]);
 const chargingPatternSchema = z.enum(["evening", "daytime", "away"]);
+// F4-03b EV-Fahrzeugklassen (belegte Kundenwerte; Faktoren s.
+// planning-assumptions-v2 `wmee-ev-segment.v1`).
+const evSegmentSchema = z.enum(["klein", "mittel", "gross"]);
 
 // F4.2 Custom-Lastprofil: 12 Monats-kWh (Pflicht) + je optional ein
 // Tagesgang Werktag/Wochenende (24 Stunden, Reonic-Semantik). Monatswerte
@@ -238,6 +241,13 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     ])),
     evKmPerYear: knownOrUnknown(nonNegative(200_000)),
     evChargingPattern: knownOrUnknown(chargingPatternSchema),
+    // F4-03b EV-Segment/Wallbox/Modell (Kappung/Quelle, ESTIMATE):
+    // additiv-optional, Altzeilen ohne Felder bleiben gueltig und rechnen
+    // legacy (0.2-Faktor, keine Kappung, SHA stabil). Das Modell ist reine
+    // Quellenangabe (Freitext) und loest keinen Faktor aus.
+    evSegment: knownOrUnknown(evSegmentSchema).optional(),
+    wallboxMaxKw: knownOrUnknown(finite().min(1).max(43)).optional(),
+    evVehicleModel: knownOrUnknown(z.string().trim().min(1).max(120)).optional(),
     heatPumpKwhPerYear: knownOrUnknown(nonNegative(100_000)),
     coolingKwhPerYear: knownOrUnknown(nonNegative(100_000)),
     heatingAcKwhPerYear: knownOrUnknown(nonNegative(100_000)),
@@ -302,6 +312,17 @@ export const siteEnergyProfileV1Schema = z.strictObject({
     touImportPricesCtPerKwh: knownOrUnknown(
       z.array(finite().min(0).max(200)).length(24),
     ).optional(),
+    // F4-04g Day-ahead: optionaler 8760-Stundenpreisvektor (Ct/kWh,
+    // statischer CSV-Vektor, Granularitaet hourly_8760; unbelegt = kein
+    // Day-ahead, kein Fehler). Schliesst das 24-h-Profil aus (Refine).
+    touDayAheadPricesCtPerKwh: knownOrUnknown(
+      z.array(finite().min(0).max(200)).length(8760),
+    ).optional(),
+    // F4-04g TOU-Fixkosten (eigene optionale TOU-Felder, G3-Fix):
+    // Grundpreis (€/Jahr) und Leistungspreis (€/kW TOU-Dispatch-Spitze).
+    // Nur bei belegtem Preisprofil wirksam (sonst unbelegt, kein Fehler).
+    touBaseFeeEuro: knownOrUnknown(finite().min(0).max(100_000)).optional(),
+    touDemandChargeEuroPerKw: knownOrUnknown(finite().min(0).max(10_000)).optional(),
   }),
   existingAssets: z.strictObject({
     pv: pvAssetSchema,
@@ -323,6 +344,50 @@ export const siteEnergyProfileV1Schema = z.strictObject({
   propertyEstimate: propertyEstimateSchema.optional(),
   rooms: z.array(energyRoomSchema).min(1).max(40).optional(),
 }).superRefine((value, ctx) => {
+  // F4-03b EV-Widersprueche (fail-closed, modusuebergreifend: consumption
+  // ist in allen Modi belegt).
+  const evKm = value.consumption.evKmPerYear;
+  const evKmPositive = evKm.status === "known" && evKm.value > 0;
+  if (evKmPositive && value.existingAssets.ev.status === "known_absent") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["existingAssets", "ev"],
+      message: "EV-km > 0 widerspricht known_absent",
+    });
+  }
+  const evSegment = value.consumption.evSegment;
+  if (evSegment !== undefined && evSegment.status === "known") {
+    const patternKnown = value.consumption.evChargingPattern.status === "known";
+    if (!evKmPositive || !patternKnown) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["consumption", "evSegment"],
+        message: "EV-Segment ohne EV-km/Ladepattern ist nicht belegt",
+      });
+    }
+  }
+  const wallboxMaxKw = value.consumption.wallboxMaxKw;
+  if (
+    wallboxMaxKw !== undefined
+    && wallboxMaxKw.status === "known"
+    && !evKmPositive
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["consumption", "wallboxMaxKw"],
+      message: "Wallbox-Kappung ohne EV-km ist nicht belegt",
+    });
+  }
+  // F4-04g: 24-h-Profil und 8760-Vektor zugleich belegt ist ein
+  // Widerspruch (keine stille Prioritaet) — fail-closed, kein Speichern.
+  if (value.consumption.touImportPricesCtPerKwh?.status === "known"
+    && value.consumption.touDayAheadPricesCtPerKwh?.status === "known") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["consumption", "touDayAheadPricesCtPerKwh"],
+      message: "24-h-Profil und 8760-Vektor zugleich belegt",
+    });
+  }
   const hasPropertyEstimate = value.propertyEstimate !== undefined;
   const hasRooms = value.rooms !== undefined;
   const isManualProvenance = value.provenance.source === "operator_manual";

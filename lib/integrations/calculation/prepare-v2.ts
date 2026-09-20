@@ -13,7 +13,7 @@ import {
   siteEnergyProfileV1Schema,
 } from "./contract";
 import { planningCalculationRequestV2Schema, type PlanningCalculationRequestV2 } from "./contract-v2";
-import { resolveEconomics, resolveTouImportPrices } from "./economics-v2";
+import { resolveEconomics, resolveTouFixCosts, resolveTouImportPrices } from "./economics-v2";
 import { QUARTER_HOUR_SLOTS } from "./engine-v2";
 import { planningSourceSnapshotSchema } from "./preparation";
 import type { ProjectCalculationPreparationV2 } from "./preparation-v2";
@@ -180,19 +180,31 @@ function economicsSnapshot(
     };
   const resolved = resolveEconomics(preparation.profile.consumption, workspace);
   if (resolved === null) return {};
-  return { economics: resolved };
+  // F4-05c: warnings ist abgeleitete ESTIMATE-Kennzeichnung, kein
+  // Reproduktionsinput — strip vor dem Request (inputSha stabil); der Run
+  // leitet die v2-Result-Warnung aus der Vergütungsquelle ab.
+  const { warnings: _strippedEstimateWarning, ...requestEconomics } = resolved;
+  void _strippedEstimateWarning;
+  return { economics: requestEconomics };
 }
 
 /**
  * F4.4b TOU-Tarif aus belegtem Profil (nur bei exakt 24 Preisen; sonst
  * fehlt der Schluessel und Althashes bleiben stabil).
+ * F4-04g: 24-Preis-Profil oder 8760-Day-ahead-Vektor; eigene optionale
+ * TOU-Fixkosten nur bei belegtem Preisprofil (sonst fehlt der Schluessel).
  */
 function touSnapshot(
   preparation: Pick<ProjectCalculationPreparationV2, "profile">,
 ): { tou?: PlanningCalculationRequestV2["tou"] } {
   const prices = resolveTouImportPrices(preparation.profile.consumption);
   if (prices === null) return {};
-  return { tou: { importPricesCtPerKwh: prices } };
+  return {
+    tou: {
+      importPricesCtPerKwh: prices,
+      ...resolveTouFixCosts(preparation.profile.consumption),
+    },
+  };
 }
 
 export function buildPreparedPlanningCalculationInputV2(
@@ -330,6 +342,9 @@ const executeClaimV2Schema = z.object({
     branch: z.enum(["new_installation", "existing_installation"]),
     asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     existingPv: existingPvContextV2Schema,
+    // F4-02d: Board-Scope als Gate-Kontext (optional; Alt-Claims ohne
+    // Schlüssel bleiben gültig; null/unbekannt ist auf CSV-Pfad fail-closed).
+    scope: z.enum(["residential", "commercial"]).nullable().optional(),
   }),
   preparationV2: z.object({
     storage: claimStorageV2Schema,

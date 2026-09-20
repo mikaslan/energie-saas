@@ -1,11 +1,10 @@
 # F4-04g Day-ahead-Tarif und TOU-Härtung (Katalog F4.4)
 
-Stand: SPECIFIED (nicht implementiert) · Branch: `codex/muse-fleet-3b-f4spec` ·
-Stand 2026-09-19. Folgeslice zu F4-04b (dort Offene Fragen 2–4,
+Stand: IMPLEMENTED (Spec 2026-09-19 Branch `codex/muse-fleet-3b-f4spec`; implementiert 2026-09-20 auf `codex/muse-fleet-8-f4kern`: 8760-Day-ahead-Vektor, G3-Fix volle Formel mit EIGENEN optionalen TOU-Feldern — REVIEW-Frage 4 so entschieden, Zyklenkosten-Param Default 0, f404g 7/7; entskippt) · Folgeslice zu F4-04b (dort Offene Fragen 2–4,
 F4-04b-tou-arbitrage.md:62-67) und F4-04d/F4-04e/F4-04f. Schließt den
-G3-Befund (TOU-Bill ohne Fixkosten, §2). Dieser Slice ändert keinen
-Produktionscode — nur diese Spec plus RED-Test
-`tests/unit/f404g-day-ahead.red.test.ts` (6 Tests, alle ROT belegt, §5).
+G3-Befund (TOU-Bill ohne Fixkosten, §2). Spec-Slice 3B: nur Spec plus RED-Test
+`tests/unit/f404g-day-ahead.red.test.ts` (6 Tests, alle ROT belegt, §5);
+Implementierung 2026-09-20 auf `codex/muse-fleet-8-f4kern` (f404g 7/7, entskippt).
 
 ## 1. Day-ahead-Preisvektor (8760 via CSV)
 
@@ -37,7 +36,7 @@ Produktionscode — nur diese Spec plus RED-Test
   löst heute `null` auf, die Bill wirft
   „TOU-Profil hat nicht 24 Stundenpreise".
 
-## 2. G3-Fix: TOU-Bill mit Fixkosten (SPECIFIED, nicht implementieren)
+## 2. G3-Fix: TOU-Bill mit Fixkosten (IMPLEMENTED mit eigenen TOU-Feldern, 2026-09-20)
 
 - Befund (G3): `computeTouBillEuro` rechnet nur Arbeitspreis
   (economics-v2.ts:360-383); `run-v2.ts:597` zieht die TOU-Bill von

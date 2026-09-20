@@ -1,6 +1,6 @@
 # F4-01d — PVGIS-Referenzvalidierungs-Gate
 
-Status: **SPECIFIED** · Lane: `codex/muse-fleet-3b-f4spec` · Stand 2026-09-19
+Status: **IMPLEMENTED** · Spec-Lane: `codex/muse-fleet-3b-f4spec` (2026-09-19) · Implementiert 2026-09-20 auf `codex/muse-fleet-8-f4kern` (48/48 Tilt-Fixtures, reference-validation-v2, Toleranz-/Gate-Pins, run-v2-Provenienz, f401d 5/5; Gate-Aktivierung weiter fail-closed bis Amendment + Punkt-Statistik + Live-Smoke + Review)
 
 Bezug: F4-01 (F4.1B); RED-Test
 `tests/unit/f401d-reference-gate.red.test.ts` (geskippt bis zur

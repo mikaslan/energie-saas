@@ -1,6 +1,6 @@
 # F4-03b — EV-Segmentfaktoren, Wallbox-Kappung, Intake-Widerspruch
 
-Status: **SPECIFIED (RED, Tests geskippt)** · Lane: `codex/muse-fleet-3b-f4spec` · Stand 2026-09-19 (Spec + RED-Test `tests/unit/f403b-ev-wallbox.red.test.ts`, `describe.skip` bis zur Implementierung)
+Status: **IMPLEMENTED** · Spec-Lane: `codex/muse-fleet-3b-f4spec` (2026-09-19) · Implementiert 2026-09-20 auf `codex/muse-fleet-8-f4kern` (Segmentfaktoren wmee-ev-segment.v1, Wallbox-Kappung, Intake-Widerspruchs-Guard, f403b 5/5; entskippt)
 
 ## Ziel und Abgrenzung
 

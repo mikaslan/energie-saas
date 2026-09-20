@@ -258,6 +258,7 @@ type ClaimRow = {
   preparation_snapshot: unknown;
   preparation_sha256: string | null;
   db_now: Date | string;
+  board_scope: string | null;
   [key: string]: unknown;
 };
 
@@ -314,6 +315,9 @@ export type ProjectCalculationClaim = {
     branch: "new_installation" | "existing_installation";
     asOfDate: string;
     existingPv: ExistingPvContextV2;
+    // F4-02d: Board-Scope als Gate-Kontext (kein Rechen-Input, nicht
+    // gehasht); null/unbekannt ist auf dem CSV-Pfad fail-closed.
+    scope: "residential" | "commercial" | null;
   } | null;
 };
 
@@ -473,6 +477,9 @@ function claimResult(row: ClaimRow): ProjectCalculationClaim {
       branch: preparationV2.requirements.branch,
       asOfDate: startedAt.toISOString().slice(0, 10),
       existingPv: parseExistingPvContextV2(preparationV2.profile.existingAssets.pv),
+      scope: row.board_scope === "residential" || row.board_scope === "commercial"
+        ? row.board_scope
+        : null,
     },
   };
 }
@@ -502,11 +509,16 @@ async function lockedClaimRow(
            job.input_snapshot, job.provider_snapshot,
            job.preparation_snapshot,
            encode(job.preparation_sha256, 'hex') as preparation_sha256,
-           pg_catalog.clock_timestamp() as db_now
+           pg_catalog.clock_timestamp() as db_now,
+           b.scope as board_scope
       from project_calculation_job job
+      join project p
+        on p.workspace_id = job.workspace_id and p.id = job.project_id
+      left join kanban_board b
+        on b.workspace_id = p.workspace_id and b.id = p.kanban_board_id
      where job.workspace_id = ${workspaceId}::uuid
        and job.id = ${jobId}::uuid
-     for update
+     for update of job
   `);
   return result.rows[0] ?? null;
 }
@@ -615,7 +627,9 @@ export async function claimProjectCalculationJob(
     value.jobId,
     claimed.contract_version,
   );
-  return claimResult(claimed);
+  // F4-02d: UPDATE...RETURNING trägt kein board_scope — aus der
+  // FOR-UPDATE-gesperrten Zeile derselben Transaktion übernehmen.
+  return claimResult({ ...claimed, board_scope: row.board_scope });
 }
 
 /**

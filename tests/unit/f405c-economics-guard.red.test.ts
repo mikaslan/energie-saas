@@ -25,11 +25,9 @@ function consumption(overrides: Record<string, unknown> = {}): Record<string, un
 
 const known = (value: number) => ({ status: "known", value, source: "operator_reviewed" });
 
-// SKIP-Grund: F4-05c noch nicht implementiert (reine Spec + RED-Beleg, ROT am
-// 2026-09-19 bewiesen, Auszug in der Spec). Ref:
-// docs/spec/F4-05c-haftung-eeg-rand-delta.md — aktivieren, sobald der
-// Umsetzungs-Slice (Haftungsgate/EEG-Rand/Delta-Kennzeichnung) landet.
-describe.skip("f405c economics guard", () => {
+// F4-05c Umsetzung: SKIP entfernt (Umsetzungs-Slice landet).
+// Ref: docs/spec/F4-05c-haftung-eeg-rand-delta.md
+describe("f405c economics guard", () => {
   it("EEG-Randjahr 2030 ohne Override ist fail-closed (wirft statt stiller Randsätze)", () => {
     expect(() => eegDefaultForYear(2030)).toThrow();
   });

@@ -80,6 +80,8 @@ const unknownField = Object.freeze({
 function candidate() {
   return {
     projectId: PROJECT_ID,
+    // F4-02d-Vertrag: Scope-Pflicht auf dem CSV-Pfad (commercial passiert).
+    scope: "commercial",
     siteId: "30000000-0000-4000-8000-000000000003",
     sourceSnapshotId: "40000000-0000-4000-8000-000000000004",
     addressRevision: 3,

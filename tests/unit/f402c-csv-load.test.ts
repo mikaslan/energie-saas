@@ -100,6 +100,8 @@ describe("CSV-Compose-Auswahl", () => {
   it("waehlt die CSV-Basis bei Option + Reihe", () => {
     const sources = buildLoadSourcesFromProfileV2(
       {
+        // F4-02d-Vertrag: Scope-Pflicht auf dem CSV-Pfad (commercial passiert).
+        scope: "commercial",
         consumption: consumption({
           loadProfile: csvKnown("customer_csv.v1"),
           customCsvKwh: csvKnown(csv8760),

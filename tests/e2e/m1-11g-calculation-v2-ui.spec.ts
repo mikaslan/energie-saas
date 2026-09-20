@@ -1386,7 +1386,8 @@ test("M1-11g: F4.2c-Lastgang-CSV treibt currentV2-Jahreslast", async ({ page }) 
     revisionV1Id: randomUUID(),
     batteryId: randomUUID(),
   };
-  await seedProjectGraph(ids);
+  // F4-02d Commercial-Gate: CSV-Option + -Save nur bei scope=commercial.
+  await seedProjectGraph(ids, { boardScope: "commercial" });
   await writeCandidateSnapshot(workspaceId, ids.projectId);
 
   // Konstante Stundenlast mit Summe 4200 = Haushalts-kWh (Band ±0,06).
@@ -1486,4 +1487,341 @@ test("M1-11g: Boden-Albedo speichert als known-Profil", async ({ page }) => {
   } | null)?.value?.consumption?.groundAlbedo;
   expect(albedo?.status).toBe("known");
   expect(albedo?.value).toBe(0.5);
+});
+
+test("M1-11g: F4-02d-CSV-Option nur bei commercial sichtbar", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const makeIds = (): SeedIds => ({
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  });
+
+  // Commercial-Projekt: CSV-Profiloption + Lastgang-Textarea sichtbar.
+  const commercialIds = makeIds();
+  await seedProjectGraph(commercialIds, { boardScope: "commercial" });
+  await writeCandidateSnapshot(workspaceId, commercialIds.projectId);
+
+  const commercialPath = `/w/${workspaceId}/anfragen/${commercialIds.projectId}/energieprofil`;
+  await page.goto(commercialPath);
+  await loginWithRealOtp(page, state().editorEmail, commercialPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  const commercialSelect = page.getByLabel("Lastprofil");
+  await expect(commercialSelect.locator('option[value="customer_csv.v1"]')).toHaveCount(1);
+  await commercialSelect.selectOption("customer_csv.v1");
+  await expect(page.locator('[data-energy-csv-profile="true"]')).toBeVisible();
+
+  // Residential-Projekt (Session besteht weiter, kein Re-Login): weder
+  // CSV-Option noch Lastgang-Block, kein leeres Gate-Element.
+  const residentialIds = makeIds();
+  await seedProjectGraph(residentialIds);
+  await writeCandidateSnapshot(workspaceId, residentialIds.projectId);
+
+  const residentialPath = `/w/${workspaceId}/anfragen/${residentialIds.projectId}/energieprofil`;
+  await page.goto(residentialPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await expect(page.getByLabel("Lastprofil").locator('option[value="customer_csv.v1"]'))
+    .toHaveCount(0);
+  await expect(page.locator('[data-energy-csv-profile="true"]')).toHaveCount(0);
+});
+
+test("M1-11g: F4-02d-residential-Save mit CSV-Reihe bleibt invalid", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  // Gueltige CSV-Nutzlast (Summe 4200 = Haushalts-kWh, wie der
+  // commercial-Pfad): Scheitert der Save, liegt es nur am Gate.
+  const csvValue = 4200 / 8_760;
+  const csvText = new Array(8_760).fill(String(csvValue)).join("\n");
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  // Gate umgehen wie ein manipulierter Client: Option injizieren (UI
+  // blendet sie bei residential aus), Reihe als Hidden-Feld mitsenden.
+  await page.getByLabel("Lastprofil").evaluate((select) => {
+    const element = select as HTMLSelectElement;
+    const option = document.createElement("option");
+    option.value = "customer_csv.v1";
+    option.textContent = "Lastgang-CSV (injiziert)";
+    element.appendChild(option);
+  });
+  await page.getByLabel("Lastprofil").selectOption("customer_csv.v1");
+  await expect(page.locator('[data-energy-csv-profile="true"]')).toHaveCount(0);
+  await page.evaluate((text) => {
+    const form = document.querySelector("form");
+    if (!form) throw new Error("Editor-Formular fehlt.");
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "loadProfileCsv";
+    input.value = text;
+    form.appendChild(input);
+  }, csvText);
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  await expect(page.getByText(/Mindestens ein Feld ist ungültig/)).toBeVisible();
+  await expect(page.getByText(/wurde gespeichert/)).toHaveCount(0);
+
+  // Keine Mutation: Profilrevision bleibt 1, kein CSV-Profil gespeichert.
+  const saved = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  expect((saved?.profile as { revision?: unknown } | null)?.revision).toBe(1);
+});
+
+test("M1-11g: F4-03b-EV-Segment und Wallbox treiben currentV2", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  // Kandidat liefert EV-km 12000 + Ladezeitpunkt abends; hier Segment
+  // mittel (0,18 kWh/km) + Wallbox-Kappung 11 kW dazu.
+  await page.getByLabel("Fahrzeugklasse E-Auto").selectOption("mittel");
+  await page.getByLabel(/Wallbox-Maximalleistung/).fill("11");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  // Gespeichert: Segment + Wallbox stehen als known-Profil im Kontext.
+  const saved = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  const consumption = (saved?.profile as unknown as {
+    value?: { consumption?: Record<string, { status?: unknown; value?: unknown }> };
+  } | null)?.value?.consumption;
+  expect(consumption?.evSegment?.status).toBe("known");
+  expect(consumption?.evSegment?.value).toBe("mittel");
+  expect(consumption?.wallboxMaxKw?.status).toBe("known");
+  expect(consumption?.wallboxMaxKw?.value).toBe(11);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("EV-Kette erreichte kein currentV2.");
+  }
+  const result = expected.calculation.resultV2.value;
+  // EV-Anteil steckt in der Jahreslast (Haushalt 4200 + 12000 km x
+  // Segmentfaktor 0,18, ggf. um die Wallbox-Kappung gekuerzt).
+  expect(result.annual.consumptionKwh).toBeGreaterThan(4200);
+  expect(result.annual.consumptionKwh).toBeLessThan(4200 + 12000 * 0.2 + 5);
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  await expect(page.locator('[data-energy-calculation-state="currentV2"]')).toBeVisible();
+  const v2result = page.locator('[data-energy-calculation-v2-result="true"]');
+  await expect(v2result).toBeVisible();
+  const rows = v2result.locator("table tbody tr");
+  await expect(rows).toHaveCount(12);
+  await expect(rows.first().getByRole("rowheader")).toHaveText("Januar");
+  await expect(rows.first().getByText(
+    formatKwh(result.monthly[0]!.generationKwh),
+  )).toBeVisible();
+
+  const axe = await new AxeBuilder({ page })
+    .include('[data-energy-calculation-v2-result="true"]')
+    .analyze();
+  expect(
+    axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical"),
+    "Axe serious/critical in der v2-EV-Ansicht",
+  ).toEqual([]);
+});
+
+test("M1-11g: F4-05c-Haftungshinweis sobald Economics Geld zeigt", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  await seedProjectGraph(ids);
+  await writeCandidateSnapshot(workspaceId, ids.projectId);
+
+  const editorPath = `/w/${workspaceId}/anfragen/${ids.projectId}/energieprofil`;
+  await page.goto(editorPath);
+  await loginWithRealOtp(page, state().editorEmail, editorPath);
+  await expect(page.getByRole("heading", { name: "Energieprofil prüfen", level: 1 })).toBeVisible();
+  await page.getByLabel("Investition netto (€)").fill("20000");
+  await page.getByLabel("Einspeisevergütung Override (Ct/kWh, leer = EEG-Default)").fill("8");
+  await page.getByLabel("EEG-Inbetriebnahmejahr (Vergütungssatz, 1990–2100)").fill("2024");
+  await page.getByRole("button", { name: "Profil speichern" }).click();
+  const savedMessage = page.getByText(/Profilrevision \d+ wurde gespeichert/);
+  await expect(savedMessage).toBeVisible();
+  const revision = Number((await savedMessage.textContent() ?? "").match(/Profilrevision (\d+)/)?.[1]);
+  expect(Number.isInteger(revision)).toBe(true);
+
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids, revision);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Haftungs-Kette erreichte kein currentV2.");
+  }
+  if (!expected.calculation.resultV2.value.economics) {
+    throw new Error("currentV2 traegt kein economics (kein Geld, kein Hinweis).");
+  }
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  const block = page.locator('[data-energy-calculation-v2-economics="true"]');
+  await expect(block).toBeVisible();
+  // Kein Geld ohne Hinweis: Hinweiszeile immer sichtbar am Economics-Block.
+  const liability = block.locator('[data-energy-calculation-v2-liability="true"]');
+  await expect(liability).toBeVisible();
+  await expect(liability.getByText(/Unverbindliche Schätzung/)).toBeVisible();
+
+  const axe = await new AxeBuilder({ page })
+    .include('[data-energy-calculation-v2-economics="true"]')
+    .analyze();
+  expect(
+    axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical"),
+    "Axe serious/critical in der v2-Haftungsansicht",
+  ).toEqual([]);
+});
+
+test("M1-11g: F4-05c-Bestandsgeld traegt Gesamtanlagen-Kennzeichnung", async ({ page }) => {
+  const actorId = await resolveEditorId();
+  const workspaceId = await seedIsolatedWorkspace(actorId);
+  const ids: SeedIds = {
+    workspaceId,
+    actorId,
+    contactId: randomUUID(),
+    siteId: randomUUID(),
+    projectId: randomUUID(),
+    receiptId: randomUUID(),
+    snapshotId: randomUUID(),
+    requirementId: randomUUID(),
+    profileId: randomUUID(),
+    jobV1Id: randomUUID(),
+    revisionV1Id: randomUUID(),
+    batteryId: randomUUID(),
+  };
+  // Bestand-Branch + Investition: Kette traegt economics auf Gesamtanlage.
+  await seedProjectGraph(ids, { branch: "existing_installation", investmentEuro: 20000 });
+  await addResolution(
+    ids,
+    createHash("sha256").update("m111g-v1-input").digest("hex"),
+    createHash("sha256").update("m111g-v1-revision").digest("hex"),
+  );
+  const reserved = await reserve(ids);
+  await runChain(ids, reserved.jobId);
+
+  const expected = await poolOne(async (pool) => withAuthorizedTenantOn(
+    pool,
+    actorId,
+    workspaceId,
+    (tx, ctx: ServiceCtx) => getProjectEnergyContext(tx, ctx, ids.projectId),
+  ));
+  if (expected?.calculation.status !== "currentV2") {
+    throw new Error("Bestands-Kette erreichte kein currentV2.");
+  }
+  const economics = expected.calculation.resultV2.value.economics;
+  if (!economics) throw new Error("Bestand-Kette traegt kein economics.");
+  expect(economics.amortizationYears).not.toBeNull();
+  expect(economics.irr).not.toBeNull();
+
+  const projectPath = `/w/${workspaceId}/anfragen/${ids.projectId}`;
+  await page.goto(projectPath);
+  await loginWithRealOtp(page, state().editorEmail, projectPath);
+  const block = page.locator('[data-energy-calculation-v2-economics="true"]');
+  await expect(block).toBeVisible();
+  // Fehlverkaufs-Schutz: jede Amortisations-/IRR-/Cashflow-Zahl am
+  // Bestands-Block ist als Gesamtanlagen-Wert gekennzeichnet.
+  const note = "bezogen auf Gesamtanlage, nicht auf Zubau-Delta";
+  await expect(block.locator("table caption", { hasText: note })).toBeVisible();
+  await expect(block.getByText(/Alle Cashflow-Werte/)).toBeVisible();
+  await expect(block.locator('dt:has-text("Amortisation") + dd')).toContainText(note);
+  await expect(block.locator('dt:has-text("Interner Zinsfuß") + dd')).toContainText(note);
+
+  const axe = await new AxeBuilder({ page })
+    .include('[data-energy-calculation-v2-economics="true"]')
+    .analyze();
+  expect(
+    axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical"),
+    "Axe serious/critical in der v2-Bestands-Geldansicht",
+  ).toEqual([]);
 });
