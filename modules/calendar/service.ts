@@ -15,18 +15,18 @@ import {
   PLANNING_BOARD_MAX_OPTIONS,
   PLANNING_BOARD_MAX_ROWS,
   PLANNING_BOARD_VERSION,
-  planningBoardDtoSchema,
+  planningBoardWithTeamsDtoSchema,
   planningBoardProjectOptionSchema,
   planningBoardQuerySchema,
   projectAppointmentCommandV1Schema,
-  projectAppointmentItemV1Schema,
-  projectAppointmentRangeV1Schema,
+  projectAppointmentItemWithTeamsV1Schema,
+  projectAppointmentRangeWithTeamsV1Schema,
   type CalendarItemV1,
-  type PlanningBoardDto,
+  type PlanningBoardWithTeamsDto,
   type PlanningBoardProjectOption,
   type ProjectAppointmentCommandV1,
   type ProjectAppointmentCommandResult,
-  type ProjectAppointmentRangeV1,
+  type ProjectAppointmentRangeWithTeamsV1,
 } from "@/lib/integrations/calendar/contract";
 import {
   AppointmentConflictError,
@@ -93,6 +93,7 @@ type AppointmentRow = {
   attendees: unknown;
   team_id: string | null;
   team_name: string | null;
+  teams: unknown;
   [key: string]: unknown;
 };
 
@@ -590,7 +591,7 @@ export async function listProjectAppointments(
     rangeEnd: string;
     view: "month" | "week" | "list";
   },
-): Promise<ProjectAppointmentRangeV1 | null> {
+): Promise<ProjectAppointmentRangeWithTeamsV1 | null> {
   requireAppointmentRead(ctx);
   if (!await lockReadableProject(tx, ctx.workspaceId, projectId)) return null;
 
@@ -643,7 +644,21 @@ export async function listProjectAppointments(
                  on identity_record.id = membership_record.user_id
               where attendee.workspace_id = ${ctx.workspaceId}::uuid
                 and attendee.appointment_id = appointment_record.id
-           ), '[]'::jsonb) as attendees
+           ), '[]'::jsonb) as attendees,
+           coalesce((
+             select jsonb_agg(
+               jsonb_build_object(
+                 'id', extra_assignment.team_id,
+                 'name', extra_team.name
+               ) order by lower(extra_team.name), extra_assignment.team_id
+             )
+               from project_appointment_team_assignment extra_assignment
+               join team extra_team
+                 on extra_team.workspace_id = extra_assignment.workspace_id
+                and extra_team.id = extra_assignment.team_id
+              where extra_assignment.workspace_id = ${ctx.workspaceId}::uuid
+                and extra_assignment.appointment_id = appointment_record.id
+           ), '[]'::jsonb) as teams
       from project_appointment appointment_record
       left join calendar calendar_record
         on calendar_record.workspace_id = appointment_record.workspace_id
@@ -707,14 +722,14 @@ export async function listProjectAppointments(
      limit 200
   `);
 
-  return projectAppointmentRangeV1Schema.parse({
+  return projectAppointmentRangeWithTeamsV1Schema.parse({
     schemaVersion: "project-appointment-range.v1",
     projectId,
     permissions: { canWrite: can(ctx, "appointment.write") },
     rangeStart: options.rangeStart,
     rangeEnd: options.rangeEnd,
     view: options.view,
-    items: appointments.rows.map((row) => projectAppointmentItemV1Schema.parse({
+    items: appointments.rows.map((row) => projectAppointmentItemWithTeamsV1Schema.parse({
       id: row.id,
       revision: row.revision,
       title: row.title,
@@ -730,6 +745,7 @@ export async function listProjectAppointments(
       attendees: row.attendees,
       teamId: row.team_id,
       teamName: row.team_name,
+      teams: row.teams,
     })),
     calendars: calendars.rows.map((row) => ({
       id: row.id,
@@ -1067,6 +1083,7 @@ type PlanningBoardSourceRow = {
   calendar_name: string | null;
   team_id: string | null;
   team_name: string | null;
+  teams: unknown;
   membership_id: string | null;
 };
 
@@ -1074,7 +1091,7 @@ export async function getPlanningBoard(
   tx: TenantTx,
   ctx: ServiceCtx,
   query: { weekStart: string },
-): Promise<PlanningBoardDto> {
+): Promise<PlanningBoardWithTeamsDto> {
   requireAppointmentRead(ctx);
   const parsed = planningBoardQuerySchema.safeParse(query);
   if (!parsed.success) throw new AppointmentValidationError();
@@ -1116,7 +1133,21 @@ export async function getPlanningBoard(
            calendar_record.name as calendar_name,
            appointment_record.team_id,
            team_record.name as team_name,
-           attendee_record.membership_id
+           attendee_record.membership_id,
+           coalesce((
+             select jsonb_agg(
+               jsonb_build_object(
+                 'id', extra_assignment.team_id,
+                 'name', extra_team.name
+               ) order by lower(extra_team.name), extra_assignment.team_id
+             )
+               from project_appointment_team_assignment extra_assignment
+               join team extra_team
+                 on extra_team.workspace_id = extra_assignment.workspace_id
+                and extra_team.id = extra_assignment.team_id
+              where extra_assignment.workspace_id = ${ctx.workspaceId}::uuid
+                and extra_assignment.appointment_id = appointment_record.id
+           ), '[]'::jsonb) as teams
       from project_appointment appointment_record
       join project project_record
         on project_record.workspace_id = appointment_record.workspace_id
@@ -1157,6 +1188,7 @@ export async function getPlanningBoard(
     // Archiv blendet nur aus Dropdowns aus).
     teamId: row.team_id,
     teamName: row.team_name,
+    teams: row.teams,
   });
   type BoardEntry = ReturnType<typeof entryOf>;
 
@@ -1206,7 +1238,7 @@ export async function getPlanningBoard(
   if (hasUnassigned) {
     rows.push({ membershipId: null, label: "Ohne Zuordnung", days: unassigned });
   }
-  return planningBoardDtoSchema.parse({
+  return planningBoardWithTeamsDtoSchema.parse({
     schemaVersion: PLANNING_BOARD_VERSION,
     weekStart: monday,
     weekEnd,

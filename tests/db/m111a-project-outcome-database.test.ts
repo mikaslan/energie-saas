@@ -264,10 +264,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0198 F8-24c Draft-Render-Paar (CHECKs),
     // 0199 F8 Nachweis-/Sync-IDs (id + UNIQUE (workspace_id, id)),
     // 0200 F8-24a Sweep-Arbeitsvorrat (Tabelle + Spiegel-Trigger),
-    // 0360 Snapshot-Baseline (Leitstand, No-Op, sortiert letzte)).
+    // 0360 Snapshot-Baseline (Leitstand, No-Op, sortiert letzte),
+    // 0320 F7-11 Termin-Mehr-Team (Junction + CAS-Spalte + Guard-Carve-out)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 172,
-      tag: "0360_snapshot_baseline",
+      idx: 173,
+      tag: "0320_f7_11_appointment_team_assignment",
     });
   });
 

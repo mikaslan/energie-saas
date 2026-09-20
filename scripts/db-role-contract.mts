@@ -716,6 +716,12 @@ const TASK_TEAM_ASSIGNMENT_RELATIONS = [
   "project_task_team_assignment",
 ] as const;
 
+// F7-11 (0320): Termin-Team-Zuweisung — ACL-Form wie
+// TASK_TEAM_ASSIGNMENT_RELATIONS (INSERT/SELECT/DELETE, kein UPDATE).
+const APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS = [
+  "project_appointment_team_assignment",
+] as const;
+
 // F1-15 (0230): Broker-Intake-Receipt — ACL-Form wie inbound_receipt
 // (SELECT/INSERT + UPDATE(id) für FOR-SHARE-Locks, kein DELETE/UPDATE).
 const INBOUND_BROKER_RECEIPT_RELATIONS = [
@@ -3415,6 +3421,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F7-11 (0320): Termin-Team-Zuweisung — ACL-Form wie F1-20.
+  const hasAppointmentTeamAssignmentForAcl = await hasAtomicPublicRelationSet(
+    client,
+    APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS,
+    "Rollen-ACL-Manifest: F7-11-Termin-Team-Zuweisung",
+  );
+  if (hasAppointmentTeamAssignmentForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.project_appointment_team_assignment
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, delete on public.project_appointment_team_assignment to app_runtime
+    `);
+  }
+
   // F1-15 (0230): Broker-Intake-Receipt — ACL-Form wie inbound_receipt.
   const hasInboundBrokerReceiptForAcl = await hasAtomicPublicRelationSet(
     client,
@@ -5318,6 +5340,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F1-20-Aufgaben-Team-Zuweisung",
   );
 
+  const hasAppointmentTeamAssignment = await hasAtomicPublicRelationSet(
+    client,
+    APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS,
+    "Rollenvertrag: F7-11-Termin-Team-Zuweisung",
+  );
+
   const hasInboundBrokerReceipt = await hasAtomicPublicRelationSet(
     client,
     INBOUND_BROKER_RECEIPT_RELATIONS,
@@ -5625,6 +5653,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasTaskTeamAssignment ? TASK_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasAppointmentTeamAssignment ? APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
@@ -6311,7 +6342,11 @@ export async function verifyRoleContract(
           "false:false:false:u:search_path=pg_catalog:" +
           "e679f220100342b2bcdf30f0f983b6ccfd663533475bb2f2831873ae64a27938",
         "_m115_guard_project_appointment():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
-          "search_path=pg_catalog:f1a8c76783c6bc8200d567221cf6905dbfe29baaa12a2c2e4603fb608eecfffb",
+          // F7-11 (0320): Teamzuweisungs-Carve-out (eigene CAS-Domaene ohne
+          // Fach-Revisions-Bump); alte Prefixe tragen den alten Rumpf.
+          `search_path=pg_catalog:${hasAppointmentTeamAssignment
+            ? "068da6923c8b4a4807542b1b760ab58e0c0f017f3f96b3b71d9dd71a2ce48a2c"
+            : "f1a8c76783c6bc8200d567221cf6905dbfe29baaa12a2c2e4603fb608eecfffb"}`,
         "_m115_guard_project_appointment_attendee():trigger:app_owner:plpgsql:f:v:" +
           "false:false:false:u:search_path=pg_catalog:" +
           "ccc3aedc47bc055ad1a35f3c1d05ef4abb5c5651fa88241930881d9304574d75",
@@ -7073,6 +7108,9 @@ export async function verifyRoleContract(
       ...(hasTaskTeamAssignment ? TASK_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasAppointmentTeamAssignment ? APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -7510,6 +7548,12 @@ export async function verifyRoleContract(
         ...(hasTaskTeamAssignment ? [
           "project_task_team_assignment:tenant_isolation:" +
             "46e626a8a0e3547975489e8040466ddb7d92ca8609afea18f0e25d5e15882b93",
+        ] : []),
+        // F7-11 (0320): Hash per Probe geerntet (Methode gegen
+        // F1-20-Pin gegengeprüft: METHOD-OK).
+        ...(hasAppointmentTeamAssignment ? [
+          "project_appointment_team_assignment:tenant_isolation:" +
+            "35c608c1705243d8f8d7c1c02b0ad9b6d846542e9b45bbe8fef77e2fa35f5611",
         ] : []),
         // F1-15 (0230): Hash per Probe geerntet (Methode gegen
         // F1-14-Pin gegengeprüft).
@@ -8287,6 +8331,12 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:DELETE:app_owner:false`,
       ]) : []),
       ...(hasTaskTeamAssignment ? TASK_TEAM_ASSIGNMENT_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
+      ]) : []),
+      // F7-11 (0320): Termin-Team-Form wie F1-20 (INSERT/SELECT/DELETE).
+      ...(hasAppointmentTeamAssignment ? APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:DELETE:app_owner:false`,
