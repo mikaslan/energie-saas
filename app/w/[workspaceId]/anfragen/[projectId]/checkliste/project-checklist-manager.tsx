@@ -15,6 +15,7 @@ import {
   type ChecklistSegmentV1,
   type ProjectChecklistDto,
 } from "@/lib/integrations/checklists/contract";
+import { diffItemPatches } from "@/lib/integrations/checklists/item-outbox";
 import type { ChecklistTemplateDto } from "@/lib/integrations/checklists/template-contract";
 import type { TeamOption } from "@/lib/integrations/teams/contract";
 import {
@@ -27,6 +28,8 @@ import {
   unassignChecklistBlockTeamAction,
   type ChecklistActionState,
 } from "./actions";
+import { replaceQueuedItemPatches } from "./item-outbox";
+import { ItemOutboxSync } from "./item-outbox-sync";
 import { enqueueSegmentComplete } from "./segment-outbox";
 import { SegmentOutboxSync } from "./segment-outbox-sync";
 
@@ -110,6 +113,7 @@ export function ProjectChecklistManager({
     blocks: ChecklistBlocksV1;
   }>({ version: checklist.version, blocks: checklist.blocks });
   const [state, dispatch, savePending] = useActionState(saveProjectChecklistAction, initialState);
+  const [offlineSaveNotice, setOfflineSaveNotice] = useState<string | null>(null);
 
   const savedActionVersion = state.status === "success" && state.operation === "save"
     ? state.version
@@ -303,6 +307,18 @@ export function ProjectChecklistManager({
             canWrite={canComplete}
           />
         ) : null}
+        {checklist.checklistId !== null ? (
+          <ItemOutboxSync
+            workspaceId={workspaceId}
+            projectId={projectId}
+            checklistId={checklist.checklistId}
+            phase={checklist.phase}
+            title={checklist.title}
+            version={checklist.version}
+            blocks={checklist.blocks}
+            canWrite={canWrite}
+          />
+        ) : null}
 
         {visibleBlocks.length === 0 ? (
           <p className="mt-3 text-sm leading-6 text-slate-500">Noch keine sichtbaren Blöcke angelegt.</p>
@@ -352,7 +368,40 @@ export function ProjectChecklistManager({
         ) : null}
 
         {canWrite ? (
-          <form action={dispatch} className="mt-5">
+          <form
+            action={dispatch}
+            className="mt-5"
+            onSubmit={(event) => {
+              // F11-04: offline gehen nur Haken/Antworten in die Outbox;
+              // Strukturänderungen bleiben unangetastet im lokalen Stand,
+              // bis online gespeichert wird (nichts still verwerfen).
+              const targetChecklistId = checklist.checklistId;
+              const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+              if (!offline || targetChecklistId === null) {
+                setOfflineSaveNotice(null);
+                return;
+              }
+              event.preventDefault();
+              const diff = diffItemPatches(checklist.blocks, blocks);
+              if (diff.structureChanged) {
+                setOfflineSaveNotice(
+                  "Offline lassen sich nur Haken und Antworten speichern. Strukturänderungen bitte online speichern.",
+                );
+                return;
+              }
+              void replaceQueuedItemPatches(
+                { workspaceId, projectId, checklistId: targetChecklistId },
+                diff.patches,
+              ).then(
+                () => setOfflineSaveNotice(
+                  "Offline gespeichert — Haken und Antworten werden synchronisiert, sobald du wieder online bist.",
+                ),
+                () => setOfflineSaveNotice(
+                  "Offline-Speichern ist fehlgeschlagen (erneut versuchen, sobald online).",
+                ),
+              );
+            }}
+          >
             <input type="hidden" name="workspaceId" value={workspaceId} />
             <input type="hidden" name="projectId" value={projectId} />
             <input type="hidden" name="checklistId" value={checklist.checklistId ?? ""} />
@@ -361,6 +410,11 @@ export function ProjectChecklistManager({
             <input type="hidden" name="baseVersion" value={baseVersion} />
             <input type="hidden" name="blocks" value={serializedBlocks} />
             <Feedback state={state} />
+            {offlineSaveNotice !== null ? (
+              <p role="status" className="mt-3 text-sm font-semibold text-slate-700">
+                {offlineSaveNotice}
+              </p>
+            ) : null}
             {hasEmptyTitle ? (
               <p className="mt-3 text-sm font-semibold text-amber-700">
                 Bitte alle Block-, Segment- und Punktnamen ausfüllen, bevor du speicherst.

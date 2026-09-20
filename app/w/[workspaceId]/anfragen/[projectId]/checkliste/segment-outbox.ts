@@ -18,12 +18,12 @@ export type QueuedSegmentComplete = SegmentOutboxEntry;
 const DB_NAME = "wmee-segment-outbox";
 const STORE_NAME = "segment-completes";
 
-function openDatabase(): Promise<IDBDatabase> {
+function openDatabase(dbName: string, storeName: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
+    const request = indexedDB.open(dbName, 1);
     request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME, { keyPath: "key" });
+      if (!request.result.objectStoreNames.contains(storeName)) {
+        request.result.createObjectStore(storeName, { keyPath: "key" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -31,15 +31,19 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-function withStore<T>(
+// F11-04: von der Punkt-Outbox (eigene DB, siehe item-outbox.ts)
+// mitgenutzt, damit kein weiterer Opener kopiert wird.
+export function withOutboxStore<T>(
+  dbName: string,
+  storeName: string,
   mode: IDBTransactionMode,
   run: (store: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T> {
-  return openDatabase().then(
+  return openDatabase(dbName, storeName).then(
     (db) =>
       new Promise<T>((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, mode);
-        const store = tx.objectStore(STORE_NAME);
+        const tx = db.transaction(storeName, mode);
+        const store = tx.objectStore(storeName);
         let value: T | undefined;
         let failed: unknown = null;
         let settled = false;
@@ -77,6 +81,13 @@ function withStore<T>(
         }
       }),
   );
+}
+
+function withStore<T>(
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  return withOutboxStore(DB_NAME, STORE_NAME, mode, run);
 }
 
 export const SEGMENT_OUTBOX_CHANGED_EVENT = "wmee:segment-outbox-changed";

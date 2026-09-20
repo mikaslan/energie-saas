@@ -117,8 +117,10 @@ async function loginWithRealOtp(page: Page, email: string, expectedPath: string)
 
 async function expectNoWcagAaAxeViolations(page: Page, stateName: string): Promise<void> {
   await expect(page).toHaveTitle(/.+/u);
-  // F1-14: Scope auf die eigene Sektion — die Akte enthaelt belegte
-  // Fremd-Verletzungen (ul[role="alert"]-listitem ausserhalb, Out-of-Scope).
+  // F1-14: Scope auf die eigene Sektion (fremde Akte-Bereiche bleiben
+  // Out-of-Scope). Hinweis: Die ehemals belegte ul[role="alert"]-
+  // listitem-Verletzung ist seit F11-06 (offer-create-entry) behoben;
+  // der Scope bleibt trotzdem bestehen.
   const result = await new AxeBuilder({ page })
     .include("#project-team-assignment")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
