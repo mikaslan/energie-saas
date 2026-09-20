@@ -150,6 +150,8 @@ async function createFixture(): Promise<FixtureIds> {
     requirements: REQUIREMENTS,
     sourceSnapshot: SOURCE_SNAPSHOT,
     storage: NO_STORAGE,
+    // F4-02d: eingefrorener Board-Scope (neue Reservierungen tragen ihn).
+    scope: "residential",
   });
   const preparationV1 = buildProjectCalculationPreparation({
     latitude: 52.52,
@@ -465,6 +467,8 @@ describe("F4.1 v2 claim mapping", () => {
       branch: "new_installation",
       asOfDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       existingPv: { status: "known_absent" },
+      // F4-02d: Scope aus der eingefrorenen Preparation.
+      scope: "residential",
     });
     expect(claimed.preparation).toBeNull();
     expect(claimed.providerRequest).toBeNull();

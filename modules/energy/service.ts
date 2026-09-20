@@ -2543,6 +2543,11 @@ export async function confirmProjectEnergyProfileV2(
         escalationRateBps: economicsSettings.escalationRateBps,
         cashflowHorizonYears: economicsSettings.cashflowHorizonYears,
       },
+      // F4-02d: Board-Scope einfrieren (Gate-Kontext; nur bekannte Scopes,
+      // sonst fehlt der Schluessel und CSV ist fail-closed).
+      ...(projectSite.board_scope === "residential" || projectSite.board_scope === "commercial"
+        ? { scope: projectSite.board_scope }
+        : {}),
     });
   } catch {
     throw new EnergyProfileInvalidError();

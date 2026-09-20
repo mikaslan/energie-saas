@@ -53,6 +53,11 @@ export const projectCalculationPreparationV2Schema = z.strictObject({
   // Optional (Altzeilen ohne Schluessel bleiben gueltig); effektiv
   // verwendete Werte stehen mit Quelle im economics-Input (inputSha).
   workspaceEconomics: workspaceEconomicsV2Schema.optional(),
+  // F4-02d: eingefrorener Board-Scope als Gate-Kontext (kein Rechen-Input).
+  // Optional (Altzeilen ohne Schluessel bleiben gueltig); fehlt er, ist
+  // der CSV-Pfad fail-closed. Eingefroren statt JOIN, weil die Claim-Rolle
+  // kein project-Leserecht hat (permission denied waere Job-Fehler).
+  scope: z.enum(["residential", "commercial"]).optional(),
 });
 
 export type ProjectCalculationPreparationV2 = z.infer<

@@ -650,6 +650,8 @@ describe.sequential("M1-07 Energieprofil-Servicevertrag", () => {
       sourceSnapshotId: fixture.snapshotId,
       addressRevision: 1,
       expectedLatestRevision: 0,
+      // F4-02d: Board-Scope ist Teil des minimierten Kandidaten.
+      scope: "residential",
       profile: projected,
     });
     expect(admin).toEqual(editor);
