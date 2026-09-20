@@ -668,9 +668,12 @@ const PLANNING_SOURCE_RELATIONS = [
   "planning_roof_min",
   "planning_roof_restriction",
   "planning_panel_group",
+  "planning_inverter",
+  "planning_string",
 ] as const;
 const PLANNING_SOURCE_RUNTIME_ROUTINES = [
   "public.planning_roof_min_tilt_per_edge_valid(jsonb)",
+  "public.planning_string_members_valid(jsonb)",
 ] as const;
 const PLANNING_SOURCE_FUNCTION_NAMES = [
   ...PLANNING_SOURCE_RUNTIME_ROUTINES,
@@ -3204,13 +3207,17 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         public.planning_source,
         public.planning_roof_min,
         public.planning_roof_restriction,
-        public.planning_panel_group
+        public.planning_panel_group,
+        public.planning_inverter,
+        public.planning_string
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.planning_source to app_runtime;
       grant select, insert, update on public.planning_roof_min to app_runtime;
       grant select, insert, update, delete on public.planning_roof_restriction to app_runtime;
       grant select, insert, update, delete on public.planning_panel_group to app_runtime;
+      grant select, insert, update, delete on public.planning_inverter to app_runtime;
+      grant select, insert, update, delete on public.planning_string to app_runtime;
 
       revoke execute on function
         ${PLANNING_SOURCE_RUNTIME_ROUTINES.join(",\n        ")}
@@ -5924,6 +5931,9 @@ export async function verifyRoleContract(
       ...(hasPlanningSources ? [
         "planning_roof_min_tilt_per_edge_valid(jsonb):boolean:app_owner:plpgsql:f:i:false:false:true:u:" +
           "search_path=pg_catalog:ed0da7bd2abe4c0c7cf61a2dad427a8992c3dae378f2bd2db134426f9313c6ec",
+        // F3-05a (0274): Member-Kapsel nach 0271-Muster.
+        "planning_string_members_valid(jsonb):boolean:app_owner:plpgsql:f:i:false:false:true:u:" +
+          "search_path=pg_catalog:a4361cf1c8cf391b31eb74a85fd2ae1c3c28a8bd344101f2887b396a3c83f44c",
       ] : []),
       ...(hasPortal ? [
         "_f1001_actor_can_read_portal(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
@@ -6985,6 +6995,8 @@ export async function verifyRoleContract(
           "planning_roof_min:tenant_isolation:733bcb4000ad236be2bbe90941ad75bd3dafe51fbc0d96395a764aa9dd9223a6",
           "planning_roof_restriction:tenant_isolation:f3926d83f059484c89fa6f05075f6a00ed229e5109830c6629aba570dc55f4ed",
           "planning_panel_group:tenant_isolation:e84c62941581211d23b7391d0ae6693f5add9d92df594b381b6de027c7ed4a8c",
+          "planning_inverter:tenant_isolation:3b66caa0b3b3f694d51d7f420268b22ea7ae8d365bb267d7bf824c541cf2f5f5",
+          "planning_string:tenant_isolation:9a822c0e187d13ac94fe4a878659b49529f92ba45cac4140c269379a81d51f23",
         ] : []),
         ...(hasOrderParts ? [
           "order_part:tenant_isolation:268512a6573eac45e57baff80c9ec88d2eeb1b95a6b7b8bebba57a0ff588193e",
@@ -7624,9 +7636,12 @@ export async function verifyRoleContract(
       // F3-03b (0272): Sperrzonen sind frei revidierbar (DELETE analog
       // project_assignment).
       // F3-04a (0273): Panel-Gruppen ebenso (frei revidierbar).
+      // F3-05a (0274): WR + Strings ebenso (frei revidierbar).
       ...(hasPlanningSources ? [
         "app_runtime:planning_roof_restriction:DELETE:app_owner:false",
         "app_runtime:planning_panel_group:DELETE:app_owner:false",
+        "app_runtime:planning_inverter:DELETE:app_owner:false",
+        "app_runtime:planning_string:DELETE:app_owner:false",
       ] : []),
       ...(hasOrderParts ? ORDER_PART_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,

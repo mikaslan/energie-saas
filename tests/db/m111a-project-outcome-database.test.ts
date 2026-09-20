@@ -246,10 +246,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0270 F3-02 Dachquellen-Registry (Tabelle + RLS),
     // 0271 F3-03 Dach-Minimal (Tabelle + RLS + Tilt-Validator),
     // 0272 F3-03b Dach-Sperrzonen (Tabelle + RLS),
-    // 0273 F3-04a Panel-Gruppen (Tabelle + RLS)).
+    // 0273 F3-04a Panel-Gruppen (Tabelle + RLS),
+    // 0274 F3-05a Strings (2 Tabellen + RLS)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 154,
-      tag: "0273_f3_04a_panelgruppen",
+      idx: 155,
+      tag: "0274_f3_05a_strings",
     });
   });
 

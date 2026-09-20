@@ -3166,6 +3166,75 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
         4, 6, 1.1, 1.75, 0.02, 30, ${userId}::uuid)
     `);
   },
+  // F3-05a (0274): WR zum Fixture-Projekt.
+  planning_inverter: async (tx, wsId) => {
+    const { projectId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`
+      insert into planning_inverter (
+        workspace_id, project_id, label, mpp_trackers,
+        max_string_modules, created_by
+      ) values (
+        ${wsId}::uuid, ${projectId}::uuid, 'Fixture-WR', 2,
+        24, ${userId}::uuid)
+    `);
+  },
+  // F3-05a (0274): String mit einer Gruppe am Fixture-WR.
+  planning_string: async (tx, wsId) => {
+    const { projectId, siteId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    const createdInverter = await tx.execute<{ id: string }>(sql`
+      insert into planning_inverter (
+        workspace_id, project_id, label, mpp_trackers, created_by
+      ) values (
+        ${wsId}::uuid, ${projectId}::uuid, 'Fixture-WR', 2,
+        ${userId}::uuid)
+      returning id
+    `);
+    const inverterId = createdInverter.rows[0]?.id;
+    if (!inverterId) throw new Error("planning_inverter-Fixture lieferte keine ID");
+    const createdSource = await tx.execute<{ id: string }>(sql`
+      insert into planning_source (workspace_id, project_id, site_id, kind, created_by)
+      values (${wsId}::uuid, ${projectId}::uuid, ${siteId}::uuid,
+        'self_drawn', ${userId}::uuid)
+      returning id
+    `);
+    const sourceId = createdSource.rows[0]?.id;
+    if (!sourceId) throw new Error("planning_source-Fixture lieferte keine ID");
+    const createdRoof = await tx.execute<{ id: string }>(sql`
+      insert into planning_roof_min (
+        workspace_id, source_id, polygon_json, flat_single_tilt, created_by
+      ) values (
+        ${wsId}::uuid, ${sourceId}::uuid,
+        ${JSON.stringify([
+          { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 6 }, { x: 0, y: 6 },
+        ])}::jsonb, 30, ${userId}::uuid)
+      returning id
+    `);
+    const roofId = createdRoof.rows[0]?.id;
+    if (!roofId) throw new Error("planning_roof_min-Fixture lieferte keine ID");
+    const createdGroup = await tx.execute<{ id: string }>(sql`
+      insert into planning_panel_group (
+        workspace_id, roof_id, kind, label, origin_json,
+        rows, cols, module_w_m, module_h_m, gap_m, created_by
+      ) values (
+        ${wsId}::uuid, ${roofId}::uuid, 'h', 'Fixture-Gruppe',
+        ${JSON.stringify({ x: 1, y: 1 })}::jsonb,
+        4, 6, 1.1, 1.75, 0.02, ${userId}::uuid)
+      returning id
+    `);
+    const groupId = createdGroup.rows[0]?.id;
+    if (!groupId) throw new Error("planning_panel_group-Fixture lieferte keine ID");
+    await tx.execute(sql`
+      insert into planning_string (
+        workspace_id, inverter_id, tracker_slot, label,
+        member_json, created_by
+      ) values (
+        ${wsId}::uuid, ${inverterId}::uuid, 1, 'Fixture-String',
+        ${JSON.stringify([{ group_id: groupId }])}::jsonb,
+        ${userId}::uuid)
+    `);
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════
