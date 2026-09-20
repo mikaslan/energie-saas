@@ -32,7 +32,12 @@ import {
 import { deriveCertifiedCapacities } from "@/lib/integrations/offers/certified-capacities";
 import { planningModeSchema } from "@/lib/integrations/planning/contract";
 
-import { readSchematicOverlay, readSchematicScope } from "@/modules/schematic";
+import { ensureSchematicDiagram, readSchematicOverlay, readSchematicScope } from "@/modules/schematic";
+import { buildSingleLineSchematic } from "@/lib/integrations/schematic/single-line-v1";
+import {
+  projectSchematicSections,
+  resolvePageEnsureMode,
+} from "@/lib/integrations/schematic/ensure-wire-v1";
 import { listDiscountTemplates } from "@/modules/discounts";
 import { listPlanningTemplates } from "@/modules/planning";
 import { listPackageTemplates } from "@/modules/offers";
@@ -842,6 +847,55 @@ export default async function OfferDetailPage(
         const schematicScope = view === null
           ? "commercial"
           : await readSchematicScope(tx, ctx, { offerId });
+        // F6-02b Page-Ensure (Leitstand-Q1 PAGE-LOADER): Drift-Rewrite VOR
+        // dem Overlay-Read, damit Stale gegen die frische Revision rechnet.
+        // Best-effort wie der Overlay-Read: jede Stoerung (Scope, Recht,
+        // Konflikt, Form) degradiert zu „kein Rewrite, weiter rendern".
+        // Ohne expectedRevision (System-Sync, kein User-Edit — SPEC §5).
+        if (view !== null && schematicScope === "residential") {
+          const activeSnapshot = (
+            view.activeVariant as {
+              snapshot?: {
+                variantId?: unknown;
+                revision?: unknown;
+                sections?: unknown;
+              };
+            } | null
+          )?.snapshot;
+          const ensureKey = z
+            .object({ variantId: z.uuid(), revision: z.number().int().min(1) })
+            .safeParse({
+              variantId: activeSnapshot?.variantId,
+              revision: activeSnapshot?.revision,
+            });
+          if (ensureKey.success && Array.isArray(activeSnapshot?.sections)) {
+            try {
+              const probe = buildSingleLineSchematic(
+                projectSchematicSections(
+                  activeSnapshot.sections as Parameters<typeof projectSchematicSections>[0],
+                ),
+              );
+              const mode = resolvePageEnsureMode({
+                scope: "residential",
+                canWrite: !isExternalOnly(ctx) && can(ctx, "project.write"),
+                nodeCount: probe.nodes.length,
+                unwiredCount: probe.unwired.length,
+              });
+              if (mode === "ensure") {
+                await ensureSchematicDiagram(tx, ctx, {
+                  offerId,
+                  variantId: ensureKey.data.variantId,
+                  variantRevision: ensureKey.data.revision,
+                  sections: projectSchematicSections(
+                    activeSnapshot.sections as Parameters<typeof projectSchematicSections>[0],
+                  ),
+                });
+              }
+            } catch {
+              // Skip + Render (SPEC §6).
+            }
+          }
+        }
         let schematicOverlay: SchematicOverlayView = null;
         if (view !== null && schematicScope === "residential") {
           const overlayRevision = z.number().int().min(1).safeParse(

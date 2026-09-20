@@ -8,6 +8,11 @@ import {
   mergeEditorOverlay,
   type OverlayElementInput,
 } from "@/lib/integrations/schematic/editor-overlay-v1";
+import {
+  firstOpenPayload,
+  formatQuantity,
+  projectSchematicSections,
+} from "@/lib/integrations/schematic/ensure-wire-v1";
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import { OfferVariantControlsPanel } from "./offer-variant-controls-panel";
 import { OfferPaymentOptionPanel } from "./offer-payment-option-panel";
@@ -354,11 +359,6 @@ function formatCents(value: number | undefined): string {
   return formatOfferCents(value);
 }
 
-function formatQuantity(quantityMilli: number, unit: string): string {
-  const unitLabel = unit === "piece" ? "Stk." : unit === "set" ? "Set" : "m";
-  return `${quantityFormatter.format(quantityMilli / 1_000)} ${unitLabel}`;
-}
-
 function formatBasisPoints(value: number): string {
   return percentFormatter.format(value / 10_000);
 }
@@ -653,18 +653,8 @@ function SchematicCard({
   // F6-02a: Overlay-Merge (nur residential + frischer Parent-Pin).
   overlay?: SchematicOverlayView;
 }) {
-  const inputs = snapshot.sections.flatMap((section) => {
-    const visible = section.lines.filter((line) => !line.isHidden);
-    if (visible.length === 0) return [];
-    const units = new Set(visible.map((line) => line.product.unit));
-    const quantityLabel = units.size === 1
-      ? formatQuantity(
-        visible.reduce((sum, line) => sum + line.quantityMilli, 0),
-        visible[0]!.product.unit,
-      )
-      : null;
-    return [{ category: section.category, title: section.title, quantityLabel }];
-  });
+  // F6-02b: EINE Projektion fuer Ansicht und Page-Loader (Wire-Vertrag).
+  const inputs = projectSchematicSections(snapshot.sections);
   const backbone = buildSingleLineSchematic(inputs);
   if (backbone.empty && backbone.unwired.length === 0) return null;
   // F6-02a: gespeichertes Overlay auf den Backbone mergen (nur
@@ -694,13 +684,13 @@ function SchematicCard({
         offerNumber={offerNumber}
         variantName={snapshot.variantName}
         scope={scope}
-        firstOpen={{
+        firstOpen={firstOpenPayload({
           workspaceId: snapshot.workspaceId,
           offerId: snapshot.offerId,
           variantId: snapshot.variantId,
           revision: snapshot.revision,
-          schematic,
-        }}
+          backbone,
+        })}
       >
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
           Schaltplan (ESTIMATE)

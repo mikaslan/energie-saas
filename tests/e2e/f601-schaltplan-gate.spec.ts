@@ -178,7 +178,13 @@ async function moveProjectToScopeColumn(
 async function readFirstOpenSave(
   workspaceId: string,
   offerId: string,
-): Promise<{ count: number; nodeCount: number; variantRevision: number; currentRevision: number }> {
+): Promise<{
+  count: number;
+  nodeCount: number;
+  variantRevision: number;
+  currentRevision: number;
+  revision: number;
+}> {
   return poolOne(async (pool) => {
     try {
       const result = await pool.query<{
@@ -186,6 +192,7 @@ async function readFirstOpenSave(
         node_count: number | null;
         variant_revision: number | null;
         current_revision: number | null;
+        revision: number | null;
       }>(`
         select (select count(*)
                   from schematic_diagrams
@@ -207,7 +214,13 @@ async function readFirstOpenSave(
                   from offer_variant
                  where workspace_id = $1::uuid
                    and offer_id = $2::uuid
-                   and ordinal = 1) as current_revision
+                   and ordinal = 1) as current_revision,
+               (select revision
+                  from schematic_diagrams
+                 where workspace_id = $1::uuid
+                   and offer_id = $2::uuid
+                 order by variant_revision desc
+                 limit 1) as revision
       `, [workspaceId, offerId]);
       const row = result.rows[0];
       if (!row) throw new Error("F601: Erstöffnen-Zählung ohne Ergebnis.");
@@ -216,6 +229,7 @@ async function readFirstOpenSave(
         nodeCount: row.node_count ?? 0,
         variantRevision: row.variant_revision ?? 0,
         currentRevision: row.current_revision ?? 0,
+        revision: row.revision ?? 0,
       };
     } catch (error) {
       if ((error as { code?: unknown }).code === "42P01") {
@@ -223,6 +237,23 @@ async function readFirstOpenSave(
       }
       throw error;
     }
+  });
+}
+
+// F6-02b/GATE-03: simuliert einen veralteten Snapshot (alter Builder-Stand)
+// durch direktes Ueberschreiben der Netzliste — gueltige CHECK-Form, aber
+// garantiert Drift gegen den frischen Live-Build.
+async function staleFirstOpenRow(workspaceId: string, offerId: string): Promise<void> {
+  await poolOne(async (pool) => {
+    await pool.query(
+      `update schematic_diagrams
+          set netlist = '{"nodes":[],"edges":[]}'::jsonb,
+              node_count = 0,
+              edge_count = 0
+        where workspace_id = $1::uuid
+          and offer_id = $2::uuid`,
+      [workspaceId, offerId],
+    );
   });
 }
 
@@ -296,5 +327,30 @@ test.describe("F6-01 Schaltplan-Gate", () => {
     await expect(restored).toHaveAttribute("data-schematic-save-state", "already-saved");
     const saved = await readFirstOpenSave(workspaceId, offerId);
     expect(saved.count, "weiterhin genau eine Erstöffnen-Zeile").toBe(1);
+  });
+
+  test("F601-GATE-03: Re-Open mit Drift schreibt In-Place revision+1 ohne Neuanlage", async ({ page }) => {
+    test.setTimeout(180_000);
+    const { workspaceId, projectId } = await seedReadyWorkspace(`f601-reopen-${randomUUID().slice(0, 8)}`);
+    const { offerId } = await createOfferViaUi(page, workspaceId, projectId);
+
+    const schematic = page.locator('[data-offer-schematic="true"]');
+    await expect(schematic).toBeVisible();
+    await expect(schematic).toHaveAttribute("data-schematic-save-state", /^(saved|already-saved)$/u);
+    const before = await readFirstOpenSave(workspaceId, offerId);
+    expect(before.count, "genau eine Erstöffnen-Zeile").toBe(1);
+    expect(before.revision, "Start bei interner Revision 1").toBe(1);
+
+    // Drift simulieren (alter Builder-Stand), dann Re-Open: Die
+    // Ensure-Verdrahtung (F6-02b) schreibt In-Place revision+1.
+    await staleFirstOpenRow(workspaceId, offerId);
+    await page.reload();
+    await expect(page.locator('[data-offer-schematic="true"]')).toBeVisible();
+    await expect
+      .poll(async () => (await readFirstOpenSave(workspaceId, offerId)).revision, { timeout: 30_000 })
+      .toBe(2);
+    const after = await readFirstOpenSave(workspaceId, offerId);
+    expect(after.count, "keine Neuanlage, kein Append").toBe(1);
+    expect(after.nodeCount, "frische Netzliste zurueckgeschrieben").toBeGreaterThan(0);
   });
 });
