@@ -9,11 +9,9 @@ import * as subsidyCase from "@/lib/subsidy-case";
 
 const api = subsidyCase as unknown as Record<string, unknown>;
 
-// SKIP-Grund: F13-13 ist SPECIFIED, nicht implementiert (4/4 Tests ROT,
-// Beleg in docs/spec/F13-13-foerder-fristen-preis.md §6). Das Follow-up,
-// das Preis-Snapshot + AT-Fristen + Typenschild-Slot baut, entfernt
-// dieses .skip wieder.
-describe.skip("F13-13 Förder-Fristen-Preis (RED)", () => {
+// F13-13 GREEN-Slice (Migration 0262): entskippt 2026-09-20, muss GRÜN werden.
+// Spec: docs/spec/F13-13-foerder-fristen-preis.md.
+describe("F13-13 Förder-Fristen-Preis (GREEN-Slice 0262)", () => {
   it("F1313-U-01: Preis-Snapshot an Akte? Default 210 €", () => {
     // Workspace-Stammdatum mit Default 210 € (§1) existiert noch nicht.
     expect(api.SUBSIDY_CASE_FEE_DEFAULT_CENTS).toBe(21_000);

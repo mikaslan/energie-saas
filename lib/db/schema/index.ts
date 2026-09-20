@@ -53,6 +53,7 @@ export * from "./portal-status-faq";
 export * from "./grid-registration";
 export * from "./file-request";
 export * from "./subsidy-case";
+export * from "./subsidy-case-fee";
 export * from "./subsidy-case-message";
 export * from "./signatures";
 export * from "./site";

@@ -2742,13 +2742,21 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F13-13 (0262): Förderservice-Preis (Workspace-Singleton).
+  subsidy_case_fee_setting: async (tx, wsId) => {
+    await tx.execute(sql`
+      insert into subsidy_case_fee_setting (workspace_id, fee_cents)
+      values (${wsId}::uuid, 21000)
+      on conflict (workspace_id) do nothing
+    `);
+  },
   // F13-03 (0105): Förderakte zu einem echten Projektgraphen.
   subsidy_case: async (tx, wsId) => {
     const { projectId } = await fixtureProjectGraph(tx, wsId);
     const { userId } = await fixtureMembership(tx, wsId, "editor");
     await tx.execute(sql`
-      insert into subsidy_case (workspace_id, project_id, created_by)
-      values (${wsId}::uuid, ${projectId}::uuid, ${userId}::uuid)
+      insert into subsidy_case (workspace_id, project_id, created_by, fee_cents)
+      values (${wsId}::uuid, ${projectId}::uuid, ${userId}::uuid, 21000)
     `);
   },
   // F13-10 (0119): Chat-Nachricht zur echten Förderakte (interne Seite).
@@ -2756,8 +2764,8 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
     const { projectId } = await fixtureProjectGraph(tx, wsId);
     const { userId } = await fixtureMembership(tx, wsId, "editor");
     await tx.execute(sql`
-      insert into subsidy_case (workspace_id, project_id, created_by)
-      values (${wsId}::uuid, ${projectId}::uuid, ${userId}::uuid)
+      insert into subsidy_case (workspace_id, project_id, created_by, fee_cents)
+      values (${wsId}::uuid, ${projectId}::uuid, ${userId}::uuid, 21000)
       on conflict (workspace_id, project_id) do nothing
     `);
     const cases = await tx.execute<{ id: string }>(sql`
@@ -3532,6 +3540,10 @@ export const COMPOSITE_KEY_EXEMPT = new Set<string>([
   // Singleton-Blatt: workspace_id ist zugleich die vollstaendige Identitaet;
   // keine andere Tenant-Tabelle referenziert Planungseinstellungen.
   "workspace_planning_settings",
+  // F13-13 (0262): Singleton-Blatt (PK workspace_id, kein id-Spalt);
+  // keine andere Tenant-Tabelle referenziert den Preis (Akten tragen
+  // Snapshots, kein FK).
+  "subsidy_case_fee_setting",
 ]);
 
 // Regel 3 (FK workspace_id -> workspace.id): koppelt die Löschbarkeit des

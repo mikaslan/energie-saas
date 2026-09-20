@@ -40,13 +40,21 @@ export class SubsidyCaseValidationError extends Error {
 }
 
 import {
+  addBusinessDaysBerlin,
   canEditFilingDetails,
   isAllowedSubsidyCaseTransition,
   isPortalInviteUsable,
+  isSubsidyCaseOverdue,
+  isSubsidyCasePreApproval,
+  SUBSIDY_CASE_BND_DUE_WORKDAYS,
+  SUBSIDY_CASE_BZA_DUE_WORKDAYS,
+  SUBSIDY_CASE_FEE_DEFAULT_CENTS,
+  SUBSIDY_CASE_NAMEPLATE_SLOT,
   SUBSIDY_CASE_TRANSITION_EVENT,
   subsidyCasePrograms,
   subsidyCaseStatuses,
   suggestSubsidyProgram,
+  todayBerlinIso,
   type SubsidyCaseDto,
   type SubsidyCasePortalActivation,
   type SubsidyCaseProgram,
@@ -54,6 +62,9 @@ import {
   type SubsidyProgramSuggestion,
   type SubsidyProgramSuggestionSignals,
 } from "@/lib/subsidy-case";
+import { bundHolidaysBerlin } from "@/lib/subsidy-holidays";
+import type { FileRequestDto } from "@/lib/file-request";
+import { createFileRequest } from "@/modules/file-requests";
 
 const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
 
@@ -72,6 +83,9 @@ type SubsidyCaseRow = {
   bza_approved_at: Date | string | null;
   bnd_submitted_at: Date | string | null;
   completed_at: Date | string | null;
+  fee_cents: number;
+  bza_due_date: Date | string | null;
+  bnd_due_date: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
   [key: string]: unknown;
@@ -80,24 +94,42 @@ type SubsidyCaseRow = {
 const ROW_COLUMNS = sql`
   id, project_id, status, program, bza_number,
   bza_submitted_at, bza_approved_at, bnd_submitted_at,
-  completed_at, created_at, updated_at
+  completed_at, fee_cents, bza_due_date, bnd_due_date,
+  created_at, updated_at
 `;
 
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
+function toDateOnly(value: Date | string): string {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
+}
+
 function toDto(row: SubsidyCaseRow, ctx: ServiceCtx): SubsidyCaseDto {
+  const status = row.status as SubsidyCaseStatus;
+  const bzaDueDate = row.bza_due_date === null ? null : toDateOnly(row.bza_due_date);
+  const bndDueDate = row.bnd_due_date === null ? null : toDateOnly(row.bnd_due_date);
   return {
     id: row.id,
     projectId: row.project_id,
-    status: row.status as SubsidyCaseStatus,
+    status,
     program: row.program as SubsidyCaseProgram | null,
     bzaNumber: row.bza_number,
     bzaSubmittedAt: row.bza_submitted_at === null ? null : toIso(row.bza_submitted_at),
     bzaApprovedAt: row.bza_approved_at === null ? null : toIso(row.bza_approved_at),
     bndSubmittedAt: row.bnd_submitted_at === null ? null : toIso(row.bnd_submitted_at),
     completedAt: row.completed_at === null ? null : toIso(row.completed_at),
+    // F13-13: Snapshot + Fälligkeiten aus der Zeile; Badges rein lesend.
+    // Phase offen = Wartestatus der jeweiligen Phase (eingereicht, noch
+    // nicht beantwortet — ESTIMATE, keine Behördenzusage).
+    feeCents: Number(row.fee_cents),
+    bzaDueDate,
+    bndDueDate,
+    overdue:
+      isSubsidyCaseOverdue({ dueDate: bzaDueDate, phaseOpen: status === "bza_eingereicht" }) ||
+      isSubsidyCaseOverdue({ dueDate: bndDueDate, phaseOpen: status === "bnd_eingereicht" }),
+    preApproval: isSubsidyCasePreApproval(status),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     permissions: { canWrite: can(ctx, "installation.write") },
@@ -174,6 +206,39 @@ async function readByProject(
      limit 1
   `);
   return found.rows[0] ?? null;
+}
+
+// F13-13 §1: Workspace-Stammdatum lesen — ohne Zeile gilt der Default
+// 21000 (kein DB-Default, kein Wert ohne explizite Zeile).
+async function readFeeSettingCents(tx: TenantTx, ctx: ServiceCtx): Promise<number> {
+  const found = await tx.execute<{ fee_cents: number }>(sql`
+    select fee_cents from subsidy_case_fee_setting
+     where workspace_id = ${ctx.workspaceId}::uuid
+     limit 1
+  `);
+  const row = found.rows[0];
+  return row ? Number(row.fee_cents) : SUBSIDY_CASE_FEE_DEFAULT_CENTS;
+}
+
+// F13-13 §2: Fälligkeit ab Versandtag-Berlin-Datum (Feiertagsquelle Bund,
+// Folgejahr eingeschlossen für den Jahreswechsel). Nur der jeweilige
+// Versand-Übergang setzt sein Datum; Re-Transition überschreibt.
+function dueDatesForTransition(
+  todayIso: string,
+  status: SubsidyCaseStatus,
+): { bzaDue: string | null; bndDue: string | null } {
+  const year = Number(todayIso.slice(0, 4));
+  const holidays = [...bundHolidaysBerlin(year), ...bundHolidaysBerlin(year + 1)];
+  return {
+    bzaDue:
+      status === "bza_eingereicht"
+        ? addBusinessDaysBerlin(todayIso, SUBSIDY_CASE_BZA_DUE_WORKDAYS, holidays)
+        : null,
+    bndDue:
+      status === "bnd_eingereicht"
+        ? addBusinessDaysBerlin(todayIso, SUBSIDY_CASE_BND_DUE_WORKDAYS, holidays)
+        : null,
+  };
 }
 
 export type SubsidyDashboardSlice = { status: SubsidyCaseStatus; count: number };
@@ -329,9 +394,12 @@ export async function ensureSubsidyCase(
   if (existing) return toDto(existing, ctx);
 
   try {
+    // F13-13 §1: Betragssnapshot bei Anlage (Setting oder Default 21000).
+    // KEINE Auto-F8-Rechnung — reine Wertdarstellung an der Akte.
+    const feeCents = await readFeeSettingCents(tx, ctx);
     const inserted = await tx.execute<SubsidyCaseRow>(sql`
-      insert into subsidy_case (workspace_id, project_id, created_by)
-      values (${ctx.workspaceId}::uuid, ${projectId}::uuid, ${ctx.actor}::uuid)
+      insert into subsidy_case (workspace_id, project_id, created_by, fee_cents)
+      values (${ctx.workspaceId}::uuid, ${projectId}::uuid, ${ctx.actor}::uuid, ${feeCents})
       returning ${ROW_COLUMNS}
     `);
     const row = inserted.rows[0];
@@ -442,6 +510,10 @@ export async function transitionSubsidyCase(
     throw new SubsidyCaseValidationError(`illegal transition ${from} -> ${input.status}`);
   }
 
+  // F13-13 §2: Fälligkeit je Versand-Übergang (BzA +3 AT, BnD +5 AT ab
+  // Versandtag-Berlin-Datum). Maschine UNVERÄNDERT, keine Sperren, keine
+  // Eskalations-Automatik — nur das Datum, Badge ist reine Anzeige.
+  const { bzaDue, bndDue } = dueDatesForTransition(todayBerlinIso(), input.status);
   const updated = await tx.execute<SubsidyCaseRow>(sql`
     update subsidy_case
        set status = ${input.status},
@@ -457,6 +529,12 @@ export async function transitionSubsidyCase(
            completed_at = case
              when ${input.status} = 'abgeschlossen' then statement_timestamp()
              else completed_at end,
+           bza_due_date = case
+             when ${input.status} = 'bza_eingereicht' then ${bzaDue}::date
+             else bza_due_date end,
+           bnd_due_date = case
+             when ${input.status} = 'bnd_eingereicht' then ${bndDue}::date
+             else bnd_due_date end,
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
        and project_id = ${input.projectId}::uuid
@@ -484,6 +562,75 @@ export async function transitionSubsidyCase(
     details: { projectId: input.projectId, from, to: input.status },
   });
   return { ...toDto(next, ctx), portalActivation };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F13-13 §1: Workspace-Stammdatum „Förderservice-Preis" (Cent, änderbar,
+// Default 21000). Lesen installation.read; Schreiben installation.write
+// + Audit. Altschutz: nur neue Akten snapshotten den geänderten Wert.
+// ═══════════════════════════════════════════════════════════════════════
+export async function getSubsidyCaseFee(tx: TenantTx, ctx: ServiceCtx): Promise<number> {
+  if (!can(ctx, "installation.read")) {
+    throw new PermissionDeniedError("installation.read", "subsidy_case_fee_setting", ctx.workspaceId, ctx.actor);
+  }
+  return readFeeSettingCents(tx, ctx);
+}
+
+const feeSettingSchema = z.strictObject({
+  projectId: uuidSchema,
+  feeCents: z.number().int().min(0),
+});
+
+export async function setSubsidyCaseFee(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string; feeCents: number },
+): Promise<number> {
+  const parsed = feeSettingSchema.safeParse(input);
+  if (!parsed.success) throw new SubsidyCaseValidationError();
+  requireWrite(ctx, parsed.data.projectId);
+  const saved = await tx.execute<{ fee_cents: number }>(sql`
+    insert into subsidy_case_fee_setting (workspace_id, fee_cents, updated_at)
+    values (${ctx.workspaceId}::uuid, ${parsed.data.feeCents}, statement_timestamp())
+    on conflict (workspace_id)
+      do update set fee_cents = excluded.fee_cents, updated_at = statement_timestamp()
+    returning fee_cents
+  `);
+  const row = saved.rows[0];
+  if (!row) throw new SubsidyCaseValidationError();
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "subsidy_case.fee_setting",
+    resource: "project",
+    allowed: true,
+    details: { projectId: parsed.data.projectId, feeCents: Number(row.fee_cents) },
+  });
+  return Number(row.fee_cents);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// F13-13 §4: Typenschild-Foto-Slot (ohne KI-Auswertung). Datei-Anfrage im
+// F13-07-Muster (anfordern → Portal-Upload → „Beleg erhalten"), verknüpft
+// mit der Akte (subsidyCaseId), strukturierter Slot-Typ typenschild_foto
+// (F13-00 §4). Die Akte muss existieren; Berechtigung prüft
+// createFileRequest (project.write, keine neuen Keys).
+// ═══════════════════════════════════════════════════════════════════════
+export async function requestNameplatePhoto(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: { projectId: string },
+): Promise<FileRequestDto> {
+  if (!uuidSchema.safeParse(input.projectId).success) throw new SubsidyCaseValidationError();
+  const kase = await readByProject(tx, ctx, input.projectId);
+  if (!kase) throw new SubsidyCaseNotFoundError(input.projectId);
+  return createFileRequest(tx, ctx, {
+    projectId: input.projectId,
+    title: SUBSIDY_CASE_NAMEPLATE_SLOT,
+    description: null,
+    subsidyCaseId: kase.id,
+    slotType: "typenschild_foto",
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════

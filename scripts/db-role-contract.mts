@@ -763,6 +763,12 @@ const SUBSIDY_CASE_MESSAGE_RELATIONS = [
   "subsidy_case_message",
 ] as const;
 
+// F13-13 (0262): eigene Menge — Förderservice-Preis je Workspace
+// (Stammdatum; Akten tragen Snapshots — Muster subsidy_case_message).
+const SUBSIDY_CASE_FEE_RELATIONS = [
+  "subsidy_case_fee_setting",
+] as const;
+
 // F10-10: Folge-Belege je Datei-Anfrage (nur Anlage + Lesen; kein
 // Update/Delete — Muster subsidy_case_message).
 const FILE_REQUEST_UPLOAD_RELATIONS = [
@@ -3458,6 +3464,23 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F13-13 (0262): eigene ACL-Menge — Stammdatum lesen/setzen
+  // (Anlage/Lesen/Schreiben, nie Löschen; Muster subsidy_case).
+  const hasSubsidyCaseFeeForAcl = await hasAtomicPublicRelationSet(
+    client,
+    SUBSIDY_CASE_FEE_RELATIONS,
+    "Rollen-ACL-Manifest: F13-13-Foerderpreis",
+  );
+  if (hasSubsidyCaseFeeForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.subsidy_case_fee_setting
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.subsidy_case_fee_setting to app_runtime
+    `);
+  }
+
   // F10-10: Folge-Belege unveränderlich — app_runtime liest nur (Anlage
   // ausschließlich über die DEFINER-Kapsel als Owner; Muster
   // subsidy_case_message, dort ohne insert).
@@ -4604,6 +4627,12 @@ export async function verifyRoleContract(
     SUBSIDY_CASE_MESSAGE_RELATIONS,
     "Rollenvertrag: F13-10-Subsidy-Chat",
   );
+  // F13-13 (0262): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben grün.
+  const hasSubsidyCaseFee = await hasAtomicPublicRelationSet(
+    client,
+    SUBSIDY_CASE_FEE_RELATIONS,
+    "Rollenvertrag: F13-13-Foerderpreis",
+  );
   // F10-10 (0120): eigene Gate-Menge — Folge-Belege je Datei-Anfrage
   // (Muster hasSubsidyCaseMessages).
   const hasFileRequestUploads = await hasAtomicPublicRelationSet(
@@ -5164,6 +5193,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasSubsidyCaseMessages ? SUBSIDY_CASE_MESSAGE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasSubsidyCaseFee ? SUBSIDY_CASE_FEE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.map(
@@ -6521,6 +6553,9 @@ export async function verifyRoleContract(
       ...(hasSubsidyCaseMessages ? SUBSIDY_CASE_MESSAGE_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasSubsidyCaseFee ? SUBSIDY_CASE_FEE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasFileRequestUploads ? FILE_REQUEST_UPLOAD_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6802,6 +6837,10 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasSubsidyCaseMessages ? [
           "subsidy_case_message:tenant_isolation:609abf25fb1cb093df1e5a7cadc198d9f7dc0536fd187f41973ac3d1059c3c26",
+        ] : []),
+        // F13-13 (0262): Preis-Stammdatum (Hash per Probe geerntet).
+        ...(hasSubsidyCaseFee ? [
+          "subsidy_case_fee_setting:tenant_isolation:8dc910269697ddbd6729c40a61f4ed97c20445f9c10a669f3613b2e907ca69e5",
         ] : []),
         // F10-10 (0120): Folge-Beleg-Tabelle (Hash per Probe geerntet).
         ...(hasFileRequestUploads ? [
@@ -7649,6 +7688,12 @@ export async function verifyRoleContract(
       ...(hasSubsidyCaseMessages ? SUBSIDY_CASE_MESSAGE_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
+      ]) : []),
+      // F13-13: Anlage/Lesen/Schreiben, nie Löschen (Preis-Stammdatum).
+      ...(hasSubsidyCaseFee ? SUBSIDY_CASE_FEE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       // F10-10: nur Lesen (unveränderliche Folge-Belege; Anlage nur per
       // DEFINER-Kapsel als Owner).

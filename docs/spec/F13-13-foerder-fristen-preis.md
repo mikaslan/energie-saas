@@ -1,9 +1,8 @@
 # F13-13 Förder-Fristen-Preis (Katalog F13.2-Rest, ohne Erfülltes)
 
-Status: **SPECIFIED (RED, Tests geskippt)** · Lane:
-`codex/muse-fleet-3c-f13` · Stand 2026-09-19 (Spec + RED-Test
-`tests/unit/f1313-foerder.red.test.ts`, `describe.skip` bis zur
-Implementierung)
+Status: **GEBAUT (Migration 0262, 2026-09-20; Welle 3 + Owner)** ·
+Lane: `codex/muse-fleet-3c-f13` (Tests
+`tests/unit/f1313-foerder.red.test.ts`, entskippt, grün)
 
 Ziel: Katalog F13.2 („KfW/BAFA-Förderservice, 210 €/Projekt: BzA
 ~3 AT → BnD ~5 AT, manuelle BzA-Nummern-Verknüpfung,
@@ -61,7 +60,18 @@ bleibt offen (F13-03:41, Q-F13-ANGEBOTSBINDUNG-M2).
   (F13.2-Muster „E-Mail je Übergang"); hier nur referenziert, kein
   eigener Versand in F13-13.
 
-## §6 ROT-Beleg (RED-Test vor dem Skip, 2026-09-19)
+## §6 GRÜN-Beleg (2026-09-20, Migration 0262)
+
+Unit 4/4 + AT-Fristen 3/3 (Computus-Pins Ostern 2024/25/26, Kanten,
+Fail-closed), DB F1313-DB-01/02, Nachbarn f1300/f1303/f1305/f1307/
+f1310 + m111a-Pins (TOTAL 154), E2E F1313-E2E-01 + F13-03 + F13-08 3/3.
+Owner-DECIDED: Feiertage=BUND; Versandtag=Tag 0; fee_cents Backfill
+21000 + NOT NULL; Titel 'typenschild-foto' (Konstante) + slotType
+'typenschild_foto' (L2-Auflösung); korrektur = keine Überfällig-Phase
+(Kunde am Zug, nicht Behörde); Mitternachts-Toleranz ±1 Tag
+(App-Datum vs. DB-Stempel, ESTIMATE).
+
+## §6 ROT-Beleg (RED-Test vor dem Skip, 2026-09-19, historisch)
 
 `npx vitest run tests/unit/f1313-foerder.red.test.ts` → 4 failed (4):
 

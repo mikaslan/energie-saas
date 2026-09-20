@@ -16,6 +16,7 @@ import type { SubsidyChatMessage } from "@/modules/subsidy-cases";
 import {
   createSubsidyBelegAction,
   ensureSubsidyCaseAction,
+  requestNameplatePhotoAction,
   setSubsidyCaseDetailsAction,
   transitionSubsidyCaseAction,
   type SubsidyCaseActionState,
@@ -47,6 +48,100 @@ function Feedback({ state, testId }: { state: SubsidyCaseActionState; testId: st
     <p role="alert" data-testid={testId} className="mt-3 text-sm font-semibold text-red-700">
       {message}
     </p>
+  );
+}
+
+const euroFormatter = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+
+function formatDueDate(value: string): string {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return value;
+  return new Date(ms).toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+// F13-13 Förder-Fristen-Preis: Preis-Snapshot (rein lesend), Fälligkeiten,
+// Überfällig-/Vor-Annahme-Hinweise (reine Anzeige), Typenschild-Slot.
+// KEINE Transitionssperren, KEIN Portal.
+function SubsidyCaseF1313Block({
+  workspaceId,
+  projectId,
+  subsidyCase,
+  canWrite,
+  belege,
+}: {
+  workspaceId: string;
+  projectId: string;
+  subsidyCase: SubsidyCaseDto;
+  canWrite: boolean;
+  belege: FileRequestDto[];
+}) {
+  const [nameplateState, nameplateDispatch] = useActionState(
+    requestNameplatePhotoAction,
+    initialState,
+  );
+  const nameplateDone = belege.some(
+    (beleg) => beleg.slotType === "typenschild_foto" && beleg.status === "erledigt",
+  );
+  return (
+    <div
+      className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+      data-testid="subsidy-case-f1313-block"
+    >
+      <p className="text-sm text-slate-700" data-testid="subsidy-case-fee">
+        Förderservice-Preis (Snapshot, Abrechnung manuell):{" "}
+        <span className="font-semibold">{euroFormatter.format(subsidyCase.feeCents / 100)}</span>
+      </p>
+      {subsidyCase.bzaDueDate !== null ? (
+        <p className="text-sm text-slate-700" data-testid="subsidy-case-bza-due">
+          BzA fällig: <span className="font-semibold">{formatDueDate(subsidyCase.bzaDueDate)}</span>
+        </p>
+      ) : null}
+      {subsidyCase.bndDueDate !== null ? (
+        <p className="text-sm text-slate-700" data-testid="subsidy-case-bnd-due">
+          BnD fällig: <span className="font-semibold">{formatDueDate(subsidyCase.bndDueDate)}</span>
+        </p>
+      ) : null}
+      {subsidyCase.overdue ? (
+        <p
+          role="status"
+          data-testid="subsidy-case-overdue"
+          className="mt-1 inline-block rounded bg-red-100 px-2 py-0.5 text-sm font-semibold text-red-800"
+        >
+          Überfällig
+        </p>
+      ) : null}
+      {subsidyCase.preApproval ? (
+        <p
+          data-testid="subsidy-case-pre-approval"
+          className="mt-1 inline-block rounded bg-amber-100 px-2 py-0.5 text-sm font-semibold text-amber-900"
+        >
+          BzA noch nicht bewilligt
+        </p>
+      ) : null}
+      {nameplateDone ? (
+        <p className="mt-1 text-sm text-slate-700" data-testid="subsidy-case-nameplate-status">
+          Typenschild-Foto: Beleg erhalten
+        </p>
+      ) : null}
+      {canWrite ? (
+        <form action={nameplateDispatch} className="mt-2">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
+          <input type="hidden" name="projectId" value={projectId} />
+          <button
+            type="submit"
+            data-testid="subsidy-case-nameplate-request"
+            className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+          >
+            Typenschild-Foto anfordern
+          </button>
+        </form>
+      ) : null}
+      <Feedback state={nameplateState} testId="subsidy-case-nameplate-feedback" />
+    </div>
   );
 }
 
@@ -117,6 +212,13 @@ export function SubsidyCaseSection({
             {subsidyCase.program ? ` · ${SUBSIDY_CASE_PROGRAM_LABEL[subsidyCase.program]}` : null}
             {subsidyCase.bzaNumber ? ` · BzA ${subsidyCase.bzaNumber}` : null}
           </p>
+          <SubsidyCaseF1313Block
+            workspaceId={workspaceId}
+            projectId={projectId}
+            subsidyCase={subsidyCase}
+            canWrite={canWrite}
+            belege={belege}
+          />
           <div
             className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
             data-testid="subsidy-suggestion-block"

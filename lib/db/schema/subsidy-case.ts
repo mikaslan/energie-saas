@@ -1,7 +1,9 @@
 import {
   check,
+  date,
   foreignKey,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -34,6 +36,13 @@ export const subsidyCase = pgTable(
     bzaApprovedAt: timestamp("bza_approved_at", { withTimezone: true }),
     bndSubmittedAt: timestamp("bnd_submitted_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    // F13-13: Preis-Snapshot (Cent, NOT NULL nach Backfill 21000 in
+    // 0262) + Fälligkeiten je Phase (NULL bis Versand, kein Rückrechnen).
+    // F13-13: Snapshot bei Anlage (Service setzt Setting-oder-21000);
+    // DB-Default 21000 als Netz für Raw-INSERTs (Katalogpreis).
+    feeCents: integer("fee_cents").notNull().default(21000),
+    bzaDueDate: date("bza_due_date"),
+    bndDueDate: date("bnd_due_date"),
     createdBy: uuid("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -76,3 +85,4 @@ export const subsidyCase = pgTable(
     index("subsidy_case_ws_project_idx").on(t.workspaceId, t.projectId, t.status),
   ],
 );
+

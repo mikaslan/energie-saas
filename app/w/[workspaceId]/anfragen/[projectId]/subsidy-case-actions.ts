@@ -8,6 +8,8 @@ import {
   ensureSubsidyCase,
   getSubsidyCase,
   postSubsidyMessage,
+  requestNameplatePhoto,
+  setSubsidyCaseFee,
   SubsidyCaseNotFoundError,
   subsidyCasePrograms,
   subsidyCaseStatuses,
@@ -182,6 +184,51 @@ export async function createSubsidyBelegAction(
     );
     revalidatePath(detailPath(ids.workspaceId, ids.projectId));
     return { status: "success", message: "Beleg angefordert." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F13-13 §1: Förderservice-Preis setzen (Workspace-Stammdatum; der Snapshot
+// an bestehenden Akten bleibt unberührt — reine Backend-Garantie).
+// Recht installation.write (Akten-Kontext wie Geschwister); Eingabe-
+// Fehlform → invalid. Noch kein UI-Aufrufer (Anzeige rein lesend).
+export async function setSubsidyCaseFeeAction(
+  _previous: SubsidyCaseActionState,
+  formData: FormData,
+): Promise<SubsidyCaseActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  const raw = formData.get("feeCents");
+  const feeCents = typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isInteger(feeCents) || feeCents < 0) return { status: "invalid" };
+  try {
+    await authorizedAction(ids.workspaceId, "installation.write", "subsidy_case", (tx, ctx) =>
+      setSubsidyCaseFee(tx, ctx, { projectId: ids.projectId, feeCents }),
+    );
+    revalidatePath(detailPath(ids.workspaceId, ids.projectId));
+    return { status: "success", message: "Förderservice-Preis gespeichert." };
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+// F13-13 §4: Typenschild-Foto anfordern (Upload-Slot an der Akte,
+// Datei-Anfrage-Muster F13-07, KEINE KI-Auswertung; Titel
+// SUBSIDY_CASE_NAMEPLATE_SLOT + strukturierter Slot-Typ).
+// Keine Phasen-Sperre: anforderbar sobald die Akte existiert.
+export async function requestNameplatePhotoAction(
+  _previous: SubsidyCaseActionState,
+  formData: FormData,
+): Promise<SubsidyCaseActionState> {
+  const ids = parseIds(formData);
+  if (!ids) return { status: "invalid" };
+  try {
+    await authorizedAction(ids.workspaceId, "installation.write", "subsidy_case", (tx, ctx) =>
+      requestNameplatePhoto(tx, ctx, { projectId: ids.projectId }),
+    );
+    revalidatePath(detailPath(ids.workspaceId, ids.projectId));
+    return { status: "success", message: "Typenschild-Foto angefordert." };
   } catch (error) {
     return mapError(error);
   }

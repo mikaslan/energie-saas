@@ -244,10 +244,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0210 F1-14 Projekt-Team-Zuweisung (Tabelle + RLS),
     // 0220 F2.8 Portal-Draw-Signatur (Invite-Kapsel + ACL),
     // 0260 F13-00 Filing-Kern (Draft + Freeze + Slot-Typ + Portal-Filter),
-    // 0261 F13-12 Netz-Vertiefung (Status +2, Frist, Add-ons)).
+    // 0261 F13-12 Netz-Vertiefung (Status +2, Frist, Add-ons),
+    // 0262 F13-13 Förder-Fristen-Preis (Preis-Snapshot, AT-Fristen, Typenschild)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 152,
-      tag: "0261_f1312_netz_vertiefung",
+      idx: 153,
+      tag: "0262_f1313_foerder_fristen_preis",
     });
   });
 

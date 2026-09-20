@@ -197,6 +197,96 @@ export function suggestSubsidyProgram(signals: SubsidyProgramSuggestionSignals):
   };
 }
 
+// F13-13 Förder-Fristen-Preis (Katalog F13.2-Rest): Stammdatum-Preis
+// (Cent-Arithmetik, Muster F16.3), AT-Fristen, Überfällig-/Vorab-Badges,
+// Typenschild-Foto-Slot. Rein (keine Imports, kein I/O) — Sektion und
+// Service teilen sich diese Datei wie bei F13-03/F13-05.
+export const SUBSIDY_CASE_FEE_DEFAULT_CENTS = 21_000;
+export const SUBSIDY_CASE_BZA_DUE_WORKDAYS = 3;
+export const SUBSIDY_CASE_BND_DUE_WORKDAYS = 5;
+export const SUBSIDY_CASE_NAMEPLATE_SLOT = "typenschild-foto" as const;
+
+// Berlin-Kalendertag (YYYY-MM-DD) — Stichtag für Fälligkeitsrechnung
+// und Überfällig-Vergleich (Spec §2: AT = Mo–Fr Europe/Berlin).
+export function todayBerlinIso(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseIsoDateUtcMs(value: string): number {
+  if (!ISO_DATE_PATTERN.test(value)) throw new Error(`invalid ISO date: ${value}`);
+  const ms = Date.parse(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(ms)) throw new Error(`invalid ISO date: ${value}`);
+  // Guard gegen Überlauf-Normalisierung (z. B. 2026-02-30 → 03-02).
+  if (new Date(ms).toISOString().slice(0, 10) !== value) {
+    throw new Error(`invalid ISO date: ${value}`);
+  }
+  return ms;
+}
+
+function formatIsoDateUtc(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+// AT-Rechnung (Spec §2, ESTIMATE-Näherung ~3/~5, keine Behördenzusage):
+// Arbeitstage Mo–Fr ab Starttag (Starttag = Tag 0), Wochenenden und
+// holidaysIso (ISO-Dates, Feiertagsquelle des Aufrufers — F13-13: Bund
+// via lib/subsidy-holidays) übersprungen. Reine Kalenderrechnung auf
+// UTC-Mitternacht; Berlin nur als Kalendertag-Konvention (kein DST).
+export function addBusinessDaysBerlin(
+  startIsoDate: string,
+  days: number,
+  holidaysIso: readonly string[] = [],
+): string {
+  if (!Number.isInteger(days)) throw new Error(`invalid business days: ${days}`);
+  const holidays = new Set(holidaysIso);
+  const stepMs = days < 0 ? -86_400_000 : 86_400_000;
+  let cursor = parseIsoDateUtcMs(startIsoDate);
+  let remaining = Math.abs(days);
+  while (remaining > 0) {
+    cursor += stepMs;
+    const weekday = new Date(cursor).getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    if (holidays.has(formatIsoDateUtc(cursor))) continue;
+    remaining -= 1;
+  }
+  return formatIsoDateUtc(cursor);
+}
+
+// Überfällig-Badge (Spec §2, reine Anzeige): true genau dann, wenn ein
+// Fälligkeitsdatum gesetzt ist, die Phase noch offen ist und heute
+// (Berlin-Kalendertag, injizierbar für Tests) dahinter liegt.
+export function isSubsidyCaseOverdue(input: {
+  dueDate: string | null;
+  todayIso?: string;
+  phaseOpen: boolean;
+}): boolean {
+  if (input.dueDate === null || input.dueDate === undefined) return false;
+  if (!input.phaseOpen) return false;
+  const today = input.todayIso ?? todayBerlinIso();
+  return today > input.dueDate;
+}
+
+// BzA-vor-Annahme-Badge (Spec §3, weich, keine Sperren): true, solange
+// die Akte vor bza_bewilligt steht — inkl. korrektur (Wiedereinstieg,
+// Maschine F13-03 unverändert).
+const PRE_APPROVAL_STATUSES: readonly SubsidyCaseStatus[] = [
+  "draft",
+  "vorbereitung",
+  "bza_eingereicht",
+  "korrektur",
+];
+
+export function isSubsidyCasePreApproval(status: SubsidyCaseStatus): boolean {
+  return PRE_APPROVAL_STATUSES.includes(status);
+}
+
 export type SubsidyCaseDto = {
   id: string;
   projectId: string;
@@ -207,6 +297,13 @@ export type SubsidyCaseDto = {
   bzaApprovedAt: string | null;
   bndSubmittedAt: string | null;
   completedAt: string | null;
+  // F13-13: Preis-Snapshot (Cent, bei Anlage), Fälligkeiten
+  // (YYYY-MM-DD, ab Versand), Anzeige-Badges (rein lesend).
+  feeCents: number;
+  bzaDueDate: string | null;
+  bndDueDate: string | null;
+  overdue: boolean;
+  preApproval: boolean;
   createdAt: string;
   updatedAt: string;
   permissions: { canWrite: boolean };
