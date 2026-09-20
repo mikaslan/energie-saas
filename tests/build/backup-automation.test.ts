@@ -437,7 +437,13 @@ afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("Backup-Automations-High-Gate", () => {
+// Agent 9 Flake-Einhegung (macOS-Last-Timeouts, kein Assert): diese Suite
+// spawnt je Test echte Backup-Prozesse (isoliert bis ~2,1 s/Test) und riss
+// unter macOS-Voll-Last wiederholt den 5-s-Vitest-Default (A4: "genau 1
+// Backup-Timeout, gleicher langsamster Test"; A5: Backup-Flake offengelegt;
+// je isolierter Re-Run 16/16 gruen). Timeout 15 s + 1 Retry geben Last-Puffer;
+// alle Assertions unveraendert (kein Relax).
+describe("Backup-Automations-High-Gate", { timeout: 15_000, retry: 1 }, () => {
   it("attestiert Ziel, Bucket, exakte Objektversionen und Retention", async () => {
     const harness = await createHarness();
     const result = runBackup(harness);

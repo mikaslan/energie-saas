@@ -4,6 +4,7 @@ import {
   chmodSync,
   closeSync,
   cpSync,
+  existsSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
@@ -17,7 +18,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer, type Server, type ServerResponse } from "node:http";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PoolClient } from "pg";
 import { startEmbeddedPostgres, type EmbeddedTestDatabase } from "../setup/embedded-postgres.js";
@@ -1309,13 +1310,45 @@ async function submitSignedLead(
   }
 }
 
+// Shard-Filter fuer parallele CI-Jobs: M1_05_E2E_FILES enthaelt leerzeichen-
+// getrennte Spec-Pfade relativ zu tests/e2e (z.B. aus tests/e2e/shards/shard-1.txt).
+// Jede Datei wird streng validiert: erlaubte Zeichen, .spec.ts-Endung, Existenz
+// innerhalb tests/e2e (kein Pfad-Ausbruch). Leere/fehlende Variable = Volllauf.
+function parseSpecFileFilter(): string[] {
+  const raw = process.env.M1_05_E2E_FILES?.trim();
+  if (!raw) return [];
+  if (raw.length > 20000) {
+    throw new Error("M1_05_E2E_FILES ist zu lang (max 20000 Zeichen).");
+  }
+  const e2eRoot = resolve(REPO_ROOT, "tests", "e2e");
+  const out: string[] = [];
+  for (const part of raw.split(/\s+/)) {
+    if (part.length === 0) continue;
+    if (!/^[A-Za-z0-9._/-]+\.spec\.ts$/u.test(part)) {
+      throw new Error(`M1_05_E2E_FILES enthaelt unzulaessigen Pfad: ${part}`);
+    }
+    const abs = resolve(e2eRoot, part);
+    const rel = relative(e2eRoot, abs);
+    if (rel.startsWith("..") || resolve(e2eRoot, rel) !== abs) {
+      throw new Error(`M1_05_E2E_FILES bricht aus tests/e2e aus: ${part}`);
+    }
+    if (!existsSync(abs)) {
+      throw new Error(`M1_05_E2E_FILES verweist auf fehlende Datei: ${part}`);
+    }
+    out.push(abs);
+  }
+  return out;
+}
+
 async function runPlaywright(
   statePath: string,
   outputPath: string,
   baseURL: string,
   grep: string | undefined,
+  specFiles: string[],
 ): Promise<number> {
   const args = ["test", "--config", resolve(REPO_ROOT, "playwright.config.ts")];
+  for (const f of specFiles) args.push(f);
   if (grep) args.push("--grep", grep);
   // JSON-Report zusätzlich zur Konsolenausgabe: maschinenlesbarer
   // Abschluss für den CI-Artefakt-Upload (autonomer Loop). Die Datei
@@ -2058,12 +2091,17 @@ async function main(): Promise<number> {
   console.log(grep
     ? `[e2e] Chromium prüft fokussiert: ${grep}`
     : "[e2e] Chromium prüft M1-06 bis M2-03b1, M1-08b-Import, M1-09-Zuweisung, Rollen, Fremdmandant und Axe …");
+  const specFiles = parseSpecFileFilter();
+  if (specFiles.length > 0) {
+    console.log(`[e2e] Shard-Filter aktiv: ${specFiles.length} Spec-Dateien.`);
+  }
 
   const playwrightExitCode = await runPlaywright(
     statePath,
     playwrightOutputPath,
     server.baseURL,
     grep,
+    specFiles,
   );
   if (playwrightExitCode !== 0) {
     if (serverLogFd !== undefined) fsyncSync(serverLogFd);
@@ -2085,7 +2123,14 @@ async function main(): Promise<number> {
     // Absichtlich still: der Exit-Status oben bleibt maßgeblich.
   }
   const geoapifyExercised = geoapifyContractWasExercised(providerStub);
-  if ((!grep && !geoapifyExercised) || (grep && !geoapifySubsetIsPlausible(providerStub))) {
+  // Agent 9 (Sharding-Fertigstellung): Shard-Laeufe (M1_05_E2E_FILES-Filter)
+  // treffen wie --grep-Laeufe nur Teilmengen der Geo-Pfade — die exakte
+  // Volllauf-Erwartung 3/2 gilt dort nicht (CI 35505358946: alle 3 Shards
+  // mit 0/0, 2/1, 1/1 Aufrufen am Volllauf-Vertrag gescheitert). Shards
+  // muessen die Subset-Plausibilitaet erfuellen (0 Abweichungen,
+  // details <= autocomplete, je <= Volllauf-Maximum).
+  const subsetRun = Boolean(grep) || specFiles.length > 0;
+  if ((!subsetRun && !geoapifyExercised) || (subsetRun && !geoapifySubsetIsPlausible(providerStub))) {
     console.error(`[e2e] Der lokale Geoapify-Vertrag ist verletzt: ${providerStub.autocompleteRequests}/${providerStub.detailsRequests} Aufrufe, ${providerStub.violations.length} Abweichungen (erwartet ${GEOAPIFY_EXPECTED_AUTOCOMPLETE_REQUESTS}/${GEOAPIFY_EXPECTED_DETAILS_REQUESTS} im vollen Lauf).`);
     return 1;
   }
