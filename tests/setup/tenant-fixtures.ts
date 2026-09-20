@@ -3067,6 +3067,38 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
   offer_variant: fixtureOfferGraph,
   offer_variant_revision: fixtureOfferGraph,
   offer_variant_section: fixtureOfferGraph,
+  // F3-02 (0270): Selbstzeichnung zu echtem Projektgraphen (kein Storage).
+  planning_source: async (tx, wsId) => {
+    const { projectId, siteId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    await tx.execute(sql`
+      insert into planning_source (workspace_id, project_id, site_id, kind, created_by)
+      values (${wsId}::uuid, ${projectId}::uuid, ${siteId}::uuid,
+        'self_drawn', ${userId}::uuid)
+    `);
+  },
+  // F3-03 (0271): Flachdach-Rechteck zur frisch angelegten Quelle.
+  planning_roof_min: async (tx, wsId) => {
+    const { projectId, siteId } = await fixtureProjectGraph(tx, wsId);
+    const { userId } = await fixtureMembership(tx, wsId, "editor");
+    const created = await tx.execute<{ id: string }>(sql`
+      insert into planning_source (workspace_id, project_id, site_id, kind, created_by)
+      values (${wsId}::uuid, ${projectId}::uuid, ${siteId}::uuid,
+        'self_drawn', ${userId}::uuid)
+      returning id
+    `);
+    const sourceId = created.rows[0]?.id;
+    if (!sourceId) throw new Error("planning_source-Fixture lieferte keine ID");
+    await tx.execute(sql`
+      insert into planning_roof_min (
+        workspace_id, source_id, polygon_json, flat_single_tilt, created_by
+      ) values (
+        ${wsId}::uuid, ${sourceId}::uuid,
+        ${JSON.stringify([
+          { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 6 }, { x: 0, y: 6 },
+        ])}::jsonb, 30, ${userId}::uuid)
+    `);
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════

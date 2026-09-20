@@ -58,6 +58,11 @@ import type {
   OfferVariantSnapshotView,
 } from "./offer-detail-view";
 import { OfferBulkUpdatePanel } from "./offer-bulk-update-panel";
+import {
+  PlanningSourcesOfferBlock,
+  type OfferPlanningData,
+} from "./planning-sources-offer-block";
+import { PlanningRoofSection } from "../../anfragen/[projectId]/planning-roof-section";
 import offerThemeStyles from "../offer-theme.module.css";
 import { formatOfferCents, formatOfferCentsTotal, formatOfferRetryDate } from "./offer-format";
 
@@ -536,11 +541,13 @@ export function OfferVariantEditor({
   afterEditor,
   showReleaseSkipLink = false,
   showIssuanceSkipLink = false,
+  planning,
 }: {
   view: EditableOfferView;
   afterEditor?: ReactNode;
   showReleaseSkipLink?: boolean;
   showIssuanceSkipLink?: boolean;
+  planning?: OfferPlanningData;
 }) {
   const router = useRouter();
   const snapshot = view.activeVariant.snapshot;
@@ -1183,6 +1190,22 @@ export function OfferVariantEditor({
                             ? "2D verwendet eine vereinfachte Dachplanung und unterstützt Simulationsergebnisse."
                             : "3D verwendet die vollständige Dachplanung und unterstützt Simulationsergebnisse."}
                       </p>
+                      {planning !== undefined ? (
+                        <div className="mt-4 grid gap-4">
+                          <PlanningSourcesOfferBlock
+                            planningMode={draft.planningMode}
+                            sources={planning.sources}
+                          />
+                          <PlanningRoofSection
+                            workspaceId={planning.workspaceId}
+                            projectId={planning.projectId}
+                            sourceId={planning.sourceId}
+                            initialRoof={planning.initialRoof}
+                            canWrite={planning.canWrite}
+                            planningMode={draft.planningMode}
+                          />
+                        </div>
+                      ) : null}
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       {view.permissions.canApplyDiscount ? (

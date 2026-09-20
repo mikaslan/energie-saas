@@ -663,6 +663,17 @@ const PLANNING_REQUEST_RELATIONS = [
   "planning_request",
 ] as const;
 
+const PLANNING_SOURCE_RELATIONS = [
+  "planning_source",
+  "planning_roof_min",
+] as const;
+const PLANNING_SOURCE_RUNTIME_ROUTINES = [
+  "public.planning_roof_min_tilt_per_edge_valid(jsonb)",
+] as const;
+const PLANNING_SOURCE_FUNCTION_NAMES = [
+  ...PLANNING_SOURCE_RUNTIME_ROUTINES,
+].map((signature) => signature.slice("public.".length, signature.indexOf("(")));
+
 const ORDER_PART_RELATIONS = [
   "order_part",
   "order_part_message",
@@ -3180,6 +3191,31 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  const hasPlanningSourcesForAcl = await hasAtomicPublicRelationSet(
+    client,
+    PLANNING_SOURCE_RELATIONS,
+    "Rollen-ACL-Manifest: F3-02/F3-03-Dachquellen",
+  );
+  if (hasPlanningSourcesForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.planning_source,
+        public.planning_roof_min
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.planning_source to app_runtime;
+      grant select, insert, update on public.planning_roof_min to app_runtime;
+
+      revoke execute on function
+        ${PLANNING_SOURCE_RUNTIME_ROUTINES.join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant execute on function
+        ${PLANNING_SOURCE_RUNTIME_ROUTINES.join(",\n        ")}
+        to app_runtime
+    `);
+  }
+
   const hasOrderPartsForAcl = await hasAtomicPublicRelationSet(
     client,
     ORDER_PART_RELATIONS,
@@ -4809,6 +4845,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F13-11-Planungsservice",
   );
 
+  const hasPlanningSources = await hasAtomicPublicRelationSet(
+    client,
+    PLANNING_SOURCE_RELATIONS,
+    "Rollenvertrag: F3-02/F3-03-Dachquellen",
+  );
+
   const hasOrderParts = await hasAtomicPublicRelationSet(
     client,
     ORDER_PART_RELATIONS,
@@ -5107,6 +5149,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPlanningRequests ? PLANNING_REQUEST_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasPlanningSources ? PLANNING_SOURCE_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasOrderParts ? ORDER_PART_RELATIONS.map(
@@ -5457,6 +5502,9 @@ export async function verifyRoleContract(
         (name) => `${name}:app_owner`,
       ) : []),
       ...(hasPlanningSettings ? PLANNING_SETTINGS_FUNCTION_NAMES.map(
+        (name) => `${name}:app_owner`,
+      ) : []),
+      ...(hasPlanningSources ? PLANNING_SOURCE_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_FUNCTION_NAMES.map(
@@ -5866,6 +5914,10 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:1ef6fac128e4a018128859ef717ac2a42ede90e4ab7e39e40c38224624b9a934",
         "_f301_actor_planning_role(uuid):text:app_owner:plpgsql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
+      ] : []),
+      ...(hasPlanningSources ? [
+        "planning_roof_min_tilt_per_edge_valid(jsonb):boolean:app_owner:plpgsql:f:i:false:false:true:u:" +
+          "search_path=pg_catalog:ed0da7bd2abe4c0c7cf61a2dad427a8992c3dae378f2bd2db134426f9313c6ec",
       ] : []),
       ...(hasPortal ? [
         "_f1001_actor_can_read_portal(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
@@ -6462,6 +6514,9 @@ export async function verifyRoleContract(
       ...(hasPlanningRequests ? PLANNING_REQUEST_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasPlanningSources ? PLANNING_SOURCE_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasOrderParts ? ORDER_PART_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6918,6 +6973,10 @@ export async function verifyRoleContract(
         ] : []),
         ...(hasPlanningRequests ? [
           "planning_request:tenant_isolation:b243c3b3fc64e6c557fa5576612ddfe590c41c1042e495eaca04fec6afdeefe1",
+        ] : []),
+        ...(hasPlanningSources ? [
+          "planning_source:tenant_isolation:a4613dec4100b097a8f3f96635d1ea3d20776dada247a83d0e808388b664145a",
+          "planning_roof_min:tenant_isolation:733bcb4000ad236be2bbe90941ad75bd3dafe51fbc0d96395a764aa9dd9223a6",
         ] : []),
         ...(hasOrderParts ? [
           "order_part:tenant_isolation:268512a6573eac45e57baff80c9ec88d2eeb1b95a6b7b8bebba57a0ff588193e",
@@ -7549,6 +7608,11 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
+      ...(hasPlanningSources ? PLANNING_SOURCE_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
       ...(hasOrderParts ? ORDER_PART_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
@@ -7975,6 +8039,9 @@ export async function verifyRoleContract(
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
       ...(hasPlanningSettings ? PLANNING_SETTINGS_RUNTIME_ROUTINES.map((signature) =>
+        `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
+      ) : []),
+      ...(hasPlanningSources ? PLANNING_SOURCE_RUNTIME_ROUTINES.map((signature) =>
         `app_runtime:${signature.slice("public.".length)}:EXECUTE:app_owner:false`
       ) : []),
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES.map((signature) =>

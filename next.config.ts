@@ -11,8 +11,9 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     // F7.4 pinnt seinen gueltigen Whole-Tree-Payload auf maximal 900.000
-    // Bytes. Die verbleibende Marge gehoert Multipart-/Action-Metadaten.
-    serverActions: { bodySizeLimit: "1mb" },
+    // Bytes (App-Level, unberuehrt). F3-02 braucht 10 MiB Uploads durch
+    // Server-Actions; Marge gehoert Multipart-/Action-Metadaten.
+    serverActions: { bodySizeLimit: "12mb" },
   },
 };
 

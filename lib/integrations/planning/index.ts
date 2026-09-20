@@ -14,3 +14,6 @@ export type {
   PlanningSettingsCommandV1,
   PlanningSettingsV1,
 } from "./contract";
+
+// F3-Batch-1-Verträge: @/lib/integrations/planning/contracts (client-sicher,
+// reines zod; modules/planning/index ist server-vergiftet).

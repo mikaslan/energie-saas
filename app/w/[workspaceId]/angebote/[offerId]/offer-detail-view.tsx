@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
+import type { OfferPlanningData } from "./planning-sources-offer-block";
 import { SingleLineDiagram } from "./single-line-diagram";
 import { SchematicExport } from "./schematic-export";
 import { buildSingleLineSchematic } from "@/lib/integrations/schematic/single-line-v1";
@@ -834,7 +835,10 @@ function SalesForecast({ value }: { value: number | null }) {
   );
 }
 
-export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
+export function OfferDetailView({ view, planning }: {
+  view: OfferDetailSurfaceView;
+  planning?: OfferPlanningData;
+}) {
   const canEdit = view.permissions?.canEdit === true;
   const canReadPurchasePrice = view.permissions?.canReadPurchasePrice === true;
   const pending = view.state === "pending";
@@ -957,6 +961,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
           activeVariant: view.activeVariant,
           permissions: { ...view.permissions, canEdit: true },
         }}
+        planning={planning}
         showReleaseSkipLink={offerReleasePanel !== null}
         showIssuanceSkipLink={offerIssuancePanel !== null}
         afterEditor={<div

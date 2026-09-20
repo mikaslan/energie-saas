@@ -41,6 +41,19 @@ import {
   type OfferDetailSurfaceView,
 } from "./offer-detail-view";
 import { OfferSignaturePanel } from "./offer-signature-panel";
+import {
+  toPlanningSourceDto,
+  type PlanningSourceRow,
+} from "../../anfragen/[projectId]/planning-source-model";
+import {
+  toPlanningRoofDto,
+  type PlanningRoofDto,
+  type PlanningRoofRow,
+} from "../../anfragen/[projectId]/planning-roof-model";
+import type {
+  OfferPlanningData,
+  PlanningSourcesOfferEntry,
+} from "./planning-sources-offer-block";
 import { formatUpsellQuantity } from "./offer-format";
 import {
   OfferUpsellPanel,
@@ -573,6 +586,74 @@ function projectOfferDetailView(
   };
 }
 
+// F3-Batch-1: Planungsdaten des Angebotsprojekts (Quellen + jüngstes
+// Dach + Schreib-Gate). Null-safe: ohne Projekt/Recht kein Block.
+async function loadOfferPlanningData(
+  workspaceId: string,
+  projectId: string | null,
+): Promise<OfferPlanningData | undefined> {
+  if (projectId === null) return undefined;
+  try {
+    const loaded = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "planning_offer",
+      async (tx, ctx) => {
+        // F3-BATCH-1: External fail-closed (Loader liefert undefined).
+        if (isExternalOnly(ctx)) {
+          throw new PermissionDeniedError("project.read", "planning_offer", undefined, ctx.actor);
+        }
+        const foundSources = await tx.execute<PlanningSourceRow>(sql`
+          select id, kind, storage_key, scale_ref_json, created_at
+            from planning_source
+           where workspace_id = ${ctx.workspaceId}::uuid
+             and project_id = ${projectId}::uuid
+           order by created_at, id
+        `);
+        const sources: PlanningSourcesOfferEntry[] = [];
+        for (const row of foundSources.rows) {
+          const dto = toPlanningSourceDto(row);
+          if (dto) sources.push({ id: dto.id, kind: dto.kind, filename: dto.filename });
+        }
+        const latestId = foundSources.rows.at(-1)?.id ?? null;
+        let initialRoof: PlanningRoofDto | null = null;
+        if (latestId !== null) {
+          const foundRoof = await tx.execute<PlanningRoofRow>(sql`
+            select id, source_id, polygon_json, tilt_per_edge_json,
+                   flat_single_tilt, created_at
+              from planning_roof_min
+             where workspace_id = ${ctx.workspaceId}::uuid
+               and source_id = ${latestId}::uuid
+             order by created_at desc, id desc
+             limit 1
+          `);
+          const row = foundRoof.rows[0] ?? null;
+          initialRoof = row ? toPlanningRoofDto(row) : null;
+        }
+        return { sources, latestId, initialRoof };
+      },
+    );
+    const canWrite = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "planning_offer_write_gate",
+      async (_tx, ctx) => !isExternalOnly(ctx) && can(ctx, "project.write"),
+    );
+    return {
+      workspaceId,
+      projectId,
+      sources: loaded.sources,
+      sourceId: loaded.latestId,
+      initialRoof: loaded.initialRoof,
+      canWrite,
+    };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return undefined;
+    if (error instanceof PermissionDeniedError) return undefined;
+    throw error;
+  }
+}
+
 export default async function OfferDetailPage(
   props: PageProps<"/w/[workspaceId]/angebote/[offerId]">,
 ) {
@@ -921,9 +1002,13 @@ export default async function OfferDetailPage(
   const upsellBasisGrossCents =
     projectedView.activeVariant?.snapshot.totals.basisGrossCents ?? 0;
   const upsellVariantId = projectedView.activeVariant?.snapshot.variantId ?? null;
+  const offerPlanning = await loadOfferPlanningData(
+    workspaceId,
+    projectedView.offer?.projectId ?? null,
+  );
   return (
     <>
-      <OfferDetailView view={projectedView} />
+      <OfferDetailView view={projectedView} planning={offerPlanning} />
       {upsellVariantId !== null && upsellOptions.length > 0 ? (
         <OfferUpsellPanel
           key={upsellVariantId}

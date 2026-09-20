@@ -46,6 +46,8 @@ export * from "./portal";
 export * from "./planning";
 export * from "./service-case";
 export * from "./planning-request";
+export * from "./planning-source";
+export * from "./planning-roof-min";
 export * from "./order-part";
 export * from "./team";
 export * from "./portal-status-label";
