@@ -5,6 +5,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
   DOCUMENT_TYPE_SINGULAR_LABELS,
+  INVOICE_KIND_LABELS,
   PAYMENT_STATUS_LABELS,
   VOID_REASON_LABELS,
   formatBerlinDate,
@@ -18,15 +19,27 @@ import {
 } from "@/lib/integrations/invoicing/contract";
 import { PermissionDeniedError } from "@/lib/permissions";
 import {
+  DRAFT_PDF_TEMPLATE_VERSION,
+  INVOICE_PAYMENT_TEMPLATE_VERSION,
+  INVOICE_PDF_TEMPLATE_VERSION,
+} from "@/lib/integrations/invoicing/pdf-contract";
+import {
   InvoicingNotFoundError,
+  getDocumentDelivery,
   getDocumentDetail,
+  getInvoicingSettings,
   listDepositCandidates,
+  listInvoicePdfs,
   listPartialInvoices,
 } from "@/modules/invoicing";
 import { DeniedState } from "../../../_ui";
 import { CiiExportPanel } from "./cii-export-panel";
 import { DepositLinkPanel } from "./deposit-link-panel";
 import { DuplicateDocumentPanel } from "./duplicate-document-panel";
+import { DraftPdfPanel } from "./draft-pdf-panel";
+import { InvoicePaymentPanel } from "./invoice-payment-panel";
+import { InvoicePdfPanel } from "./invoice-pdf-panel";
+import { VersandPanel } from "./versand-panel";
 import { PartialInvoicePanel } from "./partial-invoice-panel";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
@@ -118,6 +131,112 @@ export default async function InvoicingDocumentDetailPage(
     })()
     : null;
 
+  // M3-02d: PDF-Jobstatus nur fuer Rechnungen/Gutschriften (reine Anzeige;
+  // ohne invoicing.write → leere Liste, Seite bleibt lesbar).
+  const invoicePdfs = (type === "invoice" || type === "credit_note")
+    ? await (async () => {
+      try {
+        return await authorizedQuery(
+          workspaceId,
+          "invoicing.write",
+          "commercial_document_render_job",
+          (tx, ctx) => listInvoicePdfs(tx, ctx, {
+            workspaceId,
+            documentId,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof PermissionDeniedError) return [];
+        throw error;
+      }
+    })()
+    : [];
+  const canRequestPdf = (type === "invoice" || type === "credit_note")
+    && detail.document.status === "issued"
+    && detail.document.permissions.canWrite;
+
+  // F8-18: Track-Partition (reine Anzeige): Das Invoice-Panel erhaelt nur
+  // Invoice-Jobs — Payment-Jobs duerfen nicht als „Rechnungs-PDF ist
+  // bereit" fehl-gelabelt werden.
+  const invoicePdfJobs = invoicePdfs.filter(
+    (job) => job.templateVersion === INVOICE_PDF_TEMPLATE_VERSION,
+  );
+  const paymentPdfJobs = invoicePdfs.filter(
+    (job) => job.templateVersion === INVOICE_PAYMENT_TEMPLATE_VERSION,
+  );
+  // F8-24c: Draft-Track (reine Anzeige; Vorschau nur im Entwurf).
+  const draftPdfJobs = invoicePdfs.filter(
+    (job) => job.templateVersion === DRAFT_PDF_TEMPLATE_VERSION,
+  );
+  const canRequestDraft = (type === "invoice" || type === "credit_note")
+    && detail.document.status === "draft"
+    && detail.document.permissions.canWrite;
+
+  // F8-19: Versand-Nachweis (reine Anzeige; ohne invoicing.write →
+  // null, Seite bleibt lesbar).
+  const delivery = (type === "invoice" || type === "credit_note")
+    ? await (async () => {
+      try {
+        return await authorizedQuery(
+          workspaceId,
+          "invoicing.write",
+          "commercial_document_delivery",
+          (tx, ctx) => getDocumentDelivery(tx, ctx, {
+            workspaceId,
+            documentId,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof PermissionDeniedError) return null;
+        throw error;
+      }
+    })()
+    : null;
+  const deliveryView = delivery === null ? null : {
+    sentAt: delivery.sentAt,
+    channel: delivery.channel,
+    invoiceJobId: delivery.invoiceJobId,
+    invoiceArtifactSha256: delivery.invoiceArtifactSha256,
+    paymentJobId: delivery.paymentJobId,
+    paymentArtifactSha256: delivery.paymentArtifactSha256,
+  };
+  const deliveryDownloads = [...invoicePdfJobs, ...paymentPdfJobs]
+    .filter((job) => job.state === "succeeded" && job.canDownload)
+    .map((job) => ({
+      jobId: job.jobId,
+      kind: (job.templateVersion === INVOICE_PDF_TEMPLATE_VERSION ? "invoice" : "payment") as "invoice" | "payment",
+      href: `/w/${workspaceId}/rechnungen/${type}/${documentId}/pdf/${job.jobId}`,
+    }));
+  // F8-19: Versand-Button nur mit Schreibrecht, ohne Nachweis und mit
+  // versiegeltem Rechnungs-PDF (reine Anzeige; Service bleibt letzte
+  // Instanz und verweigert sonst mit conflict).
+  const canSendDelivery = (type === "invoice" || type === "credit_note")
+    && detail.document.status === "issued"
+    && detail.document.permissions.canWrite
+    && delivery === null
+    && invoicePdfJobs.some((job) => job.state === "succeeded" && job.canDownload);
+
+  // F8-18: Bankverbindungs-Hinweis (reine Anzeige; der Service bleibt
+  // letzte Instanz). paymentAccountHolder ist nie redigiert und steht per
+  // DB-CHECK gemeinsam mit der IBAN (alle null oder alle gesetzt) — die
+  // redigierte IBAN selbst wird hier bewusst nicht gelesen.
+  const invoicingSettings = type === "invoice" && detail.document.status === "issued"
+    ? await (async () => {
+      try {
+        return await authorizedQuery(
+          workspaceId,
+          "invoicing.read",
+          "workspace_invoicing_settings",
+          (tx, ctx) => getInvoicingSettings(tx, ctx),
+        );
+      } catch (error) {
+        if (error instanceof PermissionDeniedError) return null;
+        throw error;
+      }
+    })()
+    : null;
+  const hasBankDetails = invoicingSettings?.paymentAccountHolder != null;
+
   const { document, lines } = detail;
   // F8-04: Gutschrift-Detail zeigt den Block auch ohne eingehende Links,
   // sobald Allokationen auf Rechnungen bestehen (reine Anzeige, kein
@@ -127,6 +246,12 @@ export default async function InvoicingDocumentDetailPage(
     || (type === "credit_note" && detail.allocatedFinals.length > 0);
   const paidCents = document.paidCents ?? 0;
   const openCents = Math.max(document.grossCents - paidCents, 0);
+  // F8-18: Zahlungsbeleg nur fuer ausgestellte Rechnungen mit offenem
+  // Rest (reine Anzeige; der Service bleibt letzte Instanz).
+  const canRequestPayment = type === "invoice"
+    && document.status === "issued"
+    && document.permissions.canWrite
+    && openCents > 0;
   const skontoText = document.skontoPercentBps !== null && document.skontoDays !== null
     ? `${(document.skontoPercentBps / 100).toLocaleString("de-DE")} % innerhalb von ${document.skontoDays} Tagen`
     : "Kein Skonto vereinbart.";
@@ -162,6 +287,14 @@ export default async function InvoicingDocumentDetailPage(
             <dt className="text-slate-600">Status</dt>
             <dd className="font-semibold text-slate-900">{DOCUMENT_STATUS_LABELS[document.status] ?? document.status}</dd>
           </div>
+          {type === "invoice" ? (
+            <div className="flex justify-between gap-4">
+              <dt className="text-slate-600">Rechnungsart</dt>
+              <dd data-testid="invoice-kind-badge" className="font-semibold text-slate-900">
+                {document.invoiceKind === null ? "Einfache Rechnung" : (INVOICE_KIND_LABELS[document.invoiceKind] ?? document.invoiceKind)}
+              </dd>
+            </div>
+          ) : null}
           <div className="flex justify-between gap-4">
             <dt className="text-slate-600">Zahlstatus</dt>
             <dd className="font-semibold text-slate-900">
@@ -249,8 +382,51 @@ export default async function InvoicingDocumentDetailPage(
         )}
       </section>
 
+      {(type === "invoice" || type === "credit_note") && document.status === "draft" ? (
+        <DraftPdfPanel
+          workspaceId={workspaceId}
+          type={type}
+          documentId={documentId}
+          canGenerate={canRequestDraft}
+          jobs={draftPdfJobs}
+        />
+      ) : null}
+
       {(type === "invoice" || type === "credit_note") && document.status === "issued" ? (
         <CiiExportPanel workspaceId={workspaceId} type={type} documentId={documentId} />
+      ) : null}
+
+      {(type === "invoice" || type === "credit_note") && document.status === "issued" ? (
+        <InvoicePdfPanel
+          workspaceId={workspaceId}
+          type={type}
+          documentId={documentId}
+          canGenerate={canRequestPdf}
+          jobs={invoicePdfJobs}
+        />
+      ) : null}
+
+      {type === "invoice" && document.status === "issued" ? (
+        <InvoicePaymentPanel
+          workspaceId={workspaceId}
+          type={type}
+          documentId={documentId}
+          canGenerate={canRequestPayment}
+          openCents={openCents}
+          hasBankDetails={hasBankDetails}
+          jobs={paymentPdfJobs}
+        />
+      ) : null}
+
+      {(type === "invoice" || type === "credit_note") && document.status === "issued" ? (
+        <VersandPanel
+          workspaceId={workspaceId}
+          type={type}
+          documentId={documentId}
+          canSend={canSendDelivery}
+          delivery={deliveryView}
+          downloads={deliveryDownloads}
+        />
       ) : null}
 
       {showDeposits ? (

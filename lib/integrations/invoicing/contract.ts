@@ -236,6 +236,9 @@ export const COMMERCIAL_DOCUMENT_ISSUE_COMMAND_VERSION =
   "commercial-document-issue-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION =
   "commercial-document-terms-command.v1" as const;
+// F8-16: Kennung setzen/loeschen am Rechnungs-Entwurf (invoice-only).
+export const COMMERCIAL_DOCUMENT_INVOICE_KIND_COMMAND_VERSION =
+  "commercial-document-invoice-kind-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_ARCHIVE_COMMAND_VERSION =
   "commercial-document-archive-command.v1" as const;
 export const COMMERCIAL_DOCUMENT_GROUP_ARCHIVE_COMMAND_VERSION =
@@ -268,6 +271,15 @@ export const COMMERCIAL_DOCUMENT_DUPLICATE_COMMAND_VERSION =
 // 1..Rest-Netto, cent-exakt ohne Rundung).
 export const COMMERCIAL_DOCUMENT_PARTIAL_COMMAND_VERSION =
   "commercial-document-partial-command.v1" as const;
+// M3-02b: Render-Input anfordern (versiegelter invoice-pdf-input.v1).
+export const COMMERCIAL_DOCUMENT_RENDER_COMMAND_VERSION =
+  "commercial-document-render-command.v1" as const;
+// F8-17: Zahlungsbeleg anfordern (versiegelter invoice-payment-input.v1).
+export const COMMERCIAL_DOCUMENT_PAYMENT_RENDER_COMMAND_VERSION =
+  "commercial-document-payment-render-command.v1" as const;
+// F8-24c: ENTWURF-Vorschau anfordern (draft-pdf-input.v1, kein Siegel).
+export const COMMERCIAL_DOCUMENT_DRAFT_RENDER_COMMAND_VERSION =
+  "commercial-document-draft-render-command.v1" as const;
 export const MAX_DOCUMENT_MONEY_CENTS = 9_000_000_000_000_000 as const;
 export const MAX_DOCUMENT_QUANTITY_MILLI = 100_000_000 as const;
 export const MAX_DOCUMENT_LINE_POSITION = 500 as const;
@@ -324,11 +336,17 @@ export const INVOICING_REPORT_VERSION = "invoicing-report.v1" as const;
 export const INVOICING_REPORT_CSV_VERSION = "invoicing-report-csv.v1" as const;
 export const INVOICING_DATEV_COMMAND_VERSION = "invoicing-datev-command.v1" as const;
 export const INVOICING_DATEV_BATCH_VERSION = "invoicing-datev-batch.v1" as const;
+export const INVOICING_MONATS_ZIP_COMMAND_VERSION =
+  "invoicing-monats-zip-command.v1" as const;
+export const INVOICING_MONATS_ZIP_BATCH_VERSION =
+  "invoicing-monats-zip-batch.v1" as const;
 
 // F5-01: v2 versiegelt zusaetzlich die Skonto-Konditionen (Paar
 // skontoPercentBps/skontoDays, null = kein Skonto). v1-Snapshots bleiben
 // lesbar (Seeds/History), neue Ausstellungen siegeln v2.
-export const GOEBD_SNAPSHOT_SCHEMA_VERSION = "document-snapshot.v2" as const;
+// F8-16: v3 versiegelt zusaetzlich die Teilrechnungstypen-Kennung
+// (invoiceKind, null = einfache Rechnung). v1/v2 bleiben lesbar.
+export const GOEBD_SNAPSHOT_SCHEMA_VERSION = "document-snapshot.v3" as const;
 export const GOEBD_SNAPSHOT_CANONICALIZATION_VERSION = "document-jcs.v1" as const;
 
 // 6 Dokumenttypen (Spec §2/§4, ADR 0023). Der Diskriminator ist genau dieser
@@ -375,6 +393,16 @@ export const commercialCreditNoteTypes = [
 ] as const;
 export type CommercialCreditNoteType = (typeof commercialCreditNoteTypes)[number];
 
+// F8-16: Teilrechnungstypen-Kennung (Katalog F8.1). Deutsche DB-Codes wie
+// creditNoteType-Praezedenz; exakte Reonic-Typnamen UNKNOWN (ESTIMATE).
+export const commercialInvoiceKinds = [
+  "anzahlung",
+  "abschlag",
+  "teilrechnung",
+  "schlussrechnung",
+] as const;
+export type CommercialInvoiceKind = (typeof commercialInvoiceKinds)[number];
+
 // Nummernserien-Defaults je Typ (Spec §6, OBSERVED-Templates). prefix/padding
 // modellieren nur den {NUMBER}-Anteil; die vollständigen Datums-Platzhalter
 // ({YEAR}/{MONTH}/{DAY}) liegen im M3-00-Format-Template.
@@ -398,6 +426,87 @@ const commercialPaymentStatusSchema = z.enum(commercialPaymentStatuses);
 const commercialVoidReasonSchema = z.enum(commercialVoidReasons);
 const commercialLineUnitSchema = z.enum(commercialLineUnits);
 const commercialCreditNoteTypeSchema = z.enum(commercialCreditNoteTypes);
+const commercialInvoiceKindSchema = z.enum(commercialInvoiceKinds);
+
+// M3-02a: Empfänger-Snapshot bei Ausstellung (Rechnungsadresse, minimal).
+// Spiegel der M2-02-Textdisziplin: wohlgeformtes Unicode, NFC + Trim,
+// Längen-Caps. Leere Optionale werden null (kein Leerstring im Siegel);
+// Kanäle (Mail/Telefon) gehören nicht hierher.
+function hasWellFormedSnapshotText(value: string): boolean {
+  if (value.includes("\0")) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// PG-Semantik-Spiegel (crm.ts-CHECKs): btrim() kürzt nur Spaces, length()
+// zählt Zeichen (Codepoints), nicht UTF-16-Units. JS-trim/.length würden
+// legale Kontakte fälschlich verwerfen (non-BMP-Text, Tab-Namen).
+function snapshotNormalize(value: string): string {
+  return value.normalize("NFC").replace(/^ +| +$/gu, "");
+}
+
+function snapshotCodePoints(value: string): number {
+  return Array.from(value).length;
+}
+
+function snapshotRequiredText(maxLength: number) {
+  return z.string().superRefine((value, context) => {
+    if (!hasWellFormedSnapshotText(value)) {
+      context.addIssue({ code: "custom", message: "Text contains invalid Unicode." });
+      return;
+    }
+    const normalized = snapshotNormalize(value);
+    if (snapshotCodePoints(normalized) < 1 || snapshotCodePoints(normalized) > maxLength) {
+      context.addIssue({
+        code: "custom",
+        message: `Text must be 1 to ${maxLength} characters long.`,
+      });
+    }
+  }).transform((value) => snapshotNormalize(value));
+}
+
+function snapshotOptionalText(maxLength: number) {
+  return z.string().nullable().superRefine((value, context) => {
+    if (value === null) return;
+    if (!hasWellFormedSnapshotText(value)) {
+      context.addIssue({ code: "custom", message: "Text contains invalid Unicode." });
+      return;
+    }
+    if (snapshotCodePoints(snapshotNormalize(value)) > maxLength) {
+      context.addIssue({
+        code: "custom",
+        message: `Text must be at most ${maxLength} characters long.`,
+      });
+    }
+  }).transform((value) => {
+    if (value === null) return null;
+    const normalized = snapshotNormalize(value);
+    return normalized.length === 0 ? null : normalized;
+  });
+}
+
+// Caps spiegeln exakt die Kontakt-CHECKs (crm.ts) — kein legaler Kontakt
+// darf die Ausstellung brechen; strengere Caps wären False-Rejects.
+export const commercialRecipientSnapshotV1Schema = z.strictObject({
+  displayName: snapshotRequiredText(200),
+  street: snapshotOptionalText(200),
+  houseNumber: snapshotOptionalText(30),
+  postalCode: snapshotOptionalText(20),
+  city: snapshotOptionalText(200),
+  country: snapshotOptionalText(20),
+});
+export type CommercialRecipientSnapshotV1 = z.infer<
+  typeof commercialRecipientSnapshotV1Schema
+>;
 
 const groupNameSchema = z.string().trim().min(1).max(120).refine(
   (value) => value.trim().length >= 1,
@@ -412,6 +521,17 @@ const documentNameSchema = z.string().trim().min(1).max(160).refine(
 const moneyCentsSchema = z.number().int().min(0).max(MAX_DOCUMENT_MONEY_CENTS);
 const quantityMilliSchema = z.number().int().min(1).max(MAX_DOCUMENT_QUANTITY_MILLI);
 const taxRateBpsSchema = z.union([z.literal(0), z.literal(1900)]);
+
+// F8-22 Steuerbehandlung je Zeile (DATEV-Matrix): 1900 bps → nur
+// standard_19; 0 bps → zero_12_3 (§12 Abs. 3, Default) oder
+// reverse_13b (§13b, explizit zu waehlen). Service validiert die
+// Kopplung (DB-CHECK spiegelt sie).
+export const datevTaxTreatmentSchema = z.enum([
+  "standard_19",
+  "zero_12_3",
+  "reverse_13b",
+]);
+export type DatevTaxTreatment = z.infer<typeof datevTaxTreatmentSchema>;
 const optionalUuid = z.string().uuid().nullable();
 const optionalDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/u).nullable();
 
@@ -435,6 +555,8 @@ const documentDraftInputFields = {
   plannedDeliveryDate: optionalDate,
   plannedServiceDate: optionalDate,
   creditNoteType: commercialCreditNoteTypeSchema.nullable(),
+  // F8-16: optional (fehlend = null = einfache Rechnung), nur invoice.
+  invoiceKind: commercialInvoiceKindSchema.nullable().optional(),
 } as const;
 
 // Typ-bedingte Pflicht-Datumfelder (Spec §4/M301-01): je Typ die Spalten aus
@@ -475,6 +597,14 @@ export const commercialDocumentDraftInputV1Schema = z
         code: "custom",
         path: ["creditNoteType"],
         message: "creditNoteType is only valid for credit_note",
+      });
+    }
+    // F8-16: Kennung nur an Rechnungen (DB-Scope-CHECK spiegeln).
+    if ((value.invoiceKind ?? null) !== null && value.type !== "invoice") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["invoiceKind"],
+        message: "invoiceKind is only valid for invoice",
       });
     }
     // F5-01b: Skonto nur als Paar und nur fuer Rechnungen (fehlende Keys
@@ -533,6 +663,17 @@ export const commercialDocumentTermsCommandV1Schema = z
   });
 export type CommercialDocumentTermsCommandV1 = z.infer<
   typeof commercialDocumentTermsCommandV1Schema
+>;
+
+// F8-16: Kennung am Rechnungs-Entwurf setzen (null = loeschen). Typ- und
+// Status-Gates prueft der Service (Validation/Conflict), wie Terms.
+export const commercialDocumentInvoiceKindCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(COMMERCIAL_DOCUMENT_INVOICE_KIND_COMMAND_VERSION),
+  documentId: z.string().uuid(),
+  invoiceKind: commercialInvoiceKindSchema.nullable(),
+});
+export type CommercialDocumentInvoiceKindCommandV1 = z.infer<
+  typeof commercialDocumentInvoiceKindCommandV1Schema
 >;
 export type CommercialDocumentSentCommandV1 = z.infer<
   typeof commercialDocumentSentCommandV1Schema
@@ -614,6 +755,7 @@ const lineInputFields = {
   unit: commercialLineUnitSchema,
   netCents: moneyCentsSchema,
   taxRateBps: taxRateBpsSchema,
+  taxTreatment: datevTaxTreatmentSchema.optional(),
 } as const;
 
 export const commercialDocumentLineInputV1Schema = z.strictObject(lineInputFields);
@@ -678,6 +820,7 @@ export const commercialDocumentV1Schema = z.strictObject({
   plannedDeliveryDate: z.string().nullable(),
   plannedServiceDate: z.string().nullable(),
   creditNoteType: commercialCreditNoteTypeSchema.nullable(),
+  invoiceKind: commercialInvoiceKindSchema.nullable(),
   number: z.string().nullable(),
   numberYear: z.number().int().nullable(),
   numberSequence: z.number().int().nullable(),
@@ -811,6 +954,8 @@ export const commercialDocumentListFiltersV1Schema = z
     typeDateFrom: isoDateOnlySchema.optional(),
     typeDateTo: isoDateOnlySchema.optional(),
     creditNoteType: commercialCreditNoteTypeSchema.optional(),
+    // F8-16: Kennungsfilter (Scope nur Typ invoice, s. Refine unten).
+    invoiceKind: commercialInvoiceKindSchema.optional(),
     archived: z.enum(["active", "archived", "all"]).optional(),
     search: z.string().trim().min(1).max(160).optional(),
   })
@@ -847,6 +992,9 @@ export const commercialDocumentListCommandV1Schema = z
     }
     if (filters.creditNoteType !== undefined && value.type !== "credit_note") {
       issue("creditNoteType", "creditNoteType is only valid for credit_note");
+    }
+    if (filters.invoiceKind !== undefined && value.type !== "invoice") {
+      issue("invoiceKind", "invoiceKind is only valid for invoice");
     }
     if ((filters.typeDateFrom !== undefined || filters.typeDateTo !== undefined)
       && value.type !== "invoice" && value.type !== "credit_note") {
@@ -958,6 +1106,29 @@ export const invoicingDatevCommandV1Schema = z.strictObject({
 });
 export type InvoicingDatevCommandV1 = z.infer<typeof invoicingDatevCommandV1Schema>;
 
+// F8-22 Datenservice-Vorstufe: maschinenlesbare Belegsicht je Stapel
+// (Spiegel DatevBatchDocument aus datev-export.ts, dort typisiert).
+export const datevBatchDocumentGroupV1Schema = z.strictObject({
+  taxTreatment: datevTaxTreatmentSchema,
+  netCents: z.number().int(),
+  taxCents: z.number().int(),
+  grossCents: z.number().int(),
+  buKey: z.string().max(8),
+  revenueAccount: z.string().min(1).max(16),
+});
+export type DatevBatchDocumentGroupV1 = z.infer<
+  typeof datevBatchDocumentGroupV1Schema
+>;
+
+export const datevBatchDocumentV1Schema = z.strictObject({
+  number: z.string().min(1).max(64),
+  kind: z.enum(["invoice", "credit_note"]),
+  issueDate: z.string().min(1).max(32),
+  grossCents: z.number().int(),
+  groups: z.array(datevBatchDocumentGroupV1Schema).min(1),
+});
+export type DatevBatchDocumentV1 = z.infer<typeof datevBatchDocumentV1Schema>;
+
 export const invoicingDatevBatchV1Schema = z.strictObject({
   schemaVersion: z.literal(INVOICING_DATEV_BATCH_VERSION),
   month: invoicingReportMonthSchema,
@@ -965,5 +1136,13 @@ export const invoicingDatevBatchV1Schema = z.strictObject({
   fileName: z.string().min(1).max(120),
   contentType: z.literal("text/csv; charset=utf-8"),
   content: z.string().min(1),
+  documents: z.array(datevBatchDocumentV1Schema),
 });
 export type InvoicingDatevBatchV1 = z.infer<typeof invoicingDatevBatchV1Schema>;
+
+// F8-20 Monats-ZIP (summary.csv + versiegelte Rechnungs-PDFs).
+export const monatsZipCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(INVOICING_MONATS_ZIP_COMMAND_VERSION),
+  month: invoicingReportMonthSchema,
+});
+export type MonatsZipCommandV1 = z.infer<typeof monatsZipCommandV1Schema>;

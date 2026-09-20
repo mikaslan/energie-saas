@@ -71,8 +71,16 @@ Abweichungen gegenüber der Skizze bzw. gegenüber einzelnen context7-Snippets:
    Ausstellungsfassung. Auch diese Queue transportiert ausschließlich
    Workspace- und Issuance-ID. M1-08b ergänzt `catalog.import.v1` und
    `catalog.import.cleanup.v1`, beide ebenfalls mit Retry 10, maximal 60
-   Sekunden Backoff und 180 Sekunden Ablauf. Der normale Worker pinnt damit
-   sechs aktuelle Queueverträge. Das npm-Paket bleibt pg-boss **12.28.0**;
+   Sekunden Backoff und 180 Sekunden Ablauf. M3-02c ergänzt
+   `invoice-pdf.render` für Rechnungs-PDFs aus versiegeltem Render-Input,
+   ebenfalls Retry 10, maximal 60 Sekunden Backoff, 180 Sekunden Ablauf;
+   drei fachliche Versuche werden davon getrennt in
+   `commercial_document_render_job` per Lease/CAS erzwungen. F8-24c ergänzt
+   `draft-pdf.render` für ENTWURF-Vorschauen ohne Siegel (gleicher
+   technischer Vertrag, eigenes Render-Tripel mit Wasserzeichen),
+   F8-24a `overdue.sweep` für den täglichen Sweep (Schedule 06:00
+   Europe/Berlin, Retry 3, Backoff bis 600 Sekunden, 900 Sekunden Ablauf).
+   Der normale Worker pinnt damit neun aktuelle Queueverträge. Das npm-Paket bleibt pg-boss **12.28.0**;
    die in Migration 0036 attestierte Zahl `38` ist die interne
    `pgboss.version`-Datenbankschemaversion, nicht die npm-Paketversion.
 4. **`fetch(name, options?)`** liefert ein Array (`Job<T>[]`); `complete(name,
@@ -196,7 +204,8 @@ aktuellen technischen Retry-10-Vertrag hebt:
    `calculation.execute` im historischen
    Retry-0-Vertrag sowie `pdf.render`, `offer.release-candidate.render` und
    `offer-issuance.render.v1`, `catalog.import.v1` und
-   `catalog.import.cleanup.v1` bereits in ihren aktuellen Verträgen.
+   `catalog.import.cleanup.v1` sowie `invoice-pdf.render` bereits in ihren
+   aktuellen Verträgen.
 3. Mit `POSTGRES_URL_MIGRATE` `npm run db:migrate` bis einschließlich 0036
    ausführen. 0029 aktualisiert Calculation-Queue und wartende Zustellungen auf
    Retry 10; 0033 attestiert `pdf.render` und installiert ausschließlich die

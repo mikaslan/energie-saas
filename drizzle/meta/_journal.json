@@ -1128,6 +1128,83 @@
       "when": 1789853700000,
       "tag": "0290_f15_02_gewerbe_workflow_stufen",
       "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1789907328001,
+      "tag": "0190_f8_16_teilrechnungstypen",
+      "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1789907328002,
+      "tag": "0191_m302a_line_freeze",
+      "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1789907328003,
+      "tag": "0192_m302b_render_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1789907328004,
+      "tag": "0193_m302c_pdf_worker",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1789907328005,
+      "tag": "0194_f817_payment_triple",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1789907328006,
+      "tag": "0195_f819_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1789907328007,
+      "tag": "0196_f821_accounting_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1789907328008,
+      "tag": "0197_f822_tax_treatment",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1789907328009,
+      "tag": "0198_f824c_draft_pair",
+      "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1789907328010,
+      "tag": "0199_f8_delivery_sync_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1789907328011,
+      "tag": "0200_f824a_sweep_workspace_registry",
+      "breakpoints": true
     }
   ]
 }

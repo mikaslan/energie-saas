@@ -11,6 +11,9 @@ const CALCULATION_V2_QUEUE_NAME = "calculation.execute.v2";
 const OFFER_PDF_QUEUE_NAME = "pdf.render";
 const OFFER_RELEASE_CANDIDATE_QUEUE_NAME = "offer.release-candidate.render";
 const OFFER_ISSUANCE_QUEUE_NAME = "offer-issuance.render.v1";
+const INVOICE_PDF_QUEUE_NAME = "invoice-pdf.render";
+const DRAFT_PDF_QUEUE_NAME = "draft-pdf.render";
+const OVERDUE_SWEEP_QUEUE_NAME = "overdue.sweep";
 const CATALOG_IMPORT_QUEUE_NAME = "catalog.import.v1";
 const CATALOG_IMPORT_CLEANUP_QUEUE_NAME = "catalog.import.cleanup.v1";
 const CUSTOMER_NOTIFICATION_QUEUE_NAME = "notification.customer";
@@ -57,6 +60,33 @@ export const OFFER_ISSUANCE_QUEUE_OPTIONS = Object.freeze({
   retryBackoff: true,
   retryDelayMax: 60,
   expireInSeconds: 180,
+});
+
+export const INVOICE_PDF_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
+});
+
+export const DRAFT_PDF_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 10,
+  retryDelay: 1,
+  retryBackoff: true,
+  retryDelayMax: 60,
+  expireInSeconds: 180,
+});
+
+export const OVERDUE_SWEEP_QUEUE_OPTIONS = Object.freeze({
+  policy: "exclusive" as const,
+  retryLimit: 3,
+  retryDelay: 60,
+  retryBackoff: true,
+  retryDelayMax: 600,
+  expireInSeconds: 900,
 });
 
 export const CATALOG_IMPORT_QUEUE_OPTIONS = Object.freeze({
@@ -373,6 +403,73 @@ export async function bootstrapCalculationQueue(
       || Number(issuance.retry_delay_max) !== 60
       || Number(issuance.expire_seconds) !== 180
       || issuance.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    // M3-02c rendert Rechnungs-PDFs aus versiegeltem Render-Input in einer
+    // eigenen Queue: Angebots-Bytes werden nie gefoerdert, fachliche Versuche
+    // bleiben per Lease/CAS auf drei begrenzt.
+    await boss.createQueue(INVOICE_PDF_QUEUE_NAME, INVOICE_PDF_QUEUE_OPTIONS);
+    const invoicePdfQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${INVOICE_PDF_QUEUE_NAME}'
+    `);
+    const invoicePdf = invoicePdfQueue.rows[0] as Record<string, unknown> | undefined;
+    if (
+      invoicePdf === undefined
+      || invoicePdf.policy !== "exclusive"
+      || Number(invoicePdf.retry_limit) !== 10
+      || Number(invoicePdf.retry_delay) !== 1
+      || invoicePdf.retry_backoff !== true
+      || Number(invoicePdf.retry_delay_max) !== 60
+      || Number(invoicePdf.expire_seconds) !== 180
+      || invoicePdf.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    // F8-24c rendert ENTWURF-Vorschauen ohne Siegel in eigener Queue
+    // (gleicher technischer Vertrag wie invoice-pdf.render).
+    await boss.createQueue(DRAFT_PDF_QUEUE_NAME, DRAFT_PDF_QUEUE_OPTIONS);
+    const draftPdfQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${DRAFT_PDF_QUEUE_NAME}'
+    `);
+    const draftPdf = draftPdfQueue.rows[0] as Record<string, unknown> | undefined;
+    if (
+      draftPdf === undefined
+      || draftPdf.policy !== "exclusive"
+      || Number(draftPdf.retry_limit) !== 10
+      || Number(draftPdf.retry_delay) !== 1
+      || draftPdf.retry_backoff !== true
+      || Number(draftPdf.retry_delay_max) !== 60
+      || Number(draftPdf.expire_seconds) !== 180
+      || draftPdf.notify !== false
+    ) {
+      throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
+    }
+    // F8-24a stellt faellige Belege taeglich per Schedule auf overdue
+    // (eigene Queue, lange Leases, 3 technische Versuche).
+    await boss.createQueue(OVERDUE_SWEEP_QUEUE_NAME, OVERDUE_SWEEP_QUEUE_OPTIONS);
+    const overdueSweepQueue = await database.executeSql(`
+      select policy::text, retry_limit, retry_delay, retry_backoff,
+             retry_delay_max, expire_seconds, notify
+        from pgboss.queue
+       where name = '${OVERDUE_SWEEP_QUEUE_NAME}'
+    `);
+    const overdueSweep = overdueSweepQueue.rows[0] as Record<string, unknown> | undefined;
+    if (
+      overdueSweep === undefined
+      || overdueSweep.policy !== "exclusive"
+      || Number(overdueSweep.retry_limit) !== 3
+      || Number(overdueSweep.retry_delay) !== 60
+      || overdueSweep.retry_backoff !== true
+      || Number(overdueSweep.retry_delay_max) !== 600
+      || Number(overdueSweep.expire_seconds) !== 900
+      || overdueSweep.notify !== false
     ) {
       throw new CalculationQueueBootstrapError("calculation_queue_bootstrap_drift");
     }

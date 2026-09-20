@@ -768,6 +768,42 @@ const COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS = [
   "commercial_document_partial_line",
 ] as const;
 
+// M3-02b (0192): eigene Menge — Render-Job-Zeile (versiegelter
+// invoice-pdf-input.v1). Kern-, Link- und Partial-Menge bleiben stabil.
+const COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS = [
+  "commercial_document_render_job",
+] as const;
+// M3-02c (0193): Input-Immutability-Guard — eigene Routine-Menge, weil
+// alte Prefixe die Funktion nicht kennen (M3-02a-Muster).
+const M302C_RENDER_INPUT_PRIVATE_ROUTINES = [
+  "public._m302c_guard_render_input_immutable()",
+] as const;
+
+// F8-19 (0195): eigene Menge — Versand-Nachweis je Beleg (GoBD-nah,
+// genau eine Zeile je Workspace+Beleg). Aeltere Prefixe ohne Tabelle
+// bleiben gruen (atomar je Menge).
+const COMMERCIAL_DOCUMENT_DELIVERY_RELATIONS = [
+  "commercial_document_delivery",
+] as const;
+
+// F8-21 (0196): eigene Menge — Buchhaltungs-Sync-Satz je Beleg und
+// Anbieter (State-Machine + Payload-Hash). Eigene Menge, weil 0195-
+// Prefixe die Tabelle nicht kennen.
+const ACCOUNTING_SYNC_RECORD_RELATIONS = [
+  "accounting_sync_record",
+] as const;
+
+// F8-24a (0200): eigene Menge — RLS-freier Sweep-Arbeitsvorrat
+// (Locator-Praezedenz; Trigger-spiegelt Workspace-IDs, IDs only).
+// Gleichzeitig Sonde fuer die Sweep-Worker-Grants auf
+// commercial_document (beide landen atomar in 0200).
+const OVERDUE_SWEEP_WORKSPACE_RELATIONS = [
+  "overdue_sweep_workspace",
+] as const;
+const F824A_SWEEP_PRIVATE_ROUTINES = [
+  "public._f824a_mirror_workspace_for_sweep()",
+] as const;
+
 // F13-01 (0103): eigene Menge — Netzanmeldung je Projekt (Statusmaschine).
 const GRID_REGISTRATION_RELATIONS = [
   "grid_registration",
@@ -801,6 +837,11 @@ const COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES = [
 ] as const;
 const COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES = [
   "public._m301_guard_issued_immutable()",
+] as const;
+// M3-02a (0191): Zeilen-Freeze-Guard — eigene Routine-Menge, weil alte
+// Prefixe die Funktion nicht kennen (F1008-Muster).
+const M302A_LINE_FREEZE_PRIVATE_ROUTINES = [
+  "public._m301_guard_line_parent_immutable()",
 ] as const;
 const COMMERCIAL_DOCUMENT_FUNCTION_NAMES = [
   ...COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES,
@@ -2279,6 +2320,79 @@ async function hasAtomicF1008NotificationContract(
   return true;
 }
 
+// M3-02a (0191): Zeilen-Freeze-Guard + 3 Trigger existieren nur ab 0191.
+// Existenzgeprueft wie F1008, damit Upgrade-Prefixe ohne 0190er-Reihe
+// gruen bleiben. Teilstand ist fail-closed.
+async function hasAtomicM302aLineFreezeContract(
+  client: PoolClient,
+  hasCommercialDocuments: boolean,
+  label: string,
+): Promise<boolean> {
+  if (!hasCommercialDocuments) return false;
+  const presence = await client.query<{ fn: boolean; trigs: boolean }>(`
+    select
+      pg_catalog.to_regprocedure(
+        'public._m301_guard_line_parent_immutable()'
+      ) is not null as fn,
+      (
+        select count(*) = 3
+          from pg_catalog.pg_trigger
+         where tgrelid = 'public.commercial_document_line'::regclass
+           and tgname in (
+             'commercial_document_line_parent_immutable_ins',
+             'commercial_document_line_parent_immutable_upd',
+             'commercial_document_line_parent_immutable_del'
+           )
+      ) as trigs
+  `);
+  const row = presence.rows[0];
+  const fn = row?.fn === true;
+  const trigs = row?.trigs === true;
+  if (!fn && !trigs) return false;
+  if (!fn || !trigs) {
+    throw new Error(
+      `${label} ist nur teilweise vorhanden ` +
+        `(Funktion=${String(fn)}, Trigger=${String(trigs)}).`,
+    );
+  }
+  return true;
+}
+
+// M3-02c (0193): Input-Immutability-Guard + Trigger existieren nur ab 0193.
+// Existenzgeprueft wie M3-02a, damit 0192-Prefixe gruen bleiben.
+async function hasAtomicM302cRenderInputContract(
+  client: PoolClient,
+  hasCommercialDocumentRenderJobs: boolean,
+  label: string,
+): Promise<boolean> {
+  if (!hasCommercialDocumentRenderJobs) return false;
+  const presence = await client.query<{ fn: boolean; trigs: boolean }>(`
+    select
+      pg_catalog.to_regprocedure(
+        'public._m302c_guard_render_input_immutable()'
+      ) is not null as fn,
+      (
+        select count(*) = 1
+          from pg_catalog.pg_trigger
+         where tgrelid = 'public.commercial_document_render_job'::regclass
+           and tgname in (
+             'commercial_document_render_job_input_immutable'
+           )
+      ) as trigs
+  `);
+  const row = presence.rows[0];
+  const fn = row?.fn === true;
+  const trigs = row?.trigs === true;
+  if (!fn && !trigs) return false;
+  if (!fn || !trigs) {
+    throw new Error(
+      `${label} ist nur teilweise vorhanden ` +
+        `(Funktion=${String(fn)}, Trigger=${String(trigs)}).`,
+    );
+  }
+  return true;
+}
+
 async function hasAtomicPublicColumnSet(
   client: PoolClient,
   columns: readonly string[],
@@ -3406,6 +3520,11 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     COMMERCIAL_DOCUMENT_RELATIONS,
     "Rollen-ACL-Manifest: M3-01-Rechnungs-Kern",
   );
+  const hasLineFreezeGuardForAcl = await hasAtomicM302aLineFreezeContract(
+    client,
+    hasCommercialDocuments,
+    "Rollen-ACL-Manifest: M3-02a-Zeilen-Freeze",
+  );
   if (hasCommercialDocuments) {
     await client.query(`
       revoke all privileges on
@@ -3421,7 +3540,7 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       grant select, insert, update on public.commercial_document_number_series to app_runtime;
 
       revoke execute on function
-        ${[...COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES, ...COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES].join(",\n        ")}
+        ${[...COMMERCIAL_DOCUMENT_RUNTIME_ROUTINES, ...COMMERCIAL_DOCUMENT_PRIVATE_ROUTINES, ...(hasLineFreezeGuardForAcl ? M302A_LINE_FREEZE_PRIVATE_ROUTINES : [])].join(",\n        ")}
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant execute on function
@@ -3463,6 +3582,123 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.commercial_document_partial to app_runtime;
       grant select, insert, update on public.commercial_document_partial_line to app_runtime
+    `);
+  }
+
+    // M3-02b (0192) + M3-02c (0193): eigene ACL-Menge — spaltenfeine
+  // Grants (M2-02-Muster). Runtime legt versiegelte Jobs an und liest;
+  // der Worker schreibt genau den Lease-/Artefakt-Automaten. DELETE und
+  // TRUNCATE bleiben fuer beide verboten (nur app_owner per RLS).
+  const hasCommercialDocumentRenderJobsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS,
+    "Rollen-ACL-Manifest: M3-02b-Render-Job",
+  );
+  if (hasCommercialDocumentRenderJobsForAcl) {
+    // 0193-Anwesenheit (Trigger-Funktion) staffelt Tabellen- vs.
+    // Spalten-Grants, damit 0192-Prefixe ohne Worker-Spalten gruen bleiben.
+    const renderInputGuardForAcl = await client.query<{ present: boolean }>(`
+      select pg_catalog.to_regprocedure(
+               'public._m302c_guard_render_input_immutable()'
+             ) is not null as present
+    `);
+    if (renderInputGuardForAcl.rows[0]?.present === true) {
+      await client.query(`
+        revoke all privileges on
+          public.commercial_document_render_job
+          from public, app_migrator, app_runtime, app_system, app_auth,
+            app_worker, app_erasure, app_membership_writer, identity_reconciler;
+        grant select on public.commercial_document_render_job to app_runtime;
+        revoke insert, update, delete, truncate
+          on public.commercial_document_render_job from app_runtime;
+        grant insert (
+          id, workspace_id, document_id, input_json, input_sha256,
+          template_version, renderer_recipe, created_by
+        ) on public.commercial_document_render_job to app_runtime;
+        grant update (id) on public.commercial_document_render_job to app_runtime;
+        grant select on public.commercial_document_render_job to app_worker;
+        revoke update, insert, delete, truncate
+          on public.commercial_document_render_job from app_worker;
+        grant update (
+          status, attempt_count, next_attempt_at, lease_token, lease_expires_at,
+          error_code, error_retryable, artifact_mime_type, artifact_sha256,
+          artifact_size_bytes, artifact_bytes, updated_at, started_at, finished_at
+        ) on public.commercial_document_render_job to app_worker;
+        revoke execute on function
+          ${M302C_RENDER_INPUT_PRIVATE_ROUTINES.join(",\n          ")}
+          from public, app_runtime, app_system, app_auth, app_worker, app_erasure
+      `);
+    } else {
+      await client.query(`
+        revoke all privileges on
+          public.commercial_document_render_job
+          from public, app_migrator, app_runtime, app_system, app_auth,
+            app_worker, app_erasure, app_membership_writer, identity_reconciler;
+        grant select, insert, update on public.commercial_document_render_job to app_runtime
+      `);
+    }
+  }
+
+  // F8-19 (0195): eigene ACL-Menge — Versand-Nachweis (GoBD-nah):
+  // Anlage/Lesen/Schreiben fuer Runtime, nie DELETE/TRUNCATE (nur
+  // app_owner per RLS; Muster commercial_document_partial).
+  const hasCommercialDocumentDeliveriesForAcl = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_DELIVERY_RELATIONS,
+    "Rollen-ACL-Manifest: F8-19-Versand-Nachweis",
+  );
+  if (hasCommercialDocumentDeliveriesForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.commercial_document_delivery
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.commercial_document_delivery to app_runtime
+    `);
+  }
+
+  // F8-21 (0196): eigene ACL-Menge — Sync-Satz (State-Machine + Hash):
+  // Anlage/Lesen/Schreiben fuer Runtime, nie DELETE/TRUNCATE (nur
+  // app_owner per RLS; Muster commercial_document_partial).
+  const hasAccountingSyncRecordsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    ACCOUNTING_SYNC_RECORD_RELATIONS,
+    "Rollen-ACL-Manifest: F8-21-Buchhaltungs-Sync",
+  );
+  if (hasAccountingSyncRecordsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.accounting_sync_record
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.accounting_sync_record to app_runtime
+    `);
+  }
+
+  // F8-24a (0200): eigene ACL-Menge — Sweep-Arbeitsvorrat (nur Worker
+  // liest IDs) + Sweep-Schreibrecht auf commercial_document (SELECT +
+  // spaltenscharfes UPDATE payment_status/Uhren; Zeilensicht regelt
+  // tenant_isolation via withTenantOn). Spiegelroutine ist trigger-only
+  // (Revoke ohne Grant, Guard-Muster).
+  const hasOverdueSweepWorkspaceForAcl = await hasAtomicPublicRelationSet(
+    client,
+    OVERDUE_SWEEP_WORKSPACE_RELATIONS,
+    "Rollen-ACL-Manifest: F8-24a-Sweep-Arbeitsvorrat",
+  );
+  if (hasOverdueSweepWorkspaceForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.overdue_sweep_workspace
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select on public.overdue_sweep_workspace to app_worker;
+      revoke execute on function
+        ${F824A_SWEEP_PRIVATE_ROUTINES.join(",\n        ")}
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select on public.commercial_document to app_worker;
+      grant update (payment_status, payment_updated_at, updated_at)
+        on public.commercial_document to app_worker
     `);
   }
 
@@ -4169,6 +4405,55 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       set role app_owner
     `);
   }
+
+  // M3-02c (0193): Invoice-Dispatch — Runtime dispatched bei Anforderung,
+  // Worker bei Recovery/Replay (beide EXECUTE, Existenz-geprueft).
+  const invoicePdfDispatch = await client.query<{ present: boolean }>(`
+    select pg_catalog.count(*) = 1 as present
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'pgboss'
+       and routine.proname = 'enqueue_invoice_pdf_render'
+       and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+  `);
+  if (invoicePdfDispatch.rows[0]?.present) {
+    await client.query(`
+      set role app_worker;
+      grant usage on schema pgboss to app_runtime;
+      grant usage on schema pgboss to app_worker;
+      grant execute on function pgboss.enqueue_invoice_pdf_render(uuid, uuid)
+        to app_runtime;
+      grant execute on function pgboss.enqueue_invoice_pdf_render(uuid, uuid)
+        to app_worker;
+      set role app_owner
+    `);
+  }
+
+  // F8-24c (0198): Draft-Dispatch — Runtime dispatched bei Anforderung,
+  // Worker bei Recovery/Replay (beide EXECUTE, Existenz-geprueft;
+  // Spiegel M3-02c 0193).
+  const draftPdfDispatch = await client.query<{ present: boolean }>(`
+    select pg_catalog.count(*) = 1 as present
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'pgboss'
+       and routine.proname = 'enqueue_draft_pdf_render'
+       and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+  `);
+  if (draftPdfDispatch.rows[0]?.present) {
+    await client.query(`
+      set role app_worker;
+      grant usage on schema pgboss to app_runtime;
+      grant usage on schema pgboss to app_worker;
+      grant execute on function pgboss.enqueue_draft_pdf_render(uuid, uuid)
+        to app_runtime;
+      grant execute on function pgboss.enqueue_draft_pdf_render(uuid, uuid)
+        to app_worker;
+      set role app_owner
+    `);
+  }
 }
 
 export async function applyDefaultPrivilegeContract(client: PoolClient): Promise<void> {
@@ -4482,6 +4767,18 @@ export async function verifyRoleContract(
     ) as present
   `);
   const hasF119EnergyModes = f119Presence.rows[0]?.present === true;
+  // F8-24c (0198): Draft-Dispatch-Routine (eigene Sonde: alte Prefixe
+  // ohne Funktion bleiben gruen).
+  const draftPdfDispatchPresence = await client.query<{ present: boolean }>(`
+    select pg_catalog.count(*) = 1 as present
+      from pg_catalog.pg_proc as routine
+      join pg_catalog.pg_namespace as namespace
+        on namespace.oid = routine.pronamespace
+     where namespace.nspname = 'pgboss'
+       and routine.proname = 'enqueue_draft_pdf_render'
+       and pg_catalog.oidvectortypes(routine.proargtypes) = 'uuid, uuid'
+  `);
+  const hasDraftPdfDispatch = draftPdfDispatchPresence.rows[0]?.present === true;
   // F15-01 (0088): Stufenmarker für den Provisionierungs-Rumpf (eigene
   // Sonde: die Funktionsliste weiter unten ist namensbegrenzt). Nur der
   // exakte Marker wählt den neuen Pin — fremde Rümpfe brechen
@@ -4688,12 +4985,51 @@ export async function verifyRoleContract(
     COMMERCIAL_DOCUMENT_LINK_RELATIONS,
     "Rollenvertrag: F8-01-Anzahlung-Link",
   );
+  // M3-02a (0191): eigene Gate-Menge — alte Prefixe ohne Zeilen-Freeze
+  // bleiben grün (atomar: Funktion + 3 Trigger).
+  const hasLineFreezeGuard = await hasAtomicM302aLineFreezeContract(
+    client,
+    hasCommercialDocuments,
+    "Rollenvertrag: M3-02a-Zeilen-Freeze",
+  );
   // F8-05 (0102): eigene Gate-Menge — alte Prefixe ohne Kettentabellen
   // bleiben grün (atomar je Menge).
   const hasCommercialDocumentPartials = await hasAtomicPublicRelationSet(
     client,
     COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS,
     "Rollenvertrag: F8-05-Teilrechnung-Kette",
+  );
+  // M3-02b (0192): eigene Gate-Menge — alte Prefixe ohne Job-Tabelle
+  // bleiben grün (atomar je Menge).
+  const hasCommercialDocumentRenderJobs = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS,
+    "Rollenvertrag: M3-02b-Render-Job",
+  );
+  // M3-02c (0193): Guard + Trigger nur ab 0193 (0192-Prefixe bleiben gruen).
+  const hasRenderInputGuard = await hasAtomicM302cRenderInputContract(
+    client,
+    hasCommercialDocumentRenderJobs,
+    "Rollenvertrag: M3-02c-Render-Input",
+  );
+  // F8-19 (0195): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben gruen.
+  const hasCommercialDocumentDeliveries = await hasAtomicPublicRelationSet(
+    client,
+    COMMERCIAL_DOCUMENT_DELIVERY_RELATIONS,
+    "Rollenvertrag: F8-19-Versand-Nachweis",
+  );
+  // F8-21 (0196): eigene Gate-Menge — 0195-Prefixe ohne Tabelle bleiben gruen.
+  const hasAccountingSyncRecords = await hasAtomicPublicRelationSet(
+    client,
+    ACCOUNTING_SYNC_RECORD_RELATIONS,
+    "Rollenvertrag: F8-21-Buchhaltungs-Sync",
+  );
+  // F8-24a (0200): eigene Gate-Menge — zugleich Sonde fuer Trigger,
+  // Routine und Sweep-Worker-Grants (atomar in 0200).
+  const hasOverdueSweepWorkspace = await hasAtomicPublicRelationSet(
+    client,
+    OVERDUE_SWEEP_WORKSPACE_RELATIONS,
+    "Rollenvertrag: F8-24a-Sweep-Arbeitsvorrat",
   );
   // F13-01 (0103): eigene Gate-Menge — alte Prefixe ohne Tabelle bleiben grün.
   const hasGridRegistrations = await hasAtomicPublicRelationSet(
@@ -4736,6 +5072,15 @@ export async function verifyRoleContract(
         "commercial_document.skonto_percent_bps",
       ],
       "Rollenvertrag: F5-01-Skonto",
+    );
+  // F8-16 Kennung (Migration 0190) erweitert den M301-Guard um
+  // invoice_kind; historische Prefixe ohne 0190 behalten die aelteren
+  // Pins (Spaltenvertrag wie F5-01).
+  const hasInvoiceKind = hasCommercialDocuments
+    && await hasAtomicPublicColumnSet(
+      client,
+      ["commercial_document.invoice_kind"],
+      "Rollenvertrag: F8-16-Kennung",
     );
   const hasEconomicsSettings = await hasAtomicPublicRelationSet(
     client,
@@ -5304,6 +5649,18 @@ export async function verifyRoleContract(
       ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
+      ...(hasCommercialDocumentRenderJobs ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasCommercialDocumentDeliveries ? COMMERCIAL_DOCUMENT_DELIVERY_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasAccountingSyncRecords ? ACCOUNTING_SYNC_RECORD_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasOverdueSweepWorkspace ? OVERDUE_SWEEP_WORKSPACE_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
       ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
@@ -5625,6 +5982,16 @@ export async function verifyRoleContract(
       ...(hasCommercialDocuments ? COMMERCIAL_DOCUMENT_FUNCTION_NAMES.map(
         (name) => `${name}:app_owner`,
       ) : []),
+      ...(hasLineFreezeGuard ? [
+        "_m301_guard_line_parent_immutable:app_owner",
+      ] : []),
+      ...(hasRenderInputGuard ? [
+        "_m302c_guard_render_input_immutable:app_owner",
+      ] : []),
+      // F8-24a (0200): Spiegel-Trigger (Routine-Security separat gepinnt).
+      ...(hasOverdueSweepWorkspace ? [
+        "_f824a_mirror_workspace_for_sweep:app_owner",
+      ] : []),
       "apply_catalog_component_revision:app_owner",
       "app_actor_id:app_owner",
       ...(hasProjectAssignment ? [
@@ -5914,6 +6281,12 @@ export async function verifyRoleContract(
           "true:false:false:u:search_path=pg_catalog:" +
           "febc36f107a06f3c79af9ba502daaee77ee4ba391b362c07f85f5cfe31adb19a",
       ] : []),
+      // F8-24a (0200): Spiegel-Trigger (Body-Hash per Probe geerntet).
+      ...(hasOverdueSweepWorkspace ? [
+        "_f824a_mirror_workspace_for_sweep():trigger:app_owner:plpgsql:f:v:" +
+          "true:false:false:u:search_path=pg_catalog:" +
+          "fe7fb308037e7bf68f14ce223bf986917570295334c482c6bab6b9c1b259a766",
+      ] : []),
       ...(hasProjectNotes ? [
         "_m113_actor_can_read_notes(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
           "search_path=pg_catalog:7fbee4934dbed119ee3ee98b28cbc940555ee1e834fb35c925c24a38766bb0d8",
@@ -6015,11 +6388,30 @@ export async function verifyRoleContract(
           "search_path=pg_catalog:259468171b6592384d59edf88981230e6310dd1f0c6c6064d143734d370be3f1",
         // F5-01 (0082): Guard friert zusaetzlich skonto_* ein — Pin
         // versionsbedingt (historische Prefixe ohne 0082 behalten v1-Pin).
+        // F8-16 (0190): Guard friert zusaetzlich invoice_kind ein —
+        // dritter Pin (Methode gegen 0082-Pin kalibriert, Delta exakt
+        // eine Freeze-Zeile).
         "_m301_guard_issued_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
           "search_path=pg_catalog:" +
-          (hasInvoiceSkontoTerms
-            ? "518f9c93a0e72f65ea9b7f96b1d08754073bd8844b20e82fb3f08553331a571a"
-            : "b3d5ec893a41767ec5afe0be70c21ca81343985f55bce9a29b5beb838cc51f32"),
+          (hasInvoiceKind
+            ? "1495ab8dd11a6793f7ddd85d62e71ca6933f28d60d890781b36edbc9210a7ec2"
+            : hasInvoiceSkontoTerms
+              ? "518f9c93a0e72f65ea9b7f96b1d08754073bd8844b20e82fb3f08553331a571a"
+              : "b3d5ec893a41767ec5afe0be70c21ca81343985f55bce9a29b5beb838cc51f32"),
+        // M3-02a (0191): Zeilen-Freeze-Guard (Hash-Methode gegen 0082-Pin
+        // kalibriert: sha256 ueber Dollar-Quoting-Inhalt inkl. Raender).
+        ...(hasLineFreezeGuard ? [
+          "_m301_guard_line_parent_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+            "search_path=pg_catalog:" +
+            "e6e052743504d8900cbd6aa1e368065fd64227850d661977581fa0dfa87a0589",
+        ] : []),
+        // M3-02c (0193): Input-Immutability-Guard (sha256 ueber prosrc,
+        // per Probe im Rollenvertrags-Kontext geerntet).
+        ...(hasRenderInputGuard ? [
+          "_m302c_guard_render_input_immutable():trigger:app_owner:plpgsql:f:v:false:false:false:u:" +
+            "search_path=pg_catalog:" +
+            "d73df3df7ce44a1c4f466c3d3404b320dc104d49431e781509e1af97e07882e1",
+        ] : []),
       ] : []),
       ...(hasWorkspaceInvoicing ? [
         "_m300_actor_can_read_invoicing(uuid):boolean:app_owner:sql:f:s:false:false:false:u:" +
@@ -6703,6 +7095,19 @@ export async function verifyRoleContract(
       ...(hasCommercialDocumentPartials ? COMMERCIAL_DOCUMENT_PARTIAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasCommercialDocumentRenderJobs ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasCommercialDocumentDeliveries ? COMMERCIAL_DOCUMENT_DELIVERY_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasAccountingSyncRecords ? ACCOUNTING_SYNC_RECORD_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      // RLS-frei per Design (Locator-Praezedenz portal_token_locator).
+      ...(hasOverdueSweepWorkspace ? OVERDUE_SWEEP_WORKSPACE_RELATIONS.map(
+        (relation) => `${relation}:false:false`,
+      ) : []),
       ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -6981,6 +7386,53 @@ export async function verifyRoleContract(
           "f3a73abc00f11c80fd5e5ef7b60d4ad853e562217ae6bcffedbfab9d1ccfd0c2",
         "commercial_document_partial_line:tenant_isolation:" +
           "2c5b808091a8f0ae804196556f451525a893b1d27fd60954c8eca3b2a4ccdb71",
+        ] : []),
+        // M3-02b (0192): Hashes per Probe geerntet (0083-identische
+        // Policies + owner-only DELETE wie M3-01-Kern).
+        // M3-02c (0193): SELECT-Policy auf Write-Schranke verschaerft
+        // (Hash per Probe im Rollenvertrags-Kontext geerntet; 0192-Prefix
+        // behaelt den alten Pin).
+        ...(hasCommercialDocumentRenderJobs ? [
+        "commercial_document_render_job:tenant_isolation:" +
+          "cc319114a501b3c51b857fdf69dc4c4eb7c8ca09a7d05519db643bdfba9a4e1f",
+        "commercial_document_render_job:commercial_document_render_job_actor_select:" +
+          (hasRenderInputGuard
+            ? "e5a64fdccebf3d23ca43898eb14a7e03ec41fc1549eccc1ac09cb751b45a650d"
+            : "0a149fab0ab4a2ba414510a3db54366861b0349d56a83988a60b620bb137b610"),
+        "commercial_document_render_job:commercial_document_render_job_actor_insert:" +
+          "8e8e65faa88617e125c9c00cdd72726120182fe91e38c1f9971c4d6b259abe24",
+        "commercial_document_render_job:commercial_document_render_job_actor_update:" +
+          "d47d4e7457887ad95343e252b705e32359a93b56753630a25a7d67e8a1b8e245",
+        "commercial_document_render_job:commercial_document_render_job_actor_delete:" +
+          "8b7ff5773dcdd9282fdd06f94482ad043722772503d0722bee203ba801bad7ca",
+        ] : []),
+        // F8-19 (0195): Hashes per Probe im Rollenvertrags-Kontext
+        // geerntet (0083-identische Policies + owner-only DELETE).
+        ...(hasCommercialDocumentDeliveries ? [
+        "commercial_document_delivery:tenant_isolation:" +
+          "0c204527679b87a200ed0d958a9b85d30b792fb8abd80fa91de20e19fcda8a6b",
+        "commercial_document_delivery:commercial_document_delivery_actor_select:" +
+          "27ed91209792390e96ec850628acf623f3fc51f3a1928ae8731390342b8d8d4e",
+        "commercial_document_delivery:commercial_document_delivery_actor_insert:" +
+          "eba0c8d76c2e4770e812f94a2b740bf82337587e09add683251b9f5d7143d03b",
+        "commercial_document_delivery:commercial_document_delivery_actor_update:" +
+          "6f9fe5d5cf2c8cbb57e567e83fd7a23bf852c58bb96fd69b28bec2669a8e3475",
+        "commercial_document_delivery:commercial_document_delivery_actor_delete:" +
+          "baee7bf57a9ede185dcaa6d680c3660c2457b541fb995cc5e8855ed44901da17",
+        ] : []),
+        // F8-21 (0196): Hashes per Probe im Rollenvertrags-Kontext
+        // geerntet (0083-identische Policies + owner-only DELETE).
+        ...(hasAccountingSyncRecords ? [
+        "accounting_sync_record:tenant_isolation:" +
+          "cb65839bab1948f720a5a2bde1e729be3d695658309cbea24427efe555fbf3f7",
+        "accounting_sync_record:accounting_sync_record_actor_select:" +
+          "db37ae763e49c89359f97e60699f6aed9fc632bcdf37cf61d19d262e128c5aa2",
+        "accounting_sync_record:accounting_sync_record_actor_insert:" +
+          "02cf9cb59c194d268174a820a0f786e5dddffc870526d7d3ebe16a71bb5eb02f",
+        "accounting_sync_record:accounting_sync_record_actor_update:" +
+          "87f03cf8ecc3c2d1ac4eecb22dd13ee40e6c3828eb656b064202f0a04ae6a166",
+        "accounting_sync_record:accounting_sync_record_actor_delete:" +
+          "bc63c6d9c90c0ab696ba338c26b491ce1806510ee6f82fd40bd748e834e8b761",
         ] : []),
         ...(hasGridRegistrations ? [
         "grid_registration:tenant_isolation:" +
@@ -7482,8 +7934,28 @@ export async function verifyRoleContract(
         "commercial_document_line:commercial_document_line_no_truncate:34:O:public:forbid_mutation::-:0",
         "commercial_document_number_series:commercial_document_number_series_no_truncate:34:O:public:forbid_mutation::-:0",
       ] : []),
+      ...(hasLineFreezeGuard ? [
+        "commercial_document_line:commercial_document_line_parent_immutable_ins:7:O:public:_m301_guard_line_parent_immutable::-:0",
+        "commercial_document_line:commercial_document_line_parent_immutable_upd:19:O:public:_m301_guard_line_parent_immutable::-:0",
+        "commercial_document_line:commercial_document_line_parent_immutable_del:11:O:public:_m301_guard_line_parent_immutable::-:0",
+      ] : []),
       ...(hasCommercialDocumentLinks ? [
         "commercial_document_link:commercial_document_link_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
+      ...(hasCommercialDocumentRenderJobs ? [
+        "commercial_document_render_job:commercial_document_render_job_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
+      ...(hasRenderInputGuard ? [
+        "commercial_document_render_job:commercial_document_render_job_input_immutable:19:O:public:_m302c_guard_render_input_immutable::-:0",
+      ] : []),
+      ...(hasCommercialDocumentDeliveries ? [
+        "commercial_document_delivery:commercial_document_delivery_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
+      ...(hasAccountingSyncRecords ? [
+        "accounting_sync_record:accounting_sync_record_no_truncate:34:O:public:forbid_mutation::-:0",
+      ] : []),
+      ...(hasOverdueSweepWorkspace ? [
+        "workspace:overdue_sweep_workspace_mirror_ins:5:O:public:_f824a_mirror_workspace_for_sweep::-:0",
       ] : []),
     ],
     "Live-Triggervertrag",
@@ -7859,6 +8331,29 @@ export async function verifyRoleContract(
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
+      // M3-02b: Tabellen-Grants nur ohne 0193 (mit 0193 spaltenfein).
+      ...(hasCommercialDocumentRenderJobs && !hasRenderInputGuard
+        ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.flatMap((relation) => [
+          `app_runtime:${relation}:INSERT:app_owner:false`,
+          `app_runtime:${relation}:SELECT:app_owner:false`,
+          `app_runtime:${relation}:UPDATE:app_owner:false`,
+        ]) : []),
+      // M3-02c: Tabellen-Ebene nur SELECT (Spalten separat gepinnt).
+      ...(hasRenderInputGuard ? COMMERCIAL_DOCUMENT_RENDER_JOB_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+      ]) : []),
+      // F8-19: Nachweis ohne DELETE (GoBD-nah, nur app_owner per RLS).
+      ...(hasCommercialDocumentDeliveries ? COMMERCIAL_DOCUMENT_DELIVERY_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      // F8-21: Sync-Satz ohne DELETE (GoBD-nah, nur app_owner per RLS).
+      ...(hasAccountingSyncRecords ? ACCOUNTING_SYNC_RECORD_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
       // F13-01: Anlage/Lesen/Schreiben, nie Löschen.
       ...(hasGridRegistrations ? GRID_REGISTRATION_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
@@ -7906,6 +8401,15 @@ export async function verifyRoleContract(
       "app_worker:membership:SELECT:app_owner:false",
       ...(hasOfferPdfDraft ? [
         "app_worker:offer_pdf_draft:SELECT:app_owner:false",
+      ] : []),
+      ...(hasRenderInputGuard ? [
+        "app_worker:commercial_document_render_job:SELECT:app_owner:false",
+      ] : []),
+      // F8-24a (0200): Sweep-Arbeitsvorrat + Sweep-Zugriff (IDs lesen,
+      // Zahlstatus/Uhren stellen; Spalten-UPDATEs separat gepinnt).
+      ...(hasOverdueSweepWorkspace ? [
+        "app_worker:overdue_sweep_workspace:SELECT:app_owner:false",
+        "app_worker:commercial_document:SELECT:app_owner:false",
       ] : []),
       ...(hasOfferRelease ? [
         "app_worker:offer_release_candidate:SELECT:app_owner:false",
@@ -7985,6 +8489,18 @@ export async function verifyRoleContract(
       ...(hasOfferVariantDeepening ? [
         "app_runtime:offer_variant.optional_bundles:UPDATE:app_owner:false",
       ] : []),
+      // M3-02c (0193): Runtime-Insert-Spalten + Update(id) (M2-02-Muster).
+      ...(hasRenderInputGuard ? [
+        "app_runtime:commercial_document_render_job.created_by:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.document_id:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.id:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.id:UPDATE:app_owner:false",
+        "app_runtime:commercial_document_render_job.input_json:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.input_sha256:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.renderer_recipe:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.template_version:INSERT:app_owner:false",
+        "app_runtime:commercial_document_render_job.workspace_id:INSERT:app_owner:false",
+      ] : []),
       ...(hasVariantPaymentWriteContract ? [
         "app_runtime:offer_variant.payment_option_id:UPDATE:app_owner:false",
       ] : []),
@@ -8003,6 +8519,12 @@ export async function verifyRoleContract(
       "app_runtime:project_catalog_resolution.id:UPDATE:app_owner:false",
       "app_runtime:project_requirement.id:UPDATE:app_owner:false",
       "app_runtime:workspace.id:UPDATE:app_owner:false",
+      // F8-24a (0200): Sweep stellt nur Zahlstatus + Uhren um.
+      ...(hasOverdueSweepWorkspace ? [
+        "app_worker:commercial_document.payment_status:UPDATE:app_owner:false",
+        "app_worker:commercial_document.payment_updated_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document.updated_at:UPDATE:app_owner:false",
+      ] : []),
       "app_worker:project_calculation_job.attempt_count:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.error_code:UPDATE:app_owner:false",
       "app_worker:project_calculation_job.error_retryable:UPDATE:app_owner:false",
@@ -8030,6 +8552,23 @@ export async function verifyRoleContract(
         "app_worker:offer_pdf_draft.started_at:UPDATE:app_owner:false",
         "app_worker:offer_pdf_draft.state:UPDATE:app_owner:false",
         "app_worker:offer_pdf_draft.updated_at:UPDATE:app_owner:false",
+      ] : []),
+      // M3-02c (0193): Worker-Automat-Spalten (M2-02-Muster, status statt state).
+      ...(hasRenderInputGuard ? [
+        "app_worker:commercial_document_render_job.artifact_bytes:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.artifact_mime_type:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.artifact_sha256:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.artifact_size_bytes:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.attempt_count:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.error_code:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.error_retryable:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.finished_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.lease_expires_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.lease_token:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.next_attempt_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.started_at:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.status:UPDATE:app_owner:false",
+        "app_worker:commercial_document_render_job.updated_at:UPDATE:app_owner:false",
       ] : []),
       ...(hasOfferRelease ? OFFER_RELEASE_WORKER_UPDATE_COLUMNS.map(
         (column) =>
@@ -8315,6 +8854,14 @@ export async function verifyRoleContract(
       ] : []),
       ...(hasF121LeadScore ? [
         "app_runtime:enqueue_lead_score_recompute(uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
+      // M3-02c (0193): Invoice-Dispatch — Runtime-EXECUTE wie Offer-Dispatch.
+      ...(hasRenderInputGuard ? [
+        "app_runtime:enqueue_invoice_pdf_render(uuid, uuid):EXECUTE:app_worker:false",
+      ] : []),
+      // F8-24c (0198): Draft-Dispatch — Runtime-EXECUTE wie Invoice-Dispatch.
+      ...(hasDraftPdfDispatch ? [
+        "app_runtime:enqueue_draft_pdf_render(uuid, uuid):EXECUTE:app_worker:false",
       ] : []),
     ],
     "pg-boss-Funktions-Grants",

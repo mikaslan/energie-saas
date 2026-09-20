@@ -48,6 +48,14 @@ export const CREDIT_NOTE_TYPE_LABELS: Record<string, string> = {
   empfehlungspraemie: "Empfehlungsprämie",
 };
 
+// F8-16: eigene, generische Fachbegriffe (Clean-Room — keine Textübernahme).
+export const INVOICE_KIND_LABELS: Record<string, string> = {
+  anzahlung: "Anzahlung",
+  abschlag: "Abschlag",
+  teilrechnung: "Teilrechnung",
+  schlussrechnung: "Schlussrechnung",
+};
+
 // Berlin-Datumsanzeige für ISO-Zeitstempel (Kimi-P3-2: nie Server-TZ).
 export function formatBerlinDate(iso: string): string {
   return new Intl.DateTimeFormat("de-DE", {

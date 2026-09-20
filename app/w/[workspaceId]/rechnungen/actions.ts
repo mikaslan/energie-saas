@@ -15,10 +15,12 @@ import {
   COMMERCIAL_DOCUMENT_SENT_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_UNLINK_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_TERMS_COMMAND_VERSION,
+  COMMERCIAL_DOCUMENT_INVOICE_KIND_COMMAND_VERSION,
   COMMERCIAL_DOCUMENT_VOID_COMMAND_VERSION,
   commercialDocumentCommandV1Schema,
   commercialDocumentGroupCommandV1Schema,
   commercialDocumentTermsCommandV1Schema,
+  commercialDocumentInvoiceKindCommandV1Schema,
   commercialVoidReasons,
   type CommercialVoidReason,
 } from "@/lib/integrations/invoicing/contract";
@@ -35,6 +37,7 @@ import {
   setDocumentArchived,
   setDocumentGroupArchived,
   setDocumentTerms,
+  setInvoiceKind,
   voidDocument,
   InvoicingConflictError,
   InvoicingNotFoundError,
@@ -171,6 +174,7 @@ export async function createDocumentAction(
   const plannedDeliveryDateValue = formData.get("plannedDeliveryDate");
   const plannedServiceDateValue = formData.get("plannedServiceDate");
   const creditNoteTypeValue = formData.get("creditNoteType");
+  const invoiceKindValue = formData.get("invoiceKind");
   const optionalDate = (value: FormDataEntryValue | null): string | null =>
     typeof value === "string" && value !== "" ? value : null;
   // F5-01b · Skonto schon bei Anlage (nur invoice; Felder nur dort gerendert).
@@ -193,6 +197,10 @@ export async function createDocumentAction(
       plannedDeliveryDate: optionalDate(plannedDeliveryDateValue),
       plannedServiceDate: optionalDate(plannedServiceDateValue),
       creditNoteType: optionalDate(creditNoteTypeValue),
+      // F8-16: Kennung nur invoice-seitig gerendert; leer = einfache Rechnung.
+      invoiceKind: typeof invoiceKindValue === "string" && invoiceKindValue !== ""
+        ? invoiceKindValue
+        : undefined,
     },
   });
   if (!parsed.success) return { status: "invalid" };
@@ -282,6 +290,35 @@ export async function setDocumentTermsAction(
       "invoicing.write",
       "commercial_document",
       (tx, ctx) => setDocumentTerms(tx, ctx, parsed.data),
+    );
+  } catch (error) {
+    return mapError(error);
+  }
+  revalidatePath(`/w/${workspaceId}/rechnungen`);
+  return { status: "success" };
+}
+
+// F8-16: Kennung am Rechnungs-Entwurf (Spiegel zur Terms-Action; leer = löschen).
+export async function setInvoiceKindAction(
+  _previous: InvoicingUiActionState,
+  formData: FormData,
+): Promise<InvoicingUiActionState> {
+  const workspaceId = parseWorkspaceId(formData.get("workspaceId"));
+  const documentId = parseUuid(formData.get("documentId"));
+  if (!workspaceId || !documentId) return { status: "invalid" };
+  const kindValue = formData.get("invoiceKind");
+  const parsed = commercialDocumentInvoiceKindCommandV1Schema.safeParse({
+    schemaVersion: COMMERCIAL_DOCUMENT_INVOICE_KIND_COMMAND_VERSION,
+    documentId,
+    invoiceKind: typeof kindValue === "string" && kindValue !== "" ? kindValue : null,
+  });
+  if (!parsed.success) return { status: "invalid" };
+  try {
+    await authorizedAction(
+      workspaceId,
+      "invoicing.write",
+      "commercial_document",
+      (tx, ctx) => setInvoiceKind(tx, ctx, parsed.data),
     );
   } catch (error) {
     return mapError(error);

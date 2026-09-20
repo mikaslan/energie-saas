@@ -5,6 +5,7 @@ import {
   CATALOG_IMPORT_CLEANUP_QUEUE_OPTIONS,
   CATALOG_IMPORT_QUEUE_OPTIONS,
   CalculationQueueBootstrapError,
+  INVOICE_PDF_QUEUE_OPTIONS,
   OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS,
   classifyCalculationQueueBootstrap,
   type CalculationQueueBootstrapSnapshot,
@@ -77,6 +78,18 @@ describe("M1-07 pg-boss Fresh-Install-Bootstrap", () => {
       expireInSeconds: 180,
     });
     expect(Object.isFrozen(OFFER_RELEASE_CANDIDATE_QUEUE_OPTIONS)).toBe(true);
+  });
+
+  it("pinnt den getrennten M3-02c-Rechnungs-PDF-Queue-Vertrag", () => {
+    expect(INVOICE_PDF_QUEUE_OPTIONS).toEqual({
+      policy: "exclusive",
+      retryLimit: 10,
+      retryDelay: 1,
+      retryBackoff: true,
+      retryDelayMax: 60,
+      expireInSeconds: 180,
+    });
+    expect(Object.isFrozen(INVOICE_PDF_QUEUE_OPTIONS)).toBe(true);
   });
 
   it("legt vor 0025 ausschließlich den unveränderlichen Legacy-Vertrag an", () => {

@@ -35,6 +35,8 @@ import {
   commercialDocumentPaymentStatusCommandV1Schema,
   commercialDocumentSentCommandV1Schema,
   commercialDocumentTermsCommandV1Schema,
+  commercialDocumentInvoiceKindCommandV1Schema,
+  commercialRecipientSnapshotV1Schema,
   commercialDocumentV1Schema,
   commercialDocumentVoidCommandV1Schema,
   commercialDocumentGroupV1Schema,
@@ -72,6 +74,8 @@ import {
   type CommercialDocumentPaymentStatusCommandV1,
   type CommercialDocumentSentCommandV1,
   type CommercialDocumentTermsCommandV1,
+  type CommercialDocumentInvoiceKindCommandV1,
+  type CommercialRecipientSnapshotV1,
   type CommercialDocumentV1,
   type CommercialDocumentVoidCommandV1,
   type CommercialDocumentGroupV1,
@@ -501,6 +505,7 @@ type DocumentDtoRow = {
   planned_delivery_date: string | null;
   planned_service_date: string | null;
   credit_note_type: string | null;
+  invoice_kind: string | null;
   payment_status: string | null;
   number: string | null;
   number_year: number | null;
@@ -519,7 +524,7 @@ const DOCUMENT_DTO_SELECT = sql`
          archived_at, currency, net_cents, tax_cents, gross_cents, due_date,
          skonto_percent_bps, skonto_days,
          delivery_date, validity_date, planned_delivery_date,
-         planned_service_date, credit_note_type, payment_status, number,
+         planned_service_date, credit_note_type, invoice_kind, payment_status, number,
          number_year, number_sequence, issued_at, sent_at, voided_at,
          void_reason, paid_cents, created_at
     from commercial_document
@@ -566,6 +571,7 @@ function toDocumentV1(row: DocumentDtoRow, canWrite: boolean): CommercialDocumen
     plannedDeliveryDate: row.planned_delivery_date,
     plannedServiceDate: row.planned_service_date,
     creditNoteType: row.credit_note_type,
+    invoiceKind: row.invoice_kind,
     number: row.number,
     numberYear: row.number_year === null ? null : Number(row.number_year),
     numberSequence: row.number_sequence === null ? null : Number(row.number_sequence),
@@ -598,7 +604,7 @@ type IssueDocumentRow = {
   planned_delivery_date: string | null;
   planned_service_date: string | null;
   credit_note_type: string | null;
-  recipient_snapshot: unknown;
+  invoice_kind: string | null;
   created_by: string;
   [key: string]: unknown;
 };
@@ -801,7 +807,7 @@ export async function createDocument(
         payment_status, paid_cents, due_date, skonto_percent_bps, skonto_days,
         delivery_date, validity_date,
         planned_delivery_date, planned_service_date, credit_note_type,
-        created_by
+        invoice_kind, created_by
       ) values (
         ${documentId}::uuid, ${ctx.workspaceId}::uuid, ${type},
         ${command.groupId}::uuid, ${command.projectId}::uuid, ${command.contactId}::uuid,
@@ -814,6 +820,7 @@ export async function createDocument(
         ${command.plannedDeliveryDate ? sql`${command.plannedDeliveryDate}::date` : null},
         ${command.plannedServiceDate ? sql`${command.plannedServiceDate}::date` : null},
         ${command.creditNoteType},
+        ${command.invoiceKind ?? null},
         ${ctx.actor}::uuid
       )
     `);
@@ -822,7 +829,14 @@ export async function createDocument(
     if (code === "23514") throw new InvoicingValidationError();
     throw error;
   }
-  const evidence = { workspaceId: ctx.workspaceId, documentId, type };
+  // F8-16: Kennung ins Erstellungs-Evidence (Anlage-mit-Kennung sonst
+  // unauditiert; IDs+Kennung-Budget, kein PII).
+  const evidence = {
+    workspaceId: ctx.workspaceId,
+    documentId,
+    type,
+    invoiceKind: command.invoiceKind ?? null,
+  };
   await emitEvent(tx, {
     workspaceId: ctx.workspaceId,
     aggregateType: "commercial_document",
@@ -908,6 +922,48 @@ async function assignDocumentNumber(
   return { number, numberYear: year, numberSequence: Number(row.last_sequence) };
 }
 
+// M3-02a: Empfängeradresse aus lebendem Kontakt lesen + validieren.
+// Stale Referenz (gelöscht/fremd) oder unzulässiger Text → Validation
+// (fail-closed, Ausstellung bricht ab). Kein Kontakt → null.
+async function freezeRecipientSnapshot(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  contactId: string | null,
+): Promise<CommercialRecipientSnapshotV1 | null> {
+  if (contactId === null) return null;
+  // FOR SHARE gegen TOCTOU: blockt konkurrierende Kontakt-Schreiber bis
+  // zum Siegel-Commit, Leser bleiben frei.
+  const contact = await tx.execute<{
+    display_name: string;
+    address_street: string | null;
+    address_house_number: string | null;
+    address_postal_code: string | null;
+    address_city: string | null;
+    address_country: string | null;
+  }>(sql`
+    select display_name, address_street, address_house_number,
+           address_postal_code, address_city, address_country
+      from contact
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and id = ${contactId}::uuid
+       and deleted_at is null
+     limit 1
+     for share
+  `);
+  const row = contact.rows[0];
+  if (!row) throw new InvoicingValidationError();
+  const parsed = commercialRecipientSnapshotV1Schema.safeParse({
+    displayName: row.display_name,
+    street: row.address_street,
+    houseNumber: row.address_house_number,
+    postalCode: row.address_postal_code,
+    city: row.address_city,
+    country: row.address_country,
+  });
+  if (!parsed.success) throw new InvoicingValidationError();
+  return parsed.data;
+}
+
 export async function issueDocument(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -923,7 +979,7 @@ export async function issueDocument(
            currency, net_cents, tax_cents, gross_cents, due_date,
            skonto_percent_bps, skonto_days,
            delivery_date, validity_date, planned_delivery_date,
-           planned_service_date, credit_note_type, recipient_snapshot,
+           planned_service_date, credit_note_type, invoice_kind,
            created_by
       from commercial_document
      where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
@@ -977,6 +1033,9 @@ export async function issueDocument(
      order by position asc
   `);
 
+  // M3-02a: Empfängeradresse aus lebendem Kontakt einfrieren (versiegelt).
+  const recipientSnapshot = await freezeRecipientSnapshot(tx, ctx, document.contact_id);
+
   const snapshot = {
     schemaVersion: GOEBD_SNAPSHOT_SCHEMA_VERSION,
     canonicalizationVersion: GOEBD_SNAPSHOT_CANONICALIZATION_VERSION,
@@ -997,8 +1056,9 @@ export async function issueDocument(
     plannedDeliveryDate: document.planned_delivery_date,
     plannedServiceDate: document.planned_service_date,
     creditNoteType: document.credit_note_type,
+    invoiceKind: document.invoice_kind,
     name: document.name,
-    recipientSnapshot: document.recipient_snapshot,
+    recipientSnapshot,
     lines: lines.rows.map((line) => ({
       position: Number(line.position),
       name: line.name,
@@ -1023,6 +1083,7 @@ export async function issueDocument(
            issued_by = ${ctx.actor}::uuid,
            issued_snapshot = ${canonical}::jsonb,
            snapshot_sha256 = ${snapshotSha256}::bytea,
+           recipient_snapshot = ${recipientSnapshot === null ? null : JSON.stringify(recipientSnapshot)}::jsonb,
            goebd_retention_until = ${retentionUntil.rows[0]?.date}::date,
            updated_at = statement_timestamp()
      where workspace_id = ${ctx.workspaceId}::uuid
@@ -1054,7 +1115,7 @@ export async function issueDocument(
            currency, net_cents, tax_cents, gross_cents, due_date,
            skonto_percent_bps, skonto_days,
            delivery_date, validity_date, planned_delivery_date,
-           planned_service_date, credit_note_type, payment_status, number,
+           planned_service_date, credit_note_type, invoice_kind, payment_status, number,
            number_year, number_sequence, issued_at, sent_at, voided_at,
            void_reason, paid_cents
       from commercial_document
@@ -1085,6 +1146,7 @@ export async function issueDocument(
     plannedDeliveryDate: issuedRow.planned_delivery_date,
     plannedServiceDate: issuedRow.planned_service_date,
     creditNoteType: issuedRow.credit_note_type,
+    invoiceKind: issuedRow.invoice_kind,
     number: issuedRow.number,
     numberYear: issuedRow.number_year === null ? null : Number(issuedRow.number_year),
     numberSequence: issuedRow.number_sequence === null ? null : Number(issuedRow.number_sequence),
@@ -1372,6 +1434,63 @@ export async function setDocumentTerms(
   return readDocument(tx, ctx, documentId);
 }
 
+// F8-16: Kennung am Rechnungs-Entwurf setzen/loeschen (Spiegel zu
+// setDocumentTerms: FOR UPDATE-Lock, Typ-Gate invoice, Freeze ab issue).
+export async function setInvoiceKind(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  input: CommercialDocumentInvoiceKindCommandV1,
+): Promise<CommercialDocumentV1> {
+  requireInvoicingWrite(ctx);
+  const parsed = commercialDocumentInvoiceKindCommandV1Schema.safeParse(input);
+  if (!parsed.success) throw new InvoicingValidationError();
+  const documentId = parsed.data.documentId;
+
+  const document = await tx.execute<{ type: string; status: string }>(sql`
+    select type, status
+      from commercial_document
+     where workspace_id = ${ctx.workspaceId}::uuid and id = ${documentId}::uuid
+     limit 1
+     for update
+  `);
+  const row = document.rows[0];
+  if (!row) throw new InvoicingNotFoundError();
+  if (row.type !== "invoice") throw new InvoicingValidationError();
+  if (row.status !== "draft") throw new InvoicingConflictError();
+
+  try {
+    await tx.execute(sql`
+      update commercial_document
+         set invoice_kind = ${parsed.data.invoiceKind},
+             updated_at = statement_timestamp()
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and id = ${documentId}::uuid
+         and status = 'draft'
+    `);
+  } catch (error) {
+    if (postgresErrorCode(error) === "23514") throw new InvoicingValidationError();
+    throw error;
+  }
+
+  await emitEvent(tx, {
+    workspaceId: ctx.workspaceId,
+    aggregateType: "commercial_document",
+    aggregateId: documentId,
+    eventType: "commercial_document.kind_set",
+    actor: ctx.actor,
+    payload: { documentId, invoiceKind: parsed.data.invoiceKind },
+  });
+  await writeAudit(tx, {
+    workspaceId: ctx.workspaceId,
+    actor: ctx.actor,
+    action: "document.kind_set",
+    resource: "commercial_document",
+    allowed: true,
+    details: { documentId, invoiceKind: parsed.data.invoiceKind },
+  });
+  return readDocument(tx, ctx, documentId);
+}
+
 export async function createDocumentLine(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -1416,6 +1535,18 @@ export async function createDocumentLine(
   const line = command.input;
   const taxCents = roundHalfUpCents(line.netCents, line.taxRateBps);
   const grossCents = line.netCents + taxCents;
+  // F8-22 Steuerbehandlung: 1900 bps → standard_19 (einzige Wahl);
+  // 0 bps → Default zero_12_3, explizit reverse_13b waehlbar.
+  // Fehl-Kopplung ist Eingabefehler (DB-CHECK spiegelt sie).
+  const taxTreatment = line.taxRateBps === 1900
+    ? "standard_19"
+    : (line.taxTreatment ?? "zero_12_3");
+  if (
+    (line.taxRateBps === 1900 && line.taxTreatment !== undefined && line.taxTreatment !== "standard_19")
+    || (line.taxRateBps === 0 && taxTreatment !== "zero_12_3" && taxTreatment !== "reverse_13b")
+  ) {
+    throw new InvoicingValidationError();
+  }
   const lineId = randomUUID();
   const lineSnapshot = JSON.stringify({
     schemaVersion: COMMERCIAL_DOCUMENT_LINE_VERSION,
@@ -1432,11 +1563,11 @@ export async function createDocumentLine(
     await tx.execute(sql`
       insert into commercial_document_line (
         id, workspace_id, document_id, position, name, quantity_milli, unit,
-        net_cents, tax_cents, gross_cents, tax_rate_bps, line_snapshot
+        net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment, line_snapshot
       ) values (
         ${lineId}::uuid, ${ctx.workspaceId}::uuid, ${command.documentId}::uuid,
         ${line.position}, ${line.name}, ${line.quantityMilli}, ${line.unit},
-        ${line.netCents}, ${taxCents}, ${grossCents}, ${line.taxRateBps},
+        ${line.netCents}, ${taxCents}, ${grossCents}, ${line.taxRateBps}, ${taxTreatment},
         ${lineSnapshot}::jsonb
       )
     `);
@@ -1593,6 +1724,9 @@ export async function listDocuments(
   }
   if (filters.creditNoteType !== undefined) {
     conditions.push(sql`credit_note_type = ${filters.creditNoteType}`);
+  }
+  if (filters.invoiceKind !== undefined) {
+    conditions.push(sql`invoice_kind = ${filters.invoiceKind}`);
   }
   // Archiv-Achse (Spec §5.4): active = Standard (nur nicht archivierte).
   if (filters.archived === undefined || filters.archived === "active") {

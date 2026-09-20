@@ -112,11 +112,11 @@ async function seedIssuedInvoice(fixture: Fixture, grossCents = 11900): Promise<
       await tx.execute(sql`
         insert into commercial_document_line (
           id, workspace_id, document_id, position, name, quantity_milli, unit,
-          net_cents, tax_cents, gross_cents, tax_rate_bps, line_snapshot
+          net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment, line_snapshot
         ) values (
           ${randomUUID()}::uuid, ${fixture.workspaceId}::uuid, ${id}::uuid, 1,
           'Position', 1000, 'piece', ${grossCents > 0 ? 10000 : 0},
-          ${grossCents > 0 ? 1900 : 0}, ${grossCents}, 1900,
+          ${grossCents > 0 ? 1900 : 0}, ${grossCents}, 1900, 'standard_19',
           '{"schemaVersion":"commercial-document-line.v1"}'::jsonb
         )
       `);
@@ -210,10 +210,10 @@ describe("M3-01 Versand-/Storno-/Zahlungsachse (PostgreSQL)", () => {
         await tx.execute(sql`
           insert into commercial_document_line (
             id, workspace_id, document_id, position, name, quantity_milli, unit,
-            net_cents, tax_cents, gross_cents, tax_rate_bps, line_snapshot
+            net_cents, tax_cents, gross_cents, tax_rate_bps, tax_treatment, line_snapshot
           ) values (
             ${randomUUID()}::uuid, ${fixture.workspaceId}::uuid, ${second}::uuid, 1,
-            'Position', 1000, 'piece', 10000, 1900, 11900, 1900,
+            'Position', 1000, 'piece', 10000, 1900, 11900, 1900, 'standard_19',
             '{"schemaVersion":"commercial-document-line.v1"}'::jsonb
           )
         `);

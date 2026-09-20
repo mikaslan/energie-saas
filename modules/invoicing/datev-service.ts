@@ -14,12 +14,17 @@ import {
 } from "@/lib/integrations/invoicing/contract";
 import {
   buildDatevBatchCsv,
+  buildDatevBatchDocuments,
   datevBatchFileName,
   DatevExportError,
+  type DatevBatchDocument,
   type DatevBookingInput,
+  type DatevTaxTreatment,
 } from "@/lib/integrations/invoicing/datev-export";
 import { InvoicingValidationError } from "./errors";
 import { requireInvoicingRead } from "./service";
+
+export type { DatevBatchDocument };
 
 type DatevDocumentRow = {
   id: string;
@@ -36,6 +41,7 @@ type DatevDocumentRow = {
 type DatevLineRow = {
   document_id: string;
   tax_rate_bps: number;
+  tax_treatment: string | null;
   net_cents: number;
   tax_cents: number;
   gross_cents: number;
@@ -51,6 +57,12 @@ function fail(): never {
  * ausgestellten Geldbelege werden in den EXTF-Builder projiziert.
  * Nicht exportierbare Belege (Typ/Währung/Nummer/0-%) verweigern
  * fail-closed mit Belegnennung (kein stiller Teil-Stapel).
+ *
+ * F8-22 DATEV-Sonderfaelle: `tax_treatment` wird aus DB gelesen
+ * (Migration 0197, TODO-OWNER); fehlt die Spalte (Migration noch nicht
+ * gefahren), laeuft der F8-11-Pfad unveraendert (19 % ableitbar, 0 %
+ * fail-closed). Kopf-only-Ableitung auf 0-%-Koepfe erweitert; das
+ * Batch-DTO traegt zusaetzlich `documents[]` (Datenservice-Vorstufe).
  */
 export async function exportDatevBatch(
   tx: TenantTx,
@@ -83,18 +95,45 @@ export async function exportDatevBatch(
      order by doc.issued_at asc, doc.id asc
   `);
 
+  // Migration 0197 (tax_treatment) laeuft getrennt: Spaltenprobe statt
+  // hartem SELECT, damit der F8-11-Pfad ohne die Spalte gruen bleibt.
+  const treatmentProbe = documents.rows.length === 0
+    ? { rows: [] as Array<{ present: number }> }
+    : await tx.execute<{ present: number }>(sql`
+      select 1 as present
+        from information_schema.columns
+       where table_schema = 'public'
+         and table_name = 'commercial_document_line'
+         and column_name = 'tax_treatment'
+       limit 1
+    `);
+  const treatmentAvailable = treatmentProbe.rows.length > 0;
+
   const lines = documents.rows.length === 0
     ? []
-    : (await tx.execute<DatevLineRow>(sql`
-      select document_id, tax_rate_bps, net_cents, tax_cents, gross_cents
+    : (await tx.execute<DatevLineRow>(
+      treatmentAvailable
+        ? sql`
+      select document_id, tax_rate_bps, tax_treatment, net_cents, tax_cents, gross_cents
         from commercial_document_line
        where workspace_id = ${ctx.workspaceId}::uuid
          and document_id in (${sql.join(
-           documents.rows.map((row) => sql`${row.id}::uuid`),
-           sql`, `,
-         )})
+          documents.rows.map((row) => sql`${row.id}::uuid`),
+          sql`, `,
+        )})
        order by document_id asc, position asc
-    `)).rows;
+    `
+        : sql`
+      select document_id, tax_rate_bps, null::text as tax_treatment, net_cents, tax_cents, gross_cents
+        from commercial_document_line
+       where workspace_id = ${ctx.workspaceId}::uuid
+         and document_id in (${sql.join(
+          documents.rows.map((row) => sql`${row.id}::uuid`),
+          sql`, `,
+        )})
+       order by document_id asc, position asc
+    `,
+    )).rows;
 
   const linesByDocument = new Map<string, DatevLineRow[]>();
   for (const line of lines) {
@@ -109,6 +148,9 @@ export async function exportDatevBatch(
     const grossCents = Number(row.gross_cents);
     let lines = (linesByDocument.get(row.id) ?? []).map((line) => ({
       taxRateBps: Number(line.tax_rate_bps),
+      // Rohwert an den Builder: fehlend/unbekannt/inkonsistent verweigert
+      // dort fail-closed mit Belegnummer (F822-CT-04).
+      taxTreatment: (line.tax_treatment ?? undefined) as DatevTaxTreatment | undefined,
       netCents: Number(line.net_cents),
       taxCents: Number(line.tax_cents),
       grossCents: Number(line.gross_cents),
@@ -117,10 +159,17 @@ export async function exportDatevBatch(
       // Kopf-only-Belege sind produkt-legal (issue verlangt keine Zeilen).
       // Exakt-19-%-Kopf (ganzzahliger Quotient) wird als EINE 19-%-Zeile
       // aus Kopfbeträgen gebucht (ESTIMATE-Ableitung, Spec §F8-11);
+      // reiner 0-%-Kopf (Steuer 0, Brutto = Netto, EINSCHLIESSLICH 0-€-
+      // Kopf: F816 stellt zeilenlose 0-€-Abschlaege aus, Spec §F8-22
+      // kennt keinen >0-Vorbehalt) als EINE zero_12_3-Zeile (DECIDED);
       // alles andere verweigert der Builder fail-closed mit Belegnummer.
+      // (CHECKs binden Betraege >= 0; gross = net + tax schliesst
+      // negative/krumme 0-Faelle aus.)
       const ratioExact = netCents > 0 && taxCents * 100 === 19 * netCents;
       if (ratioExact) {
-        lines = [{ taxRateBps: 1900, netCents, taxCents, grossCents }];
+        lines = [{ taxRateBps: 1900, taxTreatment: "standard_19", netCents, taxCents, grossCents }];
+      } else if (taxCents === 0 && grossCents === netCents) {
+        lines = [{ taxRateBps: 0, taxTreatment: "zero_12_3", netCents, taxCents: 0, grossCents }];
       }
     }
     return {
@@ -137,8 +186,10 @@ export async function exportDatevBatch(
   });
 
   let content: string;
+  let batchDocuments: DatevBatchDocument[];
   try {
     content = buildDatevBatchCsv({ month, skr: skr as DatevSkr, bookings });
+    batchDocuments = buildDatevBatchDocuments({ month, skr: skr as DatevSkr, bookings });
   } catch (error) {
     if (error instanceof DatevExportError) fail();
     throw error;
@@ -151,5 +202,6 @@ export async function exportDatevBatch(
     fileName: datevBatchFileName(month, skr as DatevSkr),
     contentType: "text/csv; charset=utf-8",
     content,
+    documents: batchDocuments,
   });
 }

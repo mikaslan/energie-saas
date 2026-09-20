@@ -8,6 +8,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
   DOCUMENT_TYPE_SINGULAR_LABELS,
+  INVOICE_KIND_LABELS,
   PAYMENT_STATUS_LABELS,
   formatBerlinDate,
   formatDateOnly,
@@ -17,6 +18,7 @@ import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
 import {
   COMMERCIAL_DOCUMENT_LIST_COMMAND_VERSION,
   commercialDocumentTypes,
+  commercialInvoiceKinds,
   type CommercialDocumentType,
 } from "@/lib/integrations/invoicing/contract";
 import { PermissionDeniedError } from "@/lib/permissions";
@@ -35,6 +37,7 @@ const filterSchema = z.object({
   fdatumVon: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
   fdatumBis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
   grund: z.enum(["minderleistung", "empfehlungspraemie"]).optional(),
+  art: z.enum(commercialInvoiceKinds).optional(),
   archiv: z.enum(["active", "archived", "all"]).optional(),
   suche: z.string().max(160).optional(),
   cursor: z.string().regex(cursorPattern).optional(),
@@ -88,11 +91,16 @@ const moneyTypes: CommercialDocumentType[] = ["invoice", "credit_note"];
 const inputClass =
   "mt-1 min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/30";
 
-function activeFilterCount(filters: z.infer<typeof filterSchema>): number {
+function activeFilterCount(
+  filters: z.infer<typeof filterSchema>,
+  type: CommercialDocumentType,
+): number {
   return [
     filters.status, filters.zahlung, filters.von, filters.bis,
-    filters.fdatumVon, filters.fdatumBis, filters.grund, filters.archiv,
-    filters.suche,
+    filters.fdatumVon, filters.fdatumBis, filters.grund,
+    // F8-16: art nur auf Rechnungslisten zaehlen (crafted ?art= sonst).
+    type === "invoice" ? filters.art : undefined,
+    filters.archiv, filters.suche,
   ].filter((value) => value !== undefined && value !== "").length;
 }
 
@@ -115,6 +123,7 @@ export default async function InvoicingDocumentListPage(
     fdatumVon: nonEmpty(firstQueryValue(rawSearch.fdatumVon)),
     fdatumBis: nonEmpty(firstQueryValue(rawSearch.fdatumBis)),
     grund: nonEmpty(firstQueryValue(rawSearch.grund)),
+    art: nonEmpty(firstQueryValue(rawSearch.art)),
     archiv: nonEmpty(firstQueryValue(rawSearch.archiv)),
     suche: nonEmpty(firstQueryValue(rawSearch.suche)),
     cursor: nonEmpty(firstQueryValue(rawSearch.cursor)),
@@ -138,6 +147,9 @@ export default async function InvoicingDocumentListPage(
             typeDateFrom: filters.fdatumVon,
             typeDateTo: filters.fdatumBis,
             creditNoteType: filters.grund,
+            // F8-16: Scope-Gate schon hier — crafted ?art= auf Nicht-
+            // Rechnungslisten wuerfe sonst ungefangene Validation (500).
+            invoiceKind: type === "invoice" ? filters.art : undefined,
             archived: filters.archiv,
             search: filters.suche,
           },
@@ -175,7 +187,7 @@ export default async function InvoicingDocumentListPage(
     return <DeniedState title={`Die ${DOCUMENT_TYPE_LABELS[type]} sind für dich nicht freigegeben.`} />;
   }
 
-  const activeFilters = activeFilterCount(filters);
+  const activeFilters = activeFilterCount(filters, type);
   const typeDate = (document: typeof list.items[number]) => typeDateField(document, type);
   const emptyQuery = activeFilters === 0;
   const nextLink = list.nextCursor
@@ -257,6 +269,20 @@ export default async function InvoicingDocumentListPage(
               Fällig bis
             </label>
             <input id={`fdatum-${type}`} type="date" name="fdatumBis" defaultValue={filters.fdatumBis ?? ""} className={inputClass} />
+          </div>
+        ) : null}
+
+        {type === "invoice" ? (
+          <div>
+            <label htmlFor={`art-${type}`} className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Rechnungsart
+            </label>
+            <select id={`art-${type}`} name="art" defaultValue={filters.art ?? ""} className={inputClass}>
+              <option value="">Alle</option>
+              {commercialInvoiceKinds.map((kind) => (
+                <option key={kind} value={kind}>{INVOICE_KIND_LABELS[kind]}</option>
+              ))}
+            </select>
           </div>
         ) : null}
 

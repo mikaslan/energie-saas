@@ -27,6 +27,11 @@ const RLS_FREE_WORKSPACE_EXEMPT = new Set<string>([
   // F10.1 Kundenportal: baugleich M2-04, RLS-freier Token-Locator im
   // TENANT_EXEMPT (Zugriff ausschliesslich ueber SECURITY-DEFINER-Kapseln).
   "portal_token_locator",
+  // F8-24a Sweep-Arbeitsvorrat: baugleich Locator, RLS-freier
+  // Trigger-Spiegel aller Workspace-IDs im TENANT_EXEMPT. Der Sweep
+  // muss Workspaces aufzaehlen, BEVOR app.workspace_id existiert;
+  // Zugriff nur lesend durch app_worker (Rollenvertrag).
+  "overdue_sweep_workspace",
 ]);
 
 interface Relation {
@@ -103,8 +108,17 @@ const ACTOR_SCOPED_TABLES = new Set([
   "commercial_document_line",
   "commercial_document_number_series",
   "commercial_document_link",
+  // F8-19 (0195)/F8-21 (0196): RESTRICTIVE Actor-Policies, read-gated
+  // SELECT (Muster commercial_document) — Zaehlen als Viewer.
+  "commercial_document_delivery",
+  "accounting_sync_record",
+]);
+// M3-02c: Write-gated SELECT (P1: Issuing-PII) — Zaehlen als Editor.
+const EDITOR_SCOPED_TABLES = new Set([
+  "commercial_document_render_job",
 ]);
 const actorByWorkspace = new Map<string, string>();
+const editorByWorkspace = new Map<string, string>();
 
 async function ensureInternalViewer(workspaceId: string): Promise<string> {
   const existing = actorByWorkspace.get(workspaceId);
@@ -128,6 +142,28 @@ async function ensureInternalViewer(workspaceId: string): Promise<string> {
   return actorId;
 }
 
+async function ensureInternalEditor(workspaceId: string): Promise<string> {
+  const existing = editorByWorkspace.get(workspaceId);
+  if (existing) return existing;
+  const actorId = randomUUID();
+  const membershipId = randomUUID();
+  await withTenantOn(testPool, workspaceId, async (tx) => {
+    await tx.execute(sql`
+      insert into user_identity (id, email)
+      values (${actorId}::uuid, ${`${actorId}@tenant-invariant.test`})
+    `);
+    await tx.execute(sql`
+      insert into membership (id, workspace_id, user_id, role, capabilities)
+      values (
+        ${membershipId}::uuid, ${workspaceId}::uuid, ${actorId}::uuid,
+        'editor', '{"invoicing":true,"external_only":false}'::jsonb
+      )
+    `);
+  });
+  editorByWorkspace.set(workspaceId, actorId);
+  return actorId;
+}
+
 async function countVisibleRows(table: string, workspaceId: string): Promise<number> {
   const read = async (tx: Parameters<typeof tenantFixtures.workspace>[0]) => {
     const result = await tx.execute<CountRow>(
@@ -135,8 +171,12 @@ async function countVisibleRows(table: string, workspaceId: string): Promise<num
     );
     return result.rows[0].n;
   };
-  if (!ACTOR_SCOPED_TABLES.has(table)) {
+  if (!ACTOR_SCOPED_TABLES.has(table) && !EDITOR_SCOPED_TABLES.has(table)) {
     return withTenantOn(testPool, workspaceId, read);
+  }
+  if (EDITOR_SCOPED_TABLES.has(table)) {
+    const editorId = await ensureInternalEditor(workspaceId);
+    return withAuthorizedTenantOn(testPool, editorId, workspaceId, read);
   }
   const actorId = await ensureInternalViewer(workspaceId);
   return withAuthorizedTenantOn(testPool, actorId, workspaceId, read);
