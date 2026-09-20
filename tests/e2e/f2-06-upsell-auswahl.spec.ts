@@ -188,12 +188,16 @@ test("F206-E2E-01: Optionale Position wird Upsell-Checkbox mit Live-Summe", asyn
   { timeout: 30_000 }).toBe(firstEvidence.revision + 1);
   // Flake-Härtung (CI 34859462201/34872132657): page.reload kann unter
   // Volllast den Frame verlieren (net::ERR_ABORTED, keine Assertion
-  // betroffen). Einmaliger Retry desselben Reloads — keine abgeschwächte
-  // Prüfung, identische Folge-Assertions.
+  // betroffen). Agent 9b erweitert (CI 35514596449 Shard 2): auch der
+  // reine Navigations-Timeout ("Timeout 30000ms exceeded", wartend auf
+  // "load") ist Last-Flake — solo lokal gruen (7,5 s), Basis-Volllauf
+  // 35512269442 gruen, Re-Run gruen. Einmaliger Retry desselben Reloads —
+  // keine abgeschwächte Prüfung, identische Folge-Assertions; echter
+  // Defekt scheitert im 2. Versuch erneut (fail-closed).
   try {
     await page.reload();
   } catch (error) {
-    if (!(error instanceof Error) || !/ERR_ABORTED|frame was detached/u.test(error.message)) {
+    if (!(error instanceof Error) || !/ERR_ABORTED|frame was detached|Timeout \d+ms exceeded/u.test(error.message)) {
       throw error;
     }
     await page.reload();
