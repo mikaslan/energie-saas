@@ -8,6 +8,14 @@ export type PlanningPanelGroupOrigin = {
   y: number;
 };
 
+// F3-04c: Kollisions-Eintrag je betroffener Sperrzone (Service-DTO-Spiegel:
+// collisions [{restrictionId, kind, label}] — ohne Schnittflaeche).
+export type PlanningPanelGroupCollision = {
+  restrictionId: string;
+  kind: string;
+  label: string;
+};
+
 export type PlanningPanelGroupDto = {
   id: string;
   roofId: string;
@@ -21,6 +29,8 @@ export type PlanningPanelGroupDto = {
   gapM: number;
   tiltDeg: number | null;
   createdAt: string;
+  collisions: PlanningPanelGroupCollision[];
+  deselectedCount: number;
 };
 
 export type PlanningPanelGroupRow = {
@@ -110,5 +120,8 @@ export function toPlanningPanelGroupDto(row: PlanningPanelGroupRow): PlanningPan
     gapM,
     tiltDeg,
     createdAt: toIso(row.created_at),
+    // F3-04c: Panel reichert collisions/deselectedCount an (advisory-only).
+    collisions: [],
+    deselectedCount: 0,
   };
 }

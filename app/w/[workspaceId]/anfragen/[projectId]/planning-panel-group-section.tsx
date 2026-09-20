@@ -4,6 +4,8 @@
 // @/lib/integrations/planning/contracts/panel-group): Raster-Form ohne
 // Server-Reject, Gruppen-Rechteck-in-Polygon serverseitig (Action).
 // Viewer read-only (Muster: planning-roof-restriction-section.tsx).
+// F3-04c: Kollisions-Warnbadge je betroffener Zeile (advisory-only) +
+// Deselect-Hinweis; Quick blendet die Sektion aus (F3-01-Regel).
 "use client";
 
 import { useActionState, useEffect, useState, type FormEvent } from "react";
@@ -15,8 +17,25 @@ import {
 } from "./planning-panel-group-actions";
 import {
   PLANNING_PANEL_GROUP_KIND_LABELS,
+  type PlanningPanelGroupCollision,
   type PlanningPanelGroupDto,
 } from "./planning-panel-group-model";
+
+// F3-04c: Badge-Text enthaelt „ueberlappt" + Gegenueber-Labels
+// (E2E-Vertrag tests/e2e/f3-04c-collision.spec.ts).
+function collisionBadgeText(collisions: PlanningPanelGroupCollision[]): string {
+  const labels = collisions.map((collision) => collision.label).join(", ");
+  const noun = collisions.length === 1 ? "Sperrzone" : "Sperrzonen";
+  return `Überlappt ${noun} ${labels} — Zellen abwählen`;
+}
+
+// F3-04c: Hinweis nach Abwahlen — Text enthaelt „abgewaehlt", Badge
+// bleibt daneben sichtbar (Rechteck-Ebene, kein Reject).
+function collisionHintText(deselectedCount: number): string {
+  return deselectedCount === 1
+    ? "1 Zelle abgewählt — Warnung bleibt auf Rechteck-Ebene bestehen."
+    : `${deselectedCount} Zellen abgewählt — Warnung bleibt auf Rechteck-Ebene bestehen.`;
+}
 
 const initialAction: PlanningPanelGroupActionState = { status: "idle" };
 const GRID_MESSAGE = "Zeilen/Spalten müssen ganze Zahlen von 1–200 sein.";
@@ -70,12 +89,14 @@ export function PlanningPanelGroupSection({
   roofId,
   initialGroups,
   canWrite,
+  planningMode,
 }: {
   workspaceId: string;
   projectId: string;
   roofId: string | null;
   initialGroups: PlanningPanelGroupDto[];
   canWrite: boolean;
+  planningMode?: "quick" | "2d" | "3d";
 }) {
   const router = useRouter();
   const [saveState, saveDispatch] = useActionState(savePlanningPanelGroupAction, initialAction);
@@ -98,6 +119,8 @@ export function PlanningPanelGroupSection({
       router.refresh();
     }
   }, [saveState, removeState, router]);
+
+  if (planningMode === "quick") return null;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     const parsedRows = parseInteger(rows);
@@ -188,6 +211,22 @@ export function PlanningPanelGroupSection({
               {`, Lücke ${group.gapM} m`}
               {group.tiltDeg !== null ? `, Neigung ${group.tiltDeg}°` : ""}
             </span>
+            {group.collisions.length > 0 ? (
+              <p
+                data-testid="planning-panel-collision-badge"
+                className="w-full text-sm font-semibold text-amber-700"
+              >
+                {collisionBadgeText(group.collisions)}
+              </p>
+            ) : null}
+            {group.collisions.length > 0 && group.deselectedCount > 0 ? (
+              <p
+                data-testid="planning-panel-collision-hint"
+                className="w-full text-sm text-slate-600"
+              >
+                {collisionHintText(group.deselectedCount)}
+              </p>
+            ) : null}
             {canWrite ? (
               <form action={removeDispatch} className="ml-auto">
                 <input type="hidden" name="workspaceId" value={workspaceId} />

@@ -10,6 +10,13 @@ export type PlanningRoofRestrictionRect = {
   height: number;
 };
 
+// F3-04c: Kollisions-Eintrag je ueberlappender Panel-Gruppe
+// (Service-DTO-Spiegel: collidingGroups [{groupId, label}]).
+export type PlanningRoofRestrictionCollidingGroup = {
+  groupId: string;
+  label: string;
+};
+
 export type PlanningRoofRestrictionDto = {
   id: string;
   roofId: string;
@@ -18,6 +25,7 @@ export type PlanningRoofRestrictionDto = {
   rect: PlanningRoofRestrictionRect;
   heightM: number | null;
   createdAt: string;
+  collidingGroups: PlanningRoofRestrictionCollidingGroup[];
 };
 
 export type PlanningRoofRestrictionRow = {
@@ -106,5 +114,7 @@ export function toPlanningRoofRestrictionDto(
     rect,
     heightM,
     createdAt: toIso(row.created_at),
+    // F3-04c: Panel reichert collidingGroups an (advisory-only).
+    collidingGroups: [],
   };
 }

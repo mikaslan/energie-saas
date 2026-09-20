@@ -22,6 +22,7 @@ import {
   type PlanningPanelGroupKind,
   type PlanningPanelGroupOriginV1,
 } from "@/lib/integrations/planning/contracts/panel-group";
+import { groupRestrictionCollisions } from "@/lib/integrations/planning/contracts/panel-collision";
 import { rectInsidePolygon } from "@/lib/integrations/planning/contracts/roof-restriction";
 import { can, isExternalOnly, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import type { planningPanelGroup } from "@/lib/db/schema/planning-panel-group";
@@ -62,6 +63,12 @@ const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
 
 export type PanelGroupOriginDto = PlanningPanelGroupOriginV1;
 
+export type PanelGroupCollisionDto = {
+  restrictionId: string;
+  kind: string;
+  label: string;
+};
+
 export type PlanningPanelGroupDto = {
   id: string;
   roofId: string;
@@ -74,6 +81,7 @@ export type PlanningPanelGroupDto = {
   moduleHM: number;
   gapM: number;
   tiltDeg: number | null;
+  collisions: PanelGroupCollisionDto[];
   createdAt: string;
   updatedAt: string;
   permissions: { canWrite: boolean };
@@ -181,7 +189,85 @@ function parseContractCreate(input: CreatePanelGroupInput): {
   };
 }
 
-function toDto(row: PanelGroupRow, canWrite: boolean): PlanningPanelGroupDto {
+type RestrictionRefRow = {
+  id: string;
+  kind: string;
+  label: string;
+  rect_json: unknown;
+};
+
+type RestrictionRef = {
+  id: string;
+  kind: string;
+  label: string;
+  rect: { x: number; y: number; width: number; height: number };
+};
+
+const restrictionRefRectSchema = z.strictObject({
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+});
+
+async function loadRestrictionRefs(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  roofId: string,
+): Promise<RestrictionRef[]> {
+  // F3-04c: Restrictions desselben Dachs fuer die advisory-only
+  // Kollisions-Anreicherung. Ungueltige Zeilen werden uebersprungen
+  // (Warnung darf Reads nie brechen).
+  const found = await tx.execute<RestrictionRefRow>(sql`
+    select id, kind, label, rect_json
+      from planning_roof_restriction
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and roof_id = ${roofId}::uuid
+     order by created_at, id
+  `);
+  const refs: RestrictionRef[] = [];
+  for (const row of found.rows) {
+    const rect = restrictionRefRectSchema.safeParse(row.rect_json);
+    if (!rect.success || typeof row.label !== "string" || typeof row.kind !== "string") {
+      continue;
+    }
+    refs.push({ id: row.id, kind: row.kind, label: row.label, rect: rect.data });
+  }
+  return refs;
+}
+
+function collisionsForGroup(
+  groupId: string,
+  rect: { x: number; y: number; width: number; height: number },
+  refs: RestrictionRef[],
+): PanelGroupCollisionDto[] {
+  if (refs.length === 0) return [];
+  if (
+    !Number.isFinite(rect.x) ||
+    !Number.isFinite(rect.y) ||
+    !Number.isFinite(rect.width) ||
+    !Number.isFinite(rect.height) ||
+    !(rect.width > 0) ||
+    !(rect.height > 0)
+  ) {
+    return [];
+  }
+  const hits = groupRestrictionCollisions({
+    group: { id: groupId, rect },
+    restrictions: refs,
+  });
+  return hits.map((hit) => ({
+    restrictionId: hit.restrictionId,
+    kind: hit.kind,
+    label: hit.label,
+  }));
+}
+
+function toDto(
+  row: PanelGroupRow,
+  canWrite: boolean,
+  collisions: PanelGroupCollisionDto[],
+): PlanningPanelGroupDto {
   const kind = z.enum(["h", "v"]).safeParse(row.kind);
   const origin = z
     .strictObject({
@@ -223,6 +309,7 @@ function toDto(row: PanelGroupRow, canWrite: boolean): PlanningPanelGroupDto {
     moduleHM: measures.data.moduleHM,
     gapM: measures.data.gapM,
     tiltDeg: measures.data.tiltDeg,
+    collisions,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
     permissions: { canWrite },
@@ -339,7 +426,10 @@ export async function createPanelGroup(
     details: { panelGroupId: row.id, roofId: roof.id },
   });
 
-  return toDto(row, true);
+  // F3-04c: Create bleibt zulaessig (advisory-only, kein Reject);
+  // die DTO-Anreicherung nutzt das bereits validierte Rechteck.
+  const refs = await loadRestrictionRefs(tx, ctx, roof.id);
+  return toDto(row, true, collisionsForGroup(row.id, rect, refs));
 }
 
 export async function removePanelGroup(
@@ -401,7 +491,18 @@ export async function getPanelGroup(
   `);
   const row = found.rows[0];
   if (!row) throw new PlanningPanelGroupNotFoundError(parsed.data);
-  return toDto(row, can(ctx, "project.write"));
+  const canWrite = can(ctx, "project.write");
+  const base = toDto(row, canWrite, []);
+  const refs = await loadRestrictionRefs(tx, ctx, base.roofId);
+  const rect = groupRect({
+    origin: base.origin,
+    rows: base.rows,
+    cols: base.cols,
+    moduleWM: base.moduleWM,
+    moduleHM: base.moduleHM,
+    gapM: base.gapM,
+  });
+  return { ...base, collisions: collisionsForGroup(base.id, rect, refs) };
 }
 
 export async function listPanelGroups(
@@ -424,5 +525,17 @@ export async function listPanelGroups(
        and roof_id = ${parsed.data}::uuid
      order by created_at, id
   `);
-  return rows.rows.map((row) => toDto(row, canWrite));
+  const refs = await loadRestrictionRefs(tx, ctx, parsed.data);
+  return rows.rows.map((row) => {
+    const base = toDto(row, canWrite, []);
+    const rect = groupRect({
+      origin: base.origin,
+      rows: base.rows,
+      cols: base.cols,
+      moduleWM: base.moduleWM,
+      moduleHM: base.moduleHM,
+      gapM: base.gapM,
+    });
+    return { ...base, collisions: collisionsForGroup(base.id, rect, refs) };
+  });
 }

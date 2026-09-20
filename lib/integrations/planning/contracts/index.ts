@@ -110,3 +110,12 @@ export {
   type PlanningStringMemberDeselectedCell,
   type PlanningStringMemberRange,
 } from "./string-member";
+export {
+  PLANNING_PANEL_COLLISION_VERSION,
+  groupRestrictionCollisions,
+  planningPanelCollisionCheckV1Schema,
+  planningPanelCollisionRectV1Schema,
+  type PlanningPanelCollision,
+  type PlanningPanelCollisionCheckV1,
+  type PlanningPanelCollisionRectV1,
+} from "./panel-collision";

@@ -3,6 +3,9 @@
 // Client-Validierung ueber den Batch-Contract
 // (@/lib/integrations/planning/contracts): Rechteck-Form ohne Server-Reject,
 // Rechteck-in-Polygon serverseitig (Action). Viewer read-only.
+// F3-04c: Kollisions-Warnbadge je betroffener Zeile (advisory-only,
+// symmetrisch zur Gruppen-Liste); Quick blendet die Sektion aus
+// (F3-01-Regel).
 "use client";
 
 import { useActionState, useEffect, useState, type FormEvent } from "react";
@@ -15,8 +18,17 @@ import {
 } from "./planning-roof-restriction-actions";
 import {
   PLANNING_ROOF_RESTRICTION_KIND_LABELS,
+  type PlanningRoofRestrictionCollidingGroup,
   type PlanningRoofRestrictionDto,
 } from "./planning-roof-restriction-model";
+
+// F3-04c: Badge-Text enthaelt „ueberlappt" + Gegenueber-Labels
+// (E2E-Vertrag tests/e2e/f3-04c-collision.spec.ts).
+function collisionBadgeText(groups: PlanningRoofRestrictionCollidingGroup[]): string {
+  const labels = groups.map((group) => group.label).join(", ");
+  const noun = groups.length === 1 ? "Panel-Gruppe" : "Panel-Gruppen";
+  return `Überlappt ${noun} ${labels} — Zellen in der Gruppe abwählen`;
+}
 
 const initialAction: PlanningRoofRestrictionActionState = { status: "idle" };
 const RECT_MESSAGE = "Das Rechteck ist ungültig (endliche Zahlen, Breite/Höhe > 0).";
@@ -61,12 +73,14 @@ export function PlanningRoofRestrictionSection({
   roofId,
   initialRestrictions,
   canWrite,
+  planningMode,
 }: {
   workspaceId: string;
   projectId: string;
   roofId: string | null;
   initialRestrictions: PlanningRoofRestrictionDto[];
   canWrite: boolean;
+  planningMode?: "quick" | "2d" | "3d";
 }) {
   const router = useRouter();
   const [saveState, saveDispatch] = useActionState(savePlanningRoofRestrictionAction, initialAction);
@@ -85,6 +99,8 @@ export function PlanningRoofRestrictionSection({
       router.refresh();
     }
   }, [saveState, removeState, router]);
+
+  if (planningMode === "quick") return null;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     const parsed = planningRoofRestrictionRectV1Schema.safeParse({
@@ -134,6 +150,14 @@ export function PlanningRoofRestrictionSection({
               {`x ${restriction.rect.x.toFixed(4)}, y ${restriction.rect.y.toFixed(4)}, ${restriction.rect.width.toFixed(4)} × ${restriction.rect.height.toFixed(4)}`}
               {restriction.heightM !== null ? `, Höhe ${restriction.heightM} m` : ""}
             </span>
+            {restriction.collidingGroups.length > 0 ? (
+              <p
+                data-testid="planning-panel-collision-badge"
+                className="w-full text-sm font-semibold text-amber-700"
+              >
+                {collisionBadgeText(restriction.collidingGroups)}
+              </p>
+            ) : null}
             {canWrite ? (
               <form action={removeDispatch} className="ml-auto">
                 <input type="hidden" name="workspaceId" value={workspaceId} />

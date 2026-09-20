@@ -20,6 +20,8 @@ import {
   type PlanningRoofRestrictionKind,
   type PlanningRoofRestrictionRectV1,
 } from "@/lib/integrations/planning/contracts";
+import { groupRestrictionCollisions } from "@/lib/integrations/planning/contracts/panel-collision";
+import { groupRect } from "@/lib/integrations/planning/contracts/panel-group";
 import { can, isExternalOnly, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 import {
   PlanningRoofRestrictionNotFoundError,
@@ -37,6 +39,11 @@ const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
 
 export type RoofRestrictionRectDto = PlanningRoofRestrictionRectV1;
 
+export type CollidingGroupDto = {
+  groupId: string;
+  label: string;
+};
+
 export type PlanningRoofRestrictionDto = {
   id: string;
   roofId: string;
@@ -44,6 +51,7 @@ export type PlanningRoofRestrictionDto = {
   label: string;
   rect: RoofRestrictionRectDto;
   heightM: number | null;
+  collidingGroups: CollidingGroupDto[];
   createdAt: string;
   updatedAt: string;
   permissions: { canWrite: boolean };
@@ -126,7 +134,116 @@ function parseContractCreate(input: CreateRestrictionInput): {
   };
 }
 
-function toDto(row: RestrictionRow, canWrite: boolean): PlanningRoofRestrictionDto {
+type PanelGroupRefRow = {
+  id: string;
+  label: string;
+  origin_json: unknown;
+  rows: number;
+  cols: number;
+  module_w_m: number;
+  module_h_m: number;
+  gap_m: number;
+};
+
+type PanelGroupRef = {
+  id: string;
+  label: string;
+  rect: { x: number; y: number; width: number; height: number };
+};
+
+const groupRefOriginSchema = z.strictObject({
+  x: z.number().finite(),
+  y: z.number().finite(),
+});
+
+const groupRefMeasuresSchema = z.strictObject({
+  rows: z.number().int(),
+  cols: z.number().int(),
+  moduleWM: z.number().finite(),
+  moduleHM: z.number().finite(),
+  gapM: z.number().finite(),
+});
+
+function isPositiveRect(rect: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): boolean {
+  return (
+    Number.isFinite(rect.x) &&
+    Number.isFinite(rect.y) &&
+    Number.isFinite(rect.width) &&
+    Number.isFinite(rect.height) &&
+    rect.width > 0 &&
+    rect.height > 0
+  );
+}
+
+async function loadGroupRefs(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  roofId: string,
+): Promise<PanelGroupRef[]> {
+  // F3-04c: Panel-Gruppen desselben Dachs fuer die advisory-only
+  // Kollisions-Anreicherung. Ungueltige Zeilen werden uebersprungen
+  // (Warnung darf Reads nie brechen).
+  const found = await tx.execute<PanelGroupRefRow>(sql`
+    select id, label, origin_json, rows, cols, module_w_m, module_h_m, gap_m
+      from planning_panel_group
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and roof_id = ${roofId}::uuid
+     order by created_at, id
+  `);
+  const refs: PanelGroupRef[] = [];
+  for (const row of found.rows) {
+    const origin = groupRefOriginSchema.safeParse(row.origin_json);
+    const measures = groupRefMeasuresSchema.safeParse({
+      rows: row.rows,
+      cols: row.cols,
+      moduleWM: row.module_w_m,
+      moduleHM: row.module_h_m,
+      gapM: row.gap_m,
+    });
+    if (!origin.success || !measures.success || typeof row.label !== "string") {
+      continue;
+    }
+    const rect = groupRect({
+      origin: origin.data,
+      rows: measures.data.rows,
+      cols: measures.data.cols,
+      moduleWM: measures.data.moduleWM,
+      moduleHM: measures.data.moduleHM,
+      gapM: measures.data.gapM,
+    });
+    if (!isPositiveRect(rect)) continue;
+    refs.push({ id: row.id, label: row.label, rect });
+  }
+  return refs;
+}
+
+function collidingGroupsForRestriction(
+  restriction: { id: string; kind: string; label: string; rect: RoofRestrictionRectDto },
+  groups: PanelGroupRef[],
+): CollidingGroupDto[] {
+  const colliding: CollidingGroupDto[] = [];
+  for (const group of groups) {
+    const hits = groupRestrictionCollisions({
+      group: { id: group.id, rect: group.rect },
+      restrictions: [restriction],
+    });
+    if (hits.length > 0) {
+      colliding.push({ groupId: group.id, label: group.label });
+    }
+  }
+  return colliding;
+}
+
+function toDto(
+  row: RestrictionRow,
+  canWrite: boolean,
+  collidingGroups: CollidingGroupDto[],
+): PlanningRoofRestrictionDto {
   const kind = z.enum(["chimney", "window", "other"]).safeParse(row.kind);
   const rect = z
     .strictObject({
@@ -148,6 +265,7 @@ function toDto(row: RestrictionRow, canWrite: boolean): PlanningRoofRestrictionD
     label: row.label,
     rect: rect.data,
     heightM: row.height_m,
+    collidingGroups,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
     permissions: { canWrite },
@@ -246,7 +364,16 @@ export async function createRestriction(
     details: { restrictionId: row.id, roofId: roof.id },
   });
 
-  return toDto(row, true);
+  // F3-04c: Create bleibt zulaessig (advisory-only, kein Reject).
+  const created = toDto(row, true, []);
+  const createdGroups = await loadGroupRefs(tx, ctx, created.roofId);
+  return {
+    ...created,
+    collidingGroups: collidingGroupsForRestriction(
+      { id: created.id, kind: created.kind, label: created.label, rect: created.rect },
+      createdGroups,
+    ),
+  };
 }
 
 export async function removeRestriction(
@@ -307,7 +434,15 @@ export async function getRestriction(
   `);
   const row = found.rows[0];
   if (!row) throw new PlanningRoofRestrictionNotFoundError(id.data);
-  return toDto(row, can(ctx, "project.write"));
+  const base = toDto(row, can(ctx, "project.write"), []);
+  const groups = await loadGroupRefs(tx, ctx, base.roofId);
+  return {
+    ...base,
+    collidingGroups: collidingGroupsForRestriction(
+      { id: base.id, kind: base.kind, label: base.label, rect: base.rect },
+      groups,
+    ),
+  };
 }
 
 export async function listRestrictions(
@@ -329,5 +464,15 @@ export async function listRestrictions(
        and roof_id = ${roofId.data}::uuid
      order by created_at, id
   `);
-  return rows.rows.map((row) => toDto(row, canWrite));
+  const groups = await loadGroupRefs(tx, ctx, roofId.data);
+  return rows.rows.map((row) => {
+    const base = toDto(row, canWrite, []);
+    return {
+      ...base,
+      collidingGroups: collidingGroupsForRestriction(
+        { id: base.id, kind: base.kind, label: base.label, rect: base.rect },
+        groups,
+      ),
+    };
+  });
 }

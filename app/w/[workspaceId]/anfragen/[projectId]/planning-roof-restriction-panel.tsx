@@ -3,22 +3,81 @@
 // Dach rendert die Sektion den Anlege-Hinweis (roofId null).
 // Wiring: `<PlanningRoofRestrictionsPanel workspaceId={workspaceId} projectId={projectId} />`.
 // Rechte: project.read liest, project.write schreibt (Batch-Vertrag).
+// F3-04c: reichert je Sperrzone collidingGroups (Panel-Gruppen desselben
+// Dachs, Rechteck-Ebene via panel-collision-Contract) symmetrisch an.
 import { sql } from "drizzle-orm";
 import { authorizedQuery, NotAuthenticatedError } from "@/lib/action";
+import {
+  groupRect,
+  groupRestrictionCollisions,
+} from "@/lib/integrations/planning/contracts";
 import { can, isExternalOnly, PermissionDeniedError } from "@/lib/permissions";
 import {
+  toPlanningPanelGroupDto,
+  type PlanningPanelGroupDto,
+  type PlanningPanelGroupRow,
+} from "./planning-panel-group-model";
+import {
   toPlanningRoofRestrictionDto,
+  type PlanningRoofRestrictionCollidingGroup,
   type PlanningRoofRestrictionDto,
   type PlanningRoofRestrictionRow,
 } from "./planning-roof-restriction-model";
 import { PlanningRoofRestrictionSection } from "./planning-roof-restriction-section";
 
+// F3-04c: je Gruppe Contract-Ableitung (groupRect +
+// groupRestrictionCollisions), invertiert auf Sperrzonen-Ebene — kein
+// eigenes Rechteck-Duplikat. Fail-open: ungueltige Geometrie meldet
+// keine Kollision (advisory-only).
+function collidingGroupsByRestriction(
+  groups: PlanningPanelGroupDto[],
+  restrictions: PlanningRoofRestrictionDto[],
+): Map<string, PlanningRoofRestrictionCollidingGroup[]> {
+  const byRestriction = new Map<string, PlanningRoofRestrictionCollidingGroup[]>();
+  if (restrictions.length === 0) return byRestriction;
+  const inputs = restrictions.map((restriction) => ({
+    id: restriction.id,
+    kind: restriction.kind,
+    label: restriction.label,
+    rect: restriction.rect,
+  }));
+  for (const group of groups) {
+    try {
+      const hits = groupRestrictionCollisions({
+        group: {
+          id: group.id,
+          rect: groupRect({
+            origin: group.origin,
+            rows: group.rows,
+            cols: group.cols,
+            moduleWM: group.moduleWM,
+            moduleHM: group.moduleHM,
+            gapM: group.gapM,
+          }),
+        },
+        restrictions: inputs,
+      });
+      for (const hit of hits) {
+        const key = hit.restrictionId.toLowerCase();
+        const list = byRestriction.get(key) ?? [];
+        list.push({ groupId: group.id, label: group.label });
+        byRestriction.set(key, list);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return byRestriction;
+}
+
 export async function PlanningRoofRestrictionsPanel({
   workspaceId,
   projectId,
+  planningMode,
 }: {
   workspaceId: string;
   projectId: string;
+  planningMode?: "quick" | "2d" | "3d";
 }) {
   let roofId: string | null;
   let initialRestrictions: PlanningRoofRestrictionDto[];
@@ -58,6 +117,25 @@ export async function PlanningRoofRestrictionsPanel({
           const dto = toPlanningRoofRestrictionDto(row);
           if (dto) restrictions.push(dto);
         }
+        // F3-04c: Panel-Gruppen desselben Dachs (Kollisions-Gegenueber).
+        const foundGroups = await tx.execute<PlanningPanelGroupRow>(sql`
+          select id, roof_id, kind, label, origin_json,
+                 rows, cols, module_w_m, module_h_m, gap_m, tilt_deg, created_at
+            from planning_panel_group
+           where workspace_id = ${ctx.workspaceId}::uuid
+             and roof_id = ${resolvedRoofId}::uuid
+           order by created_at, id
+        `);
+        const groups: PlanningPanelGroupDto[] = [];
+        for (const row of foundGroups.rows) {
+          const dto = toPlanningPanelGroupDto(row);
+          if (dto) groups.push(dto);
+        }
+        const colliding = collidingGroupsByRestriction(groups, restrictions);
+        for (const restriction of restrictions) {
+          restriction.collidingGroups =
+            colliding.get(restriction.id.toLowerCase()) ?? [];
+        }
         return { roofId: resolvedRoofId, restrictions };
       },
     );
@@ -81,6 +159,7 @@ export async function PlanningRoofRestrictionsPanel({
       roofId={roofId}
       initialRestrictions={initialRestrictions}
       canWrite={canWrite}
+      planningMode={planningMode}
     />
   );
 }
