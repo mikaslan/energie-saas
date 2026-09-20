@@ -3,6 +3,16 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-20 — F1-Rest-6B integriert (Flotten-Lane, Leitstand, Jev-geprueft)
+
+- `codex/muse-fleet-6-f1rest` (`86b5c75`: F7-11 Termin-Mehr-Team, Junction 0320)
+  in `codex/m1-wave-02` gemergt (Merge `2a9f291`, 0320 auf idx 173 verketet, TOTAL 174).
+- Belege: Lane-CI success auf exaktem HEAD (FINAL-6B, Jev NOGO→Leitstand-Entscheid
+  dokumentiert); Integrations-Gates `npm run check` EXIT 0 auf dem Merge-HEAD
+  (488 Dateien, 3511 Tests).
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-20 — Harness-Lane integriert (Flotten-Lane, Leitstand, Jev-geprueft)
 
 - `codex/muse-fleet-9-harness` (`d274741`: Vitest-Exit-0-Fix + E2E-Sharding- adoption
