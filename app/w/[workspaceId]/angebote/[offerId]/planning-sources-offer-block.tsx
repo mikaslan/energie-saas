@@ -20,6 +20,8 @@ export type OfferPlanningData = {
   sourceId: string | null;
   initialRoof: import("../../anfragen/[projectId]/planning-roof-model").PlanningRoofDto | null;
   canWrite: boolean;
+  solarLatitude: number | null;
+  solarLongitude: number | null;
 };
 
 function kindLabel(kind: string): string {

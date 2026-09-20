@@ -63,6 +63,7 @@ import {
   type OfferPlanningData,
 } from "./planning-sources-offer-block";
 import { PlanningRoofSection } from "../../anfragen/[projectId]/planning-roof-section";
+import { PlanningSolarSection } from "../../anfragen/[projectId]/planning-solar-section";
 import offerThemeStyles from "../offer-theme.module.css";
 import { formatOfferCents, formatOfferCentsTotal, formatOfferRetryDate } from "./offer-format";
 
@@ -1202,6 +1203,11 @@ export function OfferVariantEditor({
                             sourceId={planning.sourceId}
                             initialRoof={planning.initialRoof}
                             canWrite={planning.canWrite}
+                            planningMode={draft.planningMode}
+                          />
+                          <PlanningSolarSection
+                            latitude={planning.solarLatitude}
+                            longitude={planning.solarLongitude}
                             planningMode={draft.planningMode}
                           />
                         </div>

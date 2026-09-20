@@ -630,7 +630,21 @@ async function loadOfferPlanningData(
           const row = foundRoof.rows[0] ?? null;
           initialRoof = row ? toPlanningRoofDto(row) : null;
         }
-        return { sources, latestId, initialRoof };
+        const foundSite = await tx.execute<{ lat: number | null; lng: number | null }>(sql`
+          select site_record.lat as lat, site_record.lng as lng
+            from project as project_record
+            join site as site_record
+              on site_record.workspace_id = project_record.workspace_id
+             and site_record.id = project_record.site_id
+           where project_record.workspace_id = ${ctx.workspaceId}::uuid
+             and project_record.id = ${projectId}::uuid
+        `);
+        const siteRow = foundSite.rows[0] ?? null;
+        const solarLatitude =
+          typeof siteRow?.lat === "number" && Number.isFinite(siteRow.lat) ? siteRow.lat : null;
+        const solarLongitude =
+          typeof siteRow?.lng === "number" && Number.isFinite(siteRow.lng) ? siteRow.lng : null;
+        return { sources, latestId, initialRoof, solarLatitude, solarLongitude };
       },
     );
     const canWrite = await authorizedQuery(
@@ -646,6 +660,8 @@ async function loadOfferPlanningData(
       sourceId: loaded.latestId,
       initialRoof: loaded.initialRoof,
       canWrite,
+      solarLatitude: loaded.solarLatitude,
+      solarLongitude: loaded.solarLongitude,
     };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return undefined;
