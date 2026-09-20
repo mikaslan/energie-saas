@@ -3,6 +3,17 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-20 — Harness-Lane integriert (Flotten-Lane, Leitstand, Jev-geprueft)
+
+- `codex/muse-fleet-9-harness` (`d274741`: Vitest-Exit-0-Fix + E2E-Sharding- adoption
+  + Flake-Einhegung m2-03a/backup, infra-only, 0 Migrationen/0 Produktcode)
+  in `codex/m1-wave-02` gemergt (Merge `2d33d7a`).
+- Belege: Lane-CI E2E 3/3 Shards gruen (FINAL-9, Jev UNSICHER→Leitstand-Entscheid
+  dokumentiert); Integrations-Gates `npm run check` EXIT 0 auf dem Merge-HEAD
+  (487 Dateien, 3497 Tests).
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-20 — F8-Lane integriert (Flotten-Lane, Leitstand, Jev-geprueft)
 
 - `codex/muse-fleet-4-rechnungen` (`2abac84`: F8-16..F8-24a, Migrationen 0190-0200)
