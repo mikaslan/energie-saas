@@ -31,6 +31,9 @@ collect(E2E, specs);
 // fuer m201ProjectId erzeugt hat (m2-01-fixture.ts). CI 35505358946 Shard 3
 // war exakt so rot (m2-01-z-a11y + m2-02 ohne Erzeuger); m2-03a solo lokal
 // reproduziert. m2-01-offer.spec.ts erzeugt unbedingt (1 Test, kein Skip).
+// Hinweis: Playwright sortiert Dateien alphabetisch (ignoriert Listen-Position);
+// m2-01-offer liegt alphabetisch vor den reinen Konsumenten (m2-01-z*,
+// m2-02, m2-03a); f16-*/f7-10-Konsumenten erzeugen selbst (gruene Shards).
 const SETUP_SPECS = ["m2-01-offer.spec.ts"];
 for (const setup of SETUP_SPECS) {
   if (!specs.includes(setup)) {
