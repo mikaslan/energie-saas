@@ -6,10 +6,43 @@ const NODE_WIDTH = 120;
 const NODE_HEIGHT = 52;
 
 /**
+ * F6-01 · Schaltplan-Scope (Fleet-Vertrag, identischer Union-Typ in
+ * `schematic-export.tsx` und `schematic-actions.ts`): `commercial` ist die
+ * fail-closed Union aus offer.scope/price_audience, Board-Scope und
+ * Decision-Audience (W-CORE-Modell). Die Auflösung liefert die Integration
+ * (Seite), die Server-Action prüft sie unabhängig nach.
+ */
+export type SchematicScope = "residential" | "commercial";
+
+/**
  * F6-01 · Einlinien-Schaltbild als SVG (ESTIMATE-Layout, lesend).
  * Unverdrahtete Sektionen erscheinen als Hinweisliste darunter.
+ * Scope `commercial`: Gate-Hinweis statt Diagramm — bewusst VOR jedem
+ * Schematic-Zugriff, damit ein gated Render nie crashen kann.
  */
-export function SingleLineDiagram({ schematic }: { schematic: SingleLineSchematic }) {
+export function SingleLineDiagram({
+  schematic,
+  scope = "residential",
+}: {
+  schematic: SingleLineSchematic;
+  scope?: SchematicScope;
+}) {
+  if (scope === "commercial") {
+    return (
+      <div
+        role="status"
+        data-testid="schematic-gate-notice"
+        className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
+      >
+        <p className="font-semibold text-slate-950">Schaltplan nur für Wohnbau verfügbar</p>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          Das einphasige Übersichtsschaltbild (ESTIMATE) steht für Gewerbe- und
+          B2B-Angebote derzeit nicht zur Verfügung. Positionen, Preise und
+          Summen bleiben unverändert sichtbar.
+        </p>
+      </div>
+    );
+  }
   if (schematic.empty) return null;
   const nodeById = new Map(schematic.nodes.map((node) => [node.id, node]));
   return (

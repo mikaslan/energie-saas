@@ -252,10 +252,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0235 F1-23 Routing-Vertiefung (Spalten + CHECKs),
     // 0149 F9-12 Kategorie-Defaults (Funktionen + Trigger + Backfill),
     // 0150 F9-14 Projekt-optional (2x DROP NOT NULL),
-    // 0290 F15-02 Gewerbe-Stufen (Funktion + Backfill)).
+    // 0290 F15-02 Gewerbe-Stufen (Funktion + Backfill),
+    // 0300 F6-01 Schaltplan-Diagramme (Tabelle + RLS + Grants)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 160,
-      tag: "0290_f15_02_gewerbe_workflow_stufen",
+      idx: 161,
+      tag: "0300_f6_01_schematic_diagrams",
     });
   });
 

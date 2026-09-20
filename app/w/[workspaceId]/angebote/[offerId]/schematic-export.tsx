@@ -1,28 +1,89 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { schematicExportFilename } from "@/lib/integrations/schematic/export-filename";
+import type { SingleLineSchematic } from "@/lib/integrations/schematic/single-line-v1";
+import {
+  saveSchematicFirstOpen,
+  type SaveSchematicFirstOpenStatus,
+} from "./schematic-actions";
+import type { SchematicScope } from "./single-line-diagram";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+export type SchematicSaveState =
+  | "idle"
+  | "pending"
+  | "saved"
+  | "already-saved"
+  | "gated"
+  | "denied"
+  | "unavailable"
+  | "error";
+
+export type SchematicFirstOpen = {
+  workspaceId: string;
+  offerId: string;
+  variantId: string;
+  revision: number;
+  schematic: SingleLineSchematic;
+};
+
+function mapSaveStatus(status: SaveSchematicFirstOpenStatus): SchematicSaveState {
+  if (status === "saved") return "saved";
+  if (status === "already_saved") return "already-saved";
+  if (status === "gated") return "gated";
+  if (status === "denied" || status === "unauthenticated") return "denied";
+  if (status === "unavailable") return "unavailable";
+  return "error";
+}
 
 /**
  * F6-02 · Schaltplan-Export als SVG-Datei (ESTIMATE-Abbildung, lesend).
  * Serialisiert das gerenderte SVG (setzt xmlns, bettet einen Titel mit
  * ESTIMATE-Hinweis ein) und lädt es als Blob herunter — kein
  * Server-Roundtrip, kein Storage, keine neue Permission.
+ *
+ * F6-01-Gate: Scope `commercial` verweigert den Export explizit (Fehler
+ * statt Download). `firstOpen` löst zusätzlich genau einen
+ * Erstöffnen-Save je Mount aus (serverseitig idempotent); ohne `firstOpen`
+ * bleibt die Komponente rein lesend (M2-01-kompatibel). Die Wurzel trägt
+ * `data-offer-schematic` + Save-State gemeinsam (E2E-Ein-Element-Vertrag).
  */
 export function SchematicExport({
   offerNumber,
   variantName,
+  scope = "residential",
+  firstOpen = null,
   children,
 }: {
   offerNumber: string;
   variantName: string;
+  scope?: SchematicScope;
+  firstOpen?: SchematicFirstOpen | null;
   children: React.ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [refused, setRefused] = useState(false);
+  const [saveState, setSaveState] = useState<SchematicSaveState>("idle");
+  const saveAttemptedRef = useRef(false);
+  const gated = scope === "commercial";
+
+  useEffect(() => {
+    if (gated || !firstOpen || saveAttemptedRef.current) return;
+    saveAttemptedRef.current = true;
+    setSaveState("pending");
+    saveSchematicFirstOpen(firstOpen).then(
+      (result) => setSaveState(mapSaveStatus(result.status)),
+      () => setSaveState("error"),
+    );
+  }, [gated, firstOpen]);
 
   const download = () => {
+    if (gated) {
+      setRefused(true);
+      return;
+    }
     const svg = containerRef.current?.querySelector("svg");
     if (!svg) return;
     const clone = svg.cloneNode(true) as SVGSVGElement;
@@ -46,7 +107,7 @@ export function SchematicExport({
   };
 
   return (
-    <div>
+    <div data-offer-schematic="true" data-schematic-save-state={saveState}>
       <div ref={containerRef}>{children}</div>
       <button
         type="button"
@@ -56,6 +117,16 @@ export function SchematicExport({
       >
         SVG herunterladen
       </button>
+      {refused && gated ? (
+        <p
+          role="alert"
+          data-testid="schematic-export-refused"
+          className="mt-2 text-sm leading-6 text-rose-700"
+        >
+          Export für Gewerbe- und B2B-Angebote nicht verfügbar. Das
+          Schaltplanbild (ESTIMATE) wird nur für Wohnbau-Angebote erzeugt.
+        </p>
+      ) : null}
     </div>
   );
 }

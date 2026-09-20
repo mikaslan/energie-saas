@@ -1128,6 +1128,13 @@
       "when": 1789853700000,
       "tag": "0290_f15_02_gewerbe_workflow_stufen",
       "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1789898513282,
+      "tag": "0300_f6_01_schematic_diagrams",
+      "breakpoints": true
     }
   ]
 }

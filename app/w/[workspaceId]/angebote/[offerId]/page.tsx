@@ -32,6 +32,7 @@ import {
 import { deriveCertifiedCapacities } from "@/lib/integrations/offers/certified-capacities";
 import { planningModeSchema } from "@/lib/integrations/planning/contract";
 
+import { readSchematicScope } from "@/modules/schematic";
 import { listDiscountTemplates } from "@/modules/discounts";
 import { listPlanningTemplates } from "@/modules/planning";
 import { listPackageTemplates } from "@/modules/offers";
@@ -331,6 +332,8 @@ function projectOfferDetailView(
     validityWindow: ReleaseValidityWindow | null;
     showPanel: boolean;
   },
+  // F6-01: Schaltplan-Scope, fail-closed commercial ohne Wert.
+  schematicScope: "residential" | "commercial" = "commercial",
 ): OfferDetailSurfaceView {
   const activeVariantSchema = z.object({
     schemaVersion: z.literal("offer-variant-view.v1"),
@@ -450,6 +453,7 @@ function projectOfferDetailView(
       totalPriceOverrideNetCents: view.offer.totalPriceOverrideNetCents,
       overrideActive: view.overrideActive,
       displayTotalNetCents: view.displayTotalNetCents,
+      schematicScope,
     },
     variants: view.variants.map((variant) => ({
       id: variant.id,
@@ -639,6 +643,7 @@ export default async function OfferDetailPage(
     // F16-14: Bulk-Update-Zeilen, null ohne canCreateBasis/outdated.
     bulkUpdate: OfferBulkUpdateViewModel | null;
     recoveryScope: string;
+    schematicScope: "residential" | "commercial";
     editorCapabilities: {
       canEditPrice: boolean;
       canApplyDiscount: boolean;
@@ -835,6 +840,9 @@ export default async function OfferDetailPage(
             ? null
             : await getOfferBulkUpdate(tx, ctx, { offerId }),
           recoveryScope: offerRecoveryScope(workspaceId, ctx.actor),
+          schematicScope: view === null
+            ? "commercial"
+            : await readSchematicScope(tx, ctx, { offerId }),
           releaseProfile,
           releaseRecipient,
           releaseCandidates,
@@ -904,6 +912,7 @@ export default async function OfferDetailPage(
       validityWindow: result.releaseValidityWindow,
       showPanel: result.showReleasePanel,
     },
+    result.schematicScope,
   );
   // F2-06 Slice A: sichtbare optionale Zeilen der aktiven Variante als
   // Upsell-Checkboxen (reine Projektion versiegelter Beträge).

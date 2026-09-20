@@ -64,3 +64,4 @@ export * from "./time-tracking";
 export * from "./billing-run";
 export * from "./appointment-template";
 export * from "./offer-template";
+export * from "./schematic-diagram";

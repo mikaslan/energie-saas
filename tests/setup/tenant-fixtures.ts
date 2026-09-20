@@ -3021,6 +3021,27 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F6-01 (0300): Schaltplan-Diagramm (Offer-Graph, leere Netzliste).
+  // Kein crossWriteOverride: Default-Pfad (Fixture mit wsA unter wsB)
+  // scheitert am ersten wsA-Insert an der RLS WITH CHECK — wie bei
+  // payment_option/funnel_campaign/file_request (id-PK, single permissive).
+  schematic_diagrams: async (tx, wsId) => {
+    await fixtureOfferGraph(tx, wsId);
+    const offerRow = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+      select id from offer where workspace_id = ${wsId}::uuid limit 1
+    `);
+    const offerId = offerRow.rows[0]?.id;
+    if (!offerId) throw new Error("Schematic-Fixture braucht ein Offer.");
+    await tx.execute(sql`
+      insert into schematic_diagrams (
+        workspace_id, offer_id, variant_revision, netlist,
+        node_count, edge_count
+      ) values (
+        ${wsId}::uuid, ${offerId}::uuid, 1,
+        '{"nodes":[],"edges":[]}'::jsonb, 0, 0
+      )
+    `);
+  },
   calculator_snapshot: async (tx, wsId) => {
     await fixtureSnapshot(tx, wsId);
   },

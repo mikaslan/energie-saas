@@ -185,6 +185,9 @@ export interface OfferDetailSurfaceView {
     totalPriceOverrideNetCents?: number | null;
     overrideActive?: boolean;
     displayTotalNetCents?: number | null;
+    // F6-01: Schaltplan-Scope (Seite), optional wie F16-Flags — fehlend
+    // heisst fail-closed commercial (Gate-Hinweis statt Diagramm).
+    schematicScope?: "residential" | "commercial";
   };
   variants?: readonly OfferVariantTabView[];
   activeVariant?: OfferVariantViewEnvelope;
@@ -622,9 +625,13 @@ function OfferLineCard({
 function SchematicCard({
   snapshot,
   offerNumber,
+  scope = "commercial",
 }: {
   snapshot: OfferVariantSnapshotView;
   offerNumber: string;
+  // F6-01: fail-closed commercial — nur residential rendert Diagramm und
+  // loest den Erstöffnen-Save aus, commercial zeigt den Gate-Hinweis.
+  scope?: "residential" | "commercial";
 }) {
   const inputs = snapshot.sections.flatMap((section) => {
     const visible = section.lines.filter((line) => !line.isHidden);
@@ -640,21 +647,33 @@ function SchematicCard({
   });
   const schematic = buildSingleLineSchematic(inputs);
   if (schematic.empty && schematic.unwired.length === 0) return null;
+  // F6-01: data-offer-schematic sitzt auf der Export-Wurzel (ein Element
+  // traegt Marker + Save-State; E2E-Vertrag F601-GATE/VG + M2-01).
   return (
     <section
       aria-label="Schaltplan"
-      data-offer-schematic="true"
       className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
     >
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
-        Schaltplan (ESTIMATE)
-      </p>
-      <h2 className="mt-1 text-lg font-semibold text-slate-950">Einphasige Übersicht</h2>
-      <div className="mt-3">
-        <SchematicExport offerNumber={offerNumber} variantName={snapshot.variantName}>
-          <SingleLineDiagram schematic={schematic} />
-        </SchematicExport>
-      </div>
+      <SchematicExport
+        offerNumber={offerNumber}
+        variantName={snapshot.variantName}
+        scope={scope}
+        firstOpen={{
+          workspaceId: snapshot.workspaceId,
+          offerId: snapshot.offerId,
+          variantId: snapshot.variantId,
+          revision: snapshot.revision,
+          schematic,
+        }}
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-800">
+          Schaltplan (ESTIMATE)
+        </p>
+        <h2 className="mt-1 text-lg font-semibold text-slate-950">Einphasige Übersicht</h2>
+        <div className="mt-3">
+          <SingleLineDiagram schematic={schematic} scope={scope} />
+        </div>
+      </SchematicExport>
     </section>
   );
 }
@@ -982,7 +1001,11 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
               options={view.paymentOptions ?? []}
               canEdit={canEdit}
             />
-            <SchematicCard snapshot={snapshot} offerNumber={view.offer.offerNumber} />
+            <SchematicCard
+              snapshot={snapshot}
+              offerNumber={view.offer.offerNumber}
+              scope={view.offer.schematicScope ?? "commercial"}
+            />
             {view.certifiedCapacities ? (
               <CertifiedCapacitiesCard capacities={view.certifiedCapacities} />
             ) : null}
@@ -1126,7 +1149,11 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                   <div><dt className="text-slate-600">Custom Deal netto</dt><dd className="mt-1 font-semibold tabular-nums">{snapshot.customDealNetCents === null ? "Kein Custom Deal" : formatOfferCents(snapshot.customDealNetCents)}</dd></div>
                 </dl>
               </section>
-              <SchematicCard snapshot={snapshot} offerNumber={view.offer.offerNumber} />
+              <SchematicCard
+                snapshot={snapshot}
+                offerNumber={view.offer.offerNumber}
+                scope={view.offer.schematicScope ?? "commercial"}
+              />
               {snapshot.sections.map((section) => (
                 <OfferSectionCard
                   key={section.sectionDomainId}
