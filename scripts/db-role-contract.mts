@@ -735,6 +735,13 @@ const SCHEMATIC_DIAGRAM_RELATIONS = [
   "schematic_diagrams",
 ] as const;
 
+// F6-02a (0301): Editor-Overlays — gleiche ACL-Form wie Diagramme
+// (SELECT/INSERT/UPDATE, kein DELETE: Neuauslegung ist UPDATE mit
+// Revisions-Bump, Muster 0099).
+const SCHEMATIC_OVERLAY_RELATIONS = [
+  "schematic_overlays",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -3359,6 +3366,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F6-02a (0301): Editor-Overlays — gleiche ACL-Form wie Diagramme.
+  const hasSchematicOverlaysForAcl = await hasAtomicPublicRelationSet(
+    client,
+    SCHEMATIC_OVERLAY_RELATIONS,
+    "Rollen-ACL-Manifest: F6-02a-Editor-Overlays",
+  );
+  if (hasSchematicOverlaysForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.schematic_overlays
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.schematic_overlays to app_runtime
+    `);
+  }
+
   // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
   // daher zusaetzlich DELETE (Muster commercial_document_link).
   const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
@@ -5015,6 +5038,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F6-01-Schaltplan-Diagramme",
   );
 
+  const hasSchematicOverlays = await hasAtomicPublicRelationSet(
+    client,
+    SCHEMATIC_OVERLAY_RELATIONS,
+    "Rollenvertrag: F6-02a-Editor-Overlays",
+  );
+
   const hasLeadRouting = await hasAtomicPublicRelationSet(
     client,
     LEAD_ROUTING_RELATIONS,
@@ -5319,6 +5348,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasSchematicDiagrams ? SCHEMATIC_DIAGRAM_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasSchematicOverlays ? SCHEMATIC_OVERLAY_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -6723,6 +6755,9 @@ export async function verifyRoleContract(
       ...(hasSchematicDiagrams ? SCHEMATIC_DIAGRAM_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasSchematicOverlays ? SCHEMATIC_OVERLAY_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -7113,6 +7148,11 @@ export async function verifyRoleContract(
         ...(hasSchematicDiagrams ? [
           "schematic_diagrams:tenant_isolation:" +
             "edf301255270512a6e9cc6fc8350687d27ad4be585ed70275c6e1ec12050ecd9",
+        ] : []),
+        // F6-02a (0301): Hash per Probe geerntet (Verify-Ist, 0300-analog).
+        ...(hasSchematicOverlays ? [
+          "schematic_overlays:tenant_isolation:" +
+            "4e810b1c41e1a61d056d3b79038f6ccae5f69fb4ba7af4a8fedeff01d098fe55",
         ] : []),
         ...(hasCalendars ? [
           "calendar:tenant_isolation:57296ca13f33ffe335cd1cde9f96a0024470521481da054313e6843d9ca6ce25",
@@ -7876,6 +7916,12 @@ export async function verifyRoleContract(
       // F6-01 (0300): Diagramme sind lesbar/anlegbar/updatbar, nie
       // loeschbar (Neuauslegung ist UPDATE, Muster 0099).
       ...(hasSchematicDiagrams ? SCHEMATIC_DIAGRAM_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      // F6-02a (0301): gleiche Grant-Form wie Diagramme (SIU, nie DELETE).
+      ...(hasSchematicOverlays ? SCHEMATIC_OVERLAY_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:UPDATE:app_owner:false`,

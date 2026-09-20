@@ -2,7 +2,12 @@ import Link from "next/link";
 import { OfferVariantEditor } from "./offer-editor";
 import { SingleLineDiagram } from "./single-line-diagram";
 import { SchematicExport } from "./schematic-export";
+import { SchematicOverlayForm } from "./schematic-overlay-form";
 import { buildSingleLineSchematic } from "@/lib/integrations/schematic/single-line-v1";
+import {
+  mergeEditorOverlay,
+  type OverlayElementInput,
+} from "@/lib/integrations/schematic/editor-overlay-v1";
 import { OfferPdfDraftPanel } from "./offer-pdf-draft-panel";
 import { OfferVariantControlsPanel } from "./offer-variant-controls-panel";
 import { OfferPaymentOptionPanel } from "./offer-payment-option-panel";
@@ -169,6 +174,15 @@ interface OfferVariantViewEnvelope {
   snapshot: OfferVariantSnapshotView;
 }
 
+// F6-02a: Editor-Overlay der aktiven Variante fuer den Diagramm-Merge
+// (Seite). stale = Parent-Pin weicht von der Diagramm-Revision ab —
+// dann rendert der Backbone plus Hinweis, nie ein falsches Bild.
+export type SchematicOverlayView = {
+  elements: OverlayElementInput[];
+  parentRevision: number;
+  stale: boolean;
+} | null;
+
 export interface OfferDetailSurfaceView {
   state: OfferDetailState;
   workspaceId: string;
@@ -188,6 +202,9 @@ export interface OfferDetailSurfaceView {
     // F6-01: Schaltplan-Scope (Seite), optional wie F16-Flags — fehlend
     // heisst fail-closed commercial (Gate-Hinweis statt Diagramm).
     schematicScope?: "residential" | "commercial";
+    // F6-02a: Editor-Overlay der aktiven Variante (Seite) — fehlend/null
+    // heisst Backbone-Render ohne Merge.
+    schematicOverlay?: SchematicOverlayView;
   };
   variants?: readonly OfferVariantTabView[];
   activeVariant?: OfferVariantViewEnvelope;
@@ -626,12 +643,15 @@ function SchematicCard({
   snapshot,
   offerNumber,
   scope = "commercial",
+  overlay = null,
 }: {
   snapshot: OfferVariantSnapshotView;
   offerNumber: string;
   // F6-01: fail-closed commercial — nur residential rendert Diagramm und
   // loest den Erstöffnen-Save aus, commercial zeigt den Gate-Hinweis.
   scope?: "residential" | "commercial";
+  // F6-02a: Overlay-Merge (nur residential + frischer Parent-Pin).
+  overlay?: SchematicOverlayView;
 }) {
   const inputs = snapshot.sections.flatMap((section) => {
     const visible = section.lines.filter((line) => !line.isHidden);
@@ -645,8 +665,24 @@ function SchematicCard({
       : null;
     return [{ category: section.category, title: section.title, quantityLabel }];
   });
-  const schematic = buildSingleLineSchematic(inputs);
-  if (schematic.empty && schematic.unwired.length === 0) return null;
+  const backbone = buildSingleLineSchematic(inputs);
+  if (backbone.empty && backbone.unwired.length === 0) return null;
+  // F6-02a: gespeichertes Overlay auf den Backbone mergen (nur
+  // residential). Veralteter/fehlerhafter Stand rendert den Backbone
+  // plus Hinweis — nie ein falsches oder leeres Bild.
+  let schematic = backbone;
+  let overlayStale = false;
+  if (scope === "residential" && overlay && overlay.elements.length > 0) {
+    if (overlay.stale) {
+      overlayStale = true;
+    } else {
+      try {
+        schematic = mergeEditorOverlay(backbone, overlay.elements);
+      } catch {
+        overlayStale = true;
+      }
+    }
+  }
   // F6-01: data-offer-schematic sitzt auf der Export-Wurzel (ein Element
   // traegt Marker + Save-State; E2E-Vertrag F601-GATE/VG + M2-01).
   return (
@@ -673,6 +709,25 @@ function SchematicCard({
         <div className="mt-3">
           <SingleLineDiagram schematic={schematic} scope={scope} />
         </div>
+        {overlayStale ? (
+          <p
+            data-testid="schematic-overlay-stale"
+            role="status"
+            className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+          >
+            Overlay veraltet — der Schaltplan wurde neu gespeichert. Bitte
+            Overlay prüfen und erneut speichern.
+          </p>
+        ) : null}
+        {scope === "residential" ? (
+          <div className="mt-5 border-t border-slate-100 pt-5">
+            <SchematicOverlayForm
+              workspaceId={snapshot.workspaceId}
+              offerId={snapshot.offerId}
+              variantRevision={snapshot.revision}
+            />
+          </div>
+        ) : null}
       </SchematicExport>
     </section>
   );
@@ -1005,6 +1060,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
               snapshot={snapshot}
               offerNumber={view.offer.offerNumber}
               scope={view.offer.schematicScope ?? "commercial"}
+              overlay={view.offer.schematicOverlay ?? null}
             />
             {view.certifiedCapacities ? (
               <CertifiedCapacitiesCard capacities={view.certifiedCapacities} />
@@ -1153,6 +1209,7 @@ export function OfferDetailView({ view }: { view: OfferDetailSurfaceView }) {
                 snapshot={snapshot}
                 offerNumber={view.offer.offerNumber}
                 scope={view.offer.schematicScope ?? "commercial"}
+                overlay={view.offer.schematicOverlay ?? null}
               />
               {snapshot.sections.map((section) => (
                 <OfferSectionCard

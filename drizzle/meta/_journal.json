@@ -1135,6 +1135,13 @@
       "when": 1789898513282,
       "tag": "0300_f6_01_schematic_diagrams",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1789909635679,
+      "tag": "0301_f6_02a_schematic_overlays",
+      "breakpoints": true
     }
   ]
 }

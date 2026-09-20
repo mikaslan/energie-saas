@@ -3042,6 +3042,12 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F6-02a (0301): Editor-Overlay (Offer-Graph + Diagramm-Zeile als
+  // Parent-Pin + eine Overlay-Huelle). Kein crossWriteOverride:
+  // Default-Pfad wie schematic_diagrams (id-PK, single permissive).
+  schematic_overlays: async (tx, wsId) => {
+    await createSchematicOverlayFixture(tx, wsId);
+  },
   calculator_snapshot: async (tx, wsId) => {
     await fixtureSnapshot(tx, wsId);
   },
@@ -3681,4 +3687,48 @@ export const MATVIEW_ALLOWLIST = new Set<string>([]);
 
 export function isExempt(name: string): boolean {
   return TENANT_EXEMPT.has(name) || TENANT_EXEMPT_AUTH.has(name);
+}
+
+// F6-02a (0301): Editor-Overlay — analog zum 0300-schematic_diagrams-Fixture.
+// Sichert Offer-Graph + Diagramm-Zeile (Parent des Pins) und legt genau eine
+// Overlay-Huelle je (Workspace, Angebot, Varianten-Revision 1) an.
+// RED-first: Ohne Migration 0301 schlaegt der Insert fehl (42P01).
+// Spaltenannahmen (0300-Muster): parent_revision, elements (Objekt mit
+// elements-Array), element_count, editor_version-Default, revision-Default.
+export async function createSchematicOverlayFixture(
+  tx: TenantTx,
+  wsId: string,
+  options: { variantRevision?: number; parentRevision?: number } = {},
+): Promise<{ offerId: string; variantRevision: number }> {
+  const variantRevision = options.variantRevision ?? 1;
+  const parentRevision = options.parentRevision ?? 1;
+  await fixtureOfferGraph(tx, wsId);
+  const offerRow = await tx.execute<{ id: string; [key: string]: unknown }>(sql`
+    select id from offer where workspace_id = ${wsId}::uuid limit 1
+  `);
+  const offerId = offerRow.rows[0]?.id;
+  if (!offerId) throw new Error("Overlay-Fixture braucht ein Offer.");
+  // Diagramm-Zeile als Pin-Parent (idempotent: fremde Seeds teilen den Key).
+  await tx.execute(sql`
+    insert into schematic_diagrams (
+      workspace_id, offer_id, variant_revision, netlist, node_count, edge_count
+    ) values (
+      ${wsId}::uuid, ${offerId}::uuid, ${variantRevision},
+      '{"nodes":[],"edges":[]}'::jsonb, 0, 0
+    )
+    on conflict (workspace_id, offer_id, variant_revision) do nothing
+  `);
+  const envelope = {
+    elements: [{ kind: "textbox", x: 10, y: 20, text: "Fixture-Overlay" }],
+  };
+  await tx.execute(sql`
+    insert into schematic_overlays (
+      workspace_id, offer_id, variant_revision, parent_revision,
+      elements, element_count
+    ) values (
+      ${wsId}::uuid, ${offerId}::uuid, ${variantRevision}, ${parentRevision},
+      ${JSON.stringify(envelope)}::jsonb, 1
+    )
+  `);
+  return { offerId, variantRevision };
 }

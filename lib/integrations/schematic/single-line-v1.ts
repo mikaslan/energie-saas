@@ -27,9 +27,13 @@ export type SchematicSectionInput = {
   quantityLabel: string | null;
 };
 
+export type OverlayNodeKind = "earthing_point" | "junction_box" | "generic" | "textbox";
+
 export type SchematicNode = {
   id: string;
-  kind: Exclude<SchematicCategory, "other"> | "meter" | "grid";
+  // F6-02a: additiv um Overlay-Knoten erweitert (nur Typ, kein
+  // Laufzeitverhalten — Bestandskanonisierung unveraendert).
+  kind: Exclude<SchematicCategory, "other"> | "meter" | "grid" | OverlayNodeKind;
   label: string;
   sub: string | null;
   x: number;

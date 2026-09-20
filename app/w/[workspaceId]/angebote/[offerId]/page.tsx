@@ -32,7 +32,7 @@ import {
 import { deriveCertifiedCapacities } from "@/lib/integrations/offers/certified-capacities";
 import { planningModeSchema } from "@/lib/integrations/planning/contract";
 
-import { readSchematicScope } from "@/modules/schematic";
+import { readSchematicOverlay, readSchematicScope } from "@/modules/schematic";
 import { listDiscountTemplates } from "@/modules/discounts";
 import { listPlanningTemplates } from "@/modules/planning";
 import { listPackageTemplates } from "@/modules/offers";
@@ -40,6 +40,7 @@ import { listSubsidyTemplates } from "@/modules/subsidies";
 import {
   OfferDetailView,
   type OfferDetailSurfaceView,
+  type SchematicOverlayView,
 } from "./offer-detail-view";
 import { OfferSignaturePanel } from "./offer-signature-panel";
 import { formatUpsellQuantity } from "./offer-format";
@@ -334,6 +335,8 @@ function projectOfferDetailView(
   },
   // F6-01: Schaltplan-Scope, fail-closed commercial ohne Wert.
   schematicScope: "residential" | "commercial" = "commercial",
+  // F6-02a: Editor-Overlay, null ohne Wert (Backbone-Render ohne Merge).
+  schematicOverlay: SchematicOverlayView = null,
 ): OfferDetailSurfaceView {
   const activeVariantSchema = z.object({
     schemaVersion: z.literal("offer-variant-view.v1"),
@@ -454,6 +457,7 @@ function projectOfferDetailView(
       overrideActive: view.overrideActive,
       displayTotalNetCents: view.displayTotalNetCents,
       schematicScope,
+      schematicOverlay,
     },
     variants: view.variants.map((variant) => ({
       id: variant.id,
@@ -644,6 +648,7 @@ export default async function OfferDetailPage(
     bulkUpdate: OfferBulkUpdateViewModel | null;
     recoveryScope: string;
     schematicScope: "residential" | "commercial";
+    schematicOverlay: SchematicOverlayView;
     editorCapabilities: {
       canEditPrice: boolean;
       canApplyDiscount: boolean;
@@ -830,6 +835,45 @@ export default async function OfferDetailPage(
             }
           }
         }
+        // F6-02a: Overlay nur fuer residential laden (commercial sieht
+        // nie Overlay-Daten). Best-effort (inline: Depcruise verbietet
+        // Tx-Typ-Imports in app/): fehlende Lane-Tabellen (42P01),
+        // Scope/Rechte oder unbekannte Variante → null (Backbone-Render).
+        const schematicScope = view === null
+          ? "commercial"
+          : await readSchematicScope(tx, ctx, { offerId });
+        let schematicOverlay: SchematicOverlayView = null;
+        if (view !== null && schematicScope === "residential") {
+          const overlayRevision = z.number().int().min(1).safeParse(
+            (view.activeVariant as { snapshot?: { revision?: unknown } } | null)
+              ?.snapshot?.revision,
+          );
+          if (overlayRevision.success) {
+            try {
+              const overlay = await readSchematicOverlay(tx, ctx, {
+                offerId,
+                variantRevision: overlayRevision.data,
+              });
+              if (overlay !== null) {
+                const diagram = await tx.execute<{ revision: number; [key: string]: unknown }>(sql`
+                  select revision from schematic_diagrams
+                   where workspace_id = ${ctx.workspaceId}::uuid
+                     and offer_id = ${offerId}::uuid
+                     and variant_revision = ${overlayRevision.data}
+                   limit 1
+                `);
+                const diagramRevision = diagram.rows[0]?.revision ?? null;
+                schematicOverlay = {
+                  elements: overlay.elements,
+                  parentRevision: overlay.parentRevision,
+                  stale: diagramRevision === null || overlay.parentRevision !== diagramRevision,
+                };
+              }
+            } catch {
+              schematicOverlay = null;
+            }
+          }
+        }
         return {
           view,
           pdfDrafts: view === null ? [] : await listOfferPdfDrafts(tx, ctx, {
@@ -840,9 +884,8 @@ export default async function OfferDetailPage(
             ? null
             : await getOfferBulkUpdate(tx, ctx, { offerId }),
           recoveryScope: offerRecoveryScope(workspaceId, ctx.actor),
-          schematicScope: view === null
-            ? "commercial"
-            : await readSchematicScope(tx, ctx, { offerId }),
+          schematicScope,
+          schematicOverlay,
           releaseProfile,
           releaseRecipient,
           releaseCandidates,
@@ -913,6 +956,7 @@ export default async function OfferDetailPage(
       showPanel: result.showReleasePanel,
     },
     result.schematicScope,
+    result.schematicOverlay,
   );
   // F2-06 Slice A: sichtbare optionale Zeilen der aktiven Variante als
   // Upsell-Checkboxen (reine Projektion versiegelter Beträge).
