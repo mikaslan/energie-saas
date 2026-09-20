@@ -113,9 +113,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F16-04e Vorlagen-Labels (0147, Spalte + CHECK),
 //   F16-11 Paket-Vorlagen (0148, Tabelle + RLS)
 // => 158 Migrationen (idx 0..157, HEAD 0235 F1-23 Routing-Vertiefung),
-//   danach F9-12 Kategorie-Defaults (0149) + F9-14 Projekt-optional (0150).
-// => 160 Migrationen (idx 0..159, HEAD 0150 F9-14 Projekt-optional).
-const TOTAL_MIGRATION_COUNT = 160;
+//   danach F9-12 Kategorie-Defaults (0149) + F9-14 Projekt-optional (0150),
+//   danach F15-02 Gewerbe-Stufen (0290).
+// => 161 Migrationen (idx 0..160, HEAD 0290 F15-02 Gewerbe-Stufen).
+const TOTAL_MIGRATION_COUNT = 161;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -431,8 +432,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 159,
-        tag: "0150_f9_14_project_optional",
+        idx: 160,
+        tag: "0290_f15_02_gewerbe_workflow_stufen",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

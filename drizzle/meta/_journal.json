@@ -1121,6 +1121,13 @@
       "when": 1789850451002,
       "tag": "0150_f9_14_project_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1789853700000,
+      "tag": "0290_f15_02_gewerbe_workflow_stufen",
+      "breakpoints": true
     }
   ]
 }

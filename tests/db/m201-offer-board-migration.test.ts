@@ -333,8 +333,9 @@ describe.sequential("M2-01 Angebotsspalte: Upgrade und Provisionierung", () => {
     }
   });
 
-  // F15-01 (0088): je Scope vier geordnete Spalten (Gewerbe zuerst,
-  // alphabetischer Scope — board.id ist zufällig und nicht sortierbar).
+  // F15-01 (0088) + F15-02 (0290): je Scope vier geordnete Spalten
+  // (Gewerbe zuerst, alphabetischer Scope — board.id ist zufällig und
+  // nicht sortierbar; Gewerbe mit eigenen Stufen statt Wohnbau-Kopie).
   it("provisioniert neue Workspaces mit je vier geordneten Spalten je Bereich", async () => {
     const workspaceId = randomUUID();
     const provisioned = await tenantTransaction(pool, workspaceId, async (client) => {
@@ -380,7 +381,7 @@ describe.sequential("M2-01 Angebotsspalte: Upgrade und Provisionierung", () => {
         board_name: "Anfragen Gewerbe",
         scope: "commercial",
         is_default: true,
-        column_name: "In Prüfung",
+        column_name: "Bedarfsanalyse",
         column_type: "lead",
         position: 2,
         color: "amber",
@@ -390,7 +391,7 @@ describe.sequential("M2-01 Angebotsspalte: Upgrade und Provisionierung", () => {
         board_name: "Anfragen Gewerbe",
         scope: "commercial",
         is_default: true,
-        column_name: "Qualifiziert",
+        column_name: "Planung",
         column_type: "lead",
         position: 3,
         color: "green",

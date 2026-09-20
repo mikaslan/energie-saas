@@ -251,10 +251,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0231 F1-18 REST-Intake (Tabelle + RLS),
     // 0235 F1-23 Routing-Vertiefung (Spalten + CHECKs),
     // 0149 F9-12 Kategorie-Defaults (Funktionen + Trigger + Backfill),
-    // 0150 F9-14 Projekt-optional (2x DROP NOT NULL)).
+    // 0150 F9-14 Projekt-optional (2x DROP NOT NULL),
+    // 0290 F15-02 Gewerbe-Stufen (Funktion + Backfill)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 159,
-      tag: "0150_f9_14_project_optional",
+      idx: 160,
+      tag: "0290_f15_02_gewerbe_workflow_stufen",
     });
   });
 

@@ -141,7 +141,8 @@ async function submit(workspaceId: string, value = payload()): Promise<{
 }
 
 describe("M1-05 Default-Request-Kanban", () => {
-  // F15-01 (0088): je Scope genau ein Default-Board (Wohnbau + Gewerbe).
+  // F15-01 (0088) + F15-02 (0290): je Scope genau ein Default-Board
+  // (Wohnbau-Referenz + Gewerbe mit eigenen Stufen).
   it("provisioniert je neuem Workspace je Scope genau ein physisches Default-Board", async () => {
     const workspaceId = await createWorkspace();
     const result = await withTenantOn(testPool, workspaceId, (tx) => tx.execute<{
@@ -163,9 +164,12 @@ describe("M1-05 Default-Request-Kanban", () => {
     `));
 
     const columns = ["Eingang", "In Prüfung", "Qualifiziert", "Angebote"];
+    // F15-02 (0290): Kontraktwechsel — Gewerbe trägt eigene Stufen statt
+    // der Wohnbau-Kopie (Residential-Block unten bleibt Referenz).
+    const commercialColumns = ["Eingang", "Bedarfsanalyse", "Planung", "Angebote"];
     const types = ["lead", "lead", "lead", "offer"];
     expect(result.rows).toEqual([
-      ...columns.map((column_name, index) => ({
+      ...commercialColumns.map((column_name, index) => ({
         board_name: "Anfragen Gewerbe",
         scope: "commercial",
         is_default: true,
