@@ -88,6 +88,7 @@ import { PlanningSourcesPanel } from "./planning-source-panel";
 import { PlanningRoofsPanel } from "./planning-roof-panel";
 import { PlanningRoofRestrictionsPanel } from "./planning-roof-restriction-panel";
 import { PlanningPanelGroupsPanel } from "./planning-panel-group-panel";
+import { PlanningPanelDeselectPanel } from "./planning-panel-deselect-panel";
 import { PlanningStringsPanel } from "./planning-string-panel";
 import { PlanningStringEquipmentPanel } from "./planning-string-equipment-panel";
 import { PlanningSolarPanel } from "./planning-solar-panel";
@@ -1433,6 +1434,9 @@ export default async function ProjectTriagePage({
         </div>
         <div className="mb-6">
           <PlanningPanelGroupsPanel workspaceId={workspaceId} projectId={projectId} />
+        </div>
+        <div className="mb-6">
+          <PlanningPanelDeselectPanel workspaceId={workspaceId} projectId={projectId} />
         </div>
         <div className="mb-6">
           <PlanningStringsPanel workspaceId={workspaceId} projectId={projectId} />

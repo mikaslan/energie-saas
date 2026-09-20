@@ -1100,6 +1100,13 @@
       "when": 1789914184609,
       "tag": "0275_f3_05b_equipment",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1789915461638,
+      "tag": "0276_f3_04b_deselect",
+      "breakpoints": true
     }
   ]
 }

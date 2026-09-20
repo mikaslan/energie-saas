@@ -86,3 +86,10 @@ export {
   type PlanningStringEquipmentAttachV1,
   type PlanningStringEquipmentPanelRefV1,
 } from "./string-equipment";
+export {
+  PLANNING_PANEL_DESELECT_VERSION,
+  deselectedEffectiveCount,
+  planningPanelDeselectV1Schema,
+  type DeselectedEffectiveCountInput,
+  type PlanningPanelDeselectV1,
+} from "./panel-deselect";

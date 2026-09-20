@@ -671,6 +671,7 @@ const PLANNING_SOURCE_RELATIONS = [
   "planning_inverter",
   "planning_string",
   "planning_string_equipment",
+  "planning_panel_deselect",
 ] as const;
 const PLANNING_SOURCE_RUNTIME_ROUTINES = [
   "public.planning_roof_min_tilt_per_edge_valid(jsonb)",
@@ -3211,7 +3212,8 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
         public.planning_panel_group,
         public.planning_inverter,
         public.planning_string,
-        public.planning_string_equipment
+        public.planning_string_equipment,
+        public.planning_panel_deselect
         from public, app_migrator, app_runtime, app_system, app_auth,
           app_worker, app_erasure, app_membership_writer, identity_reconciler;
       grant select, insert, update on public.planning_source to app_runtime;
@@ -3221,6 +3223,7 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
       grant select, insert, update, delete on public.planning_inverter to app_runtime;
       grant select, insert, update, delete on public.planning_string to app_runtime;
       grant select, insert, update, delete on public.planning_string_equipment to app_runtime;
+      grant select, insert, update, delete on public.planning_panel_deselect to app_runtime;
 
       revoke execute on function
         ${PLANNING_SOURCE_RUNTIME_ROUTINES.join(",\n        ")}
@@ -7001,6 +7004,7 @@ export async function verifyRoleContract(
           "planning_inverter:tenant_isolation:3b66caa0b3b3f694d51d7f420268b22ea7ae8d365bb267d7bf824c541cf2f5f5",
           "planning_string:tenant_isolation:9a822c0e187d13ac94fe4a878659b49529f92ba45cac4140c269379a81d51f23",
           "planning_string_equipment:tenant_isolation:086bd883d1329d0ae3aa4bfc29a7a8d5d7cd9404a694cbed24a8a15ae71522b8",
+          "planning_panel_deselect:tenant_isolation:8e0a3982a7ec218e144347a660b2de15c3be8c2197deeb1696baa86559baba51",
         ] : []),
         ...(hasOrderParts ? [
           "order_part:tenant_isolation:268512a6573eac45e57baff80c9ec88d2eeb1b95a6b7b8bebba57a0ff588193e",
@@ -7642,12 +7646,14 @@ export async function verifyRoleContract(
       // F3-04a (0273): Panel-Gruppen ebenso (frei revidierbar).
       // F3-05a (0274): WR + Strings ebenso (frei revidierbar).
       // F3-05b (0275): Equipment ebenso (frei revidierbar).
+      // F3-04b (0276): Deselect ebenso (frei revidierbar).
       ...(hasPlanningSources ? [
         "app_runtime:planning_roof_restriction:DELETE:app_owner:false",
         "app_runtime:planning_panel_group:DELETE:app_owner:false",
         "app_runtime:planning_inverter:DELETE:app_owner:false",
         "app_runtime:planning_string:DELETE:app_owner:false",
         "app_runtime:planning_string_equipment:DELETE:app_owner:false",
+        "app_runtime:planning_panel_deselect:DELETE:app_owner:false",
       ] : []),
       ...(hasOrderParts ? ORDER_PART_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
