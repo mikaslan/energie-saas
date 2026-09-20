@@ -108,6 +108,7 @@ test("F11-04-E2E-01: Offline-Haken wird online synchronisiert und bleibt nach Re
     if (message.type() === "error") errors.push(`console: ${message.text()}`);
   });
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+
   const actorId = await resolveEditorId();
   const workspaceId = await seedIsolatedWorkspace(actorId);
   const listPath = `/w/${workspaceId}/anfragen`;

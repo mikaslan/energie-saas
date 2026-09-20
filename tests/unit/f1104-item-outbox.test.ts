@@ -9,6 +9,7 @@ import {
   diffItemPatches,
   itemOutboxEntrySchema,
   itemOutboxKey,
+  itemSyncOutcome,
   planItemSync,
   type ItemOutboxEntry,
 } from "@/lib/integrations/checklists/item-outbox";
@@ -144,5 +145,18 @@ describe("F11-04 Checklisten-Punkt-Outbox-Planer", () => {
     expect(plan.blocks).toBeNull();
     expect(plan.applied).toEqual([]);
     expect(plan.unchanged).toEqual([entry(A, { done: true })]);
+  });
+
+  it("F1104-U-09: Ergebnis-Mapping — Ablehnung räumt, Konflikt revalidiert, Netzfehler behält", () => {
+    expect(itemSyncOutcome("success")).toBe("synced");
+    for (const status of ["invalid", "not_found", "denied"]) {
+      expect(itemSyncOutcome(status)).toBe("rejected");
+    }
+    expect(itemSyncOutcome("conflict")).toBe("conflict");
+    // Netzfehler (Action wirft → null) und alles Unbekannte behalten die
+    // Einträge: nie räumen, ohne dass der Server entschieden hat.
+    for (const status of [null, "error", "unauthenticated", "state", "incomplete", "idle"]) {
+      expect(itemSyncOutcome(status)).toBe("retry");
+    }
   });
 });

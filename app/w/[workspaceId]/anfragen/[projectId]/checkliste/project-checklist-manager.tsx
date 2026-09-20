@@ -376,8 +376,8 @@ export function ProjectChecklistManager({
               // Strukturänderungen bleiben unangetastet im lokalen Stand,
               // bis online gespeichert wird (nichts still verwerfen).
               const targetChecklistId = checklist.checklistId;
-              if (typeof navigator === "undefined" || navigator.onLine !== false
-                || targetChecklistId === null) {
+              const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+              if (!offline || targetChecklistId === null) {
                 setOfflineSaveNotice(null);
                 return;
               }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChecklistBlocksV1 } from "@/lib/integrations/checklists/contract";
 import {
+  itemSyncOutcome,
   planItemSync,
   type ItemOutboxEntry,
 } from "@/lib/integrations/checklists/item-outbox";
@@ -59,6 +60,7 @@ export function ItemOutboxSync({
   const [pending, setPending] = useState<ItemOutboxEntry[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageOk, setMessageOk] = useState(true);
   const syncingRef = useRef(false);
   const roundsRef = useRef(0);
   const inputRef = useRef({ version, blocks, phase, title });
@@ -115,24 +117,16 @@ export function ItemOutboxSync({
         } catch {
           result = null;
         }
-        if (result === null) {
-          stalled = true;
-        } else if (result.status === "success") {
-          for (const entry of plan.applied) await removeQueuedItemPatch(entry.checklistId, entry.itemId);
-          synced = plan.applied.length;
-          needsRefresh = true;
-        } else if (
-          result.status === "invalid"
-          || result.status === "not_found"
-          || result.status === "denied"
-        ) {
+        const outcome = itemSyncOutcome(result?.status ?? null);
+        if (outcome === "synced" || outcome === "rejected") {
           for (const entry of plan.applied) await removeQueuedItemPatch(entry.checklistId, entry.itemId);
           needsRefresh = true;
-          notes.push("Offline-Änderungen waren online nicht mehr zulässig und wurden verworfen.");
+          if (outcome === "synced") synced = plan.applied.length;
+          else notes.push("Offline-Änderungen waren online nicht mehr zulässig und wurden verworfen.");
         } else {
-          // conflict → Revalidierung + zweite Runde; alles andere (error,
-          // unauthenticated) behält die Einträge für einen späteren Versuch.
-          needsRefresh = result.status === "conflict";
+          // conflict → Revalidierung + zweite Runde; retry (Netzfehler,
+          // error, unauthenticated) behält die Einträge für später.
+          needsRefresh = needsRefresh || outcome === "conflict";
           stalled = true;
         }
       }
@@ -147,7 +141,10 @@ export function ItemOutboxSync({
             : `${synced} Offline-Änderungen wurden synchronisiert.`,
         );
       }
-      if (notes.length > 0) setMessage(notes.join(" "));
+      if (notes.length > 0) {
+        setMessage(notes.join(" "));
+        setMessageOk(synced > 0 && notes.length === 1);
+      }
       if (needsRefresh) router.refresh();
     } finally {
       syncingRef.current = false;
@@ -192,7 +189,12 @@ export function ItemOutboxSync({
         </p>
       ) : null}
       {message !== "" ? (
-        <p role="status" className="text-sm font-medium text-green-700">{message}</p>
+        <p
+          role="status"
+          className={`text-sm font-medium ${messageOk ? "text-green-700" : "text-slate-800"}`}
+        >
+          {message}
+        </p>
       ) : null}
       {pending.length > 0 ? (
         <button

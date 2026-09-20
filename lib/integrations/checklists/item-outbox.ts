@@ -130,3 +130,15 @@ export function planItemSync(
   if (plan.applied.length > 0) plan.blocks = next;
   return plan;
 }
+
+// Ergebnis-Mapping des Replay-Saves (Konflikt/Retry/Permission). `null` =
+// die Action hat geworfen (Netzfehler). Geräumt wird nur, wenn der Server
+// entschieden hat; alles Unbekannte behält die Einträge.
+export type ItemSyncOutcome = "synced" | "rejected" | "conflict" | "retry";
+
+export function itemSyncOutcome(status: string | null): ItemSyncOutcome {
+  if (status === "success") return "synced";
+  if (status === "invalid" || status === "not_found" || status === "denied") return "rejected";
+  if (status === "conflict") return "conflict";
+  return "retry";
+}

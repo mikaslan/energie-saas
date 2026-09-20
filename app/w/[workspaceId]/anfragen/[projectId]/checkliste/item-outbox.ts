@@ -22,6 +22,10 @@ export const ITEM_OUTBOX_CHANGED_EVENT = "wmee:item-outbox-changed";
 // alte Einträge der Checkliste raus, aktuelle Patches rein (eine
 // Transaktion). Ein offline wieder entfernter Haken hinterlässt so
 // keinen veralteten Patch.
+// ponytail: maßgeblich ist der sichtbare Stand — ein nach Reload noch
+// wartender (nicht mehr angezeigter) Patch derselben Checkliste wird beim
+// nächsten Offline-Speichern ersetzt. Bei Bedarf: wartende Patches beim
+// Laden in den lokalen Stand einspielen.
 export async function replaceQueuedItemPatches(
   scope: { workspaceId: string; projectId: string; checklistId: string },
   patches: readonly ItemPatch[],
