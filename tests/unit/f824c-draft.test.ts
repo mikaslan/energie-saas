@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -292,9 +293,14 @@ describe("F824C-CT-01: Draft-Renderer (Chromium-Pfad, schlank)", () => {
       // ENTWURF-Wasserzeichen im Byte-Strom; ohne Browser sauberer
       // DraftPdfRenderError statt Rohfehler.
       if (outcome.ok) {
+        // Echter Headless-Render: PDF-Integritaet pruefen (der Content-
+        // Stream kodiert Text — kein Literal-Assert; dass ENTWURF im
+        // Render-Input steht, pinnt UT-01 auf HTML-Ebene).
         expect(outcome.artifact.mimeType).toBe("application/pdf");
         expect(outcome.artifact.bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
-        expect(outcome.artifact.bytes.toString("latin1")).toContain("ENTWURF");
+        expect(outcome.artifact.bytes.subarray(Math.max(0, outcome.artifact.bytes.length - 1024)).toString("latin1")).toContain("%%EOF");
+        expect(createHash("sha256").update(outcome.artifact.bytes).digest("hex")).toBe(outcome.artifact.sha256);
+        expect(outcome.artifact.sizeBytes).toBe(outcome.artifact.bytes.length);
       } else {
         expect(outcome.error).toBeInstanceOf(DraftPdfRenderError);
       }
