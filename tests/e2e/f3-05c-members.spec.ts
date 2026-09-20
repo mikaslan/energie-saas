@@ -360,7 +360,7 @@ async function fillStringForm(
   await form.getByLabel("Tracker-Slot").fill(String(values.slot));
   await form.getByLabel("String-Label").fill(values.stringLabel);
   for (const groupLabel of values.groupLabels) {
-    await form.getByRole("checkbox", { name: groupLabel }).check();
+    await form.getByRole("checkbox", { name: groupLabel, exact: true }).check();
   }
 }
 
@@ -408,10 +408,13 @@ async function deselectCell(page: Page, values: DeselectValues): Promise<void> {
   await expect(section.getByTestId("planning-panel-deselect-empty")).toHaveCount(0);
 }
 
-// Member-Sektion je String (String-Listenreihenfolge): 0 =
-// erster String, 1 = zweiter String.
-function memberSection(page: Page, index: number) {
-  return page.getByTestId("planning-string-members-section").nth(index);
+// Member-Sektion je String, per String-Label adressiert (robust gegen
+// Strings frueherer Spec-Dateien im Full-Suite-Lauf; nth-Index waere
+// positionsabhaengig).
+function memberSection(page: Page, stringLabel: string) {
+  return page.getByTestId("planning-string-members-section").filter({
+    has: page.getByRole("heading", { name: `String-Member: ${stringLabel}`, exact: true }),
+  });
 }
 
 type MemberValues = {
@@ -422,8 +425,8 @@ type MemberValues = {
   colTo: number;
 };
 
-async function fillMemberForm(page: Page, index: number, values: MemberValues): Promise<void> {
-  const form = memberSection(page, index).getByTestId("planning-string-members-form");
+async function fillMemberForm(page: Page, stringLabel: string, values: MemberValues): Promise<void> {
+  const form = memberSection(page, stringLabel).getByTestId("planning-string-members-form");
   await expect(form).toBeVisible();
   await form
     .getByTestId("planning-string-members-group")
@@ -434,9 +437,9 @@ async function fillMemberForm(page: Page, index: number, values: MemberValues): 
   await form.getByTestId("planning-string-members-col-to").fill(String(values.colTo));
 }
 
-async function createMember(page: Page, index: number, values: MemberValues): Promise<void> {
-  const section = memberSection(page, index);
-  await fillMemberForm(page, index, values);
+async function createMember(page: Page, stringLabel: string, values: MemberValues): Promise<void> {
+  const section = memberSection(page, stringLabel);
+  await fillMemberForm(page, stringLabel, values);
   await section.getByTestId("planning-string-members-create").click();
   await expect(section.getByText("Member gespeichert.", { exact: true })).toBeVisible();
   await expect(section.getByTestId("planning-string-members-empty")).toHaveCount(0);
@@ -463,12 +466,12 @@ test.describe("F3-05c String-Member — Browser-Gate", () => {
       groupLabels: ["Mem-G1"],
     });
 
-    const section = memberSection(page, 0);
+    const section = memberSection(page, "Mem-S1");
     await expect(section).toBeVisible();
     await expect(section.getByTestId("planning-string-members-empty")).toBeVisible();
 
     // Range aus Gruppen-Hälfte: Zeilen 1–2 x Spalten 1–6 = 12 Zellen.
-    await createMember(page, 0, {
+    await createMember(page, "Mem-S1", {
       groupLabel: "Mem-G1",
       rowFrom: 1,
       rowTo: 2,
@@ -491,13 +494,13 @@ test.describe("F3-05c String-Member — Browser-Gate", () => {
 
     // Persistenz über Reload.
     await page.reload();
-    const reloaded = memberSection(page, 0);
+    const reloaded = memberSection(page, "Mem-S1");
     await expect(reloaded.getByTestId("planning-string-members-delete")).toHaveCount(1);
     await expect(reloaded.getByTestId("planning-string-members-count")).toContainText("11");
 
     // Voll-Deselect-Range (nur Zelle 4/6, abgewählt, keine
     // Überlappung) scheitert hart mit Fehler, kein neuer Eintrag.
-    await fillMemberForm(page, 0, {
+    await fillMemberForm(page, "Mem-S1", {
       groupLabel: "Mem-G1",
       rowFrom: 4,
       rowTo: 4,
@@ -520,12 +523,12 @@ test.describe("F3-05c String-Member — Browser-Gate", () => {
       stringLabel: "Mem-S2",
       groupLabels: ["Mem-G2"],
     });
-    const second = memberSection(page, 1);
+    const second = memberSection(page, "Mem-S2");
     await expect(second.getByTestId("planning-string-members-empty")).toBeVisible();
 
     // Doppelbelegung: Zelle (1/2) liegt in der Range von Mem-S1
     // (selber WR), ist nicht abgewählt → scheitert hart.
-    await fillMemberForm(page, 1, {
+    await fillMemberForm(page, "Mem-S2", {
       groupLabel: "Mem-G1",
       rowFrom: 1,
       rowTo: 1,
@@ -539,40 +542,40 @@ test.describe("F3-05c String-Member — Browser-Gate", () => {
     await expect(second.getByTestId("planning-string-members-empty")).toBeVisible();
     await expect(second.getByTestId("planning-string-members-delete")).toHaveCount(0);
     await expect(
-      memberSection(page, 0).getByTestId("planning-string-members-count"),
+      memberSection(page, "Mem-S1").getByTestId("planning-string-members-count"),
     ).toContainText("11");
 
     // Überlapp-Range im selben String (Zeilen 2–3 x Spalten 1–6
     // schneidet die Member-Range in Zeile 2, enthält nicht
     // abgewählte Zellen) scheitert mit Fehler.
-    await fillMemberForm(page, 0, {
+    await fillMemberForm(page, "Mem-S1", {
       groupLabel: "Mem-G1",
       rowFrom: 2,
       rowTo: 3,
       colFrom: 1,
       colTo: 6,
     });
-    await memberSection(page, 0).getByTestId("planning-string-members-create").click();
+    await memberSection(page, "Mem-S1").getByTestId("planning-string-members-create").click();
     await expect(
-      memberSection(page, 0).getByTestId("planning-string-members-form").getByRole("alert"),
+      memberSection(page, "Mem-S1").getByTestId("planning-string-members-form").getByRole("alert"),
     ).toBeVisible();
     await expect(
-      memberSection(page, 0).getByTestId("planning-string-members-delete"),
+      memberSection(page, "Mem-S1").getByTestId("planning-string-members-delete"),
     ).toHaveCount(1);
     await expect(
-      memberSection(page, 0).getByTestId("planning-string-members-count"),
+      memberSection(page, "Mem-S1").getByTestId("planning-string-members-count"),
     ).toContainText("11");
 
     // Member löschen → Liste leer.
-    await memberSection(page, 0).getByTestId("planning-string-members-delete").click();
+    await memberSection(page, "Mem-S1").getByTestId("planning-string-members-delete").click();
     await expect(
-      memberSection(page, 0).getByText("Member entfernt.", { exact: true }),
+      memberSection(page, "Mem-S1").getByText("Member entfernt.", { exact: true }),
     ).toBeVisible();
     await expect(
-      memberSection(page, 0).getByTestId("planning-string-members-empty"),
+      memberSection(page, "Mem-S1").getByTestId("planning-string-members-empty"),
     ).toBeVisible();
     await expect(
-      memberSection(page, 0).getByTestId("planning-string-members-delete"),
+      memberSection(page, "Mem-S1").getByTestId("planning-string-members-delete"),
     ).toHaveCount(0);
 
     await expectNoWcagAaAxeViolations(page, "F3.5c Member-Sektion");
@@ -595,7 +598,7 @@ test.describe("F3-05c String-Member — Browser-Gate", () => {
       stringLabel: "MemViewer-S1",
       groupLabels: ["MemViewer-G1"],
     });
-    await createMember(page, 0, {
+    await createMember(page, "MemViewer-S1", {
       groupLabel: "MemViewer-G1",
       rowFrom: 1,
       rowTo: 2,
@@ -606,7 +609,7 @@ test.describe("F3-05c String-Member — Browser-Gate", () => {
     await page.context().clearCookies();
     await page.goto(path);
     await loginWithRealOtp(page, data.viewerEmail, path);
-    const viewerSection = memberSection(page, 0);
+    const viewerSection = memberSection(page, "MemViewer-S1");
     await expect(viewerSection).toBeVisible();
     await expect(
       viewerSection.getByTestId("planning-string-members-list").getByText("MemViewer-G1"),

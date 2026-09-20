@@ -375,7 +375,7 @@ async function fillStringForm(
   await form.getByLabel("Tracker-Slot").fill(String(values.slot));
   await form.getByLabel("String-Label").fill(values.stringLabel);
   for (const groupLabel of values.groupLabels) {
-    await form.getByRole("checkbox", { name: groupLabel }).check();
+    await form.getByRole("checkbox", { name: groupLabel, exact: true }).check();
   }
 }
 
@@ -423,10 +423,13 @@ async function deselectCell(page: Page, values: DeselectValues): Promise<void> {
   await expect(section.getByTestId("planning-panel-deselect-empty")).toHaveCount(0);
 }
 
-// Member-Sektion je String (String-Listenreihenfolge): 0 =
-// erster String, 1 = zweiter String.
-function memberSection(page: Page, index: number) {
-  return page.getByTestId("planning-string-members-section").nth(index);
+// Member-Sektion je String, per String-Label adressiert (robust gegen
+// Strings frueherer Spec-Dateien im Full-Suite-Lauf; nth-Index waere
+// positionsabhaengig).
+function memberSection(page: Page, stringLabel: string) {
+  return page.getByTestId("planning-string-members-section").filter({
+    has: page.getByRole("heading", { name: `String-Member: ${stringLabel}`, exact: true }),
+  });
 }
 
 type MemberValues = {
@@ -437,8 +440,8 @@ type MemberValues = {
   colTo: number;
 };
 
-async function fillMemberForm(page: Page, index: number, values: MemberValues): Promise<void> {
-  const form = memberSection(page, index).getByTestId("planning-string-members-form");
+async function fillMemberForm(page: Page, stringLabel: string, values: MemberValues): Promise<void> {
+  const form = memberSection(page, stringLabel).getByTestId("planning-string-members-form");
   await expect(form).toBeVisible();
   await form
     .getByTestId("planning-string-members-group")
@@ -449,9 +452,9 @@ async function fillMemberForm(page: Page, index: number, values: MemberValues): 
   await form.getByTestId("planning-string-members-col-to").fill(String(values.colTo));
 }
 
-async function createMember(page: Page, index: number, values: MemberValues): Promise<void> {
-  const section = memberSection(page, index);
-  await fillMemberForm(page, index, values);
+async function createMember(page: Page, stringLabel: string, values: MemberValues): Promise<void> {
+  const section = memberSection(page, stringLabel);
+  await fillMemberForm(page, stringLabel, values);
   await section.getByTestId("planning-string-members-create").click();
   await expect(section.getByText("Member gespeichert.", { exact: true })).toBeVisible();
   await expect(section.getByTestId("planning-string-members-empty")).toHaveCount(0);
@@ -511,11 +514,11 @@ test.describe("F3-05d Effektive String-Advisories — Browser-Gate", () => {
       groupLabels: ["Eff-G1"],
     });
 
-    const section = memberSection(page, 0);
+    const section = memberSection(page, "Eff-S1");
     await expect(section).toBeVisible();
 
     // Volle Range 2x3 = 6 Zellen > Max 5 → over-length sichtbar.
-    await createMember(page, 0, {
+    await createMember(page, "Eff-S1", {
       groupLabel: "Eff-G1",
       rowFrom: 1,
       rowTo: 2,
@@ -539,7 +542,7 @@ test.describe("F3-05d Effektive String-Advisories — Browser-Gate", () => {
 
     // Persistenz über Reload; over-length bleibt verschwunden.
     await page.reload();
-    const reloaded = memberSection(page, 0);
+    const reloaded = memberSection(page, "Eff-S1");
     await expect(
       reloaded.getByTestId("planning-string-members-effective"),
     ).toContainText("4 von 6");
@@ -591,7 +594,7 @@ test.describe("F3-05d Effektive String-Advisories — Browser-Gate", () => {
       stringLabel: "EffViewer-S1",
       groupLabels: ["EffViewer-G1"],
     });
-    await createMember(page, 1, {
+    await createMember(page, "EffViewer-S1", {
       groupLabel: "EffViewer-G1",
       rowFrom: 1,
       rowTo: 2,
@@ -603,7 +606,7 @@ test.describe("F3-05d Effektive String-Advisories — Browser-Gate", () => {
     await page.context().clearCookies();
     await page.goto(path);
     await loginWithRealOtp(page, data.viewerEmail, path);
-    const viewerSection = memberSection(page, 1);
+    const viewerSection = memberSection(page, "EffViewer-S1");
     await expect(viewerSection).toBeVisible();
     await expect(
       viewerSection.getByTestId("planning-string-members-effective"),

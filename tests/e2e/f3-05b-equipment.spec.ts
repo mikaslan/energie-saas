@@ -353,7 +353,7 @@ async function createString(
   await form.getByLabel("Tracker-Slot").fill(String(values.slot));
   await form.getByLabel("String-Label").fill(values.stringLabel);
   for (const groupLabel of values.groupLabels) {
-    await form.getByRole("checkbox", { name: groupLabel }).check();
+    await form.getByRole("checkbox", { name: groupLabel, exact: true }).check();
   }
   await section.getByTestId("planning-strings-create").click();
   await expect(section.getByText("String gespeichert.", { exact: true })).toBeVisible();

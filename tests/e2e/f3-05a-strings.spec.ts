@@ -347,7 +347,7 @@ async function fillStringForm(
   await form.getByLabel("Tracker-Slot").fill(String(values.slot));
   await form.getByLabel("String-Label").fill(values.stringLabel);
   for (const groupLabel of values.groupLabels) {
-    await form.getByRole("checkbox", { name: groupLabel }).check();
+    await form.getByRole("checkbox", { name: groupLabel, exact: true }).check();
   }
 }
 
