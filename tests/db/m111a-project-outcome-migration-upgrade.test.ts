@@ -120,9 +120,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   F3-04a Panel-Gruppen (0273, Tabelle + RLS),
 //   F3-05a Strings (0274, 2 Tabellen + RLS),
 //   F3-05b Equipment (0275, Tabelle + RLS),
-//   F3-04b Deselect (0276, Tabelle + RLS)
-// => 158 Migrationen (idx 0..157).
-const TOTAL_MIGRATION_COUNT = 158;
+//   F3-04b Deselect (0276, Tabelle + RLS),
+//   F3-05c Member (0277, Tabelle + RLS)
+// => 159 Migrationen (idx 0..158).
+const TOTAL_MIGRATION_COUNT = 159;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -438,8 +439,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 157,
-        tag: "0276_f3_04b_deselect",
+        idx: 158,
+        tag: "0277_f3_05c_members",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

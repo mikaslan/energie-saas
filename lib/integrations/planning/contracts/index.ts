@@ -93,3 +93,13 @@ export {
   type DeselectedEffectiveCountInput,
   type PlanningPanelDeselectV1,
 } from "./panel-deselect";
+export {
+  PLANNING_STRING_MEMBER_VERSION,
+  effectiveMemberCount,
+  planningStringMemberAddV1Schema,
+  rangesOverlap,
+  type EffectiveMemberCountInput,
+  type PlanningStringMemberAddV1,
+  type PlanningStringMemberDeselectedCell,
+  type PlanningStringMemberRange,
+} from "./string-member";

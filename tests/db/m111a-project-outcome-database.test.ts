@@ -249,10 +249,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0273 F3-04a Panel-Gruppen (Tabelle + RLS),
     // 0274 F3-05a Strings (2 Tabellen + RLS),
     // 0275 F3-05b Equipment (Tabelle + RLS),
-    // 0276 F3-04b Deselect (Tabelle + RLS)).
+    // 0276 F3-04b Deselect (Tabelle + RLS),
+    // 0277 F3-05c Member (Tabelle + RLS)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 157,
-      tag: "0276_f3_04b_deselect",
+      idx: 158,
+      tag: "0277_f3_05c_members",
     });
   });
 
