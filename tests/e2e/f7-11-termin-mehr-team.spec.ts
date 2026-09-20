@@ -165,9 +165,12 @@ test("F7-11-E2E-01: Mehrere Teams parallel je Termin (Weitere Teams)", async ({ 
   await createSection.getByLabel("Name", { exact: true }).fill(teamAName);
   await createSection.getByRole("button", { name: "Anlegen", exact: true }).click();
   await expect(page.getByText("Team angelegt.")).toBeVisible();
+  // UI-settled je Team (CI-Befund 35515454330: generisches Feedback steht noch
+  // vom Vorgänger — erst die Karten-Überschrift beweist die Persistenz).
+  await expect(page.getByRole("heading", { name: teamAName })).toBeVisible();
   await createSection.getByLabel("Name", { exact: true }).fill(teamBName);
   await createSection.getByRole("button", { name: "Anlegen", exact: true }).click();
-  await expect(page.getByText("Team angelegt.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: teamBName })).toBeVisible();
   const teamAId = await resolveTeamId(workspaceId, teamAName);
   const teamBId = await resolveTeamId(workspaceId, teamBName);
 
