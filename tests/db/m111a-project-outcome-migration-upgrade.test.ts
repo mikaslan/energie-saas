@@ -116,8 +116,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   danach F9-12 Kategorie-Defaults (0149) + F9-14 Projekt-optional (0150),
 //   danach F15-02 Gewerbe-Stufen (0290),
 //   danach F8-16..F8-24a (0190-0200).
-// => 172 Migrationen (idx 0..171, HEAD 0200 F8-24a Sweep-Arbeitsvorrat).
-const TOTAL_MIGRATION_COUNT = 172;
+// => 172 Migrationen (idx 0..171, HEAD 0200 F8-24a Sweep-Arbeitsvorrat),
+//   danach F2-07c Freigabe-Lesekapseln (0330, Lane 7).
+// => 173 Migrationen (idx 0..172, HEAD 0330 F2-07c Freigabe-Lesekapseln).
+const TOTAL_MIGRATION_COUNT = 173;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -433,8 +435,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 171,
-        tag: "0200_f824a_sweep_workspace_registry",
+        idx: 172,
+        tag: "0330_f2_07c_offer_approval_capsules",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

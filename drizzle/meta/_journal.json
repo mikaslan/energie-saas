@@ -1205,6 +1205,13 @@
       "when": 1789907328011,
       "tag": "0200_f824a_sweep_workspace_registry",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1789914799928,
+      "tag": "0330_f2_07c_offer_approval_capsules",
+      "breakpoints": true
     }
   ]
 }

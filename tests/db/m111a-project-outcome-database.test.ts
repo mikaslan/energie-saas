@@ -263,10 +263,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0197 F8-22 Steuerbehandlung (Spalte + CHECK-Kopplung),
     // 0198 F8-24c Draft-Render-Paar (CHECKs),
     // 0199 F8 Nachweis-/Sync-IDs (id + UNIQUE (workspace_id, id)),
-    // 0200 F8-24a Sweep-Arbeitsvorrat (Tabelle + Spiegel-Trigger)).
+    // 0200 F8-24a Sweep-Arbeitsvorrat (Tabelle + Spiegel-Trigger),
+    // 0330 F2-07c Freigabe-Lesekapseln (3 DEFINER-Funktionen, Lane 7)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 171,
-      tag: "0200_f824a_sweep_workspace_registry",
+      idx: 172,
+      tag: "0330_f2_07c_offer_approval_capsules",
     });
   });
 

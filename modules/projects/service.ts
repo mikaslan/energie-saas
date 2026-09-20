@@ -88,6 +88,8 @@ export type ProjectTriageDetail = {
     canConfirmPin: boolean;
     canCorrectAddress: boolean;
   };
+  // F2-01b: Converted-Badge aus Offer-Existenz (nicht project.phase).
+  hasOffer: boolean;
 };
 
 type DetailRow = {
@@ -135,6 +137,7 @@ type DetailRow = {
   dedupe_review_required: boolean;
   catalog_resolution_status: string;
   referencing_projects: number;
+  has_offer: boolean;
   [key: string]: unknown;
 };
 
@@ -320,7 +323,11 @@ export async function getProjectTriageDetail(
            (select count(*)::int
               from project reference
              where reference.workspace_id = p.workspace_id
-               and reference.site_id = p.site_id) as referencing_projects
+               and reference.site_id = p.site_id) as referencing_projects,
+           exists (select 1
+                     from offer offer_record
+                    where offer_record.workspace_id = p.workspace_id
+                      and offer_record.project_id = p.id) as has_offer
     from project p
     join contact c
       on c.workspace_id = p.workspace_id and c.id = p.contact_id
@@ -433,6 +440,7 @@ export async function getProjectTriageDetail(
         && !row.pin_confirmed
         && row.referencing_projects === 1,
     },
+    hasOffer: row.has_offer,
   };
 }
 

@@ -916,6 +916,7 @@ export default async function ProjectTriagePage({
     );
   }
   const detail = pageDetail.record;
+  const hasOffer = (detail as Partial<{ hasOffer: unknown }>).hasOffer === true;
 
   const outcomeResult = await loadProjectOutcomeContext(workspaceId, projectId);
   if (outcomeResult.kind === "unauthenticated") redirectToProjectLogin(detailPath);
@@ -1204,6 +1205,7 @@ export default async function ProjectTriagePage({
     detailPath,
     detail: {
       phase: detail.project.phase,
+      hasOffer,
       outcome: outcomeContext.outcome,
       sourceLabel: detail.source.label,
       submittedAt: detail.source.submittedAt,
@@ -1286,6 +1288,11 @@ export default async function ProjectTriagePage({
               <span className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
                 {phaseLabel(detail.project.phase)}
               </span>
+              {hasOffer ? (
+                <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-950">
+                  Angebot angelegt
+                </span>
+              ) : null}
               <span className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800">
                 {outcomeLabel(outcomeContext.outcome)} · {detail.project.columnName}
               </span>

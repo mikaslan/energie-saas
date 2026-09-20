@@ -22,6 +22,7 @@ import {
 import {
   buildOfferRevisionOperations,
   canRemoveOfferDraftSection,
+  canRenameOfferDraftSection,
   calculateOfferEditorPreview,
   createOfferEditorDraft,
   formatLinkedQuantityPreview,
@@ -1255,6 +1256,11 @@ export function OfferVariantEditor({
                     draft,
                     draftSection.sectionDomainId,
                   );
+                  const renamableSection = canRenameOfferDraftSection(
+                    source,
+                    draft,
+                    draftSection.sectionDomainId,
+                  );
                   return (
                     <section key={draftSection.sectionDomainId} className="min-w-0 rounded-lg border border-slate-200 bg-slate-100/70 p-4 sm:p-5">
                       <header className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
@@ -1265,6 +1271,11 @@ export function OfferVariantEditor({
                               <div><label htmlFor={`section-${draftSection.sectionDomainId}-title`} className="text-xs font-semibold">Sektionsname</label><input id={`section-${draftSection.sectionDomainId}-title`} value={draftSection.title} aria-invalid={invalidFields.has(`section-${draftSection.sectionDomainId}-title`) || undefined} aria-describedby={errorDescription(`section-${draftSection.sectionDomainId}-title`)} onChange={(event) => updateDraftSection(draftSection.sectionDomainId, { title: event.target.value })} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError(`section-${draftSection.sectionDomainId}-title`)}</div>
                               <div><label htmlFor={`section-${draftSection.sectionDomainId}-category`} className="text-xs font-semibold">Kategorie</label><select id={`section-${draftSection.sectionDomainId}-category`} value={draftSection.category} onChange={(event) => updateDraftSection(draftSection.sectionDomainId, { category: event.target.value as OfferComponentCategory })} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">{CATEGORY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
                             </div>
+                          ) : renamableSection ? (
+                            <>
+                              <h2 className="mt-1 text-lg font-semibold">{sectionTitle}</h2>
+                              <div className="mt-2 max-w-sm"><label htmlFor={`section-${draftSection.sectionDomainId}-title`} className="text-xs font-semibold">Sektionsname</label><input id={`section-${draftSection.sectionDomainId}-title`} value={draftSection.title} aria-invalid={invalidFields.has(`section-${draftSection.sectionDomainId}-title`) || undefined} aria-describedby={errorDescription(`section-${draftSection.sectionDomainId}-title`)} onChange={(event) => updateDraftSection(draftSection.sectionDomainId, { title: event.target.value })} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-700" />{fieldError(`section-${draftSection.sectionDomainId}-title`)}</div>
+                            </>
                           ) : <h2 className="mt-1 text-lg font-semibold">{sectionTitle}</h2>}
                         </div>
                         <div className="flex flex-wrap gap-2" aria-label={`Reihenfolge der Sektion ${sectionTitle}`}>

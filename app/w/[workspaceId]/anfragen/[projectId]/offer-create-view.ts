@@ -36,6 +36,7 @@ export type OfferCreateEntryView =
       workspaceId: string;
       projectId: string;
       offersHref: string;
+      hasOffer: boolean;
     };
 
 export type OfferCreateServerGate = {
@@ -64,6 +65,7 @@ type BuildOfferCreateViewInput = {
   detailPath: string;
   detail: {
     phase: string;
+    hasOffer?: boolean;
     outcome: string;
     sourceLabel: string;
     submittedAt: string | null;
@@ -117,6 +119,7 @@ export function buildOfferCreateView(
       workspaceId,
       projectId,
       offersHref: offersPath,
+      hasOffer: detail.hasOffer === true,
     };
   }
   if (!gate.canCreate) {

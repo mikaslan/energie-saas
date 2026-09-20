@@ -115,6 +115,7 @@ export type OfferRevisionOperation =
   | { operation: "remove_custom_line"; lineDomainId: string }
   | { operation: "add_custom_section"; sectionDomainId: string; position: number; title: string; category: OfferComponentCategory }
   | { operation: "remove_custom_section"; sectionDomainId: string }
+  | { operation: "set_custom_section_title"; sectionDomainId: string; title: string }
   | {
       operation: "add_custom_line";
       lineDomainId: string;
@@ -388,6 +389,18 @@ export function canRemoveOfferDraftSection(
     && sourceSection.lines.every((line) => (line.sourceKind ?? "catalog") === "custom");
 }
 
+export function canRenameOfferDraftSection(
+  snapshot: OfferEditorSourceSnapshot,
+  draft: OfferEditorDraft,
+  sectionDomainId: string,
+): boolean {
+  const draftSection = draft.sections.find((section) => section.sectionDomainId === sectionDomainId);
+  if (!draftSection || draftSection.isNew || draftSection.lines.some((line) => line.sourceKind !== "custom")) return false;
+  const sourceSection = snapshot.sections.find((section) => section.sectionDomainId === sectionDomainId);
+  return sourceSection !== undefined
+    && sourceSection.lines.every((line) => (line.sourceKind ?? "catalog") === "custom");
+}
+
 export function addCustomOfferDraftSection(
   draft: OfferEditorDraft,
   input: { sectionDomainId: string; title?: string; category?: OfferComponentCategory },
@@ -633,7 +646,16 @@ export function buildOfferRevisionOperations(
   }
 
   for (const [sectionIndex, section] of draft.sections.entries()) {
-    if (sourceSectionById.has(section.sectionDomainId)) continue;
+    const sourceSection = sourceSectionById.get(section.sectionDomainId);
+    if (sourceSection) {
+      // F203B-08: Titeländerung bestehender Sektionen erzeugt genau eine Titel-Op.
+      const title = normalizedText(section.title);
+      if (title !== normalizedText(sourceSection.title ?? "Sektion")) {
+        if (title.length === 0 || title.length > 120) addError(errors, `section-${section.sectionDomainId}-title`, "Der Sektionsname muss 1 bis 120 Zeichen enthalten.");
+        else operations.push({ operation: "set_custom_section_title", sectionDomainId: section.sectionDomainId, title });
+      }
+      continue;
+    }
     const title = normalizedText(section.title);
     if (!section.isNew || title.length === 0 || title.length > 120) addError(errors, `section-${section.sectionDomainId}-title`, "Der Sektionsname muss 1 bis 120 Zeichen enthalten.");
     else operations.push({ operation: "add_custom_section", sectionDomainId: section.sectionDomainId, position: sectionIndex + 1, title, category: section.category });
