@@ -77,12 +77,18 @@ export type PlanningStringEquipmentPanelRefDto = {
   col: number;
 };
 
+export type PlanningStringEquipmentAdvisory = {
+  code: "equipment-on-deselected";
+  message: string;
+};
+
 export type PlanningStringEquipmentDto = {
   id: string;
   stringId: string;
   scope: PlanningStringEquipmentScope;
   panelRef: PlanningStringEquipmentPanelRefDto | null;
   equipment: PlanningStringEquipmentType;
+  advisories: PlanningStringEquipmentAdvisory[];
   createdAt: string;
   updatedAt: string;
   permissions: { canWrite: boolean };
@@ -186,7 +192,55 @@ function parseContractAttach(input: AttachEquipmentInput): {
   };
 }
 
-function toEquipmentDto(row: EquipmentRow, canWrite: boolean): PlanningStringEquipmentDto {
+function deselectedAdvisories(
+  deselected: boolean,
+): PlanningStringEquipmentAdvisory[] {
+  // F3-05d: Warnung statt Reject (EQUIP_DESELECT_ADVISORY).
+  if (!deselected) return [];
+  return [
+    {
+      code: "equipment-on-deselected",
+      message: "Equipment liegt auf abgewahlter Zelle.",
+    },
+  ];
+}
+
+async function selectDeselectedCells(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  cells: PlanningStringEquipmentPanelRefDto[],
+): Promise<Set<string>> {
+  // Deselect-Schnitt fuer Panel-Refs (workspace+group+row+col).
+  const keys = new Set<string>();
+  const groupIds = [...new Set(cells.map((cell) => cell.groupId))];
+  if (groupIds.length === 0) return keys;
+  const idList = sql.join(
+    groupIds.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const found = await tx.execute<{
+    group_id: string;
+    row: number;
+    col: number;
+  }>(sql`
+    select group_id, "row", "col"
+      from planning_panel_deselect
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and group_id in (${idList})
+  `);
+  for (const cell of found.rows) {
+    keys.add(
+      `${cell.group_id.toLowerCase()}:${cell.row}:${cell.col}`,
+    );
+  }
+  return keys;
+}
+
+function toEquipmentDto(
+  row: EquipmentRow,
+  canWrite: boolean,
+  deselected = false,
+): PlanningStringEquipmentDto {
   const base = z
     .strictObject({
       stringId: z.uuid(),
@@ -223,6 +277,7 @@ function toEquipmentDto(row: EquipmentRow, canWrite: boolean): PlanningStringEqu
     scope: base.data.scope,
     panelRef,
     equipment: base.data.equipment,
+    advisories: deselectedAdvisories(panelRef !== null && deselected),
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
     permissions: { canWrite },
@@ -407,7 +462,15 @@ export async function attachEquipment(
     details: { equipmentId: row.id, stringId: planned.id },
   });
 
-  return toEquipmentDto(row, true);
+  // F3-05d: Deselect-Schnitt als Advisory (Warnung, nie Reject).
+  let deselected = false;
+  if (validated.scope === "panel" && validated.panelRef) {
+    const off = await selectDeselectedCells(tx, ctx, [validated.panelRef]);
+    deselected = off.has(
+      `${validated.panelRef.groupId}:${validated.panelRef.row}:${validated.panelRef.col}`,
+    );
+  }
+  return toEquipmentDto(row, true, deselected);
 }
 
 export async function detachEquipment(
@@ -471,5 +534,29 @@ export async function listEquipment(
        and string_id = ${planned.id}::uuid
      order by created_at, id
   `);
-  return rows.rows.map((row) => toEquipmentDto(row, canWrite));
+  // F3-05d: Deselect-Schnitt je Panel-Ref als Advisory.
+  const refs: PlanningStringEquipmentPanelRefDto[] = [];
+  for (const row of rows.rows) {
+    if (row.scope !== "panel") continue;
+    const ref = panelRefJsonLenientSchema.safeParse(row.panel_ref_json);
+    if (!ref.success) continue;
+    refs.push({
+      groupId: ref.data.group_id.toLowerCase(),
+      row: ref.data.row,
+      col: ref.data.col,
+    });
+  }
+  const off = await selectDeselectedCells(tx, ctx, refs);
+  return rows.rows.map((row) => {
+    let deselected = false;
+    if (row.scope === "panel") {
+      const ref = panelRefJsonLenientSchema.safeParse(row.panel_ref_json);
+      if (ref.success) {
+        deselected = off.has(
+          `${ref.data.group_id.toLowerCase()}:${ref.data.row}:${ref.data.col}`,
+        );
+      }
+    }
+    return toEquipmentDto(row, canWrite, deselected);
+  });
 }

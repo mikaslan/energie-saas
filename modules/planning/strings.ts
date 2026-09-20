@@ -23,7 +23,10 @@ import {
   planningInverterCreateV1Schema,
   planningStringCreateV1Schema,
   stringAdvisories,
-  type PlanningStringAdvisory,
+  stringEffectiveAdvisoriesV1,
+  type PlanningStringEffectiveAdvisory,
+  type PlanningStringEffectiveEquipmentInput,
+  type PlanningStringEffectiveMemberInput,
 } from "@/lib/integrations/planning/contracts/string-plan";
 import { can, isExternalOnly, PermissionDeniedError, type ServiceCtx } from "@/lib/permissions";
 
@@ -62,7 +65,7 @@ const STRING_RESOURCE = "planning_string";
 
 const uuidSchema = z.uuid().transform((value) => value.toLowerCase());
 
-export type PlanningStringAdvisoryDto = PlanningStringAdvisory;
+export type PlanningStringAdvisoryDto = PlanningStringEffectiveAdvisory;
 
 export type PlanningInverterDto = {
   id: string;
@@ -77,6 +80,9 @@ export type PlanningInverterDto = {
 
 export type PlanningStringMemberDto = {
   groupId: string;
+  cells: number;
+  deselectedCells: number;
+  effectiveCells: number;
 };
 
 export type PlanningStringDto = {
@@ -197,7 +203,7 @@ function parseContractString(input: CreateStringInput): {
   inverterId: string;
   trackerSlot: number;
   label: string;
-  members: PlanningStringMemberDto[];
+  members: { groupId: string }[];
 } {
   const parsed = planningStringCreateV1Schema.safeParse({
     schemaVersion: PLANNING_STRING_VERSION,
@@ -211,7 +217,7 @@ function parseContractString(input: CreateStringInput): {
   if (!inverterId.success) {
     throw new PlanningStringValidationError("inverter id is invalid");
   }
-  const members: PlanningStringMemberDto[] = [];
+  const members: { groupId: string }[] = [];
   for (const member of parsed.data.members) {
     const groupId = uuidSchema.safeParse(member.groupId);
     if (!groupId.success) {
@@ -258,11 +264,204 @@ function toInverterDto(row: InverterRow, canWrite: boolean): PlanningInverterDto
   };
 }
 
+type EffectiveMemberCounts = {
+  cells: number;
+  deselectedCells: number;
+};
+
+type EffectiveAdvisoryInputs = {
+  members: PlanningStringEffectiveMemberInput[];
+  equipment: PlanningStringEffectiveEquipmentInput[];
+  counts: Map<string, EffectiveMemberCounts>;
+};
+
+type StringGroupInfo = {
+  kind: string;
+  moduleCount: number;
+  rows: number;
+  cols: number;
+};
+
+type EffectiveRangeRow = {
+  string_id: string;
+  group_id: string;
+  row_from: number;
+  row_to: number;
+  col_from: number;
+  col_to: number;
+};
+
+type EffectiveDeselectRow = {
+  group_id: string;
+  row: number;
+  col: number;
+};
+
+type EffectiveEquipmentRow = {
+  string_id: string;
+  scope: string;
+  panel_ref_json: unknown;
+};
+
+function buildEffectiveInputs(
+  memberGroupIds: string[],
+  groups: Map<string, StringGroupInfo>,
+  ranges: EffectiveRangeRow[],
+  deselects: Map<string, Set<string>>,
+  equipmentCells: { groupId: string; row: number; col: number }[],
+): EffectiveAdvisoryInputs {
+  // F3-05d: Ranges minus Deselect-Schnitt. Legacy-Member (member_json
+  // ohne Ranges) zaehlen als volle Gruppen-Range ohne Deselect-Abzug.
+  const counts = new Map<string, EffectiveMemberCounts>();
+  const members: PlanningStringEffectiveMemberInput[] = [];
+  const rangesByGroup = new Map<string, EffectiveRangeRow[]>();
+  for (const range of ranges) {
+    const key = range.group_id.toLowerCase();
+    const list = rangesByGroup.get(key) ?? [];
+    list.push(range);
+    rangesByGroup.set(key, list);
+  }
+  for (const groupId of memberGroupIds) {
+    const info = groups.get(groupId);
+    if (!info) continue;
+    const groupRanges = rangesByGroup.get(groupId) ?? [];
+    if (groupRanges.length === 0) {
+      counts.set(groupId, {
+        cells: info.rows * info.cols,
+        deselectedCells: 0,
+      });
+    } else {
+      const cells = groupRanges.reduce(
+        (sum, range) =>
+          sum +
+          (range.row_to - range.row_from + 1) *
+            (range.col_to - range.col_from + 1),
+        0,
+      );
+      const off = deselects.get(groupId) ?? new Set<string>();
+      let deselectedCells = 0;
+      for (const key of off) {
+        const [rowText, colText] = key.split(":");
+        const cellRow = Number(rowText);
+        const cellCol = Number(colText);
+        const inside = groupRanges.some(
+          (range) =>
+            cellRow >= range.row_from &&
+            cellRow <= range.row_to &&
+            cellCol >= range.col_from &&
+            cellCol <= range.col_to,
+        );
+        if (inside) deselectedCells += 1;
+      }
+      counts.set(groupId, { cells, deselectedCells });
+    }
+    const count = counts.get(groupId)!;
+    members.push({
+      groupId,
+      kind: info.kind === "v" ? "v" : "h",
+      cells: count.cells,
+      deselectedCells: count.deselectedCells,
+    });
+  }
+  const equipment: PlanningStringEffectiveEquipmentInput[] =
+    equipmentCells.map((cell) => ({
+      cell: { groupId: cell.groupId, row: cell.row, col: cell.col },
+      deselected:
+        deselects.get(cell.groupId)?.has(`${cell.row}:${cell.col}`) ?? false,
+    }));
+  return { members, equipment, counts };
+}
+
+async function selectEffectiveRanges(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  stringIds: string[],
+): Promise<EffectiveRangeRow[]> {
+  const unique = [...new Set(stringIds.map((id) => id.toLowerCase()))];
+  if (unique.length === 0) return [];
+  const idList = sql.join(
+    unique.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const found = await tx.execute<EffectiveRangeRow>(sql`
+    select string_id, group_id, row_from, row_to, col_from, col_to
+      from planning_string_member
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and string_id in (${idList})
+  `);
+  return found.rows;
+}
+
+async function selectEffectiveDeselects(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  groupIds: string[],
+): Promise<Map<string, Set<string>>> {
+  const unique = [...new Set(groupIds.map((id) => id.toLowerCase()))];
+  const byGroup = new Map<string, Set<string>>();
+  for (const id of unique) byGroup.set(id, new Set());
+  if (unique.length === 0) return byGroup;
+  const idList = sql.join(
+    unique.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const found = await tx.execute<EffectiveDeselectRow>(sql`
+    select group_id, "row", "col"
+      from planning_panel_deselect
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and group_id in (${idList})
+  `);
+  for (const cell of found.rows) {
+    byGroup.get(cell.group_id.toLowerCase())?.add(`${cell.row}:${cell.col}`);
+  }
+  return byGroup;
+}
+
+async function selectEffectiveEquipment(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  stringIds: string[],
+): Promise<
+  Map<string, { groupId: string; row: number; col: number }[]>
+> {
+  const unique = [...new Set(stringIds.map((id) => id.toLowerCase()))];
+  const byString = new Map<string, { groupId: string; row: number; col: number }[]>();
+  for (const id of unique) byString.set(id, []);
+  if (unique.length === 0) return byString;
+  const idList = sql.join(
+    unique.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const found = await tx.execute<EffectiveEquipmentRow>(sql`
+    select string_id, scope, panel_ref_json
+      from planning_string_equipment
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and string_id in (${idList})
+       and scope = 'panel'
+  `);
+  const refSchema = z.object({
+    group_id: z.string(),
+    row: z.number(),
+    col: z.number(),
+  });
+  for (const item of found.rows) {
+    const ref = refSchema.safeParse(item.panel_ref_json);
+    if (!ref.success) continue;
+    byString.get(item.string_id.toLowerCase())?.push({
+      groupId: ref.data.group_id.toLowerCase(),
+      row: ref.data.row,
+      col: ref.data.col,
+    });
+  }
+  return byString;
+}
+
 function toStringDto(
   row: StringRow,
-  groups: Map<string, { kind: string; moduleCount: number }>,
+  groups: Map<string, StringGroupInfo>,
   maxStringModules: number | null,
   canWrite: boolean,
+  effective: EffectiveAdvisoryInputs | null = null,
 ): PlanningStringDto {
   const members = memberJsonSchema.safeParse(row.member_json);
   const base = z
@@ -279,26 +478,51 @@ function toStringDto(
   if (!members.success || !base.success) {
     throw new PlanningStringValidationError("planning string data is invalid");
   }
-  const memberDtos = members.data.map((member) => ({
-    groupId: member.group_id.toLowerCase(),
-  }));
+  const memberDtos: PlanningStringMemberDto[] = members.data.map((member) => {
+    const groupId = member.group_id.toLowerCase();
+    const info = groups.get(groupId);
+    const count = effective?.counts.get(groupId);
+    const cells = count?.cells ?? info?.moduleCount ?? 0;
+    const deselectedCells = count?.deselectedCells ?? 0;
+    return {
+      groupId,
+      cells,
+      deselectedCells,
+      effectiveCells: cells - deselectedCells,
+    };
+  });
   // Advisories: Warnliste, nie Reject. Dangling Refs (Gruppe geloescht)
   // fallen aus der Advisory-Betrachtung, bleiben aber im DTO sichtbar.
-  const advisoryGroups = memberDtos.flatMap((member) => {
-    const info = groups.get(member.groupId);
-    if (!info) return [];
-    return [{ id: member.groupId, kind: info.kind, moduleCount: info.moduleCount }];
-  });
+  // F3-05d: effektiv via Contract-Helper; Legacy-Pfad (ohne geladene
+  // Effektiv-Inputs, z.B. direkt nach createString) weiter via v1-Helper.
+  const advisories =
+    effective === null
+      ? stringAdvisories({
+          groups: memberDtos.flatMap((member) => {
+            const info = groups.get(member.groupId);
+            if (!info) return [];
+            return [
+              {
+                id: member.groupId,
+                kind: info.kind,
+                moduleCount: info.moduleCount,
+              },
+            ];
+          }),
+          maxStringModules,
+        })
+      : stringEffectiveAdvisoriesV1({
+          members: effective.members,
+          maxStringModules,
+          equipment: effective.equipment,
+        });
   return {
     id: row.id,
     inverterId: base.data.inverterId,
     trackerSlot: base.data.trackerSlot,
     label: base.data.label,
     members: memberDtos,
-    advisories: stringAdvisories({
-      groups: advisoryGroups,
-      maxStringModules,
-    }),
+    advisories,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
     permissions: { canWrite },
@@ -534,7 +758,12 @@ export async function createString(
   const advisoryInfo = new Map(
     groupRows.map((group) => [
       group.id.toLowerCase(),
-      { kind: group.kind, moduleCount: group.rows * group.cols },
+      {
+        kind: group.kind,
+        moduleCount: group.rows * group.cols,
+        rows: group.rows,
+        cols: group.cols,
+      },
     ]),
   );
   return toStringDto(row, advisoryInfo, inverter.max_string_modules, true);
@@ -592,12 +821,53 @@ export async function listStrings(
   const advisoryInfo = new Map(
     groupRows.map((group) => [
       group.id.toLowerCase(),
-      { kind: group.kind, moduleCount: group.rows * group.cols },
+      {
+        kind: group.kind,
+        moduleCount: group.rows * group.cols,
+        rows: group.rows,
+        cols: group.cols,
+      },
     ]),
   );
-  return rows.rows.map((row) =>
-    toStringDto(row, advisoryInfo, inverter.max_string_modules, canWrite),
+  // F3-05d: Effektiv-Inputs batched (Ranges + Equipment + Deselects).
+  const stringIds = rows.rows.map((row) => row.id);
+  const [ranges, equipmentByString] = await Promise.all([
+    selectEffectiveRanges(tx, ctx, stringIds),
+    selectEffectiveEquipment(tx, ctx, stringIds),
+  ]);
+  const rangesByString = new Map<string, EffectiveRangeRow[]>();
+  for (const id of stringIds) rangesByString.set(id.toLowerCase(), []);
+  for (const range of ranges) {
+    rangesByString
+      .get(range.string_id.toLowerCase())
+      ?.push(range);
+  }
+  const equipmentGroupIds = [...equipmentByString.values()].flatMap((cells) =>
+    cells.map((cell) => cell.groupId),
   );
+  const deselects = await selectEffectiveDeselects(tx, ctx, [
+    ...memberIds,
+    ...equipmentGroupIds,
+  ]);
+  return rows.rows.map((row) => {
+    const members = memberJsonLenientSchema.safeParse(row.member_json);
+    const effective = buildEffectiveInputs(
+      members.success
+        ? members.data.map((member) => member.group_id.toLowerCase())
+        : [],
+      advisoryInfo,
+      rangesByString.get(row.id.toLowerCase()) ?? [],
+      deselects,
+      equipmentByString.get(row.id.toLowerCase()) ?? [],
+    );
+    return toStringDto(
+      row,
+      advisoryInfo,
+      inverter.max_string_modules,
+      canWrite,
+      effective,
+    );
+  });
 }
 
 export async function getString(
@@ -622,22 +892,44 @@ export async function getString(
   if (!row) throw new PlanningStringNotFoundError(parsed.data);
   const inverter = await requireInverterInScope(tx, ctx, row.inverter_id);
   const members = memberJsonLenientSchema.safeParse(row.member_json);
-  const groupRows = await loadStringGroups(
-    tx,
-    ctx,
-    members.success ? members.data.map((member) => member.group_id) : [],
-  );
+  const memberIds = members.success
+    ? members.data.map((member) => member.group_id)
+    : [];
+  const groupRows = await loadStringGroups(tx, ctx, memberIds);
   const advisoryInfo = new Map(
     groupRows.map((group) => [
       group.id.toLowerCase(),
-      { kind: group.kind, moduleCount: group.rows * group.cols },
+      {
+        kind: group.kind,
+        moduleCount: group.rows * group.cols,
+        rows: group.rows,
+        cols: group.cols,
+      },
     ]),
+  );
+  // F3-05d: Effektiv-Inputs (Ranges + Equipment + Deselects).
+  const [ranges, equipmentByString] = await Promise.all([
+    selectEffectiveRanges(tx, ctx, [row.id]),
+    selectEffectiveEquipment(tx, ctx, [row.id]),
+  ]);
+  const equipmentCells = equipmentByString.get(row.id.toLowerCase()) ?? [];
+  const deselects = await selectEffectiveDeselects(tx, ctx, [
+    ...memberIds,
+    ...equipmentCells.map((cell) => cell.groupId),
+  ]);
+  const effective = buildEffectiveInputs(
+    memberIds.map((id) => id.toLowerCase()),
+    advisoryInfo,
+    ranges,
+    deselects,
+    equipmentCells,
   );
   return toStringDto(
     row,
     advisoryInfo,
     inverter.max_string_modules,
     can(ctx, "project.write"),
+    effective,
   );
 }
 

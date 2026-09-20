@@ -1,7 +1,7 @@
 // F3-05a manuelle Strings: geteilte DTOs plus reine Helfer. Absichtlich
 // ohne "use client"/"use server", damit Server-Actions und Client-Sektion
 // dieselbe Abbildung nutzen (Muster: planning-panel-group-model.ts).
-import type { PlanningStringAdvisory } from "@/lib/integrations/planning/contracts/string-plan";
+import type { PlanningStringEffectiveAdvisory } from "@/lib/integrations/planning/contracts/string-plan";
 
 export type PlanningStringDto = {
   id: string;
@@ -22,7 +22,8 @@ export type PlanningStringRow = {
 };
 
 // Listen-Eintrag für die Sektion: String plus aufgelöste WR-/Gruppen-
-// Labels plus Advisories aus stringAdvisories (Warnliste, nie Reject).
+// Labels plus Advisories aus stringEffectiveAdvisoriesV1 (F3-05d,
+// Warnliste, nie Reject).
 export type PlanningStringListItem = {
   id: string;
   inverterId: string;
@@ -30,7 +31,7 @@ export type PlanningStringListItem = {
   trackerSlot: number;
   label: string;
   memberLabels: string[];
-  advisories: PlanningStringAdvisory[];
+  advisories: PlanningStringEffectiveAdvisory[];
 };
 
 export type PlanningStringGroupOption = {
@@ -89,13 +90,21 @@ export function toPlanningStringDto(row: PlanningStringRow): PlanningStringDto |
 
 // Anzeige-Text je Advisory. Der Contract-Text für orientation-mix
 // enthält kein "Mix" — der E2E-Vertrag fordert /Mix/i, daher fällt die
-// UI auf einen code-basierten Zusatz zurück (nie Reject).
-export function planningStringAdvisoryText(advisory: PlanningStringAdvisory): string {
+// UI auf einen code-basierten Zusatz zurück (nie Reject). Gleiches Muster
+// für equipment-on-deselected (F3-05d): Der Contract-Text ist ASCII,
+// der E2E-Vertrag fordert /abgewählt/i.
+export function planningStringAdvisoryText(advisory: PlanningStringEffectiveAdvisory): string {
   if (
     advisory.code === "orientation-mix"
     && !/mix/i.test(advisory.message)
   ) {
     return `${advisory.message} (H/V-Mix)`;
+  }
+  if (
+    advisory.code === "equipment-on-deselected"
+    && !/abgewählt/i.test(advisory.message)
+  ) {
+    return `${advisory.message} (abgewählte Zelle)`;
   }
   return advisory.message;
 }

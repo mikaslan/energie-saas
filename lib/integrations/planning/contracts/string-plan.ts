@@ -97,3 +97,75 @@ export function stringAdvisories(
   }
   return advisories;
 }
+
+// F3-05d effektive String-Advisories Stufe-0 (additiv, v1 unangetastet):
+// rechnet Ranges minus Deselect-Schnitt + Equipment×Deselect-Konsistenz.
+export type PlanningStringEffectiveAdvisoryCode =
+  | "orientation-mix"
+  | "over-length"
+  | "equipment-on-deselected";
+
+export type PlanningStringEffectiveAdvisory = {
+  code: PlanningStringEffectiveAdvisoryCode;
+  message: string;
+};
+
+export type PlanningStringEffectiveMemberInput = {
+  groupId: string;
+  kind: "h" | "v";
+  cells: number;
+  deselectedCells: number;
+};
+
+export type PlanningStringEffectiveEquipmentCell = {
+  groupId: string;
+  row: number;
+  col: number;
+};
+
+export type PlanningStringEffectiveEquipmentInput = {
+  cell: PlanningStringEffectiveEquipmentCell;
+  deselected: boolean;
+};
+
+export type PlanningStringEffectiveAdvisoriesInput = {
+  members: PlanningStringEffectiveMemberInput[];
+  maxStringModules: number | null;
+  equipment: PlanningStringEffectiveEquipmentInput[];
+};
+
+export function stringEffectiveAdvisoriesV1(
+  input: PlanningStringEffectiveAdvisoriesInput,
+): PlanningStringEffectiveAdvisory[] {
+  const advisories: PlanningStringEffectiveAdvisory[] = [];
+  if (input.members.length === 0 && input.equipment.length === 0) {
+    return advisories;
+  }
+  const kinds = new Set(input.members.map((member) => member.kind));
+  if (kinds.size > 1) {
+    advisories.push({
+      code: "orientation-mix",
+      message: "String mischt horizontale und vertikale Panel-Gruppen.",
+    });
+  }
+  const max = input.maxStringModules;
+  if (typeof max === "number" && Number.isFinite(max)) {
+    const effective = input.members.reduce(
+      (sum, member) => sum + (member.cells - member.deselectedCells),
+      0,
+    );
+    if (effective > max) {
+      advisories.push({
+        code: "over-length",
+        message: `String-Laenge ${effective} Module ueberschreitet Grenze ${max}.`,
+      });
+    }
+  }
+  if (input.equipment.some((item) => item.deselected)) {
+    advisories.push({
+      code: "equipment-on-deselected",
+      message: "Equipment liegt auf abgewahlter Zelle.",
+    });
+  }
+  return advisories;
+}

@@ -4,6 +4,8 @@
 // + Member-Liste mit Effektiv-Count + Deselect-Warnung, eine Sektion je
 // String in String-Listenreihenfolge. Viewer read-only (Muster:
 // planning-panel-deselect-section.tsx).
+// F3-05d: Effektiv-Zeile „X von Y" (Testid
+// planning-string-members-effective, E2E-Spec f3-05d-effective).
 "use client";
 
 import { useActionState, useEffect, useState, type FormEvent } from "react";
@@ -267,6 +269,9 @@ export function PlanningStringMembersSection({
           </p>
           <p data-testid="planning-string-members-count" className="mt-2 text-sm text-slate-900">
             {`Effektive Module: ${entry.effectiveCount}`}
+          </p>
+          <p data-testid="planning-string-members-effective" className="mt-1 text-sm text-slate-900">
+            {`Effektiv: ${entry.effectiveCount} von ${entry.rawCount} Modulen`}
           </p>
           {entry.deselectedInside > 0 ? (
             <p className="mt-1 text-sm font-semibold text-amber-700">

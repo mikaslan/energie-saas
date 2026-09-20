@@ -16,8 +16,8 @@ import { can, PermissionDeniedError } from "@/lib/permissions";
 import {
   PLANNING_STRING_VERSION,
   planningStringCreateV1Schema,
-  stringAdvisories,
-  type PlanningStringAdvisory,
+  stringEffectiveAdvisoriesV1,
+  type PlanningStringEffectiveAdvisory,
 } from "@/lib/integrations/planning/contracts/string-plan";
 import {
   toPlanningStringDto,
@@ -44,7 +44,7 @@ export type PlanningStringActionState =
       status: "success";
       message: string;
       string: PlanningStringDto | null;
-      advisories: PlanningStringAdvisory[];
+      advisories: PlanningStringEffectiveAdvisory[];
     }
   | { status: "idle" }
   | { status: "invalid"; message: string }
@@ -130,7 +130,8 @@ type MemberGroupRow = {
 
 // String anlegen: Contract-Gates (WR-Ref/Slot/Label/Member) → Scope
 // (WR→Projekt, Gruppen→Dächer desselben Projekts) → Slot-Range und
-// Doppelbelegung (hart, invalid) → Insert → Advisories in der Response.
+// Doppelbelegung (hart, invalid) → Insert → effektive Advisories
+// (F3-05d, Legacy-Gruppen minus Deselects) in der Response.
 export async function savePlanningStringAction(
   _previous: PlanningStringActionState,
   formData: FormData,
@@ -218,6 +219,13 @@ export async function savePlanningStringAction(
           `);
           if (clash.rows[0]) throw new PlanningStringDoubleUseError();
         }
+        const deselects = await tx.execute<{ group_id: string; count: number }>(sql`
+          select deselect.group_id as group_id, count(*)::integer as "count"
+            from planning_panel_deselect as deselect
+           where deselect.workspace_id = ${ctx.workspaceId}::uuid
+             and deselect.group_id in (${memberIdList})
+           group by deselect.group_id
+        `);
         const inserted = await tx.execute<PlanningStringRow>(sql`
           insert into planning_string (
             workspace_id, inverter_id, tracker_slot, label, member_json, created_by
@@ -233,16 +241,34 @@ export async function savePlanningStringAction(
         `);
         const row = inserted.rows[0];
         if (!row) throw new PlanningStringNotFoundError();
-        return { row, groups: groups.rows, maxStringModules: inverter.max_string_modules };
+        return {
+          row,
+          groups: groups.rows,
+          deselects: deselects.rows,
+          maxStringModules: inverter.max_string_modules,
+        };
       },
     );
-    const advisories = stringAdvisories({
-      groups: created.groups.map((group) => ({
-        id: group.id,
-        kind: group.kind,
-        moduleCount: group.rows * group.cols,
-      })),
+    // Frischer String: keine Ranges, kein Equipment — Legacy-Gruppen
+    // (volle Range) minus Deselects, konsistent zum Panel.
+    const advisories = stringEffectiveAdvisoriesV1({
+      members: created.groups.flatMap((group) => {
+        if (group.kind !== "h" && group.kind !== "v") return [];
+        const found = created.deselects.find(
+          (entry) => entry.group_id.toLowerCase() === group.id.toLowerCase(),
+        );
+        const deselectedCells = found && Number.isInteger(found.count) && found.count > 0
+          ? found.count
+          : 0;
+        return [{
+          groupId: group.id,
+          kind: group.kind,
+          cells: group.rows * group.cols,
+          deselectedCells,
+        }];
+      }),
       maxStringModules: created.maxStringModules,
+      equipment: [],
     });
     revalidatePath(detailPath(ids.workspaceId, ids.projectId));
     return {
