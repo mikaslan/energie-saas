@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/lidar-scan.v1.schema.json",
+  "title": "WMEE lidar scan v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "lidar-scan.v1"
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "deviceGate": {
+      "type": "object",
+      "properties": {
+        "capabilityCheck": {
+          "type": "boolean"
+        },
+        "method": {
+          "type": "string",
+          "const": "native_capability"
+        },
+        "uaSniffing": {
+          "type": "boolean",
+          "const": false
+        }
+      },
+      "required": ["capabilityCheck", "method", "uaSniffing"],
+      "additionalProperties": false
+    },
+    "rooms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "polygon": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 512,
+            "items": {
+              "type": "object",
+              "properties": {
+                "xM": { "type": "number", "minimum": -1000, "maximum": 1000 },
+                "yM": { "type": "number", "minimum": -1000, "maximum": 1000 }
+              },
+              "required": ["xM", "yM"],
+              "additionalProperties": false
+            }
+          },
+          "wallAreas": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 512,
+            "items": {
+              "type": "object",
+              "properties": {
+                "wallId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "areaM2": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 10000
+                }
+              },
+              "required": ["wallId", "areaM2"],
+              "additionalProperties": false
+            }
+          },
+          "openings": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "object",
+              "properties": {
+                "openingId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": ["window", "door"]
+                },
+                "widthM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100
+                },
+                "heightM": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100
+                }
+              },
+              "required": ["openingId", "kind", "widthM", "heightM"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["roomId", "polygon", "wallAreas", "openings"],
+        "additionalProperties": false
+      }
+    },
+    "stitching": {
+      "type": "object",
+      "properties": {
+        "commonFrame": {
+          "type": "boolean"
+        },
+        "doorLinks": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "properties": {
+              "fromRoomId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "toRoomId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "openingId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            },
+            "required": ["fromRoomId", "toRoomId", "openingId"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["commonFrame", "doorLinks"],
+      "additionalProperties": false
+    },
+    "trackingWarnings": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "enum": [
+          "tracking_lost",
+          "low_light",
+          "fast_motion",
+          "drift_suspected",
+          "incomplete_coverage"
+        ]
+      }
+    },
+    "provenance": {
+      "type": "string",
+      "const": "lidar_scan"
+    }
+  },
+  "required": [
+    "contractVersion",
+    "sessionId",
+    "deviceGate",
+    "rooms",
+    "stitching",
+    "trackingWarnings",
+    "provenance"
+  ],
+  "additionalProperties": false
+}

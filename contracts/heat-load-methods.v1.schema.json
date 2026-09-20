@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/heat-load-methods.v1.schema.json",
+  "title": "WMEE heat load methods v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "heat-load-methods.v1"
+    },
+    "method": {
+      "type": "string",
+      "enum": ["simple", "indication", "roomwise"]
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["estimate", "certified"]
+    },
+    "uValueSource": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "enum": ["tabula_like", "custom"]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": ["table", "version", "sha"],
+      "additionalProperties": false
+    },
+    "resultKw": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000
+    },
+    "disclaimer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    }
+  },
+  "required": ["contractVersion", "method", "stage", "uValueSource", "resultKw"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "stage": { "const": "estimate" } },
+        "required": ["stage"]
+      },
+      "then": {
+        "required": ["disclaimer"],
+        "properties": {
+          "disclaimer": {
+            "const": "Schaetzung - keine zertifizierte Heizlastberechnung."
+          }
+        }
+      }
+    }
+  ]
+}

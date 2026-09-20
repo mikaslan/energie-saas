@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/room-model.v1.schema.json",
+  "title": "WMEE room model v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "room-model.v1"
+    },
+    "storeys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "properties": {
+          "storeyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["keller", "zwischen", "dach"]
+          },
+          "ceilingHeightM": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 20
+          }
+        },
+        "required": ["storeyId", "kind"],
+        "additionalProperties": false
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "kind": { "const": "keller" } },
+            "required": ["kind"]
+          },
+          "minContains": 0,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "kind": { "const": "dach" } },
+            "required": ["kind"]
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      ]
+    },
+    "rooms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "storeyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "wohnen",
+              "schlafen",
+              "kueche",
+              "bad",
+              "wc",
+              "flur",
+              "buero",
+              "kellerraum",
+              "abstellraum",
+              "sonstig"
+            ]
+          },
+          "targetTempC": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 30
+          },
+          "airChangesPerHour": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10
+          }
+        },
+        "required": ["roomId", "storeyId", "type", "targetTempC", "airChangesPerHour"],
+        "additionalProperties": false
+      }
+    },
+    "walls": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "properties": {
+          "wallId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "roomId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "towards": {
+            "type": "string",
+            "enum": ["aussenluft", "beheizt", "unbeheizt", "fremdgebaeude", "erdreich"]
+          },
+          "areaM2": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 10000
+          },
+          "uValueWPerM2K": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 10
+          },
+          "windows": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "properties": {
+                "windowId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "areaM2": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000
+                }
+              },
+              "required": ["windowId", "areaM2"],
+              "additionalProperties": false
+            }
+          },
+          "doors": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "properties": {
+                "doorId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "areaM2": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000
+                }
+              },
+              "required": ["doorId", "areaM2"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["wallId", "towards", "areaM2", "windows", "doors"],
+        "additionalProperties": false
+      }
+    },
+    "roof": {
+      "type": "object",
+      "properties": {
+        "dormers": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "dormerId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "areaM2": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              }
+            },
+            "required": ["dormerId", "areaM2"],
+            "additionalProperties": false
+          }
+        },
+        "validation": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["unchecked", "valid", "invalid"]
+            },
+            "checkedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": ["status"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["dormers", "validation"],
+      "additionalProperties": false
+    },
+    "materialSnapshot": {
+      "type": "object",
+      "properties": {
+        "sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "manualUpdate": {
+          "type": "boolean"
+        }
+      },
+      "required": ["sha", "updatedAt", "manualUpdate"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "contractVersion",
+    "storeys",
+    "rooms",
+    "walls",
+    "roof",
+    "materialSnapshot"
+  ],
+  "additionalProperties": false
+}

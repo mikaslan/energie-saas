@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/wp-sizing.v1.schema.json",
+  "title": "WMEE heat pump sizing v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "wp-sizing.v1"
+    },
+    "heatLoadKw": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000
+    },
+    "operationMode": {
+      "type": "string",
+      "enum": ["monoenergetisch", "bivalent"]
+    },
+    "bivalencePointC": {
+      "type": "number",
+      "minimum": -30,
+      "maximum": 20,
+      "default": -6,
+      "description": "Bivalenzpunkt in Grad Celsius. Default -6, wenn nicht anders angegeben."
+    },
+    "heaterKw": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "manufacturerRef": {
+      "type": "object",
+      "properties": {
+        "manufacturer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "nominalPowerKw": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        }
+      },
+      "required": ["manufacturer", "model"],
+      "additionalProperties": false
+    },
+    "normRef": {
+      "type": "string",
+      "enum": ["vdi4645_est", "vdi4645_cert"]
+    },
+    "fixturesSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "contractVersion",
+    "heatLoadKw",
+    "operationMode",
+    "heaterKw",
+    "normRef",
+    "fixturesSha"
+  ],
+  "additionalProperties": false
+}
