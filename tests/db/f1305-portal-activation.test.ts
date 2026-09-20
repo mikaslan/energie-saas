@@ -54,8 +54,13 @@ describe("F13-05 Portal-Aktivierung bei BzA-Versand (PostgreSQL)", () => {
     return lead.projectId;
   };
 
-  const dispatchBza = (fx: Fixture, projectId: string) =>
-    asEditor(fx, (tx, ctx) => transitionSubsidyCase(tx, ctx, { projectId, status: "bza_eingereicht" }));
+  // F13-00 §1: BzA-Versand erst nach Einreichung draft → vorbereitung.
+  const dispatchBza = async (fx: Fixture, projectId: string) => {
+    await asEditor(fx, (tx, ctx) =>
+      transitionSubsidyCase(tx, ctx, { projectId, status: "vorbereitung" }));
+    return asEditor(fx, (tx, ctx) =>
+      transitionSubsidyCase(tx, ctx, { projectId, status: "bza_eingereicht" }));
+  };
 
   it("F1305-DB-01: Versand ohne Invite erzeugt aktiven Link mit auflösbarem Token", async () => {
     const projectId = await seedProject(fixture);

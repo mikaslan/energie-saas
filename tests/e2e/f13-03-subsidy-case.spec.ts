@@ -8,8 +8,9 @@ import {
 
 /**
  * F13-03 Förderakte — Chromium-E2E (isolierter Workspace).
- * Projektakte: Sektion ohne Vorgang → anlegen → Programm/BzA-Nummer
- * speichern → BzA einreichen → bewilligt → BnD einreichen →
+ * Projektakte: Sektion ohne Vorgang → anlegen (Entwurf) →
+ * Programm/BzA-Nummer speichern → einreichen (Submit-Freeze:
+ * Felder gesperrt) → BzA einreichen → bewilligt → BnD einreichen →
  * abgeschlossen. Status je Schritt beobachtbar.
  */
 
@@ -112,7 +113,8 @@ test("F13-03-E2E-01: Förderakte von Anlage bis BnD-Abschluss", async ({ page })
 
   await expect(page.getByTestId("subsidy-case-current")).toContainText("Noch keine Förderakte");
   await page.getByTestId("subsidy-case-create").click();
-  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
+  // F13-00 §1: Anlage als Entwurf (vorbefüllt, unversandt).
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("Entwurf");
   await expect(page.getByTestId("subsidy-case-create")).toHaveCount(0);
 
   await page.getByTestId("subsidy-case-program").selectOption("kfw");
@@ -121,6 +123,15 @@ test("F13-03-E2E-01: Förderakte von Anlage bis BnD-Abschluss", async ({ page })
   await expect(page.getByTestId("subsidy-case-details-feedback")).toContainText("Angaben gespeichert.");
   await expect(page.getByTestId("subsidy-case-current")).toContainText("KfW");
   await expect(page.getByTestId("subsidy-case-current")).toContainText("BZA-E2E-0001");
+
+  // F13-00 §2 Submit-Freeze: Einreichung sperrt die Detail-Felder.
+  await page.getByTestId("subsidy-case-to-vorbereitung").click();
+  await expect(page.getByTestId("subsidy-case-transition-feedback")).toContainText("Status geändert.");
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
+  await expect(page.getByTestId("subsidy-case-frozen-hint")).toContainText("gesperrt");
+  await expect(page.getByTestId("subsidy-case-program")).toBeDisabled();
+  await expect(page.getByTestId("subsidy-case-bza-number")).toBeDisabled();
+  await expect(page.getByTestId("subsidy-case-save")).toBeDisabled();
 
   for (
     const [button, label] of [

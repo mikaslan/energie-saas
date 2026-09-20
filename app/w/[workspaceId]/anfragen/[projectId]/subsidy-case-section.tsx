@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import {
   SUBSIDY_CASE_PROGRAM_LABEL,
   SUBSIDY_CASE_STATUS_LABEL,
+  canEditFilingDetails,
   isSubsidyCaseBelegState,
   nextSubsidyCaseStatuses,
   subsidyCasePrograms,
@@ -76,6 +77,9 @@ export function SubsidyCaseSection({
   );
   const [belegState, belegDispatch] = useActionState(createSubsidyBelegAction, initialState);
   const next = subsidyCase === null ? [] : nextSubsidyCaseStatuses(subsidyCase.status);
+  // F13-00 §2 Submit-Freeze: Felder nur in draft/korrektur editierbar,
+  // danach readonly (Service-Gate canEditFilingDetails prüft zusätzlich).
+  const detailsFrozen = subsidyCase !== null && !canEditFilingDetails(subsidyCase.status);
   // F13-07: Beleg-Block nur in Beleg-Phasen; Leser sehen die Liste,
   // das Formular verlangt canWrite (Action prüft zusätzlich).
   const showBelege =
@@ -133,7 +137,7 @@ export function SubsidyCaseSection({
                 </>
               )}
             </p>
-            {suggestion.outcome === "suggested" && canWrite ? (
+            {suggestion.outcome === "suggested" && canWrite && !detailsFrozen ? (
               <form action={detailsDispatch} className="mt-2">
                 <input type="hidden" name="workspaceId" value={workspaceId} />
                 <input type="hidden" name="projectId" value={projectId} />
@@ -151,6 +155,12 @@ export function SubsidyCaseSection({
           </div>
           {canWrite ? (
             <>
+              {detailsFrozen ? (
+                <p className="text-sm text-slate-600" data-testid="subsidy-case-frozen-hint">
+                  Eingereicht — Programm und BzA-Nummer sind gesperrt (nur noch
+                  Statuswechsel).
+                </p>
+              ) : null}
               <form action={detailsDispatch} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="workspaceId" value={workspaceId} />
                 <input type="hidden" name="projectId" value={projectId} />
@@ -162,8 +172,9 @@ export function SubsidyCaseSection({
                       subsidyCase.program
                         ?? (suggestion.outcome === "suggested" ? suggestion.program : "")
                     }
+                    disabled={detailsFrozen}
                     data-testid="subsidy-case-program"
-                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
+                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100 disabled:text-slate-500"
                   >
                     <option value="">—</option>
                     {subsidyCasePrograms.map((program) => (
@@ -180,14 +191,16 @@ export function SubsidyCaseSection({
                     name="bzaNumber"
                     maxLength={64}
                     defaultValue={subsidyCase.bzaNumber ?? ""}
+                    disabled={detailsFrozen}
                     data-testid="subsidy-case-bza-number"
-                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200"
+                    className="min-h-11 min-w-36 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100 disabled:text-slate-500"
                   />
                 </label>
                 <button
                   type="submit"
+                  disabled={detailsFrozen}
                   data-testid="subsidy-case-save"
-                  className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center rounded-md bg-slate-900 px-4 text-sm font-semibold text-white outline-none hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:bg-slate-400"
                 >
                   Speichern
                 </button>

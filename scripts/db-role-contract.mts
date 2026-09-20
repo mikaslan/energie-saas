@@ -4455,6 +4455,11 @@ export async function verifyRoleContract(
   const hasPortalInvoices = portalResolverProbe.rows.some(
     (row) => typeof row.source === "string" && row.source.includes("invoice_list"),
   );
+  // F13-00 (0260): Stufenmarker für den Draft-Filter im Portal-Resolver
+  // (Entwurf unsichtbar für Externe, Muster 0135).
+  const hasPortalDraftFilter = portalResolverProbe.rows.some(
+    (row) => typeof row.source === "string" && row.source.includes("scase.status <> 'draft'"),
+  );
   // F10-07 (0116): Stufenmarker für den Portal-Dokument-Download
   // (eigene DEFINER-Funktion, Muster 0104).
   const portalDocumentDownloadProbe = await client.query<{ name: string | null }>(`
@@ -5883,13 +5888,15 @@ export async function verifyRoleContract(
           `search_path=pg_catalog:${hasF1008Notification
             ? "a49661be591f013d15fea7fc6169fc344311badbaeb1879c6e09713195373e7e"
             : "def16d35aaddb3545ff20daa5b640052d7911d3d55b0ee6da982b528b16488cf"}`,
-        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15:
-        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135
-        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein zwoelfter Rumpf
+        // F10-03/F10-03b/F10-03c/F10-04/F13-04/F13-06/F13-09/F10-05/F10-09/F10-10/F8-15/F13-00:
+        // Stufenauswahl 0062/0091/0097/0098/0104/0106/0107/0109/0113/0118/0120/0135/0260
+        // per Marker (Prefix ≤0075 trägt den alten Rumpf; ein dreizehnter Rumpf
         // bricht fail-closed über den Hashvergleich).
         "resolve_portal_public_view(bytea):jsonb:app_owner:plpgsql:f:v:true:false:false:u:" +
-          // F8-15 (0135): Geldbeleg-Projektion (Hash per Probe geerntet).
-          `search_path=pg_catalog:${hasPortalInvoices
+          // F13-00 (0260): Draft-Filter (Hash per Probe geerntet).
+          `search_path=pg_catalog:${hasPortalDraftFilter
+            ? "93c78efbdd4736014709aec3119bc3097412d97bfd9170435bef095928a5527c"
+            : hasPortalInvoices
             ? "b78e7ca07f4ef1617db40599ddf680ca4559cd0920e3a2b28b0abb4e3d67191a"
             : hasPortalFileUploads
             ? "dc56f5b6f3af6b1774497783d07913c342074582364b5509e6ff92671ae2edfa"

@@ -81,7 +81,7 @@ describe("DASH-09 Service & Förderung (PostgreSQL)", () => {
       setServiceCaseStatus(tx, ctx, { id: done.id, status: "in_progress" }));
     await asEditor(fixture, (tx, ctx) =>
       setServiceCaseStatus(tx, ctx, { id: done.id, status: "done" }));
-    // Förderung: 1 Akte in Vorbereitung.
+    // Förderung: 1 Akte als Entwurf (F13-00 §1).
     await asEditor(fixture, (tx, ctx) => ensureSubsidyCase(tx, ctx, projectId));
     // Belege: 1 offen.
     await asEditor(fixture, (tx, ctx) =>
@@ -92,12 +92,14 @@ describe("DASH-09 Service & Förderung (PostgreSQL)", () => {
     const subsidy = await asEditor(fixture, (tx, ctx) => getSubsidyDashboardStats(tx, ctx));
     expect(subsidy).toEqual({
       total: 1,
-      byStatus: [{ status: "vorbereitung", count: 1 }],
+      byStatus: [{ status: "draft", count: 1 }],
     });
     const belege = await asEditor(fixture, (tx, ctx) => getFileRequestDashboardStats(tx, ctx));
     expect(belege).toEqual({ offen: 1, hochgeladen: 0, erledigt: 0, total: 1 });
 
-    // Übergang ändert die Zähler (BzA eingereicht statt Vorbereitung).
+    // Übergang ändert die Zähler (BzA eingereicht statt Entwurf).
+    await asEditor(fixture, (tx, ctx) =>
+      transitionSubsidyCase(tx, ctx, { projectId, status: "vorbereitung" }));
     await asEditor(fixture, (tx, ctx) =>
       transitionSubsidyCase(tx, ctx, { projectId, status: "bza_eingereicht" }));
     const subsidy2 = await asEditor(fixture, (tx, ctx) => getSubsidyDashboardStats(tx, ctx));

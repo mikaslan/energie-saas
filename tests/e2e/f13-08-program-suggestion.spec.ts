@@ -195,7 +195,7 @@ test("F13-08-E2E-01: Wärmepumpen-Vorschlag übernehmen speichert BAFA", async (
 
   // 1) Ohne Rechner-Signale: ehrlich kein Vorschlag, keine Vorauswahl.
   await page.getByTestId("subsidy-case-create").click();
-  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("Entwurf");
   await expect(page.getByTestId("subsidy-suggestion-text")).toContainText("Kein Programm-Vorschlag");
   await expect(page.getByTestId("subsidy-suggestion-apply")).toHaveCount(0);
   await expect(page.getByTestId("subsidy-case-program")).toHaveValue("");

@@ -1,7 +1,9 @@
 // F13-03 Förderservice-Akte (KfW/BAFA, Katalog F13.2 Slice 1): EIN
-// Datensatz je Projekt (v1-Grenze) mit Maschine vorbereitung →
+// Datensatz je Projekt (v1-Grenze) mit Maschine draft → vorbereitung →
 // bza_eingereicht → bza_bewilligt → bnd_eingereicht → abgeschlossen
 // (+ korrektur mit Wiedereinstieg je Phase, storniert terminal).
+// F13-00: Anlage als draft, Submit-Freeze in setSubsidyCaseDetails,
+// Übergangs-Event subsidy_case.transition (Naming-Doktrin).
 // Berechtigung: installation.read/write (KEINE neuen Keys — Mandat).
 import { sql } from "drizzle-orm";
 import type { Pool } from "pg";
@@ -38,8 +40,10 @@ export class SubsidyCaseValidationError extends Error {
 }
 
 import {
+  canEditFilingDetails,
   isAllowedSubsidyCaseTransition,
   isPortalInviteUsable,
+  SUBSIDY_CASE_TRANSITION_EVENT,
   subsidyCasePrograms,
   subsidyCaseStatuses,
   suggestSubsidyProgram,
@@ -376,6 +380,21 @@ export async function setSubsidyCaseDetails(
   if (!parsed.success || !uuidSchema.safeParse(input.projectId).success) {
     throw new SubsidyCaseValidationError();
   }
+  // F13-00 §2 Submit-Freeze: Feld-Edits nur in draft/korrektur, danach
+  // transition-only (fail-closed, illegaler Zustand benannt).
+  const current = await tx.execute<SubsidyCaseRow>(sql`
+    select ${ROW_COLUMNS} from subsidy_case
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and project_id = ${input.projectId}::uuid
+     for update
+  `);
+  const currentRow = current.rows[0];
+  if (!currentRow) throw new SubsidyCaseNotFoundError(input.projectId);
+  if (!canEditFilingDetails(currentRow.status as SubsidyCaseStatus)) {
+    throw new SubsidyCaseValidationError(
+      `details frozen in status ${currentRow.status} (editable: draft, korrektur)`,
+    );
+  }
   const updated = await tx.execute<SubsidyCaseRow>(sql`
     update subsidy_case
        set program = ${parsed.data.program},
@@ -452,7 +471,7 @@ export async function transitionSubsidyCase(
     workspaceId: ctx.workspaceId,
     aggregateType: "project",
     aggregateId: input.projectId,
-    eventType: "subsidy_case.status_changed",
+    eventType: SUBSIDY_CASE_TRANSITION_EVENT,
     actor: ctx.actor,
     payload: { from, to: input.status, portalActivation: portalActivation.outcome },
   });

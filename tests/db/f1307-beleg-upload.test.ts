@@ -70,6 +70,9 @@ describe("F13-07 BnD-Beleg-Upload (PostgreSQL)", () => {
 
   const seedCaseId = async (fx: Fixture, projectId: string): Promise<string> => {
     await asEditor(fx, (tx, ctx) => ensureSubsidyCase(tx, ctx, projectId));
+    // F13-00 §1: BzA-Versand erst nach Einreichung draft → vorbereitung.
+    await asEditor(fx, (tx, ctx) =>
+      transitionSubsidyCase(tx, ctx, { projectId, status: "vorbereitung" }));
     await asEditor(fx, (tx, ctx) =>
       transitionSubsidyCase(tx, ctx, { projectId, status: "bza_eingereicht" }));
     await asEditor(fx, (tx, ctx) =>

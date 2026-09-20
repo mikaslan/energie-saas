@@ -102,9 +102,12 @@ test("F13-10-E2E-01: Chat intern ↔ Portal in beide Richtungen", async ({ page 
   await expect(page).toHaveURL(/\/anfragen\/[0-9a-f-]+$/u);
   const projectPath = new URL(page.url()).pathname;
 
-  // Förderakte anlegen (idempotent).
+  // Förderakte anlegen (idempotent) + einreichen (Portal erst ab
+  // Einreichung sichtbar, F13-00 §1).
   await page.getByTestId("subsidy-case-create").click();
   await expect(page.getByTestId("subsidy-case-current")).toContainText("Status:");
+  await page.getByTestId("subsidy-case-to-vorbereitung").click();
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
 
   // Intern schreiben.
   const stamp = Date.now();

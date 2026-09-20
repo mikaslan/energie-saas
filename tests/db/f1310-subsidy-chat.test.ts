@@ -21,6 +21,7 @@ import {
   postSubsidyMessageByToken,
   SubsidyCaseNotFoundError,
   SubsidyCaseValidationError,
+  transitionSubsidyCase,
 } from "@/modules/subsidy-cases";
 import { testPool } from "../setup/test-db";
 
@@ -102,6 +103,9 @@ describe("F13-10 Kundenchat zur Förderakte (PostgreSQL)", () => {
 
   it("F1310-DB-02: Token-Post landet in der Portal-Projektion ohne IDs", async () => {
     const { projectId, caseId } = await seedCase(fixture);
+    // F13-00 §1: Portal-Projektion erst ab Einreichung (Entwurf unsichtbar).
+    await asEditor(fixture, (tx, ctx) =>
+      transitionSubsidyCase(tx, ctx, { projectId, status: "vorbereitung" }));
     const invite = await asEditor(fixture, (tx, ctx) => createPortalInvite(tx, ctx, {
       schemaVersion: PORTAL_INVITE_CREATE_VERSION,
       workspaceId: fixture.workspaceId,

@@ -38,9 +38,11 @@ export class FileRequestConflictError extends Error {
 }
 
 import {
+  fileRequestSlotTypes,
   fileRequestStatuses,
-  nextFileRequestStatuses,
+  isAllowedFileRequestTransition,
   type FileRequestDto,
+  type FileRequestSlotType,
   type FileRequestStatus,
   type FileRequestUploadDto,
 } from "@/lib/file-request";
@@ -64,6 +66,7 @@ type FileRequestRow = {
   id: string;
   project_id: string;
   subsidy_case_id: string | null;
+  slot_type: string | null;
   title: string;
   description: string | null;
   allow_many: boolean;
@@ -81,7 +84,7 @@ type FileRequestRow = {
 };
 
 const ROW_COLUMNS = sql`
-  id, project_id, subsidy_case_id, title, description, allow_many, status,
+  id, project_id, subsidy_case_id, slot_type, title, description, allow_many, status,
   storage_key, file_sha256, content_type, byte_size, original_filename,
   uploaded_at, completed_at, created_at, updated_at
 `;
@@ -150,6 +153,7 @@ function toDto(
     id: row.id,
     projectId: row.project_id,
     subsidyCaseId: row.subsidy_case_id,
+    slotType: (row.slot_type as FileRequestSlotType | null) ?? null,
     title: row.title,
     description: row.description,
     allowMany: row.allow_many,
@@ -200,6 +204,7 @@ export async function createFileRequest(
     description: unknown;
     subsidyCaseId?: unknown;
     allowMany?: unknown;
+    slotType?: unknown;
   },
 ): Promise<FileRequestDto> {
   requireWrite(ctx, input.projectId);
@@ -209,6 +214,17 @@ export async function createFileRequest(
     description: input.description ?? null,
   });
   if (!parsed.success) throw new FileRequestValidationError();
+  // F13-00 §4: optionaler Slot-Typ (fail-closed gegen das Enum).
+  let slotType: FileRequestSlotType | null = null;
+  if (input.slotType !== undefined && input.slotType !== null) {
+    if (
+      typeof input.slotType !== "string" ||
+      !(fileRequestSlotTypes as readonly string[]).includes(input.slotType)
+    ) {
+      throw new FileRequestValidationError();
+    }
+    slotType = input.slotType as FileRequestSlotType;
+  }
   // F10-10: Allow-many je Anfrage (strikt boolean, Default single).
   if (input.allowMany !== undefined && typeof input.allowMany !== "boolean") {
     throw new FileRequestValidationError();
@@ -232,9 +248,9 @@ export async function createFileRequest(
     subsidyCaseId = input.subsidyCaseId as string;
   }
   const inserted = await tx.execute<FileRequestRow>(sql`
-    insert into file_request (workspace_id, project_id, subsidy_case_id, title, description, allow_many, created_by)
+    insert into file_request (workspace_id, project_id, subsidy_case_id, slot_type, title, description, allow_many, created_by)
     values (
-      ${ctx.workspaceId}::uuid, ${input.projectId}::uuid, ${subsidyCaseId}::uuid,
+      ${ctx.workspaceId}::uuid, ${input.projectId}::uuid, ${subsidyCaseId}::uuid, ${slotType},
       ${parsed.data.title}, ${parsed.data.description}, ${allowMany},
       ${ctx.actor}::uuid
     )
@@ -350,7 +366,7 @@ export async function transitionFileRequest(
   const row = current.rows[0];
   if (!row) throw new FileRequestNotFoundError(input.projectId);
   const from = row.status as FileRequestStatus;
-  if (!nextFileRequestStatuses(from).includes(input.status)) {
+  if (!isAllowedFileRequestTransition(from, input.status)) {
     throw new FileRequestValidationError(`illegal transition ${from} -> ${input.status}`);
   }
   const updated = await tx.execute<FileRequestRow>(sql`

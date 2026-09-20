@@ -30,6 +30,10 @@ export const fileRequest = pgTable(
     workspaceId: uuid("workspace_id").notNull(),
     projectId: uuid("project_id").notNull(),
     subsidyCaseId: uuid("subsidy_case_id"),
+    // F13-00 §4: strukturierter Slot-Typ (ESTIMATE-Pilot Förderakte);
+    // null = allgemeine Anfrage ohne Slot. Titel-Konvention (F13-07)
+    // bleibt Portal-Darstellung.
+    slotType: text("slot_type"),
     title: text("title").notNull(),
     description: text("description"),
     allowMany: boolean("allow_many").notNull().default(false),
@@ -71,6 +75,12 @@ export const fileRequest = pgTable(
       "file_request_status_ck",
       sql`${t.status} in (
         'offen', 'hochgeladen', 'erledigt', 'storniert'
+      )`,
+    ),
+    check(
+      "file_request_slot_type_ck",
+      sql`${t.slotType} is null or ${t.slotType} in (
+        'bza_angebot', 'bza_vollmacht', 'bnd_rechnung', 'typenschild_foto'
       )`,
     ),
     check(

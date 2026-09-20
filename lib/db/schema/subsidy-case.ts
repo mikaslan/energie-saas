@@ -13,18 +13,21 @@ import { membership, workspace } from "./core";
 import { project } from "./project";
 
 // F13-03 Förderservice-Akte (KfW/BAFA, Katalog F13.2 Slice 1): EIN
-// Datensatz je Projekt (v1-Grenze). Maschine: vorbereitung →
+// Datensatz je Projekt (v1-Grenze). Maschine: draft → vorbereitung →
 // bza_eingereicht → bza_bewilligt → bnd_eingereicht → abgeschlossen;
 // korrektur aus bza/bnd_eingereicht mit Wiedereinstieg je Phase;
-// storniert terminal. Programm-Wortschatz (kfw/bafa/sonstige) und
-// BzA-Nummer sind ESTIMATE-Näherungen ohne Live-Beleg.
+// storniert aus draft/vorbereitung/bza/bnd_eingereicht/korrektur,
+// terminal. F13-00: Anlage als draft (Default), Submit-Freeze ab
+// vorbereitung (Service-Gate canEditFilingDetails). Programm-Wortschatz
+// (kfw/bafa/sonstige) und BzA-Nummer sind ESTIMATE-Näherungen ohne
+// Live-Beleg.
 export const subsidyCase = pgTable(
   "subsidy_case",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     workspaceId: uuid("workspace_id").notNull(),
     projectId: uuid("project_id").notNull(),
-    status: text("status").notNull().default("vorbereitung"),
+    status: text("status").notNull().default("draft"),
     program: text("program"),
     bzaNumber: text("bza_number"),
     bzaSubmittedAt: timestamp("bza_submitted_at", { withTimezone: true }),
@@ -56,7 +59,7 @@ export const subsidyCase = pgTable(
     check(
       "subsidy_case_status_ck",
       sql`${t.status} in (
-        'vorbereitung', 'bza_eingereicht', 'korrektur', 'bza_bewilligt',
+        'draft', 'vorbereitung', 'bza_eingereicht', 'korrektur', 'bza_bewilligt',
         'bnd_eingereicht', 'abgeschlossen', 'storniert'
       )`,
     ),

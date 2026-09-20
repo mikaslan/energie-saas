@@ -23,6 +23,12 @@ export const subsidyChatPostSchema = z.strictObject({
   body: subsidyChatBodySchema,
 });
 
+// F13-00 §5 Chat-Norm: generischer Filing-Chat nach F13-10-Muster.
+// Dasselbe Body-Profil (getrimmt, 1–2000, keine Controls) gilt für
+// alle Filing-Akten; Projektion `{side, body, at}` (nie IDs/Akteure).
+export const filingChatBodySchema = subsidyChatBodySchema;
+export const FILING_CHAT_BODY_MAX = SUBSIDY_CHAT_BODY_MAX;
+
 export type SubsidyChatMessage = {
   side: SubsidyChatAuthorSide;
   body: string;

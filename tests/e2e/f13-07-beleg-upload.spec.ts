@@ -108,6 +108,9 @@ test("F13-07-E2E-01: BnD-Beleg von Anforderung bis Erhalt in der Akte", async ({
 
   // 1) Akte bis BzA bewilligt (Beleg-Phase).
   await page.getByTestId("subsidy-case-create").click();
+  // F13-00 §1: BzA-Versand erst nach Einreichung draft → vorbereitung.
+  await page.getByTestId("subsidy-case-to-vorbereitung").click();
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
   await page.getByTestId("subsidy-case-to-bza_eingereicht").click();
   await expect(page.getByTestId("subsidy-case-current")).toContainText("BzA eingereicht");
   await page.getByTestId("subsidy-case-to-bza_bewilligt").click();

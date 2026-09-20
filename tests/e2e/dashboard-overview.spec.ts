@@ -167,7 +167,7 @@ test("DASH-09: Vorgang, Akte und Beleg erscheinen als Dashboard-Kennzahlen", asy
   await expect(service).toContainText("Dashboard Wartung");
 
   await page.getByTestId("subsidy-case-create").click();
-  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("Entwurf");
 
   const files = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Datei-Anfragen", exact: true }),
@@ -183,7 +183,7 @@ test("DASH-09: Vorgang, Akte und Beleg erscheinen als Dashboard-Kennzahlen", asy
   const card = page.locator('[data-dashboard-service="true"]');
   await expect(card).toBeVisible();
   await expect(card.getByTestId("dashboard-service-open")).toHaveText("1");
-  await expect(card.getByTestId("dashboard-subsidy-vorbereitung")).toHaveText("1");
+  await expect(card.getByTestId("dashboard-subsidy-draft")).toHaveText("1");
   await expect(card.getByTestId("dashboard-subsidy-total")).toHaveText("1");
   await expect(card.getByTestId("dashboard-belege-offen")).toHaveText("1");
 });

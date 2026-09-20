@@ -6,9 +6,13 @@ Filing-Objekt am Projekt — Formular (vorbefüllt) →
 Draft/Submit-Sperre → Statusmaschine → Chat mit typisierten
 Datei-Slots → E-Mail je Übergang → Abrechnung pro Vorgang.
 
-Stand: SPECIFIED, nicht implementiert. Stil nach F13-01;
-keine neue Permission (Bauarbeit auf `installation.read/write`
-bzw. `project.read/write` je Pfad — Mandat).
+Stand: PILOT GEBAUT (Migration 0260, 2026-09-20) — `subsidy_case`
+als Pilot (§7.2: Draft-Status, Freeze-Gate, Slot-Typen, Event-Rename),
+`file_request` mit Slot-Typ-Feld + `isAllowed`-Guard (§7.5). Stil nach
+F13-01; keine neue Permission (Bauarbeit auf `installation.read/write`
+bzw. `project.read/write` je Pfad — Mandat). Offen aus §7: Nachzug
+`grid_registration` (→ F13-12), `service_case`, `planning_request`
+(→ F13-14), Portal-Resolver für übrige Maschinen.
 
 ## §1 Draft-Konzept
 
@@ -155,9 +159,13 @@ Preis/Abrechnung, Audit-Form → F13-16 (Provider-Blocker
   (`expected undefined to be 'subsidy_case.transition'`)
 
 `Test Files 1 failed (1)` / `Tests 6 failed (6)`.
-Skip-Begründung: F13-00 ist reine Spezifikation (kein
-Kern-Code in diesem Slice); die Tests sichern die Norm
-und werden je Migrations-Slice (§7) entskipped.
+GRÜN-Beleg (2026-09-20, Migration 0260): `npm test --
+tests/unit/f1300-filing-kern.red.test.ts` EXIT 0, 9 passed (9)
+(6 Norm-Pins entskippt + 3 Guard-Semantik U-07…U-09);
+`tests/db/f1300-filing-kern.test.ts` 6/6 (Kanten/Freeze/
+.transition-Naming/Slot-Roundtrip/Portal-null/Viewer-Read);
+Nachbarn f1303/f1305/f1307/f1310 + f1004/f1010/f1308/f1603b +
+f1001 grün; E2E f13-03/04/05/07/08/10 + DASH-09 7/7 grün.
 
 ## Bewusst offen
 

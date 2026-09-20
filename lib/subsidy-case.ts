@@ -6,6 +6,7 @@
 // (F13-05: portal/service.ts via transition-Nebeneffekt, server-only)
 // ins Client-Bundle zu ziehen.
 export const subsidyCaseStatuses = [
+  "draft",
   "vorbereitung",
   "bza_eingereicht",
   "korrektur",
@@ -17,6 +18,7 @@ export const subsidyCaseStatuses = [
 export type SubsidyCaseStatus = (typeof subsidyCaseStatuses)[number];
 
 export const SUBSIDY_CASE_STATUS_LABEL: Record<SubsidyCaseStatus, string> = {
+  draft: "Entwurf",
   vorbereitung: "In Vorbereitung",
   bza_eingereicht: "BzA eingereicht",
   korrektur: "Korrektur",
@@ -36,6 +38,10 @@ export const SUBSIDY_CASE_PROGRAM_LABEL: Record<SubsidyCaseProgram, string> = {
 };
 
 const allowedTransitions: Record<SubsidyCaseStatus, SubsidyCaseStatus[]> = {
+  // F13-00 §1: jede Akte startet als Entwurf (vorbefüllt, unversandt,
+  // unsichtbar für Externe); Einreichung in die Vorbereitung ist die
+  // erste Transition (Submit-Freeze ab dort, §2).
+  draft: ["vorbereitung", "storniert"],
   vorbereitung: ["bza_eingereicht", "storniert"],
   bza_eingereicht: ["bza_bewilligt", "korrektur", "storniert"],
   korrektur: ["bza_eingereicht", "bnd_eingereicht", "storniert"],
@@ -60,6 +66,24 @@ export function isSubsidyCaseBelegState(status: SubsidyCaseStatus): boolean {
 export function isAllowedSubsidyCaseTransition(from: SubsidyCaseStatus, to: SubsidyCaseStatus): boolean {
   return allowedTransitions[from].includes(to);
 }
+
+// F13-00 §2 Submit-Freeze: Feld-Edits (set*Details) nur im Entwurf
+// und im Korrektur-Pendant der jeweiligen Maschine (Förderakte:
+// korrektur); nach Submit transition-only. Jede Änderung nach Freeze
+// nur als Transition mit Pflicht-Event + Audit.
+export const FILING_EDITABLE_SUBSIDY_STATUSES: SubsidyCaseStatus[] = [
+  "draft",
+  "korrektur",
+];
+
+export function canEditFilingDetails(status: SubsidyCaseStatus): boolean {
+  return FILING_EDITABLE_SUBSIDY_STATUSES.includes(status);
+}
+
+// F13-00 §6 Übergangs-Events: `.transition` löst `.status_changed`
+// ab (Naming-Doktrin); Payload `{from, to, caseId?}` (+ Portal-Outcome
+// wo zutreffend). Details-Politik: nur IDs + Status, kein Kundenkontext.
+export const SUBSIDY_CASE_TRANSITION_EVENT = "subsidy_case.transition" as const;
 
 export type SubsidyCasePortalActivationOutcome =
   | "created"

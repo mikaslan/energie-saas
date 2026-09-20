@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  fileRequestStatuses,
+  isAllowedFileRequestTransition,
+  nextFileRequestStatuses,
+  type FileRequestStatus,
+} from "@/lib/file-request";
 import * as fileRequestLib from "@/lib/file-request";
 import * as subsidyChatContract from "@/lib/integrations/subsidies/chat-contract";
+import {
+  canEditFilingDetails,
+  nextSubsidyCaseStatuses,
+  subsidyCaseStatuses,
+  type SubsidyCaseStatus,
+} from "@/lib/subsidy-case";
 import * as subsidyCaseLib from "@/lib/subsidy-case";
 
 // F13-00 Filing-Kern (SPECIFIED, nicht implementiert — siehe
@@ -9,9 +21,9 @@ import * as subsidyCaseLib from "@/lib/subsidy-case";
 // Imports (vitest + reine lib-Verträge, Muster
 // f1305-portal-activation.test.ts); jede Zusicherung adressiert
 // einen noch fehlenden Kern-Export.
-// Skip-Grund: reine Spezifikation, kein Kern-Code in diesem Slice —
-// ROT belegt (6/6, s. Spec), Entskip je Migrations-Slice (§7).
-describe.skip("F13-00 Filing-Kern (RED)", () => {
+// F13-00 GREEN-Slice (Migration 0260): entskippt 2026-09-20, muss GRÜN werden.
+// Spec: docs/spec/F13-00-filing-kern.md (§7 Pilot subsidy_case).
+describe("F13-00 Filing-Kern (GREEN-Slice 0260)", () => {
   it("F1300-U-01: Draft-Status existiert in der Förderakte", () => {
     expect(subsidyCaseLib.subsidyCaseStatuses as readonly string[]).toContain(
       "draft",
@@ -52,5 +64,37 @@ describe.skip("F13-00 Filing-Kern (RED)", () => {
         "SUBSIDY_CASE_TRANSITION_EVENT"
       ],
     ).toBe("subsidy_case.transition");
+  });
+});
+
+// F13-00 GREEN-Slice 0260: Guard-Semantik (rein, kein DB-Boot).
+describe("F13-00 Filing-Kern (Guard-Semantik)", () => {
+  it("F1300-U-07: Submit-Freeze (Edits nur in draft/korrektur)", () => {
+    expect(canEditFilingDetails("draft")).toBe(true);
+    expect(canEditFilingDetails("korrektur")).toBe(true);
+    for (const status of subsidyCaseStatuses) {
+      if (status === "draft" || status === "korrektur") continue;
+      expect(canEditFilingDetails(status)).toBe(false);
+    }
+  });
+
+  it("F1300-U-08: Draft-Kanten (→ vorbereitung/storniert, kein Zurück)", () => {
+    expect(nextSubsidyCaseStatuses("draft")).toEqual(["vorbereitung", "storniert"]);
+    for (const status of subsidyCaseStatuses) {
+      if (status === "draft") continue;
+      expect(nextSubsidyCaseStatuses(status as SubsidyCaseStatus)).not.toContain("draft");
+    }
+  });
+
+  it("F1300-U-09: isAllowed-Guard spiegelt die Kantentabelle (file_request)", () => {
+    for (const from of fileRequestStatuses) {
+      for (const to of fileRequestStatuses) {
+        expect(isAllowedFileRequestTransition(from, to)).toBe(
+          nextFileRequestStatuses(from as FileRequestStatus).includes(to as FileRequestStatus),
+        );
+      }
+    }
+    // Token-Pfad bleibt exklusiv: hochgeladen nie via internen Guard.
+    expect(isAllowedFileRequestTransition("offen", "hochgeladen")).toBe(false);
   });
 });

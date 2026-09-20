@@ -69,7 +69,8 @@ describe("F13-03 Förderakte (PostgreSQL)", () => {
     expect(before).toBeNull();
 
     const first = await asEditor(fixture, (tx, ctx) => ensureSubsidyCase(tx, ctx, projectId));
-    expect(first.status).toBe("vorbereitung");
+    // F13-00 §1: Anlage als draft; Details pflegbar, dann Einreichung.
+    expect(first.status).toBe("draft");
     expect(first.bzaSubmittedAt).toBeNull();
     const again = await asEditor(fixture, (tx, ctx) => ensureSubsidyCase(tx, ctx, projectId));
     expect(again.id).toBe(first.id);
@@ -80,7 +81,7 @@ describe("F13-03 Förderakte (PostgreSQL)", () => {
     expect(withDetails.program).toBe("kfw");
     expect(withDetails.bzaNumber).toBe("BZA-2026-0004711");
 
-    for (const status of ["bza_eingereicht", "bza_bewilligt", "bnd_eingereicht", "abgeschlossen"] as const) {
+    for (const status of ["vorbereitung", "bza_eingereicht", "bza_bewilligt", "bnd_eingereicht", "abgeschlossen"] as const) {
       const next = await asEditor(fixture, (tx, ctx) =>
         transitionSubsidyCase(tx, ctx, { projectId, status }),
       );
@@ -96,6 +97,8 @@ describe("F13-03 Förderakte (PostgreSQL)", () => {
   it("F1303-DB-02: Korrekturrunde mit Wiedereinstieg, Storno terminal", async () => {
     const projectId = await seedProject(fixture);
     await asEditor(fixture, (tx, ctx) => ensureSubsidyCase(tx, ctx, projectId));
+    await asEditor(fixture, (tx, ctx) =>
+      transitionSubsidyCase(tx, ctx, { projectId, status: "vorbereitung" }));
     await asEditor(fixture, (tx, ctx) =>
       transitionSubsidyCase(tx, ctx, { projectId, status: "bza_eingereicht" }));
     const correction = await asEditor(fixture, (tx, ctx) =>
@@ -129,6 +132,9 @@ describe("F13-03 Förderakte (PostgreSQL)", () => {
     await asEditor(fixture, (tx, ctx) => setSubsidyCaseDetails(tx, ctx, {
       projectId, program: "bafa", bzaNumber: "BZA-INTERN-9",
     }));
+    // F13-00 §1: BzA-Versand erst nach Einreichung draft → vorbereitung.
+    await asEditor(fixture, (tx, ctx) =>
+      transitionSubsidyCase(tx, ctx, { projectId, status: "vorbereitung" }));
     await asEditor(fixture, (tx, ctx) =>
       transitionSubsidyCase(tx, ctx, { projectId, status: "bza_eingereicht" }));
     const created = await withAuthorizedTenantOn(
@@ -154,7 +160,7 @@ describe("F13-03 Förderakte (PostgreSQL)", () => {
     await asEditor(fixture, (tx, ctx) => ensureSubsidyCase(tx, ctx, projectId));
 
     const seen = await asViewer(fixture, (tx, ctx) => getSubsidyCase(tx, ctx, projectId));
-    expect(seen?.status).toBe("vorbereitung");
+    expect(seen?.status).toBe("draft"); // F13-00 §1
     await expect(
       asViewer(fixture, (tx, ctx) => ensureSubsidyCase(tx, ctx, projectId)),
     ).rejects.toBeInstanceOf(PermissionDeniedError);

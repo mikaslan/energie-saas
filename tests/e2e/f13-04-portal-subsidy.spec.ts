@@ -101,11 +101,14 @@ test("F13-04-E2E-01: Portal-Übersicht zeigt Förderstand ohne BzA-Nummer", asyn
   await expect(page).toHaveURL(/\/anfragen\/[0-9a-f-]+$/u);
 
   await page.getByTestId("subsidy-case-create").click();
-  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("Entwurf");
   await page.getByTestId("subsidy-case-program").selectOption("bafa");
   await page.getByTestId("subsidy-case-bza-number").fill("BZA-E2E-INTERN");
   await page.getByTestId("subsidy-case-save").click();
   await expect(page.getByTestId("subsidy-case-details-feedback")).toContainText("Angaben gespeichert.");
+  // F13-00 §1: BzA-Versand erst nach Einreichung draft → vorbereitung.
+  await page.getByTestId("subsidy-case-to-vorbereitung").click();
+  await expect(page.getByTestId("subsidy-case-current")).toContainText("In Vorbereitung");
   await page.getByTestId("subsidy-case-to-bza_eingereicht").click();
   await expect(page.getByTestId("subsidy-case-current")).toContainText("BzA eingereicht");
 
