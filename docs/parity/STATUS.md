@@ -3,6 +3,20 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-20 — Dreier-Welle integriert (Harness-9b, F11, F2-Rest; Leitstand, Jev-geprueft)
+
+- `codex/muse-fleet-9b-f206` (`b600f08`: f2-06-Retry, test-only) — Merge `8274370`.
+- `codex/muse-fleet-2c-f11` (`120646b`: F11-04/05/06, migrationslos;
+  layout.tsx-Add/Add beidseitig identisch aufgeloest) — Merge `0ac4b37`.
+- `codex/muse-fleet-7-f2rest` (`f09a8c7`: F2-Details + 0330-Kapseln, 0330 auf idx 174,
+  TOTAL 175; 0330/0360-Snapshots vervollstaendigt) — Merge `5ca2d50`.
+- Belege: 9b Lane-CI voll gruen; 2D Lane-CI success exakt HEAD; 7 E2E 90/90
+  (Statik-Rot jeweils Fremd-Drift, auf wave-02 geheilt); Jev NOGO/2x UNSICHER →
+  Leitstand-Entscheide dokumentiert; Integrations-Gates `npm run check` EXIT 0
+  (2 failed/3632 im Erstlauf als Last-Flakes belegt, Re-Run EXIT 0).
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-20 — F1-Rest-6B integriert (Flotten-Lane, Leitstand, Jev-geprueft)
 
 - `codex/muse-fleet-6-f1rest` (`86b5c75`: F7-11 Termin-Mehr-Team, Junction 0320)
