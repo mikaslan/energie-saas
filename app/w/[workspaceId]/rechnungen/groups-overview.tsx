@@ -173,6 +173,16 @@ export function GroupsOverview({
                       Archiviert
                     </span>
                   ) : null}
+                  {group.draftCount > 0 ? (
+                    <span data-testid="group-draft-count" className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      {group.draftCount} {group.draftCount === 1 ? "Entwurf" : "Entwürfe"}
+                    </span>
+                  ) : null}
+                  {group.sentCount > 0 ? (
+                    <span data-testid="group-sent-count" className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
+                      {group.sentCount} versendet
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-3 py-3 text-right text-sm tabular-nums text-slate-700">
                   {group.documentCount}

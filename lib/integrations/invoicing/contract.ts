@@ -779,6 +779,11 @@ export const commercialDocumentGroupV1Schema = z.strictObject({
   projectId: optionalUuid,
   archivedAt: z.string().nullable(),
   documentCount: z.number().int().nonnegative(),
+  // F8-23c: Status-Counts (Pflicht, 0 statt null).
+  draftCount: z.number().int().nonnegative(),
+  issuedCount: z.number().int().nonnegative(),
+  sentCount: z.number().int().nonnegative(),
+  voidedCount: z.number().int().nonnegative(),
   permissions: z.strictObject({ canWrite: z.boolean() }),
 });
 export type CommercialDocumentGroupV1 = z.infer<typeof commercialDocumentGroupV1Schema>;

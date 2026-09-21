@@ -640,6 +640,10 @@ type GroupRow = {
   project_id: string | null;
   archived_at: Date | null;
   document_count: number;
+  draft_count: number;
+  issued_count: number;
+  sent_count: number;
+  voided_count: number;
   [key: string]: unknown;
 };
 
@@ -740,7 +744,11 @@ export async function listDocumentGroups(
            g.name,
            g.project_id,
            g.archived_at,
-           count(d.id)::int as document_count
+           count(d.id)::int as document_count,
+           count(d.id) filter (where d.status = 'draft')::int as draft_count,
+           count(d.id) filter (where d.status = 'issued')::int as issued_count,
+           count(d.id) filter (where d.status = 'issued' and d.sent_at is not null)::int as sent_count,
+           count(d.id) filter (where d.status = 'voided')::int as voided_count
       from commercial_document_group g
       left join commercial_document d
         on d.workspace_id = g.workspace_id and d.group_id = g.id
@@ -757,6 +765,10 @@ export async function listDocumentGroups(
       projectId: row.project_id,
       archivedAt: row.archived_at === null ? null : new Date(row.archived_at).toISOString(),
       documentCount: Number(row.document_count),
+      draftCount: Number(row.draft_count),
+      issuedCount: Number(row.issued_count),
+      sentCount: Number(row.sent_count),
+      voidedCount: Number(row.voided_count),
       permissions: { canWrite },
     }),
   );
