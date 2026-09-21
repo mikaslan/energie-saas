@@ -944,6 +944,8 @@ const isoDateOnlySchema = z
 export const commercialDocumentListFiltersV1Schema = z
   .strictObject({
     status: commercialDocumentStatusSchema.optional(),
+    // F8-23a: Sent-Achse (sent_at), unabhaengig vom Status-Filter.
+    sent: z.enum(["all", "sent", "unsent"]).default("all"),
     paymentStatus: z
       .enum(["unpaid", "partially_paid", "paid", "overdue", "uncollectable"])
       .optional(),

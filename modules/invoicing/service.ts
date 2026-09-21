@@ -1706,6 +1706,12 @@ export async function listDocuments(
   if (filters.status !== undefined) {
     conditions.push(sql`status = ${filters.status}`);
   }
+  // F8-23a: Sent-Achse (sent_at IS (NOT) NULL), unabhaengig vom Status.
+  if (filters.sent === "sent") {
+    conditions.push(sql`sent_at is not null`);
+  } else if (filters.sent === "unsent") {
+    conditions.push(sql`sent_at is null`);
+  }
   if (filters.paymentStatus !== undefined) {
     conditions.push(sql`payment_status = ${filters.paymentStatus}`);
   }

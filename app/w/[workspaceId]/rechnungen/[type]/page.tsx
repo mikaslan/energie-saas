@@ -31,6 +31,7 @@ const cursorPattern = /^[A-Za-z0-9_-]{1,256}$/u;
 
 const filterSchema = z.object({
   status: z.enum(["draft", "issued", "voided"]).optional(),
+  versand: z.enum(["sent", "unsent"]).optional(),
   zahlung: z.enum(["unpaid", "partially_paid", "paid", "overdue", "uncollectable"]).optional(),
   von: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
   bis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
@@ -96,7 +97,7 @@ function activeFilterCount(
   type: CommercialDocumentType,
 ): number {
   return [
-    filters.status, filters.zahlung, filters.von, filters.bis,
+    filters.status, filters.versand, filters.zahlung, filters.von, filters.bis,
     filters.fdatumVon, filters.fdatumBis, filters.grund,
     // F8-16: art nur auf Rechnungslisten zaehlen (crafted ?art= sonst).
     type === "invoice" ? filters.art : undefined,
@@ -117,6 +118,7 @@ export default async function InvoicingDocumentListPage(
   const rawSearch = await props.searchParams;
   const parsedFilters = filterSchema.safeParse({
     status: nonEmpty(firstQueryValue(rawSearch.status)),
+    versand: nonEmpty(firstQueryValue(rawSearch.versand)),
     zahlung: nonEmpty(firstQueryValue(rawSearch.zahlung)),
     von: nonEmpty(firstQueryValue(rawSearch.von)),
     bis: nonEmpty(firstQueryValue(rawSearch.bis)),
@@ -141,6 +143,7 @@ export default async function InvoicingDocumentListPage(
           type,
           filters: {
             status: filters.status,
+            sent: filters.versand,
             paymentStatus: filters.zahlung,
             issuedFrom: filters.von,
             issuedTo: filters.bis,
@@ -231,6 +234,17 @@ export default async function InvoicingDocumentListPage(
             <option value="draft">Entwurf</option>
             <option value="issued">Ausgestellt</option>
             <option value="voided">Storniert</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor={`versand-${type}`} className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Versand
+          </label>
+          <select id={`versand-${type}`} name="versand" defaultValue={filters.versand ?? ""} className={inputClass}>
+            <option value="">Alle</option>
+            <option value="sent">Versendet</option>
+            <option value="unsent">Nicht versendet</option>
           </select>
         </div>
 
@@ -402,6 +416,11 @@ export default async function InvoicingDocumentListPage(
                       ) : null}
                       <td className="px-3 py-3 text-sm text-slate-700">
                         {DOCUMENT_STATUS_LABELS[document.status] ?? document.status}
+                        {document.status === "issued" && document.sentAt !== null ? (
+                          <span data-testid="document-sent-badge" className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
+                            Versendet
+                          </span>
+                        ) : null}
                       </td>
                       {moneyTypes.includes(type) ? (
                         <td className="px-3 py-3 text-sm text-slate-700">
