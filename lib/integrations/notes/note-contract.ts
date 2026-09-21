@@ -107,6 +107,18 @@ export const projectNoteMentionV1Schema = z.strictObject({
 
 export type ProjectNoteMentionV1 = z.infer<typeof projectNoteMentionV1Schema>;
 
+// F1-26: Team-Mention am Notiz-Item (additiv). `slug` ist der
+// Team-`name_normalized`, `name` der Anzeigename, `active` der
+// Archiv-Status (lesbar im Chip, kein Aktiv-Filter im Lesepfad).
+export const projectNoteTeamMentionV1Schema = z.strictObject({
+  teamId: canonicalUuidSchema,
+  slug: z.string().min(1).max(120).regex(/^[a-z0-9-]+$/u),
+  name: z.string().min(1).max(120),
+  active: z.boolean(),
+});
+
+export type ProjectNoteTeamMentionV1 = z.infer<typeof projectNoteTeamMentionV1Schema>;
+
 export const projectNoteItemV1Schema = z.strictObject({
   id: canonicalUuidSchema,
   revision: revisionSchema,
@@ -122,6 +134,8 @@ export const projectNoteItemV1Schema = z.strictObject({
   // Optional (statt required): Bestand-Items ohne Mentions bleiben valide
   // (M1-13-Vertragstest); der Service liefert das Feld immer als Array.
   mentions: z.array(projectNoteMentionV1Schema).optional(),
+  // F1-26: Team-Mentions (optional wie mentions; Service liefert Array).
+  teamMentions: z.array(projectNoteTeamMentionV1Schema).optional(),
 });
 
 export type ProjectNoteItemV1 = z.infer<typeof projectNoteItemV1Schema>;

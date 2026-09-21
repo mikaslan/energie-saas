@@ -2885,6 +2885,38 @@ export const tenantFixtures: Record<string, (tx: TenantTx, wsId: string) => Prom
       )
     `);
   },
+  // F1-26 (0321): Team-Mention (Notiz-Graph + Team inline).
+  project_note_team_mention: async (tx, wsId) => {
+    await fixtureProjectNoteGraph(tx, wsId);
+    const note = await tx.execute<{ id: string; project_id: string }>(sql`
+      select id, project_id from project_note where workspace_id = ${wsId}::uuid limit 1
+    `);
+    const noteRow = note.rows[0];
+    if (!noteRow) throw new Error("Team-Mention-Fixture braucht Notiz.");
+    const membership = await tx.execute<{ user_id: string }>(sql`
+      select user_id from membership where workspace_id = ${wsId}::uuid limit 1
+    `);
+    const userId = membership.rows[0]?.user_id;
+    if (!userId) throw new Error("Team-Mention-Fixture braucht Membership.");
+    const teamId = randomUUID();
+    await tx.execute(sql`
+      insert into team (id, workspace_id, name, name_normalized, created_by)
+      values (
+        ${teamId}::uuid, ${wsId}::uuid,
+        ${`Fixture-Noteam ${teamId.slice(0, 8)}`},
+        ${`fixture-noteam-${teamId.slice(0, 8)}`},
+        ${userId}::uuid
+      )
+    `);
+    await tx.execute(sql`
+      insert into project_note_team_mention (
+        workspace_id, project_id, note_id, team_id, revision
+      ) values (
+        ${wsId}::uuid, ${noteRow.project_id}::uuid, ${noteRow.id}::uuid,
+        ${teamId}::uuid, 1
+      )
+    `);
+  },
   erasure_tombstone: async (tx, wsId) => {
     const contactId = randomUUID();
     const operationId = randomUUID();
@@ -3509,6 +3541,17 @@ export const crossWriteOverrides: Record<string, (tx: TenantTx) => Promise<void>
       ) values (
         ${randomUUID()}::uuid, ${randomUUID()}::uuid,
         ${randomUUID()}::uuid, ${randomUUID()}::uuid
+      )
+    `);
+  },
+  // F1-26 (0321): Cross-Write scheitert an der RLS (WITH CHECK feuert vor FK).
+  project_note_team_mention: async (tx) => {
+    await tx.execute(sql`
+      insert into project_note_team_mention (
+        workspace_id, project_id, note_id, team_id, revision
+      ) values (
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid,
+        ${randomUUID()}::uuid, ${randomUUID()}::uuid, 1
       )
     `);
   },

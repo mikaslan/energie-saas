@@ -66,6 +66,7 @@ import {
   listAppointmentTemplates,
   listProjectAppointments,
   type AppointmentTemplateDto,
+  type ProjectAppointmentItemV1,
   type ProjectAppointmentRangeV1,
 } from "@/modules/calendar";
 import { getInstallation, getInstallationWorkbook, listInstallableVariants, listInstallationHandovers, listInstallerOptions, type InstallableVariantOption, type InstallationDto, type InstallationHandoverHistoryEntry, type InstallationMemberOption, type InstallationWorkbook } from "@/modules/installations";
@@ -878,6 +879,69 @@ function redirectToProjectLogin(detailPath: string): never {
   redirect(`/login?next=${encodeURIComponent(detailPath)}`);
 }
 
+// F1-27 Termin-Notiz-Übernahme („Als Notiz übernehmen"): serverseitige
+// Prefill-Auflösung für ?note=prefill-<appointmentId>. Der Termin stammt aus
+// dem bereits geladenen, lesbaren Terminbestand (±1 Jahr, appointment.read) —
+// kein neuer Command, kein Sync, ausschließlich Prefill + Bestands-create_note.
+const NOTE_PREFILL_PARAM_PATTERN = /^prefill-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/iu;
+const NOTE_PREFILL_WALL_CLOCK_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/u;
+
+function parseNotePrefillAppointmentId(rawNote: unknown): string | null {
+  const value = Array.isArray(rawNote) ? rawNote[0] : rawNote;
+  if (typeof value !== "string") return null;
+  const match = NOTE_PREFILL_PARAM_PATTERN.exec(value);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+function sanitizeNotePrefillText(value: string): string {
+  // Der Notiz-Markdown-Dialekt kennt kein Escaping und keine Blockquote-
+  // Struktur (note-markdown.ts): Die `>`-Zeilen sind wörtlicher Zitat-Text.
+  // Metazeichen aus Titel/Ort werden neutralisiert, damit der Prefill das
+  // Editor-Dokument nie sprengt (parseInline wirft bei ungeschlossenen
+  // Markern) und speicherbar bleibt (kanonische Validierung, kein HTML).
+  return value
+    .replace(/\s+/gu, " ")
+    .replace(/[`*~[\]<>]/gu, (char) => {
+      switch (char) {
+        case "`": return "'";
+        case "*": return "×";
+        case "~": return "-";
+        case "[": return "(";
+        case "]": return ")";
+        case "<": return "‹";
+        case ">": return "›";
+        default: return char;
+      }
+    })
+    .trim();
+}
+
+function formatNotePrefillDateTime(appointment: ProjectAppointmentItemV1): string | null {
+  const start = NOTE_PREFILL_WALL_CLOCK_PATTERN.exec(appointment.start);
+  if (!start) return null;
+  const date = `${start[3]}.${start[2]}.${start[1]}`;
+  if (appointment.allDay) return `${date} (ganztägig)`;
+  const end = NOTE_PREFILL_WALL_CLOCK_PATTERN.exec(appointment.end);
+  const time = end ? `${start[4]}:${start[5]}–${end[4]}:${end[5]}` : `${start[4]}:${start[5]}`;
+  return `${date}, ${time} Uhr`;
+}
+
+function buildAppointmentNotePrefill(appointment: ProjectAppointmentItemV1): string {
+  const lines = [`Termin: ${sanitizeNotePrefillText(appointment.title)}`];
+  const when = formatNotePrefillDateTime(appointment);
+  if (when !== null) lines.push(when);
+  if (appointment.location !== null) {
+    const location = sanitizeNotePrefillText(appointment.location);
+    if (location !== "") lines.push(`Ort: ${location}`);
+  }
+  // Bezug als wörtlicher Anker: Der Notiz-Dialekt erlaubt nur http(s)/mailto-
+  // Links, daher kein klickbarer Markdown-Link, sondern die Referenz selbst.
+  // (Kein "> "-Zitat: TipTap hebt Blockquote-Nodes aus, die der Dialekt nicht
+  // kennt — der Client verwirft den Text sonst als „nicht unterstützt".)
+  lines.push("Bezug: #project-appointments");
+  return lines.join("\n\n");
+}
+
 export default async function ProjectTriagePage({
   params,
   searchParams,
@@ -1140,6 +1204,22 @@ export default async function ProjectTriagePage({
   }
   if (appointmentRangeResult.range === null) notFound();
   const appointmentRange = appointmentRangeResult.range;
+
+  // F1-27: ?note=prefill-<id> aus lesbarem Termin auflösen. Ohne note.write
+  // geht kein Prefill ins HTML (kein Leak); bei unbekannter ID öffnet der
+  // Dialog ehrlich leer.
+  const prefillAppointmentId = parseNotePrefillAppointmentId(
+    (rawSearch as Record<string, unknown>)["note"],
+  );
+  const prefillAppointment = prefillAppointmentId === null
+    ? null
+    : appointmentRange.items.find((item) => item.id === prefillAppointmentId) ?? null;
+  const notePrefill = prefillAppointmentId === null || !notePage.permissions.canWrite
+    ? null
+    : {
+        key: `prefill-${prefillAppointmentId}`,
+        text: prefillAppointment === null ? "" : buildAppointmentNotePrefill(prefillAppointment),
+      };
   const nextTaskHref = taskWorkspace.nextTaskCursor === null
     ? null
     : `${detailPath}?${new URLSearchParams({
@@ -1322,6 +1402,7 @@ export default async function ProjectTriagePage({
             workspaceId={workspaceId}
             projectId={projectId}
             page={notePage}
+            notePrefill={notePrefill}
           />
         </div>
 
@@ -1342,6 +1423,7 @@ export default async function ProjectTriagePage({
             projectId={projectId}
             range={appointmentRange}
             templates={appointmentRangeResult.templates}
+            canAdoptNote={notePage.permissions.canWrite}
           />
         </div>
 

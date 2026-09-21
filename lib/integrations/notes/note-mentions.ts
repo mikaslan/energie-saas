@@ -88,6 +88,56 @@ export type MentionSegment =
   | { type: "text"; text: string }
   | { type: "mention"; emailLower: string };
 
+// F1-26: Team-Mention-Refs (`@team:<slug>`, rein, DB-frei). Slug ist der
+// Team-`name_normalized` (Lowercase-Letters/Digits/`-`, max. 120).
+// Team-Refs zählen wie User-Refs gegen NOTE_MENTION_MAX_COUNT — die
+// kombinierte Prüfung macht der Service, der Einzel-Extraktor wirft
+// ebenfalls über dem Limit (kein stilles Abschneiden, F1-09-Muster).
+export const NOTE_TEAM_MENTION_MAX_SLUG_LENGTH = 120 as const;
+
+export type NoteTeamMentionRef = {
+  slug: string;
+};
+
+export type NoteTeamMentionMatch = {
+  index: number;
+  length: number;
+  slug: string;
+};
+
+const TEAM_SLUG_PART = "[a-z0-9-]{1,120}";
+const TEAM_MENTION_PATTERN = new RegExp(
+  `(^|[^A-Za-z0-9_@./-])@team:(${TEAM_SLUG_PART})(?![A-Za-z0-9-])`,
+  "gu",
+);
+
+export function findNoteTeamMentionMatches(markdown: string): NoteTeamMentionMatch[] {
+  const ranges = excludedRanges(markdown);
+  const matches: NoteTeamMentionMatch[] = [];
+  for (const match of markdown.matchAll(TEAM_MENTION_PATTERN)) {
+    const slug = match[2] ?? "";
+    const at = (match.index ?? 0) + (match[1]?.length ?? 0);
+    if (slug.length === 0 || slug.length > NOTE_TEAM_MENTION_MAX_SLUG_LENGTH) continue;
+    if (inExcluded(ranges, at, match[0].length - (match[1]?.length ?? 0))) continue;
+    matches.push({ index: at, length: slug.length + "@team:".length, slug });
+  }
+  return matches;
+}
+
+export function extractNoteTeamMentionRefs(markdown: string): NoteTeamMentionRef[] {
+  const seen = new Set<string>();
+  const refs: NoteTeamMentionRef[] = [];
+  for (const match of findNoteTeamMentionMatches(markdown)) {
+    if (seen.has(match.slug)) continue;
+    seen.add(match.slug);
+    refs.push({ slug: match.slug });
+  }
+  if (refs.length > NOTE_MENTION_MAX_COUNT) {
+    throw new NoteMentionLimitError(refs.length);
+  }
+  return refs;
+}
+
 // Render-Pfad (nie werfend): teilt Text an bekannten Refs; Unbekanntes
 // und Ausgeschlossenes bleibt Text. Limit gilt hier nicht (Anzeige).
 export function splitTextByKnownMentions(

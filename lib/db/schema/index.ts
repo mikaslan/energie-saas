@@ -43,6 +43,7 @@ export * from "./project-loss-reason";
 export * from "./project-assignment";
 export * from "./project-team-assignment";
 export * from "./project-note";
+export * from "./project-note-team-mention";
 export * from "./project-task";
 export * from "./project-task-team-assignment";
 export * from "./project-appointment-team-assignment";

@@ -84,6 +84,19 @@ function exactStringEntries(
   return Object.fromEntries(domainEntries);
 }
 
+// F1-27: Formulare übertragen LF als CRLF (Transport-Artefakt); vor der
+// kanonischen Markdown-Validierung auf LF zurückführen, damit mehrzeilige
+// Notiztexte (z. B. Termin-Prefill) nicht an der Roundtrip-Prüfung scheitern.
+function normalizeNoteLineBreaks(
+  kind: string,
+  entries: Record<string, string>,
+): Record<string, string> {
+  if (kind !== "create_note" && kind !== "update_note_text") return entries;
+  const textMarkdown = entries.textMarkdown;
+  if (typeof textMarkdown !== "string") return entries;
+  return { ...entries, textMarkdown: textMarkdown.replace(/\r\n?/gu, "\n") };
+}
+
 function parseRevision(value: string | undefined): number | null {
   if (!value || !POSITIVE_INTEGER_PATTERN.test(value)) return null;
   const revision = Number(value);
@@ -170,7 +183,8 @@ export async function changeProjectNote(
   if (allowed === null) return { status: "invalid" };
 
   const entries = exactStringEntries(formData, allowed);
-  const candidate = entries === null ? null : commandCandidate(kind, entries);
+  const normalized = entries === null ? null : normalizeNoteLineBreaks(kind, entries);
+  const candidate = normalized === null ? null : commandCandidate(kind, normalized);
   const parsed = candidate === null ? null : projectNoteCommandV1Schema.safeParse(candidate);
   if (
     parsed === null

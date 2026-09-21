@@ -722,6 +722,12 @@ const APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS = [
   "project_appointment_team_assignment",
 ] as const;
 
+// F1-26 (0321): Notiz-Team-Mentions — ACL-Form wie
+// APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS (INSERT/SELECT/DELETE, kein UPDATE).
+const NOTE_TEAM_MENTION_RELATIONS = [
+  "project_note_team_mention",
+] as const;
+
 // F1-15 (0230): Broker-Intake-Receipt — ACL-Form wie inbound_receipt
 // (SELECT/INSERT + UPDATE(id) für FOR-SHARE-Locks, kein DELETE/UPDATE).
 const INBOUND_BROKER_RECEIPT_RELATIONS = [
@@ -3451,6 +3457,22 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F1-26 (0321): Notiz-Team-Mentions — ACL-Form wie F7-11.
+  const hasNoteTeamMentionForAcl = await hasAtomicPublicRelationSet(
+    client,
+    NOTE_TEAM_MENTION_RELATIONS,
+    "Rollen-ACL-Manifest: F1-26-Notiz-Team-Mentions",
+  );
+  if (hasNoteTeamMentionForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.project_note_team_mention
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, delete on public.project_note_team_mention to app_runtime
+    `);
+  }
+
   // F1-15 (0230): Broker-Intake-Receipt — ACL-Form wie inbound_receipt.
   const hasInboundBrokerReceiptForAcl = await hasAtomicPublicRelationSet(
     client,
@@ -5451,6 +5473,12 @@ export async function verifyRoleContract(
     "Rollenvertrag: F7-11-Termin-Team-Zuweisung",
   );
 
+  const hasNoteTeamMention = await hasAtomicPublicRelationSet(
+    client,
+    NOTE_TEAM_MENTION_RELATIONS,
+    "Rollenvertrag: F1-26-Notiz-Team-Mentions",
+  );
+
   const hasInboundBrokerReceipt = await hasAtomicPublicRelationSet(
     client,
     INBOUND_BROKER_RECEIPT_RELATIONS,
@@ -5773,6 +5801,9 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasAppointmentTeamAssignment ? APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasNoteTeamMention ? NOTE_TEAM_MENTION_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
@@ -7265,6 +7296,9 @@ export async function verifyRoleContract(
       ...(hasAppointmentTeamAssignment ? APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasNoteTeamMention ? NOTE_TEAM_MENTION_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasInboundBrokerReceipt ? INBOUND_BROKER_RECEIPT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -7714,6 +7748,12 @@ export async function verifyRoleContract(
         ...(hasAppointmentTeamAssignment ? [
           "project_appointment_team_assignment:tenant_isolation:" +
             "35c608c1705243d8f8d7c1c02b0ad9b6d846542e9b45bbe8fef77e2fa35f5611",
+        ] : []),
+        // F1-26 (0321): Hash per Probe geerntet (Methode gegen
+        // F1-20-Pin gegengeprüft: METHOD-OK).
+        ...(hasNoteTeamMention ? [
+          "project_note_team_mention:tenant_isolation:" +
+            "a160ce30da6bb56a1c27229ae0d7900c239f4cebc121869088d38a6d3bc00e05",
         ] : []),
         // F1-15 (0230): Hash per Probe geerntet (Methode gegen
         // F1-14-Pin gegengeprüft).
@@ -8509,6 +8549,12 @@ export async function verifyRoleContract(
       ]) : []),
       // F7-11 (0320): Termin-Team-Form wie F1-20 (INSERT/SELECT/DELETE).
       ...(hasAppointmentTeamAssignment ? APPOINTMENT_TEAM_ASSIGNMENT_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:DELETE:app_owner:false`,
+      ]) : []),
+      // F1-26 (0321): Notiz-Team-Form wie F7-11 (INSERT/SELECT/DELETE).
+      ...(hasNoteTeamMention ? NOTE_TEAM_MENTION_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
         `app_runtime:${relation}:DELETE:app_owner:false`,

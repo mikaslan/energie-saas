@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   PROJECT_APPOINTMENT_COMMAND_VERSION,
   type CalendarItemV1,
@@ -60,6 +61,7 @@ export function AppointmentDialog({
   calendars,
   members,
   teams,
+  canAdoptNote,
   returnFocusRef,
   onClose,
 }: {
@@ -69,12 +71,17 @@ export function AppointmentDialog({
   calendars: CalendarItemV1[];
   members: { membershipId: string; label: string }[];
   teams: TeamOption[];
+  // F1-27: note.write des Actors — nur dann ist „Als Notiz übernehmen"
+  // sichtbar (sonst unsichtbar, kein Disabled-Platzhalter).
+  canAdoptNote: boolean;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
   const boundAction = changeProjectAppointment.bind(null, workspaceId, projectId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL_STATE);
   const [allDay, setAllDay] = useState(appointment?.allDay ?? false);
@@ -107,6 +114,15 @@ export function AppointmentDialog({
 
   const message = actionMessage(state);
   const isError = state.status !== "idle" && state.status !== "success";
+
+  // F1-27: Prefill-Öffnung — der Notiz-Dialog öffnet sich über denselben
+  // ?note=prefill-<id>-Param wie der Plantafel-Drawer; der Prefill-Text wird
+  // serverseitig aus dem lesbaren Termin gebaut.
+  function adoptAsNote() {
+    if (appointment === null) return;
+    onClose();
+    router.push(`${pathname}?note=prefill-${appointment.id}`, { scroll: false });
+  }
 
   function onDialogKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Escape") {
@@ -348,6 +364,16 @@ export function AppointmentDialog({
           </p>
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+            {appointment !== null && canAdoptNote ? (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={adoptAsNote}
+                className="min-h-11 rounded-md border border-brand-700 bg-white px-4 py-2 text-sm font-semibold text-brand-800 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:text-slate-400 sm:mr-auto"
+              >
+                Als Notiz übernehmen
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={pending}

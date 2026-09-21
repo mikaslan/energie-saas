@@ -10,6 +10,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import {
   PROJECT_NOTE_COMMAND_VERSION,
@@ -114,6 +115,26 @@ function NoteCard({
 
       <NoteMarkdownRenderer textMarkdown={note.textMarkdown} mentions={note.mentions} />
 
+      {note.teamMentions && note.teamMentions.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {note.teamMentions.map((teamMention) => (
+            <span
+              key={teamMention.teamId}
+              data-testid={`note-team-mention-${teamMention.slug}`}
+              title={teamMention.active
+                ? `Team ${teamMention.name}`
+                : `Team ${teamMention.name} (archiviert)`}
+              className={teamMention.active
+                ? "inline-block rounded-full bg-brand-50 px-2 py-px text-xs font-medium text-brand-800"
+                : "inline-block rounded-full bg-slate-100 px-2 py-px text-xs font-medium text-slate-500"}
+            >
+              @{teamMention.name}
+              {teamMention.active ? null : " (archiviert)"}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       {(editedAt !== "" || note.pinnedByLabel !== null) ? (
         <p className="mt-2 text-xs leading-5 text-slate-500">
           {note.pinnedByLabel !== null ? `Angepinnt von ${note.pinnedByLabel}` : null}
@@ -179,28 +200,63 @@ export function ProjectNotesSection({
   workspaceId,
   projectId,
   page,
+  notePrefill,
 }: {
   workspaceId: string;
   projectId: string;
   page: ProjectNotePageV1;
+  // F1-27: serverseitig aufgelöster ?note=prefill-<id>-Param (key = roher
+  // Param zur Entprellung, text = Prefill oder "" bei unlesbarem Termin).
+  // null/undefined = kein Param → kein Auto-Öffnen.
+  notePrefill?: { key: string; text: string } | null;
 }) {
   const boundAction = useMemo(
     () => changeProjectNote.bind(null, workspaceId, projectId),
     [projectId, workspaceId],
   );
   const [state, action] = useActionState(boundAction, INITIAL_STATE);
+  const router = useRouter();
+  const pathname = usePathname();
   const feedbackRef = useRef<HTMLParagraphElement | null>(null);
   const editorReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorNote, setEditorNote] = useState<ProjectNoteItemV1 | null>(null);
   const [editorFeedback, setEditorFeedback] = useState("");
+  // F1-27: welcher Prefill-Key den offenen Anlage-Dialog speist (null =
+  // manuell geöffnet). openedPrefillRef entprellt wiederholte Renders mit
+  // demselben Param; prefillActiveRef merkt, ob der Param beim Schließen
+  // aus der URL zu entfernen ist.
+  const [prefillKey, setPrefillKey] = useState<string | null>(null);
+  const openedPrefillRef = useRef<string | null>(null);
+  const prefillActiveRef = useRef(false);
   const message = editorFeedback || actionMessage(state);
   const isError = editorFeedback === "" && state.status !== "idle" && state.status !== "success";
   const currentEditorNote = editorNote === null
     ? null
     : page.notes.find((note) => note.id === editorNote.id) ?? editorNote;
+  const prefillInitialText = currentEditorNote === null
+    && prefillKey !== null
+    && notePrefill !== null
+    && notePrefill !== undefined
+    && notePrefill.key === prefillKey
+    ? notePrefill.text
+    : undefined;
 
-  const closeEditor = useCallback(() => setEditorOpen(false), []);
+  const closeEditor = useCallback(() => {
+    setEditorOpen(false);
+    setPrefillKey(null);
+    if (prefillActiveRef.current) {
+      prefillActiveRef.current = false;
+      // openedPrefillRef behält den verbrauchten Key, bis der Param aus der
+      // URL verschwunden ist (Freigabe im Prefill-Effect): Sonst öffnet ein
+      // Re-Render zwischen Schließen und router.replace (z. B. nach
+      // revalidatePath bei Erfolg) den Dialog sofort wieder.
+      const params = new URLSearchParams(window.location.search);
+      params.delete("note");
+      const query = params.toString();
+      router.replace(query === "" ? pathname : `${pathname}?${query}`, { scroll: false });
+    }
+  }, [pathname, router]);
   const handleEditorSuccess = useCallback((feedback: string) => {
     setEditorFeedback(feedback);
   }, []);
@@ -222,6 +278,25 @@ export function ProjectNotesSection({
     setEditorNote(note);
     setEditorOpen(true);
   }
+
+  // F1-27: ?note=prefill-<id> öffnet den Anlage-Dialog mit Prefill (oder
+  // ehrlich leer). Nur mit note.write; ohne den Param passiert nichts.
+  useEffect(() => {
+    if (notePrefill === null || notePrefill === undefined) {
+      // Param verbraucht/entfernt → Freigabe, damit eine erneute Übernahme
+      // (auch desselben Termins) den Dialog wieder öffnen kann.
+      openedPrefillRef.current = null;
+      return;
+    }
+    if (!page.permissions.canWrite) return;
+    if (openedPrefillRef.current === notePrefill.key) return;
+    openedPrefillRef.current = notePrefill.key;
+    prefillActiveRef.current = true;
+    setEditorFeedback("");
+    setPrefillKey(notePrefill.key);
+    setEditorNote(null);
+    setEditorOpen(true);
+  }, [notePrefill, page.permissions.canWrite]);
 
   useEffect(() => {
     if (isError) feedbackRef.current?.focus();
@@ -296,6 +371,7 @@ export function ProjectNotesSection({
           workspaceId={workspaceId}
           projectId={projectId}
           note={currentEditorNote}
+          initialText={prefillInitialText}
           returnFocusRef={editorReturnFocusRef}
           onSuccess={handleEditorSuccess}
           onClose={closeEditor}

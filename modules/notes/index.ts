@@ -7,6 +7,7 @@ export {
   projectNoteCommandV1Schema,
   projectNoteItemV1Schema,
   projectNotePageV1Schema,
+  projectNoteTeamMentionV1Schema,
 } from "@/lib/integrations/notes/note-contract";
 export type {
   NoteTextV1,
@@ -14,6 +15,7 @@ export type {
   ProjectNoteCommandV1,
   ProjectNoteItemV1,
   ProjectNotePageV1,
+  ProjectNoteTeamMentionV1,
 } from "@/lib/integrations/notes/note-contract";
 export {
   NOTE_RICH_TEXT_VERSION,

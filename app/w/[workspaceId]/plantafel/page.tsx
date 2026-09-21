@@ -204,6 +204,7 @@ export default async function PlanningBoardPage(
   let memberships: TeamMembership[] | null;
   let extraTeamsContext: Awaited<ReturnType<typeof getAppointmentTeamAssignmentContext>>;
   let canWrite = false;
+  let canNoteWrite = false;
   try {
     const loaded = await authorizedQuery(
       workspaceId,
@@ -254,6 +255,9 @@ export default async function PlanningBoardPage(
           memberships: loadedMemberships,
           extraTeams: loadedExtraTeams,
           canWrite: can(ctx, "appointment.write"),
+          // F1-27: eigener Grant für „Als Notiz übernehmen" (ohne note.write
+          // kein Button — sonst unsichtbar).
+          canNoteWrite: can(ctx, "note.write"),
         };
       },
     );
@@ -264,6 +268,7 @@ export default async function PlanningBoardPage(
     memberships = loaded.memberships;
     extraTeamsContext = loaded.extraTeams;
     canWrite = loaded.canWrite;
+    canNoteWrite = loaded.canNoteWrite;
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
       redirect(`/login?${new URLSearchParams({ next: `/w/${workspaceId}/plantafel` }).toString()}`);
@@ -527,6 +532,16 @@ export default async function PlanningBoardPage(
                     Zum Projekt „{selected.entry.projectName}“
                   </Link>
                 </p>
+                {canNoteWrite ? (
+                  <p className="mt-2 text-sm">
+                    <Link
+                      href={`/w/${workspaceId}/anfragen/${selected.entry.projectId}?note=prefill-${selected.entry.id}`}
+                      className="font-semibold text-brand-800 underline-offset-2 hover:underline"
+                    >
+                      Als Notiz übernehmen
+                    </Link>
+                  </p>
+                ) : null}
                 <p className="mt-2 text-sm">
                   <Link
                     href={`${basePath}?week=${board.weekStart}`}

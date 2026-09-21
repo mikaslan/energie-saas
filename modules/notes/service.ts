@@ -11,16 +11,21 @@ import {
   projectNoteItemV1Schema,
   projectNoteMentionV1Schema,
   projectNotePageV1Schema,
+  projectNoteTeamMentionV1Schema,
   type ProjectNoteCommandV1,
   type ProjectNoteCommandResult,
   type ProjectNoteItemV1,
   type ProjectNoteMentionV1,
   type ProjectNotePageV1,
+  type ProjectNoteTeamMentionV1,
 } from "@/lib/integrations/notes/note-contract";
 import { markdownToPlainText } from "@/lib/integrations/notes/note-markdown";
 import {
   extractNoteMentionRefs,
+  extractNoteTeamMentionRefs,
+  NOTE_MENTION_MAX_COUNT,
   NoteMentionLimitError,
+  type NoteTeamMentionRef,
 } from "@/lib/integrations/notes/note-mentions";
 import { NoteConflictError, NoteNotFoundError, NoteValidationError } from "./errors";
 
@@ -145,6 +150,16 @@ type MentionRow = {
   [key: string]: unknown;
 };
 
+// F1-26: Team-Mention-Zeile für die Chip-Auflösung (Name + Archiv-Status).
+type TeamMentionRow = {
+  note_id: string;
+  team_id: string;
+  slug: string;
+  name: string;
+  active: boolean;
+  [key: string]: unknown;
+};
+
 // F1-09: ersetzt die Mention-Menge einer Notiz atomar im Schreib-Tx.
 // Phantom-Refs (keine Membership) bleiben Rohtext und speichern nichts.
 async function replaceNoteMentions(
@@ -161,6 +176,17 @@ async function replaceNoteMentions(
   } catch (error) {
     if (error instanceof NoteMentionLimitError) throw new NoteValidationError();
     throw error;
+  }
+  // F1-26: Team-Refs zählen wie User-Refs gegen den 20er-Cap (kombiniert).
+  let teamRefs: NoteTeamMentionRef[];
+  try {
+    teamRefs = extractNoteTeamMentionRefs(textMarkdown);
+  } catch (error) {
+    if (error instanceof NoteMentionLimitError) throw new NoteValidationError();
+    throw error;
+  }
+  if (refs.length + teamRefs.length > NOTE_MENTION_MAX_COUNT) {
+    throw new NoteValidationError();
   }
   const resolved =
     refs.length === 0
@@ -202,6 +228,7 @@ async function replaceNoteMentions(
       }),
     );
   }
+  await replaceNoteTeamMentions(tx, ctx, projectId, noteId, revision, teamRefs);
   if (mentions.length > 0) {
     await emitEvent(tx, {
       workspaceId: ctx.workspaceId,
@@ -218,6 +245,53 @@ async function replaceNoteMentions(
     });
   }
   return mentions;
+}
+
+// F1-26: ersetzt die Team-Mention-Menge einer Notiz atomar im Schreib-Tx
+// (F1-09-Muster). Auflösung nur gegen AKTIVE Teams des eigenen Workspace
+// (F1-20-Target-Guard-Stil); archivierte/fremde/unbekannte Slugs bleiben
+// Rohtext und speichern nichts (kein Throw, kein Orakel). Kein Event:
+// Team-Mentions lösen kein neues Event aus, der `note_mentioned`-Feed
+// bleibt User-bezogen (kein Fan-Out).
+async function replaceNoteTeamMentions(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  projectId: string,
+  noteId: string,
+  revision: number,
+  teamRefs: readonly NoteTeamMentionRef[],
+): Promise<void> {
+  const resolved =
+    teamRefs.length === 0
+      ? []
+      : (
+          await tx.execute<{ team_id: string; slug: string }>(sql`
+            select team_record.id as team_id,
+                   team_record.name_normalized as slug
+              from team team_record
+             where team_record.workspace_id = ${ctx.workspaceId}::uuid
+               and team_record.active = true
+               and team_record.name_normalized in (${sql.join(teamRefs.map((ref) => sql`${ref.slug}`), sql`, `)})
+          `)
+        ).rows;
+  const bySlug = new Map(resolved.map((row) => [row.slug, row.team_id]));
+  await tx.execute(sql`
+    delete from project_note_team_mention
+     where workspace_id = ${ctx.workspaceId}::uuid
+       and note_id = ${noteId}::uuid
+  `);
+  for (const ref of teamRefs) {
+    const teamId = bySlug.get(ref.slug);
+    if (!teamId) continue;
+    await tx.execute(sql`
+      insert into project_note_team_mention (
+        workspace_id, project_id, note_id, team_id, revision
+      ) values (
+        ${ctx.workspaceId}::uuid, ${projectId}::uuid, ${noteId}::uuid,
+        ${teamId}::uuid, ${revision}
+      )
+    `);
+  }
 }
 
 async function emitNoteEvidence(
@@ -494,6 +568,40 @@ export async function listProjectNotes(
     mentionsByNote.set(row.note_id, list);
   }
 
+  // F1-26: Team-Chips (Name + Archiv-Status lesbar). Archivierte Teams
+  // bleiben lesbar — kein Aktiv-Filter (F1-20-Lesepfad-Muster).
+  const teamMentionRows =
+    noteIds.length === 0
+      ? []
+      : (
+          await tx.execute<TeamMentionRow>(sql`
+            select team_mention_record.note_id,
+                   team_mention_record.team_id,
+                   team_record.name_normalized as slug,
+                   team_record.name,
+                   team_record.active
+              from project_note_team_mention team_mention_record
+              join team team_record
+                on team_record.workspace_id = team_mention_record.workspace_id
+               and team_record.id = team_mention_record.team_id
+             where team_mention_record.workspace_id = ${ctx.workspaceId}::uuid
+               and team_mention_record.note_id in (${sql.join(noteIds.map((noteId) => sql`${noteId}::uuid`), sql`, `)})
+             order by lower(team_record.name) asc, team_mention_record.team_id asc
+          `)
+        ).rows;
+  const teamMentionsByNote = new Map<string, ProjectNoteTeamMentionV1[]>();
+  for (const row of teamMentionRows) {
+    const parsed = projectNoteTeamMentionV1Schema.parse({
+      teamId: row.team_id,
+      slug: row.slug,
+      name: row.name,
+      active: row.active,
+    });
+    const list = teamMentionsByNote.get(row.note_id) ?? [];
+    list.push(parsed);
+    teamMentionsByNote.set(row.note_id, list);
+  }
+
   const items: ProjectNoteItemV1[] = result.rows.map((row) => ({
     id: row.id,
     revision: row.revision,
@@ -507,6 +615,7 @@ export async function listProjectNotes(
     pinnedAt: row.pinned_at_iso,
     pinnedByLabel: row.pinned_by_label,
     mentions: mentionsByNote.get(row.id) ?? [],
+    teamMentions: teamMentionsByNote.get(row.id) ?? [],
   }));
 
   return projectNotePageV1Schema.parse({
@@ -539,6 +648,9 @@ const MENTIONED_NOTE_EXCERPT_MAX_LENGTH = 120;
 // Titel/Existenz); je Projekt gilt die lockReadableProject-Regel
 // (_m113_actor_can_read_notes, identisch zu listProjectNotes) — Mention
 // ohne Projekt-Sicht entfällt lautlos. Keine Benachrichtigung (F1-09).
+// F1-26: UNION mit Team-Notizen (erwähntes Team aktiv + eigene Membership
+// darin) — dynamische Auflösung, kein Fan-Out. Dedupe je Notiz (UNION:
+// direkt gewinnt, gleiche Zeilenform), Sichtbarkeits-Regel unverändert.
 export async function listMentionedNotes(
   tx: TenantTx,
   ctx: ServiceCtx,
@@ -557,31 +669,70 @@ export async function listMentionedNotes(
     created_at_iso: string;
     [key: string]: unknown;
   }>(sql`
-    select project_record.id as project_id,
-           project_record.name as project_name,
-           note_record.id as note_id,
-           note_record.text_markdown,
-           to_char(
-             note_record.created_at at time zone 'UTC', ${TIMESTAMP_ISO}
-           ) as created_at_iso
-      from project_note_mention mention_record
-      join project_note note_record
-        on note_record.workspace_id = mention_record.workspace_id
-       and note_record.id = mention_record.note_id
-       and note_record.deleted_at is null
-      join project project_record
-        on project_record.workspace_id = mention_record.workspace_id
-       and project_record.id = mention_record.project_id
-     where mention_record.workspace_id = ${ctx.workspaceId}::uuid
-       and mention_record.mentioned_identity_id = ${ctx.actor}::uuid
-       and public._m113_actor_can_read_notes(project_record.workspace_id)
-     group by project_record.id,
-              project_record.name,
-              note_record.id,
-              note_record.text_markdown,
-              note_record.created_at
-     order by note_record.created_at desc,
-              note_record.id asc
+    select combined_record.project_id,
+           combined_record.project_name,
+           combined_record.note_id,
+           combined_record.text_markdown,
+           combined_record.created_at_iso
+      from (
+        select project_record.id as project_id,
+               project_record.name as project_name,
+               note_record.id as note_id,
+               note_record.text_markdown,
+               to_char(
+                 note_record.created_at at time zone 'UTC', ${TIMESTAMP_ISO}
+               ) as created_at_iso,
+               note_record.created_at as created_at
+          from project_note_mention mention_record
+          join project_note note_record
+            on note_record.workspace_id = mention_record.workspace_id
+           and note_record.id = mention_record.note_id
+           and note_record.deleted_at is null
+          join project project_record
+            on project_record.workspace_id = mention_record.workspace_id
+           and project_record.id = mention_record.project_id
+         where mention_record.workspace_id = ${ctx.workspaceId}::uuid
+           and mention_record.mentioned_identity_id = ${ctx.actor}::uuid
+           and public._m113_actor_can_read_notes(project_record.workspace_id)
+        union
+        select project_record.id as project_id,
+               project_record.name as project_name,
+               note_record.id as note_id,
+               note_record.text_markdown,
+               to_char(
+                 note_record.created_at at time zone 'UTC', ${TIMESTAMP_ISO}
+               ) as created_at_iso,
+               note_record.created_at as created_at
+          from project_note_team_mention team_mention_record
+          join team team_record
+            on team_record.workspace_id = team_mention_record.workspace_id
+           and team_record.id = team_mention_record.team_id
+           and team_record.active = true
+          join team_member team_member_record
+            on team_member_record.workspace_id = team_mention_record.workspace_id
+           and team_member_record.team_id = team_mention_record.team_id
+          join membership membership_record
+            on membership_record.workspace_id = team_mention_record.workspace_id
+           and membership_record.id = team_member_record.membership_id
+           and membership_record.user_id = ${ctx.actor}::uuid
+          join project_note note_record
+            on note_record.workspace_id = team_mention_record.workspace_id
+           and note_record.id = team_mention_record.note_id
+           and note_record.deleted_at is null
+          join project project_record
+            on project_record.workspace_id = team_mention_record.workspace_id
+           and project_record.id = team_mention_record.project_id
+         where team_mention_record.workspace_id = ${ctx.workspaceId}::uuid
+           and public._m113_actor_can_read_notes(project_record.workspace_id)
+      ) combined_record
+     group by combined_record.project_id,
+              combined_record.project_name,
+              combined_record.note_id,
+              combined_record.text_markdown,
+              combined_record.created_at_iso,
+              combined_record.created_at
+     order by combined_record.created_at desc,
+              combined_record.note_id asc
      limit ${limit}
   `);
   return {

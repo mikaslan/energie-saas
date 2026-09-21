@@ -180,11 +180,14 @@ export function AppointmentCalendarSection({
   projectId,
   range,
   templates,
+  canAdoptNote,
 }: {
   workspaceId: string;
   projectId: string;
   range: ProjectAppointmentRangeV1;
   templates: AppointmentTemplateDto[];
+  // F1-27: note.write des Actors für „Als Notiz übernehmen" (fail-closed).
+  canAdoptNote?: boolean;
 }) {
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
   const hydrated = useSyncExternalStore(
@@ -310,6 +313,7 @@ export function AppointmentCalendarSection({
           calendars={range.calendars}
           members={range.members}
           teams={range.teams}
+          canAdoptNote={canAdoptNote ?? false}
           returnFocusRef={createButtonRef}
           onClose={closeDialog}
         />

@@ -120,9 +120,10 @@ const SNAPSHOT_V3_MIGRATION_SHA256 =
 //   danach 0360 Snapshot-Baseline (Leitstand, No-Op, Sortier-Letzte),
 //   danach F7-11 Termin-Mehr-Team (0320, Junction + CAS-Spalte + Guard-Carve-out),
 //   danach F2-07c Freigabe-Lesekapseln (0330, Lane 7),
-//   danach F6-01/02a nachjournaliert (0300/0301, Files aus 5I-Lane, nie im Journal gewesen).
-// => 177 Migrationen (idx 0..176, HEAD 0301 F6-02a Editor-Overlays).
-const TOTAL_MIGRATION_COUNT = 177;
+//   danach F6-01/02a nachjournaliert (0300/0301, Files aus 5I-Lane, nie im Journal gewesen),
+//   danach F1-26 Notiz-Team-Mentions (0321, Seitentabelle).
+// => 178 Migrationen (idx 0..177, HEAD 0321 F1-26 Notiz-Team-Mentions).
+const TOTAL_MIGRATION_COUNT = 178;
 const PRE_M111A_HISTORY_SHA256 =
   "c8e46bb9d71fe5f24b8e6075f45feb41b755b40b023dce0d4c8a08accab2af7e";
 
@@ -438,8 +439,8 @@ describe.sequential("M1-11a Project-Outcome Migration-Upgrade", () => {
         when: SNAPSHOT_V3_MIGRATION_TIMESTAMP,
       });
       expect(journal.entries.at(-1)).toMatchObject({
-        idx: 176,
-        tag: "0301_f6_02a_schematic_overlays",
+        idx: 177,
+        tag: "0321_f1_26_note_team_mention",
       });
       expect(SNAPSHOT_V3_MIGRATION_TIMESTAMP).toBe(
         journal.entries[PRE_SNAPSHOT_V3_MIGRATION_INDEX]!.when + 1,

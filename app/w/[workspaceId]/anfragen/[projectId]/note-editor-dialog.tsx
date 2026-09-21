@@ -212,6 +212,7 @@ export function NoteEditorDialog({
   workspaceId,
   projectId,
   note,
+  initialText,
   returnFocusRef,
   onSuccess,
   onClose,
@@ -219,6 +220,9 @@ export function NoteEditorDialog({
   workspaceId: string;
   projectId: string;
   note: ProjectNoteItemV1 | null;
+  // F1-27: Prefill für die Neuanlage („Als Notiz übernehmen"). Gilt nur, wenn
+  // note === null ist; Bearbeiten nutzt weiterhin den gespeicherten Text.
+  initialText?: string;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   onSuccess: (message: string) => void;
   onClose: () => void;
@@ -235,7 +239,7 @@ export function NoteEditorDialog({
   );
   const [state, formAction, pending] = useActionState(boundAction, INITIAL_STATE);
   const [, startFormTransition] = useTransition();
-  const [markdown, setMarkdown] = useState(() => note?.textMarkdown ?? "");
+  const [markdown, setMarkdown] = useState(() => note?.textMarkdown ?? initialText ?? "");
   const [markdownValid, setMarkdownValid] = useState(true);
   const [pinned, setPinned] = useState(() => note?.pinned ?? false);
   // F11-03a: Idempotenz-Schlüssel je Dialog-Öffnung (Anlage). Offline
@@ -403,7 +407,7 @@ export function NoteEditorDialog({
           <div className="grid min-w-0 gap-1.5">
             <span className="text-sm font-semibold text-slate-900">Notiztext</span>
             <NoteRichTextEditor
-              initialMarkdown={note?.textMarkdown ?? ""}
+              initialMarkdown={note?.textMarkdown ?? initialText ?? ""}
               onMarkdownChange={onMarkdownChange}
               editorDocumentRef={editorDocumentRef}
               describedById={bodyFeedbackId}

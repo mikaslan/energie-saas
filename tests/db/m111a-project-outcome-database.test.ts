@@ -267,10 +267,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0360 Snapshot-Baseline (Leitstand, No-Op, sortiert letzte),
     // 0320 F7-11 Termin-Mehr-Team (Junction + CAS-Spalte + Guard-Carve-out),
     // 0330 F2-07c Freigabe-Lesekapseln (3 DEFINER-Funktionen, Lane 7),
-    // 0300 F6-01 Diagramme + 0301 F6-02a Overlays (nachjournaliert)).
+    // 0300 F6-01 Diagramme + 0301 F6-02a Overlays (nachjournaliert),
+    // 0321 F1-26 Notiz-Team-Mentions (Seitentabelle)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 176,
-      tag: "0301_f6_02a_schematic_overlays",
+      idx: 177,
+      tag: "0321_f1_26_note_team_mention",
     });
   });
 
