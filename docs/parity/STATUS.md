@@ -3,6 +3,21 @@
 Stand: 2026-09-06 · kanonische Abnahmequelle:
 `docs/blaupause/01-modulkatalog.md` (F1–F16)
 
+## 2026-09-21 — Vierer-Welle integriert (6D, 5I, 9C, 7-Nachlauf; Leitstand, Jev-geprueft)
+
+- `codex/muse-fleet-6d-f1rest2` (`d100eed`: F1-16..23 Verifizierungs-Docs) — Merge.
+- `codex/muse-fleet-5f-f6` (`e007d2b`: F6-02b Ensure-Wiring, migrationslos;
+  Journal/Pins wave-02-seitig) — Merge.
+- `codex/muse-fleet-9c-flake-verify` (`ee2ecfe`: m1-05-Retry, test-only) — Merge.
+- Nachlauf-Reparatur: 0300/0301 (F6-Tabellen) standen nie im Journal (Dateien aus
+  5I-Lane ohne Eintrag) → nachjournaliert (idx 175/176, TOTAL 177), 0300-prevId
+  entforkt, 0360-Snapshot vervollstaendigt (126 Tabellen).
+- Belege: Jev UNSICHER/NOGO/UNSICHER → Leitstand-Entscheide dokumentiert;
+  Integrations-Gates `npm run check` EXIT 0 (513 Dateien, 3691 Tests; Erstlauf
+  37 F6-Fails = fehlende Tabellen durch Journal-Luecke, kein Produktfehler).
+- Prozentquote unveraendert ESTIMATE bis zur Neuzahlung nach der
+  Integrationswelle.
+
 ## 2026-09-20 — Dreier-Welle integriert (Harness-9b, F11, F2-Rest; Leitstand, Jev-geprueft)
 
 - `codex/muse-fleet-9b-f206` (`b600f08`: f2-06-Retry, test-only) — Merge `8274370`.
