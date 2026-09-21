@@ -75,7 +75,9 @@ F11-Matrix („Install-Hinweis, SW-Update-UI ABSENT").
 - DB: keine.
 - Chromium-E2E `F11-07a-E2E-01` (Install, `/login` ohne Workspace,
   Muster F11-02): Hinweis initial versteckt → synthetisches
-  `beforeinstallprompt` (prompt-Stub + `userChoice accepted`) →
+  `beforeinstallprompt` (prompt-Stub + `userChoice accepted`, mit
+  Re-Dispatch bis sichtbar — Hydrations-Race: Dispatch vor Effekt-Anhang
+  geht verloren, CI-okkasionell; dauerhaftes Fehlen bleibt rot) →
   sichtbar → „Installieren" → Stub aufgerufen → versteckt. Zweitlauf:
   „Nicht jetzt" → versteckt → Reload → Event → BLEIBT versteckt
   (Persistenz). Dritt-Zustand per `addInitScript`-matchMedia-Stub

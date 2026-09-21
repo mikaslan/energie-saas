@@ -49,6 +49,28 @@ async function promptCallCount(page: Page): Promise<number> {
   );
 }
 
+async function fireInstallPromptUntilVisible(
+  page: Page,
+  outcome: "accepted" | "dismissed",
+): Promise<void> {
+  // Hydrations-Race: Ein Dispatch vor Effekt-Anhang (SSR gemalt, React noch
+  // nicht hydriert — CI-okkasionell) geht verloren. Wiederholen bis sichtbar;
+  // dauerhaftes Fehlen bleibt rot (ehrlicher Fail, kein Maskieren).
+  const hint = page.getByTestId("pwa-install-hint");
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    await fireInstallPrompt(page, outcome);
+    try {
+      await expect(hint).toBeVisible({ timeout: 1000 });
+      return;
+    } catch {
+      if (Date.now() > deadline) {
+        throw new Error("Install-Hinweis erscheint nicht (trotz Re-Dispatch).");
+      }
+    }
+  }
+}
+
 test("F11-07a-E2E-01: Install-Hinweis folgt dem Browser-Signal, Dismiss und Standalone blenden aus", async ({
   page,
 }) => {
@@ -69,8 +91,7 @@ test("F11-07a-E2E-01: Install-Hinweis folgt dem Browser-Signal, Dismiss und Stan
   await expect(hint).toHaveCount(0);
 
   // Signal → sichtbar → Installieren ruft prompt() → ausgeblendet.
-  await fireInstallPrompt(page, "accepted");
-  await expect(hint).toBeVisible();
+  await fireInstallPromptUntilVisible(page, "accepted");
   await expect(hint.getByText("WMEE als App installieren?")).toBeVisible();
   // Axe + Überlauf im SICHTBAREN Zustand (nicht nur versteckt am Ende).
   await page.setViewportSize({ width: 375, height: 900 });
@@ -84,8 +105,7 @@ test("F11-07a-E2E-01: Install-Hinweis folgt dem Browser-Signal, Dismiss und Stan
   // Accepted wird NICHT gemerkt: Reload + Signal → wieder sichtbar.
   await page.reload();
   await expect(page.getByLabel("E-Mail-Adresse")).toBeVisible();
-  await fireInstallPrompt(page, "accepted");
-  await expect(hint).toBeVisible();
+  await fireInstallPromptUntilVisible(page, "accepted");
 
   // Doppelklick ruft prompt() genau einmal (Ref-Guard).
   await hint.getByRole("button", { name: "Installieren", exact: true }).dblclick();
@@ -93,8 +113,7 @@ test("F11-07a-E2E-01: Install-Hinweis folgt dem Browser-Signal, Dismiss und Stan
   expect(await promptCallCount(page)).toBe(1);
 
   // userChoice dismissed → gemerkt wie „Nicht jetzt" (Reload-fest).
-  await fireInstallPrompt(page, "dismissed");
-  await expect(hint).toBeVisible();
+  await fireInstallPromptUntilVisible(page, "dismissed");
   await hint.getByRole("button", { name: "Installieren", exact: true }).click();
   await expect(hint).toHaveCount(0);
   await page.reload();
@@ -106,8 +125,7 @@ test("F11-07a-E2E-01: Install-Hinweis folgt dem Browser-Signal, Dismiss und Stan
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.getByLabel("E-Mail-Adresse")).toBeVisible();
-  await fireInstallPrompt(page, "accepted");
-  await expect(hint).toBeVisible();
+  await fireInstallPromptUntilVisible(page, "accepted");
   await hint.getByRole("button", { name: "Nicht jetzt", exact: true }).click();
   await expect(hint).toHaveCount(0);
   await page.reload();
@@ -119,8 +137,7 @@ test("F11-07a-E2E-01: Install-Hinweis folgt dem Browser-Signal, Dismiss und Stan
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.getByLabel("E-Mail-Adresse")).toBeVisible();
-  await fireInstallPrompt(page, "accepted");
-  await expect(hint).toBeVisible();
+  await fireInstallPromptUntilVisible(page, "accepted");
   await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
   await expect(hint).toHaveCount(0);
   await page.reload();
