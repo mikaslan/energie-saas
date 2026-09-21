@@ -613,7 +613,14 @@ async function pointerDragToColumn(page: Page, card: Locator, targetColumn: Loca
   await page.mouse.up();
 }
 
-test.describe.configure({ mode: "serial" });
+// Agent 9c Flake-Einhegung: EIN Retry file-scoped (serial bleibt).
+// Signatur M1-07 (3-fach belegt, A2-F11-Lane): Axe-`.analyze()` via
+// page.evaluate sprengt intermittierend den 60-s-Test-Timeout unter
+// CI-Last (Run 35514932117 fail -> Re-Run pass -> Run 35520301868 fail
+// -> Re-Run 268 passed; je Re-Run gruen, kein Lane-Bezug). Assertions/
+// Budgets unveraendert (kein Relax); Flakes bleiben als "flaky" sichtbar.
+// Muster-Praezedenz: m2-03a retries:1 (Agent 9, Befund 3).
+test.describe.configure({ mode: "serial", retries: 1 });
 
 test("Editor: regionaler Rechner-Lead wird hausgenau korrigiert und getrennt bestätigt", async ({ page }) => {
   const data = state();
