@@ -32,6 +32,12 @@ import {
 import { deriveCertifiedCapacities } from "@/lib/integrations/offers/certified-capacities";
 import { planningModeSchema } from "@/lib/integrations/planning/contract";
 
+import { ensureSchematicDiagram, readSchematicOverlay, readSchematicScope } from "@/modules/schematic";
+import { buildSingleLineSchematic } from "@/lib/integrations/schematic/single-line-v1";
+import {
+  projectSchematicSections,
+  resolvePageEnsureMode,
+} from "@/lib/integrations/schematic/ensure-wire-v1";
 import { listDiscountTemplates } from "@/modules/discounts";
 import { listPlanningTemplates } from "@/modules/planning";
 import { listPackageTemplates } from "@/modules/offers";
@@ -39,6 +45,7 @@ import { listSubsidyTemplates } from "@/modules/subsidies";
 import {
   OfferDetailView,
   type OfferDetailSurfaceView,
+  type SchematicOverlayView,
 } from "./offer-detail-view";
 import { OfferSignaturePanel } from "./offer-signature-panel";
 import { OfferApprovalLedgerPanel } from "./offer-approval-ledger-panel";
@@ -334,6 +341,10 @@ function projectOfferDetailView(
     validityWindow: ReleaseValidityWindow | null;
     showPanel: boolean;
   },
+  // F6-01: Schaltplan-Scope, fail-closed commercial ohne Wert.
+  schematicScope: "residential" | "commercial" = "commercial",
+  // F6-02a: Editor-Overlay, null ohne Wert (Backbone-Render ohne Merge).
+  schematicOverlay: SchematicOverlayView = null,
 ): OfferDetailSurfaceView {
   const activeVariantSchema = z.object({
     schemaVersion: z.literal("offer-variant-view.v1"),
@@ -453,6 +464,8 @@ function projectOfferDetailView(
       totalPriceOverrideNetCents: view.offer.totalPriceOverrideNetCents,
       overrideActive: view.overrideActive,
       displayTotalNetCents: view.displayTotalNetCents,
+      schematicScope,
+      schematicOverlay,
     },
     variants: view.variants.map((variant) => ({
       id: variant.id,
@@ -642,6 +655,8 @@ export default async function OfferDetailPage(
     // F16-14: Bulk-Update-Zeilen, null ohne canCreateBasis/outdated.
     bulkUpdate: OfferBulkUpdateViewModel | null;
     recoveryScope: string;
+    schematicScope: "residential" | "commercial";
+    schematicOverlay: SchematicOverlayView;
     editorCapabilities: {
       canEditPrice: boolean;
       canApplyDiscount: boolean;
@@ -828,6 +843,94 @@ export default async function OfferDetailPage(
             }
           }
         }
+        // F6-02a: Overlay nur fuer residential laden (commercial sieht
+        // nie Overlay-Daten). Best-effort (inline: Depcruise verbietet
+        // Tx-Typ-Imports in app/): fehlende Lane-Tabellen (42P01),
+        // Scope/Rechte oder unbekannte Variante → null (Backbone-Render).
+        const schematicScope = view === null
+          ? "commercial"
+          : await readSchematicScope(tx, ctx, { offerId });
+        // F6-02b Page-Ensure (Leitstand-Q1 PAGE-LOADER): Drift-Rewrite VOR
+        // dem Overlay-Read, damit Stale gegen die frische Revision rechnet.
+        // Best-effort wie der Overlay-Read: jede Stoerung (Scope, Recht,
+        // Konflikt, Form) degradiert zu „kein Rewrite, weiter rendern".
+        // Ohne expectedRevision (System-Sync, kein User-Edit — SPEC §5).
+        if (view !== null && schematicScope === "residential") {
+          const activeSnapshot = (
+            view.activeVariant as {
+              snapshot?: {
+                variantId?: unknown;
+                revision?: unknown;
+                sections?: unknown;
+              };
+            } | null
+          )?.snapshot;
+          const ensureKey = z
+            .object({ variantId: z.uuid(), revision: z.number().int().min(1) })
+            .safeParse({
+              variantId: activeSnapshot?.variantId,
+              revision: activeSnapshot?.revision,
+            });
+          if (ensureKey.success && Array.isArray(activeSnapshot?.sections)) {
+            try {
+              const probe = buildSingleLineSchematic(
+                projectSchematicSections(
+                  activeSnapshot.sections as Parameters<typeof projectSchematicSections>[0],
+                ),
+              );
+              const mode = resolvePageEnsureMode({
+                scope: "residential",
+                canWrite: !isExternalOnly(ctx) && can(ctx, "project.write"),
+                nodeCount: probe.nodes.length,
+                unwiredCount: probe.unwired.length,
+              });
+              if (mode === "ensure") {
+                await ensureSchematicDiagram(tx, ctx, {
+                  offerId,
+                  variantId: ensureKey.data.variantId,
+                  variantRevision: ensureKey.data.revision,
+                  sections: projectSchematicSections(
+                    activeSnapshot.sections as Parameters<typeof projectSchematicSections>[0],
+                  ),
+                });
+              }
+            } catch {
+              // Skip + Render (SPEC §6).
+            }
+          }
+        }
+        let schematicOverlay: SchematicOverlayView = null;
+        if (view !== null && schematicScope === "residential") {
+          const overlayRevision = z.number().int().min(1).safeParse(
+            (view.activeVariant as { snapshot?: { revision?: unknown } } | null)
+              ?.snapshot?.revision,
+          );
+          if (overlayRevision.success) {
+            try {
+              const overlay = await readSchematicOverlay(tx, ctx, {
+                offerId,
+                variantRevision: overlayRevision.data,
+              });
+              if (overlay !== null) {
+                const diagram = await tx.execute<{ revision: number; [key: string]: unknown }>(sql`
+                  select revision from schematic_diagrams
+                   where workspace_id = ${ctx.workspaceId}::uuid
+                     and offer_id = ${offerId}::uuid
+                     and variant_revision = ${overlayRevision.data}
+                   limit 1
+                `);
+                const diagramRevision = diagram.rows[0]?.revision ?? null;
+                schematicOverlay = {
+                  elements: overlay.elements,
+                  parentRevision: overlay.parentRevision,
+                  stale: diagramRevision === null || overlay.parentRevision !== diagramRevision,
+                };
+              }
+            } catch {
+              schematicOverlay = null;
+            }
+          }
+        }
         return {
           view,
           pdfDrafts: view === null ? [] : await listOfferPdfDrafts(tx, ctx, {
@@ -838,6 +941,8 @@ export default async function OfferDetailPage(
             ? null
             : await getOfferBulkUpdate(tx, ctx, { offerId }),
           recoveryScope: offerRecoveryScope(workspaceId, ctx.actor),
+          schematicScope,
+          schematicOverlay,
           releaseProfile,
           releaseRecipient,
           releaseCandidates,
@@ -907,6 +1012,8 @@ export default async function OfferDetailPage(
       validityWindow: result.releaseValidityWindow,
       showPanel: result.showReleasePanel,
     },
+    result.schematicScope,
+    result.schematicOverlay,
   );
   // F2-06 Slice A: sichtbare optionale Zeilen der aktiven Variante als
   // Upsell-Checkboxen (reine Projektion versiegelter Beträge).

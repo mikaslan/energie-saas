@@ -734,6 +734,20 @@ const INBOUND_REST_RECEIPT_RELATIONS = [
   "inbound_rest_receipt",
 ] as const;
 
+// F6-01 (0300): Schaltplan-Diagramme — lesbare Angebots-Snapshots
+// (SELECT/INSERT/UPDATE, kein DELETE: Neuauslegung ist UPDATE mit
+// Revisions-Bump, Muster 0099).
+const SCHEMATIC_DIAGRAM_RELATIONS = [
+  "schematic_diagrams",
+] as const;
+
+// F6-02a (0301): Editor-Overlays — gleiche ACL-Form wie Diagramme
+// (SELECT/INSERT/UPDATE, kein DELETE: Neuauslegung ist UPDATE mit
+// Revisions-Bump, Muster 0099).
+const SCHEMATIC_OVERLAY_RELATIONS = [
+  "schematic_overlays",
+] as const;
+
 const PORTAL_RELATIONS = [
   "portal_invite",
   "portal_view_log",
@@ -3471,6 +3485,39 @@ export async function applyRoleContract(client: PoolClient): Promise<void> {
     `);
   }
 
+  // F6-01 (0300): Schaltplan-Diagramme — SELECT/INSERT/UPDATE, kein
+  // DELETE (Neuauslegung ist UPDATE, Muster 0099).
+  const hasSchematicDiagramsForAcl = await hasAtomicPublicRelationSet(
+    client,
+    SCHEMATIC_DIAGRAM_RELATIONS,
+    "Rollen-ACL-Manifest: F6-01-Schaltplan-Diagramme",
+  );
+  if (hasSchematicDiagramsForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.schematic_diagrams
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.schematic_diagrams to app_runtime
+    `);
+  }
+
+  // F6-02a (0301): Editor-Overlays — gleiche ACL-Form wie Diagramme.
+  const hasSchematicOverlaysForAcl = await hasAtomicPublicRelationSet(
+    client,
+    SCHEMATIC_OVERLAY_RELATIONS,
+    "Rollen-ACL-Manifest: F6-02a-Editor-Overlays",
+  );
+  if (hasSchematicOverlaysForAcl) {
+    await client.query(`
+      revoke all privileges on
+        public.schematic_overlays
+        from public, app_migrator, app_runtime, app_system, app_auth,
+          app_worker, app_erasure, app_membership_writer, identity_reconciler;
+      grant select, insert, update on public.schematic_overlays to app_runtime
+    `);
+  }
+
   // F1-10 (0087): eigene ACL-Menge — Regeln werden ersetzt/geloescht,
   // daher zusaetzlich DELETE (Muster commercial_document_link).
   const hasLeadRoutingForAcl = await hasAtomicPublicRelationSet(
@@ -5416,6 +5463,18 @@ export async function verifyRoleContract(
     "Rollenvertrag: F1-18-Rest-Intake-Receipt",
   );
 
+  const hasSchematicDiagrams = await hasAtomicPublicRelationSet(
+    client,
+    SCHEMATIC_DIAGRAM_RELATIONS,
+    "Rollenvertrag: F6-01-Schaltplan-Diagramme",
+  );
+
+  const hasSchematicOverlays = await hasAtomicPublicRelationSet(
+    client,
+    SCHEMATIC_OVERLAY_RELATIONS,
+    "Rollenvertrag: F6-02a-Editor-Overlays",
+  );
+
   const hasLeadRouting = await hasAtomicPublicRelationSet(
     client,
     LEAD_ROUTING_RELATIONS,
@@ -5720,6 +5779,12 @@ export async function verifyRoleContract(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasInboundRestReceipt ? INBOUND_REST_RECEIPT_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasSchematicDiagrams ? SCHEMATIC_DIAGRAM_RELATIONS.map(
+        (relation) => `r:${relation}`,
+      ) : []),
+      ...(hasSchematicOverlays ? SCHEMATIC_OVERLAY_RELATIONS.map(
         (relation) => `r:${relation}`,
       ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
@@ -7206,6 +7271,12 @@ export async function verifyRoleContract(
       ...(hasInboundRestReceipt ? INBOUND_REST_RECEIPT_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
+      ...(hasSchematicDiagrams ? SCHEMATIC_DIAGRAM_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
+      ...(hasSchematicOverlays ? SCHEMATIC_OVERLAY_RELATIONS.map(
+        (relation) => `${relation}:true:true`,
+      ) : []),
       ...(hasPortal ? PORTAL_RELATIONS.map(
         (relation) => `${relation}:true:true`,
       ) : []),
@@ -7655,6 +7726,18 @@ export async function verifyRoleContract(
         ...(hasInboundRestReceipt ? [
           "inbound_rest_receipt:tenant_isolation:" +
             "3ff690b18cc3110fbf71b1bacab7e58ed71ead21f323d11b34c755f38b8d427e",
+        ] : []),
+        // F6-01 (0300): Hash analytisch aus dem dokumentierten
+        // Policy-Rendering abgeleitet (7-fach-Orakel: alle sieben
+        // textidentischen tenant_isolation-Pins reproduziert).
+        ...(hasSchematicDiagrams ? [
+          "schematic_diagrams:tenant_isolation:" +
+            "edf301255270512a6e9cc6fc8350687d27ad4be585ed70275c6e1ec12050ecd9",
+        ] : []),
+        // F6-02a (0301): Hash per Probe geerntet (Verify-Ist, 0300-analog).
+        ...(hasSchematicOverlays ? [
+          "schematic_overlays:tenant_isolation:" +
+            "4e810b1c41e1a61d056d3b79038f6ccae5f69fb4ba7af4a8fedeff01d098fe55",
         ] : []),
         ...(hasCalendars ? [
           "calendar:tenant_isolation:57296ca13f33ffe335cd1cde9f96a0024470521481da054313e6843d9ca6ce25",
@@ -8440,6 +8523,19 @@ export async function verifyRoleContract(
       ...(hasInboundRestReceipt ? INBOUND_REST_RECEIPT_RELATIONS.flatMap((relation) => [
         `app_runtime:${relation}:INSERT:app_owner:false`,
         `app_runtime:${relation}:SELECT:app_owner:false`,
+      ]) : []),
+      // F6-01 (0300): Diagramme sind lesbar/anlegbar/updatbar, nie
+      // loeschbar (Neuauslegung ist UPDATE, Muster 0099).
+      ...(hasSchematicDiagrams ? SCHEMATIC_DIAGRAM_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
+      ]) : []),
+      // F6-02a (0301): gleiche Grant-Form wie Diagramme (SIU, nie DELETE).
+      ...(hasSchematicOverlays ? SCHEMATIC_OVERLAY_RELATIONS.flatMap((relation) => [
+        `app_runtime:${relation}:INSERT:app_owner:false`,
+        `app_runtime:${relation}:SELECT:app_owner:false`,
+        `app_runtime:${relation}:UPDATE:app_owner:false`,
       ]) : []),
       ...(hasPortal ? [
         "app_runtime:portal_invite:INSERT:app_owner:false",
