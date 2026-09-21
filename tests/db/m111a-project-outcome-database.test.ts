@@ -266,10 +266,11 @@ describe.sequential("M1-11a Project-Outcome DB-Vertrag", () => {
     // 0200 F8-24a Sweep-Arbeitsvorrat (Tabelle + Spiegel-Trigger),
     // 0360 Snapshot-Baseline (Leitstand, No-Op, sortiert letzte),
     // 0320 F7-11 Termin-Mehr-Team (Junction + CAS-Spalte + Guard-Carve-out),
-    // 0330 F2-07c Freigabe-Lesekapseln (3 DEFINER-Funktionen, Lane 7)).
+    // 0330 F2-07c Freigabe-Lesekapseln (3 DEFINER-Funktionen, Lane 7),
+    // 0300 F6-01 Diagramme + 0301 F6-02a Overlays (nachjournaliert)).
     expect(JSON.parse(journal).entries.at(-1)).toMatchObject({
-      idx: 174,
-      tag: "0330_f2_07c_offer_approval_capsules",
+      idx: 176,
+      tag: "0301_f6_02a_schematic_overlays",
     });
   });
 

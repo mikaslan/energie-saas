@@ -26367,6 +26367,310 @@
       },
       "isRLSEnabled": false
     },
+    "public.schematic_diagrams": {
+      "name": "schematic_diagrams",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "offer_id": {
+          "name": "offer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "variant_revision": {
+          "name": "variant_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "netlist": {
+          "name": "netlist",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_count": {
+          "name": "node_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "edge_count": {
+          "name": "edge_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "builder_version": {
+          "name": "builder_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'single-line-v1'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "schematic_diagrams_workspace_id_fk": {
+          "name": "schematic_diagrams_workspace_id_fk",
+          "tableFrom": "schematic_diagrams",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "schematic_diagrams_offer_fk": {
+          "name": "schematic_diagrams_offer_fk",
+          "tableFrom": "schematic_diagrams",
+          "tableTo": "offer",
+          "columnsFrom": [
+            "workspace_id",
+            "offer_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "schematic_diagrams_ws_id_uq": {
+          "name": "schematic_diagrams_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "schematic_diagrams_ws_offer_revision_uq": {
+          "name": "schematic_diagrams_ws_offer_revision_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "offer_id",
+            "variant_revision"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "schematic_diagrams_revision_ck": {
+          "name": "schematic_diagrams_revision_ck",
+          "value": "\"schematic_diagrams\".\"revision\" >= 1"
+        },
+        "schematic_diagrams_counts_ck": {
+          "name": "schematic_diagrams_counts_ck",
+          "value": "\"schematic_diagrams\".\"node_count\" >= 0 and \"schematic_diagrams\".\"edge_count\" >= 0"
+        },
+        "schematic_diagrams_netlist_ck": {
+          "name": "schematic_diagrams_netlist_ck",
+          "value": "pg_catalog.jsonb_typeof(\"schematic_diagrams\".\"netlist\") = 'object' and pg_catalog.jsonb_typeof(\"schematic_diagrams\".\"netlist\"->'nodes') = 'array' and pg_catalog.jsonb_typeof(\"schematic_diagrams\".\"netlist\"->'edges') = 'array'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.schematic_overlays": {
+      "name": "schematic_overlays",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "offer_id": {
+          "name": "offer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "variant_revision": {
+          "name": "variant_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_revision": {
+          "name": "parent_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "elements": {
+          "name": "elements",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "element_count": {
+          "name": "element_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "editor_version": {
+          "name": "editor_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'editor-overlay.v1'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "schematic_overlays_workspace_id_fk": {
+          "name": "schematic_overlays_workspace_id_fk",
+          "tableFrom": "schematic_overlays",
+          "tableTo": "workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "schematic_overlays_offer_fk": {
+          "name": "schematic_overlays_offer_fk",
+          "tableFrom": "schematic_overlays",
+          "tableTo": "offer",
+          "columnsFrom": [
+            "workspace_id",
+            "offer_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "schematic_overlays_ws_id_uq": {
+          "name": "schematic_overlays_ws_id_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "schematic_overlays_ws_offer_revision_uq": {
+          "name": "schematic_overlays_ws_offer_revision_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "offer_id",
+            "variant_revision"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "schematic_overlays_revision_ck": {
+          "name": "schematic_overlays_revision_ck",
+          "value": "\"schematic_overlays\".\"revision\" >= 1"
+        },
+        "schematic_overlays_parent_revision_ck": {
+          "name": "schematic_overlays_parent_revision_ck",
+          "value": "\"schematic_overlays\".\"parent_revision\" >= 1"
+        },
+        "schematic_overlays_counts_ck": {
+          "name": "schematic_overlays_counts_ck",
+          "value": "\"schematic_overlays\".\"element_count\" >= 0"
+        },
+        "schematic_overlays_elements_ck": {
+          "name": "schematic_overlays_elements_ck",
+          "value": "pg_catalog.jsonb_typeof(\"schematic_overlays\".\"elements\") = 'object' and (\"schematic_overlays\".\"elements\" ? 'elements') and pg_catalog.jsonb_typeof(\"schematic_overlays\".\"elements\"->'elements') = 'array'"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.auth_account": {
       "name": "auth_account",
       "schema": "",
