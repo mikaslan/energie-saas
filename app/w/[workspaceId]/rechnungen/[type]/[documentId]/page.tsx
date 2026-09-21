@@ -41,6 +41,7 @@ import { InvoicePaymentPanel } from "./invoice-payment-panel";
 import { InvoicePdfPanel } from "./invoice-pdf-panel";
 import { VersandPanel } from "./versand-panel";
 import { PartialInvoicePanel } from "./partial-invoice-panel";
+import { documentStatusBadge, statusBadgeClassName } from "./status-badge";
 
 const workspaceIdSchema = z.uuid().transform((value) => value.toLowerCase());
 const typeSchema = z.enum(commercialDocumentTypes);
@@ -269,9 +270,19 @@ export default async function InvoicingDocumentDetailPage(
       <p className="mt-4 text-sm font-semibold text-brand-800">
         {DOCUMENT_TYPE_SINGULAR_LABELS[type]} · {DOCUMENT_STATUS_LABELS[document.status] ?? document.status}
       </p>
-      <h1 className="mt-1 text-2xl font-semibold text-slate-950">
-        {document.number ?? document.name}
-      </h1>
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-semibold text-slate-950">
+          {document.number ?? document.name}
+        </h1>
+        {(() => {
+          const badge = documentStatusBadge(document.status, document.sentAt);
+          return (
+            <span data-testid="document-status-badge" className={statusBadgeClassName(badge.tone)}>
+              {badge.label}
+            </span>
+          );
+        })()}
+      </div>
       {document.number ? (
         <p className="mt-1 text-sm text-slate-600">{document.name}</p>
       ) : null}
