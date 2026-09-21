@@ -51,6 +51,10 @@ import {
   type SubsidyDashboardStats,
 } from "@/modules/subsidy-cases";
 import {
+  listMentionedNotes,
+  type MentionedNoteRowV1,
+} from "@/modules/notes";
+import {
   getFileRequestDashboardStats,
   type FileRequestDashboardStats,
 } from "@/modules/file-requests";
@@ -227,6 +231,29 @@ async function loadFollowUps(workspaceId: string): Promise<
       (tx, ctx) => listFollowUpDashboard(tx, ctx, {}),
     );
     return { kind: "loaded", entries };
+  } catch (error) {
+    if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
+    if (error instanceof PermissionDeniedError) return { kind: "denied" };
+    throw error;
+  }
+}
+
+// F1-25: eigene @-Erwähnungen, workspace-weit, neueste zuerst
+// (Default-Limit 5). Ohne note.read ehrlich leer (kein Fehler,
+// kein Leak) — Service filtert, Loader gatet nur project.read.
+async function loadMentions(workspaceId: string): Promise<
+  | { kind: "loaded"; notes: MentionedNoteRowV1[] }
+  | { kind: "unauthenticated" }
+  | { kind: "denied" }
+> {
+  try {
+    const page = await authorizedQuery(
+      workspaceId,
+      "project.read",
+      "my_mentions",
+      (tx, ctx) => listMentionedNotes(tx, ctx, {}),
+    );
+    return { kind: "loaded", notes: page.notes };
   } catch (error) {
     if (error instanceof NotAuthenticatedError) return { kind: "unauthenticated" };
     if (error instanceof PermissionDeniedError) return { kind: "denied" };
@@ -538,11 +565,12 @@ export default async function DashboardPage({
   if (!parsedWorkspaceId.success) notFound();
   const validWorkspaceId = parsedWorkspaceId.data;
 
-  const [pipeline, overdue, today, followUps, closures, trend, funnel, invoices, leadTime, offerLeadTime, appointments, service, subsidy, belege] = await Promise.all([
+  const [pipeline, overdue, today, followUps, mentions, closures, trend, funnel, invoices, leadTime, offerLeadTime, appointments, service, subsidy, belege] = await Promise.all([
     loadPipeline(validWorkspaceId),
     loadTasks(validWorkspaceId, "overdue"),
     loadTasks(validWorkspaceId, "today"),
     loadFollowUps(validWorkspaceId),
+    loadMentions(validWorkspaceId),
     loadClosures(validWorkspaceId),
     loadClosureTrend(validWorkspaceId),
     loadFunnel(validWorkspaceId),
@@ -559,6 +587,7 @@ export default async function DashboardPage({
     || overdue.kind === "unauthenticated"
     || today.kind === "unauthenticated"
     || followUps.kind === "unauthenticated"
+    || mentions.kind === "unauthenticated"
     || closures.kind === "unauthenticated"
     || trend.kind === "unauthenticated"
     || funnel.kind === "unauthenticated"
@@ -794,6 +823,35 @@ export default async function DashboardPage({
               >
                 Alle überfälligen
               </Link>
+            </section>
+          ) : null}
+
+          {mentions.kind === "loaded" ? (
+            <section
+              aria-label="Meine Erwähnungen"
+              data-dashboard-mentions="true"
+              className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-base font-semibold">Meine Erwähnungen</h2>
+              {mentions.notes.length === 0 ? (
+                <p className="mt-2 text-sm leading-6 text-slate-600">Keine Erwähnungen.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {mentions.notes.map((note) => (
+                    <li key={note.noteId} className="text-sm leading-6">
+                      <Link
+                        href={`/w/${validWorkspaceId}/anfragen/${note.projectId}#project-note-${note.noteId}`}
+                        className="font-medium text-brand-800 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-brand-600"
+                      >
+                        {note.projectName}
+                      </Link>
+                      <span className="text-slate-500">
+                        {` — ${note.excerpt}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           ) : null}
 

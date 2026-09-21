@@ -1,5 +1,8 @@
 import Link from "next/link";
-import type { ProjectActivityPageV1 } from "@/modules/tasks";
+import type {
+  ProjectActivityPageV1,
+  ProjectCommunicationActivityItemV1,
+} from "@/modules/tasks";
 
 const activityDateFormatter = new Intl.DateTimeFormat("de-DE", {
   dateStyle: "medium",
@@ -10,6 +13,48 @@ const activityDateFormatter = new Intl.DateTimeFormat("de-DE", {
 function formatActivityDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Zeitpunkt nicht verfügbar" : activityDateFormatter.format(date);
+}
+
+type ActivityItem = ProjectActivityPageV1["items"][number];
+
+// F1-24: Kommunikations-Kinds trägt die Laufzeit, der geteilte Contract kennt
+// sie noch nicht (lane-fremd) — darum diese enge Verengung statt Kind-Import.
+function asCommunicationItem(item: ActivityItem): ProjectCommunicationActivityItemV1 | null {
+  const kind = item.kind as string;
+  if (
+    kind === "appointment_created"
+    || kind === "appointment_updated"
+    || kind === "note_mentioned"
+  ) {
+    return item as unknown as ProjectCommunicationActivityItemV1;
+  }
+  return null;
+}
+
+function CommunicationActivityDetail({ item }: { item: ProjectCommunicationActivityItemV1 }) {
+  if (item.kind === "note_mentioned") {
+    return (
+      <p className="mt-1 text-xs leading-5">
+        <Link
+          href={`#project-note-${item.noteId}`}
+          className="font-semibold text-brand-800 underline underline-offset-2"
+        >
+          Zur Notiz
+        </Link>
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-700">
+      Termin:{" "}
+      <Link
+        href={`?event=${item.appointmentId}#project-appointments`}
+        className="text-brand-800 underline underline-offset-2"
+      >
+        {item.appointmentTitle ?? "Nicht mehr verfügbar"}
+      </Link>
+    </p>
+  );
 }
 
 export function ProjectActivityPanel({
@@ -40,23 +85,29 @@ export function ProjectActivityPanel({
         </p>
       ) : (
         <ol role="list" className="mt-4 grid list-none gap-3">
-          {activity.items.map((item) => (
-            <li key={item.id} className="min-w-0 border-l-2 border-brand-200 pl-3">
-              <p className="break-words text-sm font-semibold text-slate-900">
-                {item.label}
-              </p>
-              {item.taskId !== null ? (
-                <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-700">
-                  Aufgabe: {item.taskTitle ?? "Nicht mehr verfügbar"}
+          {activity.items.map((item) => {
+            const communicationItem = asCommunicationItem(item);
+            return (
+              <li key={item.id} className="min-w-0 border-l-2 border-brand-200 pl-3">
+                <p className="break-words text-sm font-semibold text-slate-900">
+                  {item.label}
                 </p>
-              ) : null}
-              <p className="mt-1 break-all text-xs leading-5 text-slate-600">
-                {item.actorLabel}
-                <span aria-hidden="true"> · </span>
-                <time dateTime={item.occurredAt}>{formatActivityDate(item.occurredAt)}</time>
-              </p>
-            </li>
-          ))}
+                {item.taskId !== null ? (
+                  <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-700">
+                    Aufgabe: {item.taskTitle ?? "Nicht mehr verfügbar"}
+                  </p>
+                ) : null}
+                {communicationItem !== null ? (
+                  <CommunicationActivityDetail item={communicationItem} />
+                ) : null}
+                <p className="mt-1 break-all text-xs leading-5 text-slate-600">
+                  {item.actorLabel}
+                  <span aria-hidden="true"> · </span>
+                  <time dateTime={item.occurredAt}>{formatActivityDate(item.occurredAt)}</time>
+                </p>
+              </li>
+            );
+          })}
         </ol>
       )}
 

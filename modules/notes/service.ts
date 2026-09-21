@@ -516,3 +516,81 @@ export async function listProjectNotes(
     notes: items.map((item) => projectNoteItemV1Schema.parse(item)),
   });
 }
+
+export type MentionedNoteRowV1 = {
+  projectId: string;
+  projectName: string;
+  noteId: string;
+  excerpt: string;
+  createdAtIso: string;
+};
+
+export type MentionedNotesPageV1 = {
+  notes: MentionedNoteRowV1[];
+};
+
+const MENTIONED_NOTES_DEFAULT_LIMIT = 5;
+const MENTIONED_NOTES_MAX_LIMIT = 20;
+const MENTIONED_NOTE_EXCERPT_MAX_LENGTH = 120;
+
+// F1-25 „Meine Erwähnungen": Notizen mit Mention auf die eigene Identity,
+// workspace-weit, neueste zuerst (F1-06b-Limitmuster: Default 5, max 20).
+// Sichtbarkeit: ohne note.read ehrlich leer (kein Throw, kein Leak über
+// Titel/Existenz); je Projekt gilt die lockReadableProject-Regel
+// (_m113_actor_can_read_notes, identisch zu listProjectNotes) — Mention
+// ohne Projekt-Sicht entfällt lautlos. Keine Benachrichtigung (F1-09).
+export async function listMentionedNotes(
+  tx: TenantTx,
+  ctx: ServiceCtx,
+  query: { limit?: number } = {},
+): Promise<MentionedNotesPageV1> {
+  const limit = query.limit ?? MENTIONED_NOTES_DEFAULT_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1 || limit > MENTIONED_NOTES_MAX_LIMIT) {
+    throw new NoteValidationError();
+  }
+  if (!can(ctx, "note.read")) return { notes: [] };
+  const result = await tx.execute<{
+    project_id: string;
+    project_name: string;
+    note_id: string;
+    text_markdown: string;
+    created_at_iso: string;
+    [key: string]: unknown;
+  }>(sql`
+    select project_record.id as project_id,
+           project_record.name as project_name,
+           note_record.id as note_id,
+           note_record.text_markdown,
+           to_char(
+             note_record.created_at at time zone 'UTC', ${TIMESTAMP_ISO}
+           ) as created_at_iso
+      from project_note_mention mention_record
+      join project_note note_record
+        on note_record.workspace_id = mention_record.workspace_id
+       and note_record.id = mention_record.note_id
+       and note_record.deleted_at is null
+      join project project_record
+        on project_record.workspace_id = mention_record.workspace_id
+       and project_record.id = mention_record.project_id
+     where mention_record.workspace_id = ${ctx.workspaceId}::uuid
+       and mention_record.mentioned_identity_id = ${ctx.actor}::uuid
+       and public._m113_actor_can_read_notes(project_record.workspace_id)
+     group by project_record.id,
+              project_record.name,
+              note_record.id,
+              note_record.text_markdown,
+              note_record.created_at
+     order by note_record.created_at desc,
+              note_record.id asc
+     limit ${limit}
+  `);
+  return {
+    notes: result.rows.map((row) => ({
+      projectId: row.project_id,
+      projectName: row.project_name,
+      noteId: row.note_id,
+      excerpt: derivePlain(row.text_markdown).slice(0, MENTIONED_NOTE_EXCERPT_MAX_LENGTH),
+      createdAtIso: row.created_at_iso,
+    })),
+  };
+}

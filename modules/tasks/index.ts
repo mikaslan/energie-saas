@@ -111,6 +111,14 @@ export {
   getProjectTaskWorkspace,
   searchProjectTaskMembers,
 } from "./service";
+export type {
+  ProjectAppointmentActivityItemV1,
+  ProjectAppointmentActivityKind,
+  ProjectCommunicationActivityItemV1,
+  ProjectCommunicationActivityKind,
+  ProjectMentionActivityItemV1,
+  ProjectMentionActivityKind,
+} from "./service";
 export {
   PROJECT_TASK_TEAM_ASSIGNMENT_COMMAND_VERSION,
   PROJECT_TASK_TEAM_ASSIGNMENT_MAX_TEAMS,

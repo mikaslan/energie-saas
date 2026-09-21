@@ -37,5 +37,10 @@ export {
 } from "./errors";
 export {
   executeProjectNoteCommand,
+  listMentionedNotes,
   listProjectNotes,
+} from "./service";
+export type {
+  MentionedNoteRowV1,
+  MentionedNotesPageV1,
 } from "./service";

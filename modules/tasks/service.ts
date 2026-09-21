@@ -38,6 +38,7 @@ import {
   type ProjectTaskWorkspaceV1,
   type TaskLabelColor,
 } from "@/lib/integrations/tasks/contract";
+import { APPOINTMENT_TITLE_MAX_LENGTH } from "@/lib/integrations/calendar/contract";
 import {
   GLOBAL_TASK_INBOX_CURSOR_VERSION,
   GLOBAL_TASK_INBOX_ORDER,
@@ -96,6 +97,9 @@ type ActivityRow = {
   actor_label: string;
   task_id: unknown;
   task_title: unknown;
+  appointment_id: unknown;
+  appointment_title: unknown;
+  note_id: unknown;
   [key: string]: unknown;
 };
 type WorkspaceProjectionRow = {
@@ -162,6 +166,11 @@ const noteActivityEventTypes = [
   "project.note_pinned",
   "project.note_unpinned",
 ] as const;
+const appointmentActivityEventTypes = [
+  "project.appointment_created",
+  "project.appointment_updated",
+] as const;
+const mentionActivityEventTypes = ["project.note_mentioned"] as const;
 const activityKinds = {
   "project.task_created": "task_created",
   "project.task_updated": "task_updated",
@@ -203,6 +212,57 @@ const noteActivityKinds: ReadonlySet<ProjectActivityKind> =
     "note_unpinned",
   ]);
 
+// F1-24: Kommunikations-Kinds leben bewusst lokal in diesem Modul — der
+// geteilte Contract ist lane-fremd (Folge-Slice zieht Kinds + Labels dorthin).
+// Laufzeit-Projektion, Labels und Item-Typen kommen von hier.
+export type ProjectAppointmentActivityKind =
+  | "appointment_created"
+  | "appointment_updated";
+export type ProjectMentionActivityKind = "note_mentioned";
+export type ProjectCommunicationActivityKind =
+  | ProjectAppointmentActivityKind
+  | ProjectMentionActivityKind;
+const communicationActivityKinds = {
+  "project.appointment_created": "appointment_created",
+  "project.appointment_updated": "appointment_updated",
+  "project.note_mentioned": "note_mentioned",
+} as const satisfies Readonly<Record<string, ProjectCommunicationActivityKind>>;
+const projectCommunicationActivityLabels = {
+  appointment_created: "Termin erstellt",
+  appointment_updated: "Termin bearbeitet",
+  note_mentioned: "Erwähnung",
+} as const satisfies Record<ProjectCommunicationActivityKind, string>;
+const appointmentActivityKinds: ReadonlySet<ProjectAppointmentActivityKind> =
+  new Set<ProjectAppointmentActivityKind>([
+    "appointment_created",
+    "appointment_updated",
+  ]);
+const mentionActivityKinds: ReadonlySet<ProjectMentionActivityKind> =
+  new Set<ProjectMentionActivityKind>(["note_mentioned"]);
+type ProjectCommunicationActivityItemBaseV1 = {
+  id: string;
+  occurredAt: string;
+  actorLabel: string;
+  taskId: null;
+  taskTitle: null;
+};
+export type ProjectAppointmentActivityItemV1 =
+  ProjectCommunicationActivityItemBaseV1 & {
+    kind: ProjectAppointmentActivityKind;
+    label: (typeof projectCommunicationActivityLabels)[ProjectAppointmentActivityKind];
+    appointmentId: string;
+    appointmentTitle: string | null;
+  };
+export type ProjectMentionActivityItemV1 =
+  ProjectCommunicationActivityItemBaseV1 & {
+    kind: ProjectMentionActivityKind;
+    label: (typeof projectCommunicationActivityLabels)[ProjectMentionActivityKind];
+    noteId: string;
+  };
+export type ProjectCommunicationActivityItemV1 =
+  | ProjectAppointmentActivityItemV1
+  | ProjectMentionActivityItemV1;
+
 function isTaskActivityKind(kind: ProjectActivityKind): kind is ProjectTaskActivityKind {
   return taskActivityKinds.has(kind);
 }
@@ -213,6 +273,32 @@ function isOutcomeActivityKind(kind: ProjectActivityKind): kind is ProjectOutcom
 
 function isNoteActivityKind(kind: ProjectActivityKind): kind is ProjectNoteActivityKind {
   return noteActivityKinds.has(kind);
+}
+
+function isAppointmentActivityKind(
+  kind: string,
+): kind is ProjectAppointmentActivityKind {
+  return (appointmentActivityKinds as ReadonlySet<string>).has(kind);
+}
+
+function isMentionActivityKind(
+  kind: string,
+): kind is ProjectMentionActivityKind {
+  return (mentionActivityKinds as ReadonlySet<string>).has(kind);
+}
+
+function activityKindForEvent(
+  eventType: string,
+): ProjectActivityKind | ProjectCommunicationActivityKind | undefined {
+  if (eventType in activityKinds) {
+    return activityKinds[eventType as keyof typeof activityKinds];
+  }
+  if (eventType in communicationActivityKinds) {
+    return communicationActivityKinds[
+      eventType as keyof typeof communicationActivityKinds
+    ];
+  }
+  return undefined;
 }
 const activityCursorSchema = z.strictObject({
   occurredAt: z.iso.datetime({ offset: true }),
@@ -277,23 +363,52 @@ const projectedTaskActivityRowSchema = z.strictObject({
   event_type: z.enum(taskActivityEventTypes),
   task_id: projectedUuidSchema,
   task_title: z.string().min(1).max(200).nullable(),
+  appointment_id: z.null(),
+  appointment_title: z.null(),
+  note_id: z.null(),
 });
 const projectedOutcomeActivityRowSchema = z.strictObject({
   ...projectedActivityRowBase,
   event_type: z.enum(outcomeActivityEventTypes),
   task_id: z.null(),
   task_title: z.null(),
+  appointment_id: z.null(),
+  appointment_title: z.null(),
+  note_id: z.null(),
 });
 const projectedNoteActivityRowSchema = z.strictObject({
   ...projectedActivityRowBase,
   event_type: z.enum(noteActivityEventTypes),
   task_id: z.null(),
   task_title: z.null(),
+  appointment_id: z.null(),
+  appointment_title: z.null(),
+  note_id: z.null(),
+});
+const projectedAppointmentActivityRowSchema = z.strictObject({
+  ...projectedActivityRowBase,
+  event_type: z.enum(appointmentActivityEventTypes),
+  task_id: z.null(),
+  task_title: z.null(),
+  appointment_id: projectedUuidSchema,
+  appointment_title: z.string().min(1).max(APPOINTMENT_TITLE_MAX_LENGTH).nullable(),
+  note_id: z.null(),
+});
+const projectedMentionActivityRowSchema = z.strictObject({
+  ...projectedActivityRowBase,
+  event_type: z.enum(mentionActivityEventTypes),
+  task_id: z.null(),
+  task_title: z.null(),
+  appointment_id: z.null(),
+  appointment_title: z.null(),
+  note_id: projectedUuidSchema,
 });
 const projectedActivityRowSchema = z.union([
   projectedTaskActivityRowSchema,
   projectedOutcomeActivityRowSchema,
   projectedNoteActivityRowSchema,
+  projectedAppointmentActivityRowSchema,
+  projectedMentionActivityRowSchema,
 ]);
 const workspaceProjectionSchema = z.strictObject({
   project_id: projectedUuidSchema,
@@ -404,6 +519,47 @@ function requireActivityRead(ctx: ServiceCtx): void {
       ctx.actor,
     );
   }
+}
+
+// F1-24: M1-15b-§7-Sichtbarkeit für Termin-Feed-Einträge — dieselbe Regel wie
+// calendarVisibleFragment im Kalender-Service (dort nicht exportiert, darum
+// hier repliziert statt importiert): tenancy für alle internen Rollen, user
+// für Owner + Admin, team für Mitglieder + Admin, client nie. Erwartet den
+// Join-Alias `calendar_record`.
+function appointmentCalendarVisibleFragment(ctx: ServiceCtx) {
+  return sql`
+    calendar_record.calendar_type <> 'client'
+    and (
+      calendar_record.calendar_type = 'tenancy'
+      or (
+        calendar_record.calendar_type = 'user'
+        and calendar_record.membership_id = (
+          select membership_record.id
+            from membership membership_record
+           where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+             and membership_record.user_id = ${ctx.actor}::uuid
+           limit 1
+        )
+      )
+      or (
+        calendar_record.calendar_type = 'team'
+        and exists (
+          select 1
+            from team_member member_record
+           where member_record.workspace_id = ${ctx.workspaceId}::uuid
+             and member_record.team_id = calendar_record.team_id
+             and member_record.membership_id = (
+               select membership_record.id
+                 from membership membership_record
+                where membership_record.workspace_id = ${ctx.workspaceId}::uuid
+                  and membership_record.user_id = ${ctx.actor}::uuid
+                limit 1
+             )
+        )
+      )
+      or ${ctx.role === "admin"}
+    )
+  `;
 }
 
 function uuidList(values: readonly string[]) {
@@ -532,13 +688,47 @@ function activityPageFromRows(
   hasMore: boolean,
 ): ProjectActivityPageV1 {
   const items = rows.map((row) => {
-    const kind = activityKinds[row.event_type];
+    const kind = activityKindForEvent(row.event_type);
     if (!kind) throw new ProjectTaskValidationError();
     const base = {
       id: row.id,
       occurredAt: row.occurred_at,
       actorLabel: row.actor_label,
     };
+    if (isAppointmentActivityKind(kind)) {
+      if (row.appointment_id === null) throw new ProjectTaskValidationError();
+      if (row.task_id !== null || row.task_title !== null || row.note_id !== null) {
+        throw new ProjectTaskValidationError();
+      }
+      const appointmentItem: ProjectAppointmentActivityItemV1 = {
+        ...base,
+        kind,
+        label: projectCommunicationActivityLabels[kind],
+        taskId: null,
+        taskTitle: null,
+        appointmentId: row.appointment_id,
+        appointmentTitle: row.appointment_title,
+      };
+      return appointmentItem;
+    }
+    if (isMentionActivityKind(kind)) {
+      if (row.note_id === null) throw new ProjectTaskValidationError();
+      if (
+        row.task_id !== null || row.task_title !== null
+        || row.appointment_id !== null || row.appointment_title !== null
+      ) {
+        throw new ProjectTaskValidationError();
+      }
+      const mentionItem: ProjectMentionActivityItemV1 = {
+        ...base,
+        kind,
+        label: projectCommunicationActivityLabels[kind],
+        taskId: null,
+        taskTitle: null,
+        noteId: row.note_id,
+      };
+      return mentionItem;
+    }
     if (isTaskActivityKind(kind)) {
       if (row.task_id === null) throw new ProjectTaskValidationError();
       return {
@@ -566,7 +756,9 @@ function activityPageFromRows(
   const last = items.at(-1);
   return {
     schemaVersion: "project-activity-page.v1",
-    items,
+    // F1-24: Der geteilte Contract kennt die Kommunikations-Kinds noch nicht
+    // (lane-fremd); Laufzeit trägt sie, der Folge-Slice typisiert sie dort.
+    items: items as ProjectActivityPageV1["items"],
     nextCursor: hasMore && last
       ? { occurredAt: last.occurredAt, id: last.id }
       : null,
@@ -587,6 +779,8 @@ async function queryProjectTaskPageProjection(
 ): Promise<ProjectTaskPageV1 | null> {
   const { archived, taskCursor, includeActivity, activityCursor, activityLimit } = input;
   const canWrite = can(ctx, "task.write");
+  const canReadAppointments = can(ctx, "appointment.read");
+  const canReadMentions = can(ctx, "note.read");
   const taskArchiveFilter = archived
     ? sql`task.archived_at is not null`
     : sql`task.archived_at is null`;
@@ -725,8 +919,31 @@ async function queryProjectTaskPageProjection(
                'project.task_created', 'project.task_updated',
                'project.task_checklist_changed', 'project.task_completed',
                'project.task_reopened', 'project.task_archived'
-             ) then event.payload->>'taskId' else null end as task_id_text
+             ) then event.payload->>'taskId' else null end as task_id_text,
+             case when event.event_type in (
+               'project.appointment_created', 'project.appointment_updated'
+             ) then event.payload->>'appointmentId' else null end
+               as appointment_id_text,
+             case when event.event_type = 'project.note_mentioned'
+               then event.payload->>'noteId' else null end as note_id_text,
+             activity_appointment.title as appointment_title
         from domain_events event
+        left join project_appointment activity_appointment
+          on activity_appointment.workspace_id = event.workspace_id
+         and activity_appointment.project_id = event.aggregate_id
+         and event.event_type in (
+               'project.appointment_created', 'project.appointment_updated'
+             )
+         and activity_appointment.id = case
+               when pg_catalog.pg_input_is_valid(
+                 event.payload->>'appointmentId', 'uuid'
+               )
+               then (event.payload->>'appointmentId')::uuid
+               else null::uuid
+             end
+        left join calendar calendar_record
+          on calendar_record.workspace_id = event.workspace_id
+         and calendar_record.id = activity_appointment.calendar_id
        where ${includeActivity}::boolean
          and event.workspace_id = ${ctx.workspaceId}::uuid
          and event.aggregate_type = 'project'
@@ -739,7 +956,9 @@ async function queryProjectTaskPageProjection(
            'project.outcome_reopened', 'project.outcome_cannot_fulfil',
            'project.note_created', 'project.note_updated',
            'project.note_deleted', 'project.note_pinned',
-           'project.note_unpinned'
+           'project.note_unpinned',
+           'project.appointment_created', 'project.appointment_updated',
+           'project.note_mentioned'
          )
          and (
            event.event_type in (
@@ -757,6 +976,27 @@ async function queryProjectTaskPageProjection(
              )
              and pg_catalog.pg_input_is_valid(event.payload->>'taskId', 'uuid')
            )
+           or (
+             event.event_type in (
+               'project.appointment_created', 'project.appointment_updated'
+             )
+             and ${canReadAppointments}::boolean
+             and pg_catalog.pg_input_is_valid(event.payload->>'appointmentId', 'uuid')
+           )
+           or (
+             event.event_type = 'project.note_mentioned'
+             and ${canReadMentions}::boolean
+             and pg_catalog.pg_input_is_valid(event.payload->>'noteId', 'uuid')
+           )
+         )
+         and (
+           event.event_type not in (
+             'project.appointment_created', 'project.appointment_updated'
+           )
+           or (
+             activity_appointment.id is not null
+             and ${appointmentCalendarVisibleFragment(ctx)}
+           )
          )
          ${activityCursorFilter}
        order by event.occurred_at desc, event.id desc
@@ -769,7 +1009,10 @@ async function queryProjectTaskPageProjection(
              ) as occurred_at,
              coalesce(identity_record.email, 'System') as actor_label,
              event.task_id_text as task_id,
-             activity_task.title as task_title
+             activity_task.title as task_title,
+             event.appointment_id_text as appointment_id,
+             event.appointment_title as appointment_title,
+             event.note_id_text as note_id
         from activity_event_window event
         left join user_identity identity_record
           on identity_record.id = case
@@ -858,7 +1101,10 @@ async function queryProjectTaskPageProjection(
                  'occurred_at', activity.occurred_at,
                  'actor_label', activity.actor_label,
                  'task_id', activity.task_id,
-                 'task_title', activity.task_title
+                 'task_title', activity.task_title,
+                 'appointment_id', activity.appointment_id,
+                 'appointment_title', activity.appointment_title,
+                 'note_id', activity.note_id
                ) order by activity.occurred_sort desc, activity.id desc
              )
                from (
@@ -1350,6 +1596,8 @@ export async function getProjectActivityPage(
   const cursorFilter = cursor === null
     ? sql``
     : sql`and (event.occurred_at, event.id) < (${cursor.occurredAt}::timestamptz, ${cursor.id}::uuid)`;
+  const canReadAppointments = can(ctx, "appointment.read");
+  const canReadMentions = can(ctx, "note.read");
   const result = await tx.execute<ActivityRow>(sql`
     with activity_event_window as materialized (
       select event.id, event.event_type, event.occurred_at,
@@ -1358,8 +1606,31 @@ export async function getProjectActivityPage(
                'project.task_created', 'project.task_updated',
                'project.task_checklist_changed', 'project.task_completed',
                'project.task_reopened', 'project.task_archived'
-             ) then event.payload->>'taskId' else null end as task_id_text
+             ) then event.payload->>'taskId' else null end as task_id_text,
+             case when event.event_type in (
+               'project.appointment_created', 'project.appointment_updated'
+             ) then event.payload->>'appointmentId' else null end
+               as appointment_id_text,
+             case when event.event_type = 'project.note_mentioned'
+               then event.payload->>'noteId' else null end as note_id_text,
+             activity_appointment.title as appointment_title
         from domain_events event
+        left join project_appointment activity_appointment
+          on activity_appointment.workspace_id = event.workspace_id
+         and activity_appointment.project_id = event.aggregate_id
+         and event.event_type in (
+               'project.appointment_created', 'project.appointment_updated'
+             )
+         and activity_appointment.id = case
+               when pg_catalog.pg_input_is_valid(
+                 event.payload->>'appointmentId', 'uuid'
+               )
+               then (event.payload->>'appointmentId')::uuid
+               else null::uuid
+             end
+        left join calendar calendar_record
+          on calendar_record.workspace_id = event.workspace_id
+         and calendar_record.id = activity_appointment.calendar_id
        where event.workspace_id = ${ctx.workspaceId}::uuid
          and event.aggregate_type = 'project'
          and event.aggregate_id = ${projectId}::uuid
@@ -1371,7 +1642,9 @@ export async function getProjectActivityPage(
            'project.outcome_reopened', 'project.outcome_cannot_fulfil',
            'project.note_created', 'project.note_updated',
            'project.note_deleted', 'project.note_pinned',
-           'project.note_unpinned'
+           'project.note_unpinned',
+           'project.appointment_created', 'project.appointment_updated',
+           'project.note_mentioned'
          )
          and (
            event.event_type in (
@@ -1389,6 +1662,27 @@ export async function getProjectActivityPage(
              )
              and pg_catalog.pg_input_is_valid(event.payload->>'taskId', 'uuid')
            )
+           or (
+             event.event_type in (
+               'project.appointment_created', 'project.appointment_updated'
+             )
+             and ${canReadAppointments}::boolean
+             and pg_catalog.pg_input_is_valid(event.payload->>'appointmentId', 'uuid')
+           )
+           or (
+             event.event_type = 'project.note_mentioned'
+             and ${canReadMentions}::boolean
+             and pg_catalog.pg_input_is_valid(event.payload->>'noteId', 'uuid')
+           )
+         )
+         and (
+           event.event_type not in (
+             'project.appointment_created', 'project.appointment_updated'
+           )
+           or (
+             activity_appointment.id is not null
+             and ${appointmentCalendarVisibleFragment(ctx)}
+           )
          )
          ${cursorFilter}
        order by event.occurred_at desc, event.id desc
@@ -1401,7 +1695,10 @@ export async function getProjectActivityPage(
            ) as occurred_at,
            coalesce(identity_record.email, 'System') as actor_label,
            event.task_id_text as task_id,
-           activity_task.title as task_title
+           activity_task.title as task_title,
+           event.appointment_id_text as appointment_id,
+           event.appointment_title as appointment_title,
+           event.note_id_text as note_id
       from activity_event_window event
       left join user_identity identity_record
         on identity_record.id = case
