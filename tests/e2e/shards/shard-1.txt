@@ -32,6 +32,7 @@ f2-05-zahlarten.spec.ts
 f202b-varianten-rest.spec.ts
 f205b-zahlart-hinweise.spec.ts
 f208-draw-visual-gates.spec.ts
+f601-schaltplan-gate.spec.ts
 f7-01-installation-kern.spec.ts
 f7-02c-anzeige-punkte.spec.ts
 f7-02f-mehrfachauswahl.spec.ts
