@@ -354,3 +354,209 @@ test.describe("F6-02a Schematic-Overlay", () => {
     })), "overlay-form: keine critical/serious Axe-Violations").toEqual([]);
   });
 });
+
+/**
+ * F6-02c-A Freier Editor — Chromium-E2E (RED bis UI-Canvas existiert).
+ * Vertrags-Selektoren (SPEC docs/spec/F6-02c-freier-editor.md):
+ * schematic-overlay-canvas (eigenes SVG im 640×300-Raum),
+ * schematic-overlay-handle (ein Griff je ID-tragendem Element, in
+ * Zeilenreihenfolge), schematic-overlay-id-chip (vergebene ovl-*-ID,
+ * nur nach Save+Reload via Server-Mapping). Griffe sind native Buttons
+ * (Tastatur-Nudge: Pfeil ±1, Shift+Pfeil ±10). Backbone-Knoten und
+ * Konnektoren haben keine Griffe. Kein Auto-Save: Position landet erst
+ * per Save in der Revision.
+ */
+
+async function saveGroundAndReload(page: Page): Promise<void> {
+  const groundRow = await addRow(page, 0);
+  await selectKindByCandidates(groundRow, ["Erdungspunkt", "Erdung", "ground", "earth"]);
+  await setRowField(groundRow, "x", "410");
+  await setRowField(groundRow, "y", "200");
+  await setRowField(groundRow, "label", "Erdungspunkt");
+  await setRowField(groundRow, "text", "Erdungspunkt");
+  await page.getByTestId("schematic-overlay-save").click();
+  await expect(page.getByTestId("schematic-overlay-status")).toContainText("gespeichert");
+  await page.reload();
+  await expect(page.getByTestId("schematic-overlay-form")).toBeVisible();
+  await expect(page.getByTestId("schematic-overlay-row")).toHaveCount(1);
+}
+
+async function rowFieldValue(page: Page, index: number, name: string): Promise<string> {
+  const field = page.getByTestId("schematic-overlay-row").nth(index).locator(`[name="${name}"]`);
+  await expect(field).toBeVisible();
+  return field.inputValue();
+}
+
+test.describe("F6-02c-A Freier Editor", () => {
+  test("F602C-EDT-01: Drag mit Maus → Save → Reload → Position persistiert", async ({ page }) => {
+    test.setTimeout(240_000);
+    const { workspaceId, projectId } = await seedReadyWorkspace(`f602c-drag-${randomUUID().slice(0, 8)}`);
+    await createOfferViaUi(page, workspaceId, projectId);
+    await expect(page.getByTestId("schematic-overlay-form")).toBeVisible();
+    await saveGroundAndReload(page);
+
+    const canvas = page.getByTestId("schematic-overlay-canvas");
+    await expect(canvas).toBeVisible();
+    // Adapter registriert (pragmatic-dnd setzt draggable="true" selbst).
+    await expect(page.getByTestId("schematic-overlay-handle").nth(0)).toHaveAttribute(
+      "draggable",
+      "true",
+    );
+    const handle = page.getByTestId("schematic-overlay-handle").nth(0);
+    await expect(handle).toBeVisible();
+    const box = await handle.boundingBox();
+    if (!box) throw new Error("F602C: Griff ohne BoundingBox.");
+    const canvasBox = await canvas.boundingBox();
+    if (!canvasBox) throw new Error("F602C: Canvas ohne BoundingBox.");
+    // +40/+30 px im 640×300-Raum: (410,200) → (450,230).
+    const scaleX = canvasBox.width / 640;
+    const scaleY = canvasBox.height / 300;
+    const fromX = box.x + box.width / 2;
+    const fromY = box.y + box.height / 2;
+    const toX = fromX + 40 * scaleX;
+    const toY = fromY + 30 * scaleY;
+    // Pragmatic-dnd nutzt nativen HTML5-DnD; Playwright-Maus-Events starten
+    // keinen nativen dragstart (Browser-Limit, per Diagnose belegt). Daher
+    // echte DragEvent-Sequenz auf den realen Elementen — der Adapter-Pfad
+    // (Registrierung, Drop-Erkennung, Koordinaten) ist identisch.
+    await page.evaluate(([startX, startY, endX, endY]) => {
+      const source = document.querySelector('[data-testid="schematic-overlay-handle"]');
+      const target = document.querySelector('[data-testid="schematic-overlay-canvas"]');
+      if (!(source instanceof HTMLElement)) throw new Error("F602C: Griff fehlt im DOM.");
+      if (!(target instanceof HTMLElement)) throw new Error("F602C: Canvas fehlt im DOM.");
+      const dataTransfer = new DataTransfer();
+      source.dispatchEvent(
+        new DragEvent("dragstart", {
+          bubbles: true,
+          cancelable: true,
+          clientX: startX,
+          clientY: startY,
+          dataTransfer,
+        }),
+      );
+      target.dispatchEvent(
+        new DragEvent("dragenter", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY: endY,
+          dataTransfer,
+        }),
+      );
+      target.dispatchEvent(
+        new DragEvent("dragover", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY: endY,
+          dataTransfer,
+        }),
+      );
+      target.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY: endY,
+          dataTransfer,
+        }),
+      );
+      source.dispatchEvent(
+        new DragEvent("dragend", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY: endY,
+          dataTransfer,
+        }),
+      );
+    }, [fromX, fromY, toX, toY]);
+
+    // Entwurf: Formularfelder folgen dem Drop (noch kein Save).
+    await expect
+      .poll(async () => rowFieldValue(page, 0, "x"), { timeout: 10_000 })
+      .toBe("450");
+    await expect
+      .poll(async () => rowFieldValue(page, 0, "y"), { timeout: 10_000 })
+      .toBe("230");
+
+    await page.getByTestId("schematic-overlay-save").click();
+    await expect(page.getByTestId("schematic-overlay-status")).toContainText("gespeichert");
+    await page.reload();
+    await expect(page.getByTestId("schematic-overlay-form")).toBeVisible();
+    expect(await rowFieldValue(page, 0, "x")).toBe("450");
+    expect(await rowFieldValue(page, 0, "y")).toBe("230");
+  });
+
+  test("F602C-EDT-02: ID-Chips nach Save+Reload sichtbar (ovl-1)", async ({ page }) => {
+    test.setTimeout(180_000);
+    const { workspaceId, projectId } = await seedReadyWorkspace(`f602c-chip-${randomUUID().slice(0, 8)}`);
+    await createOfferViaUi(page, workspaceId, projectId);
+    await expect(page.getByTestId("schematic-overlay-form")).toBeVisible();
+    await saveGroundAndReload(page);
+
+    // Chip auf dem Canvas …
+    const chip = page.getByTestId("schematic-overlay-id-chip").nth(0);
+    await expect(chip).toBeVisible();
+    await expect(chip).toContainText("ovl-1");
+    // … und ID in der Formularzeile.
+    await expect(page.getByTestId("schematic-overlay-row").nth(0)).toContainText("ovl-1");
+  });
+
+  test("F602C-EDT-03: Tastatur-Nudge ±1 und ±10", async ({ page }) => {
+    test.setTimeout(180_000);
+    const { workspaceId, projectId } = await seedReadyWorkspace(`f602c-nudge-${randomUUID().slice(0, 8)}`);
+    await createOfferViaUi(page, workspaceId, projectId);
+    await expect(page.getByTestId("schematic-overlay-form")).toBeVisible();
+    await saveGroundAndReload(page);
+
+    const handle = page.getByTestId("schematic-overlay-handle").nth(0);
+    await expect(handle).toBeVisible();
+    await handle.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect
+      .poll(async () => rowFieldValue(page, 0, "x"), { timeout: 10_000 })
+      .toBe("411");
+    await page.keyboard.press("Shift+ArrowDown");
+    await expect
+      .poll(async () => rowFieldValue(page, 0, "y"), { timeout: 10_000 })
+      .toBe("210");
+  });
+
+  test("F602C-EDT-04: Nur Overlay-Elemente haben Griffe (Backbone nie)", async ({ page }) => {
+    test.setTimeout(180_000);
+    const { workspaceId, projectId } = await seedReadyWorkspace(`f602c-scope-${randomUUID().slice(0, 8)}`);
+    await createOfferViaUi(page, workspaceId, projectId);
+    await expect(page.getByTestId("schematic-overlay-form")).toBeVisible();
+    await saveGroundAndReload(page);
+
+    // Backbone-Diagramm rendert …
+    await expect(page.getByRole("img", { name: /Übersichtsschaltbild/u })).toBeVisible();
+    // … aber genau ein Griff (Erdungspunkt; Konnektoren haetten keinen).
+    await expect(page.getByTestId("schematic-overlay-canvas")).toBeVisible();
+    await expect(page.getByTestId("schematic-overlay-handle")).toHaveCount(1);
+  });
+
+  test("F602C-EDT-05: Overlay-Canvas ohne critical/serious Axe-Violations", async ({ page }) => {
+    test.setTimeout(180_000);
+    const { workspaceId, projectId } = await seedReadyWorkspace(`f602c-axe-${randomUUID().slice(0, 8)}`);
+    await createOfferViaUi(page, workspaceId, projectId);
+    await expect(page.getByTestId("schematic-overlay-form")).toBeVisible();
+    await saveGroundAndReload(page);
+
+    await expect(page.getByTestId("schematic-overlay-canvas")).toBeVisible();
+    await expect(page).toHaveTitle(/.+/u);
+    const result = await new AxeBuilder({ page })
+      .include('[data-testid="schematic-overlay-canvas"]')
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    const severe = result.violations.filter(
+      (violation) => violation.impact === "critical" || violation.impact === "serious",
+    );
+    expect(severe.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      targets: violation.nodes.flatMap((node) => node.target),
+    })), "overlay-canvas: keine critical/serious Axe-Violations").toEqual([]);
+  });
+});

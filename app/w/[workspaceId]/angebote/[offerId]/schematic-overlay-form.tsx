@@ -7,6 +7,7 @@ import {
   loadSchematicOverlayAction,
   saveSchematicOverlayAction,
 } from "./schematic-overlay-actions";
+import { SchematicOverlayCanvas } from "./schematic-overlay-canvas";
 
 // F6-02a · Editor-Overlay-Bibliothek (editor-overlay.v1): feste Typen aus
 // docs/spec/F6-02a-editor-overlay.md. Koordinatenraum 0<=x<=640, 0<=y<=300,
@@ -176,13 +177,15 @@ const inputClassName =
 const labelClassName = "block text-xs font-semibold text-slate-700";
 
 /**
- * F6-02a · Overlay-Formular (Formular-Modus, kein Drag-UI).
+ * F6-02a · Overlay-Formular (F6-02c-A: mit Canvas für Drag + Nudge).
  * Lädt das Overlay per loadSchematicOverlayAction, pflegt Zeilen-State
  * (clientKey, kind, x, y, label/text/from/to) und speichert per
  * saveSchematicOverlayAction mit parentRevision=diagramRevision und
  * expectedRevision=overlayRevision (CAS, 0 = noch nie gespeichert).
  * Das Scope-Gate (nur residential) liegt beim Aufrufer in
  * offer-detail-view.tsx — diese Komponente rendert kein Gate.
+ * Der Canvas meldet Positionsänderungen per moveRow (Entwurf, kein
+ * Auto-Save); vergebene IDs zeigt er als Chips, die Zeilen als ID-Text.
  */
 export function SchematicOverlayForm({
   workspaceId,
@@ -195,6 +198,10 @@ export function SchematicOverlayForm({
 }) {
   const [phase, setPhase] = useState<OverlayPhase>({ name: "loading" });
   const [rows, setRows] = useState<readonly OverlayRow[]>([]);
+  // F6-02c-A: Server-Mapping Zeile → ovl-ID (paralleles Array). Gilt nur
+  // fuer den frisch geladenen Stand — jede lokale Aenderung invalidiert
+  // (keine Anzeige statt falscher Anzeige).
+  const [elementIds, setElementIds] = useState<readonly (string | null)[]>([]);
   const [overlayRevision, setOverlayRevision] = useState<number | null>(null);
   const [diagramRevision, setDiagramRevision] = useState<number | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -205,6 +212,17 @@ export function SchematicOverlayForm({
   const nextKey = useCallback(() => {
     keyCounter.current += 1;
     return `neu-${keyCounter.current}`;
+  }, []);
+
+  // F6-02c-A: Canvas-Meldung (Drop/Nudge) → Entwurf, kein Auto-Save.
+  // ID-Mapping wird invalidiert (gilt nur fuer den gespeicherten Stand).
+  const moveRow = useCallback((index: number, x: number, y: number) => {
+    setRows((current) =>
+      current.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, x: String(x), y: String(y) } : row,
+      ),
+    );
+    setElementIds([]);
   }, []);
 
   // Overlay laden (initial + nach Save): legt Zeilen, Revisionen und
@@ -233,6 +251,7 @@ export function SchematicOverlayForm({
       const raw = (overlay.elements ?? []) as unknown as readonly LoadedOverlayElement[];
       setRows(raw.map((element, index) => toRow(element, `server-${index}`)));
     }
+    setElementIds(result.elementIds);
     setPhase(result.diagramRevision === null ? { name: "no-diagram" } : { name: "ready" });
   }, [workspaceId, offerId, variantRevision]);
 
@@ -270,6 +289,7 @@ export function SchematicOverlayForm({
             const raw = (overlay.elements ?? []) as unknown as readonly LoadedOverlayElement[];
             setRows(raw.map((element, index) => toRow(element, `server-${index}`)));
           }
+          setElementIds(result.elementIds);
           setPhase(result.diagramRevision === null ? { name: "no-diagram" } : { name: "ready" });
         },
         () => {
@@ -320,16 +340,21 @@ export function SchematicOverlayForm({
     setRows((current) =>
       current.map((row) => (row.clientKey === clientKey ? { ...row, ...patch } : row)),
     );
+    setElementIds([]);
   };
 
   const addRow = () => {
     if (atLimit) return;
     setRows((current) => [...current, newRow(nextKey())]);
+    setElementIds([]);
   };
 
   const removeRow = (clientKey: string) => {
     setRows((current) => current.filter((row) => row.clientKey !== clientKey));
+    setElementIds([]);
   };
+
+
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -377,6 +402,14 @@ export function SchematicOverlayForm({
           Schaltplan-Speichern bearbeitbar.
         </p>
       ) : null}
+      <div className="mt-3">
+        <SchematicOverlayCanvas
+          rows={rows}
+          elementIds={elementIds}
+          onPositionChange={moveRow}
+          disabled={disabled}
+        />
+      </div>
       <form data-testid="schematic-overlay-form" onSubmit={save} className="mt-3">
         <fieldset disabled={disabled} className="min-w-0 border-0 p-0">
           <legend className="sr-only">Frei platzierbare Overlay-Elemente</legend>
@@ -398,6 +431,14 @@ export function SchematicOverlayForm({
                   data-testid="schematic-overlay-row"
                   className="rounded-md border border-slate-200 bg-slate-50 p-3"
                 >
+                  {elementIds[index] ? (
+                    <p
+                      data-testid="schematic-overlay-row-id"
+                      className="mb-2 text-xs font-semibold text-slate-700"
+                    >
+                      {`ID: ${elementIds[index]}`}
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap items-end gap-3">
                     <div className="min-w-44 flex-1">
                       <label htmlFor={idFor("kind")} className={labelClassName}>

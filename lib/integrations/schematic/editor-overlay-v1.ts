@@ -57,6 +57,67 @@ export const overlayElementSchema = z.discriminatedUnion("kind", [
 
 export type OverlayElementInput = z.infer<typeof overlayElementSchema>;
 
+/** F6-02c-A/CONTRACT: vergebene Overlay-ID, an die Eingabezeile gebunden. */
+export type AssignedOverlayId = {
+  /** Index in der Eingabereihenfolge (nur ID-tragende Elemente). */
+  index: number;
+  /** Vergebene ID (`ovl-n`, disjunkt zu den Backbone-IDs). */
+  id: string;
+};
+
+type OverlayNodeElement = Exclude<OverlayElementInput, { kind: "connector" }>;
+
+type IndexedNodeElement = {
+  element: OverlayNodeElement;
+  index: number;
+};
+
+/** F6-02c-A: Merge-Sortierung (Rang, NFC/Raw, x, y, stabiler Index). */
+function sortNodeElements(validated: OverlayElementInput[]): IndexedNodeElement[] {
+  return validated
+    .map((element, index) => ({ element, index }))
+    .filter((entry): entry is IndexedNodeElement => entry.element.kind !== "connector")
+    .sort(
+      (a, b) =>
+        OVERLAY_ELEMENT_RANK[a.element.kind] - OVERLAY_ELEMENT_RANK[b.element.kind] ||
+        compareNfcText(overlaySortLabel(a.element), overlaySortLabel(b.element)) ||
+        a.element.x - b.element.x ||
+        a.element.y - b.element.y ||
+        a.index - b.index,
+    );
+}
+
+/**
+ * F6-02c-A (GREEN): deterministische Overlay-ID-Vergabe (SPEC
+ * docs/spec/F6-02c-freier-editor.md). Sortiert wie der Merge, vergibt
+ * `ovl-1…` disjunkt zu `backboneIds`, gibt NUR ID-tragende Elemente
+ * (keine Konnektoren) in Eingabereihenfolge zurueck. Validiert
+ * fail-closed (`OverlayValidationError`); Konnektor-Endpunkte prueft
+ * weiter der Merge (diese Funktion kennt keine Kanten).
+ * `mergeEditorOverlay` nutzt diese Funktion intern (eine Quelle).
+ */
+export function assignOverlayIds(
+  backboneIds: ReadonlySet<string> | readonly string[],
+  elements: readonly OverlayElementInput[],
+): AssignedOverlayId[] {
+  const validated = validateElements(elements);
+  const takenIds = new Set<string>(backboneIds);
+  const assigned: AssignedOverlayId[] = [];
+  let counter = 0;
+  for (const { index } of sortNodeElements(validated)) {
+    counter += 1;
+    let id = `ovl-${counter}`;
+    while (takenIds.has(id)) {
+      counter += 1;
+      id = `ovl-${counter}`;
+    }
+    takenIds.add(id);
+    assigned.push({ index, id });
+  }
+  assigned.sort((a, b) => a.index - b.index);
+  return assigned;
+}
+
 /** SPEC-Tabellenrang: Erdung, Dose, Generik, Textbox, Konnektor. */
 const OVERLAY_ELEMENT_RANK: Record<OverlayElementInput["kind"], number> = {
   earthing_point: 0,
@@ -137,44 +198,20 @@ export function mergeEditorOverlay(
   }
 
   const backboneIds = new Set(backbone.nodes.map((node) => node.id));
-  const takenIds = new Set(backboneIds);
 
-  const nodeElements = validated
-    .map((element, index) => ({ element, index }))
-    .filter(
-      (
-        entry,
-      ): entry is {
-        element: Exclude<OverlayElementInput, { kind: "connector" }>;
-        index: number;
-      } => entry.element.kind !== "connector",
-    )
-    .sort(
-      (a, b) =>
-        OVERLAY_ELEMENT_RANK[a.element.kind] - OVERLAY_ELEMENT_RANK[b.element.kind] ||
-        compareNfcText(overlaySortLabel(a.element), overlaySortLabel(b.element)) ||
-        a.element.x - b.element.x ||
-        a.element.y - b.element.y ||
-        a.index - b.index,
-    );
-
-  const overlayNodes: SchematicNode[] = [];
-  for (const { element } of nodeElements) {
-    let counter = overlayNodes.length + 1;
-    let id = `ovl-${counter}`;
-    while (takenIds.has(id)) {
-      counter += 1;
-      id = `ovl-${counter}`;
-    }
-    takenIds.add(id);
+  // F6-02c-A: ID-Vergabe aus einer Quelle (assignOverlayIds sortiert und
+  // nummeriert; der Merge baut nur noch Knoten daraus).
+  const assigned = assignOverlayIds(backboneIds, validated);
+  const overlayNodes: SchematicNode[] = assigned.map(({ index, id }) => {
+    const element = validated[index] as OverlayNodeElement;
     const label =
       element.kind === "generic"
         ? element.label
         : element.kind === "textbox"
           ? element.text
           : OVERLAY_DEFAULT_LABELS[element.kind];
-    overlayNodes.push({ id, kind: element.kind, label, sub: null, x: element.x, y: element.y });
-  }
+    return { id, kind: element.kind, label, sub: null, x: element.x, y: element.y };
+  });
 
   const knownIds = new Set([...backboneIds, ...overlayNodes.map((node) => node.id)]);
   const overlayEdges = validated.flatMap((element, index) => {

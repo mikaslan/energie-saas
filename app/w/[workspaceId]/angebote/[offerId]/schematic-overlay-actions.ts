@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { authorizedAction, NotAuthenticatedError } from "@/lib/action";
+import { assignOverlayIds } from "@/lib/integrations/schematic/editor-overlay-v1";
 import { PermissionDeniedError } from "@/lib/permissions";
 // Signatur-Muster (signature-actions.ts): Der Service traegt `server-only`
 // und darf statisch nicht in die Client-Importkette (Formular);
@@ -66,6 +67,13 @@ export type LoadSchematicOverlayResult = {
   status: LoadSchematicOverlayStatus;
   overlay: SchematicModule.ReadSchematicOverlayResult | null;
   diagramRevision: number | null;
+  /**
+   * F6-02c-A/CONTRACT: paralleles Array zu `overlay.elements` (gleiche
+   * Laenge und Reihenfolge); vergebene `ovl-*`-ID je Zeile oder `null`
+   * (Konnektor, ungespeichert, fail-closed). `[]`, wenn kein Overlay
+   * geladen wurde.
+   */
+  elementIds: (string | null)[];
 };
 
 export type LoadSchematicOverlayInput = {
@@ -103,6 +111,43 @@ function pgErrorCode(error: unknown): string | null {
     if (typeof nested === "string") return nested;
   }
   return null;
+}
+
+/** F6-02c-A: Backbone-IDs aus dem gespeicherten Netz — fail-closed null. */
+function backboneIdsFromNetlist(netlist: unknown): string[] | null {
+  if (typeof netlist !== "object" || netlist === null) return null;
+  const nodes = (netlist as { nodes?: unknown }).nodes;
+  if (!Array.isArray(nodes)) return null;
+  const ids: string[] = [];
+  for (const node of nodes) {
+    if (typeof node !== "object" || node === null) return null;
+    const id = (node as { id?: unknown }).id;
+    if (typeof id !== "string" || id.length === 0) return null;
+    ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * F6-02c-A (GREEN): paralleles ID-Array zu den Overlay-Zeilen
+ * (Server-Mapping, deterministisch). Ohne Diagramm-Zeile, bei
+ * fehlerhaftem Netz oder Validierungsfehler: alles `null`
+ * (fail-closed: keine Anzeige statt falscher Anzeige).
+ */
+function toElementIds(
+  netlist: unknown,
+  overlay: SchematicModule.ReadSchematicOverlayResult,
+): (string | null)[] {
+  if (overlay === null) return [];
+  const backboneIds = backboneIdsFromNetlist(netlist);
+  if (backboneIds === null) return overlay.elements.map(() => null);
+  try {
+    const assigned = assignOverlayIds(backboneIds, overlay.elements);
+    const idByIndex = new Map(assigned.map((entry) => [entry.index, entry.id]));
+    return overlay.elements.map((_, index) => idByIndex.get(index) ?? null);
+  } catch {
+    return overlay.elements.map(() => null);
+  }
 }
 
 function toSaveResult(
@@ -168,7 +213,9 @@ export async function loadSchematicOverlayAction(
   input: LoadSchematicOverlayInput,
 ): Promise<LoadSchematicOverlayResult> {
   const parsed = loadOverlaySchema.safeParse(input);
-  if (!parsed.success) return { status: "invalid", overlay: null, diagramRevision: null };
+  if (!parsed.success) {
+    return { status: "invalid", overlay: null, diagramRevision: null, elementIds: [] };
+  }
   const command = parsed.data;
 
   try {
@@ -187,19 +234,20 @@ export async function loadSchematicOverlayAction(
         } catch (error) {
           // Commercial/b2b: kein Overlay, keine Diagramm-Revision.
           if (error instanceof services.SchematicScopeError) {
-            return { status: "gated", overlay: null, diagramRevision: null } as const;
+            return { status: "gated", overlay: null, diagramRevision: null, elementIds: [] };
           }
           // Overlay-Tabelle fehlt (Lane noch nicht gemergt): ehrlicher Status.
           if (pgErrorCode(error) === "42P01") {
-            return { status: "unavailable", overlay: null, diagramRevision: null } as const;
+            return { status: "unavailable", overlay: null, diagramRevision: null, elementIds: [] };
           }
           throw error;
         }
 
-        // Zugehörige Diagramm-Revision laden (null, wenn noch nie gespeichert).
+        // Zugehörige Diagramm-Zeile laden (Revision + Netz fuer das
+        // F6-02c-A-ID-Mapping; null, wenn noch nie gespeichert).
         try {
-          const diagram = await tx.execute<{ revision: unknown; [key: string]: unknown }>(sql`
-            select revision
+          const diagram = await tx.execute<{ revision: unknown; netlist: unknown }>(sql`
+            select revision, netlist
               from schematic_diagrams
              where workspace_id = ${command.workspaceId}::uuid
                and offer_id = ${command.offerId}::uuid
@@ -208,11 +256,12 @@ export async function loadSchematicOverlayAction(
           `);
           const raw = diagram.rows[0]?.revision;
           const diagramRevision = typeof raw === "number" && Number.isInteger(raw) ? raw : null;
-          return { status: "loaded", overlay, diagramRevision } as const;
+          const elementIds = toElementIds(diagram.rows[0]?.netlist, overlay);
+          return { status: "loaded", overlay, diagramRevision, elementIds };
         } catch (error) {
           // Diagramm-Tabelle fehlt (F6-01-Lane noch nicht gemergt): ehrlicher Status.
           if (pgErrorCode(error) === "42P01") {
-            return { status: "unavailable", overlay: null, diagramRevision: null } as const;
+            return { status: "unavailable", overlay: null, diagramRevision: null, elementIds: [] };
           }
           throw error;
         }
@@ -220,10 +269,10 @@ export async function loadSchematicOverlayAction(
     );
   } catch (error) {
     if (error instanceof NotAuthenticatedError) {
-      return { status: "unauthenticated", overlay: null, diagramRevision: null };
+      return { status: "unauthenticated", overlay: null, diagramRevision: null, elementIds: [] };
     }
     if (error instanceof PermissionDeniedError) {
-      return { status: "denied", overlay: null, diagramRevision: null };
+      return { status: "denied", overlay: null, diagramRevision: null, elementIds: [] };
     }
     throw error;
   }
