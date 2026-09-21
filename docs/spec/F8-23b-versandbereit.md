@@ -15,9 +15,16 @@ Baut auf F8-19-Gating (`markSentWithDelivery`) als Read-Spiegel auf.
 - Typ-Gate (DECIDED — wie Versand-Action): nur `invoice`/`credit_note`;
   andere Typen liefern leere Menge.
 - UI `[type]/page.tsx`: Preset-Checkbox „Nur versandbereite“
-  (Query-Key `versandbereit`) + „Versandbereit“-Badge in Status-Spalte
+  (Query-Key `versandbereit`, nur bei `list.permissions.canWrite`
+  gerendert — DECIDED, s.u.) + „Versandbereit“-Badge in Status-Spalte
   (`data-testid="document-ready-badge"`); Badge verlinkt aufs Detail
   (dort Versand-Button, kein Listen-Versand).
+- Viewer-Semantik (DECIDED): Render-Job-SELECT verlangt
+  `invoicing.write` (M3-02c P1-1) — RLS blendet Jobs für Viewer aus,
+  daher liefert `versandbereit=true` als Viewer leere Menge (kein
+  Leak, kein Crash). UI bietet das Preset Viewern nicht an;
+  gecraftete Query ist wirkungslos-leer. Kein DEFINER-Ausbau
+  (Over-Engineering für ein Anzeige-Preset).
 - Keine Migration (nur Reads auf existierende Tabellen/Jobs).
 
 ## Nicht-Umfang

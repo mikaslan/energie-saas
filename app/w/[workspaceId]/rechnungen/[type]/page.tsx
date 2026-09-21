@@ -32,6 +32,7 @@ const cursorPattern = /^[A-Za-z0-9_-]{1,256}$/u;
 const filterSchema = z.object({
   status: z.enum(["draft", "issued", "voided"]).optional(),
   versand: z.enum(["sent", "unsent"]).optional(),
+  versandbereit: z.literal("true").optional(),
   zahlung: z.enum(["unpaid", "partially_paid", "paid", "overdue", "uncollectable"]).optional(),
   von: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
   bis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
@@ -97,7 +98,7 @@ function activeFilterCount(
   type: CommercialDocumentType,
 ): number {
   return [
-    filters.status, filters.versand, filters.zahlung, filters.von, filters.bis,
+    filters.status, filters.versand, filters.versandbereit, filters.zahlung, filters.von, filters.bis,
     filters.fdatumVon, filters.fdatumBis, filters.grund,
     // F8-16: art nur auf Rechnungslisten zaehlen (crafted ?art= sonst).
     type === "invoice" ? filters.art : undefined,
@@ -119,6 +120,7 @@ export default async function InvoicingDocumentListPage(
   const parsedFilters = filterSchema.safeParse({
     status: nonEmpty(firstQueryValue(rawSearch.status)),
     versand: nonEmpty(firstQueryValue(rawSearch.versand)),
+    versandbereit: nonEmpty(firstQueryValue(rawSearch.versandbereit)),
     zahlung: nonEmpty(firstQueryValue(rawSearch.zahlung)),
     von: nonEmpty(firstQueryValue(rawSearch.von)),
     bis: nonEmpty(firstQueryValue(rawSearch.bis)),
@@ -144,6 +146,7 @@ export default async function InvoicingDocumentListPage(
           filters: {
             status: filters.status,
             sent: filters.versand,
+            versandbereit: filters.versandbereit === "true",
             paymentStatus: filters.zahlung,
             issuedFrom: filters.von,
             issuedTo: filters.bis,
@@ -247,6 +250,22 @@ export default async function InvoicingDocumentListPage(
             <option value="unsent">Nicht versendet</option>
           </select>
         </div>
+
+        {moneyTypes.includes(type) && list !== null && list.permissions.canWrite ? (
+          <div className="flex items-end pb-2">
+            <label htmlFor={`versandbereit-${type}`} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+              <input
+                id={`versandbereit-${type}`}
+                type="checkbox"
+                name="versandbereit"
+                value="true"
+                defaultChecked={filters.versandbereit === "true"}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Nur versandbereite
+            </label>
+          </div>
+        ) : null}
 
         {moneyTypes.includes(type) ? (
           <div>
@@ -420,6 +439,15 @@ export default async function InvoicingDocumentListPage(
                           <span data-testid="document-sent-badge" className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
                             Versendet
                           </span>
+                        ) : null}
+                        {document.status === "issued" && document.sentAt === null && document.hasSucceededInvoiceJob ? (
+                          <Link
+                            data-testid="document-ready-badge"
+                            href={`/w/${workspaceId}/rechnungen/${type}/${document.id}`}
+                            className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 hover:bg-amber-200"
+                          >
+                            Versandbereit
+                          </Link>
                         ) : null}
                       </td>
                       {moneyTypes.includes(type) ? (

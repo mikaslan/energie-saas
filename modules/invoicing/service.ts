@@ -102,6 +102,10 @@ import {
 import {
   offerVariantSnapshotV1Schema,
 } from "@/lib/integrations/offers/contract";
+import {
+  INVOICE_PDF_RENDERER_RECIPE_VERSION,
+  INVOICE_PDF_TEMPLATE_VERSION,
+} from "@/lib/integrations/invoicing/pdf-contract";
 
 export function requireInvoicingRead(ctx: ServiceCtx): void {
   if (!can(ctx, "invoicing.read")) {
@@ -512,6 +516,7 @@ type DocumentDtoRow = {
   number_sequence: number | null;
   issued_at: Date | null;
   sent_at: Date | null;
+  has_succeeded_invoice_job: boolean;
   voided_at: Date | null;
   void_reason: string | null;
   paid_cents: number | null;
@@ -526,7 +531,14 @@ const DOCUMENT_DTO_SELECT = sql`
          delivery_date, validity_date, planned_delivery_date,
          planned_service_date, credit_note_type, invoice_kind, payment_status, number,
          number_year, number_sequence, issued_at, sent_at, voided_at,
-         void_reason, paid_cents, created_at
+         void_reason, paid_cents, created_at,
+         exists (
+           select 1 from commercial_document_render_job j
+            where j.document_id = commercial_document.id
+              and j.template_version = ${INVOICE_PDF_TEMPLATE_VERSION}
+              and j.renderer_recipe = ${INVOICE_PDF_RENDERER_RECIPE_VERSION}
+              and j.status = 'succeeded'
+         ) as has_succeeded_invoice_job
     from commercial_document
 `;
 
@@ -577,6 +589,7 @@ function toDocumentV1(row: DocumentDtoRow, canWrite: boolean): CommercialDocumen
     numberSequence: row.number_sequence === null ? null : Number(row.number_sequence),
     issuedAt: toIso(row.issued_at),
     sentAt: toIso(row.sent_at),
+    hasSucceededInvoiceJob: row.has_succeeded_invoice_job === true,
     voidedAt: toIso(row.voided_at),
     voidReason: row.void_reason,
     paidCents: row.paid_cents === null ? null : Number(row.paid_cents),
@@ -1152,6 +1165,8 @@ export async function issueDocument(
     numberSequence: issuedRow.number_sequence === null ? null : Number(issuedRow.number_sequence),
     issuedAt: issuedRow.issued_at,
     sentAt: issuedRow.sent_at,
+    // Frisch ausgestellt: noch kein Render-Job vorhanden.
+    hasSucceededInvoiceJob: false,
     voidedAt: issuedRow.voided_at,
     voidReason: issuedRow.void_reason,
     paidCents: issuedRow.paid_cents === null ? null : Number(issuedRow.paid_cents),
@@ -1711,6 +1726,23 @@ export async function listDocuments(
     conditions.push(sql`sent_at is not null`);
   } else if (filters.sent === "unsent") {
     conditions.push(sql`sent_at is null`);
+  }
+  // F8-23b: Versandbereit-Preset (Gating-Spiegel aus delivery-service).
+  if (filters.versandbereit === true) {
+    if (command.type !== "invoice" && command.type !== "credit_note") {
+      conditions.push(sql`false`);
+    } else {
+      conditions.push(sql`status = 'issued'`);
+      conditions.push(sql`sent_at is null`);
+      conditions.push(sql`exists (
+        select 1 from commercial_document_render_job j
+         where j.workspace_id = ${ctx.workspaceId}::uuid
+           and j.document_id = commercial_document.id
+           and j.template_version = ${INVOICE_PDF_TEMPLATE_VERSION}
+           and j.renderer_recipe = ${INVOICE_PDF_RENDERER_RECIPE_VERSION}
+           and j.status = 'succeeded'
+      )`);
+    }
   }
   if (filters.paymentStatus !== undefined) {
     conditions.push(sql`payment_status = ${filters.paymentStatus}`);

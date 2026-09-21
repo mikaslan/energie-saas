@@ -826,6 +826,10 @@ export const commercialDocumentV1Schema = z.strictObject({
   numberSequence: z.number().int().nullable(),
   issuedAt: z.string().nullable(),
   sentAt: z.string().nullable(),
+  // F8-23b: succeeded-Rechnungs-PDF-Job vorhanden (Badge-Quelle; RLS:
+  // Viewer ohne invoicing.write sieht false). Default false =
+  // rueckwaertskompatibel (kein Job bekannt).
+  hasSucceededInvoiceJob: z.boolean().default(false),
   voidedAt: z.string().nullable(),
   voidReason: commercialVoidReasonSchema.nullable(),
   paidCents: moneyCentsSchema.nullable(),
@@ -946,6 +950,8 @@ export const commercialDocumentListFiltersV1Schema = z
     status: commercialDocumentStatusSchema.optional(),
     // F8-23a: Sent-Achse (sent_at), unabhaengig vom Status-Filter.
     sent: z.enum(["all", "sent", "unsent"]).default("all"),
+    // F8-23b: Versandbereit-Preset (issued + unversendet + Job).
+    versandbereit: z.boolean().default(false),
     paymentStatus: z
       .enum(["unpaid", "partially_paid", "paid", "overdue", "uncollectable"])
       .optional(),
