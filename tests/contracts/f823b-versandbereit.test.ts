@@ -16,14 +16,14 @@ describe("F823B-CT-01 versandbereit-Preset", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("defaultet versandbereit auf false", () => {
+  it("versandbereit ist optional (undefined = aus)", () => {
     const parsed = commercialDocumentListCommandV1Schema.safeParse({
       schemaVersion: COMMERCIAL_DOCUMENT_LIST_COMMAND_VERSION,
       type: "invoice",
       filters: {},
     });
     expect(parsed.success).toBe(true);
-    if (parsed.success) expect(parsed.data.filters?.versandbereit).toBe(false);
+    if (parsed.success) expect(parsed.data.filters?.versandbereit).toBeUndefined();
   });
 
   it("rejectet nicht-booleschen Wert", () => {

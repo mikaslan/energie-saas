@@ -6,8 +6,8 @@ Baut auf F8-19-Gating (`markSentWithDelivery`) als Read-Spiegel auf.
 
 ## Umfang
 
-- Filter-Preset `versandbereit` (boolean, Default `false`) in
-  `commercialDocumentListCommandV1Schema` (additiv, kein Bump).
+- Filter-Preset `versandbereit` (boolean, optional, `undefined` =
+  aus) in `commercialDocumentListCommandV1Schema` (additiv, kein Bump).
 - `listDocuments`-Condition bei `versandbereit=true`: `status='issued'`
   AND `sent_at is null` AND EXISTS `succeeded`-Rechnungs-PDF-Job
   (`invoice-pdf-template.v1`, SQL-Pattern aus
@@ -38,7 +38,7 @@ Baut auf F8-19-Gating (`markSentWithDelivery`) als Read-Spiegel auf.
 
 | ID | Anspruch | Beleg |
 |---|---|---|
-| F823B-CT-01 | Schema: `versandbereit`-Boolean, Default false | Contract-Tests |
+| F823B-CT-01 | Schema: `versandbereit`-Boolean, optional | Contract-Tests |
 | F823B-DB-01 | Nur issued + unversendet + succeeded-Job enthalten | DB-Tests |
 | F823B-DB-02 | Versendete / ohne Job / letter-Typ ausgeschlossen | DB-Tests |
 | F823B-E2E-01 | Preset + Badge + Detail-Link im Browser | E2E-Test |

@@ -954,9 +954,12 @@ export const commercialDocumentListFiltersV1Schema = z
   .strictObject({
     status: commercialDocumentStatusSchema.optional(),
     // F8-23a: Sent-Achse (sent_at), unabhaengig vom Status-Filter.
-    sent: z.enum(["all", "sent", "unsent"]).default("all"),
+    // undefined = alle (Hausmuster: kein Schema-Default, .default()
+    // bricht hier die Filter-Typ-Inferenz).
+    sent: z.enum(["all", "sent", "unsent"]).optional(),
     // F8-23b: Versandbereit-Preset (issued + unversendet + Job).
-    versandbereit: z.boolean().default(false),
+    // undefined = aus (Hausmuster, s. sent).
+    versandbereit: z.boolean().optional(),
     paymentStatus: z
       .enum(["unpaid", "partially_paid", "paid", "overdue", "uncollectable"])
       .optional(),

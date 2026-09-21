@@ -6,8 +6,8 @@ machen. Baut auf `listDocuments` (Service) und `[type]/page.tsx` auf.
 
 ## Umfang
 
-- `sent`-Filter (`"all" | "sent" | "unsent"`, Default `"all"`) in
-  `commercialDocumentListCommandV1Schema`
+- `sent`-Filter (`"all" | "sent" | "unsent"`, optional,
+  `undefined` = alle) in `commercialDocumentListCommandV1Schema`
   (`lib/integrations/invoicing/contract.ts`, DECIDED additiv ohne
   Versionsbump — optionales Feld, Producer = derselbe Service).
 - `listDocuments`-Condition (Spiegel Status-Pattern): `sent` → `sent_at
@@ -31,7 +31,7 @@ machen. Baut auf `listDocuments` (Service) und `[type]/page.tsx` auf.
 
 | ID | Anspruch | Beleg |
 |---|---|---|
-| F823A-CT-01 | Schema: `sent`-Enum, Default `all`, strikte Keys | Contract-Tests |
+| F823A-CT-01 | Schema: `sent`-Enum, optional, strikte Keys | Contract-Tests |
 | F823A-DB-01 | `sent` liefert nur `sent_at`-gesetzte, `unsent` nur NULL | DB-Tests |
 | F823A-DB-02 | Kombination `sent` + `status` schränkt korrekt ein | DB-Tests |
 | F823A-E2E-01 | Badge sichtbar + Filter wirkt im Browser | E2E-Test |

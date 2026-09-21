@@ -24,14 +24,14 @@ describe("F823A-CT-01 sent-Filter", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("defaultet sent auf all", () => {
+  it("sent ist optional (undefined = alle)", () => {
     const parsed = commercialDocumentListCommandV1Schema.safeParse({
       schemaVersion: COMMERCIAL_DOCUMENT_LIST_COMMAND_VERSION,
       type: "invoice",
       filters: {},
     });
     expect(parsed.success).toBe(true);
-    if (parsed.success) expect(parsed.data.filters?.sent).toBe("all");
+    if (parsed.success) expect(parsed.data.filters?.sent).toBeUndefined();
   });
 
   it("rejectet unbekannten sent-Wert", () => {
