@@ -1,0 +1,11 @@
+{
+  "contractVersion": "service-price.v1",
+  "serviceType": "netz_pv",
+  "amountNetCents": 34900,
+  "vatRatePercent": 19.0,
+  "currency": "EUR",
+  "validFrom": "2026-01-01T00:00:00.000Z",
+  "validTo": null,
+  "revision": 1,
+  "source": "catalog_estimate"
+}

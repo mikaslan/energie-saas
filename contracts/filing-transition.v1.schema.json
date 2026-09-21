@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/filing-transition.v1.schema.json",
+  "title": "WMEE filing transition v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "filing-transition.v1"
+    },
+    "filingType": {
+      "type": "string",
+      "enum": [
+        "service_case",
+        "grid_registration",
+        "subsidy_case"
+      ]
+    },
+    "from": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "awaiting_info",
+        "approved",
+        "in_progress",
+        "done",
+        "cancelled"
+      ]
+    },
+    "to": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "awaiting_info",
+        "approved",
+        "in_progress",
+        "done",
+        "cancelled"
+      ]
+    },
+    "notifyCustomer": {
+      "type": "boolean"
+    },
+    "templateId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "service-completed.v1",
+        "service-cancelled.v1",
+        "grid-submitted.v1",
+        "grid-approved.v1",
+        "grid-completed.v1",
+        "grid-cancelled.v1",
+        "subsidy-submitted.v1",
+        "subsidy-approved.v1",
+        "subsidy-info-requested.v1",
+        "subsidy-completed.v1",
+        "subsidy-cancelled.v1",
+        null
+      ]
+    },
+    "transitionedBy": {
+      "type": "string",
+      "enum": [
+        "intern",
+        "customer",
+        "system"
+      ]
+    },
+    "reasonCode": {
+      "type": "string",
+      "pattern": "^(service|grid|subsidy)\\.[a-z_]+-[a-z_]+$"
+    },
+    "filingRef": {
+      "type": "string",
+      "pattern": "^(service_case|grid_registration|subsidy_case):[0-9a-f-]{36}:[a-z_]+$"
+    }
+  },
+  "required": [
+    "contractVersion",
+    "filingType",
+    "from",
+    "to",
+    "notifyCustomer",
+    "templateId",
+    "transitionedBy",
+    "reasonCode",
+    "filingRef"
+  ],
+  "additionalProperties": false
+}

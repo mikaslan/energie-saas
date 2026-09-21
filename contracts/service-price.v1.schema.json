@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wmee.internal/service-price.v1.schema.json",
+  "title": "WMEE service price v1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "const": "service-price.v1"
+    },
+    "serviceType": {
+      "type": "string",
+      "enum": [
+        "netz_pv",
+        "netz_wp",
+        "foerderung",
+        "planung_standard",
+        "planung_express"
+      ]
+    },
+    "amountNetCents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "vatRatePercent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "currency": {
+      "type": "string",
+      "const": "EUR"
+    },
+    "validFrom": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "validTo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "catalog_estimate",
+        "manual"
+      ]
+    }
+  },
+  "required": [
+    "contractVersion",
+    "serviceType",
+    "amountNetCents",
+    "vatRatePercent",
+    "currency",
+    "validFrom",
+    "validTo",
+    "revision",
+    "source"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "priceSnapshot": {
+      "type": "object",
+      "properties": {
+        "amountCents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "const": "EUR"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "service_price",
+            "estimate",
+            "manual"
+          ]
+        }
+      },
+      "required": [
+        "amountCents",
+        "currency",
+        "source"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
