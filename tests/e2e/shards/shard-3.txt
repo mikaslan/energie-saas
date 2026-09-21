@@ -32,6 +32,7 @@ f201b-badge.spec.ts
 f203b-kalkulation-rest.spec.ts
 f208-draw-signature.spec.ts
 f4-06-economics-defaults.spec.ts
+f602a-overlay.spec.ts
 f7-02b-bedingte-sichtbarkeit.spec.ts
 f7-02e-freitext-antwort.spec.ts
 f7-03b-vorlagen-arten.spec.ts
