@@ -21,10 +21,10 @@ export default async function WorkspaceLayout({
   const { workspaceId } = await params;
   const parsed = workspaceIdSchema.safeParse(workspaceId);
   return (
-    <>
+    <div className="f11-w-scope">
       <div className="pb-16 md:pb-0">{children}</div>
       {parsed.success ? <FloatingTimerWidget workspaceId={parsed.data} /> : null}
       {isWorkspaceIdForTabs(workspaceId) ? <MobileTabBar workspaceId={workspaceId} /> : null}
-    </>
+    </div>
   );
 }

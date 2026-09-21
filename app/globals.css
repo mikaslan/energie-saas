@@ -98,3 +98,19 @@ textarea {
     font-size: 1.5rem;
   }
 }
+
+/* F11-05/F11-07 Koexistenz: --f11-tabbar-h ist die Höhe der mobilen
+ * Tab-Leiste (45px, gepinnt in F11-05-E2E-01 "Koexistenz-Var").
+ * Bottom-Elemente im w-Layout (Angebots-Toolbar, Timer-Widget) docken
+ * darüber an. Ab md ist die Leiste versteckt (md:hidden) → 0px.
+ * Scope: nur w-Layout (dort lebt die Leiste); Root-Banner behalten
+ * Fallback 0px (F11-07-Verhalten unverändert). */
+.f11-w-scope {
+  --f11-tabbar-h: 45px;
+}
+
+@media (min-width: 768px) {
+  .f11-w-scope {
+    --f11-tabbar-h: 0px;
+  }
+}

@@ -33,7 +33,7 @@ export async function FloatingTimerWidget({ workspaceId }: { workspaceId: string
     <aside
       data-testid="floating-timer-widget"
       aria-label="Laufende Stoppuhr"
-      className="pointer-events-none fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)]"
+      className="pointer-events-none fixed bottom-[calc(1rem+var(--f11-tabbar-h,0px))] right-4 z-40 max-w-[calc(100vw-2rem)]"
     >
       <div className="flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white py-2 pl-4 pr-2 shadow-lg">
         <span className="min-w-0 truncate text-sm text-slate-700" title={projectLabel}>
