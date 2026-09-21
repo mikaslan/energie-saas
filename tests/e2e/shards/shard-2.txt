@@ -32,6 +32,7 @@ f2-06-upsell-auswahl.spec.ts
 f203b-drag.spec.ts
 f207b-freigabe-ansichten.spec.ts
 f3-01-planning-modes.spec.ts
+f601-visual-gates.spec.ts
 f7-02-checklists.spec.ts
 f7-02d-radio-einfachauswahl.spec.ts
 f7-03-checklist-templates.spec.ts
